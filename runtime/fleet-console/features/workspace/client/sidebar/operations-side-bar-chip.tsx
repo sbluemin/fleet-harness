@@ -6,12 +6,12 @@ import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscrib
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
 import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { operationMarkLabel, type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { OperationAvatar, mongleStateOfMark } from "../avatars.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import {
@@ -385,11 +385,11 @@ export function OperationsSideBarChip({
       }}
     >
       {/* 이름 왼쪽 슬롯은 활동 상태가 소유한다 — 목록에서 먼저 읽혀야 하는 것은 무엇으로
-          띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
-          말하지 않으므로 마크가 그 이름을 진다. 예외는 Shell 하나다: Shell은 활동 축을
-          발행하지 않아 비콘이 늘 같은 값으로 굳으므로, 그 자리를 종류 글리프가 가져간다. */}
+          띄웠는지가 아니라 지금 무엇을 하고 있는지다. 그 상태를 이 Operation 의 몽글 아바타가 얼굴과
+          몸짓으로 말한다(구성원은 베이스만, 그 밖은 지휘관 안테나). 칩 자체가 상태를 접근성 이름으로
+          말하지 않으므로 아바타가 그 이름을 진다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationNameMark operation={operation} status={markVisual} className="side-bar-chip-status" />
+        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, cluster?.decisionRequest === true)} size={conversationRow ? 28 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
       </span>
       <span className="side-bar-chip-text">
         {/* 이름 줄 — 스냅 표식은 이름의 생략 부호 밖에 서므로 제목이 길어도 잘리지 않는다.

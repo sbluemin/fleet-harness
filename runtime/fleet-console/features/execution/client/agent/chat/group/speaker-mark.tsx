@@ -1,15 +1,17 @@
 import type { ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { KeyedAvatar } from "../../../../../workspace/client/avatars.js";
+import { useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { getGroupT } from "./group-chat-i18n.js";
 
 /**
  * 발화자 표식 — 그룹 대화의 말풍선·위임 줄·진행 줄·구성원 탭이 같은 표식을 쓴다.
  *
- * 구성원 표식은 플러그인이 준 `{number, tone}` 으로 Console 이 직접 그린다(플러그인 구현을 가져오지 않는다).
- * 모양과 톤은 지휘관 패널 노드 줄의 `cluster-member-glyph` 와 같다 — 같은 구성원이 노드 줄과 대화에서 다른 얼굴이면
- * 사람이 둘을 잇지 못한다. 지휘관은 노드 줄과 같은 좌표 글리프, 사령관은 깃발, 사람과 일반 Operation 은 중립 첫 글자다.
+ * Operation 이 있는 발화자는 사이드바와 같은 몽글 아바타로 선다 — 같은 지휘관·구성원이 목록과 대화에서 다른 얼굴이면 사람이 둘을
+ * 잇지 못한다. 사람과 Operation 이 없는 발화자만 첫 글자 칩이고, 구성원 톤(`{number, tone}`)은 이름 잉크가 그대로 쓴다.
  */
 const TONES = new Set(["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"]);
 
@@ -23,32 +25,20 @@ export function speakerKey(speaker: ConversationSpeaker): string {
   return speaker.operationId ?? `${speaker.kind}:${speaker.name}`;
 }
 
-const CoordGlyph = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true">
-    <circle cx="8" cy="4" r="2" />
-    <circle cx="4" cy="12" r="2" />
-    <circle cx="12" cy="12" r="2" />
-    <path d="M7 5.7L5 10.3M9 5.7l2 4.6" />
-  </svg>
-);
-
-const PennantGlyph = () => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M4 14V2.5" />
-    <path d="M4 3h8l-2.2 3L12 9H4" />
-  </svg>
-);
-
-export function SpeakerMark({ speaker, size = "md" }: { readonly speaker: ConversationSpeaker; readonly size?: "sm" | "md" }) {
-  const tone = speakerTone(speaker);
+/**
+ * 발화자의 몽글 아바타 — 지휘관·일반 Operation 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Operation 이 없는 발화자는
+ * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
+ */
+export function SpeakerMark({ speaker, size = "md", state = "idle" }: { readonly speaker: ConversationSpeaker; readonly size?: "sm" | "md"; readonly state?: MongleState }) {
+  const subject = useConversationSubject();
   const sizeClass = size === "sm" ? " group-chat-mark is-sm" : " group-chat-mark";
-  if (speaker.kind === "commander") {
-    return <span className={`cluster-member-glyph is-commander${sizeClass}`} aria-hidden="true"><CoordGlyph /></span>;
-  }
-  if (speaker.kind === "commodore") {
-    return <span className={`cluster-member-glyph is-commander is-commodore${sizeClass}`} aria-hidden="true"><PennantGlyph /></span>;
+  if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.operationId)) {
+    const key = speaker.kind === "commodore" ? theaterAvatarKey(subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
+    const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
+    return <KeyedAvatar avatarKey={key} role={role} state={state} size={size === "sm" ? 16 : 22} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
   const letter = Array.from(speaker.name.trim())[0] ?? "?";
+  const tone = speakerTone(speaker);
   if (tone) return <span className={`cluster-member-glyph is-tone-${tone}${sizeClass}`} aria-hidden="true">{letter}</span>;
   return <span className={`cluster-member-glyph is-neutral${sizeClass}`} aria-hidden="true">{letter}</span>;
 }

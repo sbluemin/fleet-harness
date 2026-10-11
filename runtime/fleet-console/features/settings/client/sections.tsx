@@ -477,6 +477,15 @@ export function ThemeCard({
           <div className="global-settings-row">
             <div className="global-settings-row-text">
               <p className="global-settings-resp-title">
+                {t("settings.motion.calmAvatars")}
+                <SettingsHelp title={t("settings.motion.calmAvatars")}>{t("settings.motion.calmAvatarsHelp")}</SettingsHelp>
+              </p>
+            </div>
+            <SettingsToggle checked={state?.calmAvatars === true} disabled={state === null} busy={saving.has("calmAvatars")} ariaLabel={t("settings.motion.calmAvatars")} onChange={(value) => { void setGlobalSettingsField("calmAvatars", value); }} />
+          </div>
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
                 {t("settings.motion.unfocused")}
                 <SettingsHelp title={t("settings.motion.unfocused")}>{t("settings.motion.unfocusedHelp")}</SettingsHelp>
               </p>

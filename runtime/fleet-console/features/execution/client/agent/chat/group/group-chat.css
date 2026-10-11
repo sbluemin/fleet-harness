@@ -50,6 +50,8 @@
 .group-chat-mark.is-sm { width: 16px; height: 16px; border-radius: var(--radius-xs); font-size: var(--t-2xs); }
 .group-chat-mark svg { width: 13px; height: 13px; }
 .group-chat-mark.is-sm svg { width: 10px; height: 10px; }
+/* 대화 속 아바타는 말한 사람을 가리킬 뿐이다 — 말풍선마다 눈을 깜빡이면 기록이 산만해지므로 대기 얼굴의 깜빡임만 거둔다. */
+.mongle-avatar.group-chat-mark.is-idle .mongle-avatar-eyes { animation: none; }
 .cluster-member-glyph.is-neutral {
   border-color: var(--hairline-strong);
   background: var(--control-rest);
@@ -260,6 +262,11 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   text-align: start;
 }
 button.group-members-main { cursor: pointer; }
+/* 아바타가 따로 선 줄(편집할 수 있는 참여자) — 아바타는 줄 단추 밖 형제라 단추 안의 첫 칸을 비운다. */
+.group-members-main.has-avatar { grid-template-columns: minmax(0, 1fr) auto; }
+.group-members-row .avatar-editor-row { padding-left: var(--space-2); }
+.group-members-row .avatar-editor-row > .group-members-main { flex: 1; min-width: 0; padding-left: 0; }
+.group-members-row .avatar-editor.is-inline .avatar-editor-picker { margin: 0 var(--space-2) var(--space-2); width: auto; }
 button.group-members-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
 .group-members-text { display: flex; flex-direction: column; min-width: 0; }
 .group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

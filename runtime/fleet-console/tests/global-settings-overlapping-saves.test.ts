@@ -25,6 +25,7 @@ const BASE: GlobalSettingsState = {
   unfocusedPanelFade: 50,
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
+  calmAvatars: false,
   lowerUnfocusedFrameRate: true,
   shortcuts: {},
   fonts: DEFAULT_FONTS,

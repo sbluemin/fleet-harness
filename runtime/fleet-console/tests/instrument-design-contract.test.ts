@@ -3393,9 +3393,9 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("hasCustomGroups && sectionItems.length + foldItems.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
-    // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면
-    // 같은 사실이 표면 수만큼의 조형으로 갈라진다. 칩·밴드·모바일이 모두 이 문을 지난다.
-    expect(chip).toContain('import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js"');
+    // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 분기를 다시 적으면 같은 사실이 표면 수만큼의
+    // 조형으로 갈라진다. 사이드바 칩은 몽글 아바타 모듈(역할·배정·상태 해석)을, 밴드·모바일은 상태 마크를 지난다.
+    expect(chip).toContain('import { OperationAvatar, mongleStateOfMark } from "../avatars.js"');
     expect(nameMark).toContain('return <OperationStatusIcon status={status}');
     // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
     expect(statusIcon).toContain('import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";');

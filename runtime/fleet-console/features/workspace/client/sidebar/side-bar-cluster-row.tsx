@@ -3,7 +3,6 @@ import { useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, t
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationClusterRow, OperationClusterRowGlyph, OperationClusterRowMark } from "@fleet-console/sdk/plugin";
-import { StatusGlyph } from "@fleet-console/sdk/components/status-glyph";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
@@ -12,6 +11,8 @@ import { operationMarkLabel, type OperationMarkVisual } from "../../../execution
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
+import { KeyedAvatar, OperationAvatar, mongleStateOfMark } from "../avatars.js";
+import { operationAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
@@ -324,12 +325,21 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         onContextMenu(item, event.currentTarget.getBoundingClientRect(), event.currentTarget.querySelector<HTMLElement>(".side-bar-cluster-row-main"));
       } : undefined}
     >
-      <StatusGlyph
-        state={state}
-        label={label}
-        className="side-bar-cluster-row-glyph"
-        {...(state === "review" && row.review ? { onActivate: (event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); row.review!(locale); } } : {})}
-      />
+      {state === "review" && row.review ? (
+        <button
+          type="button"
+          className="side-bar-cluster-row-glyph is-actionable"
+          aria-label={label}
+          title={label}
+          onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); row.review!(locale); }}
+        >
+          <ClusterRowAvatar item={item} rowState={state} label={label} conversation={conversationRow} decorative />
+        </button>
+      ) : (
+        <span className="side-bar-cluster-row-glyph">
+          <ClusterRowAvatar item={item} rowState={state} label={label} conversation={conversationRow} />
+        </span>
+      )}
       <button
         type="button"
         className="side-bar-cluster-row-main"
@@ -357,6 +367,46 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         {groupDot ? <span className="side-bar-cluster-row-dot" style={{ "--grp-color": groupDot.color } as CSSProperties} title={groupDot.name} aria-hidden="true" /> : null}
       </span>
     </li>
+  );
+}
+
+const WORKING_MARKS: ReadonlySet<OperationMarkVisual> = new Set(["running", "awaiting", "unseen"]);
+
+/**
+ * 줄 앞 표식 — 지휘관 아바타와, 지금 일하는(진행·부름·안 본 답) 구성원 미니 아바타 최대 셋. 지휘관의 얼굴은 자기 상태를 말하고
+ * (플러그인 글리프·결정 요청이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
+ */
+function ClusterRowAvatar({ item, rowState, label, conversation, decorative = false }: {
+  readonly item: SideBarRowItem;
+  readonly rowState: OperationClusterRowGlyph | OperationMarkVisual;
+  readonly label: string;
+  readonly conversation: boolean;
+  readonly decorative?: boolean;
+}) {
+  const { row, anchor, layout } = item;
+  const commanderState: MongleState = row.glyph
+    ? row.glyph
+    : row.decisionRequestedAt !== undefined
+      ? "decision"
+      : mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : rowState as OperationMarkVisual);
+  const working = item.fold.filter((entry) => WORKING_MARKS.has(entry.mark ?? entry.status ?? "idle")).slice(0, 3);
+  const full = conversation ? 28 : 20;
+  const size = working.length > 0 ? (conversation ? 24 : 17) : full;
+  const commander = anchor
+    ? <OperationAvatar operation={anchor.operation} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
+    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.id)} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />;
+  if (working.length === 0) return commander;
+  return (
+    <span className="side-bar-cluster-avatars" style={{ width: full, height: full }}>
+      {commander}
+      <span className="side-bar-cluster-avatars-minis" aria-hidden="true">
+        {working.map((entry) => (
+          <span key={entry.operation.id} className="side-bar-cluster-avatars-mini">
+            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark ?? entry.status)} size={conversation ? 13 : 10} label="" decorative />
+          </span>
+        ))}
+      </span>
+    </span>
   );
 }
 

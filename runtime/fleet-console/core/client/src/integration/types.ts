@@ -205,6 +205,8 @@ export interface GlobalSettingsState {
   /** 사이드바에서 Operation 을 더블클릭해야 여는지 — 켜면 한 번 클릭은 선택만 한다. 기본은 꺼짐. */
   readonly sideBarDoubleClickOpen: boolean;
   readonly reduceMotion: boolean;
+  /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 구서버 응답에는 없고, 그때는 꺼짐이다. */
+  readonly calmAvatars: boolean;
   readonly lowerUnfocusedFrameRate: boolean;
   readonly uiFont: UiFontSettings;
   readonly fonts: ConsoleFontSettings;

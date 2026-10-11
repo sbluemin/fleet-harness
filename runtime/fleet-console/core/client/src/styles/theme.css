@@ -181,6 +181,15 @@
   --id-plum: oklch(72% 0.065 318);
   --id-rose: oklch(73% 0.06 350);
 
+  /* 몽글 아바타 — 몸은 정체성 톤을 흰색 쪽으로 섞은 파스텔이고(--mongle-tint), 얼굴·볼·안테나 전구·이는 파스텔 몸 위에서
+     읽히는 고정색이다. 몸 색이 테마 바탕이 아니라 파스텔 위에 서므로 얼굴 잉크는 테마마다 다시 정하지 않는다. */
+  --mongle-tint: 62%;
+  --mongle-face: oklch(24% 0.02 260);
+  --mongle-blush: oklch(72% 0.11 15 / 45%);
+  --mongle-blush-ink: oklch(66% 0.12 15);
+  --mongle-bulb: oklch(95% 0.07 95);
+  --mongle-tooth: oklch(98% 0 0);
+
   /* An access-link QR is read by a camera, not by a person, and the spec assumes dark modules on a
      light field. An inverted symbol is outside that spec — many scanners read it, none promise to.
      A single-use credential must not depend on which theme the owner happens to run, so these two

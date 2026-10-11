@@ -45,6 +45,17 @@
       "import": "./operations/identity-tones.ts",
       "default": "./operations/identity-tones.ts"
     },
+    "./avatars": {
+      "types": "./avatars/index.ts",
+      "import": "./avatars/index.ts",
+      "default": "./avatars/index.ts"
+    },
+    "./avatars/browser": {
+      "types": "./avatars/browser.ts",
+      "browser": "./avatars/browser.ts",
+      "import": "./avatars/browser.ts",
+      "default": "./avatars/browser.ts"
+    },
     "./models": {
       "types": "./models/index.ts",
       "import": "./models/index.ts",
@@ -212,6 +223,18 @@
       "browser": "./components/status-glyph.tsx",
       "import": "./components/status-glyph.tsx",
       "default": "./components/status-glyph.tsx"
+    },
+    "./components/mongle-avatar": {
+      "types": "./components/mongle-avatar.tsx",
+      "browser": "./components/mongle-avatar.tsx",
+      "import": "./components/mongle-avatar.tsx",
+      "default": "./components/mongle-avatar.tsx"
+    },
+    "./components/mongle-avatar-picker": {
+      "types": "./components/mongle-avatar-picker.tsx",
+      "browser": "./components/mongle-avatar-picker.tsx",
+      "import": "./components/mongle-avatar-picker.tsx",
+      "default": "./components/mongle-avatar-picker.tsx"
     },
     "./components/live-line": {
       "types": "./components/live-line.tsx",

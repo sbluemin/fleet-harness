@@ -39,6 +39,7 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
+import { useAvatarClaims } from "../avatars.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -489,6 +490,8 @@ export function OperationsSideBar({
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
   const clusterIndex = useClusterIndex();
+  // 몽글 아바타 처음 배정 — 사이드바 한 곳이 Theater·Operation 이 처음 보일 때 묶음째 뽑아 저장한다.
+  useAvatarClaims();
   const registry = usePluginRegistry();
   // 「더블클릭으로 열기」 — 켜면 칩·목표 줄의 한 번 클릭은 열지 않고 고른다. 무대는 그대로 두고 문맥(목표 등)만 옮긴다:
   // 코어의 선택 상태가 바뀌고, 열린 레일이 곧바로 따라오도록 지도 선택 알림도 함께 보낸다. 사이드바 밖의 경로는 그대로 연다.
