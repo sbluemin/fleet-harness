@@ -61,6 +61,19 @@
   background: var(--conversation-surface);
 }
 
+/* 오른쪽 열 안의 패널(목표·위키·파일 등)은 자기 시트 재질(--float-underlay·--glass-tint-expanded·--glass-panel-face)을 깐다 —
+   캔버스 위 떠 있는 시트일 때의 재질이라, 이 열에서는 머리와 한 단 다른 면으로 보였다. 플러그인 코드는 그대로 두고 이 열 안에서
+   그 토큰을 열 바탕으로 다시 준다. 다크에서는 얹히는 카드 면도 Grok 의 한 단(#1a1a1a, --surface-panel)으로 맞춘다. */
+.console-body.is-conversation .right-rail-panel-slot {
+  --float-underlay: var(--conversation-surface);
+  --glass-tint-expanded: transparent;
+  --glass-panel-face: transparent;
+}
+
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .console-body.is-conversation .right-rail-panel-slot {
+  --surface-panel-raised: var(--surface-panel);
+}
+
 .console-body.is-conversation .panel-edge-dock {
   top: 0;
 }
@@ -260,6 +273,31 @@
 
 /* 1:1 채팅(실행 기능의 채팅 본문) — 같은 바탕 위에 놓이고, 로그만 투명 맨 위 줄 몫을 비운다. */
 .conversation-body .agent-chat.is-conversation { background: none; }
+/* 말풍선은 그룹 대화와 같은 문법 — 테두리 없는 면, 큰 반경(Grok 20px). */
+.conversation-body .agent-chat.is-conversation :is(.agent-chat-answer, .agent-chat-stream) {
+  border-color: transparent;
+  border-radius: 20px;
+}
+
+/* 인라인 코드는 테두리 없는 회색 칩 + 본문 글자색(Grok) — 금색 글자를 쓰지 않는다. 코드 블록은 그대로다. */
+.conversation-body .markdown-body :not(pre) > code {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--text-primary) 9%, transparent);
+  color: var(--text-primary);
+}
+
+/* 대화 다크의 주요 행동(보내기)은 Grok 처럼 흰 원형 단추 + 검은 기호다 — 1:1·사령관 입력은 이미 무장(is-armed)일 때 brass 면이고,
+   대화 다크의 brass 는 중립 흰색이다(theme.css). 그룹 입력만 그 문법에 맞춘다. */
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .group-composer-send:not(:disabled) {
+  background: var(--brass);
+  color: var(--text-on-brass);
+}
+
+/* 사람의 말풍선은 그룹 대화와 같은 회색 면이다. */
+.conversation-body .agent-chat.is-conversation .agent-chat-dispatch-bubble {
+  background: var(--ink-veil);
+  border-radius: 20px;
+}
 .conversation-body .agent-chat.is-conversation .agent-chat-log {
   padding-top: calc(var(--space-3) + var(--conversation-overlay-top));
 }

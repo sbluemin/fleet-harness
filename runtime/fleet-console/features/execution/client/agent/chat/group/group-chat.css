@@ -70,7 +70,7 @@
 .group-chat-bubble {
   max-width: min(680px, 82%);
   padding: var(--space-2) var(--space-3);
-  border-radius: 18px;
+  border-radius: 20px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -78,14 +78,14 @@
   /* 사람의 말풍선은 한 단 밝은 회색 — 지휘관·구성원의 말풍선과 면으로 갈린다. */
   background: var(--ink-veil);
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 20px;
   white-space: pre-wrap;
 }
 .group-chat-bubble.is-markdown { white-space: normal; }
 .group-chat-bubble.is-agent {
   background: var(--surface-panel-raised);
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 20px;
 }
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
@@ -452,7 +452,7 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border: 1px solid transparent;
-  border-radius: 18px;
+  border-radius: 20px;
   background: var(--surface-panel-raised);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
