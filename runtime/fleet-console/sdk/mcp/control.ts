@@ -12,6 +12,11 @@ export interface ConsoleActionInput {
   readonly liveOnly?: boolean;
   /** 신뢰된 플러그인 send 전용 표시 출처. 사람 입력을 대행했음을 원장에 명시하며 권한은 바꾸지 않는다. */
   readonly humanInput?: { readonly id: string; readonly targetOperationId?: string; readonly copy?: boolean };
+  /**
+   * send 전용·`humanInput` 과 함께만 — 사람이 입력창에서 올린 이미지 첨부 id(`uploadLaunchAttachment`). 사람 채팅 전송과 같은 길로
+   * 본문 뒤에 경로가 합성되고, 전달에 성공하면 파일 수명이 받는 Operation 을 따른다. id 하나는 한 세션에만 묶인다.
+   */
+  readonly attachmentIds?: readonly string[];
   readonly model?: string;
   readonly effort?: string;
   readonly viewMode?: "chat" | "terminal";

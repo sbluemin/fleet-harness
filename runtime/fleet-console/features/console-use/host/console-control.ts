@@ -22,6 +22,8 @@ const actionObjectSchema = z.object({
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(), liveOnly: z.boolean().optional(),
   humanInput: z.object({ id: z.uuid(), targetOperationId: z.string().min(1).max(128).optional(), copy: z.boolean().optional() }).strict().optional(),
+  // send 전용 — 사람이 올린 첨부 id(실행 기능의 런치 첨부). 입력창 상한(4)보다 넉넉한 입력 경계만 둔다; 해석·소유 검사는 전달이 한다.
+  attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(16).optional(),
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
@@ -35,7 +37,7 @@ export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && !value.text)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
   if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
-  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
+  if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
   if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.childSessionId && (value.launchKey || value.newOperationId || value.title || value.groupId || value.viewMode === "terminal")) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
@@ -242,6 +244,8 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     const input = actionSchema.parse(raw);
     validTarget(input);
     if (input.humanInput && caller.kind !== "plugin") fail("invalid_human_origin");
+    // 첨부는 사람이 이 브라우저에서 올린 파일이다 — 사람 입력을 대행하는 신뢰된 플러그인 send 만 싣는다.
+    if (input.attachmentIds && !input.humanInput) fail("invalid_human_origin");
     if ((input.newOperationId || input.childSessionId) && caller.kind !== "plugin") fail("invalid_launch_option");
     if (input.childSessionId) {
       const pending = [...inflight.values()].find((entry) => entry.input.childSessionId === input.childSessionId);

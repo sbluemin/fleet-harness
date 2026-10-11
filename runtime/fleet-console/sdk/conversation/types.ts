@@ -74,7 +74,11 @@ export interface GroupWriteResult {
   readonly commanderNotified?: boolean;
 }
 export interface GroupConversationActions {
-  readonly send: (target: GroupMessageTarget, text: string) => Promise<GroupWriteResult>;
+  /**
+   * `attachmentIds` 는 사람이 입력창에 올린 이미지(실행 기능의 런치 첨부 id)다. 지휘관 또는 구성원 한 명에게만 실린다 —
+   * id 하나는 한 세션에만 묶이므로 「모두」·사령관 받는 이에는 입력창이 싣지 않는다.
+   */
+  readonly send: (target: GroupMessageTarget, text: string, attachmentIds?: readonly string[]) => Promise<GroupWriteResult>;
   readonly stopAll: () => Promise<GroupWriteResult>;
   readonly answerDecision: (requestId: string, answers: readonly GroupDecisionAnswer[]) => Promise<void>;
 }

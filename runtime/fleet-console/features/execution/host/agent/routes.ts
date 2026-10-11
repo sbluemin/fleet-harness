@@ -641,7 +641,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       assertDeliveryCurrent();
       const origin = chatOrigin(caller);
       const authored = origin?.kind === "plugin" && input.humanInput ? { ...origin, humanInput: input.humanInput } : origin;
-      await deliverMessage(operationId, input.text!, [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
+      await deliverMessage(operationId, input.text!, input.attachmentIds ?? [], reply, assertDeliveryCurrent, settled, authored, input.display !== undefined ? { display: input.display, ...(input.displayFormat ? { format: input.displayFormat } : {}) } : undefined);
       if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "delivery_unavailable");
       return { operationId, delivery: "queued" };
     },

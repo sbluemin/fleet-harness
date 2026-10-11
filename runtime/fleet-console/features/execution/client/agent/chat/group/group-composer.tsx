@@ -1,7 +1,10 @@
 import type { ConversationSpeaker, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "@fleet-console/sdk/conversation";
+import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate } from "@fleet-console/sdk/composer";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
+import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, speakerKey } from "./speaker-mark.js";
 
@@ -16,6 +19,10 @@ import { SpeakerMark, speakerKey } from "./speaker-mark.js";
  * 요청 전체가 거절되면 쓴 말을 지운다는 약속을 하지 않는다 — 그대로 남긴다.
  *
  * 정지: 쓴 말이 없고 누군가 일하는 중이면 보내기 단추가 정지가 된다. 누르면 「모두 정지」와 일하는 참여자별 정지를 고른다.
+ *
+ * 첨부: 캡슐 왼쪽 「+」 하나가 입구다 — 누르면 위로 뜨는 메뉴에서 「이미지 첨부」와 「받는 이 지정」을 고른다. 이미지 붙여넣기는
+ * 같은 첨부 길로 들어간다(텍스트 붙여넣기는 브라우저 기본 동작 그대로). 업로드·상한·형식은 1:1 채팅 입력창과 같은 계약이고,
+ * 이미지는 받는 세션 한 곳에만 실리므로 「모두」·사령관에게는 싣지 않는다.
  */
 type Candidate =
   | { readonly kind: "member"; readonly speaker: ConversationSpeaker }
@@ -23,6 +30,15 @@ type Candidate =
   | { readonly kind: "commodore" };
 
 type Notice = { readonly tone: "info" | "warn"; readonly text: string };
+
+/** 입력창에 붙은 이미지 — id 가 서기 전(업로드 중)에는 보내지 않는다. */
+interface DraftAttachment {
+  readonly key: string;
+  readonly id: string | null;
+  readonly name: string;
+  readonly previewUrl: string;
+  readonly uploading: boolean;
+}
 
 export interface GroupComposerProps {
   readonly snapshot: GroupTimelineSnapshot;
@@ -45,6 +61,18 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const pendingPick = React.useRef<Candidate | null>(null);
+  const [attachments, setAttachments] = React.useState<readonly DraftAttachment[]>([]);
+  const attachmentsRef = React.useRef(attachments);
+  attachmentsRef.current = attachments;
+  // 업로드 중에 뺀 칩 — 업로드가 끝나면 서버의 파일을 거둔다.
+  const canceledKeys = React.useRef(new Set<string>());
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
+  const plusRef = React.useRef<HTMLButtonElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
+  useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
+  const menuId = React.useId();
 
   const members = snapshot.participants.filter((participant) => participant.speaker.kind === "member").map((participant) => participant.speaker);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
@@ -63,7 +91,8 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   const index = Math.min(popIndex, Math.max(0, candidates.length - 1));
   const working = snapshot.working;
   const empty = text.trim().length === 0;
-  const stopMode = empty && working.length > 0;
+  const uploading = attachments.some((attachment) => attachment.uploading);
+  const stopMode = empty && attachments.length === 0 && working.length > 0;
 
   // 결과 안내는 다음 행동까지 남는다 — 새로 쓰기 시작하면 걷는다.
   const edit = (value: string) => {
@@ -102,19 +131,107 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
     return null;
   };
 
+  const addFiles = React.useCallback((files: readonly File[]) => {
+    const images = files.filter((file) => isComposerAttachmentCandidate(file));
+    // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
+    if (images.length === 0) return;
+    let rejected: Notice | null = null;
+    // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다.
+    let count = attachmentsRef.current.length;
+    for (const file of images) {
+      if (count >= COMPOSER_MAX_ATTACHMENTS) {
+        rejected = { tone: "warn", text: t("group.notice.attachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) }) };
+        break;
+      }
+      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
+        rejected = { tone: "warn", text: t("group.notice.attachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) }) };
+        continue;
+      }
+      count += 1;
+      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const previewUrl = URL.createObjectURL(file);
+      const name = file.name.length > 0 ? file.name : "pasted image";
+      setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
+      void uploadLaunchAttachment(file)
+        .then(({ id }) => {
+          if (canceledKeys.current.delete(key)) {
+            void discardLaunchAttachment(id).catch(() => {});
+            return;
+          }
+          setAttachments((current) => current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)));
+        })
+        .catch(() => {
+          canceledKeys.current.delete(key);
+          URL.revokeObjectURL(previewUrl);
+          setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+          setNotice({ tone: "warn", text: t("group.notice.attachFailed") });
+        });
+    }
+    setNotice(rejected);
+  }, [t]);
+
+  const removeAttachment = (key: string) => {
+    const removed = attachmentsRef.current.find((attachment) => attachment.key === key);
+    if (!removed) return;
+    if (removed.id !== null) void discardLaunchAttachment(removed.id).catch(() => {});
+    else canceledKeys.current.add(key);
+    URL.revokeObjectURL(removed.previewUrl);
+    setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+    setNotice(null);
+    inputRef.current?.focus();
+  };
+
+  // 다른 대화로 옮겨 가면 붙여 둔 이미지는 그 대화의 것이 아니다 — 거둔다.
+  const rootId = snapshot.rootOperationId;
+  React.useEffect(() => () => {
+    for (const attachment of attachmentsRef.current) {
+      if (attachment.id !== null) void discardLaunchAttachment(attachment.id).catch(() => {});
+      else canceledKeys.current.add(attachment.key);
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    attachmentsRef.current = [];
+    setAttachments([]);
+  }, [rootId]);
+
+  const pickImages = () => {
+    setMenuOpen(false);
+    fileRef.current?.click();
+  };
+
+  const pickTarget = () => {
+    setMenuOpen(false);
+    // 「@」를 넣으면 멘션 목록이 열린다 — 손으로 「@」를 친 것과 같은 길이다.
+    edit(text.length === 0 || /\s$/u.test(text) ? `${text}@` : `${text} @`);
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  };
+
   const submit = async () => {
-    if (busy || !actions || empty) return;
+    if (busy || !actions || empty || uploading) return;
     const sentTo = target;
+    const ids = attachmentsRef.current.map((attachment) => attachment.id).filter((id): id is string => id !== null);
+    if (ids.length > 0 && (sentTo?.kind === "all" || sentTo?.kind === "commodore")) {
+      setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
+      return;
+    }
     const groupTarget: GroupMessageTarget = !sentTo ? { kind: "commander" }
       : sentTo.kind === "member" ? { kind: "member", operationId: sentTo.speaker.operationId! }
         : sentTo.kind === "all" ? { kind: "all" } : { kind: "commodore" };
     setBusy(true);
     setNotice(null);
     try {
-      const result = await actions.send(groupTarget, text.trim());
+      const result = await actions.send(groupTarget, text.trim(), ids.length > 0 ? ids : undefined);
       // 일부만 닿았어도 보낸 말이다 — 지우고, 다시 보내지 않는다. 못 닿은 곳은 안내가 말한다.
       setText("");
       setTarget(null);
+      // 보낸 이미지는 받는 세션에 묶였다 — 미리보기만 놓는다(서버 파일은 그 세션이 거둔다).
+      for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
+      attachmentsRef.current = [];
+      setAttachments([]);
       setNotice(describeSend(result, sentTo));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
@@ -225,7 +342,66 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
           ))}
         </div>
       ) : null}
-      <div className={`group-composer${!actions ? " is-disabled" : ""}`}>
+      {menuOpen ? (
+        <div ref={menuRef} id={menuId} className="group-composer-pop is-plus" role="menu" aria-label={t("group.composer.more")}>
+          <button type="button" role="menuitem" className="group-composer-pop-row" onClick={pickImages}>
+            <span className="group-composer-pop-glyph" aria-hidden="true"><AttachImageIcon /></span>
+            <span className="group-composer-pop-name">{t("group.composer.attachImage")}</span>
+          </button>
+          <button type="button" role="menuitem" className="group-composer-pop-row" onClick={pickTarget}>
+            <span className="group-composer-pop-glyph is-at" aria-hidden="true">@</span>
+            <span className="group-composer-pop-name">{t("group.composer.pickTarget")}</span>
+          </button>
+        </div>
+      ) : null}
+      <div className={`group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}`}>
+        {attachments.length > 0 ? (
+          <div className="group-composer-attachments" role="group" aria-label={t("group.composer.attachments")}>
+            {attachments.map((attachment) => (
+              <span key={attachment.key} className={`group-composer-attachment${attachment.uploading ? " is-uploading" : ""}`}>
+                <img src={attachment.previewUrl} alt={attachment.name} />
+                <button
+                  type="button"
+                  className="group-composer-attachment-remove"
+                  onClick={() => removeAttachment(attachment.key)}
+                  aria-label={t("group.composer.removeAttachment", { name: attachment.name })}
+                  title={t("group.composer.removeAttachment", { name: attachment.name })}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <span className="group-composer-plus-root" ref={plusRootRef}>
+          <button
+            ref={plusRef}
+            type="button"
+            className="group-composer-plus"
+            aria-label={t("group.composer.more")}
+            title={t("group.composer.more")}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            disabled={!actions}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            onChange={(event) => {
+              addFiles(Array.from(event.target.files ?? []));
+              // 같은 파일을 연달아 고를 수 있게 값을 비운다 — 남기면 change 가 다시 오지 않는다.
+              event.target.value = "";
+              inputRef.current?.focus();
+            }}
+          />
+        </span>
         {target ? (
           <span className="group-composer-chip">
             {target.kind === "member" ? <SpeakerMark speaker={target.speaker} size="sm" /> : null}
@@ -242,6 +418,13 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
           placeholder={placeholder}
           aria-label={t("group.composer.aria")}
           onChange={(event) => edit(event.target.value)}
+          onPaste={(event) => {
+            const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
+            if (files.length === 0) return;
+            // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
+            event.preventDefault();
+            addFiles(files);
+          }}
           onKeyDown={onKeyDown}
           onCompositionEnd={() => {
             const pick = pendingPick.current;
@@ -254,7 +437,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
             <span className="group-composer-stop-mark" aria-hidden="true" />
           </button>
         ) : (
-          <button type="button" className="group-composer-send" aria-label={t("group.composer.send")} title={t("group.composer.send")} disabled={!actions || empty || busy} onClick={() => { void submit(); }}>
+          <button type="button" className="group-composer-send" aria-label={t("group.composer.send")} title={t("group.composer.send")} disabled={!actions || empty || busy || uploading} onClick={() => { void submit(); }}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.8 7.5 8 3.3l4.2 4.2" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         )}
