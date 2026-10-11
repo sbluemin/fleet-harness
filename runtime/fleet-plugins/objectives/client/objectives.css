@@ -1782,3 +1782,21 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
 .objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-log { padding-top: 16px; }
+
+/* 대화 중심 화면의 시작 전 목표 — 첫 메시지가 없는 대화다. 시작 화면은 칸 가운데에, 꺼 둔 입력 캡슐은 사령관 대화와 같은 자리에 선다. */
+.objectives-fresh-conversation { container-type: inline-size; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.objectives-fresh-start { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: var(--space-3); box-sizing: border-box; width: 100%; max-width: 760px; margin-inline: auto; padding: calc(16px + var(--conversation-overlay-top, 0px)) clamp(16px, 4cqi, 48px) 16px; }
+.objectives-fresh-label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: var(--t-xs); }
+.objectives-fresh-ring { width: 9px; height: 9px; border: 1.5px dotted var(--text-secondary); border-radius: 50%; box-sizing: border-box; }
+.objectives-fresh-title { margin: 0; color: var(--text-primary); font-size: var(--t-xl); font-weight: var(--weight-bold); line-height: 1.3; text-wrap: balance; overflow-wrap: anywhere; }
+.objectives-fresh-brief { margin: 0; max-width: 68ch; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
+.objectives-fresh-brief.is-empty { color: var(--text-tertiary); }
+.objectives-fresh-meta { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
+.objectives-fresh-commence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
+.objectives-fresh-start-button { padding: 8px 18px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); color: var(--brass-ink); font: inherit; font-size: var(--t-md); font-weight: var(--weight-bold); cursor: pointer; }
+.objectives-fresh-start-button:hover:not(:disabled), .objectives-fresh-start-button:focus-visible { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); outline: none; }
+.objectives-fresh-start-button:disabled { color: var(--text-tertiary); cursor: default; }
+.objectives-fresh-desc { min-width: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
+.objectives-fresh-failure { margin: 0; color: var(--coral); font-size: var(--t-sm); }
+.objectives-fresh-foot { flex: none; padding: 12px clamp(16px, 4cqi, 48px) 16px; }
+.objectives-fresh-composer { display: flex; align-items: center; min-height: 48px; box-sizing: border-box; padding: 7px var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel-raised); color: var(--text-tertiary); font-size: var(--t-md); opacity: 0.6; cursor: default; }
