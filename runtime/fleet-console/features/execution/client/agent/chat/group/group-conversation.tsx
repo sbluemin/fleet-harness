@@ -264,11 +264,13 @@ function DelegationLine({ entry, language, onOpenLedger }: {
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
 }) {
   const t = getGroupT(language);
-  const failed = entry.ok === false;
+  // 성공한 전달의 도구 결과(JSON 영수증)는 본문을 되풀이할 뿐이라 세우지 않는다. 실패만 사유 한 줄을 남긴다.
+  const failure = deliveryFailure(entry);
+  const failed = failure !== null;
+  const reason = failure ?? "";
   // 받는이 이름은 둘까지 쓰고 나머지는 「외 N명」으로 접는다 — 얼굴 묶음은 모두 선다. 셋째부터의 이름은 펼친 칸의 원장 링크가 말한다.
   const named = entry.recipients.length > 2 ? entry.recipients.slice(0, 2) : entry.recipients;
   const more = entry.recipients.length - named.length;
-  const result = entry.result.trim();
   // 지휘관의 원장은 이 그룹 대화 자체가 그 자리이므로 원장 링크를 두지 않는다 — 구성원 본문 선택은 루트를 고를 수 없다.
   const ledgers = dedupe([entry.sender, ...entry.recipients].filter((speaker) => speaker.kind === "member" && speaker.operationId));
   const preview = excerpt(entry.text);
@@ -299,12 +301,7 @@ function DelegationLine({ entry, language, onOpenLedger }: {
       </summary>
       <div className="group-chat-line-detail">
         <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
-        {result || failed ? (
-          <>
-            <span className="group-chat-line-label">{t("group.delegation.result")}</span>
-            <div className={`group-chat-line-result${failed ? " is-failed" : ""}`}>{result || t("group.delegation.failed")}</div>
-          </>
-        ) : null}
+        {reason ? <div className="group-chat-line-failure">{reason}</div> : null}
         {onOpenLedger && ledgers.length > 0 ? (
           <div className="group-chat-line-actions">
             {ledgers.map((speaker) => (
@@ -317,6 +314,28 @@ function DelegationLine({ entry, language, onOpenLedger }: {
       </div>
     </details>
   );
+}
+
+/**
+ * 실패한 전달의 사람이 읽을 사유, 성공이면 null. `is_error` 없이 `{"success":false}` 영수증으로만 돌아오는 거절도 실패다
+ * (호스트 `sentMessageFailed` 와 같은 판정). 사유는 JSON 영수증이면 그 `message`·`error` 낱말을, 아니면 도구 오류 꼬리표를
+ * 벗긴 첫 줄을 쓴다.
+ */
+function deliveryFailure(entry: Extract<GroupTimelineEntry, { kind: "delegation" }>): string | null {
+  let text = entry.result.trim();
+  let refused = false;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      const fields = parsed as Record<string, unknown>;
+      refused = fields.success === false;
+      const said = [fields.message, fields.error].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+      text = said ?? "";
+    }
+  } catch { /* 평문 오류 */ }
+  if (entry.ok !== false && !refused) return null;
+  const line = text.replace(/<\/?tool_use_error>/gu, "").trim().split("\n")[0]?.trim() ?? "";
+  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
 }
 
 function dedupe(speakers: readonly ConversationSpeaker[]): readonly ConversationSpeaker[] {

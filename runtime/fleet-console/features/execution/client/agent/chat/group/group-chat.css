@@ -195,8 +195,7 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 }
 .group-chat-line-label { font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
 .group-chat-line-label:not(:first-child) { margin-top: var(--space-2); }
-.group-chat-line-result { font-family: var(--font-code); font-size: var(--font-code-size); white-space: pre-wrap; color: var(--text-secondary); }
-.group-chat-line-result.is-failed { color: var(--coral-ink); }
+.group-chat-line-failure { color: var(--coral-ink); }
 .group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
 
 /* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */
