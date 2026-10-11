@@ -1,0 +1,279 @@
+/* 그룹 대화 — 가운데 칸의 한 줄기 대화와 오른쪽 「구성원」 탭.
+   색 채널: 구성원 정체성은 표식(cluster-member-glyph)과 이름 잉크만 --id-* 톤을 쓴다. 상태는 신호 토큰, 초점은 brass.
+   선택·보는 중 표시는 테두리 전체와 배경 워시로 말한다 — 왼쪽 띠를 쓰지 않는다. */
+
+.group-chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.group-chat-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+}
+
+.group-chat-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 720px;
+  margin: 0 auto;
+  font-family: var(--font-ui);
+  font-size: var(--font-body-size);
+  color: var(--text-primary);
+}
+
+.group-chat-empty,
+.group-chat-notice {
+  margin: 0;
+  align-self: center;
+  text-align: center;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}
+
+.group-chat-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+
+/* 발화자 표식 — 노드 줄 글리프를 대화 크기로 키운다. */
+.group-chat-mark { width: 22px; height: 22px; border-radius: 7px; font-size: var(--t-xs); }
+.group-chat-mark.is-sm { width: 16px; height: 16px; border-radius: var(--radius-xs); font-size: var(--t-2xs); }
+.group-chat-mark svg { width: 13px; height: 13px; }
+.group-chat-mark.is-sm svg { width: 10px; height: 10px; }
+.cluster-member-glyph.is-neutral {
+  border-color: var(--hairline-strong);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+}
+
+.group-chat-name { font-weight: var(--weight-bold); color: var(--text-primary); }
+.group-chat-name.is-tone-teal { color: var(--id-teal); }
+.group-chat-name.is-tone-amber { color: var(--id-amber); }
+.group-chat-name.is-tone-plum { color: var(--id-plum); }
+.group-chat-name.is-tone-moss { color: var(--id-moss); }
+.group-chat-name.is-tone-cerulean { color: var(--id-cerulean); }
+.group-chat-name.is-tone-rose { color: var(--id-rose); }
+.group-chat-name.is-tone-indigo { color: var(--id-indigo); }
+.group-chat-name.is-tone-crimson { color: var(--id-crimson); }
+
+/* 말풍선 — 사람은 오른쪽, 지휘관·구성원은 왼쪽. */
+.group-chat-bubble {
+  max-width: 64ch;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.group-chat-bubble.is-human {
+  background: var(--control-rest);
+  border: 1px solid transparent;
+  border-radius: 14px 14px 5px 14px;
+  white-space: pre-wrap;
+}
+.group-chat-bubble.is-markdown { white-space: normal; }
+.group-chat-bubble.is-agent {
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: 14px 14px 14px 5px;
+}
+.group-chat-md > :first-child { margin-top: 0; }
+.group-chat-md > :last-child { margin-bottom: 0; }
+
+.group-chat-human { display: flex; justify-content: flex-end; }
+
+.group-chat-agent {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-2);
+  max-width: 92%;
+}
+.group-chat-agent.is-continued { margin-top: calc(var(--space-2) * -1); }
+.group-chat-agent-mark { display: flex; align-self: end; padding-bottom: 2px; }
+.group-chat-agent-box { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.group-chat-agent-name { font-size: var(--t-sm); padding-left: var(--space-1); }
+.group-chat-writing { font-size: var(--t-sm); }
+
+/* 가운데 접힌 줄 — 위임·합류·제거·사령관 행위. 말풍선과 섞이지 않게 작고 흐리게 선다. */
+.group-chat-line {
+  align-self: center;
+  max-width: min(560px, 100%);
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}
+.group-chat-membership,
+.group-chat-board:not(details),
+.group-chat-line-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-xs);
+}
+.group-chat-line-summary {
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+.group-chat-line-summary::-webkit-details-marker { display: none; }
+.group-chat-line-summary:hover { color: var(--text-secondary); background: var(--control-wash-hover); }
+.group-chat-line-summary:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.group-chat-line-who { flex: none; color: var(--text-secondary); white-space: nowrap; }
+.group-chat-line-arrow,
+.group-chat-line-sep { flex: none; color: var(--hairline-strong); }
+.group-chat-line-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-chat-line-status { flex: none; white-space: nowrap; }
+.group-chat-line-status.is-failed { color: var(--coral-ink); }
+.group-chat-line-time { flex: none; margin-left: var(--space-1); font-variant-numeric: tabular-nums; }
+.group-chat-line-chev { flex: none; margin-left: auto; padding-left: var(--space-1); transition: transform var(--duration-fast); }
+details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rotate(180deg); }
+
+.group-chat-line-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+.group-chat-line-label { font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
+.group-chat-line-label:not(:first-child) { margin-top: var(--space-2); }
+.group-chat-line-recipient { font-size: var(--t-sm); color: var(--text-secondary); }
+.group-chat-line-result { font-family: var(--font-code); font-size: var(--font-code-size); white-space: pre-wrap; color: var(--text-secondary); }
+.group-chat-line-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-2); }
+
+/* 글자형 동작 — 테두리·배경 없는 밑줄 낱말. */
+.group-chat-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.group-chat-link:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+.group-chat-link.is-danger { color: var(--coral-ink); }
+
+/* 진행 줄 — 입력창 바로 위. 일하는 이가 없어도 높이를 지켜 입력창이 뛰지 않게 한다. */
+.group-chat-working {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 26px;
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2px var(--space-4);
+  box-sizing: border-box;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+.group-chat-working-stack { display: flex; flex: none; }
+.group-chat-working-stack > * + * { margin-left: -4px; }
+.group-chat-working-stop {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  cursor: pointer;
+}
+.group-chat-working-stop:hover .cluster-member-glyph,
+.group-chat-working-stop:focus-visible .cluster-member-glyph { outline: 2px solid var(--coral); outline-offset: 1px; }
+.group-chat-working-stop:focus-visible { outline: none; }
+.group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-chat-working-hint { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); }
+
+.group-chat-return { flex: none; display: flex; justify-content: center; padding: var(--space-2) var(--space-4) var(--space-4); }
+.group-chat-return-button {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.group-chat-return-button:hover { background: var(--control-rest-hover); }
+.group-chat-return-button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+/* 오른쪽 「구성원」 탭 */
+.group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
+.group-members-heading {
+  margin: 0;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.group-members-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.group-members-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+.group-members-row:hover,
+.group-members-row:focus-within { background: var(--control-wash-hover); }
+.group-members-row.is-showing { border-color: var(--brass); background: var(--control-wash); }
+.group-members-text { display: flex; flex-direction: column; min-width: 0; }
+.group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-members-role { font-size: var(--t-xs); color: var(--text-tertiary); }
+.group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-1); }
+.group-members-state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--t-xs); color: var(--text-secondary); padding-top: 2px; }
+.group-members-add {
+  align-self: flex-start;
+  padding: var(--space-2);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.group-members-add:hover { color: var(--text-primary); }
+.group-members-add:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+/* 활동 점 — 노드 줄 상태 점과 같은 어휘(작업 warn 채움, 백그라운드 warn 고리, 대기 positive, 끝남 빈 고리, 답 기다림 aurora 마름모). */
+.group-members-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
+.group-members-dot.is-running { background: var(--warn); }
+.group-members-dot.is-background { box-shadow: inset 0 0 0 1px var(--warn); }
+.group-members-dot.is-idle { background: var(--positive); }
+.group-members-dot.is-ended,
+.group-members-dot.is-unknown { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.group-members-dot.is-awaiting { border-radius: 1.5px; transform: rotate(45deg); background: var(--aurora); }
+
+@media (prefers-reduced-motion: reduce) {
+  .group-chat-line-chev,
+  .group-chat-line-summary { transition: none; }
+}
