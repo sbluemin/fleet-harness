@@ -4,6 +4,7 @@ import { resolveOperationActivity } from "../../../../../features/execution/clie
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
@@ -121,7 +122,7 @@ function TheaterSheet({ state, fromDrawer }: { readonly state: ConsoleState; rea
               aria-current={here ? "true" : undefined}
               onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); leave(); }}
             >
-              <MobileMonogram label={theater.label} toneKey={theater.id} />
+              <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
               <span className="mobile-sheet-row-copy">
                 <strong>{theater.label}</strong>
                 <small className={awaiting > 0 ? "is-awaiting" : undefined}>

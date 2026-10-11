@@ -14,6 +14,7 @@ import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commo
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
+import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
 import { ObjectiveResults } from "./results.js";
 import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
@@ -28,7 +29,6 @@ import "./mobile.css";
  */
 
 type T = Translate<ObjectiveMessageKey>;
-type Glyph = "fresh" | "running" | "awaiting" | "idle" | "ended" | "review" | "done";
 
 export const OBJECTIVE_MOBILE_DETAIL_PANE = "objectives-mobile-detail";
 
@@ -37,11 +37,6 @@ const SHEET_CLOSE_MS = 220;
 const SHEET_DISMISS_PX = 110;
 const SHEET_DRAG_SLOP_PX = 6;
 const WORKING = new Set(["running"]);
-const URGENCY: Record<string, number> = { awaiting: 0, running: 1, idle: 3, ended: 4 };
-const activityGlyph = (activity: string | undefined): Glyph =>
-  activity === "running" || activity === "awaiting" || activity === "idle" ? activity : activity === undefined ? "fresh" : "ended";
-
-const StatusMark = ({ state }: { readonly state: Glyph }) => <span className={`objectives-m-sg is-${state}`} aria-hidden="true" />;
 /** 시안 아이콘 문법 — 24 viewBox, 선 1.7, 둥근 끝. */
 const Icon = ({ children, size = 20 }: { readonly children: ReactNode; readonly size?: number }) => (
   <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{children}</svg>
@@ -69,15 +64,15 @@ const activityOf = (operations: OperationIndex, id: string): string => operation
 /** 지휘관 자신의 활동 — 코어가 구성원 활동을 끌어올리기 전 값. 보드와 같은 셈이다. */
 const ownActivityOf = (operations: OperationIndex, id: string): string => { const operation = operations.get(id); return operation ? operation.ownActivity ?? operation.activity : "closed"; };
 
-/** 목록 줄의 글리프 — 끝남은 체크, 결정 요청·검토 대기는 검토, 나머지는 지휘관과 담당 가운데 가장 급한 활동. */
-function objectiveGlyph(objective: Objective, operations: OperationIndex): Glyph {
-  if (objective.done) return "done";
-  if (hasDecisionRequest(objective) || objective.awaitingReview) return "review";
-  const ids = [objective.id, ...objective.missions.flatMap((mission) => (mission.operationId ? [mission.operationId] : []))];
-  const top = ids.map((id) => operations.get(id)?.activity).filter((activity): activity is NonNullable<typeof activity> => activity !== undefined)
-    .reduce<string | null>((best, activity) => (best === null || (URGENCY[activity] ?? 9) < (URGENCY[best] ?? 9) ? activity : best), null);
-  return top === null ? (objective.commander.started ? "idle" : "fresh") : activityGlyph(top);
-}
+/**
+ * 지휘관 표식 — 목표 Operation 의 몽글 아바타. 데스크톱 보드·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
+ * 표식은 장식이다 — 이름은 곁의 글자가 말한다.
+ */
+const CommanderMark = ({ objective, operations }: { readonly objective: Objective; readonly operations: OperationIndex }) =>
+  <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, activityOf(operations, objective.id))} />;
+/** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타. 세션이 아직 없으면 시작 전 얼굴이다. */
+const MemberMark = ({ objective, member, operations }: { readonly objective: Objective; readonly member: ObjectiveMember; readonly operations: OperationIndex }) =>
+  <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? activityOf(operations, member.id) : "closed")} />;
 
 const criteriaMet = (objective: Objective) => objective.criteria.filter((criterion) => criterion.met !== undefined).length;
 /** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
@@ -173,7 +168,7 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
     const failed = memberFailureNote(objective);
     return (
       <button key={objective.id} type="button" data-press="r2" className="objectives-m-row is-two" onClick={() => open(objective)}>
-        <StatusMark state={objectiveGlyph(objective, operations)} />
+        <CommanderMark objective={objective} operations={operations} />
         <span className="objectives-m-tx">
           {objective.title}
           <small className={pending ? "is-awaiting" : undefined}>
@@ -371,7 +366,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       <div className="objectives-m-pad">
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
-        <DecisionSection objective={objective} t={t} language={language} api={api} say={say} />
+        <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
@@ -380,12 +375,13 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
             <h2 className="objectives-m-glab">{t("objectives.missions.title")}</h2>
             <div className="objectives-m-grp">
               {objective.missions.map((mission) => {
-                const operationId = mission.operationId ?? mission.member;
-                const glyph: Glyph = mission.done ? "done" : operationId ? activityGlyph(operations.get(operationId)?.activity) : "fresh";
+                // 머리는 맡은 사람(데스크톱 임무 줄과 같다: 구성원이 없으면 지휘관), 끝남은 줄 끝의 체크가 말한다.
+                const member = mission.member ? objective.members.find((candidate) => candidate.id === mission.member) : undefined;
                 return (
-                  <div key={mission.id} className="objectives-m-row is-mission">
-                    <StatusMark state={glyph} />
+                  <div key={mission.id} className={`objectives-m-row is-mission${mission.done ? " is-done" : ""}`}>
+                    {member ? <MemberMark objective={objective} member={member} operations={operations} /> : <CommanderMark objective={objective} operations={operations} />}
                     <span className="objectives-m-tx">{mission.text}</span>
+                    {mission.done ? <span className="objectives-m-mission-done"><CheckIcon size={18} /></span> : null}
                   </div>
                 );
               })}
@@ -581,7 +577,7 @@ function CrewSection({ objective, operations, t, crew }: { readonly objective: O
   const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
   return (
     <SettingsCard title={t("objectives.mobile.crew")}>
-      <SettingsRow label={t("objectives.commander.title")} icon={<StatusMark state={activityGlyph(commanderOperation ? commanderOperation.ownActivity ?? commanderOperation.activity : undefined)} />}
+      <SettingsRow label={t("objectives.commander.title")} icon={<CommanderMark objective={objective} operations={operations} />}
         {...(commanderWord ? { badge: <span className="objectives-m-badge">{commanderWord}</span> } : {})}
         {...(commanderTitle ? { hint: commanderTitle } : {})}>
         <CrewControls open={commanderSession ? () => focusOperation(objective.id) : null} role={t("objectives.commander.title")} locked={commanderLocked} note={null} t={t}
@@ -596,7 +592,7 @@ function CrewSection({ objective, operations, t, crew }: { readonly objective: O
         const session = member.sessionName !== null;
         const title = session ? operations.get(member.id)?.title ?? member.sessionName ?? undefined : undefined;
         return (
-          <SettingsRow key={member.id} label={member.role} icon={<StatusMark state={session ? activityGlyph(operations.get(member.id)?.activity) : "fresh"} />}
+          <SettingsRow key={member.id} label={member.role} icon={<MemberMark objective={objective} member={member} operations={operations} />}
             badge={<span className={`objectives-m-badge${badge.failed ? " is-failed" : ""}`}>{badge.text}{memberSubagents(member) ? t("objectives.members.subagentsMark") : ""}</span>}
             {...(title ? { hint: title } : {})}>
             <CrewControls open={session ? () => focusOperation(member.id) : null} role={member.role} locked={!touchable} note={memberNote(member, state, rows, t)} t={t}>
@@ -739,7 +735,7 @@ const answerText = (decision: Decision): string => {
   return [picked.join(" · "), decision.answer.text.trim()].filter((part) => part.length > 0).join("\n");
 };
 
-function DecisionSection({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+function DecisionSection({ objective, operations, t, language, api, say }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   const request = objective.done ? null : objective.decisionRequest;
   const [draftMap, setDraftMap] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
@@ -759,7 +755,7 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
       <>
         <h2 className="objectives-m-glab">{t("objectives.decision.request")}</h2>
         <section className="objectives-m-ucard">
-          <div className="objectives-m-ucard-hd"><StatusMark state="done" />{t("objectives.mobile.decision.sent")}</div>
+          <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{t("objectives.mobile.decision.sent")}</div>
           {sent.map((decision) => (
             <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision)}</span></p>
           ))}
@@ -821,7 +817,7 @@ function DecisionSection({ objective, t, language, api, say }: { readonly object
           const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
           return (
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><StatusMark state="review" />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
+              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
@@ -1045,12 +1041,12 @@ function RoutingSheet({ objective, targets, t, api, language, say, onClose }: {
           {t("objectives.commander.start")}
         </button>
       )}>
-      <p className="objectives-m-secnote" aria-live="polite">{judging ? <><StatusMark state="running" />{" "}{status}</> : status}</p>
+      <p className="objectives-m-secnote" aria-live="polite">{status}</p>
       <div className="objectives-m-route">
         {targets.map((member) => {
           const entry = review.preview?.members.find((candidate) => candidate.id === member.id);
           // 폴백은 띄우는 순간의 지휘관 값으로 뜬다 — 데스크톱 시트와 같이 지금의 지휘관 모델을 보인다.
-          const pick = judging ? <><StatusMark state="running" />{t("objectives.routing.judgingRow")}</>
+          const pick = judging ? t("objectives.routing.judgingRow")
             : !entry ? "—"
               : entry.via === "route" ? words(entry.model, entry.effort)
                 : <>{words(objective.commander.model, objective.commander.effort)}<span className="objectives-m-route-tag">{t("objectives.members.fallback")}</span></>;

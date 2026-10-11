@@ -29,6 +29,11 @@
 .objectives-m-grp > .objectives-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .objectives-m-grp > .objectives-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
 .objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 행 머리의 몽글 아바타 — 목록 줄은 지휘관, 임무 줄은 맡은 사람. 끝난 임무는 줄 끝 체크가 말하고 글이 물러선다. */
+.objectives-m .objectives-m-row > .objectives-avatar { width: 28px; height: 28px; }
+.objectives-m .objectives-m-row.is-mission > .objectives-avatar { width: 24px; height: 24px; }
+.objectives-m-row.is-done .objectives-m-tx { color: var(--m-text-muted); }
+.objectives-m-mission-done { display: grid; flex: none; place-items: center; color: var(--m-idle); }
 .objectives-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
 /* 목록 줄의 구성원 실패 — 확인하지 않은 실패가 남은 동안만(데스크톱 사이드바 줄 메모와 같은 판정). */
@@ -103,6 +108,7 @@
 /* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
 .objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
+.objectives-m-ucard-hd > .objectives-avatar { width: 22px; height: 22px; }
 /* 자율 운영 중 — 머리 오른쪽(남은 시간 칸 자리)의 「사령관이 답하는 중」과 그 아래 설명 줄(S-53 CM-1d). */
 .objectives-m-ucard-handler { margin-left: auto; color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); white-space: nowrap; }
 .objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }

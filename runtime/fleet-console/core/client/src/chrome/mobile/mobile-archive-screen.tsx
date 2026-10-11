@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
+
+import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
 
 import { formatRelativeTime } from "../../i18n/format.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -15,7 +16,7 @@ import { setMobileDestination } from "./mobile-store.js";
 import { showMobileToast } from "./mobile-toast.js";
 
 /**
- * 보관함(S-40) — 보관한 Operation이 한 줄씩 선다: 끝남 글리프, 제목, 「Theater · 언제 보관」, 복원 알약.
+ * 보관함(S-40) — 보관한 Operation이 한 줄씩 선다: 끝난 얼굴의 아바타, 제목, 「Theater · 언제 보관」, 복원 알약.
  * 폰에서는 복원만 한다(영구 삭제는 데스크톱). 🔍는 작업 검색으로 간다(D34: 보관함 안 검색은 데스크톱 시트에 남는다).
  */
 /** 복원 동작과 진행 상태 — 보관함 화면과 보관함 안 검색이 같은 길을 쓴다. */
@@ -44,7 +45,7 @@ export function useArchiveRestore() {
 
 type ArchiveEntries = NonNullable<ReturnType<typeof useOperationArchive>["snapshot"]>["entries"];
 
-/** 보관한 Operation 행들 — 끝남 글리프, 제목, 「Theater · 언제 보관」, 복원 알약. */
+/** 보관한 Operation 행들 — 끝난 얼굴의 아바타, 제목, 「Theater · 언제 보관」, 복원 알약. */
 export function ArchiveRows({ entries, state, restore, busy }: { readonly entries: ArchiveEntries; readonly state: ConsoleState; readonly restore: (id: string) => Promise<void>; readonly busy: string | null }) {
   const t = useT();
   const locale = useConsoleLocale();
@@ -54,7 +55,7 @@ export function ArchiveRows({ entries, state, restore, busy }: { readonly entrie
             const theater = state.theaters.find((item) => item.id === entry.operation.theaterId);
             return (
               <div className="mobile-group-row is-two" key={entry.operation.id}>
-                <span className={statusGlyphClassName("ended")} aria-hidden="true" />
+                <OperationStatusIcon operation={entry.operation} status="ended" archived size={28} decorative />
                 <span className="mobile-group-row-copy">{entry.operation.title}<small>{[theater?.label, entry.archivedAt ? t("mobile.archive.when", { time: formatRelativeTime(entry.archivedAt, locale) }) : null].filter(Boolean).join(" · ")}</small></span>
                 <button type="button" className="mobile-pill-secondary" disabled={busy !== null} onClick={() => void restore(entry.operation.id)}>
                   <MobileIcon name="copy" size={16} />{t("mobile.archive.restore")}

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
-
 import { useAllOperationUseRequests, type OperationUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
+import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
+import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
+import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { formatRemaining } from "./mobile-attention-reason.js";
@@ -55,7 +56,7 @@ export function MobileRequestBanner({ state, viewingOperationId, onOpen }: {
   const kind = shown.capability === "computer" ? t("mobile.banner.computer", { time: formatRemaining(shown.expiresAt - now) }) : t("mobile.banner.console", { time: formatRemaining(shown.expiresAt - now) });
   return (
     <div className={`mobile-request-banner${leaving ? " is-leaving" : ""}`} role="status" aria-live="polite">
-      <span className={statusGlyphClassName("awaiting")} aria-hidden="true" />
+      {operation ? <OperationStatusIcon operation={operation} status={resolveOperationMarkVisual({ activity: resolveOperationActivity(operation, state.operationRuntime), operationId: operation.id, idleArrivalIds: getIdleArrivalIds() })} size={28} decorative /> : null}
       <span className="mobile-request-banner-copy">
         <span>{t("mobile.banner.title", { title })}</span>
         <small>{kind}</small>

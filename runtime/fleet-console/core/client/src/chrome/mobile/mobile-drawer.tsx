@@ -3,8 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { resolveOperationActivity, resolveOperationMarkVisual, type OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
+import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/avatars.js";
 import { openConsoleSwitcher, useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
 
@@ -337,13 +338,13 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
         <button type="button" className="mobile-bar-button" onClick={() => go(() => { setMobileDestination({ kind: "search" }); toOperations(); })} aria-label={t("mobile.drawer.search")}><MobileIcon name="search" /></button>
       </div>
       <button type="button" className="mobile-theater-switch" onClick={() => { setMobileDrawerOpen(false); pushMobileSheet({ kind: "theater", fromDrawer: true }); }} disabled={state.theaters.length === 0}>
-        {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
+        {theater ? <TheaterAvatar theaterId={theater.id} size={28} label="" decorative /> : <span className="mobile-monogram is-empty" aria-hidden="true"><MobileIcon name="theater" size={16} /></span>}
         <span className="mobile-theater-switch-copy">
           <strong>{theater?.label ?? t("mobile.drawer.noTheater")}</strong>
           {theater ? (
             <small>
               {t("mobile.drawer.opCount", { count: operations.length })}
-              {awaitingCount > 0 ? <> · <span className="mobile-awaiting-chip"><span className={statusGlyphClassName("awaiting")} aria-hidden="true" /> {t("mobile.drawer.awaitingCount", { count: awaitingCount })}</span></> : null}
+              {awaitingCount > 0 ? <> · <span className="mobile-awaiting-chip">{t("mobile.drawer.awaitingCount", { count: awaitingCount })}</span></> : null}
             </small>
           ) : null}
         </span>
@@ -355,10 +356,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
             <span className="mobile-drawer-dest-icon" aria-hidden="true">{"name" in row.icon ? <MobileIcon name={row.icon.name} /> : row.icon.node}</span>
             <span>{row.label}</span>
             {row.trailing ? (
-              <span className={`mobile-drawer-cst${row.trailing.tone ? ` is-${row.trailing.tone}` : ""}`}>
-                {row.trailing.glyph ? <span className={statusGlyphClassName(row.trailing.glyph)} aria-hidden="true" /> : null}
-                {row.trailing.text}
-              </span>
+              <span className={`mobile-drawer-cst${row.trailing.tone ? ` is-${row.trailing.tone}` : ""}`}>{row.trailing.text}</span>
             ) : row.count > 0 ? <span className="mobile-drawer-count">{row.count}</span> : null}
           </button>
         ))}
@@ -369,9 +367,9 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
               <span>{t("mobile.drawer.attention")}</span><small>{attention.length} ›</small>
             </button>
             {attention.slice(0, MAX_ATTENTION_ROWS).map((row) => row.kind === "operation" ? (
-              <DrawerRow key={row.key} glyph="awaiting" title={row.operation.title} reason={<AttentionReason row={row} />} tall current={activeOperationId === row.operation.id && path === "/operations" && destination.kind === "home"} onPress={() => go(() => onOpenOperation(row.operation.id))} />
+              <DrawerRow key={row.key} lead={{ operation: row.operation, mark: markOf(row.operation, state, idleArrivalIds) }} title={row.operation.title} reason={<AttentionReason row={row} />} tall current={activeOperationId === row.operation.id && path === "/operations" && destination.kind === "home"} onPress={() => go(() => onOpenOperation(row.operation.id))} />
             ) : (
-              <DrawerRow key={row.key} glyph="review" title={row.item.title} reason={<AttentionReason row={row} />} tall onPress={() => go(() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); toOperations(); row.item.open(); })} />
+              <DrawerRow key={row.key} lead={{ icon: entryIconOf(bindings, row.entryId) }} title={row.item.title} reason={<AttentionReason row={row} />} tall onPress={() => go(() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); toOperations(); row.item.open(); })} />
             ))}
           </>
         ) : null}
@@ -379,7 +377,7 @@ function DrawerBody({ state, attention, activeOperationId, close, onOpenOperatio
         {recent.length === 0 ? <p className="mobile-drawer-empty">{t("mobile.drawer.recentEmpty")}</p> : recent.map((operation) => (
           <DrawerRow
             key={operation.id}
-            glyph={markOf(operation, state, idleArrivalIds)}
+            lead={{ operation, mark: markOf(operation, state, idleArrivalIds) }}
             title={operation.title}
             current={activeOperationId === operation.id && path === "/operations" && destination.kind === "home"}
             onPress={() => go(() => onOpenOperation(operation.id))}
@@ -417,8 +415,11 @@ function markOf(operation: OperationNode, state: ConsoleState, idleArrivalIds: R
   });
 }
 
-function DrawerRow({ glyph, title, reason, tall = false, current = false, onPress }: {
-  readonly glyph: OperationMarkVisual | "review";
+/** 행 머리 — Operation이면 그 아바타(사이드바와 같은 얼굴), 원천 Operation을 모르는 플러그인 항목이면 그 목적지 아이콘. */
+type DrawerRowLead = { readonly operation: OperationNode; readonly mark: OperationMarkVisual } | { readonly icon: ReactNode };
+
+function DrawerRow({ lead, title, reason, tall = false, current = false, onPress }: {
+  readonly lead: DrawerRowLead;
   readonly title: string;
   readonly reason?: ReactNode;
   readonly tall?: boolean;
@@ -427,7 +428,7 @@ function DrawerRow({ glyph, title, reason, tall = false, current = false, onPres
 }) {
   return (
     <button type="button" className={`mobile-drawer-row${tall ? " is-tall" : ""}${current ? " is-current" : ""}`} aria-current={current ? "true" : undefined} onClick={onPress}>
-      <span className="mobile-drawer-row-glyph"><span className={statusGlyphClassName(glyph)} aria-hidden="true" /></span>
+      <span className="mobile-drawer-row-glyph" aria-hidden="true">{"operation" in lead ? <OperationStatusIcon operation={lead.operation} status={lead.mark} size={24} decorative /> : lead.icon}</span>
       <span className="mobile-drawer-row-copy">
         <span className="mobile-drawer-row-title">{title}</span>
         {reason ? <small>{reason}</small> : null}
@@ -439,4 +440,10 @@ function DrawerRow({ glyph, title, reason, tall = false, current = false, onPres
 
 function renderEntryIcon(icon: ReactNode | (() => ReactNode)): ReactNode {
   return typeof icon === "function" ? icon() : icon;
+}
+
+/** 플러그인 「확인 필요」 항목의 머리 — 항목은 원천 Operation을 싣지 않으므로 그 항목이 온 목적지의 아이콘으로 출처를 말한다. */
+export function entryIconOf(bindings: ReturnType<typeof useRailEntries>, entryId: string): ReactNode {
+  const entry = bindings.find((binding) => binding.entry.id === entryId)?.entry;
+  return entry ? renderEntryIcon(entry.mobile?.icon ?? entry.icon) : null;
 }

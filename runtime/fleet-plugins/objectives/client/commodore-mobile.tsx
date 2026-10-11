@@ -11,7 +11,8 @@ import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEnt
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
-import { clockTime, commodoreSummary } from "./commodore-header.js";
+import { CommodoreAvatar } from "./commodore-avatar.js";
+import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import {
   addCommodoreIntel,
   commodoreLanguage,
@@ -66,9 +67,6 @@ const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12"
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
 const SendIcon = () => <Icon size={20} strokeWidth={2.2}><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
 
-type Glyph = "idle" | "running" | "background";
-const StatusMark = ({ state }: { readonly state: Glyph }) => <span className={`objectives-m-sg is-${state}`} aria-hidden="true" />;
-
 function failWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
@@ -78,7 +76,7 @@ function failWord(t: T, error: unknown): string {
 
 /**
  * 드로어 「사령관」 줄 오른쪽 칸 — 자율 운영 루프의 상태만 보인다(건수 없음). 상태를 읽기 전이면 칸을 비운다.
- * 호스트는 값(glyph·text·tone)으로 비교하므로 같은 상태면 같은 결과면 된다.
+ * 호스트는 값(text·tone)으로 비교하므로 같은 상태면 같은 결과면 된다. 상태 글리프는 싣지 않는다 — 사령관의 얼굴은 사령관 화면 머리의 아바타가 말한다.
  */
 export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
   subscribe: (listener) => subscribeCommodore(listener),
@@ -89,10 +87,10 @@ export const commodoreDestinationTrailing: RailEntryDestinationTrailing = {
     const t = getT(commodoreLanguage());
     if (view.state.autonomy !== true) return { text: t("objectives.commodore.mobile.off"), tone: "faint" };
     const run = view.run;
-    if (run.phase === "turn") return { glyph: "running", text: t("objectives.commodore.meta.turn") };
-    if (run.phase === "retrying" && run.nextWakeAt) return { glyph: "background", text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) };
+    if (run.phase === "turn") return { text: t("objectives.commodore.meta.turn") };
+    if (run.phase === "retrying" && run.nextWakeAt) return { text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }) };
     if (run.phase === "error") return { text: t("objectives.commodore.meta.error"), tone: "danger" };
-    return { glyph: "idle", text: t("objectives.commodore.mobile.on") };
+    return { text: t("objectives.commodore.mobile.on") };
   },
 };
 
@@ -160,7 +158,7 @@ function CommodoreScreen({ t, theaterId, enabled }: { readonly t: T; readonly th
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (
-            <span className="objectives-cm-band-text"><StatusMark state="background" />{[run.reason ? errorWord(t, run.reason) : null, run.nextWakeAt ? t("objectives.commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null].filter(Boolean).join(" · ")}</span>
+            <span className="objectives-cm-band-text">{[run.reason ? errorWord(t, run.reason) : null, run.nextWakeAt ? t("objectives.commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null].filter(Boolean).join(" · ")}</span>
           ) : (
             <span className="objectives-cm-band-text is-danger">{[t("objectives.commodore.meta.error"), run.reason ? errorWord(t, run.reason) : null].filter(Boolean).join(" · ")}</span>
           )}
@@ -196,10 +194,10 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
   let status: ReactNode = null;
   if (busy) status = t("objectives.commodore.mobile.switching");
   else if (view && !on) status = meta.map((part) => part.text).join(" · ");
-  else if (view && run?.phase === "turn") status = <><StatusMark state="running" />{t("objectives.commodore.meta.turn")} · {parts}</>;
-  else if (view && run?.phase === "retrying" && run.nextWakeAt) status = <><StatusMark state="background" />{t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })} · {parts}</>;
+  else if (view && run?.phase === "turn") status = <>{t("objectives.commodore.meta.turn")} · {parts}</>;
+  else if (view && run?.phase === "retrying" && run.nextWakeAt) status = <>{t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) })} · {parts}</>;
   else if (view && run?.phase === "error") status = <><span className="is-danger">{t("objectives.commodore.meta.error")}</span> · {parts}</>;
-  else if (view) status = <><StatusMark state="idle" />{[run?.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null, parts].filter(Boolean).join(" · ")}</>;
+  else if (view) status = <>{[run?.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null, parts].filter(Boolean).join(" · ")}</>;
   const toggle = () => {
     // 바꾸는 동안의 두 번째 누름은 버린다 — 서버 결과가 진실이다.
     if (busy || !view || !online) return;
@@ -221,7 +219,8 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
         disabled={!view || !online}
         onClick={toggle}
       >
-        <span className="objectives-cm-trow-ic"><PennantIcon /></span>
+        {/* 머리는 이 Theater 사령관의 아바타다 — 사이드바 머리 표식과 같은 얼굴(작업 중·대기·오류·쉼)로 상태를 말하고, 상태 줄은 글이 맡는다. */}
+        <span className="objectives-cm-trow-ic"><CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, board.objectives)} size={28} label="" decorative /></span>
         <span className="objectives-cm-trow-tx">
           <b>{t("objectives.commodore.settings.autonomy")}</b>
           {status !== null ? <span id={statusId} className="objectives-cm-trow-ds">{status}</span> : null}
@@ -283,7 +282,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
 
   let body: ReactNode;
   if (!loaded) {
-    body = <div className="objectives-cm-center"><p className="objectives-cm-center-text is-row"><StatusMark state="running" />{t("objectives.commodore.mobile.loading")}</p></div>;
+    body = <div className="objectives-cm-center"><p className="objectives-cm-center-text">{t("objectives.commodore.mobile.loading")}</p></div>;
   } else if (chat.length === 0 && !turn && !pending) {
     body = (
       <div className="objectives-cm-center">
