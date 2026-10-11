@@ -452,6 +452,11 @@ function toggleCompanionPanel(
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
 }
 
+/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 분석가를 내주지 않는다. */
+function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
+  return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
+}
+
 /** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
     드로어를 여닫는다. 세로 ANALYZE/EXIT 핸들의 후계다. */
 /**
@@ -469,11 +474,6 @@ function toggleCompanionPanel(
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
-/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 분석가를 내주지 않는다. */
-function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
-  return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
-}
-
 function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
   if (mobileOperationOf(context)) return null;
   return <AgentCaptionActionsBody context={context} />;
