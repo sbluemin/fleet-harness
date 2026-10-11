@@ -330,11 +330,11 @@ export interface ConversationSurfaceDescriptor {
   /** 머리 pill 의 이름과 부제. */
   readonly title: (ctx: ConversationSurfaceContext) => string;
   readonly subtitle?: (ctx: ConversationSurfaceContext) => string | null;
-  /** 머리 pill 의 표식(16px 안팎). 없으면 글만 선다. */
+  /** 머리 pill 의 표식(16px 안팎) — `avatar` 가 없을 때만 선다. 둘 다 없으면 글만 선다. */
   readonly mark?: () => ReactNode;
   /**
-   * 오른쪽 패널 머리에 설 몽글 아바타 — 이 대화의 주인(예: 사령관 대화면 그 Theater)의 아바타 키와 역할. 있으면 호스트가 64px 아바타를
-   * 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 그 자리에 선다.
+   * 이 대화의 주인(예: 사령관 대화면 그 Theater)의 몽글 아바타 키와 역할. 있으면 호스트가 머리 pill 에 20px, 오른쪽 패널 머리에 64px
+   * 아바타를 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 두 자리에 선다.
    */
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string } | null;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;

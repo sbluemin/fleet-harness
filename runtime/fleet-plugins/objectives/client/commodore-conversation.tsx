@@ -7,7 +7,6 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreLog, CommodoreSettings } from "./commodore-inbox-section.js";
-import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, useCommodore } from "./commodore-state.js";
@@ -221,7 +220,6 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     return label ? `${name} · ${label}` : name;
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
-  mark: () => <CommodoreMentionGlyph className="objectives-commodore-conversation-mark" />,
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name") } : null;

@@ -1832,7 +1832,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-conversation-tab { height: 100%; min-height: 0; overflow-y: auto; }
 .objectives-commodore-conversation-tab.is-goals { padding: 12px 16px; }
 .objectives-commodore-conversation-tab.objectives-commodore-body { padding: 16px 20px 24px; }
-.objectives-commodore-conversation-mark { width: 16px; height: 16px; color: var(--brass-ink); }
 
 /* 대화 중심 화면의 사령관 — 그룹 대화와 같은 한 면이다. 기록과 아래 입력 캡슐은 가운데 칸을 채운다(Fit, 좌우 여백만 칸 폭을 따른다). */
 .objectives-commodore-conversation { container-type: inline-size; }
