@@ -33,6 +33,8 @@ interface GraphProps {
   onEdge: (from: string, to: string, linked: boolean) => void; canEdit: (id: string) => boolean;
   onShowing: (id: string | null) => void;
   renderDetail: (mission: ObjectiveMission, actions: MissionDetailActions) => ReactNode;
+  /** 노드 오른쪽 아래의 담당 표식 — 구성원 id 면 그 구성원, null 이면 지휘관. 보드와 같은 아바타를 패널이 그려 넘긴다. */
+  ownerMark: (memberId: string | null) => ReactNode;
   reveal?: { id: string; at: number } | null; zoom?: boolean; suspended?: boolean;
   /** 확대 전용 — 그래프가 스크롤 없이 들어가는 확대 카드의 폭(border-box). */
   onFitWidth?: (width: number) => void;
@@ -71,7 +73,7 @@ interface Drag { from: string; x0: number; y0: number; x: number; y: number; ove
 interface Popup { id: string; pinned: boolean; closing: boolean; focus: boolean }
 const nodeId = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>("[data-graph-node], [data-graph-label]")?.dataset.graphNode ?? target.closest<HTMLElement>("[data-graph-label]")?.dataset.graphLabel ?? null : null;
 
-export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, onShowing, reveal, zoom = false, suspended = false, onFitWidth }: GraphProps) {
+export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, ownerMark, onShowing, reveal, zoom = false, suspended = false, onFitWidth }: GraphProps) {
   const box = useRef<HTMLDivElement>(null), scroll = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(320), [font, setFont] = useState("11px sans-serif");
   const wide = width >= 700;
@@ -132,8 +134,6 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   const fitWidth = zoom && fit ? Math.ceil(Math.min(fit.w, Math.max(fit.base, layout.width * scale)) + fit.chromeX) : null;
   const onFitWidthRef = useRef(onFitWidth); onFitWidthRef.current = onFitWidth;
   useLayoutEffect(() => { if (fitWidth !== null) onFitWidthRef.current?.(fitWidth); }, [fitWidth]);
-  const marks = new Map<string, string>(), used = new Set<string>();
-  for (const member of objective.members) { const mark = [...member.role.replace(/\s/g, "")].find(c => !used.has(c)) ?? String(marks.size + 1); marks.set(member.id, mark); used.add(mark); }
   const [popup, setPopup] = useState<Popup | null>(null), popupRef = useRef(popup); popupRef.current = popup;
   const onShowingRef = useRef(onShowing); onShowingRef.current = onShowing;
   useEffect(() => { onShowingRef.current(popup && !popup.closing && !suspended ? popup.id : null); }, [popup?.id, popup?.closing, suspended]);
@@ -311,7 +311,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     n?.focus({ preventScroll: true }); n?.scrollIntoView({ block: "nearest", inline: "nearest" });
     if (link) setLink({ ...link, over: id });
   };
-  const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className={`objectives-member-mark objectives-graph-mark ${m.member ? `is-tone-${Math.max(0, objective.members.findIndex(member => member.id === m.member)) % 8}` : "is-commander"}`} aria-hidden="true">{m.member ? marks.get(m.member) : "★"}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}{resultCounts.has(m.id) ? <span className="objectives-graph-results" aria-hidden="true"><ResultsGlyph /></span> : null}</>;
+  const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className="objectives-graph-mark" aria-hidden="true">{ownerMark(m.member ?? null)}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}{resultCounts.has(m.id) ? <span className="objectives-graph-results" aria-hidden="true"><ResultsGlyph /></span> : null}</>;
   const node = (m: ObjectiveMission, style?: CSSProperties) => {
     const active = current?.id === m.id, pre = current?.prerequisites.includes(m.id), post = current && m.prerequisites.includes(current.id);
     const member = objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");

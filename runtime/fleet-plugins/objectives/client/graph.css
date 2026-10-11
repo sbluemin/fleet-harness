@@ -36,10 +36,9 @@
 .objectives-graph-shape.is-awaiting .objectives-graph-number { transform: rotate(-45deg) scale(1.39); color: var(--text-on-brass); }
 .objectives-graph-shape.is-unplaced { border: 1.5px dashed var(--text-secondary); }
 @keyframes objectives-graph-spin { to { transform: rotate(360deg); } }
-/* 승인 v3의 작은 담당 표식만 기존 명단의 identity 윤곽/채움을 재사용한다. 상태 노드 면에는 번지지 않는 국소 예외다.
-   글자와 모양도 담당을 식별하며, 라이트 테마의 작은 글자는 primary ink를 섞어 대비를 보강한다. */
-.objectives-graph-node .objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 3px); display: inline-grid; place-items: center; width: 12px; height: 12px; border: 1px solid color-mix(in oklch, var(--member-tone) 85%, var(--text-secondary)); border-radius: 3px; font: var(--weight-bold) calc(var(--t-2xs) * .9)/1 var(--font-ui); background: color-mix(in oklch, var(--member-tone) 12%, var(--surface-panel)); color: color-mix(in oklch, var(--member-tone) 70%, var(--text-primary)); box-shadow: 0 0 0 1.5px var(--surface-panel); }
-.objectives-graph-node .objectives-graph-mark.is-commander { --member-tone: var(--text-secondary); border-radius: 50%; background: var(--surface-panel); }
+/* 담당 표식 — 그 사람의 몽글 아바타가 노드 오른쪽 아래에 앉는다. 패널 바탕 원이 노드 테두리와 갈라 준다. */
+.objectives-graph-node .objectives-graph-mark { position: absolute; left: calc(50% + 1px); top: calc(50% + var(--graph-r) - 5px); display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--surface-panel); pointer-events: none; }
+.objectives-graph-node .objectives-graph-mark .objectives-avatar { width: 14px; height: 14px; }
 .objectives-graph-record { position: absolute; left: calc(50% + 2px); top: calc(50% - var(--graph-r) - 6px); width: 7px; height: 9px; border: 1.25px solid var(--text-secondary); border-radius: 1.5px; background: var(--surface-panel); box-shadow: 0 0 0 1.5px var(--surface-panel); }
 .objectives-graph-record.is-new { background: var(--text-primary); border-color: var(--text-primary); }
 /* 결과물은 기록(오른쪽 위)·담당(오른쪽 아래)과 갈라 왼쪽 위의 상자로 표시한다. 이름 쪽으로 나가지 않는다. */
@@ -104,7 +103,7 @@
 .objectives-popup-members button:hover:not(:disabled) { background: var(--control-rest-hover); color: var(--text-primary); }
 .objectives-popup-members button[aria-checked="true"] { border-color: color-mix(in oklch, var(--brass) 70%, transparent); background: color-mix(in oklch, var(--brass) 9%, transparent); color: var(--text-primary); }
 .objectives-popup-members button:disabled { cursor: not-allowed; opacity: .5; }
-.objectives-popup-members .objectives-member-mark { width: 16px; height: 16px; font-size: calc(var(--t-2xs) * .9); }
+.objectives-popup-members .objectives-avatar { width: 16px; height: 16px; }
 .objectives-popup-edge-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 0 6px; min-height: 32px; padding: 2px 4px; border-radius: var(--radius-xs); }
 .objectives-popup-edge-row:hover, .objectives-popup-edge-row:focus-within { background: var(--control-rest-hover); }
 .objectives-popup-edge-icon { --graph-r: 9px; display: grid; place-items: center; }
