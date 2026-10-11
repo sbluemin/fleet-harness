@@ -1793,8 +1793,21 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-conversation { position: relative; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 /* 기록 비우기 — 머리 pill 바로 옆 단추 묶음(호스트의 .conversation-pill-actions, descriptor actions)에 선다. 단추는 그 묶음의
    다른 단추(.conversation-round)와 같은 32px 원이고, hover 도 그 원의 테두리·잉크로만 말한다 — 면이 단추 모양을 벗어나지 않는다. */
-.objectives-commodore-clear-wrap.is-round { margin-left: 0; gap: 6px; }
-.objectives-commodore-clear-wrap.is-round .objectives-commodore-clear-confirm { padding-left: 10px; white-space: nowrap; }
+/* 확인 문구는 단추 아래 작은 말풍선이다 — 묶음의 폭을 늘리지 않아 좁은 칸에서도 pill 이 밀려 찌그러지지 않는다. */
+.objectives-commodore-clear-wrap.is-round { position: relative; margin-left: 0; }
+.objectives-commodore-clear-wrap.is-round .objectives-commodore-clear-confirm {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: -4px;
+  z-index: 5;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in oklch, var(--coral) 35%, var(--surface-rim));
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-soft);
+  white-space: nowrap;
+  pointer-events: none;
+}
 .objectives-commodore-clear.is-round {
   width: 32px;
   height: 32px;
