@@ -235,6 +235,17 @@ function ProfileSheet() {
 }
 
 /**
+ * 시트를 닫고 목적지를 연다 — 시트가 쌓아 둔 history 항목이 걷힌 뒤(popstate)에 바꾼다. 걷히기 전에 바꾸면 `?dest=`가 그 항목에 쓰여
+ * 걷히면서 사라져, 화면은 목적지인데 주소는 홈이라 새로고침이 목록으로 돌아간다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 바꾼다.
+ */
+function openAfterSheetRelease(destination: Parameters<typeof setMobileDestination>[0]): void {
+  const open = () => { window.removeEventListener("popstate", open); window.clearTimeout(timer); setMobileDestination(destination); };
+  const timer = window.setTimeout(open, 400);
+  window.addEventListener("popstate", open);
+  closeMobileSheets();
+}
+
+/**
  * 홈 머리 +의 메뉴 — 새 대화(새 작업 시트), 새 터미널(Shell 목적지, 보일 때만), Theater 추가(폴더 시트).
  * 고르면 이 시트를 닫고 이어서 연다. Theater 추가는 시트 위에 쌓아 닫으면 이 메뉴로 돌아온다.
  */
@@ -250,7 +261,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>
       {shell ? (
-        <button type="button" className="mobile-sheet-row" onClick={() => { closeMobileSheets(); setMobileDestination({ kind: "plugin", entryId: shell.entry.id }); }}>
+        <button type="button" className="mobile-sheet-row" onClick={() => openAfterSheetRelease({ kind: "plugin", entryId: shell.entry.id })}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
         </button>
