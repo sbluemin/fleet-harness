@@ -18,11 +18,9 @@ import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanel
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
-import { theaterInitials } from "../sidebar/theater-initials.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
@@ -297,14 +295,25 @@ function ConversationPanelIdentity() {
   const { conversationSurfaces } = usePluginRegistry();
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
-  const descriptor = subject === null && surface !== null ? conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null : null;
+  const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
+  const descriptor = subject === null ? centerSurface : null;
   const clusterIndex = useClusterIndex();
-  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — 사이드바 머리와 같은 이니셜 표식과 이름.
+  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
+  // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
   if (inbox !== null && theaterLabel !== null) {
+    const context = centerSurface !== null && surface !== null
+      ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
+      : null;
+    let owner: { readonly title: string; readonly label: string } | null = null;
+    try {
+      if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
+        owner = { title: centerSurface.title(context), label: centerSurface.avatar?.(context)?.label ?? centerSurface.title(context) };
+      }
+    } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <span className="conversation-panel-identity-mark is-theater" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(theaterLabel)}</TheaterMonogram></span>
-        <strong className="conversation-panel-identity-name">{theaterLabel}</strong>
+        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state="idle" size={64} label={owner?.label ?? theaterLabel} />
+        <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );
   }

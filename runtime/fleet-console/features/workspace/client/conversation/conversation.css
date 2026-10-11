@@ -598,8 +598,6 @@
 .conversation-panel-identity-mark > * { transform: scale(1.6); }
 .conversation-panel-identity-mark.is-surface { color: var(--brass-ink); }
 .conversation-panel-identity-mark.is-surface svg { width: 18px; height: 18px; }
-/* Theater 를 연 패널 — 사이드바 머리와 같은 이니셜 글자(칩 면 없이 원 안에). */
-.conversation-panel-identity-mark.is-theater { font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-secondary); }
 
 /* Theater 섹션 줄 — 사령관 | Theater 설정. 탭 줄(글자 탭)보다 한 단 작은 글자로 그 위에 서고, 고른 섹션은 위치 채널(brass)로 말한다. */
 .conversation-panel-sections {
