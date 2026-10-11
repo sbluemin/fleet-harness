@@ -1,4 +1,4 @@
-import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationActivity, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getGlobalSettingsStoreState } from "../../settings/client/global-settings-store.js";
 import { getT } from "../../../core/client/src/i18n/index.js";
@@ -7,7 +7,9 @@ import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 
 // 표시 어휘는 한 번에 한 모습만 그린다. 수명주기 dormant(프로세스 없음)는 화면에서 ended 로 읽힌다 —
 // 복원 Claude/Codex/Shell 이 서로 다른 색·단어를 쓰면 같은 사실이 세 이야기로 갈라진다.
-export type OperationActivityVisual = "running" | "background" | "awaiting" | "ended" | "idle";
+// 턴 뒤에 남은 백그라운드 작업(런타임 활동 background)도 화면에서는 진행 중(running)이다 — 사람에게는 그 Operation이
+// 아직 일하고 있다는 한 사실이고, 턴인지 남은 작업인지는 채팅 안 작업 목록이 말한다. 원시 활동은 런타임 축에 그대로 남는다.
+export type OperationActivityVisual = "running" | "awaiting" | "ended" | "idle";
 
 // 런타임 맵에 항목이 없는 Operation의 분류 폭백. 방금 만든 셸/에이전트는 스냅샷 전에
 // 런타임이 비어 있으므로, 복원 마커가 있을 때만 ended 다. resumeAvailable 은 Claude 재개
@@ -22,13 +24,25 @@ export function resolveOperationActivity(
   return isRestoredAbsentOperation(operation) ? "ended" : "idle";
 }
 
+// 플러그인 SDK 요약(ConsoleOperationSummary.activity)이 싣는 원시 활동 — 표시 어휘와 같은 분류지만 background 를 접지 않는다.
+// 활동 값은 플러그인 계약이고, 접는 것은 각 표면의 표시 몫이다.
+export function resolveOperationRuntimeActivity(
+  operation: OperationNode,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
+): OperationActivity | "ended" {
+  const live = operationRuntime[operation.id];
+  if (live) return live.lifecycle === "dormant" ? "ended" : live.activity;
+  return isRestoredAbsentOperation(operation) ? "ended" : "idle";
+}
+
 function isRestoredAbsentOperation(operation: OperationNode): boolean {
   return operation.payload?.restoredDormant === true || operation.payload?.resumeAvailable === true;
 }
 
 // 런타임 상태 → 표시 어휘. 프로세스 없음은 활동값을 가지지 않으므로 여기서만 두 축이 만난다.
 export function runtimeStateVisual(state: OperationRuntimeState): OperationActivityVisual {
-  return state.lifecycle === "dormant" ? "ended" : state.activity;
+  if (state.lifecycle === "dormant") return "ended";
+  return state.activity === "background" ? "running" : state.activity;
 }
 
 // 미관측(맵에 항목 없음)은 표시 어휘로도 미관측이다 — 폭백 분류가 필요한 소비처는
@@ -91,7 +105,6 @@ export function operationMarkVisual(mark: OperationMarkVisual | undefined): Oper
 
 export function operationActivityVisual(status: OperationActivityVisual | undefined): OperationActivityVisual {
   if (status === "running") return "running";
-  if (status === "background") return "background";
   if (status === "awaiting") return "awaiting";
   if (status === "ended") return "ended";
   return "idle";
@@ -117,7 +130,6 @@ export function operationActivityLabel(status: OperationActivityVisual | undefin
   const t = getT(resolveActiveLocale());
   const visual = operationActivityVisual(status);
   if (visual === "running") return t("activity.running");
-  if (visual === "background") return t("activity.background");
   if (visual === "awaiting") return t("activity.awaiting");
   if (visual === "ended") return t("activity.ended");
   return t("activity.idle");

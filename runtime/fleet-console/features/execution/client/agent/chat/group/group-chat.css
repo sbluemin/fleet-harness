@@ -265,7 +265,6 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 /* 활동 점 — 노드 줄 상태 점과 같은 어휘(작업 warn 채움, 백그라운드 warn 고리, 대기 positive, 끝남 빈 고리, 답 기다림 aurora 마름모). */
 .group-members-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
 .group-members-dot.is-running { background: var(--warn); }
-.group-members-dot.is-background { box-shadow: inset 0 0 0 1px var(--warn); }
 .group-members-dot.is-idle { background: var(--positive); }
 .group-members-dot.is-ended,
 .group-members-dot.is-unknown { box-shadow: inset 0 0 0 1px var(--hairline-strong); }

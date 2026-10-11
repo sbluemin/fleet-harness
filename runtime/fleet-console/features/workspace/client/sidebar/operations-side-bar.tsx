@@ -1,4 +1,3 @@
-import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
 import { theaterInitials } from "./theater-initials.js";
@@ -262,12 +261,6 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
     { status: "idle", label: t("sidebar.status.idle") },
     { status: "ended", label: t("sidebar.status.ended") },
   ];
-}
-
-// 사이드바 STATUS 칸은 활동을 네 칸으로만 읽는다. background는 실행 중과 같은 칸에 앉히되,
-// 행 마크는 그대로 background다 — 칸 키로 활동을 덮으면 헤더와 비콘이 다른 상태를 말한다.
-function statusSectionBucket(status: OperationActivityVisual | SideBarStatus): SideBarStatus {
-  return status === "background" ? "running" : status;
 }
 
 export function StatusSectionSlot({
@@ -649,11 +642,11 @@ export function OperationsSideBar({
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
-      const status = statusSectionBucket(resolveOperationDisplayActivity({
+      const status = resolveOperationDisplayActivity({
         activity: resolveOperationActivity(operation, operationRuntime),
         operationId: operation.id,
         idleArrivalIds,
-      }));
+      });
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }
@@ -1593,7 +1586,7 @@ export function groupOperationsByStatus(
           operationId: entry.operation.id,
           idleArrivalIds,
         });
-        if (statusSectionBucket(display) !== status) return [];
+        if (display !== status) return [];
         return [entry.status === display ? entry : { ...entry, status: display }];
       })
       .sort((left, right) => {

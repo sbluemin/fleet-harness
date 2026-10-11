@@ -258,7 +258,7 @@ export const memberLaunched = (member: ObjectiveMember, operationState: (operati
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */
 export const memberSubagents = (member: ObjectiveMember): boolean => member.subagents === true;
 /** 세션이 살아 있는 활동 — 서브에이전트 허용은 이런 세션에 곧바로 실리지 않고 다음 기동부터 적용된다. */
-export const MEMBER_LIVE: ReadonlySet<string> = new Set(["running", "background", "idle", "awaiting"]);
+export const MEMBER_LIVE: ReadonlySet<string> = new Set(["running", "idle", "awaiting"]);
 
 export type MemberLaunchChoice = { readonly mode: "same" } | { readonly mode: "model"; readonly model: string; readonly effort?: string | undefined };
 

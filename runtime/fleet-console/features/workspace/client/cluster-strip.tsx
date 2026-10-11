@@ -30,7 +30,7 @@ function computeBudget(element: HTMLElement | null): number | null {
 /** 캡션은 칸마다 임무로 이동하고, 사이드바에서는 줄 클릭을 방해하지 않는 장식이다. */
 export function ClusterStrip({ layout, rootActivity, className, onOpen, missionNavigation = false, decorative = false }: {
   readonly layout: ClusterLayout;
-  readonly rootActivity?: "idle" | "running" | "awaiting" | "background" | "ended" | null;
+  readonly rootActivity?: "idle" | "running" | "awaiting" | "ended" | null;
   readonly className?: string;
   readonly onOpen?: (operationId?: string) => void;
   readonly missionNavigation?: boolean;

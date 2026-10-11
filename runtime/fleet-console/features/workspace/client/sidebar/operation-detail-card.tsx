@@ -81,7 +81,6 @@ export function OperationDetailCard({ anchor, activity, workspace, theaterLabel,
 function activityLabel(t: ReturnType<typeof useT>, activity: OperationMarkVisual | undefined): string {
   switch (activity) {
     case "running":
-    case "background":
       return t("sidebar.status.running");
     case "awaiting":
     case "unseen":

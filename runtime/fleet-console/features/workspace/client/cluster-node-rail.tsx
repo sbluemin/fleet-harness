@@ -6,7 +6,7 @@ import type { OperationClusterMember, OperationClusterProgress } from "@fleet-co
 import { useT } from "../../../core/client/src/i18n/index.js";
 import type { ClusterLayout } from "./operation-clusters.js";
 
-type RootActivity = "idle" | "running" | "awaiting" | "background" | "ended" | null;
+type RootActivity = "idle" | "running" | "awaiting" | "ended" | null;
 
 const CoordGlyph = () => (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true">

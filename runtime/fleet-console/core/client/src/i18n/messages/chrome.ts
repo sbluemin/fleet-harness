@@ -507,7 +507,6 @@ export const chromeEn = {
   "chrome.failure.folder.generic.cause": "The Console rejected the request. Pick another folder, or reload the page and try again.",
   // ── 대화 중심 화면 ─────────────────────────────────────────────────────────
   "conversation.row.running": "Working",
-  "conversation.row.background": "Working in the background",
   "conversation.row.awaiting": "Waiting for your answer",
   "conversation.row.unseen": "New reply",
   "conversation.row.idle": "Idle",
@@ -1026,7 +1025,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.failure.folder.generic.cause": "Console이 요청을 거절했습니다. 다른 폴더를 고르거나, 페이지를 새로고침한 뒤 다시 시도하세요.",
   // ── 대화 중심 화면 ─────────────────────────────────────────────────────────
   "conversation.row.running": "작업하는 중",
-  "conversation.row.background": "백그라운드 작업 중",
   "conversation.row.awaiting": "답을 기다립니다",
   "conversation.row.unseen": "새 답이 왔습니다",
   "conversation.row.idle": "대기 중",

@@ -2,7 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
-import { activityKey } from "./group-conversation.js";
+import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "./group-chat.css";
@@ -61,7 +61,8 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
   readonly onRemove: (() => void) | undefined;
 }) {
   const t = getGroupT(language);
-  const { speaker, activity } = participant;
+  const { speaker } = participant;
+  const activity = memberActivityVisual(participant.activity);
   const role = speaker.kind === "commander" ? t("group.commander")
     : speaker.kind === "member" ? t("group.member")
       : speaker.kind === "commodore" ? t("group.commodore")

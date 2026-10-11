@@ -1762,16 +1762,13 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.canvas-fleet-map-dot\.is-idle,\s*\.canvas-fleet-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
     expect(components).toContain(".canvas-fleet-map-dot.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
-    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
     // 상태 마크의 조형은 12px 원 하나다(둥근 네모 비콘은 폐지). 테두리가 진행을, 가운데 점·획이 결과를 말한다.
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
     expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
-    expect(components).toMatch(/\.status-glyph\.is-background \{\s*border: 1\.3px dashed/);
     expect(components).toMatch(/\.canvas-fleet-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
     expect(components).not.toContain(".canvas-triage-deck-card");
-    expect(components).toMatch(/\.canvas-fleet-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).not.toMatch(/\.side-bar-status-section \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
@@ -3619,44 +3616,29 @@ describe("Instrument core design contract", () => {
     // 상태마다 운동의 종류가 다르다. 왕복(travel)은 turn 하나만 소유한다 — 진행 위치가 옮겨
     // 간다는 사실을 말하는 형태라, 옮겨 갈 지점이 없는 나머지 상태가 빌리면 뜻이 갈라진다.
     expect(components).toContain("animation: caption-rail-travel 3.8s ease-in-out infinite;");
-    expect(components).toContain("animation: caption-rail-flow 6.5s linear infinite;");
     expect(components).toContain("animation: caption-rail-call 2.4s var(--ease-glide) infinite;");
     expect(components).toContain("animation: caption-rail-tide 4.4s var(--ease-glide) infinite;");
-    expect(components).toContain("@keyframes caption-rail-flow");
     expect(components).toContain("@keyframes caption-rail-call");
     expect(components).toContain("@keyframes caption-rail-tide");
-    // background·unseen이 운동 없이 색만 다른 정지선으로 되돌아가지 않도록 사용처를 고정한다.
-    const backgroundRail = components.match(/\.canvas-operation\.is-running--background > \.canvas-operation-titlebar::after \{[^}]*\}/)?.[0] ?? "";
-    expect(backgroundRail).toContain("animation: caption-rail-flow");
+    // unseen이 운동 없이 색만 다른 정지선으로 되돌아가지 않도록 사용처를 고정한다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{[^}]*animation: caption-rail-tide/);
-    // 흐름의 이동량은 타일 한 주기와 같아야 한다 — background-position의 퍼센트는
-    // (영역 폭 − 이미지 폭) 기준이라 타일 주기와 어긋나고, 한 바퀴 끝에서 그림이 튄다.
-    expect(backgroundRail).toContain("background-size: 160px 100%;");
-    expect(components).toMatch(/@keyframes caption-rail-flow \{\s*from \{\s*background-position: 0 0;\s*\}\s*to \{\s*background-position: -160px 0;/);
-    expect(components).not.toMatch(/@keyframes caption-rail-flow \{[^}]*background-position: -\d+% 0/);
-    // 밝기 위계는 어느 순간에도 뒤집히지 않는다 — awaiting 하한 > unseen 하한 > background 마루.
-    // 옛 맥동은 하한 0.34로 background 상시값(0.45)보다 어두워지는 구간이 있었다.
-    expect(backgroundRail).toContain("opacity: 0.55;");
+    // 밝기 위계는 어느 순간에도 뒤집히지 않는다 — awaiting 하한 > unseen 하한.
     expect(components).toMatch(/@keyframes caption-rail-call \{[^@]*50% \{\s*opacity: 0\.62;/);
     expect(components).toMatch(/@keyframes caption-rail-tide \{[^@]*50% \{\s*opacity: 0\.58;/);
     expect(components).not.toContain("@keyframes caption-rail-pulse");
     // 시작·끝은 완전 점등이다 — reduced-motion이 반복을 1회로 잘라도 레일이 꺼진 채 남지 않는다.
     expect(components).toMatch(/@keyframes caption-rail-call \{\s*0%,\s*100% \{\s*opacity: 1;/);
     expect(components).toMatch(/@keyframes caption-rail-tide \{\s*0%,\s*100% \{\s*opacity: 1;/);
-    // reduced-motion: 색이 갈라 주는 상태는 색면으로 단락하고, turn과 색을 공유하는
-    // background만 점선으로 형상을 남긴다 — 균일 warn 선 둘이 겹치면 두 상태가 한 그림이 된다.
+    // reduced-motion: 상태 레일은 색면으로 단락한다.
     // 슬라이스 기준을 캡션 폴백 블록 자체로 잡는다 — 파일 앞쪽 @media부터 자르면 미디어 밖의
     // 일반 상태 규칙이 먼저 매치되어 폴백이 비어 있어도 통과한다.
     const captionReducedMotion = components.slice(
       components.indexOf("  .canvas-operation.is-running--turn > .canvas-operation-titlebar::after,"),
     );
     expect(captionReducedMotion).toContain("  .canvas-operation.is-unseen > .canvas-operation-titlebar::after,");
-    const reducedBackgroundRail = captionReducedMotion.match(/ {2}\.canvas-operation\.is-running--background > \.canvas-operation-titlebar::after \{[^}]*\}/)?.[0] ?? "";
-    expect(reducedBackgroundRail).toContain("animation: none;");
-    expect(reducedBackgroundRail).toContain("repeating-linear-gradient(90deg, var(--warn) 0 7px, transparent 7px 13px)");
     // 위상은 문서 타임라인 원점에 묶는다 — 상태 진입 시각이 다르면 같은 상태의 패널들이
     // 제각각 깜빡인다. 도착 플래시(전이)와 turn 트래블은 이 잠금에 들어가지 않는다.
-    expect(operationFrame).toContain('const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);');
+    expect(operationFrame).toContain('const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-call", "caption-rail-tide"]);');
     expect(operationFrame).toContain("animation.startTime = 0;");
     expect(operationFrame).toMatch(/PHASE_LOCKED_RAIL_ANIMATIONS\.has\(\(animation as CSSAnimation\)\.animationName\)/);
   });

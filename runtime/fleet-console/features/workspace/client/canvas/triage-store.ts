@@ -41,7 +41,7 @@ export function resolveTriageCounts(operations: readonly OperationNode[], runtim
     const activity = resolveOperationActivity(operation, runtime);
     if (dismissed.has(operation.id) && isTriageWaitingOperation(operation, runtime)) counts.setAside += 1;
     else if (activity === "awaiting") counts.waiting += 1;
-    else if (activity === "running" || activity === "background") counts.running += 1;
+    else if (activity === "running") counts.running += 1;
     else if (activity === "idle") {
       if (arrivals.has(operation.id)) counts.unseen += 1;
       else counts.idle += 1;
@@ -759,7 +759,7 @@ export function recordTriageActivity(
     }
     const activity = resolveOperationActivity(operation, operationRuntime);
     const waiting = isTriageWaitingOperation(operation, operationRuntime);
-    if ((activity === "running" || activity === "background" || activity === "ended") && deferredAt.delete(operation.id)) {
+    if ((activity === "running" || activity === "ended") && deferredAt.delete(operation.id)) {
       changed = true;
     }
     const previousWaiting = waitingByOperation.get(operation.id);
@@ -815,7 +815,7 @@ export function isTriageClearedTransition(
   current: OperationActivityVisual,
 ): boolean {
   return (previous === "awaiting" || previous === "idle")
-    && (current === "running" || current === "background" || current === "ended");
+    && (current === "running" || current === "ended");
 }
 
 /**

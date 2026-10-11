@@ -124,7 +124,9 @@ const TridentRouteGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="cur
 /** 달성 기준 — 과녁. 목표가 이루어졌다고 말할 조건들이 이 아래에 선다. */
 const CriteriaGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><circle cx="8" cy="8" r="5.6" /><circle cx="8" cy="8" r="2.4" /><circle cx="8" cy="8" r="0.6" fill="currentColor" /></svg>;
 const GraphGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="3.5" cy="8" r="1.6" /><circle cx="12.5" cy="4" r="1.6" /><circle cx="12.5" cy="12" r="1.6" /><path d="M5 7.3l6-2.6M5 8.7l6 2.6" /></svg>;
-const WORKING = new Set(["running", "background"]);
+const WORKING = new Set(["running"]);
+/** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Operation 도 진행 중으로 선다. */
+const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
 const byRequestTime = (a: Objective, b: Objective): number => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0);
@@ -191,12 +193,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   const operationOf = useCallback((operationId: string) => operations.find((candidate) => candidate.id === operationId) ?? null, [operations]);
   const operationTitle = useCallback((operationId: string) => operationOf(operationId)?.title ?? "—", [operationOf]);
-  const operationState = useCallback((operationId: string): string => operationOf(operationId)?.activity ?? "closed", [operationOf]);
+  // 턴 뒤에 남은 백그라운드 작업(background)은 화면에서 진행 중(running)이다 — 활동을 읽는 이 두 곳에서 접는다.
+  const operationState = useCallback((operationId: string): string => shownActivity(operationOf(operationId)?.activity ?? "closed"), [operationOf]);
   // 지휘관 자신의 활동 — 코어는 구성원의 대기·실행을 지휘관 활동으로 끌어올린다. 하단 한 자리는 지휘관 자신의 대기·실행과
   // 구성원의 것을 가려야 하므로 끌어올리기 전 값(ownActivity)을 읽는다. 구성원·부모 아닌 Operation 은 activity 와 같다.
-  const operationOwnState = useCallback((operationId: string): string => { const operation = operationOf(operationId); return operation ? operation.ownActivity ?? operation.activity : "closed"; }, [operationOf]);
+  const operationOwnState = useCallback((operationId: string): string => { const operation = operationOf(operationId); return operation ? shownActivity(operation.ownActivity ?? operation.activity) : "closed"; }, [operationOf]);
   // 항목의 활동 = 지휘관과 담당 가운데 가장 급한 것 — 호스트가 캔버스에서 지휘관을 그리는 셈법과 같다.
-  const URGENCY: Record<string, number> = { awaiting: 0, running: 1, background: 2, idle: 3, ended: 4, unknown: 5 };
+  const URGENCY: Record<string, number> = { awaiting: 0, running: 1, idle: 3, ended: 4, unknown: 5 };
   const objectiveActivity = useCallback((objective: Objective) => {
     const ids = [objective.id, ...objective.missions.flatMap((mission) => (mission.operationId ? [mission.operationId] : []))];
     return ids.map((id) => operationState(id)).filter((state) => state !== "closed").reduce((top, state) => ((URGENCY[state] ?? 9) < (URGENCY[top] ?? 9) ? state : top), "unknown" as ReturnType<typeof operationState>);
@@ -207,13 +210,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 하단 한 자리의 행동 — 실패를 삼키지 않고 코드를 던진다(띠가 원인 한 줄을 보이고 글을 지킨다).
   const request = useCallback((path: string, body: Record<string, unknown>) => post<unknown>(ctx.api, path, { ...body, language }), [ctx.api, language]);
   const modeLabel = (mode: CommanderMode) => t(mode === "direct" ? "objectives.mode.direct" : mode === "coordinate" ? "objectives.mode.coordinate" : "objectives.mode.mixed");
-  const stateLabel = (state: string) => t((["running", "awaiting", "idle", "background", "ended", "closed"].includes(state) ? `objectives.state.${state}` : "objectives.state.unknown") as Parameters<typeof t>[0]);
+  const stateLabel = (state: string) => t((["running", "awaiting", "idle", "ended", "closed"].includes(state) ? `objectives.state.${state}` : "objectives.state.unknown") as Parameters<typeof t>[0]);
   /** 전환 목록 줄의 글리프 — 사이드바 줄과 같은 판정: 검토 대기 · 시작 전 · 묶음에서 가장 급한 활동. */
   const glyphOf = (objective: Objective): { state: StatusGlyphState; label: string } => {
     if (objective.awaitingReview) return { state: "review", label: t("objectives.objectives.review") };
     if (!objective.commander.started && !operationOf(objective.id)) return { state: "fresh", label: t("objectives.state.fresh") };
     const activity = objectiveActivity(objective);
-    return activity === "awaiting" || activity === "running" || activity === "background" || activity === "idle"
+    return activity === "awaiting" || activity === "running" || activity === "idle"
       ? { state: activity, label: stateLabel(activity) }
       : { state: "ended", label: stateLabel("ended") };
   };
@@ -688,7 +691,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, cause: next.cause?.message, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-      const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+      const isWorkingOrAwaiting = state === "running" || state === "awaiting";
       const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
       const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
       const allowed = memberSubagents(member);
@@ -1383,7 +1386,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const mode = commanderMode(objective.missions);
   const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
-  const locked = objective.commander.started || ["idle", "running", "background", "awaiting"].includes(operationOwnState(objective.id));
+  const locked = objective.commander.started || ["idle", "running", "awaiting"].includes(operationOwnState(objective.id));
   const editable = !objective.done && !busy;
   // 지휘관이 일하는 동안에도 받는 편집 — 임무 추가, 끝나지 않은 임무의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
   const touchable = !objective.done;
@@ -1945,10 +1948,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   </>);
   // 「메시지」의 받는 이 — 지휘관(자기 활동)과 세션이 떠 있는 구성원. 상태 낱말은 명단 줄과 같은 말을 쓴다.
   const memberStateWord = (state: string, outcome?: string) => {
-    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    const isWorkingOrAwaiting = state === "running" || state === "awaiting";
     if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
     if (state === "ended") return t("objectives.members.dormant");
-    if (state === "running" || state === "background") return t("objectives.members.working");
+    if (state === "running") return t("objectives.members.working");
     if (state === "awaiting") return t("objectives.awaiting.word");
     return t("objectives.members.idle");
   };
@@ -1959,7 +1962,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   // 재개 띠의 지휘관 상태 — 받는 이와 같이 실패를 먼저 보되, 실패가 아닐 때는 기존 기술어(stateLabel)를 그대로 쓴다.
   // memberStateWord를 통째로 쓰면 closed·ended 같은 비실패 문구까지 명단 말로 바뀌므로, 실패 겹침만 덧씌운다.
   const commanderStateWord = (state: string, outcome?: string) => {
-    const isWorkingOrAwaiting = state === "running" || state === "background" || state === "awaiting";
+    const isWorkingOrAwaiting = state === "running" || state === "awaiting";
     if (outcome === "failed" && !isWorkingOrAwaiting) return t("objectives.members.failed");
     return stateLabel(state);
   };
