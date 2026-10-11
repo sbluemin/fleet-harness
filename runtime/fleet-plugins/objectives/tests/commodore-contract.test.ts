@@ -277,10 +277,11 @@ describe("commodore supervisor", () => {
     Object.assign(h.ctx.host, { attachments });
     const turns: AgentInput[] = [];
     let fail = true;
-    const agent: AgentHost = { createSession: async (options) => ({
+    let created = 0;
+    const agent: AgentHost = { createSession: async (options) => { created += 1; return ({
       send: async (input) => { turns.push(input); options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) }); },
       cancel() {}, dispose: async () => undefined,
-    }) };
+    }); } };
     const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
     const hooks = { run: (id: string) => supervisor.status(id), clear: (id: string) => supervisor.clear(id) };
     const png = Buffer.from("iVBORw0KGgo=", "base64");
@@ -305,6 +306,15 @@ describe("commodore supervisor", () => {
       expect(typeof delivered).not.toBe("string");
       expect(delivered).toEqual(expect.arrayContaining([{ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } }]));
       expect(attachments.read("t1", accepted.entry.messageId)).toEqual([]);
+      // raw 12 MiB와 같아도 파일마다 붙는 padding으로 base64 16 MiB를 넘기 전에 교대한다.
+      await supervisor.clear("t1");
+      const beforeBudget = created;
+      const fourMiB = Buffer.alloc(4 * 1024 * 1024); png.copy(fourMiB);
+      for (let index = 0; index < 3; index += 1) {
+        expect((await sendImage(fourMiB)).result.status).toBe(200);
+        await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      }
+      expect(created - beforeBudget).toBe(2);
       const tooLarge = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES + 1); png.copy(tooLarge);
       const over = await sendImage(tooLarge);
       expect(over.result).toMatchObject({ status: 400, value: { error: "attachment_budget_exceeded" } });

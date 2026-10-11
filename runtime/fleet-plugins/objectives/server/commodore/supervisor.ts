@@ -10,7 +10,7 @@ import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
-import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
+import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
 import { COMMODORE_CONTEXT_ROTATE_RATIO, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
@@ -175,6 +175,7 @@ interface Runner {
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
   messages: QueuedMessage[];
   sessionImageBytes: number;
+  sessionImageBase64Bytes: number;
   coalesce: ReturnType<typeof setTimeout> | null;
   patrol: ReturnType<typeof setTimeout> | null;
   retry: ReturnType<typeof setTimeout> | null;
@@ -323,6 +324,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.contextWindow = coordinates.contextWindow;
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
+    runner.sessionImageBase64Bytes = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
     record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
@@ -391,6 +393,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
       let batchBytes = 0;
+      let batchBase64Bytes = 0;
       let batchChars = 0;
       let batchCount = 0;
       for (const message of runner.messages) {
@@ -410,7 +413,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
           return { text: message.text, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
-        const rotate = runner.rotateNext ?? (session && (needsRotation(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES) ? "replaced" : null);
+        batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
+        const rotate = runner.rotateNext ?? (session && (needsRotation(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
@@ -444,6 +448,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.patrolSet = false;
       // 실패한 턴도 CLI resume 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
       runner.sessionImageBytes += batchBytes;
+      runner.sessionImageBase64Bytes += batchBase64Bytes;
       const outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: preparedMessages } : {}) });
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
@@ -494,7 +499,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
