@@ -21,7 +21,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  max-width: 720px;
+  /* 말풍선 열은 가운데 680px — 대화 칸이 넓어져도 읽는 폭은 그대로다(Grok Bot 배치). */
+  max-width: 680px;
   margin: 0 auto;
   font-family: var(--font-ui);
   font-size: var(--font-body-size);
@@ -59,25 +60,26 @@
 .group-chat-name.is-tone-indigo { color: var(--id-indigo); }
 .group-chat-name.is-tone-crimson { color: var(--id-crimson); }
 
-/* 말풍선 — 사람은 오른쪽, 지휘관·구성원은 왼쪽. */
+/* 말풍선 — 사람은 오른쪽, 지휘관·구성원은 왼쪽. 테두리 없이 면 하나로 바탕에서 떠오른다. */
 .group-chat-bubble {
   max-width: 64ch;
   padding: var(--space-2) var(--space-3);
-  border-radius: 14px;
+  border-radius: 18px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 .group-chat-bubble.is-human {
-  background: var(--control-rest);
+  /* 사람의 말풍선은 한 단 밝은 회색 — 지휘관·구성원의 말풍선과 면으로 갈린다. */
+  background: var(--ink-veil);
   border: 1px solid transparent;
-  border-radius: 14px 14px 5px 14px;
+  border-radius: 18px;
   white-space: pre-wrap;
 }
 .group-chat-bubble.is-markdown { white-space: normal; }
 .group-chat-bubble.is-agent {
   background: var(--surface-panel-raised);
-  border: 1px solid var(--hairline);
-  border-radius: 14px 14px 14px 5px;
+  border: 1px solid transparent;
+  border-radius: 18px;
 }
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
@@ -297,7 +299,8 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   flex: none;
   position: relative;
   width: 100%;
-  max-width: 720px;
+  /* 입력 캡슐은 말풍선 열보다 한 단 넓다 — 대화 칸 아래에 떠 있는 캡슐 하나다. */
+  max-width: 820px;
   margin: 0 auto;
   padding: 0 var(--space-4) var(--space-4);
   box-sizing: border-box;
@@ -443,8 +446,8 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--hairline-strong);
-  border-radius: 14px;
+  border: 1px solid transparent;
+  border-radius: 18px;
   background: var(--surface-panel-raised);
   font-family: var(--font-ui);
   font-size: var(--t-sm);

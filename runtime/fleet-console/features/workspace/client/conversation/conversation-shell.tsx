@@ -49,14 +49,12 @@ import "./conversation.css";
  */
 
 const LAST_PANEL_KEY = "fleet-console.conversation.lastPanel";
-/** 사이드바·레일 카드의 바깥 여백(--space-3)과 같은 값. */
-const STAGE_EDGE_GUTTER = 12;
 /**
- * 가운데 대화 칸의 최소 폭. 넓은 오른쪽 패널(설정 등)을 열어도 대화가 이보다 좁아지지 않게, 레일은 이 폭과 양쪽 여백을
- * 남긴 만큼만 넓어진다(RightRail reservedArenaWidth). 채팅 입력과 말풍선이 한 줄에 읽히는 폭이다.
+ * 가운데 대화 칸의 최소 폭. 넓은 오른쪽 패널(설정 등)을 열어도 대화가 이보다 좁아지지 않게, 레일은 이 폭만큼을 남기고
+ * 넓어진다(RightRail reservedArenaWidth). 채팅 입력과 말풍선이 한 줄에 읽히는 폭이다. 세 열은 서로 붙어 있어 여백을 더하지 않는다.
  */
 export const CONVERSATION_MIN_WIDTH = 480;
-export const CONVERSATION_RESERVED_ARENA_WIDTH = CONVERSATION_MIN_WIDTH + STAGE_EDGE_GUTTER * 2;
+export const CONVERSATION_RESERVED_ARENA_WIDTH = CONVERSATION_MIN_WIDTH;
 
 function readLastPanel(): string | null {
   try {
@@ -110,30 +108,36 @@ const PlusGlyph = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
 );
 
-/** 위쪽 줄 — 찾기(⌘K)와 새 Operation(Quick Launch), 그 아래 고정 줄(부관). 커맨드 밴드에서 옮겨 온 것들이다. */
+/** 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 Operation(Quick Launch). 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. */
+export function ConversationSideBarActions() {
+  const t = useT();
+  return (
+    <span className="conversation-side-actions">
+      <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
+        <SearchGlyph />
+      </button>
+      <button type="button" className="conversation-round" onClick={openQuickLaunch} aria-label={t("conversation.side.newOperation")} title={t("conversation.side.newOperation")}>
+        <PlusGlyph />
+      </button>
+    </span>
+  );
+}
+
+/** 맨 위 줄 아래 — 출근한 부관(고정 표식)이 있을 때만 선다. */
 export function ConversationSideBarTop() {
   const t = useT();
   const { commandBandEntries } = usePluginRegistry();
   const pinned = commandBandEntries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID);
+  if (pinned.length === 0) return null;
   return (
     <div className="conversation-side-top">
-      <div className="conversation-side-actions">
-        <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
-          <SearchGlyph />
-        </button>
-        <button type="button" className="conversation-round" onClick={openQuickLaunch} aria-label={t("conversation.side.newOperation")} title={t("conversation.side.newOperation")}>
-          <PlusGlyph />
-        </button>
+      <div className="conversation-side-pinned" role="group" aria-label={t("conversation.side.pinnedAria")}>
+        {pinned.map((entry) => (
+          <PluginErrorBoundary key={entry.id} fallback={null}>
+            <PluginEntry render={entry.render} />
+          </PluginErrorBoundary>
+        ))}
       </div>
-      {pinned.length > 0 ? (
-        <div className="conversation-side-pinned" role="group" aria-label={t("conversation.side.pinnedAria")}>
-          {pinned.map((entry) => (
-            <PluginErrorBoundary key={entry.id} fallback={null}>
-              <PluginEntry render={entry.render} />
-            </PluginErrorBoundary>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -174,11 +178,109 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 
 /** 오른쪽 패널 머리 — 앞 묶음(Operation 탭)과 뒤 묶음(작전구역 도구)을 글자 탭으로. */
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
+  const t = useT();
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
+  const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 탭은 한 줄이다 — 넘치는 탭은 줄에서 걷고 「더보기」 메뉴에 모은다. 탭 단추는 RailToolIcons 의 것 그대로이고(켜짐·순서·배지),
+  // 이 머리는 어느 단추가 줄에 들어가는지만 잰다. 메뉴의 항목은 걷힌 단추를 대신 누른다.
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const items = [...row.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
+      for (const item of items) item.removeAttribute("data-overflow");
+      const more = moreRef.current;
+      const limit = row.clientWidth - (more ? more.offsetWidth + 8 : 0);
+      const rowLeft = row.getBoundingClientRect().left;
+      const fits = (item: HTMLElement) => item.getBoundingClientRect().right - rowLeft <= row.clientWidth;
+      const everythingFits = items.every(fits);
+      const hidden: OverflowTab[] = [];
+      if (!everythingFits) {
+        let cut = false;
+        for (const item of items) {
+          if (!cut && item.getBoundingClientRect().right - rowLeft > limit) cut = true;
+          if (!cut) continue;
+          item.setAttribute("data-overflow", "true");
+          if (item.classList.contains("right-rail-ico")) {
+            hidden.push({ label: item.innerText.trim() || item.getAttribute("aria-label") || "", active: item.classList.contains("is-active"), element: item });
+          }
+        }
+      }
+      setOverflow((current) => sameOverflow(current, hidden) ? current : hidden);
+    };
+    const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
+    measure();
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    resize?.observe(row);
+    // 탭이 서고 걷히거나(Operation 탭) 켜짐이 바뀌면 다시 잰다. 이 머리가 다는 data-overflow 는 관찰하지 않는다.
+    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    mutation?.observe(row, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+    return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
+  }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key !== "Escape" : moreRef.current?.parentElement?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", close, true);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", close, true); };
+  }, [menuOpen]);
+  useEffect(() => { if (overflow.length === 0) setMenuOpen(false); }, [overflow.length]);
+  const hiddenActive = overflow.find((tab) => tab.active) ?? null;
   return (
-    <div className="conversation-panel-tabs">
-      <RailToolIcons context={context} variant="text" />
+    <div className="conversation-panel-head">
+      <div className="conversation-panel-tabs" ref={rowRef}>
+        <RailToolIcons context={context} variant="text" />
+      </div>
+      <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
+        <button
+          type="button"
+          ref={moreRef}
+          className={`right-rail-ico is-text conversation-panel-more${hiddenActive ? " is-active" : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          tabIndex={overflow.length > 0 ? 0 : -1}
+          aria-hidden={overflow.length > 0 ? undefined : true}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {hiddenActive ? hiddenActive.label : t("conversation.panel.more")}
+          <span className="conversation-panel-more-chev" aria-hidden="true">⌄</span>
+        </button>
+        {menuOpen && overflow.length > 0 ? (
+          <div className="conversation-panel-more-menu" role="menu">
+            {overflow.map((tab) => (
+              <button
+                key={tab.label}
+                type="button"
+                role="menuitemradio"
+                aria-checked={tab.active}
+                className={`conversation-panel-more-item${tab.active ? " is-active" : ""}`}
+                onClick={() => { setMenuOpen(false); tab.element.click(); }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </span>
     </div>
   );
+}
+
+interface OverflowTab {
+  readonly label: string;
+  readonly active: boolean;
+  readonly element: HTMLElement;
+}
+
+function sameOverflow(a: readonly OverflowTab[], b: readonly OverflowTab[]): boolean {
+  return a.length === b.length && a.every((tab, index) => tab.element === b[index]!.element && tab.active === b[index]!.active && tab.label === b[index]!.label);
 }
 
 // ── 가운데 대화 칸 ─────────────────────────────────────────────────────────
@@ -261,8 +363,8 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   return (
     <section
       className={`conversation-stage${warRoom ? " is-war-room" : ""}`}
-      // 사이드바·레일이 접혀도 화면 가장자리에 붙지 않는다 — 부유 카드와 같은 12px 바깥 여백.
-      style={{ left: Math.max(insets.left, STAGE_EDGE_GUTTER), right: Math.max(insets.right, STAGE_EDGE_GUTTER) }}
+      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다.
+      style={{ left: insets.left, right: insets.right }}
       aria-label={t("conversation.stage.aria")}
     >
       {surfaceDescriptor && surface ? (
@@ -484,7 +586,9 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
           </button>
         </span>
       </div>
-      {clusterRoot ? (
+      {/* 그룹 대화가 본문을 맡으면 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다(원장 보기도 그 탭) — 노드 줄을 따로
+          세우지 않는다. 본문 렌더러가 없는 묶음만 노드 줄로 구성원 본문을 고른다. */}
+      {clusterRoot && custom === null ? (
         <div className="conversation-nodes">
           <ClusterNodeRail
             layout={clusterRoot}

@@ -71,6 +71,8 @@ interface OperationsSideBarProps {
   /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
   readonly widthCap?: number;
   /** 위쪽 줄 아래에 서는 셸의 기여(대화 중심 화면의 검색·새 Operation·고정 줄). 없으면 아무것도 서지 않는다. */
+  /** 맨 위 줄 오른쪽, 접기 컨트롤 앞에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
+  readonly topStripTrailing?: ReactNode;
   readonly topAccessory?: ReactNode;
   /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
   readonly bottomAccessory?: ReactNode;
@@ -382,6 +384,7 @@ export function OperationsSideBar({
   onCancelAddTheater,
   onForgetTheater,
   widthCap,
+  topStripTrailing,
   topAccessory,
   bottomAccessory,
 }: OperationsSideBarProps) {
@@ -1112,6 +1115,7 @@ export function OperationsSideBar({
             <SideBarViewMenu />
           </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
+        {topStripTrailing}
         <SideBarCollapseControl />
       </div>
       {topAccessory}

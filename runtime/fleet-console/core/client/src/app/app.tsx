@@ -185,7 +185,16 @@ function ConnectedApp() {
   const mobileLayout = useViewMode().effective === "mobile";
   const warRoomMode = useTriageActive();
   // 실험 기능 「대화 중심 화면」은 Operations 화면의 배치다 — 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
-  const conversationLayout = useConversationLayout() && operationsViewVisible;
+  const conversationLayoutOn = useConversationLayout();
+  const conversationLayout = conversationLayoutOn && operationsViewVisible;
+  // 대화 중심 화면이 켜져 있다는 표식 — 화면과 무관하게 선다. Desktop 셸은 이때 신호등·캡션 버튼을 52px 맨 위 줄에 맞추므로
+  // (desktop-contract 의 chrome), 다른 화면의 밴드도 같은 높이로 선다(layout.css). 브라우저에서는 이 표식이 아무것도 바꾸지 않는다.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (conversationLayoutOn) root.setAttribute("data-conversation-layout", "true");
+    else root.removeAttribute("data-conversation-layout");
+    return () => root.removeAttribute("data-conversation-layout");
+  }, [conversationLayoutOn]);
   const warRoomTransitionActive = useWarRoomTransitionActive();
   const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout;
   const workFocusRef = useRef<HTMLElement | null>(null);

@@ -49,7 +49,7 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
 import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
-import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
+import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 
@@ -153,6 +153,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     () => (followedSideBarInset === arenaInsets.left ? arenaInsets : { ...arenaInsets, left: followedSideBarInset }),
     [arenaInsets, followedSideBarInset],
   );
+  // 대화 중심 화면은 세 열이 창 가장자리와 서로에게 붙는다 — 부유 카드의 바깥 여백·사이 틈(CHROME_FLOAT_GUTTER)을 뺀
+  // 사이드바·레일의 실제 폭이 가운데 칸의 좌우다.
+  const conversationInsets: CanvasArenaInsets = useMemo(() => ({
+    left: Math.max(0, followedSideBarInset - CHROME_FLOAT_GUTTER),
+    top: 0,
+    right: railOccupiedPx,
+    bottom: 0,
+  }), [followedSideBarInset, railOccupiedPx]);
 
   const operationOrder = useMemo(
     () => sortedTheaterOperations(state).map((operation) => operation.id),
@@ -937,7 +945,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
         {...(warRoomSideBarCap !== null ? { widthCap: warRoomSideBarCap } : {})}
-        {...(conversation ? { topAccessory: <ConversationSideBarTop />, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
+        {...(conversation ? { topStripTrailing: <ConversationSideBarActions />, topAccessory: <ConversationSideBarTop />, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
       />
     </div>
   );
@@ -986,7 +994,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         {sideBarChrome}
         <ConversationStage
           state={state}
-          insets={canvasArenaInsets}
+          insets={conversationInsets}
           language={language}
           operationKinds={registry.operationKinds}
           onClose={handleClose}
