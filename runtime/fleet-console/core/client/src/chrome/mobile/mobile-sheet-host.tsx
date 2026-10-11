@@ -235,13 +235,14 @@ function ProfileSheet() {
 }
 
 /**
- * 시트를 닫고 목적지를 연다 — 시트가 쌓아 둔 history 항목이 걷힌 뒤(popstate)에 바꾼다. 걷히기 전에 바꾸면 `?dest=`가 그 항목에 쓰여
- * 걷히면서 사라져, 화면은 목적지인데 주소는 홈이라 새로고침이 목록으로 돌아간다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 바꾼다.
+ * 시트를 닫고 다음 일을 한다 — 시트가 쌓아 둔 history 항목이 걷힌 뒤(popstate)에 한다. 걷히기 전에 하면 그 일이 쓰는 history가 걷히는
+ * 항목과 뒤엉킨다: 목적지는 `?dest=`가 걷히는 항목에 쓰여 새로고침이 목록으로 돌아가고, 새 작업 시트는 자기 항목이 걷기에 밀려 표식 없이
+ * 열려 브라우저 뒤로가 시트를 닫지 않고 페이지를 떠난다. 걷을 항목이 없으면 popstate가 없으니 짧은 시간 뒤에 한다.
  */
-function openAfterSheetRelease(destination: Parameters<typeof setMobileDestination>[0]): void {
-  const open = () => { window.removeEventListener("popstate", open); window.clearTimeout(timer); setMobileDestination(destination); };
-  const timer = window.setTimeout(open, 400);
-  window.addEventListener("popstate", open);
+function runAfterSheetRelease(action: () => void): void {
+  const run = () => { window.removeEventListener("popstate", run); window.clearTimeout(timer); action(); };
+  const timer = window.setTimeout(run, 400);
+  window.addEventListener("popstate", run);
   closeMobileSheets();
 }
 
@@ -256,12 +257,12 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const hasTheater = state.activeTheaterId !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
-      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => { closeMobileSheets(); openQuickLaunch(); }}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openQuickLaunch)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>
       {shell ? (
-        <button type="button" className="mobile-sheet-row" onClick={() => openAfterSheetRelease({ kind: "plugin", entryId: shell.entry.id })}>
+        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => setMobileDestination({ kind: "plugin", entryId: shell.entry.id }))}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
         </button>
