@@ -2,7 +2,8 @@ import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/r
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { getT } from "./i18n.js";
-import { globalBrowserAttention, isGlobalBrowserOpen, subscribeGlobalBrowserOpen, toggleGlobalBrowser } from "./global-browser-store.js";
+import { isConversationLayoutActive } from "../../settings/client/use-conversation-layout.js";
+import { globalBrowserAttention, isGlobalBrowserOpen, requestBrowserChooser, subscribeGlobalBrowserOpen, toggleGlobalBrowser } from "./global-browser-store.js";
 
 /**
  * 전역 Fleet 브라우저의 도구모음 진입점 — fleet 범위 레일 도구 칸 맨 앞.
@@ -17,6 +18,15 @@ import { globalBrowserAttention, isGlobalBrowserOpen, subscribeGlobalBrowserOpen
 export const GLOBAL_BROWSER_RAIL_ENTRY_ID = "fleet-browser";
 
 function activateGlobalBrowser(_ctx: RailPanelContext): void {
+  // 칸이 숨는 문서(웹 탭·모바일)에서는 단축키(Mod+Shift+B)도 시트를 세우지 않는다 — 열어 봐야 「Desktop 에서만」 문뿐이다.
+  if (!isDesktopShell()) return;
+  // 대화 중심 화면에서 칸을 눌러 열 때는 「Fleet 브라우저 / Operation 브라우저」 선택 카드를 칸 아래에 세운다(가운데 pill 의
+  // 지구본과 같은 카드). 단축키는 이름 그대로 Fleet 브라우저를 바로 여닫는다 — 누른 칸이 포커스를 쥔 때만 클릭으로 읽는다.
+  const trigger = document.getElementById(`rail-tab-${GLOBAL_BROWSER_RAIL_ENTRY_ID}`);
+  if (!isGlobalBrowserOpen() && isConversationLayoutActive() && trigger !== null && document.activeElement === trigger) {
+    requestBrowserChooser(trigger);
+    return;
+  }
   toggleGlobalBrowser();
 }
 

@@ -246,3 +246,133 @@ html[data-fleet-browser-sheet="open"] .app-toast-host {
     transition: none;
   }
 }
+
+/* ── 대화 중심 화면의 오른쪽 분할 ────────────────────────────────────────────
+   시트가 대화 열 오른쪽 칸(conversation-shell.tsx .conversation-split)에 앉으면 떠 있는 카드가 아니라 세 열과 같은 평면 열이다:
+   그림자·반경·사방 테두리를 걷고, 대화 열과의 사이는 1px 경계 하나만 말한다(오른쪽 패널 .right-rail 과 같은 문법).
+   머리는 대화 중심 화면 맨 위 줄 높이(--conversation-top-row)에 서고, 단추는 가운데 pill 줄의 원형 단추(.conversation-round),
+   주소창은 pill 문법(.conversation-pill), 켜진 탭은 사이드바의 선택 행 면(.side-bar-cluster-row--active)을 쓴다. */
+.fleet-browser-sheet.is-split {
+  background: var(--conversation-surface, var(--canvas-abyss));
+  border: 0;
+  border-left: 1px solid var(--hairline);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.fleet-browser-sheet.is-split .fleet-browser-sheet__cap.op-browser-cap {
+  height: var(--conversation-top-row, 52px);
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
+  border-bottom: 0;
+  background: transparent;
+}
+
+.fleet-browser-sheet.is-split .op-browser__tab {
+  height: 32px;
+  max-width: 200px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+}
+
+.fleet-browser-sheet.is-split .op-browser__tab:hover {
+  background: var(--control-hover-fill);
+}
+
+.fleet-browser-sheet.is-split .op-browser__tab.is-active {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  border-color: transparent;
+}
+
+.fleet-browser-sheet.is-split .op-browser__tab-title {
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+.fleet-browser-sheet.is-split .op-browser__tab.is-active .op-browser__tab-title {
+  color: color-mix(in oklch, var(--brass-ink) 88%, var(--text-secondary));
+}
+
+.fleet-browser-sheet.is-split .op-browser__nav {
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
+}
+
+/* 머리·탐색 줄의 단추 — 원형 32px. 탭 안의 ×와 주소창 안의 바깥 열기는 글자 크기 손잡이로 남는다. */
+.fleet-browser-sheet.is-split .op-browser__nav > .op-browser__icon,
+.fleet-browser-sheet.is-split .op-browser__profile > .op-browser__icon,
+.fleet-browser-sheet.is-split .op-browser__viewport-menu > .op-browser__icon,
+.fleet-browser-sheet.is-split .fleet-browser-sheet__close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass);
+  color: var(--text-secondary);
+}
+
+.fleet-browser-sheet.is-split .op-browser__nav > .op-browser__icon:hover:not(:disabled),
+.fleet-browser-sheet.is-split .op-browser__profile > .op-browser__icon:hover,
+.fleet-browser-sheet.is-split .op-browser__viewport-menu > .op-browser__icon:hover,
+.fleet-browser-sheet.is-split .fleet-browser-sheet__close:hover,
+.fleet-browser-sheet.is-split .op-browser__nav > .op-browser__icon:focus-visible,
+.fleet-browser-sheet.is-split .fleet-browser-sheet__close:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
+  color: var(--text-primary);
+  outline: none;
+}
+
+.fleet-browser-sheet.is-split .op-browser__nav > .op-browser__icon:disabled {
+  opacity: var(--control-disabled-opacity);
+}
+
+.fleet-browser-sheet.is-split .op-browser__url {
+  height: 38px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong);
+}
+
+.fleet-browser-sheet.is-split .op-browser__url:hover {
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
+}
+
+.fleet-browser-sheet.is-split .op-browser__url-input {
+  padding: 0 var(--space-4);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+}
+
+.fleet-browser-sheet.is-split .op-browser__url-display {
+  inset: 0 36px 0 var(--space-4);
+  font-size: var(--t-md);
+}
+
+.fleet-browser-sheet.is-split .fleet-browser-sheet__viewport,
+.fleet-browser-sheet.is-split .fleet-browser-sheet__empty {
+  background: var(--conversation-surface, var(--canvas-abyss));
+}
+
+/* 칸이 펼쳐지는 동안(뷰가 물러나 있는 동안)의 자리 — 대화 바탕보다 한 단 떠 보이는 고요한 면이다. */
+.fleet-browser-sheet.is-split .fleet-browser-sheet__placeholder {
+  background: var(--conversation-side, var(--ink-deep));
+}
+
+.fleet-browser-sheet.is-split .fleet-browser-sheet__empty strong {
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+/* 칸이 접히는 동안 따라 줄어드는 시트 — 뷰는 이미 내려갔고, 누를 것도 없다. */
+.fleet-browser-sheet.is-leaving {
+  pointer-events: none;
+}

@@ -31,6 +31,7 @@ import {
   type GlobalBrowserUnavailableReason,
 } from "./global-browser-store.js";
 import { useGlobalBrowserShortcutsSync } from "./global-shortcuts-sync.js";
+import { BrowserChooserHost } from "./browser-chooser.js";
 import "./browser-panel.css";
 import "./global-browser-sheet.css";
 
@@ -64,10 +65,17 @@ function readCardInset(): number {
 type Services = { readonly language: PersistentComponentContext["language"]; readonly theme: PersistentComponentContext["theme"] };
 
 function unavailableText(t: ReturnType<typeof getT>, reason: GlobalBrowserUnavailableReason | null, desktop: boolean): { title: string; body: string | null } {
-  if (!desktop) return { title: t("terminal.browser.desktopOnly"), body: t("terminal.browser.desktopOnlyBody") };
+  // 이 시트는 Fleet 브라우저다 — Operation 브라우저의 문구(「Operation 브라우저는 Desktop 에서만」)를 빌려 쓰지 않는다.
+  if (!desktop) return { title: t("terminal.globalBrowser.desktopOnly"), body: t("terminal.globalBrowser.desktopOnlyBody") };
   if (reason === "shared") return { title: t("terminal.browser.shared"), body: t("terminal.browser.sharedBody") };
   return { title: t("terminal.browser.desktopMissing"), body: null };
 }
+
+/**
+ * 대화 중심 화면의 오른쪽 분할 자리 — 대화 칸(conversation-shell.tsx)이 대화 열 오른쪽에 세우는 칸이다. 칸은 폭 전이로 펼쳐지고
+ * 접히며, 시트는 매 프레임 그 칸의 사각형에 앉는다. 칸이 없으면(대화 중심 화면이 아니거나 자리가 모자람) 기존 시트 기하를 쓴다.
+ */
+const SPLIT_SEAT_SELECTOR = '.conversation-split[data-kind="fleet"]';
 
 function hostOf(url: string): string {
   try { const parsed = new URL(url); return parsed.host || url; } catch { return url; }
@@ -90,7 +98,12 @@ function stillFits(still: Box, box: Box): boolean {
 }
 
 export function GlobalBrowserSheet({ language, theme }: Services) {
-  return <GlobalBrowserSheetBody language={language} theme={theme} />;
+  return (
+    <>
+      <GlobalBrowserSheetBody language={language} theme={theme} />
+      <BrowserChooserHost language={language} />
+    </>
+  );
 }
 
 function GlobalBrowserSheetBody({ language, theme }: Services) {
@@ -123,6 +136,25 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [geometry, setGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // scrim은 아레나(캔버스)만 덮는다 — 도구모음·섬·레일·사이드바는 기하 밖이라 그대로 조작된다.
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
+  // 대화 중심 화면의 오른쪽 분할 자리에 앉아 있는가 — 앉아 있으면 scrim 이 없고(대화는 그대로 조작된다) 면은 오른쪽 열의 평면 문법을 쓴다.
+  const [split, setSplit] = React.useState(false);
+  // 분할 칸에서 닫으면 칸이 접히는 동안 시트(크롬)도 그 칸을 따라 줄어든다 — 한 번에 사라지지 않는다. 뷰는 닫는 순간 내려가고,
+  // 칸이 다 접히거나(자리 표식이 걷힘) 시간이 다하면 시트도 내린다. 그동안 시트는 누를 수 없다.
+  const [leaving, setLeaving] = React.useState(false);
+  const leavingRef = React.useRef(false);
+  const splitRef = React.useRef(false);
+  splitRef.current = split;
+  const wasOpenRef = React.useRef(open);
+  React.useEffect(() => {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (open || !wasOpen || !splitRef.current) { leavingRef.current = false; setLeaving(false); return; }
+    leavingRef.current = true;
+    setLeaving(true);
+    const timer = setTimeout(() => { leavingRef.current = false; setLeaving(false); }, 600);
+    return () => clearTimeout(timer);
+  }, [open]);
+  const shown = open || leaving;
   const [still, setStill] = React.useState<StillFrame | null>(null);
   const [viewportBox, setViewportBox] = React.useState<Box | null>(null);
   const [profileMenu, setProfileMenu] = React.useState(false);
@@ -186,6 +218,26 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (typeof window === "undefined" || typeof document === "undefined") return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    // 분할 자리 — 칸의 사각형이 곧 시트다. 칸이 펼쳐지는 동안에도 줄이기만 하지 않고 그대로 따라간다(넓어지는 쪽이 이 전이의 뜻이다).
+    // 네이티브 뷰는 칸이 정착할 때까지 물러나 있다가(아래 step) 정착한 자리에 한 번 놓인다.
+    const seat = document.querySelector<HTMLElement>(SPLIT_SEAT_SELECTOR);
+    // 접히던 칸이 자리 표식을 걷었으면 물러나던 시트도 끝난다 — 기존 시트 기하로 한 프레임 튀지 않게 여기서 멈춘다.
+    if (seat === null && leavingRef.current) {
+      leavingRef.current = false;
+      setLeaving(false);
+      return undefined;
+    }
+    if (seat !== null) {
+      const rect = seat.getBoundingClientRect();
+      const seated = { left: Math.round(rect.left), top: Math.round(rect.top), right: Math.round(vw - rect.right), bottom: Math.round(vh - rect.bottom) };
+      setSplit(true);
+      setScrimGeometry(null);
+      setGeometry((current) => current && current.left === seated.left && current.top === seated.top && current.right === seated.right && current.bottom === seated.bottom ? current : seated);
+      const stage = document.querySelector(".conversation-stage");
+      const settling = [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)));
+      return { ...seated, settling, split: true };
+    }
+    setSplit(false);
     const sidebar = document.querySelector(".operations-side-bar") as HTMLElement | null;
     const rail = document.querySelector(".right-rail") as HTMLElement | null;
     const island = document.querySelector(".war-room-bar") as HTMLElement | null;
@@ -271,7 +323,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const settling = sidebar?.dataset.resizing === "true" || rail?.classList.contains("is-dragging") === true
       || ([[sidebar, cardMotion], [rail, cardMotion], [island, lineMotion], [band, lineMotion]] as const).some(([element, properties]) =>
         (element?.getAnimations?.() ?? []).some((animation) => properties.includes((animation as CSSTransition).transitionProperty)));
-    return { ...measured, settling };
+    return { ...measured, settling, split: false };
   }, []);
 
   // ---- 크롬 기하 변화: 사이드바 펼침·접힘, 레일 열기·닫기, 끌기 리사이즈 ----
@@ -287,7 +339,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   geometryRef.current = geometry;
 
   React.useEffect(() => {
-    if (!open) { setGeometry(null); setChromeParked(false); return; }
+    if (!shown) { setGeometry(null); setChromeParked(false); setSplit(false); return; }
     type Measured = NonNullable<ReturnType<typeof measureGeometry>>;
     type Edges = { left: number; top: number; right: number; bottom: number };
     const same = (a: Edges, b: Edges) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
@@ -310,7 +362,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           right: Math.max(before.right, measured.right), bottom: Math.max(before.bottom, measured.bottom),
         };
         const unknown = parkUnlessMoved && measured.settling && before !== null && same(before, measured);
-        if (unknown || shrank(before, shown)) {
+        // 분할 자리는 펼쳐지고 접히는 내내 움직인다 — 방향과 무관하게 정착할 때까지 뷰를 물린다.
+        if ((measured.split && measured.settling) || unknown || shrank(before, shown)) {
           parkedForMotion = true;
           setChromeParked(true);
         }
@@ -326,6 +379,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       if (!stopped) { frame = requestAnimationFrame(follow); return; }
       // 정착 — 넓어지는 쪽을 포함한 최종 자리를 세우고 물러남을 푼다. 배치가 그 자리를 확인하고 뷰를 한 번 놓는다.
       chromeMovingRef.current = false;
+      // 칸을 따라 접히던 시트는 칸이 멈춘 그 프레임에 내린다.
+      if (leavingRef.current) { leavingRef.current = false; setLeaving(false); return; }
       parkedForMotion = false;
       flushSync(() => { measureGeometry(); setChromeParked(false); });
     };
@@ -344,7 +399,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     let watched: Element[] = [];
     // 크롬은 모드·페이지에 따라 다시 마운트된다. 주기 재측정 때 관찰 대상을 다시 붙든다.
     const watch = () => {
-      const next = [".operations-side-bar", ".right-rail", ".war-room-bar", ".console-toolbar"]
+      const next = [".operations-side-bar", ".right-rail", ".war-room-bar", ".console-toolbar", ".conversation-split", ".conversation-stage"]
         .map((selector) => document.querySelector(selector))
         .filter((element): element is Element => element !== null);
       if (next.length === watched.length && next.every((element, index) => element === watched[index])) return;
@@ -357,6 +412,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       if (frame === 0) measureGeometry();
     };
     remeasure();
+    // 대화 중심 화면에서는 시트가 서는 순간 분할 자리가 펼쳐지기 시작한다 — 관찰자가 놓친 첫 변화도 따라가게 한 번 판정한다.
+    // 분할 자리가 없는 배치(기존 시트)는 이 판정을 거치지 않는다.
+    if (document.querySelector(SPLIT_SEAT_SELECTOR) !== null) onChromeChange();
     window.addEventListener("resize", remeasure);
     const timer = setInterval(remeasure, 1000);
     return () => {
@@ -367,7 +425,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       chromeMovingRef.current = false;
       setChromeParked(false);
     };
-  }, [open, measureGeometry]);
+  }, [shown, measureGeometry]);
 
   // ---- 네이티브 뷰 배치: 겹침이 뜨면 즉시 물리고, 물러난 뒤 찍은 정지 화면을 깐다. ----
   // 캡처를 기다렸다 물리지 않는다(H2) — 정지 화면은 물러난 뒤에 찍어 도착하면 깐다(아래 park 회차).
@@ -555,7 +613,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   return (
     <>
-      {open && typeof document !== "undefined" ? createPortal((
+      {shown && typeof document !== "undefined" ? createPortal((
         <>
           {/* 창 drag 영역은 DOM 순서로 합쳐진다 — 뒤 크롬이 시트의 no-drag를 다시 덮지 않게 마지막 층에 세운다. */}
           {/* 뒤 화면을 가리지 않는 투명한 닫기 영역 — 아레나만 덮고, 닫기는 이 클릭에만.
@@ -571,7 +629,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           <section
         ref={sheetRef}
         id="fleet-browser-sheet"
-        className="fleet-browser-sheet"
+        className={`fleet-browser-sheet${split ? " is-split" : ""}${leaving && !open ? " is-leaving" : ""}`}
         role="region"
         aria-label={t("terminal.globalBrowser.sheetAria")}
         onKeyDown={onSheetKeyDown}

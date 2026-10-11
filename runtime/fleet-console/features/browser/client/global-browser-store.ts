@@ -133,6 +133,56 @@ export function isGlobalBrowserOpen(): boolean {
   return sheetOpen;
 }
 
+// ---------- 어느 브라우저로 열까 (대화 중심 화면) ----------
+
+/**
+ * 대화 중심 화면에서 브라우저 단추(가운데 pill 의 지구본·Theater 패널 글리프)를 누르면 「Fleet 브라우저 / Operation 브라우저」
+ * 두 행의 선택 카드가 그 단추 아래에 선다. 카드는 이 기능이 그린다(link-open-card 와 같은 문법). Operation 행을 무엇이
+ * 여는지는 대화 칸이 안다 — 칸이 지금 대상의 여는 손잡이를 내건다(publishOperationBrowserTarget). 걸린 것이 없으면 그 행은
+ * 닫힌 채 선다.
+ */
+export interface OperationBrowserTarget {
+  readonly open: () => void;
+}
+
+export interface BrowserChooserRequest {
+  readonly anchor: HTMLElement;
+  readonly operation: OperationBrowserTarget | null;
+}
+
+let operationBrowserTarget: OperationBrowserTarget | null = null;
+let chooserRequest: BrowserChooserRequest | null = null;
+const chooserListeners = new Set<() => void>();
+
+function notifyChooser(): void {
+  for (const listener of chooserListeners) listener();
+}
+
+/** 대화 칸이 지금 대상의 Operation 브라우저 손잡이를 내건다. 칸이 내려가면 null 로 거둔다. */
+export function publishOperationBrowserTarget(target: OperationBrowserTarget | null): void {
+  operationBrowserTarget = target;
+}
+
+/** 선택 카드를 그 단추 아래에 세운다. Operation 행은 넘긴 손잡이(없으면 대화 칸이 내건 것)로 연다. */
+export function requestBrowserChooser(anchor: HTMLElement, operation: OperationBrowserTarget | null = operationBrowserTarget): void {
+  chooserRequest = { anchor, operation };
+  notifyChooser();
+}
+
+export function closeBrowserChooser(): void {
+  if (chooserRequest === null) return;
+  chooserRequest = null;
+  notifyChooser();
+}
+
+export function useBrowserChooserRequest(): BrowserChooserRequest | null {
+  return React.useSyncExternalStore(
+    (listener) => { chooserListeners.add(listener); return () => { chooserListeners.delete(listener); }; },
+    () => chooserRequest,
+    () => null,
+  );
+}
+
 // ---------- 보이지 않는 뒤 탭 ----------
 
 /**
