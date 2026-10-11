@@ -91,6 +91,7 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     steer: (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective),
     message: (body: Ref & { memberId?: string | null; text: string }) => launch.message(body.objectiveId, body.memberId ?? null, body.text, options(body)),
     stop: ({ objectiveId }: Ref) => launch.stop(objectiveId),
+    memberStop: ({ objectiveId, memberId }: Ref & { memberId: string }) => launch.memberStop(objectiveId, memberId),
     compact: ({ objectiveId }: Ref) => launch.compact(objectiveId),
     followupDiscard: ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor)),
     followupRetry: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId)),

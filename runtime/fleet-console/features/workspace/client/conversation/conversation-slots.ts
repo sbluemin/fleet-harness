@@ -35,12 +35,6 @@ export function getConversationSubject(): OperationNode | null {
   return subject;
 }
 
-/** 가운데 칸의 주인이 바뀔 때 부른다 — 훅을 쓸 수 없는 모듈 수준 소비자(탭 등록 여부)용. */
-export function subscribeConversationSubject(listener: () => void): () => void {
-  subjectListeners.add(listener);
-  return () => { subjectListeners.delete(listener); };
-}
-
 export function useConversationSubject(): OperationNode | null {
   return useSyncExternalStore(
     (listener) => { subjectListeners.add(listener); return () => { subjectListeners.delete(listener); }; },

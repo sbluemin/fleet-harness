@@ -122,6 +122,8 @@ export interface LaunchService {
   broadcast(objectiveId: string, text: string, options?: LaunchOptions): Promise<import("@fleet-console/sdk/conversation").GroupWriteResult>;
   /** 전체 중단 — 이미 있는 지휘관과 담당 Operation 에 인터럽트를 보낸다. */
   stop(objectiveId: string): Promise<{ readonly objective: Objective; readonly interrupted: number; readonly targets: readonly StopTarget[] }>;
+  /** 구성원 한 명의 진행 턴만 끊는다 — 보드의 정지 표시는 남기지 않는다(목표 전체를 멈춘 것이 아니다). */
+  memberStop(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly target: StopTarget }>;
   /** 전체 압축 — 지휘관과 operationId 가 있는 모든 구성원에게 "/compact" 를 보낸다. 큐잉·깨움·거절은 호스트 전달 경로가 정한다. */
   compact(objectiveId: string): Promise<{ readonly objective: Objective; readonly requested: number; readonly woken: number; readonly rejected: number; readonly excluded: number; readonly targets: readonly CompactTarget[] }>;
   /** Operation 이 삭제 유예에 들어갔다 — 지휘관이었다면 담당 Operation 도 함께 닫는다. */
@@ -1586,6 +1588,22 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 걸리므로 개시 전 목표에는 남기지 않는다(기록 없는 목표에 레코드를 만들지 않는다).
       if (current.commenced) current = store.setStopped(objectiveId, true);
       return { objective: current, interrupted: targets.filter((target) => target.outcome === "interrupted").length, targets };
+    },
+
+    async memberStop(objectiveId, memberId) {
+      const current = objective(objectiveId);
+      if (!current.members.some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
+      // 모두 정지와 같은 판정·같은 전달이다 — 대상만 한 명이다.
+      const target: StopTarget = !ctx.host.operations.get(memberId) || !stoppable(memberId) ? { operationId: memberId, outcome: "skipped", reason: "not_working" }
+        : ctx.host.consoleControl?.observe(memberId)?.activity === "background" ? { operationId: memberId, outcome: "skipped", reason: "not_in_turn" }
+          : await control().request({ kind: "interrupt", operationId: memberId }).then(
+            () => ({ operationId: memberId, outcome: "interrupted" as const }),
+            (error: unknown) => {
+              const reason = error instanceof Error ? error.message : String(error);
+              console.warn(`[objectives] Could not interrupt member ${memberId} of objective ${objectiveId}: ${reason}`);
+              return { operationId: memberId, outcome: "failed" as const, reason };
+            });
+      return { objective: objective(objectiveId), target };
     },
 
     async compact(objectiveId) {

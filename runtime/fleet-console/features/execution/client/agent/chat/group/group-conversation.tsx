@@ -350,7 +350,3 @@ export function GroupWorkingLine({ working, language, onStop }: {
   );
 }
 
-/** 참여자 활동 낱말 — 구성원 탭이 쓴다. */
-export function activityKey(activity: ConversationParticipant["activity"]) {
-  return `group.activity.${activity}` as const;
-}

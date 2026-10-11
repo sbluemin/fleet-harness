@@ -219,56 +219,6 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-chat-return-button:hover { background: var(--control-rest-hover); }
 .group-chat-return-button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
-/* 오른쪽 「구성원」 탭 */
-.group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
-.group-members-heading {
-  margin: 0;
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-.group-members-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-.group-members-row {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-}
-.group-members-row:hover,
-.group-members-row:focus-within { background: var(--control-wash-hover); }
-.group-members-row.is-showing { border-color: var(--brass); background: var(--control-wash); }
-.group-members-text { display: flex; flex-direction: column; min-width: 0; }
-.group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.group-members-role { font-size: var(--t-xs); color: var(--text-tertiary); }
-.group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-1); }
-.group-members-state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--t-xs); color: var(--text-secondary); padding-top: 2px; }
-.group-members-add {
-  align-self: flex-start;
-  padding: var(--space-2);
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.group-members-add:hover { color: var(--text-primary); }
-.group-members-add:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
-
-/* 활동 점 — 노드 줄 상태 점과 같은 어휘(작업 warn 채움, 백그라운드 warn 고리, 대기 positive, 끝남 빈 고리, 답 기다림 aurora 마름모). */
-.group-members-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
-.group-members-dot.is-running { background: var(--warn); }
-.group-members-dot.is-background { box-shadow: inset 0 0 0 1px var(--warn); }
-.group-members-dot.is-idle { background: var(--positive); }
-.group-members-dot.is-ended,
-.group-members-dot.is-unknown { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-.group-members-dot.is-awaiting { border-radius: 1.5px; transform: rotate(45deg); background: var(--aurora); }
-
 @media (prefers-reduced-motion: reduce) {
   .group-chat-line-chev,
   .group-chat-line-summary { transition: none; }
@@ -296,7 +246,6 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .group-ledger-body > * { flex: 1 1 auto; min-height: 0; }
 
-.group-members-empty { margin: 0; padding: var(--space-4); font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); }
 
 /* 입력창 — 가운데 칸 바닥의 캡슐. 진행 줄 바로 아래, 대화 열과 같은 폭. */
 .group-composer-wrap {

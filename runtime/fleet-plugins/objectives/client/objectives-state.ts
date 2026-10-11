@@ -847,3 +847,13 @@ export function openObjectiveFromCluster(theaterId?: string): void {
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
 }
+
+/**
+ * 대화 중심 화면이 서 있는가 — 호스트의 대화 능력(`ctx.conversation`)으로 읽는다. 구버전 호스트·설치 전에는 꺼진 것으로 다룬다.
+ * 켜져 있을 때만 목표 패널의 구성원 섹션이 「원장 보기」·「정지」를 보인다(그 화면의 오른쪽 「구성원」 탭을 대신한다).
+ */
+const subscribeConversationLayout = (listener: () => void): (() => void) => installed?.conversation?.subscribe(listener) ?? (() => undefined);
+const conversationLayoutActive = (): boolean => installed?.conversation?.isActive() === true;
+export function useConversationLayoutActive(): boolean {
+  return useSyncExternalStore(subscribeConversationLayout, conversationLayoutActive, () => false);
+}
