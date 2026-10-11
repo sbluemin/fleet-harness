@@ -45,6 +45,7 @@ import { syncSettingsSearchPlugins } from "../../../../features/settings/client/
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
+import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
@@ -735,6 +736,8 @@ function ConnectedApp() {
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
+        {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
+        <SettingsModalHost visible={conversationLayout && !mobileLayout} layoutOn={conversationLayoutOn} mobile={mobileLayout} />
         <TheaterInboxHost />
         <WhatsNewModal state={state} automaticSuspended={terminalFocused} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}

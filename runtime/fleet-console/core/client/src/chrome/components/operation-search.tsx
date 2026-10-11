@@ -55,6 +55,7 @@ import { enterTriage, exitTriage, focusedTriageOperationId, isTriageActive, setT
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
+import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
 import {
@@ -523,7 +524,8 @@ export function OperationSearch({
         previousFocusRef.current = null;
         // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
         if (!location.pathname.startsWith("/operations")) navigate({ pathname: "/operations", search: window.location.search });
-        openRailPanel(SETTINGS_RAIL_ENTRY_ID);
+        // 대화 중심 화면에서는 같은 문이 가운데 모달을 연다 — 모달은 마운트하며 자기 검색 입력으로 포커스를 가져간다.
+        openSettingsSurface();
             // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
         // 프레임을 하나 넘겨 검색 입력(첫 컨트롤)으로 보낸다. 실패 시 표면 본문이 받는다.
         window.requestAnimationFrame(() => {

@@ -2,18 +2,16 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
-import { openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
-import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { buildCoreSettingsSections, collectPluginSettingsSections, resolveSettingsSectionId } from "./sections.js";
-import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "./settings-pane.js";
+import { openSettingsSurface } from "./settings-door.js";
 
 /**
  * 옛 `/settings` 주소의 데스크톱 어댑터.
  *
  * 페이지는 은퇴했지만 주소는 계속 열려야 한다 — 북마크, 이전 릴리스가 만든 링크, 데스크톱
  * 피커의 `/console/settings?section=remote-access`가 전부 이 문으로 들어온다. 어댑터는
- * 주소의 섹션을 레거시 id 매핑까지 거쳐 해석해 설정 표면을 그 자리로 열고, 주소는
+ * 주소의 섹션을 레거시 id 매핑까지 거쳐 해석해 설정 표면(기존 배치는 레일, 대화 중심 화면은 모달)을 그 자리로 열고, 주소는
  * 캔버스로 갈아 끼운다(replace — Back이 유령 라우트를 다시 밟지 않도록).
  *
  * 폰은 이 어댑터를 타지 않는다. 레일이 없는 폰에서는 목록-상세 페이지가 같은 섹션
@@ -33,8 +31,7 @@ export function SettingsRouteAdapter() {
       ...collectPluginSettingsSections(registry.providers, locale, t).map((section) => section.id),
     ]);
     const section = resolveSettingsSectionId(requested, available) ?? "appearance";
-    openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-    openPane({ paneId: SETTINGS_PANE_ID, params: { section } });
+    openSettingsSurface(section);
     navigate("/operations", { replace: true });
   }, [location.search, navigate, registry.providers, locale, t]);
 
