@@ -21,7 +21,7 @@ const actionObjectSchema = z.object({
   theaterId: z.string().min(1).max(128).optional(), operationId: z.string().min(1).max(128).optional(),
   text: z.string().min(1).max(32_000).optional(), model: z.string().max(200).optional(), effort: z.string().max(32).optional(),
   viewMode: z.enum(["chat", "terminal"]).optional(), liveOnly: z.boolean().optional(),
-  humanInput: z.object({ id: z.uuid(), targetOperationId: z.string().min(1).max(128).optional(), copy: z.boolean().optional() }).strict().optional(),
+  humanInput: z.object({ id: z.uuid(), targetOperationId: z.string().min(1).max(128).optional(), copy: z.boolean().optional(), act: z.enum(["start", "plan", "steer"]).optional(), author: z.literal("commodore").optional() }).strict().optional(),
   // send 전용 — 사람이 올린 첨부 id(실행 기능의 런치 첨부). 입력창 상한(4)보다 넉넉한 입력 경계만 둔다; 해석·소유 검사는 전달이 한다.
   attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(16).optional(),
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),

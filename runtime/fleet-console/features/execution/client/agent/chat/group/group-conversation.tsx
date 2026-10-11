@@ -1,7 +1,9 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
+import { pluginOriginIdentity } from "../origin-mark.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
@@ -19,6 +21,8 @@ import "./group-chat.css";
  * 줄로 두어 사람에게 한 말과 섞이지 않게 한다 — 펼치면 「보낸 메시지 → 수신자 / 본문 / 전달 결과」, 그 안의 「원장
  * 보기」는 이 자리에 그 참여자의 원장(기존 채팅 본문 전체)을 읽기 전용으로 세운다(`GroupLedgerFrame`). 원장은 걸러 낸
  * 요약이 아니다 — 고르는 일은 셸의 구성원 본문 선택이 지고, 이 컴포넌트는 그 문을 콜백으로 받는다.
+ * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패 알림 등)는 발화자가 아니라 출처이므로 같은 가운데 접힌 줄로
+ * 선다 — 「목표 → 지휘관 발췌」, 펼치면 전문. 사람·사령관이 보드 행위에 덧붙인 말은 그 쪽의 말풍선에 「개시하며」 같은 행위를 단다.
  * 진행 줄은 일하는 참여자를 모두 쌓아 보인다.
  *
  * 쓰기(정지·사령관 기록 열기·원장 열기)는 콜백 자리만 둔다. 콜백이 없으면 그 단추도 서지 않는다 — 눌리는 척하지 않는다.
@@ -191,6 +195,7 @@ function TimelineEntry({ entry, previous, live, participants, language, onOpenLe
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
     case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} />;
+    case "plugin-notice": return <PluginNoticeLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
   }
 }
 
@@ -205,6 +210,8 @@ function MessageBubble({ entry, continued, live, participants, language }: {
   const time = timeOf(entry.at, language);
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
   if (!entry.streaming && entry.text.trim().length === 0) return null;
+  // 보드 행위에 덧붙인 말이면 받는 이 뒤에 그 행위를 단다 — 그냥 대화가 아니라 개시·구상·방향 수정과 함께 간 말이다.
+  const via = entry.via ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-via">{t(`group.via.${entry.via}`)}</span></> : null;
   if (entry.speaker.kind === "human") {
     return (
       <div className="group-chat-human" {...(time ? { title: time } : {})}>
@@ -213,6 +220,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
             <span aria-hidden="true">→</span>
             <SpeakerMark speaker={entry.recipient} size="sm" />
             <SpeakerName speaker={entry.recipient} />
+            {via}
           </span>
         ) : null}
         <div className={`group-chat-bubble is-human${entry.format === "markdown" ? " is-markdown" : ""}`}>
@@ -224,11 +232,20 @@ function MessageBubble({ entry, continued, live, participants, language }: {
     );
   }
   // 지휘관·구성원의 응답은 채팅과 같이 마크다운이다. 흐르는 동안에는 글자 단위로 자란다.
+  // 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다.
+  const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} {...(time ? { title: time } : {})}>
-      <span className="group-chat-agent-mark">{continued ? null : live ? <LiveSpeakerMark speaker={entry.speaker} participants={participants} /> : <SpeakerMark speaker={entry.speaker} />}</span>
+      <span className="group-chat-agent-mark">{continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />}</span>
       <div className="group-chat-agent-box">
-        {continued ? null : <SpeakerName speaker={entry.speaker} className="group-chat-agent-name" />}
+        {continued ? null : via && entry.recipient ? (
+          <span className="group-chat-agent-name group-chat-agent-via">
+            <SpeakerName speaker={speaker} />
+            <span className="group-chat-line-arrow" aria-hidden="true">→</span>
+            <SpeakerName speaker={entry.recipient} />
+            {via}
+          </span>
+        ) : <SpeakerName speaker={speaker} className="group-chat-agent-name" />}
         <div className="group-chat-bubble is-agent is-markdown">
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
@@ -308,6 +325,52 @@ function dedupe(speakers: readonly ConversationSpeaker[]): readonly Conversation
     seen.add(key);
     return true;
   });
+}
+
+/**
+ * 플러그인이 혼자 보낸 지시 — 「목표 → 지휘관 발췌」 한 줄, 펼치면 전문. 출처는 단일 채팅의 출처 줄과 같은 이름·글리프이고,
+ * 모르는 플러그인은 「플러그인」으로 부른다(플러그인 id 는 화면에 쓰지 않는다). 문면이 없는 지시는 지금처럼 세우지 않는다.
+ */
+function PluginNoticeLine({ entry, language, onOpenLedger }: {
+  readonly entry: Extract<GroupTimelineEntry, { kind: "plugin-notice" }>;
+  readonly language: ConsoleLocale | undefined;
+  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
+}) {
+  const t = getGroupT(language);
+  if (entry.text.trim().length === 0) return null;
+  const known = pluginOriginIdentity(entry.pluginId, language ?? "en");
+  const time = timeOf(entry.at, language);
+  const preview = excerpt(entry.text);
+  // 지휘관에게 간 알림이면 이 대화가 곧 그 원장이다 — 구성원에게 간 것만 원장 링크를 둔다(위임 줄과 같은 규칙).
+  const ledger = onOpenLedger && entry.recipient.kind === "member" && entry.recipient.operationId ? entry.recipient : null;
+  return (
+    <details className="group-chat-line group-chat-plugin-notice">
+      <summary className="group-chat-line-summary">
+        <span className="group-chat-notice-source">
+          <span className="group-chat-notice-glyph" aria-hidden="true"><AgentGlyph name={known?.glyph ?? "other"} /></span>
+          {known?.name ?? t("group.notice.plugin")}
+        </span>
+        <span className="group-chat-line-arrow" aria-hidden="true">→</span>
+        <span className="group-chat-delegation-party">
+          <SpeakerMark speaker={entry.recipient} size="sm" />
+          <SpeakerName speaker={entry.recipient} />
+        </span>
+        {preview ? <span className="group-chat-line-excerpt">{preview}</span> : null}
+        {time ? <span className="group-chat-line-time">{time}</span> : null}
+        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="group-chat-line-detail">
+        <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
+        {ledger ? (
+          <div className="group-chat-line-actions">
+            <button type="button" className="group-chat-link" onClick={() => onOpenLedger!(ledger.operationId!)}>
+              {t("group.delegation.openLedger", { name: ledger.name })}
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
 }
 
 function MembershipLine({ entry, language }: {

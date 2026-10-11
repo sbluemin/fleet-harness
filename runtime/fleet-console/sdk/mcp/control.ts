@@ -2,6 +2,16 @@ export type ConsoleActivity = "idle" | "running" | "awaiting" | "background" | "
 export type ConsoleActionKind = "launch" | "send" | "interrupt" | "resume";
 export type ConsoleCaller = { readonly kind: "operation"; readonly operationId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 
+/** 플러그인이 대신 보낸 말이 덧붙여진 보드 행위. */
+export type ConsoleHumanInputAct = "start" | "plan" | "steer";
+export interface ConsoleHumanInput {
+  readonly id: string;
+  readonly targetOperationId?: string;
+  readonly copy?: boolean;
+  readonly act?: ConsoleHumanInputAct;
+  readonly author?: "commodore";
+}
+
 export interface ConsoleActionInput {
   readonly kind: ConsoleActionKind;
   readonly theaterId?: string;
@@ -10,8 +20,12 @@ export interface ConsoleActionInput {
   readonly text?: string;
   /** send 전용 — 전달 직전에도 live여야 한다. 방송이 휴면 세션을 뜻밖에 깨우지 않게 한다. */
   readonly liveOnly?: boolean;
-  /** 신뢰된 플러그인 send 전용 표시 출처. 사람 입력을 대행했음을 원장에 명시하며 권한은 바꾸지 않는다. */
-  readonly humanInput?: { readonly id: string; readonly targetOperationId?: string; readonly copy?: boolean };
+  /**
+   * 신뢰된 플러그인 send 전용 표시 출처. 사람 입력을 대행했음을 원장에 명시하며 권한은 바꾸지 않는다.
+   * `act` 는 그 말이 함께 간 보드 행위(개시·구상·방향 수정)다 — 표시 문면은 그 행위에 덧붙인 말이다.
+   * `author: "commodore"` 는 사람이 아니라 사령관이 쓴 말이라는 뜻이다(사령관이 그 행위를 한 경우).
+   */
+  readonly humanInput?: ConsoleHumanInput;
   /**
    * send 전용·`humanInput` 과 함께만 — 사람이 입력창에서 올린 이미지 첨부 id(`uploadLaunchAttachment`). 사람 채팅 전송과 같은 길로
    * 본문 뒤에 경로가 합성되고, 전달에 성공하면 파일 수명이 받는 Operation 을 따른다. id 하나는 한 세션에만 묶인다.

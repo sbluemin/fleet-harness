@@ -41,7 +41,8 @@ export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
     const input = record.humanInput as ConsoleActionInput["humanInput"];
     const valid = input && typeof input.id === "string" && /^[0-9a-f-]{36}$/i.test(input.id)
       && (input.targetOperationId === undefined || (typeof input.targetOperationId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(input.targetOperationId)));
-    return { kind: "plugin", pluginId: record.pluginId, ...(valid ? { humanInput: { id: input.id, ...(input.targetOperationId ? { targetOperationId: input.targetOperationId } : {}), ...(input.copy === true ? { copy: true } : {}) } } : {}) };
+    const act = valid && (input.act === "start" || input.act === "plan" || input.act === "steer") ? input.act : undefined;
+    return { kind: "plugin", pluginId: record.pluginId, ...(valid ? { humanInput: { id: input.id, ...(input.targetOperationId ? { targetOperationId: input.targetOperationId } : {}), ...(input.copy === true ? { copy: true } : {}), ...(act ? { act } : {}), ...(input.author === "commodore" ? { author: "commodore" as const } : {}) } } : {}) };
   }
   return undefined;
 }
