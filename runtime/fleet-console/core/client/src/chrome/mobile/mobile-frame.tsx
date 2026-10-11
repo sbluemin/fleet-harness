@@ -24,7 +24,7 @@ import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
 import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDestination, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl } from "./mobile-store.js";
+import { getMobileDestination, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -57,6 +57,15 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 다른 화면에서 /operations로 돌아오는 길이 도구·목적지 상태를 붙들고 있지 않게: 라우트가 홈이 아니면 홈으로 되돌려 둔다.
   const path = location.pathname.replace(/\/+$/, "");
   useEffect(() => { if (path === "/settings") setMobileDestination({ kind: "home" }); }, [path]);
+  // 프로필 시트의 행으로 연 설정 상세(`/settings`)를 어떤 뒤로(브라우저·제스처·‹·브리지)로 떠나든 그 시트로 돌아온다 — 행이 시트의 history 항목을
+  // 상세로 바꿔 쓰므로(S-51, 항목이 늘지 않는다) 브라우저 뒤로는 시트 없는 홈에 닿는다. ‹·브리지는 이미 시트를 열었으면 다시 열지 않는다.
+  const routeRef = useRef({ path, profileDetail: false });
+  const profileDetail = path === "/settings" && (location.state as { readonly mobileProfileReturn?: true } | null)?.mobileProfileReturn === true;
+  useEffect(() => {
+    const previous = routeRef.current;
+    routeRef.current = { path, profileDetail };
+    if (previous.profileDetail && path === "/operations" && getMobileSheetStack().length === 0) pushMobileSheet({ kind: "profile" });
+  }, [path, profileDetail]);
   // 라우트 이동(replace)이 주소의 `?dest=`를 지울 수 있다 — 라우트가 정착한 뒤 목적지를 주소에 다시 적는다(새로고침 복원용).
   useEffect(() => { syncMobileDestinationUrl(); }, [path, destination]);
 
