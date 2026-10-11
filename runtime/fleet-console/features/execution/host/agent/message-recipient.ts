@@ -77,7 +77,7 @@ async function registeredSocketSessions(socket: string, configDir: string): Prom
       if (await realpath(record.messagingSocketPath).catch(() => "") !== address) continue;
       // kill(pid, 0)만으로는 재사용된 PID를 구별하지 못한다. CLI와 같은 UTC/C lstart 토큰을 대조한다.
       const current = await execFileAsync("ps", ["-o", "lstart=", "-p", String(record.pid)], {
-        timeout: 1000, maxBuffer: 4096, env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+        timeout: 1000, maxBuffer: 4096, windowsHide: true, env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
       }).then(({ stdout }) => stdout.trim(), () => "");
       if (current && current === record.procStart.trim()) matches.push(record.sessionId);
       if (matches.length > 1) return matches;
