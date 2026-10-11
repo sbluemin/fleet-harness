@@ -2,7 +2,7 @@ import type { ConversationSpeaker, GroupTimelineEntry, OperationClusterConversat
 import { MAX_OBJECTIVE_ACTIONS, type Objective } from "../server/types.js";
 
 /** Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void): OperationClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void): OperationClusterConversation {
   const members: ConversationSpeaker[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) } }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
@@ -21,7 +21,12 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   });
   const request = !objective.done ? objective.decisionRequest : null;
   const truncated = (objective.memberHistory?.length ?? 0) >= MAX_OBJECTIVE_ACTIONS || Object.values(objective.actionCounts ?? {}).reduce((sum, count) => sum + count, 0) > (objective.actions?.length ?? 0);
-  return { operationId: objective.id, members, events, truncated, decision: request ? {
+  // 사령관 행위 줄 → 그 시각의 사령관 기록(읽기 전용). 줄 id 로 시각을 찾는다 — 모르는 줄이면 아무 일도 없다.
+  const openBoardAction = openRecord ? (entryId: string) => {
+    const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
+    if (entry && entry.at !== null) openRecord(entry.at);
+  } : undefined;
+  return { operationId: objective.id, members, events, truncated, ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, text: question.text, multiSelect: question.multiSelect, options: question.options })), open,
   } : null };

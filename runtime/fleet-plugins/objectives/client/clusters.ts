@@ -6,6 +6,7 @@ import { memberFailureReason } from "../server/signals.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
 import { objectiveConversation } from "./conversation.js";
+import { openCommodoreConversation } from "./commodore-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
@@ -240,7 +241,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, () => {
       revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId);
-    });
+    }, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); });
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : {}), members: [], conversation, open: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); }, row });

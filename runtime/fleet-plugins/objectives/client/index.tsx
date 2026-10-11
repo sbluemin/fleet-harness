@@ -11,6 +11,7 @@ import { CommodoreRow } from "./commodore-row.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
+import { commodoreConversationSurface, connectCommodoreConversation } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, MobileObjectiveDetail, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
@@ -124,11 +125,13 @@ const objectivesPlugin = definePlugin({
   install: (ctx) => {
     const dispose = installObjectiveState(ctx);
     const disposeCommodore = installCommodoreState(ctx);
+    // 대화 중심 화면(Console 실험 기능)이 서 있으면 사령관 줄이 가운데 칸에 사령관 대화를 연다.
+    const disposeConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
     const theaterId = activeTheaterId();
     if (theaterId) void loadTheater(ctx.api, theaterId);
-    return () => { disposeRoster(); disposeCommodore(); dispose(); };
+    return () => { disposeRoster(); disposeConversation(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry, commodoreEntry],
@@ -149,6 +152,8 @@ const objectivesPlugin = definePlugin({
   theaterInboxSections: [commodoreInboxSection],
   // 상주 기여라 사령관 줄·Inbox 가 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
   persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
+  // 대화 중심 화면에서는 같은 사령관이 Inbox 시트 대신 가운데 칸(기록)과 오른쪽 패널(행위 기록·지시·정보·설정)에 선다.
+  conversationSurfaces: [commodoreConversationSurface],
 });
 
 export const plugins = [objectivesPlugin] as const;

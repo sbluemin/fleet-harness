@@ -15,6 +15,7 @@ import {
   useCommodoreEnabled,
 } from "./commodore-state.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
+import { commodorePreview, openCommodoreConversation, useCommodoreConversation } from "./commodore-conversation.js";
 import { getT } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 import type { Objective } from "../server/types.js";
@@ -58,11 +59,16 @@ function CommodoreRowBody({ theaterId, theaterLabel, language, inbox }: { readon
   const on = view?.state.autonomy === true;
   // 사령관이 턴을 도는 동안 — 제목에 채팅 라이브 줄과 같은 물결이 흐른다. 턴이 끝나면 바로 멈춘다.
   const turn = on && view?.run.phase === "turn";
-  // 이 Theater 의 Inbox 가 사령관 섹션을 보이는 동안 줄이 펼친 상태다.
-  const open = snapshot?.theaterId === theaterId && snapshot.address.sectionId === COMMODORE_SECTION_ID;
-  const onLog = open && snapshot?.address.pageId === "log";
+  // 대화 중심 화면이면 줄은 가운데 칸의 사령관 대화를 연다(Inbox 시트 대신). 꺼져 있으면 지금처럼 Inbox 다.
+  const conversation = useCommodoreConversation();
+  const preview = conversation.active ? commodorePreview(t, theaterId, board.objectives) : null;
+  // 이 Theater 의 Inbox 가 사령관 섹션을 보이는 동안(대화 중심 화면이면 가운데 칸에 이 Theater 사령관이 선 동안) 줄이 펼친 상태다.
+  const inboxOpen = snapshot?.theaterId === theaterId && snapshot.address.sectionId === COMMODORE_SECTION_ID;
+  const open = conversation.active ? conversation.theaterId === theaterId : inboxOpen;
+  const onLog = inboxOpen && snapshot?.address.pageId === "log";
   // 이미 이 Theater 의 기록 칸이면 닫는다(옛 줄의 여닫기). 다른 칸·다른 Theater 면 기록으로 옮긴다.
   const activate = (target: HTMLElement) => {
+    if (conversation.active && openCommodoreConversation(theaterId)) return;
     if (!inbox) return;
     if (onLog) inbox.close();
     else inbox.open({ theaterId, sectionId: COMMODORE_SECTION_ID, pageId: "log", returnFocus: target });
@@ -100,7 +106,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language, inbox }: { readon
         aria-label={[t("objectives.commodore.rowAria", { theater: theaterLabel }), ...meta.map((part) => part.text), patrol ?? ""].filter(Boolean).join(", ")}
         title={[meta.map((part) => part.text).join(" · "), patrol, errorReason].filter(Boolean).join("\n")}
         onClick={(event) => activate(event.currentTarget)}
-        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "Escape" && open) { event.preventDefault(); inbox?.close(); } }}
+        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => { if (event.key === "Escape" && inboxOpen) { event.preventDefault(); inbox?.close(); } }}
       >
         <span className="objectives-commodore-row-title">{t("objectives.commodore.name")}</span>
         <span className="objectives-commodore-row-meta" aria-hidden="true">
@@ -108,6 +114,7 @@ function CommodoreRowBody({ theaterId, theaterLabel, language, inbox }: { readon
             <span key={part.key} className={part.tone ? `is-${part.tone}` : undefined}>{index > 0 ? " · " : ""}{part.text}</span>
           ))}
         </span>
+        {preview ? <span className="objectives-commodore-row-preview" aria-hidden="true">{preview}</span> : null}
       </button>
     </div>
   );

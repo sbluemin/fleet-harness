@@ -1878,3 +1878,60 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
 .objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
+
+/* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
+   시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */
+.objectives-commodore-row-main:has(.objectives-commodore-row-preview) { flex-wrap: wrap; height: auto; row-gap: 2px; }
+.objectives-commodore-row-preview {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  color: var(--text-tertiary);
+}
+
+.objectives-commodore-conversation { height: 100%; }
+.objectives-commodore-conversation-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 16px 8px 20px;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.objectives-commodore-conversation-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-conversation-readonly { flex: none; color: var(--brass-ink); font-weight: var(--weight-medium); }
+.objectives-commodore-conversation .objectives-commodore-foot { padding-inline: 20px; }
+.objectives-commodore-conversation-back {
+  display: block;
+  margin: 0 auto;
+  padding: 8px 18px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+.objectives-commodore-conversation-back:hover,
+.objectives-commodore-conversation-back:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); outline: none; }
+.objectives-commodore-conversation .markdown-body { max-inline-size: none; margin-inline: 0; }
+.objectives-commodore-conversation .markdown-body pre,
+.objectives-commodore-conversation .markdown-body pre code,
+.objectives-commodore-conversation .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
+.objectives-commodore-conversation .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
+.objectives-commodore-conversation-tab { height: 100%; min-height: 0; overflow-y: auto; }
+.objectives-commodore-conversation-tab.is-goals { padding: 12px 16px; }
+.objectives-commodore-conversation-tab.objectives-commodore-body { padding: 16px 20px 24px; }
+.objectives-commodore-conversation-mark { width: 16px; height: 16px; color: var(--brass-ink); }
