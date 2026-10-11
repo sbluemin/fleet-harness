@@ -93,6 +93,8 @@ export interface ActionBandProps {
   /** 이미 띄운 구성원인가 — 확인 시트에서 그대로 재개할 줄로 선다. */
   readonly memberLaunched: (member: ObjectiveMember) => boolean;
   readonly memberMark: (memberId: string) => ReactNode;
+  /** 지휘관 표식 — 「허용 대기」가 지휘관 Operation 을 가리킬 때 그 아바타가 기다리는 얼굴로 선다(보드의 지휘관 표식과 같은 계산). */
+  readonly commanderMark: ReactNode;
 }
 
 /** 라우팅 확인 시트 — 판단 중(judging)·본 결과를 갱신 중(refreshing)·결과(ready). overridden 은 시트에서 직접 지정으로 바꾼 구성원이다. */
@@ -122,7 +124,6 @@ const CompactGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 /** 말풍선 — 받는 이에게 한 마디. */
 const MessageGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 3.5h10a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H7.5l-3 2.5V11H3a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z" /></svg>;
 const CheckGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>;
-const DecideDot = () => <i className="objectives-start-dot" aria-hidden="true" />;
 /** 카드 이동(objectives-panel.tsx의 GoGlyph)과 같은 path — 크기는 CSS가 정한다. */
 const GoGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5H3.5v9h9V10M9.5 3.5h3v3M12.5 3.5 7.5 8.5" /></svg>;
 
@@ -334,11 +335,12 @@ export function ActionBand(props: ActionBandProps) {
     steerIdle: { word: t("objectives.steer"), desc: t("objectives.band.steerIdle.desc", { kinds: kindText }), talk: true, glyph: <SteerGlyph />, placeholder: t("objectives.band.steer.ph"), run: commence },
     complete: { word: t("objectives.review.complete"), desc: t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub"), talk: false, tone: "aurora", run: () => request("/objective/complete", { objectiveId }) },
     handOff: { word: t("objectives.handoff.send"), desc: t("objectives.handoff.sendDesc"), talk: false, glyph: <HandOffGlyph />, run: () => request("/objective/hand-off", { objectiveId }) },
-    decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: <DecideDot />, run: async () => props.onFocusOperation(objectiveId) },
+    // 「허용 대기」의 표식은 기다리는 그 Operation 의 아바타다 — 지휘관이면 지휘관, 구성원이면 그 구성원(보드의 표식과 같은 얼굴).
+    decide: { word: t("objectives.awaiting.word"), desc: t("objectives.awaiting.commander"), talk: false, tone: "aurora", glyph: props.commanderMark, run: async () => props.onFocusOperation(objectiveId) },
     decideMember: {
       word: t("objectives.awaiting.word"),
       desc: props.memberAwaiting?.mission ? t("objectives.band.decideMemberMission", { role: props.memberAwaiting.role, index: props.memberAwaiting.mission }) : t("objectives.band.decideMember", { role: props.memberAwaiting?.role ?? "" }),
-      talk: false, tone: "aurora", glyph: <DecideDot />,
+      talk: false, tone: "aurora", glyph: props.memberAwaiting ? props.memberMark(props.memberAwaiting.operationId) : null,
       run: async () => { if (props.memberAwaiting) props.onFocusOperation(props.memberAwaiting.operationId); },
     },
     stop: { word: t("objectives.stop"), desc: objective.planning && props.busy ? t("objectives.band.stopPlanning") : t("objectives.stopHint"), talk: false, tone: "stop", glyph: <StopGlyph />, run: () => request("/commander/stop", { objectiveId }) },

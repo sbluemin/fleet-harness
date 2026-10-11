@@ -166,25 +166,6 @@
 .objectives-check.is-on svg { opacity: 1; }
 .objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
-.objectives-op {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  padding: 0 7px;
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  color: var(--text-secondary);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.objectives-op i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); flex: none; }
-.objectives-op.is-awaiting i { background: var(--aurora); }
-.objectives-op.is-idle i, .objectives-op.is-ended i, .objectives-op.is-closed i, .objectives-op.is-unknown i { background: var(--text-tertiary); }
-
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 
  .objectives-launch-view svg { width: 12px; height: 12px; flex: none; }
@@ -307,7 +288,6 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-row-x { flex: none; width: 26px; height: 26px; margin-right: -8px; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-tertiary); font-size: var(--t-md); line-height: 1; cursor: pointer; position: relative; z-index: 1; }
 .objectives-row-x:hover { color: var(--coral); background: var(--control-rest); }
 .objectives-row.is-static { cursor: default; }
-.objectives-row.is-static .objectives-row-lab .objectives-op { max-width: 200px; }
 .objectives-mode { font-size: var(--t-xs); color: var(--brass-ink); font-weight: var(--weight-medium); }
 .objectives-date-hidden-unused { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
 
@@ -366,8 +346,6 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-mission:hover .objectives-mission-tools, .objectives-mission:focus-within .objectives-mission-tools { opacity: 1; }
 .objectives-mission.is-highlight { box-shadow: inset 0 0 0 2px var(--brass); animation: objectives-pulse 1.2s ease-out 2; }
 @keyframes objectives-pulse { 0% { box-shadow: inset 0 0 0 2px var(--brass); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
-.objectives-op .objectives-x { background: transparent; border: 0; color: var(--text-tertiary); cursor: pointer; padding: 0 0 0 4px; font: inherit; line-height: 1; }
-.objectives-op .objectives-x:hover { color: var(--coral); }
 .objectives-row.objectives-mission-add { min-height: 40px; }
 .objectives-row.objectives-mission-add::before { display: none; }
 .objectives-mission-add input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text-primary); font: inherit; font-size: var(--t-sm); padding: 0; outline: none; }
@@ -410,7 +388,8 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
 .objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
 .objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
-.objectives-start-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--aurora); box-shadow: 0 0 0 2px color-mix(in oklch, var(--aurora) 30%, transparent); animation: objectives-breathe 1.8s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
+/* 「허용 대기」의 표식은 기다리는 Operation 의 아바타다 — 글리프 svg(12px) 규칙보다 앞서 얼굴이 읽히는 크기로 선다. */
+.objectives-start-word .objectives-avatar { width: 16px; height: 16px; }
 
 /* A 분할 칸 — 띠의 틀(테두리·radius·그라디언트)이 이 래퍼로 옮고, 주행동과 이동 칸이 나란히 선다. */
 .objectives-split { display: grid; grid-template-columns: minmax(0, 1fr) 38px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); transition: border-color var(--duration-fast) var(--ease-spring); }
@@ -496,7 +475,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-intent[aria-checked="true"] .objectives-intent-datum { background: var(--brass); }
 .objectives-intent-glyph { display: grid; place-items: center; color: var(--text-tertiary); }
 .objectives-intent-glyph svg { width: 14px; height: 14px; }
-.objectives-intent-glyph .objectives-start-dot { width: 6px; height: 6px; }
+.objectives-intent-glyph .objectives-avatar { width: 16px; height: 16px; }
 .objectives-intent-word { font-weight: var(--weight-bold); white-space: nowrap; }
 .objectives-intent.is-stop .objectives-intent-word { color: var(--coral); }
 .objectives-intent-desc { min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

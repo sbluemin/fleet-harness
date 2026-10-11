@@ -140,6 +140,7 @@
 .objectives-graph-counts.is-wide { gap: 12px; font-family: var(--font-ui); font-size: var(--t-xs); }
 .objectives-graph-counts.is-wide .objectives-graph-count-label { display: inline; }
 .objectives-graph-attention { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 28px; margin: 2px 10px 3px; padding: 2px 10px; border: 1px solid color-mix(in oklch, var(--aurora) 55%, transparent); background: color-mix(in oklch, var(--aurora) 9%, transparent); border-radius: var(--radius-xs); font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-graph-attention > .objectives-avatar { flex: none; width: 16px; height: 16px; }
 .objectives-graph-attention-owner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-weight: var(--weight-medium); }
 .objectives-graph-attention button { flex: none; border: 0; background: none; padding: 0; min-height: 24px; font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in oklch, var(--aurora) 60%, transparent); cursor: pointer; }
 .objectives-graph-attention .objectives-graph-attention-session { margin-left: auto; color: var(--aurora-ink); font-weight: var(--weight-medium); white-space: nowrap; }

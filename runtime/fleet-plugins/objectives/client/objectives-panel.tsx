@@ -815,16 +815,6 @@ function AssignControl({ t, objective, mission, onAssign, onCreate, label, rows,
   </>;
 }
 
-function OpChip({ state, label, title, onRemove, removeLabel }: { state: string; label: string; title?: string; onRemove?: () => void; removeLabel?: string }) {
-  return (
-    <span className={`objectives-op is-${state}`} title={title ?? label}>
-      <i aria-hidden="true" />
-      {label}
-      {onRemove ? <button type="button" className="objectives-x" aria-label={removeLabel} onClick={(event) => { event.stopPropagation(); onRemove(); }}>×</button> : null}
-    </span>
-  );
-}
-
 type DetailSection = "detail:criteria" | "detail:missions" | "detail:missionList" | "detail:results" | "detail:decisions" | "detail:followups" | "detail:members" | "detail:retro";
 
 interface DetailProps {
@@ -1827,7 +1817,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const missionAttention = awaitingMissions.map(mission => {
     const owner = objective.members.find(member => member.id === mission.member);
     const ownerName = owner?.role ?? t("objectives.graph.commander");
-    return <div key={mission.id} className="objectives-graph-attention" role="status"><span className="objectives-popup-state is-awaiting" aria-hidden="true"><i /></span><span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusOperation(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
+    return <div key={mission.id} className="objectives-graph-attention" role="status">{owner ? <MemberMark objective={objective} member={owner} operationState={operationState} /> : <CommanderMark objective={objective} operationState={operationState} />}<span className="objectives-graph-attention-owner">{t("objectives.graph.ownerAwaiting", { owner: ownerName })}</span><button type="button" onClick={() => showMission(mission.id)}>{t("objectives.graph.detail", { n: numberOf(mission.id) })}</button><button type="button" className="objectives-graph-attention-session" onClick={() => focusOperation(owner?.id ?? objective.id)}>{t("objectives.graph.openSession")}</button></div>;
   });
   const ownerMark = (memberId: string | null) => {
     if (!memberId) return <CommanderMark objective={objective} operationState={operationState} />;
@@ -2030,6 +2020,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           routingTargets={objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, operationState))}
           memberLaunched={(member) => memberLaunched(member, operationState)}
           memberMark={(memberId) => ((member) => (member ? <MemberMark objective={objective} member={member} operationState={operationState} /> : null))(objective.members.find((candidate) => candidate.id === memberId))}
+          commanderMark={<CommanderMark objective={objective} operationState={operationState} />}
         />
       </div>
   );
