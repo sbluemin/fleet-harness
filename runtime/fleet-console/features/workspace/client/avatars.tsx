@@ -113,17 +113,18 @@ export function OperationAvatar({ operation, state, size, label, role, decorativ
   return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, size, label, decorative, className }: {
+export function KeyedAvatar({ avatarKey, role, state, size, label, decorative, off, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
+  readonly off?: boolean;
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={size} label={label} decorative={decorative} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={size} label={label} decorative={decorative} off={off} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {

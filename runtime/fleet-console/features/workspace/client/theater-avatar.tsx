@@ -19,5 +19,6 @@ export function TheaterAvatar({ theaterId, size, label, decorative, className }:
   readonly className?: string;
 }) {
   const face = useTheaterContributionFace(theaterId);
-  return <KeyedAvatar avatarKey={theaterAvatarKey(theaterId)} role="commodore" state={face ?? "idle"} size={size} label={label} decorative={decorative} className={className} />;
+  // 운영자가 꺼진 사령관은 사이드바 머리 표식과 같은 규칙(`.mongle-avatar.is-off`)으로 흐려진다.
+  return <KeyedAvatar avatarKey={theaterAvatarKey(theaterId)} role="commodore" state={face?.state ?? "idle"} off={face?.off} size={size} label={label} decorative={decorative} className={className} />;
 }

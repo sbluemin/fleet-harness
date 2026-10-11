@@ -47,7 +47,12 @@ export const commodoreTheaterContribution: TheaterContribution = {
     // 얼굴은 사령관 상태와 그 Theater 목표 보드를 함께 읽는다 — 어느 쪽이 바뀌어도 머리가 다시 읽는다.
     subscribe: subscribeCommodoreFace,
     // 사이드바 밖에서 그 Theater 의 사령관 아바타를 그리는 표면(Quick Launch 칩·팔레트 행)이 머리 표식과 같은 얼굴을 읽는다.
-    face: (theaterId) => (readCommodoreExperiment().enabled ? commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) : null),
+    face: (theaterId) => {
+      if (!readCommodoreExperiment().enabled) return null;
+      const view = readCommodore(theaterId).view;
+      // 꺼짐은 머리 표식이 회색을 정하는 조건(commodoreSummary 의 on 이 아님)과 같다.
+      return { state: commodoreMongleState(view, readTheater(theaterId).objectives), off: view?.state.autonomy !== true };
+    },
     live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
     // 대화 중심 화면은 자율 운영 여부와 무관하게 가운데 사령관 대화를 연다. 기존 배치의 첫 칸은 그대로 유지한다.
     landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
@@ -78,7 +83,8 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
   const status = [`${t("objectives.commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
   const state = commodoreMongleState(view, board.objectives);
-  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative className="objectives-commodore-mark-glyph" />;
+  // 꺼짐 회색은 다른 표면의 Theater 아바타와 같은 규칙이다 — `header.face` 의 off 와 같은 조건(자율 운영 꺼짐)이다.
+  const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (busy || !view) return;

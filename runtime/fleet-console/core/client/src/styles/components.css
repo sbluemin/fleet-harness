@@ -3393,6 +3393,8 @@ button.status-glyph.is-actionable:focus-visible {
 .mongle-avatar.is-tone-indigo, .mongle-picker-tone.is-tone-indigo { --mongle-tone: var(--mongle-indigo); }
 .mongle-avatar.is-tone-plum, .mongle-picker-tone.is-tone-plum { --mongle-tone: var(--mongle-plum); }
 .mongle-avatar.is-tone-rose, .mongle-picker-tone.is-tone-rose { --mongle-tone: var(--mongle-rose); }
+/* 운영자가 꺼진 사령관 — 사이드바 머리 표식과 다른 표면의 Theater 아바타가 이 한 규칙으로 흐려지고 채도를 잃는다. */
+.mongle-avatar.is-off { opacity: 0.55; filter: grayscale(0.8); }
 
 .mongle-avatar-fill {
   fill: var(--mongle-tone);

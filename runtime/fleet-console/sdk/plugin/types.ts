@@ -696,6 +696,12 @@ export interface TheaterContribution {
   readonly mobileRow?: TheaterContributionMobileRow;
 }
 
+/** A Theater commodore's face as a value — `off` is true while its operator is switched off, and the avatar is drawn muted. */
+export interface TheaterFace {
+  readonly state: MongleState;
+  readonly off: boolean;
+}
+
 /** The Theater facts a contribution lends the sidebar header. Reads do no I/O. */
 export interface TheaterHeaderContribution {
   /** Wakes the header when `mark`, `live`, `landing` or `face` may answer differently. */
@@ -703,12 +709,12 @@ export interface TheaterHeaderContribution {
   /** True while this Theater's operator is working — the host runs its live sweep over the Theater name. */
   readonly live?: (theaterId: string) => boolean;
   /**
-   * The face of the Theater's commodore avatar while this contribution operates it — the same state its `mark` shows.
-   * The host draws the Theater's avatar with it on surfaces away from the sidebar header (launcher chips, palette and
-   * picker rows), where a mark's own buttons cannot nest. Null leaves the face to the next contribution, and finally to
-   * the host's resting face.
+   * The face of the Theater's commodore avatar while this contribution operates it — the same state and the same
+   * muted look its `mark` shows. The host draws the Theater's avatar with it on surfaces away from the sidebar header
+   * (launcher chips, palette and picker rows), where a mark's own buttons cannot nest. Null leaves the face to the next
+   * contribution, and finally to the host's resting face.
    */
-  readonly face?: (theaterId: string) => MongleState | null;
+  readonly face?: (theaterId: string) => TheaterFace | null;
   /**
    * The Theater Inbox page the header opens for this Theater, in this plugin's own section id. Null leaves the choice
    * to the next contribution, and finally to the host's system prompt page.

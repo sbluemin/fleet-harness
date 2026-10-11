@@ -1373,7 +1373,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
   height: 18px;
   transition: opacity var(--duration-fast) var(--ease-spring), filter var(--duration-fast) var(--ease-spring);
 }
-.objectives-commodore-mark.is-off .objectives-commodore-mark-glyph { opacity: 0.55; filter: grayscale(0.8); }
 .objectives-commodore-mark:not(:disabled):not([aria-disabled="true"]):hover { background: color-mix(in oklch, var(--ink-spectral) 10%, transparent); }
 .objectives-commodore-mark:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .objectives-commodore-mark[aria-busy="true"] .objectives-commodore-mark-glyph { opacity: 0.6; }
