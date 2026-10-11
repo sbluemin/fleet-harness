@@ -15,7 +15,9 @@
 .objectives-graph-edge.is-root { stroke-dasharray: 2 3; }
 .objectives-graph-edge.is-up, .objectives-graph-edge.is-down { stroke: var(--brass); stroke-width: 2; }
 .objectives-graph-edge.is-down { stroke-dasharray: 4 3; }
-.objectives-graph-root { position: absolute; width: 12px; height: 12px; margin: -6px; border: 1.5px solid var(--text-tertiary); border-radius: 50%; background: var(--surface-panel); }
+/* 뿌리는 지휘관의 몽글 아바타다 — 크기는 배치(g.rootR)가 정해 --graph-root 로 넘기고, 선은 그 오른쪽 가장자리의 세로 가운데에서 나간다. */
+.objectives-graph-root { position: absolute; display: grid; place-items: center; width: var(--graph-root); height: var(--graph-root); margin: calc(var(--graph-root) / -2); }
+.objectives-graph-root .objectives-avatar { width: 100%; height: 100%; }
 .objectives-graph-label { position: absolute; z-index: 2; font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); white-space: nowrap; cursor: pointer; touch-action: none; }
 .objectives-graph-label > span { display: block; }
 .objectives-graph-label > .objectives-extension-chip { display: inline-flex; box-sizing: border-box; height: 20px; margin-bottom: 4px; }

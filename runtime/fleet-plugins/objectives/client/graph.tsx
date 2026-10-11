@@ -33,7 +33,7 @@ interface GraphProps {
   onEdge: (from: string, to: string, linked: boolean) => void; canEdit: (id: string) => boolean;
   onShowing: (id: string | null) => void;
   renderDetail: (mission: ObjectiveMission, actions: MissionDetailActions) => ReactNode;
-  /** 노드 오른쪽 아래의 담당 표식 — 구성원 id 면 그 구성원, null 이면 지휘관. 보드와 같은 아바타를 패널이 그려 넘긴다. */
+  /** 노드 오른쪽 아래의 담당 표식 — 구성원 id 면 그 구성원, null 이면 지휘관. 보드와 같은 아바타를 패널이 그려 넘긴다. 뿌리 노드도 null 로 지휘관 얼굴을 받는다. */
   ownerMark: (memberId: string | null) => ReactNode;
   reveal?: { id: string; at: number } | null; zoom?: boolean; suspended?: boolean;
   /** 확대 전용 — 그래프가 스크롤 없이 들어가는 확대 카드의 폭(border-box). */
@@ -328,7 +328,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       <div className="objectives-graph-fit" style={{ width: layout.width * scale, height: layout.height * scale }}>
       <div className={`objectives-graph-canvas${current ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "0 0" } : {}) }}>
         <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${current?.id === e.to ? " is-up" : current?.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
-        <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y }} /><span className="objectives-graph-label is-root" style={{ left: layout.rootLabel.x, top: layout.rootLabel.y }}>{t("objectives.graph.commander")}</span>
+        <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y, "--graph-root": `${layout.g.rootR * 2}px` } as CSSProperties} aria-hidden="true">{ownerMark(null)}</span><span className="objectives-graph-label is-root" style={{ left: layout.rootLabel.x, top: layout.rootLabel.y }}>{t("objectives.graph.commander")}</span>
         {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)}>{label.extension ? <span className="objectives-extension-chip">{label.extension}</span> : null}{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
       </div>
       </div>
