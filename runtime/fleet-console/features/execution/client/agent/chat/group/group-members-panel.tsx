@@ -14,8 +14,9 @@ import "./group-chat.css";
 /**
  * 오른쪽 「구성원」 탭 본문 — 그룹 대화의 참여자 목록과 활동 상태.
  *
- * 구성원 줄 자체가 원장으로 가는 단추다 — 누르면 가운데 칸에 그 구성원의 원장(기존 본문)을 읽기 전용으로 세운다. 셸의 구성원 본문
- * 선택과 같은 문이다. 보고 있는 구성원 줄을 다시 누르면 대화로 돌아간다. 지휘관 줄은 원장 대상이 아니라 단추가 아니다. 정지·제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다.
+ * 지휘관·구성원 줄 자체가 원장으로 가는 단추다 — 누르면 가운데 칸에 그 참여자의 원장(기존 본문)을 읽기 전용으로 세운다.
+ * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Operation 이 아직 없는 구성원)의 줄은 단추가 아니다.
+ * 정지·제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
  */
 export interface GroupMembersPanelProps {
@@ -43,7 +44,7 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
             participant={participant}
             language={language}
             showing={focus !== null && focus === participant.speaker.operationId}
-            onLedger={onOpenLedger && participant.speaker.operationId && participant.speaker.kind === "member"
+            onLedger={onOpenLedger && participant.speaker.operationId && (participant.speaker.kind === "member" || participant.speaker.kind === "commander")
               ? () => onOpenLedger(focus === participant.speaker.operationId ? null : participant.speaker.operationId!)
               : undefined}
             onStop={onStop && (participant.activity === "running" || participant.activity === "background") ? () => onStop(participant.speaker) : undefined}

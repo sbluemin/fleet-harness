@@ -43,7 +43,7 @@ import { installModelRosterSync } from "../../../../features/ai-gateway/client/m
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
-import { GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
+import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
 import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
@@ -125,6 +125,8 @@ if (app && hostPicker) {
   );
 } else if (app) {
   const registry = await loadPluginRegistry();
+  // 대화 중심 화면의 본문 렌더러·「구성원」 탭 등록은 훅 밖에서 목표 묶음을 읽는다 — Provider 와 같은 원천을 묶는다.
+  bindGroupClusterSource(registry.operationClusters);
   // 제스처는 id 로 대상·호출자를 찾는다 — 구성원이 부른 Console Use 도 제 이름으로 선다.
   installConsoleUseGestures({ operations: () => operationsIncludingNested(), subscribeConsoleChannel });
   // 보관함의 수와 목록 — 보관된 Operation은 일반 목록에 없으므로 자기 사건으로 따라간다.
