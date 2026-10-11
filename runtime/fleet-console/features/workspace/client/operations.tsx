@@ -326,7 +326,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         requestAlignAll();
         return;
       }
-      if (matchesShortcutCommand(event, "operations.toggle-triage")) {
+      // 대화 중심 화면에는 War Room이 없다 — 가로채지 않아 같은 조합이 대화 입력에 그대로 닿는다.
+      if (!conversationRef.current && matchesShortcutCommand(event, "operations.toggle-triage")) {
         event.preventDefault();
         event.stopImmediatePropagation();
         if (isTriageActive()) {

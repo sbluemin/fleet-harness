@@ -23,7 +23,7 @@ export {
 
 // ── 가운데 칸의 주인 ───────────────────────────────────────────────────────
 
-/** 가운데 칸에 지금 선 Operation(War Room 이면 무대). 비어 있으면 null. 셸이 정하고 탭·렌더러가 읽는다. */
+/** 가운데 칸에 지금 선 Operation. 비어 있으면 null. 셸이 정하고 탭·렌더러가 읽는다. */
 let subject: OperationNode | null = null;
 const subjectListeners = new Set<() => void>();
 

@@ -9,16 +9,14 @@ import { ViewModeToggle } from "../../../../core/client/src/chrome/components/vi
 import { ToolbarSettingsButton } from "../../../../core/client/src/chrome/toolbar/console-toolbar.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
-import { WarRoomModeIcon } from "../canvas/canvas-mode-switch.js";
-import { enterTriage, exitTriage, focusedTriageOperationId, useTriageActive } from "../canvas/triage-store.js";
 import { SideBarStatusViewToggle } from "../sidebar/side-bar-collapse-control.js";
 import { getSideBarStatusAxis, subscribeStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import "./conversation-dock.css";
 
 /**
- * 대화 화면에서만 서는 한 줄 — [호스트 원] [보관함] [War Room 글리프] [상태별 보기 글리프]. 호스트 원의 메뉴는 기존 호스트 제어를
- * 그대로 품는다. 브랜드(환경 진단)는 맨 위 줄 왼쪽에 서므로 메뉴에 두지 않는다. 모드와 상태별 보기는 메뉴가 아니라 켜짐/꺼짐이
- * 바로 보이는 글리프다.
+ * 대화 화면에서만 서는 한 줄 — [호스트 원] [보관함] [상태별 보기 글리프]. 호스트 원의 메뉴는 기존 호스트 제어를
+ * 그대로 품는다. 브랜드(환경 진단)는 맨 위 줄 왼쪽에 서므로 메뉴에 두지 않는다. 상태별 보기는 메뉴가 아니라 켜짐/꺼짐이
+ * 바로 보이는 글리프다. War Room 은 이 화면에서 지원하지 않는다.
  */
 export function ConversationSideBarBottom({ connection }: { readonly connection: ConsoleState["connection"] }) {
   const t = useT();
@@ -52,30 +50,8 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
       </div>
       <ArchiveEntry compact />
       <span className="conversation-dock-toggles">
-        <ConversationWarRoomToggle />
         <SideBarStatusViewToggle active={statusAxis} />
       </span>
     </div>
-  );
-}
-
-/** War Room 켜짐/꺼짐 — 눌림이 곧 지금 모드다. Cruise / War Room 은 번역하지 않는 모드 이름이다. */
-function ConversationWarRoomToggle() {
-  const t = useT();
-  const warRoom = useTriageActive();
-  return (
-    <button
-      type="button"
-      className="conversation-dock-toggle"
-      aria-pressed={warRoom}
-      aria-label={t("conversation.side.warRoom")}
-      title={t("conversation.side.warRoom")}
-      onClick={(event) => {
-        if (warRoom) exitTriage();
-        else enterTriage(focusedTriageOperationId(document.activeElement), event.currentTarget);
-      }}
-    >
-      <WarRoomModeIcon />
-    </button>
   );
 }

@@ -205,13 +205,13 @@
   pointer-events: none;
 }
 
-.conversation-pill,
-.conversation-pill-next {
+.conversation-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  height: 40px;
+  max-width: min(620px, 100%);
+  height: 38px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-pill);
   background: var(--surface-glass-strong);
@@ -219,11 +219,6 @@
   color: var(--text-primary);
   font-family: var(--font-ui);
   cursor: pointer;
-}
-
-.conversation-pill {
-  max-width: min(620px, 100%);
-  height: 38px;
   padding: 0 var(--space-4) 0 var(--space-3);
   /* 내용 위에 떠 있으므로 자기 면으로 글자를 읽히게 한다. */
   backdrop-filter: blur(14px);
@@ -232,9 +227,7 @@
 }
 
 .conversation-pill:hover,
-.conversation-pill:focus-visible,
-.conversation-pill-next:hover,
-.conversation-pill-next:focus-visible {
+.conversation-pill:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
   outline: none;
 }
@@ -262,24 +255,6 @@
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   white-space: nowrap;
-}
-
-.conversation-pill-next {
-  flex: none;
-  padding: 0 var(--space-4);
-  color: var(--brass-ink);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-}
-
-.conversation-pill-next:disabled {
-  color: var(--text-tertiary);
-  cursor: default;
-}
-
-.conversation-pill-queue {
-  color: var(--text-tertiary);
-  font-weight: var(--weight-medium);
 }
 
 .conversation-pill-actions {
@@ -402,13 +377,6 @@
   color: var(--text-primary);
   font-size: var(--t-lg);
   font-weight: var(--weight-bold);
-}
-
-.conversation-empty-mark {
-  color: var(--brass-ink);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
 }
 
 /* 지도 도구(보기 초기화·모두 맞춤·정렬 레이아웃)는 캔버스의 것이다 — 이 배치에는 지도가 없으므로 서랍을 세우지 않는다.
