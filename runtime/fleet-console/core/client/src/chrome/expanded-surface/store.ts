@@ -32,6 +32,8 @@ const EMPTY: ExpandedSurfaceState = { instances: [], focusedInstanceId: null };
 const SESSION_KEY = "fleet.console.expanded-surfaces.v1";
 const listeners = new Set<Listener>();
 let state: ExpandedSurfaceState = readSession();
+/** 대화 중심 화면에서 표면을 접어 두었는가 — 저장하지 않는 일시 상태(아래 `stowExpandedSurfaces`). */
+let stowed = false;
 let instanceSeq = 0;
 
 function readSession(): ExpandedSurfaceState {
@@ -110,8 +112,34 @@ export function getExpandedSurfaceState(): ExpandedSurfaceState {
 function setState(next: ExpandedSurfaceState): void {
   if (next === state) return;
   state = next;
+  // 접어 둘 표면이 없으면 접힘도 없다 — 다음에 여는 표면이 접힌 채 서지 않게 한다.
+  if (next.instances.length === 0) stowed = false;
   writeSession();
   for (const listener of listeners) listener();
+}
+
+/**
+ * 대화 중심 화면에서 표면을 잠시 접어 둔 상태 — 가운데 칸을 대화에 돌려주되 페인은 닫지 않는다(셸·초안이 그대로 산다).
+ * 화면 배치의 일시 상태라 저장하지 않는다(값은 `state` 곁의 `stowed`). 표면을 새로 열면(같은 표면을 다시 불러도) 풀린다.
+ * 캔버스 배치는 읽지 않는다.
+ */
+function setStowed(next: boolean): void {
+  if (stowed === next) return;
+  stowed = next;
+  for (const listener of listeners) listener();
+}
+
+export function stowExpandedSurfaces(): void {
+  if (state.instances.length === 0) return;
+  setStowed(true);
+}
+
+export function restoreExpandedSurfaces(): void {
+  setStowed(false);
+}
+
+export function useExpandedSurfacesStowed(): boolean {
+  return useSyncExternalStore(subscribeExpandedSurfaces, () => stowed, () => false);
 }
 
 function nextInstanceId(surfaceId: string): string {
@@ -143,6 +171,8 @@ function sameParams(
 export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
   const params = request.params ?? {};
   const mode = request.mode ?? "reuse";
+  // 여는 것은 보려는 뜻이다 — 접어 둔 표면이 있으면 함께 편다.
+  setStowed(false);
 
   if (mode === "reuse") {
     const existing = state.instances.find((instance) => instance.surfaceId === request.surfaceId);
@@ -288,6 +318,7 @@ export function useExpandedSurfaces(): ExpandedSurfaceState {
 /** 테스트 전용 — 모듈 싱글턴을 초기 상태로 되돌린다. */
 export function resetExpandedSurfacesForTest(): void {
   state = EMPTY;
+  stowed = false;
   instanceSeq = 0;
   listeners.clear();
   // 배달부도 함께 푼다 — 남겨 두면 앞 테스트의 표면이 뒤 테스트의 닫기를 받는다.

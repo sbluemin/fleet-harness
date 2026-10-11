@@ -485,6 +485,10 @@ export const chromeEn = {
   "chrome.expandedSurface.closeAria": "Close {title}",
   "chrome.expandedSurface.dividerAria": "Resize slot",
   "chrome.expandedSurface.missing": "The plugin that provided this surface is no longer loaded.",
+  "chrome.expandedSurface.back": "Conversation",
+  "chrome.expandedSurface.backAria": "Back to the conversation",
+  "chrome.expandedSurface.reopenAria": "Reopen {title}",
+  "chrome.expandedSurface.morePanes": "+{count}",
 
   // codex-reading-sheet
 
@@ -1032,6 +1036,10 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.expandedSurface.closeAria": "{title} 닫기",
   "chrome.expandedSurface.dividerAria": "슬롯 폭 조절",
   "chrome.expandedSurface.missing": "이 표면을 제공하던 플러그인이 더 이상 로드되어 있지 않습니다.",
+  "chrome.expandedSurface.back": "대화",
+  "chrome.expandedSurface.backAria": "대화로 돌아가기",
+  "chrome.expandedSurface.reopenAria": "{title} 다시 열기",
+  "chrome.expandedSurface.morePanes": "+{count}",
 
   "chrome.toast.pluginSkipped_one": "플러그인 {count}개가 이 Console에 패널을 세우지 못했습니다",
   "chrome.toast.pluginSkipped_other": "플러그인 {count}개가 이 Console에 패널을 세우지 못했습니다",

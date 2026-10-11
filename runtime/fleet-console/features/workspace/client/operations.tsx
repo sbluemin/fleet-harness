@@ -1008,7 +1008,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         {triageActive ? null : <SideBarEdgeDock />}
         {operationMenuLayer}
         <TriageEntryDialog />
-        <ExpandedSurfaceLayer />
+        {/* 대화 중심 화면의 확장 표면은 가운데 대화 칸에 선다 — 사이드바·오른쪽 열을 가리지 않는다. */}
+        <ExpandedSurfaceLayer placement="conversation" />
       </div>
     </SideBarRowStyleContext.Provider>
   );
