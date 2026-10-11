@@ -126,3 +126,9 @@
     animation: none;
   }
 }
+
+/* 카드는 창 끌기 줄(대화 중심 화면 맨 위 52px) 바로 아래·위에도 선다 — 카드 전체를 창 끌기에서 뺀다. 카드는 body 끝 포털이라
+   앞의 drag 사각형 뒤에 합쳐진다. */
+html[data-desktop-shell="true"] .link-open-card {
+  -webkit-app-region: no-drag;
+}

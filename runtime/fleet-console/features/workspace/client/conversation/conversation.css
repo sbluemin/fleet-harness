@@ -1080,6 +1080,11 @@ html[data-desktop-shell="true"] .console-body.is-conversation:has(.conversation-
   -webkit-app-region: no-drag;
 }
 
+/* 칸 자체도 루트째 창 끌기에서 뺀다 — 자식(탭·주소·단추)에만 no-drag 를 달면 겹친 drag 사각형이 다시 덮는다(Fleet 시트와 같은 계약). */
+html[data-desktop-shell="true"] .conversation-split.is-open {
+  -webkit-app-region: no-drag;
+}
+
 /* macOS 신호등 — 셸이 52px 줄의 가운데(y 19, x 16)에 세운다(window-policy.ts trafficLightPosition, chrome.band).
    신호등 세 개가 차지한 76 DIP 를 비우고 그 오른쪽에서 단추가 시작한다. 신호등은 네이티브라 줌을 타지 않으므로
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바가 접혀 있으면 가운데 열의 맨 위 줄이 비운다. */
