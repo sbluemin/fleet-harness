@@ -879,6 +879,12 @@
   border-color: transparent;
 }
 
+/* 활성 Theater 구역의 2px brass 스파인(components.css)도 이 배치에서는 걷는다 — 사이드바가 창 가장자리에 붙으므로
+   스파인이 창 왼쪽 끝의 세로 띠로 읽힌다. 활성은 헤더의 이름 명도와 이니셜 배지가 말한다. */
+.console-shell.is-conversation-layout .side-bar-theater-section--active {
+  background: none;
+}
+
 /* ── Desktop 셸: 맨 위 줄은 창을 끄는 자리, 네이티브 컨트롤과 한 줄 ─────────────────── */
 /* 가운데·사이드바의 맨 위 줄은 내용 위에 겹친 투명 줄이다. Electron 의 app-region 은 휠을 아래 내용으로 넘기므로 그 줄 위에서도
    스크롤은 되지만, 클릭·드래그 선택은 창 끌기가 가져간다 — 그래서 drag 는 단추·pill 을 뺀 빈 자리뿐이고 높이는 52px 한 줄이다. */
