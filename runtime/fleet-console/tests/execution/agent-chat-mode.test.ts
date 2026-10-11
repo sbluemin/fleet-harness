@@ -375,6 +375,42 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { urls: [shown] } });
   });
 
+  it("projects a dormant session's saved conversation without waking it", async () => {
+    // 그룹 대화의 지난 대화 읽기 — 파일 읽기뿐이어야 한다. SDK가 서거나 휴면이 풀리면 읽기만으로 재개·과금이 생긴다.
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+    await harness.post(sessionId, "chat-sleep");
+    const at = (second: number) => `2026-08-14T00:00:0${second}.000Z`;
+    await fs.writeFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), [
+      { type: "user", timestamp: at(1), message: { role: "user", content: "send the plan to the verifier" } },
+      { type: "assistant", timestamp: at(2), message: { content: [{ type: "tool_use", id: "read-1", name: "Read", input: { file_path: "/tmp/workspace/plan.md" } }] } },
+      { type: "user", timestamp: at(3), message: { content: [{ type: "tool_result", tool_use_id: "read-1", content: "plan body" }] } },
+      { type: "assistant", timestamp: at(4), message: { content: [{ type: "tool_use", id: "send-1", name: "SendMessage", input: { to: "verifier", message: "check the plan" } }] } },
+      { type: "user", timestamp: at(5), message: { content: [{ type: "tool_result", tool_use_id: "send-1", content: "delivered" }] } },
+      { type: "assistant", timestamp: at(6), message: { content: [{ type: "text", text: "Sent." }] } },
+    ].map((line) => JSON.stringify(line)).join("\n"));
+
+    await harness.postTicket(sessionId, { channel: "chat" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_dormant" } });
+    const sdkBefore = harness.sdkOptions.length;
+    const sessionsBefore = harness.openSession.mock.calls.length;
+
+    await harness.get(sessionId, "chat-history");
+
+    const response = harness.responses.at(-1) as { readonly status: number; readonly body: { readonly entries: ReadonlyArray<{ readonly event: { readonly kind: string; readonly name?: string } }>; readonly truncated: boolean } };
+    expect(response.status).toBe(200);
+    expect(response.body.entries.map(({ event }) => event.kind === "tool" ? `tool:${event.name}` : event.kind)).toEqual(["dispatch", "tool:SendMessage", "tool-result", "text", "turn-end"]);
+    expect(response.body.truncated).toBe(false);
+    expect(JSON.stringify(response.body)).not.toContain(harness.fleetDataDir);
+    expect(harness.sdkOptions).toHaveLength(sdkBefore);
+    expect(harness.openSession.mock.calls).toHaveLength(sessionsBefore);
+
+    await harness.postTicket(sessionId, { channel: "chat" });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_dormant" } });
+  });
+
   it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {
     const harness = await createHarness({ holdChatTurn: true });
     vi.stubEnv("CLAUDE_CONFIG_DIR", harness.fleetDataDir);

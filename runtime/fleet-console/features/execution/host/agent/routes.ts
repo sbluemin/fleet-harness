@@ -34,7 +34,7 @@ import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
-import { AgentChatRegistry, createChatSdkFactory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
+import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
@@ -83,6 +83,9 @@ const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
+/** 그룹 대화가 한 참여자에게서 쥐는 줄 수(클라이언트 원장 상한과 같다)와 트랜스크립트 꼬리 읽기 상한. */
+const CHAT_HISTORY_ENTRY_LIMIT = 600;
+const CHAT_HISTORY_MAX_BYTES = 32 * 1024 * 1024;
 /**
  * 이 Operation이 **채팅으로 태어났다**는 표식 — 터미널을 한 번도 띄우지 않았다는 뜻이고,
  * Quick Launch가 그 자리에서 첫 메시지를 받는 근거다.
@@ -995,6 +998,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "agent-call") return handleAgentCall(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
+    // 읽기 전용 이력은 전이 중에도 파일만 읽는다 — 재개·좌표 변경과 경합하지 않으므로 전이 가드 앞에 둔다.
+    if (action === "chat-history") return handleChatHistory(req, res, sessionId);
     if (ctx.host.operations.isTransitioning?.(sessionId)) { ctx.host.http.writeJson(res, 409, { error: "operation_busy" }); return true; }
     if (action === "resume") return handleResume(req, res, sessionId);
     if (action === "message") return handleMessage(req, res, sessionId);
@@ -2024,6 +2029,41 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath, node.ts.createdAt) : null;
     const urls = transcriptPath ? selectLinksIn(text, await transcriptLinks.read(transcriptPath)) : [];
     ctx.host.http.writeJson(res, 200, { urls });
+    return true;
+  }
+
+  /**
+   * 그룹 대화의 지난 대화 — 저장된 트랜스크립트를 재개 재생과 같은 해석으로 읽기 전용 투영한다.
+   * 파일을 읽는 것 외에는 아무것도 하지 않는다: 채팅 세션을 세우지도 찾지도 않고(`chatRegistry`),
+   * 시드를 풀지 않으며(`resolveChatSeed`의 게이트웨이 캐시·MCP 토큰), ticket·재개·payload 변경도 없다.
+   * 그래서 휴면 세션을 읽어도 휴면은 그대로이고 모델 호출이 생기지 않는다. 언제 부를지는 클라이언트가 정한다.
+   * Chat과 터미널은 같은 Claude 트랜스크립트를 쓰므로 chatMode를 가리지 않는다. 응답에는 경로·세션 id가 없다.
+   */
+  async function handleChatHistory(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "GET") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    if (!readAgentSession(node.payload)) {
+      ctx.host.http.writeJson(res, 409, { error: "history_unsupported" });
+      return true;
+    }
+    const capturePath = readProviderSession(node.payload)?.transcriptPath;
+    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath, node.ts.createdAt) : null;
+    if (!transcriptPath) {
+      ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
+      return true;
+    }
+    const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId) || undefined;
+    const history = await readTranscriptHistory(transcriptPath, { ...(cwd ? { cwd } : {}), limit: CHAT_HISTORY_ENTRY_LIMIT, maxBytes: CHAT_HISTORY_MAX_BYTES });
+    if (!history) {
+      ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { entries: history.entries, truncated: history.truncated });
     return true;
   }
 
