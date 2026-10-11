@@ -58,6 +58,12 @@ html[data-view-mode="mobile"] .fleet-browser-scrim {
   flex: none;
 }
 
+/* 시트 크롬이 Console의 창 끌기 줄 위에 서더라도 탭·주소·메뉴는 클릭을 받는다.
+   시트의 자리와 무관한 경계라 오른쪽 분할 배치에서도 같은 계약이다. */
+html[data-desktop-shell="true"] .fleet-browser-sheet :is(.fleet-browser-sheet__cap, .op-browser__nav) {
+  -webkit-app-region: no-drag;
+}
+
 /* companion 캡션 규칙(.op-browser-cap: flex 1, height 100%)은 호스트 32px 밴드를
    채우는 몸이다. 시트에서는 그 몸이 시트 전체를 삼키므로 32px로 고정한다(브리프).
    탭 스트립 패딩·간격은 Operation 캡션과 같은 값이다. */

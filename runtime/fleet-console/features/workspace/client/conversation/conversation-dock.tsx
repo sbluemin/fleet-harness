@@ -39,8 +39,9 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
           <span aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase() || "F"}</span>
           <span className="conversation-dock-status" data-connection={connection} aria-hidden="true" />
         </button>
-        {/* 설정의 aria-labelledby 닻은 닫혀 있을 때도 남긴다. 다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}
-        <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role="menu" aria-label={label} hidden={!open}>
+        {/* 설정의 aria-labelledby 닻은 닫혀 있을 때도 남긴다. 닫힌 닻은 열린 오버레이가 아니므로 메뉴 역할은 열렸을 때만 단다.
+            다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}
+        <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <div className="conversation-dock-heading">{name}</div>
           <HostSwitcher menuItem />
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
