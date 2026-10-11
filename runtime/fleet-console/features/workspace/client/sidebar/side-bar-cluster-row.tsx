@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -8,6 +8,8 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClusterWrap, getFirstClusterWrap, getOperationWrap, subscribeConsoleUseGestures, type ConsoleUseWrap } from "../../../console-use/client/gestures.js";
 import { operationMarkLabel, resolveOperationActivity, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
+import { subscribeSideBarOperationAction } from "./interaction.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
@@ -243,6 +245,34 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       ?? (row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
         : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
+  // 이름 변경 — 칩과 같은 인라인 편집이다. 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
+  const renameRow = row.rename;
+  const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
+  const anchorOperationId = anchor?.operation.id;
+  useEffect(() => {
+    if (!renameRow || !anchorOperationId) return undefined;
+    return subscribeSideBarOperationAction((request) => {
+      if (request.operationId !== anchorOperationId || request.action !== "rename") return false;
+      if (rowRef.current?.closest("[inert]")) return false;
+      rename.begin();
+      return true;
+    });
+  }, [renameRow, anchorOperationId, rename]);
+  const renameInput = (
+    <input
+      className="side-bar-chip-rename-input side-bar-cluster-row-rename-input"
+      ref={rename.inputRef}
+      value={rename.draftTitle}
+      aria-label={t("sidebar.chip.renameAria", { title: layout.cluster.title })}
+      onChange={(e) => rename.setDraftTitle(e.target.value)}
+      onKeyDown={(e) => { e.stopPropagation(); rename.handleKeyDown(e); }}
+      onKeyUp={(e) => e.stopPropagation()}
+      onBlur={rename.handleBlur}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    />
+  );
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn"; readonly prov?: true }[] = [];
   if (row.decisionRequestedAt !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions ?? 1 }), tone: "req" });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
@@ -267,6 +297,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   ));
   // 끌어 놓은 줄은 포인터를 따라왔으니 놓는 순간의 클릭도 이 줄에 떨어진다 — 칩처럼 그 클릭은 여는 동작이 아니다.
   const suppressClickRef = useRef(false);
+  const rowRef = useRef<HTMLLIElement | null>(null);
   const pointerTypeRef = useRef("mouse");
   // 뿌리가 선 줄은 칩과 똑같이 그 패널로 간다. 플러그인 표면은 열지 않고, 이미 열려 있으면 선택 알림으로 따라오게 한다.
   // 열 패널이 없는 줄(Operation 이 아직 없는 시작 전 목표)만 플러그인이 자기 표면을 연다.
@@ -317,6 +348,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     : undefined;
   return (
     <li
+      ref={rowRef}
       className={[
         "side-bar-cluster-row",
         consoleUseWrapClassName(wrap),
@@ -365,17 +397,24 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         aria-label={[layout.cluster.title, label, ...meta.map((part) => part.text), row.mark && !row.mark.toggle ? resolveLocalizedText(row.mark.label, locale) : "", groupDot ? groupDot.name : "", selected ? t("sidebar.row.selected") : ""].filter(Boolean).join(", ")}
         onClick={activate}
         onDoubleClick={selectMode ? () => { if (pointerTypeRef.current !== "touch" && !dragging) open(); } : undefined}
-        onKeyDown={selectMode ? handleKeyDown : undefined}
+        onKeyDown={(event) => {
+          if (renameRow && event.key === "F2") {
+            event.preventDefault();
+            rename.begin();
+            return;
+          }
+          handleKeyDown(event);
+        }}
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
         {conversationRow ? (
           <span className="side-bar-cluster-row-head">
-            <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>
+            {rename.renaming ? renameInput : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
             {headMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}
           </span>
-        ) : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
+        ) : rename.renaming ? renameInput : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
         {conversationRow ? (
           <span className="side-bar-cluster-row-line" aria-hidden="true">
             {leadMeta.map((part) => (

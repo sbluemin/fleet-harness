@@ -204,7 +204,15 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...(selected ? { selected: true } : {}),
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
     moveToGroup: (groupId: string | null) => moveObjective(objective, groupId),
+    rename: (title: string) => renameObjective(objective, title),
   };
+}
+
+/** 줄 제목을 고쳤을 때 — 상세 머리의 제목과 같은 `/objective/patch` 경로이며, 비었거나 그대로면 보내지 않는다. */
+function renameObjective(objective: Objective, title: string): void {
+  const next = title.trim();
+  const api = objectivesApi();
+  if (api && next && next !== objective.title) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { title: next } }).catch(() => undefined);
 }
 
 /** 검토 대기 글리프 — 열린 후속 후보가 있으면 표면에서 고르게 하고, 없으면 바로 완료한다(목록 칸의 고리와 같은 동작). */
