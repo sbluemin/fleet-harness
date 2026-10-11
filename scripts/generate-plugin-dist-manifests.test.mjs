@@ -28,8 +28,8 @@ test('keeps the extra fields a plugin asks the host to redact', () => {
 test('points routes at the built bundle, never the TypeScript source', () => {
   // 소스 매니페스트의 routes는 `routes.ts`다. 그대로 옮기면 게시본이 해석에 실패해
   // 플러그인을 통째로 건너뛴다 — 라우트가 없는 것과 같은 증상이 된다.
-  assert.equal(createPluginDistManifest({ id: 'ledger', routes: 'routes.ts' }).routes, 'routes.mjs');
-  assert.equal(createPluginDistManifest({ id: 'ledger' }).routes, 'routes.mjs');
+  assert.equal(createPluginDistManifest({ id: 'quota', routes: 'routes.ts' }).routes, 'routes.mjs');
+  assert.equal(createPluginDistManifest({ id: 'quota' }).routes, 'routes.mjs');
 });
 
 test('omits the client entry, which the web build absorbs', () => {

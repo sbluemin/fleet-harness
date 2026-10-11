@@ -103,7 +103,7 @@ The toolbar opens tools that follow the active Theater:
 - **Shell**: one terminal for the whole Console, a keystroke away (<kbd>Ctrl</kbd><kbd>`</kbd>).
 - **Codex**: the project wiki. An experimental Cowork mode lets an AI draft edits to a page, and nothing changes until you apply them.
 - **Skills**: browse and install skills.
-- **Ledger** and **Usage limits**: token spend and provider quotas.
+- **Usage limits**: provider quotas.
 - **Objectives**: the work you've handed off.
 
 Beside any single Operation you can also open these companions:

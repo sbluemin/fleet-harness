@@ -223,7 +223,7 @@
   min-height: 22px;
 }
 
-/* 로딩 상태 카드 — Ledger의 상태 카드 문법(ledger-state) 미러. */
+/* 로딩 상태 카드. */
 .quota-state {
   padding: 20px 16px;
   border: 1px dashed var(--hairline);

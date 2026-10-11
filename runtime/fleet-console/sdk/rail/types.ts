@@ -120,7 +120,7 @@ export interface RailEntryDescriptor {
   readonly side?: "right";
   /**
    * 이 도구가 다루는 범위. `theater`(기본)는 활성 Theater의 파일·저장소·Shell처럼 지금 서 있는
-   * 작전구역을 다루고, `fleet`은 스킬·원장·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
+   * 작전구역을 다루고, `fleet`은 스킬·사용 한도처럼 Console 전체에 걸친다. 레일은 두 범위를
    * 구분선으로 갈라 세운다 — 순서는 범위 안에서 등록 순서 그대로다.
    */
   readonly scope?: "theater" | "fleet";
