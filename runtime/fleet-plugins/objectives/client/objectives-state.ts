@@ -865,10 +865,15 @@ export function openNewOperation(): void {
   installed?.composer.open();
 }
 
-/** 캡션 칩은 이미 열린 자리를 사용하고, 닫혀 있을 때만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(theaterId?: string): void {
+/** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
+export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): void {
   // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
   if (installed && theaterId && installed.consoleState.getActiveTheaterId() !== theaterId) installed.consoleState.setActiveTheater(theaterId);
+  if (place === "rail") {
+    installed?.rail.open(OBJECTIVE_PANEL_ID);
+    installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
+    return;
+  }
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
 }
