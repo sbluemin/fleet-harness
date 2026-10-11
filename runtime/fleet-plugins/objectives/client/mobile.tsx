@@ -16,7 +16,7 @@ import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaun
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { LinkText } from "./link-text.js";
 import { ObjectiveResults } from "./results.js";
-import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, takeReveal, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -50,6 +50,8 @@ const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: numbe
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
 const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 20}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
+/** 호스트 모바일 ⋮의 보관 아이콘과 같은 상자. */
+const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;
 const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none" /></Icon>;
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
 const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
@@ -329,13 +331,23 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const canReview = reviewing !== null;
   useEffect(() => { if (!canReview) setRoutingSheet(false); }, [canReview]);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
-  const latest = useRef({ actions, objectiveId, say, language, t });
-  latest.current = { actions, objectiveId, say, language, t };
+  // 데스크톱 상세 머리와 같은 조건 — 지휘관 묶음이 일하는 동안은 보관 입구를 내지 않는다.
+  const archivable = objective?.hasOperation === true && (!!objective.done || !WORKING.has(activityOf(operations, objective.id)));
+  const latest = useRef({ actions, objectiveId, say, language, t, archivable });
+  latest.current = { actions, objectiveId, say, language, t, archivable };
   const act = useCallback((path: string) => {
     const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
     void post(api, path, { objectiveId: id, language: locale }).catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}` : "";
+  // 보관은 데스크톱 상세 머리와 같은 경로·판정이다 — Operation 이 있으면 Operation 단위로 보관함에 서고, 상세는 닫는다.
+  // 기동 전 목표의 영구 삭제는 되돌릴 수 없어 확인 문법이 있는 데스크톱에만 둔다.
+  const archive = useCallback(() => {
+    const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
+    void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: id, language: locale })
+      .then(({ objective: archived, deleted }) => { if (deleted) removeObjectiveLocally(id); else upsertObjectiveLocally(archived); panes.close(); })
+      .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
+  }, [api, panes]);
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${archivable ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
     const current = latest.current.actions;
@@ -347,9 +359,11 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
       // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
       if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
+      // 보관은 일반 색 — 보관함에서 복원하면 임무·기록과 함께 돌아온다(호스트 세션 ⋮의 보관과 같은 자리, 맨 끝).
+      if (latest.current.archivable) items.push({ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive });
     }
     mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, panes, menuKey, t, act]);
+  }, [mobileBar, visible, title, panes, menuKey, t, act, archive]);
 
   if (!objective || !actions) return <div ref={rootRef} className="objectives-m" />;
   return (

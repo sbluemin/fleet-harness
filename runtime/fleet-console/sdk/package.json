@@ -259,6 +259,12 @@
       "import": "./components/launch-provider-glyphs.tsx",
       "default": "./components/launch-provider-glyphs.tsx"
     },
+    "./components/archive-glyph": {
+      "types": "./components/archive-glyph.tsx",
+      "browser": "./components/archive-glyph.tsx",
+      "import": "./components/archive-glyph.tsx",
+      "default": "./components/archive-glyph.tsx"
+    },
     "./components/shell-glyph": {
       "types": "./components/shell-glyph.tsx",
       "browser": "./components/shell-glyph.tsx",

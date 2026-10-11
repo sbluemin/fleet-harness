@@ -6,6 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 
 import { DISPLAY_QUIET_MS, describeQuietMission, memberFailureReason, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
@@ -37,7 +38,7 @@ import {
   unseenFollowupCount,
 } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace, FollowupForkGlyph } from "./followups-view.js";
-import { criterionSources, MergedTrail, TidiedDetail } from "./tidied.js";
+import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
@@ -362,7 +363,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         </div>
       </div>
     );
-  } else if (!current) {
+  } else if (!current || current.removed) {
     body = (
       <div className="objectives-pick-pane">
         <div className="objectives-pick-head">
@@ -387,8 +388,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         </div>
       </div>
     );
-  } else if (current.removed) {
-    body = <TidiedDetail key={current.id} objective={current} t={t} language={language} call={call} onOpenObjective={openObjectiveDetail} detailRef={detailRef} head={<>{switcher}{placeButton("objectives-place-detail")}</>} />;
   } else {
     body = (
       <ObjectiveDetail
@@ -1231,7 +1230,7 @@ function DetailTitle({ objective, t, editable, call }: { objective: Objective; t
 }
 
 // 브리핑 구획 — 초안·초점·접힘·첨부 상태를 구획 안에 둬서 쓰는 동안 상세의 나머지(그래프·구획 입력칸)가 따라 그리지 않는다.
-function BriefSection({ objective, t, language, touchable, call, onOpenObjective }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; onOpenObjective: DetailProps["onOpenObjective"] }) {
+function BriefSection({ objective, t, language, touchable, call }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"] }) {
   const [note, setNote] = useState(objective.note);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { setNote(objective.note); }, [objective.note]);
@@ -1348,7 +1347,7 @@ function BriefSection({ objective, t, language, touchable, call, onOpenObjective
         )}
         {dropping ? <AttachmentDropVeil t={t} /> : null}
         {noteOverflow && (noteOpen || !noteFocus) ? <button type="button" className="objectives-note-more" aria-expanded={noteOpen} onPointerDown={(event) => event.preventDefault()} onClick={() => setNoteOpen((value) => !value)}>{t(noteOpen ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
-        <MergedTrail objective={objective} t={t} language={language} call={call} onOpenObjective={onOpenObjective} />
+        <MergedTrail objective={objective} t={t} language={language} />
       </div>
   </>);
 }
@@ -1362,6 +1361,44 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   }, now);
   if (elapsed == null || elapsed < DISPLAY_QUIET_MS) return null;
   return describeQuietMission(elapsed / 60_000, language);
+}
+
+/** 두 번 눌러 확정하는 삭제가 풀리는 때 — 첫 누름 뒤 이 시간 안에 다시 눌러야 지운다. */
+const DELETE_ARM_MS = 4000;
+
+/**
+ * 목표 머리의 닫기 — Operation이 있는 목표는 보관(Operation 단위로 보관함에 서고, 복원하면 임무·기록과 돌아온다).
+ * 기동 전이라 Operation이 없는 목표는 보관할 것이 없어 영구 삭제만 있으므로, 두 번 눌러 확정한다. 판정은 서버의 hasOperation 하나.
+ */
+function ObjectiveCloseButton({ objective, t, call, toast }: { readonly objective: Objective; readonly t: T; readonly call: DetailProps["call"]; readonly toast: DetailProps["toast"] }) {
+  const inFlight = useRef(false);
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => setArmed(false), DELETE_ARM_MS);
+    return () => clearTimeout(timer);
+  }, [armed]);
+  const archivable = objective.hasOperation === true;
+  const close = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const result = await call<{ objective: Objective; deleted: boolean }>("/objective/archive", { objectiveId: objective.id }).finally(() => { inFlight.current = false; });
+    if (!result) return;
+    // 보관 DTO(archived)는 upsert가 활성 목록에서 거둔다. 영구 삭제는 레코드가 없으니 바로 뺀다.
+    if (result.deleted) removeObjectiveLocally(objective.id); else upsertObjectiveLocally(result.objective);
+    toast(t(result.deleted ? "objectives.toast.deleted" : "objectives.toast.archived"));
+  };
+  if (archivable) {
+    return <button type="button" className="objectives-detail-close is-archive" aria-label={t("objectives.objective.archive")} title={t("objectives.objective.archive")} onClick={() => void close()}><ArchiveGlyph /></button>;
+  }
+  const label = t(armed ? "objectives.objective.deleteArmed" : "objectives.objective.delete");
+  return (
+    <button type="button" className={`objectives-detail-close is-delete${armed ? " is-armed" : ""}`} aria-label={label} title={label}
+      // 키를 누르고 있는 반복 입력이 무장과 확정을 잇달아 일으키지 않게 한다.
+      onKeyDown={(event) => { if (event.repeat && (event.key === "Enter" || event.key === " ")) event.preventDefault(); }}
+      onBlur={() => setArmed(false)}
+      onClick={() => { if (!armed) { setArmed(true); return; } setArmed(false); void close(); }}><TrashGlyph /></button>
+  );
 }
 
 function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, sectionOpen, onToggleSection, onOpenSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, switcher, detailRef, layout, placeButton, onComplete, onToggleEdge, onOpenObjective, otherRequests, onNextRequest }: DetailProps) {
@@ -1393,8 +1430,6 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   const touchable = !objective.done;
   const notStarted = (mission: ObjectiveMission) => !mission.done;
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
-  // 삭제 요청이 도는 동안의 두 번째 누름은 버린다 — 서버는 이미 정리된 목표의 삭제를 비우기(영구 삭제)로 받는다.
-  const removing = useRef(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   // 확대 카드 폭 — 확대 그래프가 스크롤 없이 들어가는 폭을 알려 준다.
   const [zoomWidth, setZoomWidth] = useState<number | null>(null);
@@ -1602,7 +1637,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           <DetailTitle objective={objective} t={t} editable={touchable} call={call} />
           {switcher}
           {otherRequests > 0 ? <button type="button" className="objectives-detail-requests" title={t("objectives.requests.othersTip")} onClick={onNextRequest}>{t("objectives.requests.others", { count: otherRequests })}</button> : null}
-          {!busy ? <button type="button" className="objectives-detail-delete" aria-label={t("objectives.objective.delete")} title={t("objectives.objective.delete")} onClick={async () => { if (removing.current) return; removing.current = true; const removed = await call<{ objective: Objective }>("/objective/remove", { objectiveId: objective.id }).finally(() => { removing.current = false; }); if (removed) { if (removed.objective.removed) upsertObjectiveLocally(removed.objective); else removeObjectiveLocally(objective.id); toast(t("objectives.toast.deleted")); } }}><TrashGlyph /></button> : null}
+          {!busy ? <ObjectiveCloseButton objective={objective} t={t} call={call} toast={toast} /> : null}
           {placeButton}
         </div>
         {extension ? <div className="objectives-extension-current">
@@ -1664,7 +1699,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           expanded={objective.members.length === 0 || sectionOpen("detail:members")} onToggle={() => onToggleSection("detail:members")} />
       </div>
   </>);
-  const sBrief = <BriefSection objective={objective} t={t} language={language} touchable={touchable} call={call} onOpenObjective={onOpenObjective} />;
+  const sBrief = <BriefSection objective={objective} t={t} language={language} touchable={touchable} call={call} />;
   const sOrigin = (<>
       {/* 출처 — 후속으로 태어난 목표의 원본. 한 줄(말줄임 제목 + ↗)로만 두고, 원본이 없으면 비활성 한 줄. */}
       {followupOrigin ? (
@@ -1719,7 +1754,7 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
                   <ExtensionChip n={round} t={t} />
                   {evidence ? <span className="objectives-criterion-sub is-evidence">{t("objectives.criteria.evidence", { evidence })}</span>
                     : criterion.by === "commander" ? <span className="objectives-criterion-sub">{((did) => (did ? t("objectives.criteria.proposedBy", { did }) : t("objectives.criteria.proposed")))(actorDid(t, criterionApproval(objective, criterion), "approved"))}</span>
-                    : mergedFrom.get(criterion.id) ? <span className="objectives-criterion-sub">{t("objectives.tidied.fromCriterion", { title: mergedFrom.get(criterion.id)! })}</span> : null}
+                    : mergedFrom.get(criterion.id) ? <span className="objectives-criterion-sub">{t("objectives.merged.fromCriterion", { title: mergedFrom.get(criterion.id)! })}</span> : null}
                 </div>
                 <span className={`objectives-criterion-state${evidence ? " is-met" : ""}`}>{t(evidence ? "objectives.criteria.met" : "objectives.criteria.unchecked")}</span>
                 {touchable ? <button type="button" className="objectives-glyph objectives-criterion-remove" title={t("objectives.criteria.remove")} aria-label={t("objectives.criteria.remove")} onClick={() => void call("/criterion/remove", { objectiveId: objective.id, criterionId: criterion.id })}><TrashGlyph /></button> : null}

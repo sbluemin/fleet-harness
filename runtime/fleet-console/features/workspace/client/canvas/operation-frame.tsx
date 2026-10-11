@@ -4,7 +4,7 @@ import { consoleUseWrapClassName, getOperationWrap, subscribeConsoleUseGestures 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 
-import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationActivityVisual, type OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";

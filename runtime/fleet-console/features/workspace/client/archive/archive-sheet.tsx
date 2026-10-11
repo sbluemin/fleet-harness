@@ -8,7 +8,7 @@ import {
 } from "@fleet-console/sdk/operations/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { closeArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { fetchOperations } from "../../../../core/client/src/integration/api.js";

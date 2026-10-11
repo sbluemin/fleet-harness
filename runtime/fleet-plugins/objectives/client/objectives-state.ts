@@ -229,9 +229,8 @@ function memberIds(objectives: readonly Objective[]): ReadonlySet<string> {
 
 /**
  * Operation 목록과 목표를 맞춘다 — 읽어 둔 Theater 에 처음 보는 에이전트 Operation 이 있으면 그 목표를 받아 온다.
- * 기록이 있는 목표는 목록에서 빠졌다는 것만으로 빼지 않는다: 완료한 목표의 Operation 은 보관되어 일반 목록에서
- * 사라지지만 목표는 완료 목록에 그대로 있어야 한다. 그런 목표가 실제로 사라지는 때는 영구 삭제(operation:purged)와
- * 서버의 remove 사건뿐이다(removeObjectiveLocally·installObjectiveState).
+ * 기동 전 목표는 Operation이 없으므로 일반 목록의 부재만으로 빼지 않는다. 보관은 위치 DTO·archived 사건으로
+ * 활성 캐시에서 거두고, 복원은 같은 ID의 upsert로 돌아온다. 영구 삭제는 purged·서버 remove 사건이 맡는다.
  * 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Operation 이 「미분류」에 선 것)은 Operation 그 자체라
  * 목록에서 빠지면(보관·삭제) 곧바로 거둔다 — 서버의 목록도 같은 규칙으로 그 항목을 뺀다. 복원되면 처음 보는
  * Operation 으로 다시 받아 온다.
@@ -262,7 +261,7 @@ function reconcileOperations(api: ClientApiCapability): void {
         .then(({ objective }) => {
           const latest = theaters.get(objective.theaterId) ?? EMPTY;
           // 응답을 기다리는 사이 담당으로 연결됐으면 목표가 아니다.
-          if (!latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
+          if (!objective.archived && !isClosedObjective(objective.id) && !latest.objectives.some((candidate) => candidate.id === objective.id) && !memberIds(latest.objectives).has(objective.id)) setTheater(objective.theaterId, { objectives: [objective, ...latest.objectives] });
         })
         .catch((error: unknown) => {
           // 목표가 없다는 확정 답(404 unknown_objective)만 기억한다 — 401 같은 일시 거절은 세션이 돌아오면 다시 묻는다.
@@ -332,9 +331,25 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     unknownToServer.delete(event.objectiveId);
     const current = theaters.get(event.theaterId) ?? EMPTY;
-    if (event.op === "remove") { setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
+    if (event.op === "remove") { operationLocations.set(event.objectiveId, "deleted"); setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
     upsertObjectiveLocally(event.objective, event.order);
+  });
+  operationLocations.clear();
+  const offArchived = ctx.consoleEvents.subscribe("operation:archived", (payload) => {
+    const operationId = (payload as { operationId?: unknown } | null)?.operationId;
+    if (typeof operationId !== "string") return;
+    operationLocations.set(operationId, "archived");
+    removeObjectiveLocally(operationId);
+  });
+  const offRestored = ctx.consoleEvents.subscribe("operation:restored", (payload) => {
+    const operationId = (payload as { operationId?: unknown } | null)?.operationId;
+    if (typeof operationId !== "string") return;
+    operationLocations.set(operationId, "active");
+    unknownToServer.delete(operationId);
+    // 부모의 upsert와 자식 복원은 같은 사건열이다. 명시 복원 뒤에만 메타데이터를 다시 읽는다.
+    void post<{ objective: Objective }>(ctx.api, "/objective/get", { objectiveId: operationId })
+      .then(({ objective }) => upsertObjectiveLocally(objective)).catch(() => {});
   });
   const offGroup = ctx.consoleEvents.subscribe("group:changed", (payload) => {
     noteAlive();
@@ -349,6 +364,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const operationId = (payload as { operationId?: unknown } | null)?.operationId;
     if (typeof operationId !== "string") return;
     unknownToServer.delete(operationId);
+    operationLocations.set(operationId, "deleted");
     described.set(operationId, null);
     describedRevision += 1;
     removeObjectiveLocally(operationId);
@@ -365,6 +381,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
    * 같은 Theater 를 두 길이 함께 부르면 진행 중인 요청 하나를 나눠 쓴다. 확정 실패로 정착시킨 Theater 는 다시 묻지 않는다.
    */
   const offReconnect = ctx.consoleEvents.onReconnect?.(() => {
+    operationLocations.clear();
     for (const [theaterId, state] of theaters) if (state.loaded && !loadRetries.get(theaterId)?.permanent) refreshAfterReconnect.add(theaterId);
     loadAgentTheaters(ctx.api, ctx.consoleState.getActiveTheaterId());
   });
@@ -424,7 +441,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   };
   if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
   return () => {
-    offItem(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offConsole();
+    offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offConsole();
     if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
     if (focusOutTimer !== null) clearTimeout(focusOutTimer);
     if (installed === ctx) { installed = null; clearSelectionTheater(); }
@@ -432,9 +449,17 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   };
 }
 
-/** 목표 사건과 삭제 응답을 같은 규칙으로 반영한다 — 스트림을 놓쳐도 정리된 목표의 되돌리기 상태는 남는다. */
+/** 보관 사건은 진행 중이던 조회 응답보다 우선한다. 복원 사건이 오면 같은 ID를 다시 받는다. */
+const operationLocations = new Map<string, "active" | "archived" | "deleted">();
+const isClosedObjective = (id: string): boolean => operationLocations.get(id) === "archived" || operationLocations.get(id) === "deleted";
+
+/** 목표 사건과 응답은 같은 활성 위치 규칙으로 반영한다. 레코드 삭제와 보관은 서버가 구별한다. */
 export function upsertObjectiveLocally(objective: Objective, order?: readonly string[]): void {
   unknownToServer.delete(objective.id);
+  const location = operationLocations.get(objective.id);
+  // 복원 후 도착한 옛 보관 DTO도, 보관 후 도착한 옛 활성 DTO도 최신 위치 사건을 뒤집지 못한다.
+  if (location === "active" && objective.archived) return;
+  if (objective.archived || isClosedObjective(objective.id)) { removeObjectiveLocally(objective.id); return; }
   const current = theaters.get(objective.theaterId) ?? EMPTY;
   const exists = current.objectives.some((candidate) => candidate.id === objective.id);
   const merged = exists ? current.objectives.map((candidate) => (candidate.id === objective.id ? objective : candidate)) : [objective, ...current.objectives];
@@ -534,7 +559,7 @@ export function loadTheater(api: ClientApiCapability, theaterId: string, force =
       if (!Array.isArray(state?.objectives) || !Array.isArray(state.groups) || typeof state.launch !== "object" || state.launch === null) { fail(true); return; }
       loadRetries.delete(theaterId);
       refreshAfterReconnect.delete(theaterId);
-      setTheater(theaterId, { objectives: state.objectives, groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
+      setTheater(theaterId, { objectives: state.objectives.filter((objective) => !objective.archived && !isClosedObjective(objective.id)), groups: [...state.groups].sort((a, b) => a.order - b.order), loaded: true, launchAvailable: state.launch.available });
       // 읽는 사이 생긴 Operation 도 목표로 — 스냅숏 기준으로 한 번 맞춘다.
       if (installed) { operationsSnapshot = installed.consoleState.getOperations({ nested: true }); reconcileOperations(installed.api); }
     }, (error: unknown) => { fail(!isTransient(error)); })

@@ -46,8 +46,13 @@ export interface LaunchService {
   resumeFollowups(objectiveId?: string): void;
   /** 후속으로 만든 Operation 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(operationId: string): void;
-  /** 목표를 지운다 — 지휘관 Operation 을 닫는다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다). */
-  remove(objectiveId: string): Objective;
+  /** Operation이 있으면 보관, 없으면 기동 전 레코드를 영구 삭제한다. */
+  archive(objectiveId: string): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
+  /** 옛 삭제 호출의 호환 경로 — 기동 목표는 반복 호출해도 보관만 한다. */
+  remove(objectiveId: string): Promise<Objective>;
+  /** 옛 removed 레코드를 같은 ID의 dormant Operation 보관으로 이관한다. */
+  migrateRemoved(): Promise<void>;
+  restore(objectiveId: string): Promise<Objective>;
   /** 완료 기록과 Core 요청 의도를 저장한 뒤 지휘관 ID 하나로 보관을 요청한다. */
   complete(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   reopen(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
@@ -482,14 +487,51 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const stoppable = (operationId: string) => { const observation = ctx.host.consoleControl?.observe(operationId); return !!observation && observation.lifecycle !== "dormant" && observation.activity !== "idle" && observation.activity !== "ended"; };
   // 완료·완료 해제의 순서만 지킨다. Cluster 구성·정지·복원은 Core가 소유한다.
   const operationRequests = new Map<string, Promise<unknown>>();
+  let removalMigrationTimer: ReturnType<typeof setTimeout> | null = null;
   const orderedOperationRequest = async <T,>(id: string, run: () => Promise<T>): Promise<T> => {
     const task = (operationRequests.get(id) ?? Promise.resolve()).catch(() => undefined).then(run);
     operationRequests.set(id, task);
     try { return await task; } finally { if (operationRequests.get(id) === task) operationRequests.delete(id); }
   };
+  const migrateRemoval = async (id: string): Promise<void> => {
+    const current = objective(id);
+    if (!current.removed && !(current.done && store.pending(id))) return;
+    if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+    const config = store.pending(id);
+    const key = `objectives.commander:${id}`;
+    let existing = referenceNode(id);
+    if (existing && config) {
+      const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
+      if (existing.theaterId !== current.theaterId || marker?.owner !== ctx.pluginId || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
+    }
+    if (!existing) {
+      if (!config) throw new ObjectiveStoreError("unknown_operation");
+      // 이관은 모델·자격증명·Agent 기동에 의존하지 않는다. 공개 Operation 저장 포트로 휴면 메타데이터만 만든다.
+      try {
+        const created = ctx.host.operations.create({ id, theaterId: config.theaterId, type: "agent", pluginId: null,
+          title: config.title, createdAt: config.createdAt,
+          payload: { dormantBorn: true, restoredDormant: true, userQuestions: "blocked", launchKey: { owner: ctx.pluginId, key },
+            ...(config.viewMode === "chat" ? { chatMode: true, chatBorn: true } : {}),
+            session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
+              ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } } });
+        if (created.id !== id) throw new ObjectiveStoreError("operation_id_taken");
+      } catch (error) { asStoreError(error); }
+      existing = referenceNode(id);
+      if (!existing || existing.theaterId !== current.theaterId) throw new ObjectiveStoreError("operation_id_taken");
+    }
+    if (config && ctx.host.operations.get(id)) {
+      const groupId = liveGroupId(config.theaterId, config.groupId);
+      if ((existing.groupId ?? null) !== groupId) patchOperation(id, { groupId });
+    }
+    // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·소유 표식으로 재시도한다.
+    await ctx.host.operations.archive(id).catch(asStoreError);
+    if (current.removed) store.migratedRemoval(id);
+    else store.launched(id);
+    store.refresh(id);
+  };
   const operationIntent = (id: string, action: "archive" | "ensure-active") => {
     if (pending.has(id) || pending.has(`${id}:muster`)) throw new ObjectiveStoreError("objective_busy");
-    if (store.pending(id)) return undefined;
+    if (store.pending(id) && action !== "archive") return undefined;
     if (action === "archive" ? !ctx.host.operations.archive : !ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
     return { requestId: randomUUID(), action };
   };
@@ -499,7 +541,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     try {
       if (intent.action === "archive") {
         if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
-        await ctx.host.operations.archive(id);
+        if (store.pending(id)) await migrateRemoval(id);
+        else await ctx.host.operations.archive(id);
       } else {
         if (!ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
         await ctx.host.operations.access(id, "ensure-active");
@@ -1025,7 +1068,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const changed = new Set<string>();
     for (const [operationId, objectiveId] of [...outcomeWatched]) {
       const current = store.find(objectiveId);
-      const belongs = !!current && !current.done && (operationId === current.id || current.members.some((member) => member.id === operationId));
+      const belongs = !!current && !current.archived && !current.done && (operationId === current.id || current.members.some((member) => member.id === operationId));
       if (!belongs) {
         dropOutcome(operationId);
         continue;
@@ -1071,7 +1114,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   const outcomeOwner = (operationId: string): Objective | null => {
     const current = store.find(operationId) ?? store.findMember(operationId)?.objective ?? null;
-    if (!current || current.done) return null;
+    if (!current || current.archived || current.done) return null;
     if (operationId !== current.id && !current.members.some((member) => member.id === operationId)) return null;
     return current;
   };
@@ -1089,7 +1132,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (disposed) return;
     const changed = new Set<string>();
     for (const current of store.all()) {
-      if (current.done) continue;
+      if (current.archived || current.done) continue;
       for (const operationId of [current.id, ...current.members.map((member) => member.id)]) {
         if (syncOutcome(current.id, operationId)) changed.add(current.id);
       }
@@ -1106,12 +1149,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const reportQuietMs = serviceOptions.reportQuietMs ?? REPORT_QUIET_MS;
   const quietNow = serviceOptions.now ?? (() => Date.now());
   let quietTimer: ReturnType<typeof setTimeout> | null = null;
-  const quietTargets = (): boolean => store.all().some((current) => !current.done && !current.removed && current.missions.some((mission) => !mission.done && mission.member !== null && mission.assignmentTs != null));
+  const quietTargets = (): boolean => store.all().some((current) => !current.archived && !current.done && !current.removed && current.missions.some((mission) => !mission.done && mission.member !== null && mission.assignmentTs != null));
   const sweepQuiet = async () => {
     if (disposed) return;
     const now = quietNow();
     for (const current of store.all()) {
-      if (current.done || current.removed) continue;
+      if (current.archived || current.done || current.removed) continue;
       const boardUpdatedAt = current.boardUpdatedAt ?? null;
       for (const mission of current.missions) {
         if (mission.done || mission.member === null || mission.assignmentTs == null) continue;
@@ -1169,6 +1212,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         launch: { groupId: current.groupId, viewMode: commanderView(objectiveId), language: languageOf(options) },
       }, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
       await applyOperationIntent(objectiveId);
+      if (store.pending(objectiveId)) await migrateRemoval(objectiveId);
       service.resumeFollowups(objectiveId);
       return objective(objectiveId);
     }),
@@ -1194,21 +1238,60 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
     },
 
-    remove(objectiveId) {
+    archive: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+      if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = objective(objectiveId);
-      // 레코드는 Operation 이 복원 불가로 사라질 때(operation:purged) 거둔다 — 유예 동안 복원하면 목표도 돌아온다.
-      // 기동 전 목표는 먼저 「정리됨」에 남아 되돌릴 수 있다. 이미 그 자리에 있으면(비우기) 영구 삭제한다.
-      if (store.pending(objectiveId) && !current.removed) { const trashed = store.trash(objectiveId); service.followupTargetChanged(objectiveId); return trashed; }
-      if (store.pending(objectiveId)) { store.removePending(objectiveId); service.followupTargetChanged(objectiveId); return current; }
-      if (!ctx.host.operations.delete(objectiveId)) throw new ObjectiveStoreError("unknown_objective");
-      return current;
+      const config = store.pending(objectiveId);
+      const existing = referenceNode(objectiveId);
+      if (config && existing) {
+        const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
+        if (existing.theaterId !== current.theaterId || marker?.owner !== ctx.pluginId || marker.key !== `objectives.commander:${objectiveId}`) throw new ObjectiveStoreError("operation_id_taken");
+      }
+      // 옛 정리 데이터는 새 pending 삭제 정책보다 먼저 무손실 이관한다.
+      if (current.removed) await migrateRemoval(objectiveId);
+      else if (!referenceNode(objectiveId)) {
+        store.removePending(objectiveId);
+        service.followupTargetChanged(objectiveId);
+        return { objective: current, deleted: true };
+      } else {
+        if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+        await ctx.host.operations.archive(objectiveId).catch(asStoreError);
+      }
+      store.refresh(objectiveId);
+      service.followupTargetChanged(objectiveId);
+      return { objective: objective(objectiveId), deleted: false };
+    }),
+    async remove(objectiveId) { return (await service.archive(objectiveId)).objective; },
+    async migrateRemoved() {
+      if (disposed) return;
+      if (removalMigrationTimer) clearTimeout(removalMigrationTimer);
+      removalMigrationTimer = null;
+      let retry = false;
+      for (const current of store.all()) {
+        if (!current.removed && !(current.done && store.pending(current.id))) continue;
+        try { await orderedOperationRequest(current.id, () => migrateRemoval(current.id)); }
+        catch (error) { retry = true; console.warn(`[objectives] archive migration failed for ${current.id}: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
+      }
+      if (retry && !disposed) {
+        removalMigrationTimer = setTimeout(() => { removalMigrationTimer = null; void service.migrateRemoved(); }, 60_000);
+        removalMigrationTimer.unref?.();
+      }
     },
+    restore: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+      if (objective(objectiveId).removed) await migrateRemoval(objectiveId);
+      if (!objective(objectiveId).archived) throw new ObjectiveStoreError("not_archived");
+      await accessOperation(objectiveId);
+      store.refresh(objectiveId);
+      service.followupTargetChanged(objectiveId);
+      return objective(objectiveId);
+    }),
 
     complete: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
       store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
       forgetOutcome(objectiveId);
       await applyOperationIntent(objectiveId);
+      if (store.pending(objectiveId)) await migrateRemoval(objectiveId);
       return objective(objectiveId);
     }),
 
@@ -1340,6 +1423,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     resumeReservations(operationId) {
       const scope = operationId === undefined ? store.all() : [store.find(operationId) ?? store.findMember(operationId)?.objective].filter((entry): entry is Objective => !!entry);
       for (const current of scope) {
+        if (current.archived) continue;
         for (const member of current.members) {
           const next = store.storedMember(current.id, member.id)?.next;
           if (!next || next.failed) continue;
@@ -1652,6 +1736,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       for (const timer of announceTimers) clearTimeout(timer);
       announceTimers.clear();
       disposed = true;
+      if (removalMigrationTimer) clearTimeout(removalMigrationTimer);
+      removalMigrationTimer = null;
       if (watchTimer) clearTimeout(watchTimer);
       watchTimer = null;
       watched.clear();

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { AccentToneList } from "@fleet-console/sdk/components/accent-tone-list";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
