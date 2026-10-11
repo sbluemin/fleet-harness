@@ -1,4 +1,11 @@
-import { defaultCredentialDeps } from "../../transport/credentials.js";
+import { stat } from "node:fs/promises";
+import path from "node:path";
+
+import {
+  defaultCredentialDeps,
+  optionalTrimmedString,
+  type CredentialResolverDeps,
+} from "../../transport/credentials.js";
 import type { ProviderResult, QuotaWindow, WindowId } from "../../quota/types.js";
 import {
   HOUR_MS,
@@ -126,6 +133,45 @@ function quotaHeaders(credentials: AntigravityCredentials): Record<string, strin
 
 const codeAssistCache = createAntigravityCodeAssistCache();
 
+interface AntigravityQuotaDeps extends ProviderDeps {
+  /** Existence-only probe; quota never needs to read installation or IDE files. */
+  readonly stat?: (filePath: string) => Promise<unknown>;
+}
+
+/**
+ * Avoid starting PowerShell for automatic quota reads on Windows without any
+ * Antigravity footprint. These are hints, not proof of login: an unreadable path
+ * must not hide a user's quota, and an explicit CLI override opts into probing.
+ * This deliberately does not gate turns or cache absence across quota reads.
+ */
+async function hasWindowsAntigravityHint(
+  deps: CredentialResolverDeps,
+  statPath: NonNullable<AntigravityQuotaDeps["stat"]>,
+): Promise<boolean> {
+  if (optionalTrimmedString(deps.env.FLEET_ANTIGRAVITY_CLI)) return true;
+  const home = deps.homedir();
+  const appData = optionalTrimmedString(deps.env.APPDATA) ?? path.win32.join(home, "AppData", "Roaming");
+  const localAppData = optionalTrimmedString(deps.env.LOCALAPPDATA) ?? path.win32.join(home, "AppData", "Local");
+  const candidates = [
+    path.win32.join(home, ".gemini", "antigravity-cli"),
+    path.win32.join(appData, "Antigravity"),
+    path.win32.join(appData, "Antigravity IDE"),
+    path.win32.join(localAppData, "agy", "bin", "agy.exe"),
+    path.win32.join(localAppData, "Programs", "Antigravity", "Antigravity.exe"),
+    path.win32.join(localAppData, "Programs", "Antigravity", "antigravity.exe"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await statPath(candidate);
+      return true;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | null)?.code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Read Antigravity usage.
  *
@@ -133,10 +179,13 @@ const codeAssistCache = createAntigravityCodeAssistCache();
  * once behind a forced refresh, because the local expiry can lag the server's
  * view of the session.
  */
-export async function fetchAntigravityUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
+export async function fetchAntigravityUsage(deps: AntigravityQuotaDeps = {}): Promise<ProviderResult> {
   const credentialDeps = deps.credentials ?? defaultCredentialDeps;
   const now = deps.now ?? Date.now;
   const fetchImpl = deps.fetch ?? fetch;
+  if (credentialDeps.platform === "win32" && !await hasWindowsAntigravityHint(credentialDeps, deps.stat ?? stat)) {
+    return { status: "signed_out" };
+  }
   const auth = await resolveAntigravityAuth(credentialDeps, { now });
   if (auth.status !== "ok") return { status: auth.status };
 

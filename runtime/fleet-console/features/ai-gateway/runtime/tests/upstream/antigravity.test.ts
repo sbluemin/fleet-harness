@@ -95,6 +95,53 @@ async function collect(events: AsyncIterable<CanonicalResponseEvent>): Promise<C
 // A real blob: 436 base64 characters were observed on the live wire.
 const SIGNATURE = "EsMCCsAC".padEnd(120, "AbC+/9=");
 
+describe("antigravity quota", () => {
+  it("does not read credentials on Windows without an Antigravity footprint", async () => {
+    const execFile = vi.fn<CredentialResolverDeps["execFile"]>();
+    const readBounded = vi.fn<CredentialResolverDeps["readBounded"]>();
+    const fetchImpl = vi.fn<typeof fetch>();
+    const result = await fetchAntigravityUsage({
+      credentials: credentialDeps({ platform: "win32", execFile, readBounded }),
+      stat: async () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
+      fetch: fetchImpl,
+    });
+    expect(result).toEqual({ status: "signed_out" });
+    expect(execFile).not.toHaveBeenCalled();
+    expect(readBounded).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("keeps Windows quota collection working when one installation hint exists", async () => {
+    const home = "C:\\Users\\tester";
+    const cliDirectory = path.win32.join(home, ".gemini", "antigravity-cli");
+    const execFile = vi.fn<CredentialResolverDeps["execFile"]>().mockResolvedValue(
+      Buffer.from(keychainValue({ access_token: ACCESS }), "utf8").toString("base64"),
+    );
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (url) => new Response(JSON.stringify(
+      url === ANTIGRAVITY_QUOTA_SUMMARY_URLS[0]
+        ? { groups: [{ buckets: [{ bucketId: "gemini-5h", remainingFraction: 0.75 }] }] }
+        : {},
+    )));
+    const result = await fetchAntigravityUsage({
+      credentials: credentialDeps({ platform: "win32", homedir: () => home, execFile }),
+      stat: async (filePath) => {
+        if (filePath === cliDirectory) return {};
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      },
+      fetch: fetchImpl,
+    });
+    expect(result).toMatchObject({
+      status: "ok",
+      method: "keychain",
+      windows: [{ id: "session", label: "Gemini", usedPercent: 25 }],
+    });
+    expect(execFile).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(ANTIGRAVITY_QUOTA_SUMMARY_URLS[0], expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS}` }),
+    }));
+  });
+});
+
 describe("antigravity credentials", () => {
   it("reads whichever store the CLI chose and keeps the fresher token when both hold one", async () => {
     const tokenFile = path.join("/home/tester", ".gemini", "antigravity-cli", "antigravity-oauth-token");
