@@ -49,6 +49,11 @@ export interface OperationClusterConversation {
   readonly events: readonly GroupTimelineEntry[];
   readonly truncated?: boolean;
   readonly decision: ConversationDecision | null;
+  /**
+   * 보드 사건(`board-action`) 줄에서 그 행위의 기록을 연다 — 사령관 행위면 읽기 전용 사령관 기록을 그 턴 위치로. 쓰기는 없다.
+   * 플러그인이 줄 id 로 자기 기록을 찾는다. 없으면 그 줄은 펼침만 있다.
+   */
+  readonly openBoardAction?: (entryId: string) => void;
 }
 
 export interface GroupTimelineSnapshot {

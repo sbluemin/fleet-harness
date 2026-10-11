@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
@@ -18,7 +18,7 @@ import { isDesktopShell } from "../../../../core/client/src/integration/desktop-
 import { ToolbarSettingsButton } from "../../../../core/client/src/chrome/toolbar/console-toolbar.js";
 import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { mountConversationOperationTabsHost } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { mountConversationOperationTabsHost, registerConversationOperationTab } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
@@ -37,6 +37,7 @@ import {
   useTriageActive,
 } from "../canvas/triage-store.js";
 import { publishConversationSubject, useConversationBodyRenderer } from "./conversation-slots.js";
+import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
 
 /**
@@ -236,14 +237,19 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const cruiseSubject = useCruiseSubject(state);
   const { stage, waiting, next } = useWarRoomStage(state, warRoom);
   const subject = warRoom ? stage : cruiseSubject;
-  useEffect(() => { publishConversationSubject(subject); }, [subject]);
+  // 플러그인 대화(사령관 등)는 Cruise 의 가운데 칸에만 선다. War Room 은 대기 무대가 칸을 가진다.
+  const surface = useConversationSurface();
+  const { conversationSurfaces } = usePluginRegistry();
+  const surfaceDescriptor = surface === null || warRoom ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
+  useEffect(() => { if (warRoom) closeConversationSurface(); }, [warRoom]);
+  useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : subject); }, [subject, surfaceDescriptor]);
   // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeOperationId = state.activeOperationId;
   useEffect(() => {
-    if (warRoom || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
+    if (warRoom || surfaceDescriptor !== null || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
     setActiveOperation(cruiseSubject.id);
-  }, [activeOperationId, cruiseSubject, warRoom]);
+  }, [activeOperationId, cruiseSubject, surfaceDescriptor, warRoom]);
   useEffect(() => () => publishConversationSubject(null), []);
   const toggleDetails = useToggleDetails();
 
@@ -254,7 +260,16 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       style={{ left: Math.max(insets.left, STAGE_EDGE_GUTTER), right: Math.max(insets.right, STAGE_EDGE_GUTTER) }}
       aria-label={t("conversation.stage.aria")}
     >
-      {subject ? (
+      {surfaceDescriptor && surface ? (
+        <ConversationSurfaceColumn
+          key={surface.surfaceId}
+          descriptor={surfaceDescriptor}
+          selection={surface}
+          language={language}
+          theme={state.activeTheme}
+          onToggleDetails={toggleDetails}
+        />
+      ) : subject ? (
         <ConversationColumn
           key={subject.id}
           state={state}
@@ -278,6 +293,64 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
+ * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
+ */
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails }: {
+  readonly descriptor: ConversationSurfaceDescriptor;
+  readonly selection: ConversationSurfaceSelection;
+  readonly language: "en" | "ko";
+  readonly theme: ConversationSurfaceContext["theme"];
+  readonly onToggleDetails: () => void;
+}) {
+  const t = useT();
+  const context = useMemo<ConversationSurfaceContext>(() => ({
+    params: selection.params,
+    language,
+    theme,
+    close: () => closeConversationSurface(descriptor.id),
+  }), [descriptor.id, language, selection.params, theme]);
+  // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 대화가 걷히면 탭도, 그 탭이 연 패널도 걷힌다.
+  useEffect(() => {
+    const tabs = descriptor.tabs ?? [];
+    const disposers = tabs.map((tab, order) => registerConversationOperationTab({
+      id: tab.id,
+      title: tab.title,
+      icon: tab.icon ?? null,
+      order,
+      ...(tab.defaultWidth === undefined ? {} : { defaultWidth: tab.defaultWidth }),
+      render: () => <PluginErrorBoundary fallback={null}>{tab.render(context)}</PluginErrorBoundary>,
+    }));
+    return () => {
+      for (const dispose of disposers) dispose();
+      const active = getRailStoreSnapshot().activePanelId;
+      if (active !== null && tabs.some((tab) => tab.id === active)) closeRailPanel(active);
+    };
+  }, [context, descriptor]);
+  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있으면 기본 탭을 연다.
+  useEffect(() => {
+    if (descriptor.defaultTab === undefined || getRailStoreSnapshot().activePanelId !== null) return;
+    openRailPanel(descriptor.defaultTab);
+  }, [descriptor.defaultTab, selection.nonce]);
+  const title = descriptor.title(context);
+  const subtitle = descriptor.subtitle?.(context) ?? null;
+  return (
+    <div className="conversation-column">
+      <div className="conversation-pill-row">
+        <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
+          {descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
+          <span className="conversation-pill-title">{title}</span>
+          {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
+        </button>
+      </div>
+      <div className="conversation-body is-surface">
+        <PluginErrorBoundary fallback={null}>{descriptor.render(context)}</PluginErrorBoundary>
+      </div>
+    </div>
   );
 }
 

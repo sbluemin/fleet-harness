@@ -51,6 +51,7 @@ import { useWarRoomChromeState } from "../../../core/client/src/integration/war-
 import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
+import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -1067,6 +1068,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 // 대화 중심 화면의 포커스 — 지도를 움직이거나 최소화·스냅·companion 을 건드리지 않는다. War Room 이면 무대로 지목하고,
 // 아니면 그 Theater 로 옮겨 활성으로 세운다. 가운데 칸은 활성 Operation 을 본다.
 function focusConversationOperation(operation: OperationNode): void {
+  // Operation 을 고르면 가운데 칸에 서 있던 플러그인 대화(사령관 등)는 걷힌다.
+  closeConversationSurface();
   if (isTriageActive()) {
     pickTriageOperation(operation.id);
     requestOperationKeyboardFocus(operation.id);

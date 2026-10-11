@@ -5,7 +5,7 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type {
-  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, ConversationSurfaceDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -32,6 +32,8 @@ export interface PluginRegistry {
   readonly railEntries: readonly RailEntryDescriptor[];
   readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
+  /** 대화 중심 화면의 가운데 칸에 서는 플러그인 대화 — id 는 플러그인이 준 그대로다(`ctx.conversation.open` 이 부르는 이름). */
+  readonly conversationSurfaces: readonly ConversationSurfaceDescriptor[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
@@ -198,6 +200,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     providers,
     failures,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
+    conversationSurfaces: providers.flatMap((plugin) => plugin.conversationSurfaces ?? []),
     onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
     operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),
