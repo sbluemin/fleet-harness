@@ -4,7 +4,7 @@ import { theaterInitials } from "./theater-initials.js";
 import { TheaterMonogram } from "./theater-monogram.js";
 export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
 import { useTriageActive } from "../canvas/triage-store.js";
@@ -27,7 +27,8 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { TheaterContributionMenuItems, TheaterContributionRows } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
+import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
@@ -127,11 +128,14 @@ type ActiveContextMenu =
       readonly fromRow?: boolean;
     }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
-  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null };
+  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean };
 
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
+  /** Theater 머리 「+」에서 열었으면 그 Theater 와 「+」의 자리 — 메뉴 맨 아래 「새 그룹…」이 그 자리에 Theater 메뉴를 연다. */
+  readonly theaterId?: string;
+  readonly theaterAnchor?: DOMRect;
   /** 그룹 머리 「+」에서 열었으면 그 그룹 — 새 줄(목표)과 발사한 Operation 이 그 그룹에 선다. */
   readonly groupId?: string | null;
 }
@@ -190,14 +194,14 @@ interface TheaterSectionHeaderProps {
   readonly theater: TheaterInfo;
   readonly active: boolean;
   readonly collapsed: boolean;
-  readonly statusActionsOpen: boolean;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
   readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
+  /** 활성 Theater 머리를 눌렀을 때 — 그 Theater 의 Inbox 를 연다(비활성 머리는 전환만 한다). */
+  readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
-  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
@@ -213,7 +217,6 @@ interface TheaterInactiveSectionProps {
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly collapsed: boolean;
   readonly statusAxis: boolean;
-  readonly statusActionsOpen: boolean;
   readonly showStatusLiveTick: boolean;
   readonly statusLandingIds: ReadonlySet<string>;
   readonly dragging: boolean;
@@ -226,7 +229,7 @@ interface TheaterInactiveSectionProps {
   /** 「더블클릭으로 열기」가 켜졌을 때만 — 칩·줄의 한 번 클릭이 여는 대신 고른다. */
   readonly onSelect?: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
-  readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
+  readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
@@ -241,6 +244,8 @@ interface TheaterActionsMenuProps {
   readonly onForgetTheater: () => void;
   readonly onOpenSystemPrompt: () => void;
   readonly onClose: () => void;
+  /** 「+」 메뉴의 「새 그룹…」에서 열었으면 이름 입력부터 연다. */
+  readonly startWithNewGroup?: boolean;
 }
 
 const DRAG_THRESHOLD_PX = 6;
@@ -1033,12 +1038,24 @@ export function OperationsSideBar({
       anchor: { x: anchor.right + 8, y: anchor.top },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
       groupId,
+      // 그룹 머리 「+」는 그 그룹에 서는 것만 만든다 — 「새 그룹…」은 Theater 머리 「+」에만 싣는다.
+      ...(groupId === null ? { theaterId, theaterAnchor: anchor } : {}),
     });
   };
 
   const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
     event.stopPropagation();
     openTheaterLaunchMenuAt(event.currentTarget.getBoundingClientRect(), theaterId);
+  };
+
+  // 활성 Theater 머리 — 그 Theater 의 Inbox. 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도 정하지 않으면
+  // 호스트의 시스템 프롬프트 칸이다(「시스템 프롬프트…」 항목과 같은 길이라 폰·대화 중심 화면도 그 경로를 그대로 탄다).
+  const openTheaterHeaderInbox = (theater: TheaterInfo, returnFocus: HTMLElement | null) => {
+    setNewMenu(null);
+    setActiveContextMenu(null);
+    const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
+    if (landing) openTheaterInbox({ theaterId: theater.id, ...landing, returnFocus });
+    else openTheaterSystemPrompt(theater, returnFocus);
   };
 
   // "Theater 추가" 요청 소비(팔레트) — 접힘을 풀고 Theater 브라우저를 연다.
@@ -1144,7 +1161,6 @@ export function OperationsSideBar({
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
           const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationRuntime);
-          const statusActionsOpen = activeContextMenu?.kind === "theater" && activeContextMenu.theaterId === theater.id;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
           const theaterDragOffsetY = isTheaterDragging && drag?.kind === "theater" ? drag.currentY - drag.startY : 0;
@@ -1180,7 +1196,6 @@ export function OperationsSideBar({
                 operationAccent={theaterCanvas.operationAccent}
                 collapsed={theaterCollapsed}
                 statusAxis={statusAxis}
-                statusActionsOpen={statusActionsOpen}
                 showStatusLiveTick={showStatusLiveTick}
                 statusLandingIds={statusLandingIds}
                 dragging={isTheaterDragging}
@@ -1192,10 +1207,7 @@ export function OperationsSideBar({
                 onResume={onResume}
                 {...(onSelect ? { onSelect } : {})}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
-                onOpenActions={(anchor, returnFocus) => {
-                  setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
-                }}
+                onOpenInbox={openTheaterHeaderInbox}
                 onOpenLaunch={openTheaterLaunchMenu}
                 onContextMenu={(anchor, returnFocus) => {
                   setNewMenu(null);
@@ -1220,17 +1232,13 @@ export function OperationsSideBar({
                 active
                 collapsed={theaterCollapsed}
                 clusterHead={theaterClusterHead(rowPlan, theaterCollapsed || statusAxis)}
-                statusActionsOpen={statusActionsOpen}
                 showStatusLiveTick={showStatusLiveTick}
                 dragging={isTheaterDragging}
                 dropTarget={theaterDropBefore}
                 dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
-                onOpenActions={(anchor, returnFocus) => {
-                  setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
-                }}
+                onOpenInbox={openTheaterHeaderInbox}
                 onOpenLaunch={openTheaterLaunchMenu}
                 onContextMenu={(anchor, returnFocus) => {
                   setNewMenu(null);
@@ -1426,6 +1434,20 @@ export function OperationsSideBar({
           renderKindIcon={renderKindIcon}
           onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch, newMenu.groupId ?? null); }}
           onClose={() => setNewMenu(null)}
+          // Theater 머리 「+」에서 연 메뉴의 맨 아래 — 만드는 일을 한자리에 둔다. 누르면 그 Theater 동작 메뉴가 이름 입력부터 열린다.
+          {...(newMenu.theaterId ? {
+            footerItems: [{
+              id: "new-group",
+              label: t("sidebar.theater.newGroup"),
+              icon: <PlusIcon />,
+              onSelect: () => {
+                const theaterId = newMenu.theaterId;
+                const anchor = newMenu.theaterAnchor;
+                setNewMenu(null);
+                if (theaterId && anchor) setActiveContextMenu({ kind: "theater", theaterId, anchor, newGroup: true });
+              },
+            }],
+          } : {})}
         />,
         document.body,
       ) : null}
@@ -1470,6 +1492,7 @@ export function OperationsSideBar({
           active={contextMenuTheater.id === activeTheaterId}
           groupCount={groups.filter((group) => group.theaterId === contextMenuTheater.id).length}
           anchor={activeContextMenu.anchor}
+          startWithNewGroup={activeContextMenu.newGroup === true}
           onCreateGroup={(name) => {
             onCreateGroup(contextMenuTheater.id, name);
             closeActiveContextMenu();
@@ -1657,14 +1680,13 @@ function TheaterSectionHeader({
   theater,
   active,
   collapsed,
-  statusActionsOpen,
   showStatusLiveTick,
   dragging,
   dropTarget,
   dragOffsetY,
   onSelectTheater,
+  onOpenInbox,
   onToggleCollapsed,
-  onOpenActions,
   onOpenLaunch,
   onContextMenu,
   onPointerDragStart,
@@ -1672,6 +1694,7 @@ function TheaterSectionHeader({
 }: TheaterSectionHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
+  const activateRef = useRef<HTMLButtonElement | null>(null);
   // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. Theater 바로 아래 선 목표 줄의 묶음 머리이기도 하다.
   const wrap = useSyncExternalStore(
     subscribeConsoleUseGestures,
@@ -1680,6 +1703,12 @@ function TheaterSectionHeader({
       : null),
     () => null,
   );
+  // 플러그인 표식(자율 운영의 사령관 글리프)이 있으면 이니셜 칩 자리에 선다. 운영자가 일하는 동안 이름에 라이브 물결이 흐른다.
+  const summary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
+  const mark = useTheaterContributionMark(summary, active);
+  const live = useTheaterHeaderLive(theater.id);
+  // Inbox 를 닫을 때 입구(우클릭 메뉴 항목 등)가 사라졌으면 포커스가 이 머리로 돌아온다.
+  useTheaterInboxReturnTarget(theater.id, () => activateRef.current);
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
@@ -1702,9 +1731,9 @@ function TheaterSectionHeader({
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // 행 컨트롤(정렬·새 Operation·액션)에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 행 컨트롤(접기·새 Operation)과 표식 안의 단추(자율 운영 끄기)에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
-    if (event.target instanceof Element && event.target.closest(".side-bar-theater-row-controls")) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-row-controls") || event.target.closest(".side-bar-theater-mark button"))) return;
     onPointerDragStart(event, theater.id);
   };
 
@@ -1712,15 +1741,15 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // Theater 선택과 아코디언은 서로 다른 동작이다. 이름은 Theater를 마운트하고 chevron은
-  // 활성 여부와 무관하게 이 섹션만 접는다. 둘을 한 버튼에 합치면 같은 위치의 동작이
-  // 활성 상태에 따라 바뀌고, 비활성 Theater는 접으려 해도 먼저 마운트해야 한다.
+  // 이름은 비활성 Theater 면 전환하고, 활성 Theater 면 그 Theater 의 Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만
+  // 접는다 — 둘을 한 버튼에 합치면 비활성 Theater 를 접으려 해도 먼저 마운트해야 한다.
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     if (!active) onSelectTheater(theater.id);
+    else onOpenInbox(theater, activateRef.current);
   };
   const collapseLabel = collapsed
     ? t("sidebar.theater.expand", { theater: theater.label })
@@ -1737,23 +1766,36 @@ function TheaterSectionHeader({
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
     >
+      {mark !== null ? (
+        // 플러그인 표식은 활성화 버튼 밖에 선다 — 표식이 자기 단추(자율 운영 끄기)를 품을 수 있게. 단추가 아닌 자리를 누르면
+        // 머리를 누른 것과 같다.
+        <span
+          className="side-bar-theater-anchor side-bar-theater-mark"
+          onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) select(); }}
+        >
+          {mark}
+          {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+        </span>
+      ) : null}
       <button
+        ref={activateRef}
         type="button"
         className="side-bar-theater-activate"
-        aria-haspopup="menu"
-        aria-disabled={active ? true : undefined}
+        aria-haspopup={active ? "dialog" : undefined}
         onClick={select}
         onKeyDown={handleKeyDown}
         aria-current={active ? "true" : undefined}
-        title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
+        title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? t("sidebar.theater.openInbox", { theater: theater.label }) : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
-        <span className="side-bar-theater-anchor" aria-hidden="true">
-          <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>
-          {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
-              얹으면 어느 Theater인지가 지워진다. */}
-          {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
-        </span>
-        <span className="side-bar-theater-name">{theater.label}</span>
+        {mark === null ? (
+          <span className="side-bar-theater-anchor" aria-hidden="true">
+            <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>
+            {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
+                얹으면 어느 Theater인지가 지워진다. */}
+            {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+          </span>
+        ) : null}
+        <span className={`side-bar-theater-name${live ? " is-live" : ""}`}>{theater.label}</span>
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
@@ -1766,34 +1808,17 @@ function TheaterSectionHeader({
         >
           <ChevronIcon collapsed={collapsed} />
         </button>
-        {/* 축 토글이 빠지면서 이 묶음과 바깥 행 컨트롤이 같은 범위가 됐다. 겹친 두 group을
-            그대로 두면 보조기술이 분할 버튼 하나를 두 겹으로 읽으므로, 바깥 하나만 남긴다
-            (플러스는 Operation, 케밥은 Theater 동작이라 바깥 라벨이 둘을 함께 덮는다). */}
-        <span className="side-bar-theater-split-control">
-          <button
-            type="button"
-            className="side-bar-theater-row-btn side-bar-theater-launch-btn side-bar-theater-split-plus"
-            aria-label={t("sidebar.theater.newOperation", { theater: theater.label })}
-            title={t("sidebar.theater.newOperation", { theater: theater.label })}
-            onClick={(event) => onOpenLaunch(event, theater.id)}
-          >
-            <PlusIcon />
-          </button>
-          <button
-            type="button"
-            className="side-bar-theater-row-btn side-bar-theater-split-caret"
-            aria-label={t("sidebar.theater.actions")}
-            aria-haspopup="menu"
-            aria-expanded={statusActionsOpen}
-            title={t("sidebar.theater.actions")}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenActions(event.currentTarget.getBoundingClientRect(), event.currentTarget);
-            }}
-          >
-            <TheaterActionsIcon />
-          </button>
-        </span>
+        {/* Theater 동작(시스템 프롬프트·새 그룹·Theater 잊기)은 머리 우클릭(Shift+F10) 메뉴에 있다. 「새 그룹…」은 이 「+」 메뉴
+            맨 아래에도 선다. */}
+        <button
+          type="button"
+          className="side-bar-theater-row-btn side-bar-theater-launch-btn"
+          aria-label={t("sidebar.theater.newOperation", { theater: theater.label })}
+          title={t("sidebar.theater.newOperation", { theater: theater.label })}
+          onClick={(event) => onOpenLaunch(event, theater.id)}
+        >
+          <PlusIcon />
+        </button>
       </span>
     </div>
   );
@@ -1807,7 +1832,6 @@ function TheaterInactiveSection({
   operationAccent,
   collapsed,
   statusAxis,
-  statusActionsOpen,
   showStatusLiveTick,
   statusLandingIds,
   dragging,
@@ -1819,7 +1843,7 @@ function TheaterInactiveSection({
   onResume,
   onSelect,
   onToggleCollapsed,
-  onOpenActions,
+  onOpenInbox,
   onOpenLaunch,
   onContextMenu,
   onPointerDragStart,
@@ -1905,14 +1929,13 @@ function TheaterInactiveSection({
         active={false}
         collapsed={collapsed}
         clusterHead={theaterClusterHead(rowPlan, collapsed || statusAxis)}
-        statusActionsOpen={statusActionsOpen}
         showStatusLiveTick={showStatusLiveTick}
         dragging={dragging}
         dropTarget={dropBefore}
         dragOffsetY={dragOffsetY}
         onSelectTheater={onSelectTheater}
         onToggleCollapsed={onToggleCollapsed}
-        onOpenActions={onOpenActions}
+        onOpenInbox={onOpenInbox}
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
         onPointerDragStart={onPointerDragStart}
@@ -2020,9 +2043,9 @@ function TheaterInactiveSection({
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
-  const [showNewInput, setShowNewInput] = useState(false);
+  const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
   const [promptLoaded, setPromptLoaded] = useState(false);
   useEffect(() => {
@@ -2162,16 +2185,6 @@ function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
   return (
     <svg className={`side-bar-theater-chevron${collapsed ? " is-collapsed" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TheaterActionsIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="3.2" cy="8" r="1.35" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.35" fill="currentColor" />
-      <circle cx="12.8" cy="8" r="1.35" fill="currentColor" />
     </svg>
   );
 }

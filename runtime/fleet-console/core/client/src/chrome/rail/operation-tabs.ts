@@ -14,7 +14,18 @@ import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 export type ConversationOperationTab = Extract<RailPanelDescriptor, { readonly render: unknown }> & {
   /** 앞 묶음 안의 순서 — 작은 값이 앞이다. 같으면 등록 순서. */
   readonly order?: number;
+  /**
+   * 이 탭이 속한 Theater 섹션(Theater Inbox 를 오른쪽 패널로 옮긴 자리) — 섹션이 둘 이상 서면 패널 머리가 섹션 줄을 세우고 고른 섹션의
+   * 탭만 보인다. Theater 를 연 동안에는 그 Theater 의 섹션 탭만 선다.
+   */
+  readonly section?: ConversationTabSection;
 };
+
+export interface ConversationTabSection {
+  readonly id: string;
+  readonly title: string;
+  readonly theaterId: string;
+}
 
 let tabs: readonly ConversationOperationTab[] = [];
 let hostCount = 0;

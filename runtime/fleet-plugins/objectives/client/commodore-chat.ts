@@ -2,7 +2,7 @@ import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent } from "@fleet-
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { clockTime } from "./commodore-row.js";
+import { clockTime } from "./commodore-header.js";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 type T = Translate<ObjectiveMessageKey>;

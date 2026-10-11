@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
+import type { ConversationSurfaceContext, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -9,13 +9,17 @@ import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
 import type { GroupContextMenuAlign } from "../canvas/group-context-menu.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { openQuickLaunch, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
-import { DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { mountConversationOperationTabsHost, registerConversationOperationTab } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
+import { useTheaterInboxState } from "../theater-inbox/store.js";
+import { theaterInitials } from "../sidebar/theater-initials.js";
+import { TheaterMonogram } from "../sidebar/theater-monogram.js";
 import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
@@ -149,6 +153,7 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 /** 오른쪽 패널 머리 — 앞 묶음(Operation 탭)과 뒤 묶음(작전구역 도구)을 글자 탭으로. */
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
+  const sections = usePanelSections();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
@@ -217,12 +222,29 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
         </button>
       </div>
       <ConversationPanelIdentity />
+      {/* Theater 를 연 동안(Theater Inbox 를 패널로 옮긴 자리) 섹션이 둘 이상이면 — 사령관 | Theater 설정 — 섹션 줄이 탭 줄 위에 선다.
+          고른 섹션의 칸만 탭 줄에 선다. */}
+      {sections.list.length >= 2 ? (
+        <div className="conversation-panel-sections" role="group" aria-label={t("theaterInbox.panelSections")}>
+          {sections.list.map((section) => (
+            <button
+              key={section.id}
+              type="button"
+              className={`conversation-panel-section${section.id === sections.activeId ? " is-active" : ""}`}
+              aria-pressed={section.id === sections.activeId}
+              onClick={() => sections.open(section.id)}
+            >
+              {section.title}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)과 작전구역 도구 글리프가 Grok 세그먼트처럼
           한 줄에 선다. 켜진 것은 둥근 면 하나로 말한다. 넘치는 것은 줄 끝 「⋯」 메뉴에 모인다(뒤쪽 도구부터). */}
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
-            <RailToolIcons context={context} variant="text" scope="core" />
+            <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
           </span>
           <span className="conversation-panel-tools">
             <RailToolIcons context={context} variant="icons" scope="tools" />
@@ -267,12 +289,23 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
 
 /** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
+  const inbox = useTheaterInboxState();
+  const theaterLabel = useTheaterLabel(inbox?.theaterId);
   const subject = useConversationSubject();
   const surface = useConversationSurface();
   const { conversationSurfaces } = usePluginRegistry();
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const descriptor = subject === null && surface !== null ? conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null : null;
+  // Theater 를 연 동안 패널은 그 Theater 의 것이다 — 사이드바 머리와 같은 이니셜 표식과 이름.
+  if (inbox !== null && theaterLabel !== null) {
+    return (
+      <div className="conversation-panel-identity">
+        <span className="conversation-panel-identity-mark is-theater" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(theaterLabel)}</TheaterMonogram></span>
+        <strong className="conversation-panel-identity-name">{theaterLabel}</strong>
+      </div>
+    );
+  }
   if (subject !== null) {
     return (
       <div className="conversation-panel-identity">
@@ -291,6 +324,43 @@ function ConversationPanelIdentity() {
     );
   }
   return null;
+}
+
+/**
+ * 패널 머리의 Theater 섹션 — 앞 묶음 탭에 붙은 섹션 꼬리표(ConversationTabSection)로 줄을 세운다. Theater 를 연 동안에는 그
+ * Theater 의 섹션 탭만 서고(대상 Operation 의 탭은 걷힌다), 섹션이 둘 이상이면 고른 섹션의 칸만 탭 줄에 선다. 고른 섹션은 켜진
+ * 탭의 섹션이고, 도구를 켠 동안은 마지막으로 고른 섹션을 그대로 보인다.
+ */
+function usePanelSections(): {
+  readonly list: readonly ConversationTabSection[];
+  readonly activeId: string | null;
+  readonly filter: ((entryId: string) => boolean) | null;
+  readonly open: (sectionId: string) => void;
+} {
+  const tabs = useConversationOperationTabPanels();
+  const inbox = useTheaterInboxState();
+  const activePanelId = useRailActivePanelId();
+  const theaterId = inbox?.theaterId ?? null;
+  const last = useRef<string | null>(null);
+  const visible = theaterId === null ? tabs : tabs.filter((tab) => tab.section?.theaterId === theaterId);
+  const list: ConversationTabSection[] = [];
+  for (const tab of visible) if (tab.section && !list.some((section) => section.id === tab.section?.id)) list.push(tab.section);
+  const activeTab = visible.find((tab) => tab.id === activePanelId);
+  if (activeTab?.section) last.current = activeTab.section.id;
+  const activeId = list.some((section) => section.id === last.current) ? last.current : list[0]?.id ?? null;
+  const sectioned = list.length >= 2;
+  const filter = theaterId === null && !sectioned ? null : (entryId: string) => {
+    const tab = tabs.find((candidate) => candidate.id === entryId);
+    if (!tab) return true;
+    if (theaterId !== null && tab.section?.theaterId !== theaterId) return false;
+    return !sectioned || tab.section?.id === activeId;
+  };
+  const open = (sectionId: string) => {
+    const first = visible.find((tab) => tab.section?.id === sectionId);
+    last.current = sectionId;
+    if (first) openRailPanel(first.id);
+  };
+  return { list, activeId, filter, open };
 }
 
 /** 「⋯」 단추(30px)와 그 틈 — 도구 줄이 넘칠 때 그 끝에 남겨 둘 자리. */
@@ -509,7 +579,7 @@ function pillGroupNaturalWidth(stage: HTMLElement): number {
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
 function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails }: {
-  readonly descriptor: ConversationSurfaceDescriptor;
+  readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
   readonly theme: ConversationSurfaceContext["theme"];
@@ -522,6 +592,17 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     theme,
     close: () => closeConversationSurface(descriptor.id),
   }), [descriptor.id, language, selection.params, theme]);
+  // 대화가 Theater 의 Inbox 섹션을 대신하면(사령관) 그 탭에 섹션 꼬리표를 단다 — Theater 를 연 동안 패널 머리가 「사령관 | Theater 설정」
+  // 섹션 줄로 묶는다.
+  const { theaterInboxSections } = usePluginRegistry();
+  const section = useMemo<ConversationTabSection | null>(() => {
+    let info: { readonly theaterId: string; readonly inboxSection: string } | null = null;
+    try { info = descriptor.theater?.(context) ?? null; } catch { info = null; }
+    if (!info) return null;
+    const id = conversationSurfaceInboxSectionId(descriptor, info.inboxSection);
+    const inboxSection = theaterInboxSections.find((candidate) => candidate.id === id);
+    return { id, title: inboxSection?.title(language) ?? descriptor.title(context), theaterId: info.theaterId };
+  }, [context, descriptor, language, theaterInboxSections]);
   // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 대화가 걷히면 탭도, 그 탭이 연 패널도 걷힌다.
   useEffect(() => {
     const tabs = descriptor.tabs ?? [];
@@ -531,6 +612,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       icon: tab.icon ?? null,
       order,
       ...(tab.defaultWidth === undefined ? {} : { defaultWidth: tab.defaultWidth }),
+      ...(section ? { section } : {}),
       render: () => <PluginErrorBoundary fallback={null}>{tab.render(context)}</PluginErrorBoundary>,
     }));
     return () => {
@@ -538,7 +620,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       const active = getRailStoreSnapshot().activePanelId;
       if (active !== null && tabs.some((tab) => tab.id === active)) closeRailPanel(active);
     };
-  }, [context, descriptor]);
+  }, [context, descriptor, section]);
   // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있으면 기본 탭을 연다.
   useEffect(() => {
     if (descriptor.defaultTab === undefined || getRailStoreSnapshot().activePanelId !== null) return;

@@ -66,7 +66,7 @@ export const commodoreDirectiveSchema = z.object({
 }).strict();
 
 export const commodoreStateSchema = z.object({
-  /** 자율 운영 — 사이드바 사령관 줄의 글리프. 실험 기능이 꺼져 있으면 저장값과 무관하게 돌지 않는다. */
+  /** 자율 운영 — 사이드바 Theater 머리의 사령관 글리프. 실험 기능이 꺼져 있으면 저장값과 무관하게 돌지 않는다. */
   autonomy: z.boolean(),
   directive: commodoreDirectiveSchema,
   intel: z.array(commodoreIntelSchema).max(MAX_INTEL_ITEMS),

@@ -337,15 +337,19 @@ function ConnectedApp() {
     return () => bindExpandedSurfaceCloseNotifier(() => undefined);
   }, [surfaceDescriptors]);
 
+  // 플러그인 설치는 레일 목록을 부를 때마다 읽는다 — 대화 중심 화면의 탭(사령관·Theater 칸)이 서고 걷힐 때마다 레일 목록이
+  // 바뀌는데, 그때마다 모든 플러그인을 다시 설치하면 플러그인이 쥔 상태(사령관 기록·상태)가 비워진다.
+  const railBindingsRef = useRef(railBindings);
+  railBindingsRef.current = railBindings;
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
       void fetchOperations().then(hydrateOperations).catch(() => {});
-    }, { railBindings });
+    }, { railBindings: () => railBindingsRef.current });
     const cleanups = registry.providers.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [registry.providers, railBindings]);
+  }, [registry.providers]);
 
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);

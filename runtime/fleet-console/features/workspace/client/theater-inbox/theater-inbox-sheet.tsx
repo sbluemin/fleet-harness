@@ -29,6 +29,8 @@ export interface TheaterInboxSheetProps {
   readonly fallback: TheaterInboxAddress;
   /** 닫을 때 입구가 사라졌으면 포커스를 돌려줄 자리(그 Theater 의 머리) — 사이드바가 명시적으로 넘긴 것만. */
   readonly returnTarget: (theaterId: string) => HTMLElement | null;
+  /** 「Theater 설정」 묶음 맨 아래 「Theater 잊기…」 — 사이드바 메뉴의 같은 항목과 같은 지연 삭제. 없으면 줄이 없다. */
+  readonly onForget?: ((theaterId: string) => void) | null;
 }
 
 /**
@@ -155,7 +157,7 @@ function SheetResize({ label, width, height, onResize, onCommit, onReset }: {
 }
 
 /** 섹션마다 `read` 를 구독한다. 아무 섹션도 바뀌지 않았으면 같은 배열을 돌려준다(useSyncExternalStore). */
-function useSectionStates(sections: readonly ResolvedTheaterInboxSection[], theater: ConsoleTheaterSummary, language: ConsoleLocale): readonly TheaterInboxSectionState[] {
+export function useSectionStates(sections: readonly ResolvedTheaterInboxSection[], theater: ConsoleTheaterSummary, language: ConsoleLocale): readonly TheaterInboxSectionState[] {
   const cache = useRef<readonly TheaterInboxSectionState[]>([]);
   const subscribe = useMemo(() => (listener: () => void) => {
     const offs = sections.map(({ descriptor }) => { try { return descriptor.subscribe(listener); } catch { return () => undefined; } });
@@ -220,7 +222,7 @@ const OPEN_POPUP = '[aria-expanded="true"]:is([aria-haspopup], [role="combobox"]
  * 칸 목록으로 나뉘고(제목 붙은 목록 둘), 오른쪽은 고른 칸. 섹션 본문은 처음 들른 뒤 시트가 열린 동안 마운트된 채로 남아,
  * 섹션을 오가도 쓰던 글을 잃지 않는다.
  */
-export function TheaterInboxSheet({ open, theater, sections, language, navigation, select, fallback, returnTarget }: TheaterInboxSheetProps) {
+export function TheaterInboxSheet({ open, theater, sections, language, navigation, select, fallback, returnTarget, onForget = null }: TheaterInboxSheetProps) {
   const t = useT();
   const states = useSectionStates(sections, theater, language);
   const { frame, resize, commit, reset } = useSheetSize();
@@ -372,6 +374,12 @@ export function TheaterInboxSheet({ open, theater, sections, language, navigatio
                       );
                     })}
                   </ul>
+                ) : null}
+                {/* 머리의 「…」 단추가 걷힌 뒤 Theater 잊기를 마우스로 찾는 자리 — 우클릭 메뉴의 같은 항목과 같은 동작이다. 호스트 섹션에만 선다. */}
+                {index === 0 && onForget ? (
+                  <button type="button" className="theater-inbox-forget" onClick={() => { const id = theater.id; navigation.close(); onForget(id); }}>
+                    {t("theaterInbox.forget")}
+                  </button>
                 ) : null}
               </div>
             );

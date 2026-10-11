@@ -14,7 +14,7 @@ import { post } from "./objectives-state.js";
  * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
  *
  * 진실은 서버다: 화면은 응답이 아니라 `objectives:commodore` 사건으로 갱신되고, 스트림이 다시 붙으면 읽은 Theater 를
- * 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면 사령관 줄·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
+ * 다시 읽는다. 실험 기능 「자율 운영」이 꺼져 있으면 머리 글리프·메뉴·서랍이 서지 않으므로 아무것도 읽지 않는다.
  */
 
 export const COMMODORE_CHANNEL = "objectives:commodore";
@@ -67,7 +67,7 @@ let enabledSnapshot = false;
 /** 전역 설정을 한 번이라도 읽었는가 — 읽기 전에는 실험 기능 켜짐을 모른다. */
 let experimentsKnown = false;
 /**
- * 사람이 읽는 Console 언어 — 사령관 줄·서랍이 그릴 때 알려 주고, 모든 commodore/* 요청 본문에 실린다. 서버는 Theater 마다
+ * 사람이 읽는 Console 언어 — 머리 글리프·서랍이 그릴 때 알려 주고, 모든 commodore/* 요청 본문에 실린다. 서버는 Theater 마다
  * 기억해 사령관이 그 언어로 기록을 쓴다(목표 라우트가 language 를 싣는 것과 같다).
  */
 let language: "en" | "ko" | null = null;
@@ -98,7 +98,7 @@ export function commodoreRevision(): number {
 /**
  * 사이드바 줄이 읽는 사령관의 지금 — 자율 운영이 실제로 돌고 있는가(실험 기능 + 글리프), 그리고 감독자가 정체로 본 목표.
  * 읽지 않은 Theater 는 돌지 않는 것으로 다룬다. `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다), `autonomy` 는 글리프,
- * `peek` 는 사람이 이 Theater 의 사령관 줄에 머무는 중이다.
+ * `peek` 는 사람이 이 Theater 머리의 사령관 글리프에 머무는 중이다.
  */
 export function commodoreBoardOf(theaterId: string): { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled: boolean; readonly autonomy: boolean; readonly peek: boolean } {
   if (!enabledSnapshot) return DISABLED_BOARD;
@@ -109,7 +109,7 @@ export function commodoreBoardOf(theaterId: string): { readonly active: boolean;
 }
 const DISABLED_BOARD = { active: false, stalled: [] as readonly string[], enabled: false, autonomy: false, peek: false };
 
-/** 사람이 머무는 사령관 줄의 Theater — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
+/** 사람이 사령관 글리프에 머무는 Theater — 그동안 사이드바의 사령관 표식이 함께 밝아진다. */
 let peekTheater: string | null = null;
 
 export function setCommodorePeek(theaterId: string | null): void {
@@ -324,7 +324,7 @@ export function readCommodoreExperiment(): { readonly known: boolean; readonly e
   return !experimentsKnown ? EXPERIMENT_STATES.unknown : enabledSnapshot ? EXPERIMENT_STATES.on : EXPERIMENT_STATES.off;
 }
 
-/** 실험 기능 「자율 운영」 — 꺼져 있으면 사령관 줄·메뉴가 서지 않고, Theater Inbox 의 사령관 섹션은 안내 한 줄만 남는다. */
+/** 실험 기능 「자율 운영」 — 꺼져 있으면 머리 글리프·메뉴가 서지 않고, Theater Inbox 의 사령관 섹션은 안내 한 줄만 남는다. */
 export function useCommodoreEnabled(): boolean {
   return useSyncExternalStore(subscribeCommodore, () => enabledSnapshot, () => enabledSnapshot);
 }

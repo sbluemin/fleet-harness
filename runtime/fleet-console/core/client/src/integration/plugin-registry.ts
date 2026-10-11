@@ -14,6 +14,14 @@ import { plugins as builtInPlugins } from "virtual:fleet-plugins";
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
+/** 레지스트리가 읽은 플러그인 대화 — 그 대화를 낸 플러그인 id 를 함께 쥔다. */
+export type ResolvedConversationSurface = ConversationSurfaceDescriptor & { readonly pluginId?: string | undefined };
+
+/** 대화가 대신하는 Theater Inbox 섹션의 정준 id — 대화를 낸 플러그인의 섹션 id 에 `<pluginId>:` 를 붙인다. */
+export function conversationSurfaceInboxSectionId(surface: ResolvedConversationSurface, localSectionId: string): string {
+  return surface.pluginId ? `${surface.pluginId}:${localSectionId}` : localSectionId;
+}
+
 export interface PluginLoadFailure {
   readonly id: string;
   readonly name?: string;
@@ -32,13 +40,16 @@ export interface PluginRegistry {
   readonly railEntries: readonly RailEntryDescriptor[];
   readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
-  /** 대화 중심 화면의 가운데 칸에 서는 플러그인 대화 — id 는 플러그인이 준 그대로다(`ctx.conversation.open` 이 부르는 이름). */
-  readonly conversationSurfaces: readonly ConversationSurfaceDescriptor[];
+  /**
+   * 대화 중심 화면의 가운데 칸에 서는 플러그인 대화 — id 는 플러그인이 준 그대로다(`ctx.conversation.open` 이 부르는 이름).
+   * `pluginId` 는 그 대화가 대신하는 Theater Inbox 섹션의 정준 id(`<pluginId>:<id>`)를 맞추는 데 쓴다.
+   */
+  readonly conversationSurfaces: readonly ResolvedConversationSurface[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
-  /** Theater 머리 아래 줄·「…」 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
+  /** Theater 머리 표식·머리 아래 줄·동작(우클릭) 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
   readonly theaterContributions: readonly TheaterContribution[];
   /** Theater Inbox 의 플러그인 섹션 — id 는 `<pluginId>:<id>` 로 붙어 있다. 호스트의 「Theater 설정」은 여기에 없다. */
   readonly theaterInboxSections: readonly TheaterInboxSectionDescriptor[];
@@ -200,7 +211,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
     providers,
     failures,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
-    conversationSurfaces: providers.flatMap((plugin) => plugin.conversationSurfaces ?? []),
+    conversationSurfaces: providers.flatMap((plugin) => (plugin.conversationSurfaces ?? []).map((descriptor) => ({ ...descriptor, pluginId: plugin.id ?? undefined }))),
     onboarding: providers.flatMap((plugin) => (plugin.onboarding ? [plugin.onboarding] : [])),
     operationKinds: providers.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: providers.flatMap((plugin) => plugin.settingsSections ?? []),

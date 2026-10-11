@@ -24,6 +24,15 @@ interface CanvasContextMenuProps {
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
+  /** 실행 종류 목록 아래, 구분선 뒤에 서는 호스트 항목(예: Theater 머리 「+」의 「새 그룹…」). 방향키가 같은 목록으로 훑는다. */
+  readonly footerItems?: readonly CanvasContextMenuFooterItem[];
+}
+
+export interface CanvasContextMenuFooterItem {
+  readonly id: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly onSelect: () => void;
 }
 
 // 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
@@ -69,7 +78,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
+export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, footerItems }: CanvasContextMenuProps) {
   const t = useT();
   const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -779,6 +788,26 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             );
           })}
         </> : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+        {footerItems && footerItems.length > 0 ? (
+          <div role="group">
+            <div className="theater-menu-divider" role="separator" />
+            {footerItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                className="theater-menu-item canvas-context-menu-item"
+                data-canvas-menu-footer={item.id}
+                tabIndex={-1}
+                onMouseEnter={() => setHoverKey(null)}
+                onClick={item.onSelect}
+              >
+                <span className="theater-menu-check" aria-hidden="true">{item.icon}</span>
+                <span className="theater-menu-label">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <div
           className={`canvas-context-menu-edge canvas-context-menu-edge--bottom${edgeState.down ? " is-on" : ""}`}
           aria-hidden="true"

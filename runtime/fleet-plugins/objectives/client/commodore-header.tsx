@@ -1,0 +1,159 @@
+import { useEffect, useState, type MouseEvent } from "react";
+
+import type { TheaterContribution, TheaterContributionContext, TheaterMenuContext } from "@fleet-console/sdk/plugin";
+
+import {
+  isRunningObjective,
+  isWaitingObjective,
+  loadCommodore,
+  noteCommodoreLanguage,
+  readCommodore,
+  readCommodoreExperiment,
+  setCommodoreAutonomy,
+  COMMODORE_INBOX_SECTION_ID,
+  setCommodorePeek,
+  subscribeCommodore,
+  useCommodore,
+} from "./commodore-state.js";
+import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
+import { getT } from "./i18n/index.js";
+import { useObjectiveTheater } from "./objectives-state.js";
+import type { Objective } from "../server/types.js";
+
+export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+
+/** 그 Theater 의 자율 운영이 켜져 있는가 — 실험 기능이 꺼졌거나 아직 읽지 않았으면 꺼짐이다. 입출력 없음. */
+function autonomyOn(theaterId: string): boolean {
+  return readCommodoreExperiment().enabled && readCommodore(theaterId).view?.state.autonomy === true;
+}
+
+/**
+ * 사이드바 Theater 머리에 사령관이 빌려 주는 것 — 이니셜 칩 자리의 사령관 글리프, 턴을 도는 동안의 이름 물결, 머리를 누르면 여는
+ * Inbox 칸, 우클릭 메뉴의 「자율 운영 켜기/끄기」. 실험 기능 「자율 운영」이 꺼져 있으면 아무것도 빌려 주지 않는다(이니셜 칩 그대로).
+ */
+export const commodoreTheaterContribution: TheaterContribution = {
+  id: "commodore",
+  mark: (context) => (readCommodoreExperiment().enabled ? <CommodoreHeaderMark {...context} /> : null),
+  header: {
+    subscribe: subscribeCommodore,
+    live: (theaterId) => autonomyOn(theaterId) && readCommodore(theaterId).view?.run.phase === "turn",
+    // 자율 운영이 켜졌으면 머리는 사령관 기록을 연다. 꺼졌으면 호스트의 시스템 프롬프트 칸에 맡긴다.
+    landing: (theaterId) => (autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
+  },
+  menu: (context) => (readCommodoreExperiment().enabled ? <CommodoreAutonomyMenuItem {...context} /> : null),
+};
+
+/**
+ * 머리의 사령관 글리프 — 켜진 Theater 는 brass(Quick Launch 사령관 멘션과 같은 마크)이고 누르면 자율 운영을 끈다. 꺼진 Theater 는
+ * 흐린 회색이고 스위치가 아니다(켜기는 우클릭 메뉴와 Inbox 사령관 › 설정). 머무는(또는 키보드로 들어온) 동안 사이드바에서 사령관의
+ * 목표 표식이 함께 밝아지고, 툴팁이 지금 상태(자율·응답 중·진행·처리 / 사람이 운영·대기)를 말한다. 오류·재시도면 warn 색이다.
+ */
+function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) {
+  const t = getT(language);
+  const { view } = useCommodore(theater.id);
+  const board = useObjectiveTheater(theater.id);
+  const [busy, setBusy] = useState(false);
+  // 언어를 먼저 알린다 — 첫 읽기부터 서버가 사람의 언어를 기억한다.
+  noteCommodoreLanguage(language);
+  // 아직 읽지 않았거나 읽어 둔 상태가 비워졌으면(플러그인 재설치 등) 다시 읽는다 — 활성이 아닌 Theater 는 이 표식만 읽는다.
+  const loaded = view !== null && view !== undefined;
+  useEffect(() => { if (!loaded) void loadCommodore(theater.id); }, [theater.id, loaded]);
+  // 표식이 사라지면(실험 기능 끔·Theater 잊기) 밝힘을 거둔다.
+  useEffect(() => () => setCommodorePeek(null), [theater.id]);
+  const peek = (inside: boolean) => () => setCommodorePeek(inside ? theater.id : null);
+  const { on, meta, patrol, errorReason } = commodoreSummary(t, view, board.objectives);
+  const warn = on && (view?.run.phase === "error" || view?.run.phase === "retrying");
+  const status = [`${t("objectives.commodore.name")} · ${meta.map((part) => part.text).join(" · ")}`, patrol, errorReason].filter(Boolean).join("\n");
+  const glyph = <CommodoreMentionGlyph className="objectives-commodore-mark-glyph" />;
+  if (!on) {
+    return (
+      <span
+        className="objectives-commodore-mark is-off"
+        role="img"
+        aria-label={t("objectives.commodore.mark.offAria", { theater: theater.label })}
+        title={[status, t("objectives.commodore.mark.offTitle")].join("\n")}
+        onMouseEnter={peek(true)}
+        onMouseLeave={peek(false)}
+      >
+        {glyph}
+      </span>
+    );
+  }
+  const turnOff = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    void setCommodoreAutonomy(theater.id, false).catch(() => undefined).finally(() => setBusy(false));
+  };
+  return (
+    <button
+      type="button"
+      className={`objectives-commodore-mark is-on${warn ? " is-warn" : ""}`}
+      aria-label={t("objectives.commodore.mark.onAria", { theater: theater.label })}
+      aria-busy={busy || undefined}
+      title={[status, t("objectives.commodore.mark.onTitle")].join("\n")}
+      onClick={turnOff}
+      onMouseEnter={peek(true)}
+      onMouseLeave={peek(false)}
+      onFocus={peek(true)}
+      onBlur={peek(false)}
+    >
+      {glyph}
+    </button>
+  );
+}
+
+/** 우클릭(Shift+F10) 메뉴의 한 줄 — 자율 운영 켜기/끄기. 켜기는 이 메뉴와 Inbox 사령관 › 설정에서만 한다. */
+function CommodoreAutonomyMenuItem({ theater, language, onClose }: TheaterMenuContext) {
+  const t = getT(language);
+  const { view } = useCommodore(theater.id);
+  noteCommodoreLanguage(language);
+  useEffect(() => { void loadCommodore(theater.id); }, [theater.id]);
+  const on = view?.state.autonomy === true;
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      className="theater-menu-item objectives-commodore-menu-item"
+      disabled={!view}
+      onClick={() => {
+        onClose();
+        void setCommodoreAutonomy(theater.id, !on).catch(() => undefined);
+      }}
+    >
+      <span className={`theater-menu-check objectives-commodore-menu-glyph${on ? " is-on" : ""}`} aria-hidden="true"><CommodoreMentionGlyph className="objectives-commodore-menu-glyph-svg" /></span>
+      <span className="theater-menu-label">{on ? t("objectives.commodore.menu.turnOff") : t("objectives.commodore.menu.turnOn")}</span>
+    </button>
+  );
+}
+
+type CommodoreView = ReturnType<typeof useCommodore>["view"];
+export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
+
+/**
+ * 사령관의 지금을 말하는 짧은 조각들 — 사이드바 머리 표식의 툴팁과 모바일 드로어·화면이 같은 말을 쓴다.
+ * 켜져 있으면 자율·응답 중·재시도·오류·진행·처리, 꺼져 있으면 수동·대기. 다음 순찰과 오류 사유는 따로 돌려준다.
+ */
+export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView, objectives: readonly Objective[]): { readonly on: boolean; readonly meta: readonly CommodoreMetaPart[]; readonly patrol: string | null; readonly errorReason: string | null } {
+  const on = view?.state.autonomy === true;
+  const run = view?.run;
+  const running = objectives.filter(isRunningObjective).length;
+  // 대기는 사령관이 운영하는 목표만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
+  const waiting = objectives.filter((objective) => objective.operator === "commodore" && isWaitingObjective(objective)).length;
+  const meta: CommodoreMetaPart[] = on
+    ? [
+      { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },
+      ...(run?.phase === "turn" ? [{ key: "turn", text: t("objectives.commodore.meta.turn") }] : []),
+      ...(run?.phase === "retrying" && run.nextWakeAt ? [{ key: "retry", text: t("objectives.commodore.meta.retrying", { time: clockTime(run.nextWakeAt) }), tone: "warn" as const }] : []),
+      ...(run?.phase === "error" ? [{ key: "error", text: t("objectives.commodore.meta.error"), tone: "warn" as const }] : []),
+      { key: "running", text: t("objectives.commodore.meta.running", { n: running }) },
+      { key: "handled", text: t("objectives.commodore.meta.handled", { n: run?.totals.actions ?? 0 }) },
+    ]
+    : [
+      { key: "mode", text: t("objectives.commodore.meta.manual") },
+      { key: "waiting", text: t("objectives.commodore.meta.waiting", { n: waiting }) },
+    ];
+  const patrol = on && run?.phase === "idle" && run.nextWakeAt ? t("objectives.commodore.drawer.nextPatrol", { time: clockTime(run.nextWakeAt) }) : null;
+  const errorReason = on && (run?.phase === "error" || run?.phase === "retrying") ? run.reason ?? null : null;
+  return { on, meta, patrol, errorReason };
+}
