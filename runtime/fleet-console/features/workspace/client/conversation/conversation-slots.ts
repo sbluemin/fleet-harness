@@ -54,7 +54,7 @@ export function useConversationSubject(): OperationNode | null {
 export interface ConversationBodyContext {
   /** 가운데 칸의 주인 — 구성원을 가진 목표면 지휘관이다. */
   readonly operation: OperationNode;
-  /** 지금 본문을 보이는 Operation — 노드 줄에서 구성원을 고르면 그 구성원, 아니면 주인. */
+  /** 지금 본문을 보이는 Operation — 오른쪽 「구성원」 탭에서 구성원을 고르면 그 구성원, 아니면 주인. */
   readonly bodyOperation: OperationNode;
   /** 주인의 구성원(코어의 부모 관계). 없으면 빈 배열. */
   readonly nestedOperations: readonly OperationNode[];

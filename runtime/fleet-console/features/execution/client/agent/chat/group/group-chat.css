@@ -232,22 +232,39 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   color: var(--text-tertiary);
 }
 .group-members-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+/* 구성원 줄 — 줄 자체(.group-members-main)가 원장으로 가는 단추다. 정지·제거는 그 단추 밖, 이름 열 아래에 형제로 선다.
+   선택(지금 원장을 보는 줄)은 테두리 전체와 면 워시로 말한다 — 왼쪽 띠를 두지 않는다. */
 .group-members-row {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+.group-members-row.is-openable:hover,
+.group-members-row.is-openable:focus-within { background: var(--control-wash-hover); }
+.group-members-row.is-openable.is-showing { border-color: var(--brass); background: var(--control-wash); }
+.group-members-main {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: start;
   gap: var(--space-2);
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   padding: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
 }
-.group-members-row:hover,
-.group-members-row:focus-within { background: var(--control-wash-hover); }
-.group-members-row.is-showing { border-color: var(--brass); background: var(--control-wash); }
+button.group-members-main { cursor: pointer; }
+button.group-members-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
 .group-members-text { display: flex; flex-direction: column; min-width: 0; }
 .group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-members-role { font-size: var(--t-xs); color: var(--text-tertiary); }
-.group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-1); }
+.group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-2) var(--space-2) calc(var(--space-2) + 22px + var(--space-2)); }
 .group-members-state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--t-xs); color: var(--text-secondary); padding-top: 2px; }
 .group-members-add {
   align-self: flex-start;

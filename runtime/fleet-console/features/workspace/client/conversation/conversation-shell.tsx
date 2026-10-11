@@ -8,7 +8,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
 import type { GroupContextMenuAlign } from "../canvas/group-context-menu.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { openQuickLaunch, requestOperationKeyboardFocus, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { openQuickLaunch, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -22,7 +22,6 @@ import { OperationNameMark } from "../../../execution/client/components/operatio
 import { pluginRuntimeState, resolveOperationActivity } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
-import { ClusterNodeRail } from "../cluster-node-rail.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../canvas/canvas.js";
 import {
@@ -688,22 +687,8 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
           </button>
         </span>
       </div>
-      {/* 그룹 대화가 본문을 맡으면 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다(원장 보기도 그 탭) — 노드 줄을 따로
-          세우지 않는다. 본문 렌더러가 없는 묶음만 노드 줄로 구성원 본문을 고른다. */}
-      {clusterRoot && custom === null ? (
-        <div className="conversation-nodes">
-          <ClusterNodeRail
-            layout={clusterRoot}
-            current={clusterRoot.formation.byOperationId.has(chosen ?? "") ? chosen! : operation.id}
-            rootActivity={activity}
-            onPick={(operationId) => {
-              selectNestedBody(operation.id, operationId);
-              setActiveOperation(operation.id);
-              requestOperationKeyboardFocus(operation.id);
-            }}
-          />
-        </div>
-      ) : null}
+      {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
+          노드 줄을 따로 세우지 않는다. */}
       <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
         {custom ?? defaultBody}
       </div>

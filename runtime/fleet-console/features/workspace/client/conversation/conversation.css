@@ -245,16 +245,10 @@
   outline: none;
 }
 
-.conversation-nodes {
-  flex: none;
-  display: flex;
-  justify-content: center;
-  min-width: 0;
-}
-
 /* 대화는 상자 없이 바탕 위에 바로 놓인다 — 테두리·안쪽 패널 바탕·그림자를 두지 않는다. 본문은 창 맨 위부터 시작하고, 아는 스크롤
-   칸(그룹 대화·1:1 채팅·사령관 기록)은 --conversation-overlay-top 만큼 위를 비워 그 밑으로 흘러 올라간다. 모르는 본문(터미널·원장
-   등)은 본문째 맨 위 줄 아래에서 시작한다 — 무엇이 떠 있는 줄에 가려지지 않게. */
+   칸(그룹 대화·1:1 채팅·사령관 기록)은 --conversation-overlay-top 만큼 위를 비워 그 밑으로 흘러 올라간다. 칸에 바로 선 터미널(CLI)도
+   채팅처럼 창 맨 위까지 차고, 위쪽 줄은 맨 위 그라디언트(.conversation-column::before) 밑으로 흐른다. 모르는 본문(원장 틀 등)은
+   본문째 맨 위 줄 아래에서 시작한다 — 무엇이 떠 있는 줄에 가려지지 않게. */
 .conversation-body {
   --conversation-overlay-top: var(--conversation-top-row);
   /* 맨 위 줄 오른쪽에 떠 있는 본문 단추(사령관 기록 비우기)가 비켜설 폭 — 사용량 캡슐과 Windows 캡션 버튼 몫. */
@@ -267,7 +261,7 @@
   background: var(--conversation-surface);
 }
 
-.conversation-body:not(:has(.group-chat-log, .agent-chat.is-conversation .agent-chat-log, .objectives-commodore-conversation)) {
+.conversation-body:not(:has(.group-chat-log, .agent-chat.is-conversation .agent-chat-log, .objectives-commodore-conversation, > .conversation-body-slot .terminal-stage)) {
   padding-top: var(--conversation-top-row);
 }
 
@@ -301,9 +295,15 @@
   padding-top: calc(var(--space-3) + var(--conversation-overlay-top));
 }
 
-/* 노드 줄이 서는 묶음(본문 렌더러가 없는 구성원 묶음)은 노드 줄이 맨 위 줄 아래에 고정으로 서고, 본문은 그 아래서 시작한다. */
-.conversation-column > .conversation-nodes { margin-top: var(--conversation-top-row); }
-.conversation-column:has(> .conversation-nodes) .conversation-body { --conversation-overlay-top: 0px; padding-top: 0; }
+/* 터미널(CLI)도 상자 없이 대화 바탕 위에 바로 놓인다 — 레일 Shell 의 반투명 카드 면·테두리·모서리를 걷어 칸 전체가 한 면이 된다
+   (캔버스 Operation 의 터미널과 같은 처리). */
+.conversation-body .terminal-shell {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.conversation-body .terminal-canvas { border-radius: 0; }
 
 .conversation-body-slot {
   display: flex;
