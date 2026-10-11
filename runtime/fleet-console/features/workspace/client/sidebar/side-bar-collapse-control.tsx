@@ -6,6 +6,7 @@ import { useSideBarShortcutLabel, useSideBarStatusViewShortcutLabel } from "../.
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from "./operations-side-bar-store.js";
+import { enterTriage, exitTriage, focusedTriageOperationId, useTriageActive } from "../canvas/triage-store.js";
 
 // 접기는 패널 자신의 동사다(Periscope 문법 — 밴드 토글 퇴역). 도킹 중에는 접기 셰브런이,
 // 엣지 독이 되부른 픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서
@@ -68,10 +69,20 @@ function StatusViewIcon() {
 // 사이드바 보기 메뉴(「⋯」) — 한 번 정하면 오래 두는 사이드바 선호가 사는 자리다. 자주 뒤집는 보기 스위치(상태별 보기)와
 // 같은 줄에 버튼을 늘리지 않고 메뉴 안에 둔다. 켜 둔 선호가 있으면 버튼 아래 brass 다텀이 상태별 보기의 눌림과 같은 말로
 // 그 사실을 계속 보인다. 저장은 전역 설정(서버 durable)이라 다른 창과 다음 실행도 같은 손버릇을 쓴다.
-export function SideBarViewMenu() {
+export function SideBarViewMenu({ compact }: {
+  /**
+   * 대화 중심 화면의 맨 위 줄은 단추를 늘리지 않는다 — 줄에서 걷힌 모드(Cruise / War Room)·상태별 보기·사이드바 접기가
+   * 이 메뉴 맨 앞에 선다. 켜진 보기(War Room·상태별)가 있으면 단추 아래 다텀이 그 사실을 계속 보인다.
+   */
+  readonly compact?: { readonly statusAxis: boolean };
+} = {}) {
   const t = useT();
   const settings = useGlobalSettingsStore();
   const doubleClickOpen = settings.state?.sideBarDoubleClickOpen === true;
+  const warRoom = useTriageActive();
+  const collapseShortcut = useSideBarShortcutLabel();
+  const statusShortcut = useSideBarStatusViewShortcutLabel();
+  const datum = doubleClickOpen || (compact !== undefined && (compact.statusAxis || warRoom));
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
@@ -96,7 +107,7 @@ export function SideBarViewMenu() {
         ref={buttonRef}
         type="button"
         className="side-bar-view-menu-button"
-        data-on={doubleClickOpen ? "true" : undefined}
+        data-on={datum ? "true" : undefined}
         aria-haspopup="menu"
         aria-expanded={anchor !== null}
         aria-label={label}
@@ -119,6 +130,47 @@ export function SideBarViewMenu() {
             style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
             onPointerDown={(event) => event.stopPropagation()}
           >
+            {compact ? (
+              <>
+                {(["cruise", "warRoom"] as const).map((mode) => {
+                  const on = mode === "warRoom" ? warRoom : !warRoom;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`group-context-menu-item side-bar-view-menu-item${on ? " is-selected" : ""}`}
+                      role="menuitemradio"
+                      aria-checked={on}
+                      onClick={() => {
+                        close();
+                        if (on) return;
+                        if (mode === "warRoom") enterTriage(focusedTriageOperationId(document.activeElement), buttonRef.current);
+                        else exitTriage();
+                      }}
+                    >
+                      <svg viewBox="0 0 12 12" className="group-context-menu-item__check" aria-hidden="true">
+                        <path d="M2.5 6.2 5 8.5l4.5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      {/* Cruise / War Room 은 번역하지 않는 모드 이름이다(canvas-mode-switch). */}
+                      <span className="side-bar-view-menu-label">{mode === "warRoom" ? "War Room" : "Cruise"}</span>
+                    </button>
+                  );
+                })}
+                <div className="group-context-menu-divider" role="separator" />
+                <button
+                  type="button"
+                  className={`group-context-menu-item side-bar-view-menu-item${compact.statusAxis ? " is-selected" : ""}`}
+                  role="menuitemcheckbox"
+                  aria-checked={compact.statusAxis}
+                  onClick={() => { close(); toggleSideBarStatusAxis(); }}
+                >
+                  <svg viewBox="0 0 12 12" className="group-context-menu-item__check" aria-hidden="true">
+                    <path d="M2.5 6.2 5 8.5l4.5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="side-bar-view-menu-label">{t("sidebar.view.byStatus", { shortcut: statusShortcut })}</span>
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               className={`group-context-menu-item side-bar-view-menu-item${doubleClickOpen ? " is-selected" : ""}`}
@@ -135,6 +187,20 @@ export function SideBarViewMenu() {
                 <span className="side-bar-view-menu-hint">{t("sidebar.view.doubleClickOpenHint")}</span>
               </span>
             </button>
+            {compact ? (
+              <>
+                <div className="group-context-menu-divider" role="separator" />
+                <button
+                  type="button"
+                  className="group-context-menu-item side-bar-view-menu-item"
+                  role="menuitem"
+                  onClick={() => { close(); setSideBarCollapsed(true); }}
+                >
+                  <span className="group-context-menu-item__check" aria-hidden="true" />
+                  <span className="side-bar-view-menu-label">{t("sidebar.chrome.collapse", { shortcut: collapseShortcut })}</span>
+                </button>
+              </>
+            ) : null}
           </div>
         </div>,
         document.body,

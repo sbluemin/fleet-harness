@@ -73,6 +73,11 @@ interface OperationsSideBarProps {
   /** 위쪽 줄 아래에 서는 셸의 기여(대화 중심 화면의 검색·새 Operation·고정 줄). 없으면 아무것도 서지 않는다. */
   /** 맨 위 줄 오른쪽, 접기 컨트롤 앞에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
   readonly topStripTrailing?: ReactNode;
+  /**
+   * "compact" 는 대화 중심 화면의 맨 위 줄이다 — 낱말·모드 스위치·상태별 보기·접기를 줄에 세우지 않고 「⋯」 보기 메뉴
+   * 하나에 모은다. 줄에는 (Desktop 신호등 자리 다음) 「⋯」과 끼운 단추만 선다 — 어떤 사이드바 폭에서도 넘치지 않는다.
+   */
+  readonly topStripVariant?: "compact";
   readonly topAccessory?: ReactNode;
   /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
   readonly bottomAccessory?: ReactNode;
@@ -385,6 +390,7 @@ export function OperationsSideBar({
   onForgetTheater,
   widthCap,
   topStripTrailing,
+  topStripVariant,
   topAccessory,
   bottomAccessory,
 }: OperationsSideBarProps) {
@@ -1106,6 +1112,13 @@ export function OperationsSideBar({
 
       {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가 서고,
           우단은 두 모드가 공유하는 접기 컨트롤이다. */}
+      {topStripVariant === "compact" ? (
+        <div className="side-bar-top-strip is-compact">
+          <span className="side-bar-top-strip-spacer" aria-hidden="true" />
+          {theaters.length > 0 ? <SideBarViewMenu compact={{ statusAxis }} /> : null}
+          {topStripTrailing}
+        </div>
+      ) : (
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
           <>
@@ -1118,6 +1131,7 @@ export function OperationsSideBar({
         {topStripTrailing}
         <SideBarCollapseControl />
       </div>
+      )}
       {topAccessory}
 
       <div className="side-bar-wide">

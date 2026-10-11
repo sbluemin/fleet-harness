@@ -152,22 +152,28 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
   return (
     <div className="conversation-side-bottom" role="group" aria-label={t("conversation.side.systemAria")}>
-      <EnvironmentDiagnosticsButton className="conversation-side-env" />
-      <span className="conversation-side-host">
-        <HostSwitcher />
-        {connection !== "live" ? <span className="conversation-side-link" data-link-state={connection} aria-hidden="true" /> : null}
-      </span>
-      <span className="conversation-side-usage">
-        {usage.map((entry) => (
-          <PluginErrorBoundary key={entry.id} fallback={null}>
-            <PluginEntry render={entry.render} />
-          </PluginErrorBoundary>
-        ))}
-      </span>
-      {/* 밴드 오른쪽의 보기 모드 선택 — 밴드와 같은 조건(Desktop 셸이 아닐 때)으로 선다. */}
-      {!isDesktopShell() ? <ViewModeToggle className="command-band-button conversation-side-viewmode" /> : null}
-      <ConsoleHelpMenu />
-      <ToolbarSettingsButton canvas />
+      {/* 사용량 칩은 단추 줄과 나눠 자기 줄에 선다 — 사이드바가 좁으면 칩이 잘린 조각이 되는 대신 다음 줄로 넘어간다. */}
+      {usage.length > 0 ? (
+        <div className="conversation-side-usage">
+          {usage.map((entry) => (
+            <PluginErrorBoundary key={entry.id} fallback={null}>
+              <PluginEntry render={entry.render} />
+            </PluginErrorBoundary>
+          ))}
+        </div>
+      ) : null}
+      <div className="conversation-side-bottom-row">
+        <EnvironmentDiagnosticsButton className="conversation-side-env" />
+        <span className="conversation-side-host">
+          <HostSwitcher />
+          {connection !== "live" ? <span className="conversation-side-link" data-link-state={connection} aria-hidden="true" /> : null}
+        </span>
+        <span className="conversation-side-bottom-spacer" aria-hidden="true" />
+        {/* 밴드 오른쪽의 보기 모드 선택 — 밴드와 같은 조건(Desktop 셸이 아닐 때)으로 선다. */}
+        {!isDesktopShell() ? <ViewModeToggle className="command-band-button conversation-side-viewmode" /> : null}
+        <ConsoleHelpMenu />
+        <ToolbarSettingsButton canvas />
+      </div>
     </div>
   );
 }
