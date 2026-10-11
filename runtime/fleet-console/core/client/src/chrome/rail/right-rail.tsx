@@ -386,10 +386,15 @@ export function useRailPanelContext(
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
  * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-export function RailToolIcons({ context, variant = "icons" }: {
+export function RailToolIcons({ context, variant = "icons", scope = "all" }: {
   readonly context: RailToolContext;
   /** "text"는 대화 중심 화면의 패널 머리 — 아이콘 대신 이름 글자로 같은 목록·순서·켜짐을 세운다. */
   readonly variant?: "icons" | "text";
+  /**
+   * 어느 묶음을 세우는가. "core" 는 코어 탭(대화 중심 화면에서는 가운데 칸 대상의 탭)만, "tools" 는 플러그인 도구만이다.
+   * 대화 중심 화면의 패널 머리가 둘을 다른 줄에 나눠 세운다. 기본 "all" 은 지금처럼 한 줄이다.
+   */
+  readonly scope?: "all" | "core" | "tools";
 }) {
   const text = variant === "text";
   const t = useT();
@@ -431,15 +436,17 @@ export function RailToolIcons({ context, variant = "icons" }: {
     <>
       {/* 아이콘은 배타 전환이다 — 한 번에 하나만 켜지고, 켜진 아이콘을 다시 누르면 닫힌다.
           설정은 문(톱니)으로만 열리므로 탭 목록에는 다시 서지 않는다. */}
-      <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-        {coreTabs.map(({ entry }) => (
-          <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} text={text} />
-        ))}
-      </div>
-      {text && coreTabs.length > 0 && runsByScope.theater.length + runsByScope.fleet.length > 0 ? divider : null}
-      {renderRuns(runsByScope.theater)}
-      {runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
-      {renderRuns(runsByScope.fleet)}
+      {scope === "tools" ? null : (
+        <div className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
+          {coreTabs.map(({ entry }) => (
+            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id} text={text} />
+          ))}
+        </div>
+      )}
+      {scope === "all" && text && coreTabs.length > 0 && runsByScope.theater.length + runsByScope.fleet.length > 0 ? divider : null}
+      {scope === "core" ? null : renderRuns(runsByScope.theater)}
+      {scope !== "core" && runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
+      {scope === "core" ? null : renderRuns(runsByScope.fleet)}
       {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 도구모음의
           시스템 칸 맨 끝(console-toolbar.tsx)에 선다. */}
     </>

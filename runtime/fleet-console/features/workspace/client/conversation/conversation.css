@@ -99,7 +99,7 @@
   gap: var(--space-2);
   min-width: 0;
   height: var(--conversation-top-row);
-  padding: 0 var(--space-3);
+  padding: 0 calc(var(--conversation-quota-space) + var(--conversation-caption-reserve));
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -202,8 +202,10 @@
   align-items: center;
   gap: var(--space-1);
   padding: 2px 3px;
+  /* 밑으로 흐르는 말풍선과 갈리게 가장자리를 옅은 테두리로 닫는다 — 말풍선이 겹치면 상자가 늘어난 것처럼 읽혔다. */
+  border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--conversation-surface) 78%, transparent);
+  background: color-mix(in oklch, var(--conversation-surface) 88%, transparent);
   backdrop-filter: blur(14px);
 }
 
@@ -242,7 +244,8 @@
    등)은 본문째 맨 위 줄 아래에서 시작한다 — 무엇이 떠 있는 줄에 가려지지 않게. */
 .conversation-body {
   --conversation-overlay-top: var(--conversation-top-row);
-  --conversation-overlay-right: 0px;
+  /* 맨 위 줄 오른쪽에 떠 있는 본문 단추(사령관 기록 비우기)가 비켜설 폭 — 사용량 캡슐과 Windows 캡션 버튼 몫. */
+  --conversation-overlay-right: calc(var(--conversation-quota-space) + var(--conversation-caption-reserve));
   position: relative;
   flex: 1;
   min-height: 0;
@@ -364,18 +367,6 @@
 
 .conversation-side-link[data-link-state="offline"] { background: var(--coral); }
 
-/* 사용량 칩 줄 — 칩은 줄어들지 않고(잘린 조각이 되지 않게), 자리가 모자라면 다음 줄로 넘어간다. */
-.conversation-side-usage {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-3);
-  min-width: 0;
-  padding: 0 var(--space-1);
-}
-
-/* 칩 묶음은 줄 폭을 넘지 않는다 — 플러그인 칩이 한 단추 안에 여럿이면 그 단추가 안에서 줄을 바꾼다(quota.css). */
-.conversation-side-usage > * { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
@@ -414,7 +405,9 @@
   white-space: nowrap;
 }
 
-/* ── 오른쪽 패널 머리: 글자 탭 ─────────────────────────────────────────── */
+/* ── 오른쪽 세부 정보 머리: Grok Bot 세부 정보와 같은 구성 ─────────────────────────────
+   맨 위 줄(52px, Desktop 에서 창을 끄는 자리)에 작전구역 도구 글리프와 닫기 원형 단추, 그 아래 가운데에 지금 대상의 표식·이름,
+   그 아래 대상의 글자 탭(Grok 의 세부 정보 세그먼트 자리). 바탕은 대화와 같은 면이고 경계·그라디언트를 두지 않는다. */
 .right-rail-panel-slot.has-header {
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -425,70 +418,73 @@
   min-width: 240px;
 }
 
-/* 탭은 한 줄이다 — 넘치는 탭은 줄에서 걷히고 오른쪽 끝 「더보기」 메뉴에 모인다(ConversationPanelHeader 가 잰다). */
 .conversation-panel-head {
-  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-panel-toolbar {
   display: flex;
   align-items: center;
+  gap: var(--space-1);
   height: var(--conversation-top-row);
-  padding: 0 var(--space-4);
+  padding: 0 var(--space-3);
   box-sizing: border-box;
 }
 
-.conversation-panel-tabs {
+/* 도구 글리프 줄 — 넘치는 글리프는 줄에서 걷히고 「⋯」 메뉴에 모인다(ConversationPanelHeader 가 잰다). */
+.conversation-panel-tools {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-3);
+  gap: 2px;
   overflow: hidden;
 }
 
-.conversation-panel-tabs [data-overflow="true"] { display: none; }
-.conversation-panel-tabs .right-rail-ico.is-text { flex: none; white-space: nowrap; }
-.conversation-panel-tabs .right-rail-divider { flex: none; height: 14px; }
+.conversation-panel-tools [data-overflow="true"] { display: none; }
+
+.conversation-panel-tools .right-rail-ico {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+}
+
+.conversation-panel-tools .right-rail-ico:hover,
+.conversation-panel-tools .right-rail-ico:focus-visible {
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+/* 켜진 도구는 면 워시 하나로 말한다(Grok 의 선택 세그먼트) — 밑줄·띠를 두지 않는다. */
+.conversation-panel-tools .right-rail-ico.is-active {
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.conversation-panel-tools .right-rail-ico.is-active::before { display: none; }
+.conversation-panel-tools .right-rail-divider { flex: none; height: 14px; margin: 0 var(--space-1); }
 
 .conversation-panel-more-wrap {
-  position: absolute;
-  top: 50%;
-  right: var(--space-4);
-  transform: translateY(-50%);
+  position: relative;
   display: inline-flex;
+  flex: none;
 }
 
 .conversation-panel-more-wrap.is-idle { visibility: hidden; pointer-events: none; }
 
-/* 「더보기」는 탭 줄 밖(오른쪽 끝)에 서지만 글자 탭과 같은 문법이다. */
-.conversation-panel-more.right-rail-ico.is-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: auto;
-  height: auto;
-  padding: var(--space-1) 0 var(--space-2);
-  border: 0;
-  border-radius: 0;
-  background: none;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
-  white-space: nowrap;
-}
-
-.conversation-panel-more.right-rail-ico.is-text:hover,
-.conversation-panel-more.right-rail-ico.is-text:focus-visible {
-  background: none;
+.conversation-panel-more.is-active {
+  background: var(--control-wash);
   color: var(--text-primary);
 }
 
-.conversation-panel-more.right-rail-ico.is-text.is-active {
-  color: var(--text-primary);
-  font-weight: var(--weight-bold);
-}
-
-.conversation-panel-more-chev { color: var(--text-tertiary); font-size: var(--t-xs); }
+.conversation-panel-close { flex: none; }
 
 .conversation-panel-more-menu {
   position: absolute;
@@ -525,45 +521,123 @@
 }
 
 .conversation-panel-more-item.is-active {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: var(--surface-panel);
   color: var(--text-primary);
   font-weight: var(--weight-bold);
 }
 
-/* 탭은 글자다 — 상자·채움 없이 굵기와 아래 선(.right-rail-ico.is-active::before)만 켜짐을 말한다. */
+/* 가운데 머리 — 대상의 표식(크게)과 이름. */
+.conversation-panel-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  text-align: center;
+}
+
+.conversation-panel-identity-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  transform: none;
+}
+
+.conversation-panel-identity-mark > * { transform: scale(1.6); }
+.conversation-panel-identity-mark.is-surface { color: var(--brass-ink); }
+.conversation-panel-identity-mark.is-surface svg { width: 18px; height: 18px; }
+
+.conversation-panel-identity-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 대상의 글자 탭 — 가운데 정렬, 켜진 탭은 둥근 면(Grok 세그먼트). 대상에 탭이 없으면 줄째 서지 않는다. */
+.conversation-panel-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: 0 var(--space-4) var(--space-3);
+}
+
+.conversation-panel-tabs:not(:has(.right-rail-ico)) { display: none; }
+
 .conversation-panel-tabs .right-rail-ico.is-text {
   width: auto;
   height: auto;
-  padding: var(--space-1) 0 var(--space-2);
+  padding: 5px 12px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
 }
 
 .conversation-panel-tabs .right-rail-ico.is-text:hover,
 .conversation-panel-tabs .right-rail-ico.is-text:focus-visible {
-  background: none;
+  background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
 .conversation-panel-tabs .right-rail-ico.is-text.is-active {
-  background: none;
+  background: var(--control-wash);
   color: var(--text-primary);
-  font-weight: var(--weight-bold);
 }
 
-.conversation-panel-tabs .right-rail-ico.is-text.is-active::before {
-  right: 0;
-  left: 0;
-}
+.conversation-panel-tabs .right-rail-ico.is-text.is-active::before { display: none; }
 
 .conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-badge {
   top: -2px;
-  right: -14px;
+  right: -4px;
+}
+
+/* ── 사용량 캡슐: 가운데 칸 맨 위 줄 오른쪽 끝 ─────────────────────────────────────────
+   pill 은 가운데에서 대상만 말한다 — 사용량(계정 전역)은 오른쪽 끝에 따로 떠 있다. pill 줄은 그 폭을 양쪽에 같게 비워 pill 이 가운데에
+   남고 둘이 겹치지 않는다. 칸 폭이 줄면 단계를 낮춘다: 전체(두 줄 값) → 표식만 → 첫 칸 하나(quota.css). 넘치지 않는다. */
+.conversation-stage {
+  container: conversation-stage / inline-size;
+  --conversation-caption-reserve: 0px;
+  --conversation-quota-space: 400px;
+}
+
+@container conversation-stage (max-width: 1239px) {
+  .conversation-pill-row, .conversation-body, .conversation-quota { --conversation-quota-space: 210px; }
+}
+
+@container conversation-stage (max-width: 759px) {
+  .conversation-pill-row, .conversation-body, .conversation-quota { --conversation-quota-space: 56px; }
+}
+
+.conversation-quota {
+  position: absolute;
+  top: calc((var(--conversation-top-row) - 30px) / 2);
+  right: calc(var(--space-3) + var(--conversation-caption-reserve));
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(var(--conversation-quota-space) - var(--space-3));
+  min-height: 30px;
+  padding: 0 var(--space-1);
+  box-sizing: border-box;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--conversation-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
 }
 
 /* ── 사이드바 맨 위 줄: 보기·정렬·접기와 찾기·새로 만들기를 한 줄, 한 문법으로 ──────────── */
@@ -647,6 +721,7 @@ html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conve
   -webkit-app-region: drag;
 }
 
+html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-quota,
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
 }
@@ -659,26 +734,22 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
 }
 
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation:has(.operations-side-bar.is-closed:not(.is-peeking)) .conversation-pill-row {
-  padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-3));
+  padding-left: max(var(--conversation-quota-space), calc(76px / var(--desktop-zoom, 1) + var(--space-3)));
 }
 
-/* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 머리, 닫혔으면
-   가운데 열의 맨 위 줄)이 그 폭을 비운다. 식은 layout.css 밴드 오른쪽 클러스터와 같다(env 실측과 46 DIP × 3 계약 중 큰 쪽). */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation .conversation-panel-head {
-  padding-right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1)));
+/* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
+   가운데 열의 맨 위 줄·사용량 캡슐·떠 있는 본문 단추)이 그 폭을 비운다. 식은 layout.css 밴드 오른쪽 클러스터와 같다
+   (env 실측과 46 DIP × 3 계약 중 큰 쪽). */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation {
+  --conversation-caption-width: max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1));
 }
 
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation .conversation-panel-more-wrap {
-  right: calc(var(--space-2) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1)));
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation .conversation-panel-toolbar {
+  padding-right: calc(var(--space-2) + var(--conversation-caption-width));
 }
 
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .conversation-pill-row {
-  padding-right: calc(var(--space-3) + max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1)));
-}
-
-/* 가운데 칸 맨 위 줄 오른쪽에 떠 있는 본문 단추(사령관 기록 비우기 등)도 같은 폭을 비운다. */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .conversation-body {
-  --conversation-overlay-right: max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1));
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .conversation-stage {
+  --conversation-caption-reserve: var(--conversation-caption-width);
 }
 
 /* 대화 중심 화면이 켜진 Desktop 은 다른 화면(설정 등)의 밴드도 같은 52px 줄이다 — 신호등·캡션 띠가 그 높이에 맞춰 서 있다. */

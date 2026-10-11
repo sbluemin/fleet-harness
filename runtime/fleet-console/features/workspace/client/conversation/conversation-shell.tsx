@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
 import type { GroupContextMenuAlign } from "../canvas/group-context-menu.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
@@ -37,7 +38,7 @@ import {
   subscribeTriage,
   useTriageActive,
 } from "../canvas/triage-store.js";
-import { publishConversationSubject, useConversationBodyRenderer } from "./conversation-slots.js";
+import { publishConversationSubject, useConversationBodyRenderer, useConversationSubject } from "./conversation-slots.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
 
@@ -152,20 +153,8 @@ export function ConversationSideBarTop() {
  */
 export function ConversationSideBarBottom({ connection }: { readonly connection: ConsoleState["connection"] }) {
   const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
-  const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
   return (
     <div className="conversation-side-bottom" role="group" aria-label={t("conversation.side.systemAria")}>
-      {/* 사용량 칩은 단추 줄과 나눠 자기 줄에 선다 — 사이드바가 좁으면 칩이 잘린 조각이 되는 대신 다음 줄로 넘어간다. */}
-      {usage.length > 0 ? (
-        <div className="conversation-side-usage">
-          {usage.map((entry) => (
-            <PluginErrorBoundary key={entry.id} fallback={null}>
-              <PluginEntry render={entry.render} />
-            </PluginErrorBoundary>
-          ))}
-        </div>
-      ) : null}
       <div className="conversation-side-bottom-row">
         <EnvironmentDiagnosticsButton className="conversation-side-env" />
         <span className="conversation-side-host">
@@ -245,42 +234,82 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const hiddenActive = overflow.find((tab) => tab.active) ?? null;
   return (
     <div className="conversation-panel-head">
-      <div className="conversation-panel-tabs" ref={rowRef}>
-        <RailToolIcons context={context} variant="text" />
-      </div>
-      <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
-        <button
-          type="button"
-          ref={moreRef}
-          className={`right-rail-ico is-text conversation-panel-more${hiddenActive ? " is-active" : ""}`}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          tabIndex={overflow.length > 0 ? 0 : -1}
-          aria-hidden={overflow.length > 0 ? undefined : true}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          {hiddenActive ? hiddenActive.label : t("conversation.panel.more")}
-          <span className="conversation-panel-more-chev" aria-hidden="true">⌄</span>
+      {/* 맨 위 줄 — 작전구역 도구는 글리프 단추(이름은 툴팁·aria-label), 오른쪽 끝은 닫기. 넘치는 도구는 「⋯」에 모인다. */}
+      <div className="conversation-panel-toolbar">
+        <div className="conversation-panel-tools" ref={rowRef}>
+          <RailToolIcons context={context} variant="icons" scope="tools" />
+        </div>
+        <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
+          <button
+            type="button"
+            ref={moreRef}
+            className={`conversation-round conversation-panel-more${hiddenActive ? " is-active" : ""}`}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={hiddenActive ? hiddenActive.label : t("conversation.panel.more")}
+            title={hiddenActive ? hiddenActive.label : t("conversation.panel.more")}
+            tabIndex={overflow.length > 0 ? 0 : -1}
+            aria-hidden={overflow.length > 0 ? undefined : true}
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
+          </button>
+          {menuOpen && overflow.length > 0 ? (
+            <div className="conversation-panel-more-menu" role="menu">
+              {overflow.map((tab) => (
+                <button
+                  key={tab.label}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={tab.active}
+                  className={`conversation-panel-more-item${tab.active ? " is-active" : ""}`}
+                  onClick={() => { setMenuOpen(false); tab.element.click(); }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </span>
+        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) closeRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
-        {menuOpen && overflow.length > 0 ? (
-          <div className="conversation-panel-more-menu" role="menu">
-            {overflow.map((tab) => (
-              <button
-                key={tab.label}
-                type="button"
-                role="menuitemradio"
-                aria-checked={tab.active}
-                className={`conversation-panel-more-item${tab.active ? " is-active" : ""}`}
-                onClick={() => { setMenuOpen(false); tab.element.click(); }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </span>
+      </div>
+      <ConversationPanelIdentity />
+      {/* 가운데 칸 대상의 탭(사령관의 행위 기록·지시·정보·설정 등) — Grok 의 세부 정보 세그먼트 자리, 글자 탭이다. */}
+      <div className="conversation-panel-tabs">
+        <RailToolIcons context={context} variant="text" scope="core" />
+      </div>
     </div>
   );
+}
+
+/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
+function ConversationPanelIdentity() {
+  const subject = useConversationSubject();
+  const surface = useConversationSurface();
+  const { conversationSurfaces } = usePluginRegistry();
+  const state = useConsoleState();
+  const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  const descriptor = subject === null && surface !== null ? conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null : null;
+  if (subject !== null) {
+    return (
+      <div className="conversation-panel-identity">
+        <OperationNameMark operation={subject} status={resolveOperationActivity(subject, state.operationRuntime)} decorative className="conversation-panel-identity-mark" />
+        <strong className="conversation-panel-identity-name">{subject.title}</strong>
+      </div>
+    );
+  }
+  if (descriptor !== null && surface !== null) {
+    const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const;
+    return (
+      <div className="conversation-panel-identity">
+        {descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
+        <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
+      </div>
+    );
+  }
+  return null;
 }
 
 interface OverflowTab {
@@ -377,6 +406,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       style={{ left: insets.left, right: insets.right }}
       aria-label={t("conversation.stage.aria")}
     >
+      <ConversationQuota />
       {surfaceDescriptor && surface ? (
         <ConversationSurfaceColumn
           key={surface.surfaceId}
@@ -410,6 +440,27 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 사용량(Quota 등 밴드 요약) — 가운데 칸 맨 위 줄의 오른쪽 끝에 떠 있는 캡슐 하나다. 대상 Operation 이 아니라 계정 전역의 신호라
+ * pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Cruise·War Room·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
+ * 칸 폭이 줄면 단계를 낮춘다(전체 → 표식만 → 첫 칸 하나, conversation.css·quota.css 의 컨테이너 질의). 누르면 지금처럼 요약 팝업이 열린다.
+ */
+function ConversationQuota() {
+  const t = useT();
+  const { commandBandEntries } = usePluginRegistry();
+  const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
+  if (usage.length === 0) return null;
+  return (
+    <div className="conversation-quota" role="group" aria-label={t("conversation.quota.aria")}>
+      {usage.map((entry) => (
+        <PluginErrorBoundary key={entry.id} fallback={null}>
+          <PluginEntry render={entry.render} />
+        </PluginErrorBoundary>
+      ))}
+    </div>
   );
 }
 
