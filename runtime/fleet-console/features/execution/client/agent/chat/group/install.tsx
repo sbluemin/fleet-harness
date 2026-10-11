@@ -30,8 +30,22 @@ import { GroupMembersPanel } from "./group-members-panel.js";
  * - 구성원이 없거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
  */
 export function installGroupConversationSurface(): () => void {
-  const disposeBody = setConversationBodyRenderer(renderConversationBody);
-  const disposeTab = registerConversationOperationTab({
+  ensureMembersTab();
+  return setConversationBodyRenderer(renderConversationBody);
+}
+
+/**
+ * 「구성원」 탭은 페이지 수명 동안 한 번만 등록하고 걷지 않는다. 탭은 대화 중심 화면이 서 있을 때만 레일 목록에 실리므로
+ * 실험이 꺼진 Console 에는 보이지 않는다.
+ *
+ * 설치 수명에 묶으면 안 되는 이유: 레일 목록이 바뀌면 앱이 provider 설치를 다시 돌린다(레일 바인딩이 그 effect 의 의존).
+ * 설치마다 탭을 걷고 다시 등록하면 목록 스냅숏이 매번 새로 나고, 그것이 다시 설치를 부르는 무한 갱신이 된다.
+ */
+let membersTabRegistered = false;
+function ensureMembersTab(): void {
+  if (membersTabRegistered) return;
+  membersTabRegistered = true;
+  registerConversationOperationTab({
     id: "conversation.members",
     title: (locale) => getGroupT(locale)("group.members.tab"),
     icon: MembersGlyph,
@@ -39,10 +53,6 @@ export function installGroupConversationSurface(): () => void {
     defaultWidth: 320,
     render: (ctx) => <MembersTab ctx={ctx} />,
   });
-  return () => {
-    disposeTab();
-    disposeBody();
-  };
 }
 
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {

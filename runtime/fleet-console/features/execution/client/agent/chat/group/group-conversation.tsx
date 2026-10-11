@@ -30,8 +30,18 @@ export interface GroupConversationProps {
   readonly onOpenLedger?: (operationId: string) => void;
   /** 진행 줄 표식을 눌러 그 참여자만 멈춘다(임무 16에서 연결). */
   readonly onStopParticipant?: (speaker: ConversationSpeaker) => void;
-  /** 사령관 행위 줄에서 사령관 기록의 그 턴을 연다(사령관 배치 작업에서 연결). */
-  readonly onOpenCommodoreRecord?: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void;
+  /**
+   * 사령관 행위 줄에서 그 행위의 기록을 연다 — 임무 14 계약(`useOpenBoardActionRecord()` 가 돌려주는 함수)과 같은 모양이다.
+   * 기록이 없는 줄이면 여는 쪽이 아무 일도 하지 않으므로 단추는 늘 둔다.
+   */
+  readonly onOpenCommodoreRecord?: (request: BoardActionRecordRequest) => void;
+}
+
+/** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
+export interface BoardActionRecordRequest {
+  readonly objectiveId: string;
+  readonly entryId: string;
+  readonly at: number | null;
 }
 
 export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord }: GroupConversationProps) {
@@ -162,6 +172,8 @@ function MessageBubble({ entry, continued, language }: {
 }) {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
+  // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
+  if (!entry.streaming && entry.text.trim().length === 0) return null;
   if (entry.speaker.kind === "human") {
     return (
       <div className="group-chat-human" {...(time ? { title: time } : {})}>
@@ -197,7 +209,8 @@ function DelegationLine({ entry, language, onOpenLedger }: {
   const t = getGroupT(language);
   const names = entry.recipients.map((recipient) => recipient.name).join(", ");
   const status = entry.ok === false ? t("group.delegation.failed") : !entry.received ? t("group.delegation.unconfirmed") : null;
-  const ledgers = dedupe([entry.sender, ...entry.recipients].filter((speaker) => speaker.kind !== "human" && speaker.operationId));
+  // 지휘관의 원장은 이 그룹 대화 자체가 그 자리이므로 원장 링크를 두지 않는다 — 구성원 본문 선택은 루트를 고를 수 없다.
+  const ledgers = dedupe([entry.sender, ...entry.recipients].filter((speaker) => speaker.kind === "member" && speaker.operationId));
   const preview = excerpt(entry.text);
   return (
     <details className="group-chat-line group-chat-delegation">
@@ -287,7 +300,7 @@ function BoardActionLine({ entry, language, onOpenRecord }: {
         </> : null}
         {onOpenRecord ? (
           <div className="group-chat-line-actions">
-            <button type="button" className="group-chat-link" onClick={() => onOpenRecord(entry)}>{t("group.board.openRecord")}</button>
+            <button type="button" className="group-chat-link" onClick={() => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at })}>{t("group.board.openRecord")}</button>
           </div>
         ) : null}
       </div>

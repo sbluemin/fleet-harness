@@ -39,7 +39,7 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
             participant={participant}
             language={language}
             showing={focus !== null && focus === participant.speaker.operationId}
-            onLedger={onOpenLedger && participant.speaker.operationId && participant.speaker.kind !== "human"
+            onLedger={onOpenLedger && participant.speaker.operationId && participant.speaker.kind === "member"
               ? () => onOpenLedger(focus === participant.speaker.operationId ? null : participant.speaker.operationId!)
               : undefined}
             onStop={onStop && (participant.activity === "running" || participant.activity === "background") ? () => onStop(participant.speaker) : undefined}
