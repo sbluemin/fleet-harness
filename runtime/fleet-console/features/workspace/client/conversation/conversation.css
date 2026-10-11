@@ -74,6 +74,13 @@
   --surface-panel-raised: var(--surface-panel);
 }
 
+/* 목표 상세 열의 면(--objectives-detail-face)은 유리 면 88% 에 --surface-panel-raised 를 섞은 들림이다. 이 열에서는 유리 면이
+   투명이라 카드 면 12% 만 남아, 상세 본문과 하단 「구상」 띠가 머리·대화보다 한 단 다른 톤으로 보였다(띠는 두 겹이라 한 단 더).
+   목표 루트가 그 변수를 직접 선언하므로 루트에서 열 바탕으로 다시 준다 — 캔버스 레일과 확장 표면의 목표는 그대로다. */
+.console-body.is-conversation .right-rail-panel-slot .objectives-root {
+  --objectives-detail-face: var(--conversation-surface);
+}
+
 .console-body.is-conversation .panel-edge-dock {
   top: 0;
 }
