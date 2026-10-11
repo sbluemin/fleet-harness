@@ -480,7 +480,7 @@ afterEach(async () => {
     lifecycleCheck("I1", group.outsidersUntouched(), "the Console's parent and sibling in its process group are never signalled", { detail: group.outsiders() });
   }, 60_000);
 
-  // L6n, e7874487:N9 (I2, I4; L6's plugin children on the normal stop path). The same hung Ledger children must not hold a
+  // L6n, e7874487:N9 (I2, I4; L6's plugin children on the normal stop path). The same hung plugin children must not hold a
   // normal stop to the deadline: the single cleanup ends the plugins' registered groups after their grace — those whose
   // CLI ignores SIGTERM by E1, those whose CLI ended (on SIGTERM, or by itself before the stop) but left a helper holding
   // its pipes by one proving process-table read — so stop succeeds well inside B_int, the instance records `clean`, and
@@ -586,8 +586,8 @@ afterEach(async () => {
     const run = createRun("win-plugin-stop");
     const breakawayFile = path.join(run.dir, "breakaway.json");
     const pluginBreakawayFile = path.join(run.dir, "plugin-breakaway.json");
-    run.env.LEDGER_WINDOWS_GRANDCHILDREN = "1";
-    run.env.LEDGER_BREAKAWAY_RESULT = pluginBreakawayFile;
+    run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN = "1";
+    run.env.PLUGIN_CHILD_BREAKAWAY_RESULT = pluginBreakawayFile;
     run.env.FAKE_AGENT_SHUTDOWN_RESIDUAL = "1";
     run.env.FAKE_AGENT_BREAKAWAY_RESULT = breakawayFile;
     run.env.FAKE_AGENT_KOFFI = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
@@ -636,7 +636,7 @@ afterEach(async () => {
       expect(breakaway.err, `breakaway failed for an unexpected reason (${JSON.stringify(breakaway)})`).toBe(5);
     }
     for (const role of ["detached", "native"]) {
-      expect(pluginChildren.some((child) => child.command === `tokscale ${role}`), `${role} grandchild was not started`).toBe(true);
+      expect(pluginChildren.some((child) => child.command === `plugin-cli ${role}`), `${role} grandchild was not started`).toBe(true);
     }
     if (after.ok) {
       expect(processStartTime(after.pid), "stop 직전에도 성공한 breakaway 자식이 같은 생성 시각으로 살아 있어야 한다").toBe(pluginBreakawayStartedAt);
@@ -988,15 +988,15 @@ function windowsFakeAgentExe(): string {
 }
 
 /**
- * Grandchild setup baked into the stand-in. The plugin spawn does not take a custom env, so the flag is not read at
- * runtime. A failure is appended to the same pids file the timeout prints.
+ * Grandchild setup baked into the stand-in, so the flag is not read from the plugin child's environment at runtime.
+ * A failure is appended to the same pids file the timeout prints.
  */
 function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefined): readonly string[] {
   if (!enabled) return [];
   if (!breakawayFile) throw new Error("플러그인 breakaway 결과 경로가 필요합니다");
   const koffiEntry = createRequire(fileURLToPath(import.meta.url)).resolve("koffi");
   return [
-    "if (!process.argv.includes('models')) {",
+    "if (role === 'cli-ignores') {",
     "  let once = false;",
     "  try { require('fs').mkdirSync(require('path').join(__dirname, 'grandchildren.lock')); once = true; } catch (error) {}",
     "  if (once) try {",
@@ -1031,7 +1031,7 @@ function windowsGrandchildLines(enabled: boolean, breakawayFile: string | undefi
     "      if (ok) { CloseHandle(koffi.decode(pi, 0, 'void *')); CloseHandle(koffi.decode(pi, 8, 'void *')); }",
     "      return { phase, nonDetachedSpawns, ok: Boolean(ok), err, pid, callerPid: process.pid, inAnyJob, queryOk };",
     "    };",
-    "    // 이 블록은 생성된 bin.js의 모든 spawn 호출보다 먼저 배치되고, 호출은 동기로 끝난다.",
+    "    // 이 블록은 생성된 stand-in의 모든 spawn 호출보다 먼저 배치되고, 호출은 동기로 끝난다.",
     "    const beforeSpawn = runBreakaway('before-non-detached-spawn', false);",
     "    const stay = path.join(__dirname, 'stay.js');",
     "    fs.writeFileSync(stay, 'setInterval(() => {}, 1 << 30);\\n');",
@@ -1380,49 +1380,55 @@ async function openWorkload(run: LifecycleRun, endpoint: string, options: { read
 }
 
 /**
- * A built-in plugin's own long-running children (N7): two Ledger summaries (week and month) start tokscale four times, and
- * a stand-in installed where Ledger looks for it hangs in the three shapes a CLI leaves behind. The report runs ignore
- * SIGTERM themselves. The week model run ends on SIGTERM but leaves a helper that ignores it and holds the run's inherited
- * stdout and stderr (N9). The month model run leaves the same helper and exits by itself before any stop, as a CLI that
- * timed out does. Only the Console's containment ends them. Returns every process recorded, with its start time, so a
- * case watches the helpers too once they are no longer the Console's descendants. The suite owns each one at once: one
- * that escapes is reparented away from the Console and would otherwise outlive the case.
+ * A built-in plugin's own long-running children (N7): four Skills list requests each start the skills CLI once through
+ * the plugin's owned-process port, and a stand-in installed where Skills looks for it hangs in the three shapes a CLI
+ * leaves behind. Two runs ignore SIGTERM themselves. One run ends on SIGTERM but leaves a helper that ignores it and holds
+ * the run's inherited stdout and stderr (N9). One run leaves the same helper and exits by itself before any stop, as a CLI
+ * that timed out does. The runs claim those shapes in arrival order, so the four concurrent runs always split the same way.
+ * Only the Console's containment ends them. Returns every process recorded, with its start time, so a case watches the
+ * helpers too once they are no longer the Console's descendants. The suite owns each one at once: one that escapes is
+ * reparented away from the Console and would otherwise outlive the case.
  */
 async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<Array<{ readonly pid: number; readonly startedAt: string; readonly command: string }>> {
-  const pkg = path.join(run.root, "console", "plugins", "ledger", "cli", "node_modules", "tokscale");
+  const pkg = path.join(run.root, "console", "plugins", "skills", "cli", "node_modules", "skills");
   const pids = path.join(pkg, "pids");
-  fs.mkdirSync(pkg, { recursive: true });
-  // Ledger refuses anything but its pinned version.
-  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "tokscale", version: "4.7.0" }));
-  fs.writeFileSync(path.join(pkg, "bin.js"), [
+  fs.mkdirSync(path.join(pkg, "bin"), { recursive: true });
+  // Skills reinstalls through npm anything but its pinned version (SKILLS_VERSION in fleet-plugins/skills/server/cli.ts).
+  fs.writeFileSync(path.join(pkg, "package.json"), JSON.stringify({ name: "skills", version: "1.5.14" }));
+  fs.writeFileSync(path.join(pkg, "bin", "cli.mjs"), [
+    "import { createRequire } from 'node:module';",
+    "import { fileURLToPath } from 'node:url';",
+    "const require = createRequire(import.meta.url);",
+    "const __dirname = require('path').dirname(fileURLToPath(import.meta.url));",
     `const record = (role, pid) => require("fs").appendFileSync(${JSON.stringify(pids)}, role + " " + pid + "\\n");`,
-    "const gone = process.argv.includes('--month');",
-    // Windows 직접 게이트가 elected report 리더의 첫 spawn보다 반드시 앞서 실행되도록 배치한다.
-    ...windowsGrandchildLines(run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1", run.env.LEDGER_BREAKAWAY_RESULT),
-    "if (process.argv.includes('models')) {",
+    "const claim = (name) => { try { require('fs').mkdirSync(require('path').join(__dirname, name)); return true; } catch { return false; } };",
+    "const role = claim('claim-gone') ? 'cli-gone' : claim('claim-honours') ? 'cli-honours' : 'cli-ignores';",
+    // Windows 직접 게이트가 elected 리더의 첫 spawn보다 반드시 앞서 실행되도록 배치한다.
+    ...windowsGrandchildLines(run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN === "1", run.env.PLUGIN_CHILD_BREAKAWAY_RESULT),
+    "if (role !== 'cli-ignores') {",
     "  const helper = require('child_process').spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);\"], { stdio: 'inherit' });",
-    "  record(gone ? 'helper-gone' : 'helper', helper.pid);",
-    "  record(gone ? 'cli-gone' : 'cli-honours', process.pid);",
-    "  if (gone) setTimeout(() => process.exit(0), 100);",
+    "  record(role === 'cli-gone' ? 'helper-gone' : 'helper', helper.pid);",
+    "  record(role, process.pid);",
+    "  if (role === 'cli-gone') setTimeout(() => process.exit(0), 100);",
     "} else {",
     "  process.on('SIGTERM', () => {});",
-    "  record('cli-ignores', process.pid);",
+    "  record(role, process.pid);",
     "}",
     "setInterval(() => {}, 1 << 30);",
   ].join("\n"));
-  // Each summary answers only once tokscale does; the requests end with the Console.
-  for (const window of ["week", "month"]) {
-    fetch(new URL(`plugins/ledger/summary?window=${window}`, endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
+  // Each list answers only once the CLI does; the requests end with the Console.
+  for (let request = 0; request < 4; request += 1) {
+    fetch(new URL("plugins/skills/list", endpoint), { headers: { origin: new URL(endpoint).origin } }).catch(() => {});
   }
   const recorded = () => fs.existsSync(pids)
     ? fs.readFileSync(pids, "utf8").split("\n").filter(Boolean).map((line) => { const [role, pid] = line.split(" "); return { role: role!, pid: Number(pid) }; })
     : [];
-  // Two report runs, two model runs, and their two helpers.
-  await waitUntil(() => recorded().length >= 6, 20_000, "the Ledger plugin did not start its CLI");
-  if (run.env.LEDGER_WINDOWS_GRANDCHILDREN === "1") {
+  // Four CLI runs and the two helpers.
+  await waitUntil(() => recorded().length >= 6, 20_000, "the Skills plugin did not start its CLI");
+  if (run.env.PLUGIN_CHILD_WINDOWS_GRANDCHILDREN === "1") {
     const ready = () => {
       const roles = new Set(recorded().map((entry) => entry.role));
-      return roles.has("detached") && roles.has("native") && run.env.LEDGER_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.LEDGER_BREAKAWAY_RESULT);
+      return roles.has("detached") && roles.has("native") && run.env.PLUGIN_CHILD_BREAKAWAY_RESULT !== undefined && fs.existsSync(run.env.PLUGIN_CHILD_BREAKAWAY_RESULT);
     };
     const deadline = Date.now() + 40_000;
     while (!ready() && Date.now() < deadline) await delay(25);
@@ -1433,11 +1439,15 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
   }
   const entries = recorded();
   for (const entry of entries) own(entry.pid);
-  const gone = entries.find((entry) => entry.role === "cli-gone")!;
-  await waitUntil(() => !isAlive(gone.pid), 10_000, "the timed-out CLI stand-in did not exit by itself");
+  const roles = entries.map((entry) => entry.role);
+  expect(roles.filter((role) => role === "cli-ignores"), "two CLI runs must ignore SIGTERM").toHaveLength(2);
+  expect(roles.filter((role) => role === "cli-honours"), "one CLI run must leave a helper and end on SIGTERM").toHaveLength(1);
+  const gone = entries.find((entry) => entry.role === "cli-gone");
+  expect(gone, "one CLI run must leave a helper and exit by itself").toBeDefined();
+  await waitUntil(() => !isAlive(gone!.pid), 10_000, "the timed-out CLI stand-in did not exit by itself");
   return entries.flatMap((entry) => {
     const startedAt = processStartTime(entry.pid);
-    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `tokscale ${entry.role}` }];
+    return startedAt === null ? [] : [{ pid: entry.pid, startedAt, command: `plugin-cli ${entry.role}` }];
   });
 }
 
