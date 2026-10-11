@@ -3427,7 +3427,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 /* 역할 특징 — 사령관은 brass 원판에 별을 뚫은 배지(사령관 글리프의 문법), 지휘관은 몸 윗선에 꽂힌 안테나. */
 .mongle-avatar-star-plate { fill: var(--brass); stroke: var(--surface-panel); stroke-width: 1.1; }
-.mongle-avatar-star-cut { fill: var(--mongle-face); }
+.mongle-avatar-star-cut { fill: var(--mongle-star-cut, var(--mongle-face)); }
 .mongle-avatar-antenna-stalk { fill: none; stroke: var(--mongle-face); stroke-width: 1.6; stroke-linecap: round; }
 .mongle-avatar-antenna-bulb { fill: var(--mongle-bulb); stroke: var(--mongle-face); stroke-width: 0.9; }
 
