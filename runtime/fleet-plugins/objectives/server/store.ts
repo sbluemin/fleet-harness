@@ -24,7 +24,6 @@ import {
   MAX_RECORDS,
   MAX_MISSIONS,
   MAX_NOTE,
-  MAX_REMOVAL_REASON,
   REMOVED_RETENTION_MS,
   COMMODORE_TIDY_PREFIX,
   awaitingHandoff,
@@ -56,7 +55,6 @@ import {
   type StoredMember,
   type StoredHandoff,
   type StoredMerge,
-  type StoredRemoval,
   type PlanInput,
   type MissionAddInput,
   type MissionPatchInput,
@@ -192,21 +190,10 @@ export interface ObjectiveStore {
   patchPending(objectiveId: string, patch: Partial<PendingCommander>): Objective;
   launched(objectiveId: string): Objective;
   removePending(objectiveId: string): void;
-  /**
-   * 에이전트의 정리 — 기동 전(Operation 없는) 보드 목표만 받는다. 지우기는 레코드를 남긴 채 표시만 하고, 합치기는 원본의 브리핑과
-   * 기준을 받는 목표에 덧붙인 뒤 원본을 합친 표시로 둔다. 하나라도 받을 수 없으면 아무것도 바꾸지 않고 이유와 함께 거절한다.
-   */
-  tidyRemove(objectiveIds: readonly string[], by: TidyActor): readonly Objective[];
+  /** 기동 전 목표를 합친다 — 받은 기록에 원본을 보존한 뒤 독립 원본을 거둔다. */
   tidyMerge(targetId: string, sourceIds: readonly string[], by: TidyActor): Objective;
-  /** 사람이 보드에서 지운 기동 전 목표 — 에이전트의 정리와 같은 자리에 남아 되돌릴 수 있다. */
-  trash(objectiveId: string): Objective;
-  /**
-   * 지우거나 합친 표시를 거둔다 — 합쳤던 원본이면 받은 목표에 덧붙인 구간과 옮긴 기준도 걷어 낸다. 그사이 사람이 고친 구간과
-   * 기준은 받은 목표에 남긴다.
-   */
-  tidyRestore(objectiveId: string): Objective;
-  /** 보관 기간이 지난 지운 목표를 영구 삭제하고 그 id 를 돌려준다. */
-  purgeRemoved(): readonly string[];
+  /** 옛 정리 표시를 무손실 보관으로 이관했다 — Operation이 보관된 뒤에만 확정한다. */
+  migratedRemoval(objectiveId: string): Objective;
   patch(objectiveId: string, input: ObjectivePatch): Objective;
   /** Operation 쪽 값(제목·그룹·모델)이 바뀌었다 — 저장은 그대로, 합친 화면 모양만 다시 방송한다. */
   refresh(operationId: string): void;
@@ -732,6 +719,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const legacy = recorded && !pending && typeof stored.enlisted !== "boolean";
     const commanderOutcome = options.observe ? deriveFailedOutcome(options.observe(stored.operationId)) : undefined;
     return {
+      archived: options.operations.describe?.(stored.operationId)?.location === "archived",
+      hasOperation: node !== null,
       id: stored.operationId,
       theaterId: node?.theaterId ?? pending!.theaterId,
       groupId: node ? node.groupId ?? null : liveGroup(pending!.theaterId, pending!.groupId),
@@ -833,7 +822,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     return null;
   };
   const tidiedBy = (id: string, byTitle: string | undefined) => ({ operationId: id, title: operationNode(id)?.title ?? byTitle ?? null, ...(id.startsWith(COMMODORE_TIDY_PREFIX) ? { commodore: true as const } : {}) });
-  const removal = (at: number, by: TidyActor): StoredRemoval => ({ at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), ...(by.reason ? { reason: by.reason.slice(0, MAX_REMOVAL_REASON) } : {}) });
   /** 담당 Operation — 목표가 아니라 목표의 임무를 맡은 세션이다. */
   const memberIds = (objectives: Iterable<StoredObjective>): ReadonlySet<string> => new Set([...objectives].flatMap((entry) => (entry.members ?? []).map((member) => member.id)));
   /** 목표가 되는 Operation 인가 — 이 Theater 의 에이전트 Operation 이고 다른 목표의 담당이 아니다. */
@@ -852,7 +840,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
    * 그다음 id 로 가른다. 지휘관 Operation 도 pending 도 없는 레코드(삭제 유예 중)는 보이지 않는다.
    */
   type BoardEntry = { readonly stored: StoredObjective; readonly node: OperationNode | null; readonly bare: boolean; readonly rank: number };
-  const visible = (theaterId: string): readonly BoardEntry[] => {
+  const visible = (theaterId: string, includeArchived = false): readonly BoardEntry[] => {
     const objectives = load(theaterId);
     const members = memberIds(objectives.values());
     const references = new Map(options.operations.list().map((node) => [node.id, node]));
@@ -861,12 +849,13 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (node) references.set(node.id, node);
     }
     const present = [...references.values()]
-      .filter((node) => node.theaterId === theaterId && isObjectiveOperation(node) && !members.has(node.id))
+      .filter((node) => node.theaterId === theaterId && isObjectiveOperation(node) && !members.has(node.id)
+        && (includeArchived || (options.operations.describe?.(node.id)?.location !== "archived" && !objectives.get(node.id)?.removed)))
       .map((node) => {
         const stored = objectives.get(node.id);
         return { stored: stored ?? bareRecord(node.id), node, bare: !stored, rank: stored ? stored.rank : virtualRank(node) };
       });
-    const pending = [...objectives.values()].filter((stored) => stored.pending?.theaterId === theaterId && !operationNode(stored.operationId)).map((stored) => ({ stored, node: null, bare: false, rank: stored.rank }));
+    const pending = [...objectives.values()].filter((stored) => stored.pending?.theaterId === theaterId && (includeArchived || !stored.removed) && !objectiveNode(theaterId, stored.operationId)).map((stored) => ({ stored, node: null, bare: false, rank: stored.rank }));
     return [...present, ...pending].sort((a, b) => a.rank - b.rank || (a.node?.ts.createdAt ?? a.stored.pending?.createdAt ?? 0) - (b.node?.ts.createdAt ?? b.stored.pending?.createdAt ?? 0) || a.stored.operationId.localeCompare(b.stored.operationId));
   };
   /** 방송에 싣는 보드 줄 — 화면이 서버의 순서를 그대로 따를 수 있게 보이는 목표 전부를 싣는다. */
@@ -876,10 +865,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const locate = (objectiveId: string): { theaterId: string; recorded: boolean; stored: StoredObjective; node: OperationNode | null } => {
     const found = operationNode(objectiveId);
     const node = found ? objectiveNode(found.theaterId, objectiveId) : null;
-    const theaterId = node?.theaterId ?? theaterIds().find((id) => load(id).get(objectiveId)?.pending);
+    const theaterId = theaterIds().find((id) => load(id).get(objectiveId)?.pending) ?? node?.theaterId;
     if (!theaterId) throw new ObjectiveStoreError("unknown_objective");
     const stored = load(theaterId).get(objectiveId);
-    return { theaterId, recorded: !!stored, stored: stored ?? bareRecord(objectiveId), node };
+    return { theaterId, recorded: !!stored, stored: stored ?? bareRecord(objectiveId), node: node?.theaterId === theaterId ? node : null };
   };
 
   /** 자리가 바뀐 뒤의 방송 — 지금 캐시가 말하는 줄을 그대로 실어 화면이 서버와 같은 순서를 본다. */
@@ -1097,7 +1086,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
 
   const store: ObjectiveStore = {
     list: (theaterId) => visible(theaterId).map(({ stored, node }) => project(stored, node)),
-    all: () => theaterIds().flatMap((theaterId) => store.list(theaterId)),
+    // 보관된 목표도 관계·복구·purge 소유권은 가진다. 활성 공급은 list만 사용한다.
+    all: () => theaterIds().flatMap((theaterId) => visible(theaterId, true).map(({ stored, node }) => project(stored, node))),
     find: (objectiveId) => { try { const { stored, node } = locate(objectiveId); return project(stored, node); } catch { return null; } },
     sharedDir(theaterId, objectiveId) {
       const dir = containedFile(objectiveDir(theaterId, objectiveId), "shared");
@@ -1188,16 +1178,19 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 받은 목표의 되돌리기 가능 여부는 원본이 남아 있는지에서 나온다 — 비우기·보관 기한 어느 쪽으로 지워도 열린 보드가 곧바로 알게 다시 방송한다.
       for (const target of load(theaterId).values()) if (target.merged?.some((entry) => entry.sourceId === objectiveId)) announce(theaterId, target);
     },
-    tidyRemove(objectiveIds, by) {
-      const unique = [...new Set(objectiveIds)];
-      const refusals = unique.flatMap((id) => { const reason = tidyRefusal(id); return reason ? [{ objectiveId: id, reason }] : []; });
-      if (refusals.length) throw new ObjectiveStoreError("tidy_refused", undefined, { refusals });
-      const at = now();
-      return unique.map((id) => update(id, (stored) => ({ ...stored, removed: removal(at, by) })));
-    },
+    migratedRemoval: (objectiveId) => update(objectiveId, (stored) => {
+      if (options.operations.describe?.(objectiveId)?.location !== "archived") throw new ObjectiveStoreError("operation_not_archived");
+      if (!stored.removed) return stored;
+      const { pending: _pending, removed, ...rest } = stored;
+      return { ...rest, archivedRemoval: removed };
+    }),
     tidyMerge(targetId, sourceIds, by) {
-      const sources = [...new Set(sourceIds)];
-      if (sources.includes(targetId)) throw new ObjectiveStoreError("merge_into_self");
+      const requested = [...new Set(sourceIds)];
+      if (requested.includes(targetId)) throw new ObjectiveStoreError("merge_into_self");
+      const previous = locate(targetId).stored;
+      // 받은 파일 확정 후 원본 삭제/응답이 끊겨도 같은 요청은 내용을 다시 붙이지 않는다.
+      const recorded = new Set((previous.merged ?? []).filter((entry) => entry.source).map((entry) => entry.sourceId));
+      const sources = requested.filter((id) => !recorded.has(id) || store.find(id) !== null);
       const refusals: { objectiveId: string; reason: string; kinds?: readonly string[] }[] = [targetId, ...sources].flatMap((id) => { const reason = tidyRefusal(id); return reason ? [{ objectiveId: id, reason }] : []; });
       // 원본에만 있고 브리핑·기준으로 옮길 수 없는 것 — 합치면 사람의 보드에서 조용히 사라진다.
       // 합치기는 한 보드 안에서만 — 다른 Theater 의 목표를 옮기면 원본 보드가 받은 목표를 가리킬 수 없다.
@@ -1216,6 +1209,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const criteria = [...(target.criteria ?? [])];
       const merged: StoredMerge[] = [];
       for (const id of sources) {
+        if (recorded.has(id)) continue;
         const { stored, node } = locate(id);
         const title = project(stored, node).title;
         // 출처가 보이게 제목을 머리에 두고 원본 브리핑을 그대로 잇는다 — 되돌릴 때 이 구간 그대로를 찾는다.
@@ -1228,61 +1222,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           criteria.push(moved);
           criteriaIds.push(moved.id);
         }
-        merged.push({ sourceId: id, title, at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds });
+        merged.push({ sourceId: id, title, at, by: by.operationId, ...(by.title ? { byTitle: by.title } : {}), noteBlock, criteriaIds, source: stored });
       }
       if (note.length > MAX_NOTE) throw new ObjectiveStoreError("note_too_long", undefined, { limit: MAX_NOTE });
       if (criteria.length > MAX_CRITERIA) throw new ObjectiveStoreError("too_many_criteria", undefined, { limit: MAX_CRITERIA });
       const result = update(targetId, (stored) => ({ ...stored, note, criteria, merged: [...(stored.merged ?? []), ...merged] }));
-      for (const id of sources) update(id, (stored) => ({ ...stored, removed: { ...removal(at, by), mergedInto: targetId } }));
+      // 받은 목표 파일을 먼저 확정한다. 원본 삭제가 실패해도 내용은 양쪽에 남는다.
+      for (const id of sources) store.removePending(id);
       return result;
-    },
-    trash(objectiveId) {
-      const { stored } = locate(objectiveId);
-      if (!stored.pending || stored.removed) throw new ObjectiveStoreError("unknown_objective");
-      return update(objectiveId, (current) => ({ ...current, removed: { at: now() } }));
-    },
-    purgeRemoved() {
-      const purged: string[] = [];
-      for (const theaterId of theaterIds()) {
-        for (const stored of [...load(theaterId).values()]) {
-          if (!stored.pending || !stored.removed || now() - stored.removed.at < REMOVED_RETENTION_MS) continue;
-          try { store.removePending(stored.operationId); purged.push(stored.operationId); }
-          catch { console.warn("[objectives] removed_purge_failed"); }
-        }
-      }
-      return purged;
-    },
-    tidyRestore(objectiveId) {
-      const { stored } = locate(objectiveId);
-      if (!stored.removed) throw new ObjectiveStoreError("not_removed");
-      const targetId = stored.removed.mergedInto;
-      // 받은 목표가 아직 기동 전·미완료 보드 목표일 때 덧붙인 구간과 옮긴 기준을 걷어 낸다. 받은 목표도 지워져 있으면 그대로 걷어 두어,
-      // 어느 쪽을 먼저 되돌려도 내용이 겹치지 않는다. 그사이 기동·완료됐으면 그대로 둔다.
-      const target = targetId ? (() => { try { return locate(targetId); } catch { return null; } })() : null;
-      if (target && target.stored.pending && !target.stored.done) {
-        update(targetId!, (current) => {
-          const entry = current.merged?.find((candidate) => candidate.sourceId === objectiveId);
-          if (!entry) return current;
-          const at = current.note.lastIndexOf(entry.noteBlock);
-          const note = at >= 0 ? current.note.slice(0, at) + current.note.slice(at + entry.noteBlock.length) : current.note;
-          // 옮긴 기준 가운데 원본과 같은 문장으로 남은 것만 걷는다 — 사람이 고친 기준은 받은 목표의 것이 됐다.
-          // 아직 합쳐져 있는 다른 원본이 같은 문장을 가져왔으면(같은 문장은 한 번만 옮겨진다) 그 기준을 남기고 그 원본의 몫으로 넘긴다 —
-          // 그 원본을 되돌릴 때 함께 걷히게.
-          const moved = new Set(entry.criteriaIds);
-          const original = new Set((stored.criteria ?? []).map((criterion) => criterion.text));
-          const sourceTexts = (sourceId: string) => new Set((load(target.theaterId).get(sourceId)?.criteria ?? []).map((criterion) => criterion.text));
-          let remaining = current.merged!.filter((candidate) => candidate !== entry);
-          const criteria = (current.criteria ?? []).filter((criterion) => {
-            if (!moved.has(criterion.id) || !original.has(criterion.text)) return true;
-            const heir = remaining.find((other) => sourceTexts(other.sourceId).has(criterion.text));
-            if (!heir) return false;
-            remaining = remaining.map((other) => (other === heir ? { ...other, criteriaIds: [...other.criteriaIds, criterion.id] } : other));
-            return true;
-          });
-          return { ...current, note, criteria, merged: remaining };
-        });
-      }
-      return update(objectiveId, ({ removed: _removed, ...rest }) => rest);
     },
     patch: (objectiveId, input) => update(objectiveId, (stored) => ({
       ...stored,

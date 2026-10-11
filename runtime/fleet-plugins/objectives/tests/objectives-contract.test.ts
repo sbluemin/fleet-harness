@@ -124,6 +124,15 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const operationsHost = {
+    create: (input: import("@fleet-console/sdk/operations").OperationCreateInput) => {
+      const id = input.id!;
+      if (operations.has(id) || archivedOperations.has(id)) throw new Error("operation_id_taken");
+      const node = add(id, { type: input.type, pluginId: input.pluginId, title: input.title, payload: input.payload ?? {},
+        ...(input.createdAt !== undefined ? { ts: { createdAt: input.createdAt, updatedAt: clock } } : {}) });
+      activity.set(id, "dormant");
+      if (hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
+      return node;
+    },
     describe: (id: string) => {
       const operation = operations.get(id) ?? archivedOperations.get(id);
       return operation ? { operation, location: archivedOperations.has(id) ? "archived" as const : "active" as const, rootOperationId: operation.parentOperationId ?? id, archivedAt: archivedOperations.has(id) ? 1 : null } : null;
@@ -329,12 +338,69 @@ describe("Objectives contract", () => {
     await expect(launch.rename("completion-recovery", "must stay read-only")).rejects.toThrow("objective_done");
     expect(h.accessCalls).toHaveLength(accesses);
     expect(h.archivedOperations.has("completion-recovery")).toBe(true);
-    launch.remove("completion-recovery");
-    expect(h.archivedOperations.has("completion-recovery")).toBe(false);
+    await launch.remove("completion-recovery");
+    await launch.remove("completion-recovery");
+    expect(h.archivedOperations.has("completion-recovery")).toBe(true);
+    expect(reloaded.list("t1").some((entry) => entry.id === "completion-recovery")).toBe(false);
+    expect(reloaded.all().some((entry) => entry.id === "completion-recovery")).toBe(true);
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(true);
+    await h.operationsHost.access("completion-recovery");
+    launch.operationChanged("completion-recovery");
+    expect(reloaded.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false }));
+    await launch.archive("completion-recovery");
+    h.archivedOperations.delete("completion-recovery");
     launch.operationPurged("completion-recovery");
     expect(fs.existsSync(h.objectiveFile("completion-recovery"))).toBe(false);
     launch.dispose();
+  });
+
+  // 새 보관 왕복은 옛 removed 파일의 기간 만료·생성 응답 손실·ID 충돌을 지나지 않는다. 이관의 독립 저장 방어다.
+  it("migrates legacy removed and merged records without losing files across creation response loss, archive failure, ID collision and restart", async () => {
+    const h = harness();
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const target = await h.launch.create({ theaterId: "t1", title: "Legacy target", groupId: null });
+    const source = await h.launch.create({ theaterId: "t1", title: "Legacy merged source", groupId: null, note: "original brief" });
+    const attached = h.store.attachmentAdd(source.id, { name: "legacy.png", type: "image/png", data: PNG });
+    const attachmentFile = h.store.attachmentPath(attached.objective, attached.attachment);
+    const collision = await h.launch.create({ theaterId: "t1", title: "Legacy removed", groupId: null });
+    const completed = await h.launch.create({ theaterId: "t1", title: "Legacy pending completion", groupId: null, note: "completed without an Operation" });
+    h.store.complete(completed.id);
+    const removal = { at: 1, by: "old-agent", reason: "old merge", mergedInto: target.id };
+    for (const [id, removed] of [[source.id, removal], [collision.id, { at: 1 }]] as const) {
+      const file = h.objectiveFile(id);
+      fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), removed }));
+    }
+    const unrelated = h.add(collision.id, { title: "Unrelated Operation" });
+    h.advanceClock(30 * 24 * 60 * 60 * 1000);
+    h.hostFault.afterCreate = 1;
+    let restarted = h.restart();
+    await restarted.launch.migrateRemoved();
+    expect(restarted.store.find(source.id)!.removed).not.toBeNull();
+    expect(h.archivedOperations.has(source.id)).toBe(false);
+    expect(h.operations.get(collision.id)).toBe(unrelated);
+    vi.spyOn(h.operationsHost, "archive").mockRejectedValueOnce(new Error("archive_stop_failed"));
+    await restarted.launch.migrateRemoved();
+    expect(restarted.store.find(source.id)!.removed).not.toBeNull();
+    expect(fs.readFileSync(attachmentFile)).toEqual(PNG);
+    restarted = h.restart();
+    await restarted.launch.migrateRemoved();
+    expect(restarted.store.find(source.id)).toMatchObject({ archived: true, removed: null, note: "original brief" });
+    const disk = JSON.parse(fs.readFileSync(h.objectiveFile(source.id), "utf8"));
+    expect(disk).toMatchObject({ archivedRemoval: removal });
+    expect(disk.pending).toBeUndefined();
+    expect(restarted.store.find(completed.id)).toMatchObject({ archived: true, hasOperation: true, done: expect.any(Object), note: "completed without an Operation" });
+    await restarted.launch.restore(completed.id);
+    expect(restarted.store.find(completed.id)).toMatchObject({ archived: false, done: expect.any(Object) });
+    expect(h.launches).toHaveLength(0);
+    expect(h.operations.get(collision.id)).toBe(unrelated);
+    expect(fs.existsSync(h.objectiveFile(collision.id))).toBe(true);
+    await restarted.launch.restore(source.id);
+    expect(restarted.store.find(source.id)).toMatchObject({ archived: false, note: "original brief", attachments: [expect.objectContaining({ name: "legacy.png" })] });
+    await restarted.launch.migrateRemoved();
+    expect(h.archivedOperations.has(source.id)).toBe(false);
+    expect(fs.readFileSync(attachmentFile)).toEqual(PNG);
+    expect(h.sent).toEqual([]);
+    warnings.mockRestore();
   });
 
   // 기존 완료 복구는 확장 회차의 승인·인계·회고 보존을 지나지 않는다. 같은 목표를 반복 확장하는 저장 계약이다.
@@ -745,7 +811,10 @@ describe("Objectives contract", () => {
     expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id]);
     expect(operations.has(objective.id)).toBe(false);
     expect(archivedOperations.has(objective.id)).toBe(true);
-    expect(store.list("t1").find((item) => item.id === objective.id)?.done).toBeTruthy();
+    expect(store.list("t1").some((item) => item.id === objective.id)).toBe(false);
+    const restoredCompletion = await launch.restore(objective.id);
+    expect(restoredCompletion).toMatchObject({ archived: false, done: { by: commodore } });
+    expect(restoredCompletion.missions[0]!.records.map((record) => record.lines)).toEqual([["a done"], ["a redone", "fixed the gap"]]);
     expect((await launch.reopen(objective.id)).missions.map((mission) => mission.member)).toEqual([research, build, build]);
     expect(accessCalls.at(-1)).toBe(objective.id);
     expect(operations.has(objective.id)).toBe(true);
@@ -838,8 +907,8 @@ describe("Objectives contract", () => {
     const file = store.attachmentPath(attached.objective, attached.attachment);
     // 첨부는 그 목표 디렉터리 안에 산다 — 경로는 store 가 정하고 바깥으로 새지 않는다.
     expect(path.dirname(file)).toBe(path.join(objectivesDir, objective.id, "attachments"));
-    launch.remove(objective.id);
-    launch.operationDeleted(objective.id);
+    await launch.remove(objective.id);
+    launch.operationChanged(objective.id);
     expect(operations.has(research) || operations.has(build)).toBe(false);
     // 유예 동안은 디렉터리째 남아 있다(복원하면 목표도 돌아온다).
     expect(fs.existsSync(file)).toBe(true);
@@ -1121,8 +1190,8 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
-  it("lets Console Use tell objectives without an Operation apart and merge or remove only those, keeping briefs and criteria, and lets the person restore them", async () => {
-    const { store, launch, add, workspace, consoleTool, consoleDetail, operations, route, savedIds } = harness();
+  it("keeps merge sources only in the receiving record and archives existing Operations while deleting unlaunched objectives through Console Use", async () => {
+    const { store, launch, add, workspace, consoleTool, consoleDetail, operations, route, savedIds, launches } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -1145,7 +1214,8 @@ describe("Objectives contract", () => {
     // 완료한 목표는 기본 목록에서 빠지지만 all 에서는 비교 대상으로 남는다.
     await launch.complete(started.id);
     expect(byId(await rows()).has(started.id)).toBe(false);
-    expect(byId(await rows("all")).get(started.id)).toMatchObject({ done: true });
+    expect(byId(await rows("all")).has(started.id)).toBe(false);
+    expect(store.find(started.id)).toMatchObject({ archived: true, done: expect.any(Object) });
 
     const duplicate = await launch.create({ theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
     const planned = await launch.create({ theaterId: "t1", title: "Planned by hand", groupId: null, missions: [{ text: "keep me" }] });
@@ -1164,51 +1234,37 @@ describe("Objectives contract", () => {
     expect((await use({ action: "remove", objectiveIds: [caller.id] })).structuredContent).toMatchObject({ error: "tidy_refused" });
     expect(operations.has(caller.id)).toBe(true);
 
-    // 합치면 원본의 브리핑과 기준이 받는 목표로 옮겨 가고(같은 문장은 한 번), 원본은 지운 표시로 남아 기동되지 않는다.
+    // 합쳐 온 내용과 원본 스냅샷은 받은 목표 기록에 남는다. 독립 복원·보관 행은 만들지 않는다.
     expect((await use({ action: "merge", into: waiting.id, from: [duplicate.id], reason: "same ask" })).isError).toBe(false);
     expect(store.find(waiting.id)!.note).toContain("dup brief");
     expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "three"]);
-    expect(store.find(duplicate.id)!.removed).toMatchObject({ by: { operationId: caller.id }, reason: "same ask", mergedInto: { id: waiting.id } });
-    expect(byId(await rows()).has(duplicate.id)).toBe(false);
-    expect(byId(await rows("all")).get(duplicate.id)).toMatchObject({ removed: true, mergedInto: waiting.id });
-    await expect(launch.requestPlan(duplicate.id)).rejects.toMatchObject({ code: "objective_removed" });
-    expect((await use({ action: "remove", objectiveIds: [stale.id] })).isError).toBe(false);
-    // 저장 무결성 — 다시 읽어도 지운 표시와 합친 기록이 그대로다.
+    expect(store.find(duplicate.id)).toBeNull();
+    expect(byId(await rows("all")).has(duplicate.id)).toBe(false);
+    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(404);
+    expect(savedIds()).not.toContain(duplicate.id);
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (oid) => operations.get(oid) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
-    expect(reloaded.find(stale.id)!.removed).not.toBeNull();
-    expect(reloaded.find(waiting.id)!.merged.map((entry) => entry.sourceId)).toEqual([duplicate.id]);
-
-    // 사람이 보드에서 되돌린다 — 합친 원본을 되돌리면 받은 목표에서 덧붙인 구간과 옮긴 기준이 걷힌다.
-    expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(200);
-    expect(store.find(stale.id)!.removed).toBeNull();
-    expect((await route("objective/restore", { objectiveId: duplicate.id })).status).toBe(200);
-    expect(store.find(duplicate.id)).toMatchObject({ removed: null, note: "dup brief" });
-    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
-    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
-    // 받은 목표까지 지운 뒤 원본부터 되돌려도 내용이 겹치지 않고, 받을 수 없는 id 가 낀 되돌리기는 아무것도 바꾸지 않는다.
-    await use({ action: "merge", into: waiting.id, from: [duplicate.id] });
-    await use({ action: "remove", objectiveIds: [waiting.id] });
-    expect((await use({ action: "restore", objectiveIds: [duplicate.id, "missing"] })).structuredContent).toMatchObject({ error: "tidy_refused" });
-    expect(store.find(duplicate.id)!.removed).not.toBeNull();
-    expect((await use({ action: "restore", objectiveIds: [duplicate.id, waiting.id] })).isError).toBe(false);
-    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [], removed: null });
-    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
-    // 두 원본이 같은 기준을 가져왔으면 한쪽을 되돌려도 남은 원본의 기준은 받은 목표에 남는다.
-    const left = await launch.create({ theaterId: "t1", title: "Left", groupId: null, criteria: ["shared"] });
-    const right = await launch.create({ theaterId: "t1", title: "Right", groupId: null, criteria: ["shared"] });
-    await use({ action: "merge", into: waiting.id, from: [left.id, right.id] });
-    await route("objective/restore", { objectiveId: left.id });
-    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two", "shared"]);
-    await route("objective/restore", { objectiveId: right.id });
-    expect(store.find(waiting.id)).toMatchObject({ note: before.note, merged: [] });
-    expect(store.find(waiting.id)!.criteria.map((criterion) => criterion.text)).toEqual(["one", "two"]);
-
-    // 사람이 지운 기동 전 목표도 같은 자리에 남아 되돌릴 수 있고, 거기서 한 번 더 지우면(비우기) 영구 삭제된다.
-    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
-    expect(store.find(stale.id)!.removed).toMatchObject({ by: null });
-    expect((await route("objective/remove", { objectiveId: stale.id })).status).toBe(200);
+    expect(reloaded.find(waiting.id)!.merged).toContainEqual(expect.objectContaining({ sourceId: duplicate.id, restorable: false }));
+    const disk = JSON.parse(fs.readFileSync(path.join(workspace, "objectives", waiting.id, "objective.json"), "utf8"));
+    expect(disk.merged[0].source).toMatchObject({ operationId: duplicate.id, note: "dup brief", criteria: expect.any(Array) });
+    // Operation이 없는 목표는 한 번에 삭제되고, restore로 되살릴 수 없다.
+    expect((await use({ action: "remove", objectiveIds: [stale.id] })).structuredContent).toMatchObject({ deleted: [stale.id], archived: [] });
     expect(store.find(stale.id)).toBeNull();
-    expect(savedIds()).not.toContain(stale.id);
+    expect((await route("objective/restore", { objectiveId: stale.id })).status).toBe(404);
+    const live = await launch.create({ theaterId: "t1", title: "Archive me", groupId: null, note: "keep me" });
+    await launch.requestPlan(live.id);
+    expect((await use({ action: "remove", objectiveIds: [live.id] })).structuredContent).toMatchObject({ archived: [live.id], deleted: [] });
+    expect(store.find(live.id)).toMatchObject({ archived: true, note: "keep me" });
+    expect(byId(await rows("all")).has(live.id)).toBe(false);
+    expect((await use({ action: "restore", objectiveIds: [live.id, "missing"] })).isError).toBe(true);
+    expect(store.find(live.id)!.archived).toBe(true);
+    expect((await use({ action: "restore", objectiveIds: [live.id] })).isError).toBe(false);
+    expect(store.find(live.id)).toMatchObject({ archived: false, note: "keep me" });
+    // 기동 전 보관은 삭제지만 완료는 무기동 Operation을 만들어 보관한다.
+    const pendingCompletion = await launch.create({ theaterId: "t1", title: "Finish without launching", groupId: null });
+    const launchedBefore = launches.length;
+    expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: true, hasOperation: true, done: expect.any(Object) });
+    expect(launches).toHaveLength(launchedBefore);
+    expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
   });
 
   it("shows every agent Operation created elsewhere as an objective, including records saved as not enlisted, but not member or plugin Operations", async () => {
@@ -1787,7 +1843,7 @@ describe("Objectives contract", () => {
     expect(launches).toHaveLength(1);
     launch.resumeFollowups(source.id);
     expect(store.list("t1").filter((entry) => entry.id === targetId)).toHaveLength(1);
-    launch.remove(targetId);
+    await launch.remove(targetId);
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("deleted");
   });
 
@@ -1880,11 +1936,10 @@ describe("Objectives contract", () => {
     expect(JSON.stringify([store.find(id)!.missions, store.find(id)!.criteria, store.find(id)!.members])).toBe(lineupBefore);
     // 지휘관에게 건네는 말은 짧은 첨언이다.
     expect(await refusal(commodore, { action: "steer", objectiveId: id, context: "x".repeat(MAX_REMARK + 1) })).toBe("invalid_arguments");
-    // 같은 도구 — 사령관도 정리하고, 지운 손은 사령관으로 남는다. 다른 Theater 의 목표는 건드리지 못한다.
-    expect(await board({ action: "remove", objectiveIds: [personal], reason: "duplicate" })).toMatchObject({ removed: [personal] });
-    expect(store.find(personal)!.removed).toMatchObject({ by: { operationId: "commodore:t1", commodore: true }, reason: "duplicate" });
-    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, { action: "restore", objectiveIds: [personal] })).toBe("other_theater");
-    await board({ action: "restore", objectiveIds: [personal] });
+    // 사령관도 같은 위치 계약을 쓴다. 다른 Theater의 목표는 보관·삭제·복원하지 못한다.
+    expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[0]!, { action: "remove", objectiveIds: [personal] })).toBe("other_theater");
+    expect(await board({ action: "remove", objectiveIds: [personal], reason: "duplicate" })).toMatchObject({ removed: [personal], deleted: [personal] });
+    expect(store.find(personal)).toBeNull();
     expect(await refusal(createCommodoreBoardTools(ctx, store, launch, "t2")[1]!, { action: "read", objectiveId: id })).toBe("other_theater");
     // 감독자의 관측 없는 서명도 pending과 planned를 구별해야 순찰까지 멈추지 않는다.
     expect(inboxReasons(store.find(id)!)).toEqual(["planned"]);

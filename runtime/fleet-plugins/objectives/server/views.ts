@@ -119,7 +119,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
     };
   };
   const objectiveView = (objective: Objective) => ({
-    id: objective.id, theaterId: objective.theaterId, title: objective.title,
+    id: objective.id, theaterId: objective.theaterId, title: objective.title, archived: objective.archived === true,
     ...withoutEmpty({
       // 사람이 쓴 목표 설명 — 도구 설명이 부르는 이름(brief)으로 싣는다.
       groupId: objective.groupId, brief: objective.note,
@@ -195,7 +195,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
    */
   const rowView = (objective: Objective) => ({
     id: objective.id, groupId: objective.groupId, title: objective.title,
-    operation: !store.pending(objective.id),
+    operation: objective.hasOperation ?? !store.pending(objective.id), archived: objective.archived === true,
     done: !!objective.done, completedBy: objective.done?.by, awaitingHandoff: objective.awaitingHandoff, awaitingReview: objective.awaitingReview, dueDate: objective.dueDate, today: objective.today, missions: `${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}`, mode: commanderMode(objective.missions), addedBy: objective.addedBy && "operationId" in objective.addedBy ? objective.addedBy.operationId : objective.addedBy,
     operator: objective.operator,
     ...withoutEmpty({

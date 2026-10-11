@@ -619,12 +619,11 @@ export interface StoredObjective {
   readonly commenced?: true;
   /** 사람이 「개시 전 라우팅 결과 확인」을 껐다 — 기본은 켬이라 끈 것만 저장한다. */
   readonly routingConfirm?: false;
-  /**
-   * 에이전트가 Console Use 로 지웠다(합쳤으면 mergedInto 가 받은 목표). 기동 전 목표에만 붙고 레코드는 그대로 남아, 사람이 보드에서
-   * 되돌리면 이 표시만 없어진다. 사람이 지우면 지금처럼 곧바로 사라진다.
-   */
+  /** 옛 정리 레코드의 이관 대기 표시. 보관 확정 뒤 archivedRemoval로 옮기며 기간으로 지우지 않는다. */
   readonly removed?: StoredRemoval;
-  /** 이 목표로 합쳐 온 목표 — 되돌리면 덧붙인 브리핑 구간과 옮긴 기준을 걷어 낸다. */
+  /** 옛 정리 표시의 이관 기록 — 보관 위치와는 별개이며 만료로 지우지 않는다. */
+  readonly archivedRemoval?: StoredRemoval;
+  /** 이 목표로 합쳐 온 목표의 출처와 원본 기록. 새 병합 원본은 독립 복원하지 않는다. */
   readonly merged?: readonly StoredMerge[];
   readonly missions: readonly StoredMission[];
 }
@@ -640,7 +639,7 @@ export interface StoredRemoval {
   readonly mergedInto?: string;
 }
 
-/** 지우거나 합친 목표를 보드에 남겨 두는 기간 — 지나면 영구 삭제된다. */
+/** 옛 정리 DTO의 호환 시각에만 쓰는 값 — 자동 삭제는 하지 않는다. */
 export const REMOVED_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 /** 사령관이 정리한 기록의 행위자 id 머리 — `commodore:<theaterId>`. 보기에서 commodore: true 로 풀린다. */
 export const COMMODORE_TIDY_PREFIX = "commodore:";
@@ -656,6 +655,8 @@ export interface StoredMerge {
   readonly byTitle?: string;
   /** 받은 목표의 브리핑 끝에 덧붙인 구간 그대로 — 되돌릴 때 이 구간을 찾아 걷어 낸다. */
   readonly noteBlock: string;
+  /** 새 병합은 원본 레코드를 여기 보존하고 독립 목표는 거둔다. 옛 병합에는 없다. */
+  readonly source?: StoredObjective;
   /** 옮겨 온 기준의 id — 받은 목표에 이미 같은 문장이 있던 기준은 옮기지 않아 여기 없다. */
   readonly criteriaIds: readonly string[];
 }
@@ -724,6 +725,10 @@ export interface ObjectiveCriterion {
 }
 
 export interface Objective {
+  /** Commander Operation의 보관 위치에서 파생한다. active 휴면과 구별한다. */
+  readonly archived?: boolean;
+  /** Operation 없는 목표는 보관 대신 영구 삭제된다. */
+  readonly hasOperation?: boolean;
   /** 지휘관 Operation id. */
   readonly id: string;
   readonly theaterId: string;

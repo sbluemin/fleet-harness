@@ -51,21 +51,22 @@ const HINTS: Readonly<Record<string, string>> = {
 
 const scope = { theaterId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Unlaunched, incomplete objectives; removed ones stay restorable for 14 days.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Existing Operations are archived; objectives with no Operation are permanently deleted. No expiry.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
   description: "A Theater's Objectives list: groups, objectives, what waits on the person (inbox), running ones (fleet), history, member models; add and tidy objectives.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
-    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed and removed objectives.") }) },
+    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; archived Operations are in the Console archive.") }) },
     inbox: { kind: "read", input: z.object(rows) },
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
     models: { kind: "read", input: z.object(scope) },
     add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
-    merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds, reason }) },
-    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds }) },
+    merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
+    restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore dormant, retaining completion and records.") }) },
   },
 });
 
@@ -164,7 +165,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const theaterId = bound?.theaterId ?? argTheater ?? "";
         const theaterOf = (id: string | undefined) => bound?.theaterId ?? argTheater ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
         if (action === "add") return { theaterId, summary: `목표 추가 「${short(typeof args.title === "string" ? args.title : "")}」`, view: "objectives", gesture: "create", ...listAt(theaterId, args.groupId) };
-        if (action === "remove") { const removeIds = stringIds(args.objectiveIds); const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 지움 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 지움`, view: "objectives", gesture: "press", ...listAt(removeTheaterId, undefined) }; }
+        if (action === "remove" || action === "archive") { const removeIds = stringIds(args.objectiveIds); const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 보관·정리 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 보관·정리`, view: "objectives", gesture: "press", ...listAt(removeTheaterId, undefined) }; }
         if (action === "merge") { const into = typeof args.into === "string" ? args.into : ""; const mergeTheaterId = theaterOf(into); return { theaterId: mergeTheaterId, summary: `목표 ${stringIds(args.from).length}개를 「${titleOf(into)}」에 합침`, view: "objective", path: into, gesture: "press", ...rowAt(into || undefined, mergeTheaterId) }; }
         if (action === "restore") { const restoreIds = stringIds(args.objectiveIds); const restoreTheaterId = theaterOf(restoreIds[0]); return { theaterId: restoreTheaterId, summary: restoreIds.length === 1 ? `목표 되돌림 「${titleOf(restoreIds[0]!)}」` : `목표 ${restoreIds.length}개 되돌림`, view: "objectives", gesture: "press", ...(restoreIds.length === 1 ? rowAt(restoreIds[0], restoreTheaterId) : listAt(restoreTheaterId, undefined)) }; }
         // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
@@ -177,7 +178,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
       if (!parsed.ok) return refusal(parsed);
       const call = parsed.call as ListCall;
       try {
-        if (call.action === "remove" || call.action === "merge" || call.action === "restore") {
+        if (call.action === "remove" || call.action === "archive" || call.action === "merge" || call.action === "restore") {
           // 정리는 에이전트 Operation 이나 사령관이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다. 사령관은 자기 Theater 목표만 정리한다.
           if (caller?.kind !== "operation" && caller?.kind !== "commodore") return refuse("operation_caller_required");
           if (bound) for (const id of call.action === "merge" ? [call.into, ...call.from] : call.objectiveIds) scoped(id);
@@ -185,13 +186,26 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { operationId: `${COMMODORE_TIDY_PREFIX}${caller.theaterId}`, title: null } : { operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null }), ...(why ? { reason: why } : {}) });
           // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
           const touched = (changed: readonly string[]) => { for (const id of changed) launch.followupTargetChanged(id); };
-          if (call.action === "remove") { const removed = store.tidyRemove(call.objectiveIds, actor(call.reason)).map((objective) => objective.id); touched(removed); return text({ ok: true, removed }); }
+          if (call.action === "remove" || call.action === "archive") {
+            const targets = [...new Set(call.objectiveIds)].map(scoped);
+            const refusals = targets.flatMap((found) => {
+              const reason = caller.kind === "operation" && roleIn(found, caller) ? "own_objective"
+                : caller.kind === "operation" && found.theaterId !== theaterOfCaller(caller) ? "other_theater"
+                : found.done ? "objective_done" : null;
+              return reason ? [{ objectiveId: found.id, reason }] : [];
+            });
+            if (refusals.length) return refuse("tidy_refused", { refusals });
+            const archived: string[] = [], deleted: string[] = [];
+            for (const found of targets) { const result = await launch.archive(found.id); (result.deleted ? deleted : archived).push(found.id); }
+            return text({ ok: true, removed: targets.map((found) => found.id), archived, deleted });
+          }
           if (call.action === "merge") { const target = store.tidyMerge(call.into, call.from, actor(call.reason)); touched(call.from); return text({ ok: true, objectiveId: target.id, merged: call.from, criteria: target.criteria.length }); }
           // 되돌리기도 지우기·합치기처럼 전부 받을 수 있을 때만 바꾼다 — 일부만 되돌린 채 오류로 끝나지 않게.
           const restoreIds = [...new Set(call.objectiveIds)];
-          const refusals = restoreIds.flatMap((id) => { const found = store.find(id); return !found ? [{ objectiveId: id, reason: "unknown_objective" }] : !found.removed ? [{ objectiveId: id, reason: "not_removed" }] : []; });
+          const refusals = restoreIds.flatMap((id) => { const found = store.find(id); return !found ? [{ objectiveId: id, reason: "unknown_objective" }] : !found.archived && !found.removed ? [{ objectiveId: id, reason: "not_archived" }] : []; });
           if (refusals.length) return refuse("tidy_refused", { refusals });
-          const restored = restoreIds.map((id) => store.tidyRestore(id).id);
+          const restored: string[] = [];
+          for (const id of restoreIds) restored.push((await launch.restore(id)).id);
           touched(restored);
           return text({ ok: true, restored });
         }
@@ -363,7 +377,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" }>, theaterId: string, caller: BoardCaller | undefined) {
     if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
     const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { theaterId, offset: args.offset, limit: args.limit, today });
-    const board = store.list(theaterId).filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
+    const supply = args.action === "history" ? store.all().filter((objective) => objective.theaterId === theaterId) : store.list(theaterId);
+    const board = supply.filter((objective) => !objective.removed && (!args.groupId || objective.groupId === args.groupId));
     if (args.action === "inbox") {
       const now = Date.now();
       return page(board.flatMap((objective) => {
