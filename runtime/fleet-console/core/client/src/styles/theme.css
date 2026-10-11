@@ -1016,7 +1016,7 @@
    대화·세부 정보 바탕 #070707(L 12.9%) = --canvas-abyss, 사이드바 #111111(17.8%) = --ink-deep, 말풍선 #262626(26.9%) = --ink-mid(→ 기본 --surface-panel-raised),
    입력 캡슐 #2f2f2f(30.5%) = --surface-glass-strong, 열 경계 #292929(28.1%)·카드 테두리 #2c2c2c(29.3%) ≈ --hairline 28.5%,
    선택 면 #1a1a1a(21.8%) = --surface-panel, 본문 글자 #fcfcfc(99%) → --ink-pearl 96%, 보조 글자 #9a9a9a(68.6%) = --ink-muted.
-   강조(brass 계열)는 Grok 처럼 중립 흰·회색으로 바꾼다(Grok 보내기 원형 흰 단추·선택 탭 회색 면). 신호·정체성 색은 Carbon 값 그대로다.
+   강조(brass 금색)·신호·정체성 색은 Carbon 값 그대로다 — 면과 글자만 Grok 처럼 중립이고, 금색 강조는 Fleet 의 것을 지킨다.
    측정 근거: 목표 증거 impl/theme/measure.md. */
 :root[data-conversation-layout="true"]:not([data-theme="whites"]) {
   --ink-abyss: oklch(15% 0 0);
@@ -1031,11 +1031,11 @@
 
   --ink-brand-dev: oklch(84% 0.04 255);
 
-  --brass: oklch(93% 0 0);
-  --brass-bright: oklch(97% 0 0);
-  --brass-deep: oklch(78% 0 0);
-  --brass-glow: oklch(100% 0 0 / 10%);
-  --brass-quiet: oklch(72% 0 0);
+  --brass: oklch(77% 0.085 64);
+  --brass-bright: oklch(81% 0.085 66);
+  --brass-deep: oklch(54% 0.11 55);
+  --brass-glow: oklch(77% 0.085 64 / 12%);
+  --brass-quiet: oklch(71% 0.04 64);
 
   --aurora: oklch(79% 0.08 205);
   --aurora-deep: oklch(56% 0.11 208);
@@ -1116,8 +1116,6 @@
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-muted);
   --text-tertiary: var(--ink-fog);
-  /* 강조는 Grok 처럼 중립 흰·회색이다(위 --brass 계열) — 주요 행동은 흰 면 + 검은 글자, 위치·선택은 흰빛 워시. --brass-ink 와
-     --text-on-brass(= --ink-abyss 15%) 는 base 별칭이라 따로 주지 않아도 따라온다. 색은 신호·정체성에만 남는다. */
 }
 
 /* ── 반투명 유리 게이트 ────────────────────────────────────────────────

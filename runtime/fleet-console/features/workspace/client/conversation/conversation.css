@@ -279,18 +279,17 @@
   border-radius: 20px;
 }
 
-/* 인라인 코드는 테두리 없는 회색 칩 + 본문 글자색(Grok) — 금색 글자를 쓰지 않는다. 코드 블록은 그대로다. */
-.conversation-body .markdown-body :not(pre) > code {
-  border-color: transparent;
-  background: color-mix(in oklch, var(--text-primary) 9%, transparent);
+/* 대화 다크의 응답 본문은 Grok 처럼 거의 흰 글자다. 공용 .markdown-body 는 본문을 --text-secondary 로 칠하는데, 대화 다크의
+   --text-secondary 는 Grok 보조 글자 실측(#9a9a9a, L 68.6%)이라 응답 전체가 흐린 회색으로 보였다(문단·목록 항목은 공용
+   `.markdown-body p, li` 가 다시 --text-secondary 를 준다). 가운데 칸의 응답(1:1·그룹·사령관
+   기록)만 --text-primary(L 96%)로 올린다. 인라인 코드는 Fleet 의 금색 글자를 지킨다. 라이트·토글 끔은 그대로다. */
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body,
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body :is(p, li) {
   color: var(--text-primary);
 }
 
-/* 대화 다크의 주요 행동(보내기)은 Grok 처럼 흰 원형 단추 + 검은 기호다 — 1:1·사령관 입력은 이미 무장(is-armed)일 때 brass 면이고,
-   대화 다크의 brass 는 중립 흰색이다(theme.css). 그룹 입력만 그 문법에 맞춘다. */
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .group-composer-send:not(:disabled) {
-  background: var(--brass);
-  color: var(--text-on-brass);
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body :not(pre) > code {
+  color: var(--brass-bright);
 }
 
 /* 사람의 말풍선은 그룹 대화와 같은 회색 면이다. */
