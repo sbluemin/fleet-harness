@@ -29,7 +29,7 @@ export interface CommodoreRoute {
 export interface CommodoreStateView {
   readonly theaterId: string;
   readonly state: CommodoreState;
-  /** 실험 기능 「자율 운영」. 꺼져 있으면 사령관 줄·서랍이 서지 않는다. */
+  /** 실험 기능 「자율 운영」. 꺼져 있으면 Theater 머리의 사령관 글리프·서랍이 서지 않는다. */
   readonly enabled: boolean;
   /** 실험 기능 행의 모델·강도 — Theater 별 값이 없을 때의 좌표. */
   readonly defaults: ExperimentAideSelection;
@@ -91,7 +91,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
 
   return [
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: autonomy, directive, intel, sources and model coordinates.", handler: json(theaterRef, ({ theaterId }) => view(theaterId, read(theaterId))) },
-    { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore row glyph).", handler: json(theaterRef.extend({ autonomy: z.boolean() }).strict(), ({ theaterId, autonomy }) => {
+    { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore glyph on the sidebar Theater header).", handler: json(theaterRef.extend({ autonomy: z.boolean() }).strict(), ({ theaterId, autonomy }) => {
       read(theaterId);
       if (autonomy && !experiments().commodore) throw new ObjectiveStoreError("commodore_disabled");
       return view(theaterId, store.setAutonomy(theaterId, autonomy));

@@ -94,7 +94,7 @@ const ZONE_HANDLING = (locale: "en" | "ko") => getT(locale)("objectives.commodor
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
- * `autonomy` 는 스위치(표식의 켬·끔), `peek` 는 사람이 사령관 줄에 머무는 중(표식이 함께 밝아진다).
+ * `autonomy` 는 스위치(표식의 켬·끔), `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
  */
 export interface CommodoreBoard { readonly active: boolean; readonly stalled: readonly string[]; readonly enabled?: boolean; readonly autonomy?: boolean; readonly peek?: boolean }
 const NO_COMMODORE: CommodoreBoard = { active: false, stalled: [] };

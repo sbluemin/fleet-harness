@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheaterSummary } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheaterSummary, TheaterContribution } from "@fleet-console/sdk/plugin";
+import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
@@ -19,19 +20,11 @@ interface TheaterContributionProps {
 export function TheaterContributionRows({ theater, active }: TheaterContributionProps) {
   const { theaterContributions } = usePluginRegistry();
   const language = useConsoleLocale();
-  const containerRef = useRef<HTMLDivElement | null>(null);
   const rows = theaterContributions.filter((contribution) => contribution.row);
-  // Theater Inbox 를 닫을 때 입구가 사라졌으면(우클릭 메뉴의 항목 등) 이 Theater 의 머리로 포커스를 돌린다 — 시트가 사이드바를
-  // 뒤지지 않게 머리를 여기서 넘긴다. 머리는 이 줄들과 같은 Theater 구역 안에 있다.
-  useLayoutEffect(() => {
-    const section = containerRef.current?.parentElement?.closest<HTMLElement>("[data-theater-id]") ?? null;
-    if (!section) return;
-    registerTheaterInboxReturnTarget(theater.id, () => section.querySelector<HTMLElement>(".side-bar-theater-activate"));
-  }, [theater.id, rows.length]);
   if (rows.length === 0) return null;
   const base = { theater: { id: theater.id, label: theater.label }, active, language };
   return (
-    <div ref={containerRef} className="side-bar-theater-contributions" data-theater-id={theater.id}>
+    <div className="side-bar-theater-contributions" data-theater-id={theater.id}>
       {rows.map((contribution) => (
         <PluginErrorBoundary key={contribution.id} fallback={<></>}>
           {contribution.row?.({ ...base, theaterInbox: scopedTheaterInbox(contribution.id) })}
@@ -41,7 +34,19 @@ export function TheaterContributionRows({ theater, active }: TheaterContribution
   );
 }
 
-/** Theater 「…」 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */
+/**
+ * Theater Inbox 를 닫을 때 입구가 사라졌으면(우클릭 메뉴의 항목 등) 포커스를 돌려줄 그 Theater 의 머리를 등록한다 — 시트가
+ * 사이드바를 뒤지지 않게 머리가 직접 넘긴다.
+ */
+export function useTheaterInboxReturnTarget(theaterId: string, resolve: () => HTMLElement | null): void {
+  const resolveRef = useRef(resolve);
+  resolveRef.current = resolve;
+  useLayoutEffect(() => {
+    registerTheaterInboxReturnTarget(theaterId, () => resolveRef.current());
+  }, [theaterId]);
+}
+
+/** Theater 동작(우클릭·Shift+F10) 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */
 export function TheaterContributionMenuItems({ theater, active, onClose }: TheaterContributionProps & { readonly onClose: () => void }) {
   const { theaterContributions } = usePluginRegistry();
   const language = useConsoleLocale();
@@ -57,4 +62,78 @@ export function TheaterContributionMenuItems({ theater, active, onClose }: Theat
       ))}
     </>
   );
+}
+
+const NOTHING = () => () => undefined;
+
+/** 머리 기여들의 구독을 하나로 묶는다 — 어느 기여든 깨우면 머리가 다시 읽는다. */
+function useHeaderSubscription(contributions: readonly TheaterContribution[]): (listener: () => void) => () => void {
+  return useMemo(() => {
+    const headers = contributions.flatMap((contribution) => (contribution.header ? [contribution.header] : []));
+    if (headers.length === 0) return NOTHING;
+    return (listener: () => void) => {
+      const offs = headers.map((header) => { try { return header.subscribe(listener); } catch { return () => undefined; } });
+      return () => { for (const off of offs) off(); };
+    };
+  }, [contributions]);
+}
+
+/**
+ * 머리 표식 — 이니셜 칩 자리에 서는 플러그인 표식(예: 자율 운영의 사령관 글리프). 처음으로 표식을 돌려준 기여가 이긴다.
+ * 아무도 돌려주지 않으면 null 이고, 머리는 이니셜 칩을 그대로 세운다.
+ */
+export function useTheaterContributionMark(theater: ConsoleTheaterSummary, active: boolean): ReactNode | null {
+  const { theaterContributions } = usePluginRegistry();
+  const language = useConsoleLocale();
+  const marks = useMemo(() => theaterContributions.filter((contribution) => contribution.mark), [theaterContributions]);
+  const subscribe = useHeaderSubscription(marks);
+  // 표식을 고르는 일은 구독이 깨울 때마다 다시 한다. 스냅숏은 「어느 기여가 그리는가」라는 id 하나다(같은 값이면 다시 그리지 않는다).
+  const pick = useCallback(() => {
+    for (const contribution of marks) {
+      try {
+        if (contribution.mark?.({ theater, active, language, theaterInbox: scopedTheaterInbox(contribution.id) }) != null) return contribution.id;
+      } catch {
+        // 한 기여의 실패는 다음 기여에게 자리를 넘긴다.
+      }
+    }
+    return null;
+  }, [marks, theater, active, language]);
+  const ownerId = useSyncExternalStore(subscribe, pick, pick);
+  const owner = ownerId === null ? null : marks.find((contribution) => contribution.id === ownerId) ?? null;
+  if (!owner?.mark) return null;
+  return (
+    <PluginErrorBoundary fallback={<></>}>
+      {owner.mark({ theater, active, language, theaterInbox: scopedTheaterInbox(owner.id) })}
+    </PluginErrorBoundary>
+  );
+}
+
+/** 이 Theater 의 운영자가 일하는 중인가 — 머리는 Theater 이름에 라이브 물결을 흘린다. */
+export function useTheaterHeaderLive(theaterId: string): boolean {
+  const { theaterContributions } = usePluginRegistry();
+  const lives = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.live), [theaterContributions]);
+  const subscribe = useHeaderSubscription(lives);
+  const read = useCallback(() => lives.some((contribution) => {
+    try { return contribution.header?.live?.(theaterId) === true; } catch { return false; }
+  }), [lives, theaterId]);
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+/**
+ * 머리가 여는 Theater Inbox 칸 — 기여가 정한 칸(정준 id)이 먼저이고, 아무도 정하지 않으면 null(호스트의 시스템 프롬프트 칸).
+ * 누르는 순간에 한 번 읽는다.
+ */
+export function resolveTheaterInboxLanding(contributions: readonly TheaterContribution[], theaterId: string): TheaterInboxAddress | null {
+  for (const contribution of contributions) {
+    const landing = contribution.header?.landing;
+    if (!landing) continue;
+    let address: TheaterInboxAddress | null = null;
+    try { address = landing(theaterId); } catch { address = null; }
+    if (!address) continue;
+    // 기여 id 는 `<pluginId>:<id>` 다 — 그 플러그인의 섹션 id 에 같은 접두를 붙인다(scopedTheaterInbox 와 같은 규칙).
+    const separator = contribution.id.indexOf(":");
+    const prefix = separator > 0 ? contribution.id.slice(0, separator + 1) : "";
+    return { sectionId: `${prefix}${address.sectionId}`, pageId: address.pageId };
+  }
+  return null;
 }

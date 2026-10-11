@@ -386,7 +386,7 @@ export function useRailPanelContext(
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
  * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-export function RailToolIcons({ context, variant = "icons", scope = "all" }: {
+export function RailToolIcons({ context, variant = "icons", scope = "all", coreFilter }: {
   readonly context: RailToolContext;
   /** "text"는 대화 중심 화면의 패널 머리 — 아이콘 대신 이름 글자로 같은 목록·순서·켜짐을 세운다. */
   readonly variant?: "icons" | "text";
@@ -395,6 +395,8 @@ export function RailToolIcons({ context, variant = "icons", scope = "all" }: {
    * 대화 중심 화면의 패널 머리가 둘을 다른 줄에 나눠 세운다. 기본 "all" 은 지금처럼 한 줄이다.
    */
   readonly scope?: "all" | "core" | "tools";
+  /** 코어 탭 가운데 세울 것만 고른다 — 대화 중심 화면의 패널 머리가 고른 Theater 섹션의 탭만 세울 때 쓴다. */
+  readonly coreFilter?: (entryId: string) => boolean;
 }) {
   const text = variant === "text";
   const t = useT();
@@ -430,7 +432,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all" }: {
     [openSurfaces],
   );
   const divider = <div className="right-rail-divider" role="separator" aria-orientation="vertical" />;
-  const coreTabs = paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID);
+  const coreTabs = paneEntries.filter((binding) => binding.core && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && (coreFilter?.(binding.entry.id) ?? true));
 
   return (
     <>

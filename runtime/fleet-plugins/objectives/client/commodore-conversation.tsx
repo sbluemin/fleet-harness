@@ -7,9 +7,9 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreLog, CommodoreSettings } from "./commodore-inbox-section.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { commodoreSummary } from "./commodore-row.js";
-import { commodoreTrail, CommodoreTrail } from "./commodore-trail.js";
-import { commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, useCommodore } from "./commodore-state.js";
+import { commodoreSummary } from "./commodore-header.js";
+import { CommodoreTrail } from "./commodore-trail.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { useObjectiveTheater } from "./objectives-state.js";
 
@@ -17,8 +17,9 @@ type T = Translate<ObjectiveMessageKey>;
 
 /**
  * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 목표(행위 곁 칸)·지시·정보·
- * 설정이 선다. 데이터·쓰기 경로는 중앙 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다. 대화 중심
- * 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 사령관 줄은 지금처럼 중앙 시트를 연다.
+ * 설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
+ * (`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이
+ * 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
@@ -34,7 +35,7 @@ const THEATER_SYSTEM_PROMPT_PAGE = "system-prompt";
 
 /**
  * 설치 때 받은 능력을 쥔다. 구버전 호스트(능력 없음)면 대화 중심 화면은 없는 것으로 다룬다. Theater Inbox 는 지시 탭의
- * 「시스템 프롬프트」 링크가 쓴다 — Theater 설정은 대화 중심 화면에서도 Inbox 시트에 남는다.
+ * 「시스템 프롬프트」 링크가 쓴다 — 대화 중심 화면에서는 호스트가 그 칸을 오른쪽 패널의 Theater 설정 탭으로 연다.
  */
 export function connectCommodoreConversation(next: ClientConversationCapability | undefined, nextInbox?: ClientTheaterInboxCapability): () => void {
   port = next ?? null;
@@ -46,7 +47,7 @@ export function connectCommodoreConversation(next: ClientConversationCapability 
 }
 
 export interface CommodoreConversationOptions {
-  /** 이 시각을 덮는 턴을 드러낸다(행위 곁 칸·목표 대화의 사령관 줄). */
+  /** 이 시각을 덮는 턴을 드러낸다(행위 곁 칸·목표 대화의 사령관 행위 줄). */
   readonly revealAt?: number;
   /** 목표 대화에서 행위 기록을 보러 온 것 — 입력 대신 돌아가기만 선다. */
   readonly readOnly?: boolean;
@@ -62,25 +63,6 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
   if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
   if (options.revealAt !== undefined) revealCommodoreTurn(theaterId, options.revealAt);
   return true;
-}
-
-function subscribePort(listener: () => void): () => void {
-  return port?.subscribe(listener) ?? (() => undefined);
-}
-
-function conversationKey(): string {
-  if (!port || !port.isActive()) return "off";
-  const current = port.current();
-  const theaterId = current?.surfaceId === COMMODORE_SURFACE_ID && typeof current.params.theaterId === "string" ? current.params.theaterId : "";
-  return `on:${theaterId}`;
-}
-
-/** 대화 중심 화면이 서 있는지와, 가운데 칸에 선 사령관의 Theater. */
-export function useCommodoreConversation(): { readonly active: boolean; readonly theaterId: string | null } {
-  const key = useSyncExternalStore(subscribePort, conversationKey, () => "off");
-  if (key === "off") return { active: false, theaterId: null };
-  const theaterId = key.slice(3);
-  return { active: true, theaterId: theaterId || null };
 }
 
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
@@ -100,17 +82,6 @@ function useCommodoreReveal(theaterId: string) {
     () => null,
   );
   return current?.theaterId === theaterId ? current : null;
-}
-
-/* ── 사이드바 사령관 줄의 미리보기 ─────────────────────────────────────── */
-
-/** 사령관이 그 Theater 의 목표에서 가장 최근에 한 일 한 줄 — 「개시 · 목표 이름」. 없으면 null. */
-export function commodorePreview(t: T, theaterId: string, objectives: Parameters<typeof commodoreTrail>[2]): string | null {
-  const groups = commodoreTrail(t, theaterId, objectives);
-  const latest = groups[groups.length - 1];
-  const entry = latest?.entries[latest.entries.length - 1];
-  if (!latest || !entry) return null;
-  return [entry.word, entry.label, latest.title].filter(Boolean).join(" · ");
 }
 
 /* ── 가운데 칸 ─────────────────────────────────────────────────────────── */
@@ -193,6 +164,9 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
   );
 }
 
+/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. */
+const TAB_INBOX_PAGES: Record<ConversationTab, string> = { goals: "log", directive: "directive", intel: "intel", settings: "settings" };
+
 const TAB_TITLES: Record<ConversationTab, ObjectiveMessageKey> = {
   goals: "objectives.commodore.conversation.goals",
   directive: "objectives.commodore.tabs.directive",
@@ -215,8 +189,14 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     return params ? <CommodoreConversationBody theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
   },
+  // 이 대화는 그 Theater 의 Inbox 「사령관」 섹션을 대신한다 — 오른쪽 패널이 이 탭들을 Theater 설정 곁의 「사령관」 섹션으로 묶는다.
+  theater: (ctx) => {
+    const params = readParams(ctx.params);
+    return params ? { theaterId: params.theaterId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
+  },
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
+    inboxPage: TAB_INBOX_PAGES[tab],
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);

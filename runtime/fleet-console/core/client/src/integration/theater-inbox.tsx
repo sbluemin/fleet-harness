@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
 
 import { useConsoleLocale } from "../i18n/index.js";
@@ -7,7 +7,9 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_SETTINGS_SECTION_ID, THEATER_SYSTEM_PROMPT_PAGE_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
-import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, theaterInboxReturnTarget, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { closeTheaterInbox, openTheaterInbox, readTheaterInboxForget, readTheaterInboxState, selectTheaterInboxPage, subscribeTheaterInbox, theaterInboxCapability, theaterInboxReturnTarget, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { TheaterInboxPanel } from "../../../../features/workspace/client/theater-inbox/theater-inbox-panel.js";
+import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { theaterInitials } from "../../../../features/workspace/client/sidebar/theater-initials.js";
 import { TheaterMonogram } from "../../../../features/workspace/client/sidebar/theater-monogram.js";
 import { TheaterInboxSheet, type ResolvedTheaterInboxSection } from "../../../../features/workspace/client/theater-inbox/theater-inbox-sheet.js";
@@ -23,13 +25,16 @@ const SYSTEM_PROMPT_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION
 /**
  * Theater Inbox 의 합성 — 시트 틀(workspace feature), 호스트의 「Theater 설정」(settings feature), 플러그인 섹션(registry)을
  * 한 자리에서 잇는다. 사이드바 Theater 메뉴의 「시스템 프롬프트…」는 데스크톱에서 여기로 와서 Theater 설정 칸을 연다.
- * 시트는 데스크톱 전용이다 — 폰 배치로 바뀌면 보던 섹션을 폰 화면에 넘기고 닫는다.
+ * 시트는 데스크톱 전용이다 — 폰 배치로 바뀌면 보던 섹션을 폰 화면에 넘기고 닫는다. 대화 중심 화면에서는 시트를 띄우지 않고
+ * 같은 섹션을 오른쪽 패널의 탭으로 세운다(TheaterInboxPanel).
  */
 export function TheaterInboxHost() {
   const { theaterInboxSections } = usePluginRegistry();
   const language = useConsoleLocale();
   const mobile = useViewMode().effective === "mobile";
+  const conversation = useConversationLayout();
   const open = useTheaterInboxState();
+  const forget = useSyncExternalStore(subscribeTheaterInbox, readTheaterInboxForget, readTheaterInboxForget);
   const sections = useMemo<readonly ResolvedTheaterInboxSection[]>(() => [
     SETTINGS_SECTION,
     ...theaterInboxSections.map((descriptor) => ({ id: descriptor.id, descriptor })),
@@ -62,7 +67,27 @@ export function TheaterInboxHost() {
     section?.descriptor.onLeaveDesktop?.({ theater: summary, pageId: current.address.pageId });
   }, [mobile, sections]);
 
+  // 대화 중심 화면이 걷히면(실험 기능 끔·폰 배치) 오른쪽 패널에 섰던 Theater 도 닫는다 — 패널이 시트로 바뀌어 튀어나오지 않게.
+  const wasConversation = useRef(conversation);
+  useEffect(() => {
+    if (wasConversation.current && !conversation) closeTheaterInbox();
+    wasConversation.current = conversation;
+  }, [conversation]);
+
   if (!open || !theater || mobile) return null;
+  if (conversation) {
+    return (
+      <TheaterInboxPanel
+        open={open}
+        theater={theater}
+        sections={sections}
+        language={language}
+        navigation={theaterInboxCapability}
+        select={selectTheaterInboxPage}
+        fallback={SYSTEM_PROMPT_ADDRESS}
+      />
+    );
+  }
   return (
     <TheaterInboxSheet
       open={open}
@@ -73,6 +98,7 @@ export function TheaterInboxHost() {
       select={selectTheaterInboxPage}
       fallback={SYSTEM_PROMPT_ADDRESS}
       returnTarget={theaterInboxReturnTarget}
+      onForget={forget}
     />
   );
 }

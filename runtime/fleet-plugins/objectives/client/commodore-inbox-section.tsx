@@ -12,7 +12,8 @@ import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodo
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
-import { clockTime } from "./commodore-row.js";
+import { clockTime } from "./commodore-header.js";
+import { openCommodoreConversation } from "./commodore-conversation.js";
 import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
@@ -104,6 +105,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   render: (context) => <CommodoreInboxSection context={context} />,
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
   onLeaveDesktop: ({ pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log"),
+  // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
+  openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
 };
 
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {

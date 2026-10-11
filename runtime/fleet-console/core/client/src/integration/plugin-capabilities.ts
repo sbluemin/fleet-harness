@@ -26,7 +26,11 @@ import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 export interface HostCapabilityDependencies {
-  readonly railBindings: readonly PaneTargetBinding[];
+  /**
+   * 레일 바인딩. 함수를 주면 부를 때마다 지금의 목록을 읽는다 — 설치한 능력이 레일 목록이 바뀔 때마다(대화 중심 화면의 탭이
+   * 서고 걷힐 때마다) 다시 만들어지지 않게, 앱은 함수로 넘긴다. 배열을 주면 그 시점의 목록으로 고정된다.
+   */
+  readonly railBindings: readonly PaneTargetBinding[] | (() => readonly PaneTargetBinding[]);
 }
 
 function revealRailPanel(entryId: string): void {
@@ -104,8 +108,9 @@ export function createHostCapabilities(
   dependencies: HostCapabilityDependencies = { railBindings: [] },
 ): PluginInstallContext {
   const base = createClientCapabilities(resync);
-  const bindings = dependencies.railBindings;
-  const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(bindings));
+  const source = dependencies.railBindings;
+  const readBindings = (): readonly PaneTargetBinding[] => (typeof source === "function" ? source() : source);
+  const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(readBindings()));
   const capabilities: PluginInstallContext = {
     ...base,
     operations: {
@@ -188,7 +193,7 @@ export function createHostCapabilities(
     },
     navigate: {
       openFile: async (request) => {
-        const binding = bindings.find((item) => item.entry.handles?.openFile);
+        const binding = readBindings().find((item) => item.entry.handles?.openFile);
         const handler = binding?.entry.handles?.openFile;
         if (!handler) return { ok: false, reason: "no_handler" };
         if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
@@ -205,7 +210,7 @@ export function createHostCapabilities(
         } });
       },
       openWikiEntry: async (request) => {
-        const binding = bindings.find((item) => item.entry.handles?.openWikiEntry);
+        const binding = readBindings().find((item) => item.entry.handles?.openWikiEntry);
         const handler = binding?.entry.handles?.openWikiEntry;
         if (!handler) return { ok: false, reason: "no_handler" };
         if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
@@ -235,7 +240,7 @@ export function createHostCapabilities(
     },
     rail: {
       open: (panelId, params) => {
-        const primary = bindings.find((binding) => binding.entry.id === panelId)?.panes.find((pane) => pane.role === "primary");
+        const primary = readBindings().find((binding) => binding.entry.id === panelId)?.panes.find((pane) => pane.role === "primary");
         if (params && primary) land({ paneId: primary.id, params });
         else revealRailPanel(panelId);
       },

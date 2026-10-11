@@ -96,6 +96,16 @@ html[data-view-mode="mobile"] .theater-inbox-overlay { display: none; }
 .theater-inbox-page:hover { color: var(--text-primary); background: var(--control-hover-fill); }
 .theater-inbox-page[aria-current="page"] { color: var(--text-primary); background: var(--control-wash); font-weight: var(--weight-medium); }
 .theater-inbox-page:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+/* 「Theater 잊기…」 — 칸 목록과 같은 줄 자리지만 칸이 아니라 동작이다(방향키 목록에 들지 않는다). 파괴 쪽이라 coral 글자. */
+.theater-inbox-forget {
+  display: block; width: 100%; min-width: 0; margin-top: 4px;
+  padding: 7px 10px 7px 36px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--coral-ink);
+  font-family: var(--font-ui); font-size: var(--t-sm); text-align: left; cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.theater-inbox-forget:hover { background: color-mix(in oklch, var(--coral) 10%, transparent); }
+.theater-inbox-forget:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
 
 /* 오른쪽 — 섹션 이름과 칸 제목, 닫기. 그 아래 칸의 본문, 맨 아래 「적용」 한 줄. */
 .theater-inbox-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -124,3 +134,8 @@ html[data-view-mode="mobile"] .theater-inbox-overlay { display: none; }
 .theater-inbox-loading { margin: 0; padding: 16px 28px; color: var(--text-tertiary); }
 .theater-inbox-applies { flex: none; display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 10px 28px 12px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1.5; }
 .theater-inbox-applies > span { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+
+/* 대화 중심 화면 — 같은 섹션 본문을 오른쪽 패널에 세운다(시트 없이). 본문은 섹션이 스크롤을 정하고, 「적용」 줄은 맨 아래. */
+.theater-inbox-panel-page { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.theater-inbox-panel-body { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.theater-inbox-panel-page .theater-inbox-applies { padding: 10px var(--space-4) 12px; }

@@ -1777,11 +1777,10 @@ describe("Instrument core design contract", () => {
     expect(sidebar).not.toContain("side-bar-status-header__dot");
     expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
-    // 세 단계 아코디언(Theater / Group / Status)은 + / … 액션과 같은 보더 링으로 hover에
+    // 세 단계 아코디언(Theater / Group / Status)은 + 액션과 같은 보더 링으로 hover에
     // 응답한다. Theater의 chevron도 독립 버튼이라 같은 공통 링 선언을 소비한다.
     const theaterActivate = components.match(/\.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
     const theaterDraggingActivate = components.match(/\.side-bar-theater-header--dragging \.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
-    const theaterCurrentActivate = components.match(/\.side-bar-theater-activate\[aria-disabled="true"\] \{[^}]*\}/)?.[0] ?? "";
     const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn \{[^}]*\}/)?.[0] ?? "";
     const theaterCollapseChevron = components.match(/\.side-bar-theater-collapse-btn \.side-bar-theater-chevron \{[^}]*\}/)?.[0] ?? "";
     const theaterRowFocus = components.match(/\.side-bar-theater-row-btn:focus-visible \{[^}]*\}/)?.[0] ?? "";
@@ -1789,7 +1788,6 @@ describe("Instrument core design contract", () => {
     const statusToggleHover = components.match(/\.side-bar-status-header__toggle:hover \{[^}]*\}/)?.[0] ?? "";
     expect(theaterActivate).toContain("cursor: pointer;");
     expect(theaterActivate).not.toContain("cursor: inherit;");
-    expect(theaterCurrentActivate).toContain("cursor: grab;");
     expect(theaterDraggingActivate).toContain("cursor: grabbing;");
     expect(theaterCollapse).toContain("width: 22px;");
     expect(theaterCollapseChevron).toContain("width: 16px;");
@@ -1871,8 +1869,8 @@ describe("Instrument core design contract", () => {
     // 청록으로 새는 테두리를 만든다(실측). --control-open-rim과 같은 공간이다.
     expect(components).toMatch(/\.side-bar-theater-header:focus-visible \{[^}]*border-color: color-mix\(in oklab, var\(--brass\) 55%/);
 
-    // 활성 헤더는 배경 채널을 호버에게 완전히 넘긴다.
-    expect(activeHeader).toContain("background: transparent;");
+    // 활성 헤더는 배경 채널을 호버에게 완전히 넘긴다 — 자기 채움을 갖지 않는다(누르면 Inbox 가 열리므로 호버 채움은 다른 행과 같이 받는다).
+    expect(activeHeader).not.toContain("background");
     expect(activeHeader).not.toContain("var(--ink-deep)");
 
     // 가까이서는 배지의 1px brass 링이, 멀리서는 스파인이 같은 사실을 말한다. 배지 면은 Theater

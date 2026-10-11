@@ -6337,10 +6337,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   outline-offset: 2px;
 }
 
-.side-bar-theater-activate[aria-disabled="true"] {
-  cursor: grab;
-}
-
 .side-bar-theater-header--dragging .side-bar-theater-activate {
   cursor: grabbing;
 }
@@ -6391,14 +6387,12 @@ body[data-companion-resizing="true"] .canvas-operation {
 
 /* 활성 헤더는 배경 채움을 호버에게 완전히 넘긴다. 위치(활성)와 순간(호버)이 같은 채널을
    공유하는 한 어느 쪽을 올려도 다른 쪽이 뭉개지므로, 활성은 스파인·배지·이름 명도로만
-   말한다. 활성 행은 aria-disabled라 눌리지 않으므로 호버 피드백이 없는 편이 정직하다. */
+   말한다. 활성 행을 누르면 그 Theater 의 Inbox 가 열리므로 호버 채움은 다른 행과 같이 받는다. */
 .side-bar-theater-header.is-active {
   color: var(--text-secondary);
-  border-color: transparent;
-  background: transparent;
 }
 
-/* 이름만 최고 명도로 올린다 — 행 전체를 올리면 chevron·+·⋯ 컨트롤까지 함께 밝아져
+/* 이름만 최고 명도로 올린다 — 행 전체를 올리면 chevron·+ 컨트롤까지 함께 밝아져
    활성 Theater의 컨트롤이 다른 Theater보다 눈에 띄는 역전이 생긴다. */
 .side-bar-theater-header.is-active .side-bar-theater-name {
   color: var(--text-primary);
@@ -6431,6 +6425,44 @@ body[data-companion-resizing="true"] .canvas-operation {
   background: var(--quiet-anchor-active-fill);
   color: var(--quiet-anchor-active-ink);
   box-shadow: inset 0 0 0 1px var(--quiet-anchor-ring);
+}
+
+/* 플러그인 표식(자율 운영의 사령관 글리프)이 이니셜 칩 자리에 선 경우 — 칩 면·링 없이 표식 그 자체가 선다. 표식이 자기 색(켬·끔)을
+   말하므로 활성 위치는 스파인과 이름 명도가 맡는다. 활성화 버튼 밖에 서므로 누르는 자리임을 커서가 말한다. */
+.side-bar-theater-header .side-bar-theater-anchor.side-bar-theater-mark {
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* 운영자(사령관)가 턴을 도는 동안 — Theater 이름 위로 채팅 라이브 줄(.fc-live-line__sweep)과 같은 명도 물결이 흐른다. 물결은
+   명도 채널이라 신호·위치 색을 빌리지 않고, 표식은 움직이지 않는다. 동작 줄이기에서는 물결이 멈추고 표식 툴팁이 상태를 말한다. */
+.side-bar-theater-name.is-live {
+  background-image: linear-gradient(100deg, var(--live-sweep-trough) 0%, var(--live-sweep-trough) 34%, var(--live-sweep-crest) 50%, var(--live-sweep-trough) 66%, var(--live-sweep-trough) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: side-bar-theater-live-sweep 2.4s linear infinite;
+  animation-name: var(--state-motion, side-bar-theater-live-sweep);
+}
+
+.side-bar-theater-header.is-active .side-bar-theater-name.is-live {
+  color: transparent;
+}
+
+@keyframes side-bar-theater-live-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-theater-name.is-live,
+  .side-bar-theater-header.is-active .side-bar-theater-name.is-live {
+    background-image: none;
+    color: var(--text-primary);
+  }
 }
 
 /* 시작 블록 — Theater가 없는 사이드바의 본문. 유령 행 대신 설명 한 줄·주 행동·가이드 재진입·단축키가
@@ -6673,12 +6705,6 @@ body[data-companion-resizing="true"] .canvas-operation {
   50% { opacity: 1; transform: scale(1); }
 }
 
-.side-bar-theater-split-control {
-  display: flex;
-  flex: none;
-  height: 24px;
-}
-
 .side-bar-theater-row-btn,
 .side-bar-group-header__toggle {
   display: grid;
@@ -6697,12 +6723,8 @@ body[data-companion-resizing="true"] .canvas-operation {
     color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-theater-split-plus {
+.side-bar-theater-launch-btn {
   width: 24px;
-}
-
-.side-bar-theater-split-caret {
-  width: 16px;
 }
 
 .side-bar-theater-row-btn svg {
@@ -7752,7 +7774,7 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--coral);
 }
 
-/* 플러그인이 낸 줄 메모 — 맡은 이(accent)는 사령관 줄의 켬과 같은 brass 잉크, 주의(warn)는 신호 토큰. */
+/* 플러그인이 낸 줄 메모 — 맡은 이(accent)는 사령관 글리프의 켬과 같은 brass 잉크, 주의(warn)는 신호 토큰. */
 .side-bar-cluster-row-meta .is-accent {
   color: var(--brass-ink);
 }

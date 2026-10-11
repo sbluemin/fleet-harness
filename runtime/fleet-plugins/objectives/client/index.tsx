@@ -7,7 +7,7 @@ import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
-import { CommodoreRow } from "./commodore-row.js";
+import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
@@ -125,7 +125,7 @@ const objectivesPlugin = definePlugin({
   install: (ctx) => {
     const dispose = installObjectiveState(ctx);
     const disposeCommodore = installCommodoreState(ctx);
-    // 대화 중심 화면(Console 실험 기능)이 서 있으면 사령관 줄이 가운데 칸에 사령관 대화를 연다.
+    // 대화 중심 화면(Console 실험 기능)이 서 있으면 Theater 머리·Inbox 의 사령관 기록 요청이 가운데 칸에 사령관 대화를 연다.
     const disposeConversation = connectCommodoreConversation(ctx.conversation, ctx.theaterInbox);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
@@ -142,15 +142,15 @@ const objectivesPlugin = definePlugin({
   operationClusters: objectivesClusterSource,
   // 끝난 목표와 정리된 목표는 사이드바 트리가 아니라 보관함에 선다.
   archiveSections: objectivesArchiveSections,
-  // 사령관(자율 운영) — Theater 머리 아래 줄. 실험 기능이 꺼져 있으면 그리지 않는다.
-  theaterContributions: [{ id: "commodore", row: (context) => <CommodoreRow {...context} /> }],
+  // 사령관(자율 운영) — Theater 머리의 글리프(켬 brass·끔 회색)·턴 물결·머리를 누르면 여는 칸·우클릭 메뉴의 켜기/끄기. 실험 기능이 꺼져 있으면 빌려 주지 않는다.
+  theaterContributions: [commodoreTheaterContribution],
   // Quick Launch '@' — 지금 Theater 의 사령관(자율 운영이 실제로 돌 때만)에게 사령관 기록 입력과 같은 경로로 보낸다.
   mentionTargets: commodoreMentionTargets,
   subscribeMentionTargets: subscribeCommodoreMentions,
   messageMentionTarget: messageCommodoreMention,
   // 사령관 — Theater Inbox 의 섹션(기록·지시·정보·설정). 시트 틀은 호스트가 그린다.
   theaterInboxSections: [commodoreInboxSection],
-  // 상주 기여라 사령관 줄·Inbox 가 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
+  // 상주 기여라 머리 글리프·Inbox 가 닫혀 있어도 언어를 알린다 — 리액트 밖의 Quick Launch '@' 행이 이 값으로 문구를 고른다.
   persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
   // 대화 중심 화면에서는 같은 사령관이 Inbox 시트 대신 가운데 칸(기록)과 오른쪽 패널(행위 기록·지시·정보·설정)에 선다.
   conversationSurfaces: [commodoreConversationSurface],

@@ -90,3 +90,23 @@ export function theaterInboxReturnTarget(theaterId: string): HTMLElement | null 
   const target = returnTargets.get(theaterId)?.() ?? null;
   return target?.isConnected ? target : null;
 }
+
+/**
+ * Inbox 「Theater 설정」 맨 아래의 「Theater 잊기…」가 부르는 길 — 사이드바 메뉴의 같은 항목과 같은 지연 삭제(되돌리기 토스트)다.
+ * 그 동작의 주인(Operations 화면)이 등록하고, 없으면 시트는 줄을 세우지 않는다.
+ */
+let forgetTheater: ((theaterId: string) => void) | null = null;
+
+export function registerTheaterInboxForget(handler: (theaterId: string) => void): () => void {
+  forgetTheater = handler;
+  emit();
+  return () => {
+    if (forgetTheater !== handler) return;
+    forgetTheater = null;
+    emit();
+  };
+}
+
+export function readTheaterInboxForget(): ((theaterId: string) => void) | null {
+  return forgetTheater;
+}

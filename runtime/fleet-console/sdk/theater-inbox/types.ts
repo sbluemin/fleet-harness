@@ -105,4 +105,11 @@ export interface TheaterInboxSectionDescriptor {
   render(context: TheaterInboxBodyContext): ReactNode;
   /** The Console switched to the phone layout while this section was shown; hand the reader to the phone screen. */
   onLeaveDesktop?(context: { readonly theater: ConsoleTheaterSummary; readonly pageId: string }): void;
+  /**
+   * The conversation layout shows a Theater in the side panel instead of the sheet. When a request opens this page
+   * there, a section that has its own conversation for it may put that conversation in the center column and
+   * return true; the side panel then shows the conversation's tabs in this section's place. Return false to keep
+   * the page in the side panel.
+   */
+  openConversation?(context: { readonly theater: ConsoleTheaterSummary; readonly pageId: string }): boolean;
 }

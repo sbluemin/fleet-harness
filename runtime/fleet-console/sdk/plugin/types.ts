@@ -1,7 +1,7 @@
 import type { ClientNavigateCapability, ClientShellCapability } from "../navigation/index.js";
 import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
-import type { ClientTheaterInboxCapability, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
+import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
 import type { AgentHost } from "../agent/types.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
@@ -162,7 +162,7 @@ export interface ClientExecutionProvider {
    */
   readonly operationCaptionContributions?: readonly OperationCaptionContribution[];
   /**
-   * Theater 하나에 딸린 플러그인의 자리 — 사이드바 Theater 머리 바로 아래 줄과 Theater 「…」 동작 메뉴의 항목.
+   * Theater 하나에 딸린 플러그인의 자리 — 사이드바 Theater 머리의 표식·이름 물결·머리가 여는 Inbox 칸, 머리 바로 아래 줄, Theater 동작(우클릭) 메뉴의 항목.
    *
    * Theater 머리와 메뉴는 코어가 소유하지만, Theater 단위로 도는 플러그인의 상태(예: 그 Theater 를 운영하는 세션)는
    * 플러그인이 안다. 호스트는 자리·순서·접힘·메뉴의 키보드 이동만 소유하고 본문은 플러그인이 그린다. Operation 단위의
@@ -320,6 +320,8 @@ export interface ConversationSurfaceTab {
   readonly icon?: ReactNode;
   readonly defaultWidth?: number;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
+  /** 이 탭이 대신하는 Theater Inbox 칸(대화의 `theater().inboxSection` 안의 page id). 그 칸을 여는 요청이 이 탭을 연다. */
+  readonly inboxPage?: string;
 }
 
 export interface ConversationSurfaceDescriptor {
@@ -334,6 +336,11 @@ export interface ConversationSurfaceDescriptor {
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 이 탭을 연다. */
   readonly defaultTab?: string;
+  /**
+   * 이 대화가 대신하는 Theater 와 그 Theater Inbox 섹션(플러그인 자기 섹션 id). 대화 중심 화면은 Inbox 시트 대신 오른쪽 패널에
+   * Theater 를 세우는데, 이 대화가 가운데 칸에 선 동안 그 섹션 자리에는 이 대화의 탭이 선다(섹션 이름 아래, Theater 설정 곁).
+   */
+  readonly theater?: (ctx: ConversationSurfaceContext) => { readonly theaterId: string; readonly inboxSection: string } | null;
 }
 
 export interface ClientConversationCapability {
@@ -653,9 +660,19 @@ export interface TheaterContribution {
    */
   readonly row?: (context: TheaterContributionContext) => ReactNode;
   /**
-   * Items in this Theater's 「…」 actions menu, after the host's system-prompt item and before the host's own
-   * divider. Rows are `button.theater-menu-item` with a `menuitem*` role so the host's arrow-key travel and
-   * Escape reach them; call `onClose` before opening another surface.
+   * The Theater's mark in its sidebar header, in place of the host's initials chip — for a plugin that operates the
+   * Theater as a whole (its glyph says who runs it). Return null to keep the initials; the host asks again when
+   * `header.subscribe` fires. The host gives the mark an 18px slot outside the header's activation button, so the
+   * mark may hold its own button; a click that lands on no button inside the mark activates the header. The first
+   * contribution that returns a mark wins.
+   */
+  readonly mark?: (context: TheaterContributionContext) => ReactNode;
+  /** What the header reads from this contribution, besides its mark. */
+  readonly header?: TheaterHeaderContribution;
+  /**
+   * Items in this Theater's actions menu (the header's context menu), after the host's system-prompt item and before
+   * the host's own divider. Rows are `button.theater-menu-item` with a `menuitem*` role so the host's arrow-key
+   * travel and Escape reach them; call `onClose` before opening another surface.
    */
   readonly menu?: (context: TheaterMenuContext) => ReactNode;
   /**
@@ -663,6 +680,19 @@ export interface TheaterContribution {
    * 데스크톱 `menu`는 DOM을 그리지만 폰 시트는 호스트의 행 문법으로 그리므로, 플러그인은 글과 동작만 준다.
    */
   readonly mobileRow?: TheaterContributionMobileRow;
+}
+
+/** The Theater facts a contribution lends the sidebar header. Reads do no I/O. */
+export interface TheaterHeaderContribution {
+  /** Wakes the header when `mark`, `live` or `landing` may answer differently. */
+  readonly subscribe: (listener: () => void) => () => void;
+  /** True while this Theater's operator is working — the host runs its live sweep over the Theater name. */
+  readonly live?: (theaterId: string) => boolean;
+  /**
+   * The Theater Inbox page the header opens for this Theater, in this plugin's own section id. Null leaves the choice
+   * to the next contribution, and finally to the host's system prompt page.
+   */
+  readonly landing?: (theaterId: string) => TheaterInboxAddress | null;
 }
 
 /** 폰 Theater 시트의 플러그인 행. `get`이 null이면 행이 없다(실험 기능이 꺼진 때). 호스트는 값(label)으로 비교한다. */

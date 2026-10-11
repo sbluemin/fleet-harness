@@ -50,6 +50,7 @@ import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { useWarRoomChromeState } from "../../../core/client/src/integration/war-room-chrome.js";
 import { useConversationLayout } from "../../settings/client/use-conversation-layout.js";
 import { StandaloneBrand } from "../../../core/client/src/chrome/components/command-band.js";
+import { registerTheaterInboxForget } from "./theater-inbox/store.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
@@ -911,6 +912,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const handleForgetTheater = useCallback(async (theaterId: string) => {
     onDeferredDeletion(await forgetTheaterCompletely(theaterId));
   }, [onDeferredDeletion]);
+  // Theater Inbox 「Theater 설정」 맨 아래의 「Theater 잊기…」도 같은 지연 삭제를 탄다.
+  useEffect(() => registerTheaterInboxForget((theaterId) => { void handleForgetTheater(theaterId); }), [handleForgetTheater]);
 
   const sideBarChrome = (
     <div className="war-room-sidebar-chrome" inert={warRoomSideBarHidden} data-war-room-hidden={warRoomSideBarHidden || undefined}>
