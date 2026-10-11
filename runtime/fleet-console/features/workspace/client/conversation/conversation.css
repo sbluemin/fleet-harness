@@ -371,58 +371,10 @@
 /* 부관이 아무도 출근하지 않으면 고정 줄은 자리를 차지하지 않는다. */
 .conversation-side-pinned:empty { display: none; }
 
-.conversation-side-bottom {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3);
-}
-
-.conversation-side-bottom-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.conversation-side-bottom-spacer { flex: 1; min-width: 0; }
-
-.conversation-side-host {
-  position: relative;
-  display: inline-flex;
-}
-
-.conversation-side-link {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--warn);
-}
-
-.conversation-side-link[data-link-state="offline"] { background: var(--coral); }
-
-
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
 .console-shell.is-conversation-layout .operations-side-bar.is-expanded { overflow: visible; }
-.conversation-side-bottom .command-band-environment { position: relative; display: inline-flex; }
-.conversation-side-bottom .command-band-environment-popover,
-.conversation-side-bottom .command-band-system-menu,
-.conversation-side-bottom .command-band-update-bubble,
-.conversation-side-bottom .host-switcher-panel {
-  top: auto;
-  right: auto;
-  bottom: calc(100% + var(--space-3));
-  left: 0;
-}
-.conversation-side-bottom .command-band-brand-diagnostics svg { width: 22px; height: 22px; }
-
-.operations-side-bar.is-closed .conversation-side-top,
-.operations-side-bar.is-closed .conversation-side-bottom {
+.operations-side-bar.is-closed .conversation-side-top {
   display: none;
 }
 

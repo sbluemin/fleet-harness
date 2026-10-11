@@ -12,11 +12,7 @@ import { openQuickLaunch, requestOperationKeyboardFocus, selectNestedBody, setAc
 import { DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { ConsoleHelpMenu, HostSwitcher } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
-import { EnvironmentDiagnosticsButton } from "../../../../core/client/src/chrome/components/command-band.js";
-import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
-import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { ToolbarSettingsButton } from "../../../../core/client/src/chrome/toolbar/console-toolbar.js";
+export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mountConversationOperationTabsHost, registerConversationOperationTab } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
@@ -142,30 +138,6 @@ export function ConversationSideBarTop() {
             <PluginEntry render={entry.render} />
           </PluginErrorBoundary>
         ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * 아래쪽 줄 — 환경 진단(밴드 왼쪽 브랜드 마크), 호스트(원격 연결), 사용량 요약, 보기 모드(밴드 오른쪽), 도움말, 설정.
- * 보관함은 바로 위 기존 줄이 그대로 맡는다. 메뉴·팝오버는 이 줄에서 위로 열린다(conversation.css).
- */
-export function ConversationSideBarBottom({ connection }: { readonly connection: ConsoleState["connection"] }) {
-  const t = useT();
-  return (
-    <div className="conversation-side-bottom" role="group" aria-label={t("conversation.side.systemAria")}>
-      <div className="conversation-side-bottom-row">
-        <EnvironmentDiagnosticsButton className="conversation-side-env" />
-        <span className="conversation-side-host">
-          <HostSwitcher />
-          {connection !== "live" ? <span className="conversation-side-link" data-link-state={connection} aria-hidden="true" /> : null}
-        </span>
-        <span className="conversation-side-bottom-spacer" aria-hidden="true" />
-        {/* 밴드 오른쪽의 보기 모드 선택 — 밴드와 같은 조건(Desktop 셸이 아닐 때)으로 선다. */}
-        {!isDesktopShell() ? <ViewModeToggle className="command-band-button conversation-side-viewmode" /> : null}
-        <ConsoleHelpMenu />
-        <ToolbarSettingsButton canvas />
       </div>
     </div>
   );

@@ -945,7 +945,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onCancelAddTheater={cancelAddTheater}
         onForgetTheater={handleForgetTheater}
         {...(warRoomSideBarCap !== null ? { widthCap: warRoomSideBarCap } : {})}
-        {...(conversation ? { topStripVariant: "compact" as const, topStripTrailing: <ConversationSideBarActions />, topAccessory: <ConversationSideBarTop />, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
+        {...(conversation ? { topStripVariant: "compact" as const, topStripTrailing: <ConversationSideBarActions />, topAccessory: <ConversationSideBarTop />, archiveInBottomAccessory: true, bottomAccessory: <ConversationSideBarBottom connection={state.connection} /> } : {})}
       />
     </div>
   );

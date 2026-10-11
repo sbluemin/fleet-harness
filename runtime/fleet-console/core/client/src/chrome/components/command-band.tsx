@@ -281,7 +281,7 @@ export function useEnvironmentDiagnostics() {
 }
 
 /** 대화 중심 화면의 사이드바 아래 줄 — 밴드 왼쪽 브랜드 마크와 같은 환경 진단 문. 로컬 채널에서만 선다. */
-export function EnvironmentDiagnosticsButton({ className }: { readonly className?: string }) {
+export function EnvironmentDiagnosticsButton({ className, menuItem = false }: { readonly className?: string; readonly menuItem?: boolean }) {
   const t = useT();
   const state = useConsoleState();
   const environment = useEnvironmentDiagnostics();
@@ -292,6 +292,7 @@ export function EnvironmentDiagnosticsButton({ className }: { readonly className
       <button
         ref={environment.triggerRef}
         type="button"
+        role={menuItem ? "menuitem" : undefined}
         className="command-band-brand-diagnostics"
         aria-label={`${t("chrome.commandBand.environment")}: ${t(desktopShell ? "chrome.commandBand.localDesktop" : "chrome.commandBand.local")}`}
         title={t("chrome.commandBand.environment")}
@@ -300,6 +301,7 @@ export function EnvironmentDiagnosticsButton({ className }: { readonly className
         onClick={environment.toggle}
       >
         <BrandMarkIcon local />
+        {menuItem ? <><span className="conversation-dock-label">{t("chrome.commandBand.environment")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
       </button>
       {environment.popover}
     </span>

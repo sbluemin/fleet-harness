@@ -81,6 +81,7 @@ interface OperationsSideBarProps {
   readonly topAccessory?: ReactNode;
   /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
   readonly bottomAccessory?: ReactNode;
+  readonly archiveInBottomAccessory?: boolean;
   readonly theaters: readonly TheaterInfo[];
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
@@ -393,6 +394,7 @@ export function OperationsSideBar({
   topStripVariant,
   topAccessory,
   bottomAccessory,
+  archiveInBottomAccessory = false,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
@@ -1410,7 +1412,7 @@ export function OperationsSideBar({
       </ol>
       </div>
 
-      <ArchiveEntry />
+      {!archiveInBottomAccessory ? <ArchiveEntry /> : null}
       {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />

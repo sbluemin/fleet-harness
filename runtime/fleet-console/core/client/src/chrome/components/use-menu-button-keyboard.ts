@@ -20,6 +20,7 @@ export function useMenuButtonKeyboard(
   menuRef: RefObject<HTMLElement | null>,
   open: boolean,
   setOpen: Dispatch<SetStateAction<boolean>>,
+  nested = false,
 ): void {
   useEffect(() => {
     if (!open) return;
@@ -29,11 +30,15 @@ export function useMenuButtonKeyboard(
     });
     const handlePointer = (event: PointerEvent) => {
       if (!(event.target instanceof Node)) return;
+      // 하위 항목이 포털로 연 모달의 입력은 바깥 클릭이 아니다. 부모를 걷으면 모달 소유자도 함께 사라진다.
+      if (nested && event.target instanceof Element && event.target.closest('[role="dialog"], [role="alertdialog"]')) return;
       if (rootRef.current?.contains(event.target)) return;
       if (menuRef.current?.contains(event.target)) return;
       setOpen(false);
     };
     const handleKey = (event: KeyboardEvent) => {
+      // 도크처럼 기존 메뉴를 품은 메뉴는 열린 자식의 키 계약을 가로채지 않는다.
+      if (nested && (menuRef.current?.querySelector('[aria-expanded="true"]') || (event.target instanceof Node && !rootRef.current?.contains(event.target)))) return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -68,5 +73,5 @@ export function useMenuButtonKeyboard(
       window.removeEventListener("pointerdown", handlePointer, true);
       window.removeEventListener("keydown", handleKey, true);
     };
-  }, [menuRef, open, rootRef, setOpen, triggerRef]);
+  }, [menuRef, open, rootRef, setOpen, triggerRef, nested]);
 }

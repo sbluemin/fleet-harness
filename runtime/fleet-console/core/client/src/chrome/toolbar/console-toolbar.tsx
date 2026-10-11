@@ -148,7 +148,7 @@ export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
  * 활성 표식으로 "지금 여기"를 말한다. 문서 id(rail-settings-toggle)는 설정 패널의 이름표(aria-labelledby)와
  * 온보딩 앵커가 가리키므로 그대로 둔다. 레일은 /operations에만 서므로, 다른 화면에서는 캔버스로 돌아간 뒤 연다.
  */
-export function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) {
+export function ToolbarSettingsButton({ canvas, menuItem = false }: { readonly canvas: boolean; readonly menuItem?: boolean }) {
   const t = useT();
   const navigate = useNavigate();
   const activePanelId = useRailActivePanelId();
@@ -157,6 +157,7 @@ export function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) 
     <button
       id="rail-settings-toggle"
       type="button"
+      role={menuItem ? "menuitem" : undefined}
       className={`right-rail-ico right-rail-settings-btn${active ? " is-active" : ""}`}
       aria-pressed={active}
       aria-controls={active ? `rail-panel-${SETTINGS_RAIL_ENTRY_ID}` : undefined}
@@ -169,6 +170,7 @@ export function ToolbarSettingsButton({ canvas }: { readonly canvas: boolean }) 
       }}
     >
       <GearGlyph />
+      {menuItem ? <><span className="conversation-dock-label">{t("settings.title")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
     </button>
   );
 }
