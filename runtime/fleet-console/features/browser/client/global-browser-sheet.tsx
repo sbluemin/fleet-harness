@@ -138,6 +138,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // 대화 중심 화면의 오른쪽 분할 자리에 앉아 있는가 — 앉아 있으면 scrim 이 없고(대화는 그대로 조작된다) 면은 오른쪽 열의 평면 문법을 쓴다.
   const [split, setSplit] = React.useState(false);
+  // 대화 중심 화면인데 분할 자리가 모자라면 시트가 가운데 대화 칸 자리 전체를 이어받는다(같은 평면 문법) — 기존 떠 있는 시트로 돌아가지 않는다.
+  const [takeover, setTakeover] = React.useState(false);
   // 분할 칸에서 닫으면 칸이 접히는 동안 시트(크롬)도 그 칸을 따라 줄어든다 — 한 번에 사라지지 않는다. 뷰는 닫는 순간 내려가고,
   // 칸이 다 접히거나(자리 표식이 걷힘) 시간이 다하면 시트도 내린다. 그동안 시트는 누를 수 없다.
   const [leaving, setLeaving] = React.useState(false);
@@ -227,17 +229,23 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       setLeaving(false);
       return undefined;
     }
-    if (seat !== null) {
-      const rect = seat.getBoundingClientRect();
+    const stage = document.querySelector<HTMLElement>(".conversation-stage");
+    const conversationLayout = document.documentElement.dataset.conversationLayout === "true";
+    const target = seat ?? (conversationLayout ? stage : null);
+    if (target !== null) {
+      const rect = target.getBoundingClientRect();
       const seated = { left: Math.round(rect.left), top: Math.round(rect.top), right: Math.round(vw - rect.right), bottom: Math.round(vh - rect.bottom) };
       setSplit(true);
+      setTakeover(seat === null);
       setScrimGeometry(null);
       setGeometry((current) => current && current.left === seated.left && current.top === seated.top && current.right === seated.right && current.bottom === seated.bottom ? current : seated);
-      const stage = document.querySelector(".conversation-stage");
-      const settling = [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)));
+      // 칸·대화 칸의 폭 전이, 그리고 시트 자신의 등장 애니메이션(대화 칸 이어받기)이 끝나야 정착이다.
+      const settling = [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)))
+        || (sheetRef.current?.getAnimations?.() ?? []).some((animation) => animation.playState === "running");
       return { ...seated, settling, split: true };
     }
     setSplit(false);
+    setTakeover(false);
     const sidebar = document.querySelector(".operations-side-bar") as HTMLElement | null;
     const rail = document.querySelector(".right-rail") as HTMLElement | null;
     const island = document.querySelector(".war-room-bar") as HTMLElement | null;
@@ -339,7 +347,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   geometryRef.current = geometry;
 
   React.useEffect(() => {
-    if (!shown) { setGeometry(null); setChromeParked(false); setSplit(false); return; }
+    if (!shown) { setGeometry(null); setChromeParked(false); setSplit(false); setTakeover(false); return; }
     type Measured = NonNullable<ReturnType<typeof measureGeometry>>;
     type Edges = { left: number; top: number; right: number; bottom: number };
     const same = (a: Edges, b: Edges) => a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
@@ -414,7 +422,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     remeasure();
     // 대화 중심 화면에서는 시트가 서는 순간 분할 자리가 펼쳐지기 시작한다 — 관찰자가 놓친 첫 변화도 따라가게 한 번 판정한다.
     // 분할 자리가 없는 배치(기존 시트)는 이 판정을 거치지 않는다.
-    if (document.querySelector(SPLIT_SEAT_SELECTOR) !== null) onChromeChange();
+    if (document.querySelector(SPLIT_SEAT_SELECTOR) !== null || document.documentElement.dataset.conversationLayout === "true") onChromeChange();
     window.addEventListener("resize", remeasure);
     const timer = setInterval(remeasure, 1000);
     return () => {
@@ -629,7 +637,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
           <section
         ref={sheetRef}
         id="fleet-browser-sheet"
-        className={`fleet-browser-sheet${split ? " is-split" : ""}${leaving && !open ? " is-leaving" : ""}`}
+        className={`fleet-browser-sheet${split ? " is-split" : ""}${takeover ? " is-takeover" : ""}${leaving && !open ? " is-leaving" : ""}`}
         role="region"
         aria-label={t("terminal.globalBrowser.sheetAria")}
         onKeyDown={onSheetKeyDown}
