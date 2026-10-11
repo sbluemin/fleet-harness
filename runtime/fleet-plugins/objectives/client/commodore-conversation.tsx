@@ -59,6 +59,15 @@ export function isCommodoreConversationActive(): boolean {
   return port?.isActive() === true;
 }
 
+/** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
+export function useCommodoreConversationActive(): boolean {
+  return useSyncExternalStore(
+    (listener) => port?.subscribe(listener) ?? (() => {}),
+    isCommodoreConversationActive,
+    () => false,
+  );
+}
+
 /** 가운데 칸에 그 Theater 의 사령관을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 시트로 돌아간다. */
 export function openCommodoreConversation(theaterId: string, options: CommodoreConversationOptions = {}): boolean {
   if (!port || !port.isActive()) return false;
