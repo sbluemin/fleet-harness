@@ -34,7 +34,7 @@ function ellipsize(text: string, width: number, count: number, measure: (value: 
 
 /** 승인 v3의 깊이 열·충돌 회피 이름 배치. 공간이 부족하면 글자를 없애지 않고 캔버스를 넓힌다. */
 export function graphLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean, measure: (value: string) => number, commander: string, extra = 0, extensions: ReadonlyMap<string, string> = new Map()) {
-  const g = wide ? { r: 12, lfs: 12, llh: 16, lines: 1, rootX: 26, x0: 96, right: 70, capW: 210, minCol: 96 } : { r: 11, lfs: 11, llh: 14, lines: 2, rootX: 16, x0: 54, right: 30, capW: 110, minCol: 58 };
+  const g = wide ? { r: 12, lfs: 12, llh: 16, lines: 1, rootX: 26, rootR: 11, x0: 96, right: 70, capW: 210, minCol: 96 } : { r: 11, lfs: 11, llh: 14, lines: 2, rootX: 16, rootR: 10, x0: 54, right: 30, capW: 110, minCol: 58 };
   const depth = missionDepths(missions);
   const cols = missions.length ? Math.max(...missions.map(m => depth.get(m.id) ?? 0)) + 1 : 1;
   const colW = cols > 1 ? Math.max(g.minCol + extra, (width - g.x0 - g.right) / (cols - 1)) : 0;
@@ -51,12 +51,12 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   for (const m of missions) {
     const p = pos.get(m.id)!;
     const parents = m.prerequisites.filter(id => pos.has(id));
-    if (!parents.length) edges.push({ from: null, to: m.id, ...edgeGeometry({ x: root.x + 6, y: root.y }, { x: p.x - g.r - 1, y: p.y }) });
+    if (!parents.length) edges.push({ from: null, to: m.id, ...edgeGeometry({ x: root.x + g.rootR + 1, y: root.y }, { x: p.x - g.r - 1, y: p.y }) });
     for (const id of parents) { const q = pos.get(id)!; edges.push({ from: id, to: m.id, ...edgeGeometry({ x: q.x + g.r + 1, y: q.y }, { x: p.x - g.r - 1, y: p.y }) }); }
   }
   const nodeRects = [...pos.values()].map(p => ({ x: p.x - g.r - 4, y: p.y - g.r - 7, w: 2 * g.r + 8, h: 2 * g.r + 17 }));
-  nodeRects.push({ x: root.x - 8, y: root.y - 8, w: 16, h: 16 });
-  const rootLabel = { x: Math.max(0, root.x - measure(commander) / 2), y: root.y + 10, w: measure(commander), h: 13, lines: [commander] };
+  nodeRects.push({ x: root.x - g.rootR - 2, y: root.y - g.rootR - 2, w: 2 * g.rootR + 4, h: 2 * g.rootR + 4 });
+  const rootLabel = { x: Math.max(0, root.x - measure(commander) / 2), y: root.y + g.rootR + 3, w: measure(commander), h: 13, lines: [commander] };
   // 선 표본은 칸 격자에 담아 이름 후보 둘레의 칸만 본다 — 후보마다 모든 표본을 훑으면 가지가 많은 그래프에서 탐색이 수억 번으로 는다.
   const cellOf = (value: number) => Math.floor(value / SAMPLE_CELL);
   const sampleCells = new Map<number, Point[]>();
@@ -122,7 +122,7 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   // 같은 짧은 접두사로 합쳐지는 이름과 사라진 이름에는 폭을 양보한다. 번호는 늘 별도로 유지한다.
   const shortNames = [...best.labels.values()].filter(l => !l.full && l.shown < 8).map(l => l.lines.join(""));
   if (extra < 64 && (best.labels.size < missions.length || new Set(shortNames).size < shortNames.length)) return graphLayout(missions, width, wide, measure, commander, extra + 16, extensions);
-  const minY = Math.min(...[...pos.values()].map(p => p.y - g.r - 8), ...[...best.labels.values()].map(l => l.y), rootLabel.y, root.y - 10);
+  const minY = Math.min(...[...pos.values()].map(p => p.y - g.r - 8), ...[...best.labels.values()].map(l => l.y), rootLabel.y, root.y - g.rootR - 4);
   const maxY = Math.max(...[...pos.values()].map(p => p.y + g.r + 11), ...[...best.labels.values()].map(l => l.y + l.h), rootLabel.y + rootLabel.h);
   const dy = 4 - minY;
   pos.forEach(p => { p.y += dy; }); root.y += dy; rootLabel.y += dy; best.labels.forEach(l => { l.y += dy; });
@@ -146,7 +146,7 @@ export function stretchLayout(layout: GraphLayout, width: number): GraphLayout {
   const labels = new Map([...layout.labels].map(([id, label]) => [id, { ...label, x: label.x + shift(layout.pos.get(id)!.col) }]));
   const edges = layout.edges.map(e => {
     const p = pos.get(e.to)!, q = e.from ? pos.get(e.from)! : null;
-    return { ...e, ...edgeGeometry(q ? { x: q.x + g.r + 1, y: q.y } : { x: root.x + 6, y: root.y }, { x: p.x - g.r - 1, y: p.y }) };
+    return { ...e, ...edgeGeometry(q ? { x: q.x + g.r + 1, y: q.y } : { x: root.x + g.rootR + 1, y: root.y }, { x: p.x - g.r - 1, y: p.y }) };
   });
   return { ...layout, width, colW, pos, labels, edges };
 }
