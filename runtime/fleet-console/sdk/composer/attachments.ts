@@ -12,6 +12,19 @@
 export const COMPOSER_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const COMPOSER_MAX_ATTACHMENTS = 4;
 
+/** 호스트 API 주입만 받는 무상태 helper — 플러그인이 실행 feature를 import하지 않는다. */
+export async function uploadComposerAttachment(file: Blob, request: (path: string, init: RequestInit) => Promise<Response>): Promise<{ readonly id: string }> {
+  const response = await request("/agent/attachments", { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  const payload = await response.json().catch(() => null) as { id?: unknown; error?: unknown } | null;
+  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : "attachment_upload_failed");
+  if (typeof payload?.id !== "string" || !payload.id) throw new Error("attachment_upload_failed");
+  return { id: payload.id };
+}
+export async function discardComposerAttachment(id: string, request: (path: string, init: RequestInit) => Promise<Response>): Promise<void> {
+  const response = await request(`/agent/attachments/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error("attachment_discard_failed");
+}
+
 /**
  * 붙여넣기·드롭에서 첨부 후보로 받아들일 파일인지. 브라우저가 아는 라벨로만 거른다 —
  * 이미지가 아닌 파일(텍스트 붙여넣기 등)을 조용히 지나가게 하는 것이 목적이지, 위조를

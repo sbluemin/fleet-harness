@@ -15,11 +15,14 @@ export interface AgentChatTranscriptOrigin {
   readonly label?: string;
 }
 
+/** Reference-only attachments never open the Operation preview route. */
+export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string };
+
 export type AgentChatTranscriptEvent =
   /** Opens a turn. With `by` it is a plugin's line (origin row); without it the person's bubble. */
-  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
   /** A message a running turn picked up — stays inside that turn. */
-  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
   | { readonly kind: "turn-start"; readonly at?: number }
   /** A completed text block — markdown. The last one before `turn-end` becomes the answer. */
   | { readonly kind: "text"; readonly text: string }

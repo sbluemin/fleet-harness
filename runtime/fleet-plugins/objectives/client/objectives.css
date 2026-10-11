@@ -1653,8 +1653,27 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
 }
 .objectives-commodore-composer:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
+.objectives-commodore-composer.has-attachments { flex-wrap: wrap; }
+.objectives-commodore-conversation .objectives-commodore-composer.has-attachments { border-radius: var(--radius-md); }
+.objectives-commodore-composer-attachments { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 4px 4px 2px; }
+.objectives-commodore-composer-attachment { position: relative; width: 52px; height: 52px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
+.objectives-commodore-composer-attachment img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius-xs) - 1px); }
+.objectives-commodore-composer-attachment.is-uploading img { opacity: 0.45; }
+.objectives-commodore-composer-attachment button { position: absolute; top: -6px; right: -6px; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--glass-tint-panel); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1; cursor: pointer; }
+.objectives-commodore-composer-attachment button:hover:not(:disabled) { color: var(--brass-ink); }
+.objectives-commodore-composer-attachment button:focus-visible { outline: 1px solid var(--brass); }
+.objectives-commodore-composer-plus-root { position: relative; flex: none; display: inline-flex; }
+.objectives-commodore-composer-plus { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--control-rest); color: var(--text-secondary); cursor: pointer; }
+.objectives-commodore-composer-plus svg { width: 16px; height: 16px; }
+.objectives-commodore-composer-plus:hover:not(:disabled), .objectives-commodore-composer-plus:focus-visible, .objectives-commodore-composer-plus[aria-expanded="true"] { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
+.objectives-commodore-composer-plus:disabled { color: var(--text-tertiary); cursor: default; }
+.objectives-commodore-composer-menu { position: absolute; bottom: calc(100% + var(--space-2)); left: 0; z-index: 5; width: 220px; padding: var(--space-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-floating); }
+.objectives-commodore-composer-menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.objectives-commodore-composer-menu button svg { flex: none; width: 16px; height: 16px; }
+.objectives-commodore-composer-menu button:hover, .objectives-commodore-composer-menu button:focus-visible { background: var(--brass-glow); outline: none; }
+.objectives-commodore-composer-notice { max-width: 880px; margin-top: var(--space-2); color: var(--warn-ink); font-size: var(--t-xs); }
 .objectives-commodore-composer-input {
-  display: block; flex: 1 1 100%; width: 100%; min-width: 0;
+  display: block; flex: 1 1 0; width: 100%; min-width: 0;
   min-height: 30px; max-height: calc(1.5em * 6 + 10px); padding: 5px 0;
   border: 0; background: transparent; resize: none;
   color: var(--text-primary); font-family: inherit; font-size: var(--font-body-size); line-height: 1.5;

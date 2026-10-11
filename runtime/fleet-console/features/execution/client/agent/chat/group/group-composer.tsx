@@ -22,7 +22,7 @@ import { SpeakerMark, speakerKey } from "./speaker-mark.js";
  *
  * 첨부: 캡슐 왼쪽 「+」 하나가 입구다 — 누르면 위로 뜨는 메뉴에서 「이미지 첨부」와 「받는 이 지정」을 고른다. 이미지 붙여넣기는
  * 같은 첨부 길로 들어간다(텍스트 붙여넣기는 브라우저 기본 동작 그대로). 업로드·상한·형식은 1:1 채팅 입력창과 같은 계약이고,
- * 이미지는 받는 세션 한 곳에만 실리므로 「모두」·사령관에게는 싣지 않는다.
+ * 이미지는 받는 세션 한 곳에만 실리므로 「모두」에게는 싣지 않는다. 사령관은 자기 메시지 소유로 받는다.
  */
 type Candidate =
   | { readonly kind: "member"; readonly speaker: ConversationSpeaker }
@@ -221,7 +221,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
     const sentAttachments = attachmentsRef.current;
     const sentKeys = new Set(sentAttachments.map((attachment) => attachment.key));
     const ids = sentAttachments.map((attachment) => attachment.id).filter((id): id is string => id !== null);
-    if (ids.length > 0 && (sentTo?.kind === "all" || sentTo?.kind === "commodore")) {
+    if (ids.length > 0 && (sentTo?.kind === "all")) {
       setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
       return;
     }
@@ -244,7 +244,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
       setNotice(describeSend(result, sentTo));
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      setNotice({ tone: "warn", text: /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
+      setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? t("group.notice.attachCommodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
     } finally {
       setBusy(false);
     }

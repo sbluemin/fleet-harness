@@ -25,7 +25,8 @@ export function ChatDispatchAttachments({
   const live = attachments.filter((attachment): attachment is { readonly id: string } => (
     "id" in attachment && !lapsed.includes(attachment.id)
   ));
-  const lapsedCount = attachments.length - live.length;
+  const references = attachments.filter((attachment) => "reference" in attachment);
+  const lapsedCount = attachments.length - live.length - references.length;
   return (
     <div className="agent-chat-dispatch-attachments">
       {live.map((attachment, index) => (
@@ -44,6 +45,10 @@ export function ChatDispatchAttachments({
           />
         </button>
       ))}
+      {references.length > 0 ? <span className="agent-chat-dispatch-attachment-lapsed" title={t("terminal.chat.attachmentReferenceHint")}>
+        <span className="agent-chat-dispatch-attachment-lapsed-box" aria-hidden="true" />
+        {t("terminal.chat.attachmentReference", { count: String(references.length) })}
+      </span> : null}
       {lapsedCount > 0 ? (
         <span className="agent-chat-dispatch-attachment-lapsed">
           <span className="agent-chat-dispatch-attachment-lapsed-box" aria-hidden="true" />

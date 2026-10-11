@@ -13,7 +13,7 @@ export function objectiveConversationActions(objective: Pick<Objective, "id" | "
   return {
     async send(target, text, attachmentIds) {
       if (target.kind === "commodore") {
-        await request("/commodore/message", { theaterId: objective.theaterId, objectiveId: objective.id, text });
+        await request("/commodore/message", { theaterId: objective.theaterId, objectiveId: objective.id, text, ...(attachmentIds?.length ? { attachmentIds } : {}) });
         return { targets: [{ targetId: `commodore:${objective.theaterId}`, outcome: "sent" }] };
       }
       if (target.kind === "all") return request<GroupWriteResult>("/conversation/broadcast", { objectiveId: objective.id, text });
