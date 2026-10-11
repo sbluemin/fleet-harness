@@ -88,7 +88,7 @@ export function MobileDrawer({ state, attention, activeOperationId, onOpenOperat
   }, []);
 
   // 열린 드로어는 하드웨어 뒤로가 닫는 겹침이다(메뉴·시트가 위에 있으면 그것이 먼저).
-  useEffect(() => (open ? pushBackLayer(() => close(), "drawer") : undefined), [open, close]);
+  useEffect(() => (open ? pushBackLayer(() => close()) : undefined), [open, close]);
 
   // 가장자리 끌기로 열기 — 드로어가 닫혀 있을 때 왼쪽 EDGE_ZONE에서 시작한다. 그 자리에 hit를 받는 띠를 깔지 않고 창에서 듣는다:
   // 띠가 hit를 가져가면 가장자리에 걸친 버튼의 누를 자리가 잘린다. 누름·click은 아래 요소가 그대로 받는다.

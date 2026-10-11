@@ -23,8 +23,9 @@ import { openMobileSubScreen } from "./mobile-subscreen-store.js";
 import { MobileSettingsHostContext } from "@fleet-console/sdk/settings/browser";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
+import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDrawerOpen, getMobileDestination, useMobileDestination, useMobileDrawerOpen, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, setMobileDrawerOpen } from "./mobile-store.js";
+import { getMobileDestination, useMobileDestination, useMobileDrawerOpen, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -57,22 +58,21 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   // 라우트 이동(replace)이 주소의 `?dest=`를 지울 수 있다 — 라우트가 정착한 뒤 목적지를 주소에 다시 적는다(새로고침 복원용).
   useEffect(() => { syncMobileDestinationUrl(); }, [path, destination]);
 
-  // 뒤로가 마지막 가드에 닿으면 — 목적지 루트이면 홈으로, 홈이면 드로어를 연다(S-51 3·4).
-  const pathRef = useRef(path);
-  pathRef.current = path;
-  const homeRef = useRef<() => void>(() => undefined);
-  homeRef.current = () => {
-    if (getMobileDrawerOpen()) return;
+  // 뒤로가 마지막 가드에 닿으면 — 열린 Operation이나 홈이 아닌 목적지 루트이면 대화 목록(홈)으로 돌아간다(S-51 3).
+  // 대화 목록이 루트다(4): 앱이면 false를 돌려 앱 기본(Console 목록)에 맡기고, 브라우저는 가드 두 칸을 넘어 이전 페이지로 간다.
+  const backRef = useRef<() => boolean>(() => false);
+  backRef.current = () => {
     if (path !== "/operations" || getMobileDestination().kind !== "home") {
       setMobileDestination({ kind: "home" });
       if (path !== "/operations") navigate("/operations", { replace: true });
-      return;
+      return true;
     }
-    setMobileDrawerOpen(true);
+    if (readMobileOperationId() !== null) { closeMobileOperation(); return true; }
+    return false;
   };
-  useEffect(() => installMobileHistory(() => homeRef.current()), []);
+  useEffect(() => installMobileHistory(() => { if (!backRef.current()) window.history.go(-2); }), []);
   // 앱의 하드웨어 뒤로: 같은 우선순위를 함수 호출로 받는다(history.back을 따로 쓰지 않는다).
-  useEffect(() => installMobileBackBridge(() => homeRef.current(), () => pathRef.current === "/operations" && getMobileDestination().kind === "home"), []);
+  useEffect(() => installMobileBackBridge(() => backRef.current()), []);
 
   // 시스템 바 색(S-03): 드로어가 열리면 위·아래가 드로어 면, 시트가 열리면 아래가 시트 면. 앱이면 네이티브가 칠하고 브라우저는 무시한다.
   const drawerOpen = useMobileDrawerOpen();

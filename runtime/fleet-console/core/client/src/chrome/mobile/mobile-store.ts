@@ -128,6 +128,8 @@ export function setMobileDrawerOpen(next: boolean): void {
 export type MobileSheetKind =
   | { readonly kind: "theater"; readonly fromDrawer?: boolean }
   | { readonly kind: "folder" }
+  /** 홈 머리의 +: 새 대화 · 새 터미널 · Theater 추가. */
+  | { readonly kind: "create" }
   | { readonly kind: "console" }
   /** 호스트 밖 기능(설정 섹션 등)이 자기 시트를 호스트의 쌓기·뒤로·스크림에 태운다. `render`는 `MobileSheet`를 그리고 닫기 함수를 받는다. */
   | { readonly kind: "custom"; readonly render: (close: () => void) => ReactNode }

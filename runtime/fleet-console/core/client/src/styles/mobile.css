@@ -1454,3 +1454,58 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-folder-enter { display: grid; place-items: center; flex: none; width: 56px; align-self: stretch; color: var(--m-text-muted); background: transparent; border: 0; }
 .mobile-sheet-row-copy strong { font-weight: var(--weight-regular); }
 .mobile-connection-band { gap: 8px; }
+
+/* ── 홈: 대화 목록 · 검색 ───────────────────────────────────────────────
+   머리(프로필 · Theater 알약 · 검색 · +), 지금 Theater의 정체, 확인 필요 묶음, 대화 행. 색은 상태에만(낱말), 정체성은 몽글 아바타와 모노그램에만 쓴다.
+   기본 뒤로(`.mobile-shell-content`의 스크롤)는 쓰지 않고 목록 영역이 스스로 스크롤한다. */
+.mobile-conv-list, .mobile-search-screen.is-conversations { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); }
+.mobile-conv-head, .mobile-conv-searchbar { display: flex; flex: none; align-items: center; gap: 8px; min-height: 60px; padding: 8px 14px 6px; }
+.mobile-conv-gap { flex: 1; min-width: 0; }
+.mobile-conv-round { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; color: var(--m-text-nav); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; --pr-r: 50%; }
+.mobile-conv-round.is-static { background: transparent; border-color: var(--m-hairline-strong); }
+.mobile-conv-theater { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; height: 44px; padding: 0 12px 0 6px; color: var(--m-text); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); --pr-r: var(--radius-pill); }
+.mobile-conv-theater strong { overflow: hidden; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-conv-theater svg { flex: none; color: var(--m-text-muted); }
+.mobile-conv-theater .mobile-monogram { border-radius: 10px; }
+.mobile-conv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; }
+
+.mobile-conv-hero { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 20px 10px; text-align: center; }
+.mobile-conv-hero .mobile-monogram { border-radius: 20px; }
+.mobile-conv-hero strong { margin-top: 6px; font-size: var(--m-fs-heading); font-weight: var(--weight-bold); }
+.mobile-conv-hero small { color: var(--m-text-muted); font-size: var(--m-fs-meta); }
+
+.mobile-conv-section { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 20px 6px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.mobile-conv-section button { position: relative; padding: 0; color: var(--m-text-nav); font: inherit; background: transparent; border: 0; --pr-inset: -6px -8px; --pr-r: 12px; }
+.mobile-conv-attention { margin: 2px 12px 6px; overflow: hidden; background: var(--m-surface); border-radius: 18px; }
+.mobile-conv-attention .mobile-conv-row { min-height: 64px; padding: 8px 14px; }
+.mobile-conv-attention .mobile-conv-row + .mobile-conv-row { border-top: 1px solid var(--m-hairline); }
+
+.mobile-conv-row { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 72px; padding: 10px 18px; color: var(--m-text); text-align: left; background: transparent; border: 0; --pr-r: 14px; }
+.mobile-conv-row-av { display: grid; place-items: center; flex: none; width: 52px; height: 52px; }
+.mobile-conv-row-copy { display: grid; flex: 1; gap: 2px; min-width: 0; }
+.mobile-conv-row-top { display: flex; align-items: baseline; gap: 8px; }
+.mobile-conv-row-title { flex: 1; min-width: 0; overflow: hidden; font-size: var(--m-fs-list); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-conv-row-aside { color: var(--m-text-faint); font-size: var(--m-fs-small); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mobile-conv-row-sub { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-meta); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-conv-kind { color: var(--m-text-faint); font-size: var(--m-fs-small); }
+/* 상태 낱말 — 색은 상태만 말한다. 쉼·끝·시작 전은 본문 보조색 그대로다. */
+.mobile-conv-state.is-running { color: var(--m-running); }
+.mobile-conv-state.is-awaiting, .mobile-conv-state.is-decision, .mobile-conv-state.is-review { color: var(--m-awaiting); }
+.mobile-conv-state.is-unseen, .mobile-conv-state.is-done { color: var(--m-idle); }
+
+/* 아바타: 지휘관 얼굴 하나와, 일하는 구성원이 있으면 오른쪽 아래에 겹친 미니 아바타. */
+.mobile-conv-avatar { position: relative; display: grid; place-items: center; flex: none; }
+.mobile-conv-avatar-stack { position: absolute; right: -4px; bottom: -3px; display: flex; }
+.mobile-conv-avatar-mini { display: grid; place-items: center; width: 20px; height: 20px; margin-left: -7px; background: var(--m-bg); border-radius: 50%; }
+.mobile-conv-attention .mobile-conv-avatar-mini { background: var(--m-surface); }
+
+.mobile-conv-empty { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 28px 36px; color: var(--m-text-muted); text-align: center; }
+.mobile-conv-empty p { margin: 0; font-size: var(--m-fs-meta); }
+.mobile-conv-empty-note { margin: 0; padding: 18px 20px; color: var(--m-text-muted); font-size: var(--m-fs-meta); }
+
+.mobile-conv-searchfield { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 44px; padding: 0 14px; color: var(--m-text-muted); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }
+.mobile-conv-searchfield input { flex: 1; min-width: 0; color: var(--m-text); font-size: var(--m-fs-list); background: none; border: 0; outline: 0; }
+.mobile-conv-searchfield input::placeholder { color: var(--m-text-faint); }
+.mobile-conv-filters { display: flex; flex: none; gap: 6px; padding: 4px 16px 8px; overflow-x: auto; scrollbar-width: none; }
+.mobile-conv-chip { position: relative; flex: none; height: 32px; padding: 0 12px; color: var(--m-text-nav); font-size: var(--m-fs-caption); white-space: nowrap; background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); --pr-r: var(--radius-pill); }
+.mobile-conv-chip.is-on { color: var(--m-on-inverse); background: var(--m-inverse); border-color: var(--m-inverse); }

@@ -9,6 +9,8 @@ import type { createHostCapabilities } from "../../integration/plugin-capabiliti
 import type { OperationGeometry, OperationNode } from "../../integration/types.js";
 import { openQuickLaunch } from "../../integration/store.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
+import { operationHarnessLabel } from "./mobile-operation-label.js";
+import { closeMobileOperation } from "./mobile-operation-url.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { pushMobileSheet, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
@@ -88,12 +90,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   const title = bodyOwner.title;
 
-  const session = bodyOwner.payload.session && typeof bodyOwner.payload.session === "object" && !Array.isArray(bodyOwner.payload.session)
-    ? bodyOwner.payload.session as Record<string, unknown>
-    : null;
-  const harnessName = session?.harness === "claude-code" ? "Claude Code" : undefined;
-  // 「{하네스} · 채팅|터미널」 — 에이전트 Operation은 보는 방식까지 말한다(S-26·S-30).
-  const harnessLabel = harnessName ? `${harnessName} · ${t(bodyOwner.payload.chatMode === true ? "mobile.bar.viewChat" : "mobile.bar.viewTerminal")}` : undefined;
+  const harnessLabel = operationHarnessLabel(bodyOwner, t);
   const mark = resolveOperationMarkVisual({
     activity: resolveOperationActivity(bodyOwner, operationRuntime),
     operationId: bodyOwner.id,
@@ -104,8 +101,10 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     variant: "operation",
     title,
     ...(harnessLabel ? { subtitle: harnessLabel } : {}),
-    avatar: { operation: bodyOwner, mark },
-    leading: "menu",
+    glyph: mark,
+    // 홈이 대화 목록이라 막대 왼쪽은 ‹ — 목록으로 돌아간다.
+    leading: "back",
+    onBack: closeMobileOperation,
     actions: [{ id: "new", icon: <MobileIcon name="newop" />, label: t("mobile.operations.new"), run: openQuickLaunch }],
     menu: {
       label: t("mobile.bar.operationMenu"),

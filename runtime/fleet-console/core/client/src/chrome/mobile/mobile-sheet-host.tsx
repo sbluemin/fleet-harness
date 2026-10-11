@@ -9,8 +9,11 @@ import { openTheaterSystemPrompt } from "../../../../../features/settings/client
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, setActiveTheater } from "../../integration/store.js";
+import { getState, openQuickLaunch, setActiveTheater } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
+import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
+import { useRailEntries } from "../pane/pane-registry.js";
+import { useMobileDestinationBindings } from "./mobile-destinations.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
@@ -19,7 +22,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDrawerOpen, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, setMobileDrawerOpen, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -49,6 +52,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (!top) return null;
   if (top.kind === "rename") return <RenameSheet key={top.operationId} state={state} operationId={top.operationId} />;
   if (top.kind === "console") return <ConsoleSheet />;
+  if (top.kind === "create") return <CreateSheet state={state} />;
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
@@ -213,6 +217,35 @@ function ForgetSheet({ state, theaterId, onDeferredDeletion }: { readonly state:
       </>}
     >
       <p className="mobile-sheet-lead">{t("mobile.sheet.forget.body", { name: labelRef.current })}</p>
+    </MobileSheet>
+  );
+}
+
+/**
+ * 홈 머리 +의 메뉴 — 새 대화(새 작업 시트), 새 터미널(Shell 목적지, 보일 때만), Theater 추가(폴더 시트).
+ * 고르면 이 시트를 닫고 이어서 연다. Theater 추가는 시트 위에 쌓아 닫으면 이 메뉴로 돌아온다.
+ */
+function CreateSheet({ state }: { readonly state: ConsoleState }) {
+  const t = useT();
+  const bindings = useRailEntries();
+  const shell = useMobileDestinationBindings(bindings, state.activeTheaterId).find((binding) => binding.entry.id === globalShellEntry.id);
+  const hasTheater = state.activeTheaterId !== null;
+  return (
+    <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => { closeMobileSheets(); openQuickLaunch(); }}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
+      </button>
+      {shell ? (
+        <button type="button" className="mobile-sheet-row" onClick={() => { closeMobileSheets(); setMobileDestination({ kind: "plugin", entryId: shell.entry.id }); }}>
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
+        </button>
+      ) : null}
+      <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="folder" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
+      </button>
     </MobileSheet>
   );
 }
