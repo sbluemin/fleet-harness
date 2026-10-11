@@ -307,12 +307,13 @@ const COMMAND_BAND_HEIGHT = 36;
 
 /**
  * 대화 중심 화면의 캡션 버튼 띠 — 오른쪽 위 열(세부 정보 또는 대화)의 바탕과 같은 색으로, 맨 위 줄 높이만큼 선다. 두 열은 같은
- * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 값은 theme.css `--canvas-abyss` 의 sRGB 다.
+ * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 이 화면의 다크는 고른 다크 테마와 무관하게 「대화 다크」
+ * 한 벌이므로(theme.css) 세 다크가 같은 #070707(L 12.9%)·중립 회색 기호를 쓴다. Whites 는 그 테마의 `--canvas-abyss` sRGB 다.
  */
 const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
-  instrument: { color: "#020508", symbolColor: "#989fa6", height: CONVERSATION_TOP_ROW },
-  maritime: { color: "#000103", symbolColor: "#c8c4b7", height: CONVERSATION_TOP_ROW },
-  carbon: { color: "#010203", symbolColor: "#bfc1c3", height: CONVERSATION_TOP_ROW },
+  instrument: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
+  maritime: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
+  carbon: { color: "#070707", symbolColor: "#9a9a9a", height: CONVERSATION_TOP_ROW },
   whites: { color: "#f8f8f5", symbolColor: "#424038", height: CONVERSATION_TOP_ROW },
 };
 
