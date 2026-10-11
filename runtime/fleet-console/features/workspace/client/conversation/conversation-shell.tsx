@@ -41,7 +41,8 @@ import {
   subscribeTriage,
   useTriageActive,
 } from "../canvas/triage-store.js";
-import { publishConversationClusters, publishConversationSubject, useConversationBodyRenderer, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationSubject, useConversationBodyRenderer, useConversationOperationRename, useConversationSubject } from "./conversation-slots.js";
+import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
 
@@ -310,6 +311,40 @@ function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescript
   useEffect(() => (subscribe ? subscribe(refresh) : undefined), [subscribe]);
 }
 
+/**
+ * 패널 머리의 이름 — 고칠 수 있으면 쉴 때 hover 에 은은한 둥근 배경이 서고, 누르면 같은 자리·같은 글꼴로 캐럿 편집이 열린다.
+ * Enter 확정·Esc 취소·blur 확정은 사이드바 칩과 같은 `useInlineRename` 관례다. 비었거나 그대로인 이름은 보내지 않는다.
+ */
+function PanelIdentityName({ title, onRename }: { readonly title: string; readonly onRename?: ((title: string) => void) | undefined }) {
+  const t = useT();
+  const rename = useInlineRename({
+    currentTitle: title,
+    onCommit: (next) => {
+      const trimmed = next.trim();
+      if (onRename && trimmed && trimmed !== title) onRename(trimmed);
+    },
+  });
+  if (!onRename) return <strong className="conversation-panel-identity-name">{title}</strong>;
+  if (rename.renaming) {
+    return (
+      <input
+        className="conversation-panel-identity-name conversation-panel-identity-input"
+        ref={rename.inputRef}
+        value={rename.draftTitle}
+        aria-label={t("sidebar.chip.renameAria", { title })}
+        onChange={(e) => rename.setDraftTitle(e.target.value)}
+        onKeyDown={rename.handleKeyDown}
+        onBlur={rename.handleBlur}
+      />
+    );
+  }
+  return (
+    <strong className="conversation-panel-identity-name">
+      <button type="button" className="conversation-panel-identity-edit" title={t("sidebar.chip.renameAria", { title })} onClick={rename.begin}>{title}</button>
+    </strong>
+  );
+}
+
 /** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름(Grok 세부 정보의 아바타·이름 자리). 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
   const inbox = useTheaterInboxState();
@@ -322,6 +357,7 @@ function ConversationPanelIdentity() {
   const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
   const descriptor = subject === null ? centerSurface : null;
   const clusterIndex = useClusterIndex();
+  const renameOperation = useConversationOperationRename();
   useConversationSurfaceHead(centerSurface);
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 의 몽글 아바타는 그 사령관이다(사이드바 Theater 머리 표식과 같은 얼굴).
   // 가운데 칸에 그 Theater 를 대신하는 대화(사령관)가 서 있으면 이름은 그 대화의 이름이다 — 패널을 어느 길로 열든 머리가 같다.
@@ -348,19 +384,20 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={operationMongleState(subject.id, state, clusterIndex.clusters)} size={64} label={subject.title} />
-        <strong className="conversation-panel-identity-name">{subject.title}</strong>
+        <PanelIdentityName title={subject.title} onRename={renameOperation ? (next) => renameOperation(subject.id, next) : undefined} />
       </div>
     );
   }
   if (descriptor !== null && surface !== null) {
     const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const;
     const avatar = descriptor.avatar?.(context) ?? null;
+    const renameSurface = descriptor.rename;
     return (
       <div className="conversation-panel-identity">
         {avatar
           ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
-        <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
+        <PanelIdentityName title={descriptor.title(context)} onRename={renameSurface ? (next) => renameSurface(context, next) : undefined} />
       </div>
     );
   }

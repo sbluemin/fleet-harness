@@ -341,6 +341,8 @@ export interface ConversationSurfaceDescriptor {
   readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState } | null;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
+  /** 있으면 오른쪽 패널 머리의 이름이 그 자리에서 고쳐진다 — 확정한 새 이름(앞뒤 공백 제거·비어 있지 않음)을 플러그인이 저장한다. 없으면 이름은 글로만 선다. */
+  readonly rename?: (ctx: ConversationSurfaceContext, title: string) => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
   /**
    * 머리 pill 바로 오른쪽 단추 묶음(Operation 대화의 pill 단추 묶음과 같은 자리·같은 캡슐)에 설 이 대화의 동작. 호스트가 자리와 면을

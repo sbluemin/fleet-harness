@@ -54,6 +54,7 @@ import { registerTheaterInboxForget } from "./theater-inbox/store.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
+import { setConversationOperationRename } from "./conversation/conversation-slots.js";
 
 const STABLE_RAIL_API: ClientApiCapability = createHostCapabilities().api;
 const DEFAULT_SHELL_WIDTH = 560;
@@ -754,6 +755,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       refreshOperations,
     );
   }, [refreshOperations, runMutation]);
+
+  // 오른쪽 패널 머리의 이름 편집도 같은 핸들러로 확정한다.
+  useEffect(() => setConversationOperationRename(handleRename), [handleRename]);
 
   const handleSetGroupId = useCallback((operationId: string, groupId: string | null) => {
     runMutation(
