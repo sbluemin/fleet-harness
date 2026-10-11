@@ -555,8 +555,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   return (
     <>
-      {open ? (
+      {open && typeof document !== "undefined" ? createPortal((
         <>
+          {/* 창 drag 영역은 DOM 순서로 합쳐진다 — 뒤 크롬이 시트의 no-drag를 다시 덮지 않게 마지막 층에 세운다. */}
           {/* 뒤 화면을 가리지 않는 투명한 닫기 영역 — 아레나만 덮고, 닫기는 이 클릭에만.
               도구모음·섬·레일·사이드바는 이 영역 밖에 있어 그대로 조작된다. */}
           {scrimGeometry ? (
@@ -833,7 +834,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         </div>
           </section>
         </>
-      ) : null}
+      ), document.body) : null}
       {/* shared 폴백 안내 — 시트가 닫혀 있어도 기존 토스트 스택에 얹는다. */}
       {fallbackNotice && toastHost ? createPortal(
         <Toast open tone="info" title={t("terminal.globalBrowser.sharedFallback")} onDismiss={() => dismissSharedFallback()} />,
