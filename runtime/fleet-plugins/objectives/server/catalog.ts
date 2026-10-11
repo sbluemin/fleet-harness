@@ -7,7 +7,7 @@ import { ObjectiveStoreError } from "./store.js";
 /**
  * 구성원 모델 목록의 출처 — Console 이 내놓는 실행 카탈로그와 Gateway 한도 요약. 둘 다 루프백 HTTP 로만 읽는다.
  * 모델 목록 화면(console_objectives models)은 실행 카탈로그를, 지휘관의 구성원 모델 제안(fleet-objectives models·plan·enlist)은
- * 라우팅 판단이 보는 gateway_models 를 읽는다 — 제안은 그 판단의 입력이므로 판단과 같은 후보로 확인한다.
+ * gateway_models 를 읽는다 — 지휘관의 기동 모델 선택도 라우팅과 같은 후보로 확인한다.
  */
 const CATALOG_PATH = "/api/v1/operations/catalog";
 const QUOTA_PATH = "/api/v1/ai-gateway/quota";

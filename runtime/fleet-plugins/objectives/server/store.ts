@@ -48,7 +48,6 @@ import {
   type ObjectiveEvent,
   OBJECTIVE_FILE,
   type MemberLaunch,
-  type MemberProposal,
   type MemberNext,
   notAppliedFailure,
   heldNextOutcome,
@@ -261,7 +260,7 @@ export interface ObjectiveStore {
   /** 사람이 이 임무의 기록을 모두 읽었다. 이미 읽었으면 쓰지 않는다. */
   missionSeen(objectiveId: string, missionId: string): Objective;
   missionRemove(objectiveId: string, missionId: string): Objective;
-  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly proposal?: MemberProposal; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
+  memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
   memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
   /**
    * 띄운 구성원의 기동 기록 — 기동 근거(routed)·이번 턴 뒤 예약(next)·예약을 취소할 때 돌아갈 선택(launch). 사람의 편집이 아니라
@@ -1549,7 +1548,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberAdd: (objectiveId, input, by) => update(objectiveId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_MISSIONS) throw new ObjectiveStoreError("too_many_members");
       const launch = canonicalStoredLaunch(input.launch);
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.proposal ? { proposal: input.proposal } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
     memberPatch: (objectiveId, memberId, patch) => update(objectiveId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
@@ -1636,7 +1635,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 검증과 편성 변경은 한 번의 update 안에서 끝난다 — 실패하면 기준 제안도 임무도 바뀌지 않는다.
       const proposals = input.criteria === undefined ? stored.criteriaProposals : proposalsOf(stored, input.criteria);
       if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
-      const members = input.members?.length ? input.members.map((member): StoredMember => ({ id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), ...(member.proposal ? { proposal: member.proposal } : {}), by: "commander" })) : stored.members ?? [];
+      const members = input.members?.length ? input.members.map((member): StoredMember => {
+        const launch = canonicalStoredLaunch(member.launch);
+        return { id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), ...(launch ? { launch } : {}), by: "commander" };
+      }) : stored.members ?? [];
       const resolve = (reference: string | undefined): string | undefined => {
         if (!reference) return undefined;
         const byId = members.find((entry) => entry.id === reference);
