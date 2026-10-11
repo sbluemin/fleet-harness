@@ -52,6 +52,7 @@ import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcu
 import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping } from "../../../../../features/workspace/client/canvas/canvas-store.js";
 import { requestAlignAll } from "../../../../../features/workspace/client/canvas/align-fit-store.js";
 import { enterTriage, exitTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
+import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -106,7 +107,9 @@ export function OperationSearch({
   const t = useT();
   const triageActive = useTriageActive();
   const triageMapOpen = useTriageMapOpen();
-  const warRoomAvailable = useViewMode().effective !== "mobile";
+  const desktopView = useViewMode().effective !== "mobile";
+  // War Room은 대화 중심 화면에서 지원하지 않는다 — 팔레트도 그 명령을 내지 않는다.
+  const warRoomAvailable = desktopView && !useConversationLayout();
   const sessions = useAgentState().sessions;
   const railBindings = useDesktopRailEntries();
   const navigate = useNavigate();
@@ -122,7 +125,7 @@ export function OperationSearch({
     if (mode !== "operations") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
-    if (!matchesShell || !state.activeTheaterId || !warRoomAvailable) return providerSearchGroups;
+    if (!matchesShell || !state.activeTheaterId || !desktopView) return providerSearchGroups;
     const theaterId = state.activeTheaterId;
     return [...providerSearchGroups, {
       panelId: "global-shell",
@@ -137,7 +140,7 @@ export function OperationSearch({
         } },
       ],
     }];
-  }, [providerSearchGroups, mode, text, state.activeTheaterId, warRoomAvailable, capabilities, t]);
+  }, [providerSearchGroups, mode, text, state.activeTheaterId, desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);

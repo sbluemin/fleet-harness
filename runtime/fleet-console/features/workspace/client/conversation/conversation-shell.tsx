@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -32,15 +32,6 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../canvas/canvas.js";
-import {
-  deferTriageOperation,
-  getTriageSnapshot,
-  publishTriageStage,
-  recordTriageStageTheater,
-  resolveTriageQueue,
-  subscribeTriage,
-  useTriageActive,
-} from "../canvas/triage-store.js";
 import { publishConversationClusters, publishConversationSubject, useConversationBodyRenderer, useConversationOperationRename, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
@@ -49,8 +40,8 @@ import "./conversation.css";
 /**
  * 대화 중심 화면 — 실험 기능 「대화 중심 화면」이 켜진 데스크톱의 Operations 셸.
  *
- * 세 칸이다: 왼쪽 사이드바(기존 그룹 트리 + 이 모듈이 더한 위·아래 줄), 가운데 대화 칸(Operation 하나 — War Room 이면
- * 대기 무대), 오른쪽 패널(기존 레일 카드 + 머리의 글자 탭). 캔버스는 마운트하지 않으므로 패널 좌표·최소화·Map 기록을
+ * 세 칸이다: 왼쪽 사이드바(기존 그룹 트리 + 이 모듈이 더한 위·아래 줄), 가운데 대화 칸(Operation 하나),
+ * 오른쪽 패널(기존 레일 카드 + 머리의 글자 탭). 캔버스는 마운트하지 않으므로 패널 좌표·최소화·Map 기록을
  * 이 셸이 바꾸지 않는다 — 토글을 끄면 캔버스가 켜기 전 그대로 돌아온다.
  */
 
@@ -463,34 +454,11 @@ interface ConversationStageProps {
   readonly onClose: (operationId: string) => void;
 }
 
-/** War Room 무대 — 지목이 먼저, 그다음 지금 선 무대(다음을 누르기 전까지 유지), 없으면 대기열 맨 앞. */
-function useWarRoomStage(state: ConsoleState, active: boolean): { readonly stage: OperationNode | null; readonly waiting: number; readonly next: () => void } {
-  useSyncExternalStore(subscribeTriage, getTriageSnapshot, getTriageSnapshot);
-  const stageRef = useRef<string | null>(null);
-  const queue = active ? resolveTriageQueue(state.operations, state.operationRuntime) : [];
-  const picked = queue.find((entry) => entry.picked) ?? null;
-  const retained = stageRef.current === null ? null : queue.find((entry) => entry.operation.id === stageRef.current) ?? null;
-  const stage = (picked ?? retained ?? queue[0] ?? null)?.operation ?? null;
-  stageRef.current = stage?.id ?? null;
-  useEffect(() => {
-    if (!active) return;
-    publishTriageStage(stage?.id ?? null);
-    if (stage) recordTriageStageTheater(stage.theaterId);
-  }, [active, stage]);
-  const next = useCallback(() => {
-    const current = stageRef.current;
-    if (current === null) return;
-    stageRef.current = null;
-    deferTriageOperation(current);
-  }, []);
-  return { stage, waiting: queue.length, next };
-}
-
 /**
- * Cruise — 활성 Operation. 활성이 풀려도(크롬을 눌러도) 방금 보던 대화는 남긴다. 처음 열었을 때처럼 본 것이 없으면
+ * 가운데 칸의 대상 — 활성 Operation. 활성이 풀려도(크롬을 눌러도) 방금 보던 대화는 남긴다. 처음 열었을 때처럼 본 것이 없으면
  * 그 작전구역에서 가장 최근에 움직인 대화를 보인다 — 빈 칸보다 이어서 볼 대화가 먼저다.
  */
-function useCruiseSubject(state: ConsoleState): OperationNode | null {
+function useStageSubject(state: ConsoleState): OperationNode | null {
   const lastRef = useRef<string | null>(null);
   const inTheater = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id && operation.theaterId === state.activeTheaterId) ?? null;
   const active = inTheater(state.activeOperationId);
@@ -504,15 +472,11 @@ function useCruiseSubject(state: ConsoleState): OperationNode | null {
 
 export function ConversationStage({ state, insets, language, operationKinds, onClose }: ConversationStageProps) {
   const t = useT();
-  const warRoom = useTriageActive();
-  const cruiseSubject = useCruiseSubject(state);
-  const { stage, waiting, next } = useWarRoomStage(state, warRoom);
-  const subject = warRoom ? stage : cruiseSubject;
-  // 플러그인 대화(사령관 등)는 Cruise 의 가운데 칸에만 선다. War Room 은 대기 무대가 칸을 가진다.
+  const subject = useStageSubject(state);
+  // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Operation 대신 선다.
   const surface = useConversationSurface();
   const { conversationSurfaces } = usePluginRegistry();
-  const surfaceDescriptor = surface === null || warRoom ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
-  useEffect(() => { if (warRoom) closeConversationSurface(); }, [warRoom]);
+  const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
   useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : subject); }, [subject, surfaceDescriptor]);
   // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
@@ -523,9 +487,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       if (activeOperationId !== null) setActiveOperation(null);
       return;
     }
-    if (warRoom || cruiseSubject === null || activeOperationId === cruiseSubject.id) return;
-    setActiveOperation(cruiseSubject.id);
-  }, [activeOperationId, cruiseSubject, surfaceDescriptor, warRoom]);
+    if (subject === null || activeOperationId === subject.id) return;
+    setActiveOperation(subject.id);
+  }, [activeOperationId, subject, surfaceDescriptor]);
   useEffect(() => () => publishConversationSubject(null), []);
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
   const operationClusters = useOperationClusters();
@@ -559,7 +523,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   return (
     <>
     <section
-      className={`conversation-stage${warRoom ? " is-war-room" : ""}`}
+      className="conversation-stage"
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 브라우저 칸이 서면 그 폭만큼 더 비킨다.
       style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
       aria-label={t("conversation.stage.aria")}
@@ -581,16 +545,10 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           operation={subject}
           language={language}
           operationKinds={operationKinds}
-          warRoom={warRoom ? { waiting, next } : null}
           onToggleDetails={toggleDetails}
           onClose={onClose}
           browserSplitOpen={splitKind !== null}
         />
-      ) : warRoom ? (
-        <div className="conversation-empty">
-          <span className="conversation-empty-mark">{t("canvas.triage.clearMark")}</span>
-          <strong>{t("canvas.triage.clearTitle")}</strong>
-        </div>
       ) : (
         <div className="conversation-empty">
           <strong>{t("conversation.empty.title")}</strong>
@@ -613,7 +571,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
 
 /**
  * 사용량(Quota 등 밴드 요약) — 가운데 칸 맨 위 줄의 오른쪽 끝에 떠 있는 캡슐 하나다. 대상 Operation 이 아니라 계정 전역의 신호라
- * pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Cruise·War Room·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
+ * pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Operation·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
  * 칸 폭이 줄면 단계를 낮춘다(전체 → 표식만 → 첫 칸 하나, conversation.css·quota.css 의 컨테이너 질의). 누르면 지금처럼 요약 팝업이 열린다.
  */
 function ConversationQuota() {
@@ -770,12 +728,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, operation, language, operationKinds, warRoom, onToggleDetails, onClose, browserSplitOpen }: {
+function ConversationColumn({ state, operation, language, operationKinds, onToggleDetails, onClose, browserSplitOpen }: {
   readonly state: ConsoleState;
   readonly operation: OperationNode;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
-  readonly warRoom: { readonly waiting: number; readonly next: () => void } | null;
   readonly onToggleDetails: () => void;
   readonly onClose: (operationId: string) => void;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Operation 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
@@ -893,12 +850,6 @@ function ConversationColumn({ state, operation, language, operationKinds, warRoo
             <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
           ) : null}
         </button>
-        {warRoom ? (
-          <button type="button" className="conversation-pill-next" onClick={warRoom.next} aria-label={t("conversation.pill.nextAria")} disabled={warRoom.waiting < 2}>
-            <span>{t("conversation.pill.next")}</span>
-            <span className="conversation-pill-queue">{t("conversation.pill.queue", { count: warRoom.waiting })}</span>
-          </button>
-        ) : null}
         <span className="conversation-pill-actions">
           <OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />
           {descriptor?.captionActions === undefined ? null : (

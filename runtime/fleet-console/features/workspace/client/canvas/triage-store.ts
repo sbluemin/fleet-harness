@@ -12,6 +12,7 @@ import { getSideBarState, setSideBarCollapsed } from "../sidebar/operations-side
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { readCanvasModeSession, rememberWarRoomActive } from "./canvas-mode-session.js";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
+import { isConversationLayoutActive } from "../../../settings/client/use-conversation-layout.js";
 import { requestWarRoomTransition, setWarRoomSideBarRevealed } from "../../../../core/client/src/integration/war-room-chrome.js";
 import {
   forceDropCompanionOperationId,
@@ -349,13 +350,18 @@ registerFocusTheaterSwitchSuppression(() => triageActive);
 // 무대와 겹쳐 설 수 없다. 반대로 선별 진입은 정렬을 걷지 않고 그대로 둔다(War Room 왕복 보존).
 registerBeforeAlignAllActivation(() => setTriageActive(false));
 
+// War Room은 캔버스 데스크톱의 모드다 — 폰과 대화 중심 화면에는 서지 않는다(켜는 길이 모두 여기서 막힌다).
+export function isWarRoomAvailable(): boolean {
+  return getViewModeSnapshot().effective !== "mobile" && !isConversationLayoutActive();
+}
+
 export function isTriageActive(): boolean {
   return triageActive;
 }
 
 export function setTriageActive(active: boolean, animate = true): void {
   if (active) {
-    if (getViewModeSnapshot().effective === "mobile") return;
+    if (!isWarRoomAvailable()) return;
     const { activeTheaterId } = getState();
     // 모두 정렬은 스냅 유지라 War Room 왕복에 남는다 — 진입이 걷지 않는다.
     if (!triageActive) {
@@ -450,7 +456,7 @@ function setActiveTheaterShownByWarRoom(theaterId: string): void {
 export function restoreTriageSession(): boolean {
   if (triageActive) return false;
   if (!readCanvasModeSession().warRoom) return false;
-  if (getViewModeSnapshot().effective === "mobile") return false;
+  if (!isWarRoomAvailable()) return false;
   setTriageActive(true, false);
   return true;
 }
@@ -479,12 +485,12 @@ export function confirmTriageEntry(): void {
   if (!request) return;
   entryRequest = null;
   emitTriage();
-  if (getViewModeSnapshot().effective === "mobile") return;
+  if (!isWarRoomAvailable()) return;
   const epoch = entryEpoch;
   const enter = () => {
     // Operations의 대화상자 호스트가 언마운트되면 epoch가 바뀐다. 브라우저의 basename을
     // 라우터 내부 경로와 비교하지 않고, 실제 요청 호스트의 수명으로 경로 이탈을 판단한다.
-    if (getViewModeSnapshot().effective === "mobile" || epoch !== entryEpoch) return;
+    if (!isWarRoomAvailable() || epoch !== entryEpoch) return;
     activateTriage(request.focusedOperationId, false);
   };
   // 진입은 War Room 사이드바를 드러내므로 포커스는 그 머리의 War Room 세그먼트에 선다. 사이드바가 아직 inert라
@@ -507,7 +513,7 @@ export function exitTriage(): void {
 }
 
 export function enterTriage(focusedOperationId: string | null, returnFocus: HTMLElement | null = globalThis.document?.activeElement as HTMLElement | null): void {
-  if (getViewModeSnapshot().effective === "mobile" || entryRequest !== null) return;
+  if (!isWarRoomAvailable() || entryRequest !== null) return;
   if (!triageActive) {
     // 지목과 복귀 대상을 대화상자의 포커스 이동 전에 포착한다.
     entryRequest = { focusedOperationId, returnFocus };

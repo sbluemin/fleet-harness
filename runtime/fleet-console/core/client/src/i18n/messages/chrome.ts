@@ -544,9 +544,6 @@ export const chromeEn = {
   "conversation.pill.members_one": "{count} member",
   "conversation.pill.members_other": "{count} members",
   "conversation.pill.detailsAria": "Show details for {title}",
-  "conversation.pill.next": "Next ▸",
-  "conversation.pill.nextAria": "Show the next waiting Operation",
-  "conversation.pill.queue": "{count} waiting",
   "conversation.stage.aria": "Conversation",
   "conversation.empty.title": "Pick an Operation on the left",
   "conversation.empty.body": "Its conversation opens here. Start a new one with + at the top of the sidebar.",
@@ -558,7 +555,6 @@ export const chromeEn = {
   "conversation.side.newOperation": "New Operation",
   "conversation.side.pinnedAria": "Pinned",
   "conversation.side.systemAria": "Host, usage and settings",
-  "conversation.side.warRoom": "War Room",
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
@@ -1092,9 +1088,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.pill.members_one": "구성원 {count}",
   "conversation.pill.members_other": "구성원 {count}",
   "conversation.pill.detailsAria": "{title} 세부 정보 보기",
-  "conversation.pill.next": "다음 ▸",
-  "conversation.pill.nextAria": "다음 대기 Operation 보기",
-  "conversation.pill.queue": "대기 {count}",
   "conversation.stage.aria": "대화",
   "conversation.empty.title": "왼쪽에서 Operation을 고르세요",
   "conversation.empty.body": "고른 Operation의 대화가 여기에 열립니다. 새로 시작하려면 사이드바 위의 +를 누르세요.",
@@ -1106,5 +1099,4 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.side.newOperation": "새 Operation",
   "conversation.side.pinnedAria": "고정",
   "conversation.side.systemAria": "호스트 · 사용량 · 설정",
-  "conversation.side.warRoom": "War Room",
 };

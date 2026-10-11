@@ -204,15 +204,16 @@ function ConnectedApp() {
     return () => root.removeAttribute("data-conversation-layout");
   }, [conversationLayoutOn]);
   const warRoomTransitionActive = useWarRoomTransitionActive();
-  const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout;
+  const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout && !conversationLayoutOn;
   const workFocusRef = useRef<HTMLElement | null>(null);
   // War Room은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 War Room은 유지한다 — 작업 표시줄의
   // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 War Room 안에서 하는 길이다.
   // 부팅·호스트 전환 직후 루트('/')에서 '/operations'로 리다이렉트되는 과도기에는 성급히 끄지 않고,
-  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 War Room을 거둔다.
+  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 War Room을 거둔다. 대화 중심 화면은 War Room을
+  // 지원하지 않으므로, 그 배치가 켜지면(부팅 뒤 설정이 늦게 도착해도) 곧장 거둔다.
   useLayoutEffect(() => {
-    if (warRoomMode && (mobileLayout || (!operationsViewVisible && !isTransitionalRoute))) setTriageActive(false);
-  }, [warRoomMode, operationsViewVisible, mobileLayout, isTransitionalRoute]);
+    if (warRoomMode && (mobileLayout || conversationLayoutOn || (!operationsViewVisible && !isTransitionalRoute))) setTriageActive(false);
+  }, [warRoomMode, operationsViewVisible, mobileLayout, conversationLayoutOn, isTransitionalRoute]);
   useWarRoomDesktopFullscreen(warRoomActive);
   useEffect(() => {
     const remember = (event: FocusEvent) => {
@@ -685,7 +686,7 @@ function ConnectedApp() {
         {/* War Room 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
             콘솔 크롬이라 여기 둔다. 도구모음이 War Room 동안 여기에 선다 — 자리는 War Room이 꺼져 있어도 DOM에 남고,
             바 전체가 hidden이라 그려지지는 않는다. */}
-        {/* 대화 중심 화면의 War Room 은 가운데 무대·「확인 필요」·pill 의 「다음 ▸」로 선다 — 트레이를 세우지 않는다. */}
+        {/* 대화 중심 화면은 War Room 을 지원하지 않는다 — 트레이를 세우지 않는다. */}
         {conversationLayout ? null : <WarRoomBar active={warRoomActive} local={state.channel === "local"} />}
         <span className="war-room-announcement" role="status" aria-live="polite">{warRoomActive ? t("warRoomChrome.active") : ""}</span>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
