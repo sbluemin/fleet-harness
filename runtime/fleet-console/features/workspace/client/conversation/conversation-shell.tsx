@@ -27,7 +27,7 @@ import { AvatarEditor, OperationAvatar, operationAvatarRole, operationMongleStat
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
-import { useClusterIndex } from "../operation-clusters.js";
+import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../canvas/canvas.js";
 import {
   deferTriageOperation,
@@ -38,7 +38,7 @@ import {
   subscribeTriage,
   useTriageActive,
 } from "../canvas/triage-store.js";
-import { publishConversationSubject, useConversationBodyRenderer, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationSubject, useConversationBodyRenderer, useConversationSubject } from "./conversation-slots.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
 
@@ -457,6 +457,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     setActiveOperation(cruiseSubject.id);
   }, [activeOperationId, cruiseSubject, surfaceDescriptor, warRoom]);
   useEffect(() => () => publishConversationSubject(null), []);
+  // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
+  const operationClusters = useOperationClusters();
+  useEffect(() => { publishConversationClusters(operationClusters); }, [operationClusters]);
   const toggleDetails = useToggleDetails();
 
   return (

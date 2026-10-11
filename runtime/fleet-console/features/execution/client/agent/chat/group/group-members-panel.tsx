@@ -7,9 +7,8 @@ import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import { AvatarEditor, operationMongleState } from "../../../../../workspace/client/avatars.js";
-import { useClusterIndex } from "../../../../../workspace/client/operation-clusters.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
-import { useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
+import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import "./group-chat.css";
 
 /**
@@ -77,7 +76,7 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
   // 얼굴은 다른 표면과 같은 기준이다 — Operation 이 있는 참여자는 Console 의 공개 활동 축(지휘관은 구성원을 끌어올린 값)과
   // 묶음의 검토 대기·결정 요청·임무 완료로, 사령관은 이 줄의 활동으로 고른다.
   const consoleState = useConsoleState();
-  const clusterIndex = useClusterIndex();
+  const clusters = useConversationClusters();
   const avatar = speaker.kind === "commodore"
     ? { key: theaterAvatarKey(subject?.theaterId ?? "unknown"), role: "commodore" as const }
     : speaker.kind !== "human" && speaker.operationId
@@ -108,7 +107,7 @@ function MemberRow({ participant, language, showing, onLedger, onStop, onRemove 
     <li className={`group-members-row${onLedger ? " is-openable" : ""}${showing ? " is-showing" : ""}`}>
       {avatar ? (
         <AvatarEditor layout="inline" avatarKey={avatar.key} role={avatar.role} state={speaker.kind !== "commodore" && speaker.operationId
-          ? operationMongleState(speaker.operationId, consoleState, clusterIndex.clusters)
+          ? operationMongleState(speaker.operationId, consoleState, clusters)
           : mongleStateOf({ activity: activity === "unknown" ? null : activity })} size={26} label={speaker.name}>
           {main}
         </AvatarEditor>
