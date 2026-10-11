@@ -8,7 +8,7 @@ import { OperationCaptionContributions } from "../operation-contributions.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
-import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkLabel, type OperationActivityVisual, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { OperationAvatar, mongleStateOfMark } from "../avatars.js";

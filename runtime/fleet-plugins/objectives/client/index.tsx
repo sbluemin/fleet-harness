@@ -3,7 +3,6 @@ import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-c
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
-import { objectivesArchiveSections } from "./archive.js";
 import { objectivesClusterSource } from "./clusters.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
@@ -140,8 +139,6 @@ const objectivesPlugin = definePlugin({
   expandedSurfaces: [objectivesSurface],
   // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
   operationClusters: objectivesClusterSource,
-  // 끝난 목표와 정리된 목표는 사이드바 트리가 아니라 보관함에 선다.
-  archiveSections: objectivesArchiveSections,
   // 사령관(자율 운영) — Theater 머리의 글리프(켬 brass·끔 회색)·턴 물결·머리를 누르면 여는 칸·우클릭 메뉴의 켜기/끄기. 실험 기능이 꺼져 있으면 빌려 주지 않는다.
   theaterContributions: [commodoreTheaterContribution],
   // Quick Launch '@' — 지금 Theater 의 사령관(자율 운영이 실제로 돌 때만)에게 사령관 기록 입력과 같은 경로로 보낸다.

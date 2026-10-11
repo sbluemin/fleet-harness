@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import type { ArchiveSectionDescriptor } from "@fleet-console/sdk/plugin";
 
-import { ArchiveGlyph } from "../../../../core/client/src/chrome/components/archive-glyph.js";
+import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { openArchiveSheet, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
