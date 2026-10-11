@@ -431,11 +431,15 @@
   margin-left: var(--space-1);
 }
 
+/* 대화 배치에는 커맨드 밴드가 없어 부관 머리는 이 줄에만 선다 — 밴드의 24px 대신 사이드바 폭에 맞춰 키워
+   가운데 세운다. 크기는 플러그인 항목에 --command-band-entry-size 로 알린다(SDK 계약). */
 .conversation-side-pinned {
+  --command-band-entry-size: 40px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: var(--space-2);
-  min-height: 32px;
+  min-height: var(--command-band-entry-size);
 }
 
 /* 부관이 아무도 출근하지 않으면 고정 줄은 자리를 차지하지 않는다. */
