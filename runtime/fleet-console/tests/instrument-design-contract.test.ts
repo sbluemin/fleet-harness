@@ -3394,12 +3394,12 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
     // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 분기를 다시 적으면 같은 사실이 표면 수만큼의
-    // 조형으로 갈라진다. 사이드바 칩은 몽글 아바타 모듈(역할·배정·상태 해석)을, 밴드·모바일은 상태 마크를 지난다.
+    // 조형으로 갈라진다. 사이드바 칩과 목록 래퍼는 같은 몽글 아바타 모듈(역할·배정·상태 해석)을 지난다.
     expect(chip).toContain('import { OperationAvatar, mongleStateOfMark } from "../avatars.js"');
-    expect(nameMark).toContain('return <OperationStatusIcon status={status}');
-    // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
-    expect(statusIcon).toContain('import { StatusGlyph, type StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";');
-    expect(statusIcon).toContain("return operationMarkVisual(status);");
+    expect(nameMark).toContain('return <OperationStatusIcon operation={operation} status={status}');
+    // 목록 래퍼의 얼굴은 사이드바 칩과 같은 경로(표식 → 묶음 사실)로 고른다 — 종류 분기는 그 위층의 다른 질문이다.
+    expect(statusIcon).toContain('import { OperationAvatar, clusterFaceFacts, mongleStateOfMark } from "../../../workspace/client/avatars.js";');
+    expect(statusIcon).toContain("mongleStateOfMark(status, clusterFaceFacts(clusters, operation.id))");
     // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
     expect(components).not.toContain(".canvas-fleet-map-dot.is-shell,");
     expect(chip).not.toContain("is-attention");

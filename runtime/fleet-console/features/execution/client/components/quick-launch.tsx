@@ -1761,7 +1761,7 @@ export function QuickLaunch() {
                       <span className="quick-launch-mark" aria-hidden="true"><TheaterMonogram>{theaterInitials(entry.theaterLabel)}</TheaterMonogram></span>
                       <span className="quick-launch-mention-operation-mark">
                         <OperationNameMark
-                          operation={entry}
+                          operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
                           status={resolveOperationMarkVisual({
                             activity: entry.activity,
                             operationId: entry.operationId,

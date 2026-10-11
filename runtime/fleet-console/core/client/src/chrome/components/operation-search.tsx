@@ -890,7 +890,8 @@ export function OperationSearch({
                                 않는다 — Theater는 구역 머리글이, 공급자는 사이드바가 이미 말한다. */}
                             <span className="operation-search-op-mark">
                               <OperationNameMark
-                                operation={entry}
+                                operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
+                                archived={entry.archived}
                                 status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
                               />
                             </span>
