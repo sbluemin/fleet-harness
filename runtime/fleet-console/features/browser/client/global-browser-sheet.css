@@ -376,3 +376,20 @@ html[data-fleet-browser-sheet="open"] .app-toast-host {
 .fleet-browser-sheet.is-leaving {
   pointer-events: none;
 }
+
+/* 대화 칸 이어받기 — 분할 자리가 모자란 폭에서 시트가 가운데 대화 칸 자리 전체에 앉는다(분할과 같은 평면 문법).
+   왼쪽은 사이드바 열의 경계가 이미 말하므로 시트의 경계선을 겹치지 않는다. 한 번에 튀지 않게 오른쪽에서 짧게 밀려 들어오고,
+   뷰는 이 등장이 끝난 뒤 한 번 놓인다(global-browser-sheet.tsx 정착 판정). */
+.fleet-browser-sheet.is-split.is-takeover {
+  border-left: 0;
+  animation: fleet-browser-takeover var(--duration-base) var(--ease-spring) both;
+}
+
+@keyframes fleet-browser-takeover {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fleet-browser-sheet.is-split.is-takeover { animation: none; }
+}
