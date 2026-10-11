@@ -535,8 +535,7 @@ span.objectives-row-main { cursor: default; }
 .objectives-recip:hover:not(:disabled) { background: var(--control-rest); }
 .objectives-recip[aria-checked="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: var(--control-wash); color: var(--text-primary); }
 .objectives-recip:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-recip .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
-.objectives-recip .objectives-member-mark.is-commander svg { width: 8px; height: 8px; }
+.objectives-recip .objectives-avatar { width: 16px; height: 16px; }
 .objectives-recip-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
 .objectives-recip-state { flex: none; color: var(--text-tertiary); }
 .objectives-recip-state.is-awaiting { color: var(--aurora); }
@@ -626,18 +625,13 @@ span.objectives-row-main { cursor: default; }
 /* 윗줄은 역할 · 모델·상태 · 삭제, 설명은 아랫줄에서 역할 칸부터 오른쪽 끝까지 — 모델명 길이가 설명 폭을 깎지 않는다. */
 .objectives-member { display: grid; grid-template-columns: 20px minmax(0, 1fr) fit-content(55%); grid-template-areas: "mark name meta" ". brief brief"; align-items: center; gap: 2px 10px; min-height: 50px; padding: 6px 14px 6px 22px; }
 .objectives-member:has(> .objectives-member-remove) { grid-template-columns: 20px minmax(0, 1fr) fit-content(55%) auto; grid-template-areas: "mark name meta remove" ". brief brief brief"; }
-.objectives-member > .objectives-member-mark { grid-area: mark; }
+.objectives-member > .objectives-avatar { grid-area: mark; }
 .objectives-member > .objectives-member-remove { grid-area: remove; }
 .objectives-member:hover { background: var(--control-rest); }
-/* 구성원 표식 — 정체성 톤(--id-*)으로 구성원을 가른다. 신호색(brass·aurora·positive·coral·warn)은 상태·지휘관을 뜻하므로 쓰지 않는다. */
-.objectives-member-mark { --member-tone: var(--id-teal); flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid color-mix(in oklch, var(--member-tone) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--member-tone) 14%, transparent); color: var(--member-tone); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
-.objectives-member-mark.is-tone-1 { --member-tone: var(--id-amber); }
-.objectives-member-mark.is-tone-2 { --member-tone: var(--id-plum); }
-.objectives-member-mark.is-tone-3 { --member-tone: var(--id-moss); }
-.objectives-member-mark.is-tone-4 { --member-tone: var(--id-cerulean); }
-.objectives-member-mark.is-tone-5 { --member-tone: var(--id-rose); }
-.objectives-member-mark.is-tone-6 { --member-tone: var(--id-indigo); }
-.objectives-member-mark.is-tone-7 { --member-tone: var(--id-crimson); }
+/* 구성원·지휘관 표식 — 그 사람 Operation 의 몽글 아바타(objective-avatar.tsx)로 사이드바와 같은 얼굴이다. 같은 사람이 임무 줄·메뉴·그래프에
+   여러 번 서므로 움직임은 명단 한 자리에만 두고, 나머지(is-still)는 --state-motion 을 꺼 얼굴과 배지로만 상태를 말한다. */
+.objectives-avatar { width: 20px; height: 20px; }
+.objectives-avatar.is-still { --state-motion: none; }
 /* 달성 기준 줄과 같은 문법 — 역할 이름과 설명이 그 자리의 입력칸이다(테두리 없음, 포커스는 brass 밑줄). */
 .objectives-member-body { display: contents; }
 .objectives-member-name { grid-area: name; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
@@ -673,11 +667,9 @@ span.objectives-row-main { cursor: default; }
 .objectives-member-status.is-failed { color: var(--coral); }
 .objectives-assign-new input { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: var(--weight-regular) var(--t-sm)/1.4 var(--font-ui); }
 .objectives-assign-new input:focus { outline: none; border-color: var(--brass); }
-.objectives-mission-sub .objectives-member-mark, .objectives-assign-menu .objectives-member-mark { width: 16px; height: 16px; font-size: var(--t-2xs); }
+.objectives-mission-sub .objectives-avatar, .objectives-assign-menu .objectives-avatar { width: 16px; height: 16px; }
 .objectives-mission-member-name { color: var(--text-secondary); font-family: var(--font-ui); font-weight: var(--weight-medium); }
-/* 지휘관 표식 — 구성원이 쓰지 않는 brass 는 지휘관 행 아이콘·그래프 뿌리 노드와 같은 지휘관의 색이다. 둥근 원이 각진 구성원 칸과 모양으로도 가른다. */
-.objectives-member-mark.is-commander { --member-tone: var(--brass); border-radius: 50%; color: var(--brass-ink); }
-.objectives-member-mark.is-commander svg { width: 10px; height: 10px; }
+/* 지휘관 담당 낱말 — 구성원이 쓰지 않는 brass 잉크는 지휘관 행 아이콘·그래프 뿌리 노드와 같은 지휘관의 색이다. */
 .objectives-mission-member-name.is-commander, .objectives-menu-label.is-commander { color: color-mix(in oklch, var(--brass-ink) 85%, var(--text-primary)); }
 .objectives-assign-caption { color: var(--text-tertiary); }
 .objectives-assign-model { flex: none; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
@@ -1266,7 +1258,7 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 button.objectives-decision-ref { cursor: pointer; }
 button.objectives-decision-ref:hover { color: var(--text-primary); }
 button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-decision-ref .objectives-member-mark { width: 16px; height: 16px; }
+.objectives-decision-ref .objectives-avatar { width: 16px; height: 16px; }
 .objectives-decision-ref-n { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-ref.is-go { color: var(--text-primary); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--brass) 60%, transparent); text-underline-offset: 3px; }
 .objectives-decision-ref.is-go svg { width: 11px; height: 11px; }
@@ -1310,7 +1302,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-a { margin: 0; font-size: var(--t-sm); color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }
 .objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }
-.objectives-decision-meta .objectives-member-mark { width: 14px; height: 14px; font-size: var(--t-2xs); }
+.objectives-decision-meta .objectives-avatar { width: 14px; height: 14px; }
 .objectives-decisions-fold { align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .objectives-decisions-fold:hover { color: var(--text-primary); }
 .objectives-decisions-fold:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
@@ -1422,7 +1414,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 /* 목록 자신이 폭을 잰다 — 좁은 패널에서 행이 두 줄 배치로 바뀌는 기준이다. */
 .objectives-routing-list { display: grid; gap: 2px; padding: 6px 8px 4px; container: objectives-routing / inline-size; }
 .objectives-routing-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) minmax(0, max-content); grid-template-areas: "mark who pick" ". why why"; align-items: center; column-gap: 8px; row-gap: 2px; padding: 5px 6px; border-radius: var(--radius-xs); }
-.objectives-routing-row > .objectives-member-mark { grid-area: mark; }
+.objectives-routing-row > .objectives-avatar { grid-area: mark; }
 .objectives-routing-row.is-fixed { opacity: 0.78; }
 .objectives-routing-who { grid-area: who; display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
 .objectives-routing-role { flex: 0 1 auto; min-width: 2em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); }

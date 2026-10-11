@@ -43,8 +43,7 @@ const liveProgress = (operationId: string, activity: Map<string, string>): Opera
 };
 
 /**
- * 구성원의 정체성 톤 — 명단 순번으로 여덟 톤을 돌려 쓴다. 목표 표면의 구성원 표식(objectives.css `is-tone-N`)과 같은 순서라,
- * 지휘관 캡션의 「› 이름」이 목표 화면의 그 구성원과 같은 색으로 선다.
+ * 구성원의 정체성 톤 — 명단 순번으로 여덟 톤을 돌려 쓴다. 지휘관 캡션의 「› 이름」과 무리 레일 글리프가 같은 구성원에 같은 색을 쓴다.
  */
 const MEMBER_TONE_KEYS = ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"] as const;
 const memberToneOf = (objective: Objective, memberId: string): string => MEMBER_TONE_KEYS[Math.max(0, objective.members.findIndex((member) => member.id === memberId)) % MEMBER_TONE_KEYS.length]!;
