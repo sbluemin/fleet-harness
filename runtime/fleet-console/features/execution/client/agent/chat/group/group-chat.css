@@ -37,17 +37,6 @@
   color: var(--text-tertiary);
 }
 
-.group-chat-banner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--control-rest);
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-}
 
 /* 발화자 표식 — 노드 줄 글리프를 대화 크기로 키운다. */
 .group-chat-mark { width: 22px; height: 22px; border-radius: 7px; font-size: var(--t-xs); }
@@ -277,3 +266,25 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   .group-chat-line-chev,
   .group-chat-line-summary { transition: none; }
 }
+
+/* 원장 틀 — 그 참여자의 기존 본문을 그룹 대화 자리에 세운다. 본문이 남은 높이를 모두 가진다. */
+.group-ledger { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.group-ledger-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 720px;
+  width: 100%;
+  margin: var(--space-3) auto 0;
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.group-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.group-ledger-body > * { flex: 1 1 auto; min-height: 0; }

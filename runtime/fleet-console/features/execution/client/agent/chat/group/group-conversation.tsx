@@ -4,7 +4,6 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "./conversation-types.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { setGroupLedgerFocus, useGroupLedgerFocus } from "./group-ledger-focus.js";
 import { SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
@@ -18,28 +17,26 @@ import "./group-chat.css";
  *
  * 문법: 사람 말은 오른쪽 말풍선, 지휘관·구성원 말은 왼쪽 말풍선(표식·이름). 구성원끼리 주고받은 전언은 가운데 접힌 한
  * 줄로 두어 사람에게 한 말과 섞이지 않게 한다 — 펼치면 「보낸 메시지 → 수신자 / 본문 / 전달 결과」, 그 안의 「원장
- * 보기」는 이 자리에서 그 참여자의 원장만 읽기 전용으로 보인다. 진행 줄은 일하는 참여자를 모두 쌓아 보인다.
+ * 보기」는 이 자리에 그 참여자의 원장(기존 채팅 본문 전체)을 읽기 전용으로 세운다(`GroupLedgerFrame`). 원장은 걸러 낸
+ * 요약이 아니다 — 고르는 일은 셸의 구성원 본문 선택이 지고, 이 컴포넌트는 그 문을 콜백으로 받는다.
+ * 진행 줄은 일하는 참여자를 모두 쌓아 보인다.
  *
- * 쓰기(정지·사령관 기록 열기)는 콜백 자리만 둔다. 콜백이 없으면 그 단추도 서지 않는다 — 눌리는 척하지 않는다.
+ * 쓰기(정지·사령관 기록 열기·원장 열기)는 콜백 자리만 둔다. 콜백이 없으면 그 단추도 서지 않는다 — 눌리는 척하지 않는다.
  */
 export interface GroupConversationProps {
   readonly snapshot: GroupTimelineSnapshot;
   readonly language: ConsoleLocale | undefined;
+  /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
+  readonly onOpenLedger?: (operationId: string) => void;
   /** 진행 줄 표식을 눌러 그 참여자만 멈춘다(임무 16에서 연결). */
   readonly onStopParticipant?: (speaker: ConversationSpeaker) => void;
   /** 사령관 행위 줄에서 사령관 기록의 그 턴을 연다(사령관 배치 작업에서 연결). */
   readonly onOpenCommodoreRecord?: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void;
 }
 
-export function GroupConversation({ snapshot, language, onStopParticipant, onOpenCommodoreRecord }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord }: GroupConversationProps) {
   const t = getGroupT(language);
-  const root = snapshot.rootOperationId;
-  const focus = useGroupLedgerFocus(root);
-  const focusSpeaker = focus ? findSpeaker(snapshot, focus) : null;
-  const entries = React.useMemo(
-    () => (focus ? snapshot.entries.filter((entry) => inLedger(entry, focus)) : snapshot.entries),
-    [snapshot.entries, focus],
-  );
+  const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
   const last = entries[entries.length - 1];
@@ -50,19 +47,13 @@ export function GroupConversation({ snapshot, language, onStopParticipant, onOpe
     const log = logRef.current;
     if (log && nearBottomRef.current) log.scrollTop = log.scrollHeight;
   }, [growth]);
-  // 원장 보기로 들어가고 나올 때는 처음부터 다시 바닥에 선다.
-  React.useLayoutEffect(() => {
-    nearBottomRef.current = true;
-    const log = logRef.current;
-    if (log) log.scrollTop = log.scrollHeight;
-  }, [focus]);
 
   const unavailableNames = snapshot.unavailableOperationIds
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
 
   return (
-    <div className={`group-chat${focus ? " is-ledger" : ""}`}>
+    <div className="group-chat">
       <div
         ref={logRef}
         className="group-chat-log"
@@ -75,12 +66,6 @@ export function GroupConversation({ snapshot, language, onStopParticipant, onOpe
         }}
       >
         <div className="group-chat-column">
-          {focusSpeaker ? (
-            <div className="group-chat-banner" role="status">
-              <SpeakerMark speaker={focusSpeaker} size="sm" />
-              <span>{t("group.ledger.banner", { name: focusSpeaker.name })}</span>
-            </div>
-          ) : null}
           {snapshot.truncated ? <p className="group-chat-notice">{t("group.truncated")}</p> : null}
           {snapshot.unavailableOperationIds.length > 0 ? (
             <p className="group-chat-notice">
@@ -95,34 +80,42 @@ export function GroupConversation({ snapshot, language, onStopParticipant, onOpe
               entry={entry}
               previous={entries[index - 1]}
               language={language}
-              root={root}
+              onOpenLedger={onOpenLedger}
               onOpenCommodoreRecord={onOpenCommodoreRecord}
             />
           ))}
         </div>
       </div>
-      {focus && root ? (
-        <div className="group-chat-return">
-          <button type="button" className="group-chat-return-button" onClick={() => setGroupLedgerFocus(root, null)}>
-            {t("group.ledger.back")}
-          </button>
-        </div>
-      ) : (
-        <GroupWorkingLine working={snapshot.working} language={language} onStop={onStopParticipant} />
-      )}
+      <GroupWorkingLine working={snapshot.working} language={language} onStop={onStopParticipant} />
     </div>
   );
 }
 
-/** 이 참여자의 원장에 드는 줄 — 그가 받은 말, 그가 한 말, 그가 주고받은 전언, 그의 합류·제거. */
-function inLedger(entry: GroupTimelineEntry, operationId: string): boolean {
-  switch (entry.kind) {
-    case "message": return entry.operationId === operationId;
-    case "delegation": return entry.sender.operationId === operationId || entry.recipients.some((recipient) => recipient.operationId === operationId);
-    case "member-joined":
-    case "member-left": return entry.speaker.operationId === operationId;
-    case "board-action": return false;
-  }
+/**
+ * 한 참여자의 원장을 그룹 대화 자리에 세우는 틀 — 위에 「읽기 전용」 머리, 가운데 그 Operation 의 기존 본문(셸이 주는
+ * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널), 아래에 「대화로 돌아가기」.
+ * 본문은 셸의 기존 구성원 본문 경로가 그리므로 이 틀은 연결을 만들지 않는다. 사람 입력창은 서지 않는다 — 구성원 본문에는
+ * 처음부터 입력 틀이 없다.
+ */
+export function GroupLedgerFrame({ speaker, language, onBack, children }: {
+  readonly speaker: ConversationSpeaker;
+  readonly language: ConsoleLocale | undefined;
+  readonly onBack: () => void;
+  readonly children: React.ReactNode;
+}) {
+  const t = getGroupT(language);
+  return (
+    <div className="group-ledger">
+      <div className="group-ledger-head" role="status">
+        <SpeakerMark speaker={speaker} size="sm" />
+        <span>{t("group.ledger.banner", { name: speaker.name })}</span>
+      </div>
+      <div className="group-ledger-body">{children}</div>
+      <div className="group-chat-return">
+        <button type="button" className="group-chat-return-button" onClick={onBack}>{t("group.ledger.back")}</button>
+      </div>
+    </div>
+  );
 }
 
 function findSpeaker(snapshot: GroupTimelineSnapshot, operationId: string): ConversationSpeaker | null {
@@ -146,16 +139,16 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, language, root, onOpenCommodoreRecord }: {
+function TimelineEntry({ entry, previous, language, onOpenLedger, onOpenCommodoreRecord }: {
   readonly entry: GroupTimelineEntry;
   readonly previous: GroupTimelineEntry | undefined;
   readonly language: ConsoleLocale | undefined;
-  readonly root: string | null;
+  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
 }) {
   switch (entry.kind) {
     case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} language={language} />;
-    case "delegation": return <DelegationLine entry={entry} language={language} root={root} />;
+    case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
     case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} />;
@@ -196,10 +189,10 @@ function MessageBubble({ entry, continued, language }: {
   );
 }
 
-function DelegationLine({ entry, language, root }: {
+function DelegationLine({ entry, language, onOpenLedger }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "delegation" }>;
   readonly language: ConsoleLocale | undefined;
-  readonly root: string | null;
+  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
 }) {
   const t = getGroupT(language);
   const names = entry.recipients.map((recipient) => recipient.name).join(", ");
@@ -224,10 +217,10 @@ function DelegationLine({ entry, language, root }: {
         <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
         <span className="group-chat-line-label">{t("group.delegation.result")}</span>
         <div className="group-chat-line-result">{entry.result.trim() || t("group.delegation.pending")}</div>
-        {root && ledgers.length > 0 ? (
+        {onOpenLedger && ledgers.length > 0 ? (
           <div className="group-chat-line-actions">
             {ledgers.map((speaker) => (
-              <button key={speakerKey(speaker)} type="button" className="group-chat-link" onClick={() => setGroupLedgerFocus(root, speaker.operationId!)}>
+              <button key={speakerKey(speaker)} type="button" className="group-chat-link" onClick={() => onOpenLedger(speaker.operationId!)}>
                 {t("group.delegation.openLedger", { name: speaker.name })}
               </button>
             ))}
