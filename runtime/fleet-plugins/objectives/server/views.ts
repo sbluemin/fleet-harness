@@ -139,6 +139,9 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
         return {
           id: member.id,
           role: member.role,
+          launch: member.launch.mode === "model"
+            ? { mode: member.launch.mode, model: member.launch.model, ...withoutEmpty({ effort: member.launch.effort }) }
+            : { mode: member.launch.mode },
           ...withoutEmpty({ brief: member.brief, model: member.model, effort: member.effort }),
           by: member.by,
           subagents: member.subagents,

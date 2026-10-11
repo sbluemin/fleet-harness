@@ -1876,8 +1876,12 @@ describe("Objectives contract", () => {
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["planned"] }));
     // 라우팅으로 뜰 구성원은 개시 전 routing 판단을 거친다 — 판단 없이는 띄우지 않고, 개시는 보여 준 결과 그대로 띄운다.
     expect(await refusal(commodore, { action: "commence", objectiveId: id })).toBe("routing_preview_stale");
-    // 지휘관이 고른 모델은 설정값이다 — 구성원 launch 가 model 로 저장되고, 생략한 구성원만 route 로 남아 라우팅 판단을 받는다.
-    expect(store.find(id)!.members.map((m) => m.launch)).toEqual([{ mode: "model", model: "sonnet[1m]", effort: "low" }, { mode: "route" }]);
+    // 지휘관은 기동 전 보드 읽기에서 고른 설정과 라우팅을 구별한다. 설정을 실행값 model/effort로 가장하지 않는다.
+    const memberBoard = (await command("read", {}, id)).objective as { members: readonly Record<string, unknown>[] };
+    expect(memberBoard.members.map(({ launch, model, effort }) => ({ launch, model, effort }))).toEqual([
+      { launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, model: undefined, effort: undefined },
+      { launch: { mode: "route" }, model: undefined, effort: undefined },
+    ]);
     const routed = await board({ action: "routing", objectiveId: id });
     expect(routed.members).toEqual([expect.objectContaining({ role: "reviewer" })]);
     expect(judged.join("\n")).not.toContain("Commander's proposed model");
