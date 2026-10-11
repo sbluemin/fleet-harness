@@ -4163,7 +4163,8 @@ button.status-glyph.is-actionable:focus-visible {
   background: var(--hairline-strong);
 }
 
-/* 구성원 글리프 표식 — MemberMark와 동일한 톤(--id-*)과 형태(역할 첫 글자) */
+/* 첫 글자 표식 — Operation 이 없는 그룹 대화 발화자와 「모두」 후보의 자리(speaker-mark·group-composer). 구성원은 정체성 톤(--id-*)을 쓴다.
+   Operation 이 있는 지휘관·구성원은 몽글 아바타로 선다. */
 .cluster-member-glyph {
   --member-tone: var(--id-teal);
   position: relative;
@@ -4190,53 +4191,6 @@ button.status-glyph.is-actionable:focus-visible {
 .cluster-member-glyph.is-tone-rose { --member-tone: var(--id-rose); }
 .cluster-member-glyph.is-tone-indigo { --member-tone: var(--id-indigo); }
 .cluster-member-glyph.is-tone-crimson { --member-tone: var(--id-crimson); }
-
-/* 지휘관 글리프 표식 — Objectives 패널 CoordGlyph와 일치 */
-.cluster-member-glyph.is-commander {
-  border-color: var(--hairline-strong);
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  color: var(--text-primary);
-}
-
-.cluster-member-glyph.is-commander svg {
-  display: block;
-  width: 11px;
-  height: 11px;
-}
-
-/* 상태 배지 점 — 글리프 우하단에 서서 신호 토큰으로 상태를 말한다 */
-.cluster-member-status {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  box-sizing: border-box;
-  box-shadow: 0 0 0 1px var(--surface-panel);
-  transition: transform 160ms var(--ease-spring), border-radius 160ms var(--ease-spring), background 160ms var(--ease-spring);
-}
-
-.cluster-member-status.is-running { background: var(--warn); }
-.cluster-member-status.is-done,
-.cluster-member-status.is-idle { background: var(--positive); }
-.cluster-member-status.is-blocked,
-.cluster-member-status.is-ended { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-.cluster-member-status.is-open { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-
-/* 입력 대기는 원점의 정적 마름모로 구별한다 — 지속 맥동이나 글로우 없음. */
-.cluster-member-status.is-awaiting {
-  border-radius: 1.5px;
-  transform: rotate(45deg);
-  background: var(--aurora);
-  box-shadow: 0 0 0 1.5px var(--surface-panel);
-  /* scale만 입장 애니메이션이 소유한다. transform을 점유하면 해소 시 회전 전환이 스냅된다. */
-  animation: cluster-await-in 240ms var(--ease-spring) 1 backwards;
-}
-@keyframes cluster-await-in {
-  from { scale: 0.4; opacity: 0; }
-  to { scale: 1; opacity: 1; }
-}
 
 /* 지휘관·임무 칩 사이의 구성원만 가로로 이동한다. */
 .cluster-node-members {
@@ -7549,14 +7503,11 @@ body[data-companion-resizing="true"] .canvas-operation {
 .cluster-strip-step.is-done { background: var(--positive); }
 @keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .cluster-strip-step.is-awaiting,
-  .cluster-member-status.is-awaiting { animation: none; }
-  .cluster-member-status { transition: none; }
+  .cluster-strip-step.is-awaiting { animation: none; }
 }
 @media (forced-colors: active) {
   .cluster-node-tab.is-awaiting:not(.is-current),
   .cluster-node-scroll.has-awaiting { border-color: Highlight; }
-  .cluster-member-status.is-awaiting { background: Highlight; forced-color-adjust: none; }
 }
 
 /* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
