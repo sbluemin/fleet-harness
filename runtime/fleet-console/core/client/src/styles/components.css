@@ -7072,8 +7072,10 @@ body[data-companion-resizing="true"] .canvas-operation {
   color: var(--ink-muted);
 }
 
-.side-bar-cluster-row--minimized .side-bar-cluster-row-glyph,
-.side-bar-chip--minimized .side-bar-chip-status {
+/* 치워둠 감쇠는 쉬는 얼굴(대기·끝남·완료·시작 전)에만 — 일하거나 사람을 부르는 아바타는 창을 치워도 상태를
+   말하는 표식이라 히어로와 같은 몸 색으로 선다. 끝남·완료·시작 전의 차분함은 .mongle-avatar 의 fill 규칙이 따로 소유한다. */
+.side-bar-cluster-row--minimized .side-bar-cluster-row-glyph .mongle-avatar:is(.is-idle, .is-ended, .is-done, .is-fresh),
+.side-bar-chip--minimized .side-bar-chip-status:is(.is-idle, .is-ended, .is-done, .is-fresh) {
   opacity: 0.62;
 }
 
