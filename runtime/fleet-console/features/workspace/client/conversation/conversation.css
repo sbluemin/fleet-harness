@@ -404,6 +404,39 @@
   white-space: nowrap;
 }
 
+/* 대화 행의 제목은 Theater 이름과 같은 최고 명도 잉크다 — 활성·고름·최소화는 면 워시·점선·아바타 감쇠가 말하고 이름 잉크를
+   바꾸지 않는다. 사용자 accent 는 정체성 채널이라 그대로 이름을 칠한다. */
+.side-bar-cluster-row--conversation:not([style*="--user-accent"]) .side-bar-cluster-row-title,
+.side-bar-chip--conversation:not([style*="--user-accent"]) .side-bar-chip-name {
+  color: var(--text-primary);
+}
+
+/* 목표 줄의 둘째 줄 — 단계·기한·주의 메모가 상태 문구 앞에 같은 크기로 서고, 한 줄을 넘으면 상태 문구만 말줄인다. */
+.side-bar-cluster-row-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.side-bar-cluster-row-lead {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.side-bar-cluster-row-lead.is-late {
+  color: var(--coral);
+}
+
+.side-bar-cluster-row-lead.is-warn {
+  color: var(--warn-ink);
+}
+
 /* ── 오른쪽 세부 정보 머리: Grok Bot 세부 정보와 같은 구성 ─────────────────────────────
    맨 위 줄(52px, Desktop 에서 창을 끄는 자리)에 작전구역 도구 글리프와 닫기 원형 단추, 그 아래 가운데에 지금 대상의 표식·이름,
    그 아래 대상의 글자 탭(Grok 의 세부 정보 세그먼트 자리). 바탕은 대화와 같은 면이고 경계·그라디언트를 두지 않는다. */
