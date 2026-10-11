@@ -391,13 +391,12 @@ function ConversationPanelIdentity() {
   if (descriptor !== null && surface !== null) {
     const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const;
     const avatar = descriptor.avatar?.(context) ?? null;
-    const renameSurface = descriptor.rename;
     return (
       <div className="conversation-panel-identity">
         {avatar
           ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
-        <PanelIdentityName title={descriptor.title(context)} onRename={renameSurface ? (next) => renameSurface(context, next) : undefined} />
+        <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
       </div>
     );
   }
