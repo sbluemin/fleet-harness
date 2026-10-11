@@ -2,14 +2,15 @@ import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
+import { useConsoleState, useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 import { useAgentState } from "../../../execution/client/agent/store.js";
 import { readAgentChatSessionCoordinates } from "../../../execution/client/agent/chat/session-coordinates.js";
 import type { OperationWorkspace } from "../../../execution/client/agent/types.js";
-import { OperationStatusIcon } from "../../../execution/client/components/operation-status-icon.js";
 import { locationLine } from "../../../execution/client/components/operation-workspace-context.js";
 import type { OperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { clusterFaceFacts, mongleStateOfMark, operationMongleState, OperationAvatar } from "../avatars.js";
+import { useOperationClusters } from "../operation-clusters.js";
 
 const GAP_PX = 10;
 const EDGE_PX = 8;
@@ -47,6 +48,12 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
   // 열린 카드 하나만 세션 스토어를 구독한다 — 점마다 구독하면 지도 전체가 세션 갱신마다 다시 그려진다.
   const workspace: OperationWorkspace | null = useAgentState().sessions[operation.id]?.workspace ?? null;
   const theaterLabel = useTheaterLabel(operation.theaterId);
+  const consoleState = useConsoleState();
+  const clusters = useOperationClusters();
+  // 얼굴은 지도 마커와 같은 마크 축이다. 모름(런타임을 아직 못 읽음)은 마크가 없어 공개 활동 축으로 그린다 — 글자가 모름을 말한다.
+  const face = status === "unknown"
+    ? operationMongleState(operation.id, consoleState, clusters)
+    : mongleStateOfMark(status, clusterFaceFacts(clusters, operation.id));
   const coordinates = readAgentChatSessionCoordinates(operation.payload);
   const location = workspace?.outside
     ? workspace.folder ? t("canvas.fleetMap.detail.outside", { folder: `…/${workspace.folder}` }) : null
@@ -94,9 +101,7 @@ export function FleetMapDetailCard({ id, operation, status, anchor, bounds, obst
       <div className="operation-detail-row">
         <span className="operation-detail-key">{t("sidebar.chip.detail.status")}</span>
         <span className={`operation-detail-value fleet-map-detail-status is-${status}`}>
-          {status === "unknown"
-            ? <span className="status-glyph" aria-hidden="true" />
-            : <OperationStatusIcon status={status} decorative />}
+          <OperationAvatar operation={operation} state={face} size={16} label="" decorative />
           {t(`canvas.fleetMap.detail.status.${status}`)}
         </span>
       </div>

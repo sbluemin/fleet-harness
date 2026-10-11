@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
+import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
 
 import { useT } from "../../i18n/index.js";
 import { pushBackLayer } from "./mobile-back.js";
@@ -12,7 +12,7 @@ const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "
 
 /**
  * 상단 막대 — 높이 56, 면 없이 화면 배경 그대로. 내용은 화면이 올린다(`claimMobileBar`): 왼쪽 ≡ 또는 ‹,
- * 가운데(또는 Operation의 왼쪽) 제목, 오른쪽 문맥 동작과 ⋮. 확인 필요가 있으면 ≡ 위에 점이 선다.
+ * 가운데(또는 Operation 아바타 오른쪽) 제목, 오른쪽 문맥 동작과 ⋮. 확인 필요가 있으면 ≡ 위에 점이 선다.
  */
 export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean }) {
   const t = useT();
@@ -32,7 +32,7 @@ export function MobileTopBar({ attentionDot }: { readonly attentionDot: boolean 
   const actionsCount = (bar.actions?.length ?? 0) + (bar.menu ? 1 : 0);
   const title = bar.variant === "operation" ? (
     <h1 className="mobile-top-bar-title is-left">
-      {bar.glyph ? <span className={statusGlyphClassName(bar.glyph)} aria-hidden="true" /> : null}
+      {bar.avatar ? <OperationStatusIcon operation={bar.avatar.operation} status={bar.avatar.mark} size={24} decorative /> : null}
       <span className="mobile-top-bar-copy">
         <span className="mobile-top-bar-name">{bar.title}</span>
         {bar.subtitle ? <small>{bar.subtitle}</small> : null}

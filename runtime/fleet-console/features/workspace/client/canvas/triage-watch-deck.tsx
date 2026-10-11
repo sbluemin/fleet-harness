@@ -6,8 +6,7 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { getIdleArrivalIds, useOperationStatusDetails } from "../../../execution/client/operation-marks.js";
 import { resolveOperationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../../../execution/client/operation-activity.js";
-import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
+import { TheaterAvatar } from "../theater-avatar.js";
 import type { OperationGeometry, OperationNode, OperationGroup } from "../../../../core/client/src/integration/types.js";
 import { flattenGroupedOrder, operationOrderFromNodes, revealOperationStage } from "../../../../core/client/src/integration/store.js";
 import { FleetMap, type FleetMapDotMark } from "./fleet-map.js";
@@ -980,7 +979,7 @@ export function TriageWatchDeck({
     }
     // 엿보기는 점과 이름표를 함께 비켜 선다 — 점만 비키면 틀이 그 점의 이름을 덮는다.
     const dot = element.getBoundingClientRect();
-    const label = element.querySelector(".canvas-fleet-map-dot-label")?.getBoundingClientRect() ?? dot;
+    const label = element.querySelector(".canvas-fleet-map-marker-label")?.getBoundingClientRect() ?? dot;
     const left = Math.min(dot.left, label.left);
     const right = Math.max(dot.right, label.right);
     setQuickLook((current) => current?.operationId === operationId ? null : { operationId, anchor: new DOMRect(left, dot.top, right - left, dot.height) });
@@ -1054,7 +1053,7 @@ export function TriageWatchDeck({
               onContextMenu={(event) => openTheaterMenu(band.theater, event)}
             >
               <header className="canvas-triage-deck-band-head">
-                <span className="canvas-triage-deck-band-chip" aria-hidden="true"><TheaterMonogram>{theaterInitials(band.theater.label)}</TheaterMonogram></span>
+                <TheaterAvatar theaterId={band.theater.id} size={18} label="" decorative className="canvas-triage-deck-band-chip" />
                 <span className="canvas-triage-deck-band-label">{band.theater.label}</span>
                 <span className="canvas-triage-deck-band-rule" aria-hidden="true" />
                 <span className="canvas-triage-deck-band-counts">

@@ -4,8 +4,9 @@ import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-co
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { operationMarkVisual, resolveOperationActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, getOperationStatusDetailSnapshot } from "../../../execution/client/operation-marks.js";
-import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { TheaterMonogram } from "../sidebar/theater-monogram.js";
+import { clusterFaceFacts, mongleStateOfMark, OperationAvatar } from "../avatars.js";
+import { TheaterAvatar } from "../theater-avatar.js";
+import { useOperationClusters } from "../operation-clusters.js";
 import type { OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { resolveFleetMapDriftStyle, resolveFleetMapMarkerLayout, resolveFleetMapZoneLayout, type FleetMapKeepOut } from "./fleet-map-layout.js";
 import { FleetMapDetailCard, type FleetMapDetailStatus } from "./fleet-map-detail-card.js";
@@ -96,6 +97,7 @@ export function FleetMap({
   onTheaterContextMenu,
 }: FleetMapProps) {
   const t = useT();
+  const clusters = useOperationClusters();
   const idleArrivalIds = getIdleArrivalIds();
   // 판의 크기 — 구역 원 배치가 픽셀 겹침과 독 자리를 피하는 데 쓴다. 첫 프레임은 잰 뒤에 앉힌다.
   const plateRef = useRef<HTMLDivElement | null>(null);
@@ -124,7 +126,7 @@ export function FleetMap({
     const bounds = element.getBoundingClientRect();
     const dots = Array.from(element.querySelectorAll<HTMLElement>("[data-fleet-map-dot]"), (dot) => {
       const rect = dot.getBoundingClientRect();
-      const label = dot.querySelector<HTMLElement>(".canvas-fleet-map-dot-label");
+      const label = dot.querySelector<HTMLElement>(".canvas-fleet-map-marker-label");
       return { id: dot.dataset.fleetMapDot ?? "", left: rect.left, right: rect.right, center: rect.top + rect.height / 2, natural: label ? Math.min(LABEL_MAX_PX, label.scrollWidth) : 0, start: false };
     });
     for (const dot of dots) if (dot.natural > 0) dot.start = dot.right + LABEL_GAP_PX + dot.natural > bounds.right - 4;
@@ -368,7 +370,7 @@ export function FleetMap({
       <button
         key={marker.operationId}
         type="button"
-        className={`canvas-fleet-map-dot is-${visual}${markClass}${mark ? " is-marked" : ""}${peekOperationId === operation.id ? " is-peeked" : ""}${labelLayout.get(operation.id)?.start ? " is-label-start" : ""}`}
+        className={`canvas-fleet-map-marker is-${visual}${markClass}${mark ? " is-marked" : ""}${peekOperationId === operation.id ? " is-peeked" : ""}${labelLayout.get(operation.id)?.start ? " is-label-start" : ""}`}
         data-fleet-map-dot={marker.operationId}
         // 점은 캔버스 제스처의 대상이 아니다 — 여기서 시작한 포인터는 팬·생성으로 흐르지 않는다.
         data-canvas-blocker
@@ -392,8 +394,11 @@ export function FleetMap({
           onActivate(operation.id, event.currentTarget);
         }}
       >
-        <span className="canvas-fleet-map-dot-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
-          {mark ? <b className="canvas-fleet-map-dot-mark">{markLabel(mark)}</b> : null}{operation.title}
+        {/* 점의 상태는 이 Operation 의 몽글 아바타가 얼굴로 말한다 — 사이드바 칩과 같은 마크 축·같은 묶음 사실이다.
+            버튼이 이름을 말하므로 아바타는 장식이다. */}
+        <OperationAvatar operation={operation} state={mongleStateOfMark(visual, clusterFaceFacts(clusters, operation.id))} size={18} label="" decorative className="canvas-fleet-map-marker-face" />
+        <span className="canvas-fleet-map-marker-label" style={labelLayout.has(operation.id) ? { maxWidth: `${labelLayout.get(operation.id)!.max}px` } : undefined}>
+          {mark ? <b className="canvas-fleet-map-marker-mark">{markLabel(mark)}</b> : null}{operation.title}
         </span>
       </button>
     );
@@ -439,7 +444,7 @@ export function FleetMap({
                   전 Theater를 한 판에 얹으므로 이름표는 문이 아니라 지명이다(누름 없음). */}
               <header className="canvas-fleet-map-zone-head">
                 <span className="canvas-fleet-map-zone-title">
-                  <span className="canvas-fleet-map-zone-chip" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(band.theater.label)}</TheaterMonogram></span>
+                  <TheaterAvatar theaterId={band.theater.id} size={18} label="" decorative className="canvas-fleet-map-zone-chip" />
                   <span className="canvas-fleet-map-zone-label">{band.theater.label}</span>
                 </span>
                 <span className="canvas-fleet-map-zone-counts">

@@ -15,10 +15,10 @@ import { pushMobileSheet, setMobileOperationMenu, useMobileOperationMenu } from 
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
 /**
- * An open operation is its body under the top bar the shell draws: the status glyph, the title, a new-Operation
+ * An open operation is its body under the top bar the shell draws: the Operation's avatar, the title, a new-Operation
  * button and a ⋮ menu: rename, whatever the body adds through `mobileOperation.setMenuItems` (the chat/terminal switch,
  * keep-allowing computer use), then archive.
- * When a commander has a member selected (`bodyOperation`), the body, title and glyph are that member's while rename and
+ * When a commander has a member selected (`bodyOperation`), the body, title and avatar are that member's while rename and
  * archive stay with the screen's owner — the same split as the desktop commander panel, whose frame stays its own.
  */
 export function MobileSessionView({ operation, theme, language, active, runtimeState, operationRuntime, operationKinds, capabilities, onActivate, onClose, bodyOperation = null }: {
@@ -104,7 +104,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     variant: "operation",
     title,
     ...(harnessLabel ? { subtitle: harnessLabel } : {}),
-    glyph: mark,
+    avatar: { operation: bodyOwner, mark },
     leading: "menu",
     actions: [{ id: "new", icon: <MobileIcon name="newop" />, label: t("mobile.operations.new"), run: openQuickLaunch }],
     menu: {

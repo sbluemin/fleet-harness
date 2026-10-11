@@ -17,7 +17,6 @@ html[data-mobile-scheme="light"] .mql-input { background: var(--m-surface); }
 .mql-chips .mql-theater-chip { flex: 0 1 auto; min-width: 0; max-width: 176px; }
 .mql-chips .mql-model-chip { flex: 0 1 auto; min-width: 0; }
 .mql-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mql-chips .mobile-monogram { flex: none; width: 20px; height: 20px; border-radius: 6px; font-size: .6em; }
 .mql-chip-effort { flex: none; margin-left: 4px; color: var(--m-text-nav); }
 .mql-secnote { margin: 0; padding: 0 2px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .mql-message { margin: 0; padding: 0 2px; color: var(--m-danger); font-size: var(--m-fs-caption); }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds } from "../../../../../features/execution/client/operation-marks.js";
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
+import { OperationStatusIcon } from "../../../../../features/execution/client/components/operation-status-icon.js";
 
 import { useT } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
@@ -46,7 +46,7 @@ export function MobileSearchScreen({ state, scope, onBack }: { readonly state: C
         const theater = state.theaters.find((item) => item.id === operation.theaterId);
         return (
           <button type="button" className="mobile-drawer-row is-tall mobile-search-row" key={operation.id} onClick={() => { setMobileDestination({ kind: "home" }); focusOperation(operation.id); }}>
-            <span className="mobile-drawer-row-glyph"><span className={statusGlyphClassName(mark)} aria-hidden="true" /></span>
+            <span className="mobile-drawer-row-glyph" aria-hidden="true"><OperationStatusIcon operation={operation} status={mark} size={24} decorative /></span>
             <span className="mobile-drawer-row-copy">
               <span className="mobile-drawer-row-title">{operation.title}</span>
               <small className="is-plain">{[theater?.label, t(`mobile.search.state.${mark}`)].filter(Boolean).join(" · ")}</small>

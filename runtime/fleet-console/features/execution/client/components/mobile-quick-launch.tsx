@@ -1,5 +1,5 @@
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
-import { Fragment, useEffect, useRef, useState, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type ChangeEvent, type MutableRefObject, type ReactNode } from "react";
 
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { isFleetMobileShell } from "@fleet-console/link/core";
@@ -7,12 +7,16 @@ import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
-import { MobileMonogram } from "../../../../core/client/src/chrome/mobile/mobile-monogram.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
-import { buildQuickLaunchEffortDeck, isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
+import { isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
+import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
+import { resolveOperationMarkVisual } from "../operation-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
+import { OperationNameMark } from "./operation-name-mark.js";
+import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "./mobile-effort-gate.js";
 import "./mobile-quick-launch.css";
 
 /**
@@ -64,72 +68,15 @@ const CameraIcon = () => (
   </svg>
 );
 
-function Toggle({ on }: { readonly on: boolean }) {
-  return <span className={`mql-toggle${on ? " is-on" : ""}`} aria-hidden="true" />;
-}
-
 function Radio({ on }: { readonly on: boolean }) {
   return <span className={`mql-radio${on ? " is-on" : ""}`} aria-hidden="true" />;
-}
-
-type EffortDeck = ReturnType<typeof buildQuickLaunchEffortDeck>;
-
-/**
- * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Operation 입력창 모델 시트가 같은 규칙을 쓴다.
- * 기본은 일상 단계만 보이고, 「{tiers} 펼치기」를 켜면 게이트 뒤 단계가 탭 끝에 선다. 지금 값이 이미 게이트 단계면
- * 펼친 채로 시작한다(deck이 값으로 문을 붙든다). 펼치기를 끄면 게이트 단은 숨고, 그 단을 고른 상태였으면 바로 아래 일상 단으로 되돌린다.
- */
-export function useMobileEffortGate(
-  row: OperationLaunchVariantRow | null,
-  effort: string | null,
-  autoLabel: string,
-  onEffort: (effort: string | null) => void,
-): { readonly deck: EffortDeck; readonly toggleGate: () => void } {
-  const [opened, setOpened] = useState(false);
-  const deck = buildQuickLaunchEffortDeck(row, effort, autoLabel, "", opened);
-  const toggleGate = () => {
-    if (!deck.gateOpen) { setOpened(true); return; }
-    if (deck.gateHeldByValue && row) {
-      const gated = new Set(row.gatedEfforts ?? []);
-      const everyday = (row.chips ?? []).filter((chip) => !gated.has(chip.id));
-      onEffort(everyday.at(-1)?.id ?? null);
-    }
-    setOpened(false);
-  };
-  return { deck, toggleGate };
-}
-
-/** 「추론 강도」 글자 탭 한 줄 — 고른 칸은 text 600 + 아래 2(S-11b). */
-export function MobileEffortTabs({ deck, label, onPick }: {
-  readonly deck: EffortDeck;
-  readonly label: string;
-  readonly onPick: (effort: string | null) => void;
-}) {
-  return (
-    <div className="mql-efft" role="radiogroup" aria-label={label}>
-      {deck.options.map((option) => (
-        <button key={option.id ?? "auto"} type="button" role="radio" aria-checked={option.checked} className={option.checked ? "is-on" : ""} onClick={() => onPick(option.id)}>{option.label}</button>
-      ))}
-    </div>
-  );
-}
-
-/** 「{tiers} 펼치기」 토글 행 — 고른 모델에 게이트 뒤 단계가 있을 때만 선다. */
-export function MobileEffortGateRow({ deck, onToggle }: { readonly deck: EffortDeck; readonly onToggle: () => void }) {
-  const t = useT();
-  if (!deck.hasGate) return null;
-  return (
-    <button type="button" role="switch" aria-checked={deck.gateOpen} className="mql-gr" onClick={onToggle}>
-      <span className="mql-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
-      <Toggle on={deck.gateOpen} />
-    </button>
-  );
 }
 
 export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
   const t = useT();
   const { inputRef, prompt, theaters, theaterId, groups, selectedRow, effort, onSubmit, onClose } = props;
   const [sub, setSub] = useState<Sub | null>(null);
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
   const inApp = isFleetMobileShell();
@@ -218,7 +165,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       <MobileSheet key="theater" title={t("chrome.quickLaunch.mobile.theater")} onClose={() => setSub(null)} className="mql-sheet">
         {theaters.map((candidate) => (
           <button key={candidate.id} type="button" className="mobile-sheet-row" aria-current={candidate.id === theaterId ? "true" : undefined} onClick={() => { props.onTheater(candidate.id); setSub(null); }}>
-            <MobileMonogram label={candidate.label} toneKey={candidate.id} />
+            <TheaterAvatar theaterId={candidate.id} size={28} label={candidate.label} decorative />
             <span className="mobile-sheet-row-copy">{candidate.label}</span>
             {candidate.id === theaterId ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
           </button>
@@ -286,8 +233,15 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
       const selectable = isMentionSelectable(entry.activity);
       return (
         <button key={`op-${entry.operationId}`} type="button" className="mql-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
-          <MobileMonogram label={entry.theaterLabel} toneKey={entry.theaterId ?? entry.theaterLabel} size={20} />
-          <span className="mql-mention-name">{entry.operationName}</span>
+          {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
+              여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
+          <OperationNameMark
+            operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
+            status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+            size={24}
+           
+          />
+          <span className="mql-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
         </button>
       );
     }),
@@ -339,7 +293,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
         <div className="mql-chips">
           <button type="button" className="mql-circ" data-press="r3" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
           <button type="button" className="mobile-pill-secondary mql-theater-chip" aria-label={theater ? t("chrome.quickLaunch.mobile.theaterChip", { name: theater.label }) : t("chrome.quickLaunch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
-            {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={20} /> : null}
+            {theater ? <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative /> : null}
             <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
           </button>
           <button type="button" className="mobile-pill-secondary mql-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>

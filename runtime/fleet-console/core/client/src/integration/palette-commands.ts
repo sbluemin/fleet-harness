@@ -31,11 +31,11 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
 
 /**
  * 행 글리프 어휘. 모양이 종류를 말하고 색은 상태만 말한다 — 글리프는 한 잉크이고
- * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 사이드바 모노그램(`theater-monogram`),
+ * 선택 행만 brass, 파괴 행만 coral이다. Theater 행은 그 Theater 의 사령관 아바타(`theater-avatar`),
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater-monogram" | "theater-add" | "operation-new"
+  | "theater-avatar" | "theater-add" | "operation-new"
   | "operation-open" | "operation-resume" | "operation-archive" | "operation-rename" | "operation-group" | "operation-accent" | "operation-minimize"
   | "view-minimize-all" | "view-fit" | "view-war-room" | "view-fleet-map" | "view-align-all" | "view-station-keeping" | "view-status-axis"
   | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
@@ -87,8 +87,8 @@ export interface PaletteCommandEntry {
   readonly shortcut?: string;
   /** 대상이 있는 명령의 대상 이름 — 현재 Operation 구역의 행 아래 캡션. */
   readonly subject?: string;
-  /** 「모노그램」 글리프의 재료 — Theater 라벨. */
-  readonly monogramSource?: string;
+  /** 「Theater 아바타」 글리프의 재료 — 그 Theater. */
+  readonly theaterAvatar?: { readonly id: string; readonly label: string };
   /** 「레일 엔트리」 글리프의 재료 — 등록된 아이콘. */
   readonly railIcon?: ReactNode | (() => ReactNode);
 }
@@ -167,7 +167,7 @@ export function buildPaletteCommands(
     push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
   }
   for (const theater of current.theaters) {
-    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === current.activeTheaterId, action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-monogram", monogramSource: theater.label });
+    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === current.activeTheaterId, action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {

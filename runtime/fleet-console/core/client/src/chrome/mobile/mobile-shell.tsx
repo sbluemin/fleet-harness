@@ -1,4 +1,5 @@
 import { pluginRuntimeState } from "../../../../../features/execution/client/operation-activity.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { useEffect, useRef, useState } from "react";
 
 import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -10,7 +11,6 @@ import { openQuickLaunch, selectNestedBody } from "../../integration/store.js";
 import type { OperationNode, OperationNotification } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
-import { MobileMonogram } from "./mobile-monogram.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
@@ -167,7 +167,7 @@ function MobileEmptyHome({ theaterLabel, hasOperations }: { readonly theaterLabe
   }
   return (
     <section className="mobile-empty-home">
-      {theater ? <MobileMonogram label={theater.label} toneKey={theater.id} size={56} /> : null}
+      {theater ? <TheaterAvatar theaterId={theater.id} size={56} label="" decorative /> : null}
       {theaterLabel ? <strong className="mobile-empty-home-name">{theaterLabel}</strong> : null}
       <p>{theaterLabel === null ? t("mobile.home.noTheater") : hasOperations ? t("mobile.home.pick") : t("mobile.home.emptyTheater")}</p>
       {theaterLabel !== null ? (

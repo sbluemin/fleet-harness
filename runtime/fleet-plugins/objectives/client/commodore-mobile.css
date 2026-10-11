@@ -21,12 +21,11 @@
  */
 .objectives-cm-top { flex: none; padding: 0 14px 8px; }
 .objectives-cm .objectives-cm-trow { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 7px 14px 7px 16px; border-radius: 22px; background: var(--m-surface); font-size: var(--m-fs-body); }
-.objectives-cm-trow-ic { display: grid; flex: none; place-items: center; width: 22px; }
+.objectives-cm-trow-ic { display: grid; flex: none; place-items: center; width: 28px; }
 .objectives-cm-trow-tx { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .objectives-cm-trow-tx b { font-size: var(--m-fs-body); font-weight: var(--weight-medium); line-height: 20px; }
-/* 한 줄 블록 — 상태 점과 글이 서로 다른 줄로 갈라지지 않는다(예전 flex-wrap 은 좁은 폭에서 점만 한 줄을 썼다). */
+/* 한 줄 블록 — 상태는 글 한 줄이다. 얼굴은 행 머리의 사령관 아바타가 말한다. */
 .objectives-cm-trow-ds { display: block; overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; white-space: nowrap; text-overflow: ellipsis; }
-.objectives-cm-trow-ds .objectives-m-sg { margin-right: 6px; vertical-align: -1px; }
 .objectives-cm-trow:disabled .objectives-cm-trow-ic,
 .objectives-cm-trow:disabled .objectives-cm-trow-tx { opacity: .45; }
 .objectives-cm-tog { position: relative; flex: none; width: 44px; height: 26px; margin-left: 2px; border-radius: 13px; background: var(--m-chip); }
@@ -86,7 +85,6 @@
 /* 상태 화면 — 불러오는 중 · 빈 기록 · 실험 기능 꺼짐. */
 .objectives-cm-center { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 36px; text-align: center; }
 .objectives-cm-center-text { margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 22px; }
-.objectives-cm-center-text.is-row { display: flex; align-items: center; gap: 8px; }
 .objectives-cm-bigmono { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 16px; background: var(--m-chip); color: var(--m-text-nav); }
 
 /* 지시 · 정보 · 설정 탭 — 카드 화면 문법(.card-pad · .glab · .field · .secnote · .pill2). */

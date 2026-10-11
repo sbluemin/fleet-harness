@@ -32,6 +32,8 @@ export interface OperationSearchEntry {
    */
   readonly launchProvider: LaunchProviderGlyphId | null;
   readonly archived?: boolean;
+  /** 부모 Operation — 행의 아바타 역할(구성원·지휘관)을 사이드바와 같은 규칙으로 정한다. */
+  readonly parentOperationId?: string;
 }
 
 function readSessionModel(payload: Record<string, unknown>): string | null {
@@ -249,6 +251,7 @@ function toOperationSearchEntry(
     pluginId: operation.pluginId,
     activity: resolveOperationActivity(operation, operationRuntime),
     launchProvider: launchProviderFromModelId(readSessionModel(operation.payload)),
+    parentOperationId: operation.parentOperationId,
   };
 }
 

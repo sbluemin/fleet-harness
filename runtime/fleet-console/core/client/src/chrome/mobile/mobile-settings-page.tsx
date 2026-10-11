@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNod
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
-import { statusGlyphClassName } from "@fleet-console/sdk/components/status-glyph";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -207,7 +206,7 @@ export function MobileSettingsPage() {
           <button type="button" className="mobile-console-card" onClick={() => { if (!openConsoleSwitcher()) pushMobileSheet({ kind: "console" }); }}>
             <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />
             <span className="mobile-console-card-copy"><strong>{consoleName}</strong>{consoleAddress === null ? null : <small>{consoleAddress}</small>}</span>
-            <span className="mobile-state-chip"><span className={statusGlyphClassName(connected ? "idle" : "running")} aria-hidden="true" />{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
+            <span className="mobile-state-chip">{t(connected ? "mobile.settings.connected" : "mobile.settings.reconnecting")}</span>
             <MobileIcon name="down" size={18} className="mobile-group-row-caret" />
           </button>
           {groups.map((group) => (

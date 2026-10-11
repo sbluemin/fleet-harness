@@ -1,8 +1,10 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
-import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
+
+import type { OperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
+import type { OperationNode } from "../../integration/types.js";
 
 /**
  * 모바일 셸의 클라이언트 상태. 라우트(/operations·/settings)가 큰 자리를 정하고, 이 스토어는
@@ -159,12 +161,12 @@ export function closeMobileSheets(): void {
 // ── 상단 막대 ────────────────────────────────────────────────────────────
 
 export interface MobileBarState {
-  /** `operation`은 왼쪽 정렬 제목(글리프 + 두 줄), `centered`는 가운데 제목이다. */
+  /** `operation`은 왼쪽 정렬 제목(아바타 + 두 줄), `centered`는 가운데 제목이다. */
   readonly variant: "centered" | "operation";
   readonly title: string;
   readonly subtitle?: string;
-  /** operation 변형의 상태 글리프. */
-  readonly glyph?: StatusGlyphState;
+  /** operation 변형의 아바타 — 그 Operation과 지금 표식(unseen 포함). 얼굴은 막대가 사이드바와 같은 경로로 고른다. */
+  readonly avatar?: { readonly operation: Pick<OperationNode, "id" | "parentOperationId">; readonly mark: OperationMarkVisual };
   readonly leading: "menu" | "back";
   readonly onBack?: () => void;
   /** 화면이 자기 머리를 그릴 때(도구 시트) 막대를 숨긴다. */
@@ -186,7 +188,7 @@ export function useMobileBar(): MobileBarState | null {
 
 function barSignature(state: MobileBarState): string {
   return JSON.stringify({
-    v: state.variant, t: state.title, s: state.subtitle, g: state.glyph, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
+    v: state.variant, t: state.title, s: state.subtitle, g: state.avatar ? [state.avatar.operation.id, state.avatar.operation.parentOperationId ?? null, state.avatar.mark] : null, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
     a: state.actions?.map((action) => [action.id, action.label]),
     m: state.menu ? [state.menu.label, state.menu.caption, state.menu.items.map((item) => [item.id, item.label, item.destructive, item.disabled])] : null,
   });

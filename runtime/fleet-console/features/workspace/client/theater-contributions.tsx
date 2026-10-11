@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheaterSummary, TheaterContribution } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheaterSummary, TheaterContribution, TheaterFace } from "@fleet-console/sdk/plugin";
 import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
+import type { MongleState } from "@fleet-console/sdk/avatars";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
@@ -106,6 +107,34 @@ export function useTheaterContributionMark(theater: ConsoleTheaterSummary, activ
       {owner.mark({ theater, active, language, theaterInbox: scopedTheaterInbox(owner.id) })}
     </PluginErrorBoundary>
   );
+}
+
+/**
+ * 그 Theater 사령관 아바타의 지금 얼굴 — 머리 표식과 같은 사실(상태 얼굴과 꺼짐)을 기여가 값으로 준다(`header.face`). 처음으로
+ * 얼굴을 돌려준 기여가 이기고, 아무도 돌려주지 않으면 null 이다(호스트의 쉼 얼굴). 표식과 같은 구독으로 다시 읽는다.
+ */
+export function useTheaterContributionFace(theaterId: string): TheaterFace | null {
+  const { theaterContributions } = usePluginRegistry();
+  const faces = useMemo(() => theaterContributions.filter((contribution) => contribution.header?.face), [theaterContributions]);
+  const subscribe = useHeaderSubscription(faces);
+  // 기여는 읽을 때마다 새 객체를 줄 수 있다 — 스냅숏은 값을 이은 문자열이라 같은 얼굴이면 다시 그리지 않는다.
+  const read = useCallback(() => {
+    for (const contribution of faces) {
+      try {
+        const face = contribution.header?.face?.(theaterId);
+        if (face != null) return `${face.state}${face.off ? ":off" : ""}`;
+      } catch {
+        // 한 기여의 실패는 다음 기여에게 자리를 넘긴다.
+      }
+    }
+    return null;
+  }, [faces, theaterId]);
+  const snapshot = useSyncExternalStore(subscribe, read, read);
+  return useMemo(() => {
+    if (snapshot === null) return null;
+    const [state, off] = snapshot.split(":");
+    return { state: state as MongleState, off: off === "off" };
+  }, [snapshot]);
 }
 
 /** 이 Theater 의 운영자가 일하는 중인가 — 머리는 Theater 이름에 라이브 물결을 흘린다. */

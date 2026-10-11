@@ -29,6 +29,11 @@
 .objectives-m-grp > .objectives-m-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
 .objectives-m-grp > .objectives-m-row:last-child { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
 .objectives-m-tx { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+/* 행 머리의 몽글 아바타 — 목록 줄은 지휘관, 임무 줄은 맡은 사람. 끝난 임무는 줄 끝 체크가 말하고 글이 물러선다. */
+.objectives-m .objectives-m-row > .objectives-avatar { width: 28px; height: 28px; }
+.objectives-m .objectives-m-row.is-mission > .objectives-avatar { width: 24px; height: 24px; }
+.objectives-m-row.is-done .objectives-m-tx { color: var(--m-text-muted); }
+.objectives-m-mission-done { display: grid; flex: none; place-items: center; color: var(--m-idle); }
 .objectives-m-tx small { display: block; margin-top: 1px; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .objectives-m-tx small.is-awaiting { color: var(--m-awaiting); }
 /* 목록 줄의 구성원 실패 — 확인하지 않은 실패가 남은 동안만(데스크톱 사이드바 줄 메모와 같은 판정). */
@@ -103,6 +108,7 @@
 /* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
 .objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
+.objectives-m-ucard-hd > .objectives-avatar { width: 22px; height: 22px; }
 /* 자율 운영 중 — 머리 오른쪽(남은 시간 칸 자리)의 「사령관이 답하는 중」과 그 아래 설명 줄(S-53 CM-1d). */
 .objectives-m-ucard-handler { margin-left: auto; color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); white-space: nowrap; }
 .objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }
@@ -133,22 +139,6 @@
 .objectives-m .objectives-m-b2:disabled { opacity: .4; cursor: default; }
 .objectives-m-fault { margin: 0; font-size: var(--m-fs-caption); color: var(--m-danger); }
 
-/* 상태 글리프 — 12 원, 테두리 1.5. 모양으로 갈리고 색은 신호 토큰이다. 맥동은 대기 하나뿐. */
-.objectives-m-sg { position: relative; display: inline-block; flex: none; box-sizing: border-box; width: 12px; height: 12px; border: 1.5px solid var(--m-hairline-strong); border-radius: 50%; }
-.objectives-m-sg::before, .objectives-m-sg::after { content: ""; position: absolute; }
-.objectives-m-sg.is-fresh { border-color: var(--m-text-faint); opacity: .7; }
-.objectives-m-sg.is-running { border-color: color-mix(in oklab, var(--m-running) 30%, transparent); }
-.objectives-m-sg.is-running::before { inset: -1.5px; border: 1.5px solid transparent; border-top-color: var(--m-running); border-right-color: var(--m-running); border-radius: 50%; animation: objectives-m-spin 1.4s linear infinite; }
-.objectives-m-sg.is-background { border: 1.5px dashed var(--m-running); }
-.objectives-m-sg.is-awaiting { border-color: var(--m-awaiting); }
-.objectives-m-sg.is-awaiting::before { inset: -1.5px; border-radius: 50%; box-shadow: 0 0 0 3px var(--m-awaiting-glow); animation: objectives-m-breathe 1.8s ease-in-out infinite; }
-.objectives-m-sg.is-awaiting::after, .objectives-m-sg.is-idle::after { top: 50%; left: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; }
-.objectives-m-sg.is-awaiting::after { background: var(--m-awaiting); }
-.objectives-m-sg.is-idle::after { background: var(--m-idle); }
-.objectives-m-sg.is-ended::after { top: 50%; left: 50%; width: 5px; height: 1.5px; margin: -.75px 0 0 -2.5px; border-radius: 1px; background: var(--m-text-faint); }
-.objectives-m-sg.is-review { border-color: var(--m-awaiting); background: var(--m-awaiting-glow); }
-.objectives-m-sg.is-review::after, .objectives-m-sg.is-done::after { left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
-.objectives-m-sg.is-done::after { border-color: var(--m-idle); }
 /* 보조 알약 — 받는 사람 칩, 시트의 「보내기」(.is-inv). */
 .objectives-m-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .objectives-m-sheet-layer button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
@@ -285,9 +275,6 @@ html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m
 @keyframes objectives-m-fade { from { opacity: 0; } }
 @keyframes objectives-m-sheet-in { from { transform: translateY(100%); } }
 @keyframes objectives-m-unfold { from { height: 0; opacity: 0; } }
-@keyframes objectives-m-spin { to { transform: rotate(360deg); } }
-@keyframes objectives-m-breathe { 50% { opacity: .25; } }
 @media (prefers-reduced-motion: reduce) {
-  .objectives-m-sg::before, .objectives-m-sg::after { animation: none !important; }
   .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
 }

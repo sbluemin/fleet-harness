@@ -2,12 +2,11 @@ import type { ReactNode } from "react";
 
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import type { PaletteCommandEntry, PaletteCommandGroup, PaletteGlyphId } from "../../integration/palette-commands.js";
-import { theaterInitials } from "../../../../../features/workspace/client/sidebar/operations-side-bar.js";
-import { TheaterMonogram } from "../../../../../features/workspace/client/sidebar/theater-monogram.js";
+import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 
 /**
  * 팔레트 행·구역 글리프 한 벌. 16px 상자, 1.5px 선, 둥근 끝 — 시작 화면·상태 아이콘과 같은 굵기다.
- * 채운 면은 쓰지 않아 모노그램·상태 마크와 무게가 맞는다. 색은 currentColor 하나뿐이다:
+ * 채운 면은 쓰지 않아 아바타 옆에서 무게가 맞는다. 색은 currentColor 하나뿐이다:
  * 모양이 종류를 말하고, 색은 행의 상태(선택 brass·파괴 coral)만 말한다.
  */
 function Glyph({ children }: { readonly children: ReactNode }) {
@@ -18,7 +17,7 @@ function Glyph({ children }: { readonly children: ReactNode }) {
   );
 }
 
-const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-monogram" | "rail-entry">, ReactNode>> = {
+const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry">, ReactNode>> = {
   "theater-add": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /><path d="M8 5.5v5M5.5 8h5" /></Glyph>,
   "operation-new": <Glyph><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3" /><path d="M4.5 4.5l1.6 1.6M9.9 9.9l1.6 1.6M4.5 11.5l1.6-1.6M9.9 6.1l1.6-1.6" /></Glyph>,
   "operation-open": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M6 10l4-4M6.5 6H10v3.5" /></Glyph>,
@@ -65,16 +64,20 @@ export function PaletteRailIcon({ icon }: { readonly icon: ReactNode | (() => Re
   return <span className="operation-search-command-glyph operation-search-rail-icon" aria-hidden="true">{node ?? LINE_GLYPHS["console-rail"]}</span>;
 }
 
-/** 명령 행의 선행 글리프. Theater는 사이드바 모노그램, 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
+/** 명령 행의 선행 글리프. Theater는 그 Theater 의 사령관 아바타(사이드바 머리와 같은 얼굴), 패널은 레일 엔트리의 등록 아이콘을 그대로 쓴다. */
 export function PaletteCommandGlyph({ command }: { readonly command: PaletteCommandEntry }) {
-  if (command.glyph === "theater-monogram") {
-    return <span className="operation-search-command-glyph operation-search-monogram" aria-hidden="true"><TheaterMonogram compact>{theaterInitials(command.monogramSource ?? command.label)}</TheaterMonogram></span>;
+  if (command.glyph === "theater-avatar") {
+    return (
+      <span className="operation-search-command-glyph" aria-hidden="true">
+        {command.theaterAvatar ? <TheaterAvatar theaterId={command.theaterAvatar.id} size={16} label={command.theaterAvatar.label} decorative /> : null}
+      </span>
+    );
   }
   if (command.glyph === "rail-entry") return <PaletteRailIcon icon={command.railIcon} />;
   return <span className="operation-search-command-glyph" aria-hidden="true">{LINE_GLYPHS[command.glyph]}</span>;
 }
 
 /** Operation 행 동작 띠의 글리프 — 같은 어휘를 쓴다. */
-export function PaletteActionGlyph({ glyph }: { readonly glyph: Exclude<PaletteGlyphId, "theater-monogram" | "rail-entry"> }) {
+export function PaletteActionGlyph({ glyph }: { readonly glyph: Exclude<PaletteGlyphId, "theater-avatar" | "rail-entry"> }) {
   return <span className="operation-search-action-glyph" aria-hidden="true">{LINE_GLYPHS[glyph]}</span>;
 }

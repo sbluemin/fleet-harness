@@ -116,12 +116,14 @@ interface MongleAvatarProps {
   readonly label: string;
   /** 감싼 요소가 이미 이 사실을 접근성 이름으로 말하는 자리 — 중복 낭독을 막는다. */
   readonly decorative?: boolean;
+  /** 운영자가 꺼진 사령관 — 어느 표면에서든 같은 규칙(`.mongle-avatar.is-off`)으로 흐리고 채도를 뺀다. */
+  readonly off?: boolean;
   readonly className?: string;
 }
 
-export function MongleAvatar({ base, tone = null, role, state, size, label, decorative = false, className }: MongleAvatarProps) {
+export function MongleAvatar({ base, tone = null, role, state, size, label, decorative = false, off = false, className }: MongleAvatarProps) {
   const preset = mongleBase(base);
-  const classes = ["mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, className].filter(Boolean).join(" ");
+  const classes = ["mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, off ? "is-off" : null, className].filter(Boolean).join(" ");
   const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": label };
   return (
     <svg className={classes} viewBox="0 0 32 32" width={size} height={size} focusable="false" {...a11y}>
