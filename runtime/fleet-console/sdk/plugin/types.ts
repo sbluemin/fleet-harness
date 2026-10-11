@@ -575,7 +575,11 @@ export interface TheaterContributionContext {
   /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
   readonly active: boolean;
   readonly language: "en" | "ko";
-  /** The host's Theater Inbox, so a row can open its section there. Older hosts have none. */
+  /**
+   * The host's Theater Inbox, scoped to the contributing plugin: `open` takes this plugin's own section id (the `id`
+   * it declared in `theaterInboxSections`), and `read` reports this plugin's sections by that same id. Another owner's
+   * section reads with its canonical id. Older hosts have none.
+   */
   readonly theaterInbox?: ClientTheaterInboxCapability;
 }
 

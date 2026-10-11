@@ -7,11 +7,17 @@ import { usePluginRegistry } from "./plugin-registry.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { createTheaterSettingsInboxSection, THEATER_SETTINGS_SECTION_ID, THEATER_SYSTEM_PROMPT_PAGE_ID } from "../../../../features/settings/client/theater-settings-inbox.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptOpen } from "../../../../features/settings/client/theater-prompt-editor.js";
-import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { closeTheaterInbox, openTheaterInbox, readTheaterInboxState, selectTheaterInboxPage, theaterInboxCapability, theaterInboxReturnTarget, useTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { theaterInitials } from "../../../../features/workspace/client/sidebar/theater-initials.js";
+import { TheaterMonogram } from "../../../../features/workspace/client/sidebar/theater-monogram.js";
 import { TheaterInboxSheet, type ResolvedTheaterInboxSection } from "../../../../features/workspace/client/theater-inbox/theater-inbox-sheet.js";
 
 /** 호스트의 「Theater 설정」 — 정준 id 는 `console:settings`. 플러그인 섹션은 그 뒤에 등록 순서로 선다. */
-const SETTINGS_SECTION: ResolvedTheaterInboxSection = { id: `console:${THEATER_SETTINGS_SECTION_ID}`, descriptor: createTheaterSettingsInboxSection() };
+// 「Theater 설정」의 표식은 사이드바 Theater 머리와 같은 모노그램이다 — settings feature 가 workspace 를 가져오지 않게 여기서 넘긴다.
+const SETTINGS_SECTION: ResolvedTheaterInboxSection = {
+  id: `console:${THEATER_SETTINGS_SECTION_ID}`,
+  descriptor: createTheaterSettingsInboxSection({ icon: ({ theater }) => <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram> }),
+};
 const SYSTEM_PROMPT_ADDRESS: TheaterInboxAddress = { sectionId: SETTINGS_SECTION.id, pageId: THEATER_SYSTEM_PROMPT_PAGE_ID };
 
 /**
@@ -66,6 +72,7 @@ export function TheaterInboxHost() {
       navigation={theaterInboxCapability}
       select={selectTheaterInboxPage}
       fallback={SYSTEM_PROMPT_ADDRESS}
+      returnTarget={theaterInboxReturnTarget}
     />
   );
 }

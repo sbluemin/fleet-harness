@@ -27,6 +27,8 @@ export interface TheaterInboxSheetProps {
   readonly select: (address: TheaterInboxAddress) => void;
   /** 다른 섹션을 열 수 없을 때 돌아갈 주소 — 호스트의 시스템 프롬프트 칸. */
   readonly fallback: TheaterInboxAddress;
+  /** 닫을 때 입구가 사라졌으면 포커스를 돌려줄 자리(그 Theater 의 머리) — 사이드바가 명시적으로 넘긴 것만. */
+  readonly returnTarget: (theaterId: string) => HTMLElement | null;
 }
 
 /**
@@ -42,8 +44,6 @@ const SHEET_SIZE_KEY = "fleet.objectives.commodore.sheetSize";
 const SHEET_RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
 type SheetResizeDir = (typeof SHEET_RESIZE_DIRS)[number];
 const SHEET_FOCUSABLE = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
-/** 시트 안에서 연 메뉴·선택 상자·달력은 body 포털이다 — Tab 순환에 함께 넣는다. */
-const SHEET_PORTALS = '[role="menu"], [role="listbox"], .fc-coord-menu, .fc-select__popup, .objectives-cal';
 
 interface SheetSize { readonly width: number; readonly height: number }
 
@@ -174,10 +174,31 @@ function useSectionStates(sections: readonly ResolvedTheaterInboxSection[], thea
 }
 const LOADING: TheaterInboxSectionState = { availability: "loading", scope: "" };
 
-/** 시트 안을 Tab 으로 돈다 — 시트에서 연 메뉴(body 포털)까지 한 바퀴. */
-function trapSheetFocus(event: KeyboardEvent, sheet: HTMLElement | null): void {
+/**
+ * 시트가 열려 있는 동안 body 에 붙은 요소 — 본문이 연 메뉴·선택 상자·달력(body 포털)이다. 시트는 모달이라 그사이 다른 표면이
+ * 포털을 열 수 없으므로, 열린 뒤에 붙은 것만 이 시트의 포털로 본다. 시트 앞에 이미 있던 문서의 메뉴는 Tab 순환에 넣지 않는다.
+ */
+function useOwnedPortals(): { readonly current: Set<HTMLElement> } {
+  const owned = useRef(new Set<HTMLElement>());
+  useEffect(() => {
+    const set = owned.current;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node instanceof HTMLElement) set.add(node);
+        for (const node of record.removedNodes) if (node instanceof HTMLElement) set.delete(node);
+      }
+    });
+    observer.observe(document.body, { childList: true });
+    return () => { observer.disconnect(); set.clear(); };
+  }, []);
+  return owned;
+}
+
+/** 시트 안을 Tab 으로 돈다 — 이 시트가 연 메뉴(body 포털)까지 한 바퀴. */
+function trapSheetFocus(event: KeyboardEvent, sheet: HTMLElement | null, portals: ReadonlySet<HTMLElement>): void {
   if (!sheet) return;
-  const scopes = [sheet, ...document.querySelectorAll<HTMLElement>(SHEET_PORTALS)];
+  const overlay = sheet.parentElement;
+  const scopes = [sheet, ...[...portals].filter((portal) => portal.isConnected && portal !== overlay)];
   const focusable = scopes.flatMap((scope) => [...scope.querySelectorAll<HTMLElement>(SHEET_FOCUSABLE)])
     .filter((element) => element.tabIndex >= 0 && element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
   if (focusable.length === 0) return;
@@ -199,11 +220,12 @@ const OPEN_POPUP = '[aria-expanded="true"]:is([aria-haspopup], [role="combobox"]
  * 칸 목록으로 나뉘고(제목 붙은 목록 둘), 오른쪽은 고른 칸. 섹션 본문은 처음 들른 뒤 시트가 열린 동안 마운트된 채로 남아,
  * 섹션을 오가도 쓰던 글을 잃지 않는다.
  */
-export function TheaterInboxSheet({ open, theater, sections, language, navigation, select, fallback }: TheaterInboxSheetProps) {
+export function TheaterInboxSheet({ open, theater, sections, language, navigation, select, fallback, returnTarget }: TheaterInboxSheetProps) {
   const t = useT();
   const states = useSectionStates(sections, theater, language);
   const { frame, resize, commit, reset } = useSheetSize();
   const sheetRef = useRef<HTMLElement | null>(null);
+  const ownedPortals = useOwnedPortals();
   const titleRef = useRef<HTMLHeadingElement | null>(null);
   const [visited, setVisited] = useState<ReadonlySet<string>>(() => new Set([open.address.sectionId]));
   const [notice, setNotice] = useState(false);
@@ -240,9 +262,9 @@ export function TheaterInboxSheet({ open, theater, sections, language, navigatio
     navigation.close();
     window.requestAnimationFrame(() => {
       if (canTakeFocus(opener)) { opener.focus({ preventScroll: true }); return; }
-      // 입구가 사라졌으면(접힌 Theater 등) 같은 Theater 의 사이드바 자리로 — 숨은 요소에는 주지 않는다.
-      const row = document.querySelector<HTMLElement>(`.side-bar-theater-contributions[data-theater-id="${CSS.escape(theater.id)}"] button`);
-      if (canTakeFocus(row)) row.focus({ preventScroll: true });
+      // 입구가 없거나 사라졌으면(마우스 우클릭 메뉴의 항목 등) 그 Theater 의 머리로 — 숨은 요소에는 주지 않는다.
+      const head = returnTarget(theater.id);
+      if (canTakeFocus(head)) head.focus({ preventScroll: true });
     });
   };
 
@@ -250,7 +272,7 @@ export function TheaterInboxSheet({ open, theater, sections, language, navigatio
   closeRef.current = close;
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Tab") { trapSheetFocus(event, sheetRef.current); return; }
+    if (event.key === "Tab") { trapSheetFocus(event, sheetRef.current, ownedPortals.current); return; }
     if (event.key !== "Escape" || event.defaultPrevented) return;
     if (sheetRef.current?.querySelector(OPEN_POPUP)) return;
     event.preventDefault();

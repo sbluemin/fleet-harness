@@ -5,8 +5,6 @@ import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
 
 import { getT, useT } from "../../../core/client/src/i18n/index.js";
-import { theaterInitials } from "../../workspace/client/sidebar/theater-initials.js";
-import { TheaterMonogram } from "../../workspace/client/sidebar/theater-monogram.js";
 import type { ClaudeCodeSystemPromptMode } from "./execution-settings.js";
 import {
   isOverPromptLimit,
@@ -29,11 +27,12 @@ const sectionStates = new Map<string, TheaterInboxSectionState>();
  * Theater Inbox 의 「Theater 설정」 — 이 Theater 에서 여는 Claude Code 세션의 시스템 프롬프트와 서브에이전트.
  * 플러그인이 아니라 호스트의 기본 섹션이라, 사령관(실험 기능)이 꺼져 있거나 플러그인이 빠져도 남는다.
  */
-export function createTheaterSettingsInboxSection(): TheaterInboxSectionDescriptor {
+export function createTheaterSettingsInboxSection({ icon }: { readonly icon: TheaterInboxSectionDescriptor["icon"] }): TheaterInboxSectionDescriptor {
   return {
     id: THEATER_SETTINGS_SECTION_ID,
     title: (language) => getT(language)("theaterInbox.settings.title"),
-    icon: ({ theater }) => <TheaterMonogram compact>{theaterInitials(theater.label)}</TheaterMonogram>,
+    // 표식은 합성 쪽이 넘긴다(사이드바 Theater 머리와 같은 모노그램) — 이 feature 는 다른 feature 를 가져오지 않는다.
+    icon,
     pages: [
       { id: THEATER_SYSTEM_PROMPT_PAGE_ID, title: (language) => getT(language)("sidebar.theater.prompt.title"), applies: (language) => getT(language)("theaterInbox.applies.prompt") },
       { id: THEATER_SUBAGENTS_PAGE_ID, title: (language) => getT(language)("sidebar.theater.subagents.title"), applies: (language) => getT(language)("theaterInbox.applies.subagents") },
@@ -61,14 +60,21 @@ function TheaterSettingsInboxBody({ context }: { readonly context: TheaterInboxB
     onDiscarded: () => navigation.close(),
   });
   const promptVisible = visible && pageId === THEATER_SYSTEM_PROMPT_PAGE_ID;
+  const subagentsVisible = visible && pageId === THEATER_SUBAGENTS_PAGE_ID;
+  // controller(쓰던 글·대기 저장)는 이 본문에 남고, 보이지 않는 칸의 화면만 내린다 — 모드 선택 상자는 body 포털이라
+  // 숨김만으로는 닫히지 않고, 가려진 채 고르면 보이지 않는 칸에 저장된다.
   return (
     <>
-      <div className="theater-prompt-page" hidden={!promptVisible}>
-        <TheaterPromptPage context={context} controller={controller} visible={promptVisible} focusRequest={focusRequest} operatorDirective={links.operatorDirective} />
-      </div>
-      <div className="theater-prompt-page" hidden={!(visible && pageId === THEATER_SUBAGENTS_PAGE_ID)}>
-        {controller.forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} titled={false} />}
-      </div>
+      {promptVisible ? (
+        <div className="theater-prompt-page">
+          <TheaterPromptPage context={context} controller={controller} visible focusRequest={focusRequest} operatorDirective={links.operatorDirective} />
+        </div>
+      ) : null}
+      {subagentsVisible ? (
+        <div className="theater-prompt-page">
+          {controller.forgotten ? null : <TheaterSubagentsSection key={theater.id} theaterId={theater.id} titled={false} />}
+        </div>
+      ) : null}
     </>
   );
 }

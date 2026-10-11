@@ -15,8 +15,9 @@ vi.mock("../core/client/src/hooks/use-store.js", () => ({ useTheaterLabel: (id: 
 import { useTheaterPromptController, type PromptTheater, type TheaterPromptController } from "../features/settings/client/theater-prompt-editor.js";
 
 /**
- * Theater Inbox 에서 프롬프트 편집은 섹션·Theater 이동과 시트 닫기를 지나도 살아야 한다. 1초 자동 저장을 기다리는 글이
- * 다른 Theater 로 바뀌거나 닫힐 때 버려지거나 새 Theater 에 저장되면 사람이 쓴 지침을 잃는다(저장 무결성).
+ * Theater Inbox 의 프롬프트 controller 는 다른 Theater 로 바뀌거나(본문이 다른 Theater 로 다시 그려질 때) 닫힐 때(언마운트)
+ * 1초 자동 저장을 기다리던 글을 확정해야 한다. 그 글이 버려지거나 새 Theater 에 저장되면 사람이 쓴 지침을 잃는다(저장 무결성).
+ * 이 케이스는 Theater 변경과 언마운트만 재현한다 — 같은 시트 안의 섹션 이동은 controller 를 마운트한 채 두는 다른 경로다.
  */
 describe("Theater prompt controller lifecycle", () => {
   let cleanup: (() => void) | null = null;
