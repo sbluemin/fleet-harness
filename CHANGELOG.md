@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.228.0] - 2026-10-11
+
+### fleet-console
+
+#### Added
+- Send images with messages to the Commodore, from its composer or a group's recipient picker; the log keeps attachment references after delivery.
+- Console now opens in a three-column Conversation view (sidebar, conversation, details), and an objective's commander and members appear as one group chat you can address with @mentions, stop, and answer decisions in. A welcome card introduces it once and offers a way back; you can switch any time with Use the previous layout in Settings > Experiments.
+- In the Conversation view, rename a conversation from its sidebar row with the context menu or F2, or by clicking its name at the top of the details panel.
+- Commodores, commanders, members, and Operations now appear as cute preset avatars across Console, from the sidebar, Quick Launch, the search and command palettes, War Room, the fleet map, and the Theater Inbox to the objective board and the mobile app, in place of the old status circles and Theater initials outside the Operation panel. Their faces and movements show whether they are working, waiting for you, or done; each one draws a character from 15 presets when it first appears, and Settings can calm their movement.
+- In the Conversation view, click the avatar in the details panel or on the Members tab to pick another character or color.
+
+#### Changed
+- The objective details in the Conversation view's right panel no longer repeat the objective's name and status header above its content.
+- Remote access is no longer experimental. It now has its own Remote access page in Settings on desktop and phone, with a calmer, grouped layout.
+- On a phone, the home screen is now a conversation list: conversations that need you come first, the Theater's Commodore sits at the top when autonomy is available, shortcuts reach Objectives, Files, Wiki, Shell and the Archive, search spans every Theater, and a conversation's header opens its info and members. The side drawer is replaced by this home and a settings sheet from your profile picture.
+- Console no longer opens What's new on its own after an update; open it from the system menu whenever you want to read the release notes.
+- Objectives are archived instead of deleted: the Archive button on an objective, including on mobile, and archiving from the sidebar both send it to the archive with its Operation, and restoring brings back its missions and records. The archive lists objectives only as Operations, and previously tidied objectives move there without automatic expiration.
+- An objective that was never started has no Operation to archive, so deleting it is permanent and asks for a second press. Newly merged objectives remain only in the receiving objective's record and cannot be restored independently.
+- Autonomous operation is now a standard feature, available in every Theater without enabling an experiment.
+- The sidebar no longer has a separate Commodore row: each Theater's header shows the Commodore glyph (lit while the Commodore runs it, grey otherwise), and clicking the glyph turns autonomous operation on or off for that Theater.
+- Clicking the current Theater's header now opens its Theater Inbox, at the Commodore log while the Commodore runs it and at the system prompt otherwise. The header's actions button is gone: its actions stay in the right-click menu, New group is also at the bottom of the header's + menu, and Forget Theater is also in the Inbox.
+- Operations that keep working in the background after a turn now show as Running everywhere, instead of a separate Background state.
+
+#### Fixed
+- Clicking a not-yet-started objective in the sidebar now always opens it in the right sidebar instead of the expanded view.
+- Theater names can be dragged in the sidebar to reorder multiple Theaters.
+
+#### Removed
+- Removed the Ledger panel; token spend summaries are no longer shown in the Console, while Usage limits still shows provider quotas.
+
+### fleet-desktop
+
+#### Added
+- In the Conversation view, the window controls sit in the top row of the layout and the top edge of each column drags the window.
+
 ## [1.227.0] - 2026-10-11
 
 ### fleet-console
