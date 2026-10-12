@@ -70,9 +70,10 @@ function commanderProfile(objective: Objective, roster: ModelRoster | null): Con
 
 /** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */
 function launchLine(shown: (t: Translate<ObjectiveMessageKey>) => LaunchShown): NonNullable<ConversationMemberProfile["launch"]> {
-  const { provider, struck, badge } = shown(getT("en"));
+  const { provider, struck, badge, effort } = shown(getT("en"));
   return {
     label: localized((t) => shown(t).label),
+    ...(effort !== null ? { effort: localized((t) => shown(t).effort ?? "") } : {}),
     title: localized((t) => shown(t).title),
     ...(provider ? { provider } : {}),
     ...(struck ? { struck } : {}),

@@ -45,12 +45,13 @@ export interface ConversationMemberProfile {
   /** 맡은 일의 한두 줄 설명. 사람이 쓴 글이라 번역하지 않는다. */
   readonly brief?: string;
   /**
-   * 모델·강도 한 줄(「Opus · HIGH」)과 hover 풀네임, 공급자 글리프.
-   * `struck` — 다음 기동에 쓰이지 않는 값(로스터에서 꺼진 모델)이라 낱말에 취소선을 긋는다. `badge` — 낱말 곁 표식(「꺼짐」·「폴백」).
+   * 모델·강도 한 줄 — `label` 은 모델 낱말(「Opus」), `effort` 는 강도 낱말(「HIGH」, 없으면 말하지 않는다)과 hover 풀네임, 공급자 글리프.
+   * `struck` — 다음 기동에 쓰이지 않는 값(로스터에서 꺼진 모델)이라 모델 낱말에만 취소선을 긋는다. `badge` — 낱말 곁 표식(「꺼짐」·「폴백」).
    * `via` — 그 모델이 어떻게 정해졌는지의 표식(「라우팅」·「폴백」). `tone: "warn"` 은 의도와 다르게 정해진 경우다.
    */
   readonly launch?: {
     readonly label: LocalizedText;
+    readonly effort?: LocalizedText;
     readonly title?: LocalizedText;
     readonly provider?: LaunchProviderGlyphId;
     readonly struck?: boolean;

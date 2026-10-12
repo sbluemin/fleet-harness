@@ -276,17 +276,21 @@ export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, 
 export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
   const groups = toLaunchGroups(roster);
   const display = memberLaunchDisplay(member, launched, t, groups.flatMap((group) => group.rows));
-  if (launched) return { label: display.label, title: display.title, provider: member.model && member.model !== "default" ? providerOfModel(groups, member.model) : null, struck: false, badge: null };
-  if (member.launch.mode !== "model") return { label: display.label, title: display.title, provider: null, struck: false, badge: null };
+  if (launched) {
+    // 보드 행의 LaunchedText 와 같은 낱말 — 이름과 강도를 따로 싣는다.
+    const running = launchedWords(groups.flatMap((group) => group.rows), member.model, member.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
+    return { label: running.words.model, effort: running.words.effort || null, title: display.title, provider: running.model ? providerOfModel(groups, running.model) : null, struck: false, badge: null };
+  }
+  if (member.launch.mode !== "model") return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null };
   const shown = modelCoordinateDisplay(roster, { model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) }, undefined, pickerLabels(t));
-  return { label: coordinateLabel(shown.words), title: display.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+  return { label: shown.words.model, effort: shown.words.effort || null, title: display.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
 }
 
 /** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
 export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
   const { model, effort } = objective.commander;
   const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
-  return { label: coordinateLabel(shown.words), title: shown.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
 }
 
 /**
@@ -294,7 +298,10 @@ export function commanderLaunchShown(objective: Objective, t: Translate<Objectiv
  * 「꺼짐」, 로스터가 비어 최후 폴백으로 서면 「폴백」 표식(badge).
  */
 export interface LaunchShown {
+  /** 모델 낱말 — 선택 방식(라우팅·지휘관과 같게)이면 그 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
   readonly label: string;
+  /** 강도 낱말 — 말하지 않는 행(선택 방식·강도 사다리 없는 모델)이면 null. */
+  readonly effort: string | null;
   readonly title: string;
   readonly provider: LaunchProviderGlyphId | null;
   readonly struck: boolean;
@@ -324,7 +331,6 @@ export function memberFallbackNote(member: ObjectiveMember, launched: boolean, t
 }
 
 const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), fallback: t("objectives.launch.fallback") });
-const coordinateLabel = (words: { readonly model: string; readonly effort: string }) => [words.model, words.effort].filter(Boolean).join(" · ");
 
 /** 한 로케일 값의 낱말을 로케일마다 다시 푼다 — 대화 명부는 호스트의 로케일로 읽는다. */
 export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): LocalizedText => (locale) => word(getT(locale));

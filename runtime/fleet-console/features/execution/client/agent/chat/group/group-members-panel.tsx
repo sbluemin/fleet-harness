@@ -142,12 +142,14 @@ function MemberLaunch({ launch, text }: {
   readonly text: (value: Parameters<typeof resolveLocalizedText>[0]) => string;
 }) {
   const label = text(launch.label);
+  const effort = launch.effort ? text(launch.effort) : "";
   return (
     <span className="group-members-launch">
       {launch.via ? <span className={`group-members-via${launch.via.tone === "warn" ? " is-warn" : ""}`} title={launch.via.title ? text(launch.via.title) : undefined}>{text(launch.via.label)}</span> : null}
-      <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : label}>
+      <span className="group-members-launch-coord" title={launch.title ? text(launch.title) : [label, effort].filter(Boolean).join(" · ")}>
         {launch.provider ? <span className={`operation-launch-provider-glyph fc-coord-trigger-provider is-${launch.provider}`} aria-hidden="true">{launchProviderGlyph(launch.provider)}</span> : null}
         <span className={`group-members-launch-label${launch.struck ? " is-off" : ""}`}>{label}</span>
+        {effort ? <><span className="group-members-launch-dot" aria-hidden="true">·</span><span className="group-members-launch-effort">{effort}</span></> : null}
       </span>
       {launch.badge ? <span className="group-members-launch-badge">{text(launch.badge)}</span> : null}
     </span>
