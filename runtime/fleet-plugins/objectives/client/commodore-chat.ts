@@ -1,7 +1,9 @@
-import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { Objective } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
@@ -87,6 +89,103 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
     });
   }
   return out;
+}
+
+/**
+ * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Operation 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
+ * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 세션 교대·실패는
+ * 노트 줄이다. 보드를 읽기만 한 도구는 Operation 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 사람의 말이 깨운 턴은 그
+ * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
+ * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
+ */
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[]): readonly AgentConversationEntry[] {
+  const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
+  const human: ConversationSpeaker = { kind: "human", name: "Human" };
+  const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
+  const out: AgentConversationEntry[] = [];
+  let turnOpen = false;
+  for (const entry of entries) {
+    switch (entry.kind) {
+      case "wake": {
+        turnOpen = true;
+        if (entry.reasons.every((reason) => reason === "message" || reason.startsWith("message:"))) break;
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t("objectives.commodore.log.woke"), ...entry.reasons.map((reason) => reasonWord(t, reason))].join(" · ") });
+        break;
+      }
+      case "message": {
+        const text = entry.objective ? `[${entry.objective.title} · ${entry.objective.id}]\n${entry.text}` : entry.text;
+        const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
+        out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false,
+          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) });
+        break;
+      }
+      case "text":
+        if (entry.text.trim()) out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: commodore, text: entry.text, format: "markdown", streaming: false });
+        break;
+      case "tool": {
+        if (!entry.action) break;
+        const failed = entry.ok === false ? errorWord(t, entry.error ?? "failed") : null;
+        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: entry.objectiveId ?? "",
+          action: [actionWord(t, entry.action), entry.title, failed].filter(Boolean).join(" · "),
+          text: actionReason(theaterId, objectives, entry) ?? "" });
+        break;
+      }
+      case "result":
+        turnOpen = false;
+        if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }) });
+        break;
+      case "session":
+        turnOpen = false;
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
+        break;
+      case "error": {
+        turnOpen = false;
+        const code = errorWord(t, entry.code);
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }) });
+        break;
+      }
+      case "thinking":
+      case "undelivered":
+      case "wake-scope":
+        break;
+    }
+  }
+  const streamed = turnOpen ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
+  if (streamed) out.push({ kind: "message", id: "live", at: null, operationId: "", speaker: commodore, text: streamed, format: "markdown", streaming: true });
+  return out;
+}
+
+/** 행위 줄을 펼치면 서는 이유 — 보드가 그 행위에 남긴 사령관의 「왜」. 같은 목표·같은 행위 중 시각이 가장 가까운 것(1분 안). */
+function actionReason(theaterId: string, objectives: readonly Objective[], tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string | undefined {
+  const objective = tool.objectiveId ? objectives.find((candidate) => candidate.id === tool.objectiveId) : undefined;
+  if (!objective) return undefined;
+  const mine = (by: unknown): by is { readonly kind: "commodore"; readonly theaterId: string; readonly why?: string } =>
+    typeof by === "object" && by !== null && (by as { kind?: unknown }).kind === "commodore" && (by as { theaterId?: unknown }).theaterId === theaterId;
+  const candidates = tool.action === "answer"
+    ? objective.decisions.flatMap((decision) => (mine(decision.by) ? [{ at: decision.at, why: decision.by.why }] : []))
+    : (objective.actions ?? []).flatMap((action) => (action.kind === tool.action && mine(action.by) ? [{ at: action.at, why: action.by.why }] : []));
+  let best: { readonly at: number; readonly why?: string | undefined } | undefined;
+  for (const candidate of candidates) {
+    const distance = Math.abs(candidate.at - tool.at);
+    if (distance <= 60_000 && (!best || distance < Math.abs(best.at - tool.at))) best = candidate;
+  }
+  return best?.why?.trim() || undefined;
+}
+
+/**
+ * 곁 칸·목표 대화가 가리킨 시각의 줄 — 그 시각 뒤 1분 안의 첫 행위 줄(보드 행위 시각은 기록 줄보다 조금 앞선다), 없으면 그 시각
+ * 이하의 마지막 줄. 기록 창이 그 시각까지 닿지 않으면 null 이다(더 읽어야 한다).
+ */
+export function commodoreConversationTarget(entries: readonly AgentConversationEntry[], at: number): string | null {
+  const action = entries.find((entry) => entry.kind === "board-action" && entry.at !== null && entry.at >= at && entry.at - at <= 60_000);
+  if (action) return action.id;
+  let found: string | null = null;
+  for (const entry of entries) {
+    if (entry.at === null) continue;
+    if (entry.at <= at) found = entry.id;
+    else break;
+  }
+  return found;
 }
 
 /**

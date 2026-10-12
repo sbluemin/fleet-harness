@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
 
-import type { AgentChatTranscriptProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentChatTranscriptProps, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
@@ -303,6 +303,11 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
 /** 호스트의 채팅 턴 렌더러 — Operation 채팅과 같은 컴포넌트다. 설치 전이면 null. */
 export function commodoreTranscriptRenderer(): ComponentType<AgentChatTranscriptProps> | null {
   return installed?.chat.Transcript ?? null;
+}
+
+/** 대화 중심 화면의 대화 렌더러 — Operation 대화와 같은 말풍선 화면(호스트 `ctx.chat.Conversation`). */
+export function commodoreConversationRenderer(): ComponentType<AgentConversationProps> | null {
+  return installed?.chat.Conversation ?? null;
 }
 
 const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;

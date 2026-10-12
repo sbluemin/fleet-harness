@@ -1748,7 +1748,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-clear.is-round:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); background: var(--surface-glass); color: var(--text-primary); outline: none; }
 .objectives-commodore-clear.is-round.is-armed { border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 10%, var(--surface-glass)); color: var(--coral-ink); }
 .objectives-commodore-conversation-status { display: block; min-width: 0; margin-top: 6px; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-conversation .objectives-commodore-foot { padding-inline: 20px; }
 .objectives-commodore-conversation-back {
   display: block;
   margin: 0 auto;
@@ -1763,25 +1762,22 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-conversation-back:hover,
 .objectives-commodore-conversation-back:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); outline: none; }
-.objectives-commodore-conversation .markdown-body { max-inline-size: none; margin-inline: 0; }
-.objectives-commodore-conversation .markdown-body pre,
-.objectives-commodore-conversation .markdown-body pre code,
-.objectives-commodore-conversation .markdown-body .code-block code { white-space: pre-wrap; overflow-x: hidden; overflow-wrap: anywhere; }
-.objectives-commodore-conversation .markdown-body table { overflow-x: hidden; overflow-wrap: anywhere; table-layout: fixed; }
 .objectives-commodore-conversation-tab { height: 100%; min-height: 0; overflow-y: auto; }
 .objectives-commodore-conversation-tab.is-goals { padding: 12px 16px; }
 .objectives-commodore-conversation-tab.objectives-commodore-body { padding: 16px 20px 24px; }
 
-/* 대화 중심 화면의 사령관 — 그룹 대화와 같은 한 면이다. 기록과 아래 입력 캡슐은 가운데 칸을 채운다(Fit, 좌우 여백만 칸 폭을 따른다). */
+/* 대화 중심 화면의 사령관 — Operation 대화와 같은 화면(호스트 대화 렌더러)이다. 그 화면이 이 칸을 채우고, 입력 캡슐은 그 화면의
+   입력 자리(진행 줄 아래)에 그룹 입력창과 같은 좌우 여백·아래 여백으로 선다. */
 .objectives-commodore-conversation { container-type: inline-size; }
-.objectives-commodore-conversation .objectives-commodore-log { width: 100%; box-sizing: border-box; padding-inline: clamp(16px, 4cqi, 48px); padding-top: calc(16px + var(--conversation-overlay-top, 0px)); }
-.objectives-commodore-conversation .objectives-commodore-foot { border-top: 0; display: flex; flex-direction: column; align-items: stretch; padding-inline: clamp(16px, 4cqi, 48px); }
+.objectives-commodore-conversation-log { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.objectives-commodore-conversation .objectives-commodore-foot { flex: none; border-top: 0; display: flex; flex-direction: column; align-items: stretch; padding: 0 clamp(16px, 4cqi, 48px) var(--space-4); }
+.objectives-commodore-conversation .objectives-commodore-failure { margin: 0 0 var(--space-2); }
 .objectives-commodore-conversation .objectives-commodore-composer,
 .objectives-commodore-conversation .objectives-commodore-composer-idle { width: 100%; max-width: none; box-sizing: border-box; }
 .objectives-commodore-conversation .objectives-commodore-composer { min-height: 48px; padding: 7px 7px 7px var(--space-4); border-color: var(--hairline-strong); border-radius: var(--radius-pill); background: var(--surface-panel-raised); }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
-.objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-log { padding-top: 16px; }
+.objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
 
 /* 대화 중심 화면의 시작 전 목표 — 첫 메시지가 없는 대화다. 시작 화면은 칸 가운데에, 꺼 둔 입력 캡슐은 사령관 대화와 같은 자리에 선다. */
 .objectives-fresh-conversation { container-type: inline-size; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }

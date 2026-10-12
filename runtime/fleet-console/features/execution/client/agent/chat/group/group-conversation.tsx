@@ -89,6 +89,16 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     placed.current = { first, height: log.scrollHeight };
   }, [growth]); // eslint-disable-line react-hooks/exhaustive-deps -- growth 가 entries 의 변화를 대신한다.
 
+  // 말풍선 마크다운·첨부·표식은 첫 배치 뒤에 자라기도 한다 — 바닥을 따라가는 중이면 칼럼이 자란 만큼도 따라간다.
+  React.useEffect(() => {
+    const log = logRef.current;
+    const column = log?.firstElementChild;
+    if (!log || !column || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => { if (nearBottomRef.current) log.scrollTop = log.scrollHeight; });
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, []);
+
   // 드러내기 — 그 줄이 아직 없으면(쪽을 읽는 중) 줄이 올 때 다시 찾는다. 찾은 요청만 끝낸다.
   const revealed = React.useRef<number | null>(null);
   React.useEffect(() => {

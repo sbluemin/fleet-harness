@@ -1,17 +1,19 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
 
-import { errorWord } from "./commodore-chat.js";
-import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreLog, CommodoreSettings } from "./commodore-inbox-section.js";
+import { commodoreConversationEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
+import { readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -142,6 +144,14 @@ function failureWord(t: T, error: unknown): string {
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
 }
 
+/** 드러낼 시각이 읽은 기록 창보다 앞이면 이전 쪽을 이만큼까지 더 읽는다 — 한 요청이 기록 전체를 끌어오지 않게. */
+const REVEAL_PAGE_LIMIT = 10;
+
+/**
+ * 가운데 칸의 사령관 대화 — Operation 대화와 같은 화면(호스트 `ctx.chat.Conversation`)이다. 사람의 말·사령관의 글은 말풍선,
+ * 보드에 쓴 행위는 가운데 행위 줄(펼치면 이유, 누르면 그 목표), 세션 교대·실패는 노트 줄이다. 입력·지우기·읽기 전용 돌아가기는
+ * 이 플러그인의 것을 그 화면의 입력 자리에 세운다. 접힌 턴 줄과 곁 칸 이음매는 Inbox 시트의 기록(`CommodoreLog`)에만 남는다.
+ */
 function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { readonly theaterId: string; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
@@ -157,26 +167,75 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
+  const Conversation = commodoreConversationRenderer();
+  const items = useMemo(() => commodoreConversationEntries(t, theaterId, entries, live, board.objectives), [t, theaterId, entries, live, board.objectives]);
+  // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
+  const turning = on && run?.phase === "turn";
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
+  const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
+  const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
+
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const readOlder = () => {
+    if (loadingOlder) return;
+    setLoadingOlder(true);
+    void loadTranscript(theaterId, { older: true }).finally(() => setLoadingOlder(false));
+  };
+  // 곁 칸·목표 대화가 가리킨 시각이 읽은 창보다 앞이면, 그 시각에 닿을 때까지 이전 쪽을 읽는다(상한 있음).
+  const revealPages = useRef<{ nonce: number; pages: number }>({ nonce: -1, pages: 0 });
+  useEffect(() => {
+    if (!reveal || !hasMore || loadingOlder) return;
+    const firstAt = entries[0]?.at;
+    if (firstAt !== undefined && firstAt <= reveal.at) return;
+    if (revealPages.current.nonce !== reveal.nonce) revealPages.current = { nonce: reveal.nonce, pages: 0 };
+    if (revealPages.current.pages >= REVEAL_PAGE_LIMIT) return;
+    revealPages.current.pages += 1;
+    readOlder();
+  }, [reveal, hasMore, entries, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps -- readOlder 는 위 값만 읽는다.
+  const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
+  const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
+  const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
+    label: t("objectives.commodore.trail.open"),
+    open: (entry) => { if (entry.objectiveId) revealObjective({ objectiveId: entry.objectiveId }); },
+  }), [t]);
+
+  // 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 입력 대신 돌아가기가 서고, pill 의 부제가 그 사실을 말한다.
+  const composer = (
+    <footer className="objectives-commodore-foot">
+      {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
+      {readOnly
+        ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("objectives.commodore.conversation.back")}</button>
+        : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} />}
+      <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
+    </footer>
+  );
   return (
     <div className="objectives-commodore-conversation">
-      {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 기록은 그
-          밑으로 흘러 올라간다. 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 pill 의 부제가 그 사실을 말한다. */}
+      {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
+          밑으로 흘러 올라간다. */}
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("objectives.commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
-      <div className="objectives-commodore-body is-log">
-        <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
+      <div className="objectives-commodore-conversation-log">
+        {Conversation ? (
+          <Conversation
+            entries={items}
+            participants={participants}
+            working={working}
+            language={language}
+            theaterId={theaterId}
+            loading={!transcriptLoaded}
+            empty={t("objectives.commodore.log.empty")}
+            older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
+            reveal={revealEntry}
+            openBoardAction={openBoardAction}
+            composer={composer}
+          />
+        ) : composer}
       </div>
-      {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
-      <footer className="objectives-commodore-foot">
-        {readOnly
-          ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("objectives.commodore.conversation.back")}</button>
-          : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} />}
-        <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
-      </footer>
     </div>
   );
 }
