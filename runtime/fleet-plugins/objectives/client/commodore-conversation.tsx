@@ -61,10 +61,15 @@ export function isCommodoreConversationActive(): boolean {
   return port?.isActive() === true;
 }
 
+/** 대화 배치 여부가 바뀌면 깨운다 — 능력이 없는 호스트에서는 아무것도 하지 않는다. */
+export function subscribeCommodoreConversationActive(listener: () => void): () => void {
+  return port?.subscribe(listener) ?? (() => {});
+}
+
 /** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
 export function useCommodoreConversationActive(): boolean {
   return useSyncExternalStore(
-    (listener) => port?.subscribe(listener) ?? (() => {}),
+    subscribeCommodoreConversationActive,
     isCommodoreConversationActive,
     () => false,
   );
