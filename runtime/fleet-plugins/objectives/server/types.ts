@@ -64,7 +64,6 @@ export const MAX_FOLLOWUP_SUMMARY = 160;
 /** 사용자 영향 한 줄 — 사용자가 무엇을 다르게 겪는지. */
 export const MAX_FOLLOWUP_IMPACT = 160;
 export const MAX_FOLLOWUP_BRIEF = 4000;
-export const MAX_FOLLOWUP_CRITERIA = 10;
 export const MAX_FOLLOWUP_EVIDENCE = 5;
 export const MAX_FOLLOWUP_EVIDENCE_TEXT = 300;
 export const MAX_FOLLOWUP_NOTE = 200;
@@ -356,7 +355,7 @@ export interface ObjectiveCriterionProposal {
 
 /**
  * 후속 근거 — 발견 위치. 경로는 Theater 루트 기준 상대 경로만 받는다(절대·`~`·`..` 거절). `command` 의 text 는 지휘관이
- * 쓴 재현 명령 원문이라 브리핑·기준과 같은 본문 경계를 따른다.
+ * 쓴 재현 명령 원문이라 브리핑과 같은 본문 경계를 따른다.
  */
 export type FollowupEvidence =
   | { readonly kind: "file"; readonly path: string; readonly line?: number; readonly note?: string }
@@ -364,8 +363,8 @@ export type FollowupEvidence =
   | { readonly kind: "artifact"; readonly path: string; readonly note?: string };
 
 /**
- * 후속 후보 본문 — 새 목표의 제목·브리핑·기준이 되고, 요약·사용자 영향·근거는 고르는 사람과 새 지휘관이 읽는다.
- * fromMission 은 발견한 이 목표의 임무 id 다(그 뒤 임무가 지워지면 가리킬 곳이 없을 수 있다).
+ * 후속 후보 본문 — 새 목표의 제목·브리핑이 되고, 요약·사용자 영향·근거는 고르는 사람과 새 지휘관이 읽는다.
+ * 기준은 새 목표의 지휘관이 계획 단계에서 제안한다. fromMission 은 발견한 이 목표의 임무 id 다(그 뒤 임무가 지워지면 가리킬 곳이 없을 수 있다).
  */
 export interface FollowupBody {
   readonly title: string;
@@ -373,7 +372,6 @@ export interface FollowupBody {
   readonly userImpact: string;
   readonly fromMission: string;
   readonly brief: string;
-  readonly criteria: readonly string[];
   readonly evidence: readonly FollowupEvidence[];
 }
 
@@ -836,7 +834,6 @@ export interface ObjectiveFollowup {
   /** 발견한 임무 id — 그 임무가 지워졌으면 목록에 없을 수 있다. 폐기 흔적에도 남는다. */
   readonly fromMission: string;
   readonly brief: string;
-  readonly criteria: readonly string[];
   readonly evidence: readonly ObjectiveFollowupEvidenceView[];
   readonly at: number;
   readonly updatedAt: number;
@@ -851,7 +848,7 @@ export interface ObjectiveFollowupBatch {
   readonly items: readonly {
     readonly candidateId: string;
     readonly rev: number;
-    readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly criteria: readonly string[]; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
+    readonly snapshot: { readonly title: string; readonly summary: string; readonly userImpact: string; readonly fromMission: string; readonly brief: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] };
     readonly state: FollowupItemState;
     readonly operationId: string | null;
     readonly error: string | null;
@@ -1153,11 +1150,10 @@ const followupFields = {
   userImpact: oneLine(MAX_FOLLOWUP_IMPACT),
   fromMission: ids,
   brief: z.string().trim().min(1).max(MAX_FOLLOWUP_BRIEF),
-  criteria: z.array(z.string().trim().min(1).max(MAX_CRITERION_TEXT)).min(1).max(MAX_FOLLOWUP_CRITERIA),
   evidence: z.array(followupEvidenceSchema).min(1).max(MAX_FOLLOWUP_EVIDENCE),
 };
 export const followupBodySchema = z.object(followupFields).strict();
-export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), criteria: followupFields.criteria.optional(), evidence: followupFields.evidence.optional() }).strict();
+export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), evidence: followupFields.evidence.optional() }).strict();
 export type FollowupBodyInput = z.output<typeof followupBodySchema>;
 export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */

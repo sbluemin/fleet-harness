@@ -910,9 +910,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       try {
         const existing = store.find(id);
         if (existing && (existing.origin?.objectiveId !== objectiveId || existing.origin.candidateId !== candidateId)) throw new ObjectiveStoreError("objective_id_taken");
+        // 후보·배치 스냅샷에 옛 criteria 가 남아 있어도 새 목표로 옮기지 않는다. 기준은 그 목표의 지휘관이 계획 때 제안한다.
         const created = existing ?? await service.create({
           theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
-          note: entry.snapshot.brief, criteria: entry.snapshot.criteria, addedBy: objectiveId,
+          note: entry.snapshot.brief, addedBy: objectiveId,
           origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
         }, { language: batch.launch.language, actor: batch.by });
         if (!store.find(objectiveId)) {
