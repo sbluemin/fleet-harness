@@ -10,7 +10,7 @@ import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { getGroupT } from "./group-chat-i18n.js";
-import { LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { ledgerTarget, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -175,22 +175,26 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
 
 /**
  * 한 참여자의 원장을 그룹 대화 자리에 세우는 틀 — 위에 「읽기 전용」 머리, 가운데 그 Operation 의 기존 본문(셸이 주는
- * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널). 대화로 돌아가는 길은 오른쪽 「구성원」 탭에서 보고 있는 줄을
- * 다시 누르는 것이다 — 틀 안에 따로 돌아가기 단추를 두지 않는다.
+ * 기본 본문: 채팅이면 도구 스텝까지 담은 구성원 원장, 터미널이면 터미널). 대화로 돌아가는 길은 머리 끝의 「대화로 돌아가기」다 —
+ * 원장은 말풍선 머리에서도 열리고 오른쪽 「구성원」 탭은 닫혀 있거나 다른 탭일 수 있으므로, 돌아갈 단서를 틀 안에 둔다.
+ * 「구성원」 탭에서 보고 있는 줄을 다시 누르는 길도 그대로 남는다. 콜백이 없으면 그 링크는 서지 않는다.
  * 본문은 셸의 기존 구성원 본문 경로가 그리므로 이 틀은 연결을 만들지 않는다. 사람 입력창은 서지 않는다 — 구성원 본문에는
  * 처음부터 입력 틀이 없다.
  */
-export function GroupLedgerFrame({ speaker, language, children }: {
+export function GroupLedgerFrame({ speaker, language, onBack, children }: {
   readonly speaker: ConversationSpeaker;
   readonly language: ConsoleLocale | undefined;
+  /** 원장을 닫고 그룹 대화로 돌아간다. */
+  readonly onBack?: () => void;
   readonly children: React.ReactNode;
 }) {
   const t = getGroupT(language);
   return (
     <div className="group-ledger">
-      <div className="group-ledger-head" role="status">
+      <div className="group-ledger-head">
         <SpeakerMark speaker={speaker} size="sm" />
-        <span>{t("group.ledger.banner", { name: speaker.name })}</span>
+        <span className="group-ledger-banner" role="status">{t("group.ledger.banner", { name: speaker.name })}</span>
+        {onBack ? <button type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}
       </div>
       <div className="group-ledger-body">{children}</div>
     </div>
@@ -248,7 +252,7 @@ function TimelineEntry({ entry, previous, live, participants, language, onOpenLe
   readonly boardActionLabel: string | undefined;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} live={live} participants={participants} language={language} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -272,12 +276,13 @@ function NoteLine({ entry, language }: {
   );
 }
 
-function MessageBubble({ entry, continued, live, participants, language }: {
+function MessageBubble({ entry, continued, live, participants, language, onOpenLedger }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly live: boolean;
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
+  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
 }) {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
@@ -309,9 +314,21 @@ function MessageBubble({ entry, continued, live, participants, language }: {
   // 지휘관·구성원의 응답은 채팅과 같이 마크다운이다. 흐르는 동안에는 글자 단위로 자란다.
   // 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다.
   const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
+  // 머리의 표식·이름은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트 영역이다.
+  // 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
+  const target = continued || !onOpenLedger ? null : ledgerTarget(speaker, participants);
+  const open = target ? () => onOpenLedger!(target) : undefined;
+  const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
+  const mark = continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
+  // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
+  const name = open
+    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
+    : <SpeakerName speaker={speaker} className="group-chat-agent-name" />;
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id} {...(time ? { title: time } : {})}>
-      <span className="group-chat-agent-mark">{continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />}</span>
+      <span className="group-chat-agent-mark">
+        {open ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+      </span>
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (
           <span className="group-chat-agent-name group-chat-agent-via">
@@ -320,7 +337,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
             <SpeakerName speaker={entry.recipient} />
             {via}
           </span>
-        ) : <SpeakerName speaker={speaker} className="group-chat-agent-name" />}
+        ) : name}
         <div className="group-chat-bubble is-agent is-markdown">
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
