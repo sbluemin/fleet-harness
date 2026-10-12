@@ -1265,6 +1265,15 @@ describe("Objectives contract", () => {
     expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: true, hasOperation: true, done: expect.any(Object) });
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
+    // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Operation 으로 보관되고, 복원하면 기록과 함께 돌아온다.
+    const shelved = await launch.create({ theaterId: "t1", title: "Shelve before starting", groupId: null, note: "keep the brief" });
+    expect((await route("objective/archive", { objectiveId: shelved.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasOperation: true, note: "keep the brief" } });
+    expect(launches).toHaveLength(launchedBefore);
+    expect((await route("objective/restore", { objectiveId: shelved.id })).value.objective).toMatchObject({ archived: false, hasOperation: true, note: "keep the brief" });
+    // 플래그 없는 보관(목표 머리의 두 번 확정 삭제)은 그대로 영구 삭제다.
+    const discarded = await launch.create({ theaterId: "t1", title: "Delete before starting", groupId: null });
+    expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: true });
+    expect(store.find(discarded.id)).toBeNull();
   });
 
   it("shows every agent Operation created elsewhere as an objective, including records saved as not enlisted, but not member or plugin Operations", async () => {

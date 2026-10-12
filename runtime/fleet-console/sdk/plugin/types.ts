@@ -357,6 +357,12 @@ export interface ConversationSurfaceDescriptor {
    * Theater 를 세우는데, 이 대화가 가운데 칸에 선 동안 그 섹션 자리에는 이 대화의 탭이 선다(섹션 이름 아래, Theater 설정 곁).
    */
   readonly theater?: (ctx: ConversationSurfaceContext) => { readonly theaterId: string; readonly inboxSection: string } | null;
+  /**
+   * 이 대화가 아직 서지 않은 Operation 대화를 대신하면 그 Operation id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
+   * 오른쪽 패널이 Operation 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
+   * 묶음 대화(`OperationCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
+   */
+  readonly standInOperationId?: (ctx: ConversationSurfaceContext) => string | null;
 }
 
 export interface ClientConversationCapability {
@@ -857,6 +863,11 @@ export interface OperationClusterRow {
   readonly moveToGroup?: (groupId: string | null) => void;
   /** 줄 제목을 그 자리에서 고쳤을 때 — 있으면 호스트가 메뉴 「이름 변경」·F2·제목 더블클릭으로 줄 제목 자리에 인라인 편집을 연다. 제목은 플러그인의 것이라 확정도 플러그인이 한다. */
   readonly rename?: (title: string) => void;
+  /**
+   * 뿌리가 없는 줄(시작 전 목표)을 보관함으로 보낸다 — 있으면 호스트가 그 줄의 우클릭 메뉴 맨 끝에 뿌리 있는 줄과 같은 「보관」을 싣는다.
+   * 보관함에서 복원할 수 있어야 한다(영구 삭제가 아니다). 뿌리가 있으면 호스트가 뿌리 Operation 을 보관하므로 읽지 않는다.
+   */
+  readonly archive?: () => void;
 }
 
 export interface OperationClusterRowNote {

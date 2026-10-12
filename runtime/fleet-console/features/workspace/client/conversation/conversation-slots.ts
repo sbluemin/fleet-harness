@@ -15,7 +15,8 @@ export {
  * 1. 가운데 칸 본문 — `setConversationBodyRenderer`. 기본은 그 Operation 의 기존 본문(채팅·터미널)이다. 렌더러가
  *    `null` 을 돌려주면 기본 본문이 선다. 그룹 대화는 구성원을 가진 Operation 에서만 자기 화면을 돌려주면 된다.
  * 2. 오른쪽 패널 앞 묶음 — `registerConversationOperationTab`(core 레일). 탭은 레일 패널로 서서 독점 슬롯·폭 기억을 받는다.
- *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Operation 을 읽는다.
+ *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Operation 을, `useConversationStandIn()` 으로 플러그인 대화가
+ *    대신하는 아직 서지 않은 Operation 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
@@ -49,6 +50,34 @@ export function useConversationSubject(): OperationNode | null {
     () => subject,
     () => null,
   );
+}
+
+// ── 가운데 칸이 대신하는 Operation ─────────────────────────────────────────
+
+/**
+ * 가운데 칸의 플러그인 대화가 대신하는, 아직 서지 않은 Operation 의 id(`ConversationSurfaceDescriptor.standInOperationId`).
+ * 있으면 오른쪽 패널은 Operation 대화처럼 선다(글자 탭·「구성원」). Operation 대화나 다른 플러그인 대화가 서면 null 이다.
+ */
+let standIn: string | null = null;
+const standInListeners = new Set<() => void>();
+
+export function publishConversationStandIn(next: string | null): void {
+  if (standIn === next) return;
+  standIn = next;
+  for (const listener of standInListeners) listener();
+}
+
+export function getConversationStandIn(): string | null {
+  return standIn;
+}
+
+export function subscribeConversationStandIn(listener: () => void): () => void {
+  standInListeners.add(listener);
+  return () => { standInListeners.delete(listener); };
+}
+
+export function useConversationStandIn(): string | null {
+  return useSyncExternalStore(subscribeConversationStandIn, () => standIn, () => null);
 }
 
 // ── 목표 묶음 ─────────────────────────────────────────────────────────────

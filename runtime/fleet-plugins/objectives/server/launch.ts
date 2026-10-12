@@ -46,8 +46,11 @@ export interface LaunchService {
   resumeFollowups(objectiveId?: string): void;
   /** 후속으로 만든 Operation 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(operationId: string): void;
-  /** Operation이 있으면 보관, 없으면 기동 전 레코드를 영구 삭제한다. */
-  archive(objectiveId: string): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
+  /**
+   * Operation이 있으면 보관, 없으면 기동 전 레코드를 영구 삭제한다. `restorable` 이면 기동 전 목표도 지우지 않고 보관한다 — 지휘관 Operation 을
+   * 휴면 메타데이터로 세운 뒤 보관하므로(기동·모델 없음) 보관함에서 복원하면 휴면 지휘관으로 돌아온다.
+   */
+  archive(objectiveId: string, options?: { readonly restorable?: boolean }): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
   /** 옛 삭제 호출의 호환 경로 — 기동 목표는 반복 호출해도 보관만 한다. */
   remove(objectiveId: string): Promise<Objective>;
   /** 옛 removed 레코드를 같은 ID의 dormant Operation 보관으로 이관한다. */
@@ -507,6 +510,17 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const migrateRemoval = async (id: string): Promise<void> => {
     const current = objective(id);
     if (!current.removed && !(current.done && store.pending(id))) return;
+    await archiveCommanderRecord(id);
+    if (current.removed) store.migratedRemoval(id);
+    else store.launched(id);
+    store.refresh(id);
+  };
+  /**
+   * 목표의 지휘관 Operation 을 보관한다 — 아직 없으면(기동 전) 같은 ID·소유 표식의 휴면 메타데이터로 먼저 세운다. 모델·자격증명·Agent 기동에
+   * 의존하지 않는다. 레코드 쪽(pending·removed) 정리는 부르는 쪽이 보관이 확정된 뒤에 한다.
+   */
+  const archiveCommanderRecord = async (id: string): Promise<void> => {
+    const current = objective(id);
     if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
     const config = store.pending(id);
     const key = `objectives.commander:${id}`;
@@ -517,7 +531,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
     if (!existing) {
       if (!config) throw new ObjectiveStoreError("unknown_operation");
-      // 이관은 모델·자격증명·Agent 기동에 의존하지 않는다. 공개 Operation 저장 포트로 휴면 메타데이터만 만든다.
+      // 이관·보관은 모델·자격증명·Agent 기동에 의존하지 않는다. 공개 Operation 저장 포트로 휴면 메타데이터만 만든다.
       try {
         const created = ctx.host.operations.create({ id, theaterId: config.theaterId, type: "agent", pluginId: null,
           title: config.title, createdAt: config.createdAt,
@@ -536,9 +550,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
     // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·소유 표식으로 재시도한다.
     await ctx.host.operations.archive(id).catch(asStoreError);
-    if (current.removed) store.migratedRemoval(id);
-    else store.launched(id);
-    store.refresh(id);
   };
   const operationIntent = (id: string, action: "archive" | "ensure-active") => {
     if (pending.has(id) || pending.has(`${id}:muster`)) throw new ObjectiveStoreError("objective_busy");
@@ -1249,7 +1260,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
     },
 
-    archive: (objectiveId) => orderedOperationRequest(objectiveId, async () => {
+    archive: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = objective(objectiveId);
       const config = store.pending(objectiveId);
@@ -1260,7 +1271,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       }
       // 옛 정리 데이터는 새 pending 삭제 정책보다 먼저 무손실 이관한다.
       if (current.removed) await migrateRemoval(objectiveId);
-      else if (!referenceNode(objectiveId)) {
+      else if (!referenceNode(objectiveId) && options?.restorable) {
+        // 사람이 「보관」을 고른 기동 전 목표 — 지우지 않고 휴면 지휘관으로 보관한다. 복원하면 휴면 지휘관 줄로 돌아온다.
+        await archiveCommanderRecord(objectiveId);
+        store.launched(objectiveId);
+      } else if (!referenceNode(objectiveId)) {
         store.removePending(objectiveId);
         service.followupTargetChanged(objectiveId);
         return { objective: current, deleted: true };

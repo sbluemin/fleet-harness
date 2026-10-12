@@ -13,7 +13,7 @@ import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
-import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -206,7 +206,21 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...(review ? { review: (language: "en" | "ko") => reviewObjective(objective, language) } : {}),
     moveToGroup: (groupId: string | null) => moveObjective(objective, groupId),
     rename: (title: string) => renameObjective(objective, title),
+    // Operation 이 아직 없는 목표도 우클릭 「보관」으로 보관함에 보낸다 — 뿌리가 선 줄은 호스트가 그 Operation 을 보관한다.
+    ...(objective.hasOperation ? {} : { archive: () => archiveObjective(objective) }),
   };
+}
+
+/**
+ * 시작 전 목표의 「보관」 — 지우지 않고(restorable) 휴면 지휘관으로 보관함에 넣는다. 복원하면 휴면 지휘관 줄로 돌아온다. 보관 DTO(archived)는
+ * upsert 가 활성 목록에서 거둔다. 목표 머리의 「영구 삭제」(두 번 확정)는 restorable 없이 같은 경로를 쓴다.
+ */
+function archiveObjective(objective: Objective): void {
+  const api = objectivesApi();
+  if (!api) return;
+  void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: objective.id, restorable: true })
+    .then((result) => { if (result?.objective) upsertObjectiveLocally(result.objective); })
+    .catch(() => undefined);
 }
 
 /** 줄 제목을 고쳤을 때 — 상세 머리의 제목과 같은 `/objective/patch` 경로이며, 비었거나 그대로면 보내지 않는다. */

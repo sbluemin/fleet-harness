@@ -1,4 +1,4 @@
-import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
+import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
@@ -6,10 +6,13 @@ import { getState, selectNestedBody, subscribe as subscribeConsole } from "../..
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { OperationNode } from "../../../../../../core/client/src/integration/types.js";
 import {
+  getConversationStandIn,
   getConversationSubject,
   registerConversationOperationTab,
   setConversationBodyRenderer,
+  subscribeConversationStandIn,
   subscribeConversationSubject,
+  useConversationStandIn,
   useConversationSubject,
   type ConversationBodyContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
@@ -68,9 +71,11 @@ const MEMBERS_TAB = {
 };
 function syncMembersTab(): void {
   // 목표가 아닌 1:1 채팅에는 명부가 없다 — 탭을 세우지 않는다. 지휘관은 구성원이 아직 없어도 자기 줄이 있다.
+  // 플러그인 대화는 아직 서지 않은 Operation 을 대신할 때만(시작 전 목표) 그 명부로 탭을 세운다.
   const subject = getConversationSubject();
-  const rootId = subject ? subject.parentOperationId ?? subject.id : null;
-  const hidden = getConversationSurface() !== null || rootId === null || !hasRoster(rootId);
+  const standIn = getConversationStandIn();
+  const rootId = standIn ?? (subject ? subject.parentOperationId ?? subject.id : null);
+  const hidden = (getConversationSurface() !== null && standIn === null) || rootId === null || !hasRoster(rootId);
   if (hidden && releaseMembersTab) { releaseMembersTab(); releaseMembersTab = null; }
   if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationOperationTab(MEMBERS_TAB);
 }
@@ -81,6 +86,7 @@ function ensureMembersTab(): void {
   // 대화 표면·가운데 칸의 주인·명부가 바뀔 때만 다시 고른다. 레일 목록 변화는 이 셋을 바꾸지 않으므로 설치 재실행 고리가 없다.
   subscribeConversationSurface(syncMembersTab);
   subscribeConversationSubject(syncMembersTab);
+  subscribeConversationStandIn(syncMembersTab);
   subscribeConsole(syncMembersTab);
   subscribeGroupClusters(syncMembersTab);
 }
@@ -180,9 +186,31 @@ function MemberLedger({ root, member, language, children }: {
 }
 
 function MembersTab({ ctx }: { readonly ctx: RailPanelContext }) {
+  const standIn = useConversationStandIn();
+  const language = ctx.language ?? "en";
+  return standIn !== null ? <StandInMembersTab rootId={standIn} language={language} /> : <OperationMembersTab language={language} />;
+}
+
+/**
+ * 아직 서지 않은 Operation(시작 전 목표의 지휘관 자리)을 대신하는 대화의 명부 — 같은 구성원 패널에 지휘관과 명부의 구성원이 시작 전으로
+ * 선다. 원장이 없으므로 줄은 단추가 아니다. 지휘관은 개시하면 이 id 로 서므로 그 자리의 얼굴(아바타 키)이 그대로 이어진다.
+ */
+function StandInMembersTab({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
+  const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
+  const clusters = useGroupClusters();
+  const t = getGroupT(language);
+  const participants = React.useMemo<readonly ConversationParticipant[]>(() => (
+    snapshot.participants.some((participant) => participant.speaker.kind === "commander")
+      ? snapshot.participants
+      : [{ speaker: { kind: "commander", name: t("group.commander"), operationId: rootId }, activity: "unknown" }, ...snapshot.participants]
+  ), [rootId, snapshot.participants, t]);
+  if (!clusters.some((cluster) => cluster.conversation?.operationId === rootId)) return <p className="group-members-empty">{t("group.members.none")}</p>;
+  return <GroupMembersPanel snapshot={{ ...snapshot, participants }} language={language} ledgerOperationId={null} notStarted />;
+}
+
+function OperationMembersTab({ language }: { readonly language: "en" | "ko" }) {
   const subject = useConversationSubject();
   const state = useConsoleState();
-  const language = ctx.language ?? "en";
   // 구성원의 본문을 보고 있어도 탭은 그 루트의 명부를 보인다.
   const root = subject ? (subject.parentOperationId ? state.operations.find((operation) => operation.id === subject.parentOperationId) ?? subject : subject) : null;
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root?.id ?? null), language);
