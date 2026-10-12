@@ -155,7 +155,10 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   return out;
 }
 
-/** 행위 줄을 펼치면 서는 이유 — 보드가 그 행위에 남긴 사령관의 「왜」. 같은 목표·같은 행위 중 시각이 가장 가까운 것(1분 안). */
+/**
+ * 행위 줄을 펼치면 서는 이유 — 보드가 그 행위에 남긴 사령관의 「왜」. 같은 목표에서 이 사령관이 한 행위 중 시각이 가장 가까운 것(1분 안).
+ * 도구의 action 낱말과 보드의 행위 kind 는 같지 않을 수 있어(edit_brief → edit) kind 로 거르지 않는다. 결정 응답은 결정 기록에서 찾는다.
+ */
 function actionReason(theaterId: string, objectives: readonly Objective[], tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string | undefined {
   const objective = tool.objectiveId ? objectives.find((candidate) => candidate.id === tool.objectiveId) : undefined;
   if (!objective) return undefined;
@@ -163,7 +166,7 @@ function actionReason(theaterId: string, objectives: readonly Objective[], tool:
     typeof by === "object" && by !== null && (by as { kind?: unknown }).kind === "commodore" && (by as { theaterId?: unknown }).theaterId === theaterId;
   const candidates = tool.action === "answer"
     ? objective.decisions.flatMap((decision) => (mine(decision.by) ? [{ at: decision.at, why: decision.by.why }] : []))
-    : (objective.actions ?? []).flatMap((action) => (action.kind === tool.action && mine(action.by) ? [{ at: action.at, why: action.by.why }] : []));
+    : (objective.actions ?? []).flatMap((action) => (mine(action.by) ? [{ at: action.at, why: action.by.why }] : []));
   let best: { readonly at: number; readonly why?: string | undefined } | undefined;
   for (const candidate of candidates) {
     const distance = Math.abs(candidate.at - tool.at);
