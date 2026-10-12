@@ -13,6 +13,10 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 | Menus, dialogs, tray, native Browser view visibility, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
 | Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
 
+## Evidence order
+
+Judge a claim first from values CDP and the main inspector return: DOM and `eval` results, renderer viewport, window and content bounds, `getZoomFactor`, and view order and bounds. Use OS-composited pixels, inspector crops, the occlusion check, and OS focus or input only for a claim those values cannot settle, such as native menus and dialogs, compositor output, or real focus. The OS-dependent items need an unlocked screen; a locked one leaves them unverified, while CDP values still count. On a locked screen also record `document.visibilityState`, and treat a value that depends on the page rendering or being visible (animation frames, focus, intersection) as unverified rather than read from a hidden renderer. Never pass a pixel claim through CDP values instead.
+
 ## Execution
 
 1. Apply `runtime/fleet-desktop/CLAUDE.md` and build Console/Desktop from the target checkout. Inspect existing user apps and locks without modifying them.
