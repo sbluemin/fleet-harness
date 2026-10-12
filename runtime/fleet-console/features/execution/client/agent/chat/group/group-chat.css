@@ -105,11 +105,10 @@
 .group-chat-agent.is-continued { margin-top: calc(var(--space-2) * -1); }
 .group-chat-agent-mark { display: flex; align-self: end; padding-bottom: 2px; }
 .group-chat-agent-box { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.group-chat-agent-name { font-size: var(--t-sm); padding-left: var(--space-1); }
-
 /*
  * 발화자 → 원장. 이름·아바타가 한 대상이라 hover 는 둘을 함께 밝힌다. 잉크(톤)는 그대로, 밑줄 없음 — 이름은 링크 낱말이
  * 아니라 신원 칩이다. 원장 머리의 「대화로 돌아가기」도 같은 면·반경·전환을 쓴다.
+ * 버튼 초기화는 `.group-chat-agent-name` 보다 앞에 둔다 — 같은 특이도라 뒤에 오면 `font: inherit` 가 이름의 글자 크기를 덮는다.
  */
 .group-chat-speaker-hit,
 .group-ledger-back {
@@ -122,17 +121,19 @@
   border-radius: var(--radius-xs);
   transition: background var(--duration-fast) var(--ease-glide), box-shadow var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-/* 기존 padding-left(--space-1) 자리를 버튼이 대신 진다. */
-.group-chat-speaker-hit.is-name { align-self: flex-start; padding: 1px var(--space-1); }
+.group-chat-agent-name { font-size: var(--t-sm); padding-left: var(--space-1); }
+/* 기존 padding-left(--space-1) 자리를 버튼이 대신 진다. 세로 padding 은 두지 않는다 — 이름 줄 높이가 버튼 아닌 이름과 같아야 말풍선이 뜨지 않는다. */
+.group-chat-speaker-hit.is-name { align-self: flex-start; padding: 0 var(--space-1); }
 /* 보드 행위 줄(via)은 바깥 칸이 이미 padding-left 를 지므로 글자 자리를 그대로 둔다. */
 .group-chat-agent-via > .group-chat-speaker-hit.is-name { margin-left: calc(var(--space-1) * -1); }
 /* .group-chat-mark 의 7px 과 같은 모서리. */
 .group-chat-speaker-hit.is-mark { position: relative; display: flex; border-radius: 7px; }
 .group-chat-agent:has(.group-chat-speaker-hit:hover) .group-chat-speaker-hit.is-name { background: var(--control-wash-hover); }
 .group-chat-agent:has(.group-chat-speaker-hit:hover) .group-chat-speaker-hit.is-mark { box-shadow: 0 0 0 3px var(--control-wash-hover); }
-.group-chat-speaker-hit.is-name:active,
-.group-chat-agent:has(.group-chat-speaker-hit.is-mark:active) .group-chat-speaker-hit.is-name { background: var(--control-wash); }
-.group-chat-speaker-hit:focus-visible,
+/* 누름 — hover 규칙과 같은 특이도로 그 뒤에 두어, 이름을 누르든 아바타를 누르든 이름 면이 한 단 짙어진다. */
+.group-chat-agent:has(.group-chat-speaker-hit:active) .group-chat-speaker-hit.is-name { background: var(--control-wash); }
+/* 이름 아래 말풍선과의 틈이 3px 이라 링(2px)과 offset 을 합쳐 그 안에 든다. */
+.group-chat-speaker-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
 .group-ledger-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 /* 22px 아바타는 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
 @media (pointer: coarse) {
