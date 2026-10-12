@@ -8,10 +8,14 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 
 | Claim | Read before execution |
 |---|---|
-| Setup and ownership for every Desktop run | [Setup](desktop/setup.md) |
+| Setup, ownership, window size, and viewport emulation for every Desktop run | [Setup](desktop/setup.md) |
 | Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](desktop/shell-cdp.md) |
 | Menus, dialogs, tray, native Browser view visibility, quit/relaunch, sidecar/lock, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
 | Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
+
+## Evidence order
+
+Judge a claim first from values CDP and the main inspector return: DOM and `eval` results, renderer viewport, window and content bounds, `getZoomFactor`, and view order and bounds. For a visual claim about what the Console page shows, a CDP screenshot of the Console renderer is the primary evidence. Use OS-composited pixels, inspector crops, the occlusion check, and OS focus or input only for a claim those cannot settle, such as native menus and dialogs, a native Browser view, compositor output, or real focus. The OS-dependent items need an unlocked screen; a locked one leaves them unverified, while CDP values still count. On a locked screen also record `document.visibilityState`, and treat a value that depends on the page rendering or being visible (animation frames, focus, intersection) as unverified rather than read from a hidden renderer. A renderer screenshot taken there counts only when `document.visibilityState` read with it is `"visible"`, the image is not a single flat color, and its content matches the DOM read at the same time; otherwise that capture is unverified. Never pass a claim that needs OS-composited pixels through CDP values or a renderer screenshot instead.
 
 ## Execution
 

@@ -28,7 +28,7 @@ Why not `press`: on macOS, agent-browser 0.27.0 `press Escape` flooded thousands
 
 ## Coarse pointer and touch holder
 
-CDP emulation overrides belong to the session that set them, and they are cleared the moment that session detaches. A one-shot script that sets `pointer: coarse` and then exits leaves the page fine-pointer again. Earlier runs lost this state and restarted sessions repeatedly because of it. Keep one holder alive for the whole scenario:
+CDP emulation overrides belong to the session that set them. With agent-browser 0.27.0 on headless Chrome, touch and media overrides like this holder's were cleared the moment that session detached; on Desktop, follow [Viewport emulation](desktop/setup.md#viewport-emulation) for what is and is not known about detach. A one-shot script that sets `pointer: coarse` and then exits leaves the page fine-pointer again. Earlier runs lost this state and restarted sessions repeatedly because of it. Keep one holder alive for the whole scenario:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/cdp-input.mjs hold \
