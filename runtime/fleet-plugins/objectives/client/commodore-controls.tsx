@@ -55,7 +55,6 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         off: t("objectives.launch.off"),
         fallback: t("objectives.launch.fallback"),
       }}
-      menuClassName="objectives-commodore-coord-menu"
       trigger={{ variant: "field" }}
     />
   );
