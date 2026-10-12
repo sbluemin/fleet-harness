@@ -25,7 +25,7 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionFace, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { isConversationLayoutActive } from "../../../settings/client/use-conversation-layout.js";
@@ -1793,11 +1793,6 @@ function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
   const mark = useTheaterContributionMark(contributionSummary, active);
   const live = useTheaterHeaderLive(theater.id);
-  // 사령관 카드는 자율 운영 꺼짐을 회색으로 죽이지 않고 아바타 모서리의 작은 「꺼짐」 표식으로 말한다(표식 단추의 이름이 같은 사실을 읽어 준다).
-  const face = useTheaterContributionFace(theater.id);
-  const offBadge = card && face?.off === true
-    ? <span className="side-bar-theater-off" aria-hidden="true">{t("sidebar.theater.autonomyOff")}</span>
-    : null;
   // Inbox 를 닫을 때 입구(우클릭 메뉴 항목 등)가 사라졌으면 포커스가 이 머리로 돌아온다.
   useTheaterInboxReturnTarget(theater.id, () => activateRef.current);
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
@@ -1873,7 +1868,6 @@ function TheaterSectionHeader({
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
       <TheaterAvatar theaterId={theater.id} size={card ? 32 : 18} label="" decorative />
-      {offBadge}
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
@@ -1899,7 +1893,6 @@ function TheaterSectionHeader({
           onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) select(); }}
         >
           {mark}
-          {offBadge}
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </span>
       ) : null}
