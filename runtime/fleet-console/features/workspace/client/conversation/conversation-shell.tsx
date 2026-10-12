@@ -113,23 +113,32 @@ function useToggleDetails(operationConversation: boolean): () => void {
 }
 
 /**
- * Operation 을 고르면(가운데 칸의 대상이 바뀌면) 패널이 대상의 탭(구성원)을 보이던 중이어도 탭 줄 맨 앞의 목표로 돌린다.
- * 닫힌 패널은 열지 않고, 대상의 탭이 아닌 패널(설정 등)과 목표 도구가 없는 경우는 그대로 둔다.
+ * 가운데 칸의 대상이 Operation(아직 서지 않은 Operation 을 대신하는 시작 전 목표 포함)으로 바뀌면(Operation 을 고르거나 사령관 같은
+ * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다.
+ * 닫혀 있었으면 열지 않는다. 열려 있었고 앞 대상의 탭(구성원·사령관 탭·Theater 설정)을 보이던 중이면 탭 줄 맨 앞의 목표로 돌린다 —
+ * 그 탭이 대상과 함께 걷히며 패널을 이미 닫았어도(대화 칸의 cleanup 은 이 effect 보다 먼저 돈다) 다시 연다. Theater 를 연 채 대상이
+ * 바뀌면 Theater 는 곧 걷히므로 그 경우도 Operation 대화로 다룬다. 대상의 탭이 아닌 패널(설정, 목표 등 도구)과 목표 도구가 없는
+ * 경우는 그대로 둔다.
  */
-function useLeadTabOnSubjectChange(subjectId: string | null, operationConversation: boolean): void {
+function usePanelFollowsSubject(subjectId: string | null): void {
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
+  // 대상이 바뀌는 렌더는 앞 대상의 탭이 걷히기(cleanup) 전에 돈다 — 이 렌더가 읽은 것이 바뀌기 직전 패널의 열림이다. 등록 목록에
+  // 없는 id(내려간 플러그인)는 레일이 그리지 않으므로 닫힌 것이다.
+  const openBeforeRef = useRef(false);
+  const activeAtRender = getRailStoreSnapshot().activePanelId;
+  openBeforeRef.current = activeAtRender !== null && bindings.some((binding) => binding.entry.id === activeAtRender && binding.panes.length > 0);
   useEffect(() => {
-    if (subjectId === null || !operationConversation) return;
-    const active = getRailStoreSnapshot().activePanelId;
-    if (active === null) return;
+    if (subjectId === null || !openBeforeRef.current) return;
     const current = bindingsRef.current;
-    const activeBinding = current.find((binding) => binding.entry.id === active);
-    if (!activeBinding?.core || active === SETTINGS_RAIL_ENTRY_ID) return;
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active === SETTINGS_RAIL_ENTRY_ID) return;
+    const activeBinding = active === null ? null : current.find((binding) => binding.entry.id === active) ?? null;
+    if (activeBinding !== null && !activeBinding.core) return;
     const lead = firstConversationTab(current);
     if (lead) openRailPanel(lead.entry.id);
-  }, [subjectId, operationConversation]);
+  }, [subjectId]);
 }
 
 // ── 사이드바 위·아래 줄 ────────────────────────────────────────────────────
@@ -548,7 +557,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도 Operation 대화처럼 「목표」가 먼저다.
   const operationConversation = (surfaceDescriptor === null ? subject !== null : standInId !== null) && stageInbox === null;
   const toggleDetails = useToggleDetails(operationConversation);
-  useLeadTabOnSubjectChange(surfaceDescriptor ? standInId : subject?.id ?? null, operationConversation);
+  usePanelFollowsSubject(surfaceDescriptor ? standInId : subject?.id ?? null);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
   // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Operation 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
@@ -730,7 +739,10 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const inboxSection = theaterInboxSections.find((candidate) => candidate.id === id);
     return { id, title: inboxSection?.title(language) ?? descriptor.title(context), theaterId: info.theaterId };
   }, [context, descriptor, language, theaterInboxSections]);
-  // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 대화가 걷히면 탭도, 그 탭이 연 패널도 걷힌다.
+  // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 맥락(같은 대화의 새 요청·언어·테마)이 바뀌어 탭을 다시 세울
+  // 때는 패널을 그대로 둔다.
+  const tabIdsRef = useRef<readonly string[]>([]);
+  tabIdsRef.current = (descriptor.tabs ?? []).map((tab) => tab.id);
   useEffect(() => {
     const tabs = descriptor.tabs ?? [];
     const disposers = tabs.map((tab, order) => registerConversationOperationTab({
@@ -744,13 +756,27 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     }));
     return () => {
       for (const dispose of disposers) dispose();
-      const active = getRailStoreSnapshot().activePanelId;
-      if (active !== null && tabs.some((tab) => tab.id === active)) closeRailPanel(active);
     };
   }, [context, descriptor, section]);
-  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있으면 기본 탭을 연다.
+  // 대화가 걷히면 그 탭이 연 패널도 걷힌다 — 다음 대상이 Operation 이면 가운데 칸이 이 열림을 이어 그 대화의 탭을 연다
+  // (usePanelFollowsSubject).
+  useEffect(() => () => {
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
+  }, []);
+  // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Operation 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
+  // 탭을 연다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은 그대로 둔다.
+  const bindings = useDesktopRailEntries();
+  const bindingsRef = useRef(bindings);
+  bindingsRef.current = bindings;
   useEffect(() => {
-    if (descriptor.defaultTab === undefined || getRailStoreSnapshot().activePanelId !== null) return;
+    if (descriptor.defaultTab === undefined) return;
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active !== null && !tabIdsRef.current.includes(active)) {
+      // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
+      const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
+      if (binding !== undefined && !isConversationTab(binding.entry)) return;
+    } else if (active !== null) return;
     openRailPanel(descriptor.defaultTab);
   }, [descriptor.defaultTab, selection.nonce]);
   const title = descriptor.title(context);
