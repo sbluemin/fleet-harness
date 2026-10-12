@@ -10,11 +10,13 @@ import {
   getConversationSubject,
   registerConversationOperationTab,
   setConversationBodyRenderer,
+  setConversationCaptionRenderer,
   subscribeConversationStandIn,
   subscribeConversationSubject,
   useConversationStandIn,
   useConversationSubject,
   type ConversationBodyContext,
+  type ConversationCaptionContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
@@ -25,6 +27,7 @@ import { frameCommanderLedger, setCommanderLedger, useCommanderLedgerChosen } fr
 import { DecisionCard, SettledDecisionLine, UseRequestGroupCard, type SettledDecision } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
+import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { useLocalizedSnapshot } from "./speaker-mark.js";
@@ -45,7 +48,9 @@ import { useLocalizedSnapshot } from "./speaker-mark.js";
  */
 export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
-  return setConversationBodyRenderer(renderConversationBody);
+  const disposeBody = setConversationBodyRenderer(renderConversationBody);
+  const disposeCaption = setConversationCaptionRenderer(renderConversationCaption);
+  return () => { disposeCaption(); disposeBody(); };
 }
 
 /**
@@ -104,13 +109,44 @@ function openLedger(rootId: string, operationId: string | null): void {
   selectNestedBody(rootId, commander ? null : operationId);
 }
 
+/** 이 채팅 루트의 가운데 칸이 그룹 대화인가 — 목표 대화의 뿌리이거나 구성원을 가진 채팅. 모바일 본문도 같은 판정을 쓴다. */
+export function isGroupConversationOperation(operation: OperationNode, hasNested: boolean): boolean {
+  return operation.payload.chatMode === true && (hasNested || isGroupConversationRoot(operation.id));
+}
+
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {
-  if (context.operation.payload.chatMode !== true) return null;
-  if (context.nestedOperations.length === 0 && !isGroupConversationRoot(context.operation.id)) return null;
+  if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
   if (context.bodyOperation.id !== context.operation.id) {
     return <MemberLedger root={context.operation} member={context.bodyOperation} language={context.language}>{context.defaultBody}</MemberLedger>;
   }
   return <RootBody root={context.operation} language={context.language}>{context.defaultBody}</RootBody>;
+}
+
+/** 대화 머리의 「턴 접기」 스위치 — 그룹 대화가 서는 대화에만 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
+  if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
+  return <GroupFoldToggle language={context.language} />;
+}
+
+function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
+  const t = getGroupT(language);
+  const folded = useFoldTurns();
+  return (
+    <button type="button" role="switch" aria-checked={folded} className="group-chat-fold-toggle" title={t("group.fold.hint")} onClick={() => setFoldTurns(!folded)}>
+      <span className="group-chat-fold-track" aria-hidden="true" />
+      {t("group.fold.toggle")}
+    </button>
+  );
+}
+
+/**
+ * 모바일 Operation 화면의 그룹 대화 — 「턴 접기」를 켠 그룹 루트에서 채팅 본문이 1:1 원장 대신 이 자리를 세운다. 데스크톱 가운데 칸의
+ * 루트 자리와 같은 화면이다: 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관 원장(children = 기존 채팅 본문)을 틀에 넣는다.
+ * 기존 본문은 원장일 때만 그려지므로 그 동안만 자기 소켓을 연다. 그룹 소켓은 호스트가 실은 대화 주인(`subjectOperationId`)으로
+ * 실행 기능의 집계가 연다.
+ */
+export function MobileGroupConversation({ root, language, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
+  return <RootBody root={root} language={language}>{children}</RootBody>;
 }
 
 /** 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문). */
@@ -123,6 +159,7 @@ function RootBody({ root, language, children }: { readonly root: OperationNode; 
 
 function RootConversation({ root, language }: { readonly root: OperationNode; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
+  const fold = useFoldTurns();
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
@@ -157,6 +194,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
       onOpenCommodoreRecord={openRecord}
       onStopParticipant={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
       cards={cards}
+      fold={fold}
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );

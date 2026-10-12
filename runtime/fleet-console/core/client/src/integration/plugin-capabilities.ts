@@ -23,6 +23,7 @@ import { getCanvasArenaInsets, subscribeCanvasArenaInsets } from "../../../../fe
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { isConversationLayoutActive, subscribeConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -266,7 +267,8 @@ export function createHostCapabilities(
       subscribe: (listener) => {
         const disposeLayout = subscribeConversationLayout(listener);
         const disposeSurface = subscribeConversationSurface(listener);
-        return () => { disposeLayout(); disposeSurface(); };
+        const disposeSubject = subscribeConversationSubject(listener);
+        return () => { disposeLayout(); disposeSurface(); disposeSubject(); };
       },
       open: (surfaceId, params) => {
         const opened = openConversationSurface(surfaceId, params);
@@ -275,6 +277,8 @@ export function createHostCapabilities(
       },
       close: (surfaceId) => closeConversationSurface(surfaceId),
       current: () => publicSurface(getConversationSurface()),
+      // 대화 중심 화면의 셸과 모바일 셸이 같은 자리(conversation-slots)에 지금 선 대화의 주인을 싣는다.
+      subjectOperationId: () => getConversationSubject()?.id ?? null,
     },
     composer: {
       open: (options) => {

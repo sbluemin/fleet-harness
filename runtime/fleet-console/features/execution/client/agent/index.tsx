@@ -56,8 +56,10 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
-import { installGroupTimeline } from "./chat/group-timeline-store.js";
-import { installGroupConversationSurface } from "./chat/group/index.js";
+import { installGroupTimeline, useHasGroupConversation } from "./chat/group-timeline-store.js";
+import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
+import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
+import { getGroupT } from "./chat/group/group-chat-i18n.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
 import type { SessionInfo } from "./types.js";
@@ -726,6 +728,9 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
   const computerUseEnabled = readComputerUseEnabled(context.operation.payload);
   const [usePending, setUsePending] = React.useState(false);
   const canSwitch = chatMode || session.status !== "dormant";
+  // 그룹 루트의 채팅이면 「턴 접기」를 ⋮ 스위치 행으로 둔다 — 상단 막대는 셸 몫이라 그룹 대화가 자기 머리를 그리지 않는다.
+  const groupChat = useHasGroupConversation(context.operationId) && chatMode;
+  const foldTurns = useFoldTurns();
 
   const toTerminal = async () => {
     setTerminalHandoff(context.operationId, { pending: true, error: "none" });
@@ -772,6 +777,15 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: () => { void (chatMode ? toTerminal() : toChat()); },
     });
   }
+  if (groupChat) {
+    items.push({
+      id: "agent-fold-turns",
+      label: getGroupT(context.language ?? "en")("group.fold.toggle"),
+      icon: <MobileGlyph name="fold" />,
+      checked: foldTurns,
+      run: () => setFoldTurns(!foldTurns),
+    });
+  }
   if (experiments?.computerUse === true) {
     items.push({
       id: "agent-computer-use",
@@ -782,7 +796,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: toggleComputerUse,
     });
   }
-  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${groupChat}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
   return null;
 }
 
@@ -835,6 +849,9 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   const [fileLinkFailure, setFileLinkFailure] = React.useState<"unsupported" | "failed" | null>(null);
   const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate, setFileLinkFailure), [context.operation.theaterId, context.navigate]);
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
+  // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
+  const groupConversation = useHasGroupConversation(context.operationId);
+  const foldTurns = useFoldTurns();
 
   if (chatMode) {
     // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
@@ -847,10 +864,15 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         </div>
       );
     }
+    const chatView = (
+      <AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
+        : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} />
+    );
     return (
       <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} onAuxClick={onChatLinkClick} fleetLink="self" {...fileLinks}>
-        <AgentChatView context={context} tourAnchors={chatOpenedHere} fileLinkError={fileLinkFailure === null ? null
-          : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} />
+        {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
+          ? <MobileGroupConversation root={context.operation} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
+          : chatView}
         <ComputerScreenShare operationId={context.operationId} />
         {linkOpen.card}
       </MarkdownLinkBoundary>

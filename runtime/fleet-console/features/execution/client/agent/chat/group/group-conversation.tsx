@@ -61,6 +61,11 @@ export interface GroupConversationProps {
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  /**
+   * 턴 접기(「턴 접기」 스위치) — 한 턴에서 이어지는 짧은 진행 말을 「작업 메모」 칩으로 접고, 긴 말풍선에 높이 상한을 두고,
+   * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
+   */
+  readonly fold?: boolean;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -70,7 +75,7 @@ export interface BoardActionRecordRequest {
   readonly at: number | null;
 }
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
@@ -118,12 +123,17 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     return () => window.clearTimeout(timer);
   }, [reveal, growth]);
 
+  // 화면에 서는 줄 — 턴 접기를 켜면 접힌 말은 칩 하나로, 말풍선에 옮긴 보고 줄은 빠진다. 끄면 원장 줄 그대로다.
+  const items = React.useMemo(() => fold ? foldTimeline(entries, snapshot.participants, snapshot.rootOperationId) : entries.map((entry): TimelineItem => ({ kind: "entry", entry })), [entries, fold, snapshot.participants, snapshot.rootOperationId]);
+  // 칩은 말풍선 묶음을 끊는 자리(null)다. 시각 줄은 칩도 그 자리의 첫 말로 센다.
+  const flow = React.useMemo(() => items.map((item) => item.kind === "entry" ? item.entry : null), [items]);
+  const anchors = React.useMemo(() => items.map((item) => item.kind === "entry" ? item.entry : item.anchor), [items]);
   // 발화자마다 가장 최근 말풍선 묶음의 꼬리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
-  const liveTails = React.useMemo(() => latestBubbleTails(entries), [entries]);
+  const liveTails = React.useMemo(() => latestBubbleTails(flow), [flow]);
   // 가운데 시각 줄은 대화가 쉬었다 다시 이어지는 자리에 선다. 묶음의 표식은 마지막 말풍선 옆에 선다(이름은 첫 말풍선 위) —
   // 시각 줄은 같은 발화자의 말도 두 묶음으로 가른다.
-  const breaks = React.useMemo(() => timeBreaks(entries), [entries]);
-  const runTails = React.useMemo(() => bubbleRunTails(entries, breaks), [entries, breaks]);
+  const breaks = React.useMemo(() => timeBreaks(anchors), [anchors]);
+  const runTails = React.useMemo(() => bubbleRunTails(flow, breaks), [flow, breaks]);
   const now = Date.now();
 
   const unavailableNames = snapshot.unavailableOperationIds
@@ -156,23 +166,37 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
           ) : null}
           {entries.length === 0 ? (
             <p className="group-chat-empty">{snapshot.loading ? t("group.loading") : empty ?? t("group.empty")}</p>
-          ) : entries.map((entry, index) => (
-            <React.Fragment key={entry.id}>
-              {breaks.has(entry.id) && entry.at !== null ? <div className="group-chat-time">{breakLabel(entry.at, now, language)}</div> : null}
-              <TimelineEntry
-                entry={entry}
-                previous={entries[index - 1]}
-                breakBefore={breaks.has(entry.id)}
-                tail={runTails.has(entry.id)}
-                live={liveTails.has(entry.id)}
-                participants={snapshot.participants}
-                language={language}
-                onOpenLedger={onOpenLedger}
-                onOpenCommodoreRecord={onOpenCommodoreRecord}
-                boardActionLabel={boardActionLabel}
-              />
-            </React.Fragment>
-          ))}
+          ) : items.map((item, index) => {
+            const anchor = anchors[index]!;
+            const time = breaks.has(anchor.id) && anchor.at !== null ? <div className="group-chat-time">{breakLabel(anchor.at, now, language)}</div> : null;
+            if (item.kind === "notes") {
+              return (
+                <React.Fragment key={item.id}>
+                  {time}
+                  <TurnNotes item={item} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} />
+                </React.Fragment>
+              );
+            }
+            return (
+              <React.Fragment key={item.entry.id}>
+                {time}
+                <TimelineEntry
+                  entry={item.entry}
+                  previous={flow[index - 1] ?? undefined}
+                  breakBefore={breaks.has(item.entry.id)}
+                  tail={runTails.has(item.entry.id)}
+                  live={liveTails.has(item.entry.id)}
+                  participants={snapshot.participants}
+                  language={language}
+                  onOpenLedger={onOpenLedger}
+                  onOpenCommodoreRecord={onOpenCommodoreRecord}
+                  boardActionLabel={boardActionLabel}
+                  capped={fold}
+                  report={item.report}
+                />
+              </React.Fragment>
+            );
+          })}
           {cards}
         </div>
       </div>
@@ -226,29 +250,170 @@ const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): b
  * 사람이 아닌 발화자마다 가장 최근 말풍선 묶음의 꼬리 말 id. 묶음은 같은 발화자의 이어진 말이고 꼬리는 그 마지막으로 서는 말(표식이
  * 서는 자리)이다. 흐르는 중인 응답이 있으면 그 말이 꼬리다. 서는 말이 하나도 없는 묶음은 최신으로 치지 않는다.
  */
-function latestBubbleTails(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
+function latestBubbleTails(entries: readonly (AgentConversationEntry | null)[]): ReadonlySet<string> {
   const latest = new Map<string, string>();
   for (const entry of entries) {
-    if (entry.kind === "message" && entry.speaker.kind !== "human" && bubbleShown(entry)) latest.set(speakerKey(entry.speaker), entry.id);
+    if (entry?.kind === "message" && entry.speaker.kind !== "human" && bubbleShown(entry)) latest.set(speakerKey(entry.speaker), entry.id);
   }
   return new Set(latest.values());
 }
 
 /**
  * 묶음마다 마지막으로 서는 말의 id — 표식이 그 말풍선 옆(묶음 왼쪽 아래)에 선다. 이름은 여전히 묶음 첫 말 위에 선다.
- * 시각 줄이 선 말은 같은 발화자여도 새 묶음을 연다. 문면 없는 말은 말풍선이 서지 않으므로 꼬리로 치지 않는다.
+ * 시각 줄이 선 말은 같은 발화자여도 새 묶음을 연다. 문면 없는 말은 말풍선이 서지 않으므로 꼬리로 치지 않는다. 턴 접기의 칩(null)은
+ * 묶음을 끊는다 — 칩은 자기 표식을 단다.
  */
-function bubbleRunTails(entries: readonly AgentConversationEntry[], breaks: ReadonlySet<string>): ReadonlySet<string> {
+function bubbleRunTails(entries: readonly (AgentConversationEntry | null)[], breaks: ReadonlySet<string>): ReadonlySet<string> {
   const tails = new Set<string>();
   let tail: string | null = null;
   for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index]!;
-    if (entry.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
-    if (!sameSpeaker(entries[index - 1], entry.speaker) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
+    const entry = entries[index];
+    if (entry?.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
+    if (!sameSpeaker(entries[index - 1] ?? undefined, entry.speaker) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
     if (bubbleShown(entry)) tail = entry.id;
   }
   if (tail) tails.add(tail);
   return tails;
+}
+
+type MessageEntry = Extract<GroupTimelineEntry, { kind: "message" }>;
+type DelegationEntry = Extract<GroupTimelineEntry, { kind: "delegation" }>;
+/**
+ * 화면의 한 줄 — 원장 줄 하나, 또는 턴 접기의 「작업 메모」 칩 하나. `report` 는 그 말풍선 머리로 옮긴 구성원 보고 줄이다.
+ * 칩은 줄이 아니므로 앞뒤 말풍선의 이어짐(머리 생략)을 끊는다.
+ */
+type TimelineItem =
+  | { readonly kind: "entry"; readonly entry: AgentConversationEntry; readonly report?: DelegationEntry }
+  | { readonly kind: "notes"; readonly id: string; readonly speaker: ConversationSpeaker; readonly notes: readonly MessageEntry[]; readonly writing: MessageEntry | null; readonly anchor: MessageEntry };
+
+/** 이 길이보다 짧은 진행 말은 턴 접기에서 칩으로 접힌다(시안 B 기준). 턴의 마지막 말은 길이와 무관하게 말풍선으로 선다. */
+const NOTE_MAX_CHARS = 200;
+
+/**
+ * 턴 접기 — 1:1 채팅·모바일 원장의 「최종 답 하나 + 작업 접힘」 문법을 그룹 대화에 옮긴다.
+ *
+ * - 한 발화자의 한 턴(`turn`)에서 뒤에 말이 더 이어지는 200자 미만의 말은 그 턴의 첫 접힌 말 자리에 선 칩 하나로 모인다. 칩은
+ *   제자리에서 개수와 최신 한 줄을 바꾼다. 턴이 아직 열려 있으면(원장이 연 턴이 이 턴이고 그 참여자가 살아 있다) 마지막 말도
+ *   아직 진행 말이다 — 턴이 끝나야 마지막 말이 그 턴의 답으로 말풍선이 된다. 열린 턴은 원장의 좌표로 판정하므로, 같은 발화자가
+ *   새 턴을 열고 아직 말이 없는 동안에도 지난 턴의 답은 말풍선으로 남는다.
+ * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 말은 길이와 무관하게 칩의 최신 한 줄로만 보이고 개수에 들지 않는다 —
+ *   완성되어 200자 이상이면 그때 그 자리에 말풍선으로 선다. 흐르는 동안 칩과 말풍선을 오가지 않는다.
+ * - 구성원이 지휘관에게 보낸 보고 줄은 같은 턴에 말풍선이 있으면 빠지고, 그 턴의 마지막 말풍선 머리에 꼬리표로 붙는다(누르면
+ *   보고 전문). 그 턴이 아직 열려 있거나 흐르는 말이 있으면 말풍선이 정해지지 않았으므로 줄을 세우지 않는다 — 턴이 끝나도 말풍선이
+ *   없으면 그때 줄로 선다. 받는 이가 아직 풀리지 않은 구성원의 전언(도구 결과 전)도 열린 턴 동안은 같은 이유로 기다린다.
+ *   전달에 실패한 줄은 늘 남는다.
+ * 턴 좌표가 없는 말(사람·사령관·플러그인 대화의 말)과 그 밖의 줄은 그대로다.
+ */
+function foldTimeline(entries: readonly AgentConversationEntry[], participants: readonly ConversationParticipant[], rootOperationId: string | null): readonly TimelineItem[] {
+  const turns = new Map<string, MessageEntry[]>();
+  for (const entry of entries) {
+    if (entry.kind !== "message" || entry.speaker.kind === "human" || !entry.turn || !bubbleShown(entry)) continue;
+    const list = turns.get(entry.turn);
+    if (list) list.push(entry); else turns.set(entry.turn, [entry]);
+  }
+  // 지금 열린 턴 — 원장이 연 턴이고 그 참여자가 살아 있다(휴면 기록이 턴 중간에서 끝났어도 닫힌 것으로 읽는다).
+  const openTurns = new Set(participants.flatMap(({ turn, activity }) => turn && activity !== "ended" && activity !== "unknown" ? [turn] : []));
+  const folded = new Set<string>();
+  const writing = new Map<string, MessageEntry>();
+  const answers = new Map<string, string>();
+  for (const [turn, list] of turns) {
+    const settled = list.filter((entry) => !entry.streaming);
+    const last = settled[settled.length - 1];
+    const open = openTurns.has(turn) || settled.length < list.length;
+    for (const entry of list) {
+      if (entry.streaming) writing.set(turn, entry);
+      else if (entry.text.length < NOTE_MAX_CHARS && (open || entry !== last)) folded.add(entry.id);
+    }
+    const bubbles = settled.filter((entry) => !folded.has(entry.id));
+    if (bubbles.length > 0) answers.set(turn, bubbles[bubbles.length - 1]!.id);
+  }
+  // 말풍선으로 옮길 보고 줄 — 받는 이가 모두 지휘관(목표가 아닌 묶음이면 루트)인 구성원의 전언이다.
+  const toLead = (recipient: ConversationSpeaker) => recipient.kind === "commander" || (rootOperationId !== null && recipient.operationId === rootOperationId);
+  const reports = new Map<string, DelegationEntry>();
+  const moved = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind !== "delegation" || entry.sender.kind !== "member" || !entry.turn || deliveryFailure(entry) !== null) continue;
+    const pending = openTurns.has(entry.turn) || writing.has(entry.turn);
+    // 도구 결과가 오기 전 받는 이는 이름 힌트뿐이다(Operation 미확정). 지휘관 보고인지 모르는 동안은 열린 턴이면 기다린다 —
+    // 풀린 뒤 지휘관이 아니면 줄로 서고, 턴이 끝나도 풀리지 않으면 정보가 사라지지 않게 줄로 선다.
+    if (entry.recipients.length === 0 || entry.recipients.some((recipient) => !recipient.operationId && recipient.kind !== "commander")) {
+      if (pending) moved.add(entry.id);
+      continue;
+    }
+    if (!entry.recipients.every(toLead)) continue;
+    const answer = answers.get(entry.turn);
+    if (answer && !reports.has(answer)) { reports.set(answer, entry); moved.add(entry.id); continue; }
+    // 그 턴의 말풍선이 아직 정해지지 않았다 — 섰다가 꼬리표로 옮겨 가지 않도록 기다린다.
+    if (!answer && pending) moved.add(entry.id);
+  }
+  const items: TimelineItem[] = [];
+  const placed = new Set<string>();
+  for (const entry of entries) {
+    if (moved.has(entry.id)) continue;
+    if (entry.kind === "message" && entry.turn && (folded.has(entry.id) || writing.get(entry.turn) === entry)) {
+      if (placed.has(entry.turn)) continue;
+      placed.add(entry.turn);
+      items.push({ kind: "notes", id: `notes:${entry.turn}`, speaker: entry.speaker, notes: turns.get(entry.turn)!.filter((note) => folded.has(note.id)), writing: writing.get(entry.turn) ?? null, anchor: entry });
+      continue;
+    }
+    const report = reports.get(entry.id);
+    items.push(report ? { kind: "entry", entry, report } : { kind: "entry", entry });
+  }
+  return items;
+}
+
+/**
+ * 「작업 메모」 칩 — 접힌 진행 말의 개수와 최신 한 줄. 누르면 그 자리에서 전부 펼친다. 흐르는 중인 말은 개수에 들지 않고 최신 한
+ * 줄로만 보이며, 그동안 점이 숨 쉰다(접힌 메모가 아직 없으면 개수 자리에 「쓰는 중」).
+ * 칩이 그 턴의 유일한 자취일 수 있으므로(아직 도는 턴) 펼친 칸에 그 발화자의 원장 링크를 둔다 — 머리의 원장 열기와 같은 길이다.
+ */
+function TurnNotes({ item, participants, language, onOpenLedger }: {
+  readonly item: Extract<TimelineItem, { kind: "notes" }>;
+  readonly participants: GroupTimelineSnapshot["participants"];
+  readonly language: ConsoleLocale | undefined;
+  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
+}) {
+  const t = getGroupT(language);
+  const [open, setOpen] = React.useState(false);
+  const detailId = React.useId();
+  const latest = item.writing ?? item.notes[item.notes.length - 1];
+  const live = item.writing !== null;
+  const speaker = item.speaker.kind === "commodore" ? { ...item.speaker, name: t("group.commodore") } : item.speaker;
+  const ledger = onOpenLedger ? ledgerTarget(speaker, participants) : null;
+  const preview = latest ? excerpt(latest.text, 80) : "";
+  const shown = item.writing ? [...item.notes, item.writing] : item.notes;
+  return (
+    <div className="group-chat-notes" data-entry-id={item.id}>
+      <button
+        type="button"
+        className={`group-chat-notes-chip${live ? " is-live" : ""}`}
+        aria-expanded={open}
+        aria-controls={open ? detailId : undefined}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SpeakerMark speaker={speaker} size="sm" />
+        <span className="group-chat-notes-count"><SpeakerName speaker={speaker} /><span className="group-chat-line-sep" aria-hidden="true">·</span>{item.notes.length > 0 ? t("group.notes.count", { count: item.notes.length }) : t("group.streaming")}</span>
+        {preview ? <span className="group-chat-notes-excerpt">{preview}</span> : null}
+        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+      </button>
+      {open ? (
+        <div className="group-chat-notes-list" id={detailId}>
+          {shown.map((note) => (
+            <div key={note.id} className="group-chat-notes-item">
+              {note.text.trim().length === 0
+                ? <span className="agent-chat-live-text">{t("group.streaming")}</span>
+                : <StreamedMarkdown text={note.text} streaming={note.streaming} className="group-chat-md markdown-body" language={language} />}
+            </div>
+          ))}
+          {ledger ? (
+            <div className="group-chat-line-actions">
+              <button type="button" className="group-chat-link" onClick={() => onOpenLedger!(ledger)}>{t("group.delegation.openLedger", { name: speaker.name })}</button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 /** 대화가 이만큼 쉬었다 이어지면 가운데 시각 줄이 선다. */
@@ -301,7 +466,7 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
+function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -313,9 +478,11 @@ function TimelineEntry({ entry, previous, breakBefore, tail, live, participants,
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
   readonly boardActionLabel: string | undefined;
+  readonly capped?: boolean;
+  readonly report?: DelegationEntry | undefined;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -339,7 +506,7 @@ function NoteLine({ entry, language }: {
   );
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger }: {
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -347,8 +514,15 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
+  /** 턴 접기 — 지휘관·구성원 말풍선에 높이 상한을 두고 넘치면 「전체 보기」로 펼친다. */
+  readonly capped?: boolean;
+  /** 턴 접기 — 이 말풍선으로 옮긴 보고 줄. 머리의 꼬리표가 되고 누르면 보고 전문이 펼쳐진다. */
+  readonly report?: DelegationEntry | undefined;
 }) {
   const t = getGroupT(language);
+  const clip = useBubbleClip(capped && entry.speaker.kind !== "human");
+  const [reportOpen, setReportOpen] = React.useState(false);
+  const reportId = React.useId();
   const time = timeOf(entry.at, language);
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
   if (!entry.streaming && entry.text.trim().length === 0 && !entry.attachments?.length) return null;
@@ -389,6 +563,12 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const name = open
     ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
     : <SpeakerName speaker={speaker} className="group-chat-agent-name" />;
+  // 보고 꼬리표 — 은은한 보조 낱말. 말풍선과 문면이 다를 수 있으므로 누르면 보낸 보고 전문이 그 아래에 펼쳐진다.
+  const reportTag = report ? (
+    <button type="button" className="group-chat-report-tag" aria-expanded={reportOpen} aria-controls={reportOpen ? reportId : undefined} onClick={() => setReportOpen((current) => !current)}>
+      {t("group.report.tag", { name: report.recipients[0]?.name ?? t("group.commander") })}
+    </button>
+  ) : null;
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id} {...(time ? { title: time } : {})}>
       <span className="group-chat-agent-mark">
@@ -402,16 +582,50 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             <SpeakerName speaker={entry.recipient} />
             {via}
           </span>
-        ) : name}
-        <div className="group-chat-bubble is-agent is-markdown">
+        ) : report ? <span className="group-chat-agent-head">{name}{reportTag}</span> : name}
+        <div ref={clip.ref} className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
             : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
         </div>
+        {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
+        {report && continued ? <span className="group-chat-agent-head is-after">{reportTag}</span> : null}
+        {report && reportOpen ? (
+          <div className="group-chat-line-detail group-chat-report-detail" id={reportId}>
+            <StreamedMarkdown text={report.text} streaming={false} className="group-chat-md markdown-body" language={language} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+/** 말풍선 높이 상한(시안 B). 넘치는 말풍선만 아래를 흐리고 「전체 보기」를 단다. */
+const BUBBLE_CAP_PX = 320;
+
+/**
+ * 말풍선 높이 상한 — 글자 수가 아니라 그려진 높이로 넘침을 잰다(표·코드는 짧은 글로도 길다). 흐르는 동안 자라는 높이도 따라 잰다.
+ * 펼친 말풍선은 이 화면을 보는 동안 펼친 채다(같은 말은 완성 때도 같은 key 라 펼침이 이어진다).
+ */
+function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
+  const [element, setElement] = React.useState<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [overflowing, setOverflowing] = React.useState(false);
+  const active = enabled && !expanded;
+  React.useLayoutEffect(() => {
+    if (!active || !element) { setOverflowing(false); return; }
+    const measure = () => setOverflowing(element.scrollHeight > BUBBLE_CAP_PX + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    // 말풍선 자체는 상한에서 멈추므로 자라는 본문(첫 자식)을 함께 본다.
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, [active, element]);
+  const expand = React.useCallback(() => setExpanded(true), []);
+  return { ref: setElement, className: active ? ` is-capped${overflowing ? " is-clipped" : ""}` : "", clipped: active && overflowing, expand };
+}
+
 
 function DelegationLine({ entry, language, onOpenLedger }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "delegation" }>;

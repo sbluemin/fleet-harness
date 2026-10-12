@@ -18,6 +18,8 @@ export {
  *    탭 본문은 `useConversationSubject()` 로 지금 가운데 칸의 Operation 을, `useConversationStandIn()` 으로 플러그인 대화가
  *    대신하는 아직 서지 않은 Operation 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
+ * 4. 대화 머리 단추 묶음 — `setConversationCaptionRenderer`. 본문 렌더러가 세운 화면의 보기 스위치(그룹 대화의 「턴 접기」)가
+ *    pill 바로 옆 단추 묶음에 선다. `null` 이면 아무것도 서지 않는다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
  */
@@ -137,6 +139,34 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
   return useSyncExternalStore(
     (listener) => { bodyListeners.add(listener); return () => { bodyListeners.delete(listener); }; },
     () => bodyRenderer,
+    () => null,
+  );
+}
+
+// ── 대화 머리 단추 묶음 ────────────────────────────────────────────────────
+
+/** 머리 단추 묶음 렌더러의 맥락 — 본문 렌더러와 같은 사실이다(기본 본문은 없다). */
+export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody">;
+export type ConversationCaptionRenderer = (context: ConversationCaptionContext) => ReactNode | null;
+
+let captionRenderer: ConversationCaptionRenderer | null = null;
+const captionListeners = new Set<() => void>();
+
+/** 대화 머리 단추 묶음 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
+export function setConversationCaptionRenderer(renderer: ConversationCaptionRenderer): () => void {
+  captionRenderer = renderer;
+  for (const listener of captionListeners) listener();
+  return () => {
+    if (captionRenderer !== renderer) return;
+    captionRenderer = null;
+    for (const listener of captionListeners) listener();
+  };
+}
+
+export function useConversationCaptionRenderer(): ConversationCaptionRenderer | null {
+  return useSyncExternalStore(
+    (listener) => { captionListeners.add(listener); return () => { captionListeners.delete(listener); }; },
+    () => captionRenderer,
     () => null,
   );
 }
