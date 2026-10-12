@@ -407,6 +407,22 @@ function containedFile(dir: string, name: string): string {
   return file;
 }
 
+/**
+ * 디스크의 옛 후보·배치 스냅샷에 남은 criteria 만 지운다. 후보와 배치는 그대로 두고, 목표의 달성 기준은 건드리지 않는다.
+ * 모양이 깨져 있어도 던지지 않는다 — 던지면 목표 파일 전체가 격리된다.
+ */
+function dropLegacyFollowupCriteria(parsed: Partial<StoredObjective>): void {
+  const drop = (value: unknown): void => {
+    if (value && typeof value === "object" && "criteria" in value) delete (value as { criteria?: unknown }).criteria;
+  };
+  if (Array.isArray(parsed.followups)) for (const candidate of parsed.followups) drop(candidate);
+  if (!Array.isArray(parsed.followupBatches)) return;
+  for (const batch of parsed.followupBatches) {
+    if (!batch || typeof batch !== "object" || !Array.isArray(batch.items)) continue;
+    for (const item of batch.items) if (item && typeof item === "object") drop(item.snapshot);
+  }
+}
+
 /** 깨진 파일은 덮어쓰지 않고 비켜 둔다 — 그 목표만 빈 목표가 되고 다른 목표는 그대로다. */
 function quarantine(file: string): void {
   try { fs.renameSync(file, `${file}.broken-${Date.now()}-${randomUUID()}`); }
@@ -455,6 +471,8 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
+      // 후속 본문은 strict 로 검사하지 않는다. 옛 criteria 는 후보를 지우지 않고 키만 버린다. 목표 자신의 criteria 는 남긴다.
+      dropLegacyFollowupCriteria(parsed);
       return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
   } catch { /* 깨진 JSON 또는 results/evidence 필드 — 원본을 격리하고 그 목표만 레코드 없음으로 본다. */ }

@@ -1154,6 +1154,15 @@ const followupFields = {
 };
 export const followupBodySchema = z.object(followupFields).strict();
 export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), evidence: followupFields.evidence.optional() }).strict();
+/**
+ * 진행 중 지휘관이 옛 스키마로 criteria 를 넣어도 그 키만 버린다. 다른 모르는 키는 strict 가 그대로 거절한다.
+ * 광고되는 JSON 스키마는 안쪽 객체만 보이므로 criteria 가 나가지 않는다.
+ */
+export const withoutLegacyCriteria = (value: unknown): unknown => {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, "criteria")) return value;
+  const { criteria: _criteria, ...rest } = value as Record<string, unknown>;
+  return rest;
+};
 export type FollowupBodyInput = z.output<typeof followupBodySchema>;
 export type FollowupReviseInput = z.output<typeof followupReviseSchema>;
 /** 완료와 함께 고른 후보 — 화면이 본 rev 와 함께. batchId 는 화면이 만든 멱등 키(UUID). */
