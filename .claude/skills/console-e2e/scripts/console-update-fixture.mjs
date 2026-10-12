@@ -246,7 +246,8 @@ async function serve() {
   if (fixture.consoleDataDir !== process.env.FLEET_CONSOLE_DATA_DIR) fail('serve must use the same --run-dir as prepare');
   writeFileSync(path.join(dir, 'supervisor.json'), `${JSON.stringify({ pid: process.pid, startedAt: now() })}\n`);
   const log = (event) => appendFileSync(fixture.lifecycleLog, `${JSON.stringify({ ts: now(), ...event })}\n`);
-  const env = npmEnv(fixture, { NODE_OPTIONS: `--import ${fixture.preload}` });
+  // NODE_OPTIONS splits on spaces, so pass the preload as a percent-encoded file URL.
+  const env = npmEnv(fixture, { NODE_OPTIONS: `--import ${pathToFileURL(fixture.preload).href}` });
   const cli = path.join(fixture.packageRoot, 'dist/cli.mjs');
   const out = openSync(path.join(dir, 'serve.log'), 'a');
   const child = spawn(process.execPath, [cli, 'serve'], { env, stdio: ['ignore', out, out] });
