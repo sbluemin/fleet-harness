@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.231.0] - 2026-10-12
+
+### fleet-console
+
+#### Added
+- The Commodore can hand a decision it should not make to you, with its reason. Handed items wait under Your decisions in the sidebar, the objective switcher, the phone list and the rail, and decisions the Commodore is answering itself sit in a folded Commodore handling section. Answer a handed decision where it shows its reason, or return it to the Commodore.
+- Turn on Fold turns in a group conversation to fold each speaker's short progress messages into one line, cap long messages with Show all, and show a member's report as a tag on its message; on phones, turn it on from the conversation's menu to see the group conversation.
+- Click a Commander's or member's avatar or name in an objective's group conversation to open that participant's full ledger, and return with Back to conversation.
+- The Members tab beside an objective's conversation now shows the same member details as the objective board: model and effort, brief, commander-proposed badge, and status.
+- Let the Commodore set, change, and clear objective due dates, including when adding an objective.
+- Give a Theater's commodore an alias from the sidebar; the original Theater name stays visible beneath it.
+- Archive an objective that has not started yet from its sidebar row's right-click menu, and restore it later from the archive.
+
+#### Changed
+- Links in agent replies now read as a site icon and an underlined name instead of a raw web address; hover a link to see where it goes.
+- The dark conversation view has a softer, more even palette: a darker sidebar beside a lifted chat background, quieter message bubbles and input, and a neutral highlight for the open conversation.
+- Group conversations show the time in the middle of the conversation when it resumes after a pause, and each speaker's avatar sits beside the last message of their run.
+- Follow-up suggestions now carry only a brief. A picked suggestion starts a new objective without success criteria, and its Commander proposes those criteria while planning. Suggestion cards no longer list draft criteria.
+- The sidebar's top + now adds a Theater; start a new Operation from a Theater's +, the command palette, or the Quick Launch shortcut.
+- The sidebar reads more clearly: each Theater's commodore stands above its Operations, and groups appear as slim labels that take less space.
+- An objective that has not started yet now shows the same details panel as a running one, with Objectives and Members tabs.
+
+#### Fixed
+- Group conversation messages no longer jump to a new place when they finish while others are still speaking.
+- Switches in a phone conversation's menu now show their new state as soon as you press them.
+- In the Conversation view, the details panel no longer closes when you move from the Commodore to a commander or member chat, or when you change the theme or language; it switches to the tab that fits the new conversation, and a panel you closed stays closed.
+- In the Desktop app's conversation view, clicking the usage capsule at the top right now opens the detailed quota popup instead of starting a window drag.
+
 ## [1.230.0] - 2026-10-12
 
 ### fleet-console
