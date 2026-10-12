@@ -250,7 +250,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "PATCH",
     path: "/api/v1/theaters/:theaterId",
-    summary: "Theater 표시 순서를 변경합니다.",
+    summary: "Theater 표시 순서 또는 사령관 별칭을 변경합니다.",
     category: "Observer",
     gate: "origin-write",
     transport: "http",
@@ -664,12 +664,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * realpath는 싣지 않는다: 절대 경로는 호스트 소유이고, 필요한 플러그인은
    * `paths.resolveTheaterPath`로 서버 안에서 스스로 푼다.
    */
-  function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
+  function publishTheaterLifecycle(event: "registered" | "forgotten" | "restored" | "updated", theaterId: string): void {
     publishPluginEvent(`theater:${event}`, { theaterId });
   }
   // 브라우저도 같은 순간을 들어야 한다 — 다른 창·API·Console Use가 잊거나 되돌린 Theater는 이 스트림이
   // 아니면 다음 재수화까지 사이드바에 남는다. 싣는 것은 theaterId뿐이라 그대로 내보낸다.
-  for (const channel of ["theater:registered", "theater:forgotten", "theater:restored"]) pluginSseChannels.add(channel);
+  for (const channel of ["theater:registered", "theater:forgotten", "theater:restored", "theater:updated"]) pluginSseChannels.add(channel);
 
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) {
@@ -2102,6 +2102,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       createdAt: theater.registeredAt,
       lastOpenedAt: theater.lastOpenedAt,
       ...(theater.order !== undefined ? { order: theater.order } : {}),
+      ...(theater.alias !== undefined ? { alias: theater.alias } : {}),
       ...resolveTheaterFlags(theater.id),
       hasWiki: resolveTheaterFlags(theater.id).hasWiki ?? hasWiki,
       activeAdmiralCount: operations.listByTheater(theater.id).filter((operation) => operation.pluginId === null && operation.type === "agent").length,

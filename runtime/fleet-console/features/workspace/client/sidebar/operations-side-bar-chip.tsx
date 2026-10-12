@@ -402,7 +402,7 @@ export function OperationsSideBarChip({
           몸짓으로 말한다(구성원은 베이스만, 그 밖은 지휘관 안테나). 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 아바타가 그 이름을 진다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, { decisionRequest: cluster?.decisionRequest === true, awaitingReview: cluster?.awaitingReview === true })} size={conversationRow ? 28 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
+        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, { decisionRequest: cluster?.decisionRequest === true, awaitingReview: cluster?.awaitingReview === true })} size={conversationRow ? 22 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
       </span>
       <span className="side-bar-chip-text">
         {/* 이름 줄 — 스냅 표식은 이름의 생략 부호 밖에 서므로 제목이 길어도 잘리지 않는다.

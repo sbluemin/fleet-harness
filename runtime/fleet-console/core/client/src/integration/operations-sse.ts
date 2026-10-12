@@ -246,7 +246,7 @@ export function connectOperationsSse(): void {
 
   // 다른 창·API·Console Use가 Theater를 등록·잊기·되돌린 순간. 누른 창은 스스로 다시 조회하지만 나머지 창은
   // 이 프레임이 아니면 다음 재수화까지 옛 목록을 보인다.
-  for (const event of ["registered", "forgotten", "restored"] as const) {
+  for (const event of ["registered", "forgotten", "restored", "updated"] as const) {
     source.addEventListener(`theater:${event}`, (e) => {
       if (!acceptFrame()) return;
       try {
