@@ -32,6 +32,15 @@ export interface ConversationDecision {
   readonly open: () => void;
   /** 기존 보드 결정 제출 경로. 오래된 요청/전달 실패는 reject한다. */
   readonly answer?: (answers: readonly GroupDecisionAnswer[]) => Promise<void>;
+  /** 지금 이 요청을 사람 대신 다루는 맡은 이의 한마디(예: 「사령관이 답하는 중」). 사람도 답할 수 있다. 머리 끝에 무채색으로 선다. */
+  readonly handler?: LocalizedText;
+  /**
+   * 맡은 이가 이 요청을 사람에게 넘겼다 — `label` 은 머리말, `reason` 은 맡은 이가 쓴 넘긴 이유(번역하지 않는다). `giveBack` 이 있으면
+   * 사람이 요청을 맡은 이에게 돌려주는 단추가 선다. 실패는 reject 한다.
+   */
+  readonly handed?: { readonly label: LocalizedText; readonly reason: string; readonly giveBack?: { readonly label: LocalizedText; readonly run: () => Promise<void> } };
+  /** 보낸 답이 갈 곳 한 줄 — 보내기 단추 곁에 선다. */
+  readonly route?: LocalizedText;
 }
 
 /**

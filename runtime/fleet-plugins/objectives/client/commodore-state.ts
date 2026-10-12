@@ -8,7 +8,8 @@ import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
 import type { CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import type { Objective } from "../server/types.js";
+import { livePersonHold, reasonAwaits } from "../server/board-state.js";
+import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
 import { post } from "./objectives-state.js";
 
 /**
@@ -429,14 +430,43 @@ export function isRunningObjective(objective: Objective): boolean {
   return !objective.removed && !objective.done && objective.commander.started && !objective.awaitingReview && !objective.awaitingHandoff;
 }
 
-/** 사람(또는 사령관)의 손을 기다리는 목표 — 출범 전·기준 제안·결정 요청·검토 대기·후속 후보 중 하나라도. */
-export function isWaitingObjective(objective: Objective): boolean {
-  if (objective.removed || objective.done) return false;
+/**
+ * 결정 요청이 누구의 차례인가 — 보드의 차례 축(`reasonAwaits`) 위에 자율 운영을 얹는다. 자율 운영이 실제로 돌지 않으면 사령관
+ * 몫도 사람에게 돌아오므로 사람이다. 요청이 없거나 끝난 목표는 null. 사이드바·전환 목록·폰·레일·결정 칸이 이 하나를 읽는다.
+ */
+export function decisionTurn(objective: Objective, commodoreActive: boolean): "person" | "commodore" | null {
+  if (objective.removed || objective.done || !objective.decisionRequest) return null;
+  return !commodoreActive || reasonAwaits(objective, "decision") === "person" ? "person" : "commodore";
+}
+
+/** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 항목들 — 대상 순서(결정·기준·검토·후속)대로. */
+export function livePersonHolds(objective: Objective): readonly ObjectivePersonHold[] {
+  if (objective.removed) return [];
+  return PERSON_HOLD_TARGETS.flatMap((target) => livePersonHold(objective, target) ?? []);
+}
+
+/**
+ * 「내 결정」에 서는 시각 — 사람이 답할 결정 요청이면 그 요청 시각, 아니면 사령관이 넘긴 다른 항목(기준·검토·후속)의 가장 이른
+ * 넘김 시각. 사람의 차례가 없으면 null.
+ */
+export function personTurnAt(objective: Objective, commodoreActive: boolean): number | null {
+  if (decisionTurn(objective, commodoreActive) === "person") return objective.decisionRequest!.createdAt;
+  const holds = livePersonHolds(objective);
+  return holds.length ? Math.min(...holds.map((hold) => hold.at)) : null;
+}
+
+/**
+ * 사령관이 맡아 기다리는 목표 — 사령관이 운영하고, 사람에게 넘기지 않은 대기 항목(출범 전·기준 제안·결정 요청·검토·후속)이 남았다.
+ * 사람에게 넘긴 항목만 남은 목표는 사령관을 기다리지 않는다.
+ */
+export function isCommodoreWaiting(objective: Objective): boolean {
+  if (objective.operator !== "commodore" || objective.removed || objective.done) return false;
+  const kept = (target: (typeof PERSON_HOLD_TARGETS)[number]) => !livePersonHold(objective, target);
   return !objective.commenced
-    || objective.criteriaProposals.length > 0
-    || objective.decisionRequest !== null
-    || objective.awaitingReview
-    || objective.followups.some((followup) => followup.state === "open");
+    || (objective.criteriaProposals.length > 0 && kept("criteria"))
+    || (objective.decisionRequest !== null && kept("decision"))
+    || (objective.awaitingReview && kept("review"))
+    || (objective.followups.some((followup) => followup.state === "open") && kept("followup"));
 }
 
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */

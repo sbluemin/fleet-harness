@@ -72,6 +72,12 @@
 .objectives-pop-zone-hd { letter-spacing: 0.03em; }
 .objectives-pop-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 6px; background: var(--hairline); }
 .objectives-pop-zone.is-decisions .objectives-pop-zone-hd { color: var(--aurora); }
+/* 사령관이 맡음 — 사람의 차례가 아니라 신호색 없이 접힌 머리가 펼침 단추다. 갈매기는 머리 앞에 선다. */
+.objectives-pop-zone.is-delegated .objectives-pop-zone-hd { width: 100%; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
+.objectives-pop-zone.is-delegated .objectives-pop-zone-hd:hover { background: var(--control-rest); color: var(--text-secondary); }
+.objectives-pop-zone.is-delegated .objectives-pop-zone-hd:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+.objectives-pop-zone.is-delegated .objectives-pop-fold-chev { margin-left: 0; }
+.objectives-pop-zone-hd[aria-expanded="true"] .objectives-pop-fold-chev { transform: rotate(90deg); }
 .objectives-pop-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-pop-count { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 줄은 사이드바 목표 줄·칩과 같은 이름 문법과 격자다 — 제목 700/13, 글리프 칸은 칩 비콘과 같은 24px이고 한 줄이면 가운데로,
@@ -1186,7 +1192,14 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
   .objectives-decision-orbit { animation: none; background: var(--brass); }
   .objectives-decision-orbit::before { animation: none; content: none; }
 }
-.objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--brass-ink); }
+/* 머리 잉크는 대기 신호(aurora) — 사람의 결정을 기다린다는 상태다. 테와 궤도의 brass 는 캔버스 결정 궤도와 같은 자리 표시로 둔다. */
+.objectives-decision-head { display: flex; align-items: center; gap: 6px; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--aurora-ink); }
+/* 사령관이 맡은 요청 — 사람을 기다리지 않으므로 궤도·옅은 면·신호색 없이 가는 테와 무채색 머리로 선다. */
+.objectives-decision-request.is-delegated { border-color: var(--hairline-strong); background: none; }
+.objectives-decision-request.is-delegated .objectives-decision-head { color: var(--text-secondary); }
+/* 사령관이 넘긴 이유 — 머리 아래 옅은 면 한 단락. 머리말만 굵다. */
+.objectives-decision-handed { margin: 0; padding: 6px 8px; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-decision-handed b { margin-right: 6px; color: var(--text-primary); }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-ui); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }
 .objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }
@@ -1230,6 +1243,12 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
 .objectives-decision-submit { display: flex; align-items: center; gap: 10px; }
 .objectives-decision-progress { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
+/* 답이 갈 곳 — 보내기 곁 한 줄. 남는 폭을 쥐고 좁으면 줄바꿈한다. */
+.objectives-decision-route { flex: 1 1 auto; min-width: 0; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-decision-giveback { flex: none; height: 30px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
+.objectives-decision-giveback:hover:not(:disabled) { background: var(--control-wash); color: var(--text-primary); }
+.objectives-decision-giveback:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.objectives-decision-giveback:disabled { opacity: 0.5; cursor: default; }
 .objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-ink); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
 .objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
@@ -1709,7 +1728,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ctx-foot { margin: 8px 0 0; font-size: var(--t-xs); color: var(--text-tertiary); line-height: 1.5; }
 
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
-.objectives-decision-handler { margin-left: auto; color: var(--brass-ink); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
+/* 「사령관이 답하는 중」 — 맡은 이를 말할 뿐 사람의 차례가 아니라 무채색. */
+.objectives-decision-handler { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
 
 /* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
    시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */

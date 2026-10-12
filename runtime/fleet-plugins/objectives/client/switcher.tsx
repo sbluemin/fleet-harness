@@ -5,6 +5,7 @@ import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyp
 
 import type { Objective } from "../server/types.js";
 import { memberFailureNote, originTitleOf } from "./clusters.js";
+import { decisionTurn, livePersonHolds, personTurnAt, useCommodoreBoard } from "./commodore-state.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import type { ObjectiveGroup } from "./objectives-state.js";
@@ -13,8 +14,8 @@ type T = Translate<ObjectiveMessageKey>;
 
 /**
  * 제목 ⌄ 전환 목록 — 사이드바가 접혀 있거나(War Room·Cruise 접힘) 모바일일 때 표면이 사이드바 그룹 트리를 대신한다.
- * 같은 트리를 같은 규칙으로 그린다: 「결정 요청」(요청 시각순)·「오늘」(오늘 + 기한 지남) 구역이 먼저 서고, 올라간 목표는 그룹에서
- * 빠진다. 빈 구역은 세우지 않는다. 시작 전 목표는 그룹 맨 아래 「시작 전 N ›」 한 줄로 접힌다 — 펼침은 그룹별로 이 탭의 메모리에만
+ * 같은 트리를 같은 규칙으로 그린다: 「내 결정」(사람의 차례, 시각순)·접힌 「사령관이 맡음」·「오늘」(오늘 + 기한 지남) 구역이 먼저 서고,
+ * 올라간 목표는 그룹에서 빠진다. 빈 구역은 세우지 않는다. 시작 전 목표는 그룹 맨 아래 「시작 전 N ›」 한 줄로 접힌다 — 펼침은 그룹별로 이 탭의 메모리에만
  * 둔다(사이드바의 접기와 같은 규칙, 번들이 달라 상태는 따로). 고른 목표가 접기 안에 있으면 열 때 그 접기를 펼쳐 둔다.
  * 사람이 세션 없는 목표를 만드는 입구는 없다 — 목표는 「새 Operation」에서 시작한다. Esc 나 바깥 누름으로 닫힌다.
  * 열림은 표면이 쥔다 — 빈 상태의 「목표 목록 열기」도 같은 목록을 연다. 그 입구(`data-objectives-switch-opener`)로 열면 초점이
@@ -54,6 +55,7 @@ export interface SwitcherProps {
 
 export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, selected, glyphOf, hasOperation, onPick, open, onOpenChange: setOpen, onNewOperation }: SwitcherProps) {
   const [, setFoldTick] = useState(0);
+  const commodore = useCommodoreBoard(theaterId);
   const popRef = useRef<HTMLDivElement | null>(null);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -79,10 +81,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
 
   const live = objectives.filter((objective) => !objective.removed && !objective.done);
   const none = !objectives.some((objective) => !objective.removed);
-  const decisions = live.filter((objective) => !!objective.decisionRequest)
+  // 사이드바 구역과 같은 판정 — 사람의 차례는 「내 결정」, 자율 운영 중 사령관이 맡은 결정 요청은 접힌 「사령관이 맡음」.
+  const turnAt = (objective: Objective) => personTurnAt(objective, commodore.active);
+  const decisions = live.filter((objective) => turnAt(objective) !== null).sort((a, b) => turnAt(a)! - turnAt(b)!);
+  const delegated = live.filter((objective) => turnAt(objective) === null && decisionTurn(objective, commodore.active) === "commodore")
     .sort((a, b) => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0));
-  const today = live.filter((objective) => !objective.decisionRequest && (objective.today || overdueOf(objective)));
-  const promoted = new Set([...decisions, ...today].map((objective) => objective.id));
+  const today = live.filter((objective) => !objective.decisionRequest && turnAt(objective) === null && (objective.today || overdueOf(objective)));
+  const promoted = new Set([...decisions, ...delegated, ...today].map((objective) => objective.id));
   const rest = live.filter((objective) => !promoted.has(objective.id));
   const day = new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" });
   const groupOf = (objective: Objective) => (objective.groupId ? groups.find((group) => group.id === objective.groupId) ?? null : null);
@@ -120,7 +125,9 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   const row = (objective: Objective, dot: boolean, from = false) => {
     const glyph = glyphOf(objective);
     const meta: { readonly key: string; readonly text: string; readonly tone?: string }[] = [];
-    if (objective.decisionRequest) meta.push({ key: "req", text: t("objectives.switch.decisionCount", { count: objective.decisionRequest.questions.length || 1 }), tone: "req" });
+    // 결정 수 — 사람이 답할 요청만 대기 신호로 칠한다. 사령관이 맡은 요청은 같은 자리에 무채색으로.
+    if (objective.decisionRequest) meta.push({ key: "req", text: t("objectives.switch.decisionCount", { count: objective.decisionRequest.questions.length || 1 }), ...(decisionTurn(objective, commodore.active) === "person" ? { tone: "req" } : {}) });
+    if (livePersonHolds(objective).length) meta.push({ key: "handed", text: t("objectives.commodore.note.handed") });
     // 사이드바 줄 메모와 같은 판정·같은 낱말 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
     const failureNote = memberFailureNote(objective);
     if (failureNote) meta.push({ key: "failed", text: t(failureNote), tone: "warn" });
@@ -144,6 +151,20 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
       </li>
     );
   };
+  const delegatedKey = `${theaterId}::delegated`;
+  const delegatedOpen = foldOpen.get(delegatedKey) === true;
+  const delegatedZone = delegated.length ? (
+    <li key="delegated" className="objectives-pop-zone is-delegated">
+      <button type="button" className="objectives-pop-zone-hd" aria-expanded={delegatedOpen}
+        aria-label={`${t("objectives.commodore.zone.handling")} ${delegated.length}`} onClick={() => toggleFold(delegatedKey)}
+        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); /* 캔버스 Space-pan이 기본 활성화를 막지 않게 */ }}>
+        <span className="objectives-pop-fold-chev" aria-hidden="true">›</span>
+        <span aria-hidden="true">{t("objectives.commodore.zone.handling")}</span>
+        <span className="objectives-pop-count" aria-hidden="true">{delegated.length}</span>
+      </button>
+      {delegatedOpen ? <ol>{delegated.map((objective) => row(objective, true))}</ol> : null}
+    </li>
+  ) : null;
   const zone = (kind: "decisions" | "today", items: readonly Objective[]) => (items.length ? (
     <li key={kind} className={`objectives-pop-zone is-${kind}`}>
       <div className="objectives-pop-zone-hd"><span>{t(kind === "decisions" ? "objectives.switch.decisions" : "objectives.switch.today")}</span><span className="objectives-pop-count">{items.length}</span></div>
@@ -197,6 +218,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
           {none ? null : (
             <ul className="objectives-pop-tree">
               {zone("decisions", decisions)}
+              {delegatedZone}
               {zone("today", today)}
               {groups.map((group) => section(group, rest.filter((objective) => objective.groupId === group.id)))}
               {section(null, ungrouped)}

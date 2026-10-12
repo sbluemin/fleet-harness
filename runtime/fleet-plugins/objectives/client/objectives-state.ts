@@ -3,7 +3,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, OperationRuntimeHydration, PluginInstallContext } from "@fleet-console/sdk/plugin";
 
-import type { Objective, ObjectiveEvent } from "../server/types.js";
+import type { Objective, ObjectiveEvent, PersonHoldTarget } from "../server/types.js";
 
 /**
  * 표면·캡션·팔레트가 함께 구독하는 모듈 스토어.
@@ -492,6 +492,17 @@ export function pendingDecisionCount(theaterId: string | null): number {
 
 export function objectivesApi(): ClientApiCapability | null {
   return installed?.api ?? null;
+}
+
+/**
+ * 사령관에게 돌려주기 — 사령관이 사람에게 넘긴 항목을 사람이 되돌린다. 사령관이 깨어나 그 항목을 다시 맡는다. 결과 목표로 화면을
+ * 바로 고치고, 실패(넘김이 이미 끝났으면 `not_held`)는 코드를 던진다.
+ */
+export async function returnPersonHold(objectiveId: string, target: PersonHoldTarget): Promise<void> {
+  const api = objectivesApi();
+  if (!api) throw new Error("objectives_unavailable");
+  const result = await post<{ objective?: Objective }>(api, "/person-hold/return", { objectiveId, target });
+  if (result?.objective) upsertObjectiveLocally(result.objective);
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {

@@ -825,10 +825,19 @@ export interface OperationClusterRow {
   readonly today?: boolean;
   /** 둘째 줄의 기한 — `date` 는 YYYY-MM-DD, 호스트가 자기 로케일로 적는다. 지남 판정은 플러그인이 한다. */
   readonly due?: { readonly date: string; readonly overdue: boolean };
-  /** 결정 요청이 선 시각(ms). 있으면 「결정 요청」 구역에 요청 시각순으로 선다. */
+  /**
+   * 사람의 결정을 기다리기 시작한 시각(ms). 있으면 「내 결정」 구역에 그 시각순으로 선다. 사람이 답할 차례인 줄만 낸다 —
+   * 플러그인이 정한 맡은 이가 다루는 요청은 `delegated` 로 낸다.
+   */
   readonly decisionRequestedAt?: number;
-  /** 결정 요청의 질문 수. */
+  /** 기다리는 것이 결정 요청이면 그 질문 수. 없으면 둘째 줄에 결정 수를 적지 않는다(넘겨받은 검토·후보처럼 요청이 아닌 것). */
   readonly decisionQuestions?: number;
+  /**
+   * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 「내 결정」이 아니라 접힌 맡김 구역에 `at`
+   * 순으로 선다. `zone` 은 그 구역 머리 이름이다(같은 플러그인의 줄은 같은 말을 내고, 호스트는 처음 것을 쓴다).
+   * `decisionRequestedAt` 이 함께 있으면 그 줄은 「내 결정」에 선다.
+   */
+  readonly delegated?: { readonly at: number; readonly questions: number; readonly zone: LocalizedText };
   readonly progress?: { readonly done: number; readonly total: number };
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };
@@ -847,11 +856,6 @@ export interface OperationClusterRow {
    * 다른 메타 뒤에 같은 크기로 적고 `tone` 으로만 칠한다(`accent` 는 맡은 이, `warn` 은 주의).
    */
   readonly notes?: readonly OperationClusterRowNote[];
-  /**
-   * 이 줄이 「결정 요청」·「오늘」 구역에 올라갔을 때 그 구역 머리의 개수 옆에 서는 짧은 말. 같은 구역의 줄들이 같은 말을
-   * 내면 한 번만 선다.
-   */
-  readonly zoneNote?: LocalizedText;
   /**
    * 플러그인 표면이 지금 이 줄을 보고 있다. 호스트는 Operation 이 없는 줄만 이 값으로 하이라이트한다 — 뿌리가 선 줄은 칩처럼
    * 그 Operation 이 캔버스에서 활성일 때 하이라이트한다.

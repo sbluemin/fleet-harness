@@ -687,6 +687,12 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 }
 .group-card-head { display: flex; align-items: center; gap: var(--space-2); }
 .group-card-who { flex: 1 1 auto; min-width: 0; font-weight: var(--weight-bold); color: var(--text-secondary); }
+/* 맡은 이가 다루는 요청의 한마디 — 사람이 답할 차례가 아니므로 신호색 없이 무채색. */
+.group-card-handler { flex: none; font-size: var(--t-xs); color: var(--text-tertiary); white-space: nowrap; }
+/* 맡은 이가 사람에게 넘긴 이유 — 머리 아래 한 단락. 옅은 면 위 본문 잉크, 머리말만 굵다. */
+.group-card-handed { margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-xs); overflow-wrap: anywhere; }
+.group-card-handed-label { margin-right: 6px; font-weight: var(--weight-bold); color: var(--text-primary); }
+.group-card-route { font-size: var(--t-xs); color: var(--text-tertiary); }
 .group-card-glyph { display: inline-flex; width: 16px; height: 16px; color: var(--text-secondary); }
 .group-card-timer { flex: none; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .group-card-timer.is-soon { color: var(--warn-ink); }
