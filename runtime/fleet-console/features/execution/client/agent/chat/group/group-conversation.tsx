@@ -118,8 +118,12 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     return () => window.clearTimeout(timer);
   }, [reveal, growth]);
 
-  // 발화자마다 가장 최근 말풍선 묶음의 머리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
-  const liveHeads = React.useMemo(() => latestBubbleHeads(entries), [entries]);
+  // 발화자마다 가장 최근 말풍선 묶음의 꼬리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
+  const liveTails = React.useMemo(() => latestBubbleTails(entries), [entries]);
+  // 묶음의 표식은 마지막 말풍선 옆에 선다(이름은 첫 말풍선 위). 가운데 시각 줄은 대화가 쉬었다 다시 이어지는 자리에 선다.
+  const runTails = React.useMemo(() => bubbleRunTails(entries), [entries]);
+  const breaks = React.useMemo(() => timeBreaks(entries), [entries]);
+  const now = Date.now();
 
   const unavailableNames = snapshot.unavailableOperationIds
     .map((id) => findSpeaker(snapshot, id)?.name)
@@ -152,17 +156,20 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
           {entries.length === 0 ? (
             <p className="group-chat-empty">{snapshot.loading ? t("group.loading") : empty ?? t("group.empty")}</p>
           ) : entries.map((entry, index) => (
-            <TimelineEntry
-              key={entry.id}
-              entry={entry}
-              previous={entries[index - 1]}
-              live={liveHeads.has(entry.id)}
-              participants={snapshot.participants}
-              language={language}
-              onOpenLedger={onOpenLedger}
-              onOpenCommodoreRecord={onOpenCommodoreRecord}
-              boardActionLabel={boardActionLabel}
-            />
+            <React.Fragment key={entry.id}>
+              {breaks.has(entry.id) && entry.at !== null ? <div className="group-chat-time">{breakLabel(entry.at, now, language)}</div> : null}
+              <TimelineEntry
+                entry={entry}
+                previous={entries[index - 1]}
+                tail={runTails.has(entry.id)}
+                live={liveTails.has(entry.id)}
+                participants={snapshot.participants}
+                language={language}
+                onOpenLedger={onOpenLedger}
+                onOpenCommodoreRecord={onOpenCommodoreRecord}
+                boardActionLabel={boardActionLabel}
+              />
+            </React.Fragment>
           ))}
           {cards}
         </div>
@@ -210,30 +217,81 @@ function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: Convers
 }
 
 /** 말풍선이 서는 말인가 — 문면이 없는 말은 흐르는 중일 때만 「쓰는 중」으로 선다(`MessageBubble` 과 같은 규칙). */
-const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): boolean => entry.streaming || entry.text.trim().length > 0;
+const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): boolean =>
+  entry.streaming || entry.text.trim().length > 0 || !!entry.attachments?.length;
 
 /**
- * 사람이 아닌 발화자마다 가장 최근 말풍선 묶음의 머리 말 id. 묶음은 같은 발화자의 이어진 말이고 머리는 그 첫 말(표식이 서는
- * 자리)이다. 흐르는 중인 응답이 있으면 그 묶음이 최신이다. 서는 말이 하나도 없는 묶음은 최신으로 치지 않는다.
+ * 사람이 아닌 발화자마다 가장 최근 말풍선 묶음의 꼬리 말 id. 묶음은 같은 발화자의 이어진 말이고 꼬리는 그 마지막으로 서는 말(표식이
+ * 서는 자리)이다. 흐르는 중인 응답이 있으면 그 말이 꼬리다. 서는 말이 하나도 없는 묶음은 최신으로 치지 않는다.
  */
-function latestBubbleHeads(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
+function latestBubbleTails(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
   const latest = new Map<string, string>();
-  let head: string | null = null;
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index]!;
-    if (entry.kind !== "message" || entry.speaker.kind === "human") { head = null; continue; }
-    if (head === null || !sameSpeaker(entries[index - 1], entry.speaker)) head = entry.id;
-    if (bubbleShown(entry)) latest.set(speakerKey(entry.speaker), head);
+  for (const entry of entries) {
+    if (entry.kind === "message" && entry.speaker.kind !== "human" && bubbleShown(entry)) latest.set(speakerKey(entry.speaker), entry.id);
   }
   return new Set(latest.values());
+}
+
+/**
+ * 묶음마다 마지막으로 서는 말의 id — 표식이 그 말풍선 옆(묶음 왼쪽 아래)에 선다. 이름은 여전히 묶음 첫 말 위에 선다.
+ * 문면 없는 말은 말풍선이 서지 않으므로 꼬리로 치지 않는다 — 꼬리가 비면 묶음이 표식을 잃는다.
+ */
+function bubbleRunTails(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
+  const tails = new Set<string>();
+  let tail: string | null = null;
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index]!;
+    if (entry.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
+    if (!sameSpeaker(entries[index - 1], entry.speaker)) { if (tail) tails.add(tail); tail = null; }
+    if (bubbleShown(entry)) tail = entry.id;
+  }
+  if (tail) tails.add(tail);
+  return tails;
+}
+
+/** 대화가 이만큼 쉬었다 이어지면 가운데 시각 줄이 선다. */
+const TIME_BREAK_GAP_MS = 5 * 60_000;
+const dayOf = (at: number): string => new Date(at).toDateString();
+
+/**
+ * 가운데 시각 줄이 설 말의 id — 서는 첫 말, 앞의 기록과 5분 넘게 떨어진 말, 날이 바뀐 말. 시각을 스스로 다는 줄(위임·참여 등)과
+ * 화면에 서지 않는 기록(개시 알림 등)은 줄 대신 간격의 기준으로만 센다. 서지 않는 말에는 세우지 않는다.
+ */
+function timeBreaks(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
+  const breaks = new Set<string>();
+  let last: number | null = null;
+  let firstShown = true;
+  for (const entry of entries) {
+    if (entry.at === null) continue;
+    const shown = entry.kind === "message" && bubbleShown(entry);
+    if (shown && (firstShown || last === null || entry.at - last > TIME_BREAK_GAP_MS || dayOf(entry.at) !== dayOf(last))) breaks.add(entry.id);
+    if (shown) firstShown = false;
+    last = entry.at;
+  }
+  return breaks;
 }
 
 const TIME_FORMATS = {
   en: new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }),
   ko: new Intl.DateTimeFormat("ko", { hour: "2-digit", minute: "2-digit" }),
 };
+const DATE_FORMATS = {
+  en: new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }),
+  ko: new Intl.DateTimeFormat("ko", { month: "long", day: "numeric" }),
+};
 const timeOf = (at: number | null, language: ConsoleLocale | undefined): string | undefined =>
   at === null ? undefined : TIME_FORMATS[language ?? "en"].format(new Date(at));
+
+/** 시각 줄의 문구 — 오늘은 시각만, 어제는 「어제」를 앞에, 그 전은 날짜를 앞에 둔다. */
+function breakLabel(at: number, now: number, language: ConsoleLocale | undefined): string {
+  const time = timeOf(at, language)!;
+  if (dayOf(at) === dayOf(now)) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const t = getGroupT(language);
+  if (dayOf(at) === yesterday.toDateString()) return t("group.time.yesterday", { time });
+  return t("group.time.dated", { date: DATE_FORMATS[language ?? "en"].format(new Date(at)), time });
+}
 
 /** 본문 첫 줄 조각 — 접힌 줄에 선다. 마크다운 표식은 걷는다. */
 function excerpt(text: string, max = 120): string {
@@ -241,9 +299,10 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
+function TimelineEntry({ entry, previous, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
+  readonly tail: boolean;
   readonly live: boolean;
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
@@ -252,7 +311,7 @@ function TimelineEntry({ entry, previous, live, participants, language, onOpenLe
   readonly boardActionLabel: string | undefined;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -276,9 +335,10 @@ function NoteLine({ entry, language }: {
   );
 }
 
-function MessageBubble({ entry, continued, live, participants, language, onOpenLedger }: {
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
+  readonly tail: boolean;
   readonly live: boolean;
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
@@ -314,12 +374,13 @@ function MessageBubble({ entry, continued, live, participants, language, onOpenL
   // 지휘관·구성원의 응답은 채팅과 같이 마크다운이다. 흐르는 동안에는 글자 단위로 자란다.
   // 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다.
   const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
-  // 머리의 표식·이름은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트 영역이다.
-  // 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
-  const target = continued || !onOpenLedger ? null : ledgerTarget(speaker, participants);
+  // 묶음 머리의 이름과 꼬리의 표식은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트
+  // 영역이다. 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
+  const target = (continued && !tail) || !onOpenLedger ? null : ledgerTarget(speaker, participants);
   const open = target ? () => onOpenLedger!(target) : undefined;
   const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
-  const mark = continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
+  // 표식은 묶음 꼬리(마지막으로 서는 말풍선) 옆에 선다 — 묶음 왼쪽 아래.
+  const mark = !tail ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
   // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
   const name = open
     ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
@@ -327,7 +388,7 @@ function MessageBubble({ entry, continued, live, participants, language, onOpenL
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id} {...(time ? { title: time } : {})}>
       <span className="group-chat-agent-mark">
-        {open ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+        {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
       </span>
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (

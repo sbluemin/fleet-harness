@@ -11,6 +11,8 @@
 
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
+  /* 대화 중심 화면의 열 경계(사이드바·세부 정보와 대화 사이 1px). 기본은 --hairline 이고 대화 다크만 따로 준다. */
+  --hairline-column: var(--hairline);
   /* 텍스트 3티어(--text-*)는 판독 계약을 지는 유일한 색 역할이다. 어느 테마에서든 본문 표면 위에서
      WCAG 2.1 AA(본문 4.5:1, 큰 글자 3:1)를 넘어야 하며, 원료 잉크 티어(--ink-*)를 텍스트 색으로
      직접 쓰면 그 계약이 통제되지 않는다. tertiary는 판독 하한 바로 위 티어다 — Instrument의
@@ -127,6 +129,8 @@
 
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
+  /* 대화 중심 화면 사이드바의 바탕. 기본은 --ink-deep(대화 바탕보다 한 단 밝다)이고, 대화 다크는 레퍼런스대로 바탕보다 어둡다. */
+  --canvas-side: var(--ink-deep);
   --canvas-sea-core: oklch(13% 0.018 245);
   --canvas-sea-near: oklch(11.5% 0.016 245);
   --canvas-sea-mid: oklch(10% 0.014 245);
@@ -240,6 +244,12 @@
      Whites가 자기 값을 따로 잡는다. 패널 면과 같은 값이 되면 로그 위계가 통째로 사라진다. */
   --surface-panel-raised: var(--ink-mid);
   --surface-glass-strong: var(--ink-mid);
+  /* 대화 중심 화면의 캡슐(입력창·가운데 제목 pill)과 그 테두리. 기본은 지금까지의 얹힌 면·진한 경계를 잇고, 대화 다크만 레퍼런스
+     실측으로 다시 준다. 제목 pill 은 이 두 값을 자기 유리 면 토큰에 다시 꽂아 쓴다(conversation.css). */
+  --surface-capsule: var(--surface-panel-raised);
+  --surface-capsule-rim: var(--hairline-strong);
+  /* 사이드바의 열린 행 면. 기본은 brass 위치 채널의 면 워시이고, 대화 다크는 레퍼런스대로 중립 회색 면이다. */
+  --surface-row-selected: color-mix(in oklch, var(--brass) 14%, transparent);
   /* 부유 카드(⌘K/⌘P 검색·Quick Launch)의 pillar 티어. 유리가 꺼진 순간 --glass-tint-pillar가
      이 값으로 떨어지므로, 유리 ON(ink-veil α52% + 블러 → 실측 L≈18%)과 같은 자리에 서야 한다.
      ink-veil(L 23.5%) 불투명을 그대로 두면 Instrument만 크롬(ink-deep L 16.5%)보다 7단 밝은
@@ -1028,12 +1038,14 @@
 
 /* 대화 다크 — 대화 중심 화면(기본)인 데스크톱에서, 사람이 고른 다크 테마(Instrument·Maritime·Carbon)가 무엇이든 이
    한 벌로 선다(라이트는 Whites 그대로). 저장된 테마는 바꾸지 않는다 — 토글을 끄면 그 테마로 돌아간다. 기존 토큰 이름에 값만 다시
-   준다. Carbon 짝에서 중립 회색(채도 < 0.02)을 채도 0 으로 내리고, 핵심 면·글자는 Grok Bot 다크 스크린샷 실측(sRGB → OKLCH L)을 따른다:
-   대화·세부 정보 바탕 #070707(L 12.9%) = --canvas-abyss, 사이드바 #111111(17.8%) = --ink-deep, 말풍선 #262626(26.9%) = --ink-mid(→ 기본 --surface-panel-raised),
-   입력 캡슐 #2f2f2f(30.5%) = --surface-glass-strong, 열 경계 #292929(28.1%)·카드 테두리 #2c2c2c(29.3%) ≈ --hairline 28.5%,
-   선택 면 #1a1a1a(21.8%) = --surface-panel, 본문 글자 #fcfcfc(99%) → --ink-pearl 96%, 보조 글자 #9a9a9a(68.6%) = --ink-muted.
-   강조(brass 금색)·신호·정체성 색은 Carbon 값 그대로다 — 면과 글자만 Grok 처럼 중립이고, 금색 강조는 Fleet 의 것을 지킨다.
-   측정 근거: 목표 증거 impl/theme/measure.md. */
+   준다. Carbon 짝에서 중립 회색(채도 < 0.02)을 채도 0 으로 내리고, 핵심 면·글자는 사람이 첨부한 레퍼런스 원본(4116×1920,
+   Display P3 — 무채색은 sRGB 와 값이 같다)의 영역별 최빈색 실측(sRGB → OKLCH L)을 따른다:
+   대화·세부 정보 바탕 #121212(L 18.2%) = --canvas-abyss, 사이드바 #0e0e0e(16.4%) = --canvas-side — 사이드바가 바탕보다 어둡다,
+   봇 말풍선 #1b1b1b ≈ --surface-panel 21.8%(#1a1a1a), 입력 캡슐·제목 pill #1f1f1f(23.9%) = --surface-capsule,
+   열 경계 #1f1f1f(23.9%) = --hairline-column, 사이드바 열린 행 #202020(24.4%) = --surface-row-selected,
+   본문 글자 #f5f5f5(97%) = --ink-pearl, 시각·보조 글자 #a7a7a7(72.8%) = --ink-muted.
+   강조(brass 금색)·신호·정체성 색은 Carbon 값 그대로다 — 면과 글자만 레퍼런스처럼 중립이고, 금색 강조는 Fleet 의 것을 지킨다.
+   측정 근거: 목표 증거 ref/(measure-colors.mjs·colors.json, measure-geometry.mjs) 와 tobe/token-changes.md. */
 :root[data-conversation-layout="true"]:not([data-theme="whites"]) {
   --ink-abyss: oklch(15% 0 0);
   --ink-deep: oklch(17.8% 0 0);
@@ -1041,9 +1053,9 @@
   --ink-veil: oklch(34.9% 0 0);
   --ink-rim: oklch(45% 0 0);
   --ink-fog: oklch(58% 0 0);
-  --ink-muted: oklch(68.6% 0 0);
+  --ink-muted: oklch(72.8% 0 0);
   --ink-spectral: oklch(80% 0 0);
-  --ink-pearl: oklch(96% 0 0);
+  --ink-pearl: oklch(97% 0 0);
 
   --ink-brand-dev: oklch(84% 0.04 255);
 
@@ -1069,7 +1081,8 @@
   --crest: oklch(77% 0.1 46);
   --crest-glow: oklch(77% 0.1 46 / 12%);
 
-  --canvas-abyss: oklch(12.9% 0 0);
+  --canvas-abyss: oklch(18.2% 0 0);
+  --canvas-side: oklch(16.4% 0 0);
   --canvas-sea-core: oklch(15% 0 0);
   --canvas-sea-near: oklch(13.5% 0 0);
   --canvas-sea-mid: oklch(12.9% 0 0);
@@ -1079,6 +1092,9 @@
 
   --surface-panel: oklch(21.8% 0 0);
   --surface-glass-strong: oklch(30.5% 0 0 / 80%);
+  --surface-capsule: oklch(23.9% 0 0);
+  --surface-capsule-rim: var(--hairline);
+  --surface-row-selected: oklch(24.4% 0 0);
   --surface-pillar: oklch(20% 0 0 / 88%);
   --surface-rim: oklch(100% 0 0 / 12%);
   --surface-rim-strong: oklch(100% 0 0 / 16%);
@@ -1106,6 +1122,7 @@
 
   --hairline: oklch(28.5% 0 0);
   --hairline-strong: oklch(37% 0 0);
+  --hairline-column: oklch(23.9% 0 0);
 
   --control-rest: oklch(95% 0 0 / 5%);
   --control-rest-hover: oklch(95% 0 0 / 9%);

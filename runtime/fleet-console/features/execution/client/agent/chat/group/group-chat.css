@@ -44,6 +44,16 @@
   color: var(--text-tertiary);
 }
 
+/* 가운데 시각 줄 — 대화가 5분 넘게 쉬었다 이어지거나 날이 바뀐 자리에 선다(오늘은 시각만, 어제·그 전은 날을 앞에 둔다).
+   보조 글자 티어로, 말이 아니라 흐름의 이정표다. */
+.group-chat-time {
+  align-self: center;
+  margin: var(--space-1) 0 calc(var(--space-1) * -1);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
 
 /* 발화자 표식 — 노드 줄 글리프를 대화 크기로 키운다. */
 .group-chat-mark { width: 22px; height: 22px; border-radius: 7px; font-size: var(--t-xs); }
@@ -68,11 +78,12 @@
 .group-chat-name.is-tone-indigo { color: var(--id-indigo); }
 .group-chat-name.is-tone-crimson { color: var(--id-crimson); }
 
-/* 말풍선 — 사람은 오른쪽, 지휘관·구성원은 왼쪽. 테두리 없이 면 하나로 바탕에서 떠오른다. */
+/* 말풍선 — 사람은 오른쪽, 지휘관·구성원은 왼쪽. 테두리 없이 면 하나로 바탕에서 떠오른다.
+   여백 10/14px·반경 22px 은 사람이 승인한 시안 값이다 — 한 줄 말풍선이 높이의 절반 반경이라 알약으로 선다. */
 .group-chat-bubble {
   max-width: min(680px, 82%);
-  padding: var(--space-2) var(--space-3);
-  border-radius: 20px;
+  padding: 10px 14px;
+  border-radius: 22px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
@@ -80,15 +91,17 @@
   /* 사람의 말풍선은 한 단 밝은 회색 — 지휘관·구성원의 말풍선과 면으로 갈린다. */
   background: var(--ink-veil);
   border: 1px solid transparent;
-  border-radius: 20px;
+  border-radius: 22px;
   white-space: pre-wrap;
 }
 .group-chat-bubble.is-markdown { white-space: normal; }
 .group-chat-bubble.is-agent {
   background: var(--surface-panel-raised);
   border: 1px solid transparent;
-  border-radius: 20px;
+  border-radius: 22px;
 }
+/* 대화 다크의 봇 말풍선은 바탕에서 한 단만 떠오른다(레퍼런스 #1b1b1b ≈ --surface-panel). 라이트는 위의 얹힌 면 그대로다. */
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .group-chat-bubble.is-agent { background: var(--surface-panel); }
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
 
@@ -103,10 +116,12 @@
   max-width: 92%;
 }
 .group-chat-agent.is-continued { margin-top: calc(var(--space-2) * -1); }
+/* 표식은 묶음의 마지막 말풍선 옆(묶음 왼쪽 아래)에 서고, 이름은 첫 말풍선 위에 선다 — 표식 칸은 묶음 내내 같은 폭을 비워 둔다. */
 .group-chat-agent-mark { display: flex; align-self: end; padding-bottom: 2px; }
 .group-chat-agent-box { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 /*
- * 발화자 → 원장. 이름·아바타가 한 대상이라 hover 는 둘을 함께 밝힌다. 잉크(톤)는 그대로, 밑줄 없음 — 이름은 링크 낱말이
+ * 발화자 → 원장. 이름·아바타가 한 대상이라 같은 말에 함께 서면 hover 가 둘을 함께 밝힌다(여러 말 묶음은 이름이 첫 말, 아바타가
+ * 마지막 말에 서므로 각자 밝아진다). 잉크(톤)는 그대로, 밑줄 없음 — 이름은 링크 낱말이
  * 아니라 신원 칩이다. 원장 머리의 「대화로 돌아가기」도 같은 면·반경·전환을 쓴다.
  * 버튼 초기화는 `.group-chat-agent-name` 보다 앞에 둔다 — 같은 특이도라 뒤에 오면 `font: inherit` 가 이름의 글자 크기를 덮는다.
  */
@@ -450,12 +465,12 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   /* 양 끝에 같은 크기의 원(「+」·보내기)이 앉으므로 안쪽 여백도 양쪽이 같다. */
   padding: 7px;
   box-sizing: border-box;
-  border: 1px solid var(--hairline-strong);
+  border: 1px solid var(--surface-capsule-rim);
   border-radius: 24px;
-  background: var(--surface-panel-raised);
+  background: var(--surface-capsule);
   transition: border-color var(--duration-fast);
 }
-.group-composer:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--hairline-strong)); }
+.group-composer:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
 .group-composer.is-disabled { opacity: var(--control-disabled-opacity); }
 .group-composer-input {
   flex: 1 1 auto;
