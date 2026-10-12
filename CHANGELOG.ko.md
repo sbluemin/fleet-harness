@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.230.0] - 2026-10-12
+
+### fleet-console
+
+#### Changed
+- 휴대폰의 채팅이 데스크톱 대화 화면처럼 보입니다. 답은 에이전트 아바타 옆 말풍선으로 서고, 지난 대화가 「이전 대화」 띠 뒤로 접히지 않고 스레드 전체가 펼쳐집니다.
+
+#### Fixed
+- 사이드바에서 Operation 이름을 더블클릭하면 대화 중심·캔버스 화면 모두에서 이름을 바꿀 수 있습니다. 「더블클릭으로 Operation 열기」를 켜 두면 이름 밖의 행을 더블클릭할 때는 그대로 열립니다.
+
 ## [1.229.0] - 2026-10-12
 
 ### fleet-console

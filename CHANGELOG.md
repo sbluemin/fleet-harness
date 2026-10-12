@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.230.0] - 2026-10-12
+
+### fleet-console
+
+#### Changed
+- Chats on a phone now read like the desktop conversation view, with replies in speech bubbles beside the agent's avatar and the whole thread open instead of folded behind an earlier-conversation band.
+
+#### Fixed
+- Double-clicking an Operation's name in the sidebar now renames it in both the conversation and canvas layouts; with "Open Operations with a double-click" on, double-clicking elsewhere on the row still opens it.
+
 ## [1.229.0] - 2026-10-12
 
 ### fleet-console
