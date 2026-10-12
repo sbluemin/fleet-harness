@@ -1156,7 +1156,8 @@ export const followupBodySchema = z.object(followupFields).strict();
 export const followupReviseSchema = z.object({ title: followupFields.title.optional(), summary: followupFields.summary.optional(), userImpact: followupFields.userImpact.optional(), fromMission: followupFields.fromMission.optional(), brief: followupFields.brief.optional(), evidence: followupFields.evidence.optional() }).strict();
 /**
  * 진행 중 지휘관이 옛 스키마로 criteria 를 넣어도 그 키만 버린다. 다른 모르는 키는 strict 가 그대로 거절한다.
- * 광고되는 JSON 스키마는 안쪽 객체만 보이므로 criteria 가 나가지 않는다.
+ * 광고 JSON 에는 criteria 가 없다. 그 스키마를 호스트가 fromJSONSchema 로 다시 검사하므로, add·revise 는
+ * additionalProperties:false 이면 criteria 가 이 함수에 닿기 전에 거절된다.
  */
 export const withoutLegacyCriteria = (value: unknown): unknown => {
   if (!value || typeof value !== "object" || Array.isArray(value) || !Object.prototype.hasOwnProperty.call(value, "criteria")) return value;

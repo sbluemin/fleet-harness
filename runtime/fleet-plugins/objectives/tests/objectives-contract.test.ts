@@ -1827,8 +1827,7 @@ describe("Objectives contract", () => {
     expect((await add({ ...body, fromMission: "elsewhere" })).error).toBe("unknown_mission");
     expect((await add({ ...body, evidence: [{ kind: "file", path: "src/a.ts" }] })).error).toBe("evidence_not_observable");
     for (let n = 0; n < MAX_FOLLOWUPS; n += 1) expect((await add(body)).ok).toBe(true);
-    // 옛 스키마의 criteria 는 거절 사유가 아니다. 디스크에 남은 키도 후보·배치를 지우지 않고 읽은 뒤 버린다.
-    expect((await add({ ...body, criteria: ["Verified"] })).error).toBe("too_many_followups");
+    // 디스크에 남은 옛 criteria 는 후보·배치를 지우지 않고 읽은 뒤 버린다. 도구 execute 직접 호출은 호스트의 스키마 재검사를 거치지 않는다.
     const saved = JSON.parse(fs.readFileSync(objectiveFile(source.id), "utf8")) as { followups: { criteria?: string[] }[]; followupBatches?: unknown[] };
     saved.followups[0]!.criteria = ["Verified"];
     saved.followupBatches = [{ id: "3f1c8f3e-1111-4a8b-9c0d-000000000009", at: 1, launch: { groupId: null, viewMode: "terminal", language: "en" }, items: [{ candidateId: "batch-legacy", rev: 1, state: "failed", attempts: 1, snapshot: { ...body, criteria: ["old"] } }] }];

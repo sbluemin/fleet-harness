@@ -120,8 +120,21 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     const matches = store.all().filter((objective) => objective.id.startsWith(reference) && roleIn(objective, caller));
     return matches.length === 1 ? matches[0]!.id : reference;
   };
+  /**
+   * followup 의 add·revise 만 additionalProperties 를 광고하지 않는다. 호스트는 광고 JSON 을 fromJSONSchema 로
+   * 플러그인 execute 보다 먼저 검사하고, false 이면 옛 criteria 가 preprocess 에 닿기 전에 거절된다. 빼면 호스트는
+   * 그 키를 지우지 않고 넘긴다. criteria 는 플러그인이 버리고, 그 외 모르는 키는 플러그인 strict 가 거절한다.
+   */
+  const advertisedSchema = (name: string, schema: z.ZodType) => {
+    const json = z.toJSONSchema(schema);
+    if (name !== "followup") return json;
+    const properties = (json as { properties?: Record<string, { additionalProperties?: unknown }> }).properties;
+    if (properties?.add) delete properties.add.additionalProperties;
+    if (properties?.revise) delete properties.revise.additionalProperties;
+    return json;
+  };
   const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
-    name, description, inputSchema: z.toJSONSchema(schema),
+    name, description, inputSchema: advertisedSchema(name, schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
