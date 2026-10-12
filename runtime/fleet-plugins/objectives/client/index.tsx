@@ -13,10 +13,10 @@ import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, ins
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
-import { decisionAttentionItems, MobileObjectiveDetail, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
+import { decisionAttentionItems, MobileObjectiveDetail, personTurnCount, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, pendingDecisionCount, readAllTheaters, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
+import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, readAllTheaters, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -74,7 +74,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   keepsOperationActive: true,
   // 대화 중심 화면의 Operation 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
   conversationTab: true,
-  // 사람의 답을 기다리는 결정 요청 수 — 표면을 닫아 두어도 아이콘 배지로 선다.
+  // 사람의 차례 수(사람이 답할 결정 요청과 사령관이 넘긴 항목) — 표면을 닫아 두어도 아이콘 배지로 선다.
   // 대화 중심 화면에서는 레일 목표 상세가 결정 요청을 세우지 않으므로(가운데 대화의 카드가 받는다) 배지도 세우지 않는다.
   attention: {
     // 사령관 상태도 「확인 필요」 행의 메모(사령관이 답하는 중)를 바꾼다. 대화 배치가 바뀌면 배지 수도 다시 읽는다.
@@ -83,7 +83,7 @@ export const objectivesEntry: RailEntryDescriptor = {
       const offLayout = subscribeCommodoreConversationActive(listener);
       return () => { offAttention(); offLayout(); };
     },
-    count: (theaterId) => (isCommodoreConversationActive() ? 0 : pendingDecisionCount(theaterId)),
+    count: (theaterId) => (isCommodoreConversationActive() ? 0 : personTurnCount(theaterId)),
     label: (count, locale) => getT(locale)("objectives.requests.badge", { count }),
     // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표 상세.
     items: decisionAttentionItems,

@@ -2,11 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ownAnswer, type Decision, type DecisionQuestion, type Objective } from "../server/types.js";
+import { ownAnswer, type Decision, type DecisionQuestion, type Objective, type PersonHoldTarget } from "../server/types.js";
 import { actorDid } from "./actors.js";
-import { useCommodoreBoard } from "./commodore-state.js";
+import { livePersonHold } from "../server/board-state.js";
+import { decisionTurn, useCommodoreBoard } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
+import { returnPersonHold } from "./objectives-state.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 
 /**
@@ -70,6 +72,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
   const [drafts, setDrafts] = useState(() => storedDrafts(objective.id, request?.id));
   const [sending, setSending] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
+  const [givingBack, setGivingBack] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
   // 되살린 초안은 onChange 를 거치지 않는다 — 그려질 때 칸 높이를 글에 맞춘다.
   useLayoutEffect(() => { sectionRef.current?.querySelectorAll("textarea").forEach(fitField); }, [objective.id, request?.id]);
@@ -110,18 +113,30 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
     } finally { setSending(false); }
   };
   // 자율 운영 중이면 사령관이 운영하는 목표의 요청을 맡는다 — 사람도 그대로 답할 수 있고, 먼저 보낸 답이 이긴다.
-  // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않으므로 「답하는 중」을 달지 않는다(서버 판정 `operator`).
+  // 사람이 운영하는 목표의 요청과 사령관이 사람에게 넘긴 요청은 사람의 차례라 「답하는 중」을 달지 않는다(`decisionTurn`).
+  // 사령관이 맡은 요청은 사람을 기다리지 않으므로 궤도 없이 무채색 머리로 선다.
   const commodore = useCommodoreBoard(objective.theaterId);
+  const delegated = decisionTurn(objective, commodore.active) === "commodore";
+  const handed = livePersonHold(objective, "decision");
+  const giveBack = async () => {
+    if (sending || givingBack) return;
+    setGivingBack(true);
+    setFault(null);
+    try { await returnPersonHold(objective.id, "decision"); }
+    catch { setFault(t("objectives.decision.giveBackFailed")); }
+    finally { setGivingBack(false); }
+  };
   return (
-    <section ref={sectionRef} className="objectives-decision-request" aria-label={t("objectives.decision.request")}>
-      <span className="objectives-decision-orbit" aria-hidden="true" />
+    <section ref={sectionRef} className={`objectives-decision-request${delegated ? " is-delegated" : ""}`} aria-label={t("objectives.decision.request")}>
+      {delegated ? null : <span className="objectives-decision-orbit" aria-hidden="true" />}
       <div className="objectives-decision-head">
         <span className="objectives-decision-glyph"><RequestGlyph /></span>
         <span>{t("objectives.decision.request")}</span>
         <time dateTime={new Date(request.createdAt).toISOString()}>{clock(request.createdAt, language)}</time>
         {many ? <span className="objectives-decision-n">{t("objectives.decision.questions", { count: total })}</span> : null}
-        {commodore.active && objective.operator !== "human" ? <span className="objectives-decision-handler" title={t("objectives.commodore.decisionHint")}>{t("objectives.commodore.note.answering")}</span> : null}
+        {delegated ? <span className="objectives-decision-handler" title={t("objectives.commodore.decisionHint")}>{t("objectives.commodore.note.answering")}</span> : null}
       </div>
+      {handed ? <p className="objectives-decision-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
       <div className="objectives-decision-body">
         {request.questions.map((question, index) => {
           const draft = draftOf(question);
@@ -199,12 +214,63 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
       </div>
       <div className="objectives-decision-submit">
         {many ? <span className="objectives-decision-progress">{t("objectives.decision.progress", { done, total })}</span> : null}
-        <button type="button" className="objectives-decision-send" disabled={sending || done !== total} onClick={() => void submit()}>{t(sending ? "objectives.decision.sending" : "objectives.decision.send")}</button>
+        <span className="objectives-decision-route">{t(handed ? "objectives.decision.routeHanded" : "objectives.decision.route")}</span>
+        {handed ? <button type="button" className="objectives-decision-giveback" disabled={sending || givingBack} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button> : null}
+        <button type="button" className="objectives-decision-send" disabled={sending || givingBack || done !== total} onClick={() => void submit()}>{t(sending ? "objectives.decision.sending" : "objectives.decision.send")}</button>
       </div>
       {fault ? <p className="objectives-decision-fault" role="status">{fault}</p>
         : unconfirmed ? <p className="objectives-decision-fault" role="status">{t("objectives.decision.unknown")}</p>
         : null}
     </section>
+  );
+}
+
+/**
+ * 결정 요청 밖의 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
+ * 「사령관에게 돌려주기」를 단다. 그 대상의 넘김(`livePersonHold`)이 서 있을 때만 그린다. 돌려주기가 실패하면 한 줄로 말한다.
+ * 폰(`phone`)은 폰 문법을 쓰고, `label` 이 있으면 제 카드로 선다(그 대상의 표면이 폰에 따로 없을 때).
+ */
+export function PersonHoldNote({ objective, target, t, phone = false, label }: {
+  readonly objective: Objective;
+  readonly target: Exclude<PersonHoldTarget, "decision">;
+  readonly t: T;
+  readonly phone?: boolean;
+  readonly label?: string;
+}) {
+  const hold = livePersonHold(objective, target);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [objective.id, hold?.at]);
+  if (!hold) return null;
+  const giveBack = async () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try { await returnPersonHold(objective.id, target); }
+    catch { setFailed(true); }
+    finally { setBusy(false); }
+  };
+  if (phone) {
+    const body = (
+      <>
+        <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{hold.reason}</p>
+        {failed ? <p className="objectives-m-fault" role="status">{t("objectives.decision.giveBackFailed")}</p> : null}
+        <div className="objectives-m-ucard-ft">
+          <span className="objectives-m-sp" />
+          <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={busy} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
+        </div>
+      </>
+    );
+    return label ? <section className="objectives-m-card" aria-label={label}><h3 className="objectives-m-card-label">{label}</h3>{body}</section> : body;
+  }
+  return (
+    <div className="objectives-hold">
+      <p className="objectives-decision-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={hold.reason} /></p>
+      <div className="objectives-hold-acts">
+        {failed ? <span className="objectives-decision-fault" role="status">{t("objectives.decision.giveBackFailed")}</span> : null}
+        <button type="button" className="objectives-decision-giveback" disabled={busy} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
+      </div>
+    </div>
   );
 }
 

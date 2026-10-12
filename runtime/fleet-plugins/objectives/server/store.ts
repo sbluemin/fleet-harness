@@ -9,7 +9,7 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
-import { objectiveOperator } from "./board-state.js";
+import { heldItemStands, objectiveOperator, type HoldSubject } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -79,6 +79,11 @@ import {
   type DecisionQuestionInput,
   type DecisionRequest,
   storedDecisionFieldsSchema,
+  storedPersonHoldSchema,
+  MAX_PERSON_HOLD_REASON,
+  type ObjectivePersonHold,
+  type PersonHoldTarget,
+  type StoredPersonHold,
   storedExtensionsSchema,
   MAX_CONTEXT,
 } from "./types.js";
@@ -276,6 +281,18 @@ export interface ObjectiveStore {
    * 편집 종류(`kinds`) 없는 `edit` 는 이 기록뿐이다 — 화면의 출처가 그것을 맡기기·돌려받기로 읽는다(client/actors.ts `lastAct`).
    */
   setCommodoreOperated(objectiveId: string, operated: boolean, by: ObjectiveActor): Objective;
+  /**
+   * 사령관이 운영하는 목표에 서 있는 대기 항목을 사람에게 넘긴다(사유와 함께). 같은 대상의 넘김은 갈아 끼운다.
+   * 사람이 운영하는 목표는 `not_commodore_operated`, 넘길 항목이 없으면 `nothing_to_hand`, 답이 가는 중인 결정은 `decision_delivering`.
+   */
+  personHold(objectiveId: string, input: { readonly target: PersonHoldTarget; readonly reason: string; readonly by: Extract<ObjectiveActor, { kind: "commodore" }> }): Objective;
+  /** 사람이 넘겨받은 항목을 사령관에게 돌려준다 — 넘김은 「돌려줌」으로 끝난다. 서 있는 넘김이 없으면 `not_held`. */
+  personHoldReturn(objectiveId: string, target: PersonHoldTarget, by: ObjectiveReviewer): Objective;
+  /**
+   * 사람 쪽 행위 뒤 — 행위 전에 서 있던 넘김(`before`) 가운데 그 항목이 사라진 것을 「사람이 답함」으로 끝낸다.
+   * 그새 같은 대상에 새 넘김이 섰으면 건드리지 않는다. `ended` 대상은 항목이 남아 있어도 이 행위로 사람의 선택이 끝났다(완료 뒤 남은 후속).
+   */
+  personHoldsAnswered(objectiveId: string, before: readonly ObjectivePersonHold[], by: ObjectiveReviewer, ended?: readonly PersonHoldTarget[]): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(objectiveId: string, by?: ObjectiveActor): Objective;
   criterionAdd(objectiveId: string, text: string, by: ObjectiveActor): Objective;
@@ -473,7 +490,9 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
       // 후속 본문은 strict 로 검사하지 않는다. 옛 criteria 는 후보를 지우지 않고 키만 버린다. 목표 자신의 criteria 는 남긴다.
       dropLegacyFollowupCriteria(parsed);
-      return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
+      // 넘김은 어긋난 항목만 버린다 — 대상마다 마지막 하나.
+      const holds = Array.isArray(parsed.personHolds) ? [...new Map(parsed.personHolds.filter((hold) => storedPersonHoldSchema.safeParse(hold).success).map((hold) => [hold.target, hold] as const)).values()] : [];
+      return { ...parsed, personHolds: holds, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
   } catch { /* 깨진 JSON 또는 results/evidence 필드 — 원본을 격리하고 그 목표만 레코드 없음으로 본다. */ }
   quarantine(file);
@@ -581,6 +600,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.decisionRequestRevision) delete out.decisionRequestRevision;
   if (!objective.decisionDelivery) delete out.decisionDelivery;
   if (!objective.decisions?.length) delete out.decisions;
+  if (!objective.personHolds?.length) delete out.personHolds;
   out.missions = objective.missions.map((mission) => {
     const next: Record<string, unknown> = { ...mission };
     if (mission.done !== true) delete next.done;
@@ -622,6 +642,21 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
     return dangling ? withoutDecisionRequest(stored) : stored;
   };
+  /** 넘긴 항목이 서 있는지 보는 사실 — 저장 레코드에서. */
+  const holdSubject = (stored: StoredObjective): HoldSubject => ({ decisionRequest: stored.decisionRequest ?? null, criteriaProposals: stored.criteriaProposals ?? [], awaitingReview: awaitingReview(stored), done: stored.done, followups: stored.followups ?? [] });
+  /** 사람의 처리 없이 항목이 사라진 넘김을 거둔다 — 그 항목을 사라지게 한 쓰기와 같은 쓰기에서. 끝난 넘김은 남는다. */
+  const withLiveHolds = (stored: StoredObjective): StoredObjective => {
+    const holds = stored.personHolds;
+    if (!holds?.length) return stored;
+    const subject = holdSubject(stored);
+    const kept = holds.filter((hold) => hold.settled || heldItemStands(subject, hold));
+    return kept.length === holds.length ? stored : { ...stored, personHolds: kept };
+  };
+  const holdOf = (stored: StoredObjective, target: PersonHoldTarget): StoredPersonHold | null => {
+    const hold = stored.personHolds?.find((entry) => entry.target === target);
+    return hold && !hold.settled && heldItemStands(holdSubject(stored), hold) ? hold : null;
+  };
+  const withHold = (stored: StoredObjective, hold: StoredPersonHold): StoredObjective => ({ ...stored, personHolds: [...(stored.personHolds ?? []).filter((entry) => entry.target !== hold.target), hold] });
   /**
    * 그룹 id 가 이 Theater 의 살아 있는 그룹인가 — 아니면 미분류(null). 그룹을 모르는 호스트(구버전·테스트 스텁)에서는 그대로 둔다.
    * 개시 전 목표의 그룹은 저장 레코드에만 있어 코어의 그룹 삭제가 옮겨 주지 않는다.
@@ -790,6 +825,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       decisionRequestRevision: stored.decisionRequestRevision ?? 0,
       decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at, by: stored.decisionDelivery.by ?? "human" } : null,
       decisions: (stored.decisions ?? []).map((decision) => ({ ...decision, by: decision.by ?? "human" })),
+      personHolds: (stored.personHolds ?? []).map((hold) => ({ target: hold.target, requestId: hold.requestId ?? null, reason: hold.reason, at: hold.at, by: hold.by, settled: hold.settled ?? null })),
       recorded,
       removed: stored.removed ? { at: stored.removed.at, expiresAt: stored.removed.at + REMOVED_RETENTION_MS,
         by: stored.removed.by ? tidiedBy(stored.removed.by, stored.removed.byTitle) : null,
@@ -945,7 +981,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true): Objective => {
     const { theaterId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
-    const mutated = withLiveDecisionReferences(withValidHandoff(mutate(stored)));
+    const mutated = withLiveHolds(withLiveDecisionReferences(withValidHandoff(mutate(stored))));
     if (mutated === stored) return project(stored, node);
     if (mutated.missions.length > MAX_MISSIONS) throw new ObjectiveStoreError("too_many_missions");
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
@@ -1656,6 +1692,37 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return stage === "commenced" ? { ...action(staged, by, "commence"), commencedBy: by } : action(staged, by, "plan");
     }),
     setCommodoreOperated: (objectiveId, operated, by) => update(objectiveId, (stored) => (stored.commodoreOperated === operated ? stored : action({ ...stored, commodoreOperated: operated }, by, "edit"))),
+    personHold(objectiveId, { target, reason, by }) {
+      const { theaterId, stored: current } = locate(objectiveId);
+      if (objectiveOperator(current, (id) => load(theaterId).get(id)) !== "commodore") throw new ObjectiveStoreError("not_commodore_operated");
+      return update(objectiveId, (stored) => {
+        if (stored.removed) throw new ObjectiveStoreError("objective_removed");
+        const request = stored.decisionRequest;
+        // 답이 이미 가는 중인 결정은 넘길 것이 아니다 — 그 답이 결정이 된다.
+        if (target === "decision" && request && (delivering.has(request.id) || stored.decisionDelivery?.requestId === request.id)) throw new ObjectiveStoreError("decision_delivering");
+        const hold: StoredPersonHold = { target, ...(target === "decision" && request ? { requestId: request.id } : {}), reason: reason.trim(), at: now(), by: { kind: "commodore", theaterId: by.theaterId } };
+        if (!hold.reason || hold.reason.length > MAX_PERSON_HOLD_REASON) throw new ObjectiveStoreError("invalid_reason");
+        if (!heldItemStands(holdSubject(stored), hold)) throw new ObjectiveStoreError("nothing_to_hand");
+        return withHold(stored, hold);
+      });
+    },
+    personHoldReturn: (objectiveId, target, by) => update(objectiveId, (stored) => {
+      const hold = holdOf(stored, target);
+      if (!hold) throw new ObjectiveStoreError("not_held");
+      return withHold(stored, { ...hold, settled: { at: now(), by, outcome: "returned" } });
+    }),
+    personHoldsAnswered: (objectiveId, before, by, ended = []) => update(objectiveId, (stored) => {
+      const subject = holdSubject(stored);
+      let next = stored;
+      for (const earlier of before) {
+        const hold: StoredPersonHold = { target: earlier.target, ...(earlier.requestId ? { requestId: earlier.requestId } : {}), reason: earlier.reason, at: earlier.at, by: earlier.by };
+        if (earlier.settled || (!ended.includes(hold.target) && heldItemStands(subject, hold))) continue;
+        const present = next.personHolds?.find((entry) => entry.target === hold.target);
+        if (present && present.at !== hold.at) continue;
+        next = withHold(next, { ...hold, settled: { at: now(), by, outcome: "answered" } });
+      }
+      return next;
+    }),
     setCriteriaOpen: (objectiveId, open) => update(objectiveId, (stored) => (!!stored.criteriaOpen === open ? stored : { ...stored, criteriaOpen: open ? true as const : undefined })),
     clearMet: (objectiveId, by) => update(objectiveId, (stored) => withoutMet(by ? action(stored, by, "steer") : stored)),
 

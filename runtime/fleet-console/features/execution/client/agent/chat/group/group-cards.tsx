@@ -1,5 +1,6 @@
 import type { ConversationDecision, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { OperationUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
@@ -44,8 +45,21 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
   const [texts, setTexts] = React.useState<Readonly<Record<string, string>>>({});
   const [sending, setSending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [givingBack, setGivingBack] = React.useState(false);
+  const [giveBackFailed, setGiveBackFailed] = React.useState(false);
   // 새 요청은 새 질문이다 — 앞 요청에 고르던 것을 옮겨 붙이지 않는다.
-  React.useEffect(() => { setPicks({}); setTexts({}); setFailed(false); }, [decision.id]);
+  React.useEffect(() => { setPicks({}); setTexts({}); setFailed(false); setGiveBackFailed(false); }, [decision.id]);
+  const locale = language ?? "en";
+  const text = (value: Parameters<typeof resolveLocalizedText>[0] | undefined) => (value === undefined ? "" : resolveLocalizedText(value, locale));
+  const handed = decision.handed;
+  const giveBack = handed?.giveBack;
+  // 맡은 이에게 돌려주기 — 성공하면 보드가 넘김을 걷어 카드가 다시 그려진다. 실패는 한 줄로 말하고 카드를 그대로 둔다.
+  const returnToHandler = async () => {
+    if (!giveBack || givingBack || sending) return;
+    setGivingBack(true);
+    setGiveBackFailed(false);
+    try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
+  };
 
   const answered = (questionId: string) => (picks[questionId]?.length ?? 0) > 0 || (texts[questionId] ?? "").trim().length > 0;
   const ready = decision.questions.every((question) => answered(question.id));
@@ -87,8 +101,12 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
       <div className="group-card-head">
         {asker ? <SpeakerMark speaker={asker} size="sm" /> : null}
         <span className="group-card-who">{asker ? `${asker.name} · ${t("group.decision.badge")}` : t("group.decision.badge")}</span>
+        {decision.handler && !handed ? <span className="group-card-handler">{text(decision.handler)}</span> : null}
         <button type="button" className="group-chat-link" onClick={decision.open}>{t("group.decision.open")}</button>
       </div>
+      {handed ? (
+        <p className="group-card-handed"><span className="group-card-handed-label">{text(handed.label)}</span>{handed.reason}</p>
+      ) : null}
       {decision.questions.map((question, at) => (
         <div key={question.id} className="group-card-question">
           <p className="group-card-title">{many ? `${at + 1}. ` : ""}{question.text}</p>
@@ -128,8 +146,14 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
         </div>
       ))}
       <div className="group-card-foot">
-        {failed ? <span className="group-card-error" role="alert">{t("group.decision.failed")}</span> : <span />}
-        <button type="button" className="group-card-send" disabled={!submitPath || !ready || sending} onClick={() => { void submit(); }}>
+        {failed ? <span className="group-card-error" role="alert">{t("group.decision.failed")}</span>
+          : giveBackFailed ? <span className="group-card-error" role="alert">{t("group.decision.giveBackFailed")}</span>
+          : decision.route ? <span className="group-card-route">{text(decision.route)}</span>
+          : <span />}
+        {giveBack ? (
+          <button type="button" className="group-card-send is-quiet" disabled={givingBack || sending} onClick={() => { void returnToHandler(); }}>{text(giveBack.label)}</button>
+        ) : null}
+        <button type="button" className="group-card-send" disabled={!submitPath || !ready || sending || givingBack} onClick={() => { void submit(); }}>
           {sending ? t("group.decision.sending") : t("group.decision.send")}
         </button>
       </div>

@@ -3,12 +3,12 @@ import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mc
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
-import { inboxReasons } from "./board-state.js";
+import { inboxAwaits, inboxReasons, livePersonHold } from "./board-state.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { COMMODORE_TIDY_PREFIX, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 
@@ -47,6 +47,7 @@ const HINTS: Readonly<Record<string, string>> = {
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
   routing_preview_stale: "Judge with routing first; commence launches routed members with the models it showed.",
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
+  held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
@@ -107,6 +108,11 @@ const detailTool = defineConsoleTool({
     compact: write({}),
     hand_off: write({}),
     extend: write({ context: remark }),
+    // 사령관만 — 서 있는 대기 항목을 사유와 함께 사람 몫으로 넘긴다. 사람은 화면의 「사령관에게 돌려주기」로 되돌린다.
+    hand_to_person: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
+      target: z.enum(PERSON_HOLD_TARGETS).describe("The waiting item: the decision request, criteria proposals, review, or open follow-up candidates."),
+      reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide this; shown to them on the item."),
+    }) },
   },
 });
 type ListCall = Extract<ReturnType<typeof listTool.parse>, { ok: true }>["call"];
@@ -311,12 +317,13 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
                 if (candidate.state === "open" && candidate.rev !== rev) throw new ObjectiveStoreError("followup_changed");
               }
               let discarded = { objective: current };
-              for (const { id: candidateId } of call.followups) discarded = actions.followupDiscard({ ...ref, candidateId });
+              for (const { id: candidateId } of call.followups) discarded = await actions.followupDiscard({ ...ref, candidateId });
               return discarded;
             }
             case "edit_title": return actions.patch({ ...ref, patch: { title: call.title } });
             case "edit_brief": return actions.patch({ ...ref, patch: { note: call.brief } });
             case "edit_due": return actions.patch({ ...ref, patch: { dueDate: call.dueDate } });
+            case "hand_to_person": return actions.handToPerson({ ...ref, target: call.target, reason: call.reason });
           }
         })();
         const { objective: updated, ...details } = result;
@@ -388,7 +395,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
       const now = Date.now();
       return page(board.flatMap((objective) => {
         const reasons = inboxReasons(objective, { now, observe: (id) => ctx.host.consoleControl?.observe(id) });
-        return reasons.length ? [{ ...rowView(objective), reasons, boardUpdatedAt: objective.boardUpdatedAt, sessions: sessions(objective),
+        // awaits — 이유마다 누가 답할 차례인가. 사람에게 넘긴 항목은 personHolds 에 사유와 함께 선다.
+        const holds = objective.personHolds.filter((hold) => livePersonHold(objective, hold.target) === hold);
+        return reasons.length ? [{ ...rowView(objective), reasons, awaits: inboxAwaits(objective, reasons), ...(holds.length ? { personHolds: holds } : {}), boardUpdatedAt: objective.boardUpdatedAt, sessions: sessions(objective),
           criteriaProposals: objective.criteriaProposals, decisionRequest: objective.decisionRequest, decisionDelivery: objective.decisionDelivery,
           handoff: objective.handoff, followups: objective.followups.filter((candidate) => candidate.state === "open"),
           followupBatches: objective.followupBatches.filter((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming")),

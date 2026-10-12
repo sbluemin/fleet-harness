@@ -1,8 +1,11 @@
 import type { ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
+import { livePersonHold } from "../server/board-state.js";
 import { MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
+import { decisionTurn } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
+import { returnPersonHold } from "./objectives-state.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
 
 /** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
@@ -11,8 +14,11 @@ export interface ConversationCrew {
   readonly roster: ModelRoster | null;
 }
 
-/** Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다. */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): OperationClusterConversation {
+/**
+ * Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다.
+ * `commodoreActive` — 이 Theater 의 자율 운영이 실제로 도는가. 결정 카드의 차례(사령관이 답하는 중·넘긴 이유)를 정한다.
+ */
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew, commodoreActive = false): OperationClusterConversation {
   const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
@@ -30,6 +36,9 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     text: [decision.question.text, ...decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label), decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
   });
   const request = !objective.done ? objective.decisionRequest : null;
+  // 결정 카드의 차례 — 사령관이 넘긴 요청이면 넘긴 이유와 돌려주기, 사령관이 맡은 요청이면 「답하는 중」. 답이 갈 곳은 늘 한 줄.
+  const handedHold = request ? livePersonHold(objective, "decision") : null;
+  const handler = request && decisionTurn(objective, commodoreActive) === "commodore";
   const truncated = (objective.memberHistory?.length ?? 0) >= MAX_OBJECTIVE_ACTIONS || Object.values(objective.actionCounts ?? {}).reduce((sum, count) => sum + count, 0) > (objective.actions?.length ?? 0);
   // 사령관 행위 줄 → 그 시각의 사령관 기록(읽기 전용). 줄 id 로 시각을 찾는다 — 모르는 줄이면 아무 일도 없다.
   const openBoardAction = openRecord ? (entryId: string) => {
@@ -40,6 +49,12 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, text: question.text, multiSelect: question.multiSelect, options: question.options })), open,
     ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
+    ...(handler ? { handler: localized((t) => t("objectives.commodore.note.answering")) } : {}),
+    ...(handedHold ? { handed: {
+      label: localized((t) => t("objectives.decision.handed")), reason: handedHold.reason,
+      giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, "decision") },
+    } } : {}),
+    route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
   } : null };
 }
 

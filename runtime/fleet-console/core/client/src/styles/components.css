@@ -8182,7 +8182,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   }
 }
 
-/* 결정 요청·오늘 구역 — 접지 않는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다.
+/* 내 결정·오늘·맡김 구역 — 내 결정·오늘은 접지 않는 머리, 맡김은 접히는 머리. 뒤따르는 가는 선이 구역의 끝을 긋지 않고 자리만 잡는다.
    줄과 같은 바깥 여백·모서리를 둬 Console Use 펄스(목록 읽기)가 줄과 같은 윤곽으로 감싼다 — 글자·선 자리는 그대로다. */
 .side-bar-row-zone-pin {
   display: flex;
@@ -8205,12 +8205,42 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-size: var(--t-2xs);
 }
 
-/* 줄이 낸 구역 머리 말(「사령관 처리 중」) — 개수 뒤, 같은 크기의 brass 잉크. */
-.side-bar-row-zone-note {
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  letter-spacing: 0;
-  color: var(--brass-ink);
+/* 맡김 구역 — 사람이 답할 것이 아니라 신호색 없이 무채색 머리가 펼침 단추다. 「시작 전」 접기처럼 머무를 때만 옅게 선다. */
+.side-bar-row-zone.is-delegated .side-bar-row-zone-pin {
+  width: calc(100% - 2 * var(--space-1));
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-row-zone.is-delegated .side-bar-row-zone-pin:hover {
+  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  color: var(--text-secondary);
+}
+
+.side-bar-row-zone.is-delegated .side-bar-row-zone-pin:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
+}
+
+.side-bar-row-zone-chev {
+  display: inline-block;
+  width: 8px;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.side-bar-row-zone-pin[aria-expanded="true"] .side-bar-row-zone-chev {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-row-zone.is-delegated .side-bar-row-zone-pin,
+  .side-bar-row-zone-chev {
+    transition: none;
+  }
 }
 
 .side-bar-row-zone-rim {

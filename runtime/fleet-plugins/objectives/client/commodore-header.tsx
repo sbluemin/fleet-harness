@@ -5,7 +5,7 @@ import type { TheaterContribution, TheaterContributionContext, TheaterMenuContex
 
 import {
   isRunningObjective,
-  isWaitingObjective,
+  isCommodoreWaiting,
   loadCommodore,
   noteCommodoreLanguage,
   readCommodore,
@@ -146,7 +146,7 @@ type CommodoreView = ReturnType<typeof useCommodore>["view"];
 export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[]): MongleState {
   if (view?.state.autonomy !== true) return "idle";
   if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
-  const waiting = objectives.some((objective) => objective.operator === "commodore" && isWaitingObjective(objective));
+  const waiting = objectives.some((objective) => isCommodoreWaiting(objective));
   return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle" });
 }
 export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
@@ -159,8 +159,8 @@ export function commodoreSummary(t: ReturnType<typeof getT>, view: CommodoreView
   const on = view?.state.autonomy === true;
   const run = view?.run;
   const running = objectives.filter(isRunningObjective).length;
-  // 대기는 사령관이 운영하는 목표만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
-  const waiting = objectives.filter((objective) => objective.operator === "commodore" && isWaitingObjective(objective)).length;
+  // 대기는 사령관이 운영하는 목표의, 사람에게 넘기지 않은 항목만 센다 — 사람의 목표는 사령관을 깨우지 않는다(서버 판정 `operator`).
+  const waiting = objectives.filter((objective) => isCommodoreWaiting(objective)).length;
   const meta: CommodoreMetaPart[] = on
     ? [
       { key: "mode", text: t("objectives.commodore.meta.autonomous"), tone: "on" },

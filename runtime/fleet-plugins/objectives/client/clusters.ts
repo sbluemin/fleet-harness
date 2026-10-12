@@ -3,7 +3,7 @@ import type { LocalizedText } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
-import { inboxReasons, stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
+import { inboxReasons, livePersonHold, stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
 import { memberFailureReason } from "../server/signals.js";
 import { latestRecord, missionReady, type Objective } from "../server/types.js";
 import { actorKind, actorName, lastAct } from "./actors.js";
@@ -12,7 +12,7 @@ import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation } from "./commodore-conversation.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
-import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
+import { commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, personTurnAt, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -73,6 +73,8 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
 const NOTE_ANSWERING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.answering"), tone: "accent" };
 const NOTE_REVIEWING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.reviewing"), tone: "accent" };
 const NOTE_STALLED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.stalled"), tone: "warn" };
+/** 사령관이 사람에게 넘긴 항목이 선 줄 — 「내 결정」에 선 까닭(`decisionNote`). 대화 중심 화면에서도 줄의 상태 문구로 보인다. */
+const HANDED_NOTE = (locale: "en" | "ko") => getT(locale)("objectives.commodore.note.handed");
 /** 구성원 실패 — 확인하지 않은 실패가 남은 동안만. 자율 운영과 상관없이 사람의 줄에 선다. 사유가 하나로 모이면 그 사유로 말한다. */
 const NOTE_MEMBER_FAILED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberFailed"), tone: "warn" };
 const NOTE_MEMBER_LIMITED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberLimited"), tone: "warn" };
@@ -170,17 +172,33 @@ function setOperator(objective: Objective, commodore: boolean, language: "en" | 
  * 구성원 실패와 정체는 자율 운영과 상관없이 사람의 줄에 선다. 자율 운영이 돌면 감독자가 본 정체를 그대로 쓰고(깨움과 같은 값), 꺼져
  * 있으면 보드가 같은 판정(`stalledObjectives`)으로 직접 센 값을 쓴다 — 한 줄에 정체 메모는 언제나 한 출처에서 하나다.
  */
-function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<OperationClusterRow, "notes" | "zoneNote"> {
+function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean): Pick<OperationClusterRow, "notes"> {
   const failureNote = memberFailureNote(objective);
   const failed = failureNote === null ? [] : [failureNote === "objectives.note.memberLimited" ? NOTE_MEMBER_LIMITED : failureNote === "objectives.note.memberRateLimited" ? NOTE_MEMBER_RATE_LIMITED : NOTE_MEMBER_FAILED];
   if (!board.active) return stalled || failed.length ? { notes: [...failed, ...(stalled ? [NOTE_STALLED] : [])] } : {};
-  // 답하는 중·검토하는 중은 사령관이 운영하는 목표에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
+  // 답하는 중·검토하는 중은 사령관이 운영하고 사람에게 넘기지 않은 항목에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
   const handles = objective.operator !== "human";
   const notes: OperationClusterRowNote[] = [...failed];
-  if (handles && objective.decisionRequest) notes.push(NOTE_ANSWERING);
-  if (handles && objective.awaitingReview) notes.push(NOTE_REVIEWING);
+  if (decisionTurn(objective, true) === "commodore") notes.push(NOTE_ANSWERING);
+  if (handles && objective.awaitingReview && !livePersonHold(objective, "review")) notes.push(NOTE_REVIEWING);
   if (board.stalled.includes(objective.id)) notes.push(NOTE_STALLED);
-  return { ...(notes.length ? { notes } : {}), ...(handles && objective.decisionRequest ? { zoneNote: ZONE_HANDLING } : {}) };
+  return notes.length ? { notes } : {};
+}
+
+/**
+ * 결정 구역 — 사람이 답할 차례면 「내 결정」(사람에게 넘긴 기준·검토·후속도 같은 구역), 자율 운영 중 사령관이 맡은 결정 요청은
+ * 접힌 「사령관이 맡음」. 판정은 `decisionTurn`·`personTurnAt` 하나를 폰·전환 목록·레일과 함께 쓴다.
+ */
+function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<OperationClusterRow, "decisionRequestedAt" | "decisionQuestions" | "decisionNote" | "delegated"> {
+  const request = objective.decisionRequest;
+  const turn = decisionTurn(objective, board.active);
+  const at = personTurnAt(objective, board.active);
+  // 사령관이 넘긴 항목은 자율 운영과 상관없이 사람의 차례다 — 줄이 「내 결정」에 선 까닭을 함께 단다.
+  const handed = livePersonHolds(objective).length > 0;
+  return {
+    ...(at !== null ? { decisionRequestedAt: at, ...(turn === "person" && request ? { decisionQuestions: request.questions.length } : {}), ...(handed ? { decisionNote: HANDED_NOTE } : {}) } : {}),
+    ...(turn === "commodore" && request ? { delegated: { at: request.createdAt, questions: request.questions.length, zone: ZONE_HANDLING } } : {}),
+  };
 }
 
 /** 사이드바 줄 — 끝나지 않은 목표만. 정리한(removed) 목표와 완료한 목표는 보관함에 선다. */
@@ -199,7 +217,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     ...(review ? { glyph: "review" as const } : !objective.commander.started && !hasSession ? { glyph: "fresh" as const } : {}),
     ...(objective.today || overdue ? { today: true } : {}),
     ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}),
-    ...(objective.decisionRequest ? { decisionRequestedAt: objective.decisionRequest.createdAt, decisionQuestions: objective.decisionRequest.questions.length } : {}),
+    ...decisionZoneOf(objective, board),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     ...(originTitle !== undefined ? { followup: { originTitle } } : {}),
     ...(provenance.length ? { provenance } : {}),
@@ -265,6 +283,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.theaterId), stalled.has(objective.id), now);
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Operation 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
+    // 목록 밖 표면의 결정 표식(얼굴 「!」·칩·궤도·폰 대화 행)은 사람의 차례인 요청에만 — 사령관이 맡은 요청은 사람을 기다리지 않는다.
+    const personDecision = decisionTurn(objective, boardOf(objective.theaterId).active) === "person";
     const openDetail = () => {
       revealObjective({ objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId, row?.glyph === "fresh" ? "rail" : undefined);
@@ -272,7 +292,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-      { state: (operationId) => shownActivity(activity.get(operationId) ?? "closed"), roster });
+      { state: (operationId) => shownActivity(activity.get(operationId) ?? "closed"), roster }, boardOf(objective.theaterId).active);
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
@@ -337,12 +357,12 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId);
     };
-    out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, conversation, open, ...(decisionRequest ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
+    out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
   return out;
 }
 
-const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.zoneNote ? "zone" : "", row.selected === true,
+const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? "handed" : "", row.delegated ? [row.delegated.at, row.delegated.questions] : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 /** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */

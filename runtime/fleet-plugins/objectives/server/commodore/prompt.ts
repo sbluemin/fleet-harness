@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 12;
+export const COMMODORE_PROMPT_VERSION = 13;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -77,6 +77,9 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   Commander the board reports stalled.
 - A criteria proposal is the Commander's. You approve it, or reject it and
   say why when you ask for another plan.
+- Some waiting items are the person's to decide. Which ones is your judgment,
+  and the directive adjusts it. hand_to_person gives one to the person with
+  your reason; it is theirs until they answer it or return it to you.
 
 # Continuity
 - Each turn opens with a wake note naming what changed: an objective's status

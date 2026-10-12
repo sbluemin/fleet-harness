@@ -1,5 +1,5 @@
 import type { ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
-import type { Objective, ObjectiveOperator } from "./types.js";
+import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 
 export const STALL_MS = 30 * 60_000;
 export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle">;
@@ -88,4 +88,47 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
   if (objective.followups.some((candidate) => candidate.state === "open")) reasons.push("followup");
   if (objective.followupBatches.some((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming"))) reasons.push("followup-failed");
   return reasons;
+}
+
+/**
+ * 누가 답할 차례인가 — 대기 이유마다 하나. 사람이 운영하는 목표는 모두 사람이고, 사령관이 운영하는 목표는 사령관이 사람에게
+ * 넘긴 항목(`livePersonHold`)만 사람이다. 자율 운영이 꺼져 있으면 사령관 몫도 사람에게 돌아온다 — 그 판정은 자율 운영 상태를
+ * 아는 화면이 이 값 위에 얹는다(보드는 넘김과 운영 주체만 안다).
+ */
+export type InboxAwaits = "person" | "commodore";
+/** 사람에게 넘길 수 있는 대기 이유와 그 대상 — 다른 이유(개시·정체·구성원 실패·후속 생성 실패)는 넘기지 않는다. */
+const HOLD_TARGET_OF: Readonly<Partial<Record<InboxReason, PersonHoldTarget>>> = { decision: "decision", criteria: "criteria", review: "review", followup: "followup" };
+export const holdTargetOf = (reason: InboxReason): PersonHoldTarget | null => HOLD_TARGET_OF[reason] ?? null;
+
+/** 넘긴 항목이 서 있는지 보는 데 필요한 사실 — 저장 레코드와 목표 보기가 같은 모양으로 넘긴다. */
+export interface HoldSubject {
+  readonly decisionRequest?: { readonly id: string } | null;
+  readonly criteriaProposals?: readonly unknown[] | null;
+  readonly awaitingReview: boolean;
+  readonly done?: unknown;
+  readonly followups?: readonly { readonly state: string }[] | null;
+}
+/** 넘긴 항목이 아직 서 있는가 — 결정 요청은 넘긴 그 요청이어야 한다. 사람의 처리 없이 사라진 항목의 넘김은 효력이 없다. */
+export function heldItemStands(subject: HoldSubject, hold: Pick<StoredPersonHold, "target" | "requestId">): boolean {
+  switch (hold.target) {
+    case "decision": return !!subject.decisionRequest && subject.decisionRequest.id === hold.requestId;
+    case "criteria": return !!subject.criteriaProposals?.length;
+    case "review": return subject.awaitingReview && !subject.done;
+    case "followup": return !!subject.followups?.some((candidate) => candidate.state === "open");
+  }
+}
+/** 지금 사람이 답할 차례인 넘김 — 끝나지 않았고 그 항목이 서 있다. 없으면 null. */
+export function livePersonHold(objective: HoldSubject & { readonly personHolds?: readonly ObjectivePersonHold[] }, target: PersonHoldTarget): ObjectivePersonHold | null {
+  const hold = (objective.personHolds ?? []).find((entry) => entry.target === target);
+  return hold && !hold.settled && heldItemStands(objective, { target, ...(hold.requestId ? { requestId: hold.requestId } : {}) }) ? hold : null;
+}
+/** 대기 이유 하나의 차례 — 운영 주체는 기본으로 목표의 판정을 쓴다. */
+export function reasonAwaits(objective: Objective, reason: InboxReason, operator: ObjectiveOperator = objective.operator): InboxAwaits {
+  if (operator === "human") return "person";
+  const target = holdTargetOf(reason);
+  return target && livePersonHold(objective, target) ? "person" : "commodore";
+}
+/** 대기 이유마다 차례 — inbox 줄의 `awaits`. */
+export function inboxAwaits(objective: Objective, reasons: readonly InboxReason[]): Readonly<Partial<Record<InboxReason, InboxAwaits>>> {
+  return Object.fromEntries(reasons.map((reason) => [reason, reasonAwaits(objective, reason)]));
 }

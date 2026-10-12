@@ -96,6 +96,7 @@ const en = {
   "group.decision.open": "Open on the board",
   "group.decision.failed": "Couldn't send the answer. Your choices are kept.",
   "group.decision.answered": "Answered",
+  "group.decision.giveBackFailed": "Couldn't return the request. It is still yours to answer.",
   "group.use.from": "{name} · {title}",
 } as const;
 
@@ -192,6 +193,7 @@ const ko: Record<GroupChatMessageKey, string> = {
   "group.decision.open": "보드에서 열기",
   "group.decision.failed": "답을 보내지 못했습니다. 고른 것은 그대로 있습니다.",
   "group.decision.answered": "답함",
+  "group.decision.giveBackFailed": "요청을 돌려주지 못했습니다. 아직 내가 답할 요청입니다.",
   "group.use.from": "{name} · {title}",
 };
 

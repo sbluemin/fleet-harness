@@ -2060,6 +2060,15 @@ describe("Objectives contract", () => {
     const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
     expect(request.id).toBe(asked.requestId);
     const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
+    // 사람에게 넘긴 결정은 사령관이 답하지 못하고 요청도 그대로다 — inbox 는 그 이유를 사람 차례로 말한다. 넘기기는 사령관만 하고,
+    // 사람이 「사령관에게 돌려주기」로 되돌리면 사령관이 다시 답한다.
+    await board({ action: "hand_to_person", objectiveId: id, target: "decision", reason: "Product direction is the person's call" });
+    expect(await refusal(commodore, answerOf({}))).toBe("held_for_person");
+    expect(store.find(id)!.decisionRequest?.id).toBe(request.id);
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "person" }), personHolds: [expect.objectContaining({ target: "decision", requestId: request.id })] }));
+    expect(await refusal(consoleDetail, { action: "hand_to_person", objectiveId: id, target: "decision", reason: "x" }, "outsider")).toBe("permission_required");
+    expect((await route("person-hold/return", { objectiveId: id, target: "decision" })).status).toBe(200);
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "commodore" }) }));
     expect(await board(answerOf({}))).toMatchObject({ stored: { answers: [{ text: "Preserve the output" }] } });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
@@ -2085,6 +2094,10 @@ describe("Objectives contract", () => {
     expect(await board({ action: "evidence", objectiveId: id, resultId })).toMatchObject({ text: "Verified output\n", nextOffset: null });
     const reviewed = (await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] };
     const candidate = reviewed.followups[0]!;
+    // 사람에게 넘긴 후속 선택은 빈 선택 완료로도 지나가지 못한다 — 완료된 목표는 더 이상 후속을 고를 수 없다.
+    await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Opening new objectives is the person's call" });
+    expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
+    expect((await route("person-hold/return", { objectiveId: id, target: "followup" })).status).toBe(200);
     await board({ action: "complete", objectiveId: id, batchId: "3f1c8f3e-1111-4a8b-9c0d-000000000003", followups: [{ id: candidate.id, rev: candidate.rev }] });
     let nextId = "";
     await vi.waitFor(async () => {

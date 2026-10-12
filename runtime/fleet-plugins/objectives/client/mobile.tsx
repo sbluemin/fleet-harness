@@ -7,17 +7,19 @@ import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
 import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
+import { livePersonHold } from "../server/board-state.js";
 import { ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
-import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
+import { commodoreBoardOf, decisionTurn, livePersonHolds, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
+import { PersonHoldNote } from "./decisions.js";
 import { ObjectiveResults } from "./results.js";
-import { focusOperation, hasDecisionRequest, post, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { focusOperation, hasDecisionRequest, post, returnPersonHold, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -105,21 +107,31 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
   return () => { offObjective(); offCommodore(); };
 }
 
-/** 결정 요청마다 한 행. 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다. */
+/**
+ * 레일 아이콘 배지의 수 — 「확인 필요」 행과 같은 판정(`personTurnAt`)이라 사람의 차례만 센다. 표면이 닫혀 있어도 활성 Theater 는
+ * 미리 읽혀 있다(installObjectiveState).
+ */
+export function personTurnCount(theaterId: string | null): number {
+  const active = theaterId !== null && commodoreBoardOf(theaterId).active;
+  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length;
+}
+
+/**
+ * 사람의 차례마다 한 행 — 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
+ * (데스크톱 「내 결정」 구역과 같은 판정 `personTurnAt`). 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다.
+ */
 export function decisionAttentionItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
   const source = readTheater(theaterId).objectives;
   const key = theaterId ?? "";
-  // 자율 운영이 실제로 돌면 사령관이 답한다 — 데스크톱 사이드바 메모와 같은 판정(S-53 CM-1d). 그래도 사람의 일로 센다.
   const answering = theaterId !== null && commodoreBoardOf(theaterId).active;
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale);
-  const pending = source.filter((objective) => hasDecisionRequest(objective) && isListedObjective(objective));
+  const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
   const items = pending.length === 0 ? NO_ITEMS : pending.map((objective) => ({
     id: objective.id,
     title: objective.title,
-    // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않는다 — 「답하는 중」은 사령관의 목표에만(서버 판정 `operator`).
-    reason: answering && objective.operator !== "human" ? `${t("objectives.mobile.attention", { count: requestCount(objective) })} · ${t("objectives.commodore.note.answering")}` : t("objectives.mobile.attention", { count: requestCount(objective) }),
+    reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
     open: () => revealObjective({ objectiveId: objective.id }),
   }));
   attentionMemo.set(key, { source, locale, answering, items });
@@ -137,6 +149,8 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
   const [doneOpen, setDoneOpen] = useState(false);
   // 「시작 전」은 펼친 채로 연다 — 접어 두면 시작 전 목표 하나를 여는 데 한 번 더 눌러야 한다.
   const [freshOpen, setFreshOpen] = useState(true);
+  // 「사령관이 맡음」은 접힌 채로 연다 — 사람이 답할 것이 아니다.
+  const [handledOpen, setHandledOpen] = useState(false);
   const { mobileBar, panes, visible } = ctx;
   const title = t("objectives.panel.title");
 
@@ -150,10 +164,13 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
   }, [reveal, panes]);
 
   const shown = state.objectives.filter(isListedObjective);
-  const need = shown.filter((objective) => hasDecisionRequest(objective));
+  // 데스크톱 결정 구역과 같은 판정 — 사람의 차례는 「내 결정」, 자율 운영 중 사령관이 맡은 결정 요청은 접힌 「사령관이 맡음」.
+  const need = shown.filter((objective) => !objective.done && personTurnAt(objective, commodore.active) !== null);
+  const handled = shown.filter((objective) => personTurnAt(objective, commodore.active) === null && decisionTurn(objective, commodore.active) === "commodore");
+  const zoned = new Set([...need, ...handled].map((objective) => objective.id));
   // 데스크톱 접기(`switcher.tsx` freshOf)와 같은 판정 — 개시 전이고, 지휘관 Operation 이 없고, 검토 대기가 아니다.
   const fresh = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
-  const live = shown.filter((objective) => !objective.done && !hasDecisionRequest(objective));
+  const live = shown.filter((objective) => !objective.done && !zoned.has(objective.id));
   const running = live.filter((objective) => !fresh(objective));
   const notStarted = live.filter(fresh);
   const done = shown.filter((objective) => !!objective.done);
@@ -161,6 +178,8 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
 
   const row = (objective: Objective) => {
     const pending = hasDecisionRequest(objective);
+    const turn = decisionTurn(objective, commodore.active);
+    const handed = livePersonHolds(objective).length > 0;
     // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
     const members = objective.members.length;
     const total = objective.criteria.length;
@@ -171,9 +190,10 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
         <CommanderMark objective={objective} operations={operations} />
         <span className="objectives-m-tx">
           {objective.title}
-          <small className={pending ? "is-awaiting" : undefined}>
+          <small className={turn === "person" || handed ? "is-awaiting" : undefined}>
             {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
-            {pending && commodore.active && objective.operator !== "human" ? `${t("objectives.commodore.note.answering")} · ` : ""}
+            {turn === "commodore" ? `${t("objectives.commodore.note.answering")} · ` : ""}
+            {handed ? `${t("objectives.commodore.note.handed")} · ` : ""}
             {failed ? <><span className="objectives-m-failed">{t(failed)}</span>{" · "}</> : null}
             {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
           </small>
@@ -188,6 +208,14 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
       <div className="objectives-m-pad">
         {shown.length === 0 ? <p className="objectives-m-note">{t("objectives.mobile.empty")}</p> : null}
         {need.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.need")}</h2><div className="objectives-m-grp">{need.map(row)}</div></> : null}
+        {handled.length > 0 ? (
+          <>
+            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={handledOpen} onClick={() => setHandledOpen((value) => !value)}>
+              {t("objectives.mobile.zone.handled", { count: handled.length })}<Chevron open={handledOpen} size={16} />
+            </button>
+            {handledOpen ? <div className="objectives-m-grp">{handled.map(row)}</div> : null}
+          </>
+        ) : null}
         {running.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.running")}</h2><div className="objectives-m-grp">{running.map(row)}</div></> : null}
         {notStarted.length > 0 ? (
           <>
@@ -367,6 +395,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
+        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 제 카드로 세운다. */}
+        <PersonHoldNote objective={objective} target="review" t={t} phone label={t("objectives.objectives.review")} />
+        <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
@@ -664,6 +695,7 @@ function ProposalsCard({ objective, t, language, api, say }: { readonly objectiv
   return (
     <section className="objectives-m-card objectives-m-props" aria-label={t("objectives.criteria.title")}>
       <h3 className="objectives-m-card-label">{t("objectives.criteria.pending", { count: proposals.length })}</h3>
+      <PersonHoldNote objective={objective} target="criteria" t={t} phone />
       {proposals.map((proposal) => {
         const index = proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) : -1;
         const target = index >= 0 ? objective.criteria[index]! : null;
@@ -725,10 +757,12 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
   const [sending, setSending] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
   const [, setSentTick] = useState(0);
-  // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(S-53 CM-1d). 폰에는 툴팁이 없어 설명을 줄로 보인다.
+  // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(`decisionTurn`). 폰에는 툴팁이 없어 설명을 줄로 보인다.
+  // 사람이 운영하는 목표의 요청과 사령관이 사람에게 넘긴 요청으로는 사령관이 답하지 않는다.
   const commodore = useCommodoreBoard(objective.theaterId);
-  // 사람이 운영하는 목표의 요청으로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
-  const answering = commodore.active && objective.operator !== "human";
+  const answering = decisionTurn(objective, commodore.active) === "commodore";
+  const handed = request ? livePersonHold(objective, "decision") : null;
+  const [givingBack, setGivingBack] = useState(false);
   useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
 
   if (!request) {
@@ -767,6 +801,15 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
   // 내 의견 — 여러 개 고르는 질문에서도 홀로 선다. 고른 것을 비운다.
   const pickOwn = (question: DecisionQuestion) => edit(question, { ...draftOf(question), picked: [], own: true });
   const unconfirmed = !sending && objective.decisionDelivery?.requestId === request.id;
+  // 사령관에게 돌려주기 — 성공하면 넘김이 걷혀 「사령관이 답하는 중」으로 돌아간다. 실패는 카드 끝 한 줄로.
+  const giveBack = async () => {
+    if (sending || givingBack) return;
+    setGivingBack(true);
+    setFault(null);
+    try { await returnPersonHold(objective.id, "decision"); say(t("objectives.decision.givenBack")); }
+    catch { setFault(t("objectives.decision.giveBackFailed")); }
+    finally { setGivingBack(false); }
+  };
   const submit = async () => {
     if (sending || doneCount !== total) return;
     setSending(true);
@@ -803,6 +846,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
               <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
+              {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{handed.reason}</p> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
               {hasOptions ? (
@@ -837,8 +881,10 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
               {last ? (
                 <div className="objectives-m-ucard-ft">
                   {many ? <span className="objectives-m-progress">{t("objectives.decision.progress", { done: doneCount, total })}</span> : null}
+                  <span className="objectives-m-fine objectives-m-route">{t(handed ? "objectives.decision.routeHanded" : "objectives.decision.route")}</span>
                   <span className="objectives-m-sp" />
-                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || doneCount !== total} onClick={() => void submit()}>
+                  {handed ? <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || givingBack} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button> : null}
+                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || givingBack || doneCount !== total} onClick={() => void submit()}>
                     {t(sending ? "objectives.decision.sending" : "objectives.mobile.decision.send")}
                   </button>
                 </div>
