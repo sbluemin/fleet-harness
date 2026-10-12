@@ -9,7 +9,8 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { openQuickLaunch, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -150,7 +151,10 @@ const PlusGlyph = () => (
   <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
 );
 
-/** 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 Operation(Quick Launch). 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. */
+/**
+ * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 Theater(폴더 고르기). 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. 목록 안의 「+」가
+ * 모두 무엇을 더하는 입구라 맨 위 「+」도 가장 바깥 단위(Theater)를 더한다. 새 Operation 은 Theater 머리 「+」·팔레트·Quick Launch 단축키다.
+ */
 export function ConversationSideBarActions() {
   const t = useT();
   return (
@@ -158,7 +162,7 @@ export function ConversationSideBarActions() {
       <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <button type="button" className="conversation-round" onClick={openQuickLaunch} aria-label={t("conversation.side.newOperation")} title={t("conversation.side.newOperation")}>
+      <button type="button" className="conversation-round" onClick={requestSideBarAddTheater} aria-label={t("conversation.side.newTheater")} title={t("conversation.side.newTheater")}>
         <PlusGlyph />
       </button>
     </span>
@@ -521,6 +525,7 @@ function useStageSubject(state: ConsoleState): OperationNode | null {
 
 export function ConversationStage({ state, insets, language, operationKinds, onClose }: ConversationStageProps) {
   const t = useT();
+  const quickLaunchShortcut = useQuickLaunchShortcutLabel();
   const subject = useStageSubject(state);
   // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Operation 대신 선다.
   const surface = useConversationSurface();
@@ -615,7 +620,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       ) : (
         <div className="conversation-empty">
           <strong>{t("conversation.empty.title")}</strong>
-          <span>{t("conversation.empty.body")}</span>
+          <span>{t("conversation.empty.body", { shortcut: quickLaunchShortcut })}</span>
         </div>
       )}
     </section>

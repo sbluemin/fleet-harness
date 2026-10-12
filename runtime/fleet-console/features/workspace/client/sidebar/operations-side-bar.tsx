@@ -25,7 +25,7 @@ import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation
 import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionFace, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { isConversationLayoutActive } from "../../../settings/client/use-conversation-layout.js";
@@ -38,12 +38,13 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
+import { useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, zoneNoteOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
-import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header.js";
+import { OperationsSideBarGroupHeader, SideBarUngroupedLabel } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
@@ -111,6 +112,8 @@ interface OperationsSideBarProps {
   readonly onRenameGroup: (groupId: string, name: string) => void;
   readonly onReorderGroups: (orderedGroupIds: readonly string[]) => void;
   readonly onReorderTheaters: (orderedTheaterIds: readonly string[]) => void;
+  /** 사령관 별칭 지정 — null 은 해제다. */
+  readonly onSetTheaterAlias: (theaterId: string, alias: string | null) => void;
   readonly onUngroupAll: (groupId: string) => void;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onAddTheater: (path: string) => void;
@@ -195,10 +198,24 @@ interface TheaterEntryBuildInput {
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
 }
 
-interface TheaterSectionHeaderProps {
+/** 사령관 카드 둘째 줄의 요약 — 그 Theater 의 지휘관(Operation) 수와 답을 기다리는 수. */
+interface TheaterSummary {
+  readonly commanders: number;
+  readonly waiting: number;
+}
+
+/** 머리의 별칭 편집 — 한 번에 한 머리만 그 자리에서 편집한다. 끝낼 때 undefined 는 취소, null 은 해제다. */
+interface TheaterAliasEditing {
+  readonly editingAlias: boolean;
+  readonly onStartAliasEdit: (theaterId: string) => void;
+  readonly onFinishAliasEdit: (theaterId: string, alias: string | null | undefined) => void;
+}
+
+interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly theater: TheaterInfo;
   readonly active: boolean;
   readonly collapsed: boolean;
+  readonly summary: TheaterSummary;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
@@ -214,8 +231,9 @@ interface TheaterSectionHeaderProps {
   readonly clusterHead?: { readonly hiddenClusterIds: readonly string[]; readonly anyList: boolean } | undefined;
 }
 
-interface TheaterInactiveSectionProps {
+interface TheaterInactiveSectionProps extends TheaterAliasEditing {
   readonly theater: TheaterInfo;
+  readonly summary: TheaterSummary;
   readonly entries: readonly SideBarEntry[];
   readonly groups: readonly OperationGroup[];
   readonly collapsedGroups: ReadonlySet<string>;
@@ -248,6 +266,9 @@ interface TheaterActionsMenuProps {
   readonly onCreateGroup: (name: string) => void;
   readonly onForgetTheater: () => void;
   readonly onOpenSystemPrompt: () => void;
+  readonly onEditAlias: () => void;
+  /** 별칭이 있을 때만 — 원래 Theater 이름으로 되돌린다. */
+  readonly onClearAlias?: () => void;
   readonly onClose: () => void;
   /** 「+」 메뉴의 「새 그룹…」에서 열었으면 이름 입력부터 연다. */
   readonly startWithNewGroup?: boolean;
@@ -390,6 +411,7 @@ export function OperationsSideBar({
   onRenameGroup,
   onReorderGroups,
   onReorderTheaters,
+  onSetTheaterAlias,
   onUngroupAll,
   onSelectTheater,
   onAddTheater,
@@ -433,6 +455,7 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const warRoom = useTriageActive();
   const peekOverlayOpenRef = useRef(false);
   useLayoutEffect(() => {
@@ -1118,6 +1141,21 @@ export function OperationsSideBar({
     setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
   };
 
+  const startAliasEdit = (theaterId: string) => {
+    setNewMenu(null);
+    setActiveContextMenu(null);
+    setAliasEditingTheaterId(theaterId);
+  };
+  const finishAliasEdit = (theaterId: string, alias: string | null | undefined) => {
+    setAliasEditingTheaterId((current) => (current === theaterId ? null : current));
+    if (alias !== undefined) onSetTheaterAlias(theaterId, alias);
+  };
+  const aliasEditingFor = (theaterId: string): TheaterAliasEditing => ({
+    editingAlias: aliasEditingTheaterId === theaterId,
+    onStartAliasEdit: startAliasEdit,
+    onFinishAliasEdit: finishAliasEdit,
+  });
+
   return (
     <aside
       className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
@@ -1173,7 +1211,9 @@ export function OperationsSideBar({
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
-          const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationRuntime);
+          const waitingCount = countAwaitingOperations(theaterOperations, operationRuntime);
+          const showStatusLiveTick = !statusAxis && waitingCount > 0;
+          const summary: TheaterSummary = { commanders: theaterOperations.length, waiting: waitingCount };
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
           const theaterDragOffsetY = isTheaterDragging && drag?.kind === "theater" ? drag.currentY - drag.startY : 0;
@@ -1203,6 +1243,8 @@ export function OperationsSideBar({
               <TheaterInactiveSection
                 key={theater.id}
                 theater={theater}
+                summary={summary}
+                {...aliasEditingFor(theater.id)}
                 entries={theaterCollapsed ? [] : inactiveEntries}
                 groups={groups.filter((group) => group.theaterId === theater.id)}
                 collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
@@ -1244,6 +1286,8 @@ export function OperationsSideBar({
                 theater={theater}
                 active
                 collapsed={theaterCollapsed}
+                summary={summary}
+                {...aliasEditingFor(theater.id)}
                 clusterHead={theaterClusterHead(rowPlan, theaterCollapsed || statusAxis)}
                 showStatusLiveTick={showStatusLiveTick}
                 dragging={isTheaterDragging}
@@ -1331,9 +1375,7 @@ export function OperationsSideBar({
                   clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                 />
               ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
-                <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
-                  <span>{t("sidebar.ungrouped.label")}</span>
-                </div>
+                <SideBarUngroupedLabel count={sectionItems.length + foldItems.length} />
               ) : null}
               {!isCollapsed ? (
                 <ol
@@ -1420,7 +1462,8 @@ export function OperationsSideBar({
               <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
             </p>
           </li>
-        ) : (
+        ) : topStripVariant === "compact" ? null : (
+          // 대화 중심 화면은 맨 위 줄 「+」가 Theater 를 더한다 — 목록 끝의 유령 행은 이전(캔버스) 배치에만 남는다.
           <li>
             <button type="button" className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater}>
               <span className="side-bar-ghost-theater-anchor" aria-hidden="true"><PlusIcon /></span>
@@ -1529,6 +1572,13 @@ export function OperationsSideBar({
             openTheaterSystemPrompt(contextMenuTheater, activeContextMenu.returnFocus ?? null, activeContextMenu.anchor);
             setActiveContextMenu(null);
           }}
+          onEditAlias={() => startAliasEdit(contextMenuTheater.id)}
+          {...(contextMenuTheater.alias ? {
+            onClearAlias: () => {
+              onSetTheaterAlias(contextMenuTheater.id, null);
+              closeActiveContextMenu();
+            },
+          } : {})}
           onClose={closeActiveContextMenu}
         />
       ) : null}
@@ -1647,17 +1697,18 @@ export function groupOperationsByStatus(
   }));
 }
 
-export function hasAwaitingOperation(
+/** 그 Theater 에서 사람의 답을 기다리는 Operation 수 — 사령관 카드 요약과 대기 틱이 같은 셈을 쓴다. */
+function countAwaitingOperations(
   operations: readonly OperationNode[],
   operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
-): boolean {
+): number {
   const idleArrivalIds = getIdleArrivalIds();
-  return operations.some((operation) =>
+  return operations.filter((operation) =>
     resolveOperationDisplayActivity({
       activity: resolveOperationActivity(operation, operationRuntime),
       operationId: operation.id,
       idleArrivalIds,
-    }) === "awaiting");
+    }) === "awaiting").length;
 }
 
 function resolveEntryGroupMark(
@@ -1704,6 +1755,8 @@ function TheaterSectionHeader({
   theater,
   active,
   collapsed,
+  summary,
+  editingAlias,
   showStatusLiveTick,
   dragging,
   dropTarget,
@@ -1713,10 +1766,14 @@ function TheaterSectionHeader({
   onToggleCollapsed,
   onOpenLaunch,
   onContextMenu,
+  onStartAliasEdit,
+  onFinishAliasEdit,
   onPointerDragStart,
   clusterHead,
 }: TheaterSectionHeaderProps) {
   const t = useT();
+  // 대화 중심 화면의 머리는 사령관 카드다 — 큰 아바타, 둘째 줄 요약, ⋯ 메뉴. 머리 제어는 머무를 때·활성일 때 선다(CSS).
+  const card = useSideBarRowStyle() === "conversation";
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
   // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. Theater 바로 아래 선 목표 줄의 묶음 머리이기도 하다.
@@ -1728,15 +1785,37 @@ function TheaterSectionHeader({
     () => null,
   );
   // 플러그인 표식(자율 운영의 사령관 글리프)이 있으면 이니셜 칩 자리에 선다. 운영자가 일하는 동안 이름에 라이브 물결이 흐른다.
-  const summary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
-  const mark = useTheaterContributionMark(summary, active);
+  const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
+  const mark = useTheaterContributionMark(contributionSummary, active);
   const live = useTheaterHeaderLive(theater.id);
+  // 사령관 카드는 자율 운영 꺼짐을 회색으로 죽이지 않고 아바타 모서리의 작은 「꺼짐」 표식으로 말한다(표식 단추의 이름이 같은 사실을 읽어 준다).
+  const face = useTheaterContributionFace(theater.id);
+  const offBadge = card && face?.off === true
+    ? <span className="side-bar-theater-off" aria-hidden="true">{t("sidebar.theater.autonomyOff")}</span>
+    : null;
   // Inbox 를 닫을 때 입구(우클릭 메뉴 항목 등)가 사라졌으면 포커스가 이 머리로 돌아온다.
   useTheaterInboxReturnTarget(theater.id, () => activateRef.current);
+  // 별칭 편집을 마치면(Enter·Esc) 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면 그 자리의 포커스를 빼앗지 않는다.
+  const wasEditingRef = useRef(editingAlias);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (wasEditingRef.current && !editingAlias && (active === null || active === document.body)) activateRef.current?.focus({ preventScroll: true });
+    wasEditingRef.current = editingAlias;
+  }, [editingAlias]);
+  const displayName = theater.alias ?? theater.label;
+  const summaryText = summary.commanders === 0
+    ? t("sidebar.theater.summary.none")
+    : [
+        t(summary.commanders === 1 ? "sidebar.theater.summary.commanders_one" : "sidebar.theater.summary.commanders_other", { count: summary.commanders }),
+        ...(summary.waiting > 0 ? [t("sidebar.theater.summary.waiting", { count: summary.waiting })] : []),
+      ].join(" · ");
+  // 둘째 줄 — 별칭이 있으면 원래 Theater 이름이 먼저 선다(어느 폴더인지 늘 보인다). 사령관 카드는 그 뒤에 요약을 잇는다.
+  const subline = [...(theater.alias ? [theater.label] : []), ...(card ? [summaryText] : [])].join(" · ");
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
+    card ? "is-card" : "",
     dragging ? "side-bar-theater-header--dragging" : "",
     dropTarget ? "side-bar-theater-header--drop-target" : "",
   ].filter(Boolean).join(" ");
@@ -1750,15 +1829,20 @@ function TheaterSectionHeader({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     // Enter/Space는 버튼의 기본 동작이 onClick으로 흘려보낸다 — 여기서 다시 처리하면 두 번 발화한다.
+    if (event.key === "F2" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+      event.preventDefault();
+      onStartAliasEdit(theater.id);
+      return;
+    }
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    // 행 컨트롤(접기·새 Operation)과 표식 안의 단추(자율 운영 끄기)에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 행 컨트롤(접기·새 Operation)과 표식 안의 단추(자율 운영 끄기), 별칭 입력에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-row-controls") || event.target.closest(".side-bar-theater-mark button"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-row-controls") || event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input"))) return;
     onPointerDragStart(event, theater.id);
   };
 
@@ -1777,8 +1861,18 @@ function TheaterSectionHeader({
     if (active || isConversationLayoutActive()) onOpenInbox(theater, activateRef.current);
   };
   const collapseLabel = collapsed
-    ? t("sidebar.theater.expand", { theater: theater.label })
-    : t("sidebar.theater.collapse", { theater: theater.label });
+    ? t("sidebar.theater.expand", { theater: displayName })
+    : t("sidebar.theater.collapse", { theater: displayName });
+  const avatarAnchor = (tick: boolean) => (
+    <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+      {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
+      <TheaterAvatar theaterId={theater.id} size={card ? 32 : 18} label="" decorative />
+      {offBadge}
+      {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
+          얹으면 어느 Theater인지가 지워진다. */}
+      {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+    </span>
+  );
 
   return (
     // 행 자체가 role="button"이면서 상태 정렬·새 Operation·액션 버튼을 품고 있어, 활성화
@@ -1799,31 +1893,51 @@ function TheaterSectionHeader({
           onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) select(); }}
         >
           {mark}
+          {offBadge}
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </span>
       ) : null}
-      <button
-        ref={activateRef}
-        type="button"
-        className="side-bar-theater-activate"
-        aria-haspopup={active ? "dialog" : undefined}
-        onClick={select}
-        onKeyDown={handleKeyDown}
-        aria-current={active ? "true" : undefined}
-        title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? t("sidebar.theater.openInbox", { theater: theater.label }) : t("sidebar.theater.switchTo", { theater: theater.label })}
-      >
-        {mark === null ? (
-          <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-            {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
-            <TheaterAvatar theaterId={theater.id} size={18} label="" decorative />
-            {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
-                얹으면 어느 Theater인지가 지워진다. */}
-            {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+      {editingAlias ? (
+        <>
+          {mark === null ? avatarAnchor(false) : null}
+          <span className="side-bar-theater-text">
+            <TheaterAliasInput theater={theater} onDone={(alias) => onFinishAliasEdit(theater.id, alias)} />
+            {card ? <span className="side-bar-theater-sub">{[theater.label, summaryText].join(" · ")}</span> : null}
           </span>
+        </>
+      ) : (
+        <button
+          ref={activateRef}
+          type="button"
+          className="side-bar-theater-activate"
+          aria-haspopup={active ? "dialog" : undefined}
+          onClick={select}
+          onKeyDown={handleKeyDown}
+          aria-current={active ? "true" : undefined}
+          title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })}
+        >
+          {mark === null ? avatarAnchor(true) : null}
+          <span className="side-bar-theater-text">
+            <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+            {subline ? <span className="side-bar-theater-sub">{subline}</span> : null}
+          </span>
+        </button>
+      )}
+      <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
+        {/* Theater 동작(별칭·시스템 프롬프트·새 그룹·Theater 잊기)은 머리 우클릭(Shift+F10) 메뉴에 있다. 사령관 카드는 머리 우클릭을
+            받지 않으므로(대화 중심 화면) 같은 메뉴를 ⋯ 로 연다. 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
+        {card ? (
+          <button
+            type="button"
+            className="side-bar-theater-row-btn side-bar-theater-more-btn"
+            aria-haspopup="menu"
+            aria-label={t("sidebar.theater.actionsMenuAria", { theater: displayName })}
+            title={t("sidebar.theater.actionsMenuAria", { theater: displayName })}
+            onClick={(event) => onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
+          >
+            <MoreIcon />
+          </button>
         ) : null}
-        <span className={`side-bar-theater-name${live ? " is-live" : ""}`}>{theater.label}</span>
-      </button>
-      <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
           type="button"
           className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
@@ -1834,13 +1948,11 @@ function TheaterSectionHeader({
         >
           <ChevronIcon collapsed={collapsed} />
         </button>
-        {/* Theater 동작(시스템 프롬프트·새 그룹·Theater 잊기)은 머리 우클릭(Shift+F10) 메뉴에 있다. 「새 그룹…」은 이 「+」 메뉴
-            맨 아래에도 선다. */}
         <button
           type="button"
           className="side-bar-theater-row-btn side-bar-theater-launch-btn"
-          aria-label={t("sidebar.theater.newOperation", { theater: theater.label })}
-          title={t("sidebar.theater.newOperation", { theater: theater.label })}
+          aria-label={t("sidebar.theater.newOperation", { theater: displayName })}
+          title={t("sidebar.theater.newOperation", { theater: displayName })}
           onClick={(event) => onOpenLaunch(event, theater.id)}
         >
           <PlusIcon />
@@ -1850,8 +1962,62 @@ function TheaterSectionHeader({
   );
 }
 
+/**
+ * 머리 자리의 별칭 입력 — Enter 는 저장, Esc 나 다른 곳을 누르면 취소, 비우고 저장하면 해제다. 바뀐 것이 없으면 저장하지 않는다.
+ * 길이 상한은 서버 검증(40 코드포인트)과 같다.
+ */
+function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined) => void }) {
+  const t = useT();
+  const [value, setValue] = useState(theater.alias ?? "");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const composingRef = useRef(false);
+  const doneRef = useRef(false);
+  useLayoutEffect(() => {
+    inputRef.current?.focus({ preventScroll: true });
+    inputRef.current?.select();
+  }, []);
+  const finish = (alias: string | null | undefined) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    onDone(alias);
+  };
+  const commit = () => {
+    const next = value.trim();
+    finish(next === (theater.alias ?? "") ? undefined : next.length > 0 ? next : null);
+  };
+  return (
+    <input
+      ref={inputRef}
+      className="side-bar-theater-alias-input"
+      type="text"
+      value={value}
+      maxLength={40}
+      placeholder={theater.label}
+      aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
+      onChange={(event) => setValue(event.target.value)}
+      onCompositionStart={() => { composingRef.current = true; }}
+      onCompositionEnd={() => { composingRef.current = false; }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          commit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(undefined);
+        }
+      }}
+      onBlur={() => finish(undefined)}
+    />
+  );
+}
+
 function TheaterInactiveSection({
   theater,
+  summary,
+  editingAlias,
+  onStartAliasEdit,
+  onFinishAliasEdit,
   entries,
   groups,
   collapsedGroups,
@@ -1954,6 +2120,10 @@ function TheaterInactiveSection({
         theater={theater}
         active={false}
         collapsed={collapsed}
+        summary={summary}
+        editingAlias={editingAlias}
+        onStartAliasEdit={onStartAliasEdit}
+        onFinishAliasEdit={onFinishAliasEdit}
         clusterHead={theaterClusterHead(rowPlan, collapsed || statusAxis)}
         showStatusLiveTick={showStatusLiveTick}
         dragging={dragging}
@@ -2022,9 +2192,7 @@ function TheaterInactiveSection({
                     clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                   />
                 ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
-                  <div className="side-bar-ungrouped-label" aria-label={t("sidebar.ungrouped.aria")}>
-                    <span>{t("sidebar.ungrouped.label")}</span>
-                  </div>
+                  <SideBarUngroupedLabel count={sectionItems.length + foldItems.length} />
                 ) : null}
                 {!isCollapsed ? (
                   <ol className="side-bar-group-chips" aria-label={section.group ? section.group.name : t("sidebar.ungrouped.label")}>
@@ -2069,7 +2237,7 @@ function TheaterInactiveSection({
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClearAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
@@ -2138,7 +2306,7 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup
         ref={menuRef}
         className="theater-menu side-bar-theater-menu"
         role="menu"
-        aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.label })}
+        aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.alias ?? theater.label })}
         style={{
           position: "fixed",
           left: anchor.left,
@@ -2146,6 +2314,18 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
+        {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
+          <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.theater.alias.edit")}</span>
+        </button>
+        {onClearAlias ? (
+          <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias-clear" onClick={onClearAlias}>
+            <span className="theater-menu-check" aria-hidden="true" />
+            <span className="theater-menu-label">{t("sidebar.theater.alias.clear")}</span>
+          </button>
+        ) : null}
+        <div className="theater-menu-divider" aria-hidden="true" />
         <button type="button" role="menuitem" className="theater-menu-item" onClick={onOpenSystemPrompt}>
           <span className="theater-menu-check" aria-hidden="true">✦</span>
           <span className="theater-menu-label">{t("sidebar.theater.prompt.menu")}</span>
@@ -2219,6 +2399,24 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3.4v9.2M3.4 8h9.2" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M10.6 3.2 12.8 5.4 6.2 12H4v-2.2z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="3.6" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="12.4" cy="8" r="1.2" fill="currentColor" />
     </svg>
   );
 }

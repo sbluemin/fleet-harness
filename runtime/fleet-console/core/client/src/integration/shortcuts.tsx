@@ -262,6 +262,11 @@ export function useSearchShortcutLabel(): string {
   return shortcutCommandLabel("console.search-operations");
 }
 
+export function useQuickLaunchShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.quick-launch");
+}
+
 export function useSideBarStatusViewShortcutLabel(): string {
   useShortcutOverrides();
   return shortcutCommandLabel("operations.sort-by-status");

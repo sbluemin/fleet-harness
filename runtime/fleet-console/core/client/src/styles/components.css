@@ -6785,6 +6785,19 @@ body[data-companion-resizing="true"] .canvas-operation {
   white-space: nowrap;
 }
 
+/* 이름과 둘째 줄(별칭의 원래 이름·사령관 카드의 요약)을 위아래로 싣는 칸. 둘째 줄이 없으면 이름 한 줄이다. */
+.side-bar-theater-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.side-bar-theater-text > .side-bar-theater-name {
+  flex: none;
+}
+
 .side-bar-theater-collapse-btn {
   width: 22px;
 }

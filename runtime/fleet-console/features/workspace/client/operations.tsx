@@ -8,7 +8,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ClientExecutionProvider, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
+import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterAlias, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../../../core/client/src/integration/active-operation-surface.js";
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts, WAR_ROOM_RESERVED_SHORTCUT_CODES } from "../../../core/client/src/integration/shortcuts.js";
 import { archiveOperationFromUi, isArchivingOperation, minimizeOperationCompletely, resumeDormantOnOpen, resumeOperationInPlace, type ArchiveOutcome } from "../../../core/client/src/integration/operation-actions.js";
@@ -866,6 +866,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     );
   }, [refreshTheaters, runMutation]);
 
+  // 사령관 별칭 — null 은 해제다. 서버가 theater:updated 로 다른 창에도 알리고, 이 창은 곧바로 다시 읽는다.
+  const handleSetTheaterAlias = useCallback((theaterId: string, alias: string | null) => {
+    runMutation(() => patchTheaterAlias(theaterId, alias).then(refreshTheaters), refreshTheaters);
+  }, [refreshTheaters, runMutation]);
+
   const handleUngroupAll = useCallback((groupId: string) => {
     // DELETE가 이미 성공한 뒤 새로고침만 거절되면 재시도가 같은 id를 다시 지우려 한다 —
     // 서버는 404 group_not_found 를 주고 배너가 안 내려간다. 첫 성공 뒤에는 새로고침만 다시 한다.
@@ -951,6 +956,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         onRenameGroup={handleRenameGroup}
         onReorderGroups={handleReorderGroups}
         onReorderTheaters={handleReorderTheaters}
+        onSetTheaterAlias={handleSetTheaterAlias}
         onUngroupAll={handleUngroupAll}
         onSelectTheater={setActiveTheater}
         onAddTheater={handleAddTheater}
