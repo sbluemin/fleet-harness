@@ -28,9 +28,11 @@ export interface GroupMembersPanelProps {
   readonly onOpenLedger?: (operationId: string | null) => void;
   readonly onRemove?: (speaker: ConversationSpeaker) => void;
   readonly onAdd?: () => void;
+  /** 아직 서지 않은 Operation 의 명부(시작 전 목표) — 세션이 없는 참여자의 상태를 「알 수 없음」 대신 「시작 전」으로 말한다. */
+  readonly notStarted?: boolean;
 }
 
-export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus, onOpenLedger, onRemove, onAdd }: GroupMembersPanelProps) {
+export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus, onOpenLedger, onRemove, onAdd, notStarted = false }: GroupMembersPanelProps) {
   const t = getGroupT(language);
   const participants = snapshot.participants;
   return (
@@ -42,6 +44,7 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
             key={speakerKey(participant.speaker)}
             participant={participant}
             language={language}
+            notStarted={notStarted}
             showing={focus !== null && focus === participant.speaker.operationId}
             onLedger={onOpenLedger && participant.speaker.operationId && (participant.speaker.kind === "member" || participant.speaker.kind === "commander")
               ? () => onOpenLedger(focus === participant.speaker.operationId ? null : participant.speaker.operationId!)
@@ -55,9 +58,10 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
   );
 }
 
-function MemberRow({ participant, language, showing, onLedger, onRemove }: {
+function MemberRow({ participant, language, notStarted, showing, onLedger, onRemove }: {
   readonly participant: ConversationParticipant;
   readonly language: ConsoleLocale | undefined;
+  readonly notStarted: boolean;
   readonly showing: boolean;
   readonly onLedger: (() => void) | undefined;
   readonly onRemove: (() => void) | undefined;
@@ -88,7 +92,7 @@ function MemberRow({ participant, language, showing, onLedger, onRemove }: {
       </span>
       <span className="group-members-state">
         <span className={`group-members-dot is-${activity}`} aria-hidden="true" />
-        {t(activityKey(activity))}
+        {notStarted && activity === "unknown" ? t("group.activity.notStarted") : t(activityKey(activity))}
       </span>
     </>
   );

@@ -357,6 +357,12 @@ export interface ConversationSurfaceDescriptor {
    * Theater 를 세우는데, 이 대화가 가운데 칸에 선 동안 그 섹션 자리에는 이 대화의 탭이 선다(섹션 이름 아래, Theater 설정 곁).
    */
   readonly theater?: (ctx: ConversationSurfaceContext) => { readonly theaterId: string; readonly inboxSection: string } | null;
+  /**
+   * 이 대화가 아직 서지 않은 Operation 대화를 대신하면 그 Operation id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
+   * 오른쪽 패널이 Operation 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
+   * 묶음 대화(`OperationCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
+   */
+  readonly standInOperationId?: (ctx: ConversationSurfaceContext) => string | null;
 }
 
 export interface ClientConversationCapability {

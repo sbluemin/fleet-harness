@@ -118,7 +118,7 @@ function FreshObjectiveBody({ objectiveId, language, onClose }: { readonly objec
   );
 }
 
-/** Console 이 가운데 칸·오른쪽 패널 머리에 세우는 시작 전 목표. 오른쪽 패널의 내용은 목표 레일 패널이 그대로 진다. */
+/** Console 이 가운데 칸·오른쪽 패널 머리에 세우는 시작 전 목표. 오른쪽 패널의 「목표」는 목표 레일 패널이, 「구성원」은 Console 이 명부로 진다. */
 export const freshConversationSurface: ConversationSurfaceDescriptor = {
   id: FRESH_SURFACE_ID,
   title: (ctx) => findObjective(objectiveIdOf(ctx.params))?.title ?? getT(ctx.language)("objectives.state.fresh"),
@@ -130,6 +130,8 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
     return objectiveId && objective ? { key: operationAvatarKey(objectiveId), role: "commander", label: objective.title, state: "fresh" } : null;
   },
   subscribe: (listener) => subscribeObjective(listener),
+  // 개시하면 이 목표 id 로 지휘관 Operation 이 선다 — 오른쪽 패널은 진행 중 Operation 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
+  standInOperationId: (ctx) => objectiveIdOf(ctx.params),
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
     return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} language={ctx.language} onClose={ctx.close} /> : null;
