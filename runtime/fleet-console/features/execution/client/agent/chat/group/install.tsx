@@ -150,7 +150,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
       onOpenCommodoreRecord={openRecord}
       onStopParticipant={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
       cards={cards}
-      composer={<GroupComposer snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
+      composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );
 }
