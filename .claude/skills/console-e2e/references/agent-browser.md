@@ -19,6 +19,10 @@ ab skills get dogfood
 
 Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and repeat that literal in every call; shell variables, `ab()`, and cwd do not survive between tool calls. The examples use `fleet-console-e2e-20260725-a7c3`, `<worktree>`, `<scratchpad>`, and `<port>`: substitute recorded absolute values consistently.
 
+## Browser executable for a direct launch
+
+When launching a browser yourself, including for a direct-CDP fallback, explicitly select an updater-free **Chrome for Testing** executable, such as the one installed by agent-browser, and record its absolute path and version. Do not substitute the user's installed `/Applications/Google Chrome.app`. On macOS, ordinary Chrome can start GoogleUpdater helpers that access the user's Google support paths even with an owned `HOME` and `--user-data-dir`; those settings do not contain OS helpers. Do not inspect or repair the user's Google files to diagnose that leak. Keep the launch within [Setup's environment and ownership boundaries](setup.md#keep-the-real-home-out); Chrome for Testing avoids this updater route, not every possible user-data access.
+
 ## Bound commands and recover stuck input
 
 Run each agent-browser command in its own tool call with an explicit wall-clock deadline (normally `Bash.timeout: 30000`), including `open`, input, `find`, `reload`, and diagnostics; the resolver above does not impose a deadline, and a long timeout around a batch is not a substitute. Choose and record a longer finite deadline before an expected slow operation, such as first-time installation or a deliberate longer wait, rather than repeatedly extending a hung interaction. This also applies to `npx` and Windows native-wrapper calls; if the execution tool cannot bound a command, report that blocker instead of running it unbounded.
