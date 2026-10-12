@@ -120,9 +120,10 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
 
   // 발화자마다 가장 최근 말풍선 묶음의 꼬리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
   const liveTails = React.useMemo(() => latestBubbleTails(entries), [entries]);
-  // 묶음의 표식은 마지막 말풍선 옆에 선다(이름은 첫 말풍선 위). 가운데 시각 줄은 대화가 쉬었다 다시 이어지는 자리에 선다.
-  const runTails = React.useMemo(() => bubbleRunTails(entries), [entries]);
+  // 가운데 시각 줄은 대화가 쉬었다 다시 이어지는 자리에 선다. 묶음의 표식은 마지막 말풍선 옆에 선다(이름은 첫 말풍선 위) —
+  // 시각 줄은 같은 발화자의 말도 두 묶음으로 가른다.
   const breaks = React.useMemo(() => timeBreaks(entries), [entries]);
+  const runTails = React.useMemo(() => bubbleRunTails(entries, breaks), [entries, breaks]);
   const now = Date.now();
 
   const unavailableNames = snapshot.unavailableOperationIds
@@ -161,6 +162,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
               <TimelineEntry
                 entry={entry}
                 previous={entries[index - 1]}
+                breakBefore={breaks.has(entry.id)}
                 tail={runTails.has(entry.id)}
                 live={liveTails.has(entry.id)}
                 participants={snapshot.participants}
@@ -234,15 +236,15 @@ function latestBubbleTails(entries: readonly AgentConversationEntry[]): Readonly
 
 /**
  * 묶음마다 마지막으로 서는 말의 id — 표식이 그 말풍선 옆(묶음 왼쪽 아래)에 선다. 이름은 여전히 묶음 첫 말 위에 선다.
- * 문면 없는 말은 말풍선이 서지 않으므로 꼬리로 치지 않는다 — 꼬리가 비면 묶음이 표식을 잃는다.
+ * 시각 줄이 선 말은 같은 발화자여도 새 묶음을 연다. 문면 없는 말은 말풍선이 서지 않으므로 꼬리로 치지 않는다.
  */
-function bubbleRunTails(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
+function bubbleRunTails(entries: readonly AgentConversationEntry[], breaks: ReadonlySet<string>): ReadonlySet<string> {
   const tails = new Set<string>();
   let tail: string | null = null;
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index]!;
     if (entry.kind !== "message" || entry.speaker.kind === "human") { if (tail) tails.add(tail); tail = null; continue; }
-    if (!sameSpeaker(entries[index - 1], entry.speaker)) { if (tail) tails.add(tail); tail = null; }
+    if (!sameSpeaker(entries[index - 1], entry.speaker) || breaks.has(entry.id)) { if (tail) tails.add(tail); tail = null; }
     if (bubbleShown(entry)) tail = entry.id;
   }
   if (tail) tails.add(tail);
@@ -299,9 +301,11 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
+function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
+  /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
+  readonly breakBefore: boolean;
   readonly tail: boolean;
   readonly live: boolean;
   readonly participants: GroupTimelineSnapshot["participants"];
@@ -311,7 +315,7 @@ function TimelineEntry({ entry, previous, tail, live, participants, language, on
   readonly boardActionLabel: string | undefined;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
