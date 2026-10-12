@@ -1724,6 +1724,7 @@ function TheaterSectionHeader({
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
+    if (isConversationLayoutActive()) return;
     onContextMenu(event.currentTarget.getBoundingClientRect());
   };
 
