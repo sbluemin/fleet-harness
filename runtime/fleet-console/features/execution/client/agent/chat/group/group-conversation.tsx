@@ -614,7 +614,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
           {entry.text.trim().length === 0
             ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
-            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
+            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
         {report && continued ? <span className="group-chat-agent-head is-after">{reportTag}</span> : null}
