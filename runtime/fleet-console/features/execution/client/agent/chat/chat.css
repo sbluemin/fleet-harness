@@ -5136,7 +5136,7 @@
    구성원 없는 지휘관과 일반 채팅을 그룹 대화와 같은 문법으로 그린다: 사람 말은 오른쪽 말풍선(기존 디스패치 말풍선),
    답은 왼쪽 말풍선, 입력은 캡슐. 1:1 이라 답 말풍선 위 이름은 두지 않는다(누구의 말인지 헷갈릴 상대가 없다).
    도구 단계·생각·변경은 지금처럼 답 위의 접힌 줄로 남는다 — 모양만 바뀌고 기능은 이 본문이 그대로 진다.
-   토글이 꺼진 캔버스·구성원 원장·모바일에는 이 클래스가 붙지 않는다. */
+   토글이 꺼진 캔버스·구성원 원장에는 이 클래스가 붙지 않는다. 모바일에도 붙고, 모양은 아래 「모바일 대화 문법」 구역이 모바일 팔레트로 고친다. */
 .agent-chat.is-conversation .agent-chat-answer,
 .agent-chat.is-conversation .agent-chat-stream {
   width: fit-content;
@@ -5156,4 +5156,82 @@
   border-color: var(--hairline-strong);
   border-radius: 24px;
   background: var(--surface-panel-raised);
+}
+
+/* ── 모바일 대화 문법 ─────────────────────────────────────────────────────────────
+   모바일 Operation 화면의 채팅도 데스크톱 대화 화면(그룹 대화)과 같은 말풍선 문법에 선다: 사람 말은 오른쪽 회색 말풍선, 답과 흐르는
+   글은 왼쪽 면 말풍선, 그 옆 아래에 발화자 아바타, 목표 대화의 뿌리면 첫 말풍선 위에 이름. 스레드는 처음부터 다 펴진다(접힘 띠 없음).
+   읽기 세리프는 말풍선 없이 읽던 문법(S-26)의 몫이라, 말풍선 안의 답은 사람 말풍선과 같은 고딕으로 맞춘다 — 데스크톱도 두 말풍선이
+   한 가족이다. 코드는 그대로 모노. 상단 막대·⋮·입력 독·도구 접힘 알약·안전 영역은 위 [data-mobile-surface] 구역이 그대로 진다.
+   색은 모바일 팔레트(--m-*)만 쓴다. */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-dispatch-bubble { background: var(--m-chip); }
+
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-dispatch-bubble { border-color: transparent; }
+
+[data-mobile-surface] .agent-chat-speaker-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+  /* 사람 말풍선(82%)과 맞선 폭 — 답이 칼럼을 끝에서 끝까지 채우면 왼쪽 말풍선으로 읽히지 않는다(데스크톱 묶음 92%·말풍선 82%와 같은 셈). */
+  max-width: 88%;
+}
+
+[data-mobile-surface] .agent-chat-speaker-mark {
+  display: flex;
+  padding-bottom: 2px;
+}
+
+[data-mobile-surface] .agent-chat-speaker-box {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+[data-mobile-surface] .agent-chat-speaker-name {
+  padding-left: 4px;
+  color: var(--m-text);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-bold);
+}
+
+[data-mobile-surface] .agent-chat-turn-body > .agent-chat-speaker-row { margin-top: 12px; }
+
+[data-mobile-surface] .agent-chat-turn-body > .agent-chat-speaker-row:first-child { margin-top: 0; }
+
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 20px;
+  background: var(--m-surface);
+  box-sizing: border-box;
+}
+
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { border-color: var(--m-hairline); }
+
+/* 본문·제목이 함께 고딕을 따르도록 이 상자 안에서만 본문 서체 변수를 다시 잡는다(루트의 모바일 대입은 그대로). */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body {
+  --font-content: var(--m-sans);
+  --font-content-size: var(--m-fs-list);
+  --font-size-body: var(--m-fs-list);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+  line-height: 24px;
+}
+
+/* 말풍선 안 코드 블록은 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body pre { background: var(--m-bg); }
+
+/* 동작 줄은 말풍선 밖, 말풍선 왼쪽 끝에 맞춘다(아바타 22 + 간격 8). */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-turn-body > .agent-chat-answer-actions { margin: 8px 0 0 34px; }
+
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-composer-frame {
+  border-color: var(--m-hairline-strong);
+  background: var(--m-surface);
 }
