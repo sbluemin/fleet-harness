@@ -11,7 +11,7 @@ import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.j
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, type Objective } from "./types.js";
+import { createObjectiveSchema, decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, memberBatchLaunchSchema, patchObjectiveSchema, planSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "./types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -160,6 +160,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     // 목표를 지우면 지휘관 Operation 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     // 운영 주체 — 사람만 바꾼다. 사령관 보드 도구에는 이 쓰기가 없고, 사령관은 조회의 operator 로 읽기만 한다.
     { name: "objective/operator", method: "POST", summary: "Hand an objective to the Theater's Commodore (commodore true) or take it back (false). Only the person sets it; the change is kept in the objective's actions. The Commodore is woken by an objective's board changes only while it operates it.", handler: json(objectiveRef.extend({ commodore: z.boolean() }), ({ objectiveId, commodore }) => objective(store.setCommodoreOperated(objectiveId, commodore, "human"))) },
+    // 사령관에게 돌려주기 — 사령관이 사람에게 넘긴 항목을 사람이 되돌린다. 넘김은 「돌려줌」으로 남고 사령관이 깨어나 그 항목을 다시 맡는다.
+    { name: "person-hold/return", method: "POST", summary: "Return an item the Commodore handed to the person (decision, criteria, review or followup) to the Commodore; it can answer it again and is woken.", handler: json(objectiveRef.extend({ target: z.enum(PERSON_HOLD_TARGETS) }), actions.returnToCommodore) },
     { name: "objective/restore", method: "POST", summary: "Restore the archived Commander Operation dormant, preserving the objective's completion and records.", handler: json(objectiveRef, async ({ objectiveId }) => objective(await launch.restore(objectiveId))) },
     // restorable — 사람이 「보관」을 고른 기동 전 목표도 지우지 않고 휴면 지휘관으로 보관한다. 없으면 기동 전 목표는 영구 삭제(목표 머리의 두 번 확정 삭제).
     { name: "objective/archive", method: "POST", summary: "Archive the Commander Operation; permanently delete a never-launched objective that has no Operation, unless restorable is true, which archives it with a dormant Commander Operation so it can be restored. Returns deleted to distinguish the two.", handler: json(objectiveRef.extend({ restorable: z.boolean().optional() }), ({ objectiveId, restorable }) => launch.archive(objectiveId, restorable ? { restorable: true } : undefined)) },

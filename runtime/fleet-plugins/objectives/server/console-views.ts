@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
+import { livePersonHold } from "./board-state.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import type { Objective } from "./types.js";
 import { createBoardViews } from "./views.js";
@@ -18,7 +19,7 @@ const preview = (value: string, limit: number) => value.slice(0, splitsPair(valu
 
 /** 큰 행 하나도 읽을 수 있다. 생략 표시와 상세 입구를 남겨 다음 행으로의 진행을 막지 않는다. */
 function compactRow(row: Row): Row {
-  const keys = ["id", "title", "operation", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "operator", "removed", "mergedInto", "criteriaCount", "criteriaMet", "decisionRequested", "failedMembers", "reasons", "self"];
+  const keys = ["id", "title", "operation", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "operator", "removed", "mergedInto", "criteriaCount", "criteriaMet", "decisionRequested", "failedMembers", "reasons", "awaits", "self"];
   return { ...Object.fromEntries(keys.filter((key) => key in row).map((key) => [key, row[key]])), id: row.id, title: row.title, rowTruncated: true, detailSection: "objective" };
 }
 
@@ -56,7 +57,9 @@ export function createConsoleBoardViews(ctx: FleetPluginServerContext, store: Ob
       reopenCount: history.reopenCount, rework: history.rework };
   };
   const detailRead = (objective: Objective, section?: ObjectiveReadSection, givenOffset = 0) => {
-    const full = { ...views.objectiveView(objective), decisionRequest: objective.decisionRequest };
+    // 사람에게 넘긴 항목 — 서 있는 것만. 사령관은 이 항목에 답하지 못한다.
+    const personHolds = objective.personHolds.filter((hold) => livePersonHold(objective, hold.target) === hold);
+    const full = { ...views.objectiveView(objective), decisionRequest: objective.decisionRequest, ...(personHolds.length ? { personHolds } : {}) };
     if (!section) {
       if (givenOffset) throw new ObjectiveStoreError("section_required");
       const complete = { objective: { ...full, ...counts(objective) }, sections: OBJECTIVE_READ_SECTIONS };

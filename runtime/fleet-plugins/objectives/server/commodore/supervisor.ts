@@ -5,7 +5,7 @@ import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { createdByCommodore, inboxReasons, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
+import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
@@ -90,7 +90,7 @@ type Phase = CommodoreRunStatus["phase"];
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
  * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated";
+export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
 
 /** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
 const SELF_WRITE_GRACE_MS = 5_000;
@@ -116,6 +116,10 @@ interface TrackedStatus {
 
 /** 사람이 운영하는 목표의 대기 키 머리 — 깨우지 않고 기록에만 남긴다. */
 const HUMAN_KEY = "human";
+/** 사령관이 사람에게 넘긴 항목의 대기 키 머리 — 깨우지 않는다. 돌려받으면 머리 없는 새 항목이 되어 그때 깨운다. */
+const PERSON_KEY = "person";
+/** 넘김이 끝난 사건(사람이 답함·돌려줌) — 대기가 아니라 한 번 깨우는 항목이다. 상세는 목표 제목과 대상. */
+const SETTLED_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["answered", "returned"]);
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
@@ -152,6 +156,8 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "autonomy": return "autonomy turned on";
     case "retry": return "retry requested by the person";
     case "rotated": return "your session was replaced";
+    case "answered": return `the person answered ${plural("item")} you handed them${tail}`;
+    case "returned": return `the person returned ${plural("item")} to you${tail}`;
     default: return code;
   }
 }
@@ -609,7 +615,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const woke = new Map<string, Set<string>>();
     const add = (id: string, code: string) => { let codes = woke.get(id); if (!codes) woke.set(id, codes = new Set()); codes.add(code); };
     for (const [code, reason] of pending) {
-      if (BOARD_CODES.has(code)) { for (const objective of objectives) if (operators.get(objective.id) === "commodore" && (inboxReasons(objective) as readonly string[]).includes(code)) add(objective.id, code); }
+      if (BOARD_CODES.has(code)) { for (const objective of objectives) if (operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => reason === code && !heldForPerson(objective, reason))) add(objective.id, code); }
       else for (const id of reason.ids?.keys() ?? []) add(id, code);
     }
     const quiet = held.get(runner);
@@ -639,15 +645,20 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const fresh = [...current].filter((key) => !runner.seen.has(key));
     runner.seen = current;
     const freshCodes = new Set<WakeCode>();
+    const settled: { code: WakeCode; id: string; detail: string }[] = [];
     for (const key of fresh) {
       const [head, ...rest] = key.split(":");
       if (head === HUMAN_KEY) hold(runner, rest[1]!, rest[0]!);
+      else if (head === PERSON_KEY) continue;
+      else if (SETTLED_CODES.has(head as WakeCode)) settled.push({ code: head as WakeCode, id: rest[0]!, detail: `"${objectives.find((objective) => objective.id === rest[0])?.title ?? rest[0]}" ${rest[1]}` });
       else freshCodes.add(head as WakeCode);
     }
     if (freshCodes.size) {
       const digest = new Map(inboxDigest(objectives, deps.observe));
       for (const code of freshCodes) wake(runner, code, { count: digest.get(code) ?? 1 });
     }
+    // 사람이 넘겨받은 항목을 끝냈다 — 그 목표와 대상을 깨움 문장과 범위 줄에 남긴다.
+    for (const entry of settled) { wake(runner, entry.code, { bump: true, detail: entry.detail }); noteIds(runner, entry.code, entry.id, entry.detail); }
   };
   /** 보드를 다시 본다 — 대기 상태, 빈 보드, 상태 변화. 보드 사건과 대기 점검이 같은 길을 쓴다. */
   const boardChanged = (runner: Runner) => {
@@ -674,7 +685,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const runner of runners.values()) {
       const objectives = deps.objectives(runner.theaterId);
       const operators = operatorsOf(objectives);
-      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => reason === "planned" || reason === "review"))) boardChanged(runner);
+      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => (reason === "planned" || reason === "review") && !heldForPerson(objective, reason)))) boardChanged(runner);
     }
   }, PLANNED_CHECK_MS);
   plannedTimer.unref?.();
@@ -852,10 +863,21 @@ function waitingKeys(objectives: readonly Objective[], observe?: BoardObserver):
   const operators = operatorsOf(objectives);
   const keys = new Set<string>();
   for (const objective of objectives) {
-    const head = operators.get(objective.id) === "human" ? `${HUMAN_KEY}:` : "";
-    for (const reason of waitingReasons(objective, observe)) keys.add(head + (reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`));
+    const human = operators.get(objective.id) === "human";
+    for (const reason of waitingReasons(objective, observe)) {
+      const head = human ? `${HUMAN_KEY}:` : heldForPerson(objective, reason) ? `${PERSON_KEY}:` : "";
+      keys.add(head + (reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`));
+    }
+    // 넘김이 끝난 사건 — 끝난 시각까지 키에 실어 같은 대상의 다음 넘김이 끝나도 새 항목이 된다. 사람이 운영하는 목표는 깨우지 않는다.
+    if (!human) for (const hold of objective.personHolds ?? []) if (hold.settled) keys.add(`${hold.settled.outcome}:${objective.id}:${hold.target}:${hold.settled.at}`);
   }
   return keys;
+}
+
+/** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 대기 이유. */
+function heldForPerson(objective: Objective, reason: InboxReason): boolean {
+  const target = holdTargetOf(reason);
+  return !!target && !!livePersonHold(objective, target);
 }
 
 /** 사령관이 운영하는 목표에 남은 대기 상태의 수 — 지금 그 이유를 가진 목표 수(절대값). 없으면 빈 목록이다. */
@@ -863,7 +885,7 @@ function inboxDigest(objectives: readonly Objective[], observe?: BoardObserver):
   // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
   const operators = operatorsOf(objectives);
   const counts = new Map<string, number>();
-  for (const objective of objectives) if (operators.get(objective.id) === "commodore") for (const reason of waitingReasons(objective, observe) as readonly string[]) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  for (const objective of objectives) if (operators.get(objective.id) === "commodore") for (const reason of waitingReasons(objective, observe)) if (!heldForPerson(objective, reason)) counts.set(reason, (counts.get(reason) ?? 0) + 1);
   return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 

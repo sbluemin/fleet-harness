@@ -2,9 +2,10 @@ import { isDeepStrictEqual } from "node:util";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
+import { livePersonHold } from "./board-state.js";
 import type { LaunchOptions, LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import type { DecisionAnswersInput, MemberLaunch, MemberPatchInput, MissionAddInput, MissionPatchInput, Objective, ObjectiveEditKind, ObjectiveReviewer, PatchObjectiveInput } from "./types.js";
+import type { DecisionAnswersInput, MemberLaunch, MemberPatchInput, MissionAddInput, MissionPatchInput, Objective, ObjectiveEditKind, ObjectivePersonHold, ObjectiveReviewer, PatchObjectiveInput, PersonHoldTarget } from "./types.js";
 
 type Ref = { readonly objectiveId: string; readonly language?: "en" | "ko" };
 type ContextRef = Ref & { readonly context?: string };
@@ -45,6 +46,25 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     return !!mission && !mission.done;
   };
   const only = (patch: object, keys: readonly string[]) => Object.keys(patch).every((key) => keys.includes(key));
+  const commodore = typeof actor === "object" && actor.kind === "commodore";
+  const liveHolds = (objectiveId: string, targets: readonly PersonHoldTarget[]): ObjectivePersonHold[] => {
+    const found = store.find(objectiveId);
+    return found ? targets.flatMap((target) => livePersonHold(found, target) ?? []) : [];
+  };
+  /**
+   * 사람에게 넘긴 항목의 경계 — 사령관은 넘긴 항목을 처리하는 행위(답·승인·거절·완료·확장·스티어링·후속 폐기)를 하지 못한다.
+   * 사람 쪽(사람·Console Use Operation)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
+   */
+  const holding = <A extends Ref, R>(targets: (body: A) => readonly PersonHoldTarget[], run: (body: A) => Promise<R> | R, settles = true) => async (body: A): Promise<R> => {
+    const held = liveHolds(body.objectiveId, targets(body));
+    if (commodore) {
+      if (held[0]) throw new ObjectiveStoreError("held_for_person", undefined, { target: held[0].target, reason: held[0].reason });
+      return run(body);
+    }
+    const result = await run(body);
+    if (settles && held.length) store.personHoldsAnswered(body.objectiveId, held, actor);
+    return result;
+  };
   const missionKinds = (patch: MissionPatchInput): ObjectiveEditKind[] => [
     ...(patch.text !== undefined || patch.done !== undefined ? ["missions" as const] : []),
     ...(patch.prerequisites !== undefined || patch.why !== undefined ? ["lineup" as const] : []),
@@ -53,7 +73,8 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
   return {
     // 첨부 등 바이트를 받는 경계도 같은 실행 중 편집 규칙과 귀속을 쓴다.
     unlessBusy, steerable, edited, markEdited,
-    patch: steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["title", "note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
+    // 제목·브리핑 편집은 옛 보드를 전제로 한 결정 요청을 거둔다 — 사령관은 사람에게 넘긴 질문을 그렇게 지우지 못한다. 사람의 편집은 답이 아니다.
+    patch: holding(({ patch }: Ref & { patch: PatchObjectiveInput }) => (patch.title !== undefined || patch.note !== undefined ? ["decision"] : []), steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["title", "note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
       ...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : []),
     ], async () => {
       const { title, groupId, launch: preset, ...own } = patch;
@@ -64,19 +85,20 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
       const found = store.find(objectiveId);
       if (!found) throw new ObjectiveStoreError("unknown_objective");
       return found;
-    })),
-    complete: unlessBusy(async (body: CompleteAction) => {
+    })), false),
+    complete: holding((body: CompleteAction) => (body.undone ? [] : body.followups?.length ? ["review", "followup"] : ["review"]), unlessBusy(async (body: CompleteAction) => {
       if (body.undone) return objective(await launch.reopen(body.objectiveId, options(body)));
       if (!body.followups?.length) return objective(await launch.complete(body.objectiveId, options(body)));
       if (!body.batchId) throw new ObjectiveStoreError("invalid_request");
       return objective(await launch.completeWithFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body)));
-    }),
-    extend: unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body))),
+    })),
+    extend: holding(() => ["review"], unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body)))),
     handOff: unlessBusy(({ objectiveId }: Ref) => objective(store.handOff(objectiveId, { by: actor }))),
-    plan: unlessBusy((body: ContextRef) => {
+    // 새 구상은 기준 제안을 갈아 끼운다 — 사람에게 넘긴 제안이 서 있는 동안 사령관은 청하지 못한다.
+    plan: holding(() => ["criteria"], unlessBusy((body: ContextRef) => {
       if (body.context !== undefined) store.patch(body.objectiveId, { planRequest: body.context, planRequestBy: actor });
       return launch.requestPlan(body.objectiveId, options(body));
-    }),
+    })),
     commence: (body: ContextRef & { routing?: "preview" }) => {
       if (store.find(body.objectiveId)?.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       // 지휘관 턴 중에는 개시하지 않는다(쓰고 있는 계획·기준과 겹친다). 대신 언제 다시 부르면 되는지와 지금 상태를 말한다 —
@@ -87,12 +109,13 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
       }
       return launch.startCommander(body.objectiveId, { ...options(body), ...(body.routing ? { routing: body.routing } : {}) });
     },
-    answer: (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective),
-    steer: (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective),
+    answer: holding(() => ["decision"], (body: Ref & DecisionAnswersInput) => launch.answerDecision(body.objectiveId, { requestId: body.requestId, answers: body.answers }, options(body)).then(objective)),
+    // 스티어링은 달성 표시를 거둬 검토 대기를 끝낸다.
+    steer: holding(() => ["review"], (body: ContextRef) => launch.steer(body.objectiveId, options(body)).then(objective)),
     message: (body: Ref & { memberId?: string | null; text: string; attachmentIds?: readonly string[] }) => launch.message(body.objectiveId, body.memberId ?? null, body.text, options(body), body.attachmentIds),
     stop: ({ objectiveId }: Ref) => launch.stop(objectiveId),
     compact: ({ objectiveId }: Ref) => launch.compact(objectiveId),
-    followupDiscard: ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor)),
+    followupDiscard: holding(() => ["followup"], ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor))),
     followupRetry: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId)),
     followupAbandon: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(store.followupAbandon(objectiveId, batchId, candidateId)),
     memberAdd: steerable(() => true, ({ objectiveId, member }: Ref & { member: { role: string; brief?: string; launch?: MemberLaunch; subagents?: boolean } }) => edited(objectiveId, ["members"], () => store.memberAdd(objectiveId, member, actor))),
@@ -119,9 +142,18 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     criterionAdd: steerable(() => true, ({ objectiveId, criterion }: Ref & { criterion: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionAdd(objectiveId, criterion.text, actor))),
     criterionPatch: steerable(() => true, ({ objectiveId, criterionId, patch }: Ref & { criterionId: string; patch: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text))),
     criterionRemove: steerable(() => true, ({ objectiveId, criterionId }: Ref & { criterionId: string }) => edited(objectiveId, ["criteria"], () => store.criterionRemove(objectiveId, criterionId))),
-    approve: ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor)),
-    approveAll: ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor)),
-    reject: ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalReject(objectiveId, proposalId, actor)),
+    approve: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor))),
+    approveAll: holding(() => ["criteria"], ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor))),
+    reject: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalReject(objectiveId, proposalId, actor))),
+    // 사령관이 넘기기 — 사령관 행위자만. 사람에게는 돌려주기(`personHoldReturn`)가 있다.
+    handToPerson: ({ objectiveId, target, reason }: Ref & { target: PersonHoldTarget; reason: string }) => {
+      if (typeof actor !== "object" || actor.kind !== "commodore") throw new ObjectiveStoreError("commodore_caller_required");
+      return objective(store.personHold(objectiveId, { target, reason, by: actor }));
+    },
+    returnToCommodore: ({ objectiveId, target }: Ref & { target: PersonHoldTarget }) => {
+      if (commodore) throw new ObjectiveStoreError("person_caller_required");
+      return objective(store.personHoldReturn(objectiveId, target, actor));
+    },
     annotate: ({ objectiveId, proposalId, annotation }: Ref & { proposalId: string; annotation: string }) => objective(store.proposalAnnotate(objectiveId, proposalId, annotation, actor)),
   };
 }

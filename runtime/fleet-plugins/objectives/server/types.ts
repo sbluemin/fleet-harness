@@ -528,6 +528,25 @@ export interface DecisionDelivery {
   readonly at: number;
 }
 
+/**
+ * 사람에게 넘긴 항목 — 사령관이 운영하는 목표에 올라온 대기 항목을 사령관이 사유와 함께 사람 몫으로 넘긴 것. 대상마다 하나다.
+ * 넘긴 동안 그 항목은 사람이 답할 차례이고 사령관의 답·완료는 거절된다. 결정 요청은 넘긴 그 요청(`requestId`)에만 걸린다.
+ * 항목이 사람의 처리 없이 사라지면(철회·대체·보드 편집) 넘김도 함께 사라지고, 사람이 처리하거나 돌려주면 `settled` 로 남아
+ * 사령관을 한 번 깨운다. 같은 대상의 새 넘김이 끝난 넘김을 갈아 끼운다.
+ */
+export const PERSON_HOLD_TARGETS = ["decision", "criteria", "review", "followup"] as const;
+export type PersonHoldTarget = (typeof PERSON_HOLD_TARGETS)[number];
+export const MAX_PERSON_HOLD_REASON = 300;
+export interface StoredPersonHold {
+  readonly target: PersonHoldTarget;
+  readonly requestId?: string;
+  readonly reason: string;
+  readonly at: number;
+  readonly by: Extract<ObjectiveActor, { kind: "commodore" }>;
+  /** 끝난 넘김 — 사람 쪽이 그 항목을 처리했거나(answered) 사령관에게 돌려줬다(returned). */
+  readonly settled?: { readonly at: number; readonly by: ObjectiveReviewer; readonly outcome: "answered" | "returned" };
+}
+
 export interface PendingCommander {
   readonly theaterId: string;
   readonly title: string;
@@ -608,6 +627,8 @@ export interface StoredObjective {
   readonly decisionRequestRevision?: number;
   readonly decisionDelivery?: DecisionDelivery;
   readonly decisions?: readonly Decision[];
+  /** 사람에게 넘긴 항목 — 대상마다 하나. 옛 판은 모르는 필드라 그대로 둔다. */
+  readonly personHolds?: readonly StoredPersonHold[];
   /**
    * 레코드 판 표지 — 새 레코드는 늘 true 로 쓴다. 이 필드가 없는 옛 레코드는 개시 여부를 기동 흔적으로 읽는다.
    * 옛 판이 false 로 남긴 레코드도 목표로 읽고, 다음 편집 때 true 로 고쳐 쓴다. 에이전트 Operation 은 모두 목표다.
@@ -779,6 +800,11 @@ export interface Objective {
   /** 답을 보내는 중이거나, 보낸 결과를 확인하지 못한 채 남은 시각. */
   readonly decisionDelivery: { readonly requestId: string; readonly at: number; readonly by?: ObjectiveActor } | null;
   readonly decisions: readonly Decision[];
+  /**
+   * 사람에게 넘긴 항목 — 대상마다 하나. `settled` 가 null 이고 항목이 아직 서 있으면 사람이 답할 차례다(`livePersonHold`).
+   * 끝난 넘김(settled)은 같은 대상의 다음 넘김까지 남는다.
+   */
+  readonly personHolds: readonly ObjectivePersonHold[];
   readonly recorded?: boolean;
   /** 개시했다 — 목록의 「진행 중」 구역. 구상만 했거나 보드에서 막 만든 목표는 「시작 전」이다. */
   readonly commenced: boolean;
@@ -802,6 +828,16 @@ export interface Objective {
   } | null;
   /** 이 목표로 합쳐 온 목표 — criteriaIds 는 옮겨 온 기준이다. 원본이 영구 삭제됐으면 restorable 이 false. */
   readonly merged: readonly { readonly sourceId: string; readonly title: string; readonly at: number; readonly by: TidiedBy; readonly criteriaIds: readonly string[]; readonly restorable: boolean }[];
+}
+
+/** 넘긴 항목의 화면 모양 — 저장 모양에 빈 값을 채운다. */
+export interface ObjectivePersonHold {
+  readonly target: PersonHoldTarget;
+  readonly requestId: string | null;
+  readonly reason: string;
+  readonly at: number;
+  readonly by: Extract<ObjectiveActor, { kind: "commodore" }>;
+  readonly settled: StoredPersonHold["settled"] | null;
 }
 
 /** 정리한 손 — 에이전트 Operation 또는 사령관(commodore: true). */
@@ -1017,6 +1053,12 @@ export const objectiveReviewerSchema = z.union([
   z.object({ kind: z.literal("operation"), operationId: ids, title: z.string().nullable() }).strict(),
 ]);
 export const objectiveActorSchema = z.union([objectiveReviewerSchema, z.literal("commander")]);
+/** 저장된 넘김 하나 — 어긋난 항목은 목표를 격리하지 않고 그 항목만 버린다(넘김이 없던 것과 같다). */
+export const storedPersonHoldSchema = z.object({
+  target: z.enum(PERSON_HOLD_TARGETS), requestId: ids.optional(), reason: z.string().min(1).max(MAX_PERSON_HOLD_REASON), at: z.number().finite(),
+  by: z.object({ kind: z.literal("commodore"), theaterId: ids, why: z.string().max(MAX_COMMODORE_WHY).optional() }).strict(),
+  settled: z.object({ at: z.number().finite(), by: objectiveReviewerSchema, outcome: z.enum(["answered", "returned"]) }).strict().optional(),
+}).strict();
 export const objectiveMemberHistorySchema = z.array(z.object({
   id: ids, at: z.number().finite(), kind: z.enum(["joined", "left"]), memberId: ids,
   name: z.string().max(40), number: z.number().int().min(1),

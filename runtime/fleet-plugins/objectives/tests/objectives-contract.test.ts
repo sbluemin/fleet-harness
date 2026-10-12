@@ -2060,6 +2060,15 @@ describe("Objectives contract", () => {
     const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
     expect(request.id).toBe(asked.requestId);
     const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
+    // 사람에게 넘긴 결정은 사령관이 답하지 못하고 요청도 그대로다 — inbox 는 그 이유를 사람 차례로 말한다. 넘기기는 사령관만 하고,
+    // 사람이 「사령관에게 돌려주기」로 되돌리면 사령관이 다시 답한다.
+    await board({ action: "hand_to_person", objectiveId: id, target: "decision", reason: "Product direction is the person's call" });
+    expect(await refusal(commodore, answerOf({}))).toBe("held_for_person");
+    expect(store.find(id)!.decisionRequest?.id).toBe(request.id);
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "person" }), personHolds: [expect.objectContaining({ target: "decision", requestId: request.id })] }));
+    expect(await refusal(consoleDetail, { action: "hand_to_person", objectiveId: id, target: "decision", reason: "x" }, "outsider")).toBe("permission_required");
+    expect((await route("person-hold/return", { objectiveId: id, target: "decision" })).status).toBe(200);
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "commodore" }) }));
     expect(await board(answerOf({}))).toMatchObject({ stored: { answers: [{ text: "Preserve the output" }] } });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
