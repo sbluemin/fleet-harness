@@ -2094,6 +2094,10 @@ describe("Objectives contract", () => {
     expect(await board({ action: "evidence", objectiveId: id, resultId })).toMatchObject({ text: "Verified output\n", nextOffset: null });
     const reviewed = (await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] };
     const candidate = reviewed.followups[0]!;
+    // 사람에게 넘긴 후속 선택은 빈 선택 완료로도 지나가지 못한다 — 완료된 목표는 더 이상 후속을 고를 수 없다.
+    await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Opening new objectives is the person's call" });
+    expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
+    expect((await route("person-hold/return", { objectiveId: id, target: "followup" })).status).toBe(200);
     await board({ action: "complete", objectiveId: id, batchId: "3f1c8f3e-1111-4a8b-9c0d-000000000003", followups: [{ id: candidate.id, rev: candidate.rev }] });
     let nextId = "";
     await vi.waitFor(async () => {

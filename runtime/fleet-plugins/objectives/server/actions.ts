@@ -86,7 +86,8 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
       if (!found) throw new ObjectiveStoreError("unknown_objective");
       return found;
     })), false),
-    complete: holding((body: CompleteAction) => (body.undone ? [] : body.followups?.length ? ["review", "followup"] : ["review"]), unlessBusy(async (body: CompleteAction) => {
+    // 빈 선택 완료도 후속 선택을 끝낸다 — 완료된 목표에서는 더 이상 후속을 고르지 못하므로 넘긴 후속 선택을 함께 지킨다.
+    complete: holding((body: CompleteAction) => (body.undone ? [] : ["review", "followup"]), unlessBusy(async (body: CompleteAction) => {
       if (body.undone) return objective(await launch.reopen(body.objectiveId, options(body)));
       if (!body.followups?.length) return objective(await launch.complete(body.objectiveId, options(body)));
       if (!body.batchId) throw new ObjectiveStoreError("invalid_request");
