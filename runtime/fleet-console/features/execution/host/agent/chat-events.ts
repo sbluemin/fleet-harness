@@ -1382,15 +1382,21 @@ function toolResultsFrom(content: unknown, options: ChatEventMapOptions): readon
   for (const block of content as readonly TranscriptContentBlock[]) {
     if (!block || typeof block !== "object" || block.type !== "tool_result") continue;
     if (typeof block.tool_use_id !== "string" || block.tool_use_id.length === 0) continue;
-    const ok = block.is_error !== true;
     const tool = options.toolNames?.get(block.tool_use_id);
-    const quiet = ok && tool !== undefined && (CONTENT_RESULT_TOOLS.has(tool) || WRITE_TOOLS.has(tool));
-    const toolDetail = toolResultDetail(tool, block.content, options);
+    const refusal = tool === "SendMessage" && block.is_error !== true ? sessionMessageRefusal(block.content) : null;
+    const ok = block.is_error !== true && refusal === null;
+    // 성공한 전달의 영수증(JSON)은 보낸 본문을 되풀이할 뿐이라 요약도 상세도 싣지 않는다.
+    // 본문으로 말한 거절은 영수증 대신 그 사유 한 줄을 싣는다.
+    const delivered = ok && tool === "SendMessage";
+    const quiet = delivered || (ok && tool !== undefined && (CONTENT_RESULT_TOOLS.has(tool) || WRITE_TOOLS.has(tool)));
+    const toolDetail = delivered ? null
+      : refusal !== null ? (refusal ? { sections: [detailExcerpt(refusal, 1, TOOL_DETAIL_SIDE_BYTES, false, options)] } : null)
+        : toolResultDetail(tool, block.content, options);
     events.push({
       kind: "tool-result",
       id: block.tool_use_id,
       ok,
-      summary: quiet ? "" : summarizeToolResult(block.content, options),
+      summary: quiet ? "" : summarizeToolResult(refusal ?? block.content, options),
       ...(toolDetail ? { toolDetail } : {}),
     });
   }
@@ -1757,6 +1763,30 @@ function foldPath(path: string): string {
   const segments = path.split(/[\\/]/).filter((segment) => segment.length > 0 && !/^[A-Za-z]:$/.test(segment));
   if (segments.length < 2) return path;
   return `…/${segments.slice(-2).join("/")}`;
+}
+
+/**
+ * 세션 간 메시지 도구가 **실패를 본문으로 말했는가**. `is_error` 없이 `{"success":false}` 하나로
+ * 돌아오는 거절이 있어(상대가 없거나 이름이 중복인 경로) 그 모양만 따로 읽는다. 거절이면 영수증의
+ * `message`·`error` 낱말(없으면 빈 문자열)을, 아니면 null 을 돌려준다. 읽을 수 없는 본문은 실패로
+ * 보지 않는다 — 성공한 전달을 침묵시키는 쪽이 더 나쁜 오류다.
+ */
+export function sessionMessageRefusal(content: unknown): string | null {
+  const texts = typeof content === "string" ? [content]
+    : Array.isArray(content)
+      ? (content as readonly TranscriptContentBlock[]).flatMap((part) => part?.type === "text" && typeof part.text === "string" ? [part.text] : [])
+      : [];
+  for (const text of texts) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || (parsed as { readonly success?: unknown }).success !== false) continue;
+      const fields = parsed as Record<string, unknown>;
+      return [fields.message, fields.error].find((value): value is string => typeof value === "string" && value.trim().length > 0)?.trim() ?? "";
+    } catch {
+      // JSON이 아닌 결과 본문은 판정 근거가 없다.
+    }
+  }
+  return null;
 }
 
 function readResultText(content: unknown): string | null {
