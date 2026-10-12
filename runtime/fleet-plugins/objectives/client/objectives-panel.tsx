@@ -23,7 +23,7 @@ import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberFallbackNote, memberLaunchDisplay, memberLaunched, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -447,7 +447,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 }
 
 /** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
-const ROUTING_OFF_REASONS = new Set(["routing_disabled", "routing_off", "no_candidate"]);
 
 /** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
 function MemberMark({ objective, member, operationState, still }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean }) {
@@ -686,7 +685,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     {objective.members.map((member, index) => {
       const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const launched = memberLaunched(member, operationState);
-      const routed = launched ? member.routed : null;
+      const routedTag = memberRoutedTag(member, launched, t);
+      const fallbackNote = memberFallbackNote(member, launched, t);
       const next = launched ? member.next : null;
       const reserved = next && !next.failed ? next : null;
       const appliedTo = launched ? applied.get(member.id) ?? null : null;
@@ -715,7 +715,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
-            {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
+            {routedTag ? <span className={`objectives-member-via is-${routedTag.via}`} title={routedTag.title}>{routedTag.label}</span> : null}
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
               onPickLaunched={(launch) => pickLaunched(member, launch)}
               onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
@@ -764,7 +764,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           {member.unreported.reason?.detail !== undefined ? <pre>{member.unreported.reason.detail}</pre> : null}
           {member.unreported.lastMessage !== undefined ? <><p>{t("objectives.members.unreportedData")}</p><pre>{member.unreported.lastMessage}</pre></> : <p>{t("objectives.members.unreportedEmpty")}</p>}
         </details> : null}
-        {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
+        {fallbackNote ? <p className="objectives-member-reason" title={fallbackNote.title}>{fallbackNote.text}</p> : null}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>

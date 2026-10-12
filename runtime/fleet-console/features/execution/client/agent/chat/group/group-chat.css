@@ -351,16 +351,24 @@ button.group-members-main { cursor: pointer; }
 button.group-members-main:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
 .group-members-text { display: flex; flex-direction: column; min-width: 0; }
 .group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 보드 사실(플러그인이 보낸 profile) — 이름 곁 제안 표식, 역할 줄 끝의 모델·강도, 그 아래 브리프. 좁은 칸에서는 이름과 모델 낱말만
-   줄임표로 접고(풀네임은 title), 표식·역할 낱말·상태는 자리를 지킨다. 브리프는 세 줄까지 접어 보이고 전문은 title 이다. */
-.group-members-title { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
-.group-members-badge { flex: none; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; }
-.group-members-role { display: flex; align-items: center; min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); white-space: nowrap; }
-.group-members-role-word { flex: none; }
-.group-members-launch { display: inline-flex; align-items: center; gap: var(--space-1); flex: 0 1 auto; min-width: 0; color: var(--text-secondary); }
-.group-members-launch-dot { flex: none; padding: 0 var(--space-1); color: var(--text-tertiary); }
+/* 보드 사실(플러그인이 보낸 profile) — 이름 곁 제안 표식, 역할 아래 모델·강도 줄, 브리프, 사유 줄. 좁은 칸에서는 이름·모델 낱말·표식이
+   줄임표로 접히고(전문은 title), 이름과 표식이 한 줄에 서지 못하면 표식이 다음 줄로 내려간다 — 어느 언어·폭에서도 이름이 남는다.
+   브리프는 세 줄, 사유는 두 줄까지 접어 보이고 전문은 title 이다. */
+.group-members-title { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-1); min-width: 0; }
+.group-members-title > .group-members-name { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.group-members-badge { flex: 0 1 auto; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; }
+.group-members-role { font-size: var(--t-xs); color: var(--text-tertiary); }
+.group-members-launch { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-1); min-width: 0; margin-top: 2px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
+/* 모델 낱말은 최소 6em 을 잡고 남는 폭을 채운다 — 표식과 한 줄에 서지 못하면 다음 줄로 내려가 표식이 짓눌리지 않는다. */
+.group-members-launch-coord { display: inline-flex; align-items: center; gap: var(--space-1); flex: 1 1 6em; min-width: 0; }
 .group-members-launch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.group-members-launch-label.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
+.group-members-via { flex: none; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 1px 6px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); color: var(--text-secondary); font: var(--weight-medium) var(--t-2xs)/1.3 var(--font-ui); }
+.group-members-via.is-warn { border-color: color-mix(in oklch, var(--warn) 45%, transparent); color: var(--warn-ink); }
+.group-members-launch-badge { flex: none; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
 .group-members-brief { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.group-members-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); overflow-wrap: anywhere; }
+.group-members-note.is-warn { color: var(--warn-ink); }
 .group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-2) var(--space-2) calc(var(--space-2) + 22px + var(--space-2)); }
 .group-members-state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--t-xs); color: var(--text-secondary); padding-top: 2px; }
 .group-members-state.is-danger { color: var(--coral); }

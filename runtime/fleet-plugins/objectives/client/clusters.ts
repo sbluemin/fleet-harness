@@ -272,7 +272,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-      { state: (operationId) => activity.get(operationId) ?? "closed", roster });
+      { state: (operationId) => shownActivity(activity.get(operationId) ?? "closed"), roster });
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
@@ -345,11 +345,15 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
 const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.zoneNote ? "zone" : "", row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
+/** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */
+const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
 // 명부 줄의 글은 함수라 JSON 이 버린다 — 영어로 풀어 비교한다(모델·상태·로스터가 바뀌면 글이 바뀐다).
 const profileSignature = (profile: ConversationMemberProfile | undefined) => (profile ? [profile.badge ? resolveText(profile.badge) : "", profile.brief ?? "",
-  profile.launch ? [resolveText(profile.launch.label), profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? ""] : null,
-  profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null] : null);
+  profile.launch ? [resolveText(profile.launch.label), profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? "", profile.launch.struck === true, profile.launch.badge ? resolveText(profile.launch.badge) : "",
+    profile.launch.via ? [resolveText(profile.launch.via.label), profile.launch.via.title ? resolveText(profile.launch.via.title) : "", profile.launch.via.tone ?? ""] : null] : null,
+  profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null,
+  profile.note ? [resolveText(profile.note.text), profile.note.title ?? "", profile.note.tone ?? ""] : null] : null);
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**

@@ -3,9 +3,9 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import { MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberStatus } from "./launch-control.js";
+import { commanderLaunchShown, localized, memberFallbackNote, memberLaunched, memberLaunchShown, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
 
-/** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 활동(없으면 "closed")과 기동 로스터. */
+/** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
 export interface ConversationCrew {
   readonly state: (operationId: string) => string;
   readonly roster: ModelRoster | null;
@@ -43,24 +43,39 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   } : null };
 }
 
-/** 보드 구성원 행이 보이는 것 — 역할 곁 제안 표식, 브리프, 모델·강도, 상태 낱말. 글리프·실패 여부는 로케일과 무관해 한 번만 센다. */
+/** 보드 구성원 행이 보이는 것 — 역할 곁 제안 표식, 브리프, 모델·강도(라우팅 표식·꺼짐 포함), 상태 낱말, 폴백 사유. 로케일과 무관한 칸은 한 번만 센다. */
 function memberProfile(objective: Objective, member: ObjectiveMember, crew: ConversationCrew): ConversationMemberProfile {
   const state = crew.state(member.id);
   const launched = memberLaunched(member, crew.state);
-  const shown = (t: Translate<ObjectiveMessageKey>) => memberLaunchShown(member, launched, t, crew.roster);
-  const { provider } = shown(getT("en"));
-  const { failed } = memberStatus(member, state, objective, getT("en"));
+  const en = getT("en");
+  const { failed } = memberStatus(member, state, objective, en);
+  const routed = memberRoutedTag(member, launched, en);
+  const note = memberFallbackNote(member, launched, en);
   return {
     ...(member.by === "commander" ? { badge: localized((t) => t("objectives.members.proposed")) } : {}),
     ...(member.brief ? { brief: member.brief } : {}),
-    launch: { label: localized((t) => shown(t).label), title: localized((t) => shown(t).title), ...(provider ? { provider } : {}) },
+    launch: {
+      ...launchLine((t) => memberLaunchShown(member, launched, t, crew.roster)),
+      ...(routed ? { via: { label: localized((t) => memberRoutedTag(member, launched, t)!.label), title: localized((t) => memberRoutedTag(member, launched, t)!.title), ...(routed.via === "fallback" ? { tone: "warn" as const } : {}) } } : {}),
+    },
     status: { text: localized((t) => memberStatus(member, state, objective, t).text), ...(failed ? { tone: "danger" as const } : {}) },
+    ...(note ? { note: { text: localized((t) => memberFallbackNote(member, launched, t)!.text), ...(note.title !== undefined ? { title: note.title } : {}), tone: "warn" as const } } : {}),
   };
 }
 
 /** 보드의 지휘관 행은 모델·강도만 보인다 — 그 한 줄만 싣는다. */
 function commanderProfile(objective: Objective, roster: ModelRoster | null): ConversationMemberProfile {
-  const shown = (t: Translate<ObjectiveMessageKey>) => commanderLaunchShown(objective, t, roster);
-  const { provider } = shown(getT("en"));
-  return { launch: { label: localized((t) => shown(t).label), title: localized((t) => shown(t).title), ...(provider ? { provider } : {}) } };
+  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)) };
+}
+
+/** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */
+function launchLine(shown: (t: Translate<ObjectiveMessageKey>) => LaunchShown): NonNullable<ConversationMemberProfile["launch"]> {
+  const { provider, struck, badge } = shown(getT("en"));
+  return {
+    label: localized((t) => shown(t).label),
+    title: localized((t) => shown(t).title),
+    ...(provider ? { provider } : {}),
+    ...(struck ? { struck } : {}),
+    ...(badge !== null ? { badge: localized((t) => shown(t).badge ?? "") } : {}),
+  };
 }

@@ -44,9 +44,22 @@ export interface ConversationMemberProfile {
   readonly badge?: LocalizedText;
   /** 맡은 일의 한두 줄 설명. 사람이 쓴 글이라 번역하지 않는다. */
   readonly brief?: string;
-  /** 모델·강도 한 줄(「Opus · HIGH」)과 hover 풀네임, 공급자 글리프. */
-  readonly launch?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly provider?: LaunchProviderGlyphId };
+  /**
+   * 모델·강도 한 줄(「Opus · HIGH」)과 hover 풀네임, 공급자 글리프.
+   * `struck` — 다음 기동에 쓰이지 않는 값(로스터에서 꺼진 모델)이라 낱말에 취소선을 긋는다. `badge` — 낱말 곁 표식(「꺼짐」·「폴백」).
+   * `via` — 그 모델이 어떻게 정해졌는지의 표식(「라우팅」·「폴백」). `tone: "warn"` 은 의도와 다르게 정해진 경우다.
+   */
+  readonly launch?: {
+    readonly label: LocalizedText;
+    readonly title?: LocalizedText;
+    readonly provider?: LaunchProviderGlyphId;
+    readonly struck?: boolean;
+    readonly badge?: LocalizedText;
+    readonly via?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly tone?: "warn" };
+  };
   readonly status?: { readonly text: LocalizedText; readonly tone?: "danger" };
+  /** 줄 아래의 사유 한 줄(예: 라우팅 폴백 사유). hover 는 원문이다. */
+  readonly note?: { readonly text: LocalizedText; readonly title?: string; readonly tone?: "warn" };
 }
 
 /** 플러그인이 보내는 명부 한 줄 — 발화자 표식에 보드 사실을 곁들인다. 호스트는 profile 을 참여자로 옮기고 발화자에서는 뗀다. */
