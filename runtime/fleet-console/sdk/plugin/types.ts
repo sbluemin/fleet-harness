@@ -855,7 +855,7 @@ export interface OperationClusterRow {
   readonly review?: (language: "en" | "ko") => void;
   /** 뿌리가 없는 줄을 다른 그룹으로 끌어 놓았을 때. 뿌리가 있으면 호스트가 뿌리 Operation 의 그룹을 바꾼다. */
   readonly moveToGroup?: (groupId: string | null) => void;
-  /** 줄 제목을 그 자리에서 고쳤을 때 — 있으면 호스트가 메뉴 「이름 변경」과 F2 로 줄 제목 자리에 인라인 편집을 연다. 제목은 플러그인의 것이라 확정도 플러그인이 한다. */
+  /** 줄 제목을 그 자리에서 고쳤을 때 — 있으면 호스트가 메뉴 「이름 변경」·F2·제목 더블클릭으로 줄 제목 자리에 인라인 편집을 연다. 제목은 플러그인의 것이라 확정도 플러그인이 한다. */
   readonly rename?: (title: string) => void;
 }
 
