@@ -1,6 +1,6 @@
 # Browser route — agent-browser
 
-Default driver for Console browser E2E. Switch to [Fleet Browser](fleet-browser.md) only when agent-browser cannot run here (missing binary, blocked install, unusable daemon), recording the error first.
+Default driver for Console browser E2E. Switch to [Fleet Browser](fleet-browser.md) only when agent-browser cannot run here (missing binary, blocked install, unusable daemon), recording the error first. For a narrowly scoped direct-CDP alternative, follow [bounded recovery](#bound-commands-and-recover-stuck-input) below.
 
 ## Load the contract
 
@@ -19,6 +19,10 @@ ab skills get dogfood
 
 Choose one unique session id matching `^fleet-console-e2e-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` and repeat that literal in every call; shell variables, `ab()`, and cwd do not survive between tool calls. The examples use `fleet-console-e2e-20260725-a7c3`, `<worktree>`, `<scratchpad>`, and `<port>`: substitute recorded absolute values consistently.
 
+## Browser executable for a direct launch
+
+When launching a browser yourself, including for a direct-CDP fallback, explicitly select an updater-free **Chrome for Testing** executable, such as the one installed by agent-browser, and record its absolute path and version. Do not substitute the user's installed `/Applications/Google Chrome.app`. On macOS, ordinary Chrome can start GoogleUpdater helpers that access the user's Google support paths even with an owned `HOME` and `--user-data-dir`; those settings do not contain OS helpers. Do not inspect or repair the user's Google files to diagnose that leak. Keep the launch within [Setup's environment and ownership boundaries](setup.md#keep-the-real-home-out); Chrome for Testing avoids this updater route, not every possible user-data access.
+
 ## Bound commands and recover stuck input
 
 Run each agent-browser command in its own tool call with an explicit wall-clock deadline (normally `Bash.timeout: 30000`), including `open`, input, `find`, `reload`, and diagnostics; the resolver above does not impose a deadline, and a long timeout around a batch is not a substitute. Choose and record a longer finite deadline before an expected slow operation, such as first-time installation or a deliberate longer wait, rather than repeatedly extending a hung interaction. This also applies to `npx` and Windows native-wrapper calls; if the execution tool cannot bound a command, report that blocker instead of running it unbounded.
@@ -29,10 +33,14 @@ For a directly executed native CLI on macOS without `timeout`, an additional com
 
 Suspect stuck automation input when one key press produces an event flood (for example, repeated `Unidentified` keydown/keypress), an action fires more times than the input sent, or subsequent observation/navigation commands stop returning. These are diagnostic signals, not proof of a product defect or of a driver fault.
 
+Use the same recovery sequence for `open` or cleanup errors such as `Resource temporarily unavailable (os error 35)`, `daemon may be busy or unresponsive`, or a command that reaches its deadline. Record the command, installed driver version, elapsed time, exit/timeout status, and sanitized error. If this run already owns a CDP endpoint, one bounded read-only responsiveness probe can distinguish a responding browser from an unresponsive CLI; it does not establish that the page is healthy or explain the driver failure. Do not infer screen lock, a stale lock, or a product defect from the error alone.
+
 1. Stop sending input or retrying `find`/`reload` in the suspect session. Preserve available command, timing, event-count, and error evidence; bound any diagnostic attempt too.
 2. Run the [owned-session cleanup](#cleanup) helper with a finite enclosing tool deadline. A timed-out CLI command may leave its daemon and browser alive. If cleanup fails or times out, report cleanup as unconfirmed and stop this route rather than using global closes, killing unknown processes, or accumulating replacement sessions.
 3. After verified cleanup, choose a new unique session id, open the same owned runtime with fresh pre-navigation instrumentation, restore the scenario's starting state, and repeat the exact action sequence once. Do not use a reload of the suspect session as the fresh-session control.
-4. Compare the runs before classifying the failure. A failure confined to the contaminated session is evidence of an automation/session issue; report that the product defect was not reproduced in the fresh session, not that it is disproved. A fresh-session recurrence needs further driver/product isolation before changing product code. If the fresh run blocks too, stop and report the verification blocker instead of retrying indefinitely. Clean up the replacement session on either outcome.
+4. Compare the runs before classifying the failure. A failure confined to the contaminated session is evidence of an automation/session issue; report that the product defect was not reproduced in the fresh session, not that it is disproved. A fresh-session recurrence needs further driver/product isolation before changing product code. If the fresh run blocks too, stop this driver route and report the verification blocker instead of retrying indefinitely. Clean up the replacement session on either outcome.
+
+Once any session created by the failed route has verified cleanup, an unavailable driver or a blocked fresh-session control is grounds to switch to [Fleet Browser](fleet-browser.md), not to repeat CLI attempts indefinitely. A failing product assertion is not grounds to switch. If the claim requires headless execution or pre-navigation diagnostics that Fleet Browser cannot provide, a direct-CDP scenario may instead use a newly launched owned [Chrome for Testing](#browser-executable-for-a-direct-launch). Record why that lane is needed, its executable/version, actual launch mode, profile, PID, and loopback CDP port; bound its commands and retain the same pre-navigation diagnostics, input/focus safeguards, and starting state. On every outcome, close only that recorded browser and confirm its PID and listener are gone; the agent-browser cleanup helper does not own a separately launched browser. Unconfirmed daemon cleanup blocks replacement launches, and switching drivers never bypasses a permission denial. Report unsupported claims or a denied/unavailable fallback as unverified.
 
 ## Open with instrumentation
 
