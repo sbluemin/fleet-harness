@@ -19,7 +19,7 @@ import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanel
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
-import { useDesktopRailEntries } from "../../../../core/client/src/chrome/pane/pane-registry.js";
+import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
@@ -83,8 +83,16 @@ export function ConversationShellHost(): null {
   return null;
 }
 
-/** 오른쪽 패널을 여닫는다 — 열린 것이 있으면 닫고, 없으면 마지막 패널(없으면 앞 묶음 첫 탭, 그것도 없으면 첫 도구)을 연다. */
-function useToggleDetails(): () => void {
+/** 패널 머리 탭 줄 맨 앞에 서는 대화 도구(목표) — Operation 대화에서 패널이 처음 보이는 탭이다. 없으면 null. */
+function firstConversationTab(bindings: readonly RailEntryBinding[]): RailEntryBinding | null {
+  return bindings.find((binding) => !binding.core && binding.panes.length > 0 && isConversationTab(binding.entry) && binding.entry.visible?.() !== false) ?? null;
+}
+
+/**
+ * 오른쪽 패널을 여닫는다 — 열린 것이 있으면 닫고, 없으면 연다. Operation 대화는 탭 줄 맨 앞의 대화 도구(목표)를 먼저 연다.
+ * 그 밖(플러그인 대화·Theater, 목표 도구가 없는 Console)은 마지막 패널(없으면 앞 묶음 첫 탭, 그것도 없으면 첫 도구)을 연다.
+ */
+function useToggleDetails(operationConversation: boolean): () => void {
   const bindings = useDesktopRailEntries();
   return useCallback(() => {
     const active = getRailStoreSnapshot().activePanelId;
@@ -92,11 +100,36 @@ function useToggleDetails(): () => void {
       closeRailPanel(active);
       return;
     }
+    const lead = operationConversation ? firstConversationTab(bindings) : null;
+    if (lead) {
+      openRailPanel(lead.entry.id);
+      return;
+    }
     const panes = bindings.filter((binding) => binding.panes.length > 0 && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && binding.entry.visible?.() !== false);
     const last = readLastPanel();
     const target = panes.find((binding) => binding.entry.id === last) ?? panes.find((binding) => binding.core) ?? panes[0];
     if (target) openRailPanel(target.entry.id);
-  }, [bindings]);
+  }, [bindings, operationConversation]);
+}
+
+/**
+ * Operation 을 고르면(가운데 칸의 대상이 바뀌면) 패널이 대상의 탭(구성원)을 보이던 중이어도 탭 줄 맨 앞의 목표로 돌린다.
+ * 닫힌 패널은 열지 않고, 대상의 탭이 아닌 패널(설정 등)과 목표 도구가 없는 경우는 그대로 둔다.
+ */
+function useLeadTabOnSubjectChange(subjectId: string | null, operationConversation: boolean): void {
+  const bindings = useDesktopRailEntries();
+  const bindingsRef = useRef(bindings);
+  bindingsRef.current = bindings;
+  useEffect(() => {
+    if (subjectId === null || !operationConversation) return;
+    const active = getRailStoreSnapshot().activePanelId;
+    if (active === null) return;
+    const current = bindingsRef.current;
+    const activeBinding = current.find((binding) => binding.entry.id === active);
+    if (!activeBinding?.core || active === SETTINGS_RAIL_ENTRY_ID) return;
+    const lead = firstConversationTab(current);
+    if (lead) openRailPanel(lead.entry.id);
+  }, [subjectId, operationConversation]);
 }
 
 // ── 사이드바 위·아래 줄 ────────────────────────────────────────────────────
@@ -249,8 +282,9 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
-            <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
+            {/* Operation 대화에서는 대화에서 곧장 이어 가는 도구(목표)가 대상의 탭(구성원)보다 앞에 선다 — 「목표 | 구성원」. */}
             {operationConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
+            <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
           </span>
           {operationConversation ? null : (
             <span className="conversation-panel-tools">
@@ -498,7 +532,10 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
   const operationClusters = useOperationClusters();
   useEffect(() => { publishConversationClusters(operationClusters); }, [operationClusters]);
-  const toggleDetails = useToggleDetails();
+  const stageInbox = useTheaterInboxState();
+  const operationConversation = surfaceDescriptor === null && subject !== null && stageInbox === null;
+  const toggleDetails = useToggleDetails(operationConversation);
+  useLeadTabOnSubjectChange(surfaceDescriptor ? null : subject?.id ?? null, operationConversation);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
   // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Operation 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
