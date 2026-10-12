@@ -38,8 +38,9 @@ import { useLocalizedSnapshot } from "./speaker-mark.js";
  * 가운데 칸 규칙:
  * - 목표 대화의 뿌리(지휘관)이거나 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다 — 구성원이 아직 없는 지휘관도
  *   같은 화면이다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서 주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
- * - 오른쪽 「구성원」 탭에서 줄을 눌러 고르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다. 구성원은 셸의 구성원 본문
- *   선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는 사람 입력 틀이 없다.
+ * - 오른쪽 「구성원」 탭의 줄이나 대화 말풍선 머리의 표식·이름을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
+ *   구성원은 셸의 구성원 본문 선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는
+ *   사람 입력 틀이 없고, 틀 머리의 「대화로 돌아가기」가 대화로 데려온다.
  * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
  */
 export function installGroupConversationSurface(): () => void {
@@ -179,7 +180,7 @@ function MemberLedger({ root, member, language, children }: {
   // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
   React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
   return (
-    <GroupLedgerFrame speaker={speaker} language={language}>
+    <GroupLedgerFrame speaker={speaker} language={language} onBack={() => openLedger(root.id, null)}>
       {children}
     </GroupLedgerFrame>
   );

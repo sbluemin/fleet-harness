@@ -5,7 +5,7 @@ import { operationAvatarKey, theaterAvatarKey } from "@fleet-console/sdk/avatars
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import { activityKey, memberActivityVisual } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { ledgerTarget, participantMongleState, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import { AvatarEditor } from "../../../../../workspace/client/avatars.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
@@ -39,19 +39,20 @@ export function GroupMembersPanel({ snapshot, language, ledgerOperationId: focus
     <div className="group-members">
       <h3 className="group-members-heading">{t("group.members.heading", { count: participants.length })}</h3>
       <ul className="group-members-list">
-        {participants.map((participant) => (
-          <MemberRow
-            key={speakerKey(participant.speaker)}
-            participant={participant}
-            language={language}
-            notStarted={notStarted}
-            showing={focus !== null && focus === participant.speaker.operationId}
-            onLedger={onOpenLedger && participant.speaker.operationId && (participant.speaker.kind === "member" || participant.speaker.kind === "commander")
-              ? () => onOpenLedger(focus === participant.speaker.operationId ? null : participant.speaker.operationId!)
-              : undefined}
-            onRemove={onRemove && participant.speaker.kind === "member" ? () => onRemove(participant.speaker) : undefined}
-          />
-        ))}
+        {participants.map((participant) => {
+          const target = onOpenLedger ? ledgerTarget(participant.speaker, participants) : null;
+          return (
+            <MemberRow
+              key={speakerKey(participant.speaker)}
+              participant={participant}
+              language={language}
+              notStarted={notStarted}
+              showing={focus !== null && focus === participant.speaker.operationId}
+              onLedger={onOpenLedger && target ? () => onOpenLedger(focus === target ? null : target) : undefined}
+              onRemove={onRemove && participant.speaker.kind === "member" ? () => onRemove(participant.speaker) : undefined}
+            />
+          );
+        })}
       </ul>
       {onAdd ? <button type="button" className="group-members-add" onClick={onAdd}>＋ {t("group.members.add")}</button> : null}
     </div>

@@ -29,6 +29,17 @@ export function speakerKey(speaker: ConversationSpeaker): string {
 }
 
 /**
+ * 발화자가 여는 원장 — 지휘관·구성원이고 그 Operation 이 이 대화의 명부에 있을 때만 그 id, 아니면 null.
+ * 말풍선 머리와 「구성원」 탭 줄이 같은 규칙으로 누를 수 있는 대상을 고른다. 명부에 없는 id 로 열면 가운데 칸이 대화에
+ * 그대로 남으므로(셸의 본문 주인이 루트로 떨어진다) 눌리는 척하지 않게 그런 발화자는 대상이 아니다.
+ */
+export function ledgerTarget(speaker: ConversationSpeaker, participants: readonly ConversationParticipant[]): string | null {
+  const operationId = speaker.operationId;
+  if (!operationId || (speaker.kind !== "member" && speaker.kind !== "commander")) return null;
+  return participants.some((participant) => participant.speaker.operationId === operationId) ? operationId : null;
+}
+
+/**
  * 사령관 표식이 쓸 Theater — 가운데 칸에 Operation 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
  * 없으면 지금 대화가 선 Operation 의 Theater 다.
  */
