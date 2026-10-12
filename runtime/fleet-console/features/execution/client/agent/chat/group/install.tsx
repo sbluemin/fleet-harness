@@ -122,7 +122,7 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.operation} language={context.language}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 스위치 — 그룹 대화가 서는 대화에만 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+/** 대화 머리의 「턴 접기」 스위치 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
   if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
   return <GroupFoldToggle language={context.language} />;
@@ -132,9 +132,9 @@ function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
   const t = getGroupT(language);
   const folded = useFoldTurns();
   return (
-    <button type="button" role="switch" aria-checked={folded} className="group-chat-fold-toggle" title={t("group.fold.hint")} onClick={() => setFoldTurns(!folded)}>
+    <button type="button" role="switch" aria-checked={folded} aria-label={t("group.fold.toggle")} className="group-chat-fold-toggle" title={t("group.fold.hint")} onClick={() => setFoldTurns(!folded)}>
       <span className="group-chat-fold-track" aria-hidden="true" />
-      {t("group.fold.toggle")}
+      <span className="group-chat-fold-label" aria-hidden="true">{t("group.fold.toggle")}</span>
     </button>
   );
 }

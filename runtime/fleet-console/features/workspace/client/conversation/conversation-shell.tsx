@@ -939,8 +939,8 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
             <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
           ) : null}
         </button>
+        {captionView}
         <span className="conversation-pill-actions">
-          {captionView}
           <OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />
           {descriptor?.captionActions === undefined ? null : (
             <PluginErrorBoundary fallback={<></>}>
