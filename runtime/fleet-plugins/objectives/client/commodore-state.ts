@@ -353,6 +353,9 @@ export function commodoreTheaterLabel(theaterId: string): string {
 
 export const COMMODORE_ENTRY_ID = "commodore";
 
+/** 목표 레일 엔트리 id — 엔트리 선언과, 그 입구를 걷는 사령관 섹션(사령관에게는 목표가 없다)이 같이 쓴다. */
+export const OBJECTIVES_ENTRY_ID = "objectives";
+
 /** Theater Inbox 의 사령관 섹션 id(플러그인 로컬) — 정준 id 의 접두는 호스트가 붙인다. 섹션과 사이드바 줄이 같이 쓴다. */
 export const COMMODORE_INBOX_SECTION_ID = "commodore";
 

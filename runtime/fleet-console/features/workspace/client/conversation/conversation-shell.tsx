@@ -155,6 +155,10 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const subject = useConversationSubject();
   const inbox = useTheaterInboxState();
   const operationConversation = subject !== null && inbox === null;
+  // Theater 를 연 동안 고른 섹션이 뜻 없는 도구를 선언하면(사령관에게는 목표가 없다) 그 섹션의 도구 줄·「더보기」에서만 뺀다.
+  const { theaterInboxSections } = usePluginRegistry();
+  const omitted = inbox === null ? undefined : theaterInboxSections.find((section) => section.id === sections.activeId)?.omitsRailEntries;
+  const toolFilter = omitted && omitted.length > 0 ? (entry: RailEntryDescriptor) => !omitted.includes(entry.id) : null;
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
@@ -250,7 +254,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           </span>
           {operationConversation ? null : (
             <span className="conversation-panel-tools">
-              <RailToolIcons context={context} variant="icons" scope="tools" />
+              <RailToolIcons context={context} variant="icons" scope="tools" {...(toolFilter ? { toolFilter } : {})} />
             </span>
           )}
         </div>
