@@ -192,6 +192,9 @@
 }
 
 .conversation-pill-row > * { pointer-events: auto; }
+/* 머리 줄의 폭을 기준으로 줄 안 요소가 좁은 폭 모양을 고른다(그룹 대화의 「턴 접기」 스위치가 라벨을 접는다). 줄은 절대 위치로
+   칸 폭을 따르므로 inline-size 격리가 배치를 바꾸지 않는다. */
+.conversation-pill-row { container: conversation-pill-row / inline-size; }
 
 /* 창 맨 위 아주 얇은 구간만 내용이 살짝 어두워진다 — 가리는 띠가 아니다. */
 .conversation-column::before {

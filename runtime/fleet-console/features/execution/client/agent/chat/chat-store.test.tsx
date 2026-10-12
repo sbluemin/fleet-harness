@@ -14,6 +14,7 @@ import type { OperationClusterSource } from "@fleet-console/sdk/plugin";
 import { clearOperationRuntime, getState, setOperationRuntime, setState } from "../../../../../core/client/src/integration/store.js";
 import { getAgentState, setAgentState } from "../store.js";
 import { GroupClusterProvider, installGroupTimeline, useGroupTimeline } from "./group-timeline-store.js";
+import { setFoldTurns } from "./group/fold-turns.js";
 import { disposeOperationViewState, getComposerDraft, installOperationViewState, readTerminalViewPosition, saveTerminalViewPosition } from "../../operation-view-state.js";
 import type { ClientConsoleStateCapability } from "@fleet-console/sdk/plugin";
 
@@ -439,10 +440,11 @@ it("keeps independent group journals alive across view closure, merges only conf
   expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
 });
 
-it("keeps group timeline sockets and dormant history closed until the conversation layout is active", async () => {
+it("keeps group timeline sockets and dormant history closed until the conversation layout is active or a folded mobile group is open", async () => {
   const previous = getState();
   const previousAgent = getAgentState();
   let active = false;
+  let subject: string | null = null;
   const listeners = new Set<() => void>();
   setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
     payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "archived", payload: { chatMode: true }, ts: { createdAt: 3, updatedAt: 3 } }] }],
@@ -453,7 +455,7 @@ it("keeps group timeline sockets and dormant history closed until the conversati
   setAgentState({ sessions: { root: session, archived: { ...session, sessionId: "archived", terminalSessionId: "archived", status: "dormant" as const, chatActive: false } } });
   const dispose = installGroupTimeline({
     experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS, subscribe: () => () => {} },
-    conversation: { isActive: () => active, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
+    conversation: { isActive: () => active, subjectOperationId: () => subject, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
   });
   function GroupProbe() { useGroupTimeline("root"); return null; }
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -472,8 +474,20 @@ it("keeps group timeline sockets and dormant history closed until the conversati
     active = false;
     act(() => { for (const listener of listeners) listener(); });
     expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
+    // 모바일: 그 그룹 대화를 열어도 「턴 접기」가 꺼져 있으면 화면은 1:1 원장이라 그룹 소켓을 열지 않는다.
+    subject = "root";
+    act(() => { for (const listener of listeners) listener(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
+    // 켜면 열린 그 루트의 몫만 열고, 대화 목록(주인 없음)으로 돌아가면 닫는다.
+    act(() => { setFoldTurns(true); });
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWebSocket.instances.filter((socket) => !socket.closed).map((socket) => socket.url.includes("ticket-for-root"))).toEqual([true]);
+    subject = null;
+    act(() => { for (const listener of listeners) listener(); });
+    expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
   } finally {
-    act(() => { dispose(); root?.unmount(); root = null; });
+    act(() => { setFoldTurns(false); dispose(); root?.unmount(); root = null; });
     clearOperationRuntime("root"); clearOperationRuntime("archived");
     setState(previous); setAgentState(previousAgent);
   }

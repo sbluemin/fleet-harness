@@ -376,6 +376,11 @@ export interface ClientConversationCapability {
   close(surfaceId?: string): void;
   /** 지금 가운데 칸에 선 플러그인 대화. 없으면 null — 같은 값이면 같은 참조를 돌려준다. */
   current(): { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> } | null;
+  /**
+   * 지금 화면에 선 Operation 대화의 주인 id — 대화 중심 화면의 가운데 칸, 모바일이면 열린 Operation 화면. 없으면 null.
+   * 대화 중심 화면이 꺼진 호스트(모바일)에서도 그 대화를 실제로 볼 때만 여는 연결이 읽는다. subscribe 가 바뀜을 깨운다.
+   */
+  subjectOperationId?(): string | null;
 }
 
 /**

@@ -82,6 +82,8 @@ export interface ConversationParticipant {
   readonly speaker: ConversationSpeaker;
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
   readonly profile?: ConversationMemberProfile;
+  /** 그 참여자 원장에서 지금 열린 턴의 좌표(메시지의 `turn` 과 같은 값). 아직 말이 없는 턴도 열린 순간부터 선다. 모르면 없다. */
+  readonly turn?: string;
 }
 
 /** 덧붙인 말이 함께 간 보드 행위. */
@@ -92,14 +94,16 @@ export type GroupTimelineEntry = EntryCoordinate & (
   /**
    * `via` — 그 말이 함께 간 보드 행위(개시·구상·방향 수정). 사람·사령관이 그 행위에 덧붙인 말이면 선다.
    * `undelivered` — 받는 쪽이 끝내 받지 못한 사람의 말(꺼진 사령관에 남은 말 등). 말풍선에 「전달되지 않음」이 선다.
+   * `turn` — 그 말을 한 발화자 원장의 턴 좌표. 같은 값이면 한 턴(지시 하나에 대한 응답)이다. 턴 접기가 읽고, 없으면 그 말은 접지 않는다.
    */
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true }
+  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly turn?: string }
   /**
    * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
    * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.
    */
   | { readonly kind: "plugin-notice"; readonly operationId: string; readonly pluginId: string; readonly recipient: ConversationSpeaker; readonly text: string; readonly format?: "markdown" }
-  | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean }
+  /** `turn` — 보낸 쪽 원장에서 이 전언을 낸 턴(메시지의 `turn` 과 같은 좌표). 받은 쪽 원장만 본 전언에는 없다. */
+  | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: string; readonly text: string }
 );

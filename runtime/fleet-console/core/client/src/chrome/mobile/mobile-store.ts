@@ -181,7 +181,8 @@ function barSignature(state: MobileBarState): string {
   return JSON.stringify({
     v: state.variant, p: state.pill?.key, t: state.title, s: state.subtitle, l: state.leading, b: state.onBack !== undefined, h: state.hidden === true,
     a: state.actions?.map((action) => [action.id, action.label]),
-    m: state.menu ? [state.menu.label, state.menu.caption, state.menu.items.map((item) => [item.id, item.label, item.destructive, item.disabled])] : null,
+    // 스위치 행의 켬/끔도 내용이다 — 빠지면 열린 ⋮가 누른 뒤에도 이전 상태를 그린다.
+    m: state.menu ? [state.menu.label, state.menu.caption, state.menu.items.map((item) => [item.id, item.label, item.destructive, item.disabled, item.checked])] : null,
   });
 }
 

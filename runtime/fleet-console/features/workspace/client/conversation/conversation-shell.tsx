@@ -33,7 +33,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../canvas/canvas.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationOperationRename, useConversationStandIn, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
@@ -829,6 +829,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
+  const captionRenderer = useConversationCaptionRenderer();
   const clusterRoot = clusterIndex.rootOf.get(operation.id) ?? null;
   const nested = state.nestedOperations.filter((candidate) => candidate.parentOperationId === operation.id);
   const chosen = state.nestedBodySelection[operation.id];
@@ -919,6 +920,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   };
   const defaultBody = <OperationBodySlot key={bodyOwner.id} operationId={bodyOwner.id} config={config} className="conversation-body-slot" />;
   const custom = bodyRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language, defaultBody }) ?? null;
+  const captionView = captionRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language }) ?? null;
   const memberCount = clusterRoot ? Math.max(0, clusterRoot.cluster.members.length - 1) : nested.length;
 
   return (
@@ -937,6 +939,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
             <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
           ) : null}
         </button>
+        {captionView}
         <span className="conversation-pill-actions">
           <OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />
           {descriptor?.captionActions === undefined ? null : (

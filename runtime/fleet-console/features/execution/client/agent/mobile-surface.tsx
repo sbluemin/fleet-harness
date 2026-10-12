@@ -49,7 +49,7 @@ export function useMobileMenuItems(mobile: MobileOperationLike | null, items: re
 }
 
 /** 시안 아이콘(impl-spec §A, 시안의 P 객체와 같은 경로) — 24 viewBox, 선 1.7, 둥근 끝. 모바일 본문 크롬 전용. */
-export type MobileGlyphName = "swap" | "check" | "copy" | "retry" | "plus" | "send" | "stop" | "kbd" | "info";
+export type MobileGlyphName = "swap" | "check" | "copy" | "retry" | "plus" | "send" | "stop" | "kbd" | "info" | "fold";
 
 const MOBILE_GLYPH_PATHS: Record<MobileGlyphName, React.ReactNode> = {
   swap: <path d="M4 8h13l-3-3M20 16H7l3 3" />,
@@ -61,6 +61,8 @@ const MOBILE_GLYPH_PATHS: Record<MobileGlyphName, React.ReactNode> = {
   stop: <rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" />,
   kbd: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.6v.4" /></>,
+  // 턴 접기 — 긴 줄 사이의 짧은 줄 하나(접힌 진행 말).
+  fold: <path d="M5 6.5h14M5 12h8M5 17.5h14" />,
 };
 
 export function MobileGlyph({ name, size = 20, strokeWidth = 1.7 }: { readonly name: MobileGlyphName; readonly size?: number; readonly strokeWidth?: number }) {

@@ -8,6 +8,7 @@ import { getAgentState, subscribe as subscribeAgent } from "../store.js";
 import { readChatJournalEvent } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
+import { readFoldTurns, subscribeFoldTurns } from "./group/fold-turns.js";
 
 const EMPTY_CLUSTERS: ReturnType<OperationClusterSource["get"]> = [];
 const emptyClusterSource: OperationClusterSource = { get: () => EMPTY_CLUSTERS, subscribe: () => () => {} };
@@ -33,6 +34,33 @@ export function isGroupConversationRoot(operationId: string): boolean {
 }
 export function subscribeGroupClusters(listener: () => void): () => void {
   return boundClusterSource.subscribe(listener);
+}
+
+/** 이 Operation 의 대화가 그룹 대화로 서는가 — 목표 대화의 뿌리이거나 구성원을 가진 루트다(데스크톱 가운데 칸과 같은 판정). */
+export function hasGroupConversation(operationId: string): boolean {
+  return isGroupConversationRoot(operationId) || getState().nestedOperations.some((operation) => operation.parentOperationId === operationId);
+}
+
+function subscribeGroupConversation(listener: () => void): () => void {
+  const disposeClusters = subscribeGroupClusters(listener);
+  const disposeConsole = subscribeConsole(listener);
+  return () => { disposeClusters(); disposeConsole(); };
+}
+
+export function useHasGroupConversation(operationId: string): boolean {
+  const read = () => hasGroupConversation(operationId);
+  return useSyncExternalStore(subscribeGroupConversation, read, read);
+}
+
+/**
+ * 모바일 Operation 화면이 이 루트를 그룹 대화로 세우는가 — 「턴 접기」를 켰고, 살아 있는 채팅 루트이며, 그룹 대화가 서는 대화다.
+ * 채팅 본문(`MobileGroupConversation` 을 고르는 자리)과 아래 소켓 수명이 같은 판정을 읽는다. 「지금 그 화면이 열려 있는가」는
+ * 호스트가 실은 대화 주인(`conversation.subjectOperationId`)이 따로 말한다.
+ */
+export function showsMobileGroupConversation(operationId: string): boolean {
+  if (!readFoldTurns() || getAgentState().sessions[operationId]?.chatActive !== true) return false;
+  const operation = getState().operations.find((candidate) => candidate.id === operationId);
+  return operation?.type === "agent" && operation.pluginId === null && operation.payload.chatMode === true && hasGroupConversation(operationId);
 }
 
 /**
@@ -75,10 +103,12 @@ const getRevision = () => revision;
  * execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다.
  * 소켓과 휴면 이력은 대화 중심 화면이 서 있을 때만 연다. 판정은 호스트가 주입한 `conversation.isActive()`이고,
  * 그 subscribe가 레이아웃과 설정을 함께 깨운다. 능력이 없는 호스트는 실험 설정의 `classicLayout === false`와 그 구독만 본다.
+ * 대화 중심 화면이 아닌 호스트(모바일)는 「턴 접기」를 켠 그룹 루트를 실제로 열었을 때만 그 루트의 참여자 몫을 연다 — 열린 대화의
+ * 주인은 호스트가 실은 `conversation.subjectOperationId()` 이고, 목록 홈에서는 null 이라 아무것도 열지 않는다.
  */
 export function installGroupTimeline(ctx: {
   readonly experiments: Pick<PluginInstallContext["experiments"], "read" | "subscribe">;
-  readonly conversation?: Pick<NonNullable<PluginInstallContext["conversation"]>, "isActive" | "subscribe">;
+  readonly conversation?: Pick<NonNullable<PluginInstallContext["conversation"]>, "isActive" | "subscribe" | "subjectOperationId">;
 }): () => void {
   let disposed = false;
   const sync = () => {
@@ -87,11 +117,15 @@ export function installGroupTimeline(ctx: {
     const all = [...state.operations, ...state.nestedOperations].filter((operation) => operation.type === "agent" && operation.pluginId === null);
     const roots = new Set(state.operations.map((operation) => operation.id));
     const ids = new Set(all.map((operation) => operation.id));
-    const enabled = ctx.conversation ? ctx.conversation.isActive() : ctx.experiments.read()?.classicLayout === false;
+    const layout = ctx.conversation ? ctx.conversation.isActive() : ctx.experiments.read()?.classicLayout === false;
+    const subject = layout ? null : ctx.conversation?.subjectOperationId?.() ?? null;
+    const mobileRoot = subject !== null && showsMobileGroupConversation(subject) ? subject : null;
+    const enabledFor = (rootId: string) => layout || rootId === mobileRoot;
     const sessions = getAgentState().sessions;
     const runtime = ownOperationRuntime();
     for (const [id, record] of held) {
       if (!roots.has(record.root)) { record.socket?.dispose(); stopHistory(record); held.delete(id); continue; }
+      const enabled = enabledFor(record.root);
       if (!ids.has(id) || !enabled) stopHistory(record);
       if (!ids.has(id) || !enabled || sessions[id]?.chatActive !== true) {
         record.socket?.dispose(); record.socket = undefined; record.available = false;
@@ -114,6 +148,7 @@ export function installGroupTimeline(ctx: {
         held.set(operation.id, record);
       }
       record.root = root;
+      const enabled = enabledFor(root);
       // 휴면 참여자: 저장된 트랜스크립트를 한 번 읽는다. ticket·재개·소켓 없이 파일 읽기 라우트만 부른다.
       // 이 페이지에서 이미 live로 읽은 원장이 있으면 그것을 보존한다.
       if (enabled && demanded.has(root) && runtime[operation.id]?.lifecycle === "dormant" && !record.socket && record.history === "idle" && record.journal.entries.length === 0) {
@@ -156,7 +191,7 @@ export function installGroupTimeline(ctx: {
     }
     notify();
   };
-  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), ctx.conversation ? ctx.conversation.subscribe(sync) : ctx.experiments.subscribe(sync)];
+  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), subscribeFoldTurns(sync), subscribeGroupClusters(sync), ctx.conversation ? ctx.conversation.subscribe(sync) : ctx.experiments.subscribe(sync)];
   resync = sync;
   sync();
   return () => {
@@ -192,11 +227,14 @@ function snapshot(rootOperationId: string | null, board: OperationClusterConvers
   const journals = new Map<string, ConversationJournal>();
   const unavailable: string[] = [];
   let loading = false;
-  for (const participant of participants) {
+  for (const [index, participant] of participants.entries()) {
     const id = participant.speaker.operationId;
     if (!id) continue;
     const record = held.get(id);
     if (record?.root === rootOperationId) { journals.set(id, record.journal); loading ||= record.loading; }
+    // 열린 턴은 원장만 안다 — 말이 아직 없는 새 턴도 턴 접기가 지난 턴의 답을 다시 접지 않도록 그대로 싣는다.
+    const openTurn = record?.root === rootOperationId ? record.journal.turn : null;
+    if (openTurn) participants[index] = { ...participant, turn: openTurn };
     // 휴면 참여자의 지난 대화를 읽었으면 읽을 수 있는 원장이다. 다시 live가 됐는데 소켓이 없으면(터미널 재개) 안내가 다시 선다.
     const readable = record?.available === true || (record?.history === "done" && runtime[id]?.lifecycle === "dormant");
     if (!readable) unavailable.push(id);
