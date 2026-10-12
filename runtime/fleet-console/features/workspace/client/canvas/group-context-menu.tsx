@@ -22,6 +22,13 @@ export interface GroupContextMenuChipActions {
   readonly onRename?: () => void;
 }
 
+/** Operation 이 아직 없는 사이드바 줄(시작 전 목표) — 줄 제목 고치기와 보관만 뜻이 있다(그룹·액센트·종류 스위치는 Operation 의 것). */
+export interface GroupContextMenuRowActions {
+  readonly onRename?: () => void;
+  /** 보관 — 뿌리 있는 줄의 「보관」과 같은 자리·같은 항목이다. 보관함에서 복원할 수 있다. */
+  readonly onArchive: () => void;
+}
+
 export interface GroupContextMenuHeaderActions {
   readonly onSetColor: (color: string | null) => void;
   readonly onRename: (name: string) => void;
@@ -41,6 +48,13 @@ type GroupContextMenuProps =
       readonly anchor: DOMRect;
       readonly align?: GroupContextMenuAlign;
       readonly actions: GroupContextMenuChipActions;
+      readonly onClose: () => void;
+    }
+  | {
+      readonly kind: "row";
+      readonly anchor: DOMRect;
+      readonly align?: GroupContextMenuAlign;
+      readonly actions: GroupContextMenuRowActions;
       readonly onClose: () => void;
     }
   | {
@@ -109,12 +123,14 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
         ref={cardRef}
         className="group-context-menu-card"
         role="menu"
-        aria-label={props.kind === "chip" ? t("canvas.groupMenu.operationOptions") : t("canvas.groupMenu.groupOptions", { name: props.group.name })}
+        aria-label={props.kind === "group-header" ? t("canvas.groupMenu.groupOptions", { name: props.group.name }) : t("canvas.groupMenu.operationOptions")}
         style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
         onPointerDown={(e) => e.stopPropagation()}
       >
         {props.kind === "chip" ? (
           <ChipMenuContent {...props} />
+        ) : props.kind === "row" ? (
+          <RowMenuContent actions={props.actions} onClose={onClose} />
         ) : (
           <GroupHeaderMenuContent {...props} />
         )}
@@ -166,13 +182,7 @@ function ChipMenuContent({
               <kbd className="group-context-menu-item__key" aria-hidden="true">↵</kbd>
             </button>
           ) : null}
-          {onRename ? (
-            <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onRename(); }}>
-              <span className="group-context-menu-item__glyph" aria-hidden="true"><RenameGlyph /></span>
-              <span className="group-context-menu-item__name">{t("canvas.groupMenu.rename")}</span>
-              <kbd className="group-context-menu-item__key" aria-hidden="true">F2</kbd>
-            </button>
-          ) : null}
+          {onRename ? <RenameItem onRename={onRename} onClose={onClose} /> : null}
           <div className="group-context-menu-divider" aria-hidden="true" />
         </>
       ) : null}
@@ -239,6 +249,32 @@ function ChipMenuContent({
       <div className="group-context-menu-divider" aria-hidden="true" />
       <CloseWindowItem onCloseOperation={actions.onCloseOperation} onClose={onClose} />
     </>
+  );
+}
+
+/** 뿌리 없는 줄의 메뉴 — 뿌리 있는 줄 메뉴의 첫 칸(이름 바꾸기)과 끝 칸(보관)만 같은 모양·같은 자리로 선다. */
+function RowMenuContent({ actions, onClose }: { actions: GroupContextMenuRowActions; onClose: () => void }) {
+  return (
+    <>
+      {actions.onRename ? (
+        <>
+          <RenameItem onRename={actions.onRename} onClose={onClose} />
+          <div className="group-context-menu-divider" aria-hidden="true" />
+        </>
+      ) : null}
+      <CloseWindowItem onCloseOperation={actions.onArchive} onClose={onClose} />
+    </>
+  );
+}
+
+function RenameItem({ onRename, onClose }: { onRename: () => void; onClose: () => void }) {
+  const t = useT();
+  return (
+    <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onRename(); }}>
+      <span className="group-context-menu-item__glyph" aria-hidden="true"><RenameGlyph /></span>
+      <span className="group-context-menu-item__name">{t("canvas.groupMenu.rename")}</span>
+      <kbd className="group-context-menu-item__key" aria-hidden="true">F2</kbd>
+    </button>
   );
 }
 

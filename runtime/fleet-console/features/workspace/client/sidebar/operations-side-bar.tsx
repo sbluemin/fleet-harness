@@ -130,6 +130,8 @@ type ActiveContextMenu =
       /** 목표 줄의 플러그인이 이름 변경을 맡는다고 선언했다 — 줄에서 연 메뉴도 「이름 변경」을 싣는다. */
       readonly renamable?: boolean;
     }
+  /** Operation 이 아직 없는 목표 줄(시작 전) — 줄이 선언한 이름 변경·보관만 싣는다. 줄의 동작은 연 순간의 것을 쥔다. */
+  | { readonly kind: "row"; readonly clusterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly renamable: boolean; readonly archive: () => void }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
   | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean };
 
@@ -924,7 +926,14 @@ export function OperationsSideBar({
     });
   };
   const openRowContextMenu = (item: SideBarRowItem, anchor: DOMRect, returnFocus: HTMLElement | null) => {
-    if (!item.anchor) return;
+    if (!item.anchor) {
+      // 뿌리가 없는 줄은 플러그인이 보관을 선언했을 때만 메뉴가 선다 — 뿌리 있는 줄 메뉴의 이름 바꾸기·보관 칸과 같은 모양이다.
+      const archive = item.row.archive;
+      if (!archive) return;
+      setNewMenu(null);
+      setActiveContextMenu({ kind: "row", clusterId: item.layout.cluster.id, anchor, returnFocus, renamable: item.row.rename !== undefined, archive });
+      return;
+    }
     setNewMenu(null);
     setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus, fromRow: true, renamable: item.row.rename !== undefined });
   };
@@ -1475,6 +1484,17 @@ export function OperationsSideBar({
               },
             } : {}),
             ...(activeContextMenu.fromRow && !activeContextMenu.renamable ? {} : { onRename: () => requestSideBarOperationAction(contextMenuOperation.id, "rename") }),
+          }}
+          onClose={closeActiveContextMenu}
+        />
+      ) : activeContextMenu?.kind === "row" ? (
+        <GroupContextMenu
+          kind="row"
+          anchor={activeContextMenu.anchor}
+          actions={{
+            onArchive: activeContextMenu.archive,
+            // 뿌리 없는 줄의 인라인 편집은 줄 id 로 연다 — 뿌리 있는 줄의 Operation id 자리와 같은 통로다.
+            ...(activeContextMenu.renamable ? { onRename: () => requestSideBarOperationAction(activeContextMenu.clusterId, "rename") } : {}),
           }}
           onClose={closeActiveContextMenu}
         />

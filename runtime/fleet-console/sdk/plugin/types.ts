@@ -863,6 +863,11 @@ export interface OperationClusterRow {
   readonly moveToGroup?: (groupId: string | null) => void;
   /** 줄 제목을 그 자리에서 고쳤을 때 — 있으면 호스트가 메뉴 「이름 변경」·F2·제목 더블클릭으로 줄 제목 자리에 인라인 편집을 연다. 제목은 플러그인의 것이라 확정도 플러그인이 한다. */
   readonly rename?: (title: string) => void;
+  /**
+   * 뿌리가 없는 줄(시작 전 목표)을 보관함으로 보낸다 — 있으면 호스트가 그 줄의 우클릭 메뉴 맨 끝에 뿌리 있는 줄과 같은 「보관」을 싣는다.
+   * 보관함에서 복원할 수 있어야 한다(영구 삭제가 아니다). 뿌리가 있으면 호스트가 뿌리 Operation 을 보관하므로 읽지 않는다.
+   */
+  readonly archive?: () => void;
 }
 
 export interface OperationClusterRowNote {

@@ -256,16 +256,17 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
   const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
-  const anchorOperationId = anchor?.operation.id;
+  // 메뉴의 「이름 바꾸기」가 여는 통로 — 뿌리가 선 줄은 그 Operation id, 뿌리 없는 줄(시작 전 목표)은 줄 id 로 듣는다.
+  const actionId = anchor?.operation.id ?? layout.cluster.id;
   useEffect(() => {
-    if (!renameRow || !anchorOperationId) return undefined;
+    if (!renameRow) return undefined;
     return subscribeSideBarOperationAction((request) => {
-      if (request.operationId !== anchorOperationId || request.action !== "rename") return false;
+      if (request.operationId !== actionId || request.action !== "rename") return false;
       if (rowRef.current?.closest("[inert]")) return false;
       rename.begin();
       return true;
     });
-  }, [renameRow, anchorOperationId, rename]);
+  }, [renameRow, actionId, rename]);
   const renameInput = (
     <input
       className="side-bar-chip-rename-input side-bar-cluster-row-rename-input"
