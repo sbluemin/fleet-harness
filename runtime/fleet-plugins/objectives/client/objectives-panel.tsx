@@ -23,7 +23,7 @@ import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -684,7 +684,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     <div id="objectives-sec-members" hidden={!expanded}>
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
-      const count = objective.missions.filter((mission) => mission.member === member.id).length;
       const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const launched = memberLaunched(member, operationState);
       const routed = launched ? member.routed : null;
@@ -696,9 +695,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, cause: next.cause?.message, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-      const isWorkingOrAwaiting = state === "running" || state === "awaiting";
-      const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
-      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
+      const { text: status, failed } = memberStatus(member, state, objective, t);
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">

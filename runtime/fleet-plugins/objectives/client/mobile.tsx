@@ -12,7 +12,7 @@ import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
@@ -475,22 +475,6 @@ const launchFailure = (t: T, error: unknown): string => {
   return code === "objective_busy" ? t("objectives.toast.busy") : hasRoutingReason(code) ? routingReason(t, code) : t("objectives.toast.failed", { code });
 };
 
-/** 활동 → 상태 낱말 — 데스크톱 명단과 같은 낱말. 세션이 없으면(closed) 말하지 않는다. */
-function activityWord(state: string, t: T): string | null {
-  if (state === "closed") return null;
-  if (state === "ended") return t("objectives.members.dormant");
-  if (state === "awaiting") return t("objectives.awaiting.word");
-  return state === "running" ? t("objectives.members.working") : t("objectives.members.idle");
-}
-
-/** 구성원 행 머리의 배지 낱말 — 실패가 먼저, 세션이 없으면 맡은 임무 수, 아니면 상태 낱말. */
-function memberBadge(member: ObjectiveMember, state: string, objective: Objective, t: T): { readonly text: string; readonly failed: boolean } {
-  const working = state === "running" || state === "awaiting";
-  if ((member.outcome === "failed" || !!member.failure) && !working) return { text: t("objectives.members.failed"), failed: true };
-  if (state === "closed") return { text: t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length }), failed: false };
-  return { text: activityWord(state, t) ?? "", failed: false };
-}
-
 /** 구성원 행의 예외 줄 — 이번 턴 뒤 예약, 바꾸지 못한 예약. 없으면 null. */
 function memberNote(member: ObjectiveMember, state: string, rows: ReturnType<typeof useLaunchRows>, t: T): { readonly text: string; readonly failed: boolean } | null {
   const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
@@ -573,7 +557,7 @@ function CrewSection({ objective, operations, t, crew }: { readonly objective: O
   const commanderSession = !!commanderOperation || objective.commander.started;
   // 지휘관 제목이 목표 제목과 같으면 상단 막대가 이미 말한다.
   const commanderTitle = commanderOperation && commanderOperation.title !== objective.title ? commanderOperation.title : undefined;
-  const commanderWord = activityWord(commanderState, t);
+  const commanderWord = memberActivityWord(commanderState, t);
   const patchMember = (member: ObjectiveMember, launch: MemberLaunchChoice | null) => { crew.send("/member/patch", { memberId: member.id, patch: { launch } }).catch(crew.fail); };
   return (
     <SettingsCard title={t("objectives.mobile.crew")}>
@@ -588,7 +572,7 @@ function CrewSection({ objective, operations, t, crew }: { readonly objective: O
       </SettingsRow>
       {objective.members.map((member) => {
         const state = crew.memberState(member);
-        const badge = memberBadge(member, state, objective, t);
+        const badge = memberStatus(member, state, objective, t);
         const session = member.sessionName !== null;
         const title = session ? operations.get(member.id)?.title ?? member.sessionName ?? undefined : undefined;
         return (

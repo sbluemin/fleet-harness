@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 
-import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
+import { ModelCoordinatePicker, modelCoordinateDisplay } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "@fleet-console/sdk/models";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { Objective, ObjectiveMember } from "../server/types.js";
-import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 지휘관·구성원의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 Console 공유 선택기(`ModelCoordinatePicker`)의
@@ -29,9 +29,25 @@ let models: ClientModelsCapability | null = null;
 let lastGroups: readonly LaunchGroup[] = [];
 let lastRoster: ModelRoster | null = null;
 
+/** 리액트 밖 구독자(대화 명부를 싣는 묶음 서술자) — 로스터가 오거나 바뀌면 다시 셈한다. */
+const rosterListeners = new Set<() => void>();
+const notifyRoster = () => { for (const listener of rosterListeners) listener(); };
+
 export function installLaunchRoster(capability: ClientModelsCapability): () => void {
   models = capability;
-  return () => { if (models === capability) models = null; };
+  const off = capability.subscribe(notifyRoster);
+  if (rosterListeners.size > 0) { void capability.load("launch").catch(() => undefined); notifyRoster(); }
+  return () => { off(); if (models === capability) models = null; };
+}
+
+/** 지금 캐시된 기동 로스터 — 읽기 전이면 null 이고 읽기를 시작하지 않는다. */
+export const readLaunchRoster = (): ModelRoster | null => models?.read("launch") ?? null;
+
+/** 리액트 밖에서 로스터를 따른다 — 구독하는 동안 읽기를 한 번 청해, 보드를 열지 않아도 같은 낱말이 선다. */
+export function subscribeLaunchRoster(listener: () => void): () => void {
+  rosterListeners.add(listener);
+  void models?.load("launch").catch(() => undefined);
+  return () => { rosterListeners.delete(listener); };
 }
 
 function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
@@ -253,6 +269,48 @@ export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, 
   const chosen = launchedWords(rows, member.launch.model, member.launch.effort, labels);
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
+/**
+ * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원·라우팅·지휘관과 같게는
+ * 위 표시의 낱말, 모델 지정은 공유 선택기의 트리거 낱말(메뉴처럼 기본 좌표 없이)이다. hover 글은 보드 트리거의 title 그대로다.
+ */
+export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): { readonly label: string; readonly title: string; readonly provider: LaunchProviderGlyphId | null } {
+  const groups = toLaunchGroups(roster);
+  const display = memberLaunchDisplay(member, launched, t, groups.flatMap((group) => group.rows));
+  if (launched) return { label: display.label, title: display.title, provider: member.model && member.model !== "default" ? providerOfModel(groups, member.model) : null };
+  if (member.launch.mode !== "model") return { label: display.label, title: display.title, provider: null };
+  const shown = modelCoordinateDisplay(roster, { model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) }, undefined, pickerLabels(t));
+  return { label: coordinateLabel(shown.words), title: display.title, provider: shown.provider };
+}
+
+/** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
+export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): { readonly label: string; readonly title: string; readonly provider: LaunchProviderGlyphId | null } {
+  const { model, effort } = objective.commander;
+  const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
+  return { label: coordinateLabel(shown.words), title: shown.title, provider: shown.provider };
+}
+
+const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), fallback: t("objectives.launch.fallback") });
+const coordinateLabel = (words: { readonly model: string; readonly effort: string }) => [words.model, words.effort].filter(Boolean).join(" · ");
+
+/** 한 로케일 값의 낱말을 로케일마다 다시 푼다 — 대화 명부는 호스트의 로케일로 읽는다. */
+export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): LocalizedText => (locale) => word(getT(locale));
+
+/** 활동 → 상태 낱말 — 데스크톱 명단·모바일 보드·대화 명부가 같은 낱말을 쓴다. 세션이 없으면(closed) 말하지 않는다. 백그라운드는 작업 중이다. */
+export function memberActivityWord(state: string, t: Translate<ObjectiveMessageKey>): string | null {
+  if (state === "closed") return null;
+  if (state === "ended") return t("objectives.members.dormant");
+  if (state === "awaiting") return t("objectives.awaiting.word");
+  return state === "running" || state === "background" ? t("objectives.members.working") : t("objectives.members.idle");
+}
+
+/** 구성원 행의 상태 낱말 — 실패가 먼저, 세션이 없으면 맡은 임무 수, 아니면 상태 낱말. */
+export function memberStatus(member: ObjectiveMember, state: string, objective: Objective, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly failed: boolean } {
+  const working = state === "running" || state === "background" || state === "awaiting";
+  if ((member.outcome === "failed" || !!member.failure) && !working) return { text: t("objectives.members.failed"), failed: true };
+  if (state === "closed") return { text: t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length }), failed: false };
+  return { text: memberActivityWord(state, t) ?? "", failed: false };
+}
+
 /** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
 export const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */

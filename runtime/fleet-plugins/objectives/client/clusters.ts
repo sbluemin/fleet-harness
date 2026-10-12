@@ -1,4 +1,6 @@
+import type { ConversationMemberProfile } from "@fleet-console/sdk/conversation";
 import type { LocalizedText } from "@fleet-console/sdk/i18n";
+import type { ModelRoster } from "@fleet-console/sdk/models";
 import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
 
 import { inboxReasons, stalledObjectives, type BoardObservation, type BoardObserver } from "../server/board-state.js";
@@ -13,6 +15,7 @@ import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore
 import { commodoreBoardOf, commodoreRevision, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
+import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
 import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
@@ -247,7 +250,7 @@ function moveObjective(objective: Objective, groupId: string | null): void {
   if (api && groupId !== objective.groupId) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { groupId } }).catch(() => undefined);
 }
 
-export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now()): OperationCluster[] {
+export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null): OperationCluster[] {
   const out: OperationCluster[] = [];
   const stalled = new Set(stalledObjectives(objectives, observe, now));
   const orderIn = new Map<string, number>();
@@ -268,7 +271,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Operation 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
-    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective));
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.theaterId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+      { state: (operationId) => activity.get(operationId) ?? "closed", roster });
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
@@ -342,7 +346,11 @@ const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.group
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+// 명부 줄의 글은 함수라 JSON 이 버린다 — 영어로 풀어 비교한다(모델·상태·로스터가 바뀌면 글이 바뀐다).
+const profileSignature = (profile: ConversationMemberProfile | undefined) => (profile ? [profile.badge ? resolveText(profile.badge) : "", profile.brief ?? "",
+  profile.launch ? [resolveText(profile.launch.label), profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? ""] : null,
+  profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null] : null);
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Operation 은
@@ -366,8 +374,10 @@ export const objectivesClusterSource: OperationClusterSource = {
     const offView = subscribeObjectiveView(listener);
     const offCommodore = subscribeCommodore(listener);
     const offFresh = subscribeFreshConversation(listener);
+    // 대화 명부의 모델 낱말은 보드와 같은 로스터로 짓는다 — 로스터가 오기 전에는 id 를 다듬은 낱말이 잠깐 선다.
+    const offRoster = subscribeLaunchRoster(listener);
     const stallTick = setInterval(listener, STALL_TICK_MS);
-    return () => { offObjective(); offView(); offCommodore(); offFresh(); clearInterval(stallTick); };
+    return () => { offObjective(); offView(); offCommodore(); offFresh(); offRoster(); clearInterval(stallTick); };
   },
   get: () => {
     const summaries = operationSummaries();
@@ -383,12 +393,13 @@ export const objectivesClusterSource: OperationClusterSource = {
     // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
     // 휴면·유휴로 접어 정체를 세우지 않도록, 축을 신뢰할 수 있을 때만 보드가 직접 센다. 전이는 호스트 상태 통지로 깨어난다.
     const runtimeReady = runtimeHydration() === "ready";
-    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), ...theaterStates];
+    const roster = readLaunchRoster();
+    const inputs = [summaries, surfaceOpen, theaterId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.
     const observations = new Map(listedOperationSummaries().map((summary) => [summary.id, observationOf(summary)]));
-    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now);
+    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster);
     const nextSignature = signature(next);
     cachedInputs = inputs;
     if (nextSignature === cachedSignature) return cached;

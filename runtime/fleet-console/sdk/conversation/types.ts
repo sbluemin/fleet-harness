@@ -1,3 +1,6 @@
+import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
+import type { LocalizedText } from "../i18n/types.js";
+
 /** 그룹 대화의 읽기 계약. 실행 원장과 플러그인 보드를 복제 저장하지 않는 표시 모델이다. */
 export type ConversationSpeakerKind = "human" | "commander" | "member" | "commodore" | "operation";
 
@@ -31,9 +34,28 @@ export interface ConversationDecision {
   readonly answer?: (answers: readonly GroupDecisionAnswer[]) => Promise<void>;
 }
 
+/**
+ * 명부 줄에 보드가 보이는 사실 — 플러그인이 자기 보드와 같은 표시 문자열로 채운다. 표시 문자열의 변환은 플러그인 한 곳에만 있고,
+ * 호스트는 받은 글을 그대로 그린다. 모든 칸은 선택이다 — 없으면 그 칸이 서지 않는다.
+ * `status` 는 상태 낱말만 바꾼다. 상태 점은 호스트가 관측한 활동 그대로다.
+ */
+export interface ConversationMemberProfile {
+  /** 역할 곁의 작은 표식(예: 「지휘관 제안」). */
+  readonly badge?: LocalizedText;
+  /** 맡은 일의 한두 줄 설명. 사람이 쓴 글이라 번역하지 않는다. */
+  readonly brief?: string;
+  /** 모델·강도 한 줄(「Opus · HIGH」)과 hover 풀네임, 공급자 글리프. */
+  readonly launch?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly provider?: LaunchProviderGlyphId };
+  readonly status?: { readonly text: LocalizedText; readonly tone?: "danger" };
+}
+
+/** 플러그인이 보내는 명부 한 줄 — 발화자 표식에 보드 사실을 곁들인다. 호스트는 profile 을 참여자로 옮기고 발화자에서는 뗀다. */
+export type ConversationMember = ConversationSpeaker & { readonly profile?: ConversationMemberProfile };
+
 export interface ConversationParticipant {
   readonly speaker: ConversationSpeaker;
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
+  readonly profile?: ConversationMemberProfile;
 }
 
 /** 덧붙인 말이 함께 간 보드 행위. */
@@ -59,7 +81,9 @@ export type GroupTimelineEntry = EntryCoordinate & (
 /** Objectives 등 플러그인이 기존 OperationCluster 포트로 보내는 보드 사실. */
 export interface OperationClusterConversation {
   readonly operationId: string;
-  readonly members: readonly ConversationSpeaker[];
+  readonly members: readonly ConversationMember[];
+  /** 지휘관 줄의 보드 사실 — 보드가 지휘관 행에 보이는 것만 싣는다. */
+  readonly commander?: ConversationMemberProfile;
   readonly events: readonly GroupTimelineEntry[];
   readonly truncated?: boolean;
   readonly decision: ConversationDecision | null;
