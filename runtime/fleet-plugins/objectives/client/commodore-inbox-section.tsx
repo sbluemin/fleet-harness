@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
+import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerSubmitButton, SyncedTextarea } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
@@ -857,9 +857,12 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
         </button>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; inputRef.current?.focus(); }} />
       </div>
-      <ComposerInput
+      {/* 지휘관 대화 입력(그룹 대화 캡슐)과 같은 평범한 textarea 다 — 높이는 CSS(field-sizing)가 자라게 하고, 조합 중 글자마다
+          높이를 다시 쓰는 JS 자동 높이를 두지 않는다. 맞춤법 밑줄은 채팅·Quick Launch 입력처럼 끈다. */}
+      <SyncedTextarea
         ref={inputRef}
         className="objectives-commodore-composer-input"
+        spellCheck={false}
         value={text}
         disabled={clear.busy || sending}
         onPaste={(event) => { const images = Array.from(event.clipboardData.files).filter(isComposerAttachmentCandidate); if (!images.length) return; event.preventDefault(); addFiles(images); }}
