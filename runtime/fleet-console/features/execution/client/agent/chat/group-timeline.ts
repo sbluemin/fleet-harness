@@ -59,12 +59,15 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       }
       break;
     }
-    case "text":
-      // 완성 글이 델타를 대체한다. 같은 내용의 두 말풍선을 세우지 않는다.
-      if (draftId) entries = entries.filter((entry) => entry.id !== draftId);
-      entries.push({ kind: "message", id, at, operationId, speaker, text: event.text, format: "markdown", streaming: false });
+    case "text": {
+      // 완성 글이 델타를 대체한다. 같은 내용의 두 말풍선을 세우지 않는다. 초안이 있으면 그 자리(id·시각)를 그대로 쓴다 —
+      // 새 id·완료 시각으로 다시 넣으면 말풍선이 다시 그려지고, 병렬로 말하는 중이면 다른 발화자의 말 아래로 자리를 옮긴다.
+      const draft = draftId ? entries.find((entry) => entry.id === draftId) : undefined;
+      if (draft?.kind === "message") entries = entries.map((entry) => entry === draft ? { ...draft, text: event.text, streaming: false } : entry);
+      else entries.push({ kind: "message", id, at, operationId, speaker, text: event.text, format: "markdown", streaming: false });
       draftId = null;
       break;
+    }
     case "tool": {
       if (event.name !== "SendMessage" || !event.id) return state;
       const message = event.toolDetail?.sections.find((section) => section.kind === "message")?.text ?? "";
