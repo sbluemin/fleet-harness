@@ -84,7 +84,7 @@ describe("durable console state", () => {
       theaters: [
         { ...base, id: "aliased", alias: "  Flagship  " },
         { ...base, id: "legacy" },
-        { ...base, id: "blank", alias: "   " },
+        { ...base, id: "bidi", alias: "abc\u202Egnp.exe" },
         { ...base, id: "oversized", alias: "x".repeat(41) },
       ],
       operations: [],
@@ -94,7 +94,7 @@ describe("durable console state", () => {
     const byId = new Map(state.theaters.map((theater) => [theater.id, theater]));
     expect(byId.get("aliased")?.alias).toBe("Flagship");
     expect(byId.get("legacy")).not.toHaveProperty("alias");
-    expect(byId.get("blank")).not.toHaveProperty("alias");
+    expect(byId.get("bidi")).not.toHaveProperty("alias");
     expect(byId.get("oversized")).not.toHaveProperty("alias");
   });
 

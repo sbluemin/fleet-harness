@@ -1795,11 +1795,12 @@ function TheaterSectionHeader({
     : null;
   // Inbox 를 닫을 때 입구(우클릭 메뉴 항목 등)가 사라졌으면 포커스가 이 머리로 돌아온다.
   useTheaterInboxReturnTarget(theater.id, () => activateRef.current);
-  // 별칭 편집을 마치면(Enter·Esc) 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면 그 자리의 포커스를 빼앗지 않는다.
+  // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
+  const keyFinishRef = useRef(false);
   useEffect(() => {
-    const active = document.activeElement;
-    if (wasEditingRef.current && !editingAlias && (active === null || active === document.body)) activateRef.current?.focus({ preventScroll: true });
+    if (wasEditingRef.current && !editingAlias && keyFinishRef.current) activateRef.current?.focus({ preventScroll: true });
+    if (!editingAlias) keyFinishRef.current = false;
     wasEditingRef.current = editingAlias;
   }, [editingAlias]);
   const displayName = theater.alias ?? theater.label;
@@ -1901,7 +1902,7 @@ function TheaterSectionHeader({
         <>
           {mark === null ? avatarAnchor(false) : null}
           <span className="side-bar-theater-text">
-            <TheaterAliasInput theater={theater} onDone={(alias) => onFinishAliasEdit(theater.id, alias)} />
+            <TheaterAliasInput theater={theater} onDone={(alias, viaKey) => { keyFinishRef.current = viaKey; onFinishAliasEdit(theater.id, alias); }} />
             {card ? <span className="side-bar-theater-sub">{[theater.label, summaryText].join(" · ")}</span> : null}
           </span>
         </>
@@ -1962,11 +1963,18 @@ function TheaterSectionHeader({
   );
 }
 
+/** 별칭 길이 상한 — 서버 검증과 같은 코드포인트 수다(UTF-16 단위인 maxLength 로는 이모지 별칭이 절반에서 막힌다). */
+const THEATER_ALIAS_MAX_CODEPOINTS = 40;
+const clampAlias = (value: string): string => {
+  const points = [...value];
+  return points.length > THEATER_ALIAS_MAX_CODEPOINTS ? points.slice(0, THEATER_ALIAS_MAX_CODEPOINTS).join("") : value;
+};
+
 /**
  * 머리 자리의 별칭 입력 — Enter 는 저장, Esc 나 다른 곳을 누르면 취소, 비우고 저장하면 해제다. 바뀐 것이 없으면 저장하지 않는다.
- * 길이 상한은 서버 검증(40 코드포인트)과 같다.
+ * IME 조합 중의 Enter·Esc 는 조합의 것이라 편집을 끝내지 않는다.
  */
-function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined) => void }) {
+function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo; readonly onDone: (alias: string | null | undefined, viaKey: boolean) => void }) {
   const t = useT();
   const [value, setValue] = useState(theater.alias ?? "");
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -1976,14 +1984,14 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
     inputRef.current?.focus({ preventScroll: true });
     inputRef.current?.select();
   }, []);
-  const finish = (alias: string | null | undefined) => {
+  const finish = (alias: string | null | undefined, viaKey: boolean) => {
     if (doneRef.current) return;
     doneRef.current = true;
-    onDone(alias);
+    onDone(alias, viaKey);
   };
   const commit = () => {
-    const next = value.trim();
-    finish(next === (theater.alias ?? "") ? undefined : next.length > 0 ? next : null);
+    const next = clampAlias(value).trim();
+    finish(next === (theater.alias ?? "") ? undefined : next.length > 0 ? next : null, true);
   };
   return (
     <input
@@ -1991,23 +1999,23 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
       className="side-bar-theater-alias-input"
       type="text"
       value={value}
-      maxLength={40}
       placeholder={theater.label}
       aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
-      onChange={(event) => setValue(event.target.value)}
+      onChange={(event) => setValue(composingRef.current ? event.target.value : clampAlias(event.target.value))}
       onCompositionStart={() => { composingRef.current = true; }}
-      onCompositionEnd={() => { composingRef.current = false; }}
+      onCompositionEnd={(event) => { composingRef.current = false; setValue(clampAlias(event.currentTarget.value)); }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) {
+        if (composingRef.current || event.nativeEvent.isComposing) return;
+        if (event.key === "Enter") {
           event.preventDefault();
           commit();
         } else if (event.key === "Escape") {
           event.preventDefault();
           event.stopPropagation();
-          finish(undefined);
+          finish(undefined, true);
         }
       }}
-      onBlur={() => finish(undefined)}
+      onBlur={() => finish(undefined, false)}
     />
   );
 }

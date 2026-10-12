@@ -946,6 +946,10 @@
   width: 30px;
   height: 30px;
 }
+.conversation-round:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
 
 /* ── 사이드바 맨 위 줄도 투명 오버레이 — 목록이 그 밑으로 흐르고 신호등 자리·단추만 떠 있다 ─────────────
    목록 위에 단추가 뜨므로 줄 안쪽만 바탕에서 투명으로 옅어지는 짧은 그라디언트를 둔다(가리는 띠가 아니다).
@@ -996,7 +1000,9 @@
 }
 
 /* ── 사이드바 Theater 머리: 사령관 카드 ─────────────────────────────────────────────
-   머리는 52px 카드다 — 32px 컬러 아바타, 이름(비활성은 secondary), 둘째 줄의 원래 이름·요약. 지휘관 행(40px·22px)은 14px 안쪽에 선다.
+   머리는 52px 카드다 — 32px 컬러 아바타, 이름, 둘째 줄의 원래 이름·요약. 지휘관 행(40px·22px)은 14px 안쪽에 선다.
+   이름은 활성 여부와 무관하게 최고 명도다 — 사령관 이름이 그 아래 지휘관 이름보다 흐리면 크기·굵기가 말한 위계를 대비가 뒤집는다.
+   어느 Theater 가 열려 있는지는 위치 채널(brass)의 아바타 고리가 말한다. 이름 잉크도 카드 면도 쓰지 않으므로 대비가 깎이지 않는다.
    머리 제어(⋯·접기·「+」)는 머무르거나 포커스가 들어오거나 활성일 때 선다 — 터치에서는 늘 선다. */
 .console-shell.is-conversation-layout .side-bar-theater-header.is-card {
   min-height: 52px;
@@ -1034,14 +1040,22 @@
   background: var(--ink-deep);
   color: var(--text-tertiary);
   font-family: var(--font-ui);
-  font-size: 8px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
-  line-height: 11px;
+  line-height: 1.2;
   white-space: nowrap;
   pointer-events: none;
 }
 .console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-name {
   font-size: var(--t-base);
+}
+.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-name:not(.is-live) {
+  color: var(--text-primary);
+}
+.console-shell.is-conversation-layout .side-bar-theater-header.is-card.is-active .side-bar-theater-anchor {
+  border-radius: var(--radius-pill);
+  outline: 1.5px solid var(--brass);
+  outline-offset: 2px;
 }
 .side-bar-theater-sub {
   overflow: hidden;

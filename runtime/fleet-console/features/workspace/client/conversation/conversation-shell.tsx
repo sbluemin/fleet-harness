@@ -157,12 +157,14 @@ const PlusGlyph = () => (
  */
 export function ConversationSideBarActions() {
   const t = useT();
+  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다 — 캔버스 배치의 유령 행과 같은 규칙이다.
+  const { addingTheater } = useConsoleState();
   return (
     <span className="conversation-side-actions">
       <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <button type="button" className="conversation-round" onClick={requestSideBarAddTheater} aria-label={t("conversation.side.newTheater")} title={t("conversation.side.newTheater")}>
+      <button type="button" className="conversation-round" onClick={requestSideBarAddTheater} disabled={addingTheater} aria-label={t("conversation.side.newTheater")} title={t("conversation.side.newTheater")}>
         <PlusGlyph />
       </button>
     </span>

@@ -148,7 +148,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".whatsnew-close",
   ".skills-overlay-close",
   ".alerts-icon-badge",
-  ".side-bar-theater-off",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
   ".session-analyst__receipt-chev",
