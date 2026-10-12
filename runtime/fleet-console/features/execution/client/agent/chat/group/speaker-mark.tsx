@@ -29,14 +29,21 @@ export function speakerKey(speaker: ConversationSpeaker): string {
 }
 
 /**
+ * 사령관 표식이 쓸 Theater — 가운데 칸에 Operation 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
+ * 없으면 지금 대화가 선 Operation 의 Theater 다.
+ */
+export const ConversationTheaterContext = React.createContext<string | null>(null);
+
+/**
  * 발화자의 몽글 아바타 — 지휘관·일반 Operation 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Operation 이 없는 발화자는
  * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
  */
 export function SpeakerMark({ speaker, size = "md", state = "idle" }: { readonly speaker: ConversationSpeaker; readonly size?: "sm" | "md"; readonly state?: MongleState }) {
   const subject = useConversationSubject();
+  const theater = React.useContext(ConversationTheaterContext);
   const sizeClass = size === "sm" ? " group-chat-mark is-sm" : " group-chat-mark";
   if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.operationId)) {
-    const key = speaker.kind === "commodore" ? theaterAvatarKey(subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
+    const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
     return <KeyedAvatar avatarKey={key} role={role} state={state} size={size === "sm" ? 16 : 22} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
