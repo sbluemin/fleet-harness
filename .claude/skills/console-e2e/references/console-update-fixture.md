@@ -37,7 +37,7 @@ Then either accept in the UI with the [selected driver](agent-browser.md) after 
 node $S/isolated-env.mjs --run-dir "$E2E_DIR" -- node $S/console-update-fixture.mjs drive --dir "$E2E_DIR/update-fixture" --run-dir "$E2E_DIR"
 ```
 
-`drive` reads the lock's port and pid only, then sends `GET /api/v1/status`, `POST /api/v1/updates/check`, and `POST /api/v1/updates/apply` with the exact Origin, polls `/api/v1/updates/progress` until `completed` or `failed`, and writes `drive.json`. It exits non-zero unless `apply` returned 202 and the outcome matches the fixture mode. Without a Theater, the browser shows the notice inside the host avatar menu at the bottom of the sidebar, not on the page itself.
+`drive` reads the lock's port and pid only, then sends `GET /api/v1/status`, `POST /api/v1/updates/check`, and `POST /api/v1/updates/apply` with the exact Origin, polls `/api/v1/updates/progress` until `completed` or `failed`, and writes `drive.json`. It exits non-zero unless `apply` returned 202 and the outcome matches the fixture mode. Without a Theater, the browser shows the notice inside the host avatar menu at the bottom of the sidebar, not on the page itself. Judge whether it shows by [Measure from the source](verification.md#measure-from-the-source), not by its presence in the DOM.
 
 ## Evidence and cleanup
 
