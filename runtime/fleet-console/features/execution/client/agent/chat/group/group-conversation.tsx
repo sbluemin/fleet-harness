@@ -341,7 +341,7 @@ function MessageBubble({ entry, continued, live, participants, language, onOpenL
         <div className="group-chat-bubble is-agent is-markdown">
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
-            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} />}
+            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
         </div>
       </div>
     </div>

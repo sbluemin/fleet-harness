@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 11;
+export const COMMODORE_PROMPT_VERSION = 12;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -99,7 +99,8 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 # Record
 - Your text in each turn is shown to the person as the Commodore log. They may
   read it later without other context.
-- The person reads the log in ${LANGUAGE_NAME[language]}.`;
+- The person reads the log in ${LANGUAGE_NAME[language]}.
+- Link an external page as [descriptive name](URL), not as a bare URL.`;
 }
 
 /** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */

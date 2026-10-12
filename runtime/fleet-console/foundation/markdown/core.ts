@@ -1,4 +1,5 @@
 import type { MarkdownLinkTarget } from "./link-activation.js";
+import { siteIconName, siteIconSvg } from "./site-icons.js";
 import { Marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
@@ -30,6 +31,11 @@ export interface RenderMarkdownOptions {
   readonly copyLabel?: string;
   /** 코드블록 Copy 버튼 aria-label. 기본값 `(language) => \`Copy ${language} code\``. */
   readonly copyAriaLabel?: (language: string) => string;
+  /**
+   * 외부 http(s) 링크를 「사이트 아이콘 + 밑줄 이름」 인라인 링크로 그린다(AI 응답 본문 전용).
+   * 맨 주소·`<주소>`는 호스트와 줄인 경로로 접고, 원문은 title에 둔다. 아이콘은 번들 글리프뿐이라 네트워크 요청이 없다.
+   */
+  readonly siteLinks?: boolean;
 }
 
 interface FrontmatterEntry {
@@ -84,7 +90,7 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
     copyLabel: options.copyLabel ?? "Copy",
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
   });
-  decorateLinks(document, options.resolveLink);
+  decorateLinks(document, options.resolveLink, options.siteLinks === true);
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
     html,
@@ -228,7 +234,7 @@ function buildCodeToolbar(
   return toolbar;
 }
 
-function decorateLinks(document: Document, resolveLink?: RenderMarkdownOptions["resolveLink"]): void {
+function decorateLinks(document: Document, resolveLink: RenderMarkdownOptions["resolveLink"], siteLinks: boolean): void {
   for (const link of document.querySelectorAll("a")) {
     for (const attribute of [...link.attributes]) {
       if (attribute.name.startsWith("data-md-")) link.removeAttribute(attribute.name);
@@ -257,8 +263,89 @@ function decorateLinks(document: Document, resolveLink?: RenderMarkdownOptions["
     if (isExternalLink(href)) {
       link.setAttribute("target", "_blank");
       link.setAttribute("rel", "noopener noreferrer");
+      if (siteLinks) decorateSiteLink(link, href);
     }
   }
+}
+
+// 사이트 링크 — 아이콘은 앞에 선다(흐르는 글의 캐럿이 끝 요소의 ::after를 쓰므로). 주소에서 온 값은 텍스트와 속성으로만
+// 들어가고 아이콘 마크업은 번들 문자열이다. 장식 뒤에도 문서 전체가 한 번 더 sanitize를 지난다.
+function decorateSiteLink(link: HTMLAnchorElement, href: string): void {
+  let url: URL;
+  try { url = new URL(href); } catch { return; }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return;
+  const label = link.textContent ?? "";
+  if (isBareAutolink(label, href)) link.textContent = shortLinkLabel(url);
+  if (!link.hasAttribute("title")) link.setAttribute("title", safeDecodeUri(href));
+  link.classList.add("md-site-link");
+  const icon = siteIconSvg(siteIconName(url.hostname));
+  // 아이콘은 atomic inline이라 Chromium이 단어 결합자(U+2060)와 무관하게 그 뒤에서 줄을 나눈다. 아이콘과 이름의 첫 글자를
+  // nowrap 래퍼 하나에 묶어 아이콘만 윗줄 끝에 남지 않게 한다. 첫 글자만 묶으므로 긴 이름의 줄바꿈은 그대로다.
+  // 이름이 강조·코드 등 요소로 시작하면 래퍼는 그 요소 전체를 감싼다 — 아이콘이 코드 상자나 굵은 글자색 안으로 들어가지 않고
+  // 링크 잉크를 따른다. 글자가 없으면(이미지 링크) 아이콘만 앞에 둔다.
+  const first = firstLabelNode(link);
+  const lead = link.ownerDocument.createElement("span");
+  lead.className = "md-site-lead";
+  lead.insertAdjacentHTML("afterbegin", icon);
+  if (first?.nodeType === 3) {
+    const text = (first as Text).data;
+    const leadLength = /^\s*/.exec(text)![0].length + firstGraphemeLength(text.trimStart());
+    lead.append(text.slice(0, leadLength));
+    (first as Text).data = text.slice(leadLength);
+    first.before(lead);
+    return;
+  }
+  if (first && first.textContent?.trim()) {
+    first.before(lead);
+    lead.append(first);
+    return;
+  }
+  link.insertAdjacentHTML("afterbegin", icon);
+}
+
+// 링크 안에서 글자를 여는 첫 자식 — 공백뿐인 텍스트는 건너뛴다.
+function firstLabelNode(link: Element): ChildNode | null {
+  for (const node of link.childNodes) {
+    if (node.nodeType === 3 && !(node as Text).data.trim()) continue;
+    return node;
+  }
+  return null;
+}
+
+function firstGraphemeLength(text: string): number {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segment = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)[Symbol.iterator]().next();
+    if (!segment.done) return segment.value.segment.length;
+  }
+  return String.fromCodePoint(text.codePointAt(0) ?? 0).length;
+}
+
+// gfm 맨 주소·`<주소>`는 글자가 곧 주소다(www.는 http://가 붙는다, 비ASCII 경로는 href만 인코딩된다).
+function isBareAutolink(label: string, href: string): boolean {
+  const text = label.trim();
+  return text === href || text === safeDecodeUri(href) || `http://${text}` === href;
+}
+
+const SHORT_LINK_MAX = 40;
+const SHORT_SEGMENT_MAX = 24;
+
+function shortLinkLabel(url: URL): string {
+  const host = url.host.replace(/^www\./i, "");
+  const segments = url.pathname.split("/").filter(Boolean).map((segment) => safeDecodeComponent(segment));
+  if (segments.length === 0) return host;
+  const full = `${host}/${segments.join("/")}`;
+  if (full.length <= SHORT_LINK_MAX) return full;
+  const last = segments[segments.length - 1]!;
+  const tail = last.length > SHORT_SEGMENT_MAX ? `${last.slice(0, SHORT_SEGMENT_MAX - 1)}…` : last;
+  return segments.length === 1 ? `${host}/${tail}` : `${host}/…/${tail}`;
+}
+
+function safeDecodeUri(value: string): string {
+  try { return decodeURI(value); } catch { return value; }
+}
+
+function safeDecodeComponent(value: string): string {
+  try { return decodeURIComponent(value); } catch { return value; }
 }
 
 function extractToc(document: Document): TocItem[] {

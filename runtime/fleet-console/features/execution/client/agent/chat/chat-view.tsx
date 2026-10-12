@@ -1472,6 +1472,7 @@ export const ChatTurn = React.memo(function ChatTurn({
               <SpeakerRow speaker={speaker} live={liveSpeaker} named>
                 <StreamedMarkdown
                   className="agent-chat-stream markdown-body"
+                  siteLinks
                   text={view.streamingText}
                   streaming={working && streaming}
                   language={language}
@@ -1486,6 +1487,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
                 <StreamedMarkdown
                   className="agent-chat-answer-body markdown-body"
+                  siteLinks
                   text={view.answer}
                   streaming={false}
                   language={language}
@@ -1790,6 +1792,7 @@ function Ledger({
             {segment.note !== undefined ? (
               <StreamedMarkdown
                 className="agent-chat-ledger-note markdown-body"
+                siteLinks
                 text={segment.note}
                 streaming={false}
                 language={language}

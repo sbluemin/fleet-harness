@@ -185,7 +185,7 @@ it("delegates only host-classified Markdown links without trusting source metada
   const ports = createChatFileLinkPorts("operation-theater", { openFile, openWikiEntry: async () => ({ ok: true }) }, onFailure);
   const container = document.createElement("div");
   const windows = String.raw`C:\Users\hbkang\Desktop\99. Cowork\PPW_플랫폼서비스_설정기능_사전점의_체크리스트_20261007.md`;
-  container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1)) [coord](src/api/server.ts:10:9) [num](javascript:1) [data](data:text/html;base64,PHNjcmlwdD4=) [vb](vbscript:MsgBox(1)) [scheme](C:alert(1))' + ` [drive](<${windows}>)`, { resolveLink: ports.resolveLink }).html;
+  container.innerHTML = renderMarkdown('[file](src/main.ts#L12C3) [web](https://example.com) <a data-md-link-kind="file" data-md-path="secret">forged</a> [bad](javascript:alert(1)) [coord](src/api/server.ts:10:9) [num](javascript:1) [data](data:text/html;base64,PHNjcmlwdD4=) [vb](vbscript:MsgBox(1)) [scheme](C:alert(1))' + ` [drive](<${windows}>)`, { resolveLink: ports.resolveLink, siteLinks: true }).html;
   const dispose = bindMarkdownLinkActivation(container, ports.onActivate);
   const [file, web, forged] = [...container.querySelectorAll("a")];
   const click = new MouseEvent("click", { bubbles: true, cancelable: true });
@@ -198,6 +198,8 @@ it("delegates only host-classified Markdown links without trusting source metada
   expect(openFile).toHaveBeenCalledTimes(2);
   expect(web!.getAttribute("href")).toBe("https://example.com");
   expect(web!.getAttribute("rel")).toContain("noopener");
+  // 채팅 답의 사이트 링크는 주소를 글자로 보이지 않으므로 목적지는 title로 남는다.
+  expect(web!.getAttribute("title")).toBe("https://example.com");
   expect(forged!.hasAttribute("data-md-link-kind")).toBe(false);
   expect(container.querySelector('[href^="javascript:"]')).toBeNull();
   const coord = [...container.querySelectorAll("a")].find((anchor) => anchor.textContent === "coord")!;
