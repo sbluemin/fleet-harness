@@ -35,7 +35,6 @@ export interface FollowupCandidate {
   /** 이 후보를 낳은 임무 id — 그 임무가 지워졌으면 보드에 없을 수 있다. */
   readonly fromMission: string;
   readonly brief: string;
-  readonly criteria: readonly string[];
   readonly evidence: readonly FollowupEvidence[];
   readonly at: number;
   readonly updatedAt: number;
@@ -55,7 +54,6 @@ export interface FollowupBatchItem {
     readonly userImpact: string;
     readonly fromMission: string;
     readonly brief: string;
-    readonly criteria: readonly string[];
     readonly evidence: readonly FollowupEvidence[];
   };
   readonly state: FollowupBatchItemState;
@@ -90,9 +88,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const asString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 
-const asStringArray = (value: unknown): readonly string[] =>
-  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-
 function asEvidence(value: unknown): FollowupEvidence | null {
   if (!isRecord(value)) return null;
   if (value.kind !== "file" && value.kind !== "command" && value.kind !== "artifact") return null;
@@ -125,7 +120,7 @@ function asCandidate(value: unknown): FollowupCandidate | null {
     userImpact: value.state === "discarded" ? "" : asString(value.userImpact),
     fromMission: asString(value.fromMission),
     brief: value.state === "discarded" ? "" : asString(value.brief),
-    criteria: value.state === "discarded" ? [] : asStringArray(value.criteria),
+    // 옛 응답의 criteria 는 읽지 않는다. 키가 있어도 후보 파싱은 깨지지 않는다.
     evidence: value.state === "discarded" ? [] : evidence,
     at: typeof value.at === "number" ? value.at : 0,
     updatedAt: typeof value.updatedAt === "number" ? value.updatedAt : (typeof value.at === "number" ? value.at : 0),
@@ -149,7 +144,6 @@ function asBatchItem(value: unknown): FollowupBatchItem | null {
       userImpact: asString(snapshot.userImpact),
       fromMission: asString(snapshot.fromMission),
       brief: asString(snapshot.brief),
-      criteria: asStringArray(snapshot.criteria),
       evidence,
     },
     state: value.state,
