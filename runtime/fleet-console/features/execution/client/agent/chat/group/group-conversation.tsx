@@ -320,9 +320,10 @@ function MessageBubble({ entry, continued, live, participants, language, onOpenL
   const open = target ? () => onOpenLedger!(target) : undefined;
   const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
   const mark = continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
-  const name = (className?: string) => open
-    ? <button type="button" className={`group-chat-speaker-hit is-name${className ? ` ${className}` : ""}`} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
-    : <SpeakerName speaker={speaker} {...(className ? { className } : {})} />;
+  // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
+  const name = open
+    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
+    : <SpeakerName speaker={speaker} className="group-chat-agent-name" />;
   return (
     <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id} {...(time ? { title: time } : {})}>
       <span className="group-chat-agent-mark">
@@ -331,12 +332,12 @@ function MessageBubble({ entry, continued, live, participants, language, onOpenL
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (
           <span className="group-chat-agent-name group-chat-agent-via">
-            {name()}
+            <SpeakerName speaker={speaker} />
             <span className="group-chat-line-arrow" aria-hidden="true">→</span>
             <SpeakerName speaker={entry.recipient} />
             {via}
           </span>
-        ) : name("group-chat-agent-name")}
+        ) : name}
         <div className="group-chat-bubble is-agent is-markdown">
           {entry.text.trim().length === 0 && entry.streaming
             ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>

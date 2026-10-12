@@ -124,8 +124,6 @@
 .group-chat-agent-name { font-size: var(--t-sm); padding-left: var(--space-1); }
 /* 기존 padding-left(--space-1) 자리를 버튼이 대신 진다. 세로 padding 은 두지 않는다 — 이름 줄 높이가 버튼 아닌 이름과 같아야 말풍선이 뜨지 않는다. */
 .group-chat-speaker-hit.is-name { align-self: flex-start; padding: 0 var(--space-1); }
-/* 보드 행위 줄(via)은 바깥 칸이 이미 padding-left 를 지므로 글자 자리를 그대로 둔다. */
-.group-chat-agent-via > .group-chat-speaker-hit.is-name { margin-left: calc(var(--space-1) * -1); }
 /* .group-chat-mark 의 7px 과 같은 모서리. */
 .group-chat-speaker-hit.is-mark { position: relative; display: flex; border-radius: 7px; }
 .group-chat-agent:has(.group-chat-speaker-hit:hover) .group-chat-speaker-hit.is-name { background: var(--control-wash-hover); }
