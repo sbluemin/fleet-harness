@@ -1,6 +1,6 @@
 # Exact CDP input: one key, coarse pointer and touch
 
-Use this when a claim depends on one real key press (Escape closing a surface, an Alt or ⌘ shortcut) or on a touch device's pointer/hover media and touch input. [`scripts/cdp-input.mjs`](../scripts/cdp-input.mjs) attaches to the owned page over CDP; it never activates a window or tab (the client itself refuses `Page.bringToFront`, `Target.activateTarget`, and `Browser.setWindowBounds`). Exit 1 always means the helper failed, never a page result.
+Use this when a claim depends on one real key press (Escape closing a surface, an Alt or ⌘ shortcut), actual macOS input-method composition display, or a touch device's pointer/hover media and touch input. [`scripts/cdp-input.mjs`](../scripts/cdp-input.mjs) attaches to the owned page over CDP; it never activates a window or tab (the client itself refuses `Page.bringToFront`, `Target.activateTarget`, and `Browser.setWindowBounds`). Exit 1 always means the helper failed, never a page result.
 
 Both modes need the owned browser's endpoint and a URL prefix that matches exactly one page target. For an agent-browser session, read the endpoint in its own bounded call and pass it on; it is a loopback debugging URL, so keep it in the scratchpad rather than in a report. For Desktop, pass the owned `<cdp-port>`.
 
@@ -25,6 +25,10 @@ node <worktree>/.claude/skills/console-e2e/scripts/cdp-input.mjs key \
 - Pair it with the scenario's own state check, for example that the dialog closed and focus returned. An exact count shows that one trusted key event reached the page. It does not show that the key had the expected effect.
 
 Why not `press`: on macOS, agent-browser 0.27.0 `press Escape` flooded thousands of `key: "Unidentified", code: "Minus"` keydowns that kept arriving after the command returned. A raw CDP pair that also set `nativeVirtualKeyCode: 27` reproduced the flood. macOS reads that field as a mac key code, and 27 is `kVK_ANSI_Minus`. Sending the pair without it produced exactly one event, so the helper omits the field. Once a session has flooded, it stays contaminated: follow [stuck input](agent-browser.md#bound-commands-and-recover-stuck-input) and use a fresh session.
+
+## macOS input-method composition display
+
+CDP `Input.imeSetComposition` and `Input.insertText` do not go through the macOS input method (Text Input Source) path, so they cannot reproduce that path's composition-display symptoms. In objective 99a751b4, the user observed broken squares, red dotted underlines, and separated characters with the actual macOS Korean input method, but isolated CDP composition attempts did not reproduce them. For such a claim, do not prolong CDP reproduction attempts, and report the actual input-method claim as unverified by CDP. On the browser runtime, switch early to [console-handoff](../../console-handoff/SKILL.md) so the user can type directly. That handoff serves a browser-hosted Console only, so a Desktop-runtime claim stays on the Desktop route and remains unverified unless the user authorizes a native-input route. This does not authorize the agent to take OS focus or manipulate the input method; direct human input belongs to the handoff, and handoff alone is not a verification pass.
 
 ## Coarse pointer and touch holder
 
