@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
-import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { openSettingsModal, closeSettingsModal, useSettingsModal } from "../../../../../features/settings/client/settings-door.js";
 import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
@@ -54,17 +53,14 @@ function writeFolded(folded: boolean): void {
 }
 
 interface ConsoleToolbarProps {
-  /** War Room이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 War Room 트레이에 선다. */
-  readonly warRoomActive: boolean;
-  /** 캔버스 화면인가(/operations 데스크톱). 아니면 설정 톱니가 캔버스로 먼저 돌아간 뒤 설정을 연다. */
+  /** 캔버스가 아닌 다른 화면(/settings 등)인가를 뒤집는다. /operations 이면 설정 톱니가 그 화면에서 바로 연다. */
   readonly canvas: boolean;
 }
 
-export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
+export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
   const t = useT();
   const bandHost = useToolbarHost("band");
-  const warRoomHost = useToolbarHost("warRoom");
-  const host = warRoomActive ? warRoomHost : bandHost;
+  const host = bandHost;
   // 줄의 몸 — 한 번 만들어 끝까지 쓴다. 자리만 바꿔 끼운다.
   const [mount] = useState(() => {
     const element = document.createElement("div");
@@ -87,18 +83,15 @@ export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [preferredFolded, setFolded] = useState(readFolded);
-  const warRoom = useTriageActive();
-  const [warRoomFolded, setWarRoomFolded] = useState(true);
-  useLayoutEffect(() => { if (warRoom) setWarRoomFolded(true); }, [warRoom]);
-  const folded = warRoom ? warRoomFolded : preferredFolded;
+  const folded = preferredFolded;
   // 서랍이 말리거나 펴지는 동안만 가로를 자른다 — 늘 자르면 서랍보다 넓은 메뉴(원격·도움말)가 잘린다.
   const [folding, setFolding] = useState(false);
   const foldingTimerRef = useRef<number | null>(null);
   useEffect(() => () => { if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current); }, []);
   const toggleFold = () => {
     const next = !folded;
-    if (warRoom) setWarRoomFolded(next);
-    else { setFolded(next); writeFolded(next); }
+    setFolded(next);
+    writeFolded(next);
     setFolding(true);
     if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current);
     foldingTimerRef.current = window.setTimeout(() => {

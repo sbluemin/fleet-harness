@@ -259,20 +259,13 @@ async function boot(): Promise<void> {
     if (shellUpdater) publishShellUpdate(shellUpdater.snapshot());
   };
   /**
-   * 창 조작 명령 — 화면(War Room)이 이 창의 네이티브 전체화면을 켜고 끈다. 셸 갱신 명령처럼 창이 보고 있는
+   * 창 조작 명령 — 콘솔이 이 창의 네이티브 전체화면을 켜고 끈다. 셸 갱신 명령처럼 창이 보고 있는
    * 콘솔에서 듣는다. 전체화면 진입·이탈은 OS가 이미 사용자에게 내준 조작이라 별도 확인을 두지 않는다.
    */
   let consoleFullscreen: FullscreenController | null = null;
-  /**
-   * 창이 보여 주는 Console이 War Room인가. Console은 War Room을 켜고 끌 때마다 전체화면 켜기·끄기를 시키므로(이미
-   * 전체화면이던 창에서도, 강제 종료·새로 고침에서도) 마지막 명령이 곧 War Room 여부다. 종료 인사가 앰블럼이
-   * 실제로 앉아 있는 자리(War Room이면 작업 표시줄 트레이)에서 출발하는 데 쓴다.
-   */
-  let consoleInWarRoom = false;
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
-      consoleInWarRoom = command === "enter-fullscreen";
       consoleFullscreen?.perform(command);
     },
   });
@@ -445,7 +438,7 @@ async function boot(): Promise<void> {
       return view;
     },
     entryPagePath: desktopResources.entryPagePath,
-    snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette, consoleInWarRoom ? "tray" : "band"),
+    snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette, "band"),
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });

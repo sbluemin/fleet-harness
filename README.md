@@ -39,7 +39,7 @@ fleet console
 
 Update from the Console or with `fleet update`. `npm update -g` rolls Fleet back to the old version left on npm.
 
-Add a project folder as a **Theater**, then right-click the canvas to launch your first **Operation**.
+Add a project folder as a **Theater**, then right-click the sidebar or press <kbd>⌘</kbd><kbd>J</kbd> to launch your first **Operation**.
 
 ## Sessions that outlive the tab
 
@@ -79,16 +79,9 @@ An **Objective** is work you hand off whole. You write what you want and how you
 
 Open Objectives from the toolbar or with <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd>.
 
-## A canvas that arranges itself
+## One conversation at a time
 
-Operations live on an infinite canvas. You choose how much of the arranging you do yourself.
-
-| | What it does | Keys |
-|---|---|---|
-| **Cruise** | Place panels anywhere. Station Keeping keeps them from overlapping. | |
-| **Align all** | Lays every panel out as a grid, columns, or rows. Toggle it off and each panel returns to where it was. | <kbd>Alt</kbd><kbd>F</kbd> |
-| **Snap layouts** | Drag a panel to the top edge for halves, thirds, 2×2 and more. Snap Assist offers panels for the empty slots. | <kbd>⌘</kbd><kbd>Alt</kbd><kbd>←</kbd> <kbd>→</kbd> |
-| **War Room** | Puts one waiting Operation on stage at a time, across every Theater. | <kbd>Alt</kbd><kbd>T</kbd> |
+The desktop screen is a conversation. The sidebar lists Operations, the middle holds the one you're in, and the right column keeps the Theater's tools. <kbd>Alt</kbd><kbd>←</kbd> and <kbd>Alt</kbd><kbd>→</kbd> move between Operations in the active Theater.
 
 <kbd>⌘</kbd><kbd>K</kbd> jumps to any Operation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens Quick Launch, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
 

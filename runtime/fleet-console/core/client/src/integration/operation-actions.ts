@@ -5,23 +5,8 @@ import { ApiError, archiveOperation, readOperationLaunch, wasOperationBornDorman
 import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "./types.js";
 import { fetchOperations } from "./api.js";
-import { forceDropCompanionOperationId, getCompanionOperationId, minimizeOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
-import { dismissTriageOperation, forgetTriageOperation, isTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
-import { playMinimizeFlight } from "../../../../features/workspace/client/canvas/panel-motion.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
-import { clearIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { getState, hydrateOperations, setActiveOperation } from "./store.js";
-
-// ─── minimize ──────────────────────────────────────────────────────────────────
-
-// 최소화는 패널을 치우는 명시적 처리다. War Room에서는 일반 포커스 확인을 막지만,
-// 사용자가 직접 최소화를 누른 Operation의 유휴 도착은 확인한 것으로 보고 미확인 마크를 걷는다.
-export function minimizeOperationCompletely(operationId: string): void {
-  if (getState().activeOperationId === operationId) setActiveOperation(null);
-  clearIdleArrival(operationId);
-  playMinimizeFlight(operationId);
-  minimizeOperation(operationId);
-}
 
 // ─── archive ───────────────────────────────────────────────────────────────────
 
@@ -48,10 +33,6 @@ export async function archiveOperationFromUi(operationId: string): Promise<Archi
   let outcome: ArchiveOutcome;
   try {
     outcome = { ok: true, receipt: await archiveOperation(operationId) };
-    // 서버가 확정한 뒤에만 companion·선별 대상을 푼다. 실패 시 열린 화면을 그대로 둔다.
-    if (getCompanionOperationId() === operationId) forceDropCompanionOperationId();
-    if (isTriageActive()) dismissTriageOperation(operationId);
-    for (const id of outcome.receipt.operationIds) forgetTriageOperation(id);
   } catch (error) {
     outcome = { ok: false, error: error instanceof ApiError ? error.message : "archive_failed" };
   } finally {

@@ -14,7 +14,7 @@ import { openOtherSurfaceLink } from "../../../../../features/browser/client/glo
 import { useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
-import { useHostSideBarVisible } from "../../integration/war-room-chrome-toggles.js";
+import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
@@ -69,7 +69,7 @@ const LEAD_PILL_GAP_PX = 12;
  * 대화 pill 줄과 같은 문법(가운데 이름 pill)이고, 「대화」로 접어 두면 페인은 산 채로 숨고
  * 같은 자리에 「다시 열기」 칩이 남는다.
  */
-export function ExpandedSurfaceLayer({ placement = "canvas" }: { readonly placement?: "canvas" | "conversation" } = {}) {
+export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly placement?: "conversation" } = {}) {
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances, focusedInstanceId } = useExpandedSurfaces();
   const conversation = placement === "conversation";
@@ -371,25 +371,7 @@ export function ExpandedSurfaceLayer({ placement = "canvas" }: { readonly placem
     );
   }
 
-  const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
-
-  return createPortal(
-    <div
-      ref={gridRef}
-      className="expanded-surface"
-      style={{ gridTemplateColumns: template }}
-      data-pane-count={instances.length}
-      role="region"
-      aria-label={t("chrome.expandedSurface.regionAria")}
-      // 캔버스의 pan/zoom/생성 제스처가 이 작업면에서 시작한 입력을 집어가지 않게 끊는다.
-      onPointerDown={(event) => event.stopPropagation()}
-      onWheel={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.stopPropagation()}
-    >
-      {panes}
-    </div>,
-    canvasHost ?? document.body,
-  );
+  return null;
 }
 
 export function SurfacePane({

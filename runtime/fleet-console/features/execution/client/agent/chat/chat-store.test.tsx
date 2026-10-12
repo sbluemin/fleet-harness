@@ -462,7 +462,7 @@ it("keeps group timeline sockets and dormant history closed until the conversati
   try {
     act(() => { root!.render(createElement(GroupProbe)); });
     await act(async () => { await Promise.resolve(); });
-    // 대화 중심 화면이 아니면 채팅이 살아 있어도 그룹 소켓과 휴면 이력을 열지 않는다. classicLayout 은 꺼져 있다.
+    // 대화 중심 화면이 아니면 채팅이 살아 있어도 그룹 소켓과 휴면 이력을 열지 않는다.
     expect(FakeWebSocket.instances).toHaveLength(0);
     expect(ticketFetches.some((entry) => entry.url.includes("chat-history"))).toBe(false);
     active = true;

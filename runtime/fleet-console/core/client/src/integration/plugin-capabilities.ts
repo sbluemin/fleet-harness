@@ -19,7 +19,7 @@ import { AgentChatTranscript, AgentConversation } from "../../../../features/exe
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
-import { getCanvasArenaInsets, subscribeCanvasArenaInsets } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { getArenaInsets, subscribeArenaInsets } from "../../../../features/workspace/client/conversation/arena-insets.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { isConversationLayoutActive, subscribeConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
@@ -123,12 +123,9 @@ export function createHostCapabilities(
     ...base,
     operations: {
       ...base.operations,
-      // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 자리는 소비 경로가 모드별로 정한다
-      // (War Room 이면 무대에 올리고, 아니면 Theater 전환·펴기·companion·최대화·모두 정렬을 따른다).
+      // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
       // 확장 표면은 focusOperation 이 정리한다 — 플러그인은 자기 표면을 따로 닫지 않는다.
-      // `snap: "full"` 힌트는 Cruise에서 Snap 전체 칸으로 앉히고, 스냅할 수 없는 모드·화면에서는 같은 일반 이동으로 폴백한다.
-      // 패널로 서지 않는 단계는 스토어가 지휘관으로 돌리고, 요청한 단계의 도착 표식·알림까지 치운다.
-      focus: (operationId, options) => focusOperation(operationId, options?.snap === "full" ? { snapFull: true } : undefined),
+      focus: (operationId) => focusOperation(operationId),
     },
     notifications: {
       emit: (notification) => raiseOperationNotification(notification),
@@ -189,13 +186,13 @@ export function createHostCapabilities(
       subscribe: (listener) => subscribe(listener),
       // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
       getMapInsets: () => {
-        const settled = getCanvasArenaInsets();
+        const settled = getArenaInsets();
         const { railOccupiedPx, railSettledPx } = getRailStoreSnapshot();
         return { left: settled.left, right: Math.max(0, settled.right + railOccupiedPx - railSettledPx) };
       },
       subscribeMapInsets: (listener) => {
         const offRail = subscribeRailStore(listener);
-        const offArena = subscribeCanvasArenaInsets(listener);
+        const offArena = subscribeArenaInsets(listener);
         return () => { offRail(); offArena(); };
       },
     },

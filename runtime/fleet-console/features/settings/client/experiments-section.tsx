@@ -83,28 +83,6 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
 
   return (
     <>
-    <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.screenCard")}>
-      <h3 className="global-settings-card-title">
-        {t("settings.experiments.screenCard")}
-        <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
-      </h3>
-      <div className="global-settings-row experiments-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">
-            {t("settings.experiments.classicLayout.title")}
-            <SettingsHelp title={t("settings.experiments.classicLayout.title")}>{t("settings.experiments.classicLayout.help")}</SettingsHelp>
-          </p>
-        </div>
-        <div className="experiments-row-controls">
-          <SettingsToggle
-            checked={experiments.classicLayout}
-            busy={saving}
-            ariaLabel={t("settings.experiments.classicLayout.title")}
-            onChange={(classicLayout) => save({ ...experiments, classicLayout })}
-          />
-        </div>
-      </div>
-    </section>
     <section className="global-settings-card" data-saving={saving || undefined} aria-label={t("settings.experiments.aiCard")}>
       <h3 className="global-settings-card-title">
         {t("settings.experiments.aiCard")}
@@ -166,16 +144,6 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
   );
   return (
     <>
-    <SettingsCard title={<>{t("settings.experiments.screenCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
-      <SettingsRow label={t("settings.experiments.classicLayout.title")} hint={t("settings.experiments.classicLayout.mobileHelp")} icon={<MobileIcon name="layout" />}>
-        <SettingsToggle
-          checked={experiments.classicLayout}
-          busy={saving}
-          ariaLabel={t("settings.experiments.classicLayout.title")}
-          onChange={(classicLayout) => saveExperiments({ ...experiments, classicLayout })}
-        />
-      </SettingsRow>
-    </SettingsCard>
     <SettingsCard title={<>{t("settings.experiments.aiCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
       {AIDE_ROWS.map((row) => (
         <SettingsRow key={row.id} label={t(row.titleKey)} hint={t(row.helpKey)} icon={<MobileIcon name={AIDE_ICONS[row.id] ?? "spark"} />}>

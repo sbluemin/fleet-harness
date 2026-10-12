@@ -16,7 +16,6 @@ import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/an
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
-import { isTriageActive } from "../../../workspace/client/canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
@@ -38,16 +37,6 @@ interface NavigatorWithUserAgentData extends Navigator {
   readonly userAgentData?: {
     readonly platform?: string;
   };
-}
-
-/**
- * War Room 무대 id. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
- * (pickTriageOperation) 캔버스가 무대 Operation을 active로 세운다. 그 id는
- * leftover가 아니라 지금 보고 있는 패널이다 — 헬퍼는 Theater 불일치여도
- * 이 id만 허용한다.
- */
-function visibleTriageStageOperationId(): string | null {
-  return isTriageActive() ? getState().activeOperationId : null;
 }
 
 type PopoverKind = "theater" | "model";
@@ -367,7 +356,7 @@ export function QuickLaunch() {
       mentionAlreadySet: input.mentionAlreadySet,
       promptOccupied: input.promptOccupied,
     })) {
-      const entry = resolveFocusedMention(getState(), messageableTypesByPluginRef.current, visibleTriageStageOperationId());
+      const entry = resolveFocusedMention(getState(), messageableTypesByPluginRef.current, null);
       return entry ? { kind: "operation", entry } : null;
     }
     return null;

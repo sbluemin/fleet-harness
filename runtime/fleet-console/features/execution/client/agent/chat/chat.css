@@ -55,15 +55,6 @@
   --agent-chat-measure: 100%;
 }
 
-/* 도킹한 Quick Launch가 차지하는 높이만큼 작업 면 아래를 비운다 — War Room 무대와
-   Cruise 전체 한 칸이 대상이다. 자유 배치 캔버스의 떠 있는 패널(정렬 칸 포함)은
-   사용자가 둔 자리라 대상이 아니다. 값은 QL이 펼친 높이 + --space-4를 재서
-   document 루트에 쓰며, 없으면 0으로 떨어진다. */
-.operations-canvas.is-panel-snap-full .canvas-operation.is-snap-full .agent-chat {
-  bottom: var(--quick-launch-dock-inset, 0px);
-}
-
-
 /* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
 .agent-chat-to-term:not(:disabled),
 .agent-chat-inter-button,
@@ -2685,30 +2676,6 @@
   box-shadow: var(--brass-halo);
   outline: none;
 }
-
-/* War Room 카드의 본문은 읽는 자리다 — 승격 면이 클릭을 가로채고 본문은 inert라
-   Analyst·채팅 뷰 칩과 중지·회신 버튼은 눌러도 동작하지 않는다. 무대에 오른 패널은
-   is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다. 휴면 카드의 채팅 진입 고스트와
-   첫 턴 초대 문구도 본문 안에 있으므로 함께 숨긴다. */
-.canvas-operation.is-deck-tile .agent-chat-dormant-open,
-.canvas-operation.is-deck-tile .agent-chat-follow,
-.canvas-operation.is-deck-tile .agent-chat-settle,
-.canvas-operation.is-deck-tile .agent-chat-ledge,
-.canvas-operation.is-deck-tile .agent-chat-sheet,
-.canvas-operation.is-deck-tile .agent-chat-composer,
-.canvas-operation.is-deck-tile .agent-chat-member-foot {
-  display: none;
-}
-
-/* 초대 상태의 높이 하한을 되돌린다 — 그 하한은 받침이 로그를 잠식하지 못하게 막는 장치인데
-   카드에는 받침이 없고, 작은 카드에서는 그 하한이 로그를 카드 밖으로 밀어낸다.
-   상단 여백은 더 이상 손대지 않는다: 피할 부유 칩이 사라져 베이스가 이미 space-3이다. */
-.canvas-operation.is-deck-tile .agent-chat-log {
-  min-height: 0;
-}
-
-/* 카드에는 컴포저가 없다(바로 위 숨김 목록) — 백그라운드 작업의 선반과 시트도 같은 목록에
-   든다. 카드는 읽는 자리라 문이 서지 않고, 문이 없으면 시트도 열 수 없다. */
 
 /* ── 세션 좌표 각인 ───────────────────────────────────────────────────────
    이 세션이 무엇으로 도는가(모델 · 강도). 최근 백그라운드 작업 글리프처럼 컴포저 툴 행에

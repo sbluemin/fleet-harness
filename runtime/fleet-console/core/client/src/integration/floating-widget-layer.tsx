@@ -18,7 +18,7 @@ import type {
 } from "@fleet-console/sdk/floating";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
-import { prefersReducedMotion } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";

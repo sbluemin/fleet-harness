@@ -8,22 +8,13 @@ const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
   hydrateGroups: vi.fn(),
   hydrateOperations: vi.fn(),
-  isTriageActive: vi.fn(),
   removeTheater: vi.fn(),
-  resetTriageTheater: vi.fn(),
-  visitTriageTheater: vi.fn(),
 }));
 
 vi.mock("../core/client/src/integration/api.js", () => ({
   fetchGroups: mocks.fetchGroups,
   fetchOperations: mocks.fetchOperations,
   forgetTheater: mocks.forgetTheater,
-}));
-
-vi.mock("../features/workspace/client/canvas/triage-store.js", () => ({
-  isTriageActive: mocks.isTriageActive,
-  resetTriageTheater: mocks.resetTriageTheater,
-  visitTriageTheater: mocks.visitTriageTheater,
 }));
 
 vi.mock("../core/client/src/integration/store.js", () => ({
@@ -48,16 +39,14 @@ beforeEach(() => {
   mocks.fetchOperations.mockResolvedValue([]);
   mocks.fetchGroups.mockResolvedValue([]);
   mocks.forgetTheater.mockResolvedValue({ ok: true, deletion: RECEIPT });
-  mocks.isTriageActive.mockReturnValue(false);
   mocks.getState.mockReturnValue({ activeTheaterId: null, theaters: [{ id: "theater-a" }] });
 });
 
 describe("forgetTheaterCompletely", () => {
-  it("returns the receipt and clears triage and local Theater state after a successful forget", async () => {
+  it("returns the receipt and clears local Theater state after a successful forget", async () => {
     await expect(forgetTheaterCompletely("theater-a")).resolves.toEqual(RECEIPT);
 
     expect(mocks.forgetTheater).toHaveBeenCalledWith("theater-a");
-    expect(mocks.resetTriageTheater).toHaveBeenCalledWith("theater-a");
     expect(mocks.removeTheater).toHaveBeenCalledWith("theater-a");
     expect(mocks.fetchOperations).toHaveBeenCalledWith(null);
     expect(mocks.fetchGroups).toHaveBeenCalledWith(null);
@@ -71,7 +60,6 @@ describe("forgetTheaterCompletely", () => {
     await expect(forgetTheaterCompletely("theater-a")).resolves.toBeNull();
 
     expect(mocks.failAddTheater).toHaveBeenCalledWith("forget failed");
-    expect(mocks.resetTriageTheater).not.toHaveBeenCalled();
     expect(mocks.removeTheater).not.toHaveBeenCalled();
   });
 
@@ -80,7 +68,6 @@ describe("forgetTheaterCompletely", () => {
 
     await expect(forgetTheaterCompletely("theater-a")).resolves.toEqual(RECEIPT);
 
-    expect(mocks.resetTriageTheater).toHaveBeenCalledWith("theater-a");
     expect(mocks.removeTheater).toHaveBeenCalledWith("theater-a");
     expect(mocks.failAddTheater).not.toHaveBeenCalled();
   });

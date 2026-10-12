@@ -20,9 +20,6 @@ import {
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
 import { pointOnText } from "./operations-side-bar-hit-test.js";
-import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
-import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
-import { SnapMark } from "../canvas/snap-mark.js";
 import { DecisionRequestMark } from "../decision-request-mark.js";
 import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
@@ -183,12 +180,6 @@ export function OperationsSideBarChip({
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next) });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
-  // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 칸 모양 표식이 선다(캡션과 같은 컴포넌트).
-  const snapHold = useSnapHold();
-  // companion 레이어를 연 패널은 전체 칸 자리에 서 있다 — 진입 경로(자유 패널·전체 칸)와 관계없이 캡션과 같은 전체 칸 표식을 단다.
-  const companionLayer = useCompanionOperationId() === operation.id && operation.theaterId === getLoadedTheaterId();
-  const snapZoneIndex = snapHold !== null && operation.theaterId === getLoadedTheaterId() ? snapHold.assignments[operation.id] : undefined;
-  const snapZone = companionLayer ? SNAP_FULL_ZONES.zones[0]! : snapZoneIndex !== undefined ? snapHold?.zones[snapZoneIndex] ?? null : null;
   const chipClassName = [
     "side-bar-chip",
     consoleUseWrapClassName(wrap),
@@ -423,7 +414,6 @@ export function OperationsSideBarChip({
           ) : (
             <>
               <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : renameOnNameDoubleClick}>{title}</span>
-              {snapZone ? <SnapMark zone={snapZone} /> : null}
               {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
             </>
           )}

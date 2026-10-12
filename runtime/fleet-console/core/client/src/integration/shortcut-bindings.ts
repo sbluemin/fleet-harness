@@ -37,16 +37,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.toggle-fleet-browser", group: "console", descriptionKey: "shortcuts.console.toggleFleetBrowser", defaults: ["Mod+Shift+KeyB"], railEntryId: "fleet-browser" },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.operations.undoClose", defaults: ["Mod+KeyZ"] },
   { id: "operations.sort-by-status", group: "operations", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
-  { id: "operations.toggle-formation", group: "operations", descriptionKey: "shortcuts.map.toggleFormation", defaults: ["Alt+KeyF"] },
-  { id: "operations.toggle-triage", group: "operations", descriptionKey: "shortcuts.map.toggleTriage", defaults: ["Alt+KeyT"] },
-  // War Room의 지도 층 — War Room 안에서만 가로챈다. Cruise에서는 같은 조합이 터미널로 흘러간다.
-  // Claude Code의 meta+m(권한 모드 순환)은 Windows 구형 런타임에서만 기본값이고, 그 밖에서는 Shift+Tab이다.
-  { id: "operations.toggle-war-room-map", group: "operations", descriptionKey: "shortcuts.map.toggleWarRoomMap", defaults: ["Alt+KeyM"] },
-  { id: "operations.fit-all", group: "operations", descriptionKey: "shortcuts.map.fitAll", defaults: ["Shift+Digit1"] },
-  // Cruise 스냅 — 캡션 메뉴와 같은 칸을 키보드로. Alt+화살표는 포커스 순환이 예약했으므로 Mod를 더한다.
-  // 전체 한 칸은 Alt↑ 하나가 맡는다(재배정 대상이 아닌 Alt+화살표 묶음) — 여기에 중복 명령을 두지 않는다.
-  { id: "operations.snap-left", group: "operations", descriptionKey: "shortcuts.map.snapLeft", defaults: ["Mod+Alt+ArrowLeft"] },
-  { id: "operations.snap-right", group: "operations", descriptionKey: "shortcuts.map.snapRight", defaults: ["Mod+Alt+ArrowRight"] },
 ];
 
 const CORE_COMMANDS_BY_ID = new Map(CORE_SHORTCUT_COMMANDS.map((command) => [command.id, command]));

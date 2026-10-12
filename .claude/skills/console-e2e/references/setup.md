@@ -101,7 +101,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
   --console-dir "$E2E_DIR/console"
 ```
 
-- It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the core contributions, each built-in plugin's `onboarding` read from its client entry as the plugin registry reads it, the seen-store key rules, and the keys stored outside any contribution (commissioning, the effort-confirm tip, and the conversation-layout welcome card). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
+- It derives every key from the current source and merges them into `seenFeatureTours` through the origin-gated `PUT /api/v1/settings/global`, then reads them back and fails when one is missing. The sources are the core contributions, each built-in plugin's `onboarding` read from its client entry as the plugin registry reads it, the seen-store key rules, and the keys stored outside any contribution (commissioning and the effort-confirm tip). `--dry-run` only lists the keys. Commissioning also opens only while no Theater is registered.
 - When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded onboarding layer before acting.
 

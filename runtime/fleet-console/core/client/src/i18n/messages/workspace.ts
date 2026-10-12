@@ -1,4 +1,4 @@
-// 대화 화면과 사이드바가 쓰는 문구. 캔버스 전용 키는 canvas.ts에 있다.
+// 대화 화면과 사이드바가 쓰는 문구.
 export const workspaceEn = {
   "sidebar.menu.aria": "Operation launcher",
   "sidebar.menu.empty": "No operations available.",
@@ -66,7 +66,7 @@ export const workspaceEn = {
   "sidebar.theater.newTheater": "New Theater",
   "sidebar.starter.eyebrow": "Getting started",
   "sidebar.starter.title": "Start with one project folder",
-  "sidebar.starter.body": "A Theater is a project folder. Once registered it lists here, and you open Operations on the map.",
+  "sidebar.starter.body": "A Theater is a project folder. Once registered it lists here, and you open Operations from its header.",
   "sidebar.starter.chooseFolder": "Choose a folder…",
   "sidebar.starter.addingTheater": "Adding Theater…",
   "sidebar.starter.reopenGuide": "Show the setup guide again",
@@ -208,6 +208,7 @@ export const workspaceEn = {
   "rail.chrome.closePanel": "Close {title}",
   "rail.chrome.resetWidth": "Reset panel width",
   "rail.theater.fallback": "Theater",
+  "workspace.plugin.operationFailed": "Plugin operation failed to render.",
 } as const;
 
 export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
@@ -276,7 +277,7 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "sidebar.theater.newTheater": "새 Theater",
   "sidebar.starter.eyebrow": "시작하기",
   "sidebar.starter.title": "프로젝트 폴더 하나로 시작합니다",
-  "sidebar.starter.body": "Theater는 프로젝트 폴더입니다. 등록하면 여기에 목록이 생기고, 지도에서 Operation을 엽니다.",
+  "sidebar.starter.body": "Theater는 프로젝트 폴더입니다. 등록하면 여기에 목록이 생기고, 헤더에서 Operation을 엽니다.",
   "sidebar.starter.chooseFolder": "폴더 선택…",
   "sidebar.starter.addingTheater": "Theater 추가 중…",
   "sidebar.starter.reopenGuide": "설정 가이드 다시 보기",
@@ -416,4 +417,5 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "rail.chrome.closePanel": "{title} 닫기",
   "rail.chrome.resetWidth": "패널 폭 초기화",
   "rail.theater.fallback": "Theater",
+  "workspace.plugin.operationFailed": "Plugin Operation을 렌더하지 못했습니다.",
 };

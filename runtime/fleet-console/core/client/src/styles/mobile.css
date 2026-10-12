@@ -29,8 +29,7 @@
 .mobile-session-view,
 .mobile-session-body,
 .mobile-operation-body-slot,
-.canvas-operation-body-slot,
-.operation-body-mount {
+.operation-body-mount{
   min-width: 0;
   min-height: 0;
   width: 100%;
@@ -994,12 +993,6 @@
 @keyframes mobile-menu-in { from { opacity: 0; transform: scale(0.92); } }
 @keyframes mobile-sheet-in { from { transform: translateY(100%); } }
 @keyframes mobile-sheet-out { to { transform: translateY(100%); } }
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-menu,
-  .mobile-sheet,
-  .mobile-sheet-scrim,
-}
 
 /* 상단 막대와 연결·상태 띠가 한 덩어리로 위에 선다. */
 .mobile-frame-head { position: relative; z-index: 2; display: flex; flex-direction: column; min-width: 0; }

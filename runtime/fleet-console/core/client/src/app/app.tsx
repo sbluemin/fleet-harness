@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
-import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts, WAR_ROOM_RESERVED_SHORTCUT_CODES } from "../integration/shortcuts.js";
-import { companionDefaultChord, companionShortcutCommandId, shortcutCommandLabel } from "../integration/shortcut-bindings.js";
+import { ActiveCompanionShortcutsProvider, takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
+import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
 import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
-import { ConversationWelcome } from "../chrome/components/conversation-welcome.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
 import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
 import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
-import { focusToolbarItemQuietly } from "../chrome/toolbar/toolbar-tip.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
-import { claimTheaterBootMinimization } from "../integration/boot-minimization-session.js";
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
 import { openArchiveSheet } from "../integration/operation-archive.js";
 import type { ArchiveOutcome } from "../integration/operation-actions.js";
@@ -41,7 +37,7 @@ import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
-import { saveClassicLayout, useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
+import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
@@ -52,7 +48,6 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { subscribeDormantAutoMinimize } from "../../../../features/workspace/client/canvas/dormant-auto-minimize.js";
 import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
@@ -62,12 +57,6 @@ import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
-import { useWarRoomTransitionActive } from "../integration/war-room-chrome.js";
-import { useWarRoomDesktopFullscreen } from "../integration/desktop-fullscreen.js";
-import { WarRoomBar } from "../chrome/war-room/war-room-bar.js";
-import { WarRoomTransition } from "../chrome/war-room/war-room-transition.js";
-import { toggleWarRoomSideBar } from "../integration/war-room-chrome-toggles.js";
-import { isTriageActive, setTriageActive, useTriageActive } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
@@ -80,16 +69,8 @@ const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
 // 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
 const ONBOARDING_PORTS = {
   railEntryElement: (railEntryId: string) => document.getElementById(`rail-tab-${railEntryId}`),
-  railEntryHintAnchor: (element: HTMLElement) => {
-    const island = element.closest<HTMLElement>(".war-room-bar");
-    if (!island) return null;
-    // 섬은 늘 아레나 아래 가운데에 선다 — 힌트는 섬 위에 선다.
-    return { below: false, edge: island.getBoundingClientRect().top };
-  },
-  railEntryHintDoor: (element: HTMLElement) => {
-    const drawer = element.closest(".war-room-bar .console-toolbar-drawer[inert]");
-    return drawer?.closest(".console-toolbar")?.querySelector<HTMLElement>(".console-toolbar-fold") ?? element;
-  },
+  railEntryHintAnchor: () => null,
+  railEntryHintDoor: (element: HTMLElement) => element,
   shortcutLabel: (commandId: string) => shortcutCommandLabel(commandId),
 } as const;
 
@@ -113,7 +94,6 @@ export function App() {
 function ConnectedApp() {
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
-  const bootOperationIdsRef = useRef<readonly string[] | null>(null);
   const location = useLocation();
   const registry = usePluginRegistry();
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
@@ -166,8 +146,6 @@ function ConnectedApp() {
   // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
   // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
   const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
-  // 웰컴 카드에서 이전 화면으로 돌아간 직후의 안내 — 되돌리기 한 번과 설정 위치를 남기고 스스로 거둔다.
-  const [classicReturnNotice, setClassicReturnNotice] = useState(false);
   const [pluginFailuresNotice, setPluginFailuresNotice] = useState(registry.failures.length > 0);
   const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
   const activeThemePolarity = themePolarity(state.activeTheme);
@@ -190,18 +168,10 @@ function ConnectedApp() {
     return () => clearTimeout(timer);
   }, [themeNotice]);
 
-  useEffect(() => {
-    if (!classicReturnNotice) return;
-    const timer = setTimeout(() => setClassicReturnNotice(false), THEME_NOTICE_AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [classicReturnNotice]);
-
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
-  const isTransitionalRoute = pathname === "/";
   const mobileLayout = useViewMode().effective === "mobile";
-  const warRoomMode = useTriageActive();
-  // 대화 중심 화면(기본, 실험 기능 「이전 화면으로 돌아가기」로 끔)은 Operations 화면의 배치다 — 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
+  // 데스크톱 Operations 화면은 대화 중심 배치다. 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
   const conversationLayoutOn = useConversationLayout();
   const conversationLayout = conversationLayoutOn && operationsViewVisible;
   // 대화 중심 화면이 켜져 있다는 표식 — 화면과 무관하게 선다. Desktop 셸은 이때 신호등·캡션 버튼을 52px 맨 위 줄에 맞추므로
@@ -212,62 +182,6 @@ function ConnectedApp() {
     else root.removeAttribute("data-conversation-layout");
     return () => root.removeAttribute("data-conversation-layout");
   }, [conversationLayoutOn]);
-  const warRoomTransitionActive = useWarRoomTransitionActive();
-  const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout && !conversationLayoutOn;
-  const workFocusRef = useRef<HTMLElement | null>(null);
-  // 화면이 내려간 뒤 그 요소를 포커스 복귀 기억이 붙잡지 않는다. 같은 배치의 War Room 이동은 보존한다.
-  useLayoutEffect(() => {
-    workFocusRef.current = null;
-  }, [conversationLayoutOn, mobileLayout, pathname, state.activeTheaterId]);
-  // War Room은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 War Room은 유지한다 — 작업 표시줄의
-  // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 War Room 안에서 하는 길이다.
-  // 부팅·호스트 전환 직후 루트('/')에서 '/operations'로 리다이렉트되는 과도기에는 성급히 끄지 않고,
-  // 모바일이거나 다른 경로(/settings 등)로 완전히 이탈했을 때만 War Room을 거둔다. 대화 중심 화면은 War Room을
-  // 지원하지 않으므로, 그 배치가 켜지면(부팅 뒤 설정이 늦게 도착해도) 곧장 거둔다.
-  useLayoutEffect(() => {
-    if (warRoomMode && (mobileLayout || conversationLayoutOn || (!operationsViewVisible && !isTransitionalRoute))) setTriageActive(false);
-  }, [warRoomMode, operationsViewVisible, mobileLayout, conversationLayoutOn, isTransitionalRoute]);
-  useWarRoomDesktopFullscreen(warRoomActive);
-  useEffect(() => {
-    const remember = (event: FocusEvent) => {
-      const target = event.target;
-      if (target instanceof HTMLElement && target.closest(".operations-center-stage, .right-rail-panel-slot, .expanded-surface")) workFocusRef.current = target;
-    };
-    document.addEventListener("focusin", remember);
-    return () => document.removeEventListener("focusin", remember);
-  }, []);
-  // War Room이 바뀌는 순간 포커스가 걷힌 크롬(inert 영역·숨은 War Room 바·작업 표시줄) 안에 있었다면 작업면으로
-  // 돌려준다. 숨은 요소의 포커스는 브라우저가 body로 떨구기도 하므로 전환 직후의 body도 같은 경우로 본다.
-  const previousWarRoomActiveRef = useRef(warRoomActive);
-  useLayoutEffect(() => {
-    const changed = previousWarRoomActiveRef.current !== warRoomActive;
-    previousWarRoomActiveRef.current = warRoomActive;
-    if (!changed) return;
-    const focused = document.activeElement;
-    const stranded = focused === document.body
-      || (focused instanceof HTMLElement && focused.closest("[inert], .war-room-bar[hidden]") !== null);
-    if (!stranded) return;
-    const target = workFocusRef.current;
-    if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
-    else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-  }, [warRoomActive]);
-  // War Room 단축키로 한쪽 크롬을 숨길 때, 포커스가 그 안에 있었다면 반대쪽 컨트롤(War Room 막대의 사이드바
-  // 토글)이 있으면 거기로, 없으면 위 War Room 진입과 같은 복귀 규칙을 따른다. 숨길 영역 밖의 포커스는 건드리지 않는다.
-  const hideWarRoomChromeRestoringFocus = useCallback((regionSelector: string, hide: () => boolean, oppositeSelector?: string) => {
-    const focused = document.activeElement;
-    const focusInside = focused instanceof HTMLElement && focused.closest(regionSelector) !== null;
-    if (hide() || !focusInside) return;
-    requestAnimationFrame(() => {
-      const now = document.activeElement;
-      if (now instanceof HTMLElement && now !== document.body && !now.closest("[inert], [hidden]")) return;
-      const opposite = oppositeSelector ? document.querySelector<HTMLElement>(oppositeSelector) : null;
-      // 반대쪽 컨트롤은 섬의 도구모음 칸이다 — 되돌려 놓은 포커스로 말풍선을 띄우지 않는다.
-      if (opposite && !opposite.closest("[inert], [hidden]")) { focusToolbarItemQuietly(opposite); return; }
-      const target = workFocusRef.current;
-      if (target?.isConnected && !target.closest("[inert], [hidden]")) target.focus({ preventScroll: true });
-      else document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-    });
-  }, []);
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -319,34 +233,6 @@ function ConnectedApp() {
       }),
     [railBindings],
   );
-  const triageActive = useTriageActive();
-  const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
-    const activeOperation = state.operations.find((operation) => operation.id === state.activeOperationId);
-    if (!activeOperation) return [];
-    const activeKind = registry.operationKinds.find((kind) =>
-      kind.pluginId === activeOperation.pluginId && kind.type === activeOperation.type);
-    // 도움말은 실제 디스패치와 같은 목록을 읽어야 한다 — 이 작전에서 사용 불가한 패널이 남으면
-    // 누를 수 없는 단축키가 단축키 대화상자에 계속 실린다.
-    const activeCompanions = availableCompanionPanels(activeKind?.companions ?? [], activeOperation);
-    return usableCompanionShortcuts(activeCompanions, triageActive ? WAR_ROOM_RESERVED_SHORTCUT_CODES : []).flatMap((companion) => companion.shortcut
-      ? [{
-          commandId: companionShortcutCommandId(activeOperation.pluginId, companion.id),
-          defaultChord: companionDefaultChord(companion.shortcut.code),
-          title: resolveLocalizedText(companion.title, consoleLocale),
-        }]
-      : []) ?? [];
-  }, [consoleLocale, registry.operationKinds, state.activeOperationId, state.operations, triageActive]);
-
-  // 브라우저 세션 중 각 Theater를 처음 여는 시점에 한 번, 그 Theater의 "부팅 시점에 이미 존재하던" 패널 집합을 최소화 대상으로 반환한다.
-  // App boot의 활성 Theater뿐 아니라 이후 선택·전환으로 처음 진입하는 Theater도 깨끗하게 열려, 선택한 패널만 하나씩 표면화된다.
-  // "처음"의 기준은 페이지 수명이 아니라 탭 세션이다 — 콘솔 전환·새로고침으로 같은 탭에 돌아왔을 때
-  // 사용자가 펼쳐둔 패널을 다시 접지 않기 위해서다.
-  // 반환값은 전 Theater를 아우르는 초기 id 목록이고, 실제 최소화는 호출 측이 현재 Theater 패널로 좁힌다.
-  const claimBootPanelMinimization = useCallback((theaterId: string): readonly string[] | null => {
-    if (bootOperationIdsRef.current === null) return null;
-    if (!claimTheaterBootMinimization(theaterId)) return null;
-    return bootOperationIdsRef.current;
-  }, []);
 
   // 확대 표면의 닫힘 통보는 콘솔 수명에 묶는다. 표면 레이어는 /operations 라우트에만
   // 서지만 스토어와 surfaces 능력은 어느 화면에서든 살아 있다 — 레이어에 묶어 두면
@@ -379,8 +265,6 @@ function ConnectedApp() {
 
   useEffect(() => subscribeOperationActivityTracking(), []);
 
-  useEffect(() => subscribeDormantAutoMinimize(), []);
-
   useEffect(() => observeSideBarCollapseMotion(), []);
 
   useEffect(() => {
@@ -395,12 +279,7 @@ function ConnectedApp() {
         setState({ theaterError: error instanceof Error ? error.message : String(error) });
         resolveOnboardingOnBootstrap();
       });
-    const bootOperationsRequestStartedAt = Date.now();
     void fetchOperations(null, abort.signal).then((operations) => {
-      // 요청 시작 뒤 생성된 Operation은 응답에 포함돼도 새 launch로 취급한다.
-      bootOperationIdsRef.current = operations
-        .filter((operation) => operation.ts.createdAt < bootOperationsRequestStartedAt)
-        .map((operation) => operation.id);
       hydrateInitialOperations(operations);
     }).catch(() => {});
     void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
@@ -554,12 +433,6 @@ function ConnectedApp() {
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
-        // War Room은 /operations 데스크톱에서만 켜진다. 그 안의 토글은 War Room을 유지한 채 좌측만 드러낸다.
-        if (isTriageActive() && resolvePanelShortcut() === "apply") {
-          hideWarRoomChromeRestoringFocus(".war-room-sidebar-chrome", toggleWarRoomSideBar, ".war-room-bar [data-war-room-sidebar-anchor]");
-          return;
-        }
-        setTriageActive(false);
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return;
         if (outcome === "reveal") {
@@ -694,14 +567,8 @@ function ConnectedApp() {
 
   return (
     <ComputerScreenShareProvider>
-    <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className={`console-shell${warRoomActive ? " is-war-room" : ""}${conversationLayout ? " is-conversation-layout" : ""}`}>
-        {/* War Room 트레이 — 작업 표시줄 오른쪽 끝. 막대(작업 표시줄)는 Operations 페이지가 세우고, 이 트레이는
-            콘솔 크롬이라 여기 둔다. 도구모음이 War Room 동안 여기에 선다 — 자리는 War Room이 꺼져 있어도 DOM에 남고,
-            바 전체가 hidden이라 그려지지는 않는다. */}
-        {/* 대화 중심 화면은 War Room 을 지원하지 않는다 — 트레이를 세우지 않는다. */}
-        {conversationLayout ? null : <WarRoomBar active={warRoomActive} local={state.channel === "local"} />}
-        <span className="war-room-announcement" role="status" aria-live="polite">{warRoomActive ? t("warRoomChrome.active") : ""}</span>
+    <ActiveCompanionShortcutsProvider value={[]}>
+      <div className={`console-shell${conversationLayout ? " is-conversation-layout" : ""}`}>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
@@ -712,8 +579,8 @@ function ConnectedApp() {
         {/* 대화 중심 화면에는 밴드가 없다 — 찾기·새 Operation·호스트·사용량·도움말·설정은 사이드바 위·아래 줄로, 도구는
             오른쪽 패널 머리의 글자 탭으로 옮겨 갔다(features/workspace/client/conversation). */}
         {mobileLayout || conversationLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
-        {/* 도구모음은 하나다 — 모드는 자리만 바꾼다(상단 바 오른쪽 ↔ War Room 트레이). 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout || conversationLayout ? null : <ConsoleToolbar warRoomActive={warRoomActive} canvas={operationsViewVisible} />}
+        {/* 도구모음은 설정 화면의 밴드에만 선다. 모바일 셸은 자기 탭 막대를 쓴다. */}
+        {mobileLayout || conversationLayout ? null : <ConsoleToolbar canvas={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
@@ -727,7 +594,7 @@ function ConnectedApp() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/operations" element={<Operations state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
                 <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
@@ -755,23 +622,13 @@ function ConnectedApp() {
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
-        {/* 대화 중심 화면 웰컴 카드 — 앞선 안내(첫 실행·What's New)와 열린 팔레트·컴포저가 모두 물러난 뒤에만 선다. */}
-        <ConversationWelcome
-          eligible={
-            conversationLayout && state.bootstrapped && !state.onboardingOpen && !state.whatsNewOpen
-            && !state.operationSearchOpen && !state.quickLaunchOpen && !state.keyboardShortcutsOpen
-            && (state.controlHolder === null || state.controlCurtainDismissed)
-          }
-          onReturned={() => setClassicReturnNotice(true)}
-        />
         <OnboardingHost
-          toursSuspended={warRoomTransitionActive || terminalFocused || mobileLayout}
+          toursSuspended={terminalFocused || mobileLayout}
           core={CORE_ONBOARDING}
           plugins={registry.onboarding}
           language={consoleLocale}
           ports={ONBOARDING_PORTS}
         />
-        <WarRoomTransition local={state.channel === "local"} />
         <ControlCurtain />
         <ToastHost>
           <Toast open={shellTheaterNotice} title={t("chrome.toast.shellNeedsTheater")} onDismiss={() => setShellTheaterNotice(false)} />
@@ -791,16 +648,6 @@ function ConnectedApp() {
             tone="info"
             title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
             onDismiss={() => setThemeNotice(null)}
-          />
-          <Toast
-            open={classicReturnNotice}
-            tone="info"
-            title={t("chrome.conversationWelcome.returned")}
-            message={t("chrome.conversationWelcome.returnedDetail")}
-            actionLabel={t("chrome.conversationWelcome.undo")}
-            // 저장이 된 뒤에만 거둔다 — 실패하면 화면이 이전 화면으로 남고, 알림이 남아 한 번 더 누를 수 있다.
-            onAction={() => { void saveClassicLayout(false).then((saved) => { if (saved) setClassicReturnNotice(false); }); }}
-            onDismiss={() => setClassicReturnNotice(false)}
           />
           <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
           {mobileLayout ? deletionToast : null}

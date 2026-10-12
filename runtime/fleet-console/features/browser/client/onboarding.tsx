@@ -18,14 +18,13 @@ export const browserOnboarding: OnboardingContribution = {
   tours: [
     {
       id: "operation-browser",
-      // 앵커는 Operation 캡션의 브라우저 문 — 에이전트 Operation이면 늘 있으므로 첫 캡션에서 뜬다. 덱 카드의 캡션은 그 버튼을
-      // 숨기고 최소화·숨김 패널의 캡션은 보이지 않으므로 펼쳐진 무대의 캡션만 짚는다. 첫 방문의 모드 투어와 겹치지 않게
-      // 한 박자 미룬다.
+      // 앵커는 대화 화면 캡션의 브라우저 문 — 에이전트 Operation이면 늘 있으므로 첫 캡션에서 뜬다.
+      // 첫 방문의 다른 투어와 겹치지 않게 한 박자 미룬다.
       spotlight: null,
       deferAfterAnotherTour: true,
       walkthrough: [
         {
-          anchor: '.canvas-operation:not(.is-deck-tile):not(.is-minimized) [data-chat-tour="browser"]',
+          anchor: '[data-chat-tour="browser"]',
           title: T("terminal.browser.onboarding.tour.step1Title"),
           body: T("terminal.browser.onboarding.tour.step1Body"),
           example: T("terminal.browser.onboarding.tour.step1Example"),

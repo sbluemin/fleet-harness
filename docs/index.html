@@ -344,7 +344,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     <nav class="nav" aria-label="Sections">
       <a href="#models"><span lang="en">Models</span><span lang="ko">모델</span></a>
       <a href="#objectives"><span lang="en">Objectives</span><span lang="ko">목표</span></a>
-      <a href="#canvas"><span lang="en">Canvas</span><span lang="ko">캔버스</span></a>
+      <a href="#conversation"><span lang="en">Conversation</span><span lang="ko">대화</span></a>
       <a href="#tools"><span lang="en">Tools</span><span lang="ko">도구</span></a>
       <a href="#anywhere"><span lang="en">Anywhere</span><span lang="ko">어디서든</span></a>
     </nav>
@@ -473,8 +473,8 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
                  data-alt-ko="런치 메뉴: Claude의 Fable, Opus, Sonnet 아래로 Codex GPT-6-Sol, xAI Grok-4.7 같은 게이트웨이 모델" />
           </div>
           <figcaption>
-            <span lang="en">Right-click the canvas. Claude's models come first, then every gateway model you've enabled under Settings → AI Gateway. The same list appears in Claude Code's <code>/model</code> picker.</span>
-            <span lang="ko">캔버스를 우클릭하세요. Claude의 모델이 먼저 오고, Settings → AI Gateway에서 켠 모델이 뒤따릅니다. Claude Code의 <code>/model</code> 선택기에도 같은 목록이 나옵니다.</span>
+            <span lang="en">Right-click the sidebar, or press <span class="kbd">⌘</span><span class="kbd">J</span>. Claude's models come first, then every gateway model you've enabled under Settings → AI Gateway. The same list appears in Claude Code's <code>/model</code> picker.</span>
+            <span lang="ko">사이드바를 우클릭하거나 <span class="kbd">⌘</span><span class="kbd">J</span>를 누르세요. Claude의 모델이 먼저 오고, Settings → AI Gateway에서 켠 모델이 뒤따릅니다. Claude Code의 <code>/model</code> 선택기에도 같은 목록이 나옵니다.</span>
           </figcaption>
         </figure>
       </div>
@@ -510,20 +510,14 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     </div>
   </section>
 
-  <!-- Canvas -->
-  <section class="sec" id="canvas">
+  <!-- Conversation -->
+  <section class="sec" id="conversation">
     <div class="shell">
       <div class="sec-head rv">
-        <span class="kicker"><span lang="en">Canvas</span><span lang="ko">캔버스</span></span>
-        <h2 class="h2"><span lang="en">A canvas that <em>arranges itself.</em></span><span lang="ko">스스로 <em>정렬되는</em> 캔버스.</span></h2>
-        <p lang="en">Operations live on an infinite canvas. You choose how much of the arranging you do yourself.</p>
-        <p lang="ko">Operation은 무한 캔버스 위에 놓입니다. 배치를 어디까지 직접 할지는 직접 고릅니다.</p>
-      </div>
-      <div class="modes rv">
-        <div class="mode"><h3>Cruise</h3><p lang="en">Place panels anywhere. Station Keeping keeps them from overlapping.</p><p lang="ko">패널을 원하는 곳에 둡니다. Station Keeping이 서로 겹치지 않게 간격을 지킵니다.</p><span class="keys"></span></div>
-        <div class="mode"><h3><span lang="en">Align all</span><span lang="ko">모두 정렬</span></h3><p lang="en">Lays every panel out as a grid, columns, or rows. Toggle it off and each panel returns to where it was.</p><p lang="ko">모든 패널을 격자·열·행으로 한 번에 늘어놓습니다. 끄면 각자 원래 자리로 돌아갑니다.</p><span class="keys"><span class="kbd">Alt</span><span class="kbd">F</span></span></div>
-        <div class="mode"><h3><span lang="en">Snap layouts</span><span lang="ko">스냅 레이아웃</span></h3><p lang="en">Drag a panel to the top edge for halves, thirds, 2×2 and more. Snap Assist offers panels for the empty slots.</p><p lang="ko">패널을 위쪽 가장자리로 끌면 반·삼분할·2×2 같은 자리에 붙습니다. 빈 칸에는 Snap Assist가 다른 패널을 제안합니다.</p><span class="keys"><span class="kbd">⌘</span><span class="kbd">Alt</span><span class="kbd">←</span><span class="kbd">→</span></span></div>
-        <div class="mode"><h3>War Room</h3><p lang="en">Puts one waiting Operation on stage at a time, across every Theater.</p><p lang="ko">모든 Theater에서 응답을 기다리는 Operation을 하나씩 무대에 올립니다.</p><span class="keys"><span class="kbd">Alt</span><span class="kbd">T</span></span></div>
+        <span class="kicker"><span lang="en">Conversation</span><span lang="ko">대화</span></span>
+        <h2 class="h2"><span lang="en">One conversation <em>at a time.</em></span><span lang="ko">한 번에 <em>대화 하나.</em></span></h2>
+        <p lang="en">The sidebar lists Operations, the middle holds the one you're in, and the right column keeps the Theater's tools. <span class="kbd">Alt</span><span class="kbd">←</span> and <span class="kbd">Alt</span><span class="kbd">→</span> move between Operations in the active Theater.</p>
+        <p lang="ko">사이드바에 Operation이 늘어서고, 가운데는 지금 보고 있는 대화이며, 오른쪽 열은 Theater의 도구를 둡니다. <span class="kbd">Alt</span><span class="kbd">←</span>와 <span class="kbd">Alt</span><span class="kbd">→</span>로 활성 Theater의 Operation을 오갑니다.</p>
       </div>
       <div class="quick rv">
         <span><span class="kbd">⌘</span><span class="kbd">K</span><span lang="en">Go to any Operation, file, or wiki page</span><span lang="ko">Operation·파일·위키 문서로 이동</span></span>
@@ -551,7 +545,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
                alt="The Repository tool: branches, remotes, tags and stashes beside a commit graph of this repository"
                data-alt-ko="저장소 도구: 이 저장소의 커밋 그래프 옆에 브랜치·원격·태그·스태시" />
         </div>
-        <figcaption><span lang="en">Repository, opened over the canvas with <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>. This is this repository's own history.</span><span lang="ko"><span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>로 캔버스 위에 연 저장소 도구. 이 저장소의 실제 히스토리입니다.</span></figcaption>
+        <figcaption><span lang="en">Repository, opened beside the conversation with <span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>. This is this repository's own history.</span><span lang="ko"><span class="kbd">⌘</span> <span class="kbd">⇧</span> <span class="kbd">E</span>로 대화 옆에 연 저장소 도구. 이 저장소의 실제 히스토리입니다.</span></figcaption>
       </figure>
       <div class="split">
         <div class="tools rv">
@@ -641,8 +635,8 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
   <section class="closer" id="start">
     <div class="shell">
       <h2 class="h2 rv"><span lang="en">Start the console. <em>Launch your first Operation.</em></span><span lang="ko">콘솔을 켜고, <em>첫 Operation을 띄우세요.</em></span></h2>
-      <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Add a project folder as a Theater, then right-click the canvas.</p>
-      <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. 프로젝트 폴더를 Theater로 추가하고 캔버스를 우클릭하세요.</p>
+      <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Add a project folder as a Theater, then right-click the sidebar.</p>
+      <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. 프로젝트 폴더를 Theater로 추가하고 사이드바를 우클릭하세요.</p>
       <div class="install rv" role="group" aria-label="Install">
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>

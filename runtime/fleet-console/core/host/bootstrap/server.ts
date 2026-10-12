@@ -2542,9 +2542,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { available: true, reason: null, host };
   }
 
-  /** Desktop 크롬이 따르는 배치 — 대화 중심 화면(기본)에서는 네이티브 컨트롤이 세 열의 맨 위 줄에 선다. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 밴드 높이로 돌아간다. */
+  /** Desktop 크롬이 따르는 배치 — 데스크톱은 대화 중심 화면이라 네이티브 컨트롤이 세 열의 맨 위 줄에 선다. 저장된 classicLayout 은 읽지 않는다. */
   function desktopThemeLayout(): DesktopThemeLayout {
-    return { conversationLayout: !resolveExperimentSettings(consoleSettingsStore.load().general?.experiments).classicLayout };
+    return { conversationLayout: true };
   }
 
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {

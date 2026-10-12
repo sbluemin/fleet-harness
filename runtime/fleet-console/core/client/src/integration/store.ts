@@ -130,7 +130,6 @@ let state: ConsoleState = {
   onboardingOpen: false,
   bootstrapped: false,
   pendingOperationFocus: null,
-  pendingOperationFocusSnap: false,
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   pendingSideBarTheaterLaunch: null,
@@ -764,9 +763,8 @@ export function failAddTheater(error: string): void {
   setState({ addingTheater: false, theaterError: error });
 }
 
-// 선별 처리처럼 "포커스가 Theater를 전환하면 안 되는" 모드가 등록하는 가드 — store는 triage를
-// 모른다(import 방향: triage-store → store). 가드가 true를 반환하는 동안 focusOperation은
-// activeTheater를 보존한 채 포커스 요청만 흘려보낸다.
+// 포커스가 Theater를 전환하면 안 되는 모드가 등록하는 가드. 가드가 true를 반환하는 동안
+// focusOperation은 activeTheater를 보존한 채 포커스 요청만 흘려보낸다.
 let focusTheaterSwitchSuppressed: () => boolean = () => false;
 
 export function registerFocusTheaterSwitchSuppression(guard: () => boolean): void {
@@ -774,8 +772,8 @@ export function registerFocusTheaterSwitchSuppression(guard: () => boolean): voi
 }
 
 /**
- * Operation 을 무대에 드러내는 이동의 표면 정리. 확장 표면은 캔버스를 덮으므로 인스턴스를 전부 닫는다.
- * 레일·사이드바·snap 전체·companion·모두 정렬·War Room 무대 지목 자체는 건드리지 않는다.
+ * 확장 표면은 대화를 덮으므로 인스턴스를 전부 닫는다.
+ * 레일과 사이드바는 건드리지 않는다.
  * 플러그인은 이동 전에 자기 표면을 따로 닫지 않는다 — 닫기 통보는 이 한 경로가 배달한다.
  */
 export function revealOperationStage(): void {
@@ -787,7 +785,7 @@ export function revealOperationStage(): void {
  * 본문을, 부모를 가리키면 부모 자신의 본문을 보인다(보던 구성원 본문에 가려 부모의 질문이 안 보이던 자리). Alt 순환처럼
  * 패널 사이를 걷는 이동은 `keepBody` 로 보던 본문을 그대로 둔다.
  */
-export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean; readonly snapFull?: boolean }): void {
+export function focusOperation(requestedOperationId: string, options?: { readonly keepBody?: boolean }): void {
   const nested = nestedTarget(requestedOperationId);
   const operationId = nested ? nested.parentOperationId! : requestedOperationId;
   const operation = state.operations.find((item) => item.id === operationId);
@@ -803,7 +801,6 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,
-    pendingOperationFocusSnap: options?.snapFull === true,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
     selectedOperationId: null,
     ...body,
@@ -812,7 +809,7 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
 
 export function consumeOperationFocus(): void {
   if (state.pendingOperationFocus === null) return;
-  setState({ pendingOperationFocus: null, pendingOperationFocusSnap: false });
+  setState({ pendingOperationFocus: null });
 }
 
 // 커맨드 밴드 → 사이드바 단방향 요청 신호 — 사이드바가 effect로 소비(consume)한다.
