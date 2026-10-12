@@ -55,14 +55,14 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
    * 사람에게 넘긴 항목의 경계 — 사령관은 넘긴 항목을 처리하는 행위(답·승인·거절·완료·확장·스티어링·후속 폐기)를 하지 못한다.
    * 사람 쪽(사람·Console Use Operation)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
    */
-  const holding = <A extends Ref, R>(targets: (body: A) => readonly PersonHoldTarget[], run: (body: A) => Promise<R> | R, settles = true) => async (body: A): Promise<R> => {
+  const holding = <A extends Ref, R>(targets: (body: A) => readonly PersonHoldTarget[], run: (body: A) => Promise<R> | R, settles = true, ended?: (body: A) => readonly PersonHoldTarget[]) => async (body: A): Promise<R> => {
     const held = liveHolds(body.objectiveId, targets(body));
     if (commodore) {
       if (held[0]) throw new ObjectiveStoreError("held_for_person", undefined, { target: held[0].target, reason: held[0].reason });
       return run(body);
     }
     const result = await run(body);
-    if (settles && held.length) store.personHoldsAnswered(body.objectiveId, held, actor);
+    if (settles && held.length) store.personHoldsAnswered(body.objectiveId, held, actor, ended?.(body));
     return result;
   };
   const missionKinds = (patch: MissionPatchInput): ObjectiveEditKind[] => [
@@ -86,13 +86,14 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
       if (!found) throw new ObjectiveStoreError("unknown_objective");
       return found;
     })), false),
-    // 빈 선택 완료도 후속 선택을 끝낸다 — 완료된 목표에서는 더 이상 후속을 고르지 못하므로 넘긴 후속 선택을 함께 지킨다.
+    // 빈 선택 완료도 후속 선택을 끝낸다 — 완료된 목표에서는 더 이상 후속을 고르지 못하므로 넘긴 후속 선택을 함께 지키고,
+    // 사람의 완료는 고르지 않은 후보가 남아도 그 선택을 「사람이 답함」으로 끝낸다.
     complete: holding((body: CompleteAction) => (body.undone ? [] : ["review", "followup"]), unlessBusy(async (body: CompleteAction) => {
       if (body.undone) return objective(await launch.reopen(body.objectiveId, options(body)));
       if (!body.followups?.length) return objective(await launch.complete(body.objectiveId, options(body)));
       if (!body.batchId) throw new ObjectiveStoreError("invalid_request");
       return objective(await launch.completeWithFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body)));
-    })),
+    }), true, (body: CompleteAction) => (body.undone ? [] : ["followup"])),
     extend: holding(() => ["review"], unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body)))),
     handOff: unlessBusy(({ objectiveId }: Ref) => objective(store.handOff(objectiveId, { by: actor }))),
     // 새 구상은 기준 제안을 갈아 끼운다 — 사람에게 넘긴 제안이 서 있는 동안 사령관은 청하지 못한다.

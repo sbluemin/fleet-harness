@@ -462,7 +462,8 @@ export function personTurnAt(objective: Objective, commodoreActive: boolean): nu
 export function isCommodoreWaiting(objective: Objective): boolean {
   if (objective.operator !== "commodore" || objective.removed || objective.done) return false;
   const kept = (target: (typeof PERSON_HOLD_TARGETS)[number]) => !livePersonHold(objective, target);
-  return !objective.commenced
+  // 출범 전 기준 제안을 사람에게 넘겼으면 개시는 사람의 답을 기다린다(criteria_pending) — 사령관의 일이 아니다.
+  return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
     || (objective.criteriaProposals.length > 0 && kept("criteria"))
     || (objective.decisionRequest !== null && kept("decision"))
     || (objective.awaitingReview && kept("review"))

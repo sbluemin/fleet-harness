@@ -290,9 +290,9 @@ export interface ObjectiveStore {
   personHoldReturn(objectiveId: string, target: PersonHoldTarget, by: ObjectiveReviewer): Objective;
   /**
    * 사람 쪽 행위 뒤 — 행위 전에 서 있던 넘김(`before`) 가운데 그 항목이 사라진 것을 「사람이 답함」으로 끝낸다.
-   * 그새 같은 대상에 새 넘김이 섰으면 건드리지 않는다.
+   * 그새 같은 대상에 새 넘김이 섰으면 건드리지 않는다. `ended` 대상은 항목이 남아 있어도 이 행위로 사람의 선택이 끝났다(완료 뒤 남은 후속).
    */
-  personHoldsAnswered(objectiveId: string, before: readonly ObjectivePersonHold[], by: ObjectiveReviewer): Objective;
+  personHoldsAnswered(objectiveId: string, before: readonly ObjectivePersonHold[], by: ObjectiveReviewer, ended?: readonly PersonHoldTarget[]): Objective;
   /** 새 작업(스티어링)이 생겼다 — 앞선 충족 판단을 모두 거둔다. */
   clearMet(objectiveId: string, by?: ObjectiveActor): Objective;
   criterionAdd(objectiveId: string, text: string, by: ObjectiveActor): Objective;
@@ -1711,12 +1711,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (!hold) throw new ObjectiveStoreError("not_held");
       return withHold(stored, { ...hold, settled: { at: now(), by, outcome: "returned" } });
     }),
-    personHoldsAnswered: (objectiveId, before, by) => update(objectiveId, (stored) => {
+    personHoldsAnswered: (objectiveId, before, by, ended = []) => update(objectiveId, (stored) => {
       const subject = holdSubject(stored);
       let next = stored;
       for (const earlier of before) {
         const hold: StoredPersonHold = { target: earlier.target, ...(earlier.requestId ? { requestId: earlier.requestId } : {}), reason: earlier.reason, at: earlier.at, by: earlier.by };
-        if (earlier.settled || heldItemStands(subject, hold)) continue;
+        if (earlier.settled || (!ended.includes(hold.target) && heldItemStands(subject, hold))) continue;
         const present = next.personHolds?.find((entry) => entry.target === hold.target);
         if (present && present.at !== hold.at) continue;
         next = withHold(next, { ...hold, settled: { at: now(), by, outcome: "answered" } });
