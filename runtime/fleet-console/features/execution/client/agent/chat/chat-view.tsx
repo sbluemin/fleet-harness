@@ -46,6 +46,11 @@ import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDisti
 import { useViewSwitchState } from "../view-switch-store.js";
 import { useConversationLayout } from "../../../../settings/client/use-conversation-layout.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
+import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
+import { getGroupT } from "./group/group-chat-i18n.js";
+import { isGroupConversationRoot, subscribeGroupClusters } from "./group-timeline-store.js";
+import { getState as getConsoleState, subscribe as subscribeConsoleState } from "../../../../../core/client/src/integration/store.js";
+import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
@@ -156,8 +161,14 @@ export function AgentChatView({
   const isMemberChat = isMember || commanderLedger;
   // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
   // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
-  // 원장 보기와 모바일, 토글이 꺼진 캔버스는 지금 모양 그대로다.
-  const conversationStyle = useConversationLayout() && !isMemberChat;
+  // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Operation 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
+  // 말풍선 문법에 서되, 상단 막대·⋮·입력 독·안전 영역 같은 모바일 고유의 틀은 셸과 [data-mobile-surface] 규칙이 그대로 진다.
+  const mobileSurface = useMobileSurface();
+  const conversationStyle = (useConversationLayout() || mobileSurface) && !isMemberChat;
+  // 모바일 대화는 스레드 전체를 처음부터 편다 — 데스크톱 대화 화면(그룹 대화)이 지난 문답을 접지 않는 것과 같다. 「이전 대화」 띠와
+  // 자동 접기는 이 화면에서 서지 않는다(데스크톱 패널의 자동 접기 선호는 그대로 그 패널의 것이다).
+  const wholeThread = mobileSurface && conversationStyle;
+  const speaker = useMobileConversationSpeaker(context.operationId, context.language ?? "en", wholeThread);
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
@@ -199,10 +210,10 @@ export function AgentChatView({
   //
   // 자동 접기 설정(콘솔 단위)을 끄면 앞선 턴을 처음부터 펼친 채 두고, 새 턴과 패널 재활성에서도
   // 접지 않는다. 밴드를 손으로 펼치고 접는 것은 이 패널의 지역 상태라 다른 패널에 번지지 않는다.
-  const autoFold = useChatHistoryAutoFold();
+  const autoFold = useChatHistoryAutoFold() && !wholeThread;
   const autoFoldRef = React.useRef(autoFold);
   autoFoldRef.current = autoFold;
-  const [historyOpen, setHistoryOpen] = React.useState(() => !getTerminalPrefsSnapshot().chatHistoryAutoFold);
+  const [historyOpen, setHistoryOpen] = React.useState(() => wholeThread || !getTerminalPrefsSnapshot().chatHistoryAutoFold);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
   /** 시트가 대화를 얼마나 덮는가. 이 패널이 사는 동안만 기억한다 — 영속 선호가 아니다. */
   const [workTall, setWorkTall] = React.useState(false);
@@ -247,7 +258,6 @@ export function AgentChatView({
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
   const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open";
-  const mobileSurface = useMobileSurface();
   // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
   // 기록에 남는다. 플러그인·Console Use가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
   const lastDispatch = state.turns[state.turns.length - 1]?.dispatch;
@@ -698,7 +708,7 @@ export function AgentChatView({
   return (
     <section
       ref={panelRef}
-      className={`agent-chat${conversationStyle && !mobileSurface ? " is-conversation" : ""}`}
+      className={`agent-chat${conversationStyle ? " is-conversation" : ""}`}
       data-reading-width={readingWidth}
       /* CLI 행은 코드 축이다. 터미널을 따로 고른 경우에도 채팅은 코드 축을 유지한다. */
       /* 구성원 모드에서만 초점을 받을 수 있다 — tabIndex=-1이라 패널 안을 누르면 브라우저가
@@ -776,12 +786,14 @@ export function AgentChatView({
           펼친 높이는 전부 현재 문답 **위**에 생기므로 스크롤은 그만큼 따라가야 한다. 그러지 않으면
           같은 좌표가 세션의 첫 질문을 가리키게 되어, 보던 자리를 잃는다. 위 레이아웃 효과가 바닥
           까지의 거리로 그 자리를 지킨다. */}
-      <HistoryBand
-        count={turns.length - 1}
-        open={historyOpen}
-        onToggle={toggleHistory}
-        label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: turns.length - 1 })}
-      />
+      {wholeThread ? null : (
+        <HistoryBand
+          count={turns.length - 1}
+          open={historyOpen}
+          onToggle={toggleHistory}
+          label={t(historyOpen ? "terminal.chat.historyBandOpen" : "terminal.chat.historyBand", { count: turns.length - 1 })}
+        />
+      )}
       <div className="agent-chat-history" hidden={!historyOpen}>
         {turns.slice(0, -1).map((turn, index) => (
           <ChatTurn
@@ -798,6 +810,7 @@ export function AgentChatView({
             openedTools={openedToolIds}
             onToggleTool={toggleToolId}
             onOpenTool={openToolId}
+            speaker={speaker}
           />
         ))}
       </div>
@@ -816,6 +829,8 @@ export function AgentChatView({
           openedTools={openedToolIds}
           onToggleTool={toggleToolId}
           onOpenTool={openToolId}
+          speaker={speaker}
+          liveSpeaker
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
@@ -1205,9 +1220,18 @@ export const ChatTurn = React.memo(function ChatTurn({
   onToggleTool,
   onOpenTool,
   onRetry,
+  speaker = null,
+  liveSpeaker = false,
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
+  /**
+   * 모바일 대화 문법의 답 발화자 — 있으면 답·흐르는 글을 왼쪽 말풍선으로 세우고 그 옆에 아바타를, 이름이 있으면 말풍선 위에 이름을
+   * 단다(데스크톱 그룹 대화의 발화자 표식을 1:1 대화 크기로 옮긴 것). 데스크톱 패널과 플러그인 기록에는 넘어오지 않는다.
+   */
+  readonly speaker?: MobileConversationSpeaker | null;
+  /** 이 턴의 표식이 발화자의 지금 상태를 보인다 — 마지막 턴만. 지난 턴의 표식은 쉼이다. */
+  readonly liveSpeaker?: boolean;
   /** 모바일 응답 동작 줄의 「다시 시도」 — 마지막 턴에만 넘어온다. */
   readonly onRetry?: () => void;
   readonly openedTools: ReadonlySet<string>;
@@ -1406,14 +1430,17 @@ export const ChatTurn = React.memo(function ChatTurn({
             {/* 중지된 턴에서 흐르던 글도 여기 선다 — Answer가 아니므로 그 이름표를 달지 않고,
                 접힘에 넣지도 않는다. 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이다. */}
             {view.streamingText !== null ? (
-              <StreamedMarkdown
-                className="agent-chat-stream markdown-body"
-                text={view.streamingText}
-                streaming={working && streaming}
-                language={language}
-              />
+              <SpeakerRow speaker={speaker} live={liveSpeaker} named>
+                <StreamedMarkdown
+                  className="agent-chat-stream markdown-body"
+                  text={view.streamingText}
+                  streaming={working && streaming}
+                  language={language}
+                />
+              </SpeakerRow>
             ) : null}
             {!working && view.answer !== null ? (
+              <SpeakerRow speaker={speaker} live={liveSpeaker} named={view.streamingText === null}>
               <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
                 {hasSettledWork
                   ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
@@ -1424,15 +1451,73 @@ export const ChatTurn = React.memo(function ChatTurn({
                   streaming={false}
                   language={language}
                 />
-                {mobileSurface ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
+                {mobileSurface && !speaker ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
               </div>
+              </SpeakerRow>
             ) : null}
+            {/* 말풍선 문법에서는 동작 줄이 말풍선 밖, 그 아래에 선다 — 말풍선은 말만 담는다. */}
+            {!working && view.answer !== null && mobileSurface && speaker
+              ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} />
+              : null}
           </div>
         </div>
       ) : null}
     </>
   );
 });
+
+/** 모바일 대화의 답 발화자 — 표식(아바타)은 늘 서고, 이름은 목표 대화의 뿌리(지휘관)일 때만 선다. */
+interface MobileConversationSpeaker {
+  readonly speaker: ConversationSpeaker;
+  readonly named: boolean;
+}
+
+/**
+ * 모바일 대화의 답 발화자를 고른다. 데스크톱 대화 화면은 목표 대화의 뿌리(구성원이 아직 없어도 지휘관)와 구성원이 있는 채팅 루트를
+ * 그룹 대화로 세우고 답 말풍선 위에 「지휘관」 이름표를, 왼쪽 아래에 몽글 아바타를 단다. 그 밖의 1:1 대화는 이름 없이 선다 — 헷갈릴
+ * 상대가 없다. 모바일은 같은 판정으로 같은 표식을 단다. 그룹 입력창·구성원 전언 줄은 옮기지 않는다(이 화면은 한 에이전트의 본문이다).
+ */
+function useMobileConversationSpeaker(operationId: string, language: "en" | "ko", enabled: boolean): MobileConversationSpeaker | null {
+  const subscribe = React.useCallback((listener: () => void) => {
+    const disposeClusters = subscribeGroupClusters(listener);
+    const disposeConsole = subscribeConsoleState(listener);
+    return () => { disposeClusters(); disposeConsole(); };
+  }, []);
+  const read = React.useCallback(
+    () => isGroupConversationRoot(operationId) || getConsoleState().nestedOperations.some((operation) => operation.parentOperationId === operationId),
+    [operationId],
+  );
+  const groupRoot = React.useSyncExternalStore(subscribe, read, read);
+  return React.useMemo(() => {
+    if (!enabled) return null;
+    return {
+      speaker: { kind: "commander", name: getGroupT(language)("group.commander"), operationId },
+      named: groupRoot,
+    };
+  }, [enabled, groupRoot, language, operationId]);
+}
+
+/** 답 말풍선 한 묶음 — 왼쪽 아래 표식, 말풍선 위 이름. 발화자가 없으면(데스크톱) 말풍선만 그대로 둔다. */
+function SpeakerRow({ speaker, live, named, children }: {
+  readonly speaker: MobileConversationSpeaker | null;
+  readonly live: boolean;
+  /** 이 묶음이 턴의 첫 말풍선이다 — 이름은 턴마다 한 번 선다. */
+  readonly named: boolean;
+  readonly children: React.ReactNode;
+}) {
+  if (!speaker) return <>{children}</>;
+  return (
+    <div className="agent-chat-speaker-row">
+      <span className="agent-chat-speaker-mark">
+        {live ? <LiveSpeakerMark speaker={speaker.speaker} participants={[]} /> : <SpeakerMark speaker={speaker.speaker} />}
+      </span>
+      <div className="agent-chat-speaker-box">
+        {speaker.named && named ? <span className="agent-chat-speaker-name">{speaker.speaker.name}</span> : null}
+        {children}
+      </div>
+    </div>
+  );
+}
 
 const CODE_COPY_COPIED_MS = 1_200;
 const CODE_COPY_FAILED_MS = 3_000;
