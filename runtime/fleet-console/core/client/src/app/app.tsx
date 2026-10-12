@@ -215,6 +215,10 @@ function ConnectedApp() {
   const warRoomTransitionActive = useWarRoomTransitionActive();
   const warRoomActive = warRoomMode && operationsViewVisible && !mobileLayout && !conversationLayoutOn;
   const workFocusRef = useRef<HTMLElement | null>(null);
+  // 화면이 내려간 뒤 그 요소를 포커스 복귀 기억이 붙잡지 않는다. 같은 배치의 War Room 이동은 보존한다.
+  useLayoutEffect(() => {
+    workFocusRef.current = null;
+  }, [conversationLayoutOn, mobileLayout, pathname, state.activeTheaterId]);
   // War Room은 /operations 데스크톱 화면에만 선다. Theater를 바꿔도 War Room은 유지한다 — 작업 표시줄의
   // Theater 메뉴와 다른 Theater의 Operation이 바로 그 전환을 War Room 안에서 하는 길이다.
   // 부팅·호스트 전환 직후 루트('/')에서 '/operations'로 리다이렉트되는 과도기에는 성급히 끄지 않고,
