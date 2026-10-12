@@ -21,6 +21,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   className,
   language = "en",
   transformHtml,
+  siteLinks = false,
 }: {
   readonly text: string;
   readonly streaming: boolean;
@@ -29,6 +30,8 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   /* sanitize 이후의 HTML 후처리 훅(예: 증거 인용 칩). 호출자는 참조가 안정된 함수를 넘겨야
      memo 이득이 유지된다. */
   readonly transformHtml?: (html: string) => string;
+  /* AI 응답 본문만 켠다 — 외부 링크를 사이트 아이콘 + 이름으로 그린다(사람이 쓴 말풍선은 그대로). */
+  readonly siteLinks?: boolean;
 }) {
   const resolveLink = useMarkdownLinkResolver();
   const latestText = React.useRef(text);
@@ -37,7 +40,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   const transform = React.useRef(transformHtml);
   transform.current = transformHtml;
   const render = (value: string) => {
-    const html = renderMarkdown(value, { ...markdownCopyOptions(language), resolveLink }).html;
+    const html = renderMarkdown(value, { ...markdownCopyOptions(language), resolveLink, siteLinks }).html;
     return transform.current ? transform.current(html) : html;
   };
   const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? render(text) : "");
@@ -46,10 +49,10 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   const completedHtml = React.useMemo(
     () => {
       if (streaming) return null;
-      const html = renderMarkdown(text, { ...markdownCopyOptions(language), resolveLink }).html;
+      const html = renderMarkdown(text, { ...markdownCopyOptions(language), resolveLink, siteLinks }).html;
       return transformHtml ? transformHtml(html) : html;
     },
-    [streaming, text, language, transformHtml, resolveLink],
+    [streaming, text, language, transformHtml, resolveLink, siteLinks],
   );
 
   React.useEffect(() => {

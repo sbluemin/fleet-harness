@@ -278,6 +278,17 @@ code.hljs {
   text-decoration-color: var(--brass);
 }
 
+/* 사이트 링크(AI 응답 본문) — 아이콘은 링크 잉크(currentColor)를 따르고 밑줄 밖에 선다.
+   크기는 글자 높이에 묶어 흐르는 동안 매 렌더가 같은 상자를 다시 세워도 줄이 흔들리지 않는다. */
+.md-site-icon {
+  display: inline-block;
+  inline-size: 1em;
+  block-size: 1em;
+  margin-inline-end: 0.3em;
+  vertical-align: -0.14em;
+  flex: none;
+}
+
 .markdown-body ul,
 .markdown-body ol {
   padding-left: var(--space-6);
