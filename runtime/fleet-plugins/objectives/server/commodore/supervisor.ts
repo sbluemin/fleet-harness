@@ -124,6 +124,9 @@ const SETTLED_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["answered", "ret
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
 const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
 
+/** 깨움 문장의 질문 가리킴 — 첫 질문 앞부분. 답은 asks 도구에 있다. */
+const askDetail = (question: string) => `your question "${question.length > 60 ? `${question.slice(0, 59)}…` : question}" (read asks)`;
+
 export function wakeToken(code: WakeCode, count?: number): string {
   return count === undefined ? code : `${code}:${count}`;
 }
@@ -156,7 +159,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "autonomy": return "autonomy turned on";
     case "retry": return "retry requested by the person";
     case "rotated": return "your session was replaced";
-    case "answered": return `the person answered ${plural("item")} you handed them${tail}`;
+    case "answered": return `the person answered ${plural("item")} you handed or asked them${tail}`;
     case "returned": return `the person returned ${plural("item")} to you${tail}`;
     default: return code;
   }
@@ -319,6 +322,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
       boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
+      objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
       ...(deps.execute ? { execute: deps.execute } : {}),
@@ -513,6 +517,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(theaterId), ""); return; }
     wake(runner, reason);
     if (!hasOpenOperated(deps.objectives(theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+    // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
+    for (const ask of deps.store.read(theaterId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
   };
 
   const stop = (theaterId: string, reason: string): Promise<void> => {
@@ -572,6 +578,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       return;
     }
+    // 사람이 사령관의 질문에 답했다 — 답은 asks 도구로 읽는다(깨움 문장에는 싣지 않는다).
+    if (event.op === "transcript" && event.entry.kind === "ask-answered" && runner) { wake(runner, "answered", { bump: true, detail: askDetail(event.entry.answers[0]?.question ?? event.entry.askId) }); return; }
     if (event.op === "transcript" && event.entry.kind === "message" && runner) {
       const { entry } = event;
       const text = entry.objective ? `Objective context: ${JSON.stringify(entry.objective)}\n${entry.text}` : entry.text;

@@ -6,9 +6,10 @@ import { promisify } from "node:util";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
+import { decisionQuestionSchema, MAX_DECISION_QUESTIONS, ownAnswer } from "../types.js";
 import { refuse, text } from "../views.js";
-import type { CommodoreStore } from "./store.js";
-import { COMMODORE_PATROL_MINUTES, patrolIntervalMs, type CommodoreSource } from "./types.js";
+import { askAnswerLines, type CommodoreStore } from "./store.js";
+import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
 
 /**
  * 사령관 전용 도구 `commodore` — createSession 의 tools.custom 으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
@@ -41,6 +42,8 @@ export interface CommodoreToolsOptions {
   /** Theater 루트의 실경로 — 읽기 도구의 담김 경계. */
   readonly theaterRoot: string;
   readonly store: CommodoreStore;
+  /** 이 Theater 의 목표 — 질문이 가리킬 목표를 확인한다. 없으면 목표를 가리키는 질문을 받지 않는다. */
+  readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 사령관이 다음 순찰을 예약했다. 상한은 호출 전에 적용돼 있다. */
   readonly onNextWake: (at: number, reason: string) => void;
   readonly now?: () => number;
@@ -68,6 +71,21 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
     },
   });
 
+  const openCount = () => (state().asks ?? []).filter((ask) => !ask.settled).length;
+  /** 질문 한 건 — 선택지는 이름으로, 답은 질문마다 고른 이름·직접 쓴 말·내 의견 표시로. */
+  const askView = (ask: CommodoreAsk) => ({
+    askId: ask.id, at: stamp(ask.at), reason: ask.reason, objectiveId: ask.objectiveId,
+    state: ask.settled?.outcome ?? "open",
+    questions: ask.questions.map((question) => ({ text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })),
+    ...(ask.settled ? { settledAt: stamp(ask.settled.at) } : {}),
+    // 답 줄은 저장된 답의 순서다 — 내 의견(선택지를 모두 버리고 쓴 말) 표시는 같은 답에서 판정한다.
+    ...(ask.settled?.outcome === "answered" ? { answers: askAnswerLines(ask).map((line, index) => {
+      const answer = ask.settled!.answers![index]!;
+      const question = ask.questions.find((entry) => entry.id === answer.questionId);
+      return { ...line, ...(question && ownAnswer(question, answer) ? { own: true } : {}) };
+    }) } : {}),
+  });
+
   return [
     tool("directive", "The person's standing directive for this Theater: current text, revision number and when it last changed. It is the highest authority you receive and you cannot edit it. Read it at the start of a turn that says the directive changed, and whenever you need to weigh a decision against it.", z.object({}).strict(), () => {
       const { directive } = state();
@@ -86,6 +104,27 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
       const at = now() + Math.round(minutes * 60_000);
       options.onNextWake(at, reason);
       return { at: stamp(at), reason, patrolIntervalMinutes: intervalMinutes, ...(minutes < inMinutes ? { shortened: true } : {}) };
+    }),
+    // 사람에게 묻기 — 보드 항목이 아닌 물음. 질문 모양과 상한은 지휘관의 결정 요청과 같다(멤버·임무 가리킴만 없다).
+    tool("ask_person", "Ask the person something that is not a waiting board item (those you hand over with hand_to_person). Each question has 2-4 options or none; the person may always answer in their own words. Their answer wakes you; read it with asks.", z.object({
+      questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS),
+      reason: z.string().trim().min(1).max(MAX_ASK_REASON),
+      objectiveId: z.string().min(1).max(128).optional(),
+    }).strict(), ({ questions, reason, objectiveId }) => {
+      const objective = objectiveId ? options.objective?.(objectiveId) ?? null : null;
+      if (objectiveId && !objective) throw new Error("unknown_objective");
+      const { ask, reused } = options.store.askAdd(options.theaterId, { questions, reason, objective: objective ? { id: objective.id, title: objective.title } : null });
+      return { askId: ask.id, reused, open: openCount() };
+    }),
+    tool("withdraw_ask", "Withdraw a question you asked the person that is still open (it no longer needs their answer).", z.object({ askId: z.string().min(1).max(128) }).strict(), ({ askId }) => {
+      const { withdrawn } = options.store.askWithdraw(options.theaterId, askId);
+      return { askId, withdrawn, open: openCount() };
+    }),
+    tool("asks", "Your questions to the person: open ones, and answered or withdrawn ones with the person's answers, newest first. Reading an answer marks it read.", z.object({ limit: z.number().int().min(1).max(20).optional() }).strict(), ({ limit }) => {
+      const asks = [...(state().asks ?? [])].reverse().slice(0, limit ?? 20);
+      const answered = asks.filter((ask) => ask.settled?.outcome === "answered" && ask.readAt === undefined).map((ask) => ask.id);
+      if (answered.length) options.store.askRead(options.theaterId, answered);
+      return { asks: asks.map(askView), open: openCount() };
     }),
     tool("read_file", "Read a UTF-8 text file of the Theater (repository) by path relative to its root, read-only. Large files are cut at 64 KiB with truncated: true. Symbolic links that leave the Theater are refused.", z.object({ path: z.string().min(1).max(1_024), offset: z.number().int().nonnegative().optional() }).strict(), async ({ path: requested, offset }) => {
       const file = containedPath(options.theaterRoot, requested);

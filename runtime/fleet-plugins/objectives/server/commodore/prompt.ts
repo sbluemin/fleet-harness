@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 13;
+export const COMMODORE_PROMPT_VERSION = 14;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -80,11 +80,14 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
 - Some waiting items are the person's to decide. Which ones is your judgment,
   and the directive adjusts it. hand_to_person gives one to the person with
   your reason; it is theirs until they answer it or return it to you.
+- A question that is not a waiting board item, such as whether to open these
+  candidates as objectives, goes to the person through ask_person, with the
+  same judgment. Their answer wakes you; commodore.asks returns it.
 
 # Continuity
 - Each turn opens with a wake note naming what changed: an objective's status
   (with its move, such as "in progress → awaiting review"), what waits on the
-  board, the directive, intel, the person's message, a stalled objective, a
+  board, the directive, intel, the person's message or answer, a stalled objective, a
   patrol, no open objective of yours or a Console restart. Changes you made yourself are not
   reported back to you.
 - Board reads give each objective an operator. Changes to objectives the
