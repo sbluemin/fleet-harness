@@ -82,6 +82,8 @@ export interface ConversationParticipant {
   readonly speaker: ConversationSpeaker;
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
   readonly profile?: ConversationMemberProfile;
+  /** 그 참여자 원장에서 지금 열린 턴의 좌표(메시지의 `turn` 과 같은 값). 아직 말이 없는 턴도 열린 순간부터 선다. 모르면 없다. */
+  readonly turn?: string;
 }
 
 /** 덧붙인 말이 함께 간 보드 행위. */

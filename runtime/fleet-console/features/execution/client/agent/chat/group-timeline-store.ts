@@ -227,11 +227,14 @@ function snapshot(rootOperationId: string | null, board: OperationClusterConvers
   const journals = new Map<string, ConversationJournal>();
   const unavailable: string[] = [];
   let loading = false;
-  for (const participant of participants) {
+  for (const [index, participant] of participants.entries()) {
     const id = participant.speaker.operationId;
     if (!id) continue;
     const record = held.get(id);
     if (record?.root === rootOperationId) { journals.set(id, record.journal); loading ||= record.loading; }
+    // 열린 턴은 원장만 안다 — 말이 아직 없는 새 턴도 턴 접기가 지난 턴의 답을 다시 접지 않도록 그대로 싣는다.
+    const openTurn = record?.root === rootOperationId ? record.journal.turn : null;
+    if (openTurn) participants[index] = { ...participant, turn: openTurn };
     // 휴면 참여자의 지난 대화를 읽었으면 읽을 수 있는 원장이다. 다시 live가 됐는데 소켓이 없으면(터미널 재개) 안내가 다시 선다.
     const readable = record?.available === true || (record?.history === "done" && runtime[id]?.lifecycle === "dormant");
     if (!readable) unavailable.push(id);
