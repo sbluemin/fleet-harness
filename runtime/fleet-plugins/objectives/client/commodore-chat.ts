@@ -118,11 +118,9 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
   const out: AgentConversationEntry[] = [];
-  let turnOpen = false;
   for (const entry of entries) {
     switch (entry.kind) {
       case "wake": {
-        turnOpen = true;
         if (entry.reasons.every((reason) => reason === "message" || reason.startsWith("message:"))) break;
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t("objectives.commodore.log.woke"), ...entry.reasons.map((reason) => reasonWord(t, reason))].join(" · ") });
         break;
@@ -146,15 +144,12 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "result":
-        turnOpen = false;
         if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }) });
         break;
       case "session":
-        turnOpen = false;
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
         break;
       case "error": {
-        turnOpen = false;
         const code = errorWord(t, entry.code);
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }) });
         break;
@@ -177,9 +172,14 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  const streamed = turnOpen ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  if (streamed) out.push({ kind: "message", id: "live", at: null, operationId: "", speaker: commodore, text: streamed, format: "markdown", streaming: true });
-  return out;
+  return commodoreConversationLiveEntries(t, entries, live, out);
+}
+
+/** 확정 투영은 그대로 두고 흐르는 말 하나만 붙인다 — 델타마다 지난 말풍선 객체를 다시 만들지 않는다. */
+export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[]): readonly AgentConversationEntry[] {
+  const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
+  const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("objectives.commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /**

@@ -7,7 +7,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
 
-import { commodoreConversationEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
@@ -184,7 +184,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
-  const items = useMemo(() => commodoreConversationEntries(t, theaterId, entries, live, board.objectives, view?.state.asks), [t, theaterId, entries, live, board.objectives, view?.state.asks]);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks), [t, theaterId, entries, board.objectives, view?.state.asks]);
+  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed), [t, entries, live, confirmed]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);

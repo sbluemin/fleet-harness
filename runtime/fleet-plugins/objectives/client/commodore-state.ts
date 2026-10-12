@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
+import { createConversationStream } from "@fleet-console/sdk/conversation";
 
 import type { AgentChatTranscriptProps, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
@@ -139,16 +140,16 @@ function boardSnapshot(theaterId: string): { readonly active: boolean; readonly 
   return value;
 }
 
-function setTheater(theaterId: string, patch: Partial<TheaterCommodore>): void {
+function setTheater(theaterId: string, patch: Partial<TheaterCommodore>, announce = true): void {
   const current = theaters.get(theaterId) ?? EMPTY;
   if (patch.view && (patch.view.state.transcriptClearedThrough ?? 0) < current.clearedThrough) return;
   const clearedThrough = Math.max(current.clearedThrough, patch.clearedThrough ?? 0, patch.view?.state.transcriptClearedThrough ?? 0);
   const cleared = clearedThrough > current.clearedThrough;
   const next = { ...current, ...patch, clearedThrough };
   if (cleared) { next.entries = []; next.live = []; next.hasMore = false; }
-  next.entries = (patch.entries ?? next.entries).filter((entry) => entry.seq > clearedThrough);
+  if (patch.entries || cleared) next.entries = (patch.entries ?? next.entries).filter((entry) => entry.seq > clearedThrough);
   theaters.set(theaterId, next);
-  notify();
+  if (announce) notify();
 }
 
 function readEnabled(): boolean {
@@ -203,22 +204,20 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     if (next) void loadCommodore(next);
     for (const listener of [...activeTheaterListeners]) listener();
   });
-  const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
-    const event = payload as CommodoreEvent | null;
-    if (!event || typeof event.theaterId !== "string") return;
-    if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 });
+  const applyEvent = (event: CommodoreEvent) => {
+    if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
     const current = theaters.get(event.theaterId);
     if (event.op === "transcript") {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
       if (!current?.transcriptLoaded) return;
       if (current.entries.some((entry) => entry.seq === event.entry.seq)) return;
-      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) });
+      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
       return;
     }
     if (event.op === "live") {
       // 기록을 열지 않은 Theater 의 흐름은 버린다 — 그릴 화면이 없고, 열 때는 확정 줄을 읽는다.
       if (!current?.transcriptLoaded) return;
-      setTheater(event.theaterId, { live: appendLive(current.live, event.live) });
+      setTheater(event.theaterId, { live: appendLive(current.live, event.live) }, false);
       return;
     }
     if (!current?.view) {
@@ -227,13 +226,33 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     }
     if (event.op === "state") {
       const autonomy = event.state.autonomy;
-      setTheater(event.theaterId, { view: { ...current.view, state: event.state, active: current.view.enabled && autonomy } });
+      setTheater(event.theaterId, { view: { ...current.view, state: event.state, active: current.view.enabled && autonomy } }, false);
       return;
     }
-    if (event.op === "run") setTheater(event.theaterId, { view: { ...current.view, run: event.run } });
+    if (event.op === "run") setTheater(event.theaterId, { view: { ...current.view, run: event.run } }, false);
+  };
+  const stream = createConversationStream<CommodoreEvent>({
+    delta: (event) => event.op === "live" && event.live.kind === "text-delta" ? { key: event.theaterId, text: event.live.text } : null,
+    withText: (event, text) => ({ op: "live", theaterId: event.theaterId, live: { kind: "text-delta", text } }),
+    apply: (events) => {
+      let changed = false;
+      for (const event of events) {
+        const before = theaters.get(event.theaterId);
+        applyEvent(event);
+        changed ||= before !== theaters.get(event.theaterId);
+      }
+      if (changed) notify();
+    },
+  });
+  const offEvents = ctx.consoleEvents.subscribe(COMMODORE_CHANNEL, (payload) => {
+    const event = payload as CommodoreEvent | null;
+    if (!event || typeof event.theaterId !== "string") return;
+    if (event.op === "live" && !theaters.get(event.theaterId)?.transcriptLoaded) return;
+    stream.push(event);
   });
   // 단절 중의 사건은 다시 오지 않는다 — 읽어 둔 Theater 를 처음부터 다시 읽는다.
   const offReconnect = ctx.consoleEvents.onReconnect?.(() => {
+    stream.flush();
     for (const [theaterId, current] of theaters) {
       if (current.view) void loadCommodore(theaterId, true);
       if (current.transcriptLoaded) void loadTranscript(theaterId, { reset: true });
@@ -254,6 +273,7 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
   return () => {
     offConsole();
     offEvents();
+    stream.dispose();
     offReconnect?.();
     offExperiments();
     if (installed === ctx) installed = null;

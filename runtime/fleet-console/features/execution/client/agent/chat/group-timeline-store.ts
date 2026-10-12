@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
-import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineSnapshot, OperationClusterConversation } from "@fleet-console/sdk/conversation";
+import { createConversationStream, type ConversationParticipant, type ConversationPreview, type ConversationSpeaker, type GroupTimelineSnapshot, type OperationClusterConversation } from "@fleet-console/sdk/conversation";
 import type { OperationClusterSource, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { getState, ownOperationRuntime, subscribe as subscribeConsole } from "../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../core/client/src/hooks/use-store.js";
@@ -167,12 +167,31 @@ export function installGroupTimeline(ctx: {
       stopHistory(record);
       const current = record;
       current.loading = true;
+      const stream = createConversationStream<NonNullable<ReturnType<typeof readChatJournalEvent>>>({
+        delta: (row) => row.event.kind === "text-delta" ? { key: operation.id, text: row.event.text } : null,
+        withText: (row, text) => ({ ...row, event: { kind: "text-delta", text } }),
+        apply: (events) => {
+          if (held.get(operation.id) !== current) return;
+          let changed = false;
+          for (const row of events) {
+            if (row.event.kind === "snapshot-end") { current.journal = current.staging; current.loading = false; changed = true; continue; }
+            const before = current.staging;
+            current.staging = reduceConversationJournal(current.staging, row, operation.id);
+            if (row.event.kind === "replay-start" && row.seq > 1) current.staging = { ...current.staging, truncated: true };
+            if (!current.loading || row.event.kind === "cleared") {
+              current.journal = current.staging;
+              changed ||= before !== current.staging;
+            }
+          }
+          if (changed && !disposed) notify();
+        },
+      });
       const socket = createChatSocketSession({
         operationId: operation.id,
         onConnection: (connection) => {
           if (disposed || held.get(operation.id) !== current) return;
           current.available = connection === "open";
-          if (connection === "open") { current.staging = EMPTY_CONVERSATION_JOURNAL; current.loading = true; }
+          if (connection === "open") { stream.flush(); current.staging = EMPTY_CONVERSATION_JOURNAL; current.loading = true; }
           else if (connection === "lost") current.loading = false;
           notify();
         },
@@ -180,13 +199,10 @@ export function installGroupTimeline(ctx: {
           if (disposed || held.get(operation.id) !== current) return;
           const row = readChatJournalEvent(raw);
           if (!row) return;
-          if (row.event.kind === "snapshot-end") { current.journal = current.staging; current.loading = false; notify(); return; }
-          current.staging = reduceConversationJournal(current.staging, row, operation.id);
-          if (row.event.kind === "replay-start" && row.seq > 1) current.staging = { ...current.staging, truncated: true };
-          if (!current.loading || row.event.kind === "cleared") { current.journal = current.staging; notify(); }
+          stream.push(row);
         },
       });
-      current.socket = socket;
+      current.socket = { ...socket, dispose: () => { stream.dispose(); socket.dispose(); } };
       socket.start();
     }
     notify();

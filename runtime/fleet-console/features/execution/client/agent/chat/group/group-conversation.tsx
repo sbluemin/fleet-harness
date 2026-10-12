@@ -81,29 +81,43 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
+  const programmaticTop = React.useRef<number | null>(null);
   const last = entries[entries.length - 1];
   const first = entries[0]?.id;
-  const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${last?.kind === "message" ? last.text.length : 0}:${snapshot.decision?.id ?? ""}`;
+  const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${snapshot.decision?.id ?? ""}`;
   const placed = React.useRef<{ readonly first: string | undefined; readonly height: number } | null>(null);
 
-  // 바닥을 따라가는 중일 때만 새 말을 따라 내려간다. 위로 올려 읽는 중이면 그 자리를 지킨다 — 앞에 줄이 붙으면(이전 기록 읽기)
-  // 늘어난 높이만큼 내려 보던 줄을 그 자리에 둔다.
+  // 이전 쪽이 앞에 붙는 경우에만 커밋에서 높이를 읽어 보던 줄을 지킨다. 글자 조각은 이 경로를 돌리지 않는다.
   React.useLayoutEffect(() => {
     const log = logRef.current;
     if (!log) return;
     const before = placed.current;
-    if (nearBottomRef.current) log.scrollTop = log.scrollHeight;
-    else if (before && before.first !== undefined && before.first !== first && entries.some((entry) => entry.id === before.first)) log.scrollTop += log.scrollHeight - before.height;
-    placed.current = { first, height: log.scrollHeight };
-  }, [growth]); // eslint-disable-line react-hooks/exhaustive-deps -- growth 가 entries 의 변화를 대신한다.
+    let height = before?.height ?? 0;
+    if (before?.first !== undefined && before.first !== first && entries.some((entry) => entry.id === before.first)) {
+      height = log.scrollHeight;
+      if (!nearBottomRef.current) {
+        log.scrollTop += height - before.height;
+        programmaticTop.current = log.scrollTop;
+      }
+    }
+    placed.current = { first, height };
+  }, [first]); // eslint-disable-line react-hooks/exhaustive-deps -- 첫 좌표 변화만 이전 쪽의 삽입일 수 있다.
 
-  // 말풍선 마크다운·첨부·표식은 첫 배치 뒤에 자라기도 한다 — 바닥을 따라가는 중이면 칼럼이 자란 만큼도 따라간다.
+  // 초기 배치·흐르는 말·늦은 마크다운·결정 카드 모두 레이아웃 완료 뒤 한 통지에서 따라간다.
   React.useEffect(() => {
     const log = logRef.current;
     const column = log?.firstElementChild;
     if (!log || !column || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => { if (nearBottomRef.current) log.scrollTop = log.scrollHeight; });
+    const observer = new ResizeObserver(() => {
+      const height = log.scrollHeight;
+      placed.current = { first: placed.current?.first, height };
+      if (nearBottomRef.current) {
+        log.scrollTop = height;
+        programmaticTop.current = log.scrollTop;
+      }
+    });
     observer.observe(column);
+    observer.observe(log);
     return () => observer.disconnect();
   }, []);
 
@@ -151,7 +165,10 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
         aria-busy={snapshot.loading}
         onScroll={(event) => {
           const log = event.currentTarget;
-          nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+          // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 다음 조각이 먼저 자라도 따라가기를 끊지 않는다.
+          if (log.scrollTop === programmaticTop.current) return;
+          programmaticTop.current = null;
+          nearBottomRef.current = (placed.current?.height ?? log.scrollHeight) - log.scrollTop - log.clientHeight < 60;
         }}
       >
         <div className="group-chat-column">
@@ -466,7 +483,7 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -490,7 +507,16 @@ function TimelineEntry({ entry, previous, breakBefore, tail, live, participants,
     case "plugin-notice": return <PluginNoticeLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "note": return <NoteLine entry={entry} language={language} />;
   }
-}
+}, (before, after) => {
+  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel) return false;
+  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report) return false;
+  if (after.entry.kind !== "message") return true;
+  const speaker = after.entry.speaker;
+  if (sameSpeaker(before.previous, speaker) !== sameSpeaker(after.previous, speaker)) return false;
+  // 최신 표식만 참여자 활동을 읽는다. 다른 참여자의 델타 때문에 지난 말까지 다시 그리지 않는다.
+  const activity = (participants: readonly ConversationParticipant[]) => participants.find((participant) => speakerKey(participant.speaker) === speakerKey(speaker))?.activity;
+  return !after.live || activity(before.participants) === activity(after.participants);
+});
 
 /** 누구의 말도 아닌 가운데 줄 — 세션 교대·실패 알림(플러그인 대화만 쓴다). 실패는 신호 잉크다. */
 function NoteLine({ entry, language }: {

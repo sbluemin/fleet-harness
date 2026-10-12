@@ -116,6 +116,17 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);
 
+/** 원장 줄과 표시 발화자가 같으면 확정 줄 객체를 재사용한다. 수명·연결 상태가 아닌 약한 투영 캐시다. */
+const resolvedEntries = new WeakMap<GroupTimelineEntry, { readonly key: string; readonly entry: GroupTimelineEntry }>();
+function resolvedEntry(item: GroupTimelineEntry, speakers: readonly ConversationSpeaker[], build: () => GroupTimelineEntry): GroupTimelineEntry {
+  const key = JSON.stringify(speakers);
+  const cached = resolvedEntries.get(item);
+  if (cached?.key === key) return cached.entry;
+  const entry = build();
+  resolvedEntries.set(item, { key, entry });
+  return entry;
+}
+
 export function composeGroupTimeline(input: {
   readonly rootOperationId: string | null;
   readonly participants: readonly ConversationParticipant[];
@@ -135,14 +146,23 @@ export function composeGroupTimeline(input: {
       if (item.kind === "message") {
         const previous = entries.get(item.id);
         // 서버가 부여한 사람 발송 ID가 같을 때만 원본을 지휘관 사본보다 우선한다. 본문/시간으로 추측하지 않는다.
-        if (previous?.kind !== "message" || previous.copied || !item.copied) entries.set(item.id, { ...item, speaker: resolve(item.speaker), ...(item.recipient ? { recipient: resolve(item.recipient) } : {}) });
+        if (previous?.kind !== "message" || previous.copied || !item.copied) {
+          const speaker = resolve(item.speaker);
+          const recipient = item.recipient ? resolve(item.recipient) : undefined;
+          entries.set(item.id, resolvedEntry(item, recipient ? [speaker, recipient] : [speaker], () => ({ ...item, speaker, ...(recipient ? { recipient } : {}) })));
+        }
         continue;
       }
-      if (item.kind === "plugin-notice") { entries.set(item.id, { ...item, recipient: resolve(item.recipient) }); continue; }
+      if (item.kind === "plugin-notice") {
+        const recipient = resolve(item.recipient);
+        entries.set(item.id, resolvedEntry(item, [recipient], () => ({ ...item, recipient })));
+        continue;
+      }
       if (item.kind !== "delegation") continue;
       const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
       const sender = senderId ? speakers.get(senderId)! : resolve(item.sender);
-      const next = { ...item, sender, recipients: item.recipients.map(resolve) };
+      const resolvedRecipients = item.recipients.map(resolve);
+      const next = resolvedEntry(item, [sender, ...resolvedRecipients], () => ({ ...item, sender, recipients: resolvedRecipients })) as Extract<GroupTimelineEntry, { kind: "delegation" }>;
       const previous = entries.get(item.id);
       if (previous?.kind !== "delegation") { entries.set(item.id, next); continue; }
       const received = previous.received || next.received;
