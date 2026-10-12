@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ownAnswer, type Decision, type DecisionQuestion, type Objective } from "../server/types.js";
+import { ownAnswer, type Decision, type DecisionQuestion, type Objective, type PersonHoldTarget } from "../server/types.js";
 import { actorDid } from "./actors.js";
 import { livePersonHold } from "../server/board-state.js";
 import { decisionTurn, useCommodoreBoard } from "./commodore-state.js";
@@ -222,6 +222,55 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
         : unconfirmed ? <p className="objectives-decision-fault" role="status">{t("objectives.decision.unknown")}</p>
         : null}
     </section>
+  );
+}
+
+/**
+ * 결정 요청 밖의 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
+ * 「사령관에게 돌려주기」를 단다. 그 대상의 넘김(`livePersonHold`)이 서 있을 때만 그린다. 돌려주기가 실패하면 한 줄로 말한다.
+ * 폰(`phone`)은 폰 문법을 쓰고, `label` 이 있으면 제 카드로 선다(그 대상의 표면이 폰에 따로 없을 때).
+ */
+export function PersonHoldNote({ objective, target, t, phone = false, label }: {
+  readonly objective: Objective;
+  readonly target: Exclude<PersonHoldTarget, "decision">;
+  readonly t: T;
+  readonly phone?: boolean;
+  readonly label?: string;
+}) {
+  const hold = livePersonHold(objective, target);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [objective.id, hold?.at]);
+  if (!hold) return null;
+  const giveBack = async () => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    try { await returnPersonHold(objective.id, target); }
+    catch { setFailed(true); }
+    finally { setBusy(false); }
+  };
+  if (phone) {
+    const body = (
+      <>
+        <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{hold.reason}</p>
+        {failed ? <p className="objectives-m-fault" role="status">{t("objectives.decision.giveBackFailed")}</p> : null}
+        <div className="objectives-m-ucard-ft">
+          <span className="objectives-m-sp" />
+          <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={busy} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
+        </div>
+      </>
+    );
+    return label ? <section className="objectives-m-card" aria-label={label}><h3 className="objectives-m-card-label">{label}</h3>{body}</section> : body;
+  }
+  return (
+    <div className="objectives-hold">
+      <p className="objectives-decision-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={hold.reason} /></p>
+      <div className="objectives-hold-acts">
+        {failed ? <span className="objectives-decision-fault" role="status">{t("objectives.decision.giveBackFailed")}</span> : null}
+        <button type="button" className="objectives-decision-giveback" disabled={busy} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
+      </div>
+    </div>
   );
 }
 

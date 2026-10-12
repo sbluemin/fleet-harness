@@ -11,7 +11,7 @@ import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
-import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
+import { DecisionGlyph, DecisionList, DecisionRequestBlock, PersonHoldNote } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { useCommodoreConversationActive } from "./commodore-conversation.js";
@@ -1737,6 +1737,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           {approveAll ? <button type="button" className="objectives-btn is-small objectives-approve-all" onClick={() => void call("/criterion/approve-all", { objectiveId: objective.id })}>{t("objectives.criteria.approveAll")}</button> : null}
         </div>
         <div id="objectives-sec-criteria" hidden={!criteriaOpen}>
+          {/* 사령관이 넘긴 기준 제안 — 승인·거절은 사람의 차례다. 넘긴 이유와 돌려주기를 제안 줄 위에 둔다. */}
+          {proposals.length > 0 ? <PersonHoldNote objective={objective} target="criteria" t={t} /> : null}
           {objective.criteria.map((criterion, index) => {
             const proposal = proposals.find((candidate) => candidate.target === criterion.id);
             const round = criterionExtension(criterion.id);
@@ -2014,6 +2016,9 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
         {objective.decisionRequest && !objective.done ? (
           hideHead ? null : <DecisionRequestBlock objective={objective} t={t} language={language} send={sendDecision} missionNumber={numberOf} memberMark={memberMarkOf} onOpenSession={focusOperation} onShowMission={showMission} />
         ) : decisionTrace ? <p className="objectives-decision-trace" role="status">{decisionTrace}</p> : null}
+        {/* 완료 검토·후속 후보 고르기는 아래 띠에서 한다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 띠 바로 위에 둔다. */}
+        <PersonHoldNote objective={objective} target="review" t={t} />
+        <PersonHoldNote objective={objective} target="followup" t={t} />
         <ActionBand
           objective={objective}
           t={t}

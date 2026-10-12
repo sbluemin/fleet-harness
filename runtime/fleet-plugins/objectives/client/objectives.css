@@ -1200,6 +1200,9 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 /* 사령관이 넘긴 이유 — 머리 아래 옅은 면 한 단락. 머리말만 굵다. */
 .objectives-decision-handed { margin: 0; padding: 6px 8px; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; overflow-wrap: anywhere; }
 .objectives-decision-handed b { margin-right: 6px; color: var(--text-primary); }
+/* 결정 요청 밖의 넘김(기준·검토·후속) — 이유 한 줄 아래 오른쪽 끝에 「사령관에게 돌려주기」. 결정 칸과 같은 바깥 여백. */
+.objectives-hold { display: flex; flex-direction: column; gap: 6px; margin: 4px 10px 8px; }
+.objectives-hold-acts { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-ui); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }
 .objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }

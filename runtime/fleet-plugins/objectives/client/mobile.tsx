@@ -17,6 +17,7 @@ import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaun
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
+import { PersonHoldNote } from "./decisions.js";
 import { ObjectiveResults } from "./results.js";
 import { focusOperation, hasDecisionRequest, post, returnPersonHold, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
@@ -394,6 +395,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
+        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 제 카드로 세운다. */}
+        <PersonHoldNote objective={objective} target="review" t={t} phone label={t("objectives.objectives.review")} />
+        <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
@@ -691,6 +695,7 @@ function ProposalsCard({ objective, t, language, api, say }: { readonly objectiv
   return (
     <section className="objectives-m-card objectives-m-props" aria-label={t("objectives.criteria.title")}>
       <h3 className="objectives-m-card-label">{t("objectives.criteria.pending", { count: proposals.length })}</h3>
+      <PersonHoldNote objective={objective} target="criteria" t={t} phone />
       {proposals.map((proposal) => {
         const index = proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) : -1;
         const target = index >= 0 ? objective.criteria[index]! : null;
