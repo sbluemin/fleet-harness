@@ -10,8 +10,8 @@ import { operationActivityVisual, type OperationActivityVisual } from "../../../
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { GlanceHudModel } from "./glance-hud.js";
-import type { GroupContextMenuAlign } from "./group-context-menu.js";
-import { resolveAccentColor } from "./operation-accent.js";
+import type { GroupContextMenuAlign } from "../sidebar/group-context-menu.js";
+import { resolveAccentColor } from "../operation-accent.js";
 import type { SnapZoneFraction } from "./snap-layouts.js";
 import { SnapMark } from "./snap-mark.js";
 

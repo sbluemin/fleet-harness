@@ -7,7 +7,7 @@ import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import type { CanvasArenaInsets } from "../canvas/canvas-store.js";
+import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
@@ -32,7 +32,7 @@ import { closeOperationBrowserSplit, openOperationBrowserSplit, useOperationBrow
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
-import { PluginOperationRenderer } from "../canvas/canvas.js";
+import { PluginOperationRenderer } from "../operation-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
@@ -503,7 +503,7 @@ function sameOverflow(a: readonly OverflowTab[], b: readonly OverflowTab[]): boo
 
 interface ConversationStageProps {
   readonly state: ConsoleState;
-  readonly insets: CanvasArenaInsets;
+  readonly insets: ArenaInsets;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly onClose: (operationId: string) => void;
@@ -1006,7 +1006,7 @@ interface SplitSeat {
  * 않는다. 레일(오른쪽 패널) 옆에 둘 자리가 모자라면 칸이 레일 위로 덮는다(레일은 그 아래 그대로 산다). 그것도 모자라면 칸을
  * 세우지 않는다 — Fleet 브라우저는 기존 시트 기하로 뜨고, Operation 브라우저는 열지 않는다.
  */
-function resolveSplitSeat(viewportWidth: number, insets: CanvasArenaInsets): SplitSeat | null {
+function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets): SplitSeat | null {
   const fit = (available: number) => available - CONVERSATION_MIN_WIDTH >= SPLIT_MIN_WIDTH
     ? Math.max(SPLIT_MIN_WIDTH, Math.min(Math.round(available / 2), available - CONVERSATION_MIN_WIDTH))
     : null;

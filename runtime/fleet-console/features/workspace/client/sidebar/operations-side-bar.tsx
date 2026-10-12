@@ -15,14 +15,15 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { focusToolbarItemQuietly } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { GroupContextMenu } from "../canvas/group-context-menu.js";
-import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
+import { GroupContextMenu } from "./group-context-menu.js";
+import { operationAccentFromNode, resolveAccentColor } from "../operation-accent.js";
+import { getTheaterCanvasSnapshot } from "../canvas/canvas-store.js";
+import { getTheaterGroupCollapse, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
@@ -1228,6 +1229,7 @@ export function OperationsSideBar({
             && drag.dropIndex === theaters.length;
           if (!isActiveTheater) {
             const theaterCanvas = getTheaterCanvasSnapshot(theater.id);
+            const theaterGroups = getTheaterGroupCollapse(theater.id);
             const inactiveEntries = buildTheaterEntries({
               theaterId: theater.id,
               operations,
@@ -1247,8 +1249,8 @@ export function OperationsSideBar({
                 {...aliasEditingFor(theater.id)}
                 entries={theaterCollapsed ? [] : inactiveEntries}
                 groups={groups.filter((group) => group.theaterId === theater.id)}
-                collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
-                operationAccent={theaterCanvas.operationAccent}
+                collapsedGroups={new Set(theaterGroups.collapsedGroups)}
+                operationAccent={theaterGroups.operationAccent}
                 collapsed={theaterCollapsed}
                 statusAxis={statusAxis}
                 showStatusLiveTick={showStatusLiveTick}

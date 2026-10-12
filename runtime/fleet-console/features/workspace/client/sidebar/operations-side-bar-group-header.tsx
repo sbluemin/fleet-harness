@@ -3,7 +3,7 @@ import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getFir
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationGroup } from "../../../../core/client/src/integration/types.js";
-import { resolveAccentColor } from "../canvas/operation-accent.js";
+import { resolveAccentColor } from "../operation-accent.js";
 import { useSideBarRowStyle } from "./side-bar-row-style.js";
 
 interface GroupHeaderProps {

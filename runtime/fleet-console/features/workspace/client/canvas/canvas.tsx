@@ -8,7 +8,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, ClientExecutionProvider, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../../../../core/client/src/integration/api.js";
 import { availableCompanionPanels, isBlockingDialogOpen } from "../../../../core/client/src/integration/shortcuts.js";
@@ -30,14 +30,14 @@ import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyCon
 import { animateViewportTo, claimTopZIndex, consumeAlignOffRestored, consumeAlignStayedRelease, consumePendingFitAllOperations, consumeStayedReleaseGeometries, detachAlignAllPanel, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getAlignOffRestoredCount, getCompanionPanelVisibilityOverrides, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, MIN_OPERATION_HEIGHT, MIN_OPERATION_WIDTH, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, reconcileAlignAll, rejoinAlignAllPanel, releaseSnapHold, releaseSnapHoldOperation, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setOperationGeometry, setSnapHoldZones, setTheaterOperationMinimized, settleOperationGeometry, setViewport, SNAP_FULL_PRESET_ID, syncSnapHoldGeometry, useAlignActivationNonce, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useMinimized, type CanvasArenaInsets, type CanvasWorldRect, type OperationGeometry } from "./canvas-store.js";
 import { applySnapZone, closeCompanionLayer, toggleOperationSnapFull } from "./snap-full.js";
 import { escapeSelectorValue, flightTiming, flyPanelBetweenRects, flyPanelMotionGhost, glideAcrossLayerSwitch, playMinimizeFlight } from "./panel-motion.js";
-import { CanvasContextMenu } from "./canvas-context-menu.js";
+import { CanvasContextMenu } from "../sidebar/canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { UseRequestCorner, type UseRequestSource } from "../../../execution/client/agent/use-request-corner.js";
-import { resolveAccentColor } from "./operation-accent.js";
+import { resolveAccentColor } from "../operation-accent.js";
 import { CanvasGrid, ModeTitle, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
 import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
-import type { GroupContextMenuAlign } from "./group-context-menu.js";
+import type { GroupContextMenuAlign } from "../sidebar/group-context-menu.js";
 import { OperationFrame, type OperationDragPointer } from "./operation-frame.js";
 import { SNAP_FULL_ZONES, SNAP_MIN_ZOOM, SNAP_PRESETS, SNAP_TOP_FULL_EDGE, evenAlignBodies, snapEdgeHitFor, snapEmptyZoneHitFor, snapFullZone, snapPointAtTopEdge, snapPointInRect, snapPointInTopBand, snapZoneHitFor, snapZonesFor, snapZonesResized, type SnapRect, type SnapZoneFraction, type SnapZoneHit, type SnapZoneSet } from "./snap-layouts.js";
 import { SnapAssist, SnapGhost, SnapHandle, SnapLayoutBar, SnapLayoutMenu, type SnapAssistCandidate, type SnapZoneRef } from "./snap-layouts-ui.js";
@@ -45,6 +45,7 @@ import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operation
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { companionSlotWeightsFor, COMPANION_CRAMPED_SLOT_RATIO, COMPANION_KEYBOARD_STEP_PX, COMPANION_MIN_SLOT_PX, COMPANION_SESSION_SLOT_ID, COMPANION_SLOT_GAP_PX, resetCompanionSlotWeights, resolveCompanionSlotWidths, setCompanionSlotWeights, useCompanionSlotWeights } from "./companion-widths.js";
+import { PluginOperationRenderer } from "../operation-renderer.js";
 import { disarmTriageSetAside, dismissTriageOperation, getTriageMapHeldStageId, useTriageMapOpen, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageMapOpen, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, publishTriageStage, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, setTriageDecisionRoots, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 // 모드 전환 제목(킥커·제목·설명)이 서 있는 길이. 패널 glide(--duration-slow + 슬롯 stagger)와
@@ -83,28 +84,6 @@ interface ContextMenuRequest {
   readonly anchor: CanvasPoint;
   readonly canvasPoint: CanvasPoint;
   readonly theaterId?: string;
-}
-
-interface PluginOperationRendererProps {
-  readonly active: boolean;
-  readonly keyboardFocusRequestId?: number;
-  readonly capabilities: ReturnType<typeof createHostCapabilities>;
-  readonly geometry: OperationGeometry;
-  readonly operation: OperationNode;
-  readonly theme: ConsoleTheme;
-  readonly language: "en" | "ko";
-  readonly viewportZoom: number;
-  readonly runtimeState: OperationRuntimeState | null;
-  readonly onActivate: () => void;
-  readonly onClose: () => void;
-  readonly onGeometryChange: (geometry: OperationGeometry) => void;
-  readonly onRequestCompanions: (open: boolean) => void;
-  readonly companionsOpen: boolean;
-  readonly hiddenCompanionPanelIds: readonly string[];
-  readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
-  readonly companionPanelIds?: readonly string[];
-  readonly bodyLive?: boolean;
-  readonly render: (context: OperationRenderContext) => unknown;
 }
 
 const DEFAULT_SHELL_WIDTH = 560;
@@ -2511,65 +2490,6 @@ function renderPluginOperation(operation: OperationNode, options: {
 function nestedSubjectName(parent: OperationNode, member: OperationNode): string {
   const prefix = `${parent.title} › `;
   return member.title.startsWith(prefix) && member.title.length > prefix.length ? member.title.slice(prefix.length) : member.title;
-}
-
-export function PluginOperationRenderer({
-  active,
-  keyboardFocusRequestId,
-  capabilities,
-  geometry,
-  operation,
-  theme,
-  language,
-  viewportZoom,
-  runtimeState,
-  onActivate,
-  onClose,
-  onGeometryChange,
-  onRequestCompanions,
-  companionsOpen,
-  hiddenCompanionPanelIds,
-  onSetCompanionPanelVisible,
-  companionPanelIds,
-  bodyLive,
-  render,
-}: PluginOperationRendererProps) {
-  return render({
-    operationId: operation.id,
-    theaterId: operation.theaterId,
-    pluginId: operation.pluginId,
-    type: operation.type,
-    operation,
-    geometry,
-    active,
-    ...(keyboardFocusRequestId === undefined ? {} : { keyboardFocusRequestId }),
-    zoom: viewportZoom,
-    theme,
-    language,
-    api: capabilities.api,
-    lifecycle: capabilities.lifecycle,
-    terminal: capabilities.terminal,
-    notifications: capabilities.notifications,
-    operations: capabilities.operations,
-    preferences: capabilities.preferences,
-    settings: capabilities.settings,
-    runtime: capabilities.runtime,
-    runtimeState,
-    ...(bodyLive === undefined ? {} : { bodyLive }),
-    statusDetail: capabilities.statusDetail,
-    composer: capabilities.composer,
-    navigate: capabilities.navigate,
-    shell: capabilities.shell,
-    rail: capabilities.rail,
-    onActivate,
-    onClose,
-    onGeometryChange,
-    onRequestCompanions,
-    companionsOpen,
-    hiddenCompanionPanelIds,
-    onSetCompanionPanelVisible,
-    ...(companionPanelIds === undefined ? {} : { companionPanelIds }),
-  }) as ReactNode;
 }
 
 function PluginRenderError({ messageKey }: { readonly messageKey: "canvas.plugin.operationFailed" | "canvas.plugin.companionFailed" }) {

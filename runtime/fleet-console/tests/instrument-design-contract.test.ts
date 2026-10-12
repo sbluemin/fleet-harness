@@ -71,7 +71,7 @@ const OWNED_SOURCES = [
   "app/app.tsx",
   "../../../features/workspace/client/canvas/canvas-store.ts",
   "../../../features/workspace/client/canvas/canvas-overlays.tsx",
-  "../../../features/workspace/client/canvas/canvas-context-menu.tsx",
+  "../../../features/workspace/client/sidebar/canvas-context-menu.tsx",
   "../../../features/workspace/client/canvas/canvas-minimap.tsx",
   "../../../features/workspace/client/canvas/canvas.tsx",
   "../../../features/workspace/client/operations.tsx",
@@ -714,7 +714,7 @@ describe("Instrument core design contract", () => {
   it("denies the canvas a scroll port so a focused overhanging descendant cannot shift the board", () => {
     const components = source("styles/components.css");
     const canvasBlock = components.match(/\n\.operations-canvas \{[\s\S]*?\n\}/)?.[0] ?? "";
-    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
 
     // hidden은 스크롤바만 감출 뿐 스크롤 포트를 남긴다 — 밖으로 나간 자손에 포커스가 닿으면
     // 브라우저가 이 컨테이너를 굴려 판 전체가 밀린 채 남는다. clip은 그 포트를 만들지 않는다.
@@ -793,7 +793,7 @@ describe("Instrument core design contract", () => {
 
   it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
     const menuBlock = components.match(/\n\.canvas-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
 
     // 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼 읽힌다 — 스크롤 포트(휠·키보드·
@@ -820,7 +820,7 @@ describe("Instrument core design contract", () => {
     const minimap = source("../../../features/workspace/client/canvas/canvas-minimap.tsx");
     const canvas = source("../../../features/workspace/client/canvas/canvas.tsx");
     const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
     expect(minimap).toContain('{t("canvas.minimap.label")}');
     expect(minimap).toContain("onPointerMove={onPointerMove}");
     expect(minimap).toContain("onJump({");
@@ -3258,7 +3258,7 @@ describe("Instrument core design contract", () => {
 
   it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
     // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
     const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
     const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
@@ -3369,7 +3369,7 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
-    expect(source("../../../features/workspace/client/canvas/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
+    expect(source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
     // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
     expect(systemCluster).not.toContain("command-band-settings");
@@ -4231,7 +4231,7 @@ describe("Effort track interaction grammar", () => {
     // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
     // 쓰므로 문구가 갈라지지 않는다.
     const common = source("i18n/messages/common.ts");
-    const canvasMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const canvasMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
     expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
     expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
     for (const surface of [composer, canvasMenu]) {
@@ -4317,7 +4317,7 @@ describe("Effort track interaction grammar", () => {
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
     const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
-    const canvasMenu = source("../../../features/workspace/client/canvas/canvas-context-menu.tsx");
+    const canvasMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 

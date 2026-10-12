@@ -20,8 +20,9 @@ import { SNAP_MIN_ZOOM, SNAP_PRESETS, snapZoneHitFor } from "./canvas/snap-layou
 import { applySnapZone, closeCompanionLayer, snapOperationToFullZone } from "./canvas/snap-full.js";
 import { playRestoreFlight } from "./canvas/panel-motion.js";
 import { OperationsCanvas } from "./canvas/canvas.js";
-import { GroupContextMenu, type GroupContextMenuAlign } from "./canvas/group-context-menu.js";
-import { operationAccentFromNode } from "./canvas/operation-accent.js";
+import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
+import { operationAccentFromNode } from "./operation-accent.js";
+import { getTheaterGroupCollapse } from "./sidebar/group-collapse-store.js";
 import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, exitTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, isTriageMapOpen, pickTriageOperation, recordTriageActivity, toggleTriageMap, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, useTriageActive } from "./canvas/triage-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
@@ -990,7 +991,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       kind="chip"
       operation={menuOperation}
       groups={state.groups.filter((group) => group.theaterId === menuOperation.theaterId)}
-      accentKey={getTheaterCanvasSnapshot(menuOperation.theaterId).operationAccent[menuOperation.id]
+      accentKey={getTheaterGroupCollapse(menuOperation.theaterId).operationAccent[menuOperation.id]
         ?? operationAccentFromNode(menuOperation)}
       anchor={operationMenu.anchor}
       align={operationMenu.align}

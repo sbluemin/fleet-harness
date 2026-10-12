@@ -7,7 +7,7 @@ import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-co
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { fetchOperations, putOperationOrder } from "./api.js";
-import { clearLegacyOperationOrder, readLegacyOperationOrder } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { clearLegacyOperationOrder, readLegacyOperationOrder } from "./legacy-operation-order.js";
 import { readQuickLaunchSelection, writeQuickLaunchPinned } from "../../../../features/execution/client/quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";

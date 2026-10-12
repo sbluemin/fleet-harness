@@ -384,7 +384,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   // 시각 헤더 없이도 보조기술에는 메뉴의 역할을 온전히 알린다. 플러그인 이름이나 동작 이름을
   // 상자 위에 반복하지 않아 첫 번째 실제 선택지가 곧 메뉴의 시작점이 되게 한다.
-  const menuLabel = t("canvas.menu.aria");
+  const menuLabel = t("sidebar.menu.aria");
   // Shell은 더 이상 Operation이 아니라 확대 표면이므로 실행 카탈로그에 아예 없다.
   const launchCatalog = catalog.filter((plugin) => plugin.kinds.length > 0);
 
@@ -787,7 +787,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             </div>
             );
           })}
-        </> : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+        </> : <p className="theater-menu-empty">{t("sidebar.menu.empty")}</p>}
         {footerItems && footerItems.length > 0 ? (
           <div role="group">
             <div className="theater-menu-divider" role="separator" />

@@ -1,5 +1,28 @@
 import { useSyncExternalStore } from "react";
 
+import { getArenaInsets, setArenaInsets, subscribeArenaInsets, type ArenaInsets } from "../conversation/arena-insets.js";
+import {
+  getGroupCollapseSlice,
+  getGroupCollapseTheaterId,
+  bumpStoredTheaterRevision,
+  loadGroupCollapseForTheater,
+  pruneOperationAccents,
+  registerGroupCollapsePersistHook,
+  setOperationAccent as setStoredOperationAccent,
+  toggleGroupCollapsed as toggleStoredGroupCollapsed,
+  toggleTheaterGroupCollapsed as toggleStoredTheaterGroupCollapsed,
+} from "../sidebar/group-collapse-store.js";
+
+export type { ArenaInsets as CanvasArenaInsets } from "../conversation/arena-insets.js";
+export {
+  useCollapsedGroups,
+  useOperationAccent,
+  useStoredTheaterRevision,
+} from "../sidebar/group-collapse-store.js";
+export const setCanvasArenaInsets = setArenaInsets;
+export const getCanvasArenaInsets = getArenaInsets;
+export const subscribeCanvasArenaInsets = subscribeArenaInsets;
+
 
 export interface OperationGeometry {
   readonly x: number;
@@ -38,13 +61,8 @@ export interface CanvasViewportSize {
    캔버스 박스에서 이 인셋을 뺀 사각형이 "아레나" — 사용자가 실제로 보는 유효 뷰포트다.
    월드 변환은 아레나 원점에 앵커되므로(canvas.tsx) 저장된 viewport/geometry는 계속
    아레나-상대 좌표다. fit-all·focus·모드 슬롯·미니맵은 전부 아레나 크기로 계산해야
-   패널이 부유 크롬 밑으로 배치되지 않는다(전면화 리스크 감사 계약). */
-export interface CanvasArenaInsets {
-  readonly left: number;
-  readonly top: number;
-  readonly right: number;
-  readonly bottom: number;
-}
+   패널이 부유 크롬 밑으로 배치되지 않는다(전면화 리스크 감사 계약).
+   인셋 값 자체는 대화 화면과 공유하는 arena-insets 스토어가 소유한다. */
 
 export interface CanvasWorldRect {
   readonly x: number;
@@ -170,7 +188,6 @@ const alignLayoutListeners = new Set<Listener>();
 const alignActivationListeners = new Set<Listener>();
 const focusLayersByTheater = new Map<string, FocusLayerState>();
 let activeTheaterId: string | null = null;
-let storedTheaterRevision = 0;
 let saveTimer: number | null = null;
 let state: CanvasState = EMPTY_STATE;
 let focusLayer: FocusLayerState | null = null;
@@ -314,10 +331,7 @@ export function setState(patch: Partial<CanvasState>): void {
 }
 
 export function toggleGroupCollapsed(groupId: string): void {
-  const collapsed = state.collapsedGroups.includes(groupId)
-    ? state.collapsedGroups.filter((id) => id !== groupId)
-    : [...state.collapsedGroups, groupId];
-  setState({ collapsedGroups: collapsed });
+  setState({ collapsedGroups: toggleStoredGroupCollapsed(groupId) });
 }
 
 // 비활성 Theater의 그룹 접힘은 해당 Theater 저장소에만 즉시 반영한다. 현재 캔버스 전환이나 다른
@@ -327,29 +341,7 @@ export function toggleTheaterGroupCollapsed(theaterId: string, groupId: string):
     toggleGroupCollapsed(groupId);
     return;
   }
-  const theaterState = readStoredState(theaterId);
-  const collapsedGroups = theaterState.collapsedGroups.includes(groupId)
-    ? theaterState.collapsedGroups.filter((id) => id !== groupId)
-    : [...theaterState.collapsedGroups, groupId];
-  writeStoredState(theaterId, { ...theaterState, collapsedGroups });
-  // 현재 Theater 값은 바꾸지 않되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
-  state = { ...state };
-  storedTheaterRevision += 1;
-  emit();
-}
-
-export function useCollapsedGroups(): readonly string[] {
-  return useSyncExternalStore(subscribe, getCollapsedGroupsSnapshot, getCollapsedGroupsSnapshot);
-}
-
-/** 색만 읽는 구독 — 패널 끌기·캔버스 이동의 매 프레임(지오메트리·뷰포트)에는 깨어나지 않는다. */
-export function useOperationAccent(): Readonly<Record<string, string>> {
-  return useSyncExternalStore(subscribe, getOperationAccentSnapshot, getOperationAccentSnapshot);
-}
-
-/** 비활성 Theater 저장값이 바뀐 횟수 — 활성 Theater 조각만 구독하는 화면이 저장된 다른 Theater 스냅샷을 다시 읽게 한다. */
-export function useStoredTheaterRevision(): number {
-  return useSyncExternalStore(subscribe, getStoredTheaterRevision, getStoredTheaterRevision);
+  toggleStoredTheaterGroupCollapsed(theaterId, groupId);
 }
 
 // 즉시 이동(pan 드래그·검색 이동 등). 진행 중 줌 보간을 취소하고 current·target을 같은 값으로 맞춘다.
@@ -374,27 +366,6 @@ export function animateViewportTo(viewport: CanvasViewport): void {
 
 export function setCanvasViewportSize(viewportSize: CanvasViewportSize): void {
   canvasViewportSize = viewportSize;
-}
-
-// 아레나 인셋은 Operations 페이지(크롬 구성의 소유자)가 사이드바/레일 상태에서 계산해 심는다.
-// 스토어는 fit-all의 분모·중심 계산에서만 소비한다 — 알림 없는 모듈 값(뷰포트 크기와 동일 계약).
-let canvasArenaInsets: CanvasArenaInsets = { left: 0, top: 0, right: 0, bottom: 0 };
-const arenaInsetListeners = new Set<() => void>();
-
-export function setCanvasArenaInsets(insets: CanvasArenaInsets): void {
-  const changed = insets.left !== canvasArenaInsets.left || insets.right !== canvasArenaInsets.right || insets.top !== canvasArenaInsets.top || insets.bottom !== canvasArenaInsets.bottom;
-  canvasArenaInsets = insets;
-  if (changed) for (const listener of [...arenaInsetListeners]) listener();
-}
-
-/** 확정 인셋이 바뀔 때 — 플러그인 면이 지도 폭을 따라가는 창구(consoleState.subscribeMapInsets)가 쓴다. */
-export function subscribeCanvasArenaInsets(listener: () => void): () => void {
-  arenaInsetListeners.add(listener);
-  return () => { arenaInsetListeners.delete(listener); };
-}
-
-export function getCanvasArenaInsets(): CanvasArenaInsets {
-  return canvasArenaInsets;
 }
 
 export function requestFitAllOperations(): void {
@@ -436,8 +407,8 @@ export function fitAllOperations(): void {
   releaseSnapHold();
   // 분모와 중심은 캔버스 박스가 아니라 아레나다 — 전면 캔버스에서 박스 크기로 맞추면
   // 가장자리 패널이 부유 크롬 밑에 착지하고 그 중심이 viewport로 영속된다.
-  const arenaWidth = Math.max(1, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right);
-  const arenaHeight = Math.max(1, canvasViewportSize.height - canvasArenaInsets.top - canvasArenaInsets.bottom);
+  const arenaWidth = Math.max(1, canvasViewportSize.width - getArenaInsets().left - getArenaInsets().right);
+  const arenaHeight = Math.max(1, canvasViewportSize.height - getArenaInsets().top - getArenaInsets().bottom);
   const minimized = hiddenGeometryIds();
   const visibleGeometries = Object.entries(state.operations)
     .filter(([operationId]) => !minimized.has(operationId))
@@ -494,7 +465,7 @@ export function setTheaterOperationGeometry(
   });
   // 현재 Theater 값은 그대로 두되 구독 컴포넌트가 비활성 Theater 스냅샷을 다시 읽게 한다.
   state = { ...state };
-  storedTheaterRevision += 1;
+  bumpStoredTheaterRevision();
   emit();
 }
 
@@ -532,7 +503,7 @@ export function setTheaterOperationMinimized(theaterId: string, sessionId: strin
     snapHold: minimized ? snapHoldWithout(theaterState.snapHold, [sessionId]) : theaterState.snapHold,
   });
   state = { ...state };
-  storedTheaterRevision += 1;
+  bumpStoredTheaterRevision();
   emit();
 }
 
@@ -645,13 +616,8 @@ export function restoreOperation(sessionId: string): void {
 }
 
 export function setOperationAccent(operationId: string, accentKey: string | null): void {
-  const operationAccent = { ...state.operationAccent };
-  if (accentKey === null || accentKey.trim() === "") {
-    delete operationAccent[operationId];
-  } else {
-    operationAccent[operationId] = accentKey;
-  }
-  setState({ operationAccent });
+  const stored = accentKey === null || accentKey.trim() === "" ? null : accentKey;
+  setState({ operationAccent: setStoredOperationAccent(operationId, stored).operationAccent });
 }
 
 // 공유 z-index 카운터에서 다음 최상단 값을 발급한다. Operation을 활성화·생성할 때 호출한다.
@@ -815,10 +781,10 @@ export function setStationKeeping(enabled: boolean): void {
 export function getCanvasArenaRect(): CanvasWorldRect | null {
   if (canvasViewportSize.width <= 0 || canvasViewportSize.height <= 0) return null;
   return {
-    x: canvasArenaInsets.left,
-    y: canvasArenaInsets.top,
-    width: Math.max(0, canvasViewportSize.width - canvasArenaInsets.left - canvasArenaInsets.right),
-    height: Math.max(0, canvasViewportSize.height - canvasArenaInsets.top - canvasArenaInsets.bottom),
+    x: getArenaInsets().left,
+    y: getArenaInsets().top,
+    width: Math.max(0, canvasViewportSize.width - getArenaInsets().left - getArenaInsets().right),
+    height: Math.max(0, canvasViewportSize.height - getArenaInsets().top - getArenaInsets().bottom),
   };
 }
 
@@ -830,10 +796,10 @@ const MODE_ARENA_CHROME_PULL = 14;
 export function getCanvasSnapArenaRect(): CanvasWorldRect | null {
   const arena = getCanvasArenaRect();
   if (!arena) return null;
-  const left = Math.max(0, canvasArenaInsets.left - MODE_ARENA_CHROME_PULL);
-  const right = Math.max(0, canvasArenaInsets.right - MODE_ARENA_CHROME_PULL);
+  const left = Math.max(0, getArenaInsets().left - MODE_ARENA_CHROME_PULL);
+  const right = Math.max(0, getArenaInsets().right - MODE_ARENA_CHROME_PULL);
   return {
-    x: left - canvasArenaInsets.left,
+    x: left - getArenaInsets().left,
     y: 0,
     width: Math.max(0, canvasViewportSize.width - left - right),
     height: arena.height,
@@ -1303,10 +1269,8 @@ export function pruneOperations(validSessionIds: readonly string[]): void {
   // 사라진 세션은 최소화 목록에서도 함께 제거해 유령 칩이 태스크바에 남지 않게 한다.
   const minimized = state.minimized.filter((sessionId) => valid.has(sessionId));
   const minimizedChanged = minimized.length !== state.minimized.length;
-  const prunedAccent = Object.fromEntries(Object.entries(state.operationAccent).filter(([sessionId]) => valid.has(sessionId)));
-  const accentChanged = Object.keys(prunedAccent).length !== Object.keys(state.operationAccent).length;
-  // 색이 그대로면 참조도 그대로 둔다 — 색만 구독하는 사이드바가 지오메트리 정리에 깨어나지 않게.
-  const operationAccent = accentChanged ? prunedAccent : state.operationAccent;
+  const operationAccent = pruneOperationAccents(valid).operationAccent;
+  const accentChanged = operationAccent !== state.operationAccent;
   const companionOperationId = getCompanionOperationId();
   // companion은 목록 부재만으로 즉시 정리하지 않는다 — ops 푸시 레이스로 일시 부재가 흔하며,
   // 지속 부재의 정리는 캔버스 렌더 측 유예 효과가 소유한다. 최소화는 사용자 확정 액션이라 즉시 닫는다.
@@ -1339,7 +1303,12 @@ export function loadForTheater(theaterId: string | null): void {
   cancelZoomTween();
   saveFocusLayerForActiveTheater();
   activeTheaterId = theaterId;
+  loadGroupCollapseForTheater(theaterId);
   state = theaterId ? readStoredState(theaterId) : EMPTY_STATE;
+  if (theaterId) {
+    const groupSlice = getGroupCollapseSlice();
+    state = { ...state, collapsedGroups: groupSlice.collapsedGroups, operationAccent: groupSlice.operationAccent };
+  }
   // 유지는 줌 100%의 것이다 — 다른 줌으로 저장된 상태(구버전·손상)면 자유 배치로 떨어진다.
   // 정렬도 자리 복원 없이 풀리고, 전체 칸은 되돌아갈 자리(restore)까지 함께 사라진다.
   if (state.snapHold && Math.abs(state.viewport.zoom - 1) > ZOOM_TWEEN_ZOOM_EPSILON) {
@@ -1586,18 +1555,6 @@ function getMinimizedSnapshot(): readonly string[] {
   return state.minimized;
 }
 
-function getCollapsedGroupsSnapshot(): readonly string[] {
-  return state.collapsedGroups;
-}
-
-function getOperationAccentSnapshot(): Readonly<Record<string, string>> {
-  return state.operationAccent;
-}
-
-function getStoredTheaterRevision(): number {
-  return storedTheaterRevision;
-}
-
 function emitFocusLayer(): void {
   focusLayerRevision += 1;
   for (const listener of focusLayerListeners) listener();
@@ -1710,7 +1667,12 @@ function writeStoredState(theaterId: string | null, value: CanvasState): void {
       const parsed: unknown = existing ? JSON.parse(existing) : null;
       if (isRecord(parsed)) legacyOrder = parsed.operationOrder;
     } catch { /* 손상된 저장값은 캔버스 상태로 교체한다. */ }
-    window.localStorage.setItem(storageKey(theaterId), JSON.stringify({ ...value, ...(legacyOrder !== undefined ? { operationOrder: legacyOrder } : {}) }));
+    const groupSlice = theaterId === getGroupCollapseTheaterId() ? getGroupCollapseSlice() : null;
+    window.localStorage.setItem(storageKey(theaterId), JSON.stringify({
+      ...value,
+      ...(groupSlice ? { collapsedGroups: groupSlice.collapsedGroups, operationAccent: groupSlice.operationAccent } : {}),
+      ...(legacyOrder !== undefined ? { operationOrder: legacyOrder } : {}),
+    }));
   } catch {
     // 저장 실패는 캔버스 복구성만 낮추므로 런타임 흐름을 막지 않는다.
   }
@@ -1814,46 +1776,6 @@ function normalizeAlignAll(value: unknown, operations: Record<string, OperationG
   return { layout, savedGeometries, savedSnapHold, detached };
 }
 
-// 서버 order가 아직 없는 Theater에서만 호출되는 구 브라우저 순서의 이관 전용 읽기다.
-export function readLegacyOperationOrder(theaterId: string): readonly string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(storageKey(theaterId));
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return isRecord(parsed) ? normalizeOperationOrder(parsed.operationOrder) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function clearLegacyOperationOrder(theaterId: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = window.localStorage.getItem(storageKey(theaterId));
-    if (!raw) return;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isRecord(parsed) || !("operationOrder" in parsed)) return;
-    delete parsed.operationOrder;
-    // 활성 Theater의 지연 저장도 순서를 포함하지 않아 다시 생겨나지 않는다.
-    window.localStorage.setItem(storageKey(theaterId), JSON.stringify(parsed));
-  } catch {
-    // 브라우저 저장소를 쓸 수 없으면 다음 수화에서 다시 시도한다.
-  }
-}
-
-function normalizeOperationOrder(value: unknown): readonly string[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const operationOrder: string[] = [];
-  for (const id of value) {
-    if (typeof id !== "string" || seen.has(id)) continue;
-    seen.add(id);
-    operationOrder.push(id);
-  }
-  return operationOrder;
-}
-
 function normalizeOperationAccent(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {};
   const operationAccent: Record<string, string> = {};
@@ -1947,3 +1869,7 @@ function normalizeStringArray(value: unknown): readonly string[] {
   }
   return result;
 }
+
+registerGroupCollapsePersistHook(() => {
+  scheduleSave();
+});

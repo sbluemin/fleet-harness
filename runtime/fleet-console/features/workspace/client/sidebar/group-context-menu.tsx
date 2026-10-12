@@ -8,7 +8,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import type { OperationGroup, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { accentToneLabels, resolveAccentColor } from "./operation-accent.js";
+import { accentToneLabels, resolveAccentColor } from "../operation-accent.js";
 
 export interface GroupContextMenuChipActions {
   readonly onSetAccent: (key: string | null) => void;
@@ -123,7 +123,7 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
         ref={cardRef}
         className="group-context-menu-card"
         role="menu"
-        aria-label={props.kind === "group-header" ? t("canvas.groupMenu.groupOptions", { name: props.group.name }) : t("canvas.groupMenu.operationOptions")}
+        aria-label={props.kind === "group-header" ? t("sidebar.groupMenu.groupOptions", { name: props.group.name }) : t("sidebar.groupMenu.operationOptions")}
         style={style ?? { position: "fixed", left: 0, top: 0, visibility: "hidden" }}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -155,7 +155,7 @@ function ChipMenuContent({
 }) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(false);
-  const [newName, setNewName] = useState(() => t("canvas.groupMenu.defaultName", { n: groups.length + 1 }));
+  const [newName, setNewName] = useState(() => t("sidebar.groupMenu.defaultName", { n: groups.length + 1 }));
   const composingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -178,7 +178,7 @@ function ChipMenuContent({
           {onOpen ? (
             <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onOpen(); }}>
               <span className="group-context-menu-item__glyph" aria-hidden="true"><OpenGlyph /></span>
-              <span className="group-context-menu-item__name">{t("canvas.groupMenu.open")}</span>
+              <span className="group-context-menu-item__name">{t("sidebar.groupMenu.open")}</span>
               <kbd className="group-context-menu-item__key" aria-hidden="true">↵</kbd>
             </button>
           ) : null}
@@ -187,7 +187,7 @@ function ChipMenuContent({
         </>
       ) : null}
       <PluginOperationMenuSection operation={operation} onClose={onClose} />
-      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionGroup")}</div>
+      <div className="group-context-menu-section-label">{t("sidebar.groupMenu.sectionGroup")}</div>
       {groups.map((group) => {
         const color = resolveAccentColor(group.color);
         const isSelected = operation.groupId === group.id;
@@ -224,8 +224,8 @@ function ChipMenuContent({
             if (e.key === "Escape") { e.preventDefault(); setShowNewInput(false); }
           }}
           onBlur={() => setShowNewInput(false)}
-          aria-label={t("canvas.groupMenu.newGroupNameAria")}
-          placeholder={t("canvas.groupMenu.groupNamePlaceholder")}
+          aria-label={t("sidebar.groupMenu.newGroupNameAria")}
+          placeholder={t("sidebar.groupMenu.groupNamePlaceholder")}
         />
       ) : (
         <button
@@ -235,12 +235,12 @@ function ChipMenuContent({
           onClick={() => setShowNewInput(true)}
         >
           <PlusMark />
-          <span className="group-context-menu-item__name">{t("canvas.groupMenu.newGroup")}</span>
+          <span className="group-context-menu-item__name">{t("sidebar.groupMenu.newGroup")}</span>
         </button>
       )}
       <div className="group-context-menu-divider" aria-hidden="true" />
       <AccentToneList
-        label={t("canvas.groupMenu.sectionAccent")}
+        label={t("sidebar.groupMenu.sectionAccent")}
         accentKey={accentKey}
         includeNone
         labels={accentToneLabels(t)}
@@ -272,7 +272,7 @@ function RenameItem({ onRename, onClose }: { onRename: () => void; onClose: () =
   return (
     <button type="button" className="group-context-menu-item" role="menuitem" onClick={() => { onClose(); onRename(); }}>
       <span className="group-context-menu-item__glyph" aria-hidden="true"><RenameGlyph /></span>
-      <span className="group-context-menu-item__name">{t("canvas.groupMenu.rename")}</span>
+      <span className="group-context-menu-item__name">{t("sidebar.groupMenu.rename")}</span>
       <kbd className="group-context-menu-item__key" aria-hidden="true">F2</kbd>
     </button>
   );
@@ -310,7 +310,7 @@ function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () =
       }}
     >
       <span className="group-context-menu-item__glyph" aria-hidden="true"><ArchiveGlyph /></span>
-      <span className="group-context-menu-item__name">{t("canvas.groupMenu.archive")}</span>
+      <span className="group-context-menu-item__name">{t("sidebar.groupMenu.archive")}</span>
     </button>
   );
 }
@@ -358,7 +358,7 @@ function GroupHeaderMenuContent({
     <>
       {/* 그룹 색은 durable 스키마상 팔레트 키 중 하나로 필수다(무색 그룹 미지원). None 항목은 제공하지 않는다. */}
       <AccentToneList
-        label={t("canvas.groupMenu.sectionColor")}
+        label={t("sidebar.groupMenu.sectionColor")}
         accentKey={group.color}
         includeNone={false}
         labels={accentToneLabels(t)}
@@ -368,7 +368,7 @@ function GroupHeaderMenuContent({
         }}
       />
       <div className="group-context-menu-divider" aria-hidden="true" />
-      <div className="group-context-menu-section-label">{t("canvas.groupMenu.sectionRename")}</div>
+      <div className="group-context-menu-section-label">{t("sidebar.groupMenu.sectionRename")}</div>
       <input
         className="group-context-menu-new-input"
         type="text"
@@ -381,7 +381,7 @@ function GroupHeaderMenuContent({
           if (e.key === "Escape") { e.preventDefault(); onClose(); }
         }}
         onBlur={confirmRename}
-        aria-label={t("canvas.groupMenu.groupNameAria")}
+        aria-label={t("sidebar.groupMenu.groupNameAria")}
       />
       <div className="group-context-menu-divider" aria-hidden="true" />
       <button
@@ -393,9 +393,9 @@ function GroupHeaderMenuContent({
           actions.onUngroupAll();
           onClose();
         }}
-        aria-label={ungroupArmed ? t("canvas.groupMenu.confirmUngroupAria") : t("canvas.groupMenu.ungroupAria")}
+        aria-label={ungroupArmed ? t("sidebar.groupMenu.confirmUngroupAria") : t("sidebar.groupMenu.ungroupAria")}
       >
-        {ungroupArmed ? t("canvas.groupMenu.confirmUngroupAll") : t("canvas.groupMenu.ungroupAll")}
+        {ungroupArmed ? t("sidebar.groupMenu.confirmUngroupAll") : t("sidebar.groupMenu.ungroupAll")}
       </button>
     </>
   );
