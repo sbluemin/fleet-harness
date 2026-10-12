@@ -278,8 +278,39 @@ function decorateSiteLink(link: HTMLAnchorElement, href: string): void {
   if (isBareAutolink(label, href)) link.textContent = shortLinkLabel(url);
   if (!link.hasAttribute("title")) link.setAttribute("title", safeDecodeUri(href));
   link.classList.add("md-site-link");
-  // 단어 결합자(U+2060)가 아이콘과 첫 글자 사이의 줄바꿈을 막는다 — 아이콘만 윗줄 끝에 남지 않게.
-  link.insertAdjacentHTML("afterbegin", `${siteIconSvg(siteIconName(url.hostname))}\u2060`);
+  const icon = siteIconSvg(siteIconName(url.hostname));
+  // 아이콘은 atomic inline이라 Chromium이 단어 결합자(U+2060)와 무관하게 그 뒤에서 줄을 나눈다. 아이콘과 이름의 첫 글자를
+  // nowrap 래퍼 하나에 묶어 아이콘만 윗줄 끝에 남지 않게 한다. 첫 글자만 묶으므로 긴 이름의 줄바꿈은 그대로다.
+  // 이름이 강조 등 요소 안에서 시작하면 래퍼도 그 안의 첫 글자 자리에 선다. 글자가 없으면(이미지 링크) 아이콘만 앞에 둔다.
+  const first = firstTextNode(link);
+  if (!first) {
+    link.insertAdjacentHTML("afterbegin", icon);
+    return;
+  }
+  const text = first.data;
+  const leadLength = /^\s*/.exec(text)![0].length + firstGraphemeLength(text.trimStart());
+  const lead = link.ownerDocument.createElement("span");
+  lead.className = "md-site-lead";
+  lead.insertAdjacentHTML("afterbegin", icon);
+  lead.append(text.slice(0, leadLength));
+  first.data = text.slice(leadLength);
+  first.before(lead);
+}
+
+function firstTextNode(root: Element): Text | null {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if ((node as Text).data.trim().length > 0) return node as Text;
+  }
+  return null;
+}
+
+function firstGraphemeLength(text: string): number {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segment = new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)[Symbol.iterator]().next();
+    if (!segment.done) return segment.value.segment.length;
+  }
+  return String.fromCodePoint(text.codePointAt(0) ?? 0).length;
 }
 
 // gfm 맨 주소·`<주소>`는 글자가 곧 주소다(www.는 http://가 붙는다, 비ASCII 경로는 href만 인코딩된다).

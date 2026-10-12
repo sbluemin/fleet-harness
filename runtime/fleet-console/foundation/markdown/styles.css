@@ -289,6 +289,11 @@ code.hljs {
   flex: none;
 }
 
+/* 아이콘과 이름의 첫 글자 — 아이콘만 윗줄 끝에 남지 않게 둘 사이에서는 줄을 나누지 않는다. */
+.md-site-lead {
+  white-space: nowrap;
+}
+
 .markdown-body ul,
 .markdown-body ol {
   padding-left: var(--space-6);
