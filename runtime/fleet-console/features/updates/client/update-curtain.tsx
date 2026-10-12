@@ -6,7 +6,6 @@ import {
   describeConsoleUpdateRecovery,
   describeConsoleUpdateSilence,
 } from "@fleet-console/protocol/lifecycle/update";
-import { describeConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
@@ -19,7 +18,7 @@ import { UPDATE_CURTAIN_STAGES, acknowledgeUpdateOutcome, dismissUpdateWatch, us
  *
  * 이 커튼이 없으면 같은 순간이 "연결 끊김"으로 보이고, 그것은 고장과 구별되지 않는다.
  * 그래서 커튼은 서버가 닿지 않는 동안에도 내려가지 않는다 — 닿지 않는 것이 곧 진행 중이라는
- * 뜻이기 때문이다. 커튼을 걷는 것은 종착 기록(성공/실패)과 사람의 손뿐이다.
+ * 뜻이기 때문이다. 커튼을 걷는 것은 종착 기록(성공/실패)과 사람의 손뿐이다. 실패만 알림으로 남는다.
  *
  * 단계는 이 화면이 관측할 수 있는 사실만큼만 나눈다. 서버가 닿지 않는 동안 설치와 기동은
  * 구별할 방법이 없으므로 한 단계다.
@@ -34,39 +33,10 @@ export function UpdateCurtain() {
   const mobileLayout = useViewMode().effective === "mobile";
   const currentVersion = useConsoleState().version;
 
-  if (state.outcome !== null) {
-    if (state.outcome === "failed") return <UpdateFailureNotice progress={state.progress} currentVersion={currentVersion} />;
-    const ending = state.progress?.oldConsoleOutcome;
-    return (
-      <div className="update-outcome update-outcome--ok" role="status" aria-live="polite">
-        <span className="update-outcome-signal" aria-hidden="true" />
-        <span className="update-outcome-text">
-          {t("chrome.update.outcomeDone", { version: state.progress?.targetVersion ?? "" })}
-          {ending ? <span className="update-outcome-note">{describeConsoleUpdateOldConsoleEnding(ending)}</span> : null}
-          {state.progress?.endpointChanged === true ? (
-            <span className="update-outcome-note">{t("chrome.update.addressMoved")}</span>
-          ) : null}
-        </span>
-        <button type="button" className="update-outcome-dismiss" onClick={acknowledgeUpdateOutcome} aria-label={t("common.dismiss")}>
-          ×
-        </button>
-      </div>
-    );
-  }
+  if (state.outcome === "failed") return <UpdateFailureNotice progress={state.progress} currentVersion={currentVersion} />;
 
-  // 수락 전 대기는 커튼이 아니다. 메뉴를 닫아도 남는 상태 줄이고, Console은 아직 멈추지 않았다.
-  if (state.preparing !== null && !state.watching) {
-    return (
-      <div className="update-outcome update-outcome--live" role="status" aria-live="polite" aria-busy="true">
-        <span className="update-outcome-signal" aria-hidden="true" />
-        <span className="update-outcome-text">
-          <strong className="update-outcome-headline">{t("chrome.system.update.requestingTitle")}</strong>
-          <p className="update-outcome-contract">{describeConsoleLifecycleWait("update-preflight")}</p>
-        </span>
-      </div>
-    );
-  }
-
+  // 수락 전 대기와 성공은 화면 상단에 따로 알리지 않는다. 대기는 메뉴의 버전 행이 「요청 중」으로 말하고,
+  // 성공은 커튼이 걷히고 새 버전의 화면이 돌아오는 것으로 드러난다(store가 성공 기록을 그 자리에서 확인한다).
   if (!state.watching) return null;
 
   const activeIndex = UPDATE_CURTAIN_STAGES.indexOf(state.stage);
