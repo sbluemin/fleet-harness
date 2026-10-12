@@ -16639,6 +16639,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 .fc-model-picker__trigger[aria-expanded="true"] { color: var(--brass-ink); background: var(--brass-glow); }
 .fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: 0; border-end-end-radius: 0; }
+/* 팝업은 body 포털이다 — 설정 모달(z 90) 안에서 열리므로 fc-select 기본 층(40)이 아니라 오버레이 층에 선다. */
+.fc-model-picker__popup { z-index: var(--z-overlay); }
 /* 트리거의 마크는 칩의 종류 글리프처럼 상자 없이 공급자 톤만 입고, 밴드의 마크는 런치 메뉴의 배지 그대로다. */
 .fc-model-picker__glyph--mark {
   display: inline-flex;
@@ -16748,9 +16750,10 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 .fc-coord-trigger-effort { color: var(--brass-ink); text-transform: uppercase; }
 /* 꺼짐·폴백은 상태다 — 신호 토큰(warn)이 말한다. */
 .fc-coord-trigger-badge { padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+/* body 포털 메뉴 — 설정 모달(z 90)·시트 스크림 같은 전면 덮개 안에서도 열리므로 오버레이 층에 선다. */
 .fc-coord-menu {
   position: fixed;
-  z-index: 60;
+  z-index: var(--z-overlay);
   padding: var(--space-1);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
