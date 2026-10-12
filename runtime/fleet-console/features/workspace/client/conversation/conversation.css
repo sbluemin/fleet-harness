@@ -1152,6 +1152,15 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-
   --conversation-caption-reserve: var(--conversation-caption-width);
 }
 
+/* 세부 정보가 열렸으면 캡션 띠는 스크롤하지 않는 패널 맨 위 줄에 앉는다. 닫히면 띠가 가운데 열 위에 서는데, 그 줄 밑으로 흘러
+   올라가는 대화(말풍선·스크롤 막대)는 띠의 불투명 사각형에 잘려 보이고 막대 위끝은 띠가 클릭을 가져간다. 그래서 이때만 본문이
+   맨 위 줄 아래에서 시작한다 — 투명 줄 몫(--conversation-overlay-top)을 걷고 본문째 그만큼 내린다(모르는 본문과 같은 처리).
+   줄은 대화 바탕색 면이라 같은 색의 띠와 이어진다. */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .conversation-stage .conversation-body {
+  --conversation-overlay-top: 0px;
+  padding-top: var(--conversation-top-row);
+}
+
 /* 대화 중심 화면이 켜진 Desktop 은 다른 화면(설정 등)의 밴드도 같은 52px 줄이다 — 신호등·캡션 띠가 그 높이에 맞춰 서 있다. */
 html[data-desktop-shell="true"][data-conversation-layout="true"] {
   --chrome-band-height: 52px;
