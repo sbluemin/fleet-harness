@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 12;
+export const COMMODORE_PROMPT_VERSION = 13;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
