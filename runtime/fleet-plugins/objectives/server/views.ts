@@ -170,7 +170,7 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       // 후속 후보 — 지휘관이 고치거나 거둘 수 있는 것은 open 뿐이다. 폐기 흔적은 제목·요약만.
       followups: objective.followups.map((candidate) => (candidate.state === "discarded"
         ? { id: candidate.id, state: candidate.state, title: candidate.title, summary: candidate.summary, discarded: candidate.discarded }
-        : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: candidate.criteria, evidence: candidate.evidence.map((entry) => withoutEmpty({ ...entry })) })),
+        : { id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, evidence: candidate.evidence.map((entry) => withoutEmpty({ ...entry })) })),
       followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, by: batch.by ?? "human", at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ operationId: entry.operationId, error: entry.error }) })) })),
       // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
       origin: objective.origin,

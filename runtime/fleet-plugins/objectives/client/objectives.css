@@ -967,7 +967,7 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-meta { display: inline-flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); padding-top: 3px; white-space: nowrap; }
 .objectives-followup-meta svg { transition: transform var(--duration-fast); }
 .objectives-followup-item.is-open .objectives-followup-meta svg { transform: rotate(90deg); }
-/* 상세 = 브리핑(4줄 뒤 「더 보기」) → 달성 기준 초안(점선 번호 원) → 근거(종류 라벨+안전한 설명). */
+/* 상세 = 브리핑(4줄 뒤 「더 보기」) → 근거(종류 라벨+안전한 설명). */
 .objectives-followup-detail { padding: 2px 10px 10px 33px; display: flex; flex-direction: column; gap: 9px; }
 .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 10px; }
 .objectives-followup-lab { font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 3px; }
@@ -975,9 +975,6 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-brief.is-all { display: block; }
 .objectives-followup-more { align-self: flex-start; border: 0; background: transparent; color: var(--brass-ink); padding: 0; cursor: pointer; font: inherit; font-size: var(--t-xs); }
 .objectives-followup-more:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-followup-crit { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; counter-reset: objectives-followup-crit; }
-.objectives-followup-crit li { display: flex; gap: 8px; font-size: var(--t-sm); color: var(--text-primary); line-height: 1.45; overflow-wrap: anywhere; }
-.objectives-followup-crit li::before { counter-increment: objectives-followup-crit; content: counter(objectives-followup-crit); flex: none; width: 16px; height: 16px; border: 1.5px dashed var(--brass); border-radius: 50%; font-family: var(--font-ui); font-size: var(--t-2xs); line-height: 13px; text-align: center; color: var(--brass-ink); margin-top: 1px; }
 .objectives-followup-ev { display: flex; flex-direction: column; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .objectives-followup-ev li { display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
 .objectives-followup-ev li b { flex: none; font-family: var(--font-code); font-size: var(--font-code-size); font-weight: var(--weight-medium); line-height: 1.8; color: var(--brass-ink); }

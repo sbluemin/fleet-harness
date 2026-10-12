@@ -129,14 +129,6 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
             <p className={`objectives-followup-brief${briefAll ? " is-all" : ""}`}><LinkText text={candidate.brief} /></p>
             {candidate.brief.length > 90 ? <button type="button" className="objectives-followup-more" onClick={() => setBriefAll((value) => !value)}>{t(briefAll ? "objectives.brief.less" : "objectives.brief.more")}</button> : null}
           </div>
-          {candidate.criteria.length ? (
-            <div>
-              <div className="objectives-followup-lab">{t("objectives.followup.criteria", { n: candidate.criteria.length })}</div>
-              <ol className="objectives-followup-crit">
-                {candidate.criteria.map((criterion, at) => <li key={at}><LinkText text={criterion} /></li>)}
-              </ol>
-            </div>
-          ) : null}
           {candidate.evidence.length ? (
             <div>
               <div className="objectives-followup-lab">{t("objectives.followup.evidence", { n: candidate.evidence.length })}</div>

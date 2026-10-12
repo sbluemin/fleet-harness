@@ -407,6 +407,22 @@ function containedFile(dir: string, name: string): string {
   return file;
 }
 
+/**
+ * 디스크의 옛 후보·배치 스냅샷에 남은 criteria 만 지운다. 후보와 배치는 그대로 두고, 목표의 달성 기준은 건드리지 않는다.
+ * 모양이 깨져 있어도 던지지 않는다 — 던지면 목표 파일 전체가 격리된다.
+ */
+function dropLegacyFollowupCriteria(parsed: Partial<StoredObjective>): void {
+  const drop = (value: unknown): void => {
+    if (value && typeof value === "object" && "criteria" in value) delete (value as { criteria?: unknown }).criteria;
+  };
+  if (Array.isArray(parsed.followups)) for (const candidate of parsed.followups) drop(candidate);
+  if (!Array.isArray(parsed.followupBatches)) return;
+  for (const batch of parsed.followupBatches) {
+    if (!batch || typeof batch !== "object" || !Array.isArray(batch.items)) continue;
+    for (const item of batch.items) if (item && typeof item === "object") drop(item.snapshot);
+  }
+}
+
 /** 깨진 파일은 덮어쓰지 않고 비켜 둔다 — 그 목표만 빈 목표가 되고 다른 목표는 그대로다. */
 function quarantine(file: string): void {
   try { fs.renameSync(file, `${file}.broken-${Date.now()}-${randomUUID()}`); }
@@ -455,6 +471,8 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
       if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
+      // 후속 본문은 strict 로 검사하지 않는다. 옛 criteria 는 후보를 지우지 않고 키만 버린다. 목표 자신의 criteria 는 남긴다.
+      dropLegacyFollowupCriteria(parsed);
       return { ...parsed, operationId: parsed.operationId, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
   } catch { /* 깨진 JSON 또는 results/evidence 필드 — 원본을 격리하고 그 목표만 레코드 없음으로 본다. */ }
@@ -753,7 +771,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       members,
       followups: (stored.followups ?? []).map((candidate) => ({
         id: candidate.id, rev: candidate.rev, state: candidate.state, title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission,
-        brief: candidate.brief, criteria: [...candidate.criteria], evidence: candidate.evidence.map(evidenceView),
+        brief: candidate.brief, evidence: candidate.evidence.map(evidenceView),
         at: candidate.at, updatedAt: candidate.updatedAt, batchId: candidate.batchId ?? null,
         discarded: candidate.state === "discarded" ? { at: candidate.discardedAt ?? candidate.updatedAt, by: candidate.discardedBy ?? "human" } : null,
       })),
@@ -761,7 +779,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         id: batch.id, at: batch.at, by: batch.by ?? "human",
         items: batch.items.map((entry) => ({
           candidateId: entry.candidateId, rev: entry.rev,
-          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, criteria: [...entry.snapshot.criteria], evidence: entry.snapshot.evidence.map(evidenceView) },
+          snapshot: { title: entry.snapshot.title, summary: entry.snapshot.summary, userImpact: entry.snapshot.userImpact, fromMission: entry.snapshot.fromMission, brief: entry.snapshot.brief, evidence: entry.snapshot.evidence.map(evidenceView) },
           // 만든 뒤 사람이 지운 후속은 보기 시점에 「삭제됨」 — 저장은 created 그대로라 복원하면 돌아오고 누계·멱등성은 그대로다.
           state: entry.state === "created" && entry.operationId && !operationNode(entry.operationId) && !((created) => created?.pending && !created.removed)(load(node?.theaterId ?? pending!.theaterId).get(entry.operationId)) ? "deleted" as const : entry.state, operationId: entry.operationId ?? null, error: entry.error ?? null, attempts: entry.attempts, settledAt: entry.settledAt ?? null,
         })),
@@ -1858,8 +1876,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (target.state === "discarded") return stored;
       if (target.state !== "open") throw new ObjectiveStoreError("followup_locked");
       const at = now();
-      // 흔적은 제목·요약·시각만 — 브리핑·기준·근거는 남기지 않는다. 넘치면 오래된 흔적부터 정리한다.
-      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, userImpact: "", fromMission: target.fromMission, brief: "", criteria: [], evidence: [], at: target.at, updatedAt: at, discardedAt: at, discardedBy: by };
+      // 흔적은 제목·요약·시각만 — 브리핑·근거는 남기지 않는다. 넘치면 오래된 흔적부터 정리한다.
+      const trace: StoredFollowup = { id: target.id, rev: target.rev, state: "discarded", title: target.title, summary: target.summary, userImpact: "", fromMission: target.fromMission, brief: "", evidence: [], at: target.at, updatedAt: at, discardedAt: at, discardedBy: by };
       let followups = (stored.followups ?? []).map((candidate) => (candidate.id === candidateId ? trace : candidate));
       const traces = followups.filter((candidate) => candidate.state === "discarded");
       if (traces.length > MAX_FOLLOWUP_DISCARDED) {
@@ -1889,7 +1907,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
         const items: StoredFollowupItem[] = chosen.map((candidate) => ({
           candidateId: candidate.id, rev: candidate.rev,
-          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, criteria: [...candidate.criteria], evidence: [...candidate.evidence] },
+          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, evidence: [...candidate.evidence] },
           state: "creating", attempts: 0,
         }));
         const chosenIds = new Set(ids);

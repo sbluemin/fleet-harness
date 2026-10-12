@@ -10,7 +10,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
 
 /**
@@ -120,8 +120,21 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
     const matches = store.all().filter((objective) => objective.id.startsWith(reference) && roleIn(objective, caller));
     return matches.length === 1 ? matches[0]!.id : reference;
   };
+  /**
+   * followup 의 add·revise 만 additionalProperties 를 광고하지 않는다. 호스트는 광고 JSON 을 fromJSONSchema 로
+   * 플러그인 execute 보다 먼저 검사하고, false 이면 옛 criteria 가 preprocess 에 닿기 전에 거절된다. 빼면 호스트는
+   * 그 키를 지우지 않고 넘긴다. criteria 는 플러그인이 버리고, 그 외 모르는 키는 플러그인 strict 가 거절한다.
+   */
+  const advertisedSchema = (name: string, schema: z.ZodType) => {
+    const json = z.toJSONSchema(schema);
+    if (name !== "followup") return json;
+    const properties = (json as { properties?: Record<string, { additionalProperties?: unknown }> }).properties;
+    if (properties?.add) delete properties.add.additionalProperties;
+    if (properties?.revise) delete properties.revise.additionalProperties;
+    return json;
+  };
   const tool = <S extends z.ZodObject>(name: string, description: string, schema: S, run: (args: z.output<S>, caller: ConsoleCaller | undefined, context: Parameters<PluginMcpTool["execute"]>[1]) => Promise<unknown> | unknown): PluginMcpTool => ({
-    name, description, inputSchema: z.toJSONSchema(schema),
+    name, description, inputSchema: advertisedSchema(name, schema),
     execute: async (raw, context) => {
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) return refuse("invalid_arguments", { issues: inputIssues(parsed.error.issues) });
@@ -318,8 +331,8 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const record = store.find(objective.id)?.missions.find((entry) => entry.id === target.id)?.records.at(-1);
         return text({ ok: true, missionId: target.id, ...(record ? { stored: { record: record.lines.map(storedText) } } : {}), ...(resultIds.length ? { resultIds } : {}), ...(next ? { next } : {}) });
       }),
-    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, criteria (1–10), evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective carrying that title, brief and criteria and no missions, and its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
-      z.object({ objectiveId: ids, add: followupBodySchema.optional(), revise: followupReviseSchema.extend({ id: ids }).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
+    commanderTool("followup", `Follow-up candidates: findings outside this objective's scope, each with evidence. A candidate holds an improvement to the product features of the project worked on, as its users experience them; a finding with no user impact is not placed on the objective and stays only in the Commander's final report. Candidates can be added at any time until the objective is complete. add a candidate {title, summary (one line), userImpact (one line: what a user experiences differently), fromMission (the missionId of this objective's mission it came from), brief, evidence (1–5 of file {path relative to the Theater root, line?}, command {text}, artifact {path}, each with an optional note; at least one is a file with a line or a command)}; revise {id, changed fields} or withdraw {id} while it is open. At most ${MAX_FOLLOWUPS} active per objective. When the person completes this objective they may pick candidates; each picked one becomes a dormant objective with that title and brief and no missions, and its Commander proposes criteria while planning. Its evidence reaches that objective's Commander. A picked candidate is frozen; the person can also discard candidates.`,
+      z.object({ objectiveId: ids, add: z.preprocess(withoutLegacyCriteria, followupBodySchema).optional(), revise: z.preprocess(withoutLegacyCriteria, followupReviseSchema.extend({ id: ids })).optional(), withdraw: z.object({ id: ids }).strict().optional() }).strict(),
       (args, objective) => {
         const actions = [args.add, args.revise, args.withdraw].filter((value) => value !== undefined);
         if (actions.length !== 1) return refuse("invalid_arguments", { hint: "Exactly one of add, revise or withdraw." });

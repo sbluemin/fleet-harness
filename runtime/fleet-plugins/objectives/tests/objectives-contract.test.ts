@@ -1816,17 +1816,27 @@ describe("Objectives contract", () => {
   });
 
   it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {
-    const { store, route, call, launch, launches, operations, savedObjective } = harness();
+    const { store, route, call, launch, launches, operations, savedObjective, objectiveFile, restart } = harness();
     const source = await launch.create({ theaterId: "t1", title: "Source", groupId: "g-a", missions: [{ text: "fix" }] });
     await launch.requestPlan(source.id);
     const missionId = store.find(source.id)!.missions[0]!.id;
     store.missionDone(source.id, missionId, ["fixed"]);
     // 후보는 이 목표의 임무에서 나오고, 근거 하나는 관찰할 수 있어야 하며(줄 있는 파일·명령), 활성 후보는 상한까지다.
-    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", criteria: ["Verified"], evidence: [{ kind: "command", text: "pnpm test" }] };
+    const body = { title: "Next", summary: "Next step", userImpact: "Users see the next step", fromMission: missionId, brief: "Next brief", evidence: [{ kind: "command", text: "pnpm test" }] };
     const add = async (value: unknown) => (await call("followup", { objectiveId: source.id, add: value }, source.id)).structuredContent;
     expect((await add({ ...body, fromMission: "elsewhere" })).error).toBe("unknown_mission");
     expect((await add({ ...body, evidence: [{ kind: "file", path: "src/a.ts" }] })).error).toBe("evidence_not_observable");
     for (let n = 0; n < MAX_FOLLOWUPS; n += 1) expect((await add(body)).ok).toBe(true);
+    // 디스크에 남은 옛 criteria 는 후보·배치를 지우지 않고 읽은 뒤 버린다. 도구 execute 직접 호출은 호스트의 스키마 재검사를 거치지 않는다.
+    const saved = JSON.parse(fs.readFileSync(objectiveFile(source.id), "utf8")) as { followups: { criteria?: string[] }[]; followupBatches?: unknown[] };
+    saved.followups[0]!.criteria = ["Verified"];
+    saved.followupBatches = [{ id: "3f1c8f3e-1111-4a8b-9c0d-000000000009", at: 1, launch: { groupId: null, viewMode: "terminal", language: "en" }, items: [{ candidateId: "batch-legacy", rev: 1, state: "failed", attempts: 1, snapshot: { ...body, criteria: ["old"] } }] }];
+    fs.writeFileSync(objectiveFile(source.id), JSON.stringify(saved));
+    const reloaded = restart().store;
+    expect(reloaded.find(source.id)!.followups).toHaveLength(MAX_FOLLOWUPS);
+    expect(reloaded.find(source.id)!.followups[0]).not.toHaveProperty("criteria");
+    expect(reloaded.find(source.id)!.followupBatches[0]!.items[0]!.snapshot).not.toHaveProperty("criteria");
+    expect(reloaded.find(source.id)!.followupBatches[0]!.items[0]!.snapshot.brief).toBe("Next brief");
     expect((await add(body)).error).toBe("too_many_followups");
     for (const extra of store.find(source.id)!.followups.slice(1)) store.followupWithdraw(source.id, extra.id);
     const candidate = store.find(source.id)!.followups[0]!;
@@ -1846,7 +1856,7 @@ describe("Objectives contract", () => {
     await vi.waitFor(() => expect(store.find(source.id)!.followupBatches[0]!.items[0]!.state).toBe("created"));
     const targetId = store.list("t1").find((entry) => entry.origin?.candidateId === candidate.id)!.id;
     expect(store.find(source.id)!.followupBatches[0]!.items[0]!.operationId).toBe(targetId);
-    expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
+    expect(store.find(targetId)).toMatchObject({ title: "Next", note: "Next brief", criteria: [], commander: { started: false }, origin: { objectiveId: source.id, candidateId: candidate.id, userImpact: "Users see the next step" } });
     expect(savedObjective(targetId)).toHaveProperty("pending.title", "Next");
     expect(operations.has(targetId)).toBe(false);
     expect(launches).toHaveLength(1);
@@ -2059,9 +2069,9 @@ describe("Objectives contract", () => {
     const resultId = (finished.resultIds as readonly string[])[0]!;
     await command("mark_criterion", { n: 1, met: true, evidence: "Preserved" }, id);
     await command("mark_criterion", { n: 2, met: true, evidence: "Applied" }, id);
-    await command("followup", { add: { title: "Next round", summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", criteria: ["Improved"], evidence: [{ kind: "command", text: "verification" }] } }, id);
+    await command("followup", { add: { title: "Next round", summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", evidence: [{ kind: "command", text: "verification" }] } }, id);
     // 광고된 모양 그대로 부른다 — 후보는 보드가 내놓는 {id, rev} 로 버리고, 그새 고쳐진 후보는 버리지 않는다.
-    const stray = (await command("followup", { add: { title: "Stray", summary: "Out of scope", userImpact: "None yet", fromMission: missionId, brief: "Drop", criteria: ["Dropped"], evidence: [{ kind: "command", text: "check" }] } }, id)).id as string;
+    const stray = (await command("followup", { add: { title: "Stray", summary: "Out of scope", userImpact: "None yet", fromMission: missionId, brief: "Drop", evidence: [{ kind: "command", text: "check" }] } }, id)).id as string;
     const strayRev = ((await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] }).followups.find((entry) => entry.id === stray)!.rev;
     expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev + 1 }] })).toBe("followup_changed");
     await board({ action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] });
