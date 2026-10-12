@@ -88,13 +88,14 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     })), false),
     // 빈 선택 완료도 후속 선택을 끝낸다 — 완료된 목표에서는 더 이상 후속을 고르지 못하므로 넘긴 후속 선택을 함께 지키고,
     // 사람의 완료는 고르지 않은 후보가 남아도 그 선택을 「사람이 답함」으로 끝낸다.
-    complete: holding((body: CompleteAction) => (body.undone ? [] : ["review", "followup"]), unlessBusy(async (body: CompleteAction) => {
+    // 완료·확장·기준 승인은 서 있는 결정 요청을 거둔다 — 사람에게 넘긴 결정이 그렇게 지워지지 않게 함께 지킨다.
+    complete: holding((body: CompleteAction) => (body.undone ? [] : ["review", "followup", "decision"]), unlessBusy(async (body: CompleteAction) => {
       if (body.undone) return objective(await launch.reopen(body.objectiveId, options(body)));
       if (!body.followups?.length) return objective(await launch.complete(body.objectiveId, options(body)));
       if (!body.batchId) throw new ObjectiveStoreError("invalid_request");
       return objective(await launch.completeWithFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body)));
     }), true, (body: CompleteAction) => (body.undone ? [] : ["followup"])),
-    extend: holding(() => ["review"], unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body)))),
+    extend: holding(() => ["review", "decision"], unlessBusy((body: Ref & { context: string }) => launch.extend(body.objectiveId, body.context, options(body)))),
     handOff: unlessBusy(({ objectiveId }: Ref) => objective(store.handOff(objectiveId, { by: actor }))),
     // 새 구상은 기준 제안을 갈아 끼운다 — 사람에게 넘긴 제안이 서 있는 동안 사령관은 청하지 못한다.
     plan: holding(() => ["criteria"], unlessBusy((body: ContextRef) => {
@@ -144,8 +145,8 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     criterionAdd: steerable(() => true, ({ objectiveId, criterion }: Ref & { criterion: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionAdd(objectiveId, criterion.text, actor))),
     criterionPatch: steerable(() => true, ({ objectiveId, criterionId, patch }: Ref & { criterionId: string; patch: { text: string } }) => edited(objectiveId, ["criteria"], () => store.criterionPatch(objectiveId, criterionId, patch.text))),
     criterionRemove: steerable(() => true, ({ objectiveId, criterionId }: Ref & { criterionId: string }) => edited(objectiveId, ["criteria"], () => store.criterionRemove(objectiveId, criterionId))),
-    approve: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor))),
-    approveAll: holding(() => ["criteria"], ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor))),
+    approve: holding(() => ["criteria", "decision"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalApprove(objectiveId, proposalId, actor))),
+    approveAll: holding(() => ["criteria", "decision"], ({ objectiveId }: Ref) => objective(store.proposalsApproveAll(objectiveId, actor))),
     reject: holding(() => ["criteria"], ({ objectiveId, proposalId }: Ref & { proposalId: string }) => objective(store.proposalReject(objectiveId, proposalId, actor))),
     // 사령관이 넘기기 — 사령관 행위자만. 사람에게는 돌려주기(`personHoldReturn`)가 있다.
     handToPerson: ({ objectiveId, target, reason }: Ref & { target: PersonHoldTarget; reason: string }) => {
