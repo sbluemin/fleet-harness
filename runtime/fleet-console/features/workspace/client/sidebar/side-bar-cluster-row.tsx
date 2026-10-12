@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -28,6 +28,12 @@ import { useConversationRowPreview } from "../conversation/conversation-slots.js
  */
 
 const NO_IDS: readonly string[] = [];
+
+/**
+ * 「시작 전 N」 접기 안에 선 줄 — 접기 머리가 이미 「시작 전」이라 줄마다 같은 상태 문구를 다시 적지 않는다. 「오늘」 구역처럼 접기 밖에
+ * 올라간 시작 전 줄은 그대로 상태 문구로 말한다.
+ */
+const FreshFoldContext = createContext(false);
 
 /**
  * 그룹 헤더가 묶음 머리로서 감싸일 자리 — 펼친 그룹은 칸에 선 목표 줄이 있을 때 목록 읽기에, 접은 그룹은 「시작 전」까지 포함한
@@ -239,10 +245,12 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
   const conversationRow = useSideBarRowStyle() === "conversation";
   const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
+  const inFreshFold = useContext(FreshFoldContext);
+  // 「시작 전」 접기 안의 시작 전 줄은 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
   const conversationLine = !conversationRow
     ? null
     : rowPreview?.text
-      ?? (row.decisionRequestedAt !== undefined
+      ?? (inFreshFold && state === "fresh" ? null : row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
         : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
@@ -426,7 +434,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
             ))}
           </span>
         ) : rename.renaming ? renameInput : titleNode}
-        {conversationRow ? (
+        {conversationRow && (leadMeta.length > 0 || conversationLine) ? (
           <span className="side-bar-cluster-row-line" aria-hidden="true">
             {leadMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")}>{part.text}</span>
@@ -602,7 +610,7 @@ export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRo
       </button>
       {expanded ? (
         <ol className="side-bar-fresh-fold-body" aria-label={t("sidebar.fold.fresh")}>
-          {items.map(renderRow)}
+          <FreshFoldContext.Provider value={true}>{items.map(renderRow)}</FreshFoldContext.Provider>
         </ol>
       ) : null}
     </li>
