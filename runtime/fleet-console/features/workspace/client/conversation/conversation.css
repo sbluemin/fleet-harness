@@ -1152,6 +1152,13 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-
   --conversation-caption-reserve: var(--conversation-caption-width);
 }
 
+/* 오른쪽 분할 칸이 창 오른쪽 끝에 서면(세부 정보가 닫혔거나, 칸이 레일 위로 덮을 때) 캡션 띠는 칸 머리 줄 위에 앉는다 —
+   머리 줄도 그 폭을 비워 닫기 단추·브라우저 도구가 띠 밑에 깔리지 않게 한다. 칸이 레일 옆에 서면 띠는 레일 머리 위라 그대로 둔다. */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .conversation-split-head,
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation .conversation-split.is-over-rail .conversation-split-head {
+  padding-right: calc(var(--space-3) + var(--conversation-caption-width));
+}
+
 /* 세부 정보가 열렸으면 캡션 띠는 스크롤하지 않는 패널 맨 위 줄에 앉는다. 닫히면 띠가 가운데 열 위에 서는데, 그 줄 밑으로 흘러
    올라가는 대화(말풍선·스크롤 막대)는 띠의 불투명 사각형에 잘려 보이고 막대 위끝은 띠가 클릭을 가져간다. 그래서 이때만 본문이
    맨 위 줄 아래에서 시작한다 — 투명 줄 몫(--conversation-overlay-top)을 걷고 본문째 그만큼 내린다(모르는 본문과 같은 처리).
