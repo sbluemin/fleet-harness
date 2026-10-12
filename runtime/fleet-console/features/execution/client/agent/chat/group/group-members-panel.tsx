@@ -20,7 +20,7 @@ import "./group-chat.css";
  * 보고 있는 줄을 다시 누르면 대화로 돌아간다. 원장이 없는 참여자(사람·Operation 이 아직 없는 구성원)의 줄은 단추가 아니다.
  * 제거·추가는 콜백 자리만 둔다 — 쓰기 연결(임무 16) 전에는 단추가 서지 않는다. 정지는 작업 줄과 입력창에 있다.
  * 제거는 지휘관에게 서지 않는다. 지휘관을 빼면 목표가 서지 않는다.
- * 보드 사실(`participant.profile`)이 오면 보드 행과 같은 글 — 제안 표식, 모델·강도(라우팅·꺼짐 표식), 브리프, 상태 낱말, 사유 줄 — 을 그대로 싣는다.
+ * 보드 사실(`participant.profile`)이 오면 보드 행과 같은 글 — 제안 표식, 모델·강도(라우팅·꺼짐 표식), 브리프, 상태 낱말, 진단 줄 — 을 그대로 싣는다.
  * 글은 플러그인이 지어 보낸 것이라 이 탭은 로케일로 풀기만 한다. 상태 점은 언제나 관측한 활동이다.
  */
 export interface GroupMembersPanelProps {
@@ -101,7 +101,7 @@ function MemberRow({ participant, language, notStarted, showing, onLedger, onRem
         <span className="group-members-role">{role}</span>
         {profile?.launch ? <MemberLaunch launch={profile.launch} text={text} /> : null}
         {profile?.brief ? <span className="group-members-brief" title={profile.brief}>{profile.brief}</span> : null}
-        {profile?.note ? <span className={`group-members-note${profile.note.tone === "warn" ? " is-warn" : ""}`} title={profile.note.title}>{text(profile.note.text)}</span> : null}
+        {profile?.notes?.map((note, index) => <span key={index} className={`group-members-note${note.tone ? ` is-${note.tone}` : ""}`} title={note.title}>{text(note.text)}</span>)}
       </span>
       <span className={`group-members-state${profile?.status?.tone === "danger" ? " is-danger" : ""}`}>
         <span className={`group-members-dot is-${activity}`} aria-hidden="true" />

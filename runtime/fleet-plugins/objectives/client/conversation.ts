@@ -3,7 +3,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import { MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { commanderLaunchShown, localized, memberFallbackNote, memberLaunched, memberLaunchShown, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
+import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
 
 /** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
 export interface ConversationCrew {
@@ -50,7 +50,7 @@ function memberProfile(objective: Objective, member: ObjectiveMember, crew: Conv
   const en = getT("en");
   const { failed } = memberStatus(member, state, objective, en);
   const routed = memberRoutedTag(member, launched, en);
-  const note = memberFallbackNote(member, launched, en);
+  const notes = memberNotes(member, launched, en);
   return {
     ...(member.by === "commander" ? { badge: localized((t) => t("objectives.members.proposed")) } : {}),
     ...(member.brief ? { brief: member.brief } : {}),
@@ -59,7 +59,8 @@ function memberProfile(objective: Objective, member: ObjectiveMember, crew: Conv
       ...(routed ? { via: { label: localized((t) => memberRoutedTag(member, launched, t)!.label), title: localized((t) => memberRoutedTag(member, launched, t)!.title), ...(routed.via === "fallback" ? { tone: "warn" as const } : {}) } } : {}),
     },
     status: { text: localized((t) => memberStatus(member, state, objective, t).text), ...(failed ? { tone: "danger" as const } : {}) },
-    ...(note ? { note: { text: localized((t) => memberFallbackNote(member, launched, t)!.text), ...(note.title !== undefined ? { title: note.title } : {}), tone: "warn" as const } } : {}),
+    // 진단 줄의 개수·순서·tone·원문은 로케일과 무관하다 — 낱말만 로케일마다 다시 푼다.
+    ...(notes.length > 0 ? { notes: notes.map((note, index) => ({ text: localized((t) => memberNotes(member, launched, t)[index]?.text ?? ""), ...(note.title !== undefined ? { title: note.title } : {}), tone: note.tone })) } : {}),
   };
 }
 

@@ -353,7 +353,7 @@ const profileSignature = (profile: ConversationMemberProfile | undefined) => (pr
   profile.launch ? [resolveText(profile.launch.label), profile.launch.effort ? resolveText(profile.launch.effort) : "", profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? "", profile.launch.struck === true, profile.launch.badge ? resolveText(profile.launch.badge) : "",
     profile.launch.via ? [resolveText(profile.launch.via.label), profile.launch.via.title ? resolveText(profile.launch.via.title) : "", profile.launch.via.tone ?? ""] : null] : null,
   profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null,
-  profile.note ? [resolveText(profile.note.text), profile.note.title ?? "", profile.note.tone ?? ""] : null] : null);
+  profile.notes?.map((note) => [resolveText(note.text), note.title ?? "", note.tone ?? ""]) ?? []] : null);
 const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**

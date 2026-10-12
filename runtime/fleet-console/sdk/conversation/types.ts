@@ -59,8 +59,11 @@ export interface ConversationMemberProfile {
     readonly via?: { readonly label: LocalizedText; readonly title?: LocalizedText; readonly tone?: "warn" };
   };
   readonly status?: { readonly text: LocalizedText; readonly tone?: "danger" };
-  /** 줄 아래의 사유 한 줄(예: 라우팅 폴백 사유). hover 는 원문이다. */
-  readonly note?: { readonly text: LocalizedText; readonly title?: string; readonly tone?: "warn" };
+  /**
+   * 줄 아래의 진단 줄들 — 보드 행이 보이는 순서 그대로(예: 직전 턴 실패, 보고 경로 없음, 라우팅 폴백 사유). `title` 은 보드가 펼쳐 싣는
+   * 원문이라 번역하지 않는다. `tone` 은 낱말의 신호 색이다.
+   */
+  readonly notes?: readonly { readonly text: LocalizedText; readonly title?: string; readonly tone?: "warn" | "danger" }[];
 }
 
 /** 플러그인이 보내는 명부 한 줄 — 발화자 표식에 보드 사실을 곁들인다. 호스트는 profile 을 참여자로 옮기고 발화자에서는 뗀다. */

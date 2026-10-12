@@ -8,6 +8,7 @@ import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
+import { memberFailureReason } from "../server/signals.js";
 import type { Objective, ObjectiveMember } from "../server/types.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
@@ -323,11 +324,39 @@ export function memberRoutedTag(member: ObjectiveMember, launched: boolean, t: T
 }
 
 /** 폴백으로 띄운 구성원의 사유 한 줄 — hover 는 자식이 남긴 원문(detail)이다. 폴백이 아니면 없다. */
-export function memberFallbackNote(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly title?: string } | null {
+function memberFallbackNote(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly title?: string } | null {
   const routed = launched ? member.routed : null;
   if (routed?.via !== "fallback") return null;
   const text = routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) });
   return { text, ...(routed.detail !== undefined ? { title: routed.detail } : {}) };
+}
+
+/**
+ * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음,
+ * 보고 없이 닫힌 턴, 라우팅 폴백 사유. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
+ */
+export interface MemberNote {
+  readonly kind: "failure" | "switch" | "noReportTool" | "unreported" | "fallback";
+  readonly text: string;
+  readonly title?: string;
+  readonly tone: "danger" | "warn";
+}
+
+export function memberNotes(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): readonly MemberNote[] {
+  const notes: MemberNote[] = [];
+  const raw = (values: readonly (string | undefined)[]) => { const text = values.filter((value): value is string => value !== undefined && value !== "").join("\n"); return text ? { title: text } : {}; };
+  if (member.failure) {
+    const reason = memberFailureReason(member.failure);
+    notes.push({ kind: "failure", tone: "danger", text: reason ? t("objectives.members.failureReason", { reason: t(`objectives.members.reason.${reason}`), count: member.failure.consecutiveFailures }) : t("objectives.members.failureCount", { count: member.failure.consecutiveFailures }),
+      ...raw([member.failure.error, member.failure.error_details, member.failure.last_assistant_message]) });
+  }
+  if (launched && member.next?.failed && member.next.cause) notes.push({ kind: "switch", tone: "danger", text: t("objectives.members.next.causeSummary"), ...raw([member.next.cause.message]) });
+  if (member.noReportTool) notes.push({ kind: "noReportTool", tone: "warn", text: t("objectives.members.noReportTool") });
+  if (member.unreported) notes.push({ kind: "unreported", tone: "warn", text: member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported"),
+    ...raw([member.unreported.reason?.detail, member.unreported.lastMessage]) });
+  const fallback = memberFallbackNote(member, launched, t);
+  if (fallback) notes.push({ kind: "fallback", tone: "warn", ...fallback });
+  return notes;
 }
 
 const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), fallback: t("objectives.launch.fallback") });

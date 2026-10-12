@@ -200,11 +200,13 @@ function StandInMembersTab({ rootId, language }: { readonly rootId: string; read
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const clusters = useGroupClusters();
   const t = getGroupT(language);
+  // 지휘관 줄은 Operation 이 없어 여기서 세운다 — 보드 사실(지휘관 모델 줄)은 명부의 commander profile 에서 그대로 붙인다.
+  const commander = clusters.find((cluster) => cluster.conversation?.operationId === rootId)?.conversation?.commander;
   const participants = React.useMemo<readonly ConversationParticipant[]>(() => (
     snapshot.participants.some((participant) => participant.speaker.kind === "commander")
       ? snapshot.participants
-      : [{ speaker: { kind: "commander", name: t("group.commander"), operationId: rootId }, activity: "unknown" }, ...snapshot.participants]
-  ), [rootId, snapshot.participants, t]);
+      : [{ speaker: { kind: "commander", name: t("group.commander"), operationId: rootId }, activity: "unknown", ...(commander ? { profile: commander } : {}) }, ...snapshot.participants]
+  ), [rootId, snapshot.participants, t, commander]);
   if (!clusters.some((cluster) => cluster.conversation?.operationId === rootId)) return <p className="group-members-empty">{t("group.members.none")}</p>;
   return <GroupMembersPanel snapshot={{ ...snapshot, participants }} language={language} ledgerOperationId={null} notStarted />;
 }
