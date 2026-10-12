@@ -1105,6 +1105,14 @@ html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conve
   -webkit-app-region: drag;
 }
 
+/* 사용량 캡슐은 칸의 첫 자식이라 DOM 순서로 pill 줄(대화 칸·확장 표면 머리)보다 앞선다 — 아래 순서 규칙대로 그 위를 덮는 pill 줄의
+   drag 가 캡슐의 no-drag 를 다시 덮어 클릭이 창 끌기로 먹힌다. pill 줄의 drag 상자를 캡슐 몫(--conversation-quota-space) 앞에서
+   끝내고 그만큼 오른쪽 안쪽 여백을 줄여, 내용 상자(가운데 pill 자리)는 그대로 둔 채 두 사각형이 겹치지 않게 한다. */
+html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-pill-row {
+  right: var(--conversation-quota-space);
+  padding-right: calc(max(var(--conversation-quota-space), var(--conversation-lead-space, 0px)) + var(--conversation-caption-reserve) - var(--conversation-quota-space));
+}
+
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-quota,
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout .expanded-surface-lead,
 html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
