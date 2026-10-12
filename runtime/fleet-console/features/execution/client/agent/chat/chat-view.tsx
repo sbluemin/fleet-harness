@@ -309,12 +309,50 @@ export function AgentChatView({
   // 스트림 성장은 팔로우일 때만 바닥으로 간다. 언핀이면 scrollTop 을 그대로 둔다.
   // 다만 그때의 바닥 거리를 갱신하지 않으면, 이후 리사이즈가 성장 전 거리로
   // restorePlace 를 돌려 읽던 줄을 꼬리 쪽으로 끌어올린다.
-  React.useLayoutEffect(() => {
+  const followContentGrowth = React.useCallback(() => {
     restoreFollow();
     const log = logRef.current;
     if (!log || nearBottomRef.current || log.clientHeight === 0) return;
     bottomDistanceRef.current = Math.max(0, log.scrollHeight - log.scrollTop - log.clientHeight);
-  }, [restoreFollow, scrollSignal, working, state.turns.length]);
+  }, [restoreFollow]);
+  React.useLayoutEffect(followContentGrowth, [followContentGrowth, scrollSignal, working, state.turns.length]);
+
+  // 마크다운은 델타를 받은 뒤 따로 그려지므로, 상태 신호가 아니라 실제 내용 높이도 따른다.
+  // 펼친 역사는 display: contents라 상자 높이가 없다 — 그 자식도 관찰하되 로그의 resize와는 구분한다.
+  React.useEffect(() => {
+    const log = logRef.current;
+    if (!log || typeof ResizeObserver === "undefined") return;
+    let width = log.clientWidth;
+    let height = log.clientHeight;
+    const observer = new ResizeObserver(() => {
+      const resized = width !== log.clientWidth || height !== log.clientHeight;
+      width = log.clientWidth;
+      height = log.clientHeight;
+      // 로그 자체가 달라졌을 때는 기존 restoreAnchor 경로가 이전 바닥 거리를 보존한다.
+      if (!resized) followContentGrowth();
+    });
+    const observed = new Set<Element>();
+    const observeContents = () => {
+      const contents = new Set(log.querySelectorAll(":scope > *, :scope > .agent-chat-history > *"));
+      for (const element of observed) {
+        if (contents.has(element)) continue;
+        observer.unobserve(element);
+        observed.delete(element);
+      }
+      for (const element of contents) {
+        if (observed.has(element)) continue;
+        observer.observe(element);
+        observed.add(element);
+      }
+    };
+    observeContents();
+    const mutations = new MutationObserver(observeContents);
+    mutations.observe(log, { childList: true, subtree: true });
+    return () => {
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, [followContentGrowth]);
 
   React.useEffect(() => {
     const previous = previousTurnCountRef.current;
