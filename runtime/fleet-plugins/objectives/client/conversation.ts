@@ -1,9 +1,19 @@
-import type { ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
-import { MAX_OBJECTIVE_ACTIONS, type Objective } from "../server/types.js";
+import type { ConversationMember, ConversationMemberProfile, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, OperationClusterConversation } from "@fleet-console/sdk/conversation";
+import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ModelRoster } from "@fleet-console/sdk/models";
+import { MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
+import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
+import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
 
-/** Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions): OperationClusterConversation {
-  const members: ConversationSpeaker[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) } }));
+/** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
+export interface ConversationCrew {
+  readonly state: (operationId: string) => string;
+  readonly roster: ModelRoster | null;
+}
+
+/** Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다. */
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): OperationClusterConversation {
+  const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
     speaker: { kind: "member", operationId: entry.memberId, name: entry.name, mark: { number: entry.number, tone: toneAt(entry.number - 1) } },
@@ -26,9 +36,48 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { operationId: objective.id, members, events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
+  return { operationId: objective.id, members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, text: question.text, multiSelect: question.multiSelect, options: question.options })), open,
     ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
   } : null };
+}
+
+/** 보드 구성원 행이 보이는 것 — 역할 곁 제안 표식, 브리프, 모델·강도(라우팅 표식·꺼짐 포함), 상태 낱말, 폴백 사유. 로케일과 무관한 칸은 한 번만 센다. */
+function memberProfile(objective: Objective, member: ObjectiveMember, crew: ConversationCrew): ConversationMemberProfile {
+  const state = crew.state(member.id);
+  const launched = memberLaunched(member, crew.state);
+  const en = getT("en");
+  const { failed } = memberStatus(member, state, objective, en);
+  const routed = memberRoutedTag(member, launched, en);
+  const notes = memberNotes(member, launched, en);
+  return {
+    ...(member.by === "commander" ? { badge: localized((t) => t("objectives.members.proposed")) } : {}),
+    ...(member.brief ? { brief: member.brief } : {}),
+    launch: {
+      ...launchLine((t) => memberLaunchShown(member, launched, t, crew.roster)),
+      ...(routed ? { via: { label: localized((t) => memberRoutedTag(member, launched, t)!.label), title: localized((t) => memberRoutedTag(member, launched, t)!.title), ...(routed.via === "fallback" ? { tone: "warn" as const } : {}) } } : {}),
+    },
+    status: { text: localized((t) => memberStatus(member, state, objective, t).text), ...(failed ? { tone: "danger" as const } : {}) },
+    // 진단 줄의 개수·순서·tone·원문은 로케일과 무관하다 — 낱말만 로케일마다 다시 푼다.
+    ...(notes.length > 0 ? { notes: notes.map((note, index) => ({ text: localized((t) => memberNotes(member, launched, t)[index]?.text ?? ""), ...(note.title !== undefined ? { title: note.title } : {}), tone: note.tone })) } : {}),
+  };
+}
+
+/** 보드의 지휘관 행은 모델·강도만 보인다 — 그 한 줄만 싣는다. */
+function commanderProfile(objective: Objective, roster: ModelRoster | null): ConversationMemberProfile {
+  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)) };
+}
+
+/** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */
+function launchLine(shown: (t: Translate<ObjectiveMessageKey>) => LaunchShown): NonNullable<ConversationMemberProfile["launch"]> {
+  const { provider, struck, badge, effort } = shown(getT("en"));
+  return {
+    label: localized((t) => shown(t).label),
+    ...(effort !== null ? { effort: localized((t) => shown(t).effort ?? "") } : {}),
+    title: localized((t) => shown(t).title),
+    ...(provider ? { provider } : {}),
+    ...(struck ? { struck } : {}),
+    ...(badge !== null ? { badge: localized((t) => shown(t).badge ?? "") } : {}),
+  };
 }

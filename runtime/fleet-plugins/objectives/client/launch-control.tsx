@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
 
-import { ModelCoordinatePicker } from "@fleet-console/sdk/components/model-coordinate-picker";
+import { ModelCoordinatePicker, modelCoordinateDisplay } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "@fleet-console/sdk/models";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "@fleet-console/sdk/components/launch-provider-glyphs";
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { ClientModelsCapability } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
+import { memberFailureReason } from "../server/signals.js";
 import type { Objective, ObjectiveMember } from "../server/types.js";
-import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 
 /**
  * 지휘관·구성원의 모델·강도 — 한 줄의 글("Opus · HIGH")이고, 누르면 Console 공유 선택기(`ModelCoordinatePicker`)의
@@ -29,9 +30,25 @@ let models: ClientModelsCapability | null = null;
 let lastGroups: readonly LaunchGroup[] = [];
 let lastRoster: ModelRoster | null = null;
 
+/** 리액트 밖 구독자(대화 명부를 싣는 묶음 서술자) — 로스터가 오거나 바뀌면 다시 셈한다. */
+const rosterListeners = new Set<() => void>();
+const notifyRoster = () => { for (const listener of rosterListeners) listener(); };
+
 export function installLaunchRoster(capability: ClientModelsCapability): () => void {
   models = capability;
-  return () => { if (models === capability) models = null; };
+  const off = capability.subscribe(notifyRoster);
+  if (rosterListeners.size > 0) { void capability.load("launch").catch(() => undefined); notifyRoster(); }
+  return () => { off(); if (models === capability) models = null; };
+}
+
+/** 지금 캐시된 기동 로스터 — 읽기 전이면 null 이고 읽기를 시작하지 않는다. */
+export const readLaunchRoster = (): ModelRoster | null => models?.read("launch") ?? null;
+
+/** 리액트 밖에서 로스터를 따른다 — 구독하는 동안 읽기를 한 번 청해, 보드를 열지 않아도 같은 낱말이 선다. */
+export function subscribeLaunchRoster(listener: () => void): () => void {
+  rosterListeners.add(listener);
+  void models?.load("launch").catch(() => undefined);
+  return () => { rosterListeners.delete(listener); };
 }
 
 function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
@@ -253,6 +270,119 @@ export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, 
   const chosen = launchedWords(rows, member.launch.model, member.launch.effort, labels);
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
+/**
+ * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원·라우팅·지휘관과 같게는
+ * 위 표시의 낱말, 모델 지정은 공유 선택기의 트리거 낱말(메뉴처럼 기본 좌표 없이)이다. hover 글은 보드 트리거의 title 그대로다.
+ */
+export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
+  const groups = toLaunchGroups(roster);
+  const display = memberLaunchDisplay(member, launched, t, groups.flatMap((group) => group.rows));
+  if (launched) {
+    // 보드 행의 LaunchedText 와 같은 낱말 — 이름과 강도를 따로 싣는다.
+    const running = launchedWords(groups.flatMap((group) => group.rows), member.model, member.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
+    return { label: running.words.model, effort: running.words.effort || null, title: display.title, provider: running.model ? providerOfModel(groups, running.model) : null, struck: false, badge: null };
+  }
+  if (member.launch.mode !== "model") return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null };
+  const shown = modelCoordinateDisplay(roster, { model: member.launch.model, ...(member.launch.effort ? { effort: member.launch.effort } : {}) }, undefined, pickerLabels(t));
+  return { label: shown.words.model, effort: shown.words.effort || null, title: display.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+}
+
+/** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
+export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
+  const { model, effort } = objective.commander;
+  const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
+  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, struck: shown.struck, badge: shown.badge };
+}
+
+/**
+ * 트리거가 보이는 모델 줄 — 낱말, hover 글, 공급자, 그리고 공유 선택기가 그 곁에 그리는 상태: 로스터 밖 저장값이면 취소선(struck)과
+ * 「꺼짐」, 로스터가 비어 최후 폴백으로 서면 「폴백」 표식(badge).
+ */
+export interface LaunchShown {
+  /** 모델 낱말 — 선택 방식(라우팅·지휘관과 같게)이면 그 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
+  readonly label: string;
+  /** 강도 낱말 — 말하지 않는 행(선택 방식·강도 사다리 없는 모델)이면 null. */
+  readonly effort: string | null;
+  readonly title: string;
+  readonly provider: LaunchProviderGlyphId | null;
+  readonly struck: boolean;
+  readonly badge: string | null;
+}
+
+/** 라우팅 사유 중 「켜져 있지 않거나 후보가 없음」 — 사유 줄과 표식 hover 가 같은 문장으로 접는다. */
+export const ROUTING_OFF_REASONS: ReadonlySet<string> = new Set(["routing_disabled", "routing_off", "no_candidate"]);
+
+/** 띄운 구성원의 「라우팅」·「폴백」 표식 — 보드 행의 모델 칩 곁과 대화 명부가 같은 낱말·hover 를 쓴다. 띄우기 전이면 없다. */
+export function memberRoutedTag(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly via: "route" | "fallback"; readonly label: string; readonly title: string } | null {
+  const routed = launched ? member.routed : null;
+  if (!routed) return null;
+  return {
+    via: routed.via,
+    label: t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback"),
+    title: t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle"),
+  };
+}
+
+/** 폴백으로 띄운 구성원의 사유 한 줄 — hover 는 자식이 남긴 원문(detail)이다. 폴백이 아니면 없다. */
+function memberFallbackNote(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly title?: string } | null {
+  const routed = launched ? member.routed : null;
+  if (routed?.via !== "fallback") return null;
+  const text = routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) });
+  return { text, ...(routed.detail !== undefined ? { title: routed.detail } : {}) };
+}
+
+/**
+ * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음,
+ * 보고 없이 닫힌 턴, 라우팅 폴백 사유. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
+ */
+export interface MemberNote {
+  readonly kind: "failure" | "switch" | "noReportTool" | "unreported" | "fallback";
+  readonly text: string;
+  readonly title?: string;
+  readonly tone: "danger" | "warn";
+}
+
+export function memberNotes(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>): readonly MemberNote[] {
+  const notes: MemberNote[] = [];
+  const raw = (values: readonly (string | undefined)[]) => { const text = values.filter((value): value is string => value !== undefined && value !== "").join("\n"); return text ? { title: text } : {}; };
+  if (member.failure) {
+    const reason = memberFailureReason(member.failure);
+    notes.push({ kind: "failure", tone: "danger", text: reason ? t("objectives.members.failureReason", { reason: t(`objectives.members.reason.${reason}`), count: member.failure.consecutiveFailures }) : t("objectives.members.failureCount", { count: member.failure.consecutiveFailures }),
+      ...raw([member.failure.error, member.failure.error_details, member.failure.last_assistant_message]) });
+  }
+  if (launched && member.next?.failed && member.next.cause) notes.push({ kind: "switch", tone: "danger", text: t("objectives.members.next.causeSummary"), ...raw([member.next.cause.message]) });
+  if (member.noReportTool) notes.push({ kind: "noReportTool", tone: "warn", text: t("objectives.members.noReportTool") });
+  if (member.unreported) notes.push({ kind: "unreported", tone: "warn", text: member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported"),
+    ...raw([member.unreported.reason?.detail, member.unreported.lastMessage]) });
+  const fallback = memberFallbackNote(member, launched, t);
+  if (fallback) notes.push({ kind: "fallback", tone: "warn", ...fallback });
+  return notes;
+}
+
+const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), fallback: t("objectives.launch.fallback") });
+
+/** 한 로케일 값의 낱말을 로케일마다 다시 푼다 — 대화 명부는 호스트의 로케일로 읽는다. */
+export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): LocalizedText => (locale) => word(getT(locale));
+
+/**
+ * 활동 → 상태 낱말 — 데스크톱 명단·모바일 보드·대화 명부가 같은 낱말을 쓴다. 세션이 없으면(closed) 말하지 않는다.
+ * 활동은 화면 활동(백그라운드를 작업 중으로 접은 값)으로 받는다 — 접기는 부르는 쪽이 한다.
+ */
+export function memberActivityWord(state: string, t: Translate<ObjectiveMessageKey>): string | null {
+  if (state === "closed") return null;
+  if (state === "ended") return t("objectives.members.dormant");
+  if (state === "awaiting") return t("objectives.awaiting.word");
+  return state === "running" ? t("objectives.members.working") : t("objectives.members.idle");
+}
+
+/** 구성원 행의 상태 낱말 — 실패가 먼저, 세션이 없으면 맡은 임무 수, 아니면 상태 낱말. */
+export function memberStatus(member: ObjectiveMember, state: string, objective: Objective, t: Translate<ObjectiveMessageKey>): { readonly text: string; readonly failed: boolean } {
+  const working = state === "running" || state === "awaiting";
+  if ((member.outcome === "failed" || !!member.failure) && !working) return { text: t("objectives.members.failed"), failed: true };
+  if (state === "closed") return { text: t("objectives.members.missions", { count: objective.missions.filter((mission) => mission.member === member.id).length }), failed: false };
+  return { text: memberActivityWord(state, t) ?? "", failed: false };
+}
+
 /** 사라진 Operation 은 실행값을 읽을 곳이 없다 — 띄우기 전처럼 설정 선택을 보인다(다음 개시가 연결을 새로 세운다). */
 export const memberLaunched = (member: ObjectiveMember, operationState: (operationId: string) => string): boolean => member.sessionName !== null && operationState(member.id) !== "closed";
 /** 저장값만. false와 키 없음은 꺼짐. 실행 중 세션에 적용됐는지는 여기서 말하지 않는다. */

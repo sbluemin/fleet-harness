@@ -176,15 +176,19 @@ function snapshot(rootOperationId: string | null, board: OperationClusterConvers
   const operations = [...state.operations, ...state.nestedOperations];
   const root = operations.find((operation) => operation.id === rootOperationId);
   const runtime = ownOperationRuntime();
-  const byMember = new Map(board?.members.flatMap((member) => member.operationId ? [[member.operationId, member] as const] : []) ?? []);
+  // 명부의 보드 사실(profile)은 참여자에만 싣는다 — 발화자는 말풍선·이음 줄마다 복사되므로 표식만 남긴다.
+  const roster = (board?.members ?? []).map(({ profile, ...speaker }): Pick<ConversationParticipant, "speaker" | "profile"> => ({ speaker, ...(profile ? { profile } : {}) }));
+  const byMember = new Map(roster.flatMap((member) => member.speaker.operationId ? [[member.speaker.operationId, member] as const] : []));
   const current = operations.filter((operation) => operation.id === rootOperationId || operation.parentOperationId === rootOperationId);
   const participants: ConversationParticipant[] = current.map((operation) => {
-    const speaker: ConversationSpeaker = byMember.get(operation.id) ?? { kind: operation.id === rootOperationId ? (board ? "commander" : "operation") : "member", name: operation.id === rootOperationId && board ? commanderName : operation.title, operationId: operation.id };
+    const listed = byMember.get(operation.id);
+    const speaker: ConversationSpeaker = listed?.speaker ?? { kind: operation.id === rootOperationId ? (board ? "commander" : "operation") : "member", name: operation.id === rootOperationId && board ? commanderName : operation.title, operationId: operation.id };
+    const profile = listed?.profile ?? (operation.id === rootOperationId ? board?.commander : undefined);
     const observed = runtime[operation.id];
-    return { speaker, activity: observed?.lifecycle === "live" ? observed.activity : observed?.lifecycle === "dormant" ? "ended" : "unknown" };
+    return { speaker, activity: observed?.lifecycle === "live" ? observed.activity : observed?.lifecycle === "dormant" ? "ended" : "unknown", ...(profile ? { profile } : {}) };
   });
   // 아직 기동하지 않은 명부도 표식은 보인다. 실행 상태를 꾸며내지 않는다.
-  for (const member of board?.members ?? []) if (!participants.some(({ speaker }) => speaker.operationId === member.operationId)) participants.push({ speaker: member, activity: "unknown" });
+  for (const member of roster) if (!participants.some(({ speaker }) => speaker.operationId === member.speaker.operationId)) participants.push({ ...member, activity: "unknown" });
   const journals = new Map<string, ConversationJournal>();
   const unavailable: string[] = [];
   let loading = false;

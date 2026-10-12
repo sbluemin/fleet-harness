@@ -159,7 +159,7 @@ export function ModelCoordinatePicker(props: ModelCoordinatePickerProps): React.
   return <DesktopCoordinatePicker {...props} />;
 }
 
-interface DisplayState {
+export interface ModelCoordinateDisplay {
   readonly shown: ModelCoordinateValue;
   readonly words: { readonly model: string; readonly effort: string };
   readonly provider: LaunchProviderGlyphId | null;
@@ -167,14 +167,20 @@ interface DisplayState {
   readonly off: boolean;
   /** 트리거가 꺼진 저장값 자체를 말하고 있는지(취소선). 로스터가 비어 폴백 좌표를 보일 때는 아니다. */
   readonly struck: boolean;
+  /** 트리거의 hover 글 — 낱말과 표식을 「 · 」로 잇는다. */
+  readonly title: string;
 }
 
 /**
  * 트리거가 말할 좌표와 표식. 값이 있으면 그 값(로스터 밖이면 「꺼짐」 — 다시 켜면 그대로 돌아온다), 없으면 기본 좌표.
  * 로스터가 비면 실행이 서는 최후 폴백 좌표를 「폴백」 표식과 함께 보인다(저장값은 메뉴의 꺼짐 띠에 남는다).
  */
-function useDisplay(props: ModelCoordinatePickerProps): DisplayState {
-  const { roster, value, fallback, labels } = props;
+export function modelCoordinateDisplay(
+  roster: ModelRoster | null,
+  value: ModelCoordinateValue,
+  fallback: ModelCoordinateValue | undefined,
+  labels: Pick<ModelCoordinatePickerLabels, "auto" | "off" | "fallback">,
+): ModelCoordinateDisplay {
   const stored = value.model ? value : null;
   const off = Boolean(stored?.model) && roster !== null && !findRosterRow(roster, stored!.model);
   let shown: ModelCoordinateValue = stored ?? { model: fallback?.model, effort: value.effort ?? fallback?.effort };
@@ -184,17 +190,23 @@ function useDisplay(props: ModelCoordinatePickerProps): DisplayState {
     shown = { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
     if (resolved.reason === "roster_empty") badge = labels.fallback ?? null;
   }
+  const words = rosterCoordinateWords(roster, shown, labels.auto);
   return {
     shown,
-    words: rosterCoordinateWords(roster, shown, labels.auto),
+    words,
     provider: rosterProviderOf(roster, shown.model),
     badge,
     off,
     struck: off && shown === stored,
+    title: [words.model, words.effort, badge].filter(Boolean).join(" · "),
   };
 }
 
-function TriggerText({ display, prefix }: { readonly display: DisplayState; readonly prefix?: React.ReactNode }) {
+function useDisplay(props: ModelCoordinatePickerProps): ModelCoordinateDisplay {
+  return modelCoordinateDisplay(props.roster, props.value, props.fallback, props.labels);
+}
+
+function TriggerText({ display, prefix }: { readonly display: ModelCoordinateDisplay; readonly prefix?: React.ReactNode }) {
   return (
     <>
       {prefix}
@@ -308,7 +320,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   }, [open]);
 
   const variant = trigger?.variant ?? (trigger?.node ? "glyph" : "inline");
-  const title = trigger?.title ?? (trigger?.text ? undefined : [display.words.model, display.words.effort, display.badge].filter(Boolean).join(" · "));
+  const title = trigger?.title ?? (trigger?.text ? undefined : display.title);
   const text = trigger?.text ?? <TriggerText display={display} prefix={trigger?.prefix} />;
   const triggerClass = ["fc-coord-trigger", `is-${variant}`, trigger?.className ?? ""].filter(Boolean).join(" ");
   if (locked) {

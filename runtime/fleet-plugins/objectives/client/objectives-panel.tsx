@@ -8,7 +8,7 @@ import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyph";
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 
-import { DISPLAY_QUIET_MS, describeQuietMission, memberFailureReason, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
+import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, MAX_FOLLOWUPS, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
 import { ActionBand, type MemberAwaiting, type MessageRecipient } from "./action-band.js";
 import { DecisionGlyph, DecisionList, DecisionRequestBlock } from "./decisions.js";
@@ -23,7 +23,7 @@ import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
+import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -447,7 +447,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 }
 
 /** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
-const ROUTING_OFF_REASONS = new Set(["routing_disabled", "routing_off", "no_candidate"]);
 
 /** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
 function MemberMark({ objective, member, operationState, still }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean }) {
@@ -684,10 +683,11 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
     <div id="objectives-sec-members" hidden={!expanded}>
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
     {objective.members.map((member, index) => {
-      const count = objective.missions.filter((mission) => mission.member === member.id).length;
       const state = member.sessionName !== null ? operationState(member.id) : "closed";
       const launched = memberLaunched(member, operationState);
-      const routed = launched ? member.routed : null;
+      const routedTag = memberRoutedTag(member, launched, t);
+      const diagnostics = memberNotes(member, launched, t);
+      const noteOf = (kind: (typeof diagnostics)[number]["kind"]) => diagnostics.find((note) => note.kind === kind);
       const next = launched ? member.next : null;
       const reserved = next && !next.failed ? next : null;
       const appliedTo = launched ? applied.get(member.id) ?? null : null;
@@ -696,9 +696,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const failure = picked && fault ? { model: picked.model, effort: picked.effort, code: fault.code, dismiss: () => setFault(null) }
         : next?.failed ? { model: next.model, effort: next.effort, code: next.failed, cause: next.cause?.message, dismiss: () => cancelNext(member) } : null;
       const labels = { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") };
-      const isWorkingOrAwaiting = state === "running" || state === "awaiting";
-      const failed = (member.outcome === "failed" || !!member.failure) && !isWorkingOrAwaiting;
-      const status = failed ? t("objectives.members.failed") : state === "closed" ? t("objectives.members.missions", { count }) : state === "ended" ? t("objectives.members.dormant") : isWorkingOrAwaiting ? (state === "awaiting" ? t("objectives.awaiting.word") : t("objectives.members.working")) : t("objectives.members.idle");
+      const { text: status, failed } = memberStatus(member, state, objective, t);
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
@@ -718,7 +716,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
               onCommit={(value) => { if (value !== (member.brief ?? "")) void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { brief: value || null } }); return true; }} />
           </div>
           <div className="objectives-member-meta">
-            {routed ? <span className={`objectives-member-via is-${routed.via}`} title={t(routed.via === "route" ? "objectives.members.routedTitle" : ROUTING_OFF_REASONS.has(routed.reason) ? "objectives.members.fallbackOffTitle" : "objectives.members.fallbackTitle")}>{t(routed.via === "route" ? "objectives.members.routed" : "objectives.members.fallback")}</span> : null}
+            {routedTag ? <span className={`objectives-member-via is-${routedTag.via}`} title={routedTag.title}>{routedTag.label}</span> : null}
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
               onPickLaunched={(launch) => pickLaunched(member, launch)}
               onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
@@ -747,27 +745,25 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
           {touchable ? <button type="button" className="objectives-glyph objectives-member-remove" title={t("objectives.members.remove")} aria-label={t("objectives.members.removeAria", { role: member.role })} onClick={() => remove(member)}><TrashGlyph /></button> : null}
         </div>
         {member.failure ? <details className="objectives-member-note is-error objectives-member-failure">
-          <summary>{((reason) => reason
-            ? t("objectives.members.failureReason", { reason: t(`objectives.members.reason.${reason}`), count: member.failure.consecutiveFailures })
-            : t("objectives.members.failureCount", { count: member.failure.consecutiveFailures }))(memberFailureReason(member.failure))}</summary>
+          <summary>{noteOf("failure")?.text}</summary>
           <p>{t("objectives.members.failureData")}</p>
           <pre>{[member.failure.error, member.failure.error_details, member.failure.last_assistant_message].filter((value) => value !== undefined).join("\n")}</pre>
         </details> : null}
         {/* 바뀌지 않은 모델 전환의 사유 — 세션이 거절하며 남긴 원문을 자르지 않고 펼쳐 보인다(말풍선 title 만으로는 마우스를 올려야 읽힌다). */}
         {launched && member.next?.failed && member.next.cause ? <details className="objectives-member-note is-error objectives-member-failure">
-          <summary>{t("objectives.members.next.causeSummary")}</summary>
+          <summary>{noteOf("switch")?.text}</summary>
           <pre>{member.next.cause.message}</pre>
           {member.next.cause.errorClass || member.next.cause.code || member.next.cause.exitCode !== undefined || member.next.cause.signal
             ? <p>{[member.next.cause.errorClass, member.next.cause.code, member.next.cause.exitCode !== undefined ? `exit ${member.next.cause.exitCode}` : undefined, member.next.cause.signal].filter((value) => value !== undefined && value !== "").join(" · ")}</p> : null}
         </details> : null}
-        {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{t("objectives.members.noReportTool")}</p> : null}
+        {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{noteOf("noReportTool")?.text}</p> : null}
         {/* 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다 — 사유 칸은 판정한 출처가 있을 때만 붙는다. 마지막 응답은 원문 그대로다. */}
         {member.unreported ? <details className="objectives-member-note is-warn objectives-member-failure">
-          <summary>{member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported")}</summary>
+          <summary>{noteOf("unreported")?.text}</summary>
           {member.unreported.reason?.detail !== undefined ? <pre>{member.unreported.reason.detail}</pre> : null}
           {member.unreported.lastMessage !== undefined ? <><p>{t("objectives.members.unreportedData")}</p><pre>{member.unreported.lastMessage}</pre></> : <p>{t("objectives.members.unreportedEmpty")}</p>}
         </details> : null}
-        {routed?.via === "fallback" ? <p className="objectives-member-reason" title={routed.detail}>{routed.reason === "no_candidate" ? t("objectives.members.fallbackNoCandidate") : ROUTING_OFF_REASONS.has(routed.reason) ? t("objectives.members.fallbackOff") : t("objectives.members.fallbackLine", { reason: routingReason(t, routed.reason) })}</p> : null}
+        {((fallback) => fallback ? <p className="objectives-member-reason" title={fallback.title}>{fallback.text}</p> : null)(noteOf("fallback"))}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}
         </div>
