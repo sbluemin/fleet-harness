@@ -1892,12 +1892,21 @@ describe("Objectives contract", () => {
     ]);
     expect(loadout.quota).toEqual(quota.providers);
     const actor = { kind: "commodore", theaterId: "t1" };
-    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off" });
+    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31" });
+    expect(created).toMatchObject({ stored: { dueDate: "2026-10-31" } });
     const id = created.objectiveId as string;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor });
     expect((await board({ action: "list", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
-    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
-    expect(reloaded.find(id)?.addedBy).toEqual(actor);
+    const reloadObjective = () => createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined }).find(id);
+    expect(reloadObjective()).toMatchObject({ addedBy: actor, dueDate: "2026-10-31" });
+    // 도구로 정한 기한은 보드와 재읽기에 남고, null 편집은 실제 저장값을 비운다.
+    expect(await board({ action: "edit_due", objectiveId: id, dueDate: "2026-11-01" })).toMatchObject({ stored: { dueDate: "2026-11-01" } });
+    expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id, dueDate: "2026-11-01" }));
+    const invalidDue = await commodore.execute({ action: "edit_due", objectiveId: id, dueDate: "tomorrow" }, { cwd: workspace }) as { structuredContent: { error: string } };
+    expect(invalidDue.structuredContent.error).toBe("invalid_arguments");
+    expect(reloadObjective()?.dueDate).toBe("2026-11-01");
+    expect(await board({ action: "edit_due", objectiveId: id, dueDate: null })).toMatchObject({ stored: { dueDate: null } });
+    expect(reloadObjective()?.dueDate).toBeNull();
     // 운영 주체 — 사람이 만든 목표도 사령관 조회에 그대로 서고 operator 로 구분된다. 맡기는 것은 사람의 라우트뿐이고,
     // 맡긴 값은 다시 읽어도 남으며 행위 기록에 사람의 손으로 남는다.
     const personal = (await launch.create({ theaterId: "t1", title: "Person's own", groupId: null, note: "brief" })).id;

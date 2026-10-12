@@ -8,7 +8,7 @@ import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { COMMODORE_TIDY_PREFIX, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, decisionAnswersSchema, followupSelectionSchema, type Objective, type ObjectiveReviewer } from "./types.js";
+import { COMMODORE_TIDY_PREFIX, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, type Objective, type ObjectiveReviewer } from "./types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 
@@ -17,9 +17,9 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
  * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 와 Theater 에 묶인 사령관 세션이
  * 같은 정의·같은 action 을 쓴다 — 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
- * 목표는 제목과 브리핑으로만 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
+ * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
  * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·메시지·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
- * 제목·브리핑 편집뿐이다. 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
+ * 제목·브리핑·기한 편집뿐이다. 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
 const ids = z.string().min(1).max(128);
@@ -49,6 +49,7 @@ const HINTS: Readonly<Record<string, string>> = {
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
 };
 
+const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { theaterId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Existing Operations are archived; objectives with no Operation are permanently deleted. No expiry.");
@@ -62,7 +63,7 @@ const listTool = defineConsoleTool({
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
     models: { kind: "read", input: z.object(scope) },
-    add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
@@ -74,7 +75,7 @@ const target = { objectiveId: ids };
 const write = <S extends z.ZodRawShape>(shape: S) => ({ kind: "write" as const, input: z.object({ ...target, ...shape }) });
 const followupTarget = { batchId: ids, candidateId: ids };
 /**
- * 목표 화면 — 목표의 행위와 제목·브리핑 편집. 임무·달성 기준·구성원은 지휘관의 구상이 정하고(기준은 제안·승인), 이 화면은 그것을 쓰지 않는다.
+ * 목표 화면 — 목표의 행위와 제목·브리핑·기한 편집. 임무·달성 기준·구성원은 지휘관의 구상이 정하고(기준은 제안·승인), 이 화면은 그것을 쓰지 않는다.
  * 전사는 목표가 무언가를 기다리거나 일하는 세션이 없을 때만 연다(objective_working).
  */
 const detailTool = defineConsoleTool({
@@ -88,6 +89,7 @@ const detailTool = defineConsoleTool({
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
     edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the whole brief; list rows show only its start.") }),
+    edit_due: write({ dueDate }),
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
     criteria_reject: write({ proposalId: ids }),
     answer: write({ requestId: ids, answers }),
@@ -222,13 +224,13 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         if (caller?.kind === "operation" && !spend(addBudget, callerKey(caller), MAX_ADD_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_ADD_PER_TURN, hint: HINTS.budget_exceeded });
         // 그룹은 입력으로 받지 않는다 — 호출 Operation 의 그룹을 그대로 따른다.
         const groupId = caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.groupId ?? null : null;
-        // 목표는 제목과 브리핑으로만 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
+        // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const objective = await launch.create({
-          theaterId, groupId, title: call.title, ...(call.note ? { note: call.note } : {}),
+          theaterId, groupId, title: call.title, ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
-        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, ...(kept.note ? { note: storedText(kept.note) } : {}) } });
+        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, ...(kept.note ? { note: storedText(kept.note) } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");
@@ -246,6 +248,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const theaterId = bound?.theaterId ?? found?.theaterId ?? "";
         const at = { view: "objective", ...(found ? { path: found.id } : {}), ...rowAt(found?.id, theaterId) };
         const title = short(found?.title ?? "");
+        if (action === "edit_due") return { theaterId, summary: `목표 기한 ${args.dueDate === null ? "해제" : "변경"} 「${title}」`, gesture: "press", ...at };
         if (detailTool.actions[action]?.kind === "write") return { theaterId, summary: `목표 ${action} 「${title}」`, gesture: "press", ...at };
         return { theaterId, summary: action === "transcript" ? `세션 기록 봄 「${title}」` : action === "evidence" ? `증거 봄 「${title}」` : `목표 봄 「${title}」`, ...at };
       },
@@ -313,6 +316,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             }
             case "edit_title": return actions.patch({ ...ref, patch: { title: call.title } });
             case "edit_brief": return actions.patch({ ...ref, patch: { note: call.brief } });
+            case "edit_due": return actions.patch({ ...ref, patch: { dueDate: call.dueDate } });
           }
         })();
         const { objective: updated, ...details } = result;
@@ -320,6 +324,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const stored = !kept ? undefined
           : call.action === "edit_title" ? { title: kept.title }
           : call.action === "edit_brief" ? { brief: storedText(kept.note) }
+          : call.action === "edit_due" ? { dueDate: kept.dueDate }
           : undefined;
         const answered = call.action === "answer" ? store.storedAnswers(current.id, call.requestId) : null;
         const echo = answered ? { answers: answered.map(({ questionId, selectedOptionIds, text: answer }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answer ? { text: storedText(answer) } : {}) })) } : stored;
