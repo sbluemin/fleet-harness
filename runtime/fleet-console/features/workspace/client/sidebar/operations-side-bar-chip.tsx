@@ -19,6 +19,7 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
+import { pointOnText } from "./operations-side-bar-hit-test.js";
 import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
 import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
 import { SnapMark } from "../canvas/snap-mark.js";
@@ -226,10 +227,20 @@ export function OperationsSideBarChip({
     if (event.detail <= 1) onSelect(operation.id);
   };
   // 칩 안의 버튼(최소화·보관)과 이름 입력에서 난 더블클릭은 그 컨트롤의 것이다 — 버블된 것을 열기로 읽지 않는다.
+  // 이름 글자의 더블클릭은 이름 변경이 먼저 멈춘다.
   const openOnDoubleClick = (event: ReactMouseEvent<HTMLLIElement>) => {
     if (pointerTypeRef.current === "touch" || dragging) return;
     if (event.target instanceof Element && event.target.closest("button, input")) return;
     onFocus(operation.id);
+  };
+  // 이름 글자 위 더블클릭은 이름 변경이다 — 고르기 모드에서도 그렇고, 여는 더블클릭은 이름 밖 자리만 진다. 이름 칸은 줄 폭으로
+  // 늘어나 있으므로 글자 자리로 판정하고, 이름 변경이면 칩의 openOnDoubleClick 까지 번지지 않게 멈춘다. 고르기 모드에서
+  // 터치·끌기 중의 더블클릭은 예전처럼 아무것도 하지 않는다.
+  const renameOnNameDoubleClick = (event: ReactMouseEvent<HTMLSpanElement>) => {
+    if (onSelect && (pointerTypeRef.current === "touch" || dragging)) return;
+    if (!pointOnText(event.currentTarget, event.clientX, event.clientY)) return;
+    event.stopPropagation();
+    rename.begin();
   };
   const stopClosePointer = (event: SyntheticEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -411,8 +422,7 @@ export function OperationsSideBarChip({
             />
           ) : (
             <>
-              {/* 고르기 모드에서는 이름 위 더블클릭도 연다 — 이름 바꾸기는 F2 와 우클릭 메뉴가 진다. */}
-              <span className="side-bar-chip-name" onDoubleClick={preview || onSelect ? undefined : rename.begin}>{title}</span>
+              <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : renameOnNameDoubleClick}>{title}</span>
               {snapZone ? <SnapMark zone={snapZone} /> : null}
               {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
             </>

@@ -10,6 +10,7 @@ import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getClu
 import { operationMarkLabel, type OperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { subscribeSideBarOperationAction } from "./interaction.js";
+import { pointOnText } from "./operations-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
@@ -244,7 +245,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       ?? (row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
         : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
-  // 이름 변경 — 칩과 같은 인라인 편집이다. 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
+  // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
   const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
   const anchorOperationId = anchor?.operation.id;
@@ -328,6 +329,17 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
     }
     if (event.detail === 1) selectAnchor();
   };
+  // 제목 글자 위 더블클릭은 이름 변경이다(「더블클릭으로 열기」가 켜져 있어도) — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로
+  // 판정하고, 그 밖(제목 뒤 빈자리 포함)의 더블클릭만 연다. 이름 변경이면 여는 dblclick 이 버튼까지 번지지 않게 여기서 멈춘다.
+  // 터치·끌기 중의 더블클릭은 예전처럼 이름 변경으로 읽지 않는다.
+  const renameOnTitleDoubleClick = renameRow
+    ? (event: MouseEvent<HTMLSpanElement>) => {
+      if (pointerTypeRef.current === "touch" || dragging || !pointOnText(event.currentTarget, event.clientX, event.clientY)) return;
+      event.stopPropagation();
+      rename.begin();
+    }
+    : undefined;
+  const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (!selectMode) return;
     if (event.key === "Enter") {
@@ -408,12 +420,12 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       >
         {conversationRow ? (
           <span className="side-bar-cluster-row-head">
-            {rename.renaming ? renameInput : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
+            {rename.renaming ? renameInput : titleNode}
             {headMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}
           </span>
-        ) : rename.renaming ? renameInput : <span className="side-bar-cluster-row-title">{layout.cluster.title}</span>}
+        ) : rename.renaming ? renameInput : titleNode}
         {conversationRow ? (
           <span className="side-bar-cluster-row-line" aria-hidden="true">
             {leadMeta.map((part) => (

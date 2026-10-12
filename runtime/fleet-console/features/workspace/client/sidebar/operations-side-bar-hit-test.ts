@@ -202,3 +202,19 @@ export function moveByTargetIndex(
   next.splice(bounded, 0, sourceId);
   return next;
 }
+
+/**
+ * 점이 요소 안 글자 위에 있는지 — 이름 칸은 줄 폭을 다 받아 늘어나 있으므로 칸이 아니라 글자가 그려진 자리로 판정한다.
+ * 말줄임으로 칸 밖까지 이어지는 글자 자리는 칸에서 자른다.
+ */
+export function pointOnText(element: Element, clientX: number, clientY: number): boolean {
+  const box = element.getBoundingClientRect();
+  const range = element.ownerDocument.createRange();
+  range.selectNodeContents(element);
+  for (const rect of Array.from(range.getClientRects())) {
+    const left = Math.max(rect.left, box.left);
+    const right = Math.min(rect.right, box.right);
+    if (clientX >= left && clientX <= right && clientY >= Math.max(rect.top, box.top) && clientY <= Math.min(rect.bottom, box.bottom)) return true;
+  }
+  return false;
+}
