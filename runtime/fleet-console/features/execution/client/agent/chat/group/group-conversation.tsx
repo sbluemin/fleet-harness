@@ -5,6 +5,8 @@ import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
+import { useCodeBlockCopy } from "../code-block-copy.js";
+import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { getGroupT } from "./group-chat-i18n.js";
@@ -70,6 +72,7 @@ export interface BoardActionRecordRequest {
 
 export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal }: GroupConversationProps) {
   const t = getGroupT(language);
+  const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
@@ -123,7 +126,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     .filter((name): name is string => typeof name === "string");
 
   return (
-    <div className="group-chat">
+    <div className="group-chat" onClick={onCodeCopyClick}>
+      <span className="agent-chat-sr-only" aria-live="polite" aria-atomic="true">{codeCopyAnnouncement}</span>
       <div
         ref={logRef}
         className="group-chat-log"
