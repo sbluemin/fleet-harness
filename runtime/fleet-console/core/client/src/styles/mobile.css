@@ -571,13 +571,17 @@
   white-space: nowrap;
 }
 
+/* 상단 막대의 56은 고정 높이가 아니라 최소 높이다 — OS 글자 배율(Android font_scale·WebView textZoom)은 px
+   높이를 키우지 않고 글자만 키우므로, 고정 높이면 제목·부제 두 줄이 막대 위아래로 넘친다. 기본 배율의 두 줄
+   (약 45px)은 56 안에 가운데로 들어 모양이 그대로이고, 큰 배율에서만 막대가 글자를 품도록 자란다. 막대는
+   .mobile-frame의 auto 행이라 자란 만큼 본문이 아래로 물러난다. */
 .mobile-top-bar {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 56px;
+  min-height: 56px;
   padding: 0 8px;
   color: var(--m-text);
   background: var(--m-bg);
@@ -1345,9 +1349,12 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-chip.is-on { color: var(--m-on-inverse); background: var(--m-inverse); border-color: var(--m-inverse); }
 
 /* ── 대화 화면 머리(‹ · pill · ⋮)와 대화 정보 화면 ───────────────────────── */
-.mobile-top-bar.is-conversation { gap: 8px; height: 60px; padding: 8px 14px 6px; }
+/* 대화 헤더도 일반 막대처럼 최소 높이다 — 알약 역시 최소 48이라, 큰 글자 배율에서 알약의 제목·상태 두 줄이
+   테두리와 헤더를 넘지 않고 둘이 함께 자란다. 기본 배율의 두 줄(약 32px)은 알약 48 안에 들어 모양이 그대로다.
+   위아래 여백 7/5는 예전 고정 60px 안에서 알약이 놓이던 자리(7~55px)를 그대로 재현한다. */
+.mobile-top-bar.is-conversation { gap: 8px; min-height: 60px; padding: 7px 14px 5px; }
 .mobile-top-bar.is-conversation .mobile-bar-button { background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; }
-.mobile-conv-pill { position: relative; display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; height: 48px; padding: 0 14px 0 6px; color: var(--m-text); text-align: left; background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }
+.mobile-conv-pill { position: relative; display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 3px 14px 3px 6px; color: var(--m-text); text-align: left; background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }
 .mobile-conv-pill:active { background: var(--m-selected); }
 .mobile-conv-pill-av { display: grid; place-items: center; flex: none; width: 36px; height: 36px; }
 .mobile-conv-pill-copy { display: grid; min-width: 0; line-height: 1.2; }
