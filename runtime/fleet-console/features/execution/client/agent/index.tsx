@@ -105,7 +105,7 @@ export const agentOperationKind = defineOperationKind({
   // 분석가·뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
   captionActions: (context) => <AgentCaptionActions context={context} />,
   // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
-  // 사이드바 우클릭·War Room 카드도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
+  // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
   operationMenu: (context) => <AgentOperationMenu context={context} />,
   // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
   operationMarks: (context) => <AgentOperationMarks context={context} />,

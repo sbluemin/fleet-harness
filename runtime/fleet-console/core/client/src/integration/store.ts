@@ -604,8 +604,8 @@ export function applyGroupRemoved(groupId: string): void {
 }
 
 // 활성 Operation 은 활성 Theater 의 것이다 — 떠난 Theater 의 활성을 남기면 문맥을 따르는 표면(목표 레일 등)이
-// 보이지 않는 무대를 계속 겨눈다. 포인터 전환은 사이드바 pointerdown 이 이미 비우고, 키보드·팔레트·플러그인 전환도
-// 여기서 같아진다. 전 Theater 가 마운트인 선별(focusOperation 과 같은 가드) 동안은 다른 Theater 의 활성이 정상이다.
+// 보이지 않는 Operation을 계속 겨눈다. 포인터 전환은 사이드바 pointerdown 이 이미 비우고, 키보드·팔레트·플러그인 전환도
+// 여기서 같아진다. 등록된 전환 억제가 켜져 있으면 다른 Theater 의 활성을 그대로 둔다.
 export function setActiveTheater(theaterId: string | null): void {
   writeStoredActiveTheaterId(theaterId);
   const activeTheaterOf = state.operations.find((operation) => operation.id === state.activeOperationId)?.theaterId;
@@ -881,8 +881,7 @@ export function nextOperationId(order: readonly string[], currentId: string | nu
 }
 
 // 그룹은 Operation과 같은 Theater일 때만 그 Operation에 적용된다.
-// 활성 Theater가 아니라 Operation 자신의 Theater를 기준 삼는 것이 핵심이다 — 선별 무대는 활성
-// Theater 밖 Operation도 올리므로 활성 기준으로 거르면 그 무대의 그룹이 사라진다.
+// 활성 Theater가 아니라 Operation 자신의 Theater를 기준 삼는다.
 // 서버 PATCH는 groupId가 문자열인지만 보고 Theater 소속을 검사하지 않으므로(operations-domain.ts),
 // API로 타 Theater 그룹이 붙은 Operation이 존재할 수 있다. 사이드바는 그 조합을 미분류로 읽으므로,
 // 이 검사가 없으면 캡션만 홀로 그룹 이름을 주장해 두 면이 서로를 부정한다.

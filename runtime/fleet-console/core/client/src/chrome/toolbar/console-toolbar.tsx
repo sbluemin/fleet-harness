@@ -17,8 +17,7 @@ import "../../styles/rail.css";
 import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
- * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
- * War Room에서는 부유 섬. 내용과 순서는 같다.
+ * 도구모음 — 콘솔에 하나뿐인 도구 줄. 자리는 상단 바 가운데이고, 내용과 순서는 같다.
  *
  *   › 접기 | 플러그인(레일 도구) | 시스템 도구(찾기 · 원격 · 도움말 · 설정) | Bridge(Quota 요약 → 부관)
  *
@@ -26,8 +25,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
  * 않고(부관이 캔버스로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
  *
- * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. War Room 켜고 끄기는 도구모음이 아니라 좌측
- * 사이드바(모드 스위치)의 일이다 — 도구모음은 모드와 무관하게 같은 내용으로 선다.
+ * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. 도구모음은 화면과 무관하게 같은 내용으로 선다.
  *
  * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
@@ -53,7 +51,7 @@ function writeFolded(folded: boolean): void {
 }
 
 interface ConsoleToolbarProps {
-  /** 캔버스가 아닌 다른 화면(/settings 등)인가를 뒤집는다. /operations 이면 설정 톱니가 그 화면에서 바로 연다. */
+  /** operations 화면인가. 참이면 설정 톱니가 그 화면에서 바로 연다. */
   readonly canvas: boolean;
 }
 
@@ -73,7 +71,7 @@ export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
       return;
     }
     if (mount.parentNode === host) return;
-    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 키보드로 War Room을 켜고 끈 사람은 같은 버튼에 남아야 한다.
+    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 자리를 옮긴 뒤에도 같은 버튼에 남아야 한다.
     const focused = document.activeElement;
     const keepFocus = focused instanceof HTMLElement && mount.contains(focused) ? focused : null;
     host.appendChild(mount);

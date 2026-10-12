@@ -73,7 +73,7 @@ export interface EntryPageSnapshot {
   /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
-  /** 종료 인사가 출발하는 자리 — Console 상단 Band(기본) 또는 War Room 작업 표시줄 트레이. */
+  /** 종료 인사가 출발하는 자리. 기본은 Console 상단 Band다. `"tray"`는 제거된 War Room 작업 표시줄용으로 남아 있으며 지금은 쓰지 않는다. */
   readonly farewellFrom?: EntryFarewellOrigin;
   readonly palette?: EntryPalette;
 }

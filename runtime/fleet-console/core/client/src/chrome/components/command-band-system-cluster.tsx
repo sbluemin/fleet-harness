@@ -109,7 +109,7 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, War Room 트레이에서는 위로 열린다(CSS가 자리로 판단). */
+/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서 아래로 열린다. */
 export function ConsoleHelpMenu({ menuItem = false }: { readonly menuItem?: boolean } = {}) {
   const state = useConsoleState();
   return (

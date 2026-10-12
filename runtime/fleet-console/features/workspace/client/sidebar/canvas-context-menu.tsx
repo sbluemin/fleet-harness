@@ -254,8 +254,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   }, [catalog, canLaunch]);
 
   // 스크롤 게이지 — 굴리는 동안에만 나타나는 표시 전용 위치 표식. 매 스크롤 프레임의 기하는
-  // React 상태를 거치지 않고 DOM에 직접 쓴다(triage 덱 줌의 applyZoom과 같은 이유: 프레임당
-  // 재렌더를 피한다). is-on 클래스는 이 효과만 만지므로 정적 className과 충돌하지 않는다.
+  // React 상태를 거치지 않고 DOM에 직접 쓴다(프레임당 재렌더를 피한다).
+  // is-on 클래스는 이 효과만 만지므로 정적 className과 충돌하지 않는다.
   useEffect(() => {
     const menu = menuRef.current;
     const gauge = gaugeRef.current;
@@ -582,7 +582,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         }}
         {...onboardingBoundary()}
       >
-        {/* 게이지·스트립은 sticky라 배치 변형(cursor/above/triage fixed)과 무관하게 스크롤 포트
+        {/* 게이지·스트립은 sticky라 배치와 무관하게 스크롤 포트
             가장자리에 붙고, height:0이라 목록 흐름을 밀지 않는다. 전부 aria-hidden 포인터 전용
             장치다 — 키보드는 기존 방향키 포커스 추적이, 보조기술은 목록 자체가 담당한다. */}
         <div ref={gaugeRef} className="canvas-context-menu-gauge" aria-hidden="true">

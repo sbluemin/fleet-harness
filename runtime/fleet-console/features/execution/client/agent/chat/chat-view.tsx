@@ -472,7 +472,7 @@ export function AgentChatView({
     requestAnimationFrame(() => setAnswerAnnouncement(t("terminal.chat.answerReady")));
   }, [state.replaying, state.turns, t]);
 
-  // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
+  // 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
   // 바뀐 높이 위에서 예전 scrollTop 을 그대로 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우처럼
   // 높이가 0에서 자라면 그 값이 곧 맨 위다.
   React.useEffect(() => {

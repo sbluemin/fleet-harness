@@ -171,7 +171,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       suppressed = null;
       hide();
     };
-    // 도구모음이 자리를 옮기면(War Room 켜기·끄기) 포인터 밑의 칸이 통째로 사라져 pointerout이 오지 않는다 —
+    // 도구모음 노드가 자리를 옮기면 포인터 밑의 칸이 통째로 사라져 pointerout이 오지 않는다 —
     // 도구모음 밖을 겨누는 순간 기억한 칸과 누른 칸을 잊는다. 잊지 않으면 새 자리의 같은 칸이 말하지 않는다.
     const onWindowPointerOver = (event: PointerEvent) => {
       if (event.target instanceof Node && root.contains(event.target)) return;

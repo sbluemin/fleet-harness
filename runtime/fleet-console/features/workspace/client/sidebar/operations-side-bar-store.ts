@@ -46,8 +46,7 @@ let baselinedLiveActivityIds = new Set<string>();
 let pendingStatusLandingIds = new Set<string>();
 
 // 앞의 다섯은 Operation의 활동 상태다. "minimized"는 활동이 아니라 사용자가 고른 표시 상태이며,
-// 그래서 buildStatusSectionOrder의 상태 축에는 들어가지 않는다 — 활동 축을 순회하는 곳은 이 값을
-// 만들지 않고, War Room의 최소화 선반만 같은 섹션 문법(접힘 키·카운트·빈 힌트)을 빌려 쓴다.
+// 그래서 buildStatusSectionOrder의 상태 축에는 들어가지 않는다 — 활동 축을 순회하는 곳은 이 값을 만들지 않는다.
 export type SideBarStatus = "awaiting" | "running" | "idle" | "ended" | "minimized";
 
 export function useSideBarState(): SideBarState {
@@ -273,12 +272,10 @@ export function trackOperationActivityTransitions(input: {
   movedIds.forEach((id) => pendingStatusLandingIds.add(id));
   for (const operation of input.operations) {
     if (!movedIds.includes(operation.id)) continue;
-    // 확인 처리가 정지된 동안(War Room)에는 어떤 활성도 "이미 확인됨"으로 치지 않는다. 그
-    // 정지는 선별 중 활성화를 미인정으로 만들지만 진입 전에 인정된 활성은 건드리지 못하는데,
-    // 그 패널이 선별 중 완료하면 여기서 도착 마크를 통째로 건너뛴다. 마크는 전이 순간에만 붙어
-    // 되살아나지 않으므로, 그 Operation은 대기 큐로 돌아오지 못한 채 덱 카드에 남는다.
-    // 판정만 정지에 맞추고 activeOperationAcknowledged 자체는 두어야 한다 — 그 값을 진입에서
-    // 내리면 종료 복구(setActiveOperation)가 진입 전부터 있던 도착 마크까지 확인 처리해 지운다.
+    // 확인 처리가 정지된 동안에는 어떤 활성도 "이미 확인됨"으로 치지 않는다. 정지는 그 사이 완료를
+    // 도착 마크로 남기지 않으며, 마크는 전이 순간에만 붙는다. 판정만 정지에 맞추고
+    // activeOperationAcknowledged 자체는 두어야 한다 — 그 값을 내리면 종료 복구(setActiveOperation)가
+    // 전부터 있던 도착 마크까지 확인 처리해 지운다.
     const focusedAndAcknowledged = operation.id === input.activeOperationId
       && operation.theaterId === input.activeTheaterId
       && input.activeOperationAcknowledged === true

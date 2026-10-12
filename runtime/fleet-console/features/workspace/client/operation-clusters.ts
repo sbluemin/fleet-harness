@@ -99,7 +99,7 @@ export interface ClusterIndex {
   readonly clusters: readonly OperationCluster[];
   readonly layouts: ReadonlyMap<string, ClusterLayout>;
   /**
-   * operationId → 그 Operation 이 뿌리인 묶음. 구조(구성원·결정 요청)가 있는 묶음만 든다 — 캡션 띠·노드 줄·선별 표식이 읽는다.
+   * operationId → 그 Operation 이 뿌리인 묶음. 구조(구성원·결정 요청)가 있는 묶음만 든다 — 캡션 띠·노드 줄이 읽는다.
    * 줄(`row`)만 있는 묶음은 여기 없고 `rows` 로만 선다.
    */
   readonly rootOf: ReadonlyMap<string, ClusterLayout>;

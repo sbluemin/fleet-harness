@@ -317,7 +317,7 @@ function CloseWindowItem({ onCloseOperation, onClose }: { onCloseOperation: () =
 
 /**
  * Operation 종류가 메뉴에 싣는 섹션 — 이 Operation에 **대한** 스위치(관찰·콘솔 사용·컴퓨터 사용 같은).
- * 캡션·사이드바 우클릭·War Room 카드가 같은 카드를 열므로 여기 한 번만 서면 세 진입점이 같은 것을
+ * 캡션의 ···와 사이드바 우클릭이 같은 카드를 열므로 여기 한 번만 서면 두 진입점이 같은 것을
  * 본다. 실패해도 메뉴의 나머지는 살아야 하므로 조각만 조용히 비운다.
  */
 function PluginOperationMenuSection({ operation, onClose }: { operation: OperationNode; onClose: () => void }) {

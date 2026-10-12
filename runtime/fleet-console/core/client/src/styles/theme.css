@@ -159,10 +159,6 @@
     linear-gradient(transparent, transparent),
     radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px),
     linear-gradient(transparent, transparent);
-  /* 필드 그라데이션. 칠하는 화면은 없다. 이름은 테마 표와 모바일 스키마가 함께 쓴다. */
-  --canvas-field-triage:
-    radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
-    var(--canvas-abyss);
 
   /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. 정체성이라 테마의 채도
      봉투를 따라 재조율된다(다크 C ≤ 0.10) — 한 값으로 고정하면 Carbon·Instrument 외피의 2.5배로 튄다. */
@@ -627,12 +623,6 @@
     linear-gradient(color-mix(in oklch, var(--aurora) 15%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px);
-  /* 야간 필드. 세 테마를 빛의 자리로 가른다 — Instrument는 가운데 우물, Maritime은 아래 수평선, Carbon은 위 작업등.
-     칠하는 화면은 없고, 토큰 이름만 테마 표에 남는다. */
-  --canvas-field-triage:
-    radial-gradient(150% 48% at 50% 114%, color-mix(in oklch, var(--aurora) 12%, transparent), transparent 66%),
-    radial-gradient(98% 36% at 50% 102%, color-mix(in oklch, var(--canvas-sea-core) 66%, transparent), transparent 70%),
-    var(--canvas-abyss);
 
   --surface-glass: oklch(28% 0.04 248 / 60%);
   /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(20%)과 veil(36%) 사이의 터미널 필드 톤이다. */
@@ -751,12 +741,6 @@
     linear-gradient(color-mix(in oklch, var(--ink-rim) 26%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in oklch, var(--ink-rim) 9%, transparent) 1px, transparent 1px),
     linear-gradient(transparent, transparent);
-  /* 머리 위 작업등 하나. 상단 띠에서만 빛이 떨어지고 아래는 흑연이다.
-     칠하는 화면은 없고, 토큰 이름만 테마 표에 남는다. */
-  --canvas-field-triage:
-    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 12%, transparent), transparent 16%),
-    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-sea-core) 74%, transparent), transparent 28%),
-    var(--canvas-abyss);
 
   --surface-glass: oklch(25% 0.006 252 / 62%);
   /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(18%)과 mid(25%) 사이의 터미널 필드 톤이다. */
@@ -1394,7 +1378,6 @@
   --canvas-sea-mid: var(--m-bg);
   --canvas-sea-far: var(--m-bg);
   --canvas-field: linear-gradient(var(--m-bg), var(--m-bg));
-  --canvas-field-triage: linear-gradient(var(--m-bg), var(--m-bg));
   /* 지형 4슬롯 고정 어휘는 지킨다 — 빈 슬롯은 투명 그라디언트. */
   --canvas-weave:
     linear-gradient(transparent, transparent),

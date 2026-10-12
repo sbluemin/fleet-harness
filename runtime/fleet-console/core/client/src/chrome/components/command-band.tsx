@@ -41,9 +41,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   // 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 잰다 — 한쪽만 예약하면 중앙이 viewport 중앙에서
   // 밀리거나 우측과 겹친다.
   const centerGutter = commandBandCenterGutter(leftContentEnd, rightContentWidth);
-  // 중앙이 하한 사이에 들어가지 못하는 폭에서는 감추는 대신 좌측 플로우로 되돌린다 — 도구모음의
-  // 모드 스위치는 캔버스 모드의 유일한 조작면이라 접을 수 없다. 판정용 centerGutter는 그대로 두어
-  // 되돌아오는 폭이 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
+  // 중앙이 하한 사이에 들어가지 못하는 폭에서는 감추는 대신 좌측 플로우로 되돌린다.
+  // 판정용 centerGutter는 그대로 두어 되돌아오는 폭이 흔들리지 않게 하고, CSS에 주입하는 값만 0으로 내린다.
   const centerControlsCentered = commandBandCenterFits(bandWidth, centerGutter, centerContentWidth);
   const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;
   const desktopShell = typeof document !== "undefined" && document.documentElement.dataset.desktopShell === "true";

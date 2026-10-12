@@ -4147,7 +4147,7 @@ button.status-glyph.is-actionable:focus-visible {
   }
 }
 
-/* Cruise 사이드바에서 펼친 Theater 목록의 몸통. */
+/* 사이드바에서 펼친 Theater 목록의 몸통. */
 .side-bar-wide {
   display: flex;
   flex: 1 1 auto;
@@ -12205,7 +12205,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 /* ── Periscope 픽 — 접힌 카드를 엣지 독 호버가 오버레이로 되부른다 ─────────────────
-   dock 상태(collapsed)는 그대로라 아레나 인셋·fit-all은 접힘 기하를 유지하고, 카드만
+   dock 상태(collapsed)는 그대로라 아레나 인셋은 접힘 기하를 유지하고, 카드만
    원폭으로 떠오른다. 테두리의 brass 믹스는 상태가 아니라 "호버가 소환한 표면"의 위치/호버
    채널이다(전체화면 밴드 엣지 리빌과 같은 문법). */
 .operations-side-bar.is-closed.is-peeking {

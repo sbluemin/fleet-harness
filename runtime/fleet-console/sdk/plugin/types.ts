@@ -266,8 +266,9 @@ export interface ClientExecutionProvider {
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
-   * Cruise의 명시적 frame·Fleet Map 점 선택, 사이드바 묶음 줄 선택, 「더블클릭으로 열기」 사이드바의 한 번 클릭(열지 않는 선택),
-   * 또는 War Room의 실제 무대 변경(수동·자동) 시 호출된다. 무대가 비면 호출하지 않는다. 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
+   * 사이드바 묶음 줄 선택과 「더블클릭으로 열기」 사이드바의 한 번 클릭(열지 않는 선택) 시 호출된다.
+   * Cruise의 frame·Fleet Map 점 선택과 War Room의 무대 변경(수동·자동)은 그 화면이 제거되어 더 이상 호출하지 않는다.
+   * 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
    */
   readonly onMapOperationSelected?: (operationId: string) => void;
 }
@@ -774,7 +775,7 @@ export interface OperationClusterMember {
   readonly progress: OperationClusterProgress;
   /** 살아 있는 구성원 세션의 입력·결정 대기. 임무 진행(done/blocked)과 별개이며, 생략 시 옛 progress awaiting만 사용한다. */
   readonly awaitingInput?: boolean;
-  /** 끝난 구성원이 남긴 산출 요약 한 줄 — War Room 무대가 직전 단계의 것을 보여준다. */
+  /** 끝난 구성원이 남긴 산출 요약 한 줄. War Room 무대는 제거되어 이 줄을 더 이상 보여 주지 않는다. */
   readonly result?: string;
 }
 
@@ -782,11 +783,11 @@ export interface OperationCluster {
   /** 플러그인 안에서 유일한 id. 호스트가 `<pluginId>:` 를 앞에 붙인다. */
   readonly id: string;
   readonly theaterId: string;
-  /** 묶음의 제목(목표 제목) — 툴팁과 War Room 위치 표시에 선다. */
+  /** 묶음의 제목(목표 제목) — 툴팁에 선다. War Room 위치 표시는 그 화면이 제거되어 더 이상 쓰지 않는다. */
   readonly title: string;
   /**
    * 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. 아직 Operation 이 없는 묶음(시작 전 목표)은 뿌리가 없다 —
-   * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄·선별 표식에는 서지 않는다.
+   * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄에는 서지 않는다. 선별 표식은 War Room과 함께 제거되었다.
    */
   readonly root?: string;
   /**
@@ -799,7 +800,7 @@ export interface OperationCluster {
   readonly open?: (operationId?: string) => void;
   /**
    * 뿌리가 사람에게 답을 청한 결정 요청이 있고 사람이 답할 차례다(플러그인이 정한 맡은 이가 다루는 요청은 아니다) — 호스트는 뿌리
-   * 행·칩·선별 대기열·얼굴에 전용 표식을 세운다. 도구 허용 대기(활동
+   * 행·칩·얼굴에 전용 표식을 세운다. 선별 대기열은 War Room과 함께 제거되었다. 도구 허용 대기(활동
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
@@ -955,14 +956,14 @@ export interface OperationKindDescriptor {
   /**
    * Fills the caption band's action shelf, left of the host's own menu and window controls.
    * The band stays host-owned exactly as it does for a companion panel's `caption`: the host
-   * places the shelf, paints the surface, and drops it entirely on a War Room deck tile, where a
-   * card body is inert and its controls would be a false promise. Build the buttons with
+   * places the shelf, and paints the surface. War Room was removed, so the host no longer drops
+   * the shelf on a deck tile. Build the buttons with
    * `@fleet-console/sdk/components/caption-actions` so one band cannot carry two grammars.
    */
   readonly captionActions?: (context: OperationRenderContext) => ReactNode;
   /**
-   * Fills the top of the host's Operation menu — the same card the caption's ··· button, the
-   * sidebar's right-click and a War Room card all open. The host owns the card, its grouping and
+   * Fills the top of the host's Operation menu — the same card the caption's ··· button and the
+   * sidebar's right-click open. War Room cards were removed and no longer open this menu. The host owns the card, its grouping and
    * accent sections and keyboard travel; this section stands first, above them, and is followed by
    * the host's divider. Rows are `button.group-context-menu-item` with a `menuitem*` role so the
    * host's arrow-key travel and Escape reach them. Keep it to per-Operation switches and readouts
@@ -1040,7 +1041,8 @@ export interface OperationMenuContext {
 
 export interface OperationRenderContext extends OperationContext {
   /**
-   * 모바일 Operation 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 캔버스·War Room 등).
+   * 모바일 Operation 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 대화 화면·확대 표면).
+   * 캔버스와 War Room은 제거되어 이 창구를 싣지 않는다.
    */
   readonly mobileOperation?: ClientMobileOperationCapability;
   readonly navigate: ClientNavigateCapability;
@@ -1077,9 +1079,9 @@ export interface OperationRenderContext extends OperationContext {
   readonly runtimeState: OperationRuntimeState | null;
   /**
    * Whether this body is on a surface the user can read. `undefined` is an older
-   * host and must be treated as live. `false` is a parked, minimized, or hidden
-   * body: the plugin must not hold a dedicated HTTP stream for it. A War Room
-   * deck tile stays live — its body is painted, even while inert.
+   * host and must be treated as live. `false` is a parked or hidden
+   * body: the plugin must not hold a dedicated HTTP stream for it. War Room
+   * was removed; a deck tile is no longer a live body.
    */
   readonly bodyLive?: boolean;
   readonly onActivate: () => void;

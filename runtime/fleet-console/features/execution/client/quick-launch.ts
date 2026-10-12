@@ -406,11 +406,8 @@ export function buildPluginMentionCategories(
  *
  * "보고 있다"는 알림·브레드크럼과 같은 판정이다. Theater만 바꾸면 activeOperationId가 남고
  * (/settings·모바일 비-Operations에서는 operationsViewActive가 꺼진다) 그 id를 그대로
- * 확정하면 화면에 없는 패널로 보낸다.
- *
- * War Room 무대는 예외다. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
- * (pickTriageOperation) 무대 Operation을 active로 세운다. 그 id는 leftover가 아니라
- * 지금 보고 있는 패널이다 — visibleOperationId로만 허용한다.
+ * 확정하면 화면에 없는 패널로 보낸다. 다른 Theater의 Operation은 visibleOperationId와
+ * 같을 때만 행선지가 된다. 호출부가 null을 넘기면 활성 Theater의 Operation만 남는다.
  */
 export function resolveFocusedMention(
   state: ConsoleState,

@@ -71,8 +71,8 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
 }
 
 /**
- * 도구 패널 카드 — 도구모음의 도구가 여는 표면. 화면 오른쪽에 뜨는 부유 카드이고, 모드와 무관하게
- * 같은 자리에 선다(War Room에서는 작업 표시줄 위까지). 도구 아이콘은 여기 없다: 콘솔 도구모음이 하나뿐인
+ * 도구 패널 카드 — 도구모음의 도구가 여는 표면. 화면 오른쪽에 뜨는 부유 카드다.
+ * 도구 아이콘은 여기 없다: 콘솔 도구모음이 하나뿐인
  * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
  */
 // 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
@@ -180,8 +180,8 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
     setCardWidthState(next);
   }, [isDragging, maxPanelWidth, desiredWidth]);
 
-  // 아레나 계산의 원료 — 레일이 캔버스 위에서 점유하는 실측 폭을 스토어로 보고한다.
-  // fit-all·스냅 칸·War Room 무대가 이 값으로 열린 카드를 피해 계산된다.
+  // 아레나 계산의 원료 — 레일이 가운데 칸 위에서 점유하는 실측 폭을 스토어로 보고한다.
+  // 대화 칸과 플러그인 지도 인셋이 이 값으로 열린 카드를 피한다.
   // 슬롯 총폭(카드+extra)도 예산으로 캡한다 — 카드 상한만 사이드바를 빼면 MIN 바닥(240)과
   // 가산 extra(예: Codex 리더 360)가 상한을 도로 뚫어 좁은 창에서 두 카드가 겹친다
   // (Codex 리뷰 확정). extra는 best-effort다: 페인 본문은 컨테이너 쿼리로 스스로 열화한다.
@@ -365,7 +365,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   );
 });
 
-/** 레일 도구가 여는 표면의 공통 문맥 — 레일 카드와 War Room 탭이 같은 문맥으로 도구를 연다. 언어는 늘 정해져 있다. */
+/** 레일 도구가 여는 표면의 공통 문맥. 언어는 늘 정해져 있다. */
 export type RailToolContext = RailPanelContext & { readonly language: ConsoleLocale };
 
 export function useRailPanelContext(

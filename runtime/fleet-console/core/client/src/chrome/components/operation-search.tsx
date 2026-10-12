@@ -413,7 +413,6 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // War Room은 그대로 둔다 — 설정은 레일 표면으로 열리고, 모바일 경로에서는 War Room이 애초에 서지 않는다.
         // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
         // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
         if (getViewModeSnapshot().effective === "mobile") {

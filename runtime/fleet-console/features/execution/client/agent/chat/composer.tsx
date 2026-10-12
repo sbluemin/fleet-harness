@@ -130,9 +130,6 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
  * 읽힌다. 남는 것은 둥근 프레임 하나이고, 자리는 여전히 in-flow다 — 대화의 마지막 줄을
  * 덮는 부유물이 되지 않는다(중앙 배치와 이동은 chat-view의 꼬리가 소유한다).
  *
- * War Room 카드뷰에서는 서지 않는다: chat.css의 `is-deck-tile` 숨김 목록(부유 크롬과 같은
- * 크로스 번들 클래스 계약)이 이 루트를 함께 걷는다.
- *
  * 실행 중에는 두 문이 선다: 현재 턴을 끊는 중지 글리프와 그 뒤에 실행할 지시를 예약하는 원형
  * 전송 control이다. 한 버튼의 뜻을 Stop으로 바꾸면서 Enter는 Queue로 남기면 같은 입력이 포인터와
  * 키보드에서 다른 약속을 하므로, 둘은 화면에서도 분리한다.

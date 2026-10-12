@@ -188,21 +188,11 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--canvas-menu-max-height",
   // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
   "--quick-launch-pop-max-height",
-  // Watch Deck zoom tween injects card column/row sizing each frame.
-  "--triage-card-min",
-  "--triage-row-min",
-  "--triage-row-max",
   // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
   "--zone-x",
   "--zone-y",
   "--zone-size",
   "--zone-tint",
-  // Triage Watch Deck TSX injects running-dot drift vars inline.
-  "--triage-drift-mult",
-  "--triage-drift-x1",
-  "--triage-drift-y1",
-  "--triage-drift-x2",
-  "--triage-drift-y2",
   // Chat context popover TSX injects the category-stack luminance step (0–5).
   "--agent-chat-ctx-step",
 ]);
@@ -1797,7 +1787,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-mode-tray");
     expect(layout).not.toContain(".command-band-center-divider {");
     // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
-    // 버튼 추가 시 겹침으로 깨지므로(선별 처리 아이콘 덮임 사고) 다시 도입하지 않는다.
+    // 버튼 추가 시 겹침으로 깨지므로 다시 도입하지 않는다.
     expect(layout).not.toContain(".command-band-map-controls {");
     // 전면 해도 개편: 사이드바-가장자리 추종 앵커는 캡 계약과 함께 퇴역했다 — 클러스터는
     // 흐름 배치이고 하한은 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 나온다. 앵커 변수가
@@ -1832,8 +1822,7 @@ describe("Instrument core design contract", () => {
     // 화면 밖으로 밀린다. 주입값과 판정값을 분리해 고정한다.
     expect(commandBand).toContain("const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;");
     expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
-    // 모드 스위치는 캔버스 모드의 유일한 조작면이다 — 좁은 폭에서 감추는 대신 좌측 플로우로
-    // 되돌린다. 클래스는 JS 실측 판정만 받아 입는다.
+    // 좁은 폭에서 중앙을 감추는 대신 좌측 플로우로 되돌린다. 클래스는 JS 실측 판정만 받아 입는다.
     expect(commandBand).toContain('${centerControlsCentered ? "" : " is-center-flow"}');
     expect(layout).toContain(".command-band.is-center-flow {\n  grid-template-columns: max-content max-content minmax(0, 1fr);\n}");
     expect(layout).toContain(".command-band.is-center-flow .command-band-center {");

@@ -46,7 +46,7 @@ export async function archiveOperationFromUi(operationId: string): Promise<Archi
 // ─── resume ────────────────────────────────────────────────────────────────────
 
 // Operation 재개의 단일 경로: plugin resume 훅 → 미제공 시 호출 표면의 focus 폴백.
-// 팔레트 resume 명령과 War Room 종료 선반 칩이 이 함수를 공유한다.
+// 팔레트 resume 명령과 Operation을 여는 경로가 이 함수를 공유한다.
 // plugin 실패는 자체 알림이 담당하므로 focus 폴백을 실행하지 않는다.
 //
 // 권위 스냅샷이 아직 도착하지 않은 구간(hydration "pending")에서는 아무것도 하지 않는다. 그 구간의
