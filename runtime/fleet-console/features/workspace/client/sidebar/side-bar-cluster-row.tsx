@@ -252,9 +252,12 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
   const inFreshFold = useContext(FreshFoldContext);
   // 「시작 전」 접기 안의 시작 전 줄은 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
+  // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
+  const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
   const conversationLine = !conversationRow
     ? null
-    : rowPreview?.text
+    : (decisionNote || null)
+      ?? rowPreview?.text
       ?? (inFreshFold && state === "fresh" ? null : row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
         : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
@@ -291,6 +294,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 결정 수 — 사람이 답할 요청만 대기 신호로 칠한다. 맡은 이가 다루는 요청은 같은 자리에 무채색으로 선다.
   if (row.decisionRequestedAt !== undefined && row.decisionQuestions !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions }), tone: "req" });
   else if (row.decisionRequestedAt === undefined && row.delegated) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.delegated.questions }) });
+  if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
   if (row.followup) meta.push({ key: "from", text: row.followup.originTitle ? t("sidebar.row.followupOf", { title: row.followup.originTitle }) : t("sidebar.row.followup"), tone: "from" });

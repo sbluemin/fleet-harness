@@ -107,6 +107,15 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
 }
 
 /**
+ * 레일 아이콘 배지의 수 — 「확인 필요」 행과 같은 판정(`personTurnAt`)이라 사람의 차례만 센다. 표면이 닫혀 있어도 활성 Theater 는
+ * 미리 읽혀 있다(installObjectiveState).
+ */
+export function personTurnCount(theaterId: string | null): number {
+  const active = theaterId !== null && commodoreBoardOf(theaterId).active;
+  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length;
+}
+
+/**
  * 사람의 차례마다 한 행 — 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
  * (데스크톱 「내 결정」 구역과 같은 판정 `personTurnAt`). 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다.
  */

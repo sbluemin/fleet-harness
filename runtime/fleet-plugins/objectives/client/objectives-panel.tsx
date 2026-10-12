@@ -25,6 +25,7 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunchDisplay, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { dockObjective, expandObjective, openNewOperation, hasDecisionRequest, removeObjectiveLocally, focusOperation, followActiveOperation, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { personTurnAt, useCommodoreBoard } from "./commodore-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
   discardedFollowups,
@@ -132,7 +133,7 @@ const WORKING = new Set(["running"]);
 const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
-const byRequestTime = (a: Objective, b: Objective): number => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0);
+
 
 export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const t = getT(ctx.language);
@@ -229,8 +230,12 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
   const detailRef = useRef<HTMLElement | null>(null);
-  // 결정 요청은 전부 센다 — 상세 머리의 「다른 요청」이 이 줄을 돈다.
-  const requests = useMemo(() => state.objectives.filter((objective) => hasDecisionRequest(objective) && !objective.removed).sort(byRequestTime), [state.objectives]);
+  // 사람의 차례만 센다 — 사이드바 「내 결정」·레일 배지와 같은 판정(`personTurnAt`). 상세 머리의 「다른 요청」이 이 줄을 돈다.
+  // 사령관이 맡은 요청은 접힌 「사령관이 맡음」에서 연다.
+  const commodore = useCommodoreBoard(theaterId ?? "");
+  const requests = useMemo(() => state.objectives
+    .flatMap((objective) => { const at = objective.removed ? null : personTurnAt(objective, commodore.active); return at === null ? [] : [{ objective, at }]; })
+    .sort((a, b) => a.at - b.at).map((entry) => entry.objective), [state.objectives, commodore.active]);
   const reviews = useMemo(() => state.objectives.filter((objective) => objective.awaitingReview && !objective.done && !objective.removed && !hasDecisionRequest(objective)), [state.objectives]);
   /** 「다른 요청」 — 요청이 선 차례대로 다음 목표를 고른다(고른 목표가 요청이 아니면 첫 요청). 끝에서 처음으로 돌아간다. */
   const openNextRequest = () => {

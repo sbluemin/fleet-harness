@@ -482,13 +482,8 @@ export function removeObjectiveLocally(objectiveId: string): void {
   }
 }
 
-/** 사람의 답을 기다리는 결정 요청 — 요청이 섰고 끝나지 않은 목표. 목록 요약·구획·레일 배지가 같은 셈을 쓴다. */
+/** 결정 요청이 섰고 끝나지 않은 목표 — 누구의 차례인지는 `decisionTurn`(commodore-state)이 가른다. */
 export const hasDecisionRequest = (objective: Objective): boolean => !!objective.decisionRequest && !objective.done;
-
-/** 레일 아이콘 배지의 수 — 표면이 닫혀 있어도 활성 Theater 는 미리 읽혀 있다(installObjectiveState). */
-export function pendingDecisionCount(theaterId: string | null): number {
-  return readTheater(theaterId).objectives.filter(hasDecisionRequest).length;
-}
 
 export function objectivesApi(): ClientApiCapability | null {
   return installed?.api ?? null;

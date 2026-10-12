@@ -793,7 +793,8 @@ export interface OperationCluster {
   /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
   readonly open?: (operationId?: string) => void;
   /**
-   * 뿌리가 사람에게 답을 청한 결정 요청이 있다 — 호스트는 뿌리 행·칩·선별 대기열에 전용 표식을 세운다. 도구 허용 대기(활동
+   * 뿌리가 사람에게 답을 청한 결정 요청이 있고 사람이 답할 차례다(플러그인이 정한 맡은 이가 다루는 요청은 아니다) — 호스트는 뿌리
+   * 행·칩·선별 대기열·얼굴에 전용 표식을 세운다. 도구 허용 대기(활동
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
@@ -832,6 +833,11 @@ export interface OperationClusterRow {
   readonly decisionRequestedAt?: number;
   /** 기다리는 것이 결정 요청이면 그 질문 수. 없으면 둘째 줄에 결정 수를 적지 않는다(넘겨받은 검토·후보처럼 요청이 아닌 것). */
   readonly decisionQuestions?: number;
+  /**
+   * 「내 결정」 줄이 사람의 차례가 된 까닭 한마디(예: 「사령관이 넘김」). 둘째 줄의 결정 수 뒤에 서고, 대화 중심 화면에서는 줄의
+   * 상태 문구(「내 결정을 기다립니다」) 대신 선다. `decisionRequestedAt` 이 없으면 무시한다.
+   */
+  readonly decisionNote?: LocalizedText;
   /**
    * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 「내 결정」이 아니라 접힌 맡김 구역에 `at`
    * 순으로 선다. `zone` 은 그 구역 머리 이름이다(같은 플러그인의 줄은 같은 말을 내고, 호스트는 처음 것을 쓴다).

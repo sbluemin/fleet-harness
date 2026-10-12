@@ -1249,7 +1249,7 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-giveback:hover:not(:disabled) { background: var(--control-wash); color: var(--text-primary); }
 .objectives-decision-giveback:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-giveback:disabled { opacity: 0.5; cursor: default; }
-.objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-ink); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; }
+.objectives-decision-send { margin-left: auto; height: 30px; padding: 0 14px; border: 1px solid color-mix(in oklch, var(--brass) 50%, transparent); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-ink); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; flex: none; white-space: nowrap; }
 .objectives-decision-send:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 24%, transparent); }
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-send:disabled { opacity: 0.5; cursor: default; }
