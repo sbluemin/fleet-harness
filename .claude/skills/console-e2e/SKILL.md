@@ -33,7 +33,7 @@ Read references only when starting the corresponding activity.
 | Commodore autonomy transitions without provider calls | [No-cost fake Commodore](references/setup.md#no-cost-fake-commodore) — inject the existing AgentHost port instead of starting an SDK child |
 | agent-browser unavailable or blocked in this environment | [Fleet Browser fallback](references/fleet-browser.md); record why before switching |
 | Console SPA observation, focus/input safeguards, narrow-viewport (mobile layout) runs, fix verification | [Verification](references/verification.md), with the selected driver |
-| A claim about one real key press (Escape, Alt/⌘ shortcuts) or touch/coarse-pointer behavior | [Exact CDP input](references/cdp-input.md) |
+| A claim about one real key press (Escape, Alt/⌘ shortcuts), actual macOS input-method composition display, or touch/coarse-pointer behavior | [Exact CDP input](references/cdp-input.md), including the [input-method limitation](references/cdp-input.md#macos-input-method-composition-display) |
 | Console in Electron, native shell, runtime ownership, packaging | [Desktop route](references/desktop.md), then only the required Desktop lane references |
 | Real Agent CLI, model pinning, wire/transcript | [Live agent prompt testing](references/live-agent-prompt-testing.md) |
 | Remote access, pairing, guest TLS | [Remote access testing](references/remote-access-testing.md) |
