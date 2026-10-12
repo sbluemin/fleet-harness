@@ -61,4 +61,3 @@ export function useCodeBlockCopy(t: ReturnType<typeof getT>) {
   }, [t]);
   return { onClick, announcement };
 }
-
