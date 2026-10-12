@@ -9,7 +9,7 @@ import { getLiveMobileBar, useMobileBar, type MobileBarState } from "./mobile-st
 const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "back" };
 
 /**
- * 상단 막대 — 높이 56, 면 없이 화면 배경 그대로. 내용은 화면이 올린다(`claimMobileBar`): 왼쪽 ≡ 또는 ‹,
+ * 상단 막대 — 최소 높이 56(큰 글자 배율에서는 자란다), 면 없이 화면 배경 그대로. 내용은 화면이 올린다(`claimMobileBar`): 왼쪽 ≡ 또는 ‹,
  * 가운데(또는 Operation의 왼쪽) 제목, 오른쪽 문맥 동작과 ⋮.
  */
 export function MobileTopBar() {
