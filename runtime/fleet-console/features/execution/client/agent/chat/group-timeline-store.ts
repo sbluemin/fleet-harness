@@ -71,8 +71,15 @@ const notify = () => { revision++; for (const listener of listeners) listener();
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 const getRevision = () => revision;
 
-/** execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다. */
-export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginInstallContext["experiments"], "read" | "subscribe"> }): () => void {
+/**
+ * execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다.
+ * 소켓과 휴면 이력은 대화 중심 화면이 서 있을 때만 연다. 판정은 호스트가 주입한 `conversation.isActive()`이고,
+ * 그 subscribe가 레이아웃과 설정을 함께 깨운다. 능력이 없는 호스트는 실험 설정의 `classicLayout === false`와 그 구독만 본다.
+ */
+export function installGroupTimeline(ctx: {
+  readonly experiments: Pick<PluginInstallContext["experiments"], "read" | "subscribe">;
+  readonly conversation?: Pick<NonNullable<PluginInstallContext["conversation"]>, "isActive" | "subscribe">;
+}): () => void {
   let disposed = false;
   const sync = () => {
     if (disposed) return;
@@ -80,7 +87,7 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     const all = [...state.operations, ...state.nestedOperations].filter((operation) => operation.type === "agent" && operation.pluginId === null);
     const roots = new Set(state.operations.map((operation) => operation.id));
     const ids = new Set(all.map((operation) => operation.id));
-    const enabled = ctx.experiments.read()?.classicLayout === false;
+    const enabled = ctx.conversation ? ctx.conversation.isActive() : ctx.experiments.read()?.classicLayout === false;
     const sessions = getAgentState().sessions;
     const runtime = ownOperationRuntime();
     for (const [id, record] of held) {
@@ -149,7 +156,7 @@ export function installGroupTimeline(ctx: { readonly experiments: Pick<PluginIns
     }
     notify();
   };
-  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), ctx.experiments.subscribe(sync)];
+  const cleanups = [subscribeConsole(sync), subscribeAgent(sync), ctx.conversation ? ctx.conversation.subscribe(sync) : ctx.experiments.subscribe(sync)];
   resync = sync;
   sync();
   return () => {

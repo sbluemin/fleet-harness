@@ -438,3 +438,43 @@ it("keeps independent group journals alive across view closure, merges only conf
   }
   expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
 });
+
+it("keeps group timeline sockets and dormant history closed until the conversation layout is active", async () => {
+  const previous = getState();
+  const previousAgent = getAgentState();
+  let active = false;
+  const listeners = new Set<() => void>();
+  setState({ operations: [{ id: "root", theaterId: "theater", title: "Commander", type: "agent", pluginId: null, geometry: null,
+    payload: { chatMode: true }, ts: { createdAt: 1, updatedAt: 1 }, childSessions: [{ id: "archived", payload: { chatMode: true }, ts: { createdAt: 3, updatedAt: 3 } }] }],
+    operationRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" } } });
+  setOperationRuntime("root", { lifecycle: "live", activity: "running" });
+  setOperationRuntime("archived", { lifecycle: "dormant" });
+  const session = { sessionId: "root", terminalSessionId: "root", cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true };
+  setAgentState({ sessions: { root: session, archived: { ...session, sessionId: "archived", terminalSessionId: "archived", status: "dormant" as const, chatActive: false } } });
+  const dispose = installGroupTimeline({
+    experiments: { read: () => DEFAULT_EXPERIMENT_SETTINGS, subscribe: () => () => {} },
+    conversation: { isActive: () => active, subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; } },
+  });
+  function GroupProbe() { useGroupTimeline("root"); return null; }
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  try {
+    act(() => { root!.render(createElement(GroupProbe)); });
+    await act(async () => { await Promise.resolve(); });
+    // 대화 중심 화면이 아니면 채팅이 살아 있어도 그룹 소켓과 휴면 이력을 열지 않는다. classicLayout 은 꺼져 있다.
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    expect(ticketFetches.some((entry) => entry.url.includes("chat-history"))).toBe(false);
+    active = true;
+    act(() => { for (const listener of listeners) listener(); });
+    await act(async () => { await Promise.resolve(); });
+    expect(FakeWebSocket.instances.filter((socket) => !socket.closed)).toHaveLength(1);
+    expect(FakeWebSocket.instances.some((socket) => socket.url.includes("ticket-for-root"))).toBe(true);
+    expect(ticketFetches.some((entry) => entry.url.includes("/sessions/archived/chat-history"))).toBe(true);
+    active = false;
+    act(() => { for (const listener of listeners) listener(); });
+    expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
+  } finally {
+    act(() => { dispose(); root?.unmount(); root = null; });
+    clearOperationRuntime("root"); clearOperationRuntime("archived");
+    setState(previous); setAgentState(previousAgent);
+  }
+});
