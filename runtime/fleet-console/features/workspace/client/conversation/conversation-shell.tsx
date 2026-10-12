@@ -545,9 +545,10 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const operationClusters = useOperationClusters();
   useEffect(() => { publishConversationClusters(operationClusters); }, [operationClusters]);
   const stageInbox = useTheaterInboxState();
-  const operationConversation = surfaceDescriptor === null && subject !== null && stageInbox === null;
+  // 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도 Operation 대화처럼 「목표」가 먼저다.
+  const operationConversation = (surfaceDescriptor === null ? subject !== null : standInId !== null) && stageInbox === null;
   const toggleDetails = useToggleDetails(operationConversation);
-  useLeadTabOnSubjectChange(surfaceDescriptor ? null : subject?.id ?? null, operationConversation);
+  useLeadTabOnSubjectChange(surfaceDescriptor ? standInId : subject?.id ?? null, operationConversation);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
   // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Operation 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
