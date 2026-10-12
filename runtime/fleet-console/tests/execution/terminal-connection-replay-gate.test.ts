@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTerminalConnection, type WebSocketLike } from "../../features/execution/client/terminal/shared/terminal-connection.js";
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -56,7 +57,10 @@ describe("terminal connection replay input gate", () => {
     expect(socket!.sent[1]).toBeInstanceOf(Uint8Array);
     expect(new TextDecoder().decode(socket!.sent[1] as Uint8Array)).toBe("live-input");
 
+    vi.useFakeTimers();
     connection.dispose();
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("does not let a closed socket's late drain close the reconnected socket's replay window", async () => {

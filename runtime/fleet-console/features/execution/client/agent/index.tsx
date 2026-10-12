@@ -39,6 +39,7 @@ import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-pa
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
+import { disposeOperationViewState, installOperationViewState } from "../operation-view-state.js";
 import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
@@ -198,6 +199,7 @@ export const agentExecution: ClientExecutionProvider = {
     } finally {
       disposeAnalysisStore(operationId);
       disposeViewSwitch(operationId);
+      disposeOperationViewState(operationId);
       removeSession(operationId);
     }
   },
@@ -265,6 +267,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
   installedApi = ctx.api;
   setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
+  const disposeViewState = installOperationViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
   const disposeGroupConversation = installGroupConversationSurface();
   // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Operation 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
@@ -288,6 +291,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     for (const id of ids) if (typeof id === "string") {
       disposeAnalysisStore(id, { stopServer: false });
       disposeViewSwitch(id);
+      disposeOperationViewState(id);
       removeSession(id);
     }
   });
@@ -306,6 +310,7 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     disposeGroupConversation();
     disposeGroupTimeline();
     disposeArchive();
+    disposeViewState();
   };
 }
 

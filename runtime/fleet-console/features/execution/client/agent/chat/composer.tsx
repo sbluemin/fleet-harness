@@ -26,7 +26,8 @@ import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import type { ChatConsoleCommand } from "./composer-deck.js";
-import { discardLaunchAttachment, messageAgentSession, readAgentChatCatalog, uploadLaunchAttachment } from "../api.js";
+import { readAgentChatCatalog } from "../api.js";
+import { getComposerDraft } from "../../operation-view-state.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
 import { OriginMark, originExcerpt } from "./origin-mark.js";
 
@@ -152,15 +153,6 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
  * 이 바에 직접 새긴 좌표와 계기는 읽히기만 한다.
  */
 
-interface ComposerDraftAttachment {
-  readonly key: string;
-  /** 업로드가 끝나야 도착하는 서버측 불투명 토큰 — 없는 동안은 발사할 수 없다. */
-  readonly id: string | null;
-  readonly name: string;
-  readonly previewUrl: string;
-  readonly uploading: boolean;
-}
-
 /** 거절 사유는 문구 키와 인자를 함께 들고 다닌다 — 바에 서는 한 줄이 사유를 말해야 한다. */
 type AttachmentRejection =
   | { readonly kind: "limit" }
@@ -241,10 +233,9 @@ export function AgentChatComposer({
   const widthChoices = useDistinctChatWidths(composerRef);
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const [draft, setDraft] = React.useState("");
-  const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
-  const [sending, setSending] = React.useState(false);
-  const [failed, setFailed] = React.useState(false);
+  const draftState = getComposerDraft(context.operationId);
+  const { text: draft, attachments, sending, sentEpoch, failed, uploadFailed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
+  const setDraft = draftState.setText;
   const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
   /**
@@ -261,12 +252,10 @@ export function AgentChatComposer({
   // 대조해야 하므로 덱 블록보다 앞에 선다.
   const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
   const [catalogTried, setCatalogTried] = React.useState(false);
-  const attachmentsRef = React.useRef(attachments);
-  attachmentsRef.current = attachments;
   // `ultracode` 무장 — Quick Launch와 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
   // 상태(해제)와 표식만 이 조립이 진다. 무장은 초안에서 파생하고, 남는 것은 "이 초안에서 껐다"뿐이다.
   const highlightRef = React.useRef<HTMLDivElement | null>(null);
-  const [ultracodeIgnored, setUltracodeIgnored] = React.useState(false);
+  const setUltracodeIgnored = draftState.setUltracodeIgnored;
   const ultracodeTokens = React.useMemo(() => readUltracodeTokens(draft), [draft]);
   const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
   /**
@@ -291,8 +280,9 @@ export function AgentChatComposer({
   // 해제는 단어가 문면에서 전부 사라질 때 만료한다 — 프로그램 쓰기(전송 후 초기화)도 같은 경로를
   // 지나야 하므로 입력 핸들러가 아니라 문면 자체에 붙인다.
   React.useEffect(() => {
-    setUltracodeIgnored((ignored) => nextUltracodeIgnored(draft, ignored));
-  }, [draft]);
+    const next = nextUltracodeIgnored(draft, ultracodeIgnored);
+    if (next !== ultracodeIgnored) setUltracodeIgnored(next);
+  }, [draft, ultracodeIgnored, setUltracodeIgnored]);
   const syncUltracodeHighlight = React.useCallback(() => {
     syncComposerHighlight(inputRef.current, highlightRef.current);
   }, []);
@@ -309,9 +299,15 @@ export function AgentChatComposer({
     observer.observe(input);
     return () => observer.disconnect();
   }, [syncUltracodeHighlight, highlightSpans.length]);
-  // 업로드가 끝나기 전에 칩이 제거된 key — 완료 콜백이 자신을 발견하면 방금 받은 id를 서버에서
-  // 도로 거둔다(Quick Launch 첨부와 같은 회수 계약).
-  const canceledKeysRef = React.useRef(new Set<string>());
+  // HTTP promise에는 컴포넌트 클로저를 붙이지 않는다. 성공 결말은 지금 살아 있는 입력창만 구독한다.
+  const observedSentEpochRef = React.useRef(sentEpoch);
+  React.useEffect(() => {
+    if (observedSentEpochRef.current === sentEpoch) return;
+    observedSentEpochRef.current = sentEpoch;
+    setClearArmed(false);
+    setConsoleNotice(null);
+    inputRef.current?.focus();
+  }, [sentEpoch]);
 
   // ── 능력 덱 ────────────────────────────────────────────────────────────────
   // `/`는 세션의 능력(명령·스킬), `@`는 행위자(서브에이전트). 두 글자가 한 덱을 공유한다 —
@@ -320,7 +316,6 @@ export function AgentChatComposer({
   const [focused, setFocused] = React.useState(false);
   const [deckIndex, setDeckIndex] = React.useState(0);
   const [caret, setCaret] = React.useState(0);
-  const catalogFlight = React.useRef(false);
   /** 지금 들고 있는 사본이 어느 판본의 것인가. `null`은 아직 한 번도 읽지 않았다는 뜻이다. */
   const fetchedEpoch = React.useRef<number | null>(null);
 
@@ -351,26 +346,26 @@ export function AgentChatComposer({
   // 덱이 처음 열릴 때 한 번만 읽는다. 이 요청이 자식을 여는 쪽이므로(결정: 첫 `/`에 세션을 연다)
   // 사용자가 묻지 않았는데 미리 부르지 않는다.
   React.useEffect(() => {
-    if (!deckOpen || catalogFlight.current) return;
+    if (!deckOpen) return;
     // 이미 읽어 둔 사본은 **그 판본에 한해서만** 유효하다. `/reload-skills`가 끝나면 판본이
     // 올라가고, 그때 이 사본은 방금 추가·삭제된 스킬을 모르는 낡은 목록이 된다. 서버가 자기
     // 캐시를 버리는 것만으로는 여기까지 오지 않는다.
     if (catalog !== null && fetchedEpoch.current === catalogEpoch) return;
-    catalogFlight.current = true;
+    const abort = new AbortController();
     // 판본은 **받아 낸 사본에만** 붙인다. 요청 전에 적으면, 그 요청이 빈손으로 돌아왔을 때
     // (404·409는 이 API의 정상 응답이다) 옛 사본이 새 판본의 것으로 둔갑해 다시 물어볼 길이 없다.
     const requestedEpoch = catalogEpoch;
-    void readAgentChatCatalog(context.operationId)
+    void readAgentChatCatalog(context.operationId, abort.signal)
       .then((value) => {
-        if (!value) return;
+        if (!value || abort.signal.aborted) return;
         setCatalog(value);
         fetchedEpoch.current = requestedEpoch;
       })
       .catch(() => {})
       .finally(() => {
-        catalogFlight.current = false;
-        setCatalogTried(true);
+        if (!abort.signal.aborted) setCatalogTried(true);
       });
+    return () => abort.abort();
   }, [context.operationId, deckOpen, catalog, catalogEpoch]);
 
   const deckId = `agent-chat-deck-${context.operationId}`;
@@ -404,14 +399,13 @@ export function AgentChatComposer({
 
   // `override`는 덱이 확정한 문면이다. 상태 갱신은 배치되므로 방금 고른 항목을 `setDraft` 뒤에
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
-  const send = React.useCallback(async (override?: string) => {
+  const send = React.useCallback((override?: string) => {
     const text = (override ?? draft).trim();
     if (text.length === 0 || sending) return;
     // Console이 소유한 축은 여기서 갈라진다. 판정을 보내기 직전에 두는 이유는 `readConsoleCommand`에
     // 적혀 있다 — 덱으로 고르든 손으로 치든 같은 문면은 같은 곳으로 가야 한다.
     const routed = readConsoleCommand(text, catalog);
     if (routed && routed.target !== "clear") {
-      setFailed(false);
       const said = runConsoleCommand(routed);
       setConsoleNotice(said.length > 0 ? said : null);
       setDraft("");
@@ -420,36 +414,14 @@ export function AgentChatComposer({
     }
     if (routed?.target === "clear" && !clearArmed) {
       // 되돌릴 수 없다 — 자식의 기억과 화면의 기록을 함께 끊는다. 한 번 더 누르면 나간다.
-      setFailed(false);
       setClearArmed(true);
       setConsoleNotice(t("terminal.chat.consoleClearArm"));
       return;
     }
-    // id 없는 칩은 아직 서버에 없다 — 텍스트만 먼저 나가면 첨부가 조용히 빠진다.
-    if (attachmentsRef.current.some((attachment) => attachment.uploading)) return;
-    const ids = attachmentsRef.current
-      .map((attachment) => attachment.id)
-      .filter((id): id is string => id !== null);
-    setSending(true);
-    setFailed(false);
-    try {
-      // 예약 receipt는 여기서 세우지 않는다. 서버가 접수와 동시에 큐 전량을 흘려 보내고 그
-      // 알림은 HTTP 응답보다 먼저 닿을 수 있다 — 화면이 자기 셈을 겹쳐 세우면 이미 시작한 턴이
-      // 내린 수를 다시 올려 stale로 남고, 취소와도 어긋난다.
-      await messageAgentSession(context.operationId, text, ids.length > 0 ? ids : undefined);
-      for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
-      setAttachments([]);
-      setDraft("");
-      setClearArmed(false);
-      setConsoleNotice(null);
-      inputRef.current?.focus();
-    } catch {
-      // 실패는 초안을 지키고 이 바에서 말한다 — 문면이 사라진 채 침묵하면 회복 보장이 깨진다.
-      setFailed(true);
-    } finally {
-      setSending(false);
-    }
-  }, [context.operationId, draft, sending, catalog, clearArmed, runConsoleCommand, t]);
+    // 초안 저장소가 중복 발사·첨부 준비·성공/실패를 판정한다. 레이아웃 전환으로 이 입력창이
+    // 내려가도 요청은 한 번만 끝나고, 돌아온 입력창이 같은 결말을 구독한다.
+    void draftState.send(text);
+  }, [draft, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -478,8 +450,8 @@ export function AgentChatComposer({
     // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 텍스트 붙여넣기·비이미지 드롭은 조용히 지나간다.
     if (images.length === 0) return;
     setRejection(null);
-    // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다 — ref만 보면 같은 드롭의 앞 장이 안 보인다.
-    let count = attachmentsRef.current.length;
+    draftState.clearUploadFailure();
+    let count = draftState.read().attachments.length;
     for (const file of images) {
       if (count >= COMPOSER_MAX_ATTACHMENTS) {
         setRejection({ kind: "limit" });
@@ -490,29 +462,9 @@ export function AgentChatComposer({
         continue;
       }
       count += 1;
-      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const previewUrl = URL.createObjectURL(file);
-      const name = file.name.length > 0 ? file.name : "pasted image";
-      setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
-      void uploadLaunchAttachment(file)
-        .then(({ id }) => {
-          if (canceledKeysRef.current.delete(key)) {
-            // 업로드 중 제거된 칩 — 보이지 않는 파일이 미발사 슬롯을 차지하지 않게 거둔다.
-            void discardLaunchAttachment(id).catch(() => {});
-            return;
-          }
-          setAttachments((current) => current.map((attachment) => (
-            attachment.key === key ? { ...attachment, id, uploading: false } : attachment
-          )));
-        })
-        .catch(() => {
-          canceledKeysRef.current.delete(key);
-          URL.revokeObjectURL(previewUrl);
-          setAttachments((current) => current.filter((attachment) => attachment.key !== key));
-          setRejection({ kind: "failed" });
-        });
+      draftState.addFile(file);
     }
-  }, []);
+  }, [draftState]);
 
   // 수신함 — Operation Browser 가 맡긴 스크린샷을 붙여넣기와 같은 길로 이 컴포저에 세운다. 보내지는 않는다.
   React.useEffect(() => {
@@ -527,14 +479,9 @@ export function AgentChatComposer({
   }, [context.operationId, addFiles]);
 
   const removeAttachment = React.useCallback((key: string) => {
-    const target = attachmentsRef.current.find((attachment) => attachment.key === key);
-    if (!target) return;
-    if (target.id !== null) void discardLaunchAttachment(target.id).catch(() => {});
-    else canceledKeysRef.current.add(key);
-    URL.revokeObjectURL(target.previewUrl);
-    setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+    draftState.removeAttachment(key);
     setRejection(null);
-  }, []);
+  }, [draftState]);
 
   const stop = React.useCallback(async () => {
     // ACK를 받은 중지만 focus를 돌려준다. 정상 완료는 작업 면이나 separator에서 사용자가 두고
@@ -577,7 +524,7 @@ export function AgentChatComposer({
         ? "terminal.chat.queueCancelFailed"
         : "terminal.chat.queueCancelUnreachable")
       : rejection === null
-        ? null
+        ? uploadFailed ? t("terminal.chat.composerAttachFailed") : null
         : rejection.kind === "limit"
           ? t("terminal.chat.composerAttachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) })
           : rejection.kind === "tooLarge"
@@ -777,7 +724,6 @@ export function AgentChatComposer({
                 onChange={(event) => {
                   setDraft(event.target.value);
                   setCaret(event.target.selectionStart ?? event.target.value.length);
-                  setFailed(false);
                   // 친 글자가 곧 다음 지시다 — 앞 지시의 답과 무장은 여기서 함께 만료한다.
                   // 특히 무장이 남아 있으면 다른 문면을 친 Enter가 `/clear`로 나간다.
                   setConsoleNotice(null);

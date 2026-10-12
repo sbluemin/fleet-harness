@@ -8,6 +8,7 @@ export interface TerminalScrollFollowController {
   readonly recordUserViewportChange: () => void;
   readonly recordUnclassifiedViewportChange: () => void;
   readonly resumeFollowing: () => void;
+  readonly restorePosition: (position: { readonly following: boolean; readonly bottomDistance: number }) => void;
   readonly preserveAfterGeometryChange: (change: () => void) => void;
   readonly restoreAfterOutputParsing: () => void;
   readonly dispose: () => void;
@@ -82,6 +83,12 @@ export function createTerminalScrollFollow(options: TerminalScrollFollowOptions)
       following = true;
       manualBottomDistance = null;
       restoreIfFollowing();
+    },
+    restorePosition: (position) => {
+      following = position.following;
+      manualBottomDistance = following ? null : position.bottomDistance;
+      restoreCurrentAnchor();
+      scheduleFrameRestore();
     },
     preserveAfterGeometryChange: (change) => {
       change();

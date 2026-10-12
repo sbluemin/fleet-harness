@@ -30,6 +30,7 @@ import { MOBILE_SCHEME_ATTRIBUTES, readMobileScheme, type MobileScheme } from "@
 import { getT } from "../../agent/i18n/index.js";
 import { terminalInactiveFlushMs, useTerminalPrefs } from "./terminal-preferences.js";
 import { createTerminalScrollFollow, type TerminalScrollFollowController } from "./terminal-scroll-follow.js";
+import { readTerminalViewPosition, saveTerminalViewPosition, type TerminalViewPosition } from "../../operation-view-state.js";
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
@@ -348,6 +349,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
+  const restoredPositionRef = useRef<TerminalViewPosition | undefined>(surface === "panel" ? readTerminalViewPosition(operationId) : undefined);
+  const previousFocusRef = useRef({ active, keyboardFocusRequestId });
   // 줌 보정 effect에서 fit()을 재호출하기 위해 마운트 effect의 지역 FitAddon을 ref로 끌어올린다.
   const fitAddonRef = useRef<FitAddon | null>(null);
   // ResizeObserver와 zoom/font 보정이 같은 settle 큐를 쓴다. geometry 전환 중 zoom effect가 별도
@@ -667,6 +670,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       statusDetailReporterRef.current = statusDetailReporter;
       let alternateScreenController: ReturnType<typeof createTerminalAlternateScreenController> | null = null;
       let attachedGeneration: number | undefined;
+      let restoreReplayPosition = true;
       const connection = createTerminalConnection({
         operationId,
         ticketPath,
@@ -678,6 +682,7 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
           onData: (listener) => terminal.onData((data) => {
             // xterm's normal scrollOnUserInput behavior resumes follow for every local input,
             // not only Enter. Keep the explicit follow state in lockstep with it.
+            restoredPositionRef.current = undefined;
             scrollFollow.resumeFollowing();
             // A latched Ctrl or Alt applies to whatever arrives next, and on a phone that is
             // usually a letter from the soft keyboard — which is the only way Ctrl+C exists there.
@@ -705,6 +710,12 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
         },
         onReplayStateChange: (replaying, replayState) => {
           replayingScrollback = replaying;
+          if (!replaying && restoreReplayPosition) {
+            restoreReplayPosition = false;
+            const position = restoredPositionRef.current;
+            // 저장된 좌표는 같은 PTY의 재생이 끝난 격자에만 쓴다. 새 PTY에는 이전 읽던 자리가 없다.
+            if (position && position.generation === attachedGeneration) scrollFollow.restorePosition(position);
+          }
           if (!replaying && typeof replayState?.alternateScreenActive === "boolean") {
             alternateScreenController?.finishReplay({
               alternateScreenActive: replayState.alternateScreenActive,
@@ -817,6 +828,15 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
       void runInitialFit();
 
       cleanupMountedTerminal = () => {
+        if (surface === "panel") {
+          const buffer = terminal.buffer.active;
+          const pending = replayingScrollback ? restoredPositionRef.current : undefined;
+          saveTerminalViewPosition(operationId, pending ?? {
+            generation: attachedGeneration,
+            following: scrollFollow.isFollowing(),
+            bottomDistance: Math.max(0, buffer.baseY - buffer.viewportY),
+          });
+        }
         if (resizeDebounce) clearTimeout(resizeDebounce);
         imeEventTarget.removeEventListener("compositionstart", imeHandler.onCompositionStart);
         imeEventTarget.removeEventListener("compositionend", imeHandler.onCompositionEnd);
@@ -871,10 +891,16 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
   // 비활성 전환에서는 scheduler 속도만 낮추며 focus 요청도 소비하지 않는다.
   useEffect(() => {
     outputSchedulerRef.current?.setActive(active !== false);
+    const previous = previousFocusRef.current;
+    previousFocusRef.current = { active, keyboardFocusRequestId };
     if (!active) return;
-    // 포커스만 패널 상태를 존중한다 — 출력 따라가기는 패널 개폐와 무관하게 이어져야 한다.
     if (!keyPanelOpenRef.current) terminalRef.current?.focus();
-    scrollFollowRef.current?.resumeFollowing();
+    // 배치 전환의 재마운트는 새 선택이 아니다. 비동기 입력 준비가 끝나도 복원 좌표를 바닥으로 덮지 않는다.
+    // 사람이 다시 선택하거나 새 키보드 요청을 보낸 때는 기존 바닥 추적 정책을 그대로 쓴다.
+    if (!restoredPositionRef.current || previous.active === false || previous.keyboardFocusRequestId !== keyboardFocusRequestId) {
+      restoredPositionRef.current = undefined;
+      scrollFollowRef.current?.resumeFollowing();
+    }
   }, [active, keyboardFocusRequestId, inputReadyEpoch]);
 
   // 흐름 제어는 화면에 보이며 활성인 Shell에만 건다. 숨은·비활성 표면은 출력을 느리게 파싱하므로, 거기서

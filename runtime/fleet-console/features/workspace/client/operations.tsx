@@ -99,6 +99,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const conversation = useConversationLayout();
   const conversationRef = useRef(conversation);
   conversationRef.current = conversation;
+  // 모바일↔데스크톱 이동은 풀의 기존 보존 경로다. 데스크톱 두 배치 사이의 전환만 본문 수명을 끊는다.
+  const bodyLayoutRef = useRef<"canvas" | "conversation">(conversation ? "conversation" : "canvas");
+  if (viewMode.effective !== "mobile") bodyLayoutRef.current = conversation ? "conversation" : "canvas";
 
   // 정렬 중 안내 — 그룹 경계 거부·스냅 단축키 안내를 토스트로 띄운다. 삭제 토스트와 같은 호스트에 산다.
   const [alignNotice, setAlignNotice] = useState<{ readonly key: CoreMessageKey; readonly nonce: number } | null>(null);
@@ -806,7 +809,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   // 되돌리지 않는다 — 되돌릴 트리거가 방금 사라진 패널 안에 있다.
   useEffect(() => {
     setOperationMenu(null);
-  }, [state.activeTheaterId, triageActive]);
+  }, [conversation, state.activeTheaterId, triageActive]);
   const menuOperation = operationMenu
     ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
@@ -1071,6 +1074,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   );
   return (
     <OperationBodyPool
+      bodyLayout={bodyLayoutRef.current}
+      releaseParkedBodies={conversation && viewMode.effective !== "mobile"}
       operations={pooledOperations}
       operationKinds={registry.operationKinds}
       capabilities={poolCapabilities}

@@ -14,6 +14,8 @@ import type { OperationClusterSource } from "@fleet-console/sdk/plugin";
 import { clearOperationRuntime, getState, setOperationRuntime, setState } from "../../../../../core/client/src/integration/store.js";
 import { getAgentState, setAgentState } from "../store.js";
 import { GroupClusterProvider, installGroupTimeline, useGroupTimeline } from "./group-timeline-store.js";
+import { disposeOperationViewState, getComposerDraft, installOperationViewState, readTerminalViewPosition, saveTerminalViewPosition } from "../../operation-view-state.js";
+import type { ClientConsoleStateCapability } from "@fleet-console/sdk/plugin";
 
 class FakeWebSocket implements ChatWebSocketLike {
   static instances: FakeWebSocket[] = [];
@@ -89,6 +91,60 @@ afterEach(() => {
   container = null;
   latest = null;
   vi.unstubAllGlobals();
+});
+
+describe("Operation composer lifetime", () => {
+  it("keeps a send alive without a view and does not resend or erase a newer draft", async () => {
+    let finish!: (response: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+    vi.stubGlobal("fetch", fetch);
+    const draft = getComposerDraft("op-send-lifetime");
+    const unsubscribe = draft.subscribe(() => {});
+    draft.setText("send once");
+    const sending = draft.send(draft.read().text);
+    unsubscribe(); // HTTP 응답을 기다리는 동안 표시 본문만 레이아웃에서 내려간다.
+    const returned = getComposerDraft("op-send-lifetime");
+    expect(returned.read()).toMatchObject({ text: "send once", sending: true });
+    expect(await returned.send("send once")).toBe(false);
+    returned.setText("next instruction");
+    finish({ ok: true } as Response);
+    expect(await sending).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(returned.read()).toMatchObject({ text: "next instruction", sending: false, failed: false });
+    disposeOperationViewState("op-send-lifetime");
+  });
+
+  it("releases deleted Operation drafts and rejects a late upload and terminal cleanup", async () => {
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL: () => "blob:owned-draft", revokeObjectURL: revoke });
+    let finish!: (response: Response) => void;
+    const fetch = vi.fn((input: RequestInfo | URL) => String(input) === "/api/v1/agent/attachments"
+      ? new Promise<Response>((resolve) => { finish = resolve; })
+      : Promise.resolve({ ok: true } as Response));
+    vi.stubGlobal("fetch", fetch);
+    let ids = ["op-upload-lifetime"];
+    let changed!: () => void;
+    const dispose = installOperationViewState({
+      getOperations: () => ids.map((id) => ({ id })),
+      subscribe: (listener: () => void) => { changed = listener; return () => {}; },
+    } as unknown as ClientConsoleStateCapability);
+    const draft = getComposerDraft(ids[0]!);
+    draft.setText("keep until closed");
+    draft.addFile(new File(["image"], "owned.png", { type: "image/png" }));
+    expect(getComposerDraft(ids[0]!).read().attachments).toHaveLength(1);
+    ids = [];
+    changed();
+    expect(revoke).toHaveBeenCalledWith("blob:owned-draft");
+    saveTerminalViewPosition("op-upload-lifetime", { following: false, bottomDistance: 20 });
+    expect(readTerminalViewPosition("op-upload-lifetime")).toBeUndefined();
+    finish({ ok: true, json: async () => ({ id: "late-attachment" }) } as Response);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetch).toHaveBeenCalledWith("/api/v1/agent/attachments/late-attachment", expect.objectContaining({ method: "DELETE" }));
+    expect(draft.read()).toMatchObject({ text: "", attachments: [] });
+    dispose();
+  });
 });
 
 describe("useAgentChatStream", () => {

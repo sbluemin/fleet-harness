@@ -428,6 +428,7 @@ function binaryStringToBytes(data: string): Uint8Array {
 }
 
 async function delay(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
   await new Promise<void>((resolve) => {
     const finish = () => {
       clearTimeout(timer);
