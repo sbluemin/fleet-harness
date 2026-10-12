@@ -2008,9 +2008,10 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
   };
   const bottom = (
       <div className="objectives-detail-bottom" data-objectives-tour="action">
-        {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다. */}
+        {/* 결정 요청 — 띠와 따로 서서 작업 중에도 가려지지 않는다. 보내고 나면 한 줄 흔적만 잠시 남는다.
+            대화 중심 화면의 우측 사이드바에서는 가운데 대화의 결정 카드가 같은 요청을 받으므로 여기에 두 번 세우지 않는다. */}
         {objective.decisionRequest && !objective.done ? (
-          <DecisionRequestBlock objective={objective} t={t} language={language} send={sendDecision} missionNumber={numberOf} memberMark={memberMarkOf} onOpenSession={focusOperation} onShowMission={showMission} />
+          hideHead ? null : <DecisionRequestBlock objective={objective} t={t} language={language} send={sendDecision} missionNumber={numberOf} memberMark={memberMarkOf} onOpenSession={focusOperation} onShowMission={showMission} />
         ) : decisionTrace ? <p className="objectives-decision-trace" role="status">{decisionTrace}</p> : null}
         <ActionBand
           objective={objective}
