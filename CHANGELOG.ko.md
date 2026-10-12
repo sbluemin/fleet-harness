@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.229.0] - 2026-10-12
+
+### fleet-console
+
+#### Changed
+- 대화 중심 화면에서 사령관 대화도 다른 Operation 대화처럼 사람과 사령관의 말풍선으로 읽히고, 보드 행위와 세션 알림은 짧은 줄로 표시됩니다.
+
+#### Fixed
+- 다른 대화로 갔다 돌아와도 작성 중인 텍스트와 첨부 이미지가 원래 대화에 남으며, 사령관 대화에서도 보존됩니다.
+
 ## [1.228.0] - 2026-10-11
 
 ### fleet-console

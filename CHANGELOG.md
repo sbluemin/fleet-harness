@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.229.0] - 2026-10-12
+
+### fleet-console
+
+#### Changed
+- The Commodore's conversation in the conversation layout now reads like other Operation conversations, with message bubbles for you and the Commodore and short lines for its board actions and session notices.
+
+#### Fixed
+- Keep unsent text and image attachments in their own conversation when switching away and back, including Commodore conversations.
+
 ## [1.228.0] - 2026-10-11
 
 ### fleet-console
