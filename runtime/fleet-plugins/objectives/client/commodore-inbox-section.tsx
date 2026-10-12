@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerInput, ComposerSubmitButton } from "@fleet-console/sdk/composer";
@@ -552,13 +552,12 @@ function turnDuration(t: T, durationMs: number | undefined): string | null {
 
 /** 시트를 닫아도 남기는 입력. Theater마다 하나고, 전송·저장으로 비운 값은 지운다. */
 interface SheetDraft {
-  readonly composer: string;
   readonly directive: string | null;
   readonly intel: string;
 }
 const sheetDrafts = new Map<string, SheetDraft>();
 function sheetDraft(theaterId: string): SheetDraft {
-  return sheetDrafts.get(theaterId) ?? { composer: "", directive: null, intel: "" };
+  return sheetDrafts.get(theaterId) ?? { directive: null, intel: "" };
 }
 function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void {
   sheetDrafts.set(theaterId, { ...sheetDraft(theaterId), ...patch });
@@ -698,38 +697,85 @@ export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, 
   </div>;
 }
 
-export function CommodoreComposer({ t, theaterId, active, context, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly active: boolean; readonly context?: CommodoreRunStatus["context"]; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
-  const [text, setText] = useState(() => sheetDraft(theaterId).composer);
-  useEffect(() => { rememberSheetDraft(theaterId, { composer: text }); }, [theaterId, text]);
-  const [sending, setSending] = useState(false);
+interface CommodoreDraftAttachment {
+  readonly key: string;
+  readonly id: string | null;
+  readonly name: string;
+  readonly previewUrl: string;
+  readonly uploading: boolean;
+}
+interface CommodoreComposerDraft {
+  readonly text: string;
+  readonly textRevision: number;
+  readonly attachments: readonly CommodoreDraftAttachment[];
+  readonly sending: boolean;
+  readonly attachmentNotice: string | null;
+}
+
+/** 플러그인 내부 페이지 메모리 — Inbox 시트와 대화 화면은 Theater별 사령관 초안 하나를 읽는다. */
+const commodoreDrafts = new Map<string, ReturnType<typeof createCommodoreDraft>>();
+function createCommodoreDraft() {
+  let current: CommodoreComposerDraft = { text: "", textRevision: 0, attachments: [], sending: false, attachmentNotice: null };
+  const listeners = new Set<() => void>();
+  return {
+    read: () => current,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    update: (patch: Partial<CommodoreComposerDraft>) => {
+      current = { ...current, ...patch };
+      for (const listener of listeners) listener();
+    },
+  };
+}
+function commodoreDraft(theaterId: string) {
+  let draft = commodoreDrafts.get(theaterId);
+  if (!draft) { draft = createCommodoreDraft(); commodoreDrafts.set(theaterId, draft); }
+  return draft;
+}
+
+interface CommodoreComposerProps {
+  readonly t: T;
+  readonly theaterId: string;
+  readonly active: boolean;
+  readonly context?: CommodoreRunStatus["context"];
+  readonly onFail: (error: unknown) => void;
+  readonly onClear: () => void;
+}
+export function CommodoreComposer(props: CommodoreComposerProps) {
+  // Theater가 바뀌면 /clear 확인·메뉴·조합 상태도 새 대화의 것이 된다. 초안만 외부 메모리에서 복원한다.
+  return <CommodoreComposerBody key={props.theaterId} {...props} />;
+}
+function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear }: CommodoreComposerProps) {
+  const draft = commodoreDraft(theaterId);
+  const { text, attachments, sending, attachmentNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
+  const setSending = (value: boolean) => draft.update({ sending: value });
+  const setAttachmentNotice = (value: string | null) => draft.update({ attachmentNotice: value });
   const composing = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const clearKey = useReleasedKey();
-  const [attachments, setAttachments] = useState<readonly { key: string; id: string | null; name: string; previewUrl: string; uploading: boolean }[]>([]);
-  const attachmentsRef = useRef(attachments);
-  const draftEpoch = useRef(0);
-  const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const plusRootRef = useRef<HTMLDivElement | null>(null);
   const plusRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const menuId = `commodore-composer-menu-${theaterId}`;
-  const publishAttachments = (next: typeof attachments) => { attachmentsRef.current = next; setAttachments(next); };
-  const resetAttachments = (discard: boolean) => {
-    for (const item of attachmentsRef.current) { URL.revokeObjectURL(item.previewUrl); if (discard && item.id) void discardCommodoreAttachment(item.id).catch(() => {}); }
-    publishAttachments([]);
+  const publishAttachments = (next: readonly CommodoreDraftAttachment[]) => draft.update({ attachments: next });
+  const finishSentDraft = (sent: CommodoreComposerDraft, discard: boolean) => {
+    const keys = new Set(sent.attachments.map((item) => item.key));
+    const current = draft.read();
+    for (const item of current.attachments) {
+      if (!keys.has(item.key)) continue;
+      URL.revokeObjectURL(item.previewUrl);
+      if (discard && item.id) void discardCommodoreAttachment(item.id).catch(() => {});
+    }
+    draft.update({
+      ...(current.textRevision === sent.textRevision ? { text: "" } : {}),
+      attachments: current.attachments.filter((item) => !keys.has(item.key)),
+    });
   };
-  useEffect(() => {
-    setAttachments([]); setMenuOpen(false); setAttachmentNotice(null); setSending(false);
-    return () => {
-      draftEpoch.current += 1;
-      for (const item of attachmentsRef.current) { URL.revokeObjectURL(item.previewUrl); if (item.id) void discardCommodoreAttachment(item.id).catch(() => {}); }
-      // 완료가 늦은 업로드는 아래 then에서 초안에 없음을 보고 서버 파일도 거둔다.
-      attachmentsRef.current = [];
-    };
-  }, [theaterId]);
   useEffect(() => {
     if (!menuOpen) return;
     menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
@@ -744,29 +790,29 @@ export function CommodoreComposer({ t, theaterId, active, context, onFail, onCle
   }, [menuOpen]);
   useEffect(() => { if (!active) setMenuOpen(false); }, [active]);
   const addFiles = (files: readonly File[]) => {
-    if (!active || sending || clear.busy) return;
+    if (!active || draft.read().sending || clear.busy) return;
     setAttachmentNotice(null);
     for (const file of files.filter(isComposerAttachmentCandidate)) {
-      if (attachmentsRef.current.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(t("objectives.commodore.composer.attachLimit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
+      if (draft.read().attachments.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(t("objectives.commodore.composer.attachLimit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
       if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) { setAttachmentNotice(t("objectives.commodore.composer.attachTooLarge")); continue; }
       const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || t("objectives.commodore.composer.image"), previewUrl: URL.createObjectURL(file), uploading: true };
-      publishAttachments([...attachmentsRef.current, item]);
+      publishAttachments([...draft.read().attachments, item]);
       void uploadCommodoreAttachment(file).then(({ id }) => {
-        if (!attachmentsRef.current.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
-        publishAttachments(attachmentsRef.current.map((known) => known.key === item.key ? { ...known, id, uploading: false } : known));
+        if (!draft.read().attachments.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
+        publishAttachments(draft.read().attachments.map((known) => known.key === item.key ? { ...known, id, uploading: false } : known));
       }).catch(() => {
-        if (!attachmentsRef.current.some((known) => known.key === item.key)) return;
+        if (!draft.read().attachments.some((known) => known.key === item.key)) return;
         URL.revokeObjectURL(item.previewUrl);
-        publishAttachments(attachmentsRef.current.filter((known) => known.key !== item.key));
+        publishAttachments(draft.read().attachments.filter((known) => known.key !== item.key));
         setAttachmentNotice(t("objectives.commodore.composer.attachFailed"));
       });
     }
   };
   const removeAttachment = (key: string) => {
-    const item = attachmentsRef.current.find((known) => known.key === key);
-    if (!item || sending) return;
+    const item = draft.read().attachments.find((known) => known.key === key);
+    if (!item || draft.read().sending) return;
     if (item.id) void discardCommodoreAttachment(item.id).catch(() => {});
-    URL.revokeObjectURL(item.previewUrl); publishAttachments(attachmentsRef.current.filter((known) => known.key !== key));
+    URL.revokeObjectURL(item.previewUrl); publishAttachments(draft.read().attachments.filter((known) => known.key !== key));
     setAttachmentNotice(null); inputRef.current?.focus();
   };
   const uploading = attachments.some((item) => item.uploading);
@@ -774,18 +820,21 @@ export function CommodoreComposer({ t, theaterId, active, context, onFail, onCle
   const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
   const send = () => {
     const value = text.trim();
-    if (sending || uploading || clear.busy) return;
-    if (isClear) { void clear.request().then((cleared) => { if (cleared) { setText(""); resetAttachments(true); } }); return; }
+    if (draft.read().sending || uploading || clear.busy) return;
+    const sent = draft.read();
+    if (isClear) {
+      if (clear.armed) setSending(true);
+      void clear.request().then((cleared) => { if (cleared) finishSentDraft(sent, true); }).finally(() => setSending(false));
+      return;
+    }
     if (!active || !value) return;
     onClear(); setAttachmentNotice(null); setMenuOpen(false);
     setSending(true);
-    const epoch = draftEpoch.current;
-    const ids = attachmentsRef.current.flatMap((item) => item.id ? [item.id] : []);
-    void messageCommodore(theaterId, value, ids).then(() => { if (draftEpoch.current !== epoch) return; setText(""); resetAttachments(false); }).catch((error) => {
-      if (draftEpoch.current !== epoch) return;
+    const ids = sent.attachments.flatMap((item) => item.id ? [item.id] : []);
+    void messageCommodore(theaterId, value, ids).then(() => finishSentDraft(sent, false)).catch((error) => {
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(t("objectives.commodore.composer.attachBudget"));
-      else onFail(error);
-    }).finally(() => { if (draftEpoch.current !== epoch) return; setSending(false); inputRef.current?.focus({ preventScroll: true }); });
+      else if (mounted.current) onFail(error);
+    }).finally(() => { setSending(false); if (mounted.current) inputRef.current?.focus({ preventScroll: true }); });
   };
   return (
     <>

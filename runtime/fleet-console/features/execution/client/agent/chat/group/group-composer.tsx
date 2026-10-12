@@ -41,6 +41,7 @@ interface DraftAttachment {
 }
 
 export interface GroupComposerProps {
+  readonly rootOperationId: string;
   readonly snapshot: GroupTimelineSnapshot;
   readonly actions: GroupConversationActions | null;
   readonly language: ConsoleLocale | undefined;
@@ -50,23 +51,48 @@ export interface GroupComposerProps {
 
 const MENTION_QUERY = /(?:^|\s)@([^\s@]*)$/u;
 
-export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupComposerProps) {
+interface GroupComposerDraft {
+  readonly text: string;
+  readonly textRevision: number;
+  readonly target: Candidate | null;
+  readonly attachments: readonly DraftAttachment[];
+  readonly busy: boolean;
+  readonly notice: Notice | null;
+}
+
+/** 실행 기능이 소유하는 페이지 메모리 — 대화 본문이 내려가도 초안·업로드·전송은 같은 루트에 남는다. */
+const groupDrafts = new Map<string, ReturnType<typeof createGroupDraft>>();
+function createGroupDraft() {
+  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null };
+  const listeners = new Set<() => void>();
+  return {
+    read: () => current,
+    subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    update: (patch: Partial<GroupComposerDraft>) => {
+      current = { ...current, ...patch };
+      for (const listener of listeners) listener();
+    },
+  };
+}
+function groupDraft(rootOperationId: string) {
+  let draft = groupDrafts.get(rootOperationId);
+  if (!draft) { draft = createGroupDraft(); groupDrafts.set(rootOperationId, draft); }
+  return draft;
+}
+
+export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne }: GroupComposerProps) {
   const t = getGroupT(language);
-  const [text, setText] = React.useState("");
-  const textRevision = React.useRef(0);
-  const [target, setTarget] = React.useState<Candidate | null>(null);
+  const draft = groupDraft(rootOperationId);
+  const { text, target, attachments, busy, notice } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
+  const setTarget = (value: Candidate | null) => draft.update({ target: value });
+  const setBusy = (value: boolean) => draft.update({ busy: value });
+  const setNotice = (value: Notice | null) => draft.update({ notice: value });
   const [popIndex, setPopIndex] = React.useState(0);
   const [popDismissed, setPopDismissed] = React.useState(false);
   const [stopOpen, setStopOpen] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [notice, setNotice] = React.useState<Notice | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const pendingPick = React.useRef<Candidate | null>(null);
-  const [attachments, setAttachments] = React.useState<readonly DraftAttachment[]>([]);
-  const attachmentsRef = React.useRef(attachments);
-  attachmentsRef.current = attachments;
-  // 업로드 중에 뺀 칩 — 업로드가 끝나면 서버의 파일을 거둔다.
-  const canceledKeys = React.useRef(new Set<string>());
   const [menuOpen, setMenuOpen] = React.useState(false);
   const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
   const plusRef = React.useRef<HTMLButtonElement | null>(null);
@@ -97,7 +123,6 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
 
   // 결과 안내는 다음 행동까지 남는다 — 새로 쓰기 시작하면 걷는다.
   const edit = (value: string) => {
-    textRevision.current += 1;
     setText(value);
     setPopIndex(0);
     setPopDismissed(false);
@@ -105,9 +130,8 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   };
 
   const choose = (candidate: Candidate) => {
-    textRevision.current += 1;
     setTarget(candidate);
-    setText((value) => value.replace(MENTION_QUERY, (match) => (match.startsWith("@") ? "" : match.slice(0, 1))));
+    setText(draft.read().text.replace(MENTION_QUERY, (match) => (match.startsWith("@") ? "" : match.slice(0, 1))));
     setPopIndex(0);
     inputRef.current?.focus();
   };
@@ -139,8 +163,7 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
     // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
     if (images.length === 0) return;
     let rejected: Notice | null = null;
-    // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다.
-    let count = attachmentsRef.current.length;
+    let count = draft.read().attachments.length;
     for (const file of images) {
       if (count >= COMPOSER_MAX_ATTACHMENTS) {
         rejected = { tone: "warn", text: t("group.notice.attachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) }) };
@@ -154,47 +177,35 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const previewUrl = URL.createObjectURL(file);
       const name = file.name.length > 0 ? file.name : "pasted image";
-      setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
+      draft.update({ attachments: [...draft.read().attachments, { key, id: null, name, previewUrl, uploading: true }] });
       void uploadLaunchAttachment(file)
         .then(({ id }) => {
-          if (canceledKeys.current.delete(key)) {
+          const current = draft.read().attachments;
+          if (!current.some((attachment) => attachment.key === key)) {
             void discardLaunchAttachment(id).catch(() => {});
             return;
           }
-          setAttachments((current) => current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)));
+          draft.update({ attachments: current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)) });
         })
         .catch(() => {
-          canceledKeys.current.delete(key);
+          const current = draft.read().attachments;
+          if (!current.some((attachment) => attachment.key === key)) return;
           URL.revokeObjectURL(previewUrl);
-          setAttachments((current) => current.filter((attachment) => attachment.key !== key));
-          setNotice({ tone: "warn", text: t("group.notice.attachFailed") });
+          draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: { tone: "warn", text: t("group.notice.attachFailed") } });
         });
     }
     setNotice(rejected);
-  }, [t]);
+  }, [draft, t]);
 
   const removeAttachment = (key: string) => {
-    const removed = attachmentsRef.current.find((attachment) => attachment.key === key);
+    const current = draft.read().attachments;
+    const removed = current.find((attachment) => attachment.key === key);
     if (!removed) return;
     if (removed.id !== null) void discardLaunchAttachment(removed.id).catch(() => {});
-    else canceledKeys.current.add(key);
     URL.revokeObjectURL(removed.previewUrl);
-    setAttachments((current) => current.filter((attachment) => attachment.key !== key));
-    setNotice(null);
+    draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: null });
     inputRef.current?.focus();
   };
-
-  // 다른 대화로 옮겨 가면 붙여 둔 이미지는 그 대화의 것이 아니다 — 거둔다.
-  const rootId = snapshot.rootOperationId;
-  React.useEffect(() => () => {
-    for (const attachment of attachmentsRef.current) {
-      if (attachment.id !== null) void discardLaunchAttachment(attachment.id).catch(() => {});
-      else canceledKeys.current.add(attachment.key);
-      URL.revokeObjectURL(attachment.previewUrl);
-    }
-    attachmentsRef.current = [];
-    setAttachments([]);
-  }, [rootId]);
 
   const pickImages = () => {
     setMenuOpen(false);
@@ -214,11 +225,11 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
   };
 
   const submit = async () => {
-    if (busy || !actions || empty || uploading) return;
+    if (draft.read().busy || !actions || empty || uploading) return;
     const sentTo = target;
     const sentText = text;
-    const sentRevision = textRevision.current;
-    const sentAttachments = attachmentsRef.current;
+    const sentRevision = draft.read().textRevision;
+    const sentAttachments = draft.read().attachments;
     const sentKeys = new Set(sentAttachments.map((attachment) => attachment.key));
     const ids = sentAttachments.map((attachment) => attachment.id).filter((id): id is string => id !== null);
     if (ids.length > 0 && (sentTo?.kind === "all")) {
@@ -233,15 +244,17 @@ export function GroupComposer({ snapshot, actions, language, onStopOne }: GroupC
     try {
       const result = await actions.send(groupTarget, sentText.trim(), ids.length > 0 ? ids : undefined);
       // 일부만 닿았어도 보낸 말이다 — 보낸 스냅샷만 걷고, 기다리는 동안 새로 쓴 말은 남긴다.
-      if (textRevision.current === sentRevision) setText("");
-      setTarget((current) => current === sentTo ? null : current);
+      const current = draft.read();
       // 보낸 이미지는 받는 세션에 묶였다 — 그 미리보기만 놓고 새로 붙인 이미지는 남긴다.
-      for (const attachment of attachmentsRef.current) {
+      for (const attachment of current.attachments) {
         if (sentKeys.has(attachment.key)) URL.revokeObjectURL(attachment.previewUrl);
       }
-      attachmentsRef.current = attachmentsRef.current.filter((attachment) => !sentKeys.has(attachment.key));
-      setAttachments((current) => current.filter((attachment) => !sentKeys.has(attachment.key)));
-      setNotice(describeSend(result, sentTo));
+      draft.update({
+        ...(current.textRevision === sentRevision ? { text: "" } : {}),
+        target: current.target === sentTo ? null : current.target,
+        attachments: current.attachments.filter((attachment) => !sentKeys.has(attachment.key)),
+        notice: describeSend(result, sentTo),
+      });
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
       setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? t("group.notice.attachCommodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
