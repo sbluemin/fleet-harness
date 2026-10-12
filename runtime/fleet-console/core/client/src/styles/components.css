@@ -16626,6 +16626,8 @@ body[data-expanded-surface="true"] .operations-canvas .expanded-surface {
 }
 .fc-model-picker__trigger[aria-expanded="true"] { color: var(--brass-ink); background: var(--brass-glow); }
 .fc-model-picker.has-effort .fc-model-picker__trigger { border-start-end-radius: 0; border-end-end-radius: 0; }
+/* 팝업은 body 포털이다 — 설정 모달(z 90) 안에서 열리므로 fc-select 기본 층(40)이 아니라 오버레이 층에 선다. */
+.fc-model-picker__popup { z-index: var(--z-overlay); }
 /* 트리거의 마크는 칩의 종류 글리프처럼 상자 없이 공급자 톤만 입고, 밴드의 마크는 런치 메뉴의 배지 그대로다. */
 .fc-model-picker__glyph--mark {
   display: inline-flex;
