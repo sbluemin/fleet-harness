@@ -44,6 +44,7 @@ import {
   overlayWorkflowActualModels,
   readChatCommandLaneName,
   readJobKind,
+  sessionMessageRefusal,
   tagChatOrigin,
   type AgentChatCatalog,
   type AgentChatCatalogEntry,
@@ -710,27 +711,6 @@ async function readFileTail(file: string, windowBytes: number): Promise<{ readon
  * 백그라운드 맥박은 턴이 닫힌 뒤에도 계속 흐르는 것이 정상이고, 그것으로 턴을 열면 아무 말도
  * 없는 빈 턴이 선다.
  */
-/**
- * 세션 간 메시지 도구가 **실패를 본문으로 말했는가**. `is_error` 없이 `{"success":false}` 하나로
- * 돌아오는 거절이 있어(상대가 없거나 이름이 중복인 경로) 그 모양만 따로 읽는다. 읽을 수 없는
- * 본문은 실패로 보지 않는다 — 성공한 전달을 침묵시키는 쪽이 더 나쁜 오류다.
- */
-function sentMessageFailed(content: unknown): boolean {
-  const texts = typeof content === "string" ? [content]
-    : Array.isArray(content)
-      ? content.flatMap((part) => (part && typeof part === "object" && (part as { readonly type?: unknown }).type === "text"
-        && typeof (part as { readonly text?: unknown }).text === "string" ? [(part as { readonly text: string }).text] : []))
-      : [];
-  for (const text of texts) {
-    try {
-      const parsed: unknown = JSON.parse(text);
-      if (parsed && typeof parsed === "object" && (parsed as { readonly success?: unknown }).success === false) return true;
-    } catch {
-      // JSON이 아닌 결과 본문은 판정 근거가 없다.
-    }
-  }
-  return false;
-}
 
 /**
  * 모델·강도 변경을 거절한 원 예외를 옮긴다 — 문자열을 자르지 않고 스택(호스트 경로)은 싣지 않는다. SDK 가 붙이는 분류·종료 좌표를 함께 싣고,
@@ -2938,7 +2918,7 @@ class AgentChatSession {
       } catch {
         // 대상 등록을 읽을 수 없으면 좌표는 무의견이다. 도구가 돌려준 성공/실패는 그대로 남긴다.
       }
-      if (this.disposed || record.is_error === true || sentMessageFailed(record.content)) continue;
+      if (this.disposed || record.is_error === true || sessionMessageRefusal(record.content) !== null) continue;
       if (this.turnOpen) this.turnSentTo.push(sent.to);
       try {
         this.seed.onSessionMessageSent?.({ ...(recipientOperationId ? { recipientOperationId } : {}), text: sent.text, toolUseId: record.tool_use_id });

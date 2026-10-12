@@ -199,8 +199,8 @@ describe("agent chat mode routes", () => {
     const sessionsBeforeFailure = harness.openSession.mock.calls.length;
     harness.emitToLatest(sent("call-2", "dormant-member", "Rejected send."));
     harness.emitToLatest(settled("call-2", false));
-    // 기존 실패 케이스를 휴면 대상에게 보낸다. 수신자는 해석해도 도착·기동은 만들지 않는다.
-    await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient }));
+    // 기존 실패 케이스를 휴면 대상에게 보낸다. 수신자는 해석해도 도착·기동은 만들지 않고, 본문의 거절은 사유를 단 실패로 선다.
+    await vi.waitFor(() => expect(sentResult("call-2")).toMatchObject({ recipientOperationId: dormantRecipient, ok: false, summary: "no such session" }));
     expect(arrivalReports.mock.calls).toHaveLength(reportsBeforeFailure);
     expect(frames.filter(({ event }) => event.kind === "received")).toHaveLength(1);
     expect(harness.consoleControl.observe(dormantRecipient)?.lifecycle).toBe("dormant");

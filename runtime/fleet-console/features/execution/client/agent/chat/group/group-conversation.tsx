@@ -318,7 +318,7 @@ function DelegationLine({ entry, language, onOpenLedger }: {
 
 /**
  * 실패한 전달의 사람이 읽을 사유, 성공이면 null. `is_error` 없이 `{"success":false}` 영수증으로만 돌아오는 거절도 실패다
- * (호스트 `sentMessageFailed` 와 같은 판정). 사유는 JSON 영수증이면 그 `message`·`error` 낱말을, 아니면 도구 오류 꼬리표를
+ * (호스트 `sessionMessageRefusal` 과 같은 판정). 사유는 JSON 영수증이면 그 `message`·`error` 낱말을, 아니면 도구 오류 꼬리표를
  * 벗긴 첫 줄을 쓴다.
  */
 function deliveryFailure(entry: Extract<GroupTimelineEntry, { kind: "delegation" }>): string | null {
