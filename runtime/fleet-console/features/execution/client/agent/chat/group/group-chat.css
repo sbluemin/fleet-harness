@@ -138,6 +138,25 @@
 .group-chat-line-sep { flex: none; color: var(--hairline-strong); }
 .group-chat-line-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-chat-line-status { flex: none; white-space: nowrap; }
+/* 노트 줄 — 누구의 말도 아닌 사건(세션 교대·실패 알림). 플러그인 대화(사령관 기록)만 쓴다. 실패는 신호 잉크다. */
+.group-chat-note { display: flex; align-items: baseline; justify-content: center; gap: var(--space-1); padding: 2px var(--space-2); text-align: center; }
+.group-chat-note-text { min-width: 0; overflow-wrap: anywhere; }
+.group-chat-note.is-warn { color: var(--warn-ink); }
+/* 이전 기록 읽기 — 칼럼 맨 위 가운데 글자 단추. */
+.group-chat-older { align-self: center; }
+.group-chat-older:disabled { color: var(--text-tertiary); cursor: default; }
+/* 다른 표면에서 가리킨 줄 — 위치를 말하는 brass 가 잠깐 둘레에 섰다 물러난다(말풍선이면 말풍선이, 가운데 줄이면 줄이). */
+:is(.group-chat-human, .group-chat-agent).is-revealed .group-chat-bubble,
+.group-chat-line.is-revealed { animation: group-chat-reveal 1.4s ease-out; }
+.group-chat-line.is-revealed { border-radius: var(--radius-md); }
+@keyframes group-chat-reveal {
+  0% { box-shadow: 0 0 0 6px color-mix(in oklch, var(--brass) 22%, transparent); }
+  100% { box-shadow: 0 0 0 6px transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.group-chat-human, .group-chat-agent).is-revealed .group-chat-bubble,
+  .group-chat-line.is-revealed { animation: none; box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 40%, transparent); }
+}
 .group-chat-line-status.is-failed { color: var(--coral-ink); }
 .group-chat-line-time { flex: none; margin-left: var(--space-1); font-variant-numeric: tabular-nums; }
 .group-chat-line-chev { flex: none; margin-left: auto; padding-left: var(--space-1); transition: transform var(--duration-fast); }

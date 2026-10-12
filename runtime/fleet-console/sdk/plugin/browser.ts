@@ -84,7 +84,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       refresh: () => undefined,
     },
     // 채팅 렌더러는 호스트 기능이다 — 사본은 아무것도 그리지 않고, Console이 실제 턴 렌더러로 덮는다.
-    chat: { Transcript: () => null },
+    chat: { Transcript: () => null, Conversation: () => null },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {
         const response = await fetch(resolvePluginPath(pluginId, path), {

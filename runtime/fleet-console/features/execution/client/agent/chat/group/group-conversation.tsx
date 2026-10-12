@@ -6,6 +6,7 @@ import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
+import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
@@ -27,9 +28,15 @@ import "./group-chat.css";
  * 진행 줄은 일하는 참여자를 모두 쌓아 보인다.
  *
  * 쓰기(정지·사령관 기록 열기·원장 열기)는 콜백 자리만 둔다. 콜백이 없으면 그 단추도 서지 않는다 — 눌리는 척하지 않는다.
+ *
+ * 플러그인 대화(SDK `ctx.chat.Conversation`, 사령관 기록)도 이 화면이다 — 그 대화만 쓰는 노트 줄·이전 쪽 읽기·드러내기는 선택 prop 이라
+ * 그룹 대화에서는 서지 않는다.
  */
+/** 그룹 스냅숏에 플러그인 대화의 노트 줄을 더한 모양 — 그룹 대화의 스냅숏도 그대로 들어온다. */
+export type ConversationLogSnapshot = Omit<GroupTimelineSnapshot, "entries"> & { readonly entries: readonly AgentConversationEntry[] };
+
 export interface GroupConversationProps {
-  readonly snapshot: GroupTimelineSnapshot;
+  readonly snapshot: ConversationLogSnapshot;
   readonly language: ConsoleLocale | undefined;
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (operationId: string) => void;
@@ -44,6 +51,14 @@ export interface GroupConversationProps {
   readonly cards?: React.ReactNode;
   /** 진행 줄 아래의 입력창. */
   readonly composer?: React.ReactNode;
+  /** 사령관 행위 줄의 링크 낱말 — 주지 않으면 「사령관 기록에서 보기」. */
+  readonly boardActionLabel?: string;
+  /** 빈 대화의 문구 — 주지 않으면 그룹 대화의 문구. */
+  readonly empty?: string;
+  /** 첫 줄 위에 이전 기록이 있다 — 칼럼 맨 위 글자 단추가 읽는다. 앞에 붙어도 보던 자리를 지킨다. */
+  readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
+  /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
+  readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -53,19 +68,42 @@ export interface BoardActionRecordRequest {
   readonly at: number | null;
 }
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal }: GroupConversationProps) {
   const t = getGroupT(language);
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
   const last = entries[entries.length - 1];
-  const growth = `${entries.length}:${last?.id ?? ""}:${last?.kind === "message" ? last.text.length : 0}:${snapshot.decision?.id ?? ""}`;
+  const first = entries[0]?.id;
+  const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${last?.kind === "message" ? last.text.length : 0}:${snapshot.decision?.id ?? ""}`;
+  const placed = React.useRef<{ readonly first: string | undefined; readonly height: number } | null>(null);
 
-  // 바닥을 따라가는 중일 때만 새 말을 따라 내려간다. 위로 올려 읽는 중이면 그 자리를 지킨다.
+  // 바닥을 따라가는 중일 때만 새 말을 따라 내려간다. 위로 올려 읽는 중이면 그 자리를 지킨다 — 앞에 줄이 붙으면(이전 기록 읽기)
+  // 늘어난 높이만큼 내려 보던 줄을 그 자리에 둔다.
   React.useLayoutEffect(() => {
     const log = logRef.current;
-    if (log && nearBottomRef.current) log.scrollTop = log.scrollHeight;
-  }, [growth]);
+    if (!log) return;
+    const before = placed.current;
+    if (nearBottomRef.current) log.scrollTop = log.scrollHeight;
+    else if (before && before.first !== undefined && before.first !== first && entries.some((entry) => entry.id === before.first)) log.scrollTop += log.scrollHeight - before.height;
+    placed.current = { first, height: log.scrollHeight };
+  }, [growth]); // eslint-disable-line react-hooks/exhaustive-deps -- growth 가 entries 의 변화를 대신한다.
+
+  // 드러내기 — 그 줄이 아직 없으면(쪽을 읽는 중) 줄이 올 때 다시 찾는다. 찾은 요청만 끝낸다.
+  const revealed = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!reveal || revealed.current === reveal.nonce) return;
+    const target = Array.from(logRef.current?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []).find((node) => node.dataset.entryId === reveal.entryId);
+    if (!target) return;
+    revealed.current = reveal.nonce;
+    nearBottomRef.current = false;
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    target.classList.remove("is-revealed");
+    void target.offsetWidth;
+    target.classList.add("is-revealed");
+    const timer = window.setTimeout(() => target.classList.remove("is-revealed"), 1_600);
+    return () => window.clearTimeout(timer);
+  }, [reveal, growth]);
 
   // 발화자마다 가장 최근 말풍선 묶음의 머리 — 그 표식만 발화자의 지금 상태를 보인다(지난 묶음은 쉼).
   const liveHeads = React.useMemo(() => latestBubbleHeads(entries), [entries]);
@@ -88,6 +126,9 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
         }}
       >
         <div className="group-chat-column">
+          {older ? (
+            <button type="button" className="group-chat-link group-chat-older" disabled={older.loading} onClick={older.load}>{older.label}</button>
+          ) : null}
           {snapshot.truncated ? <p className="group-chat-notice">{t("group.truncated")}</p> : null}
           {snapshot.unavailableOperationIds.length > 0 ? (
             <p className="group-chat-notice">
@@ -95,7 +136,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
             </p>
           ) : null}
           {entries.length === 0 ? (
-            <p className="group-chat-empty">{snapshot.loading ? t("group.loading") : t("group.empty")}</p>
+            <p className="group-chat-empty">{snapshot.loading ? t("group.loading") : empty ?? t("group.empty")}</p>
           ) : entries.map((entry, index) => (
             <TimelineEntry
               key={entry.id}
@@ -106,6 +147,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
               language={language}
               onOpenLedger={onOpenLedger}
               onOpenCommodoreRecord={onOpenCommodoreRecord}
+              boardActionLabel={boardActionLabel}
             />
           ))}
           {cards}
@@ -141,11 +183,11 @@ export function GroupLedgerFrame({ speaker, language, children }: {
   );
 }
 
-function findSpeaker(snapshot: GroupTimelineSnapshot, operationId: string): ConversationSpeaker | null {
+function findSpeaker(snapshot: ConversationLogSnapshot, operationId: string): ConversationSpeaker | null {
   return snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
 }
 
-function sameSpeaker(entry: GroupTimelineEntry | undefined, speaker: ConversationSpeaker): boolean {
+function sameSpeaker(entry: AgentConversationEntry | undefined, speaker: ConversationSpeaker): boolean {
   return entry?.kind === "message" && speakerKey(entry.speaker) === speakerKey(speaker);
 }
 
@@ -156,7 +198,7 @@ const bubbleShown = (entry: Extract<GroupTimelineEntry, { kind: "message" }>): b
  * 사람이 아닌 발화자마다 가장 최근 말풍선 묶음의 머리 말 id. 묶음은 같은 발화자의 이어진 말이고 머리는 그 첫 말(표식이 서는
  * 자리)이다. 흐르는 중인 응답이 있으면 그 묶음이 최신이다. 서는 말이 하나도 없는 묶음은 최신으로 치지 않는다.
  */
-function latestBubbleHeads(entries: readonly GroupTimelineEntry[]): ReadonlySet<string> {
+function latestBubbleHeads(entries: readonly AgentConversationEntry[]): ReadonlySet<string> {
   const latest = new Map<string, string>();
   let head: string | null = null;
   for (let index = 0; index < entries.length; index += 1) {
@@ -181,23 +223,39 @@ function excerpt(text: string, max = 120): string {
   return first.length > max ? `${first.slice(0, max)}…` : first;
 }
 
-function TimelineEntry({ entry, previous, live, participants, language, onOpenLedger, onOpenCommodoreRecord }: {
-  readonly entry: GroupTimelineEntry;
-  readonly previous: GroupTimelineEntry | undefined;
+function TimelineEntry({ entry, previous, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel }: {
+  readonly entry: AgentConversationEntry;
+  readonly previous: AgentConversationEntry | undefined;
   readonly live: boolean;
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
+  readonly boardActionLabel: string | undefined;
 }) {
   switch (entry.kind) {
     case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker)} live={live} participants={participants} language={language} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
-    case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} />;
+    case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} label={boardActionLabel} />;
     case "plugin-notice": return <PluginNoticeLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
+    case "note": return <NoteLine entry={entry} language={language} />;
   }
+}
+
+/** 누구의 말도 아닌 가운데 줄 — 세션 교대·실패 알림(플러그인 대화만 쓴다). 실패는 신호 잉크다. */
+function NoteLine({ entry, language }: {
+  readonly entry: Extract<AgentConversationEntry, { kind: "note" }>;
+  readonly language: ConsoleLocale | undefined;
+}) {
+  const time = timeOf(entry.at, language);
+  return (
+    <div className={`group-chat-line group-chat-note${entry.tone === "warn" ? " is-warn" : ""}`} data-entry-id={entry.id}>
+      <span className="group-chat-note-text">{entry.text}</span>
+      {time ? <span className="group-chat-line-time">{time}</span> : null}
+    </div>
+  );
 }
 
 function MessageBubble({ entry, continued, live, participants, language }: {
@@ -215,7 +273,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
   const via = entry.via ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-via">{t(`group.via.${entry.via}`)}</span></> : null;
   if (entry.speaker.kind === "human") {
     return (
-      <div className="group-chat-human" {...(time ? { title: time } : {})}>
+      <div className="group-chat-human" data-entry-id={entry.id} {...(time ? { title: time } : {})}>
         {entry.recipient ? (
           <span className="group-chat-human-to">
             <span aria-hidden="true">→</span>
@@ -230,6 +288,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
             : entry.text}
         </div>
+        {entry.undelivered ? <span className="agent-chat-undelivered" title={t("group.undelivered")}>{t("group.undelivered")}</span> : null}
       </div>
     );
   }
@@ -237,7 +296,7 @@ function MessageBubble({ entry, continued, live, participants, language }: {
   // 사령관은 이 화면의 언어로 부른다 — 원장이 실어 오는 이름은 언어를 모른다.
   const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
   return (
-    <div className={`group-chat-agent${continued ? " is-continued" : ""}`} {...(time ? { title: time } : {})}>
+    <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id} {...(time ? { title: time } : {})}>
       <span className="group-chat-agent-mark">{continued ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />}</span>
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (
@@ -276,7 +335,7 @@ function DelegationLine({ entry, language, onOpenLedger }: {
   const preview = excerpt(entry.text);
   // 줄은 「보낸이 → 받는이 발췌」만 말한다. 도착 미확인은 낱말로 세우지 않고, 실패만 신호 잉크로 남긴다.
   return (
-    <details className="group-chat-line group-chat-delegation">
+    <details className="group-chat-line group-chat-delegation" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
         <span className="group-chat-delegation-party">
           <SpeakerMark speaker={entry.sender} size="sm" />
@@ -365,7 +424,7 @@ function PluginNoticeLine({ entry, language, onOpenLedger }: {
   // 지휘관에게 간 알림이면 이 대화가 곧 그 원장이다 — 구성원에게 간 것만 원장 링크를 둔다(위임 줄과 같은 규칙).
   const ledger = onOpenLedger && entry.recipient.kind === "member" && entry.recipient.operationId ? entry.recipient : null;
   return (
-    <details className="group-chat-line group-chat-plugin-notice">
+    <details className="group-chat-line group-chat-plugin-notice" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
         <span className="group-chat-notice-source">
           <span className="group-chat-notice-glyph" aria-hidden="true"><AgentGlyph name={known?.glyph ?? "other"} /></span>
@@ -401,7 +460,7 @@ function MembershipLine({ entry, language }: {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
   return (
-    <div className="group-chat-line group-chat-membership">
+    <div className="group-chat-line group-chat-membership" data-entry-id={entry.id}>
       <SpeakerMark speaker={entry.speaker} size="sm" />
       <span>{t(entry.kind === "member-joined" ? "group.joined" : "group.left", { name: entry.speaker.name })}</span>
       {time ? <span className="group-chat-line-time">{time}</span> : null}
@@ -409,10 +468,11 @@ function MembershipLine({ entry, language }: {
   );
 }
 
-function BoardActionLine({ entry, language, onOpenRecord }: {
+function BoardActionLine({ entry, language, onOpenRecord, label }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "board-action" }>;
   readonly language: ConsoleLocale | undefined;
   readonly onOpenRecord: GroupConversationProps["onOpenCommodoreRecord"];
+  readonly label?: string | undefined;
 }) {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
@@ -426,9 +486,9 @@ function BoardActionLine({ entry, language, onOpenRecord }: {
     </>
   );
   // 펼칠 이유도, 열 기록도 없으면 눌리는 척하지 않는다.
-  if (entry.text.trim().length === 0 && !onOpenRecord) return <div className="group-chat-line group-chat-board">{summary}</div>;
+  if (entry.text.trim().length === 0 && !onOpenRecord) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}</div>;
   return (
-    <details className="group-chat-line group-chat-board">
+    <details className="group-chat-line group-chat-board" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
         {summary}
         <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
@@ -440,7 +500,7 @@ function BoardActionLine({ entry, language, onOpenRecord }: {
         </> : null}
         {onOpenRecord ? (
           <div className="group-chat-line-actions">
-            <button type="button" className="group-chat-link" onClick={() => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at })}>{t("group.board.openRecord")}</button>
+            <button type="button" className="group-chat-link" onClick={() => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at })}>{label ?? t("group.board.openRecord")}</button>
           </div>
         ) : null}
       </div>

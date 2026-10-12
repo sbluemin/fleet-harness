@@ -1,4 +1,6 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
+
+import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../conversation/types.js";
 
 /**
  * Agent chat transcript — the Operation chat view's turn renderer, offered to plugins that keep their own agent transcript.
@@ -55,7 +57,41 @@ export interface AgentChatTranscriptProps {
   readonly reveal?: { readonly at: number; readonly nonce: number } | null;
 }
 
+/**
+ * Agent conversation — the conversation-layout grammar Operations use (the person's bubbles on the right, speakers' bubbles on
+ * the left with their mongle mark and name, quiet centre lines for everything that is not speech, a working line above the
+ * composer), offered to plugins that keep their own conversation. Entries are the public group timeline vocabulary plus `note`.
+ */
+export type AgentConversationEntry =
+  | GroupTimelineEntry
+  /** A quiet centre line that is not anyone's speech — a session change, a failure notice. */
+  | { readonly kind: "note"; readonly id: string; readonly at: number | null; readonly text: string; readonly tone?: "warn" };
+
+export interface AgentConversationProps {
+  readonly entries: readonly AgentConversationEntry[];
+  /** Who takes part and what they are doing now — the latest bubble mark of each speaker shows that face. */
+  readonly participants: readonly ConversationParticipant[];
+  /** Speakers working right now — the working line above the composer. */
+  readonly working: readonly ConversationSpeaker[];
+  readonly language: "en" | "ko";
+  /** The Theater a `commodore` speaker belongs to — its mongle is that Theater's avatar. */
+  readonly theaterId?: string;
+  /** Still reading the first page — the empty line says so instead of `empty`. */
+  readonly loading?: boolean;
+  /** The line shown when there are no entries. */
+  readonly empty?: string;
+  /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */
+  readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
+  /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
+  readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  /** A board-action line's link (`label`) and what it opens. Without it the line only unfolds its reason. */
+  readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
+  /** Below the working line — the plugin's own composer or a way back. */
+  readonly composer?: ReactNode;
+}
+
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */
 export interface ClientAgentChatCapability {
   readonly Transcript: ComponentType<AgentChatTranscriptProps>;
+  readonly Conversation: ComponentType<AgentConversationProps>;
 }
