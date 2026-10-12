@@ -9,7 +9,7 @@ import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, P
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
-import { COMMODORE_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
@@ -62,7 +62,7 @@ export const objectivesSurface: ExpandedSurfaceDescriptor = {
 };
 
 export const objectivesEntry: RailEntryDescriptor = {
-  id: "objectives",
+  id: OBJECTIVES_ENTRY_ID,
   title: (locale) => getT(locale)("objectives.panel.title"),
   icon: () => <ObjectiveIcon />,
   scope: "theater",

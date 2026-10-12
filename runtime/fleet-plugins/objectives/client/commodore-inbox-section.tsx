@@ -19,6 +19,7 @@ import {
   addCommodoreIntel,
   clearCommodore,
   COMMODORE_INBOX_SECTION_ID,
+  OBJECTIVES_ENTRY_ID,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
@@ -109,6 +110,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   onLeaveDesktop: ({ pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log"),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
+  // 사령관에게는 목표가 없다 — 대화 중심 화면의 오른쪽 패널이 이 섹션을 보일 때 도구 줄·「더보기」에서 목표 입구를 뺀다.
+  omitsRailEntries: [OBJECTIVES_ENTRY_ID],
 };
 
 function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBodyContext }) {

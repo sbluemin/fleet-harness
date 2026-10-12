@@ -112,4 +112,11 @@ export interface TheaterInboxSectionDescriptor {
    * the page in the side panel.
    */
   openConversation?(context: { readonly theater: ConsoleTheaterSummary; readonly pageId: string }): boolean;
+  /**
+   * Rail entry ids (`RailEntryDescriptor.id`) that mean nothing while this section is the one shown in the conversation
+   * layout's side panel, such as Objectives for the Commodore, who has no objectives of its own. The panel head leaves
+   * them out of its tool row and its "More" menu for this section only; other sections, Operation conversations, and
+   * the desktop rail keep them.
+   */
+  readonly omitsRailEntries?: readonly string[];
 }
