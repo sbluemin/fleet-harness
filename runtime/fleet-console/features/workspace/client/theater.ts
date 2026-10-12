@@ -88,7 +88,7 @@ let theaterResyncGeneration = 0;
 // 다른 창·API·Console Use가 Theater를 등록·잊기·되돌리면 서버가 theaterId만 방송한다. 잊기는 목록에서
 // 곧바로 빼고, 나머지는 서버 목록으로 다시 맞춘다. 사건이 잇따르면 마지막 조회만 반영해 늦게 온 옛
 // 응답이 새 상태를 덮지 않게 한다.
-export function applyTheaterLifecycle(event: "registered" | "forgotten" | "restored", theaterId: string): void {
+export function applyTheaterLifecycle(event: "registered" | "forgotten" | "restored" | "updated", theaterId: string): void {
   if (event === "forgotten") dropForgottenTheater(theaterId);
   const generation = ++theaterResyncGeneration;
   void Promise.all([fetchTheaters(null), fetchOperations(null), fetchGroups(null)])

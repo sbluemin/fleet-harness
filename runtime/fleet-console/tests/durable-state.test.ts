@@ -77,6 +77,27 @@ describe("durable console state", () => {
     ]);
   });
 
+  it("keeps a Theater alias across reload and still reads records saved without one", () => {
+    const base = { path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-02T00:00:00.000Z" };
+    const state = sanitizeDurableConsoleState({
+      version: 6,
+      theaters: [
+        { ...base, id: "aliased", alias: "  Flagship  " },
+        { ...base, id: "legacy" },
+        { ...base, id: "blank", alias: "   " },
+        { ...base, id: "oversized", alias: "x".repeat(41) },
+      ],
+      operations: [],
+      groups: [],
+      deletionTombstones: [],
+    });
+    const byId = new Map(state.theaters.map((theater) => [theater.id, theater]));
+    expect(byId.get("aliased")?.alias).toBe("Flagship");
+    expect(byId.get("legacy")).not.toHaveProperty("alias");
+    expect(byId.get("blank")).not.toHaveProperty("alias");
+    expect(byId.get("oversized")).not.toHaveProperty("alias");
+  });
+
   it("reads the on-disk version and preserves the first v3 backup", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-durable-state-"));
     tempDirs.push(dir);

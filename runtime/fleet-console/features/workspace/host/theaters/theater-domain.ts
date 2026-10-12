@@ -22,6 +22,24 @@ export function canonicalizeTheaterPathSync(cwd: string): string {
   }
 }
 
+/** 사령관 별칭의 길이 상한(코드포인트). 사이드바 한 줄에 들어가는 이름이라 짧게 묶는다. */
+export const THEATER_ALIAS_MAX_LENGTH = 40;
+
+/**
+ * 별칭 입력을 저장 형태로 만든다. 앞뒤 공백을 걷고, 비었으면 `null`(해제)이다.
+ * 제어 문자가 섞였거나 상한을 넘으면 `undefined`로 거부한다.
+ */
+export function normalizeTheaterAlias(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return undefined;
+  if ([...trimmed].length > THEATER_ALIAS_MAX_LENGTH) return undefined;
+  return trimmed;
+}
+
 export function theaterLabel(cwd: string): string {
   return path.basename(cwd) || cwd;
 }
@@ -291,6 +309,8 @@ export interface TheaterRegistration {
   readonly registeredAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
+  /** 사령관(Theater 머리)이 사이드바에 보이는 별칭. 없으면 `label`이 이름이다. */
+  readonly alias?: string;
 }
 
 export class TheaterRegistry {
@@ -314,6 +334,7 @@ export class TheaterRegistry {
       registeredAt: existing?.registeredAt ?? now,
       lastOpenedAt: now,
       order: existing?.order,
+      ...(existing?.alias !== undefined ? { alias: existing.alias } : {}),
     };
     this.#items.set(id, item);
     this.#mruId = id;
@@ -362,6 +383,16 @@ export class TheaterRegistry {
     const existing = this.#items.get(id);
     if (!existing) return null;
     const updated: TheaterRegistration = { ...existing, order };
+    this.#items.set(id, updated);
+    return updated;
+  }
+
+  /** `alias`가 `null`이면 별칭을 해제한다(필드 제거). */
+  setAlias(id: string, alias: string | null): TheaterRegistration | null {
+    const existing = this.#items.get(id);
+    if (!existing) return null;
+    const { alias: _previous, ...rest } = existing;
+    const updated: TheaterRegistration = alias === null ? rest : { ...rest, alias };
     this.#items.set(id, updated);
     return updated;
   }

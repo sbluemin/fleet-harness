@@ -78,6 +78,8 @@ export interface TheaterInfo {
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
+  /** 사령관 별칭. `label`은 항상 원래 Theater 이름이다. */
+  readonly alias?: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
 }

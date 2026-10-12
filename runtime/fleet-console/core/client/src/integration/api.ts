@@ -205,6 +205,18 @@ export async function addTheater(folderGrantId: string, claudeTrustConsent = fal
   return assertTheaterInfo(payload, response.status);
 }
 
+/** 사령관 별칭을 지정한다. `null`이나 빈 문자열은 해제다. 서버가 trim·길이 검증을 하고 거부하면 ApiError(400)다. */
+export async function patchTheaterAlias(theaterId: string, alias: string | null, signal?: AbortSignal): Promise<TheaterInfo> {
+  const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ alias }),
+    signal,
+  });
+  await assertOk(response);
+  return assertTheaterInfo(await response.json(), response.status);
+}
+
 export async function patchTheaterOrder(theaterId: string, order: number, signal?: AbortSignal): Promise<TheaterInfo> {
   const response = await fetch(`/api/v1/theaters/${encodeURIComponent(theaterId)}`, {
     method: "PATCH",
@@ -453,6 +465,7 @@ function assertTheaterInfo(value: unknown, status: number): TheaterInfo {
     createdAt: payload.createdAt,
     lastOpenedAt: payload.lastOpenedAt,
     ...(typeof payload.order === "number" && Number.isInteger(payload.order) && payload.order >= 0 ? { order: payload.order } : {}),
+    ...(typeof payload.alias === "string" && payload.alias.length > 0 ? { alias: payload.alias } : {}),
     hasWiki: payload.hasWiki,
     activeAdmiralCount: payload.activeAdmiralCount,
   };

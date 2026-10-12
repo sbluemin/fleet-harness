@@ -1,5 +1,5 @@
 import type * as http from "node:http";
-import { canonicalizeTheaterPathSync, workspaceHash, listTheaterFolders, TheaterFolderListError, type TheaterRegistry, type TheaterRegistration, type createFolderGrantStore } from "./theaters/theater-domain.js";
+import { canonicalizeTheaterPathSync, normalizeTheaterAlias, workspaceHash, listTheaterFolders, TheaterFolderListError, type TheaterRegistry, type TheaterRegistration, type createFolderGrantStore } from "./theaters/theater-domain.js";
 import { DeferredDeletionError, type createDeferredDeletionCoordinator } from "./deferred-deletion.js";
 import { ClaudeTrustError, trustClaudeTheater } from "./theaters/claude-trust.js";
 import type { ConsoleTheaterFolderListResponse, ConsoleTheaterInfo } from "../../../core/host/transport/console-contract-types.js";
@@ -7,7 +7,7 @@ import type { ConsoleTheaterFolderListResponse, ConsoleTheaterInfo } from "../..
 type TheaterFolderListBody = { readonly path?: unknown };
 type TheaterFolderGrantBody = { readonly path?: unknown };
 type CreateTheaterBody = { readonly folderGrantId?: unknown; readonly claudeTrustConsent?: unknown };
-type PatchTheaterBody = { readonly order?: unknown };
+type PatchTheaterBody = { readonly order?: unknown; readonly alias?: unknown };
 
 interface WorkspaceRouteDeps {
   readonly theaters: TheaterRegistry;
@@ -18,7 +18,7 @@ interface WorkspaceRouteDeps {
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly listTheaterInfos: () => readonly ConsoleTheaterInfo[];
   readonly toTheaterInfo: (theater: TheaterRegistration, hasWiki: boolean) => ConsoleTheaterInfo;
-  readonly publishTheaterLifecycle: (event: "registered", theaterId: string) => void;
+  readonly publishTheaterLifecycle: (event: "registered" | "updated", theaterId: string) => void;
   readonly persistDurableState: () => void;
   readonly migrateLegacyCaptureState: () => void;
 }
@@ -129,16 +129,34 @@ export function createWorkspaceRoutes(deps: WorkspaceRouteDeps) {
     }
     if (req.method === "PATCH") {
       const body = await readJsonBody<PatchTheaterBody>(req);
-      if (!isPlainObject(body) || typeof body.order !== "number" || !Number.isInteger(body.order) || body.order < 0) {
+      if (!isPlainObject(body) || (body.order === undefined && body.alias === undefined)) {
         writeJson(res, 400, { error: "invalid_theater_order" });
         return;
       }
-      const theater = theaters.setOrder(theaterId, body.order);
+      if (body.order !== undefined && (typeof body.order !== "number" || !Number.isInteger(body.order) || body.order < 0)) {
+        writeJson(res, 400, { error: "invalid_theater_order" });
+        return;
+      }
+      // 별칭: 빈 문자열·공백·null은 해제다. 변경은 둘 다 검증을 마친 뒤에만 적용한다.
+      const alias = body.alias === undefined ? undefined : normalizeTheaterAlias(body.alias);
+      if (body.alias !== undefined && alias === undefined) {
+        writeJson(res, 400, { error: "invalid_theater_alias" });
+        return;
+      }
+      if (!theaters.get(theaterId)) {
+        writeJson(res, 404, { error: "theater_not_found" });
+        return;
+      }
+      let theater = theaters.get(theaterId);
+      if (body.order !== undefined) theater = theaters.setOrder(theaterId, body.order as number);
+      if (alias !== undefined) theater = theaters.setAlias(theaterId, alias);
       if (!theater) {
         writeJson(res, 404, { error: "theater_not_found" });
         return;
       }
       persistDurableState();
+      // 순서와 달리 별칭은 다른 창의 사이드바 제목을 바꾸므로 열린 페이지에 알린다.
+      if (alias !== undefined) publishTheaterLifecycle("updated", theaterId);
       writeJson(res, 200, toTheaterInfo(theater, true));
       return;
     }

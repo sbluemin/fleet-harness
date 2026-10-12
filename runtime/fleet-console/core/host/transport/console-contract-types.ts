@@ -60,6 +60,8 @@ export interface ConsoleTheaterInfo {
   readonly createdAt: string;
   readonly lastOpenedAt: string;
   readonly order?: number;
+  /** 사령관 별칭. 있으면 사이드바 제목이 되고 `label`(원래 Theater 이름)은 보조 줄로 남는다. */
+  readonly alias?: string;
   readonly hasWiki: boolean;
   readonly activeAdmiralCount: number;
 }
