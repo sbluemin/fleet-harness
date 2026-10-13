@@ -86,7 +86,7 @@ const detailTool = defineConsoleTool({
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("One section in slices; objective is the complete board JSON. Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
     // 판단 한 번은 과금되는 Gateway 호출이다 — 개시가 그 결과 그대로 띄운다(사람의 확인 시트와 같은 길).
-    routing: { kind: "read", input: z.object({ ...target, rejudge: z.literal(true).optional().describe("Forces a new, billable judgment; otherwise results are reused for 10 minutes while roles are unchanged.") }) },
+    routing: { kind: "read", input: z.object({ ...target, rejudge: z.boolean().optional().describe("Forces a new, billable judgment; otherwise results are reused for 10 minutes while roles are unchanged.") }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
     edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the whole brief; list rows show only its start.") }),
@@ -152,8 +152,11 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     if (bound && found.theaterId !== bound.theaterId) throw new ObjectiveStoreError("other_theater");
     return found;
   };
+  // 사령관 묶음은 Theater 가 생성 때 고정된다 — theaterId 는 광고하지도 받지도 않는다(보내면 invalid_arguments). 모델이 고를 수 없는 필드를
+  // 스키마에 남기면 라벨 같은 값을 지어내 other_theater 로 실패한다.
+  const boundFilter: ConsoleToolFilter | undefined = bound ? { caller: "commodore", omit: ["theaterId"] } : undefined;
   // 호스트는 연결의 필터로 이미 검증한 호출을 넘긴다. 실행은 호출자 종류로 한 번 더 같은 검증을 지난다 — 직접 부른 호출과 사령관 묶음도 같은 길이다.
-  const filterOf = (caller: BoardCaller | undefined): ConsoleToolFilter | undefined => caller ? { caller: caller.kind } : undefined;
+  const filterOf = (caller: BoardCaller | undefined): ConsoleToolFilter | undefined => boundFilter ?? (caller ? { caller: caller.kind } : undefined);
   const short = (value: string) => (value.length > 32 ? `${value.slice(0, 31)}…` : value);
   // 사이드바 자리 — 목표 하나면 그 목표 줄, 줄 하나로 좁혀지지 않는 목록·생성·지움은 그 Theater(groupId 가 있으면 그 그룹)의 묶음 머리.
   // 레일 아이콘은 호스트가 따로 감싼다. 인자로 Theater 를 모르면 비워 두고, 호스트가 호출자 Operation 의 Theater 로 채운다.
@@ -217,9 +220,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
           touched(restored);
           return text({ ok: true, restored });
         }
+        // 사령관은 자기 Theater 에 묶여 있다 — 그 묶음의 파싱은 theaterId 를 받지 않는다.
         const asked = "theaterId" in call ? call.theaterId : undefined;
-        // 사령관은 자기 Theater 에 묶여 있다 — 다른 Theater 를 가리키면 거절한다.
-        if (bound && asked !== undefined && asked !== bound.theaterId) return refuse("other_theater");
         const theaterId = bound?.theaterId ?? asked ?? theaterOfCaller(caller);
         if (call.action === "models") return text(await models(theaterId, context.signal));
         if (call.action !== "add") {
@@ -242,7 +244,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         return refuse("objectives_failed");
       }
     },
-  }, bound ? { caller: "commodore" } : undefined);
+  }, boundFilter);
 
   const detail: PluginMcpTool = detailTool.plugin({
     surface: {
@@ -341,7 +343,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         return refuse("objectives_failed");
       }
     },
-  }, bound ? { caller: "commodore" } : undefined);
+  }, boundFilter);
 
 
   async function models(theaterId: string | null, signal: AbortSignal | undefined) {
