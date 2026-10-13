@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
  * 가장 오래된 컨텍스트를 강제로 잃게 하고, 잃은 터미널은 DOM 렌더러로 떨어진다. 터미널이 저마다
  * WebglAddon을 붙이면 패널 17개째부터 어느 터미널이 잃을지는 생성 순서가 정한다 — 지금 보고 있는
  * 패널일 수도 있다. 여기서 슬롯을 나눠 브라우저가 고르기 전에 앱이 고른다: 보이는 터미널만 슬롯을
- * 쥐고(최소화·주차되면 곧바로 내놓는다), 활성 터미널이 먼저다. 여유를 남겨 다른 WebGL 사용처와 겹쳐도
+ * 쥐고(주차되면 곧바로 내놓는다), 활성 터미널이 먼저다. 여유를 남겨 다른 WebGL 사용처와 겹쳐도
  * 상한에 닿지 않게 한다.
  */
 export const TERMINAL_WEBGL_BUDGET = 12;
