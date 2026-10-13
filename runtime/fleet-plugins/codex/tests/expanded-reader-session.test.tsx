@@ -22,8 +22,9 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
   const open = vi.fn();
   const close = vi.fn();
   const openRail = vi.fn();
+  let viewedTheater = "theater-a";
   bindCodexHost({
-    consoleState: { getViewedTheaterId: () => "theater-a", getTheaters: () => [{ id: "theater-a", label: "A" }], subscribe: () => () => undefined },
+    consoleState: { getViewedTheaterId: () => viewedTheater, getTheaters: () => [{ id: "theater-a", label: "A" }], subscribe: () => () => undefined },
     surfaces: { open },
     rail: { open: openRail },
   } as unknown as Parameters<typeof bindCodexHost>[0]);
@@ -46,6 +47,12 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
     openCodexReader({ kind: "schema", templateId: "updated-template" });
     expandCodexReader();
     expect(open).toHaveBeenLastCalledWith({ surfaceId: "codex", params: { kind: "schema", templateId: "updated-template", theaterId: "theater-a" } });
+
+    // 다른 대화의 Theater로 따라갈 때 같은 도구는 남지만 옛 Theater 문서를 다시 해석하지 않는다.
+    viewedTheater = "theater-b";
+    await act(async () => { root.render(codexReadingSurface.render({ ...ctx, theaterId: viewedTheater })); });
+    expect(getReaderState()).toMatchObject({ codexReader: null, codexReaderExpanded: true });
+    expect(close).not.toHaveBeenCalled();
 
     // 과거 스냅샷에는 본문의 주소가 없다. 새 유효 슬롯과 같은 복원 대상으로 보지 않는다.
     await act(async () => { root.render(null); });

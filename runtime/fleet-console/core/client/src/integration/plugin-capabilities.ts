@@ -4,7 +4,7 @@ import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js"
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
 import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
-import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
+import { closeMobileOperation, readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
@@ -32,7 +32,11 @@ import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation
 
 function viewTheaterInbox(theaterId: string): void {
   if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
-  if (getViewModeSnapshot().effective === "mobile") setMobileListTheaterId(theaterId);
+  if (getViewModeSnapshot().effective === "mobile") {
+    setMobileListTheaterId(theaterId);
+    closeMobileOperation();
+    setMobileDestination({ kind: "home" });
+  }
   else {
     closeConversationSurface();
     openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "system-prompt" });
@@ -97,6 +101,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     bindings,
     activateTheater: (theaterId) => {
       if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
+      viewTheaterInbox(theaterId);
       return true;
     },
     openRail: revealRailPanel,
@@ -163,7 +168,7 @@ export function createHostCapabilities(
     operations: {
       ...base.operations,
       // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
-      // 확장 표면은 focusOperation 이 정리한다 — 플러그인은 자기 표면을 따로 닫지 않는다.
+      // 확대 도구는 focusOperation이 접어 대화를 드러낸다 — 도구 자체는 같은 자리에 남는다.
       focus: (operationId) => focusOperation(operationId),
     },
     notifications: {

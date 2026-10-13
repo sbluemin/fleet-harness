@@ -12,7 +12,7 @@ import { readQuickLaunchSelection, writeQuickLaunchPinned } from "../../../../fe
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { noteOperationFocused } from "./palette-recent.js";
-import { closeAllExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
+import { stowExpandedSurfaces, closeExpandedSurface, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { observeConsoleVersion } from "./console-version.js";
 import type {
   CodexReaderRequest,
@@ -748,12 +748,12 @@ export function failAddTheater(error: string): void {
 }
 
 /**
- * 확장 표면은 대화를 덮으므로 인스턴스를 전부 닫는다.
+ * 확대 도구는 닫지 않고 접어 대화를 드러낸다. 같은 도구가 새 대화의 Theater로 따라간다.
  * 레일과 사이드바는 건드리지 않는다.
- * 플러그인은 이동 전에 자기 표면을 따로 닫지 않는다 — 닫기 통보는 이 한 경로가 배달한다.
+ * 플러그인은 이동 전에 자기 표면을 따로 닫지 않는다 — 접힌 페인은 같은 인스턴스로 남는다.
  */
 export function revealOperationStage(): void {
-  closeAllExpandedSurfaces();
+  stowExpandedSurfaces();
 }
 
 /**

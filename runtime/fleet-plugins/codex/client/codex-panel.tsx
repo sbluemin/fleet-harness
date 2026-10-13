@@ -25,7 +25,7 @@ import {
   resolveCodexWorkspace,
   type CodexWorkspaceState,
 } from "./workspace-store.js";
-import { closeCodexReader, expandCodexReader, openCodexReader, useReaderState } from "./reader-store.js";
+import { closeCodexReader, expandCodexReader, openCodexReader, resetCodexReaderContext, useReaderState } from "./reader-store.js";
 import { fetchSearch } from "./codex/api.js";
 import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
@@ -131,7 +131,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
     const previousScope = lastCodexScope();
     const settledFromUnknown = previousScope === "";
     if (previousScope !== null && !settledFromUnknown && previousScope !== contextKey) {
-      closeCodexReader();
+      resetCodexReaderContext();
     }
     rememberCodexScope(contextKey);
     if (!theaterId) {

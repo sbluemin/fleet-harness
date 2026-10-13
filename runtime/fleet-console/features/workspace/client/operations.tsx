@@ -28,7 +28,7 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -599,6 +599,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
 }
 
 function focusConversationOperation(operation: OperationNode): void {
+  revealOperationStage();
   closeConversationSurface();
   setActiveOperation(operation.id);
   requestOperationKeyboardFocus(operation.id);

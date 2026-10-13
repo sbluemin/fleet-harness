@@ -171,6 +171,13 @@ export function releaseCodexExpansion(): void {
   publish();
 }
 
+/** Theater가 바뀌면 옛 문서를 걷되, 같은 Codex 도구와 확대 자리 자체는 보존한다. */
+export function resetCodexReaderContext(): void {
+  pendingExpand = false;
+  reader = null;
+  publish();
+}
+
 export function closeCodexReader(): void {
   pendingExpand = false;
   reader = null;
