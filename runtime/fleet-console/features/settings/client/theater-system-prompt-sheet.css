@@ -4,33 +4,74 @@
 .theater-prompt-body { display: grid; gap: 13px; max-width: 640px; font-size: var(--t-md); }
 .theater-prompt-page button { cursor: pointer; }
 .theater-prompt-page .theater-subagents { padding-top: 0; border-top: 0; max-width: 640px; }
-.theater-prompt-crosslink { margin: 4px 0 0; padding-top: 12px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.6; }
-.theater-prompt-crosslink button { padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px; }
-.theater-prompt-crosslink button:hover { text-decoration-color: var(--brass); }
-.theater-prompt-crosslink button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
-.theater-prompt-scope { margin: 0; color: var(--text-secondary); line-height: 1.6; }
-.theater-prompt-tip-wrap { display: inline-block; position: relative; margin-left: 6px; }
-.theater-prompt-tip { width: 18px; height: 18px; border: 0; border-radius: 50%; background: var(--ink-veil); color: var(--text-tertiary); font: var(--t-xs) var(--font-ui); }
+/* 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록, 맨 아래 되돌리기와 사령관 지시. 테두리는 목록 한 겹만 진다. */
+/* 좁은 패널(대화 중심 화면 오른쪽 칸, 스크롤바가 선 경우)에서는 제목이 글자 단위로 끊기지 않고 표식이 다음 줄로 내려간다. */
+.theater-prompt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.theater-prompt-heading { flex: none; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); white-space: nowrap; }
+/* 정한 값 표식 — 옛 상태 상자의 점(정함 brass, 정하지 않음 hairline)을 제목 옆 작은 캡슐로 옮겼다. */
+.theater-prompt-badge { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px 1px 7px; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); white-space: nowrap; }
+.theater-prompt-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--hairline-strong); }
+.theater-prompt-badge i.is-own { background: var(--brass); }
+.theater-prompt-tip-wrap { display: inline-flex; margin-left: auto; }
+.theater-prompt-tip { width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--ink-veil); color: var(--text-tertiary); font: var(--t-xs) var(--font-ui); }
+.theater-prompt-tip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+/* 모드 목록 — 줄 사이는 hairline, 고른 줄은 control wash 로 떠오르고 hover 는 한 단 약한 wash 다(세그먼트와 같은 층). */
+.theater-prompt-modes { display: grid; min-width: 0; border: 1px solid var(--surface-rim); border-radius: var(--radius-md); overflow: hidden; }
+.theater-prompt-mode { min-width: 0; transition: background var(--duration-fast) var(--ease-spring); }
+.theater-prompt-mode + .theater-prompt-mode { border-top: 1px solid var(--hairline); }
+.theater-prompt-mode:not(.is-on):hover { background: var(--control-wash-hover); }
+.theater-prompt-mode.is-on { background: var(--control-wash); }
+.theater-prompt-mode-choice { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 2px 12px; padding: 11px 14px; cursor: pointer; }
+.theater-prompt-mode.is-on .theater-prompt-mode-choice { cursor: default; }
+.theater-prompt-mode-name { color: var(--text-primary); font-weight: var(--weight-medium); line-height: 1.45; }
+/* 한국어 설명·상태 문장은 음절 중간에서 끊지 않는다(「실립니/다」). 띄어쓰기 없는 긴 낱말은 overflow-wrap 이 받는다. */
+.theater-prompt-mode-desc { grid-column: 2; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
+.theater-prompt-mode-desc, .theater-prompt-warning, .theater-prompt-editor .theater-prompt-caption, .theater-prompt-draft p, .theater-prompt-foot { word-break: keep-all; overflow-wrap: anywhere; }
+/* 라디오는 원격 접속 포트 선택(.remote-port-control)과 같은 레시피다 — OS 기본 외형을 빌리지 않는다. */
+.theater-prompt-mode-choice input[type="radio"] {
+  appearance: none; grid-row: 1 / span 2; width: 16px; height: 16px; margin: 1px 0 0; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--ink-deep) 82%, transparent);
+  transition: border-color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring), box-shadow var(--duration-fast) var(--ease-spring);
+}
+.theater-prompt-mode-choice:hover input[type="radio"]:not(:checked) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.theater-prompt-mode-choice input[type="radio"]:checked { border-color: var(--brass); background: radial-gradient(circle, var(--brass) 0 42%, transparent 46%); box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ink-deep) 82%, transparent); }
+.theater-prompt-mode-choice input[type="radio"]:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .theater-prompt-mode-choice input[type="radio"] { appearance: auto; }
+}
+/* 고른 줄 안의 편집 — 라디오 열을 비워 둔 채 이름과 같은 선에서 시작한다. */
+.theater-prompt-editor { display: grid; gap: 8px; margin: 0 14px 12px 42px; min-width: 0; }
+.theater-prompt-editor textarea { width: 100%; min-height: 128px; padding: 9px 11px; resize: vertical; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.6; }
+.theater-prompt-editor textarea:focus-visible { outline: none; border-color: var(--control-hover-rim); }
+.theater-prompt-editor textarea[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, transparent); }
+/* 저장 상태와 글자 수가 한 줄에 들지 않으면 글자 수가 다음 줄 오른쪽으로 내려가고, 상태 문장은 단어 단위로만 접힌다. */
+.theater-prompt-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 10px; min-height: 18px; }
+.theater-prompt-meta .theater-prompt-save { flex: 1 1 auto; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.theater-prompt-meta small { flex: none; margin-left: auto; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.theater-prompt-meta small.is-near { color: var(--warn-ink); }
+.theater-prompt-meta small.is-over { color: var(--coral-ink); font-weight: var(--weight-medium); }
+.theater-prompt-caption { margin: 0; color: var(--text-secondary); }
+.theater-prompt-editor .theater-prompt-caption { color: var(--text-tertiary); font-size: var(--t-sm); }
+/* 빈 「내 지침만」 경고 — 상자 대신 warn 점 하나와 warn 잉크 한 줄(저장 상태 줄과 같은 점 문법). */
+.theater-prompt-warning { display: flex; gap: 8px; align-items: baseline; margin: 0; color: var(--warn-ink); font-size: var(--t-sm); line-height: 1.5; }
+.theater-prompt-warning::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); transform: translateY(-1px); }
+/* 기본 모드에서 보관 중인 지침 — 고른 줄 안의 접힌 한 줄. */
+.theater-prompt-kept { margin: -4px 14px 12px 42px; color: var(--text-secondary); font-size: var(--t-sm); }
+.theater-prompt-kept summary { cursor: pointer; }
+.theater-prompt-kept p { margin: 4px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.theater-prompt-kept pre { max-height: 180px; margin: 6px 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: var(--t-sm) var(--font-code); }
+/* 맨 아래 — 왼쪽 되돌리기(또는 실행 취소), 오른쪽 사령관 지시. 둘 다 조용한 글자 동작이다. */
+.theater-prompt-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; color: var(--text-tertiary); font-size: var(--t-sm); }
+.theater-prompt-foot p { margin: 0; color: var(--text-secondary); }
+.theater-prompt-link { padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; text-decoration: underline; text-decoration-color: var(--surface-rim-strong); text-underline-offset: 3px; }
+.theater-prompt-link:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.theater-prompt-crosslink { display: inline-flex; align-items: center; gap: 4px; margin: -3px -6px -3px auto; padding: 3px 6px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; }
+.theater-prompt-crosslink svg { width: 12px; height: 12px; }
+.theater-prompt-crosslink:hover { background: var(--control-hover-fill); color: var(--text-primary); }
+.theater-prompt-link:focus-visible, .theater-prompt-crosslink:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: 2px; }
 .theater-prompt-tooltip { position: fixed; z-index: 1193; width: min(290px, calc(100vw - 16px)); padding: 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel); box-shadow: var(--shadow-floating); color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; pointer-events: none; }
 .theater-prompt-tooltip[hidden] { display: none; }
-.theater-prompt-state { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; padding: 10px 11px; background: var(--ink-deep); border: 1px solid var(--hairline); border-radius: 6px; }
-.theater-prompt-state > span { display: inline-flex; gap: 7px; align-items: center; font-weight: var(--weight-medium); }
-.theater-prompt-state i, .theater-prompt-save i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong); }
-.theater-prompt-state i.is-own { background: var(--brass); }
-.theater-prompt-state small { color: var(--text-secondary); }
-.theater-prompt-state button { padding: 0; border: 0; background: none; color: var(--text-secondary); text-decoration: underline; text-underline-offset: 3px; }
-.theater-prompt-state > button { margin-left: auto; }
-.theater-prompt-state p { flex-basis: 100%; margin: 0; color: var(--text-secondary); }
-.theater-prompt-field { display: grid; gap: 7px; color: var(--text-secondary); font: var(--t-sm) var(--font-code); }
-.theater-prompt-field .theater-prompt-select { width: 100%; min-width: 0; }
-.theater-prompt-field .fc-select__trigger { background: var(--surface-panel-raised); border-color: var(--surface-rim-strong); }
-.fc-select__popup[aria-labelledby="theater-prompt-mode-label"] { z-index: 1192; }
-.theater-prompt-field textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font: var(--t-md) var(--font-ui); }
-.theater-prompt-field textarea { resize: vertical; min-height: 104px; font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.6; }
-.theater-prompt-field small { justify-self: end; color: var(--text-tertiary); }
-.theater-prompt-field small.is-over { color: var(--coral-ink); }
-.theater-prompt-caption { margin: 0; color: var(--text-secondary); }
-.theater-prompt-warning { margin: 0; padding: 9px 11px; color: var(--warn-ink); background: var(--warn-glow); border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: 6px; }
+.theater-prompt-save i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--hairline-strong); }
 .theater-prompt-save { display: flex; gap: 8px; align-items: center; min-height: 18px; margin: 0; color: var(--text-tertiary); font: var(--t-xs) var(--font-ui); }
 .theater-prompt-save.is-saving i { background: var(--warn); }
 .theater-prompt-save.is-saved i { background: var(--positive); }
@@ -45,10 +86,6 @@
 .theater-prompt-forgotten-actions button { padding: 5px 10px; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-size: var(--t-sm); }
 .theater-prompt-forgotten-actions span { color: var(--text-secondary); font: var(--t-xs) var(--font-ui); }
 .theater-prompt-forgotten small { color: var(--text-secondary); font-size: var(--t-sm); }
-.theater-prompt-kept { padding: 8px 10px; border: 1px dashed var(--hairline-strong); border-radius: 6px; color: var(--text-secondary); }
-.theater-prompt-kept summary { cursor: pointer; }
-.theater-prompt-kept p { margin: 5px 0 0; color: var(--text-tertiary); font-size: var(--t-xs); }
-.theater-prompt-kept pre { white-space: pre-wrap; overflow-wrap: anywhere; font: var(--t-sm) var(--font-code); }
 .theater-prompt-menu-state { margin-left: auto; padding-left: 12px; color: var(--text-tertiary); font: var(--t-2xs) var(--font-ui); white-space: nowrap; }
 /* 서브에이전트 — 프롬프트와 다른 설정이라 가는 선 아래 따로 선다. 제목은 필드 라벨과 같은 결이다. */
 .theater-subagents { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }

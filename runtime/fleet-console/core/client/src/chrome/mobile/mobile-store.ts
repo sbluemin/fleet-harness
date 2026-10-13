@@ -173,6 +173,10 @@ export type MobileSheetKind =
   | { readonly kind: "custom"; readonly render: (close: () => void) => ReactNode }
   | { readonly kind: "confirm"; readonly spec: MobileConfirmSpec; readonly resolve: (confirmed: boolean) => void }
   | { readonly kind: "forget"; readonly theaterId: string }
+  /** S-07 행을 길게 누르면 서는 그 Theater 의 동작 — 데스크톱 머리 메뉴와 같은 항목이다. 별칭·새 그룹은 그 위에 입력 시트를 쌓는다. */
+  | { readonly kind: "theater-actions"; readonly theaterId: string }
+  | { readonly kind: "theater-alias"; readonly theaterId: string }
+  | { readonly kind: "theater-group"; readonly theaterId: string }
   | { readonly kind: "rename"; readonly operationId: string };
 
 let sheetStack: readonly MobileSheetKind[] = [];

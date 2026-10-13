@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { DeferredDeletionReceipt } from "../../integration/api.js";
-import { forgetTheaterCompletely, registerTheaterFromPath } from "../../../../../features/workspace/client/theater.js";
+import { clampTheaterAlias, createTheaterGroup, forgetTheaterCompletely, registerTheaterFromPath, saveTheaterAlias } from "../../../../../features/workspace/client/theater.js";
+import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { openTheaterSystemPrompt } from "../../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -14,7 +15,7 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { useMobileDestinationBindings } from "./mobile-destinations.js";
-import type { ConsoleState } from "../../integration/types.js";
+import type { ConsoleState, TheaterInfo } from "../../integration/types.js";
 import { pushBackLayer } from "./mobile-back.js";
 import { MobileFolderSheet } from "./mobile-folder-sheet.js";
 import { MobileSettingsPage } from "./mobile-settings-page.js";
@@ -59,6 +60,9 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
   if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
   if (top.kind === "forget") return <ForgetSheet key={top.theaterId} state={state} theaterId={top.theaterId} onDeferredDeletion={onDeferredDeletion} />;
+  if (top.kind === "theater-actions") return <TheaterActionsSheet key={top.theaterId} state={state} theaterId={top.theaterId} />;
+  if (top.kind === "theater-alias") return <TheaterAliasSheet key={top.theaterId} state={state} theaterId={top.theaterId} />;
+  if (top.kind === "theater-group") return <TheaterGroupSheet key={top.theaterId} state={state} theaterId={top.theaterId} />;
   return <TheaterSheet state={state} />;
 }
 
@@ -105,65 +109,213 @@ function RenameSheet({ state, operationId }: { readonly state: ConsoleState; rea
   );
 }
 
-/** S-07 — 지금 Theater를 바꾼다. 고르면 시트를 닫고 홈 목록이 그 Theater의 대화로 바뀐다. */
+/**
+ * S-07 — 지금 Theater를 바꾼다. 고르면 시트를 닫고 홈 목록이 그 Theater의 대화로 바뀐다. 행을 길게 누르면 그 Theater의 동작 시트가
+ * 위에 쌓인다(데스크톱 머리 메뉴와 같은 항목). 동작은 활성 Theater에 묶이지 않으므로 「지금 Theater」 묶음을 따로 두지 않는다.
+ */
 function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const cancel = () => popMobileSheet();
-  const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
-  const pluginRows = useTheaterSheetPluginRows(active?.id ?? null);
   return (
     <>
       <MobileSheet title={t("mobile.sheet.theater.title")} onClose={cancel}>
         {state.theaters.map((theater) => {
           const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
           const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
-          const here = theater.id === state.activeTheaterId;
-          return (
-            <button
-              type="button"
-              className="mobile-sheet-row"
-              key={theater.id}
-              aria-current={here ? "true" : undefined}
-              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); }}
-            >
-              <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
-              <span className="mobile-sheet-row-copy">
-                <strong>{theater.label}</strong>
-                <small className={awaiting > 0 ? "is-awaiting" : undefined}>
-                  {t("mobile.sheet.theater.summary", { count: operations.length })}{awaiting > 0 ? ` · ${t("mobile.sheet.theater.awaiting", { count: awaiting })}` : ""}
-                </small>
-              </span>
-              {here ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
-            </button>
-          );
+          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === state.activeTheaterId} count={operations.length} awaiting={awaiting} />;
         })}
         <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })} disabled={state.addingTheater}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>
         </button>
         {state.theaterError !== null ? <p className="mobile-sheet-error" role="alert">{state.theaterError}</p> : null}
-        {active ? (
+        {state.theaters.length > 0 ? (
           <>
             <div className="mobile-sheet-sep" role="separator" />
-            <div className="mobile-sheet-group-label">{t("mobile.sheet.theater.current", { name: active.label })}</div>
-            <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(active, null)}>
-              <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
-              <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.prompt")}</strong></span>
-            </button>
-            {pluginRows.map((row) => (
-              <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
-                <span className="mobile-sheet-row-glyph">{row.icon}</span>
-                <span className="mobile-sheet-row-copy"><strong>{row.label}</strong></span>
-              </button>
-            ))}
-            <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "forget", theaterId: active.id })}>
-              <span className="mobile-sheet-row-glyph"><MobileIcon name="minus" /></span>
-              <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.forgetTheater")}</strong></span>
-            </button>
+            <p className="mobile-sheet-hint">{t("mobile.sheet.theater.actionsHint")}</p>
           </>
         ) : null}
       </MobileSheet>
     </>
+  );
+}
+
+/**
+ * S-07의 Theater 한 줄. 누르면 전환하고, 길게 누르면(터치·펜) 그 Theater의 동작 시트를 연다. 우클릭·메뉴 키가 보내는 contextmenu도 같은
+ * 시트를 연다 — Android는 길게 누르기에도 contextmenu를 보내므로 훅이 한 번만 열리게 거른다. 별칭이 있으면 이름 자리에 서고 원래 이름이 둘째 줄에 선다.
+ */
+function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater: TheaterInfo; readonly here: boolean; readonly count: number; readonly awaiting: number }) {
+  const t = useT();
+  const openActions = () => pushMobileSheet({ kind: "theater-actions", theaterId: theater.id });
+  const longPress = useLongPress<HTMLButtonElement>(openActions);
+  const summary = `${t("mobile.sheet.theater.summary", { count })}${awaiting > 0 ? ` · ${t("mobile.sheet.theater.awaiting", { count: awaiting })}` : ""}`;
+  return (
+    <button
+      type="button"
+      className="mobile-sheet-row is-theater"
+      aria-current={here ? "true" : undefined}
+      onPointerDown={longPress.onPointerDown}
+      onPointerMove={longPress.onPointerMove}
+      onPointerUp={longPress.onPointerUp}
+      onPointerCancel={longPress.onPointerCancel}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        if (longPress.claimContextMenu(event)) return;
+        openActions();
+      }}
+      onClick={() => {
+        setActiveTheater(theater.id);
+        closeMobileSheets();
+      }}
+    >
+      <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
+      <span className="mobile-sheet-row-copy">
+        <strong>{theater.alias ?? theater.label}</strong>
+        <small className={awaiting > 0 ? "is-awaiting" : undefined}>{theater.alias ? `${theater.label} · ${summary}` : summary}</small>
+      </span>
+      {here ? <MobileIcon name="check" className="mobile-sheet-check" /> : null}
+    </button>
+  );
+}
+
+/** S-07 행을 길게 누르면 서는 그 Theater의 동작 — 별칭 · 시스템 프롬프트 · 플러그인 행(자율 운영 등) · 새 그룹 · 목록에서 빼기. */
+function TheaterActionsSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
+  const t = useT();
+  const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
+  const pluginRows = useTheaterSheetPluginRows(theater ? theater.id : null);
+  const [clearing, setClearing] = useState(false);
+  // 빼기·다른 창의 잊기로 Theater가 사라지면 시트도 걷는다.
+  useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
+  if (!theater) return null;
+  const clearAlias = () => {
+    if (clearing) return;
+    setClearing(true);
+    void saveTheaterAlias(theater.id, null)
+      .then(() => { popMobileSheet(); showMobileToast(t("mobile.toast.aliasCleared")); })
+      .catch(() => setClearing(false));
+  };
+  return (
+    <MobileSheet title={theater.alias ?? theater.label} onClose={popMobileSheet}>
+      {theater.alias ? <p className="mobile-sheet-lead">{theater.label}</p> : null}
+      <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "theater-alias", theaterId: theater.id })}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="pencil" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.edit")}</strong></span>
+      </button>
+      {theater.alias ? (
+        <button type="button" className="mobile-sheet-row" onClick={clearAlias} disabled={clearing}>
+          <span className="mobile-sheet-row-glyph"><MobileIcon name="x" /></span>
+          <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.alias.clear")}</strong></span>
+        </button>
+      ) : null}
+      <div className="mobile-sheet-sep" role="separator" />
+      <button type="button" className="mobile-sheet-row" onClick={() => openTheaterSystemPrompt(theater, null)}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="spark" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.prompt")}</strong></span>
+      </button>
+      {pluginRows.map((row) => (
+        <button type="button" className="mobile-sheet-row" key={row.id} onClick={() => { closeMobileSheets(); row.run(); }}>
+          <span className="mobile-sheet-row-glyph">{row.icon}</span>
+          <span className="mobile-sheet-row-copy"><strong>{row.label}</strong></span>
+        </button>
+      ))}
+      <div className="mobile-sheet-sep" role="separator" />
+      <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "theater-group", theaterId: theater.id })}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("sidebar.theater.newGroup")}</strong></span>
+      </button>
+      <div className="mobile-sheet-sep" role="separator" />
+      <button type="button" className="mobile-sheet-row is-danger" onClick={() => pushMobileSheet({ kind: "forget", theaterId: theater.id })}>
+        <span className="mobile-sheet-row-glyph"><MobileIcon name="minus" /></span>
+        <span className="mobile-sheet-row-copy"><strong>{t("mobile.menu.forgetTheater")}</strong></span>
+      </button>
+    </MobileSheet>
+  );
+}
+
+/** 별칭 입력 — 빈 값으로 저장하면 해제다. 바뀐 것이 없으면 요청 없이 닫는다. 길이는 데스크톱 머리 입력과 같은 상한으로 자른다. */
+function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
+  const t = useT();
+  const theater = state.theaters.find((item) => item.id === theaterId) ?? null;
+  const [value, setValue] = useState(theater?.alias ?? "");
+  const [saving, setSaving] = useState(false);
+  const composingRef = useRef(false);
+  // 다른 창의 잊기로 Theater가 사라지면 이 시트도 걷는다 — 그리지 않은 채 스택에 남으면 뒤로 가기가 빈 시트로 돌아간다.
+  useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
+  if (!theater) return null;
+  const save = () => {
+    if (saving) return;
+    const next = clampTheaterAlias(value).trim();
+    const alias = next.length > 0 ? next : null;
+    if (alias === (theater.alias ?? null)) { popMobileSheet(); return; }
+    setSaving(true);
+    void saveTheaterAlias(theater.id, alias)
+      .then(() => { closeMobileSheets(); showMobileToast(t(alias === null ? "mobile.toast.aliasCleared" : "mobile.toast.aliasSaved")); })
+      .catch(() => setSaving(false));
+  };
+  return (
+    <MobileSheet
+      title={t("mobile.sheet.alias.title")}
+      onClose={popMobileSheet}
+      footer={<>
+        <button type="button" className="mobile-pill-secondary" onClick={popMobileSheet}>{t("mobile.sheet.cancel")}</button>
+        <button type="button" className="mobile-pill-secondary is-inverse" onClick={save} disabled={saving}>{t("mobile.sheet.save")}</button>
+      </>}
+    >
+      <input
+        className="mobile-field"
+        value={value}
+        placeholder={theater.label}
+        aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
+        onChange={(event) => setValue(composingRef.current ? event.target.value : clampTheaterAlias(event.target.value))}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={(event) => { composingRef.current = false; setValue(clampTheaterAlias(event.currentTarget.value)); }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
+        autoFocus
+      />
+    </MobileSheet>
+  );
+}
+
+/** 새 그룹 이름 — 데스크톱 메뉴의 「새 그룹…」과 같은 기본 이름에서 시작한다. 폰 목록은 그룹을 그리지 않으므로 토스트가 결과를 말한다. */
+function TheaterGroupSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
+  const t = useT();
+  const theaterExists = state.theaters.some((item) => item.id === theaterId);
+  const groupCount = state.groups.filter((group) => group.theaterId === theaterId).length;
+  const [value, setValue] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
+  const [saving, setSaving] = useState(false);
+  const composingRef = useRef(false);
+  // 다른 창의 잊기로 Theater가 사라지면 시트를 걷는다 — 서버는 Theater 존재를 따지지 않아 저장하면 고아 그룹이 남는다.
+  useEffect(() => { if (!theaterExists) popMobileSheet(); }, [theaterExists]);
+  if (!theaterExists) return null;
+  const name = value.trim();
+  const save = () => {
+    if (name === "" || saving) return;
+    setSaving(true);
+    void createTheaterGroup(theaterId, name)
+      .then(() => { closeMobileSheets(); showMobileToast(t("mobile.toast.groupCreated", { name })); })
+      .catch(() => setSaving(false));
+  };
+  return (
+    <MobileSheet
+      title={t("mobile.sheet.group.title")}
+      onClose={popMobileSheet}
+      footer={<>
+        <button type="button" className="mobile-pill-secondary" onClick={popMobileSheet}>{t("mobile.sheet.cancel")}</button>
+        <button type="button" className="mobile-pill-secondary is-inverse" onClick={save} disabled={name === "" || saving}>{t("mobile.sheet.save")}</button>
+      </>}
+    >
+      <input
+        className="mobile-field"
+        value={value}
+        placeholder={t("sidebar.theater.groupNamePlaceholder")}
+        aria-label={t("sidebar.theater.newGroupNameAria")}
+        onChange={(event) => setValue(event.target.value)}
+        onCompositionStart={() => { composingRef.current = true; }}
+        onCompositionEnd={() => { composingRef.current = false; }}
+        onKeyDown={(event) => { if (event.key === "Enter" && !composingRef.current && !event.nativeEvent.isComposing) { event.preventDefault(); save(); } }}
+        autoFocus
+      />
+    </MobileSheet>
   );
 }
 

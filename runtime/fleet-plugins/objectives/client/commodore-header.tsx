@@ -59,7 +59,36 @@ export const commodoreTheaterContribution: TheaterContribution = {
     landing: (theaterId) => (isCommodoreConversationActive() || autonomyOn(theaterId) ? { sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" } : null),
   },
   menu: (context) => (readCommodoreExperiment().enabled ? <CommodoreAutonomyMenuItem {...context} /> : null),
+  // 폰 Theater 동작 시트의 같은 켜기/끄기 행. 아직 읽지 않은 Theater 는 한 번 읽기를 걸고(읽히면 구독이 다시 묻는다) 그동안 행을 세우지
+  // 않는다 — 켜짐을 모른 채 「켜기」·「끄기」를 고르지 않는다.
+  mobileRow: {
+    subscribe: subscribeCommodore,
+    get: (theaterId, language) => {
+      if (!readCommodoreExperiment().enabled) return null;
+      const view = readCommodore(theaterId).view;
+      if (!view) {
+        void loadCommodore(theaterId);
+        return null;
+      }
+      const t = getT(language);
+      return { label: t(view.state.autonomy ? "objectives.commodore.menu.turnOff" : "objectives.commodore.menu.turnOn"), icon: <CommodoreMobileRowGlyph /> };
+    },
+    run: (theaterId) => {
+      const on = readCommodore(theaterId).view?.state.autonomy === true;
+      void setCommodoreAutonomy(theaterId, !on).catch(() => undefined);
+    },
+  },
 };
+
+/** 폰 시트 행의 사령관 마크 — 데스크톱 메뉴와 같은 판·별의 외곽선이다. 호스트 행 글리프 칸(28px)에 22px 로 선다. */
+function CommodoreMobileRowGlyph() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 16 16" aria-hidden="true">
+      <path fill="none" stroke="currentColor" strokeWidth="1.2" d="M5 2.2h6A2.8 2.8 0 0 1 13.8 5v6a2.8 2.8 0 0 1-2.8 2.8H5A2.8 2.8 0 0 1 2.2 11V5A2.8 2.8 0 0 1 5 2.2Z" />
+      <path fill="none" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" d="M8 4.25 9.01 6.96 11.9 7.08 9.64 8.88 10.41 11.67 8 10.07 5.59 11.67 6.36 8.88 4.1 7.08 6.99 6.96Z" />
+    </svg>
+  );
+}
 
 /**
  * 머리의 사령관 표식 — 그 Theater 사령관의 몽글 아바타(베이스 + brass 별 배지)다. 한 번 누르면 해당 Theater 의 자율 운영을 켜고 끈다.

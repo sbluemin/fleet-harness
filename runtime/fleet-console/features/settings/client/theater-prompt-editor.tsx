@@ -20,6 +20,8 @@ const FORGOTTEN_EVENT = "fleet:theater-system-prompt-forgotten";
 const overLimitDrafts = new Map<string, TheaterSystemPrompt>();
 // 저장과 불러오기는 한 줄로 선다. 데스크톱 칸에서 폰 시트로 넘어가도(또는 그 반대) 늦은 저장보다 먼저 읽지 않는다.
 let promptQueue: Promise<void> = Promise.resolve();
+// 빈 「내 지침만」으로 옮긴 뒤 저장까지 기다리는 시간 — 방향키로 지나가는 한 번(대개 수백 ms 안)은 저장하지 않는다.
+const EMPTY_OFF_SETTLE_MS = 700;
 
 export function subscribeTheaterSystemPromptForgotten(listener: (theater: string) => void): () => void {
   const handler = (event: Event) => listener((event as CustomEvent<string>).detail);
@@ -269,6 +271,13 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
       // 기본 모드로 돌아가도 긴 글은 버리지 않는다. 서버에는 마지막 정상 본문과 모드만 저장한다.
       overLimitDrafts.set(current.id, next);
       persist(current.id, { mode: "on", body: storedRef.current?.body ?? "" }, true);
+    } else if (next.mode === "off" && !next.body.trim()) {
+      // 빈 「내 지침만」은 시스템 프롬프트 없이 띄우는 값이다. 방향키로 이 줄을 지나가기만 해도 저장되면 그 사이 뜬 세션이
+      // 이 값을 싣는다 — 잠깐 머문 뒤에만 저장하고, 다른 모드로 옮기면 이 대기 저장은 위 clearTimer 가 버린다.
+      // 닫기·Theater 전환은 flush 가 확정한다.
+      dirtyRef.current = true;
+      setStatus("saving");
+      timerRef.current = setTimeout(() => persist(current.id, draftRef.current), EMPTY_OFF_SETTLE_MS);
     } else persist(current.id, next);
   };
   const changeBody = (body: string) => {
@@ -331,12 +340,25 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
   return { theater, stored, draft, loading, loadFailed, status, undo, forgotten, unsaved, copied, focusAfterReset, changeMode, changeBody, reset, restore, copyDraft, discardDraft, flush };
 }
 
-/** 지금 모드와 본문이 모델에 무엇을 싣는지 — 데스크톱 칸과 폰 시트가 같은 문장을 쓴다. */
-export function useTheaterPromptCaption(draft: TheaterSystemPrompt): string {
+/**
+ * 모드마다 모델에 무엇이 실리는지 — 고르기 전에 결과가 읽히도록 데스크톱 칸과 폰 시트가 모드 줄마다 이 문장을 붙인다.
+ * 본문이 비었을 때의 결과는 고른 줄 아래 따로 선다(`useTheaterPromptEmptyNotice`).
+ */
+export function useTheaterPromptModeDescriptions(): Record<ClaudeCodeSystemPromptMode, string> {
   const t = useT();
-  return draft.mode === "on" ? t("sidebar.theater.prompt.captionOn")
-    : draft.mode === "append" ? t(draft.body.trim() ? "sidebar.theater.prompt.captionAppend" : "sidebar.theater.prompt.captionEmpty")
-      : t(draft.body.trim() ? "sidebar.theater.prompt.captionOff" : "sidebar.theater.prompt.captionOffEmpty");
+  return { on: t("sidebar.theater.prompt.captionOn"), append: t("sidebar.theater.prompt.captionAppend"), off: t("sidebar.theater.prompt.captionOff") };
+}
+
+/** 본문을 쓰는 모드인데 지침이 비었을 때만 서는 안내. 「내 지침만」이면 시스템 프롬프트 없이 뜨므로 그리는 쪽이 경고로 세운다. */
+export function useTheaterPromptEmptyNotice(draft: TheaterSystemPrompt): string | null {
+  const t = useT();
+  if (draft.mode === "on" || draft.body.trim()) return null;
+  return t(draft.mode === "append" ? "sidebar.theater.prompt.captionEmpty" : "sidebar.theater.prompt.captionOffEmpty");
+}
+
+/** 한도의 90%부터 글자 수가 경고 쪽으로 선다 — 넘기 전에 남은 여유가 보이게. */
+export function isNearPromptLimit(draft: TheaterSystemPrompt): boolean {
+  return !isOverPromptLimit(draft) && draft.body.length >= CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS * 0.9;
 }
 
 export function useTheaterPromptModeNames(): Record<ClaudeCodeSystemPromptMode, string> {
