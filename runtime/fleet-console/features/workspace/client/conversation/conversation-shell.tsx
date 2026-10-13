@@ -480,6 +480,8 @@ function usePanelSections(): {
 
 /** 머리 pill 이름의 하한 — 도구가 모두 「⋯」로 걷힌 다음에야 이름이 이 폭까지 줄어든다(이름이 더 짧으면 그 폭). */
 const TITLE_FLOOR = 120;
+/** 머리 pill 부제(「· 구성원 n」 등)의 하한 — 줄이 모자라면 부제가 가장 먼저 이 폭까지 말줄임으로 줄어든다. */
+const SUB_FLOOR = 28;
 /** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
 const PILL_TITLE_CAP = 620;
 
@@ -755,8 +757,9 @@ function pillRowNaturalWidth(row: HTMLElement): number {
   let total = Math.max(0, items.length - 1) * gap;
   for (const item of items) {
     if (item.classList.contains("conversation-pill")) {
-      const title = item.querySelector<HTMLElement>(".conversation-pill-title");
-      const natural = item.offsetWidth + (title ? title.scrollWidth - title.clientWidth : 0);
+      // 말줄임으로 줄어든 이름·부제의 몫을 되돌려 센다.
+      let natural = item.offsetWidth;
+      for (const text of item.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub")) natural += text.scrollWidth - text.clientWidth;
       total += Math.min(natural, PILL_TITLE_CAP);
     } else if (item.classList.contains("conversation-pill-tools")) {
       total += Number.parseFloat(item.dataset.naturalWidth ?? "") || item.offsetWidth;
@@ -815,6 +818,14 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
         range.selectNodeContents(title);
         if (range.getBoundingClientRect().width > title.getBoundingClientRect().width + 0.01) return false;
       }
+      // pill 안 내용이 pill 상자 밖으로 흐르면 들어가지 않은 것이다(마지막 내용의 오른쪽 끝 ≤ 상자 안쪽 오른쪽 끝).
+      if (pill !== null) {
+        const inner = [...pill.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.getClientRects().length > 0);
+        const last = inner[inner.length - 1];
+        const pillRect = pill.getBoundingClientRect();
+        const padRight = Number.parseFloat(getComputedStyle(pill).paddingRight) || 0;
+        if (last !== undefined && last.getBoundingClientRect().right > pillRect.right - padRight + 0.01) return false;
+      }
       const children = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.offsetWidth > 0);
       if (children.length === 0) return true;
       const style = getComputedStyle(row);
@@ -838,15 +849,24 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
         const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
         if (titleElement !== null) resize.observe(titleElement);
       }
-      // 이름의 하한 — 도구가 모두 걷힌 뒤에도 이름은 TITLE_FLOOR(이름이 그보다 짧으면 그 폭) 밑으로 줄지 않는다.
+      // 줄이 모자랄 때 줄어드는 순서 — 부제(「· 구성원 n」 등)가 먼저 말줄임으로 SUB_FLOOR 까지, 그다음 도구가 「⋯」로, 마지막에
+      // 이름이 TITLE_FLOOR(이름이 그보다 짧으면 그 폭)까지. 도구가 남아 있는 동안 이름은 원래 폭에 묶어 둔다. pill 내용이 상자 밖으로
+      // 흐르면(부제·이름이 하한에 닿은 뒤) 들어가지 않은 것으로 보고 도구를 더 걷는다(fits).
       const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
       const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
-      if (title !== null) {
-        title.style.minWidth = "";
-        range?.selectNodeContents(title);
-        const natural = range === null ? title.scrollWidth : range.getBoundingClientRect().width;
-        title.style.minWidth = `${Math.min(TITLE_FLOOR, Math.ceil(natural))}px`;
+      const textWidth = (element: HTMLElement) => {
+        element.style.minWidth = "";
+        if (range === null) return element.scrollWidth;
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().width;
+      };
+      for (const sub of pill?.querySelectorAll<HTMLElement>(".conversation-pill-sub") ?? []) {
+        sub.style.minWidth = `${Math.min(SUB_FLOOR, Math.ceil(textWidth(sub)))}px`;
       }
+      // 묶는 폭은 pill 상한(620px) 안이다 — 상한보다 긴 이름은 상한 때문에 말줄임되는 것이 맞다.
+      const titleNatural = title === null || pill === null ? 0
+        : Math.min(Math.ceil(textWidth(title)), Math.max(TITLE_FLOOR, Math.floor(PILL_TITLE_CAP - (pill.getBoundingClientRect().width - title.getBoundingClientRect().width))));
+      if (title !== null) title.style.minWidth = `${titleNatural}px`;
       // 모두 세운 폭(「⋯」 없이) — 사용량 캡슐이 이 값으로 자기 단계를 먼저 고른다(pillRowNaturalWidth).
       const natural = tools.offsetWidth;
       if (tools.dataset.naturalWidth !== String(natural)) tools.dataset.naturalWidth = String(natural);
@@ -865,6 +885,8 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
           if (previous?.classList.contains("right-rail-divider")) { previous.setAttribute("data-overflow", "true"); index -= 1; }
           if (fits(pill, title)) break;
         }
+        // 도구를 다 걷어도 모자라면 이름을 하한까지 풀어 준다.
+        if (title !== null && !fits(pill, title)) title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };

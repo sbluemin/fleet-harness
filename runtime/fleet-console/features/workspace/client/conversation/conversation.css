@@ -260,13 +260,22 @@
 
 .conversation-pill-surface-mark svg { width: 100%; height: 100%; }
 
+/* 부제는 줄이 모자랄 때 가장 먼저 말줄임으로 줄어든다(하한은 대화 열의 도구모음 측정이 min-width 로 건다). */
 .conversation-pill-sub {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-secondary);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   white-space: nowrap;
 }
+
+/* 대화 열의 pill 내용은 상자 밖으로 흐르지 않는다 — 이웃 단추(턴 접기 등)와 겹치지 않게. 줄이 모자라면 부제가 먼저 하한까지 말줄임으로
+   줄고, 그래도 모자라면 도구모음 측정이 도구를 「⋯」로 걷고, 그다음 이름이 하한까지 준다. 그 하한들로도 모자란 마지막 경우에만 상자가
+   내용을 자른다. */
+.conversation-column > .conversation-pill-row > .conversation-pill { overflow: hidden; }
 
 .conversation-pill-actions {
   flex: none;

@@ -88,7 +88,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
     } finally { setSending(false); }
   };
   const objective = ask.objectiveId ? (
-    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => { if (phone) { openObjectiveOnPhone(ask.objectiveId!, theaterId); return; } revealObjective({ objectiveId: ask.objectiveId! }); openObjectiveFromCluster(theaterId); }}>
+    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => { if (phone) { openObjectiveOnPhone(ask.objectiveId!, theaterId); return; } revealObjective({ objectiveId: ask.objectiveId! }); openObjectiveFromCluster(theaterId, undefined, ask.objectiveId!); }}>
       {objectiveTitle ?? t("objectives.ask.objectiveGone")}
     </button>
   ) : null;

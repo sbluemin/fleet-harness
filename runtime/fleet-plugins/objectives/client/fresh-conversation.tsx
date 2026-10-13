@@ -6,7 +6,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 import type { Objective } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { getT } from "./i18n/index.js";
-import { focusOperation, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, subscribeObjective } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, focusOperation, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, subscribeObjective } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -14,7 +14,8 @@ import { focusOperation, objectivesApi, openObjectiveFromCluster, operationSumma
  * 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
 
-export const FRESH_SURFACE_ID = "objective-fresh";
+// 표면 id 는 objectives-state 가 갖는다 — 다른 Theater 의 목표를 열 때 그쪽도 시작 화면을 세운다(순환 import 를 피한다).
+export { FRESH_SURFACE_ID };
 
 let port: ClientConversationCapability | null = null;
 

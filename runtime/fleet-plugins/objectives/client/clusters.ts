@@ -255,7 +255,7 @@ function renameObjective(objective: Objective, title: string): void {
 function reviewObjective(objective: Objective, language: "en" | "ko"): void {
   if (openFollowups(objective).length > 0) {
     revealObjective({ objectiveId: objective.id, followups: true });
-    openObjectiveFromCluster(objective.theaterId);
+    openObjectiveFromCluster(objective.theaterId, undefined, objective.id);
     return;
   }
   const api = objectivesApi();
@@ -287,7 +287,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const personDecision = decisionTurn(objective, boardOf(objective.theaterId).active) === "person";
     const openDetail = () => {
       revealObjective({ objectiveId: objective.id });
-      openObjectiveFromCluster(objective.theaterId, row?.glyph === "fresh" ? "rail" : undefined);
+      openObjectiveFromCluster(objective.theaterId, row?.glyph === "fresh" ? "rail" : undefined, objective.id);
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Operation 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
@@ -355,7 +355,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
         ? operationId.startsWith("mission:") ? operationId.slice("mission:".length) : representative.get(operationId)
         : undefined;
       revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
-      openObjectiveFromCluster(objective.theaterId);
+      openObjectiveFromCluster(objective.theaterId, undefined, objective.id);
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }

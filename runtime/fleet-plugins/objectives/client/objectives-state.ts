@@ -41,6 +41,9 @@ export interface RevealTarget {
 const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
 const theaters = new Map<string, TheaterState>();
 const listeners = new Set<() => void>();
+/** 대화 중심 화면 가운데 칸의 시작 전 목표 화면(fresh-conversation.tsx 의 conversationSurface). */
+export const FRESH_SURFACE_ID = "objective-fresh";
+
 let installed: PluginInstallContext | null = null;
 let reveal: RevealTarget | null = null;
 // useSyncExternalStore 는 스냅샷의 참조가 같아야 멈춘다 — 호스트의 getOperations 가 매번 새 배열을 줄 수 있으므로 여기서 한 번만 받아 둔다.
@@ -848,13 +851,22 @@ export function openNewOperation(): void {
 }
 
 /** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): void {
-  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
-  // 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater 설정)를 연다 — 이미 그 Theater 를 보고 있으면 부르지 않는다.
-  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 패널은 그 대화의 Theater 를
-  // 따르므로 옮기지 않는다(옮기면 「목표」 대신 Theater 설정 탭이 열리고, 서 있던 시작 화면이 걷힌다).
+export function openObjectiveFromCluster(theaterId?: string, place?: "rail", objectiveId?: string): void {
+  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
+  // 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
+  // 파생되고, 표면·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
+  // 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
+  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 옮기지 않는다.
   const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
-  if (installed && theaterId && place !== "rail" && viewed !== theaterId) installed.consoleState.viewTheater?.(theaterId);
+  if (installed && theaterId && place !== "rail" && viewed !== theaterId) {
+    if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
+      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다 — 그 이동이 확대 표면을 접는다. 보이는 Theater 는 같은 커밋의 더 이른
+      // effect 에서 바뀌므로, 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 표면을 연다(열기는 접힌 표면을 편다).
+      whenViewing(theaterId, () => { setTimeout(() => installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID }), 0); });
+      return;
+    }
+    installed.consoleState.viewTheater?.(theaterId);
+  }
   if (place === "rail") {
     installed?.rail.open(OBJECTIVE_PANEL_ID);
     installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
@@ -862,6 +874,44 @@ export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): vo
   }
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+}
+
+/** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */
+function whenViewing(theaterId: string, run: () => void): void {
+  const host = installed;
+  if (!host) return;
+  const viewing = () => host.consoleState.getViewedTheaterId?.() === theaterId;
+  if (viewing()) { run(); return; }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    off();
+    clearTimeout(timer);
+    run();
+  };
+  const off = host.consoleState.subscribe(() => { if (viewing()) finish(); });
+  const timer = setTimeout(finish, VIEWING_WAIT_MS);
+}
+
+/** 대화 이동을 기다리는 상한 — 호스트의 이동은 다음 렌더 안에 끝난다. */
+const VIEWING_WAIT_MS = 1000;
+
+/**
+ * 대화 중심 화면 — 그 목표의 대화를 가운데 칸에 세운다. 지휘관 Operation 이 목록에 있으면 그 대화로 옮기고(보관된 지휘관은 복원하지
+ * 않는다), 아직 개시하지 않은 목표면 시작 화면을 세운다. 세웠으면 true — 대화 중심 화면이 아니거나 세울 대화가 없으면 false.
+ */
+function showObjectiveConversation(objectiveId: string, theaterId: string): boolean {
+  const host = installed;
+  const conversation = host?.conversation;
+  if (!host || !conversation?.isActive()) return false;
+  if (host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === objectiveId)) {
+    host.operations.focus(objectiveId, { snap: "full" });
+    return true;
+  }
+  const objective = readTheater(theaterId).objectives.find((candidate) => candidate.id === objectiveId);
+  if (!objective || objective.commander.started) return false;
+  return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId });
 }
 
 /**
