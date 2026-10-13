@@ -38,8 +38,11 @@ export interface ExperimentAideSelection {
 }
 
 export interface ConsoleExperimentSettings {
-  /** 데스크톱의 이전 배치(캔버스). 기본은 대화 중심 배치이고, 실행 세션이나 기존 패널 위치를 바꾸지 않는 표시 선택이다. */
-  readonly classicLayout: boolean;
+  /**
+   * 옛 클라이언트·플러그인 응답 호환 필드. 데스크톱은 항상 대화 중심 화면이라 저장된 값과
+   * 무관하게 false다. true는 더 이상 캔버스 배치를 켜지 않는다.
+   */
+  readonly classicLayout: false;
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
@@ -129,7 +132,8 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
   };
   return {
-    classicLayout: record.classicLayout === true,
+    // 저장된 classicLayout 은 읽지 않는다. 필드는 v1 응답에 남기되 항상 false다.
+    classicLayout: false,
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),

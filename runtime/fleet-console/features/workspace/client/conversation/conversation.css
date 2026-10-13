@@ -390,10 +390,6 @@
   font-weight: var(--weight-bold);
 }
 
-/* 지도 도구(보기 초기화·모두 맞춤·정렬 레이아웃)는 캔버스의 것이다 — 이 배치에는 지도가 없으므로 서랍을 세우지 않는다.
-   눌러도 캔버스 좌표를 바꾸지 않게 하는 것이 목적이다(토글을 끄면 캔버스가 켜기 전 그대로여야 한다). */
-.console-shell.is-conversation-layout .command-band-mode-tray { display: none; }
-
 /* ── 사이드바 위·아래 줄 ────────────────────────────────────────────────── */
 .conversation-side-top {
   flex: none;

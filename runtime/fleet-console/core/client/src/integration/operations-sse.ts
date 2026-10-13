@@ -5,7 +5,6 @@ import type { SessionEndedReason } from "../../../../features/remote-access/clie
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
-import { forgetTriageOperation } from "../../../../features/workspace/client/canvas/triage-store.js";
 import { applyTheaterLifecycle } from "../../../../features/workspace/client/theater.js";
 import { applyControlHolder, applyControlReclaimed, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyOperationRemoved, applyOperationUpdate, getState, hydrateGroups, hydrateOperations, hydrateTheaters, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
@@ -195,7 +194,6 @@ export function connectOperationsSse(): void {
     try {
       const data = JSON.parse((e as MessageEvent<string>).data) as { readonly operationId?: unknown };
       if (typeof data.operationId !== "string") return;
-      forgetTriageOperation(data.operationId);
       applyOperationRemoved(data.operationId);
     } catch {
       // ignore malformed SSE event
@@ -211,7 +209,6 @@ export function connectOperationsSse(): void {
       if (Array.isArray(data.removedIds)) {
         for (const id of data.removedIds) {
           if (typeof id !== "string") continue;
-          forgetTriageOperation(id);
           applyOperationRemoved(id);
         }
       }

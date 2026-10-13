@@ -212,7 +212,6 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   // 위·아래는 보이는 카드(사이드바 우선, 없으면 레일)의 실제 테두리에 맞춘다.
   // 카드가 하나도 없으면 카드가 서는 자리(offsetParent = .console-body) + 카드 여백 토큰 —
   // 밴드+12는 알약 bottom 기준이라 카드선(본문 top + --space-3)보다 위에 선다(QA-16).
-  // War Room 아래는 부유 섬 위 12px 규칙 유지.
   // 아레나가 최소 숨구멍보다 좁으면 사이드바·레일을 무시하고 밴드 아래 창 전체를 쓰고,
   // 그것도 모자라면 여백을 줄여서라도 보이게 한다 — 「열림」인데 안 보이는 상태는 두지 않는다.
   // hold: 크롬이 움직이는 동안에는 시트가 줄어들기만 한다(가장자리마다 안쪽으로만). 넓어지는 쪽은 정착 뒤에 선다.
@@ -248,15 +247,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     setTakeover(false);
     const sidebar = document.querySelector(".operations-side-bar") as HTMLElement | null;
     const rail = document.querySelector(".right-rail") as HTMLElement | null;
-    const island = document.querySelector(".war-room-bar") as HTMLElement | null;
     const band = document.querySelector(".console-toolbar") as HTMLElement | null;
-    const warRoom = document.querySelector(".console-shell.is-war-room") !== null;
-    // 보이는 카드(사이드바 우선, 없으면 레일) — 닫힘(폭 0·숨김)·War Room 밀어내기는 카드가 아니다.
+    // 보이는 카드(사이드바 우선, 없으면 레일) — 닫힘(폭 0·숨김)은 카드가 아니다.
     // .operations-side-bar·.right-rail은 컨테이너 자체가 부유 유리 카드다(안쪽 카드 요소 없음.
     // components.css .operations-side-bar / rail.css .right-rail, 둘 다 top·bottom: var(--space-3)).
     // 좌우·scrim도 같은 판정에서 나온다 — 닫힌 사이드바의 2px 테두리 자투리가
-    // 왼쪽 간격을 38로 벌리지 않게(QA-16). War Room 접힘은 서랍만 걷고 밴드 줄이 남으니
-    // 같은 규칙이 그대로 성립한다.
+    // 왼쪽 간격을 38로 벌리지 않게(QA-16).
     // 접힘은 픽 중에도 아레나 기하를 유지한다. 닫힘 전이의 잔폭 역시 카드가 아니다.
     const sidebarCardRect = sidebar !== null && !sidebar.classList.contains("is-closed") && sidebar.offsetWidth > 4
       && window.getComputedStyle(sidebar).visibility !== "hidden"
@@ -271,12 +267,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const sideRight = sidebarCardRect !== null ? sidebarCardRect.right : 0;
     const railRect = railCardRect;
     const bandRect = band && band.offsetWidth > 0 ? band.getBoundingClientRect() : null;
-    const islandRect = island && island.offsetWidth > 0 ? island.getBoundingClientRect() : null;
-    const warRoomIsland = warRoom && islandRect;
-    // scrim 자리 — 24px 안쪽 여백 없이 아레나 자체. 밴드·섬·레일·사이드바는 밖에 둔다.
-    const scrim = warRoomIsland
-      ? { left: 0, top: 0, right: 0, bottom: Math.round(vh - islandRect.top) }
-      : { left: Math.round(sideRight), top: Math.round(bandRect ? bandRect.bottom : 0), right: Math.round(railRect ? vw - railRect.left : 0), bottom: 0 };
+    // scrim 자리 — 24px 안쪽 여백 없이 아레나 자체. 밴드·레일·사이드바는 밖에 둔다.
+    const scrim = { left: Math.round(sideRight), top: Math.round(bandRect ? bandRect.bottom : 0), right: Math.round(railRect ? vw - railRect.left : 0), bottom: 0 };
     setScrimGeometry((current) => current && current.left === scrim.left && current.top === scrim.top && current.right === scrim.right && current.bottom === scrim.bottom
       ? current
       : scrim);
@@ -290,15 +282,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const cardHostRect = cardHost ? cardHost.getBoundingClientRect() : null;
     const fallbackTop = cardHostRect ? cardHostRect.top + cardInset : (bandRect ? bandRect.bottom : 0) + cardInset;
     const fallbackBottom = cardHostRect ? vh - cardHostRect.bottom + cardInset : cardInset;
-    let top: number;
-    let bottom: number;
-    if (warRoomIsland) {
-      top = Math.round(cardRect ? cardRect.top : fallbackTop);
-      bottom = Math.round(vh - islandRect.top + 12);
-    } else {
-      top = Math.round(cardRect ? cardRect.top : fallbackTop);
-      bottom = Math.round(cardRect ? vh - cardRect.bottom : fallbackBottom);
-    }
+    let top = Math.round(cardRect ? cardRect.top : fallbackTop);
+    let bottom = Math.round(cardRect ? vh - cardRect.bottom : fallbackBottom);
     if (vw - left - right < MIN_SHEET_WIDTH) {
       // 좁은 아레나 — 크롬을 무시하고 창 너비를 쓴다. 시트가 레일·사이드바 위에 겹쳐 선다.
       left = 24;
@@ -325,11 +310,11 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         : next;
     });
     // 크롬의 기하 전이나 끌기 리사이즈가 남았다면 자리는 아직 움직이는 중이다 — 최종 자리는 멈춘 뒤에 다시 잰다.
-    // 섬·밴드는 위·아래 선만 정하므로 세로 기하만 본다(섬의 가로 물러남은 시트 자리를 바꾸지 않는다).
+    // 밴드는 위 선만 정하므로 세로 기하만 본다.
     const cardMotion = ["width", "height", "transform", "left", "right", "top", "bottom"];
     const lineMotion = ["height", "transform", "top", "bottom"];
     const settling = sidebar?.dataset.resizing === "true" || rail?.classList.contains("is-dragging") === true
-      || ([[sidebar, cardMotion], [rail, cardMotion], [island, lineMotion], [band, lineMotion]] as const).some(([element, properties]) =>
+      || ([[sidebar, cardMotion], [rail, cardMotion], [band, lineMotion]] as const).some(([element, properties]) =>
         (element?.getAnimations?.() ?? []).some((animation) => properties.includes((animation as CSSTransition).transitionProperty)));
     return { ...measured, settling, split: false };
   }, []);
@@ -407,7 +392,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     let watched: Element[] = [];
     // 크롬은 모드·페이지에 따라 다시 마운트된다. 주기 재측정 때 관찰 대상을 다시 붙든다.
     const watch = () => {
-      const next = [".operations-side-bar", ".right-rail", ".war-room-bar", ".console-toolbar", ".conversation-split", ".conversation-stage"]
+      const next = [".operations-side-bar", ".right-rail", ".console-toolbar", ".conversation-split", ".conversation-stage"]
         .map((selector) => document.querySelector(selector))
         .filter((element): element is Element => element !== null);
       if (next.length === watched.length && next.every((element, index) => element === watched[index])) return;

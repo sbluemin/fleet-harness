@@ -102,7 +102,7 @@ const getRevision = () => revision;
 /**
  * execution 설치 수명이 소유한다. UI 구독자 수·선택 그룹·패널 접힘은 연결 수명에 참여하지 않는다.
  * 소켓과 휴면 이력은 대화 중심 화면이 서 있을 때만 연다. 판정은 호스트가 주입한 `conversation.isActive()`이고,
- * 그 subscribe가 레이아웃과 설정을 함께 깨운다. 능력이 없는 호스트는 실험 설정의 `classicLayout === false`와 그 구독만 본다.
+ * 그 subscribe가 레이아웃을 깨운다. 능력이 없는 호스트는 대화 중심 화면으로 본다 — 저장된 classicLayout 은 더 이상 배치를 바꾸지 않는다.
  * 대화 중심 화면이 아닌 호스트(모바일)는 「턴 접기」를 켠 그룹 루트를 실제로 열었을 때만 그 루트의 참여자 몫을 연다 — 열린 대화의
  * 주인은 호스트가 실은 `conversation.subjectOperationId()` 이고, 목록 홈에서는 null 이라 아무것도 열지 않는다.
  */
@@ -117,7 +117,7 @@ export function installGroupTimeline(ctx: {
     const all = [...state.operations, ...state.nestedOperations].filter((operation) => operation.type === "agent" && operation.pluginId === null);
     const roots = new Set(state.operations.map((operation) => operation.id));
     const ids = new Set(all.map((operation) => operation.id));
-    const layout = ctx.conversation ? ctx.conversation.isActive() : ctx.experiments.read()?.classicLayout === false;
+    const layout = ctx.conversation ? ctx.conversation.isActive() : true;
     const subject = layout ? null : ctx.conversation?.subjectOperationId?.() ?? null;
     const mobileRoot = subject !== null && showsMobileGroupConversation(subject) ? subject : null;
     const enabledFor = (rootId: string) => layout || rootId === mobileRoot;

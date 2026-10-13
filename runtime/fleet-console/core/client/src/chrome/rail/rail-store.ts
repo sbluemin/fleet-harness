@@ -3,8 +3,8 @@ import { useSyncExternalStore } from "react";
 /* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
    - 아이콘 클릭은 배타 전환이다: 켜진 패널을 다시 누르면 닫히고, 다른 패널을 누르면 교체된다.
-   - push/overlay 이원의 퇴역과 아레나 인셋 승계는 스택 시절 그대로다 — 열린 패널 폭이 캔버스
-     아레나에서 항상 제외되므로 fit-all·스냅 칸·War Room 무대가 패널을 피해 계산된다. */
+   - push/overlay 이원의 퇴역과 아레나 인셋 승계는 스택 시절 그대로다 — 열린 패널 폭이
+     아레나에서 항상 제외된다. */
 interface RailStore {
   readonly activePanelId: string | null;
   /** 활성 패널의 확장 폭 요구(px) — 독점 슬롯이라 요구도 하나다. 패널 교체·닫힘에 0으로 리셋. */
@@ -134,7 +134,7 @@ export function useRailPanelExtraWidth(): number {
   return useRailStoreField("panelExtraWidth");
 }
 
-/** 확정된 점유 폭 — 끄는 동안 다시 그리지 않아도 되는 구독자(페이지 배치·fit-all 원료)의 값이다. */
+/** 확정된 점유 폭 — 끄는 동안 다시 그리지 않아도 되는 구독자(페이지 배치)의 값이다. */
 export function useRailSettledPx(): number {
   return useRailStoreField("railSettledPx");
 }

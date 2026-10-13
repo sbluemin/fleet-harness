@@ -16,8 +16,7 @@ import { openSettingsSurface } from "../../../../../features/settings/client/set
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
-import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/canvas/canvas-context-menu.js";
-import { CONVERSATION_WELCOME_SEEN_KEY } from "./conversation-welcome.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/sidebar/canvas-context-menu.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -110,7 +109,7 @@ function isConsoleOriginShape(origin: string): boolean {
   }
 }
 
-/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, War Room 트레이에서는 위로 열린다(CSS가 자리로 판단). */
+/** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서 아래로 열린다. */
 export function ConsoleHelpMenu({ menuItem = false }: { readonly menuItem?: boolean } = {}) {
   const state = useConsoleState();
   return (
@@ -640,9 +639,9 @@ function SlidersGlyph() {
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의
-// 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁·대화 중심 화면 웰컴 카드 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
+// 엔트리 힌트·투어 시청 기록과 최초 설정 가이드·강도 확인 팁 기록을 함께 지워, 어느 화면에 있든 처음부터 다시 보게 한다.
 function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
-  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY, CONVERSATION_WELCOME_SEEN_KEY]);
+  const drop = new Set([COMMISSIONING_SEEN_KEY, EFFORT_CONFIRM_TIP_SEEN_KEY]);
   const afterOnboarding = forgetReplayableOnboarding(seen);
   const next = afterOnboarding.filter((key) => !drop.has(key));
   return next.length === afterOnboarding.length ? afterOnboarding : next;

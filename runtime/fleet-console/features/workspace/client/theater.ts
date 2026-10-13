@@ -9,7 +9,6 @@ import {
   issueTheaterFolderGrant,
   type DeferredDeletionReceipt,
 } from "../../../core/client/src/integration/api.js";
-import { isTriageActive, resetTriageTheater, visitTriageTheater } from "./canvas/triage-store.js";
 import {
   beginAddTheater,
   completeAddTheater,
@@ -47,7 +46,7 @@ export async function registerTheaterFromPath(path: string): Promise<void> {
   }
 }
 
-// Theater 잊기의 단일 경로: host DELETE → 로컬 Theater/triage 정리 → 소속 컬렉션 재수화.
+// Theater 잊기의 단일 경로: host DELETE → 로컬 Theater 정리 → 소속 컬렉션 재수화.
 // Operations 사이드바와 팔레트 명령이 공유하며, receipt는 App의 8초 undo 큐로 전달한다.
 export async function forgetTheaterCompletely(
   theaterId: string,
@@ -71,14 +70,7 @@ export async function forgetTheaterCompletely(
 // 서버 응답보다 사건이 먼저 와도 두 번째 호출은 아무것도 하지 않는다.
 function dropForgottenTheater(theaterId: string): void {
   if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
-  resetTriageTheater(theaterId);
   removeTheater(theaterId);
-  // 활성 Theater를 잊으면 removeTheater가 폴백 Theater를 즉시 선택한다 — 선별 중이면
-  // loadForTheater가 폴백의 저장 focus layer를 복원하기 전에 방문 정리를 적용한다.
-  if (isTriageActive()) {
-    const fallbackTheaterId = getState().activeTheaterId;
-    if (fallbackTheaterId !== null) visitTriageTheater(fallbackTheaterId);
-  }
 }
 
 // ─── lifecycle from other windows ──────────────────────────────────────────────

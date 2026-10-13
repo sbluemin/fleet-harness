@@ -73,20 +73,8 @@ export function buildShortcutGroups(
       title: t("shortcuts.group.map"),
       entries: [
         { combos: [[alt, "←"], [alt, "→"]], description: t("shortcuts.map.focusPrevNext") },
-        { combos: [[alt, "→"]], description: t("shortcuts.map.triageDefer") },
-        { combos: [[alt, "↑"]], description: t("shortcuts.map.snapFullPanel") },
-        { combos: [[alt, "↓"]], description: t("shortcuts.map.minimizePanel") },
-        { combos: [[alt, "↓"]], description: t("shortcuts.map.triageSetAside") },
-        { combos: bound("operations.toggle-formation"), description: t("shortcuts.map.toggleFormation") },
-        { combos: bound("operations.toggle-triage"), description: t("shortcuts.map.toggleTriage") },
         { combos: bound("operations.sort-by-status"), description: t("shortcuts.map.sortByStatus") },
-        { combos: [["Drag"]], description: t("shortcuts.map.pan") },
-        { combos: [[shift, "Drag"]], description: t("shortcuts.map.drawTerminal") },
-        { combos: [["Space", "Drag"]], description: t("shortcuts.map.panWithSpace") },
-        { combos: [["Scroll"]], description: t("shortcuts.map.zoom") },
-        { combos: bound("operations.fit-all"), description: t("shortcuts.map.fitAll") },
         { combos: [["Right-click"]], description: t("shortcuts.map.contextMenu") },
-        { combos: [["Double-click"]], description: t("shortcuts.map.doubleClick") },
         { combos: [["Click"]], description: t("shortcuts.map.clearFocus") },
       ],
     },
@@ -97,12 +85,8 @@ export function buildShortcutGroups(
 
 // core가 플러그인보다 먼저 소비하는 키는 선언을 허용하면 도움말과 실제 디스패치가 어긋난다.
 export const RESERVED_SHORTCUT_CODES: readonly string[] = [
-  "KeyF", "KeyS", "KeyT", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape",
+  "KeyS", "ArrowLeft", "ArrowRight", "Escape",
 ];
-
-// War Room이 켜진 동안에만 core가 먼저 받는 키 — 함대 지도 층(기본 Alt+M). Cruise에서는 가로채지 않으므로
-// 플러그인 companion이 같은 키를 써도 그곳에서는 살아 있다.
-export const WAR_ROOM_RESERVED_SHORTCUT_CODES: readonly string[] = ["KeyM"];
 
 export interface CompanionVisibilityChange {
   readonly id: string;
@@ -295,30 +279,12 @@ export function blocksOperationsShortcutWhileEditing(
   return editing && !event.altKey;
 }
 
-// ─── arrow keys — Operations focus, triage, and layout actions ─────────────────
+// ─── arrow keys — Operations focus ─────────────────────────────────────────────
 
-export type OperationsArrowShortcutAction =
-  | "focus-previous"
-  | "focus-next"
-  | "triage-defer"
-  | "triage-noop"
-  | "snap-full"
-  | "minimize"
-  | "triage-set-aside";
+export type OperationsArrowShortcutAction = "focus-previous" | "focus-next";
 
-export function resolveOperationsArrowShortcutAction(
-  triageActive: boolean,
-  key: string,
-): OperationsArrowShortcutAction | null {
-  if (triageActive) {
-    if (key === "ArrowRight") return "triage-defer";
-    if (key === "ArrowDown") return "triage-set-aside";
-    if (key === "ArrowLeft" || key === "ArrowUp") return "triage-noop";
-    return null;
-  }
+export function resolveOperationsArrowShortcutAction(key: string): OperationsArrowShortcutAction | null {
   if (key === "ArrowRight") return "focus-next";
   if (key === "ArrowLeft") return "focus-previous";
-  if (key === "ArrowUp") return "snap-full";
-  if (key === "ArrowDown") return "minimize";
   return null;
 }

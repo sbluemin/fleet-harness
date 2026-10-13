@@ -11,7 +11,7 @@ import { openOtherSurfaceLink, trackLinkPointer } from "./global-link.js";
  * 문서 수준 링크 라우터 — 표면마다 흩어진 앵커를 한 곳에서 전역 브라우저로 잇는다.
  *
  * bubble 단계 리스너 하나가 `a[href]`를 보고, http(s)면서 Console 자기 origin이
- * 아니면 openLink로 넘긴다(클릭·Alt는 2행 선택 카드, ⌘·가운데는 뒤 탭, Shift는 내 브라우저). bubble이라서 War Room 감시 카드처럼 먼저
+ * 아니면 openLink로 넘긴다(클릭·Alt는 2행 선택 카드, ⌘·가운데는 뒤 탭, Shift는 내 브라우저). bubble이라서 먼저
  * `preventDefault()`하는 표면은 자연히 존중된다. `stopPropagation`을 쓰는 표면
  * (objectives link-text 등)은 여기에 닿지 않으므로 그 자리에서 SDK 공개 API를
  * 명시 호출한다.

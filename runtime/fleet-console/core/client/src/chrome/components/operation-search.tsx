@@ -1,6 +1,5 @@
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
-import { focusToolbarItemQuietly } from "../toolbar/toolbar-tip.js";
 import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -49,10 +48,6 @@ import {
 } from "../../integration/palette-commands.js";
 import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from "../../integration/shortcuts.js";
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
-import { getLoadedTheaterId, ensureDefaultGeometry, getStationKeeping, loadForTheater, minimizeOperations, releaseAlignAll, requestFitAllOperations, setStationKeeping } from "../../../../../features/workspace/client/canvas/canvas-store.js";
-import { requestAlignAll } from "../../../../../features/workspace/client/canvas/align-fit-store.js";
-import { enterTriage, exitTriage, focusedTriageOperationId, isTriageActive, setTriageActive, toggleTriageMap, useTriageActive, useTriageMapOpen, visitTriageTheater } from "../../../../../features/workspace/client/canvas/triage-store.js";
-import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
@@ -76,7 +71,6 @@ import {
 } from "../../integration/store.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
-import { toggleWarRoomSideBar } from "../../integration/war-room-chrome-toggles.js";
 
 interface OperationSearchProps {
   readonly state: ConsoleState;
@@ -105,11 +99,7 @@ export function OperationSearch({
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
-  const triageActive = useTriageActive();
-  const triageMapOpen = useTriageMapOpen();
   const desktopView = useViewMode().effective !== "mobile";
-  // War Room은 대화 중심 화면에서 지원하지 않는다 — 팔레트도 그 명령을 내지 않는다.
-  const warRoomAvailable = desktopView && !useConversationLayout();
   const sessions = useAgentState().sessions;
   const railBindings = useDesktopRailEntries();
   const navigate = useNavigate();
@@ -177,8 +167,8 @@ export function OperationSearch({
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const undoKind = useMemo(() => lastUndoKind?.() ?? null, [state.operationSearchOpen, lastUndoKind]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind, warRoomAvailable, triageActive, triageMapOpen }),
-    [state, railPanels, t, undoAvailable, warRoomAvailable, triageActive, triageMapOpen, undoKind],
+    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind }),
+    [state, railPanels, t, undoAvailable, undoKind],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -353,18 +343,13 @@ export function OperationSearch({
         if (current) break;
         // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
-        // 선별 중 수동 전환도 방문 경로를 타야 목적지의 저장된 focus layer가 부활하지 않는다.
-        if (isTriageActive()) visitTriageTheater(action.theaterId);
-        else setActiveTheater(action.theaterId);
+        setActiveTheater(action.theaterId);
         navigate("/operations");
         break;
       }
       case "new-theater": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // 생성 요청의 소비자(Map 사이드바)는 선별 중 언마운트다 — 먼저 선별을 끝내야
-        // 요청이 폐기되지 않고 즉시 소비된다(종료의 대기 요청 폐기보다 뒤에 요청).
-        if (isTriageActive()) setTriageActive(false);
         if (getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarAddTheater();
         break;
@@ -372,7 +357,6 @@ export function OperationSearch({
       case "new-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        if (isTriageActive()) setTriageActive(false);
         requestOperationLaunchMenu();
         break;
       }
@@ -396,77 +380,6 @@ export function OperationSearch({
         openArchiveSheet();
         break;
       }
-      case "minimize-all-operations": {
-        previousFocusRef.current = null;
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // Operations 미마운트 경로(/settings 등)에서는 canvas store가 아직 Theater를 로드하지 않아
-        // 액션이 no-op이 된다(Codex P2). 동일 Theater 재로드는 flush 후 저장값 재독이라 안전하다.
-        ensurePaletteCanvasTheater(state);
-        // minimizeOperations는 geometry 맵에 없는 id를 버리므로, 페이지와 같이 현재 op의 기본
-        // geometry를 먼저 심는다 — persisted canvas가 없는 신규 op도 최소화 대상이 된다.
-        const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
-        for (const operation of theaterOperations) ensureDefaultGeometry(operation.id, operation.geometry);
-        minimizeOperations(theaterOperations.map((op) => op.id));
-        break;
-      }
-      case "fit-all-panels": {
-        // mobile은 MobileShell이 OperationsCanvas를 대신 렌더해 크기 등록소가 비어 있으므로,
-        // 요청을 남기면 이후 desktop 전환 때 stale fit이 튀어나온다 — ⇧1의 mobile 게이트와 같은 정책으로 차단.
-        if (getViewModeSnapshot().effective === "mobile") break;
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        ensurePaletteCanvasTheater(state);
-        if (!isTriageActive()) requestFitAllOperations();
-        break;
-      }
-      case "toggle-triage-mode": {
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        ensurePaletteCanvasTheater(state);
-        if (isTriageActive()) {
-          exitTriage();
-        } else if (state.theaters.length > 0) {
-          // 팔레트 진입 시점의 activeElement는 입력창이므로 캔버스 포커스는 previousFocusRef에서 읽는다.
-          // 그 뒤 복원을 끊지 않으면 팔레트가 닫히며 이전 패널을 다시 포커스해 빈 대기열 진입의 해제가 무효화된다.
-          const focusedOperationId = focusedTriageOperationId(previousFocusRef.current);
-          const returnFocus = previousFocusRef.current;
-          previousFocusRef.current = null;
-          enterTriage(focusedOperationId, returnFocus);
-        }
-        break;
-      }
-      case "toggle-war-room-map": {
-        if (!isTriageActive()) break;
-        // 팔레트가 닫히며 되돌릴 초점(무대의 터미널)을 먼저 돌려 둔다 — 층은 그 자리를 복귀점으로
-        // 잡고 초점을 판으로 옮긴다. 순서가 바뀌면 팔레트 복원이 층 아래 숨은 무대로 초점을 가져간다.
-        const returnFocus = previousFocusRef.current;
-        previousFocusRef.current = null;
-        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
-        toggleTriageMap();
-        break;
-      }
-      case "toggle-formation": {
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        ensurePaletteCanvasTheater(state);
-        // 모두 정렬 토글 — 단축키 ID·⌘K 이름만 바뀌고 같은 자리에서 부른다.
-        // War Room 선별 중이면 진입 훅이 선별을 먼저 끝낸다.
-        // 팔레트가 닫히며 되돌릴 초점을 먼저 돌려 둔다 — requestAlignAll이 그 자리를 확인창의 복귀점으로 잡는다.
-        const returnFocus = previousFocusRef.current;
-        previousFocusRef.current = null;
-        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
-        requestAlignAll();
-        break;
-      }
-      case "toggle-station-keeping": {
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        ensurePaletteCanvasTheater(state);
-        // 팔레트는 규율이 사는 곳으로 데려간다 — 정렬·War Room이면 Cruise로 나온 뒤 전환해,
-        // 광고된 커맨드가 무음 no-op이 되지 않고 전환 결과(펼침 포함)가 즉시 보이게 한다.
-        // 정렬은 줌·fit-all과 같이 자리 복원 없이 풀고(자유 패널의 최종 기하는 풀릴 때 커밋),
-        // 정렬 칸은 겹치지 않으니 규율이 밀어낼 것이 없다.
-        if (isTriageActive()) setTriageActive(false);
-        if (!getStationKeeping()) releaseAlignAll();
-        setStationKeeping(!getStationKeeping());
-        break;
-      }
       case "toggle-status-axis": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         toggleSideBarStatusAxis();
@@ -480,21 +393,6 @@ export function OperationSearch({
             break;
       }
       case "toggle-sidebar": {
-        if (isTriageActive() && location.pathname.startsWith("/operations")) {
-          previousFocusRef.current = null;
-          const shown = toggleWarRoomSideBar();
-          requestAnimationFrame(() => {
-            // 숨기면 섬의 사이드바 토글로, 펼치면 카드의 접기 컨트롤로 간다. 섬의 토글은 도구모음 칸이라
-            // 되돌려 놓은 포커스로 말풍선을 띄우지 않는다(⌘B와 같은 계약).
-            const anchor = shown ? null : document.querySelector<HTMLElement>(".war-room-bar [data-war-room-sidebar-anchor]");
-            if (anchor) { focusToolbarItemQuietly(anchor); return; }
-            (shown
-              ? document.querySelector<HTMLElement>(".side-bar-collapse")
-              : document.querySelector<HTMLElement>(".operations-center-stage"))?.focus({ preventScroll: true });
-          });
-          break;
-        }
-        setTriageActive(false);
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         // 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
         previousFocusRef.current = null;
@@ -515,7 +413,6 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // War Room은 그대로 둔다 — 설정은 레일 표면으로 열리고, 모바일 경로에서는 War Room이 애초에 서지 않는다.
         // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
         // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
         if (getViewModeSnapshot().effective === "mobile") {
@@ -548,9 +445,7 @@ export function OperationSearch({
       }
       case "rename-operation":
       case "assign-operation-group":
-      case "set-operation-accent":
-      case "minimize-operation": {
-        setTriageActive(false);
+      case "set-operation-accent": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
         if (getSideBarState().collapsed) setSideBarCollapsed(false);
@@ -592,7 +487,6 @@ export function OperationSearch({
     if (getViewModeSnapshot().effective !== "mobile") {
       actions.push(
         { id: "rename", label: t("chrome.operationSearch.actionRename"), glyph: "operation-rename", run: () => runAction({ kind: "rename-operation", operationId: entry.operationId }, false) },
-        { id: "minimize", label: t("chrome.operationSearch.actionMinimize"), glyph: "operation-minimize", run: () => runAction({ kind: "minimize-operation", operationId: entry.operationId }, false) },
       );
     }
     actions.push({ id: "archive", label: t("chrome.operationSearch.actionArchive"), glyph: "operation-archive", run: () => runAction({ kind: "archive-operation", operationId: entry.operationId }, false) });
@@ -953,7 +847,7 @@ export function OperationSearch({
 interface RowAction {
   readonly id: string;
   readonly label: string;
-  readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-minimize" | "operation-archive";
+  readonly glyph: "operation-open" | "operation-resume" | "operation-rename" | "operation-archive";
   readonly danger?: boolean;
   readonly run: () => void;
 }
@@ -963,27 +857,18 @@ function commandSectionHeadingId(id: string): string {
 }
 
 function paletteActionToSideBarAction(
-  kind: "rename-operation" | "assign-operation-group" | "set-operation-accent" | "minimize-operation",
+  kind: "rename-operation" | "assign-operation-group" | "set-operation-accent",
 ): SideBarOperationAction {
   switch (kind) {
     case "rename-operation": return "rename";
     case "assign-operation-group": return "assign-group";
     case "set-operation-accent": return "set-accent";
-    case "minimize-operation": return "minimize";
   }
 }
 
 function clampIndex(index: number, length: number): number {
   if (length <= 0) return 0;
   return Math.max(0, Math.min(index, length - 1));
-}
-
-// Operations 페이지 미마운트 상태에서 canvas 의존 커맨드가 no-op이 되지 않도록
-// 활성 Theater를 canvas store에 선로드한다(같은 Theater 재로드는 저장값 재독으로 무해).
-function ensurePaletteCanvasTheater(state: ConsoleState): void {
-  if (state.activeTheaterId && getLoadedTheaterId() !== state.activeTheaterId) {
-    loadForTheater(state.activeTheaterId);
-  }
 }
 
 function panelSubtitle(result: { readonly title: string; readonly subtitle?: string | null }): string | null {

@@ -18,7 +18,7 @@ import type {
 } from "@fleet-console/sdk/floating";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
-import { prefersReducedMotion } from "../../../../features/workspace/client/canvas/canvas-store.js";
+import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
@@ -268,7 +268,7 @@ interface ManagedKeepOutCapability {
 
 /**
  * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), Quick Launch 카드와 그 덱, 모달
- * 대화상자의 본문, War Room 종료·대기 알림 버튼이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
+ * 대화상자의 본문이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
  * 곳이 없고, 그런 표면은 이미 위젯의 포인터 입력을 막는다(layout.css 계약).
  */
 const KEEP_OUT_SELECTOR = [

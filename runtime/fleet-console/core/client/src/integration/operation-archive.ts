@@ -5,8 +5,8 @@
 // 목록 본문은 시트가 열려 있을 때만 다시 읽는다.
 
 import { useSyncExternalStore } from "react";
-import { ensureDefaultGeometry, loadForTheater, restoreOperation as restoreCanvasOperation } from "../../../../features/workspace/client/canvas/canvas-store.js";
-import { getState, setActiveOperation, setActiveTheater } from "./store.js";
+import { getState, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater } from "./store.js";
+import { closeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 
 import {
   OPERATION_ARCHIVE_CHANGED_EVENT,
@@ -84,15 +84,14 @@ export function closeArchiveSheet(): void {
   if (state.sheetOpen) setState({ sheetOpen: false });
 }
 
-/** 명시적 열기는 패널만 꺼낸다. 일반 focusOperation의 자동 Resume 제스처를 만들지 않는다. */
+/** 명시적 열기는 그 Theater의 대화를 가운데에 세운다. 일반 focusOperation의 자동 Resume 제스처를 만들지 않는다. */
 export function openRestoredOperation(id: string): boolean {
   const node = getState().operations.find((operation) => operation.id === id);
   if (!node) return false;
+  closeConversationSurface();
   if (getState().activeTheaterId !== node.theaterId) setActiveTheater(node.theaterId);
-  loadForTheater(node.theaterId);
-  ensureDefaultGeometry(node.id, node.geometry);
-  restoreCanvasOperation(node.id);
   setActiveOperation(node.id);
+  requestOperationKeyboardFocus(node.id);
   return true;
 }
 

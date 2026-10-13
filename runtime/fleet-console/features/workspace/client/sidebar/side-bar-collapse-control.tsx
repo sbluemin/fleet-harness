@@ -10,7 +10,6 @@ import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from ".
 // 접기는 패널 자신의 동사다(Periscope 문법 — 밴드 토글 퇴역). 도킹 중에는 접기 셰브런이,
 // 엣지 독이 되부른 픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서
 // 접기는 무의미하고(이미 접혀 있다) 남는 결정은 고정뿐이라, 한 자리가 두 낱말을 나눠 쓴다.
-// Map 사이드바와 War Room 선별 사이드바가 같은 접힘 상태를 쓰므로 컨트롤도 한 벌이다.
 export function SideBarCollapseControl() {
   const t = useT();
   const { collapsed, peeking } = useSideBarState();

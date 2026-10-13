@@ -20,9 +20,6 @@ import {
 } from "./interaction.js";
 import { OperationDetailCard } from "./operation-detail-card.js";
 import { pointOnText } from "./operations-side-bar-hit-test.js";
-import { getLoadedTheaterId, useCompanionOperationId, useSnapHold } from "../canvas/canvas-store.js";
-import { SNAP_FULL_ZONES } from "../canvas/snap-layouts.js";
-import { SnapMark } from "../canvas/snap-mark.js";
 import { DecisionRequestMark } from "../decision-request-mark.js";
 import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
@@ -67,17 +64,6 @@ interface SideBarChipProps {
   readonly index: number;
   readonly accentValue: string | null;
   readonly groupMark?: { readonly name: string; readonly color: string } | null;
-  /**
-   * 전역 선별 사이드바에서 소속 Theater를 접근성 이름에 싣는 값 — 눈으로 읽는 자리는 War Room 지도가
-   * 이미 Theater로 갈라 놓았으므로 칩은 배지를 그리지 않는다. 화면을 보지 않는 쪽에는 그 구분이 없다.
-   */
-  readonly theaterName?: string | null;
-  /**
-   * 소속 그룹을 배지로 세울지 — War Room 사이드바는 false다. 무대에 선 패널의 캡션이 이미 그룹을
-   * 이름과 색으로 말하므로 칩이 같은 말을 한 번 더 하지 않고, 그 자리는 긴 제목이 가져간다.
-   * 접근성 이름은 이 값과 무관하게 소속 그룹을 싣는다 — 화면을 보지 않는 쪽에는 캡션이 없다.
-   */
-  readonly groupBadge?: boolean;
   readonly statusAxis?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
@@ -86,7 +72,7 @@ interface SideBarChipProps {
   readonly dropTarget: boolean;
   /** peek(비활성 Theater) 미리보기 칩 — focus만 살리고 close/rename/accent/재배치 어포던스를 렌더하지 않는다. */
   readonly preview?: boolean;
-  /** 선별 사이드바처럼 최소화가 의미 없는 표면 — false면 최소화 버튼과 팔레트 최소화 소비를 끈다. */
+  /** false면 최소화 버튼과 팔레트 최소화 소비를 끈다. */
   readonly minimizeEnabled?: boolean;
   /** 컨텍스트 메뉴(그룹/액센트) 호스트가 없는 표면 — false면 메뉴 어포던스와 해당 팔레트 소비를 끈다. */
   readonly menuEnabled?: boolean;
@@ -116,8 +102,6 @@ export function OperationsSideBarChip({
   index,
   accentValue,
   groupMark = null,
-  theaterName = null,
-  groupBadge = true,
   statusAxis = false,
   statusLanded = false,
   reorderEnabled = true,
@@ -148,10 +132,6 @@ export function OperationsSideBarChip({
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
   const title = displayTitle(operation);
-  // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — 눈으로는 War Room 지도가 그 구분을
-  // 지므로 칩에 배지를 세우지 않고, 접근성 이름에만 소속 Theater를 싣는다. 기존 aria 키의
-  // groupContext 슬롯을 재사용한다.
-  const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
   // "지금 어디" 축 — 서버가 세션 DTO에 실어 보내는 투영이다. 칩이 그리는 것은 브랜치 한 조각뿐이고,
   // 폴더는 hover 상세 카드가 진다. 접근성 이름은 여기서도 폴더까지 싣는다.
   const session = useAgentState().sessions[operation.id];
@@ -167,9 +147,9 @@ export function OperationsSideBarChip({
   const [detailAnchor, setDetailAnchor] = useState<DOMRect | null>(null);
   const detailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const detailId = useId();
-  // 카드의 「위치」는 Theater 이름을 뿌리로 삼는다 — 전역 선별 목록이 넘겨 주는 pill 이름이 없어도 스스로 찾는다.
+  // 카드의 「위치」는 Theater 이름을 뿌리로 삼는다.
   const detailTheaterLabel = useTheaterLabel(operation.theaterId);
-  const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext + workspaceContext;
+  const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + workspaceContext;
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const ariaTitle = title;
@@ -183,12 +163,6 @@ export function OperationsSideBarChip({
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next) });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
-  // 스냅 유지 — 활성 Theater의 묶음에 든 패널은 이름 뒤에 칸 모양 표식이 선다(캡션과 같은 컴포넌트).
-  const snapHold = useSnapHold();
-  // companion 레이어를 연 패널은 전체 칸 자리에 서 있다 — 진입 경로(자유 패널·전체 칸)와 관계없이 캡션과 같은 전체 칸 표식을 단다.
-  const companionLayer = useCompanionOperationId() === operation.id && operation.theaterId === getLoadedTheaterId();
-  const snapZoneIndex = snapHold !== null && operation.theaterId === getLoadedTheaterId() ? snapHold.assignments[operation.id] : undefined;
-  const snapZone = companionLayer ? SNAP_FULL_ZONES.zones[0]! : snapZoneIndex !== undefined ? snapHold?.zones[snapZoneIndex] ?? null : null;
   const chipClassName = [
     "side-bar-chip",
     consoleUseWrapClassName(wrap),
@@ -423,7 +397,6 @@ export function OperationsSideBarChip({
           ) : (
             <>
               <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : renameOnNameDoubleClick}>{title}</span>
-              {snapZone ? <SnapMark zone={snapZone} /> : null}
               {cluster?.decisionRequest ? <DecisionRequestMark /> : null}
             </>
           )}
@@ -438,7 +411,7 @@ export function OperationsSideBarChip({
         {cluster ? cluster.strip : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
-      {groupMark && statusAxis && groupBadge && !preview ? (
+      {groupMark && statusAxis && !preview ? (
         <span
           className="side-bar-chip-group-pill"
           title={groupMark.name}

@@ -14,7 +14,7 @@ import { openOtherSurfaceLink } from "../../../../../features/browser/client/glo
 import { useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
-import { useHostSideBarVisible } from "../../integration/war-room-chrome-toggles.js";
+import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";
 import { useExpandedSurfaceDescriptors } from "../../integration/plugin-registry.js";
 import { getState, subscribe } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
@@ -36,8 +36,7 @@ import {
  *
  * 선언된 최소폭은 희망이지 물리가 아니다. 두 페인을 합쳐도 둘의 최소폭을 못 담는 좁은
  * 캔버스에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
- * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다 — 정렬 칸이 최소치를 실제 가용
- * 폭으로 캡하는 것과 같은 규칙이다(스냅 칸 나누기).
+ * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다.
  */
 function fitMinimums(left: number, right: number, pair: number): readonly [number, number] {
   const total = left + right;
@@ -69,7 +68,7 @@ const LEAD_PILL_GAP_PX = 12;
  * 대화 pill 줄과 같은 문법(가운데 이름 pill)이고, 「대화」로 접어 두면 페인은 산 채로 숨고
  * 같은 자리에 「다시 열기」 칩이 남는다.
  */
-export function ExpandedSurfaceLayer({ placement = "canvas" }: { readonly placement?: "canvas" | "conversation" } = {}) {
+export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly placement?: "conversation" } = {}) {
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances, focusedInstanceId } = useExpandedSurfaces();
   const conversation = placement === "conversation";
@@ -371,25 +370,7 @@ export function ExpandedSurfaceLayer({ placement = "canvas" }: { readonly placem
     );
   }
 
-  const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
-
-  return createPortal(
-    <div
-      ref={gridRef}
-      className="expanded-surface"
-      style={{ gridTemplateColumns: template }}
-      data-pane-count={instances.length}
-      role="region"
-      aria-label={t("chrome.expandedSurface.regionAria")}
-      // 캔버스의 pan/zoom/생성 제스처가 이 작업면에서 시작한 입력을 집어가지 않게 끊는다.
-      onPointerDown={(event) => event.stopPropagation()}
-      onWheel={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.stopPropagation()}
-    >
-      {panes}
-    </div>,
-    canvasHost ?? document.body,
-  );
+  return null;
 }
 
 export function SurfacePane({

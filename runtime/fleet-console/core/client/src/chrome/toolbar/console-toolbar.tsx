@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
-import { useTriageActive } from "../../../../../features/workspace/client/canvas/triage-store.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { openSettingsModal, closeSettingsModal, useSettingsModal } from "../../../../../features/settings/client/settings-door.js";
 import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
@@ -18,8 +17,7 @@ import "../../styles/rail.css";
 import { ToolbarTipLayer } from "./toolbar-tip.js";
 
 /**
- * 도구모음 — 콘솔에 하나뿐인 도구 줄. 모드는 이 줄의 **자리**만 바꾼다: 평소에는 상단 바 가운데,
- * War Room에서는 부유 섬. 내용과 순서는 같다.
+ * 도구모음 — 콘솔에 하나뿐인 도구 줄. 자리는 상단 바 가운데이고, 내용과 순서는 같다.
  *
  *   › 접기 | 플러그인(레일 도구) | 시스템 도구(찾기 · 원격 · 도움말 · 설정) | Bridge(Quota 요약 → 부관)
  *
@@ -27,8 +25,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
  * 않고(부관이 캔버스로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
  *
- * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. War Room 켜고 끄기는 도구모음이 아니라 좌측
- * 사이드바(모드 스위치)의 일이다 — 도구모음은 모드와 무관하게 같은 내용으로 선다.
+ * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. 도구모음은 화면과 무관하게 같은 내용으로 선다.
  *
  * 칸의 이름은 한 장의 말풍선이 말한다(toolbar-tip.tsx) — 칸은 네이티브 title 대신 data-tip을 든다.
  */
@@ -54,17 +51,14 @@ function writeFolded(folded: boolean): void {
 }
 
 interface ConsoleToolbarProps {
-  /** War Room이 이 창에서 실제로 켜져 있는가 — 켜져 있으면 줄이 War Room 트레이에 선다. */
-  readonly warRoomActive: boolean;
-  /** 캔버스 화면인가(/operations 데스크톱). 아니면 설정 톱니가 캔버스로 먼저 돌아간 뒤 설정을 연다. */
+  /** operations 화면인가. 참이면 설정 톱니가 그 화면에서 바로 연다. */
   readonly canvas: boolean;
 }
 
-export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
+export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
   const t = useT();
   const bandHost = useToolbarHost("band");
-  const warRoomHost = useToolbarHost("warRoom");
-  const host = warRoomActive ? warRoomHost : bandHost;
+  const host = bandHost;
   // 줄의 몸 — 한 번 만들어 끝까지 쓴다. 자리만 바꿔 끼운다.
   const [mount] = useState(() => {
     const element = document.createElement("div");
@@ -77,7 +71,7 @@ export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
       return;
     }
     if (mount.parentNode === host) return;
-    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 키보드로 War Room을 켜고 끈 사람은 같은 버튼에 남아야 한다.
+    // 노드를 옮기면 브라우저가 그 안의 포커스를 놓는다 — 자리를 옮긴 뒤에도 같은 버튼에 남아야 한다.
     const focused = document.activeElement;
     const keepFocus = focused instanceof HTMLElement && mount.contains(focused) ? focused : null;
     host.appendChild(mount);
@@ -87,18 +81,15 @@ export function ConsoleToolbar({ warRoomActive, canvas }: ConsoleToolbarProps) {
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [preferredFolded, setFolded] = useState(readFolded);
-  const warRoom = useTriageActive();
-  const [warRoomFolded, setWarRoomFolded] = useState(true);
-  useLayoutEffect(() => { if (warRoom) setWarRoomFolded(true); }, [warRoom]);
-  const folded = warRoom ? warRoomFolded : preferredFolded;
+  const folded = preferredFolded;
   // 서랍이 말리거나 펴지는 동안만 가로를 자른다 — 늘 자르면 서랍보다 넓은 메뉴(원격·도움말)가 잘린다.
   const [folding, setFolding] = useState(false);
   const foldingTimerRef = useRef<number | null>(null);
   useEffect(() => () => { if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current); }, []);
   const toggleFold = () => {
     const next = !folded;
-    if (warRoom) setWarRoomFolded(next);
-    else { setFolded(next); writeFolded(next); }
+    setFolded(next);
+    writeFolded(next);
     setFolding(true);
     if (foldingTimerRef.current !== null) window.clearTimeout(foldingTimerRef.current);
     foldingTimerRef.current = window.setTimeout(() => {

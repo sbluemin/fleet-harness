@@ -5,7 +5,6 @@ import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../set
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
-import { useTriageActive } from "../canvas/triage-store.js";
 import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -15,14 +14,13 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
+import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
-import { focusToolbarItemQuietly } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { GroupContextMenu } from "../canvas/group-context-menu.js";
-import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
-import { getTheaterCanvasSnapshot, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "../canvas/canvas-store.js";
+import { GroupContextMenu } from "./group-context-menu.js";
+import { operationAccentFromNode, resolveAccentColor } from "../operation-accent.js";
+import { getTheaterGroupCollapse, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
@@ -47,7 +45,6 @@ import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader, SideBarUngroupedLabel } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { CanvasModeSwitch } from "../canvas/canvas-mode-switch.js";
 import {
   consumeStatusLandings,
   freshFoldKey,
@@ -67,10 +64,9 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
-import { AttentionSection } from "../war-room/attention-section.js";
 
 interface OperationsSideBarProps {
-  /** War Room 무대 최소 폭을 지키려는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
+  /** 대화 화면이 그리는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
   readonly widthCap?: number;
   /** 위쪽 줄 아래에 서는 셸의 기여(대화 중심 화면의 검색·새 Operation·고정 줄). 없으면 아무것도 서지 않는다. */
   /** 맨 위 줄 오른쪽, 접기 컨트롤 앞에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
@@ -436,7 +432,7 @@ export function OperationsSideBar({
   const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
   const operationAccent = useOperationAccent();
-  // 비활성 Theater 묶음은 렌더 중 저장값(getTheaterCanvasSnapshot)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
+  // 비활성 Theater 묶음은 렌더 중 저장값(접힘·액센트)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
   useStoredTheaterRevision();
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const didMountStatusLandingRef = useRef(false);
@@ -456,10 +452,9 @@ export function OperationsSideBar({
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
-  const warRoom = useTriageActive();
   const peekOverlayOpenRef = useRef(false);
   useLayoutEffect(() => {
-    if (collapsed && sideBar.peeking && !warRoom) {
+    if (collapsed && sideBar.peeking) {
       peekOverlayOpenRef.current = true;
       publishConsoleOverlay("sidebar-peek", true);
       return;
@@ -470,8 +465,8 @@ export function OperationsSideBar({
       publishConsoleOverlay("sidebar-peek", false);
     };
     const element = rootRef.current;
-    // 고정·War Room 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
-    if (!collapsed || warRoom || !element) { release(); return; }
+    // 고정 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
+    if (!collapsed || !element) { release(); return; }
     // 실제 CSS 닫힘 전이의 완료를 기다린다. visibility의 지연도 포함하므로
     // 열리던 도중 떠난 역전 전이와 reduced-motion도 별도 하드코딩 없이 따른다.
     const transitions = (element.getAnimations?.() ?? []).filter((animation) => {
@@ -485,19 +480,11 @@ export function OperationsSideBar({
     });
     // 닫히는 중 다시 픽하면 이전 완료 콜백이 뷰를 되살리지 못하게 취소한다.
     return () => { cancelled = true; };
-  }, [collapsed, sideBar.peeking, warRoom, width]);
+  }, [collapsed, sideBar.peeking, width]);
   useLayoutEffect(() => () => {
     peekOverlayOpenRef.current = false;
     publishConsoleOverlay("sidebar-peek", false);
   }, []);
-  // body 포털은 숨긴 사이드바의 inert 밖에 있다. 진입 때만 걷어 이후 명시적 메뉴 요청은 보존한다.
-  useLayoutEffect(() => {
-    if (!warRoom) return;
-    setNewMenu(null);
-    setActiveContextMenu(null);
-    if (newMenu || activeContextMenu) document.querySelector<HTMLElement>(".operations-center-stage")?.focus({ preventScroll: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [warRoom]);
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
   // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
   useEffect(() => {
@@ -536,11 +523,8 @@ export function OperationsSideBar({
 
   useLayoutEffect(() => {
     if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
-    // War Room 에는 엣지 독이 없다 — 부유 섬의 사이드바 토글이 포커스를 받는다. 접기를 누른 사람이 그 칸을
-    // 겨눈 것은 아니므로 말풍선은 띄우지 않는다(띄우면 Fleet 브라우저 뷰와 겹쳐 뷰가 물러선 채 남는다).
     if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
-      if (document.querySelector(".war-room-bar [data-war-room-sidebar-anchor]")) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".war-room-bar [data-war-room-sidebar-anchor]", focusToolbarItemQuietly);
-      else focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".operations-center-stage");
+      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".conversation-stage, .operations-center-stage");
     }
     // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
     if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
@@ -1095,11 +1079,10 @@ export function OperationsSideBar({
   };
 
   // "Theater 추가" 요청 소비(팔레트) — 접힘을 풀고 Theater 브라우저를 연다.
-  // War Room에서는 사이드바를 숨긴 채 상자만 연다 — Cruise의 접힘 선호는 War Room 밖의 것이다.
   useEffect(() => {
     if (!pendingSideBarAddTheater) return;
     consumeSideBarAddTheater();
-    if (collapsed && !warRoom) setSideBarCollapsed(false);
+    if (collapsed) setSideBarCollapsed(false);
     openTheaterBrowser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
@@ -1178,8 +1161,7 @@ export function OperationsSideBar({
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 상태별 보기는 목록 전체의 세션 스위치다. 그 왼쪽에 캔버스 모드(Cruise / War Room)가 서고,
-          우단은 두 모드가 공유하는 접기 컨트롤이다. */}
+      {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓰고, 펼친 줄의 우단은 접기 컨트롤이다. */}
       {topStripVariant === "compact" ? (
         <div className="side-bar-top-strip is-compact">
           {topStripLeading}
@@ -1191,7 +1173,6 @@ export function OperationsSideBar({
         {theaters.length > 0 ? (
           <>
             <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
-            <CanvasModeSwitch />
             <SideBarStatusViewToggle active={statusAxis} />
             <SideBarViewMenu />
           </>
@@ -1204,10 +1185,6 @@ export function OperationsSideBar({
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
-        {warRoom ? <AttentionSection onFocus={onFocus} onOpenOperationMenu={(operationId, anchor, returnFocus) => {
-          setNewMenu(null);
-          setActiveContextMenu({ kind: "chip", operationId, anchor, returnFocus });
-        }} /> : null}
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
@@ -1227,12 +1204,12 @@ export function OperationsSideBar({
             && theaterIndex === theaters.length - 1
             && drag.dropIndex === theaters.length;
           if (!isActiveTheater) {
-            const theaterCanvas = getTheaterCanvasSnapshot(theater.id);
+            const theaterGroups = getTheaterGroupCollapse(theater.id);
             const inactiveEntries = buildTheaterEntries({
               theaterId: theater.id,
               operations,
               operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
-              minimizedSet: new Set(theaterCanvas.minimized),
+              minimizedSet: new Set<string>(),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               selectedOperationId: doubleClickOpen ? selectedOperationId : null,
@@ -1247,8 +1224,8 @@ export function OperationsSideBar({
                 {...aliasEditingFor(theater.id)}
                 entries={theaterCollapsed ? [] : inactiveEntries}
                 groups={groups.filter((group) => group.theaterId === theater.id)}
-                collapsedGroups={new Set(theaterCanvas.collapsedGroups)}
-                operationAccent={theaterCanvas.operationAccent}
+                collapsedGroups={new Set(theaterGroups.collapsedGroups)}
+                operationAccent={theaterGroups.operationAccent}
                 collapsed={theaterCollapsed}
                 statusAxis={statusAxis}
                 showStatusLiveTick={showStatusLiveTick}
@@ -1462,7 +1439,6 @@ export function OperationsSideBar({
             <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
               {t("sidebar.starter.reopenGuide")}
             </button>
-            {/* 모두 정렬·War Room 단축키는 Theater가 없으면 아무 일도 하지 않으므로 여기서는 말하지 않는다. */}
             <p className="side-bar-starter-hints">
               <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
             </p>

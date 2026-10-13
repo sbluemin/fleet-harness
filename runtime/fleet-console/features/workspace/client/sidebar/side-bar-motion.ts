@@ -56,7 +56,7 @@ function isSideBarWidthTransition(event: TransitionEvent): boolean {
 export function observeSideBarCollapseMotion(): () => void {
   if (typeof document === "undefined") return () => undefined;
 
-  // Cruise 사이드바는 모드·페이지에 따라 마운트되므로 문서 단에서 버블링된 전환 이벤트를 받는다.
+  // 사이드바는 페이지에 따라 마운트되므로 문서 단에서 버블링된 전환 이벤트를 받는다.
   // 동시에 두 개가 살아 있지 않아 참조 계수는 필요하지 않다.
   let animating: HTMLElement | null = null;
   let detachWatch: number | null = null;
@@ -78,8 +78,8 @@ export function observeSideBarCollapseMotion(): () => void {
 
   /**
    * 전환 중이던 사이드바가 트리에서 빠지면 종료 이벤트가 document까지 오지 않는다 — 이벤트는
-   * 분리된 노드에서 발생하므로 버블링 경로에 document가 없다. War Room 진입은 사이드바를
-   * 언마운트하므로 접기 200ms 안에 모드를 바꾸면 이 경로를 밟고,
+   * 분리된 노드에서 발생하므로 버블링 경로에 document가 없다. 접기 200ms 안에 페이지를 떠나
+   * 사이드바가 언마운트되면 이 경로를 밟고,
    * 플래그가 남아 패널 모션이 다음 토글까지 죽는다.
    * 관찰자는 App에 계속 살아 있어 스스로 회복하지도 못한다. 그래서 분리 여부를 직접 지켜본다.
    */
@@ -131,10 +131,10 @@ export function observeSideBarCollapseMotion(): () => void {
 }
 
 /**
- * 사이드바가 width 전환으로 여닫히는 동안 캔버스 아레나의 왼쪽 인셋이 사이드바를 매 프레임 따라가게 한다.
+ * 사이드바가 width 전환으로 여닫히는 동안 대화 칸의 왼쪽 인셋이 사이드바를 매 프레임 따라가게 한다.
  *
- * 전면 캔버스에서 사이드바는 캔버스 위의 부유 카드라, 스토어의 접힘 상태로 계산한 인셋은 토글 즉시
- * 최종값이 된다. 그러면 월드 원점·companion 배치·스냅 칸이 첫 프레임에 최종 자리로 순간 이동하고,
+ * 사이드바는 가운데 칸 위의 부유 카드라, 스토어의 접힘 상태로 계산한 인셋은 토글 즉시
+ * 최종값이 된다. 그러면 대화 칸이 첫 프레임에 최종 자리로 순간 이동하고,
  * 카드만 200ms 동안 제 폭을 줄이거나 늘린다. 도킹 시절에는 중앙 트랙의 리플로우가 이 추종을 공짜로
  * 해 주었다 — 여기서는 카드의 실제 진행을 읽어 같은 추종을 되살린다.
  *
@@ -262,8 +262,8 @@ interface FollowDriver {
 /**
  * 인셋을 무엇에 실어 움직일지 고른다.
  *
- * 카드가 움직이는 축은 둘이다 — 일반 접기·펼치기·픽은 width, War Room의 숨김·드러냄은 translate(layout.css,
- * 숨김 240ms·드러냄 340ms spring)다. 인셋은 지금 카드를 실제로 옮기는 쪽을 따라야 카드와 틈·겹침이 없다.
+ * 카드가 움직이는 축은 width다 — 접기·펼치기·픽. 같은 요소에 translate·transform 전환이 열려 있으면
+ * width를 먼저 따른다. 인셋은 지금 카드를 실제로 옮기는 쪽을 따라야 카드와 틈·겹침이 없다.
  *
  * - 이 커밋이 막 연 width·translate·transform 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 길이·
  *   곡선으로 함께 간다. 관찰자는 width 전환만 보고 억제 플래그를 세우므로, 그 밖의 축을 탈 때는 추종이

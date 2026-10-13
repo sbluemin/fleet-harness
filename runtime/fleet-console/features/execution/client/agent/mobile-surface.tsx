@@ -6,8 +6,8 @@ import { React } from "@fleet-console/sdk/plugin/browser";
  * 모바일 Operation 화면 — 셸이 상단 막대와 ⋮을 그리고, 본문은 그 아래 전부를 쓴다.
  *
  * 판정은 셸이 실어 주는 `context.mobileOperation`의 존재 하나다(호스트 계약: 막대를 그려 주는 호스트만
- * 이 창구를 싣는다). DOM의 모드 속성을 읽지 않는다 — 같은 본문이 데스크톱 캔버스·War Room·확대 표면에도
- * 서고, 거기서는 이 창구가 없다. 본문 루트에 `data-mobile-surface`를 달아 CSS도 같은 판정만 읽는다.
+ * 이 창구를 싣는다). DOM의 모드 속성을 읽지 않는다 — 데스크톱 대화 화면·확대 표면에는
+ * 이 창구가 없다. 본문 루트에 `data-mobile-surface`를 달아 CSS도 같은 판정만 읽는다.
  *
  * 창구의 타입은 SDK의 `ClientMobileOperationCapability`·`MobileBarMenuItem`(checked = 스위치 행)이다.
  */

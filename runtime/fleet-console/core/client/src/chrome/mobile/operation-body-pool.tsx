@@ -273,7 +273,7 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
   } satisfies OperationRenderContext;
 
   return createPortal(
-    <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("canvas.plugin.operationFailed")}</div>}>
+    <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("workspace.plugin.operationFailed")}</div>}>
       <PluginBody render={descriptor.render!} context={context} />
     </PluginErrorBoundary>,
     mountNode,
