@@ -4,6 +4,15 @@ import { intersects, type Rect } from "./graph-layout.js";
 
 const rect = (r: DOMRect): Rect => ({ x: r.left, y: r.top, w: r.width, h: r.height });
 
+/** 그래프를 담아 실제로 세로 스크롤하는 가장 가까운 상자 — 상세의 탭·칸 구조나 확대 카드와 무관하게 끌기 자동 스크롤과 팝업 초점 복귀가 쓴다. */
+export function scrollContainer(from: HTMLElement): HTMLElement | null {
+  for (let el = from.parentElement; el; el = el.parentElement) {
+    const style = getComputedStyle(el);
+    if (style.display !== "contents" && /^(auto|scroll|overlay)$/.test(style.overflowY) && el.scrollHeight > el.clientHeight) return el;
+  }
+  return null;
+}
+
 /** 같은 DOM과 크기를 호버·고정에서 공유한다. 위치는 노드와 별개 층이므로 그래프를 밀지 않는다. */
 export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, focus, hidden, label, children, onKeep, onMove, onLeave, onPin, onEscape, onAnchorLeave }: {
   id: string; missionId: string; layout: object; boundary: HTMLElement; pinned: boolean; closing: boolean; focus: boolean; hidden: boolean; label: string; children: ReactNode;
@@ -19,7 +28,9 @@ export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, f
     // 완료·잇기로 미분류와 본 그래프 사이를 옮기면 같은 임무의 DOM이 교체된다.
     // 렌더 중의 옛 요소 대신, 배치가 커밋된 뒤 안정된 임무 id로 앵커를 다시 찾는다.
     const node = boundary.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(missionId)}"]`);
-    const name = boundary.querySelector<HTMLElement>(`[data-graph-label="${CSS.escape(missionId)}"]`);
+    // 이름 칸은 레인 오른쪽 전폭이다 — 팝업이 비켜야 할 것은 칸이 아니라 글자가 실제로 차지한 폭이다.
+    const label = boundary.querySelector<HTMLElement>(`[data-graph-label="${CSS.escape(missionId)}"]`);
+    const name = label?.querySelector<HTMLElement>(".objectives-graph-name") ?? label;
     if (!pop || !node) { setPosition(null); return; }
     const ancestors: HTMLElement[] = [];
     for (let parent = node.parentElement; parent; parent = parent.parentElement) ancestors.push(parent);
@@ -38,7 +49,7 @@ export function GraphPopup({ id, missionId, layout, boundary, pinned, closing, f
         if (clipY) { visibleTop = Math.max(visibleTop, bounds.top + ancestor.clientTop * sy); visibleBottom = Math.min(visibleBottom, bounds.top + (ancestor.clientTop + ancestor.clientHeight) * sy); }
       }
       if (nb.x + nb.w <= visibleLeft || nb.x >= visibleRight || nb.y + nb.h <= visibleTop || nb.y >= visibleBottom || visibleLeft >= visibleRight || visibleTop >= visibleBottom) {
-        onAnchorLeaveRef.current(boundary.closest<HTMLElement>(".objectives-detail:not(.is-two) .objectives-detail-scroll, .objectives-detail.is-two .objectives-detail-pane, .objectives-zoom") ?? boundary);
+        onAnchorLeaveRef.current(scrollContainer(boundary) ?? boundary);
         pop.style.visibility = "hidden";
         setPosition(null);
         return;
