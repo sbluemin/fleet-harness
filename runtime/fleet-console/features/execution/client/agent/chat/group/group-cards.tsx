@@ -25,7 +25,7 @@ import { SpeakerMark, SpeakerName } from "./speaker-mark.js";
 /** 답한 결정 — 보드에서 요청이 걷혀도 대화에는 질문마다 무엇을 골랐는지 남는다(이 화면을 보는 동안). */
 export interface SettledDecision {
   readonly id: string;
-  readonly answers: readonly { readonly question: string; readonly answer: string }[];
+  readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string }[];
 }
 
 /**
@@ -84,7 +84,7 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
       const settledAnswers = decision.questions.map((question) => {
         const labels = question.options.filter((option) => (picks[question.id] ?? []).includes(option.id)).map((option) => option.label);
         const own = (texts[question.id] ?? "").trim();
-        return { question: question.text, answer: [...labels, ...(own ? [own] : [])].join(", ") };
+        return { ...(question.header ? { header: question.header } : {}), question: question.text, answer: [...labels, ...(own ? [own] : [])].join(", ") };
       });
       onSettled({ id: decision.id, answers: settledAnswers });
     } catch {
@@ -164,7 +164,7 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
 
 /**
  * 답한 결정 — 사람이 보낸 말과 같은 오른쪽 말풍선으로 선다(같은 면·반경·여백, 머리의 「→ 받는 이 · 행위」 줄).
- * 질문마다 질문은 작은 보조 글자, 답은 본문 글자로 쌓이고, 아무리 길어도 말풍선 폭 안에서 줄을 바꾼다.
+ * 질문마다 머리말 칩(있으면, 결정 카드와 같은 칩)·질문(작은 보조 글자)·답(본문 글자)이 쌓이고, 아무리 길어도 말풍선 폭 안에서 줄을 바꾼다.
  */
 export function SettledDecisionLine({ settled, asker, language }: {
   readonly settled: SettledDecision;
@@ -187,6 +187,7 @@ export function SettledDecisionLine({ settled, asker, language }: {
       <div className="group-chat-bubble is-human group-card-settled-body">
         {settled.answers.map((entry, at) => (
           <div key={at} className="group-card-settled-item">
+            {entry.header ? <span className="group-card-header">{entry.header}</span> : null}
             <span className="group-card-settled-q">{entry.question}</span>
             <span>{entry.answer}</span>
           </div>
