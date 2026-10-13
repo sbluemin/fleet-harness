@@ -21,6 +21,7 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
+import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
 import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, objectivesApi, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
@@ -550,9 +551,10 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
         ) : tab === "decisions" ? <>
           <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
           <DecisionHistory objective={objective} t={t} />
-        </> : (
+        </> : <>
           <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
-        )}
+          <RetroCard objective={objective} t={t} />
+        </>}
       </div>
       {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
       {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
@@ -798,6 +800,25 @@ function ResultsSection({ objective, t, language, openLink }: { readonly objecti
         </div>
       </ObjectiveLinkOpenProvider>
     </>
+  );
+}
+
+/** 회고 — 데스크톱 결과물 탭의 접힌 묶음과 같다. 인계 기록이 있을 때만 서고, 접힌 채 「더 보기」로 편다. 내용은 데스크톱 회고와 같은 구성요소다. */
+function RetroCard({ objective, t }: { readonly objective: Objective; readonly t: T }) {
+  const [open, setOpen] = useState(false);
+  const handoff = objective.handoff;
+  if (!handoff) return null;
+  return (
+    <section className="objectives-m-card objectives-m-retro" aria-label={t("objectives.retro.title")}>
+      <h3 className="objectives-m-card-label">{t("objectives.retro.title")}</h3>
+      {open ? <Retrospective
+        t={t}
+        by={handoff.by}
+        good={handoff.retrospective?.wentWell.map((pair) => ({ text: pair.point, aside: pair.because })) ?? []}
+        regret={handoff.retrospective?.fellShort.map((pair) => ({ text: pair.point, aside: pair.ifOnly })) ?? []}
+      /> : null}
+      <button type="button" data-press="r1" className="objectives-m-more" aria-expanded={open} onClick={() => setOpen((value) => !value)}>{t(open ? "objectives.mobile.brief.less" : "objectives.mobile.brief.more")}</button>
+    </section>
   );
 }
 

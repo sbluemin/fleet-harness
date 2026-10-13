@@ -24,6 +24,13 @@
 .objectives-m .objectives-m-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 11px; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; }
 .objectives-m .objectives-m-tabs button[aria-selected="true"] { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-inverse); }
 .objectives-m-tdot { position: absolute; top: 10px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--m-awaiting); }
+/* 회고 — 데스크톱 표를 모바일 잉크로 읽는다. 카드 안쪽 여백은 카드가 준다. */
+.objectives-m-retro .objectives-retro { padding: 0; }
+.objectives-m-retro .objectives-retro-none { margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
+.objectives-m-retro .objectives-retro-table th { color: var(--m-text-muted); }
+.objectives-m-retro .objectives-retro-table td { color: var(--m-text); font-size: var(--m-fs-secondary); }
+.objectives-m-retro .objectives-retro-table td + td { color: var(--m-text-muted); }
+.objectives-m-retro .objectives-retro-table tbody tr + tr td { border-top-color: var(--m-hairline); }
 .objectives-m-empty { margin: 0; padding: 6px 4px; font-size: var(--m-fs-secondary); line-height: 1.5; color: var(--m-text-muted); }
 
 /* 동작 줄 — 목표 화면 막대 ⋮ 와 같은 사람 동작(메시지·완료·검토로 넘기기·중단)을 알약 줄로. 넘치면 다음 줄로 접는다.
