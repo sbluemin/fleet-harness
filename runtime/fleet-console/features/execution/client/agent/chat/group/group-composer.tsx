@@ -150,6 +150,25 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     setArmed(key);
     if (key !== null) armTimer.current = setTimeout(() => setArmed((current) => (current === key ? null : current)), ARM_MS);
   };
+  /**
+   * 무장은 그 칸(`data-board-arm`) 밖을 누르면 풀린다. 포커스로 판정하지 않는다 — 대화 칸은 누를 때마다 활성 Operation 을 풀며 포커스를
+   * 먼저 빼므로(호스트 공용 pointerdown), 같은 칩을 다시 누르는 두 번째 누름도 그 직전에 blur 가 온다.
+   */
+  React.useEffect(() => {
+    if (armed === null) return;
+    const onPointer = (event: PointerEvent) => {
+      const held = event.target instanceof Element ? event.target.closest("[data-board-arm]")?.getAttribute("data-board-arm") : null;
+      if (held === armed) return;
+      clearTimeout(armTimer.current);
+      setArmed((current) => (current === armed ? null : current));
+    };
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => window.removeEventListener("pointerdown", onPointer, true);
+  }, [armed]);
+  /** 키보드로 다른 컨트롤에 옮겨 가면 푼다 — 다른 요소가 포커스를 받지 않는 blur(위의 호스트 blur 등)는 떠남이 아니다. */
+  const disarmOnLeave = (key: string) => (event: React.FocusEvent<HTMLElement>) => {
+    if (armed === key && event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) arm(null);
+  };
 
   const members = snapshot.participants.filter((participant) => participant.speaker.kind === "member").map((participant) => participant.speaker);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
@@ -539,6 +558,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
                   type="button"
                   role="menuitem"
                   className={`group-composer-pop-row${armed === action.id ? " is-armed" : ""}`}
+                  data-board-arm={action.id}
                   aria-disabled={busy || !!action.unavailable || undefined}
                   title={action.unavailable ? local(action.unavailable) : undefined}
                   onClick={() => { const arming = !action.context && action.confirm && armed !== action.id; pressChip(action); if (!arming) setMenuOpen(false); }}
@@ -558,6 +578,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
                 type="button"
                 role="menuitem"
                 className={`group-composer-pop-row${armed === "compact" ? " is-armed" : ""}`}
+                data-board-arm="compact"
                 aria-disabled={board.compact.sessions === 0 || busy || undefined}
                 onClick={() => { void pressCompact(); }}
                 onKeyDown={ignoreRepeat}
@@ -591,7 +612,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
               title={action.unavailable ? local(action.unavailable) : undefined}
               onClick={() => pressChip(action)}
               onKeyDown={ignoreRepeat}
-              onBlur={() => { if (armed === action.id) arm(null); }}
+              data-board-arm={action.id}
+              onBlur={disarmOnLeave(action.id)}
             >
               {BOARD_GLYPHS[action.glyph]}
               <span>{armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}</span>
