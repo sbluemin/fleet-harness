@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.232.0] - 2026-10-13
+
+### fleet-console
+
+#### Added
+- The Commodore can ask you a question directly, with its reason. Open questions wait at the top of the Commodore's log as an answer card and under Your decisions in the sidebar, and are counted in the rail badge and on the Commodore's face; your answer goes straight back to the Commodore and stays in its log.
+- On a phone, you can complete an objective that is awaiting review and pick which follow-up candidates to create, including when the Commodore handed that review or those follow-ups to you.
+
+#### Changed
+- When its conversation grows long, the Commodore now summarizes it and keeps working in the same session instead of starting a new one. The context meter shows how far it is from that point, and each summary is noted in the Commodore's log.
+- Questions the Commander or Commodore asks you now carry a short heading, and your own written answer can be up to 150 characters; you can still write your own answer alongside or instead of the offered choices.
+
+#### Fixed
+- Sending a long written answer to a decision request in the group conversation no longer fails with "Couldn't send the answer".
+- A Commodore running on a Codex model can read and manage objectives again instead of having its objective tool calls rejected as invalid.
+- In the Conversation view, opening a not-started objective from the Commodore now shows that objective's header and tabs in the details panel instead of the Commodore's.
+- In the Conversation view, a tool such as Files stays open in the details panel when you open the Commodore from the Theater name.
+- The member count at the top of an objective conversation now matches its Members tab, including members that have not started a session yet.
+- Long answers and long choices in a decision request no longer push the group conversation sideways; your answer now appears as your own message bubble, with each question and its heading, and wraps within the chat.
+- In the Conversation view, Console no longer freezes while the Commodore is replying, commander and member replies stream smoothly instead of stuttering, and the conversation keeps following new replies instead of stopping partway up.
+
+#### Removed
+- The desktop Console stays on the conversation screen. The canvas, Cruise, Align, Snap, and War Room are gone, and a saved classic layout setting no longer changes the layout.
+
 ## [1.231.0] - 2026-10-12
 
 ### fleet-console
