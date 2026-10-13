@@ -234,7 +234,6 @@ const selections = new Map<string, Map<string, number>>();
 const selectionListeners = new Set<() => void>();
 const compOpens = new Map<string, boolean>();
 const compListeners = new Set<() => void>();
-const seenCandidates = new Map<string, Set<string>>();
 
 /**
  * getSnapshot용 불변 스냅샷 — useSyncExternalStore 는 스냅샷의 참조가 같아야 멈춘다.
@@ -336,17 +335,6 @@ function subscribeComp(listener: () => void): () => void {
 export function useFollowupOpen(objectiveId: string): boolean {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독
   return useSyncExternalStore(subscribeComp, () => isFollowupOpen(objectiveId), () => isFollowupOpen(objectiveId));
-}
-
-/** 본문 구획 머리의 새 후보 점 — 본 적 없는 open id 가 있으면 찍힌다. 펼치면 읽음으로 친다. */
-export function unseenFollowupCount(objectiveId: string, openIds: readonly string[]): number {
-  const seen = seenCandidates.get(objectiveId);
-  if (!seen) return openIds.length;
-  return openIds.filter((id) => !seen.has(id)).length;
-}
-
-export function markFollowupsSeen(objectiveId: string, openIds: readonly string[]): void {
-  seenCandidates.set(objectiveId, new Set(openIds));
 }
 
 /** 완료 멱등 키 — 서버가 UUID 로 받는다. 같은 batchId 를 다시 보내면 멱등이다. */

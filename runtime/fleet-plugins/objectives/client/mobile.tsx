@@ -21,7 +21,9 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
-import { viewedTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { DatePicker } from "./date-picker.js";
+import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
+import { viewedTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -515,13 +517,43 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     mobileBar.set({ title, ...(stateWord ? { subtitle: stateWord } : {}), depth: 0, ...(usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
   }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, settingsHost, rename, archive]);
 
+  // 탭 — 데스크톱 상세와 같은 다섯 낱말이고, 고른 탭도 같은 Theater 보기 상태에 남는다.
+  const theaterId = objective?.theaterId ?? null;
+  const tab = detailTabOf(useObjectiveView(theaterId).detailTab);
+  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
+  const locale = language === "ko" ? "ko" : "en";
+  const editable = !objective.done && !WORKING.has(activityOf(operations, objective.id));
+  const patch = (value: Record<string, unknown>) => { void post(api, "/objective/patch", { objectiveId: objective.id, patch: value, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); };
+  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
+  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
+  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
+  const pickTab = (next: DetailTab) => patchObjectiveView(theaterId, () => ({ detailTab: next }));
+  // 머리 줄 — 데스크톱과 같은 오늘·기한 글리프 | 다섯 탭. 높이와 낱말은 폰 정보 화면의 탭에 맞춘다.
+  const tabBar = (
+    <div className="objectives-m-tabbar">
+      <button type="button" className={`objectives-m-tglyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /></button>
+      <button type="button" className={`objectives-m-tglyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
+        <CalGlyph />{objective.dueDate ? <span aria-hidden="true">{dueShort(objective.dueDate, locale)}</span> : null}
+      </button>
+      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
+      <span className="objectives-m-tsep" aria-hidden="true" />
+      <div className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
+        {DETAIL_TABS.map((key) => (
+          <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => pickTab(key)}>
+            {t(`objectives.tabs.${key}`)}{key === "decisions" && objective.decisionRequest && !objective.done ? <span className="objectives-m-tdot" role="img" aria-label={t("objectives.tabs.decisionDot")} /> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
   const embeddedActions = embedded ? personActions(actions) : [];
   const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
   return (
     <div ref={rootRef} className={rootClass}>
+      {tabBar}
       <div className="objectives-m-pad">
         {rowActions.length > 0 ? (
           <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
@@ -532,20 +564,21 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
             ))}
           </div>
         ) : null}
-        <BriefCard objective={objective} t={t} />
-        <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
-        <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
-        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다. */}
+        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다.
+            지금 할 일(넘김 답하기·개시 카드)은 탭과 무관하게 탭 칸 맨 위에 선다. */}
         <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
-        <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
-        {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
-        {objective.missions.length > 0 ? (
-          <>
-            <h2 className="objectives-m-glab">{t("objectives.missions.title")}</h2>
+        {tab === "goal" ? <>
+          <BriefCard objective={objective} t={t} />
+          <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
+        </> : tab === "crew" ? <>
+          <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
+          <SubagentsSection objective={objective} t={t} crew={crew} />
+        </> : tab === "missions" ? (
+          // 폰은 그래프 대신 글 목록이다 — 머리는 맡은 사람(구성원이 없으면 지휘관), 끝남은 줄 끝의 체크가 말한다.
+          objective.missions.length > 0 ? (
             <div className="objectives-m-grp">
               {objective.missions.map((mission) => {
-                // 머리는 맡은 사람(데스크톱 임무 줄과 같다: 구성원이 없으면 지휘관), 끝남은 줄 끝의 체크가 말한다.
                 const member = mission.member ? objective.members.find((candidate) => candidate.id === mission.member) : undefined;
                 return (
                   <div key={mission.id} className={`objectives-m-row is-mission${mission.done ? " is-done" : ""}`}>
@@ -556,10 +589,13 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
                 );
               })}
             </div>
-          </>
-        ) : null}
-        <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
-        <SubagentsSection objective={objective} t={t} crew={crew} />
+          ) : null
+        ) : tab === "decisions" ? <>
+          <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
+          <DecisionHistory objective={objective} t={t} />
+        </> : (
+          <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
+        )}
       </div>
       {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
       {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
@@ -1062,6 +1098,21 @@ const answerText = (decision: Decision): string => {
   const picked = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
   return [picked.join(" · "), decision.answer.text.trim()].filter((part) => part.length > 0).join("\n");
 };
+
+/** 결정사항 탭의 내역 — 사람이 보낸 답이 질문마다, 최근 것이 위. 보낸 답 카드와 같은 문법(질문 → 답)이다. */
+function DecisionHistory({ objective, t }: { readonly objective: Objective; readonly t: T }) {
+  if (objective.decisions.length === 0) return <p className="objectives-m-empty">{t("objectives.tabs.decisionsEmpty")}</p>;
+  return (
+    <>
+      <h2 className="objectives-m-glab">{t("objectives.decisions.title")}</h2>
+      <section className="objectives-m-ucard">
+        {[...objective.decisions].reverse().map((decision) => (
+          <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision)}</span></p>
+        ))}
+      </section>
+    </>
+  );
+}
 
 function DecisionSection({ objective, operations, t, language, api, say }: { readonly objective: Objective; readonly operations: OperationIndex; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   const request = objective.done ? null : objective.decisionRequest;

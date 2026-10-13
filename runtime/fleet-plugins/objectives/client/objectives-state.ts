@@ -639,6 +639,8 @@ export interface ObjectiveViewState {
   readonly collapsed: Readonly<Record<string, boolean>>;
   readonly dueFilter: string;
   readonly externalSelectionId?: string | null;
+  /** 목표 상세에서 고른 탭 — Theater 마다 하나, 다른 목표로 가도 그 탭으로 연다. 없으면 「목표」. */
+  readonly detailTab?: string;
 }
 const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all", externalSelectionId: null };
 const views = new Map<string, ObjectiveViewState>();
@@ -655,7 +657,8 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
     next.selected === current.selected &&
     next.collapsed === current.collapsed &&
     next.dueFilter === current.dueFilter &&
-    next.externalSelectionId === current.externalSelectionId
+    next.externalSelectionId === current.externalSelectionId &&
+    next.detailTab === current.detailTab
   ) return;
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
