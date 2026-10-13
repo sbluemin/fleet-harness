@@ -7,7 +7,7 @@ import type { DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserBounds } from "@fleet-console/protocol/desktop";
 
 /**
- * Operation Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
+ * Session Browser — Operation마다 격리된 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
  * Console 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 본다.
  *
  * 정책 세 줄:
@@ -267,8 +267,8 @@ export function resolveBrowserViewportSize(input: {
 /** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 사람이 무엇을 해야 하는지 말한다. */
 export function unavailableMessage(reason: BrowserUnavailableReason | null): string {
   switch (reason) {
-    case "shared": return "The Operation Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
-    default: return "The Operation Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
+    case "shared": return "The Session Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
+    default: return "The Session Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
   }
 }
 
@@ -850,7 +850,7 @@ export class BrowserService {
   private admit(_op: OperationBrowser, input: string, _actor: "user" | "agent"): URL {
     const url = parseUrl(input);
     if (!url || !["http:", "https:", "about:", "file:"].includes(url.protocol)) throw new BrowserPolicyError("browser_url_invalid", "That address couldn't be opened here.", { url: input });
-    if (url.protocol === "file:") throw new BrowserPolicyError("browser_url_invalid", "file: URLs are not served by the Operation Browser. Serve the folder over HTTP instead.", { url: input });
+    if (url.protocol === "file:") throw new BrowserPolicyError("browser_url_invalid", "file: URLs are not served by the Session Browser. Serve the folder over HTTP instead.", { url: input });
     return url;
   }
 

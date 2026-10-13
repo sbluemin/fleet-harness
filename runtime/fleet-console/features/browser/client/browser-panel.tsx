@@ -293,7 +293,32 @@ function unavailableText(t: ReturnType<typeof getT>, reason: UnavailableReason |
  * companion 캡션 = 브라우저 탭 스트립. 「브라우저」 한 단어 대신 지구본 + 탭 + 새 탭, 오른쪽에 뷰포트.
  * 에이전트 세션 중이면 지구본이 agent-control 채움이 되고 「사용 중 · 중단」이 선다. 본문이 올린 스냅샷을 읽는다.
  */
-export function BrowserCaption({ context, services }: BrowserProps) {
+export interface SessionBrowserTarget { readonly pluginId: string; readonly scopeId: string }
+
+/** Console 실행 중에는 같은 scope가 같은 owner를 가리킨다. 아직 시작하지 않은 세션은 null이다. */
+export async function resolveSessionBrowserTarget(target: SessionBrowserTarget): Promise<string | null> {
+  const query = new URLSearchParams({ pluginId: target.pluginId, scopeId: target.scopeId });
+  const response = await fetch(`/api/v1/browser/sessions/resolve?${query}`);
+  if (!response.ok) throw new Error("browser_target_unavailable");
+  const result = await response.json() as { ownerId: string | null };
+  return result.ownerId;
+}
+
+export interface SessionBrowserPanelProps {
+  readonly ownerId: string;
+  readonly language: OperationRenderContext["language"];
+  readonly theme: OperationRenderContext["theme"];
+  readonly bodyLive?: boolean;
+  readonly services: Pick<BrowserClientServices, "isDesktopShell" | "themePolarity" | "subscribeConsoleChannel">;
+  readonly onAttach?: (files: readonly File[]) => void;
+  readonly terminalPaste?: boolean;
+}
+
+export function SessionBrowserCaption({ ownerId, language }: Pick<SessionBrowserPanelProps, "ownerId" | "language">) {
+  return <BrowserCaption context={{ operationId: ownerId, language }} />;
+}
+
+export function BrowserCaption({ context }: { readonly context: Pick<OperationRenderContext, "operationId" | "language">; readonly services?: BrowserClientServices }) {
   const t = getT(context.language ?? "en");
   const panel = useBrowserPanel(context.operationId);
   const importUnavailable = chromeImportUnavailable();
@@ -416,9 +441,14 @@ export function BrowserCaption({ context, services }: BrowserProps) {
 }
 
 export function BrowserPanel({ context, services }: BrowserProps) {
-  const { isDesktopShell, themePolarity, pushComposerInbox } = services;
-  const t = getT(context.language ?? "en");
-  const operationId = context.operationId;
+  const chatMode = context.operation.payload.chatMode === true;
+  return <SessionBrowserPanel ownerId={context.operationId} language={context.language} theme={context.theme} bodyLive={context.bodyLive} services={services}
+    terminalPaste={!chatMode} onAttach={chatMode ? (files) => services.pushComposerInbox(context.operationId, { files }) : undefined} />;
+}
+
+export function SessionBrowserPanel({ ownerId: operationId, language, theme, bodyLive, services, onAttach, terminalPaste = false }: SessionBrowserPanelProps) {
+  const { isDesktopShell, themePolarity } = services;
+  const t = getT(language ?? "en");
   // 브라우저 탭·모바일에는 뷰를 그릴 셸이 없다 — 서버에 묻지 않고 닫힌 문만 보인다.
   const desktop = isDesktopShell();
   const { state, connection } = useBrowserStream(operationId, desktop, services.subscribeConsoleChannel);
@@ -581,7 +611,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     const measure = () => {
       const rect = element.getBoundingClientRect();
       const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay;
-      const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && context.bodyLive !== false && rect.width >= 1 && rect.height >= 1;
+      const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
 
@@ -667,7 +697,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     };
   // 가져오기 대화상자는 aria-modal 이라 뷰가 물러선다 — 열고 닫는 순간 바로 다시 재도록 의존성에 둔다.
   // 캡션의 메뉴는 모달이 아니므로 스스로 알려 온다(`captionOverlay`); 200ms 폴링을 기다리면 그동안 가려진다.
-  }, [available, operationId, activeTab?.id, activeTab?.url, mode, context.bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
+  }, [available, operationId, activeTab?.id, activeTab?.url, mode, bodyLive, importSources !== null, profileSwitch !== undefined, clearingProfile, captionOverlay]);
   // 패널이 사라지면 뷰도 감춘다 — 자리를 알린 사람이 없는 뷰는 남지 않는다.
   React.useEffect(() => () => {
     if (placeRef.current) {
@@ -682,7 +712,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
 
   // 페이지의 prefers-color-scheme 은 Console 테마 극성을 따른다 — 뷰가 OS 설정을 그대로 쓰면 라이트 테마에서도
   // 사이트가 어둡게 뜬다. 에이전트가 resize_window 로 따로 정한 값은 테마가 바뀔 때까지 존중한다.
-  const polarity = themePolarity(context.theme);
+  const polarity = themePolarity(theme);
   const schemeSetBy = state?.viewport.setBy ?? null;
   const schemeNow = state?.viewport.colorScheme ?? null;
   React.useEffect(() => {
@@ -745,8 +775,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     return body.element;
   };
 
-  // ---- 첨부 → 이 Operation 의 입력창 ----
-  const chatMode = context.operation.payload.chatMode === true;
+  // ---- 첨부 → 이 세션의 입력창 ----
   /**
    * 스크린샷을 이 Operation 의 입력에 붙여넣는다. 채팅 Operation 이면 그 컴포저에 붙여넣은 것처럼 칩을 세우고, 터미널
    * Operation 이면 서버가 CLI 가 도는 기계의 클립보드에 이미지를 올린 뒤 Ctrl+V 를 눌러 준다 — 렌더러의 클립보드는
@@ -755,11 +784,12 @@ export function BrowserPanel({ context, services }: BrowserProps) {
   const deliver = async (kind: "annotation" | "screenshot", blob: Blob): Promise<boolean> => {
     setBusy(true); setNotice(null);
     try {
-      if (chatMode) {
-        pushComposerInbox(operationId, { files: [new File([blob], `browser-${kind}-${Date.now()}.png`, { type: "image/png" })] });
+      if (onAttach) {
+        onAttach([new File([blob], `browser-${kind}-${Date.now()}.png`, { type: "image/png" })]);
         setInfo(t("terminal.browser.deliveredChat"));
         return true;
       }
+      if (!terminalPaste) return false;
       const response = await post(operationId, "paste", { data: await base64Of(blob) });
       if (!response.ok) {
         let code: string | null = null;
@@ -793,7 +823,7 @@ export function BrowserPanel({ context, services }: BrowserProps) {
     }).catch(() => setNotice(t("terminal.browser.requestFailed")));
   };
   /** 주석·첨부는 보이는 화면이 있어야 한다 — 탭이 열려 있으면 그 자리에서 한 장을 찍을 수 있다. */
-  const captureReady = activeTab !== null;
+  const captureReady = activeTab !== null && (onAttach !== undefined || terminalPaste);
 
   // ---- 주석: 요소 댓글 + 스케치 ----
   const sketchRef = React.useRef<HTMLCanvasElement | null>(null);

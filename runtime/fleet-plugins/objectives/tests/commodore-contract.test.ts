@@ -212,7 +212,7 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain('Commodore of the Theater "fleet-harness"');
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"] });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], browser: { scopeId: "commodore:t1" } });
     expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);

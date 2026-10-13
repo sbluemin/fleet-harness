@@ -1,4 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ClaudeGatewaySdk, ClaudeGatewayTurn } from "@fleet-console/agent-runtime/claude";
+import { createBrowserMcpHost } from "../features/browser/host/mcp.js";
+import { createPluginAgentHost } from "../features/execution/host/agent/plugin-agent.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DesktopBrowserRelay, DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 
@@ -143,14 +149,17 @@ describe("global fleet browser host contract", () => {
     });
     engine.subscriberOpened("local");
     engine.setHost("local");
+    let shared = false;
     const service = new BrowserService({
       enabled: () => true,
-      availability: () => ({ available: true, reason: null, host: "local" }),
+      availability: () => shared ? ({ available: false, reason: "shared", host: null }) : ({ available: true, reason: null, host: "local" }),
       desktop: engine,
       log: () => {},
       defaultProfile: { read: () => "default", write: () => {} },
     });
 
+    const released: string[] = [];
+    const browser = createBrowserMcpHost({ service, operations: () => [], screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
     try {
       const existingUrl = "https://example.com/existing";
       const firstUrl = "https://example.com/first";
@@ -197,6 +206,63 @@ describe("global fleet browser host contract", () => {
       expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
       expect(service.globalState().tabs).toEqual(state.tabs);
 
+      // 사령관은 실제 AgentHost가 실은 MCP로 자기 탭만 다룬다. 전역 탭 id를 알아도 넘어갈 수 없다.
+      let client: Client | null = null;
+      let browserTurn: (turn: ClaudeGatewayTurn) => Promise<void>;
+      const agent = createPluginAgentHost({
+        baseUrl: () => "http://127.0.0.1:1",
+        consoleUse: { connect: () => { throw new Error("unexpected console access"); } },
+        browserMcp: { connectPlugin: (options) => browser.connectPlugin({ ...options, pluginId: "objectives" }) },
+        createSdk: async () => ({
+          startTurn: async (turn: ClaudeGatewayTurn) => {
+            await browserTurn(turn);
+            return { close() {}, getContextUsage: async () => null, async *[Symbol.asyncIterator]() { yield { type: "result", is_error: false }; } };
+          },
+          dispose: async () => {},
+        }) as unknown as ClaudeGatewaySdk,
+      });
+      try {
+        const session = await agent.createSession({ model: "sonnet", systemPrompt: "test", continuation: "conversation", settlement: "result", tools: { browser: { scopeId: "commodore:t1" } } });
+        const owner = browser.resolveSessionOwner("objectives", "commodore:t1")!;
+        expect(owner).toBeTruthy();
+        expect(owner).not.toBe(GLOBAL_BROWSER_OWNER_ID);
+        expect(browser.isSessionOwner(GLOBAL_BROWSER_OWNER_ID)).toBe(false);
+        browserTurn = async (turn) => {
+          expect(turn.allowedTools).toContain("mcp__fleet-browser__tabs_create");
+          const server = turn.mcpServers!["fleet-browser"] as unknown as { instance: McpServer };
+          const [caller, receiver] = InMemoryTransport.createLinkedPair();
+          client = new Client({ name: "browser-contract", version: "1" });
+          await server.instance.connect(receiver);
+          await client.connect(caller);
+          expect((await client.listTools()).tools.some((tool) => tool.name === "capture")).toBe(true);
+          expect((await client.callTool({ name: "tabs_create", arguments: {} })).isError).not.toBe(true);
+          expect(service.state(owner).tabs).toHaveLength(1);
+          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: existing.id } })).isError).toBe(true);
+          expect(service.globalState().tabs).toEqual(state.tabs);
+        };
+        await session.send("open isolated tab");
+        expect(service.state(owner).driving).toBe(false);
+        expect((await client!.callTool({ name: "tabs_create", arguments: {} })).isError).toBe(true);
+        shared = true;
+        browserTurn = async () => {
+          const denied = await client!.callTool({ name: "tabs_create", arguments: {} });
+          expect(denied.isError).toBe(true);
+          expect(JSON.stringify(denied.content)).toContain("shared");
+        };
+        await session.send("browser paused");
+        shared = false;
+        await session.dispose();
+        expect((await client!.callTool({ name: "tabs_context", arguments: {} })).isError).toBe(true);
+        expect(service.state(owner).tabs).toHaveLength(0);
+        expect(released).toContain(owner);
+        expect(service.globalState().tabs).toEqual(state.tabs);
+        const resumed = browser.connectPlugin({ pluginId: "objectives", scopeId: "commodore:t1", enabled: () => true });
+        expect(browser.resolveSessionOwner("objectives", "commodore:t1")).toBe(owner);
+        const another = browser.connectPlugin({ pluginId: "another", scopeId: "commodore:t1", enabled: () => true });
+        expect(browser.resolveSessionOwner("another", "commodore:t1")).not.toBe(owner);
+        await resumed.dispose(); await another.dispose();
+      } finally { await agent.dispose(); await (client as Client | null)?.close(); }
+
       service.dismissClosedTabs();
       expect(service.globalState().closedTabs).toHaveLength(0);
 
@@ -206,16 +272,23 @@ describe("global fleet browser host contract", () => {
       (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory = [{ url: concurrentUrl, title: concurrentUrl }];
       const router = createBrowserRouter({
         browserService: service,
-        browserMcp: { interruptOperation: () => 0, pasteIntoTerminal: () => false },
+        browserMcp: browser,
         operations: { get: () => null },
         isWriteAdmitted: () => true,
         isExactConsoleOrigin: () => true,
         isDesktopHostClient: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
         readJsonBody: async <T>() => ({ action: "open", url: concurrentUrl, activate: false }) as T,
-        readUrl: () => new URL("http://localhost:50212"),
+        readUrl: () => new URL("http://localhost:50212/api/v1/browser/sessions/resolve?pluginId=objectives&scopeId=commodore%3At1"),
         withSecurityHeaders: (headers) => headers,
       });
+      const resolved = {} as ServerResponse & { status: number; body: { ownerId: string } };
+      await router({ req: { method: "GET" } as IncomingMessage, res: resolved, pathname: "/api/v1/browser/sessions/resolve" });
+      expect(resolved.body.ownerId).toBe(browser.resolveSessionOwner("objectives", "commodore:t1"));
+      const sessionState = {} as ServerResponse & { status: number; body: { operationId: string } };
+      await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/operations/${encodeURIComponent(resolved.body.ownerId)}/state` });
+      expect(sessionState.status).toBe(200);
+      expect(sessionState.body.operationId).toBe(resolved.body.ownerId);
       const opened = {} as ServerResponse & { status: number; body: { tab: { id: string } } };
       await Promise.all([
         router({ req: { method: "POST" } as IncomingMessage, res: opened, pathname: "/api/v1/browser/global/tabs" }),
@@ -232,7 +305,7 @@ describe("global fleet browser host contract", () => {
       service.reconcile();
       expect(emitted.some((s) => (s as { operationId?: string; available?: boolean }).operationId === "global" && (s as { available?: boolean }).available === true)).toBe(true);
     } finally {
-      await service.dispose();
+      await browser.dispose();
     }
   });
 
