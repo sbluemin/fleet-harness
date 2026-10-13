@@ -122,7 +122,8 @@ export function useLongPress<E extends Element>(onLongPress: (element: E) => voi
       onPointerMove: (event) => {
         const press = pressRef.current;
         if (!press || press.pointerId !== event.pointerId) return;
-        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_SLOP_PX) cancel();
+        // 사이드바 끌기는 문턱에 닿는 순간(>=) 시작하므로 같은 경계에서 취소해야 한 손짓이 끌기와 길게 누르기가 함께 되지 않는다.
+        if (Math.hypot(event.clientX - press.x, event.clientY - press.y) >= LONG_PRESS_SLOP_PX) cancel();
       },
       onPointerUp: cancel,
       onPointerCancel: cancel,
