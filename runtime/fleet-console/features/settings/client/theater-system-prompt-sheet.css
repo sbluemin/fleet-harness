@@ -44,8 +44,10 @@
 .theater-prompt-editor textarea { width: 100%; min-height: 128px; padding: 9px 11px; resize: vertical; border: 1px solid var(--surface-rim-strong); border-radius: 6px; background: var(--surface-panel-raised); color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); line-height: 1.6; }
 .theater-prompt-editor textarea:focus-visible { outline: none; border-color: var(--control-hover-rim); }
 .theater-prompt-editor textarea[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, transparent); }
-.theater-prompt-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 18px; }
-.theater-prompt-meta small { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+/* 저장 상태와 글자 수가 한 줄에 들지 않으면 글자 수가 다음 줄 오른쪽으로 내려가고, 상태 문장은 단어 단위로만 접힌다. */
+.theater-prompt-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 10px; min-height: 18px; }
+.theater-prompt-meta .theater-prompt-save { flex: 1 1 auto; min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.theater-prompt-meta small { flex: none; margin-left: auto; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .theater-prompt-meta small.is-near { color: var(--warn-ink); }
 .theater-prompt-meta small.is-over { color: var(--coral-ink); font-weight: var(--weight-medium); }
 .theater-prompt-caption { margin: 0; color: var(--text-secondary); }
