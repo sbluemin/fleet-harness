@@ -921,7 +921,12 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const defaultBody = <OperationBodySlot key={bodyOwner.id} operationId={bodyOwner.id} config={config} className="conversation-body-slot" />;
   const custom = bodyRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language, defaultBody }) ?? null;
   const captionView = captionRenderer?.({ operation, bodyOperation: bodyOwner, nestedOperations: nested, language }) ?? null;
-  const memberCount = clusterRoot ? Math.max(0, clusterRoot.cluster.members.length - 1) : nested.length;
+  // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Operation 의 합집합, 지휘관 제외.
+  // 묶음의 노드(임무 칸·살아 있는 구성원)는 명부가 아니다.
+  const roster = clusterRoot?.cluster.conversation?.operationId === operation.id ? clusterRoot.cluster.conversation.members : [];
+  const memberIds = new Set([...roster.flatMap((member) => (member.operationId ? [member.operationId] : [])), ...nested.map((candidate) => candidate.id)]);
+  memberIds.delete(operation.id);
+  const memberCount = memberIds.size;
 
   return (
     <div className="conversation-column">
