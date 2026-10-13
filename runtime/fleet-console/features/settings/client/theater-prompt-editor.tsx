@@ -331,12 +331,25 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
   return { theater, stored, draft, loading, loadFailed, status, undo, forgotten, unsaved, copied, focusAfterReset, changeMode, changeBody, reset, restore, copyDraft, discardDraft, flush };
 }
 
-/** 지금 모드와 본문이 모델에 무엇을 싣는지 — 데스크톱 칸과 폰 시트가 같은 문장을 쓴다. */
-export function useTheaterPromptCaption(draft: TheaterSystemPrompt): string {
+/**
+ * 모드마다 모델에 무엇이 실리는지 — 고르기 전에 결과가 읽히도록 데스크톱 칸과 폰 시트가 모드 줄마다 이 문장을 붙인다.
+ * 본문이 비었을 때의 결과는 고른 줄 아래 따로 선다(`useTheaterPromptEmptyNotice`).
+ */
+export function useTheaterPromptModeDescriptions(): Record<ClaudeCodeSystemPromptMode, string> {
   const t = useT();
-  return draft.mode === "on" ? t("sidebar.theater.prompt.captionOn")
-    : draft.mode === "append" ? t(draft.body.trim() ? "sidebar.theater.prompt.captionAppend" : "sidebar.theater.prompt.captionEmpty")
-      : t(draft.body.trim() ? "sidebar.theater.prompt.captionOff" : "sidebar.theater.prompt.captionOffEmpty");
+  return { on: t("sidebar.theater.prompt.captionOn"), append: t("sidebar.theater.prompt.captionAppend"), off: t("sidebar.theater.prompt.captionOff") };
+}
+
+/** 본문을 쓰는 모드인데 지침이 비었을 때만 서는 안내. 「내 지침만」이면 시스템 프롬프트 없이 뜨므로 그리는 쪽이 경고로 세운다. */
+export function useTheaterPromptEmptyNotice(draft: TheaterSystemPrompt): string | null {
+  const t = useT();
+  if (draft.mode === "on" || draft.body.trim()) return null;
+  return t(draft.mode === "append" ? "sidebar.theater.prompt.captionEmpty" : "sidebar.theater.prompt.captionOffEmpty");
+}
+
+/** 한도의 90%부터 글자 수가 경고 쪽으로 선다 — 넘기 전에 남은 여유가 보이게. */
+export function isNearPromptLimit(draft: TheaterSystemPrompt): boolean {
+  return !isOverPromptLimit(draft) && draft.body.length >= CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS * 0.9;
 }
 
 export function useTheaterPromptModeNames(): Record<ClaudeCodeSystemPromptMode, string> {
