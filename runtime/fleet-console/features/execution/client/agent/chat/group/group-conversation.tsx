@@ -584,8 +584,10 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           </span>
         ) : report ? <span className="group-chat-agent-head">{name}{reportTag}</span> : name}
         <div ref={clip.ref} className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
-          {entry.text.trim().length === 0 && entry.streaming
-            ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span>
+          {/* 첨부는 사람 말풍선과 같은 자리(본문 앞)에 선다 — 문면 없이 첨부만 실은 말도 빈 말풍선이 아니다. */}
+          {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
+          {entry.text.trim().length === 0
+            ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
             : <StreamedMarkdown text={entry.text} streaming={entry.streaming} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
