@@ -1202,6 +1202,8 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-decision-handed b { margin-right: 6px; color: var(--text-primary); }
 /* 결정 요청 밖의 넘김(기준·검토·후속) — 이유 한 줄 아래 오른쪽 끝에 「사령관에게 돌려주기」. 결정 칸과 같은 바깥 여백. */
 .objectives-hold { display: flex; flex-direction: column; gap: 6px; margin: 4px 10px 8px; }
+/* 어느 항목의 넘김인지 — 완료 검토와 후속 후보가 함께 서도 갈린다. 결정 카드 머리처럼 작은 머리말. */
+.objectives-hold-label { font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
 .objectives-hold-acts { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .objectives-decision-head time, .objectives-decision-n { font-family: var(--font-ui); font-weight: var(--weight-regular); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-n { margin-left: auto; }

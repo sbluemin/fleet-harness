@@ -19,6 +19,8 @@ import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
 import { PersonHoldNote } from "./decisions.js";
+import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
+import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
 import { focusOperation, hasDecisionRequest, post, returnPersonHold, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
@@ -246,6 +248,9 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
 // ── 상세 ──
 
 interface Recipient { readonly id: string; readonly role: string; readonly state: string }
+/** 띠가 지금 「완료」를 세우지 못하는 사정 — 누르기 전의 상태다(거절 문구가 아니다). */
+type FinishBlock = "awaiting" | "working" | "gated" | "steer" | "notInReview";
+
 interface ObjectiveActions {
   readonly recipients: readonly Recipient[];
   readonly message: boolean;
@@ -257,6 +262,11 @@ interface ObjectiveActions {
    * review 는 개시가 라우팅으로 새로 띄울 구성원이다 — 라우팅 확인이 켜져 있을 때만 차고, 차 있으면 개시는 확인 시트를 거친다.
    */
   readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[] } | null;
+  /**
+   * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정(띠의 판정 순서와 같다), null 이면
+   * 누를 수 있다. followups 는 완료가 후속 후보 고르기를 거쳐야 하는가(띠의 followupAvailable) — 그러면 완료는 고르기 시트를 연다.
+   */
+  readonly finish: { readonly blocked: FinishBlock | null; readonly followups: boolean } | null;
 }
 
 /**
@@ -286,8 +296,17 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
       ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review }
       : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review }
         : working ? { kind, reason: t("objectives.mobile.commence.working"), review } : null;
-  // 후속 후보가 있으면 완료는 후보 고르기를 거쳐야 한다 — 폰에서는 그 고르기가 없으므로 완료를 세우지 않는다.
-  return { recipients, message: has("message"), complete: has("complete") && !choices.followupAvailable, handOff: has("handOff"), stop: has("stop"), commence };
+  const finish: ObjectiveActions["finish"] = done || !objective.awaitingReview ? null : {
+    blocked: choices.primary === "complete" && !choices.gated ? null
+      : commanderAwaiting ? "awaiting"
+        : working ? "working"
+          : memberAwaiting ? "awaiting"
+            : choices.gated ? "gated"
+              : steeredEdits(objective) ? "steer" : "notInReview",
+    followups: choices.followupAvailable,
+  };
+  // 후속 후보가 있으면 완료는 띠처럼 곧바로 하지 않고 후보 고르기 시트를 거친다(finish.followups).
+  return { recipients, message: has("message"), complete: has("complete"), handOff: has("handOff"), stop: has("stop"), commence, finish };
 }
 
 /** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
@@ -341,6 +360,7 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const title = objective?.title ?? "";
   const [sheet, setSheet] = useState(false);
   const [routingSheet, setRoutingSheet] = useState(false);
+  const [followupSheet, setFollowupSheet] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useFocusedFieldInView(rootRef);
   const [toast, setToast] = useState<{ readonly text: string; readonly at: number } | null>(null);
@@ -358,6 +378,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const reviewing = actions?.commence && !actions.commence.reason && actions.commence.review.length > 0 ? actions.commence.review : null;
   const canReview = reviewing !== null;
   useEffect(() => { if (!canReview) setRoutingSheet(false); }, [canReview]);
+  // 후속 시트는 볼 후보가 남아 있는 동안만 선다 — 그새 완료됐거나 모두 정리됐으면 닫는다.
+  const followupCount = objective && !objective.done ? openFollowups(objective).length : 0;
+  useEffect(() => { if (followupCount === 0) setFollowupSheet(false); }, [followupCount]);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
   // 데스크톱 상세 머리와 같은 조건 — 지휘관 묶음이 일하는 동안은 보관 입구를 내지 않는다.
   const archivable = objective?.hasOperation === true && (!!objective.done || !WORKING.has(activityOf(operations, objective.id)));
@@ -375,6 +398,14 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       .then(({ objective: archived, deleted }) => { if (deleted) removeObjectiveLocally(id); else upsertObjectiveLocally(archived); panes.close(); })
       .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api, panes]);
+  // 한 번 보였던 목표가 목록에서 사라지면(완료·보관으로 Operation 이 보관함에 들어갔다) 빈 상세를 남기지 않고 닫는다 — 보관 경로의 닫기와 같다.
+  const shownOnce = useRef(false);
+  useEffect(() => {
+    if (objective) { shownOnce.current = true; return; }
+    if (!shownOnce.current || !visible) return;
+    shownOnce.current = false;
+    panes.close();
+  }, [objective, visible, panes]);
   const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${archivable ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
@@ -383,7 +414,8 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     if (current) {
       // 「메시지」는 늘 선다 — 받을 세션이 없거나 띠가 다른 할 일을 먼저 세우는 동안은 흐리게.
       items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
-      if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => act("/objective/complete") });
+      // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
+      if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
       if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
       // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
       if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
@@ -400,9 +432,8 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
-        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 제 카드로 세운다. */}
-        <PersonHoldNote objective={objective} target="review" t={t} phone label={t("objectives.objectives.review")} />
-        <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} />
+        {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다. */}
+        <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         <CrewSection objective={objective} operations={operations} t={t} crew={crew} />
         {/* 세션 진입을 겸하는 지휘관·구성원은 임무 위, 설정 전용 카드(서브에이전트 허용)는 임무·결과물 아래에 둔다(폰 첫 화면에 임무가 보이게). */}
@@ -428,9 +459,179 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
         <SubagentsSection objective={objective} t={t} crew={crew} />
       </div>
       {routingSheet && reviewing ? <RoutingSheet objective={objective} targets={reviewing} t={t} api={api} language={language} say={say} onClose={() => setRoutingSheet(false)} /> : null}
+      {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </div>
+  );
+}
+
+// ── 넘김 답하기 ──
+
+/** 막힌 사정을 누르기 전의 상태로 말한다 — 개시 카드와 같은 상태 문구를 먼저 쓰고, 띠의 거절 문구는 쓰지 않는다. */
+function finishBlockText(t: T, objective: Objective, block: FinishBlock): string {
+  switch (block) {
+    case "working": return t("objectives.mobile.commence.working");
+    case "awaiting": return t("objectives.mobile.finish.awaiting");
+    case "gated": return t("objectives.band.gated", { count: objective.criteriaProposals.length });
+    case "steer": return t("objectives.band.reason.steerRequired");
+    case "notInReview": return t("objectives.band.reason.notInReview");
+  }
+}
+
+/** 후속 후보를 지금 고를 수 있는지의 한 줄 — 고를 수 없으면 데스크톱 본문 구획의 말로, 띠가 다른 할 일을 먼저 세우면 그 상태로 말한다. */
+function followupNote(objective: Objective, finish: ObjectiveActions["finish"], t: T, count: number): string {
+  if (finish?.followups) return t("objectives.followup.listTip", { n: count });
+  if (isFollowupSelectable(objective)) return finishBlockText(t, objective, finish?.blocked ?? "notInReview");
+  const gate = followupGate(objective);
+  return gate === "steer" ? t("objectives.followup.bodyEdited")
+    : gate === "criteria" ? t("objectives.followup.bodyGated")
+      : objective.awaitingHandoff ? t("objectives.followup.bodyHandoff")
+        : t("objectives.followup.bodyWorking");
+}
+
+/**
+ * 사령관이 넘긴 완료 검토·후속 후보 — 이유·돌려주기(`PersonHoldNote`) 카드에 그 항목에 직접 답하는 단추를 붙인다.
+ * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
+ * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
+ * 둘이 함께 서면 두 카드가 같은 시트를 연다 — 넘김은 따로 돌려줄 수 있어, 하나를 돌려준 뒤에도 남은 카드만으로 답이 된다.
+ * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다(데스크톱 본문 구획과 같다).
+ */
+function HoldAnswers({ objective, finish, t, language, api, onPick }: {
+  readonly objective: Objective;
+  readonly finish: ObjectiveActions["finish"];
+  readonly t: T;
+  readonly language: ConsoleLocale;
+  readonly api: PaneContext["api"];
+  readonly onPick: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [fault, setFault] = useState<string | null>(null);
+  useEffect(() => { setFault(null); }, [objective.id, finish?.blocked, finish?.followups]);
+  const reviewHeld = livePersonHold(objective, "review") !== null;
+  const followupHeld = livePersonHold(objective, "followup") !== null;
+  if (!reviewHeld && !followupHeld) return null;
+  const count = openFollowups(objective).length;
+  const blocked = finish?.blocked ?? "notInReview";
+  const completable = !!finish && finish.blocked === null;
+  const pickable = !!finish?.followups;
+  const complete = () => {
+    if (busy || !completable) return;
+    if (pickable) { onPick(); return; }
+    setBusy(true);
+    setFault(null);
+    void post(api, "/objective/complete", { objectiveId: objective.id, language })
+      .catch((error: unknown) => setFault(bandFailure(t, error, { message: false, talk: false })))
+      .finally(() => setBusy(false));
+  };
+  const reviewDesc = !completable ? finishBlockText(t, objective, blocked)
+    : pickable ? t("objectives.followup.sub", { n: count })
+      : t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub");
+  return (
+    <>
+      {reviewHeld ? (
+        <PersonHoldNote objective={objective} target="review" t={t} phone label={t("objectives.objectives.review")} locked={busy}
+          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy || !completable} aria-busy={busy || undefined} onClick={complete}>{t(busy ? "objectives.band.sending" : "objectives.review.complete")}</button>}>
+          <p className="objectives-m-prop-sub">{reviewDesc}</p>
+          {fault ? <p className="objectives-m-fault" role="status">{fault}</p> : null}
+        </PersonHoldNote>
+      ) : null}
+      {followupHeld ? (
+        <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} locked={busy}
+          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={onPick}>{pickable ? t("objectives.mobile.followup.pick") : t("objectives.followup.openTip", { n: count })}</button>}>
+          <p className="objectives-m-prop-sub">{followupNote(objective, finish, t, count)}</p>
+        </PersonHoldNote>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * 후속 후보 고르기 시트 — 데스크톱 띠의 후속 칸과 같은 줄·상세(`FollowupCandidateList`)와 같은 선택 초안(`useFollowupSelection`, 탭 메모리)이다.
+ * 고를 수 있으면 바닥 「완료」가 선택 순간의 rev 로 `/objective/complete` 에 한 번 보낸다 — 고른 게 없으면 그대로 완료다. 그새 바뀐 후보는
+ * 서버가 followup_changed 로 거절하고, 시트는 열린 채 띠와 같은 사유를 말한다(바뀐 후보의 선택은 풀려 다시 읽고 고른다).
+ * 고를 수 없는 상태면 읽기·폐기만 하고 막힌 사정을 말한다.
+ */
+function FollowupSheet({ objective, finish, t, api, language, onClose }: {
+  readonly objective: Objective;
+  readonly finish: ObjectiveActions["finish"];
+  readonly t: T;
+  readonly api: PaneContext["api"];
+  readonly language: ConsoleLocale;
+  readonly onClose: () => void;
+}) {
+  const sheet = useBottomSheet(onClose);
+  const objectiveId = objective.id;
+  const candidates = openFollowups(objective);
+  const selectable = !!finish?.followups;
+  const selection = useFollowupSelection(objectiveId);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 고른 후보가 고쳐져 선택이 풀렸다 — 사람이 모르고 0건으로 완료하지 않게, 다시 고르거나 닫을 때까지 시트에 한 줄 남긴다.
+  const [revised, setRevised] = useState(false);
+  // 이 시트가 마지막으로 본 선택(id → 고른 순간의 rev) — 다른 곳에서 먼저 풀어도 무엇이 풀렸는지 안다.
+  const seenRevs = useRef(new Map(readSelectionRevs(objectiveId)));
+  const idsKey = candidates.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
+  // 띠와 같다 — 목록에서 사라진 id 는 초안에서 거두고, rev 가 바뀐 id 는 선택을 풀어 고친 본문을 확인한 뒤 다시 고르게 한다.
+  useEffect(() => {
+    const openRevs = new Map(idsKey ? idsKey.split(",").map((entry) => { const at = entry.lastIndexOf(":"); return [entry.slice(0, at), Number(entry.slice(at + 1))] as const; }) : []);
+    const changed = [...seenRevs.current].some(([id, rev]) => openRevs.has(id) && openRevs.get(id) !== rev);
+    pruneSelection(objectiveId, openRevs);
+    seenRevs.current = new Map(readSelectionRevs(objectiveId));
+    if (changed) setRevised(true);
+  }, [objectiveId, idsKey]);
+  // 선택이 바뀌면 본 선택도 따라간다 — 위 효과가 먼저 돌아 같은 커밋의 rev 변경을 놓치지 않는다.
+  useEffect(() => { seenRevs.current = new Map(readSelectionRevs(objectiveId)); }, [objectiveId, selection]);
+  const total = candidates.length;
+  const picked = candidates.filter((candidate) => selection.has(candidate.id)).length;
+  const submit = async () => {
+    if (sending || !selectable) return;
+    const live = new Set(candidates.map((candidate) => candidate.id));
+    const chosen = [...readSelectionRevs(objectiveId)].filter(([id]) => live.has(id));
+    setSending(true);
+    setError(null);
+    try {
+      await post(api, "/objective/complete", chosen.length === 0
+        ? { objectiveId, language }
+        : { objectiveId, batchId: newBatchId(), followups: chosen.map(([id, rev]) => ({ id, rev })), language });
+      clearSelection(objectiveId);
+      sheet.close();
+    } catch (failure) {
+      setError(bandFailure(t, failure, { message: false, talk: false }));
+    } finally { setSending(false); }
+  };
+  const discard = (candidateId: string) => {
+    setError(null);
+    void post(api, "/followup/discard", { objectiveId, candidateId, language }).catch((failure: unknown) => setError(bandFailure(t, failure, { message: false, talk: false })));
+  };
+  return (
+    <BottomSheet sheet={sheet} t={t} title={t("objectives.followup.title")} busy={sending} focusOnOpen
+      foot={selectable ? (
+        <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={sending} aria-busy={sending || undefined} onClick={() => void submit()}>
+          {t(sending ? "objectives.band.sending" : "objectives.review.complete")}
+        </button>
+      ) : null}>
+      <p className="objectives-m-secnote" aria-live="polite">{selectable ? `${t("objectives.followup.pick")} · ${t("objectives.followup.count", { k: picked, n: total })}` : followupNote(objective, finish, t, total)}</p>
+      <div className="objectives-m-followups">
+        <FollowupCandidateList
+          candidates={candidates}
+          selectable={selectable}
+          selection={selection}
+          t={t}
+          idPrefix={`m-${objectiveId}`}
+          openId={openId}
+          onOpenChange={setOpenId}
+          onToggleCheck={(candidateId, checked) => { const rev = candidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objectiveId, candidateId, checked, rev); setError(null); setRevised(false); }}
+          onDiscard={discard}
+        />
+        <FollowupDiscardedTrace discarded={discardedFollowups(objective)} t={t} />
+      </div>
+      {revised && !error ? <p className="objectives-m-fault" role="status">{t("objectives.band.reason.followupChanged")}</p> : null}
+      {error ? <p className="objectives-m-fault" role="alert">{error}</p>
+        : selectable ? <p className="objectives-m-secnote">{picked === 0 ? t("objectives.followup.sendEmpty", { n: total }) : t("objectives.followup.sendSome", { k: picked })}</p>
+        : null}
+    </BottomSheet>
   );
 }
 

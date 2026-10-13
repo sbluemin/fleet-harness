@@ -142,6 +142,10 @@
 .objectives-m .objectives-m-b2 { height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-inverse); color: var(--m-on-inverse); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
 .objectives-m .objectives-m-b2:disabled { opacity: .4; cursor: default; }
 .objectives-m .objectives-m-b2.is-quiet { background: transparent; color: var(--m-text-muted); box-shadow: inset 0 0 0 1px var(--m-hairline-strong); }
+/* 누를 자리 44 — 보이는 알약(40)은 그대로 두고 투명 ::before 를 위아래 2씩 내민다(R3 누름 겹침은 ::after 라 겹치지 않는다).
+   옆 단추와는 가로로 내밀지 않아 칸이 겹치지 않는다. 시트의 알약(.objectives-m-pill2)도 같다. */
+.objectives-m .objectives-m-b2, .objectives-m-sheet-layer .objectives-m-pill2 { position: relative; }
+.objectives-m .objectives-m-b2::before, .objectives-m-sheet-layer .objectives-m-pill2::before { content: ""; position: absolute; inset: -2px 0; }
 .objectives-m-fault { margin: 0; font-size: var(--m-fs-caption); color: var(--m-danger); }
 
 /* 보조 알약 — 받는 사람 칩, 시트의 「보내기」(.is-inv). */
@@ -184,6 +188,37 @@
 .objectives-m-route-tag { color: var(--m-awaiting); font-size: var(--m-fs-caption); font-weight: var(--weight-bold); }
 .objectives-m-route-why { grid-column: 1 / -1; font-size: var(--m-fs-caption); line-height: 18px; color: var(--m-text-faint); overflow-wrap: anywhere; }
 .objectives-m-route-why.is-warn { color: var(--m-awaiting); }
+
+/*
+ * 후속 후보 고르기 시트 — 데스크톱 띠의 후속 칸과 같은 줄·상세(followups-view.tsx)를 이 범위에서만 모바일 문법으로 다시 입힌다.
+ * 데스크톱 규칙은 건드리지 않는다. 줄 = 체크상자(보이는 20, 누름 칸 44) | 제목·요약·영향 | 근거 수 ›, 줄 사이 hairline.
+ * 체크는 결정 질문의 여러 개 고르기(.objectives-m-ind.is-check)와 같은 모서리 6 네모다. 색은 모바일 토큰만.
+ */
+.objectives-m-followups .objectives-followup-list { padding: 0; }
+.objectives-m-followups .objectives-followup-item { border-top: 1px solid var(--m-hairline); border-radius: 0; }
+.objectives-m-followups .objectives-followup-item:first-child { border-top: 0; }
+.objectives-m-followups .objectives-followup-item.is-open { background: none; }
+.objectives-m-followups .objectives-followup-row { gap: 12px; padding: 12px 4px; }
+.objectives-m-followups .objectives-followup-sel { position: relative; width: 20px; height: 20px; margin: 1px 0 0; border: 2px solid var(--m-text-muted); border-radius: 6px; }
+.objectives-m-followups .objectives-followup-sel::before { content: ""; position: absolute; inset: -12px; }
+.objectives-m-followups .objectives-followup-sel:checked { background: var(--m-text); border-color: var(--m-text); }
+.objectives-m-followups .objectives-followup-sel:checked::after { width: 9px; height: 5px; border-color: var(--m-bg); border-width: 2px; }
+.objectives-m-followups .objectives-followup-title { color: var(--m-text); font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
+.objectives-m-followups .objectives-followup-summary { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.objectives-m-followups .objectives-followup-impact { color: var(--m-text); font-size: var(--m-fs-caption); }
+.objectives-m-followups .objectives-followup-impact b { color: var(--m-text-faint); }
+.objectives-m-sheet-layer .objectives-m-followups .objectives-followup-meta { min-height: 32px; padding-top: 0; color: var(--m-text-faint); font-family: var(--m-sans); font-size: var(--m-fs-caption); }
+.objectives-m-followups .objectives-followup-detail { gap: 10px; padding: 0 4px 12px 36px; }
+.objectives-m-followups .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 4px; }
+.objectives-m-followups .objectives-followup-lab { color: var(--m-text-faint); font-family: var(--m-sans); font-size: var(--m-fs-small); }
+.objectives-m-followups :is(.objectives-followup-brief, .objectives-followup-ev li) { color: var(--m-text-muted); font-family: var(--m-sans); font-size: var(--m-fs-caption); }
+.objectives-m-followups .objectives-followup-ev li b { color: var(--m-text); }
+.objectives-m-sheet-layer .objectives-m-followups .objectives-followup-more { min-height: 32px; color: var(--m-text); font-size: var(--m-fs-caption); }
+.objectives-m-followups .objectives-followup-hint { color: var(--m-text-faint); font-size: var(--m-fs-small); }
+.objectives-m-sheet-layer .objectives-m-followups .objectives-followup-discard { height: 40px; padding: 0 16px; border: 0; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
+.objectives-m-sheet-layer .objectives-m-followups .objectives-followup-discard.is-armed { background: transparent; color: var(--m-danger); box-shadow: inset 0 0 0 1px var(--m-danger); }
+.objectives-m-followups .objectives-followup-trace { margin: 4px 4px 0; border-top-color: var(--m-hairline); color: var(--m-text-faint); font-size: var(--m-fs-caption); }
+.objectives-m-sheet-layer .objectives-m-followups .objectives-followup-trace > button { min-height: 32px; }
 
 /*
  * 결과물 — 데스크톱 장부(results.tsx)의 같은 마크업을 이 범위에서만 모바일 묶음 카드로 다시 입힌다. 데스크톱 규칙은 건드리지 않는다.
