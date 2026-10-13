@@ -19,7 +19,7 @@ The server applies the last resize from any controlling client to the PTY, and p
 
 ## Using the client
 
-- Dismiss first-run modals, then open panels through the sidebar focus buttons (they restore minimized panels locally). Never press a dormant panel's resume button: it spawns a CLI.
+- Dismiss first-run modals, then open panels through the sidebar focus buttons (focusing a dormant Operation resumes it, so focus only live ones). Never press a dormant panel's resume button: it spawns a CLI.
 - After every reload the guard is re-applied, but CSSOM edits and injected code are gone; verify state (`rulesPresent`, focus target) before each bench.
 - Check `blockedFetch` after each scenario. A retry storm there is a guard side effect, not a product finding.
 - Close the session with `node .claude/skills/console-e2e/scripts/close-owned-session.mjs <session>` and confirm the user's Console and Desktop PIDs are still alive.
