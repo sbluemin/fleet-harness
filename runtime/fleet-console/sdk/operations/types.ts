@@ -107,6 +107,33 @@ export function retainSubagentSpawn(written: Record<string, unknown>, live: Reco
   return next;
 }
 
+/**
+ * @deprecated 사람 질문 정책은 더 이상 없다 — Console이 띄우는 Claude 세션은 `AskUserQuestion`을 늘 뺀다. API v1
+ * 플러그인의 import가 깨지지 않도록 남긴 payload 도우미이며, 호스트는 이 값을 읽지 않는다.
+ */
+export type UserQuestions = "blocked" | "default";
+
+/** @deprecated `UserQuestions` 참고. 호스트는 이 값을 읽지 않는다. */
+export function userQuestionsBlocked(payload: Record<string, unknown> | undefined): boolean {
+  return payload?.userQuestions === "blocked";
+}
+
+/** @deprecated `UserQuestions` 참고. 다른 payload 키는 그대로 두고 그 값만 바꾼다. 값이 같으면 같은 객체를 돌려준다. */
+export function withUserQuestions(payload: Record<string, unknown>, policy: UserQuestions): Record<string, unknown> {
+  if (payload.userQuestions === policy) return payload;
+  return { ...payload, userQuestions: policy };
+}
+
+/** @deprecated `UserQuestions` 참고. `retainSubagentSpawn`과 같은 규칙으로 그 값을 옮긴다. */
+export function retainUserQuestions(written: Record<string, unknown>, live: Record<string, unknown> | undefined): Record<string, unknown> {
+  const policy = live?.userQuestions;
+  if (policy === "blocked" || policy === "default") return written.userQuestions === policy ? written : { ...written, userQuestions: policy };
+  if (!("userQuestions" in written)) return written;
+  const next = { ...written };
+  delete next.userQuestions;
+  return next;
+}
+
 /** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
 export function withOperationLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
   const value = payload.session;
