@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
-import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withOperationChatSurface, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
@@ -44,6 +44,8 @@ export interface LaunchService {
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
   resumeFollowups(objectiveId?: string): void;
+  /** 휴면한 옛 터미널 지휘관의 다음 재개 표면을 채팅으로 옮긴다(살아 있는 세션은 건드리지 않는다). */
+  adoptChatSurfaces(): void;
   /** 후속으로 만든 Operation 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(operationId: string): void;
   /**
@@ -216,10 +218,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return found;
   };
   const referenceNode = (id: string) => ctx.host.operations.describe ? ctx.host.operations.describe(id)?.operation ?? null : ctx.host.operations.get(id);
+  /**
+   * 옛 터미널 지휘관을 채팅 표면으로 — 보드 동작은 구성원 채팅 입력창에 서므로 지휘관은 채팅이어야 한다. 휴면일 때만 표면 마커를
+   * 옮긴다: Console 은 휴면 Operation 의 마커로 재개 표면을 고르고 이전 대화는 같은 세션의 transcript 로 되살린다. 살아 있는 터미널은
+   * 끊지 않는다 — 그 동안은 사람이 Console 의 보기 전환으로 옮기거나, 휴면한 뒤 다음 점검·깨움이 옮긴다.
+   */
+  const adoptChatSurface = (objectiveId: string): void => {
+    const node = ctx.host.operations.get(objectiveId);
+    if (!node || node.payload.chatMode === true || !store.find(objectiveId)) return;
+    if (ctx.host.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") return;
+    if (ctx.host.operations.patch(objectiveId, { payload: withOperationChatSurface(node.payload) })) store.refresh(objectiveId);
+  };
   // 명시적인 편집·실행만 Core에 사용 의도를 전한다. metadata 조회·통지·삭제에는 쓰지 않는다.
   const accessOperation = async (id: string): Promise<void> => {
     if (ctx.host.operations.access) await ctx.host.operations.access(id, "ensure-active").catch(asStoreError);
     else if (!ctx.host.operations.get(id)) throw new ObjectiveStoreError("unknown_operation");
+    // 깨우기 직전 — 휴면한 옛 터미널 지휘관은 채팅으로 재개된다.
+    adoptChatSurface(id);
   };
   const editableObjective = (id: string): Objective => {
     const current = objective(id);
@@ -1232,6 +1247,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       for (const current of store.all()) {
         if (current.followupBatches.some((batch) => batch.items.some((entry) => entry.operationId === operationId))) store.refresh(current.id);
       }
+    },
+
+    adoptChatSurfaces() {
+      for (const current of store.all()) if (!current.removed) adoptChatSurface(current.id);
     },
 
     resumeFollowups(objectiveId) {

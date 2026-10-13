@@ -78,7 +78,9 @@ export default definePlugin({
     ctx.host.lifecycle.registerCleanup(() => launch.dispose());
     // 옛 정리 데이터는 기간으로 지우지 않는다. 이관 실패는 원본을 둔 채 다음 주기·재시작에서 재시도한다.
     const migrateRemoved = () => { void launch.migrateRemoved().catch((error) => console.warn(`[objectives] removed archive recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`)); };
-    const evidenceGc = setInterval(() => { collectEvidence(); migrateRemoved(); }, RESULT_LIMITS.evidenceGcMs);
+    // 휴면한 옛 터미널 지휘관은 채팅으로 — 기동 때(재시작으로 모두 휴면이다)와 같은 주기로 다시 본다. 살아 있는 세션은 건드리지 않는다.
+    const adoptChat = () => { try { launch.adoptChatSurfaces(); } catch (error) { console.warn(`[objectives] chat surface adoption skipped: ${error instanceof Error ? error.message : "unexpected_failure"}`); } };
+    const evidenceGc = setInterval(() => { collectEvidence(); migrateRemoved(); adoptChat(); }, RESULT_LIMITS.evidenceGcMs);
     evidenceGc.unref?.();
     ctx.host.lifecycle.registerCleanup(() => clearInterval(evidenceGc));
     const on = (channel: string, run: (operationId: string, payload: unknown) => void) => {
@@ -117,6 +119,7 @@ export default definePlugin({
     catch (error) { console.warn(`[objectives] group heal skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     migrateRemoved();
+    adoptChat();
     // 완료 여부가 아니라 미완료 Core 요청만 재접수한다. 과거 완료 목표의 자동 보관은 하지 않는다.
     void launch.resumeOperationIntents().catch((error) => console.warn(`[objectives] Operation request recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`));
     // 끝나지 않은 후속 생성 — 재시작 전에 creating 으로 남은 항목을 같은 키로 이어 간다(키 원장이 중복과 삭제 번복을 막는다).

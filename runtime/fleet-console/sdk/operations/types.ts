@@ -146,6 +146,15 @@ export function withOperationLaunchPreset(payload: Record<string, unknown>, pres
   return next;
 }
 
+/**
+ * 이미 실행한 적 있는 휴면 Agent Operation 의 다음 재개 표면을 채팅으로 옮긴다 — 표면 마커(`chatMode`)만 심고 `chatBorn` 은 두지 않는다
+ * (첫 턴 뒤의 세션이라 transcript 가 있다). Console 은 휴면 Operation 의 이 마커로 재개 표면을 고르고, 이전 대화는 같은 세션의
+ * transcript 재생이 되살린다. 살아 있는 세션에는 쓰지 않는다 — 실행 중 전환은 Console 의 보기 전환이 진다.
+ */
+export function withOperationChatSurface(payload: Record<string, unknown>): Record<string, unknown> {
+  return payload.chatMode === true ? payload : { ...payload, chatMode: true };
+}
+
 export interface OperationCreateInput {
   readonly id?: string;
   readonly theaterId: string;
