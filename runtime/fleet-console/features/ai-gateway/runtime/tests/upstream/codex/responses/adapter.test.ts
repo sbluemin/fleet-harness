@@ -233,6 +233,55 @@ describe("codex responses adapter", () => {
     ).not.toHaveProperty("pattern");
   });
 
+  it("keeps a schema's own null apart from strict mode's omission null", async () => {
+    // `dueDate: null` clears a due date and `member: null` assigns the Commander. Strict mode
+    // turns every unused optional key into a null the strip must remove, so those nulls need
+    // their own spelling or the call silently loses them.
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      `data: ${JSON.stringify({
+        type: "response.output_item.done",
+        output_index: 0,
+        item: {
+          type: "function_call",
+          id: "fc_1",
+          call_id: "call_1",
+          name: "edit",
+          arguments: JSON.stringify({ dueDate: "<null>", member: null, note: null }),
+        },
+      })}\n\n`,
+    ));
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "edit",
+        parameters: {
+          type: "object",
+          properties: {
+            dueDate: { anyOf: [{ type: "string" }, { type: "null" }], description: "null clears the due date." },
+            member: { type: ["string", "null"] },
+            note: { type: "string" },
+          },
+          required: ["dueDate"],
+        },
+      }],
+    }), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of response.events) events.push(event);
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
+    };
+    expect(body.tools[0]!.strict).toBe(true);
+    const nullSpelling = { type: "string", enum: ["<null>"] };
+    // Required: the spelling replaces null outright. Optional: a bare null still means absent.
+    expect(body.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
+    expect(body.tools[0]!.parameters.properties.member!.anyOf).toEqual([{ type: "string" }, nullSpelling, { type: "null" }]);
+
+    const call = events.find((event) => event.type === "response.output_item.done");
+    expect(call).toMatchObject({ item: { type: "function_call", arguments: JSON.stringify({ dueDate: null }) } });
+  });
+
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
     const encoder = new TextEncoder();
     const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });

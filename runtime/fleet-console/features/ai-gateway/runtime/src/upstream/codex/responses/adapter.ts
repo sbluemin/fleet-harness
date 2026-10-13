@@ -1144,6 +1144,11 @@ function readablePatternSchema(value: unknown): unknown {
  *
  * `stripNullArguments` is the inverse: the nulls this transform makes representable are
  * removed again before the call reaches the client, restoring omission semantics.
+ *
+ * That leaves a bare null meaning "absent" on the strict wire, so a property whose own schema
+ * already accepts null as a value — `dueDate: null` clears a due date, `member: null` assigns the
+ * Commander — would lose that value to the strip. Such a property spells its null as the
+ * `NULL_ARGUMENT` string instead, and the strip turns that string back into null.
  */
 /**
  * Keywords known to survive strict mode. An allowlist rather than a denylist: an unknown
@@ -1253,7 +1258,7 @@ function strictSchema(schema: unknown): unknown {
     );
     const rewritten: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(properties)) {
-      const child = strictSchema(value);
+      const child = nullArgumentSchema(strictSchema(value));
       rewritten[name] = required.has(name) ? child : nullableSchema(child);
     }
     next.properties = rewritten;
@@ -1293,8 +1298,62 @@ function nullableSchema(schema: unknown): unknown {
 }
 
 /**
+ * The strict-wire spelling of a null the client's schema accepts as a value. A bare null is
+ * already taken: strict mode makes every optional key required, and the model fills each one
+ * it does not use with null, so null has to keep meaning "absent" there.
+ */
+const NULL_ARGUMENT = "<null>";
+const NULL_ARGUMENT_NOTE = `For null, send the string "${NULL_ARGUMENT}"; a bare null omits this argument.`;
+
+/**
+ * Moves a property's own null onto the `NULL_ARGUMENT` string, so the strip below cannot
+ * mistake it for an omission. Only the property's top level is read: that is where a nullable
+ * zod field (`anyOf: [T, {type: "null"}]`) and a `type: [T, "null"]` union put it.
+ */
+function nullArgumentSchema(schema: unknown): unknown {
+  if (!isRecord(schema) || !admitsNull(schema)) return schema;
+  const { description, title, ...value } = schema;
+  const meta: Record<string, unknown> = {
+    ...(typeof title === "string" ? { title } : {}),
+    description: typeof description === "string" ? `${description} ${NULL_ARGUMENT_NOTE}` : NULL_ARGUMENT_NOTE,
+  };
+  const spelling = { type: "string", enum: [NULL_ARGUMENT] };
+  const branches = Array.isArray(value.anyOf)
+    ? value.anyOf.flatMap((branch) => (isRecord(branch) ? withoutNull(branch) : [branch]))
+    : withoutNull(value);
+  return { ...meta, anyOf: [...branches, spelling] };
+}
+
+function admitsNull(schema: Record<string, unknown>): boolean {
+  if (schema.type === "null") return true;
+  if (Array.isArray(schema.type) && schema.type.includes("null")) return true;
+  if (Array.isArray(schema.enum) && schema.enum.includes(null)) return true;
+  return Array.isArray(schema.anyOf) && schema.anyOf.some((branch) => isRecord(branch) && admitsNull(branch));
+}
+
+/** The schema without its null, or nothing when null is all it accepted. */
+function withoutNull(schema: Record<string, unknown>): Record<string, unknown>[] {
+  if (schema.type === "null") return [];
+  const next: Record<string, unknown> = { ...schema };
+  if (Array.isArray(next.type)) {
+    const types = next.type.filter((type) => type !== "null");
+    if (types.length === 0) return [];
+    next.type = types.length === 1 ? types[0] : types;
+  }
+  if (Array.isArray(next.enum)) {
+    const values = next.enum.filter((entry) => entry !== null);
+    if (values.length === 0) return [];
+    next.enum = values;
+  }
+  return [next];
+}
+
+/**
  * Removes the nulls strict mode requires, so the client sees an omitted argument rather than
  * an explicit null. Anthropic tool schemas treat absence — not null — as "not provided".
+ * A `NULL_ARGUMENT` string in the same positions becomes the null the client asked for. The
+ * string is recognised without the tool's schema, so a free-form string argument that is exactly
+ * `NULL_ARGUMENT` arrives as null too; no client argument is known to take that literal.
  */
 function stripNullArguments(raw: string): string {
   if (raw.length === 0 || !raw.includes("null")) return raw;
@@ -1312,7 +1371,7 @@ function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (entry === null) continue;
-    out[key] = withoutNullMembers(entry);
+    out[key] = entry === NULL_ARGUMENT ? null : withoutNullMembers(entry);
   }
   return out;
 }
