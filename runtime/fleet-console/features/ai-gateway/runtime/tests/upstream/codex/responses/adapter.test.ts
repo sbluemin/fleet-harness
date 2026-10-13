@@ -237,18 +237,13 @@ describe("codex responses adapter", () => {
     // `dueDate: null` clears a due date and `member: null` assigns the Commander. Strict mode
     // turns every unused optional key into a null the strip must remove, so those nulls need
     // their own spelling or the call silently loses them.
+    // `note` never offered the spelling, so the same text there is the model's data.
+    const args = JSON.stringify({ dueDate: "<null>", member: null, note: "<null>" });
+    const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "edit" };
     const fetchMock = vi.fn<typeof fetch>(async () => sse(
-      `data: ${JSON.stringify({
-        type: "response.output_item.done",
-        output_index: 0,
-        item: {
-          type: "function_call",
-          id: "fc_1",
-          call_id: "call_1",
-          name: "edit",
-          arguments: JSON.stringify({ dueDate: "<null>", member: null, note: null }),
-        },
-      })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: args })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { ...call, arguments: args } })}\n\n`,
     ));
     const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
       tools: [{
@@ -278,8 +273,11 @@ describe("codex responses adapter", () => {
     expect(body.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
     expect(body.tools[0]!.parameters.properties.member!.anyOf).toEqual([{ type: "string" }, nullSpelling, { type: "null" }]);
 
-    const call = events.find((event) => event.type === "response.output_item.done");
-    expect(call).toMatchObject({ item: { type: "function_call", arguments: JSON.stringify({ dueDate: null }) } });
+    const decoded = JSON.stringify({ dueDate: null, note: "<null>" });
+    expect(events.find((event) => event.type === "response.function_call_arguments.done"))
+      .toMatchObject({ arguments: decoded });
+    expect(events.find((event) => event.type === "response.output_item.done"))
+      .toMatchObject({ item: { type: "function_call", arguments: decoded } });
   });
 
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
