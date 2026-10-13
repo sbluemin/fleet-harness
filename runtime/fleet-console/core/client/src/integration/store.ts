@@ -637,8 +637,8 @@ export function setActiveOperation(
 }
 
 /**
- * 열지 않고 고른다 — 「더블클릭으로 열기」를 켠 사이드바의 한 번 클릭. 활성·최소화·카메라·미확인 도착 표식은 건드리지 않는다
- * (setActiveOperation 은 도착을 확인 처리하고, 캔버스는 최소화된 활성을 곧바로 비운다). 이미 활성인 것을 고르면 선택은 비어 있다.
+ * 열지 않고 고른다 — 「더블클릭으로 열기」를 켠 사이드바의 한 번 클릭. 활성·카메라·미확인 도착 표식은 건드리지 않는다
+ * (setActiveOperation 은 도착을 확인 처리한다). 이미 활성인 것을 고르면 선택은 비어 있다.
  */
 export function selectOperation(operationId: string | null): void {
   const next = operationId !== null && operationId === state.activeOperationId ? null : operationId;
@@ -944,17 +944,14 @@ export function flattenGroupedOrder(
   ];
 }
 
-// Alt+←/→는 캔버스 배치 순서를 따르되, 캔버스에서 최소화된 Operation은 순환 대상에서 제외한다. 사이드바의 'Sort by status' 축은 이 순서에 관여하지 않는다.
+// Alt+←/→는 그룹 배치 순서를 따른다. 사이드바의 'Sort by status' 축은 이 순서에 관여하지 않는다.
 export function focusCycleOperationIds(
   operations: readonly OperationNode[],
   groups: readonly OperationGroup[],
   operationOrder: readonly string[],
   collapsedGroups: readonly string[],
-  minimized: readonly string[],
 ): readonly string[] {
-  const minimizedIds = new Set(minimized);
   return flattenGroupedOrder(operations, groups, operationOrder, collapsedGroups)
-    .filter((operation) => !minimizedIds.has(operation.id))
     .map((operation) => operation.id);
 }
 

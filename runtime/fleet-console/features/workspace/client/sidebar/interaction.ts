@@ -3,8 +3,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from 
 export type SideBarOperationAction =
   | "rename"
   | "assign-group"
-  | "set-accent"
-  | "minimize";
+  | "set-accent";
 
 export type SideBarOperationMenuAction = Extract<SideBarOperationAction, "assign-group" | "set-accent">;
 

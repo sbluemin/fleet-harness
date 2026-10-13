@@ -106,7 +106,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const catalogRequestEpochRef = useRef(0);
   stateRef.current = state;
 
-  // 최소화 선반에서 꺼낸 패널의 휴면 재개. 대화 화면에는 최소화 선반이 없어, 여는 제스처가 곧 재개 판정이다.
+  // 여는 제스처로 이어지는 휴면 재개 — 대화 화면에서는 여는 제스처가 곧 재개 판정이다.
   //
   // 자동 재개는 관측된 런타임 축 위에서만 한다. 축이 권위를 갖지 못한 구간의 휴면 표시는 사실이
   // 아니라 보수적 폭백이고(pluginRuntimeState 가 degraded 를 플러그인에 넘기지 않는 것과 같은 이유),
@@ -204,7 +204,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
         snapshot.groups.filter((group) => group.theaterId === snapshot.activeTheaterId),
         operationOrderFromNodes(theaterOperations),
         getGroupCollapseSlice().collapsedGroups,
-        [],
       );
       if (order.length === 0) return;
       const nextId = nextOperationId(order, snapshot.activeOperationId, arrowAction === "focus-next" ? 1 : -1);
@@ -512,7 +511,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       activeTheaterId={state.activeTheaterId}
       operations={state.operations}
       groups={state.groups}
-      minimized={[]}
       activeOperationId={state.activeOperationId}
       operationNotifications={state.operationNotifications}
       catalog={catalog}
@@ -522,7 +520,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       renderKindIcon={renderKindIcon}
       onLaunchKind={handleSideBarLaunchKind}
       onClose={handleClose}
-      onMinimize={() => {}}
       onFocus={handleFocus}
       onResume={handleResume}
       onSetAccent={handleSetAccent}

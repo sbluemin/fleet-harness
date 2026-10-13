@@ -45,9 +45,8 @@ let previousActivityById = new Map<string, SideBarStatus>();
 let baselinedLiveActivityIds = new Set<string>();
 let pendingStatusLandingIds = new Set<string>();
 
-// 앞의 다섯은 Operation의 활동 상태다. "minimized"는 활동이 아니라 사용자가 고른 표시 상태이며,
-// 그래서 buildStatusSectionOrder의 상태 축에는 들어가지 않는다 — 활동 축을 순회하는 곳은 이 값을 만들지 않는다.
-export type SideBarStatus = "awaiting" | "running" | "idle" | "ended" | "minimized";
+// Operation의 활동 상태 — buildStatusSectionOrder의 상태 축이 이 값을 순회한다.
+export type SideBarStatus = "awaiting" | "running" | "idle" | "ended";
 
 export function useSideBarState(): SideBarState {
   return useSyncExternalStore(subscribeSideBarState, getSideBarState, getSideBarState);

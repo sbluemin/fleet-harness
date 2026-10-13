@@ -33,7 +33,6 @@ export interface SideBarEntry {
   readonly active: boolean;
   /** 「더블클릭으로 열기」를 켠 사이드바에서 열지 않고 고르기만 한 Operation — 활성이면 세우지 않는다. */
   readonly selected?: boolean;
-  readonly minimized: boolean;
   readonly notificationCount: number;
   /**
    * 활동 — 섹션 분류의 입력. groupOperationsByStatus가 이 값에서 칸을 정하며(미확인 도착은 거기서
@@ -72,8 +71,6 @@ interface SideBarChipProps {
   readonly dropTarget: boolean;
   /** peek(비활성 Theater) 미리보기 칩 — focus만 살리고 close/rename/accent/재배치 어포던스를 렌더하지 않는다. */
   readonly preview?: boolean;
-  /** false면 최소화 버튼과 팔레트 최소화 소비를 끈다. */
-  readonly minimizeEnabled?: boolean;
   /** 컨텍스트 메뉴(그룹/액센트) 호스트가 없는 표면 — false면 메뉴 어포던스와 해당 팔레트 소비를 끈다. */
   readonly menuEnabled?: boolean;
   /** 휴면 선반처럼 본동작이 focus가 아닌 resume인 표면 — 접근성 이름과 툴팁도 같은 동사를 쓴다. */
@@ -84,7 +81,6 @@ interface SideBarChipProps {
    */
   readonly onSelect?: (operationId: string) => void;
   readonly onClose: (operationId: string) => void;
-  readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onKeyboardMove: (operationId: string, direction: -1 | 1) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLLIElement>, operationId: string) => void;
@@ -105,7 +101,6 @@ export function OperationsSideBarChip({
   statusAxis = false,
   statusLanded = false,
   reorderEnabled = true,
-  minimizeEnabled = true,
   menuEnabled = true,
   resumeOnActivate = false,
   onSelect,
@@ -115,7 +110,6 @@ export function OperationsSideBarChip({
   preview = false,
   cluster = null,
   onClose,
-  onMinimize,
   onFocus,
   onKeyboardMove,
   onPointerDragStart,
@@ -127,7 +121,7 @@ export function OperationsSideBarChip({
   const suppressClickRef = useRef(false);
   // 터치 탭은 고르기 모드에서도 연다 — 클릭 사건이 포인터 종류를 싣지 않는 환경이 있어 누를 때 기록해 둔다.
   const pointerTypeRef = useRef("mouse");
-  const { operation, active, minimized, status, mark } = entry;
+  const { operation, active, status, mark } = entry;
   const selected = entry.selected === true && !active;
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
@@ -168,7 +162,6 @@ export function OperationsSideBarChip({
     consoleUseWrapClassName(wrap),
     active ? "side-bar-chip--active" : "",
     selected ? "side-bar-chip--selected" : "",
-    minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
@@ -200,7 +193,7 @@ export function OperationsSideBarChip({
     }
     if (event.detail <= 1) onSelect(operation.id);
   };
-  // 칩 안의 버튼(최소화·보관)과 이름 입력에서 난 더블클릭은 그 컨트롤의 것이다 — 버블된 것을 열기로 읽지 않는다.
+  // 칩 안의 버튼(보관)과 이름 입력에서 난 더블클릭은 그 컨트롤의 것이다 — 버블된 것을 열기로 읽지 않는다.
   // 이름 글자의 더블클릭은 이름 변경이 먼저 멈춘다.
   const openOnDoubleClick = (event: ReactMouseEvent<HTMLLIElement>) => {
     if (pointerTypeRef.current === "touch" || dragging) return;
@@ -295,19 +288,13 @@ export function OperationsSideBarChip({
       rename.begin();
       return true;
     }
-    if (request.action === "assign-group" || request.action === "set-accent") {
-      // 메뉴 호스트가 없는 표면에서 소비를 자칭하면 팔레트 요청이 침묵 실패한다 — 미소비로 남긴다.
-      if (!menuEnabled) return false;
-            // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
-      chip.scrollIntoView({ block: "nearest" });
-      onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
-      return true;
-    }
-    if (!minimizeEnabled) return false;
-        onMinimize(operation.id);
-    chip.focus();
+    // 남은 요청은 assign-group / set-accent — 메뉴 호스트가 없는 표면에서 소비를 자칭하면 팔레트 요청이 침묵 실패한다. 미소비로 남긴다.
+    if (!menuEnabled) return false;
+    // 팔레트로 부른 칩은 사이드바 스크롤 밖일 수 있다. rect를 읽기 전에 끌어와야 메뉴가 화면 안에 앵커링된다.
+    chip.scrollIntoView({ block: "nearest" });
+    onOpenAccent(operation.id, chip.getBoundingClientRect(), chip, request.action);
     return true;
-  }), [menuEnabled, minimizeEnabled, onMinimize, onOpenAccent, operation.id, preview, rename]);
+  }), [menuEnabled, onOpenAccent, operation.id, preview, rename]);
 
   return (
     <li
@@ -428,21 +415,6 @@ export function OperationsSideBarChip({
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
       ) : null}
-      {!preview && !minimized && minimizeEnabled && !conversationRow ? (
-        <button
-          type="button"
-          className="side-bar-chip-minimize"
-          onPointerDown={stopClosePointer}
-          onClick={(event) => {
-            event.stopPropagation();
-                        onMinimize(operation.id);
-          }}
-          aria-label={t("sidebar.chip.minimizeAria", { title })}
-          title={t("sidebar.chip.minimizeTitle")}
-        >
-          <SideBarMinimizeIcon />
-        </button>
-      ) : null}
       {preview ? null : (
         <button
           type="button"
@@ -473,14 +445,6 @@ export function OperationsSideBarChip({
 
 function displayTitle(operation: OperationNode): string {
   return operation.title;
-}
-
-function SideBarMinimizeIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.5 11.5h9" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 /**

@@ -87,7 +87,6 @@ interface OperationsSideBarProps {
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
   readonly groups: readonly OperationGroup[];
-  readonly minimized: readonly string[];
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
@@ -97,7 +96,6 @@ interface OperationsSideBarProps {
   readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
   readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>, groupId?: string | null) => void;
   readonly onClose: (operationId: string) => void;
-  readonly onMinimize: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
   readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
@@ -187,7 +185,6 @@ interface TheaterEntryBuildInput {
   readonly theaterId: string;
   readonly operations: readonly OperationNode[];
   readonly operationOrder: readonly string[];
-  readonly minimizedSet: ReadonlySet<string>;
   readonly activeOperationId: string | null;
   readonly selectedOperationId?: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
@@ -335,37 +332,24 @@ export function StatusSectionSlot({
 
 function StatusRecoveryShelves({
   theaterId,
-  minimizedSection,
   dormantSection,
   renderEntry,
 }: {
   readonly theaterId: string;
-  readonly minimizedSection: StatusSection;
   readonly dormantSection: StatusSection;
-  readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "ended") => ReactNode;
+  readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "ended") => ReactNode;
 }) {
   // 0건 선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
-  if (minimizedSection.entries.length === 0 && dormantSection.entries.length === 0) return null;
+  if (dormantSection.entries.length === 0) return null;
   return (
     <li className="side-bar-status-recovery-shelves">
-      {minimizedSection.entries.length > 0 ? (
-        <section className="side-bar-recovery-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <ol className="side-bar-recovery-minimized-list" aria-label={minimizedSection.label}>
-            <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
-              {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
-            </StatusSectionSlot>
-          </ol>
-        </section>
-      ) : null}
-      {dormantSection.entries.length > 0 ? (
-        <footer className="side-bar-recovery-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <ol className="side-bar-recovery-dormant-list" aria-label={dormantSection.label}>
-            <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
-              {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
-            </StatusSectionSlot>
-          </ol>
-        </footer>
-      ) : null}
+      <footer className="side-bar-recovery-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
+        <ol className="side-bar-recovery-dormant-list" aria-label={dormantSection.label}>
+          <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
+            {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
+          </StatusSectionSlot>
+        </ol>
+      </footer>
     </li>
   );
 }
@@ -386,7 +370,6 @@ export function OperationsSideBar({
   activeTheaterId,
   operations,
   groups,
-  minimized,
   activeOperationId,
   operationNotifications,
   catalog,
@@ -396,7 +379,6 @@ export function OperationsSideBar({
   renderKindIcon,
   onLaunchKind,
   onClose,
-  onMinimize,
   onFocus,
   onResume,
   onSetAccent,
@@ -534,7 +516,6 @@ export function OperationsSideBar({
   const activeOperations = operations.filter((operation) => operation.theaterId === activeTheaterId);
   const activeOperationOrder = operationOrderFromNodes(activeOperations);
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
-  const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
   // 엔트리는 raw 활동과 마크 축을 싣는다. 섹션 승격은 groupOperationsByStatus가 혼자 소유한다 —
   // 여기서 미리 승격해 두면 그 함수가 같은 계산을 다시 해 값이 겹치고, 겹친 값은 어느 표면에도
@@ -545,7 +526,6 @@ export function OperationsSideBar({
       operation,
       active: activeOperationId === operation.id,
       selected: doubleClickOpen && selectedOperationId === operation.id,
-      minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
@@ -557,9 +537,7 @@ export function OperationsSideBar({
   // 고른 목표가 「시작 전」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
   // 고른 목표가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
   const selectedFresh = [...rowPlan.folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ groupId, id: item.layout.cluster.id })))[0] ?? null;
-  const statusGrouped = groupTheaterStatusEntries(allEntries, minimizedSet, getStatusTransitionTick, t);
-  const statusSections = statusGrouped.living;
-  const { minimized: minimizedSection, dormant: dormantSection } = statusGrouped;
+  const { living: statusSections, dormant: dormantSection } = groupTheaterStatusEntries(allEntries, getStatusTransitionTick, t);
   const clusterPropsFor = (entry: SideBarEntry) => clusterChipPropsFor(entry, clusterIndex);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
   const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
@@ -586,7 +564,7 @@ export function OperationsSideBar({
   const renderActiveStatusEntry = (
     entry: SideBarEntry,
     index: number,
-    recovery?: "minimized" | "ended",
+    recovery?: "ended",
   ) => {
     const globalIndex = entryIndexById.get(entry.operation.id) ?? index;
     const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
@@ -604,7 +582,6 @@ export function OperationsSideBar({
         statusAxis
         statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
-        minimizeEnabled={!recovery}
         menuEnabled={!recovery}
         resumeOnActivate={ended}
         {...(onSelect ? { onSelect } : {})}
@@ -612,7 +589,6 @@ export function OperationsSideBar({
         dragOffsetY={0}
         dropTarget={false}
         onClose={onClose}
-        onMinimize={onMinimize}
         onFocus={ended ? onResume : onFocus}
         onKeyboardMove={keyboardMove}
         onPointerDragStart={beginPointerDrag}
@@ -886,7 +862,7 @@ export function OperationsSideBar({
     };
   }, [dragPointerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // interactive: 누르면 끌기 대신 제 동작을 하는 자손. 칩은 안의 버튼(최소화·보관)이 그렇다.
+  // interactive: 누르면 끌기 대신 제 동작을 하는 자손. 칩은 안의 버튼(보관)이 그렇다.
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string, interactive = "button") => {
     if (statusAxis) return;
     if (event.button !== 0) return;
@@ -1209,7 +1185,6 @@ export function OperationsSideBar({
               theaterId: theater.id,
               operations,
               operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
-              minimizedSet: new Set<string>(),
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               selectedOperationId: doubleClickOpen ? selectedOperationId : null,
@@ -1295,7 +1270,6 @@ export function OperationsSideBar({
                   <StatusRecoveryShelves
                     key="__recovery__"
                     theaterId={theater.id}
-                    minimizedSection={minimizedSection}
                     dormantSection={dormantSection}
                     renderEntry={renderActiveStatusEntry}
                   />,
@@ -1396,7 +1370,6 @@ export function OperationsSideBar({
                         }
                         {...(onSelect ? { onSelect } : {})}
                         onClose={onClose}
-                        onMinimize={onMinimize}
                         onFocus={onFocus}
                         onKeyboardMove={keyboardMove}
                         onPointerDragStart={beginPointerDrag}
@@ -1604,36 +1577,20 @@ export function groupOperations(
 
 export function groupTheaterStatusEntries(
   entries: readonly SideBarEntry[],
-  minimizedIds: ReadonlySet<string>,
   getTick?: (id: string) => number | undefined,
   t: Translate<CoreMessageKey> = getT("en"),
 ): {
   readonly living: StatusSection[];
-  readonly minimized: StatusSection;
   readonly dormant: StatusSection;
 } {
-  const dormantEntries = entries
-    .filter((entry) => entry.status === "ended")
-    .map((entry) => entry.minimized ? { ...entry, minimized: false } : entry);
-  const dormantIds = new Set(dormantEntries.map((entry) => entry.operation.id));
-  const minimizedEntries = entries.filter((entry) =>
-    minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id));
-  const recoveryIds = new Set([
-    ...dormantEntries.map((entry) => entry.operation.id),
-    ...minimizedEntries.map((entry) => entry.operation.id),
-  ]);
+  const dormantEntries = entries.filter((entry) => entry.status === "ended");
   const sections = groupOperationsByStatus(
-    entries.filter((entry) => !recoveryIds.has(entry.operation.id)),
+    entries.filter((entry) => entry.status !== "ended"),
     getTick,
     t,
   );
   return {
     living: sections.filter((section) => section.status !== "ended"),
-    minimized: {
-      status: "minimized",
-      label: t("sidebar.status.minimizedShelf"),
-      entries: minimizedEntries,
-    },
     dormant: {
       status: "ended",
       label: t("sidebar.status.dormantShelf"),
@@ -1708,7 +1665,6 @@ export function buildTheaterEntries({
   theaterId,
   operations,
   operationOrder,
-  minimizedSet,
   activeOperationId,
   selectedOperationId = null,
   operationNotifications,
@@ -1724,7 +1680,6 @@ export function buildTheaterEntries({
       operation,
       active: activeOperationId === operation.id,
       selected: selectedOperationId === operation.id,
-      minimized: minimizedSet.has(operation.id),
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
@@ -2045,10 +2000,8 @@ function TheaterInactiveSection({
       />
     );
   };
-  const minimizedSet = new Set(entries.filter((entry) => entry.minimized).map((entry) => entry.operation.id));
-  const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
+  const { living: statusSections, dormant: dormantSection } = groupTheaterStatusEntries(
     entries,
-    minimizedSet,
     getStatusTransitionTick,
     t,
   );
@@ -2056,7 +2009,7 @@ function TheaterInactiveSection({
   const renderInactiveStatusEntry = (
     entry: SideBarEntry,
     index: number,
-    recovery?: "minimized" | "ended",
+    recovery?: "ended",
   ) => {
     const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
@@ -2071,7 +2024,6 @@ function TheaterInactiveSection({
         statusAxis
         statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
-        minimizeEnabled={false}
         menuEnabled={false}
         resumeOnActivate={ended}
         {...(onSelect ? { onSelect } : {})}
@@ -2080,7 +2032,6 @@ function TheaterInactiveSection({
         dropTarget={false}
         preview
         onClose={() => {}}
-        onMinimize={() => {}}
         onFocus={ended ? onResume : onFocus}
         onKeyboardMove={() => {}}
         onPointerDragStart={() => {}}
@@ -2133,7 +2084,6 @@ function TheaterInactiveSection({
             <StatusRecoveryShelves
               key="__recovery__"
               theaterId={theater.id}
-              minimizedSection={minimizedSection}
               dormantSection={dormantSection}
               renderEntry={renderInactiveStatusEntry}
             />,
@@ -2201,7 +2151,6 @@ function TheaterInactiveSection({
                           preview
                           {...(onSelect ? { onSelect } : {})}
                           onClose={() => {}}
-                          onMinimize={() => {}}
                           onFocus={onFocus}
                           onKeyboardMove={() => {}}
                           onPointerDragStart={() => {}}

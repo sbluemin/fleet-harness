@@ -32,7 +32,7 @@ const COMMAND_WAIT_MS = 8_000;
  * Operation 하나의 채팅 소켓.
  *
  * PTY와 같은 수명이다: 티켓 POST → `/api/v1/terminal/ws` upgrade → 저널 리플레이.
- * `live`가 false면 소켓을 열지 않는다. 본문 풀이 주차·최소화·숨김 본문을 살려 두므로,
+ * `live`가 false면 소켓을 열지 않는다. 본문 풀이 주차·숨김 본문을 살려 두므로,
  * 그때도 구독하면 화면 밖 패널마다 소켓을 하나씩 점유한다. 덱 타일은 본문이
  * 그려지므로 live로 남긴다.
  */

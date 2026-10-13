@@ -3,9 +3,13 @@ import { useSyncExternalStore } from "react";
 /**
  * 사이드바 그룹 접힘과 Operation 액센트.
  * 영속 키는 예전 캔버스 저장(`fleet-console.canvas.<theaterId>`)을 유지하고,
- * 그 JSON의 다른 필드는 지우지 않는다.
+ * 그 JSON의 다른 필드는 지우지 않는다 — 퇴역한 최소화 필드만 첫 로드에 걷는다.
  */
 const STORAGE_KEY_PREFIX = "fleet-console.canvas.";
+// 캔버스가 퇴역하며 함께 사라진 최소화 상태 — 같은 키 JSON의 `minimized` 필드와 탭 세션의 부팅 최소화 표식.
+const LEGACY_MINIMIZED_FIELD = "minimized";
+const LEGACY_BOOT_MINIMIZED_SESSION_KEY = "fleet.console.boot-minimized-theaters";
+dropLegacyMinimizedState();
 
 export interface GroupCollapseSlice {
   readonly collapsedGroups: readonly string[];
@@ -196,6 +200,34 @@ function normalizeOperationAccent(value: unknown): Record<string, string> {
     operationAccent[id] = accentKey;
   }
   return operationAccent;
+}
+
+/** 모든 Theater 키에서 `minimized` 필드만 지운다. collapsedGroups·operationAccent·operationOrder 등 나머지는 그대로 둔다. */
+function dropLegacyMinimizedState(): void {
+  if (typeof window === "undefined") return;
+  try { window.sessionStorage.removeItem(LEGACY_BOOT_MINIMIZED_SESSION_KEY); } catch { /* ignore */ }
+  try {
+    const storage = window.localStorage;
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith(STORAGE_KEY_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) {
+      try {
+        const raw = storage.getItem(key);
+        if (!raw) continue;
+        const parsed: unknown = JSON.parse(raw);
+        if (!isRecord(parsed) || !(LEGACY_MINIMIZED_FIELD in parsed)) continue;
+        delete parsed[LEGACY_MINIMIZED_FIELD];
+        storage.setItem(key, JSON.stringify(parsed));
+      } catch {
+        // 손상된 값은 readRaw가 이미 빈 상태로 읽으므로 그대로 두고 다음 키로 간다.
+      }
+    }
+  } catch {
+    // 브라우저 저장소를 쓸 수 없으면 정리만 건너뛴다.
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
