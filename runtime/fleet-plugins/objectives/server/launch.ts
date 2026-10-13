@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import { canonicalModelId } from "@fleet-console/sdk/models";
-import { readOperationLaunch, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
+import { readOperationLaunch, withOperationChatSurface, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
@@ -44,6 +44,8 @@ export interface LaunchService {
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
   resumeFollowups(objectiveId?: string): void;
+  /** 휴면한 옛 터미널 지휘관의 다음 재개 표면을 채팅으로 옮긴다(살아 있는 세션은 건드리지 않는다). */
+  adoptChatSurfaces(): void;
   /** 후속으로 만든 Operation 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(operationId: string): void;
   /**
@@ -216,10 +218,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return found;
   };
   const referenceNode = (id: string) => ctx.host.operations.describe ? ctx.host.operations.describe(id)?.operation ?? null : ctx.host.operations.get(id);
+  /**
+   * 옛 터미널 지휘관을 채팅 표면으로 — 보드 동작은 구성원 채팅 입력창에 서므로 지휘관은 채팅이어야 한다. 휴면일 때만 표면 마커를
+   * 옮긴다: Console 은 휴면 Operation 의 마커로 재개 표면을 고르고 이전 대화는 같은 세션의 transcript 로 되살린다. 살아 있는 터미널은
+   * 끊지 않는다 — 그 동안은 사람이 Console 의 보기 전환으로 옮기거나, 휴면한 뒤 다음 점검·깨움이 옮긴다.
+   */
+  const adoptChatSurface = (objectiveId: string): void => {
+    const node = ctx.host.operations.get(objectiveId);
+    if (!node || node.payload.chatMode === true || !store.find(objectiveId)) return;
+    if (ctx.host.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") return;
+    if (ctx.host.operations.patch(objectiveId, { payload: withOperationChatSurface(node.payload) })) store.refresh(objectiveId);
+  };
   // 명시적인 편집·실행만 Core에 사용 의도를 전한다. metadata 조회·통지·삭제에는 쓰지 않는다.
   const accessOperation = async (id: string): Promise<void> => {
     if (ctx.host.operations.access) await ctx.host.operations.access(id, "ensure-active").catch(asStoreError);
     else if (!ctx.host.operations.get(id)) throw new ObjectiveStoreError("unknown_operation");
+    // 깨우기 직전 — 휴면한 옛 터미널 지휘관은 채팅으로 재개된다.
+    adoptChatSurface(id);
   };
   const editableObjective = (id: string): Objective => {
     const current = objective(id);
@@ -339,7 +354,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return;
     }
     if (!pendingCommander) throw new ObjectiveStoreError("unknown_operation");
-    const launchedId = await launch({ ...pendingCommander, objectiveId, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
+    // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
+    const launchedId = await launch({ ...pendingCommander, viewMode: "chat", objectiveId, dormant: true, launchKey: key, newOperationId: objectiveId }).catch(asStoreError);
     if (launchedId !== objectiveId) throw new ObjectiveStoreError("operation_id_taken");
     store.launched(objectiveId);
   };
@@ -472,15 +488,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
     ctx.host.consoleControl?.setSubagentSpawn?.(operationId, allowed ? "default" : "blocked");
   };
-  /**
-   * 지휘관이 지금 쓰는 뷰 — 후속 목표의 지휘관이 이어받는다. 살아 있는 지휘관은 지금 보이는 표면을, 미기동·휴면이면 저장된
-   * 시작 뷰를 쓴다(표식이 없는 옛 지휘관은 터미널이다).
-   */
-  const commanderView = (objectiveId: string): "terminal" | "chat" => {
-    const observation = ctx.host.consoleControl?.observe(objectiveId);
-    if (observation?.lifecycle === "live") return observation.surface;
-    return objective(objectiveId).commander.viewMode ?? "terminal";
-  };
   const memberPreset = (current: Objective, member: ObjectiveMember) => member.launch.mode === "model"
     ? { model: member.launch.model, effort: member.launch.effort }
     : { model: current.commander.model, effort: current.commander.effort };
@@ -528,7 +535,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         const created = ctx.host.operations.create({ id, theaterId: config.theaterId, type: "agent", pluginId: null,
           title: config.title, createdAt: config.createdAt,
           payload: { dormantBorn: true, restoredDormant: true, launchKey: { owner: ctx.pluginId, key },
-            ...(config.viewMode === "chat" ? { chatMode: true, chatBorn: true } : {}),
+            chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } } });
         if (created.id !== id) throw new ObjectiveStoreError("operation_id_taken");
@@ -1207,14 +1214,14 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("operation_id_taken");
-      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로, 채팅 뷰에서 시작한다 — 원본 지휘관의 뷰를
-      // 이어받지 않는다. 사람이 만든 목표는 보드 기본값(또는 이어받은 뷰) 그대로이고, 개시 전에는 누구든 뷰를 바꿀 수 있다.
+      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로 시작한다. 지휘관의 뷰는 누가 만들든 채팅이다 —
+      // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
       const commander = byCommodore ? serviceOptions.commodoreCommander?.(input.theaterId) ?? null : null;
       return store.adopt(id, { ...init, by: actor }, {
         theaterId: input.theaterId, title: input.title, groupId: input.groupId, createdAt: Date.now(),
-        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: byCommodore ? "chat" : input.viewMode ?? "terminal",
+        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
       });
     },
 
@@ -1222,7 +1229,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const current = objective(objectiveId);
       store.completeWithFollowups(objectiveId, {
         ...selection,
-        launch: { groupId: current.groupId, viewMode: commanderView(objectiveId), language: languageOf(options) },
+        launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
       }, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
       await applyOperationIntent(objectiveId);
       if (store.pending(objectiveId)) await migrateRemoval(objectiveId);
@@ -1240,6 +1247,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       for (const current of store.all()) {
         if (current.followupBatches.some((batch) => batch.items.some((entry) => entry.operationId === operationId))) store.refresh(current.id);
       }
+    },
+
+    adoptChatSurfaces() {
+      for (const current of store.all()) if (!current.removed) adoptChatSurface(current.id);
     },
 
     resumeFollowups(objectiveId) {
@@ -1363,7 +1374,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       return objective(objectiveId);
     }),
 
-    setPreset: (objectiveId, preset) => orderedOperationRequest(objectiveId, async () => {
+    setPreset: (objectiveId, { viewMode: _view, ...preset }) => orderedOperationRequest(objectiveId, async () => {
+      // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트가 보내는 viewMode 는 받되 쓰지 않는다.
       editableObjective(objectiveId);
       const node = referenceNode(objectiveId);
       if (!node && store.pending(objectiveId)) {

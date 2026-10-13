@@ -1,5 +1,4 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
-import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
@@ -11,12 +10,12 @@ import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-me
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
-import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
+import { connectFreshConversation, freshConversationSurface, openObjectiveConversation } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
+import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, openObjectiveFromCluster, patchObjectiveView, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -27,7 +26,7 @@ const ObjectiveIcon = () => (
   </svg>
 );
 
-/** 같은 본문을 레일 primary와 기존 전용 확장 표면에 각각 세운다. */
+/** 목표 상세는 레일 primary 한 자리에만 선다. */
 export const objectivesPane: PaneDescriptor = {
   id: OBJECTIVE_SURFACE_ID,
   role: "primary",
@@ -37,7 +36,7 @@ export const objectivesPane: PaneDescriptor = {
   // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 폰의 목표 화면(목록 없이 착지한 목표 하나)이 선다.
   render: (ctx) => ctx.mobileBar
     ? <MobileObjectiveScreen ctx={ctx} />
-    : <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail", openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
+    : <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
 /**
@@ -54,16 +53,6 @@ export const objectivesMobileDetailPane: PaneDescriptor = {
   render: (ctx) => <MobileConversationObjective ctx={ctx} />,
 };
 
-export const objectivesSurface: ExpandedSurfaceDescriptor = {
-  id: OBJECTIVE_SURFACE_ID,
-  title: (ctx) => getT(ctx.language ?? "en")("objectives.panel.title"),
-  minPaneWidth: 560,
-  // 레일 아이콘이 여닫으므로 호스트의 부유 닫기는 중복이다.
-  ownsClose: true,
-  onClose: onObjectiveSurfaceClose,
-  render: (ctx: ExpandedSurfaceContext) => <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "expanded", openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
-};
-
 export const objectivesEntry: RailEntryDescriptor = {
   id: OBJECTIVES_ENTRY_ID,
   title: (locale) => getT(locale)("objectives.panel.title"),
@@ -71,8 +60,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   scope: "theater",
   // primary 가 맨 앞이어야 한다 — 레일 표면은 첫 primary 를 세운다. 상세는 폰 대화 정보 화면의 탭 본문이다.
   panes: [OBJECTIVE_SURFACE_ID, OBJECTIVE_MOBILE_DETAIL_PANE],
-  surfaceId: OBJECTIVE_SURFACE_ID,
-  activate: (ctx) => toggleObjectivePlace(ctx.rail, ctx.surfaces),
+  activate: (ctx) => toggleObjectivePanel(ctx.rail),
   // 표면은 활성 Operation 의 목표로 열린다 — 입구를 누르는 순간 활성이 풀리면 따라갈 목표가 사라진다.
   keepsOperationActive: true,
   // 대화 중심 화면의 Operation 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
@@ -108,9 +96,24 @@ export const objectivesEntry: RailEntryDescriptor = {
     await loadTheater(api, theaterId);
     const response = await api.fetch("objectives", "/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
     if (!response.ok) return [];
-    const result = await response.json() as { objectives: { id: string; title: string }[] };
-    const subtitle = getT(language)("objectives.palette.subtitle");
-    return result.objectives.map((objective) => ({ id: `objectives:${objective.id}`, title: objective.title, subtitle, activate: () => { revealObjective({ objectiveId: objective.id }); } }));
+    const result = await response.json() as { objectives: { id: string; title: string; done?: boolean }[] };
+    const t = getT(language);
+    const subtitle = t("objectives.palette.subtitle");
+    // 완료로 지휘관이 보관된 목표는 복원하지 않고 가운데 칸의 완료 화면으로 연다 — 범위 넓히기는 그 화면의 입력창이 받는다.
+    return result.objectives.map((objective) => ({
+      id: `objectives:${objective.id}`, title: objective.title, subtitle: objective.done ? `${subtitle} · ${t("objectives.graph.state.done")}` : subtitle,
+      activate: () => {
+        // 가운데 칸에 그 목표의 대화(지휘관 대화, 없으면 시작·완료 화면)를 세운다 — 보이는 Theater 는 그 대화를 따라온다.
+        // 레일만 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다.
+        const shown = openObjectiveConversation(objective.id, theaterId);
+        // 완료로 보관된 목표는 살아 있는 목록에 없다 — 레일의 보드는 가운데 완료 화면이 읽은 끝난 목표 레코드를 고른다.
+        if (objective.done && shown) patchObjectiveView(theaterId, () => ({ selected: objective.id, externalSelectionId: null }));
+        else revealObjective({ objectiveId: objective.id });
+        // 대화를 세웠으면 Theater 를 따로 옮기지 않는다(옮기기는 가운데 대화를 걷는다) — 레일 패널만 연다.
+        if (shown) openObjectiveFromCluster();
+        else openObjectiveFromCluster(theaterId, objective.id);
+      },
+    }));
   },
 };
 
@@ -161,7 +164,6 @@ const objectivesPlugin = definePlugin({
   railEntries: [objectivesEntry, commodoreEntry],
   onboarding: objectivesOnboarding,
   panes: [objectivesPane, objectivesMobileDetailPane, commodoreMobilePane],
-  expandedSurfaces: [objectivesSurface],
   // 지휘관과 담당 Operation은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
   operationClusters: objectivesClusterSource,
   // 사령관(자율 운영) — Theater 머리의 글리프(켬 brass·끔 회색)·턴 물결·머리를 누르면 여는 칸·우클릭 메뉴의 켜기/끄기. 실험 기능이 꺼져 있으면 빌려 주지 않는다.

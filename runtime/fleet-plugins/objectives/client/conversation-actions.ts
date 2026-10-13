@@ -1,10 +1,14 @@
 import type { GroupConversationActions, GroupWriteResult } from "@fleet-console/sdk/conversation";
 import type { Objective } from "../server/types.js";
+import { objectiveBoardActions } from "./board-actions.js";
 import { commodoreLanguage } from "./commodore-state.js";
 import { objectivesApi, post } from "./objectives-state.js";
 
-/** 사람용 보드 라우트를 공유한다. 컴포넌트가 보드/세션 상태를 직접 고쳐 성공을 만들지 않는다. */
-export function objectiveConversationActions(objective: Pick<Objective, "id" | "theaterId">): GroupConversationActions {
+/**
+ * 사람용 보드 라우트를 공유한다. 컴포넌트가 보드/세션 상태를 직접 고쳐 성공을 만들지 않는다.
+ * 보드 동작(`board`)은 지금 상태의 제안 칩이다 — 칩은 이 목표 값으로 서고, 실행은 그때의 보드를 다시 읽는다.
+ */
+export function objectiveConversationActions(objective: Objective): GroupConversationActions {
   const request = <T>(path: string, input: Record<string, unknown>) => {
     const api = objectivesApi();
     if (!api) return Promise.reject(new Error("objectives_unavailable"));
@@ -29,5 +33,6 @@ export function objectiveConversationActions(objective: Pick<Objective, "id" | "
     async answerDecision(requestId, answers) {
       await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
     },
+    board: objectiveBoardActions(objective),
   };
 }

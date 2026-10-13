@@ -33,8 +33,6 @@ export interface RevealTarget {
   readonly missionId?: string;
   /** 사이드바 검토 대기 글리프에서 왔다 — 표면이 후속 후보 선택을 연다. */
   readonly followups?: boolean;
-  /** 사이드바 「+ 목표」로 막 만들었다 — 표면이 제목 칸에 포커스를 두고 전체 선택한다. */
-  readonly focusTitle?: boolean;
   readonly at: number;
 }
 
@@ -317,6 +315,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     unknownToServer.delete(event.objectiveId);
+    invalidateFinishedFor(event.theaterId, event.objectiveId, event.objective ?? null);
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { operationLocations.set(event.objectiveId, "deleted"); setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
@@ -568,6 +567,116 @@ export function readAllTheaters(): readonly TheaterState[] {
   return [...theaters.values()];
 }
 
+// ── 끝난 목표(보관) ──
+
+/**
+ * 완료로 지휘관 Operation 이 보관된 목표들(`/finished`) — 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다. 폰 홈 「끝남」과
+ * 가운데 칸의 완료 화면(범위 넓히기 입력창)이 같은 레코드를 읽는다. 보는 사람의 편의라 메모리에만 둔다.
+ */
+const finishedByTheater = new Map<string, readonly Objective[]>();
+const finishedListeners = new Set<() => void>();
+const finishedInflight = new Set<string>();
+/** 마지막 읽기가 실패한 Theater — 완료 화면이 오류와 다시 시도를 보인다. 다음 읽기가 성공하면 걷힌다. */
+const finishedFailed = new Set<string>();
+let finishedRevision = 0;
+const noteFinished = () => { for (const listener of finishedListeners) listener(); };
+
+/** 읽는 사이 다시 낡은 Theater — 그 읽기가 끝나면 한 번 더 읽는다(읽는 중의 응답은 바뀌기 전 목록일 수 있다). */
+const finishedDirty = new Set<string>();
+
+/**
+ * 목표 사건(`objectives:objective`)이 읽어 둔 끝난 목표를 낡게 하면 그 Theater 의 목록을 그 자리에서 다시 읽는다 — 캐시에 있던 목표가
+ * 바뀌었거나(확장으로 복원), 완료로 보관된 목표가 왔다(다시 완료). 캐시는 지우지 않는다: 다시 읽는 동안 지금 보고 있는 완료 화면은 기존
+ * 레코드로 서 있고, 새 목록이 오면 바뀐다. 보관·복원 Operation 사건은 브라우저로 나오지 않으므로 이 사건이 수명주기를 말한다.
+ */
+function invalidateFinishedFor(theaterId: string, objectiveId: string, objective: Objective | null): void {
+  const list = finishedByTheater.get(theaterId);
+  if (!list) return;
+  if (!list.some((entry) => entry.id === objectiveId) && !(objective?.done && objective.archived)) return;
+  if (finishedInflight.has(theaterId)) finishedDirty.add(theaterId);
+  else loadFinishedObjectives(theaterId);
+}
+
+/** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
+export function loadFinishedObjectives(theaterId: string): void {
+  const api = objectivesApi();
+  if (!api || finishedInflight.has(theaterId)) return;
+  finishedInflight.add(theaterId);
+  finishedFailed.delete(theaterId);
+  noteFinished();
+  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
+    .then((result) => {
+      if (!Array.isArray(result?.objectives)) throw new Error("finished_unreadable");
+      finishedByTheater.set(theaterId, result.objectives);
+      finishedRevision += 1;
+    })
+    .catch(() => { finishedFailed.add(theaterId); })
+    .finally(() => {
+      finishedInflight.delete(theaterId);
+      noteFinished();
+      if (finishedDirty.delete(theaterId)) loadFinishedObjectives(theaterId);
+    });
+}
+
+/** 아직 읽지 않은 Theater 면 읽는다. */
+export function ensureFinishedObjectives(theaterId: string | null): void {
+  if (theaterId && !finishedByTheater.has(theaterId)) loadFinishedObjectives(theaterId);
+}
+
+/** 그 Theater 의 끝난 목표를 지금 읽는 중이다. */
+export function finishedObjectivesLoading(theaterId: string): boolean {
+  return finishedInflight.has(theaterId);
+}
+
+/** 그 Theater 의 마지막 끝난 목표 읽기가 실패했다(읽는 중이 아니다). */
+export function finishedObjectivesFailed(theaterId: string): boolean {
+  return finishedFailed.has(theaterId) && !finishedInflight.has(theaterId);
+}
+
+/** 그 Theater 의 끝난 목표를 한 번이라도 읽었다. */
+export function finishedObjectivesLoaded(theaterId: string): boolean {
+  return finishedByTheater.has(theaterId);
+}
+
+export function finishedObjectives(theaterId: string): readonly Objective[] {
+  return finishedByTheater.get(theaterId) ?? [];
+}
+
+/** 읽어 둔 끝난 목표 하나 — 어느 Theater 든. 없으면 null. */
+export function findFinishedObjective(objectiveId: string): Objective | null {
+  for (const list of finishedByTheater.values()) {
+    const found = list.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 끝난 목표를 다시 읽을 때마다 오르는 판 — 묶음 캐시의 입력이다. */
+export function finishedObjectivesRevision(): number {
+  return finishedRevision;
+}
+
+export function subscribeFinishedObjectivesStore(listener: () => void): () => void {
+  finishedListeners.add(listener);
+  return () => { finishedListeners.delete(listener); };
+}
+
+/** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표에서 찾는다. */
+export function findAnyObjective(objectiveId: string): Objective | null {
+  for (const state of theaters.values()) {
+    const found = state.objectives.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
+  return findFinishedObjective(objectiveId);
+}
+
+/** 목표 상태나 끝난 목표가 바뀌면 깨운다. */
+export function subscribeObjectiveOrFinished(listener: () => void): () => void {
+  const off = subscribeObjective(listener);
+  finishedListeners.add(listener);
+  return () => { off(); finishedListeners.delete(listener); };
+}
+
 export function readTheater(theaterId: string | null): TheaterState {
   return theaterId ? theaters.get(theaterId) ?? EMPTY : EMPTY;
 }
@@ -616,7 +725,7 @@ function contextOperationId(host: PluginInstallContext | null = installed): stri
 }
 
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
+export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -639,6 +748,8 @@ export interface ObjectiveViewState {
   readonly collapsed: Readonly<Record<string, boolean>>;
   readonly dueFilter: string;
   readonly externalSelectionId?: string | null;
+  /** 목표 상세에서 고른 탭 — Theater 마다 하나, 다른 목표로 가도 그 탭으로 연다. 없으면 「목표」. */
+  readonly detailTab?: string;
 }
 const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all", externalSelectionId: null };
 const views = new Map<string, ObjectiveViewState>();
@@ -655,7 +766,8 @@ export function patchObjectiveView(theaterId: string | null, patch: (current: Ob
     next.selected === current.selected &&
     next.collapsed === current.collapsed &&
     next.dueFilter === current.dueFilter &&
-    next.externalSelectionId === current.externalSelectionId
+    next.externalSelectionId === current.externalSelectionId &&
+    next.detailTab === current.detailTab
   ) return;
   views.set(theaterId, next);
   for (const listener of viewListeners) listener();
@@ -767,7 +879,7 @@ function selectOperationObjective(operationId: string, shown: () => boolean): vo
 export function followActiveOperation(): void {
   if (reveal) return;
   const operationId = contextOperationId();
-  // 레일이든 확장 표면이든 — 열린 자리가 활성 Operation 을 보인다.
+  // 열린 레일 패널이 활성 Operation 의 목표를 보인다.
   if (operationId) selectOperationObjective(operationId, isObjectiveSurfaceOpen);
 }
 
@@ -802,47 +914,15 @@ export function focusOperation(operationId: string): void {
 }
 
 const OBJECTIVE_PANEL_ID = "objectives";
-const OBJECTIVE_PLACE_KEY = "objectives.lastPlace";
-type ObjectivePlace = "rail" | "expanded";
-
-function rememberObjectivePlace(place: ObjectivePlace): void {
-  installed?.preferences.write(OBJECTIVE_PLACE_KEY, place);
-}
-
-/** 아이콘·단축키는 현재 자리를 닫고, 닫혀 있으면 마지막 자리에 연다. */
-export function toggleObjectivePlace(rail = installed?.rail, surfaces = installed?.surfaces): void {
-  if (!rail || !surfaces) return;
-  if (rail.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("rail"); rail.close(OBJECTIVE_PANEL_ID); return; }
-  if (surfaces.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("expanded"); surfaces.closeSurface(OBJECTIVE_PANEL_ID); return; }
-  const remembered = installed?.preferences.read<unknown>(OBJECTIVE_PLACE_KEY, "rail");
-  const place = remembered === "expanded" ? "expanded" : "rail";
-  if (place === "expanded") surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+/** 아이콘·단축키 — 레일의 목표 패널을 여닫는다. 목표는 레일에만 선다. */
+export function toggleObjectivePanel(rail = installed?.rail): void {
+  if (!rail) return;
+  if (rail.isOpen(OBJECTIVE_PANEL_ID)) rail.close(OBJECTIVE_PANEL_ID);
   else rail.open(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace(place);
-}
-
-export function expandObjective(): void {
-  if (!installed?.rail.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
-  installed.rail.close(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace("expanded");
-}
-
-export function dockObjective(): void {
-  if (!installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed.rail.open(OBJECTIVE_PANEL_ID);
-  installed.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace("rail");
-}
-
-export function onObjectiveSurfaceClose(): void {
-  // Esc나 다른 표면에 밀려 닫힌 경우에도 마지막 자리는 확장 표면이다.
-  // 도킹 전환의 close 통보는 dockObjective가 이어서 rail로 다시 쓴다.
-  rememberObjectivePlace("expanded");
 }
 
 export function isObjectiveSurfaceOpen(): boolean {
-  return !!installed && (installed.rail.isOpen(OBJECTIVE_PANEL_ID) || installed.surfaces.isOpen(OBJECTIVE_PANEL_ID));
+  return !!installed && installed.rail.isOpen(OBJECTIVE_PANEL_ID);
 }
 
 /** 목표가 하나도 없는 Theater 의 입구 — 목표는 새 Operation 에서 시작하니 호스트 컴포저를 연다. 어느 모양으로 서는지는 호스트 몫이다. */
@@ -850,30 +930,33 @@ export function openNewOperation(): void {
   installed?.composer.open();
 }
 
-/** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(theaterId?: string, place?: "rail", objectiveId?: string): void {
-  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
-  // 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
-  // 파생되고, 표면·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
-  // 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
-  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 옮기지 않는다.
+/**
+ * 사이드바 줄·캡션 칩·질문 카드·팔레트의 「이 목표로」 — 레일의 목표 패널을 연다.
+ * 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 연다. reveal 은 패널이 새 Theater 의 목록을 읽을 때 집힌다.
+ * 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
+ * 파생되고, 패널·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
+ * 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
+ */
+export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
   const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
-  if (installed && theaterId && place !== "rail" && viewed !== theaterId) {
+  if (installed && theaterId && viewed !== theaterId) {
     if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
-      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다 — 그 이동이 확대 표면을 접는다. 보이는 Theater 는 같은 커밋의 더 이른
-      // effect 에서 바뀌므로, 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 표면을 연다(열기는 접힌 표면을 편다).
-      whenViewing(theaterId, () => { setTimeout(() => installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID }), 0); });
+      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다. 보이는 Theater 는 같은 커밋의 더 이른 effect 에서 바뀌므로,
+      // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다.
+      whenViewing(theaterId, () => { setTimeout(openObjectivePanel, 0); });
       return;
     }
     installed.consoleState.viewTheater?.(theaterId);
   }
-  if (place === "rail") {
-    installed?.rail.open(OBJECTIVE_PANEL_ID);
-    installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
-    return;
-  }
-  if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+  openObjectivePanel();
+}
+
+/**
+ * 이미 열려 있어도 다시 연다: 호스트의 열기는 여닫기가 아니라 드러내기이고, 폰에서는 레일 스토어가 열림으로 남아 있어도
+ * 목적지 화면으로 옮기는 것이 이 열기다.
+ */
+function openObjectivePanel(): void {
+  installed?.rail.open(OBJECTIVE_PANEL_ID);
 }
 
 /** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */

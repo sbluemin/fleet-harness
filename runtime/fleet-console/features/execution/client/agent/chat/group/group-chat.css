@@ -669,6 +669,90 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-notice.is-warn { color: var(--warn-ink); }
 .group-composer-notice > span { flex: 1 1 auto; min-width: 0; }
 
+/* 제안 줄 — 입력창 바로 위 한 줄. 보드가 고른 지금 할 일이 칩으로 선다(받는 이 칩과 같은 알약 문법). 할 일이 없으면 서지 않는다. */
+.group-composer-suggest {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px var(--space-2);
+  min-height: 28px;
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.group-composer-suggest-note { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.group-composer-suggest-note svg { flex: none; width: 13px; height: 13px; color: var(--text-tertiary); }
+.group-composer-suggest-note.is-awaiting { color: var(--aurora-ink); }
+.group-composer-suggest-note.is-awaiting svg { color: currentColor; }
+.group-composer-suggest-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--positive); }
+.group-composer-suggest-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--brass-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  cursor: pointer;
+}
+.group-composer-suggest-note.is-awaiting .group-composer-suggest-link { color: var(--aurora-ink); text-decoration-color: color-mix(in oklch, var(--aurora) 50%, transparent); }
+.group-composer-suggest-hint { font-size: var(--t-xs); color: var(--text-tertiary); }
+.group-composer-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px 0 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
+}
+.group-composer-action svg { flex: none; width: 12px; height: 12px; }
+.group-composer-action:hover,
+.group-composer-action:focus-visible { border-color: var(--brass); color: var(--brass-ink); outline: none; }
+.group-composer-action.is-primary,
+.group-composer-action[aria-pressed="true"] { border-color: color-mix(in oklch, var(--brass) 45%, transparent); background: var(--brass-glow); color: var(--brass-ink); font-weight: var(--weight-bold); }
+.group-composer-action.is-review { border-color: color-mix(in oklch, var(--aurora) 50%, transparent); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora-ink); font-weight: var(--weight-bold); }
+/* 두 번 누름의 첫 누름 — 다음 누름이 실행이라는 상태다. */
+.group-composer-action.is-armed { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
+.group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
+.group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+/* 입력창 안에 앉은 동작 칩 — 받는 이 칩 자리에 brass 면으로 선다. 시작 전 받는 이(@지휘관)는 중립 면이다. */
+.group-composer-chip.is-action { padding: 2px var(--space-1) 2px var(--space-2); background: var(--brass-glow); color: var(--brass-ink); }
+.group-composer-chip.is-action svg { flex: none; width: 12px; height: 12px; }
+.group-composer-chip.is-target { padding: 2px var(--space-2); }
+.group-composer-send.is-action { background: var(--brass); color: var(--text-on-brass); }
+.group-composer-send.is-action:hover:not(:disabled),
+.group-composer-send.is-action:focus-visible { background: var(--brass); color: var(--text-on-brass); filter: brightness(1.05); }
+.group-composer-pop-sep { height: 1px; margin: 3px 6px; background: var(--hairline); }
+.group-composer-pop-row.is-armed .group-composer-pop-name { color: var(--coral-ink); }
+.group-composer-pop-row[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
+/* 플러그인이 이어받는 칸(라우팅 확인·후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
+.group-composer-panel {
+  position: absolute;
+  right: clamp(var(--space-4), 4cqi, 48px);
+  bottom: calc(100% - var(--space-2));
+  z-index: 5;
+  width: min(380px, calc(100% - 2 * var(--space-4)));
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--space-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
+}
+.group-composer-panel:empty { display: none; }
+
 /* 대화 안 카드 — 결정 요청과 허용 요청. 테두리 전체로 선다(왼쪽 띠 없음).
    카드 안 글자(질문·선택지·설명·경로)는 공백 없이 길어도 카드 폭 안에서 꺾인다 — 대화가 가로로 넘치지 않는다. */
 .group-card {

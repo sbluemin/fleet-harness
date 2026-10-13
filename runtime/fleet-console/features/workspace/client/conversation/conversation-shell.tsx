@@ -39,7 +39,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../operation-renderer.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import "./conversation.css";
@@ -982,12 +982,16 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
+  // 대신하는 Operation 이 있으면 그 입력창을 문맥에 싣는다 — 플러그인은 자리만 고르고, 입력창은 호스트의 그룹 입력창이다.
+  const standInId = useConversationStandIn();
+  const standInComposer = useConversationStandInComposer();
   const context = useMemo<ConversationSurfaceContext>(() => ({
     params: selection.params,
     language,
     theme,
     close: () => closeConversationSurface(descriptor.id),
-  }), [descriptor.id, language, selection.params, theme]);
+    ...(standInId !== null && standInComposer !== null ? { composer: () => standInComposer(standInId, language) } : {}),
+  }), [descriptor.id, language, selection.params, theme, standInId, standInComposer]);
   // 대화가 Theater 의 Inbox 섹션을 대신하면(사령관) 그 탭에 섹션 꼬리표를 단다 — Theater 를 연 동안 패널 머리가 「사령관 | Theater 설정」
   // 섹션 줄로 묶는다.
   const { theaterInboxSections } = usePluginRegistry();

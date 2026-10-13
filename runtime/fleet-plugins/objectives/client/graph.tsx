@@ -2,8 +2,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSP
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { extensionOf, isLoose, missionReady, unseenRecords, wouldCycle, type Objective, type ObjectiveMission } from "../server/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { graphLayout, stretchLayout, type GraphLayout, type Point } from "./graph-layout.js";
-import { GraphPopup } from "./graph-popup.js";
+import { graphLayout, type Point } from "./graph-layout.js";
+import { GraphPopup, scrollContainer } from "./graph-popup.js";
 import { ResultsGlyph } from "./results.js";
 import { usePointerDrag } from "./pointer-drag.js";
 import "./graph.css";
@@ -36,136 +36,45 @@ interface GraphProps {
   /** 노드 오른쪽 아래의 담당 표식 — 구성원 id 면 그 구성원, null 이면 지휘관. 보드와 같은 아바타를 패널이 그려 넘긴다. 뿌리 노드도 null 로 지휘관 얼굴을 받는다. */
   ownerMark: (memberId: string | null) => ReactNode;
   reveal?: { id: string; at: number } | null; zoom?: boolean; suspended?: boolean;
-  /** 확대 전용 — 그래프가 스크롤 없이 들어가는 확대 카드의 폭(border-box). */
+  /** 확대 전용 — 세로 그래프가 읽기 좋은 확대 카드의 폭(border-box). 높이는 카드가 스크롤한다. */
   onFitWidth?: (width: number) => void;
 }
-/** 배치 폭 구간 — 레일·사이드바를 끄는 동안 폭은 매 프레임 바뀐다. 이름 자리 찾기는 구간이 바뀔 때만 하고 구간 안의 차이는 열 간격으로 채운다. */
-const LAYOUT_STEP = 32;
-/** 이름 폭 재기 — 캔버스 하나를 모든 그래프가 나눠 쓰고 같은 글꼴·글자는 한 번만 잰다(줄임표 자리를 찾느라 글자마다 잰다). */
-let measureContext: CanvasRenderingContext2D | null | undefined;
-let measureFont = "";
-const measured = new Map<string, number>();
-function textMeasure(font: string, wide: boolean): (text: string) => number {
-  if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
-  return (text) => {
-    const key = `${font}\n${text}`;
-    let width = measured.get(key);
-    if (width === undefined) {
-      if (measureContext) { if (measureFont !== font) { measureContext.font = font; measureFont = font; } width = measureContext.measureText(text).width; }
-      else width = [...text].length * (wide ? 12 : 11);
-      if (measured.size >= 20000) measured.clear();
-      measured.set(key, width);
-    }
-    return width;
-  };
-}
-/** 배치 캐시 — 임무(id·문구·선행)·글꼴·폭 구간이 같으면 다시 쓴다. 모듈에 둬서 레일을 다시 열거나 확대를 여닫아도 이름 자리
- * 찾기(임무 수의 제곱으로 느는 탐색)를 되풀이하지 않는다. 오래 안 쓴 배치부터 비운다. */
-const layoutCache = new Map<string, GraphLayout>();
-const LAYOUT_CACHE_LIMIT = 64;
-/** 확대 카드의 기본 폭 — 그래프가 이보다 넓어야 할 때만 화면 폭까지 넓힌다. */
-const ZOOM_BASE = 940;
-/** 이보다 줄이면 글자를 읽을 수 없다 — 그때는 줄인 채로 스크롤한다. */
-const ZOOM_MIN_SCALE = 0.45;
-/** 확대 카드 안에서 그래프가 쓸 수 있는 칸 — 최대 폭·기본 폭·높이와, 카드에서 그래프 칸을 뺀 가로 여백. */
-interface ZoomFit { w: number; base: number; h: number; chromeX: number }
+/** 이 폭부터 이름 오른쪽에 담당 역할을 함께 적고 노드·글자를 한 단계 키운다(시안의 넓은 폭 680, 좁은 폭 380). */
+const WIDE = 560;
+/** 확대 카드의 폭 — 세로 그래프는 폭보다 높이가 자라므로 이름과 담당이 한눈에 읽히는 폭에 멈추고 높이는 카드가 스크롤한다. */
+const ZOOM_WIDTH = 760;
 interface Drag { from: string; x0: number; y0: number; x: number; y: number; over: string | null; moved: boolean; pointer: number }
 interface Popup { id: string; pinned: boolean; closing: boolean; focus: boolean }
 const nodeId = (target: EventTarget | null) => target instanceof Element ? target.closest<HTMLElement>("[data-graph-node], [data-graph-label]")?.dataset.graphNode ?? target.closest<HTMLElement>("[data-graph-label]")?.dataset.graphLabel ?? null : null;
 
 export function CoordinationGraph({ objective, t, states, onEdge, canEdit, renderDetail, ownerMark, onShowing, reveal, zoom = false, suspended = false, onFitWidth }: GraphProps) {
   const box = useRef<HTMLDivElement>(null), scroll = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(320), [font, setFont] = useState("11px sans-serif");
-  const wide = width >= 700;
-  const [fontEpoch, setFontEpoch] = useState(0);
+  const [width, setWidth] = useState(320);
+  const wide = width >= WIDE;
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
-    const read = () => { setWidth(el.clientWidth || 320); const style = getComputedStyle(el); setFont(`${style.fontWeight} ${el.clientWidth >= 700 ? 12 : 11}px ${style.fontFamily}`); };
+    const read = () => setWidth(el.clientWidth || 320);
     read(); const observer = new ResizeObserver(read); observer.observe(el);
-    let alive = true; void document.fonts.ready.then(() => { if (alive) { read(); setFontEpoch(1); } });
-    return () => { alive = false; observer.disconnect(); };
-  }, []);
-  // 확대는 스크롤 대신 맞춘다 — 카드가 그래프 폭까지(화면 폭 한도) 넓어지고, 그래도 넘치거나 높이가 모자라면 그래프를 줄인다.
-  const [fit, setFit] = useState<ZoomFit | null>(null);
-  useLayoutEffect(() => {
-    if (!zoom) return;
-    const card = box.current?.closest<HTMLElement>(".objectives-zoom"), frame = card?.parentElement;
-    if (!card || !frame) return;
-    const measure = () => {
-      const cs = getComputedStyle(card), fs = getComputedStyle(frame), px = (value: string) => parseFloat(value) || 0;
-      const chromeX = card.offsetWidth - card.clientWidth + px(cs.paddingLeft) + px(cs.paddingRight);
-      // 그래프 칸을 뺀 카드의 나머지(머리·안내·미분류·추가 입력) — 카드가 넘쳐 잘려도 scrollHeight 는 전부를 잰다.
-      const chromeY = card.scrollHeight - (scroll.current?.offsetHeight ?? 0) + card.offsetHeight - card.clientHeight;
-      const w = Math.max(0, frame.clientWidth - px(fs.paddingLeft) - px(fs.paddingRight) - chromeX);
-      const h = Math.max(0, frame.clientHeight - px(fs.paddingTop) - px(fs.paddingBottom) - chromeY);
-      const next = { w, base: Math.min(w, ZOOM_BASE - chromeX), h, chromeX };
-      setFit(old => old && Math.abs(old.w - next.w) < 1 && Math.abs(old.h - next.h) < 1 && old.chromeX === next.chromeX ? old : next);
-    };
-    measure();
-    const observer = new ResizeObserver(measure); observer.observe(frame); observer.observe(card);
     return () => observer.disconnect();
-  }, [zoom]);
+  }, []);
+  const onFitWidthRef = useRef(onFitWidth); onFitWidthRef.current = onFitWidth;
+  useLayoutEffect(() => { if (zoom) onFitWidthRef.current?.(ZOOM_WIDTH); }, [zoom]);
   const loose = objective.missions.filter(isLoose);
   const extensionLabels = useMemo(() => new Map(objective.missions.flatMap(m => {
     const n = extensionOf(objective.extensions, m.id, "mission");
     return n === null ? [] : [[m.id, t("objectives.extend.chip", { n })] as const];
   })), [objective.missions, objective.extensions, t]);
-  // 배치는 모양(임무·글꼴·폭 구간)별로 모듈 캐시에 담는다. 끄는 동안 오가는 폭과 다시 여는 레일은 담아 둔 배치를 다시 쓴다.
-  const shape = useMemo(() => objective.missions.filter(m => !isLoose(m)).map(m => `${m.id}\u0001${m.text}\u0001${m.prerequisites.join(",")}\u0001${extensionLabels.get(m.id) ?? ""}`).join("\u0002"), [objective.missions, extensionLabels]);
-  const layout = useMemo(() => {
-    const commander = t("objectives.graph.commander");
-    const run = (w: number) => {
-      const key = `${font}\u0003${wide}\u0003${fontEpoch}\u0003${commander}\u0003${w}\u0003${shape}`;
-      let hit = layoutCache.get(key);
-      if (hit) layoutCache.delete(key);
-      else {
-        hit = graphLayout(objective.missions.filter(m => !isLoose(m)), w, wide, textMeasure(font, wide), commander, 0, extensionLabels);
-        if (layoutCache.size >= LAYOUT_CACHE_LIMIT) layoutCache.delete(layoutCache.keys().next().value!);
-      }
-      layoutCache.set(key, hit);
-      return hit;
-    };
-    if (!zoom || !fit) return stretchLayout(run(width < LAYOUT_STEP ? width : Math.floor(width / LAYOUT_STEP) * LAYOUT_STEP), width);
-    const first = run(fit.base);
-    return first.width > fit.base && fit.w > fit.base ? run(Math.min(first.width, fit.w)) : first;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 임무는 shape로 비교한다.
-  }, [shape, width, wide, font, fontEpoch, t, zoom, fit]);
-  const scale = zoom && fit ? Math.max(ZOOM_MIN_SCALE, Math.min(1, fit.w / layout.width, fit.h / layout.height)) : 1;
-  const fitWidth = zoom && fit ? Math.ceil(Math.min(fit.w, Math.max(fit.base, layout.width * scale)) + fit.chromeX) : null;
-  const onFitWidthRef = useRef(onFitWidth); onFitWidthRef.current = onFitWidth;
-  useLayoutEffect(() => { if (fitWidth !== null) onFitWidthRef.current?.(fitWidth); }, [fitWidth]);
+  // 배치는 임무의 선행 모양과 폭에만 달렸다 — 이름은 레인 오른쪽 칸에서 CSS가 두 줄로 줄이므로 글자를 재지 않는다.
+  const shape = useMemo(() => objective.missions.filter(m => !isLoose(m)).map(m => `${m.id}\u0001${m.prerequisites.join(",")}`).join("\u0002"), [objective.missions]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 임무는 shape로 비교한다.
+  const layout = useMemo(() => graphLayout(objective.missions.filter(m => !isLoose(m)), width, wide), [shape, width, wide]);
   const [popup, setPopup] = useState<Popup | null>(null), popupRef = useRef(popup); popupRef.current = popup;
   const onShowingRef = useRef(onShowing); onShowingRef.current = onShowing;
   useEffect(() => { onShowingRef.current(popup && !popup.closing && !suspended ? popup.id : null); }, [popup?.id, popup?.closing, suspended]);
   const [drag, setDrag] = useState<Drag | null>(null), dragRef = useRef(drag); dragRef.current = drag;
   const trackDrag = usePointerDrag();
-  // 도화지처럼 끌어 옮기기 — 가로로 넘칠 때 빈 곳을 끌면 그래프가 따라온다. 스크롤바 대신 넘친 쪽 가장자리가 흐려진다.
-  const trackPan = usePointerDrag();
-  const panning = useRef(false);
-  const pannable = layout.width * scale > width + 1;
-  const fadeEdges = () => {
-    const el = scroll.current; if (!el) return;
-    el.classList.toggle("is-fade-left", el.scrollLeft > 1);
-    el.classList.toggle("is-fade-right", el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  };
-  // 넘침은 레이아웃이 끝난 뒤 관찰해 잰다 — 커밋마다 layout effect에서 스크롤 기하를 읽으면 레일 폭이 바뀌는 매 프레임이
-  // 레이아웃을 강제로 한 번 더 돈다. 틀과 내용 중 어느 쪽 크기가 바뀌어도 관찰이 온다.
-  useEffect(() => {
-    const el = scroll.current, fit = el?.firstElementChild; if (!el || !fit) return;
-    const observer = new ResizeObserver(fadeEdges); observer.observe(el); observer.observe(fit);
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const el = scroll.current;
-    if (!el || !pannable || suspended || event.pointerType === "touch" || (event.target as Element).closest("[data-graph-node], [data-graph-label], .objectives-graph-edge")) return;
-    const x0 = event.clientX, left0 = el.scrollLeft;
-    trackPan(event, el, {
-      onStart: () => { panning.current = true; cancelOpen(); },
-      onMove: (move) => { el.classList.add("is-panning"); el.scrollLeft = left0 - (move.clientX - x0); },
-      onEnd: () => { panning.current = false; el.classList.remove("is-panning"); },
-    });
-  };
+  // 노드·이름에 올리거나 초점을 두면 팝업을 기다리지 않고 선행(실선)·후행(점선)을 밝힌다. 열린 팝업이 있으면 그 임무가 앞선다.
+  const [hot, setHot] = useState<string | null>(null);
   const [link, setLink] = useState<{ from: string; over: string } | null>(null);
   const popupId = useId();
   const timers = useRef<{ open?: ReturnType<typeof setTimeout>; close?: ReturnType<typeof setTimeout>; exit?: ReturnType<typeof setTimeout>; pending?: string; last?: Point }>({});
@@ -227,8 +136,10 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     return !(d.some(v => v < 0) && d.some(v => v > 0)) && Math.hypot(p.x - last.x, p.y - last.y) > .5;
   };
   const hover = (event: ReactPointerEvent) => {
-    if (suspended || event.pointerType === "touch" || dragRef.current || panning.current || popupRef.current?.pinned || link) return;
+    if (suspended || event.pointerType === "touch" || dragRef.current) return;
     const p = { x: event.clientX, y: event.clientY }, id = nodeId(event.target);
+    if (!(event.target as Element).closest("[data-graph-popup]")) setHot(id);
+    if (popupRef.current?.pinned || link) return;
     if ((event.target as Element).closest("[data-graph-popup]")) { keep(); cancelOpen(); }
     else if (id) {
       keep();
@@ -284,12 +195,12 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   useEffect(() => {
     if (!drag?.moved) return;
     let frame = 0;
+    // 세로 그래프는 높이가 자라 상세(또는 확대 카드)가 스크롤한다 — 탭·칸 구조와 무관하게 실제로 스크롤하는 가장 가까운 상자를 끈다.
+    const detail = box.current ? scrollContainer(box.current) : null;
     const tick = () => {
       const current = dragRef.current, el = scroll.current; if (!current || !el) return;
       const b = el.getBoundingClientRect();
       if (current.x < b.left + 28) el.scrollLeft -= 8; else if (current.x > b.right - 28) el.scrollLeft += 8;
-      // 두 칸의 pane은 display:contents다. 각 레이아웃에서 실제로 스크롤하는 상자를 고른다.
-      const detail = box.current?.closest<HTMLElement>(".objectives-detail:not(.is-two) .objectives-detail-scroll, .objectives-detail.is-two .objectives-detail-pane, .objectives-zoom");
       if (detail) { const d = detail.getBoundingClientRect(); if (current.y < d.top + 28) detail.scrollTop -= 8; else if (current.y > d.bottom - 28) detail.scrollTop += 8; }
       const hit = nodeId(document.elementFromPoint(current.x, current.y));
       if (hit !== current.over && hit !== current.from) { const next = { ...current, over: hit }; dragRef.current = next; setDrag(next); }
@@ -298,6 +209,7 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame);
   }, [drag?.moved]);
   const current = popup && !popup.closing ? objective.missions.find(m => m.id === popup.id) : null;
+  const lit = current ?? (hot && !drag?.moved && !suspended ? objective.missions.find(m => m.id === hot && !isLoose(m)) ?? null : null);
   const number = (id: string) => objective.missions.findIndex(m => m.id === id) + 1;
   const resultCounts = new Map<string, number>();
   for (const result of objective.results) if (result.sourceMissionId) resultCounts.set(result.sourceMissionId, (resultCounts.get(result.sourceMissionId) ?? 0) + 1);
@@ -313,9 +225,9 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   };
   const icon = (m: ObjectiveMission) => <><MissionNodeIcon state={states.get(m.id)!} number={number(m.id)} /><span className="objectives-graph-mark" aria-hidden="true">{ownerMark(m.member ?? null)}</span>{m.records.length ? <span className={`objectives-graph-record${unseenRecords(m) ? " is-new" : ""}`} aria-hidden="true" /> : null}{resultCounts.has(m.id) ? <span className="objectives-graph-results" aria-hidden="true"><ResultsGlyph /></span> : null}</>;
   const node = (m: ObjectiveMission, style?: CSSProperties) => {
-    const active = current?.id === m.id, pre = current?.prerequisites.includes(m.id), post = current && m.prerequisites.includes(current.id);
+    const active = current?.id === m.id, pre = lit?.prerequisites.includes(m.id), post = lit && m.prerequisites.includes(lit.id);
     const member = objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");
-    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}${resultCounts.has(m.id) ? ` · ${t("objectives.graph.results", { count: resultCounts.get(m.id)! })}` : ""}`} title={resultCounts.has(m.id) ? t("objectives.graph.results", { count: resultCounts.get(m.id)! }) : undefined} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) show(m.id); }} onBlur={e => { if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
+    return <button key={m.id} type="button" data-graph-node={m.id} data-mission-id={m.id} className={`objectives-graph-node is-${states.get(m.id)}${active ? popup?.pinned ? " is-pin" : " is-hov" : lit?.id === m.id ? " is-hov" : ""}${pre ? " is-pre" : ""}${post ? " is-post" : ""}${over === m.id ? reason ? " drop-no" : " drop-ok" : ""}`} style={style} aria-label={`${t("objectives.graph.nodeAria", { index: number(m.id), text: m.text })}. ${member}. ${t(`objectives.graph.state.${states.get(m.id)!}`)}. ${m.records.length ? t("objectives.records.count", { index: number(m.id), count: m.records.length }) : ""}${unseenRecords(m) ? ` · ${t("objectives.records.unseen", { count: unseenRecords(m) })}` : ""}${resultCounts.has(m.id) ? ` · ${t("objectives.graph.results", { count: resultCounts.get(m.id)! })}` : ""}`} title={resultCounts.has(m.id) ? t("objectives.graph.results", { count: resultCounts.get(m.id)! }) : undefined} aria-expanded={active} aria-controls={active ? popupId : undefined} onPointerDown={e => start(m.id, e)} onClick={e => { if (e.detail === 0) { if (link) { commitLink(link.from, m.id); setLink(null); } else if (active && popup?.pinned) close(true); else show(m.id, true, true); } }} onFocus={e => { setHot(m.id); if (e.currentTarget.matches(":focus-visible") && !popupRef.current?.pinned && !link) show(m.id); }} onBlur={e => { setHot(null); if (!document.getElementById(popupId)?.contains(e.relatedTarget as Node)) leave(); }} onKeyDown={e => {
       if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); setLink(null); close(true); }
       else if (e.key.toLowerCase() === "l") { e.preventDefault(); close(); setLink({ from: m.id, over: m.id }); }
       else if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(e.key)) { e.preventDefault(); const index = number(m.id) - 1, next = objective.missions[index + (["ArrowDown", "ArrowRight"].includes(e.key) ? 1 : -1)]; if (next) focusNode(next.id); }
@@ -323,14 +235,15 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
     }}>{icon(m)}</button>;
   };
   const shownMission = popup ? objective.missions.find(m => m.id === popup.id) : null;
-  return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={hover} onPointerLeave={() => { if (!dragRef.current) leave(); }}>
-    <div ref={scroll} className={`objectives-graph-scroll${pannable ? " is-pannable" : ""}`} onPointerDown={startPan} onScroll={() => { fadeEdges(); if (popupRef.current && !popupRef.current.pinned) close(); }}>
-      <div className="objectives-graph-fit" style={{ width: layout.width * scale, height: layout.height * scale }}>
-      <div className={`objectives-graph-canvas${current ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height, ...(scale < 1 ? { transform: `scale(${scale})`, transformOrigin: "0 0" } : {}) }}>
-        <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${current?.id === e.to ? " is-up" : current?.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
-        <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y, "--graph-root": `${layout.g.rootR * 2}px` } as CSSProperties} aria-hidden="true">{ownerMark(null)}</span><span className="objectives-graph-label is-root" style={{ left: layout.rootLabel.x, top: layout.rootLabel.y }}>{t("objectives.graph.commander")}</span>
-        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, label = layout.labels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}{label ? <span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${current && (current.id === m.id || current.prerequisites.includes(m.id) || m.prerequisites.includes(current.id)) ? " is-lit" : ""}`} style={{ left: label.x, top: label.y, width: label.w }} onPointerDown={e => start(m.id, e)}>{label.extension ? <span className="objectives-extension-chip">{label.extension}</span> : null}{label.lines.map((line, i) => <span key={i}>{line}</span>)}</span> : null}</span>; })}
-      </div>
+  const owner = (m: ObjectiveMission) => objective.members.find(member => member.id === m.member)?.role ?? t("objectives.graph.commander");
+  const litLabel = (m: ObjectiveMission) => !!lit && (lit.id === m.id || lit.prerequisites.includes(m.id) || m.prerequisites.includes(lit.id));
+  return <div ref={box} className={`objectives-branch-graph${zoom ? " is-zoom" : ""}${wide ? " is-wide" : ""}${drag?.moved ? " is-dragging" : ""}`} style={{ "--graph-r": `${layout.g.r}px`, "--graph-label-line": `${layout.g.llh}px` } as CSSProperties} onPointerMove={hover} onPointerLeave={() => { setHot(null); if (!dragRef.current) leave(); }}>
+    <div ref={scroll} className="objectives-graph-scroll" onScroll={() => { if (popupRef.current && !popupRef.current.pinned) close(); }}>
+      <div className={`objectives-graph-canvas${lit ? " is-dim" : ""}`} style={{ width: layout.width, height: layout.height }}>
+        <svg className="objectives-graph-edges" width={layout.width} height={layout.height} aria-hidden="true">{layout.edges.map(e => <path key={`${e.from}-${e.to}`} data-from={e.from ?? undefined} data-to={e.to} className={`objectives-graph-edge${e.from ? "" : " is-root"}${lit?.id === e.to ? " is-up" : lit && lit.id === e.from ? " is-down" : ""}`} d={e.d} onClick={() => select(e.to)} />)}</svg>
+        <span className="objectives-graph-root" style={{ left: layout.root.x, top: layout.root.y, "--graph-root": `${layout.g.rootR * 2}px` } as CSSProperties} aria-hidden="true">{ownerMark(null)}</span><span className="objectives-graph-label is-root" style={{ left: layout.labelX, right: layout.g.pad, top: layout.root.y }}><span className="objectives-graph-name">{t("objectives.graph.commander")}</span></span>
+        {/* 이름은 모든 레인 오른쪽의 같은 칸에 제 줄의 높이로 선다 — 두 줄까지 보이고 나머지는 팝업에 있다. 넓은 폭은 오른쪽 끝에 담당 역할을 적는다. */}
+        {objective.missions.filter(m => !isLoose(m)).map(m => { const p = layout.pos.get(m.id)!, extension = extensionLabels.get(m.id); return <span key={m.id}>{node(m, { left: p.x, top: p.y })}<span data-graph-label={m.id} className={`objectives-graph-label is-${states.get(m.id)}${litLabel(m) ? " is-lit" : ""}`} style={{ left: layout.labelX, right: layout.g.pad, top: p.y }} onPointerDown={e => start(m.id, e)}>{extension ? <span className="objectives-extension-chip">{extension}</span> : null}<span className="objectives-graph-name">{m.text}</span>{wide ? <span className="objectives-graph-owner">{owner(m)}</span> : null}</span></span>; })}
       </div>
     </div>
     {loose.length ? <div className="objectives-graph-tray"><span className="objectives-graph-tray-title">{t("objectives.graph.unplaced")}</span>{loose.map(m => <div className="objectives-graph-tray-item" key={m.id}>{node(m)}{extensionLabels.get(m.id) ? <span className="objectives-extension-chip">{extensionLabels.get(m.id)}</span> : null}<span className="objectives-graph-tray-label" data-graph-label={m.id} onPointerDown={e => start(m.id, e)}>{m.text}</span></div>)}</div> : null}

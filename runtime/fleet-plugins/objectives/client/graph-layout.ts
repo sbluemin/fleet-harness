@@ -1,152 +1,147 @@
-import { missionDepths, type ObjectiveMission } from "../server/types.js";
+import type { ObjectiveMission } from "../server/types.js";
 
 export interface Point { x: number; y: number }
 export interface Rect extends Point { w: number; h: number }
-interface Label extends Rect { lines: string[]; shown: number; full: boolean; extension?: string }
-export interface GraphEdge { from: string | null; to: string; d: string; points: Point[] }
+export interface GraphEdge { from: string | null; to: string; d: string }
 export const intersects = (a: Rect, b: Rect, pad = 0) => a.x < b.x + b.w + pad && a.x + a.w + pad > b.x && a.y < b.y + b.h + pad && a.y + a.h + pad > b.y;
-const SAMPLE_CELL = 24;
-const cellKey = (cx: number, cy: number) => (cx + 4096) * 8192 + (cy + 4096);
-const inside = (p: Point, r: Rect, pad = 0) => p.x >= r.x - pad && p.x <= r.x + r.w + pad && p.y >= r.y - pad && p.y <= r.y + r.h + pad;
-const bezier = (a: number, b: number, c: number, d: number, t: number) => (1 - t) ** 3 * a + 3 * (1 - t) ** 2 * t * b + 3 * (1 - t) * t * t * c + t ** 3 * d;
-export function edgeGeometry(a: Point, b: Point) {
-  const k = Math.max(10, (b.x - a.x) / 2);
-  return { d: `M${a.x},${a.y} C${a.x + k},${a.y} ${b.x - k},${b.y} ${b.x},${b.y}`, points: Array.from({ length: 60 }, (_, i) => ({ x: bezier(a.x, a.x + k, b.x - k, b.x, i / 59), y: bezier(a.y, a.y, b.y, b.y, i / 59) })) };
+
+/** 노드 둘레에서 지나가는 선이 비켜야 하는 여유. */
+const CLEAR = 3;
+/** 이름 칸의 가장 좁은 폭 — 레인이 많아 이보다 좁아지면 레인 간격을 줄이고, 그래도 모자라면 캔버스를 넓힌다. */
+const MIN_LABEL = 120;
+const MIN_LANE = 16;
+/** 줄 간격 — 노드 위의 기록 표식(r+6)과 윗줄 노드 아래의 담당 표식(r+10)이 같은 레인에서 겹치지 않는 최소에 맞춘다. 시각 검수가 조정하는 값. */
+export const ROW_H = { narrow: 40, wide: 42 } as const;
+
+interface Segment { a: Point; b: Point }
+interface Vertical { x: number; y1: number; y2: number }
+interface Placed { from: string | null; to: string; points: Point[]; verticals: Vertical[]; lane: number }
+/** 가지를 치기 전에 제 레인을 따라 내려가는(합친 뒤 내려오는) 길이 후보 — 반 줄 단위. 옆 레인 노드를 스치지 않을 때까지 늦춘다. */
+const OFFSETS = [0, .5, 1, 1.5, 2, 2.5, 3];
+/** 레인 배정 캐시 — 배정은 선행 모양·폭 단계·레인 간격에만 달려, 레일을 끄는 동안 바뀌는 폭은 담아 둔 배정을 다시 쓴다. */
+const assigned = new Map<string, { lane: Map<string, number>; placed: Placed[]; lanes: number }>();
+const ASSIGNED_LIMIT = 32;
+
+const round = (n: number) => Math.round(n * 10) / 10;
+function distance(p: Point, s: Segment) {
+  const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y, len = dx * dx + dy * dy;
+  const k = len ? Math.max(0, Math.min(1, ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / len)) : 0;
+  return Math.hypot(p.x - (s.a.x + k * dx), p.y - (s.a.y + k * dy));
 }
-function ellipsize(text: string, width: number, count: number, measure: (value: string) => number) {
-  const chars = [...text], lines: string[] = [];
-  let current = "", i = 0;
-  for (; i < chars.length; i++) {
-    const c = chars[i]!;
-    if (!current && c === " ") continue;
-    if (measure(current + c) > width && current) { lines.push(current); current = ""; if (lines.length === count) break; if (c === " ") continue; }
-    current += c;
+const segments = (points: readonly Point[]) => points.slice(1).map((b, i) => ({ a: points[i]!, b }));
+/** 꺾임만 둥글린 꺾은선 — 같은 방향으로 이어지는 점은 곧은 선으로 지난다. */
+function roundedPath(points: readonly Point[], radius: number) {
+  let d = `M${round(points[0]!.x)},${round(points[0]!.y)}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const p0 = points[i - 1]!, p1 = points[i]!, p2 = points[i + 1]!;
+    const d1 = Math.hypot(p1.x - p0.x, p1.y - p0.y), d2 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    if (Math.abs((p1.x - p0.x) * (p2.y - p1.y) - (p1.y - p0.y) * (p2.x - p1.x)) < 1e-6 || !d1 || !d2) { d += ` L${round(p1.x)},${round(p1.y)}`; continue; }
+    const r = Math.min(radius, d1 / 2, d2 / 2);
+    d += ` L${round(p1.x - (p1.x - p0.x) / d1 * r)},${round(p1.y - (p1.y - p0.y) / d1 * r)} Q${round(p1.x)},${round(p1.y)} ${round(p1.x + (p2.x - p1.x) / d2 * r)},${round(p1.y + (p2.y - p1.y) / d2 * r)}`;
   }
-  if (lines.length < count && current) { lines.push(current); i = chars.length; }
-  const full = i >= chars.length;
-  if (!full && lines.length) {
-    let last = lines.at(-1)!;
-    while (last && measure(last + "…") > width) last = [...last].slice(0, -1).join("");
-    lines[lines.length - 1] = last.trimEnd() + "…";
-  }
-  return { lines, full, shown: lines.join("").replace(/[ …]/g, "").length, w: Math.max(0, ...lines.map(measure)) };
+  const last = points.at(-1)!;
+  return `${d} L${round(last.x)},${round(last.y)}`;
 }
 
-/** 승인 v3의 깊이 열·충돌 회피 이름 배치. 공간이 부족하면 글자를 없애지 않고 캔버스를 넓힌다. */
-export function graphLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean, measure: (value: string) => number, commander: string, extra = 0, extensions: ReadonlyMap<string, string> = new Map()) {
-  const g = wide ? { r: 12, lfs: 12, llh: 16, lines: 1, rootX: 26, rootR: 11, x0: 96, right: 70, capW: 210, minCol: 96 } : { r: 11, lfs: 11, llh: 14, lines: 2, rootX: 16, rootR: 10, x0: 54, right: 30, capW: 110, minCol: 58 };
-  const depth = missionDepths(missions);
-  const cols = missions.length ? Math.max(...missions.map(m => depth.get(m.id) ?? 0)) + 1 : 1;
-  const colW = cols > 1 ? Math.max(g.minCol + extra, (width - g.x0 - g.right) / (cols - 1)) : 0;
-  const canvasWidth = Math.max(width, g.x0 + Math.max(0, cols - 1) * colW + g.right);
-  const byCol = new Map<number, string[]>();
-  for (const m of missions) { const d = depth.get(m.id) ?? 0; byCol.set(d, [...(byCol.get(d) ?? []), m.id]); }
-  const rows = Math.max(1, ...[...byCol.values()].map(v => v.length));
-  const rowH = Math.max(wide ? 60 : 56, Math.min(78, (wide ? 390 : width >= 350 ? 290 : 340) / Math.max(1, rows - 1)));
-  const top = g.lines * g.llh + g.r + 14;
-  const pos = new Map<string, Point & { col: number }>();
-  for (const [col, ids] of byCol) ids.forEach((id, i) => pos.set(id, { x: cols > 1 ? g.x0 + col * colW : (g.x0 + canvasWidth - g.right) / 2, y: top + i * rowH + (rows - ids.length) * rowH / 2, col }));
-  const root = { x: g.rootX, y: top + (rows - 1) * rowH / 2 };
-  const edges: GraphEdge[] = [];
-  for (const m of missions) {
-    const p = pos.get(m.id)!;
-    const parents = m.prerequisites.filter(id => pos.has(id));
-    if (!parents.length) edges.push({ from: null, to: m.id, ...edgeGeometry({ x: root.x + g.rootR + 1, y: root.y }, { x: p.x - g.r - 1, y: p.y }) });
-    for (const id of parents) { const q = pos.get(id)!; edges.push({ from: id, to: m.id, ...edgeGeometry({ x: q.x + g.r + 1, y: q.y }, { x: p.x - g.r - 1, y: p.y }) }); }
+/**
+ * 승인 시안 C(줄기-가지)의 세로 배치. 한 줄에 임무 하나를 편성 순서로 놓고(선행이 뒤에 있으면 그 뒤로 내린다), 병렬은 레인으로 옆에 선다.
+ * 간선은 레인을 따라 곧게 내려가다 갈라지고 합칠 때만 45° 가지를 친다. 지나가는 선이 있는 레인 자리에는 노드를 두지 않고,
+ * 다른 노드를 스치는 선은 바깥 레인으로 돌린다. 이름은 모든 레인 오른쪽의 같은 칸에 줄마다 놓여 노드·선·다른 이름과 겹치지 않는다.
+ */
+export function graphLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean) {
+  const g = wide ? { r: 12, rootR: 11, rowH: ROW_H.wide, lane: 22, pad: 22, llh: 16 } : { r: 11, rootR: 10, rowH: ROW_H.narrow, lane: 20, pad: 16, llh: 14 };
+  // 줄 순서 — 편성 순서를 지키되, 선행은 늘 위 줄에 온다(위에서 아래로만 흐른다).
+  const ids = new Set(missions.map(m => m.id)), order: ObjectiveMission[] = [], seen = new Set<string>();
+  const parentsOf = (m: ObjectiveMission) => [...new Set(m.prerequisites)].filter(id => ids.has(id) && id !== m.id);
+  while (order.length < missions.length) {
+    const next = missions.find(m => !seen.has(m.id) && parentsOf(m).every(id => seen.has(id))) ?? missions.find(m => !seen.has(m.id))!;
+    order.push(next); seen.add(next.id);
   }
-  const nodeRects = [...pos.values()].map(p => ({ x: p.x - g.r - 4, y: p.y - g.r - 7, w: 2 * g.r + 8, h: 2 * g.r + 17 }));
-  nodeRects.push({ x: root.x - g.rootR - 2, y: root.y - g.rootR - 2, w: 2 * g.rootR + 4, h: 2 * g.rootR + 4 });
-  const rootLabel = { x: Math.max(0, root.x - measure(commander) / 2), y: root.y + g.rootR + 3, w: measure(commander), h: 13, lines: [commander] };
-  // 선 표본은 칸 격자에 담아 이름 후보 둘레의 칸만 본다 — 후보마다 모든 표본을 훑으면 가지가 많은 그래프에서 탐색이 수억 번으로 는다.
-  const cellOf = (value: number) => Math.floor(value / SAMPLE_CELL);
-  const sampleCells = new Map<number, Point[]>();
-  for (const e of edges) for (const point of e.points) { const key = cellKey(cellOf(point.x), cellOf(point.y)); const list = sampleCells.get(key); if (list) list.push(point); else sampleCells.set(key, [point]); }
-  const touchesSample = (r: Rect, pad: number) => {
-    for (let cx = cellOf(r.x - pad), cx1 = cellOf(r.x + r.w + pad); cx <= cx1; cx++) for (let cy = cellOf(r.y - pad), cy1 = cellOf(r.y + r.h + pad); cy <= cy1; cy++) {
-      const list = sampleCells.get(cellKey(cx, cy));
-      if (list) for (const point of list) if (inside(point, r, pad)) return true;
-    }
-    return false;
-  };
-  const maxWidth = Math.min(g.capW + extra, cols > 1 ? colW * 1.9 - 10 : canvasWidth - 40);
-  const branches = (m: ObjectiveMission) => {
-    const p = pos.get(m.id)!; let up = 0, down = 0;
-    for (const e of edges) {
-      if (e.to !== m.id && e.from !== m.id) continue;
-      const q = e.to === m.id ? (e.from ? pos.get(e.from)! : root) : pos.get(e.to)!;
-      if (q.y < p.y - 2) up++; else if (q.y > p.y + 2) down++;
-    }
-    return { up, down, difficulty: (up && down ? 10 : 0) + up + down };
-  };
-  // 줄임은 임무·폭 배율·줄 수로만 정해진다 — 위·아래 두 자리와 다시 도는 배치가 같은 결과를 나눠 쓴다.
-  const fittedCache = new Map<string, ReturnType<typeof ellipsize>>();
-  const fitted = (m: ObjectiveMission, factor: number, count: number) => {
-    const key = `${m.id}\u0001${factor}\u0001${count}`;
-    let label = fittedCache.get(key);
-    if (!label) { label = ellipsize(m.text, maxWidth * factor, count, measure); fittedCache.set(key, label); }
-    return label;
-  };
-  const place = (order: readonly ObjectiveMission[]) => {
-    const occupied: Rect[] = [rootLabel], labels = new Map<string, Label>();
+  const rowY = (row: number) => g.rowH / 2 + row * g.rowH;
+  const row = new Map(order.map((m, i) => [m.id, i + 1]));
+  const shape = order.map(m => `${m.id}:${parentsOf(m).join(",")}`).join(";");
+  const assign = (step: number) => {
+    const lx = (l: number) => g.pad + g.r + l * step;
+    const key = `${wide}\u0003${step}\u0003${shape}`, hit = assigned.get(key);
+    if (hit) { assigned.delete(key); assigned.set(key, hit); return { ...hit, lx }; }
+    const lane = new Map<string, number>();
+    const nodes: { id: string | null; at: Point; r: number }[] = [{ id: null, at: { x: lx(0), y: rowY(0) }, r: g.rootR }];
+    const placed: Placed[] = [];
+    const at = (id: string | null) => id ? { x: lx(lane.get(id)!), y: rowY(row.get(id)!) } : { x: lx(0), y: rowY(0) };
+    // 부모 → (제 레인을 s만큼 내려가) 45° 가지 → 이동 레인 t → 45° 가지 → (자식 레인을 e만큼 내려와) 자식. 줄 사이에 안 들어가면 null.
+    const route = (p: Point, c: Point, t: number, s: number, e: number) => {
+      const xt = lx(t), ys = p.y + s, ye = c.y - e, y1 = ys + Math.abs(xt - p.x), y2 = ye - Math.abs(c.x - xt);
+      if (y1 > y2 + .01) return null;
+      const points = [p];
+      if (xt !== p.x) { if (s) points.push({ x: p.x, y: ys }); points.push({ x: xt, y: y1 }); }
+      if (xt !== c.x) { points.push({ x: xt, y: y2 }); if (e) points.push({ x: c.x, y: ye }); }
+      points.push(c);
+      return points;
+    };
+    const verticalsOf = (points: readonly Point[]) => segments(points).filter(q => Math.abs(q.a.x - q.b.x) < .01 && q.b.y - q.a.y > .5).map(q => ({ x: q.a.x, y1: q.a.y, y2: q.b.y }));
+    const clear = (points: readonly Point[], ends: readonly (string | null)[]) => {
+      const segs = segments(points);
+      return nodes.every(n => ends.includes(n.id) || segs.every(s => distance(n.at, s) >= n.r + CLEAR));
+    };
+    // 같은 레인을 따라 겹쳐 내려가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다.
+    const free = (verticals: readonly Vertical[], from: string | null, to: string, extra: readonly Placed[]) =>
+      [...placed, ...extra].every(e => e.from === from || e.to === to || e.verticals.every(o => verticals.every(v => Math.abs(o.x - v.x) > .01 || o.y2 <= v.y1 + 1 || o.y1 >= v.y2 - 1)));
     for (const m of order) {
-      const p = pos.get(m.id)!, { up, down } = branches(m);
-      const preferred = up < down ? "above" : down < up ? "below" : p.col % 2 === 0 ? "above" : "below";
-      let best: (Label & { score: number }) | null = null;
-      for (const side of [preferred, preferred === "above" ? "below" : "above"]) for (const factor of [1, .84, .7, .58, .46, .36]) for (const count of g.lines > 1 ? [g.lines, 1] : [1]) {
-        const label = fitted(m, factor, count), extension = extensions.get(m.id);
-        // 회차 칩도 이름의 충돌 영역에 넣는다 — 별도로 덧그리면 간선·이웃 이름을 덮는다.
-        const w = Math.ceil(Math.max(label.w, extension ? measure(extension) + 14 : 0)) + 2, h = label.lines.length * g.llh + (extension ? 24 : 0);
-        for (const dx of [0, -.3, .3, "L", "R", -.46, .46]) {
-          const x = dx === "L" ? p.x - g.r + 1 : dx === "R" ? p.x + g.r - 1 - w : p.x - w / 2 + (dx as number) * w;
-          const y = side === "above" ? p.y - g.r - 9 - h : p.y + g.r + 12, r = { x, y, w, h };
-          if (x < 4 || x + w > canvasWidth - 4 || nodeRects.some(n => intersects(r, n, 1)) || occupied.some(l => intersects(r, l, 3)) || touchesSample(r, 2)) continue;
-          const center = { x: x + w / 2, y: y + h / 2 }, own = Math.hypot(p.x - center.x, p.y - center.y);
-          let closer = false;
-          for (const [id, q] of pos) if (id !== m.id && Math.hypot(q.x - center.x, q.y - center.y) < own + 2) { closer = true; break; }
-          if (closer) continue;
-          const score = label.shown * 10 + (side === preferred ? 3 : 0) + (dx === 0 ? 2 : 0) - (typeof dx === "number" ? Math.abs(dx) * 2 : 1.2) - w * .01 - count * .5;
-          if (!best || score > best.score) best = { ...label, ...r, score, ...(extension ? { extension } : {}) };
+      const i = row.get(m.id)!, parents = parentsOf(m), sources: (string | null)[] = parents.length ? parents : [null];
+      const limit = Math.max(0, ...lane.values()) + sources.length + 2;
+      let best: { cost: number; l: number; edges: Placed[] } | null = null;
+      const merge = sources.length > 1, stem = Math.min(...sources.map(from => from ? lane.get(from)! : 0));
+      // 비용 — 노드 레인(줄기 쪽을 선호), 선이 옆으로 건넌 레인 수, 꺾임. 한 부모에서 나갔다 되돌아오는 활꼴과 합류가 줄기를 벗어나는 것은 무겁게 친다.
+      for (let l = 0; l <= limit && (!best || l * 1.5 < best.cost); l++) {
+        const c = { x: lx(l), y: rowY(i) }, edges: Placed[] = [];
+        let cost = l * 1.5 + (merge ? Math.max(0, l - stem) * 2 : 0);
+        for (const from of sources) {
+          const p = at(from), lp = from ? lane.get(from)! : 0, base = Math.max(lp, l);
+          let chosen: { cost: number; edge: Placed } | null = null;
+          for (let t = base; t <= limit + 1 && !chosen; t++) {
+            // 같은 이동 레인에서는 가지를 덜 늦춘 길부터 본다 — 늦춤은 바깥 레인으로 도는 것보다 가볍다.
+            const tries: { points: Point[]; delay: number }[] = [];
+            for (const a of t === lp ? [0] : OFFSETS) for (const b of t === l ? [0] : OFFSETS) {
+              const points = route(p, c, t, a * g.rowH, b * g.rowH);
+              if (points) tries.push({ points, delay: a + b });
+            }
+            // 바로 아래 줄로 두 레인까지 건너는데 두 가지가 줄 사이에 안 들어갈 때만 곧은 사선 하나로 잇는다.
+            if (!tries.length && t === base && Math.abs(lp - l) <= 2) tries.push({ points: [p, c], delay: 2 });
+            tries.sort((x, y) => x.delay - y.delay);
+            for (const { points, delay } of tries) {
+              if (!clear(points, [from, m.id])) continue;
+              const verticals = verticalsOf(points);
+              if (!free(verticals, from, m.id, edges)) continue;
+              const bow = !merge && t !== l ? 2 : 0;
+              chosen = { cost: (t - lp) + (t - l) + (points.length - 2) * .5 + delay * .25 + bow, edge: { from, to: m.id, points, verticals, lane: t } };
+              break;
+            }
+          }
+          if (!chosen) { cost = Infinity; break; }
+          cost += chosen.cost; edges.push(chosen.edge);
         }
+        if (cost < (best?.cost ?? Infinity)) best = { cost, l, edges };
       }
-      if (best) { labels.set(m.id, best); occupied.push(best); }
+      // 맞는 레인이 없으면(바깥 레인은 늘 비어 있어 생기지 않아야 한다) 바깥 레인에 곧은 선으로 둔다.
+      const l = best?.l ?? limit + 1;
+      lane.set(m.id, l);
+      nodes.push({ id: m.id, at: at(m.id), r: g.r });
+      placed.push(...(best?.edges ?? sources.map(from => ({ from, to: m.id, points: [at(from), at(m.id)], verticals: [], lane: l }))));
     }
-    return { labels, score: missions.reduce((sum, m) => { const l = labels.get(m.id); return sum + (l ? (l.full ? 1000 : 0) + l.shown : -5000); }, 0) };
+    // 이름 칸은 노드뿐 아니라 바깥으로 돈 선이 쓴 레인보다도 오른쪽에 선다.
+    const result = { lane, placed, lanes: Math.max(0, ...lane.values(), ...placed.map(e => e.lane)) };
+    if (assigned.size >= ASSIGNED_LIMIT) assigned.delete(assigned.keys().next().value!);
+    assigned.set(key, result);
+    return { ...result, lx };
   };
-  let order = [...missions].sort((a, b) => branches(b).difficulty - branches(a).difficulty), best = place(order);
-  for (let k = 0; k < 5; k++) {
-    const weak = order.filter(m => !best.labels.get(m.id)?.full);
-    if (!weak.length) break;
-    order = [...weak, ...order.filter(m => !weak.includes(m))];
-    const run = place(order); if (run.score > best.score) best = run;
-  }
-  // 같은 짧은 접두사로 합쳐지는 이름과 사라진 이름에는 폭을 양보한다. 번호는 늘 별도로 유지한다.
-  const shortNames = [...best.labels.values()].filter(l => !l.full && l.shown < 8).map(l => l.lines.join(""));
-  if (extra < 64 && (best.labels.size < missions.length || new Set(shortNames).size < shortNames.length)) return graphLayout(missions, width, wide, measure, commander, extra + 16, extensions);
-  const minY = Math.min(...[...pos.values()].map(p => p.y - g.r - 8), ...[...best.labels.values()].map(l => l.y), rootLabel.y, root.y - g.rootR - 4);
-  const maxY = Math.max(...[...pos.values()].map(p => p.y + g.r + 11), ...[...best.labels.values()].map(l => l.y + l.h), rootLabel.y + rootLabel.h);
-  const dy = 4 - minY;
-  pos.forEach(p => { p.y += dy; }); root.y += dy; rootLabel.y += dy; best.labels.forEach(l => { l.y += dy; });
-  for (const e of edges) Object.assign(e, edgeGeometry({ x: e.points[0]!.x, y: e.points[0]!.y + dy }, { x: e.points[59]!.x, y: e.points[59]!.y + dy }));
-  return { width: canvasWidth, height: Math.round(maxY + dy + 4), g, pos, root, rootLabel, edges, labels: best.labels, colW, cols };
+  // 레인이 많아 이름 칸이 MIN_LABEL 보다 좁아지면 간격을 줄여 다시 배정한다 — 가지는 45°를 지키고 겹침 판정도 줄인 간격으로 다시 한다.
+  let run = assign(g.lane), step = g.lane;
+  const room = width - 2 * g.pad - 2 * g.r - 14 - MIN_LABEL;
+  if (run.lanes && room / run.lanes < g.lane) { step = Math.max(MIN_LANE, Math.floor(room / run.lanes)); run = assign(step); }
+  const pos = new Map<string, Point>([...run.lane].map(([id, l]) => [id, { x: run.lx(l), y: rowY(row.get(id)!) }]));
+  const edges: GraphEdge[] = run.placed.map(e => ({ from: e.from, to: e.to, d: roundedPath(e.points, 6) }));
+  const labelX = Math.round(run.lx(run.lanes) + g.r + 14);
+  return { g, pos, root: { x: run.lx(0), y: rowY(0) }, edges, labelX, width: Math.max(width, labelX + MIN_LABEL + g.pad), height: (order.length + 1) * g.rowH + 4 };
 }
 
 export type GraphLayout = ReturnType<typeof graphLayout>;
-
-/**
- * 배치한 폭보다 넓은 칸을 열 간격만 늘려 채운다 — 이름 자리 찾기는 다시 하지 않는다. 노드와 이름은 제 열의 몫만큼 함께 옮기고
- * (간격이 넓어지기만 하므로 새 겹침이 없다) 선만 다시 긋는다. 한 열 그래프는 가운데를 따라 옮긴다.
- */
-export function stretchLayout(layout: GraphLayout, width: number): GraphLayout {
-  const extra = width - layout.width;
-  if (extra < 1) return layout;
-  const { g, cols, root } = layout;
-  const colW = cols > 1 ? layout.colW + extra / (cols - 1) : 0;
-  const shift = (col: number) => cols > 1 ? col * (colW - layout.colW) : extra / 2;
-  const pos = new Map([...layout.pos].map(([id, p]) => [id, { ...p, x: p.x + shift(p.col) }]));
-  const labels = new Map([...layout.labels].map(([id, label]) => [id, { ...label, x: label.x + shift(layout.pos.get(id)!.col) }]));
-  const edges = layout.edges.map(e => {
-    const p = pos.get(e.to)!, q = e.from ? pos.get(e.from)! : null;
-    return { ...e, ...edgeGeometry(q ? { x: q.x + g.r + 1, y: q.y } : { x: root.x + g.rootR + 1, y: root.y }, { x: p.x - g.r - 1, y: p.y }) };
-  });
-  return { ...layout, width, colW, pos, labels, edges };
-}

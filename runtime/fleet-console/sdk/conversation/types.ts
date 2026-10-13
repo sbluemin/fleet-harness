@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
 import type { LocalizedText } from "../i18n/types.js";
 
@@ -151,6 +153,79 @@ export interface GroupConversationActions {
   readonly send: (target: GroupMessageTarget, text: string, attachmentIds?: readonly string[]) => Promise<GroupWriteResult>;
   readonly stopAll: () => Promise<GroupWriteResult>;
   readonly answerDecision: (requestId: string, answers: readonly GroupDecisionAnswer[]) => Promise<void>;
+  /** 보드 동작 — 입력창 위 제안 줄. 보드가 없는 대화(목표가 아닌 채팅)에는 없다. */
+  readonly board?: GroupBoardActions;
+}
+
+/** 제안 칩의 글리프 — 호스트가 입력창과 같은 선 굵기로 그린다. */
+export type GroupBoardActionGlyph = "plan" | "start" | "steer" | "complete" | "handOff";
+
+/** 제안 줄의 칩 하나 — 보드의 상태 사다리가 고른 사람의 할 일. */
+export interface GroupBoardAction {
+  /** `run` 이 돌려받는 열쇠. */
+  readonly id: string;
+  readonly label: LocalizedText;
+  /** 칩 부제(예: 「구성원 7」·고친 보드 종류). */
+  readonly detail?: LocalizedText;
+  readonly glyph: GroupBoardActionGlyph;
+  /** 지금 할 일 — `primary` 는 첫 칩, `review` 는 검토 대기의 완료다. 없으면 보조 칩이다. */
+  readonly emphasis?: "primary" | "review";
+  /**
+   * 있으면 칩을 고를 때 입력창 안에 동작 칩이 앉고 쓰는 말이 곧 덧붙일 말이다. 그동안 받는 이는 지휘관으로 고정된다.
+   * `prefill` 은 입력이 비었을 때 미리 채울 지난 말이다. 없으면 칩이 곧 실행이다.
+   */
+  readonly context?: { readonly placeholder: LocalizedText; readonly required: boolean; readonly maxLength: number; readonly prefill?: string };
+  /** 말 없이 실행하는 칩을 두 번 눌러야 보낸다(첫 누름 뒤 잠시 안에 다시). */
+  readonly confirm?: boolean;
+  /** 지금 누를 수 없는 까닭 — 칩이 잠기고 이 말이 title 로 선다. */
+  readonly unavailable?: LocalizedText;
+}
+
+/**
+ * 보드 동작의 결과. `done` — 보냈다(입력창의 동작 칩과 덧붙일 말을 걷는다). `held` — 플러그인 패널(`renderPanel`)이 이어받았다
+ * (말과 칩은 그대로 둔다). `failed` — 거절됐다(말을 지키고 자동 재시도하지 않는다). `notice` 는 입력창의 알림 줄로 선다.
+ */
+export interface GroupBoardRunResult {
+  readonly outcome: "done" | "held" | "failed";
+  readonly notice?: { readonly text: LocalizedText; readonly tone: "info" | "warn" };
+  /**
+   * 패널이 끝낸 동작의 id(`settle` 전용) — 입력창은 그 동작을 제출할 때 덧붙일 말로 넘긴 초안만 걷고, 그 뒤에 새로 쓴 말은 남긴다.
+   * 없으면 초안을 건드리지 않는다. 덧붙일 말을 받지 않는 동작(완료·압축 등)은 초안과 무관하다.
+   */
+  readonly actionId?: string;
+}
+
+/** 플러그인 패널이 받는 문맥 — 패널이 이어받은 동작을 끝내면 `settle` 로 입력창에 알린다. */
+export interface GroupBoardPanelContext {
+  readonly language: "en" | "ko";
+  readonly settle: (result: GroupBoardRunResult) => void;
+}
+
+/**
+ * 보드 동작의 계약. 상태 사다리·서버 경로·거절 사유의 문구는 플러그인이 소유하고, 호스트는 제안 줄·입력창 안 동작 칩·＋ 메뉴 행을
+ * 그린다. 보내기↔정지(중단)와 받는 이 메시지는 `send`·`stopAll` 그대로다.
+ */
+export interface GroupBoardActions {
+  /** 제안 줄의 칩 — 지금 할 일이 첫 칩, 함께 성립하는 보조가 둘째 칩이다. 비면 칩이 서지 않는다. */
+  readonly suggestions: readonly GroupBoardAction[];
+  /** 제안 줄(칩 1~2개)에 싣지 못한 같은 상태의 나머지 동작 — ＋ 메뉴의 보드 행으로 선다. 칩과 같은 규칙으로 앉거나 실행된다. */
+  readonly more?: readonly GroupBoardAction[];
+  /** 입력창이 이 동작으로 고정된다(완료한 목표의 범위 넓히기) — 칩을 풀 수 없고 받는 이를 고를 수 없다. */
+  readonly fixed?: GroupBoardAction;
+  /** 평범한 메시지가 갈 곳이 없다(지휘관이 서기 전) — 동작 칩을 고른 말만 보낸다. */
+  readonly actionsOnly?: boolean;
+  /**
+   * 제안 줄 앞의 한 줄. `lock` — 잠긴 동작의 까닭(`reveal` 이 있으면 「보기」 링크), `working` — 진행 중 안내,
+   * `awaiting` — 허용을 기다리는 참여자(호스트가 대화의 요청 카드로 가는 링크를 붙인다).
+   */
+  readonly note?: { readonly tone: "lock" | "working" | "awaiting"; readonly text: LocalizedText; readonly reveal?: { readonly label: LocalizedText; readonly run: () => void } };
+  /** 칩 뒤의 짧은 안내(예: 「덧붙일 말은 입력창에」). */
+  readonly hint?: LocalizedText;
+  /** ＋ 메뉴의 컨텍스트 압축(/compact) 행 — 두 번 눌러 보낸다. `sessions` 는 보낼 곳의 수, 0 이면 행이 잠긴다. */
+  readonly compact?: { readonly sessions: number; readonly run: () => Promise<GroupBoardRunResult> };
+  readonly run: (actionId: string, context: string) => Promise<GroupBoardRunResult>;
+  /** 입력창 바로 위에 뜨는 플러그인 칸(라우팅 확인·후속 후보 고르기). 띄울 것이 없으면 null 을 그린다. 자리와 면은 호스트가 진다. */
+  readonly renderPanel?: (ctx: GroupBoardPanelContext) => ReactNode;
 }
 
 export interface GroupTimelineSnapshot {
