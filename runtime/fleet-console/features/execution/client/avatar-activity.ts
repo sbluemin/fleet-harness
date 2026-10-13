@@ -1,10 +1,10 @@
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 import type { MongleActivity } from "@fleet-console/sdk/avatars";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getState as getConsoleState, subscribe as subscribeConsole } from "../../../core/client/src/integration/store.js";
-import { getAgentState, subscribe as subscribeAgent } from "./agent/store.js";
+import { getSessionStep, subscribeSessionStep } from "./agent/store.js";
 import type { SessionStep } from "./agent/types.js";
 
 /**
@@ -21,20 +21,22 @@ export function operationMongleActivity(runtime: OperationRuntimeState | undefin
   return step ?? null;
 }
 
-function subscribeBoth(listener: () => void): () => void {
-  const offConsole = subscribeConsole(listener);
-  const offAgent = subscribeAgent(listener);
-  return () => {
-    offConsole();
-    offAgent();
-  };
-}
-
-/** 값 하나만 구독한다 — 스냅샷이 문자열이라 값이 그대로면 React 가 렌더를 건너뛴다(사이드바 줄마다 전체 상태를 구독하지 않는다). */
+/**
+ * 값 하나만 구독한다 — 스냅샷이 문자열이라 값이 그대로면 React 가 렌더를 건너뛴다. 계열은 그 Operation 의 것만 구독하므로
+ * 다른 Operation 의 계열이 바뀌어도 이 아바타는 깨어나지 않는다.
+ */
 export function useOperationMongleActivity(operationId: string | null | undefined): MongleActivity | null {
+  const subscribe = useCallback((listener: () => void) => {
+    const offConsole = subscribeConsole(listener);
+    const offStep = operationId ? subscribeSessionStep(operationId, listener) : () => {};
+    return () => {
+      offConsole();
+      offStep();
+    };
+  }, [operationId]);
   return useSyncExternalStore(
-    subscribeBoth,
-    () => (operationId ? operationMongleActivity(getConsoleState().operationRuntime[operationId], getAgentState().sessions[operationId]?.step) : null),
+    subscribe,
+    () => (operationId ? operationMongleActivity(getConsoleState().operationRuntime[operationId], getSessionStep(operationId)) : null),
     () => null,
   );
 }

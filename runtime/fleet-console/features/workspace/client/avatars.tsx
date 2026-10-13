@@ -263,7 +263,8 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
       title={t("avatar.editor.open", { name: label })}
       onClick={toggle}
     >
-      <MongleAvatar base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
+      {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
       <span className="avatar-editor-pen" aria-hidden="true">
         <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
       </span>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../avatars/index.js";
 import type { IdentityTone } from "../operations/identity-tones.js";
@@ -214,7 +214,8 @@ const ACTIVITY_CYCLE_MS: Readonly<Record<MongleActivity | "default", number>> = 
   default: 1400, think: 1600, read: 2400, edit: 1200, run: 1400, fetch: 1600, delegate: 1600, text: 1600, compact: 1600, background: 2800,
 };
 /** 손과 소품을 꺼내는 활동 — 바뀔 때 먼저 집어넣는다(퇴장). */
-const PROP_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(["think", "read", "edit", "run", "fetch", "delegate", "text", "compact"]);
+const PROP_ACTIVITY_LIST = ["think", "read", "edit", "run", "fetch", "delegate", "text", "compact"] as const satisfies readonly MongleActivity[];
+const PROP_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(PROP_ACTIVITY_LIST);
 /**
  * 큰 동작이 있는 활동. 큰 동작 층은 활동 주기의 두 배이고 앞 절반 안에서만 움직인다 — 진입 때 한 번, 그 뒤로 두 주기에 한 번이고,
  * 활동 반복의 경계는 늘 큰 동작의 휴식 자세다.
@@ -262,7 +263,7 @@ interface ActivityMotion {
   readonly leaving: boolean;
   /** 큰 동작 층이 켜졌다. */
   readonly big: boolean;
-  /** 활동에 들어선 횟수 — 같은 활동으로 다시 들어설 때도 손·소품이 새로 나온다. */
+  /** 활동에 들어선 횟수 — 교체 경계의 기준 시각을 커밋 순간으로 옮길 때 짝을 맞춘다. */
   readonly entry: number;
 }
 
@@ -272,9 +273,10 @@ const now = () => (typeof performance !== "undefined" ? performance.now() : Date
  * 활동 전환 규칙 하나를 아바타마다 돈다.
  *
  * - 작업 중으로 들어설 때는 바로 그 활동이다. 작업 중을 떠날 때도 바로다(상태 전환은 기다리지 않는다).
- * - 작업 중 안에서 활동이 바뀌면 지금 활동에 최소 1.2초 머문 뒤 그 반복의 경계를 기다렸다가, 손과 소품을 넣고(0.22초) 새 활동으로 바꾼다.
+ * - 작업 중 안에서 활동이 바뀌면 지금 활동에 최소 1.2초 머문 뒤, 손과 소품을 넣고(0.22초) 그 반복의 경계에서 새 활동으로 바꾼다.
+ *   퇴장은 경계 0.22초 앞에서 시작한다 — 교체 순간 몸 층이 휴식 자세(0%=100%)에 있어야 몸이 튀지 않는다.
  *   기다리는 동안 들어온 값은 마지막 하나만 남는다. 이 규칙이 짧은 도구 연타를 깜빡임 대신 한 동작으로 이어 준다.
- * - 경계 시각은 클래스가 붙은 순간을 반복의 시작으로 보고 계산한다. 반복 키프레임은 0%=100%=휴식 자세라 몇 프레임 어긋나도 튀지 않는다.
+ * - 경계 시각은 새 활동의 클래스가 커밋된 순간을 반복의 시작으로 보고 계산한다. 반복 키프레임은 0%=100%=휴식 자세라 한 프레임 어긋나도 튀지 않는다.
  */
 class ActivityScheduler {
   private running = false;
@@ -316,6 +318,11 @@ class ActivityScheduler {
     this.scheduleSwap();
   }
 
+  /** 새 활동이 화면에 커밋된 순간 — CSS 반복이 실제로 시작한 시각에 가깝게 경계의 기준을 옮긴다. */
+  committed(entry: number): void {
+    if (entry === this.entry) this.shownAt = now();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.clearSwap();
@@ -346,17 +353,20 @@ class ActivityScheduler {
 
   private scheduleSwap(): void {
     if (this.swapTimer !== null) return;
-    const at = this.nextBoundary(HOLD_MS);
-    this.swapTimer = setTimeout(() => this.atBoundary(), Math.max(0, at - now()));
+    const props = this.shown !== null && PROP_ACTIVITIES.has(this.shown);
+    // 교체는 경계에 떨어지고, 손·소품이 있으면 퇴장은 그보다 0.22초 앞에서 시작한다.
+    const at = this.nextBoundary(Math.max(HOLD_MS, now() - this.shownAt + (props ? LEAVE_MS : 0)));
+    const leaveAt = props ? at - LEAVE_MS : at;
+    this.swapTimer = setTimeout(() => this.beforeBoundary(at), Math.max(0, leaveAt - now()));
   }
 
-  private atBoundary(): void {
+  private beforeBoundary(at: number): void {
     this.swapTimer = null;
     if (this.target === this.shown) return;
     if (this.shown !== null && PROP_ACTIVITIES.has(this.shown)) {
       this.leaving = true;
       this.emit();
-      this.swapTimer = setTimeout(() => this.swap(), LEAVE_MS);
+      this.swapTimer = setTimeout(() => this.swap(), Math.max(0, at - now()));
       return;
     }
     this.swap();
@@ -457,6 +467,9 @@ function useActivityMotion(running: boolean, target: MongleActivity | null, temp
   useEffect(() => {
     scheduler.current?.update(running, target, tempo, budgeted);
   }, [running, target, tempo, budgeted]);
+  useLayoutEffect(() => {
+    scheduler.current?.committed(motion.entry);
+  }, [motion.entry]);
   return motion;
 }
 
@@ -491,6 +504,9 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
   // 미니(12px 이하)는 출렁임 한 층만 남는다 — 활동을 넘기지 않으면 교체 시계도 돌지 않는다.
   const motion = useActivityMotion(state === "running", tier === "mini" ? null : activity, tempo, tier !== "full");
   const acting = state === "running" ? motion.activity : null;
+  // 작업 중인 아바타는 모든 활동의 손·소품과 분신을 미리 세워 두고, 지금 활동의 것만 클래스로 보인다. 활동이 바뀔 때 요소를
+  // 넣고 빼면 앱 곳곳의 :has() 규칙이 그때마다 셸 전체의 스타일을 다시 맞춰, 목록에서 메인 스레드를 크게 잡아먹는다(실측).
+  const staged = state === "running" && tier !== "mini";
   const classes = [
     "mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, `is-tier-${tier}`,
     acting ? `is-act-${acting}` : null, acting && motion.leaving ? "is-leaving" : null, acting && motion.big ? "is-big" : null,
@@ -501,14 +517,16 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
     <svg className={classes} viewBox="0 0 32 32" width={size} height={size} focusable="false" style={{ "--mongle-tempo": tempo } as CSSProperties} {...a11y}>
       {decorative ? null : <title>{label}</title>}
       {CALLING_STATES.has(state) ? <ellipse className="mongle-avatar-floor" cx="16" cy="30.4" rx="8.6" ry="1.5" /> : null}
-      {acting === "delegate" ? <g key={motion.entry} className="mongle-avatar-echo"><Body shape={preset.shape} /></g> : null}
+      {staged ? <g className="mongle-avatar-echo"><Body shape={preset.shape} /></g> : null}
       <g className="mongle-avatar-big">
         <g className="mongle-avatar-body">
           <Body shape={preset.shape} />
           <Eyes state={state} />
           <Detail kind={preset.detail} state={state} />
           <Feature role={role} shape={preset.shape} />
-          {acting && PROP_ACTIVITIES.has(acting) ? <g key={motion.entry} className="mongle-avatar-act"><ActProps activity={acting} detail={tier === "full"} /></g> : null}
+          {staged ? PROP_ACTIVITY_LIST.map((activity) => (
+            <g key={activity} className={`mongle-avatar-act is-for-${activity}`}><ActProps activity={activity} detail={tier === "full"} /></g>
+          )) : null}
         </g>
       </g>
       <Badge state={state} />
