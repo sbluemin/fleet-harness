@@ -136,7 +136,7 @@ export async function prepareChatClaudeSession(
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
-    claudeCodeDisabledTools: [USER_QUESTION_TOOL],
+    claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
       ? {
@@ -146,8 +146,11 @@ export async function prepareChatClaudeSession(
 }
 
 const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude";
-/** 사람에게 묻는 Claude Code 도구. Console이 띄우는 Claude 세션은 두 표면 모두 이 이름을 deny 목록에 싣는다. */
-export const USER_QUESTION_TOOL = "AskUserQuestion";
+/**
+ * Console이 띄우는 Claude 세션이 늘 빼는 대화형 도구 — 사람에게 묻는 질문, 계획 모드 진입과 계획 승인.
+ * 두 표면 모두 이 이름들을 deny 목록에 싣는다. 진입만 남기면 승인 없이 계획 모드를 빠져나올 수 없으므로 함께 뺀다.
+ */
+export const CONSOLE_DISABLED_TOOLS: readonly string[] = ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"];
 
 export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
@@ -337,8 +340,8 @@ async function createAgentCliLaunchSpec(options: {
       // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
-      // 사람에게 묻는 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.
-      claudeCodeDisabledTools: [USER_QUESTION_TOOL],
+      // 사람에게 묻는 도구와 계획 모드 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.
+      claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.
       origin: options.resumeSessionId
         ? { kind: "resume", sessionId: options.resumeSessionId }

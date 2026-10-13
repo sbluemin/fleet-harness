@@ -2208,7 +2208,7 @@ class AgentChatSession {
   ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> {
     if (!AGENT_CHAT_ASK_TOOLS.has(name)) return { behavior: "allow" };
     // 도구 목록에서 이미 빠지므로 여기 닿는 질문은 없어야 한다 — 닿으면 카드도 대기도 세우지 않고 거절한다.
-    // 계획 승인(ExitPlanMode)은 이 거절 밖이다.
+    // 계획 승인(ExitPlanMode)도 도구 목록에서 빠진다 — 이 거절 밖이며, 닿으면 지난 세션과 같은 카드를 세운다.
     if (name === "AskUserQuestion") return { behavior: "deny", message: USER_QUESTIONS_OFF };
     const id = context.toolUseId.length > 0 ? context.toolUseId : `ask-${this.seq + 1}`;
     const parsed = agentChatAskFromToolInput(name, id, input);
