@@ -934,10 +934,13 @@
 .mobile-sheet-row-copy small.is-awaiting { color: var(--m-awaiting); }
 .mobile-sheet-row-glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; color: var(--m-text); }
 .mobile-sheet-check { color: var(--m-text); }
-/* 지금 Theater 묶음(S-55) — 구분선 1dp 좌우 8 들여 위 4, 머리 6/8/0 */
+/* 시트 안 구분선(S-55) — 1dp 좌우 8 들여 위 4 */
 .mobile-sheet-sep { height: 1px; margin: 4px 8px 0; background: var(--m-hairline); }
-.mobile-sheet-group-label { padding: 6px 8px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
 .mobile-sheet-error { margin: 0; color: var(--m-danger); font-size: var(--t-md); }
+/* S-07 아래 안내 — 행을 길게 누르면 그 Theater의 동작 시트가 선다. 길게 누르는 행에는 iOS 콜아웃·글자 선택이 뜨지 않는다. */
+.mobile-sheet-hint { margin: 0; padding: 6px 8px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
+.mobile-sheet-row.is-theater { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+.mobile-sheet-row.is-danger { color: var(--m-danger); }
 
 /* 묶음 카드(목록 화면 공통) */
 .mobile-group { display: flex; flex-direction: column; gap: 2px; padding: 4px 14px 24px; }

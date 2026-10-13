@@ -4453,6 +4453,9 @@ button.status-glyph.is-actionable:focus-visible {
     box-shadow var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring);
   user-select: none;
+  -webkit-user-select: none;
+  /* 터치 길게 누르기는 Theater 메뉴를 연다 — iOS 의 링크·텍스트 콜아웃이 그 위에 뜨지 않게 한다. */
+  -webkit-touch-callout: none;
 }
 
 /* 호버는 행 배경 채움 하나만 쓴다. rim 테두리까지 얹으면 활성(테두리 없음)보다 강해져
@@ -4478,6 +4481,12 @@ button.status-glyph.is-actionable:focus-visible {
    말한다. 활성 행을 누르면 그 Theater 의 Inbox 가 열리므로 호버 채움은 다른 행과 같이 받는다. */
 .side-bar-theater-header.is-active {
   color: var(--text-secondary);
+}
+
+/* 열린 Theater 메뉴의 대상 머리 — 어느 Theater 를 다루는지(위치)를 말하므로 focus-visible 과 같은 brass 테두리를 진다.
+   메뉴는 활성이 아닌 머리에서도 열리고 전환하지 않으므로, 활성 표식과 따로 선다. */
+.side-bar-theater-header.is-menu-target {
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
 }
 
 /* 이름만 최고 명도로 올린다 — 행 전체를 올리면 chevron·+ 컨트롤까지 함께 밝아져
@@ -4874,7 +4883,42 @@ button.status-glyph.is-actionable:focus-visible {
    .theater-menu가 파일 후반에 선언되므로 복합 셀렉터로 특이도를 올려 이긴다. */
 .theater-menu.side-bar-theater-menu {
   min-width: 180px;
+  max-width: min(300px, calc(100vw - 16px));
   right: auto;
+}
+
+/* 메뉴 맨 위 대상 이름 — 별칭이 있으면 둘째 줄에 원래 Theater 이름. 항목이 아니므로 고르지 않는다. */
+.side-bar-theater-menu .theater-menu-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-bottom: var(--space-1);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.side-bar-theater-menu .theater-menu-title-text {
+  display: grid;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.side-bar-theater-menu .theater-menu-title-text > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-bar-theater-menu .theater-menu-title-text strong {
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.side-bar-theater-menu .theater-menu-title-text span {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
 }
 
 /* ── SideBar Chip ──────────────────────────────────────────────────────────────── */
