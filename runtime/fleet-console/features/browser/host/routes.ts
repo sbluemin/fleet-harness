@@ -36,7 +36,12 @@ export interface BrowserSetShortcutsInput {
 
 interface BrowserRouteDeps {
   readonly browserService: BrowserService;
-  readonly browserMcp: { interruptOperation(id: string): number; pasteIntoTerminal(id: string): boolean };
+  readonly browserMcp: {
+    interruptOperation(id: string): number;
+    pasteIntoTerminal(id: string): boolean;
+    resolveSessionOwner?(pluginId: string, scopeId: string): string | null;
+    isSessionOwner?(id: string): boolean;
+  };
   readonly operations: { get(id: string): { id: string; payload: Record<string, unknown> } | null };
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
@@ -54,6 +59,12 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/browser/sessions/resolve") {
+      const query = readUrl(req).searchParams;
+      const ownerId = browserMcp.resolveSessionOwner?.(query.get("pluginId") ?? "", query.get("scopeId") ?? "") ?? null;
+      writeJson(res, 200, { ownerId });
+      return true;
+    }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
       if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
       try { writeJson(res, 200, await browserService.importSources()); }
@@ -228,7 +239,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     const action = match[2] ?? "";
     // 전역 소유자 id는 Operation 경로로 열리지 않는다 — 전역 브라우저는 /global/* 로만 다룬다.
     const operation = operationId === GLOBAL_BROWSER_OWNER_ID ? null : operations.get(operationId);
-    if (!operation) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    const sessionOwner = operationId !== GLOBAL_BROWSER_OWNER_ID && browserMcp.isSessionOwner?.(operationId) === true;
+    if (!operation && !sessionOwner) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
@@ -312,6 +324,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       if (action === "paste") {
         // 사람이 패널에서 만든 스크린샷을 이 기계의 OS 클립보드에 올린 뒤 터미널 Operation 의 CLI 에 붙여넣기(Ctrl+V)를
         // 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽으므로, 서버가 올리고 나서야 키를 보내야 순서가 맞는다.
+        if (!operation) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
         if (operation.payload.chatMode === true) { writeJson(res, 409, { error: "operation_in_chat_mode" }); return true; }
         if (typeof body.data !== "string" || body.data.length === 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         const png = Buffer.from(body.data, "base64");

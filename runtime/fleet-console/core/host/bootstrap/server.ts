@@ -44,7 +44,7 @@ import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PAT
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
-import { createBrowserMcpHost } from "../../../features/browser/host/mcp.js";
+import { createBrowserMcpHost, SESSION_BROWSER_OWNER_PREFIX } from "../../../features/browser/host/mcp.js";
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
 import { createBrowserScreenshotStore } from "../../../features/browser/host/screenshot-store.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
@@ -436,7 +436,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Operation Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Session Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/sessions/resolve", summary: "Resolve a plugin session's browser owner for its panel.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/state", summary: "Read an Operation's browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/tabs", summary: "Create, close or select a tab in an Operation's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -513,7 +514,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, event),
     // 전역 Fleet 브라우저의 소유자 id는 Operation이 가질 수 없다 — 그 이름의 Operation이 생기면 그 에이전트가 사람의 탭에 닿는다.
-    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
     assertRelationMutable: (id) => operationArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();
@@ -1229,7 +1230,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }),
     createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, resolveExecutablePath: async () => {
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
         // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");
