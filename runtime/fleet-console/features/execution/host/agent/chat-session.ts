@@ -60,6 +60,7 @@ import {
   type ChatEventMapOptions,
   type ChatOrigin,
 } from "./chat-events.js";
+import { createChatStepReporter, type ChatStepReporter } from "./chat-step.js";
 import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
@@ -237,6 +238,11 @@ export interface AgentChatSessionSeed {
    * 작업 중을 앞세운다.
    */
   readonly reportBackgroundPending: (pending: boolean) => void;
+  /**
+   * 열린 턴 안에서 지금 하는 일의 계열을 세션 스냅샷에 싣는다(몽글 아바타의 활동 연기). 계열이 바뀔 때만, 최소 간격을 두고
+   * 부른다. 턴이 닫힐 때는 부르지 않는다 — 축이 턴 종료 보고와 함께 지운다.
+   */
+  readonly reportStep?: (step: import("./types.js").AgentWorkStep | null) => void;
 }
 
 /**
@@ -859,6 +865,8 @@ class AgentChatSession {
    * 하나이고, 중지도 여기를 닫는다.
    */
   private turnOpen = false;
+  /** 열린 턴에서 지금 하는 일의 계열을 접어 보고한다. 보고할 곳이 없으면 null. */
+  private readonly stepReporter: ChatStepReporter | null;
   /**
    * 지금 도는 정비 명령. 값이 있으면 이 왕복은 턴이 아니라 원장의 정비 줄로 그려지고,
    * 자식이 흘리는 조각들은 턴 내용이 아니라 그 줄의 진행·결말로 읽힌다.
@@ -1008,6 +1016,7 @@ class AgentChatSession {
     this.operationId = operationId;
     this.seed = seed;
     this.createSdk = createSdk;
+    this.stepReporter = seed.reportStep ? createChatStepReporter(seed.reportStep) : null;
     this.coordinates = {
       model: seed.model,
       launchEffort: seed.ultracode ? "ultra" : seed.effort ?? null,
@@ -1713,6 +1722,7 @@ class AgentChatSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.stepReporter?.dispose();
     // 아직 시작하지 않은 예약은 여기서 거둔다. 남겨 두면 접는 도중에 자기 차례가 와 새 턴을
     // 세우고, dispose는 그 턴의 완주를 기다리며 Operation 삭제·셧다운을 그만큼 붙든다.
     this.queuedDispatches.clear();
@@ -3055,6 +3065,7 @@ class AgentChatSession {
       if (!this.turnOpen && !this.settlingStoppedTurn) {
         this.openTurn({ dispatched: false });
       }
+      if (this.turnOpen) this.stepReporter?.observe(event);
       return;
     }
     // 자발 압축은 정비 줄 밖에서 온다. 이미 열린 턴 안의 자동 압축은 그 턴이 가지고, 유휴일 때만 여기서 연다.
@@ -3063,6 +3074,7 @@ class AgentChatSession {
       this.openTurn({ dispatched: false });
     }
     if (!this.turnOpen && opensChatTurn(event)) this.openTurn({ dispatched: false });
+    if (this.turnOpen) this.stepReporter?.observe(event);
     this.rememberTool(event);
     this.trackJob(event);
     // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
@@ -3155,6 +3167,7 @@ class AgentChatSession {
     this.push({ kind: "turn-start", at: Date.now() });
     // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
     if (!options.dispatched) this.seed.reportActivity(true);
+    this.stepReporter?.turnOpened();
   }
 
   /**
@@ -3166,6 +3179,7 @@ class AgentChatSession {
   private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string; readonly failure?: import("@fleet-console/sdk/mcp").ConsoleTurnFailure }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
+    this.stepReporter?.turnClosed();
     // SDK 대화 세션이 살아 있어도 기기 제어는 이 턴과 함께 끝난다.
     this.seed.cancelComputerUse?.();
     const reachedChild = this.turnReachedChild;

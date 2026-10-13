@@ -2327,6 +2327,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const updated = observability.setTerminalSessionChatBackgroundPending(node.id, pending);
           if (updated && before !== pending) observability.notifySessionUpdated(updated);
         },
+        reportStep: (step) => {
+          // 바뀌지 않았거나 이 세션의 턴이 돌지 않으면 null — 방송하지 않는다.
+          const updated = observability.setTerminalSessionChatStep(node.id, step);
+          if (updated) observability.notifySessionUpdated(updated);
+        },
       },
     };
   }

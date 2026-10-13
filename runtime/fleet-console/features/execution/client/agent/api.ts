@@ -5,7 +5,7 @@ import {
   type AgentChatCatalog,
   type AgentChatJobDetail,
 } from "./chat/chat-events.js";
-import type { AgentCliMetadata, OperationWorkspace, SessionInfo } from "./types.js";
+import type { AgentCliMetadata, OperationWorkspace, SessionInfo, SessionStep } from "./types.js";
 
 export interface OperationsSnapshot {
   readonly operations: readonly OperationNode[];
@@ -363,6 +363,12 @@ export async function terminateAgentSession(sessionId: string, signal?: AbortSig
   await assertOk(response);
 }
 
+const SESSION_STEPS: ReadonlySet<string> = new Set<SessionStep>(["think", "read", "edit", "run", "fetch", "delegate", "text", "compact"]);
+
+function isSessionStep(value: unknown): value is SessionStep {
+  return typeof value === "string" && SESSION_STEPS.has(value);
+}
+
 export function assertSessionInfo(value: unknown, status: number): SessionInfo {
   const payload = value as Partial<SessionInfo>;
   if (
@@ -389,6 +395,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     // 이 함수는 화이트리스트 재구성이다 — 여기 없는 필드는 서버가 실어 보내도 소실된다.
     // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
     chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
+    ...(isSessionStep(payload.step) ? { step: payload.step } : {}),
     ...(workspace ? { workspace } : {}),
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,

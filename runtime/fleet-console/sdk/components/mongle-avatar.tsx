@@ -1,13 +1,17 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import { mongleBase, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../avatars/index.js";
+import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../avatars/index.js";
 import type { IdentityTone } from "../operations/identity-tones.js";
 
 /**
  * 몽글 아바타 — 사령관·지휘관·구성원·Operation 을 한 조형으로 그린다.
  *
- * 베이스(몸 모양·톤·얼굴 디테일) 위에 역할 특징(사령관 별 배지·지휘관 안테나)을 얹고, 상태는 눈·몸짓·작은 배지가 말한다.
- * 상태 배지는 오른쪽 위·아래에 서고 사령관 별은 왼쪽 위라 서로 겹치지 않는다. 움직임을 꺼도 눈 모양이 상태를 지킨다.
+ * 베이스(몸 모양·톤·얼굴 디테일) 위에 역할 특징(사령관 별 배지·지휘관 안테나)을 얹고, 상태는 눈·몸짓·발밑 빛·작은 배지가 말한다.
+ * 사람을 부르는 상태(대기·결정·검토)는 몸짓과 발밑 빛으로 갈리고, 끝난 구성원은 배지 없이 기지개 뒤 내려앉은 자세다.
+ * 남은 배지(안 본 답·오류·휴면)는 오른쪽 위에 서고 사령관 별은 왼쪽 위라 서로 겹치지 않는다. 움직임을 꺼도 눈 모양과 정지 자세가 상태를 지킨다.
+ *
+ * 작업 중에는 지금 하는 일(`activity`)을 손·소품·큰 동작으로 연기한다(목표 eb3c2802 시안 v3). 크기에 따라 덜어 낸다 —
+ * 48px 이상은 전부, 22–47px 은 잔디테일을 빼고, 13–21px 은 손과 소품만 굵게, 12px 이하는 출렁임 한 층만.
  *
  * 클래스 이름은 이 모듈이 고정한다 — 실제 규칙(톤·움직임·차분)은 코어 `components.css` 의 `.mongle-avatar` 한 곳에 산다.
  * 라벨은 호출부가 자기 로케일로 넘긴다(SDK는 번역을 소유하지 않는다).
@@ -41,10 +45,18 @@ function Eyes({ state }: { readonly state: MongleState }): ReactNode {
   switch (state) {
     case "running":
       return <g className="mongle-avatar-eyes"><rect className="mongle-avatar-eye" x="11.9" y="16.65" width="2.3" height="3.9" rx="1.15" /><rect className="mongle-avatar-eye" x="19" y="16.65" width="2.3" height="3.9" rx="1.15" /></g>;
+    // 부르는 세 상태는 배지 없이도 정지 자세에서 갈려야 한다 — 대기는 눈을 들어 사람을 보고, 결정은 짝눈으로 갸웃하고, 검토는 반짝인다.
     case "awaiting":
+      return <g className="mongle-avatar-eyes"><circle className="mongle-avatar-eye" cx="12.5" cy="16.7" r="1.75" /><circle className="mongle-avatar-eye" cx="19.5" cy="16.7" r="1.75" /></g>;
     case "decision":
+      return <g className="mongle-avatar-eyes"><circle className="mongle-avatar-eye" cx="12.4" cy="17.6" r="1.4" /><circle className="mongle-avatar-eye" cx="19.6" cy="17.1" r="2" /></g>;
     case "review":
-      return <g className="mongle-avatar-eyes"><circle className="mongle-avatar-eye" cx="12.5" cy="17.4" r="1.75" /><circle className="mongle-avatar-eye" cx="19.5" cy="17.4" r="1.75" /></g>;
+      return (
+        <g className="mongle-avatar-eyes">
+          <circle className="mongle-avatar-eye" cx="12.5" cy="17.4" r="1.75" /><circle className="mongle-avatar-glint" cx="13.1" cy="16.8" r=".55" />
+          <circle className="mongle-avatar-eye" cx="19.5" cy="17.4" r="1.75" /><circle className="mongle-avatar-glint" cx="20.1" cy="16.8" r=".55" />
+        </g>
+      );
     case "unseen":
     case "done":
       return <g className="mongle-avatar-eyes"><path className="mongle-avatar-line" d="M10.7 19.2q1.8-2.4 3.6 0M17.7 19.2q1.8-2.4 3.6 0" /></g>;
@@ -92,16 +104,360 @@ function Feature({ role, shape }: { readonly role: MongleRole; readonly shape: M
   return null;
 }
 
+/** 남은 상태 배지 — 오른쪽 위. 결정·검토의 배지와 끝난 구성원의 체크는 몸짓·발밑 빛·자세가 대신한다. */
 function Badge({ state }: { readonly state: MongleState }): ReactNode {
   switch (state) {
-    case "decision": return <g className="mongle-avatar-ask"><circle cx="26.5" cy="6" r="4.6" /><path className="mongle-avatar-ask-mark" d="M26.5 3.6v3.2M26.5 8.5v.1" /></g>;
     case "unseen": return <path className="mongle-avatar-spark" d="M27 3.2l1 2.6 2.6 1-2.6 1-1 2.6-1-2.6-2.6-1 2.6-1z" />;
-    case "review":
-    case "done": return <g className="mongle-avatar-check"><circle cx="26" cy="26" r="4.6" /><path className="mongle-avatar-check-mark" d="M23.9 26.1l1.5 1.5 2.8-3" /></g>;
     case "error": return <path className="mongle-avatar-drop" d="M27 3c1.6 2.3 2.6 3.6 2.6 4.8a2.6 2.6 0 0 1-5.2 0c0-1.2 1-2.5 2.6-4.8z" />;
     case "ended": return <path className="mongle-avatar-zz" d="M24.6 4.6h3.4l-3.4 3.6h3.4" />;
     default: return null;
   }
+}
+
+/** 크기 단계 — 같은 연기를 크기에 맞게 덜어 낸다. 단계 경계는 Console 에 실제로 있는 크기들 사이에 둔다. */
+type MongleTier = "full" | "mid" | "sil" | "mini";
+
+function mongleTier(size: number): MongleTier {
+  return size >= 48 ? "full" : size >= 22 ? "mid" : size >= 13 ? "sil" : "mini";
+}
+
+const Hand = ({ cx, cy, side }: { readonly cx: number; readonly cy: number; readonly side?: "left" | "right" }) =>
+  <circle className={side ? `mongle-avatar-hand is-${side}` : "mongle-avatar-hand"} cx={cx} cy={cy} r="2.1" />;
+
+/**
+ * 활동의 손과 소품 — 몸 그룹 끝에 지금 활동의 것 하나만 선다. 좌표는 몸과 같은 32 단위다.
+ * `detail` 이 거짓이면(48px 미만) 책 글줄·생각 방울·말풍선 점·속도선 같은 잔디테일을 그리지 않는다.
+ */
+function ActProps({ activity, detail }: { readonly activity: MongleActivity; readonly detail: boolean }): ReactNode {
+  switch (activity) {
+    case "read":
+      return (
+        <>
+          <path className="mongle-avatar-paper" d="M16 21.4L10.4 20.4V26.4L16 27.4Z" />
+          <path className="mongle-avatar-paper" d="M16 21.4L21.6 20.4V26.4L16 27.4Z" />
+          {detail ? <path className="mongle-avatar-ink" d="M11.6 22.4l3.2.55M11.6 24l3.2.55M17.2 22.95l3.2-.55M17.2 24.55l3.2-.55" /> : null}
+          <path className="mongle-avatar-paper mongle-avatar-page" d="M16 21.4L21.6 20.4V26.4L16 27.4Z" />
+          <Hand cx={10.4} cy={25.6} /><Hand cx={21.6} cy={25.6} side="right" />
+        </>
+      );
+    case "edit":
+      return (
+        <>
+          <path className="mongle-avatar-paper" d="M7.6 22.2h7.2v5.6H7.6z" />
+          {detail ? <path className="mongle-avatar-ink" d="M8.8 23.8h4.6M8.8 25.4h3.4" /> : null}
+          <Hand cx={8.4} cy={27.4} />
+          <g className="mongle-avatar-scribe">
+            <g transform="translate(13.6 26.4) rotate(-42)">
+              <path className="mongle-avatar-pencil-tip" d="M0 0L2.2-.85V.85Z" />
+              <rect className="mongle-avatar-pencil-body" x="2.2" y="-.85" width="7.2" height="1.7" />
+              <rect className="mongle-avatar-pencil-end" x="9.4" y="-.85" width="1.2" height="1.7" rx=".35" />
+            </g>
+            <Hand cx={18.4} cy={22.2} />
+          </g>
+        </>
+      );
+    case "run":
+      return (
+        <>
+          {detail ? <path className="mongle-avatar-speed" d="M3 10.4q-1.6 2.8 0 5.6M29 10.4q1.6 2.8 0 5.6" /> : null}
+          <g className="mongle-avatar-hands"><Hand cx={3.8} cy={19.6} /><Hand cx={28.2} cy={19.6} /></g>
+        </>
+      );
+    case "fetch":
+      return (
+        <g className="mongle-avatar-scope">
+          <g transform="translate(20.2 17.2) rotate(-24)">
+            <rect className="mongle-avatar-tube" x="0" y="-1.4" width="4.4" height="2.8" rx=".5" />
+            <rect className="mongle-avatar-tube" x="4" y="-1.9" width="4.8" height="3.8" rx=".6" />
+            <ellipse className="mongle-avatar-lens" cx="8.8" cy="0" rx=".75" ry="1.9" />
+          </g>
+          <Hand cx={23.4} cy={19.8} />
+        </g>
+      );
+    case "delegate":
+      return <g className="mongle-avatar-wave"><Hand cx={26.4} cy={14.4} /></g>;
+    case "think":
+      return (
+        <>
+          {detail ? (
+            <g className="mongle-avatar-dots">
+              <circle className="mongle-avatar-dot" cx="23.4" cy="8.6" r=".7" /><circle className="mongle-avatar-dot" cx="25.6" cy="6" r="1" /><circle className="mongle-avatar-dot" cx="28.4" cy="3" r="1.5" />
+            </g>
+          ) : null}
+          <g className="mongle-avatar-tap"><Hand cx={12.8} cy={25.8} /></g>
+        </>
+      );
+    case "text":
+      return (
+        <>
+          <rect className="mongle-avatar-bubble" x="21" y="1.6" width="9.6" height="5.6" rx="2.6" />
+          <path className="mongle-avatar-bubble" d="M23.4 6.9l-1 2.3 2.8-2.3" />
+          {detail ? <g className="mongle-avatar-bubble-dots"><circle cx="23.6" cy="4.4" r=".6" /><circle cx="25.8" cy="4.4" r=".6" /><circle cx="28" cy="4.4" r=".6" /></g> : null}
+          <Hand cx={6} cy={23.8} side="left" /><Hand cx={26} cy={23.8} side="right" />
+        </>
+      );
+    case "compact":
+      return <g className="mongle-avatar-hands"><Hand cx={3.6} cy={19.6} /><Hand cx={28.4} cy={19.6} /></g>;
+    case "background":
+      return null;
+  }
+}
+
+/** 베이스별 주기 배수(0.89–1.12). 같은 묶음은 베이스가 겹치지 않으므로, 동시에 시작해도 몇 초 안에 위상이 흩어진다. */
+const TEMPO: readonly number[] = [1, 0.92, 1.07, 0.96, 1.11, 0.89, 1.03, 0.94, 1.09, 0.98, 1.05, 0.9, 1.12, 0.95, 1.01];
+
+/**
+ * 활동별 손·소품 반복 주기(ms, 배수 1 기준) — `components.css` 의 같은 활동 키프레임 주기와 짝이다. 교체는 이 반복의 경계에서만 한다.
+ * `default` 는 활동을 모를 때의 출렁임 주기다.
+ */
+const ACTIVITY_CYCLE_MS: Readonly<Record<MongleActivity | "default", number>> = {
+  default: 1400, think: 1600, read: 2400, edit: 1200, run: 1400, fetch: 1600, delegate: 1600, text: 1600, compact: 1600, background: 2800,
+};
+/** 손과 소품을 꺼내는 활동 — 바뀔 때 먼저 집어넣는다(퇴장). */
+const PROP_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(["think", "read", "edit", "run", "fetch", "delegate", "text", "compact"]);
+/**
+ * 큰 동작이 있는 활동. 큰 동작 층은 활동 주기의 두 배이고 앞 절반 안에서만 움직인다 — 진입 때 한 번, 그 뒤로 두 주기에 한 번이고,
+ * 활동 반복의 경계는 늘 큰 동작의 휴식 자세다.
+ */
+const BIG_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(["think", "run", "fetch", "delegate", "text", "compact"]);
+/** 한 활동에 머무는 최소 시간과 손·소품이 들어가는 시간(ms). */
+const HOLD_MS = 1200;
+const LEAVE_MS = 220;
+
+/**
+ * 큰 동작 예산 — 여러 아바타가 함께 보이는 크기(48px 미만)에서 큰 동작 층을 동시에 켤 수 있는 아바타 수. 넘치면 그 아바타는 손·소품만
+ * 연기하고 줄을 선다. 자리를 잡은 아바타는 큰 동작을 두 번 이상 한 뒤, 기다리는 아바타가 있으면 휴식 구간에서 자리를 넘긴다.
+ *
+ * 문서 하나의 표시 예산이라 모듈 상태로 둔다. 번들마다 따로 셀 수 있지만 활동을 넘기는 것은 Console 한 곳뿐이다.
+ */
+const BIG_SLOTS = 4;
+const BIG_LEASE_PERIODS = 2;
+const bigHolders = new Set<object>();
+const bigWaiting: { readonly owner: object; readonly grant: () => void }[] = [];
+
+function requestBig(owner: object, grant: () => void): boolean {
+  if (bigHolders.has(owner)) return true;
+  if (bigHolders.size < BIG_SLOTS) {
+    bigHolders.add(owner);
+    return true;
+  }
+  if (!bigWaiting.some((entry) => entry.owner === owner)) bigWaiting.push({ owner, grant });
+  return false;
+}
+
+function releaseBig(owner: object): void {
+  const index = bigWaiting.findIndex((entry) => entry.owner === owner);
+  if (index >= 0) bigWaiting.splice(index, 1);
+  if (!bigHolders.delete(owner)) return;
+  const next = bigWaiting.shift();
+  if (!next) return;
+  bigHolders.add(next.owner);
+  next.grant();
+}
+
+interface ActivityMotion {
+  /** 지금 연기하는 활동. null 은 기본 리듬이다. */
+  readonly activity: MongleActivity | null;
+  /** 손과 소품을 집어넣는 중(교체 직전). */
+  readonly leaving: boolean;
+  /** 큰 동작 층이 켜졌다. */
+  readonly big: boolean;
+  /** 활동에 들어선 횟수 — 같은 활동으로 다시 들어설 때도 손·소품이 새로 나온다. */
+  readonly entry: number;
+}
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+/**
+ * 활동 전환 규칙 하나를 아바타마다 돈다.
+ *
+ * - 작업 중으로 들어설 때는 바로 그 활동이다. 작업 중을 떠날 때도 바로다(상태 전환은 기다리지 않는다).
+ * - 작업 중 안에서 활동이 바뀌면 지금 활동에 최소 1.2초 머문 뒤 그 반복의 경계를 기다렸다가, 손과 소품을 넣고(0.22초) 새 활동으로 바꾼다.
+ *   기다리는 동안 들어온 값은 마지막 하나만 남는다. 이 규칙이 짧은 도구 연타를 깜빡임 대신 한 동작으로 이어 준다.
+ * - 경계 시각은 클래스가 붙은 순간을 반복의 시작으로 보고 계산한다. 반복 키프레임은 0%=100%=휴식 자세라 몇 프레임 어긋나도 튀지 않는다.
+ */
+class ActivityScheduler {
+  private running = false;
+  private target: MongleActivity | null = null;
+  private tempo = 1;
+  private budgeted = true;
+  private shown: MongleActivity | null = null;
+  private shownAt = 0;
+  private leaving = false;
+  private big = false;
+  private bigSince = 0;
+  private entry = 0;
+  private swapTimer: ReturnType<typeof setTimeout> | null = null;
+  private bigTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
+  private readonly owner = {};
+
+  constructor(private readonly publish: (motion: ActivityMotion) => void) {}
+
+  update(running: boolean, target: MongleActivity | null, tempo: number, budgeted: boolean): void {
+    if (this.disposed) return;
+    const wasRunning = this.running;
+    this.running = running;
+    this.target = target;
+    this.tempo = tempo;
+    this.budgeted = budgeted;
+    if (!running) {
+      this.reset(null);
+      return;
+    }
+    if (!wasRunning) {
+      this.reset(target);
+      return;
+    }
+    if (target === this.shown && !this.leaving) {
+      this.clearSwap();
+      return;
+    }
+    this.scheduleSwap();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.clearSwap();
+    this.dropBig();
+  }
+
+  private cycle(): number {
+    return ACTIVITY_CYCLE_MS[this.shown ?? "default"] * this.tempo;
+  }
+
+  /** 지금 활동 반복의 다음 경계(최소 `after` ms 뒤). */
+  private nextBoundary(after: number): number {
+    const cycle = this.cycle();
+    const elapsed = Math.max(after, now() - this.shownAt);
+    return this.shownAt + Math.ceil(elapsed / cycle) * cycle;
+  }
+
+  private reset(activity: MongleActivity | null): void {
+    this.clearSwap();
+    this.dropBig();
+    this.leaving = false;
+    if (activity !== this.shown) this.entry += 1;
+    this.shown = activity;
+    this.shownAt = now();
+    this.claimBig();
+    this.emit();
+  }
+
+  private scheduleSwap(): void {
+    if (this.swapTimer !== null) return;
+    const at = this.nextBoundary(HOLD_MS);
+    this.swapTimer = setTimeout(() => this.atBoundary(), Math.max(0, at - now()));
+  }
+
+  private atBoundary(): void {
+    this.swapTimer = null;
+    if (this.target === this.shown) return;
+    if (this.shown !== null && PROP_ACTIVITIES.has(this.shown)) {
+      this.leaving = true;
+      this.emit();
+      this.swapTimer = setTimeout(() => this.swap(), LEAVE_MS);
+      return;
+    }
+    this.swap();
+  }
+
+  private swap(): void {
+    this.swapTimer = null;
+    this.reset(this.target);
+  }
+
+  private clearSwap(): void {
+    if (this.swapTimer !== null) clearTimeout(this.swapTimer);
+    this.swapTimer = null;
+  }
+
+  /** 활동에 들어선 순간 큰 동작 자리를 청한다. 자리가 없으면 줄을 서고, 받으면 다음 반복 경계에서 켠다. */
+  private claimBig(): void {
+    if (this.shown === null || !BIG_ACTIVITIES.has(this.shown)) return;
+    if (!this.budgeted) {
+      this.big = true;
+      return;
+    }
+    if (requestBig(this.owner, () => this.granted())) this.startBig();
+  }
+
+  private startBig(): void {
+    this.big = true;
+    this.bigSince = now();
+    this.armLease();
+  }
+
+  private granted(): void {
+    if (this.disposed || this.shown === null || !BIG_ACTIVITIES.has(this.shown)) {
+      releaseBig(this.owner);
+      return;
+    }
+    this.clearBigTimer();
+    this.bigTimer = setTimeout(() => {
+      this.bigTimer = null;
+      // 교체가 걸려 있으면 켜지 않는다 — 곧 새 활동이 자리를 다시 청한다.
+      if (this.leaving || this.swapTimer !== null) return;
+      this.startBig();
+      this.emit();
+    }, Math.max(0, this.nextBoundary(0) - now()));
+  }
+
+  /** 큰 동작을 정해진 횟수만큼 한 뒤, 기다리는 아바타가 있으면 큰 동작 층의 휴식 구간 한가운데에서 자리를 넘긴다. */
+  private armLease(): void {
+    if (!this.budgeted) return;
+    this.clearBigTimer();
+    const cycle = this.cycle();
+    const period = cycle * 2;
+    const check = (index: number) => {
+      const at = this.bigSince + index * period + cycle * 1.5;
+      this.bigTimer = setTimeout(() => {
+        this.bigTimer = null;
+        if (bigWaiting.length === 0) {
+          check(index + 1);
+          return;
+        }
+        this.big = false;
+        releaseBig(this.owner);
+        this.emit();
+      }, Math.max(0, at - now()));
+    };
+    check(BIG_LEASE_PERIODS - 1);
+  }
+
+  private clearBigTimer(): void {
+    if (this.bigTimer !== null) clearTimeout(this.bigTimer);
+    this.bigTimer = null;
+  }
+
+  private dropBig(): void {
+    this.clearBigTimer();
+    this.big = false;
+    releaseBig(this.owner);
+  }
+
+  private emit(): void {
+    if (this.disposed) return;
+    this.publish({ activity: this.shown, leaving: this.leaving, big: this.big, entry: this.entry });
+  }
+}
+
+function useActivityMotion(running: boolean, target: MongleActivity | null, tempo: number, budgeted: boolean): ActivityMotion {
+  const [motion, setMotion] = useState<ActivityMotion>(() => ({ activity: running ? target : null, leaving: false, big: false, entry: running && target !== null ? 1 : 0 }));
+  const scheduler = useRef<ActivityScheduler | null>(null);
+  useEffect(() => {
+    const created = new ActivityScheduler((next) => setMotion((previous) =>
+      previous.activity === next.activity && previous.leaving === next.leaving && previous.big === next.big && previous.entry === next.entry ? previous : next));
+    scheduler.current = created;
+    return () => {
+      created.dispose();
+      scheduler.current = null;
+    };
+  }, []);
+  useEffect(() => {
+    scheduler.current?.update(running, target, tempo, budgeted);
+  }, [running, target, tempo, budgeted]);
+  return motion;
 }
 
 interface MongleAvatarProps {
@@ -111,7 +467,12 @@ interface MongleAvatarProps {
   readonly tone?: IdentityTone | null;
   readonly role: MongleRole;
   readonly state: MongleState;
-  /** 한 변(px). 사이드바 20, 대화 행 28, 오른쪽 패널 64. */
+  /**
+   * 작업 중일 때 지금 하는 일. 모르면 null(기본 리듬)이고, 작업 중이 아니면 읽지 않는다. 바뀐 값은 바로 그리지 않고
+   * 지금 동작의 반복 경계에서 넘어간다.
+   */
+  readonly activity?: MongleActivity | null;
+  /** 한 변(px). 사이드바 20, 대화 행 28, 오른쪽 패널 64. 크기가 연기의 단계를 정한다. */
   readonly size: number;
   readonly label: string;
   /** 감싼 요소가 이미 이 사실을 접근성 이름으로 말하는 자리 — 중복 낭독을 막는다. */
@@ -121,19 +482,34 @@ interface MongleAvatarProps {
   readonly className?: string;
 }
 
-export function MongleAvatar({ base, tone = null, role, state, size, label, decorative = false, off = false, className }: MongleAvatarProps) {
+const CALLING_STATES: ReadonlySet<MongleState> = new Set(["awaiting", "decision", "review"]);
+
+export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, className }: MongleAvatarProps) {
   const preset = mongleBase(base);
-  const classes = ["mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, off ? "is-off" : null, className].filter(Boolean).join(" ");
+  const tier = mongleTier(size);
+  const tempo = TEMPO[preset.id - 1] ?? 1;
+  // 미니(12px 이하)는 출렁임 한 층만 남는다 — 활동을 넘기지 않으면 교체 시계도 돌지 않는다.
+  const motion = useActivityMotion(state === "running", tier === "mini" ? null : activity, tempo, tier !== "full");
+  const acting = state === "running" ? motion.activity : null;
+  const classes = [
+    "mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, `is-tier-${tier}`,
+    acting ? `is-act-${acting}` : null, acting && motion.leaving ? "is-leaving" : null, acting && motion.big ? "is-big" : null,
+    off ? "is-off" : null, className,
+  ].filter(Boolean).join(" ");
   const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": label };
   return (
-    <svg className={classes} viewBox="0 0 32 32" width={size} height={size} focusable="false" {...a11y}>
+    <svg className={classes} viewBox="0 0 32 32" width={size} height={size} focusable="false" style={{ "--mongle-tempo": tempo } as CSSProperties} {...a11y}>
       {decorative ? null : <title>{label}</title>}
-      <circle className="mongle-avatar-halo" cx="16" cy="18" r="14.6" />
-      <g className="mongle-avatar-body">
-        <Body shape={preset.shape} />
-        <Eyes state={state} />
-        <Detail kind={preset.detail} state={state} />
-        <Feature role={role} shape={preset.shape} />
+      {CALLING_STATES.has(state) ? <ellipse className="mongle-avatar-floor" cx="16" cy="30.4" rx="8.6" ry="1.5" /> : null}
+      {acting === "delegate" ? <g key={motion.entry} className="mongle-avatar-echo"><Body shape={preset.shape} /></g> : null}
+      <g className="mongle-avatar-big">
+        <g className="mongle-avatar-body">
+          <Body shape={preset.shape} />
+          <Eyes state={state} />
+          <Detail kind={preset.detail} state={state} />
+          <Feature role={role} shape={preset.shape} />
+          {acting && PROP_ACTIVITIES.has(acting) ? <g key={motion.entry} className="mongle-avatar-act"><ActProps activity={acting} detail={tier === "full"} /></g> : null}
+        </g>
       </g>
       <Badge state={state} />
     </svg>

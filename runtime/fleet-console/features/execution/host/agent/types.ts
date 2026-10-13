@@ -3,6 +3,11 @@ export type AgentSessionStatus = "starting" | "terminal-only" | "registered" | "
 export type AgentTurnState = "none" | "running" | "ended";
 
 export type AgentModelActivity = "working" | "not-working";
+/**
+ * Chat 세션이 턴 안에서 지금 하는 일의 계열 — 몽글 아바타의 활동 연기가 읽는다. 생각(think)은 도구도 글자도 흐르지 않는
+ * 1초 이상의 공백이고, 나머지는 도구 계열·답 쓰기·압축이다. 터미널 세션에는 없다.
+ */
+export type AgentWorkStep = "think" | "read" | "edit" | "run" | "fetch" | "delegate" | "text" | "compact";
 
 // Claude Notification hook의 notification_type 값. 이 목록 밖(예: AskUserQuestion=PreToolUse는 필드
 // 자체가 없음)은 reason 없이 흘려, 클라이언트가 실제 입력 대기로 처리하게 한다. 임의 문자열이
@@ -96,6 +101,11 @@ export interface AgentTerminalSessionInfo {
    * 이 값은 그것을 **누가 채웠는지**와 표면 표식만 정한다.
    */
   readonly chatActive?: boolean;
+  /**
+   * Chat 턴이 도는 동안 지금 하는 일의 계열. 계열이 바뀔 때만, 최소 간격을 두고 바뀐다. 턴이 닫히거나 모르는 도구면 없다.
+   * 활동축(`modelActivity` 등)을 바꾸지 않는 표시용 사실이다 — 플러그인 계약 `OperationRuntimeState` 에는 싣지 않는다.
+   */
+  readonly step?: AgentWorkStep;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;

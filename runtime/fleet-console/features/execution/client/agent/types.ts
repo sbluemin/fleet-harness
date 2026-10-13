@@ -2,6 +2,8 @@ export type SessionStatus = "starting" | "live" | "registered" | "terminal-only"
 
 export type TurnState = "none" | "running" | "ended";
 export type ModelActivity = "working" | "not-working";
+/** Chat 턴 안에서 지금 하는 일의 계열 — 서버가 계열이 바뀔 때만 싣는다. 몽글 아바타의 활동 연기만 읽는다. */
+export type SessionStep = "think" | "read" | "edit" | "run" | "fetch" | "delegate" | "text" | "compact";
 
 export type AttentionReason =
   | "idle_prompt"
@@ -45,6 +47,8 @@ export interface SessionInfo {
    * `modelActivity`·`attentionPending`이 지고, 이 값은 수명과 표면 표식만 정한다.
    */
   readonly chatActive?: boolean;
+  /** Chat 턴이 도는 동안 지금 하는 일의 계열. 터미널 세션·턴 밖·모르는 도구에는 없다. 활동축이 아니라 표시용 사실이다. */
+  readonly step?: SessionStep;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

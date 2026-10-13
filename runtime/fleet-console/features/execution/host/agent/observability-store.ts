@@ -20,6 +20,7 @@ import type {
   AgentSessionWorkspace,
   AgentTerminalSessionInfo,
   AgentTurnState,
+  AgentWorkStep,
 } from "./types.js";
 
 export interface ConsoleObservabilityStoreDeps {
@@ -70,6 +71,8 @@ interface PendingTerminalSessionState {
   backgroundPending?: boolean;
   /** 활동축을 Chat 어댑터가 채우는 중이라는 표시. 활동 자체는 위 두 필드가 진다. */
   chatActive?: boolean;
+  /** Chat 턴 안에서 지금 하는 일의 계열. 턴이 닫히거나 표면이 바뀌면 지운다. */
+  step?: AgentWorkStep;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
@@ -374,6 +377,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     session.status = "dormant";
     session.session = providerSession;
     delete session.modelActivity;
+    delete session.step;
     clearTerminalSessionBackgroundPending(session);
     // attentionPending은 보존한다 — dormant 사이드바 "입력 대기" 배지가 Resume 전까지 유지되어야 한다.
     // resume 실패 롤백용 updateTerminalSessionStatus("dormant") 분기는 기존처럼 attention을 지운다.
@@ -398,6 +402,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     delete session.modelActivity;
     delete session.attentionPending;
     delete session.turnState;
+    delete session.step;
     clearTerminalSessionBackgroundPending(session);
     return toTerminalSessionInfo(session);
   }
@@ -415,9 +420,25 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     // *안에서* 서므로, PTY 쪽 규칙(working 이 attention 을 지운다)을 그대로 옮기면 질문 카드가
     // 뜬 순간 배지가 "작업 중"으로 되돌아간다.
     const clearsAttention = !working && session.attentionPending === true;
+    // 지금 하는 일은 턴 안의 사실이다 — 턴이 닫히면 함께 걷는다.
+    if (!working) delete session.step;
     if (session.modelActivity === next && !clearsAttention) return toTerminalSessionInfo(session);
     session.modelActivity = next;
     if (clearsAttention) delete session.attentionPending;
+    return toTerminalSessionInfo(session);
+  }
+
+  /**
+   * Chat 턴 안에서 지금 하는 일의 계열. 바뀌지 않았으면 null 이라 방송하지 않는다. 인수하지 않은 세션이나 도는 턴이 없는
+   * 세션에는 서지 않는다 — 늦게 도착한 보고가 닫힌 턴에 계열을 되살리지 않게 한다.
+   */
+  function setTerminalSessionChatStep(sessionId: string, step: AgentWorkStep | null): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session || session.chatActive !== true) return null;
+    const next = session.modelActivity === "working" ? step ?? undefined : undefined;
+    if (session.step === next) return null;
+    if (next) session.step = next;
+    else delete session.step;
     return toTerminalSessionInfo(session);
   }
 
@@ -597,6 +618,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     setTerminalSessionChatBackgroundPending,
     setTerminalSessionChatWorking,
     setTerminalSessionChatAwaiting,
+    setTerminalSessionChatStep,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -625,6 +647,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
     ...(state.chatActive === true ? { chatActive: true } : {}),
+    ...(state.step ? { step: state.step } : {}),
     ...(state.workspace ? { workspace: state.workspace } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
