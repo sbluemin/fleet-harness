@@ -11,6 +11,7 @@ import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import type { ConsoleState, OperationNode } from "../../../core/client/src/integration/types.js";
 import { resolveOperationActivity, type OperationMarkVisual } from "../../execution/client/operation-activity.js";
+import { useOperationMongleActivity } from "../../execution/client/avatar-activity.js";
 
 /**
  * 몽글 아바타의 Console 쪽 — 누구에게 어떤 역할이 붙는지, 처음 배정을 누가 맡는지, 대화 중심 화면의 편집기.
@@ -139,15 +140,19 @@ interface OperationAvatarProps {
   readonly className?: string;
 }
 
+/** Operation 의 아바타 — 작업 중이면 그 Operation 이 지금 하는 일을 연기한다. */
 export function OperationAvatar({ operation, state, size, label, role, decorative, className }: OperationAvatarProps) {
   const look = useMongleLook(operationAvatarKey(operation.id));
-  return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} size={size} label={label} decorative={decorative} className={className} />;
+  const activity = useOperationMongleActivity(state === "running" ? operation.id : null);
+  return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, size, label, decorative, off, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size, label, decorative, off, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
+  /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다. */
+  readonly activityOperationId?: string | null;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
@@ -155,7 +160,8 @@ export function KeyedAvatar({ avatarKey, role, state, size, label, decorative, o
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={size} label={label} decorative={decorative} off={off} className={className} />;
+  const activity = useOperationMongleActivity(state === "running" ? activityOperationId : null);
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
@@ -193,10 +199,12 @@ interface Draft {
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, size, label, layout = "stack", children }: {
+export function AvatarEditor({ avatarKey, role, state, activityOperationId, size, label, layout = "stack", children }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
+  /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다(편집 미리보기 중에는 연기하지 않는다). */
+  readonly activityOperationId?: string | null;
   readonly size: number;
   readonly label: string;
   /** stack: 아바타 아래에 편집기가 뜬다(패널 머리). inline: 줄 아래로 펼친다(구성원 탭). */
@@ -211,6 +219,7 @@ export function AvatarEditor({ avatarKey, role, state, size, label, layout = "st
   const book = useAvatarBook();
   const look = resolveMongleLook(book, avatarKey);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const activity = useOperationMongleActivity(state === "running" && draft === null ? activityOperationId : null);
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -254,7 +263,8 @@ export function AvatarEditor({ avatarKey, role, state, size, label, layout = "st
       title={t("avatar.editor.open", { name: label })}
       onClick={toggle}
     >
-      <MongleAvatar base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} size={size} label={label} decorative />
+      {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
       <span className="avatar-editor-pen" aria-hidden="true">
         <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
       </span>

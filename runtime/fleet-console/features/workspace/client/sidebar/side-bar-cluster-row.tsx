@@ -506,7 +506,7 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
     ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
     : anchor
     ? <OperationAvatar operation={anchor.operation} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
-    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.root ?? layout.cluster.avatarOperationId ?? layout.cluster.id)} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />;
+    : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.root ?? layout.cluster.avatarOperationId ?? layout.cluster.id)} role="commander" state={commanderState} activityOperationId={layout.cluster.root} size={size} label={label} decorative={decorative} />;
   if (working.length === 0) return commander;
   return (
     <span className="side-bar-cluster-avatars" style={{ width: full, height: full }}>

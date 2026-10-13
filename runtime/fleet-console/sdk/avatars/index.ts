@@ -60,6 +60,13 @@ export type MongleRole = "commodore" | "commander" | "member";
 export type MongleState = "fresh" | "running" | "awaiting" | "decision" | "unseen" | "idle" | "ended" | "review" | "done" | "error";
 
 /**
+ * 작업 중(running)일 때 지금 하는 일 — 몽글이가 손·소품·큰 동작으로 연기한다. 모르면 null 이고 기본 리듬으로 움직인다.
+ * `background` 는 턴은 끝났고 남은 작업만 도는 때다. 나머지는 Chat 세션의 도구 계열이다(터미널 세션은 늘 모른다).
+ */
+export const MONGLE_ACTIVITIES = ["think", "read", "edit", "run", "fetch", "delegate", "text", "compact", "background"] as const;
+export type MongleActivity = (typeof MONGLE_ACTIVITIES)[number];
+
+/**
  * 얼굴을 고르는 사실들 — 표면마다 자기 데이터에서 같은 뜻의 값을 모아 넘긴다.
  *
  * `activity` 는 그 사람의 활동이다. 지휘관(구성원을 거느린 부모)은 구성원 활동을 끌어올린 값(`liftNestedActivity` 를 거친

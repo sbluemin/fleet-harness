@@ -94,6 +94,9 @@ export function observeStateMotion(preferences: MotionPreferences): () => void {
     blurCheck = setTimeout(update, 0);
   };
   const start = (event: AnimationEvent) => {
+    // 부드러운 모드에서는 새 애니메이션에 할 일이 없다(되돌릴 원본이 없다). 시작마다 getAnimations 로 하위 트리를 훑으면
+    // 스타일을 강제로 확정해, 상태가 자주 바뀌는 아바타 목록에서 메인 스레드를 크게 잡아먹는다.
+    if (root.dataset.stateMotion !== "stepped") return;
     if (event.target instanceof Element) {
       for (const animation of event.target.getAnimations({ subtree: true })) apply(animation);
     }

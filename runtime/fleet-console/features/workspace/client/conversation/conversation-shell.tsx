@@ -429,7 +429,7 @@ function ConversationPanelIdentity() {
     // 대상의 몽글 아바타(64px) — 이 화면에서만 눌러 고친다. 일반 화면에는 이 자리도 편집 진입도 없다.
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={operationMongleState(subject.id, state, clusterIndex.clusters)} size={64} label={subject.title} />
+        <AvatarEditor avatarKey={operationAvatarKey(subject.id)} role={operationAvatarRole(subject)} state={operationMongleState(subject.id, state, clusterIndex.clusters)} activityOperationId={subject.id} size={64} label={subject.title} />
         <PanelIdentityName title={subject.title} onRename={renameOperation ? (next) => renameOperation(subject.id, next) : undefined} />
       </div>
     );

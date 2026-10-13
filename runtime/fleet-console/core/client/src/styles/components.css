@@ -3337,8 +3337,9 @@ button.status-glyph.is-actionable:focus-visible {
 /* ── 몽글 아바타 ─────────────────────────────────────────────────────────────
    사령관·지휘관·구성원·Operation 의 얼굴. 몸은 정체성 톤(--id-*)과 같은 색상각의 파스텔(--mongle-*)이다 — 정체성 톤이 제목 잉크·미니맵 점 밖으로
    나오는 승인된 예외(목표 5ea85764 시안 v2)이며, 몸은 신호 표면이 아니라 캐릭터라 상태 채널을 칠하지 않는다. 상태는 눈 모양·몸짓·
-   작은 배지가 말하고, 그 배지만 신호색(aurora·positive·warn)을 쓴다. 주기는 상태 글리프와 같다(진행 1.4s · 부름 1.8s ·
-   안 본 완료 3.6s). 움직임은 --state-motion 으로 창 비활성·감속 모션에서 멈추고, 「차분」은 사람을 부르는 상태만 남긴다. */
+   발밑 빛·작은 배지가 말하고, 그 빛과 배지만 신호색(aurora·positive·warn)을 쓴다. 작업 중에는 지금 하는 일을 손·소품·큰 동작으로
+   연기한다(목표 eb3c2802 시안 v3). 움직임은 --state-motion 으로 숨은 창·OS 모션 줄이기에서 멈춰 정지 자세로 서고, 앱 감속·비포커스
+   창에서는 큰 동작 층만 끈다. 「차분」은 일하는 동안 정지 자세로 서고 사람을 부르는 상태만 움직인다. */
 .mongle-avatar {
   --mongle-tone: var(--mongle-cerulean);
   display: block;
@@ -3391,44 +3392,219 @@ button.status-glyph.is-actionable:focus-visible {
 .mongle-avatar-antenna-stalk { fill: none; stroke: var(--mongle-face); stroke-width: 1.6; stroke-linecap: round; }
 .mongle-avatar-antenna-bulb { fill: var(--mongle-bulb); stroke: var(--mongle-face); stroke-width: 0.9; }
 
-/* 상태 배지 — 오른쪽 위·아래. 사람을 부르는 고리(aurora)는 상태 글리프의 대기 맥동과 같은 하나뿐인 부름이다. */
-.mongle-avatar-halo { fill: none; stroke: var(--aurora); stroke-width: 1.4; opacity: 0; }
-.mongle-avatar.is-awaiting .mongle-avatar-halo,
-.mongle-avatar.is-decision .mongle-avatar-halo { opacity: 1; }
-.mongle-avatar-ask circle { fill: var(--aurora); }
-.mongle-avatar-ask-mark { fill: none; stroke: var(--surface-panel); stroke-width: 1.6; stroke-linecap: round; }
+/* 상태 신호 — 사람을 부르는 상태(대기·결정·검토)의 신호는 발밑 빛 하나다. aurora 는 상태 글리프의 대기 맥동과 같은 하나뿐인 부름이고,
+   원형 고리와 결정·검토 배지는 두지 않는다(목표 eb3c2802 시안 v3). 남은 배지는 오른쪽 위의 안 본 답·오류·휴면뿐이다. */
+.mongle-avatar-floor { fill: var(--aurora); opacity: 0.85; }
+.mongle-avatar-glint { fill: var(--mongle-tooth); }
 .mongle-avatar-spark { fill: var(--positive); }
-.mongle-avatar-check circle { fill: var(--aurora); }
-.mongle-avatar.is-done .mongle-avatar-check circle { fill: var(--text-tertiary); }
-.mongle-avatar-check-mark { fill: none; stroke: var(--surface-panel); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .mongle-avatar-drop { fill: var(--warn); }
 .mongle-avatar-zz { fill: none; stroke: var(--text-tertiary); stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 
-.mongle-avatar-body,
-.mongle-avatar-eyes,
-.mongle-avatar-halo,
-.mongle-avatar-ask { transform-box: view-box; }
-.mongle-avatar-body { transform-origin: 16px 29px; }
-.mongle-avatar-eyes { transform-origin: 16px 18px; }
-.mongle-avatar-halo { transform-origin: 16px 18px; }
-.mongle-avatar-ask { transform-origin: 26.5px 6px; }
+/* 작업 중 연기의 손·소품 — 몸과 같은 캐릭터 잉크(--mongle-*)만 쓴다. 신호색이 아니다. */
+.mongle-avatar-hand { fill: color-mix(in oklch, var(--mongle-tone) 74%, var(--mongle-face)); stroke: var(--mongle-face); stroke-width: 0.5; }
+.mongle-avatar-paper { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.55; stroke-linejoin: round; }
+.mongle-avatar-ink { fill: none; stroke: var(--mongle-face); stroke-width: 0.45; stroke-linecap: round; opacity: 0.6; }
+.mongle-avatar-pencil-body { fill: var(--mongle-bulb); stroke: var(--mongle-face); stroke-width: 0.45; }
+.mongle-avatar-pencil-tip { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.45; stroke-linejoin: round; }
+.mongle-avatar-pencil-end { fill: var(--mongle-blush-ink); stroke: var(--mongle-face); stroke-width: 0.45; }
+.mongle-avatar-tube { fill: color-mix(in oklch, var(--mongle-tone) 50%, var(--mongle-face)); stroke: var(--mongle-face); stroke-width: 0.45; }
+.mongle-avatar-lens { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.5; }
+.mongle-avatar-speed { fill: none; stroke: var(--text-tertiary); stroke-width: 0.7; stroke-linecap: round; }
+.mongle-avatar-dot { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.45; }
+.mongle-avatar-bubble { fill: var(--mongle-tooth); stroke: var(--mongle-face); stroke-width: 0.55; stroke-linejoin: round; }
+.mongle-avatar-bubble-dots circle { fill: var(--mongle-face); }
+.mongle-avatar-echo { opacity: 0; }
+/* 손·소품과 분신은 작업 중인 아바타에 늘 서 있고, 지금 활동의 것만 보인다 — 교체가 요소를 넣고 빼지 않고 클래스만 바꾼다. */
+.mongle-avatar-act,
+.mongle-avatar-echo { display: none; }
+.mongle-avatar.is-act-think .mongle-avatar-act.is-for-think,
+.mongle-avatar.is-act-read .mongle-avatar-act.is-for-read,
+.mongle-avatar.is-act-edit .mongle-avatar-act.is-for-edit,
+.mongle-avatar.is-act-run .mongle-avatar-act.is-for-run,
+.mongle-avatar.is-act-fetch .mongle-avatar-act.is-for-fetch,
+.mongle-avatar.is-act-delegate .mongle-avatar-act.is-for-delegate,
+.mongle-avatar.is-act-text .mongle-avatar-act.is-for-text,
+.mongle-avatar.is-act-compact .mongle-avatar-act.is-for-compact,
+.mongle-avatar.is-act-delegate .mongle-avatar-echo { display: inline; }
+/* 13–21px(사이드바 20, 미니가 선 지휘관 17) 은 손과 소품만 남기고 윤곽을 굵게 그린다 — 잔디테일은 48px 미만에서 그리지 않는다. */
+.mongle-avatar.is-tier-sil .mongle-avatar-paper,
+.mongle-avatar.is-tier-sil .mongle-avatar-tube,
+.mongle-avatar.is-tier-sil .mongle-avatar-bubble,
+.mongle-avatar.is-tier-sil .mongle-avatar-pencil-body { stroke-width: 0.9; }
+.mongle-avatar.is-tier-sil .mongle-avatar-hand { stroke-width: 0.8; }
 
+/* 층 구조: svg > 큰 동작(.mongle-avatar-big) > 몸(기울기·출렁임·눈) > 손·소품(.mongle-avatar-act, 진입·퇴장). 몸만 변환을 개별 속성
+   (rotate·scale·translate)으로 나눠 서로 다른 주기를 겹친다 — 같은 조합이 거의 되풀이되지 않는다. 애니메이션이 하나뿐인 층(눈·손·소품·
+   큰 동작·발밑 빛)은 transform 하나로 움직인다: SVG 요소의 개별 속성 애니메이션은 Chromium 에서 프레임마다 합성 갱신을 더 부른다(실측).
+   --mongle-tempo 는 베이스별 주기 배수다. */
+.mongle-avatar-big,
+.mongle-avatar-body,
+.mongle-avatar-echo,
+.mongle-avatar-eyes,
+.mongle-avatar-floor,
+.mongle-avatar-hand,
+.mongle-avatar-page,
+.mongle-avatar-scribe,
+.mongle-avatar-hands,
+.mongle-avatar-scope,
+.mongle-avatar-wave,
+.mongle-avatar-tap,
+.mongle-avatar-dots,
+.mongle-avatar-bubble-dots { transform-box: view-box; }
+.mongle-avatar-big { transform-origin: 16px 18px; }
+.mongle-avatar-body,
+.mongle-avatar-echo { transform-origin: 16px 29px; }
+.mongle-avatar-eyes { transform-origin: 16px 18px; }
+.mongle-avatar-floor { transform-origin: 16px 30.4px; }
+.mongle-avatar-act { transform-box: fill-box; transform-origin: center; }
+
+/* 작업 중 · 기본 리듬 — 활동을 모를 때(터미널 세션 포함). 기울기·출렁임·가끔 폴짝을 겹치고 눈을 굴린다.
+   두 층으로 나눈다. 출렁임(활동별 몸짓)은 바깥 svg 요소에 transform 하나로 건다 — HTML 요소의 transform 애니메이션은 합성기가 돌려
+   프레임마다 메인 스레드의 스타일·SVG 레이아웃·페인트를 부르지 않는다(사이드바 수십 개에서 실측). svg 요소에서는 개별 속성
+   (scale·rotate·translate) 애니메이션이 합성되지 않으므로 transform 이어야 하고, 하나만 걸린다. 그래서 기본 리듬의 출렁임과 가끔 폴짝은
+   한 주기(5번 출렁이고 마지막에 폴짝)로 이었다. 느린 기울기는 몸 그룹에 따로 둔다 — 활동이 바뀌어도 이름이 같아 다시 시작하지 않는다.
+   원점은 발밑(뷰박스 16,29 = 50% 90.625%)이고, 이동은 뷰박스 단위를 svg 상자의 백분율로 옮긴 값이다(1단위 = 3.125%).
+   작업 중에는 발밑 빛·배지가 없어 함께 움직여도 된다. */
+.mongle-avatar.is-running {
+  transform-origin: 50% 90.625%;
+  animation: mongle-idle calc(7s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-idle);
+}
 .mongle-avatar.is-running .mongle-avatar-body {
-  animation: mongle-squish 1.4s ease-in-out infinite; animation-name: var(--state-motion, mongle-squish);
+  animation: mongle-sway calc(4.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-sway);
 }
 .mongle-avatar.is-running .mongle-avatar-eyes {
-  animation: mongle-look 2.8s ease-in-out infinite; animation-name: var(--state-motion, mongle-look);
+  animation: mongle-look calc(5.9s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-look);
 }
-.mongle-avatar.is-awaiting .mongle-avatar-body,
+
+/* 작업 중 · 활동별 표정과 몸짓. 활동 층은 scale·translate 와 눈만 쓰고 0%=100%=휴식 자세다. 교체는 그 층의 반복 경계에서만 한다. */
+.mongle-avatar.is-running.is-act-think { animation-name: var(--state-motion, mongle-think-body); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-think .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-think-eyes); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-read { animation-name: var(--state-motion, mongle-read-body); animation-duration: calc(1.2s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-read .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-read-eyes); animation-duration: calc(2.4s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-edit { animation-name: var(--state-motion, mongle-edit-body); animation-duration: calc(1.2s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-edit .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-edit-eyes); animation-duration: calc(1.2s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-run { animation-name: var(--state-motion, mongle-run-body); animation-duration: calc(1.4s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-run .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-run-eyes); animation-duration: calc(1.4s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-fetch { animation-name: var(--state-motion, mongle-fetch-body); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-fetch .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-fetch-eyes); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-delegate { animation-name: var(--state-motion, mongle-delegate-body); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-delegate .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-delegate-eyes); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-text { animation-name: var(--state-motion, mongle-text-body); animation-duration: calc(0.8s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-text .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-text-eyes); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-compact { animation-name: var(--state-motion, mongle-compact-body); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-compact .mongle-avatar-eyes { animation-name: var(--state-motion, mongle-compact-eyes); animation-duration: calc(1.6s * var(--mongle-tempo, 1)); }
+/* 남은 작업(턴은 끝났고 백그라운드만): 느린 출렁임과 반쯤 감은 눈. 정지에서도 눈이 남아 기본 리듬과 갈린다. */
+.mongle-avatar.is-running.is-act-background { animation-name: var(--state-motion, mongle-squish); animation-duration: calc(2.8s * var(--mongle-tempo, 1)); }
+.mongle-avatar.is-running.is-act-background .mongle-avatar-eyes { animation: none; transform: scale(1, 0.6); }
+
+/* 손·소품의 진입(0.26초)과 퇴장(0.22초) — 한 번만 돈다. 활동 사이는 아무것도 들지 않은 휴식 자세를 지난다. */
+.mongle-avatar-act {
+  animation: mongle-act-enter 0.26s cubic-bezier(0.3, 1.4, 0.6, 1) 1; animation-name: var(--state-motion, mongle-act-enter);
+}
+.mongle-avatar.is-leaving .mongle-avatar-act {
+  animation: mongle-act-leave 0.22s ease-in 1 both; animation-name: var(--state-motion, mongle-act-leave);
+}
+
+/* 큰 동작 — 활동 주기의 두 배짜리 층이고 앞 절반 안에서 휴식 자세로 돌아온다. 진입 때 한 번, 그 뒤로 두 주기에 한 번이다.
+   목록 크기에서는 동시에 켜는 아바타 수를 컴포넌트가 제한한다(is-big). 앱 감속·비포커스 창에서는 이 층만 끈다. */
+.mongle-avatar.is-running.is-big.is-act-run .mongle-avatar-big { animation: mongle-big-spin calc(2.8s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-spin); }
+.mongle-avatar.is-running.is-big.is-act-fetch .mongle-avatar-big { animation: mongle-big-tiptoe calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-tiptoe); }
+.mongle-avatar.is-running.is-big.is-act-delegate .mongle-avatar-big { animation: mongle-big-pop calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-pop); }
+.mongle-avatar.is-running.is-big.is-act-think .mongle-avatar-big { animation: mongle-big-tilt calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-tilt); }
+.mongle-avatar.is-running.is-big.is-act-text .mongle-avatar-big { animation: mongle-big-bounce calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-bounce); }
+.mongle-avatar.is-running.is-big.is-act-compact .mongle-avatar-big { animation: mongle-big-wring calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-wring); }
+:root[data-state-motion="stepped"] .mongle-avatar.is-running.is-big .mongle-avatar-big { animation: none; }
+
+/* 활동별 손·소품 반복 — 모두 「소품을 든 활동 휴식 자세」에서 시작해 거기로 돌아온다. */
+.mongle-avatar.is-act-read .mongle-avatar-page {
+  opacity: 0; transform-origin: 16px 24px;
+  animation: mongle-read-page calc(2.4s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-read-page);
+}
+.mongle-avatar.is-act-read .mongle-avatar-hand.is-right {
+  animation: mongle-read-hand calc(2.4s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-read-hand);
+}
+.mongle-avatar.is-act-edit .mongle-avatar-scribe {
+  animation: mongle-edit-scribe calc(1.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-edit-scribe);
+}
+.mongle-avatar.is-act-run .mongle-avatar-hands {
+  animation: mongle-run-hands calc(1.4s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-run-hands);
+}
+.mongle-avatar.is-act-fetch .mongle-avatar-scope {
+  transform-origin: 20.2px 17.2px;
+  animation: mongle-fetch-scope calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-fetch-scope);
+}
+.mongle-avatar.is-act-delegate .mongle-avatar-wave {
+  transform-origin: 24px 18px;
+  animation: mongle-delegate-wave calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-delegate-wave);
+}
+.mongle-avatar.is-act-delegate .mongle-avatar-echo {
+  transform: translate(8px, -1px); opacity: 0.4;
+  animation: mongle-delegate-echo calc(1.6s * var(--mongle-tempo, 1)) ease-out infinite; animation-name: var(--state-motion, mongle-delegate-echo);
+}
+.mongle-avatar.is-act-think .mongle-avatar-tap {
+  animation: mongle-think-tap calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-think-tap);
+}
+.mongle-avatar.is-act-think .mongle-avatar-dots {
+  animation: mongle-think-dots calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-think-dots);
+}
+.mongle-avatar.is-act-text .mongle-avatar-hand.is-left {
+  animation: mongle-text-hand calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-text-hand);
+}
+/* 오른손은 반 주기 뒤에 든다. 0%·50%·100% 가 모두 휴식 자세라 음수 지연으로 들어서도 튀지 않는다. */
+.mongle-avatar.is-act-text .mongle-avatar-hand.is-right {
+  animation: mongle-text-hand calc(1.6s * var(--mongle-tempo, 1)) ease-in-out calc(-0.8s * var(--mongle-tempo, 1)) infinite; animation-name: var(--state-motion, mongle-text-hand);
+}
+.mongle-avatar.is-act-text .mongle-avatar-bubble-dots {
+  animation: mongle-think-dots calc(0.8s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-think-dots);
+}
+.mongle-avatar.is-act-compact .mongle-avatar-hands {
+  transform-origin: 16px 19.5px; transform: scale(0.82, 1);
+  animation: mongle-compact-hands calc(1.6s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-compact-hands);
+}
+
+/* 활동별 정지 포즈 — 모션을 끄면(OS 모션 줄이기·숨은 창·차분) 이 자세로 선다. 무엇을 하는지는 소품이 말하고, 회전은 없다. */
+.mongle-avatar.is-running.is-act-read .mongle-avatar-eyes { transform: translate(0, 0.9px); }
+.mongle-avatar.is-running.is-act-edit .mongle-avatar-eyes { transform: translate(-0.6px, 0.9px) scale(1, 0.8); }
+.mongle-avatar.is-running.is-act-run { transform: scale(1.05, 0.93); }
+.mongle-avatar.is-running.is-act-fetch .mongle-avatar-eyes { transform: translate(0.8px, -0.5px); }
+.mongle-avatar.is-running.is-act-delegate .mongle-avatar-eyes { transform: translate(0.9px, 0); }
+.mongle-avatar.is-running.is-act-think .mongle-avatar-eyes { transform: translate(-0.8px, -0.9px); }
+.mongle-avatar.is-running.is-act-text .mongle-avatar-eyes { transform: scale(1, 0.75); }
+.mongle-avatar.is-running.is-act-compact { transform: scale(0.9, 1.07); }
+.mongle-avatar.is-running.is-act-compact .mongle-avatar-eyes { transform: scale(1, 0.35); }
+
+/* 부르는 상태 — 몸짓과 발밑 빛. 대기는 콩콩 뛰며 빛이 줄었다 퍼지고, 결정은 좌우로 갸웃하며 빛이 기울기를 따라가고,
+   검토는 몸을 늘여 보이며 빛이 넓어진다. 정지 자세(기울기·늘임)는 움직임을 꺼도 남는다. */
+.mongle-avatar.is-awaiting .mongle-avatar-body {
+  animation: mongle-call calc(2.4s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-call);
+}
+.mongle-avatar.is-awaiting .mongle-avatar-floor {
+  animation: mongle-floor-call calc(2.4s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-floor-call);
+}
 .mongle-avatar.is-decision .mongle-avatar-body {
-  animation: mongle-sway 1.8s ease-in-out infinite; animation-name: var(--state-motion, mongle-sway);
+  rotate: -8deg;
+  animation: mongle-ponder calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-ponder);
 }
-.mongle-avatar.is-awaiting .mongle-avatar-halo,
-.mongle-avatar.is-decision .mongle-avatar-halo {
-  animation: mongle-breathe 1.8s ease-in-out infinite; animation-name: var(--state-motion, mongle-breathe);
+.mongle-avatar.is-decision .mongle-avatar-eyes {
+  transform: translate(-0.8px, 0);
+  animation: mongle-ponder-eyes calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-ponder-eyes);
 }
-.mongle-avatar.is-decision .mongle-avatar-ask {
-  animation: mongle-pop 1.8s ease-in-out infinite; animation-name: var(--state-motion, mongle-pop);
+.mongle-avatar.is-decision .mongle-avatar-floor {
+  transform: translate(-1px, 0);
+  animation: mongle-floor-ponder calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-floor-ponder);
+}
+.mongle-avatar.is-review .mongle-avatar-body {
+  scale: 0.95 1.07; translate: 0 -0.6px;
+  animation: mongle-present calc(3s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-present);
+}
+.mongle-avatar.is-review .mongle-avatar-floor {
+  transform: scale(1.15, 1);
+  animation: mongle-floor-present calc(3s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-floor-present);
+}
+/* 임무를 마친 구성원 — 배지 없이 한 번 기지개를 켠 뒤 내려앉은 자세로 남는다. */
+.mongle-avatar.is-done .mongle-avatar-body {
+  scale: 1.05 0.93;
+  animation: mongle-settle 1.3s ease-out 1 both; animation-name: var(--state-motion, mongle-settle);
 }
 /* 0%/100% 는 켜진 채라 움직임이 멈춰도 반짝이가 남는다. */
 .mongle-avatar.is-unseen .mongle-avatar-spark {
@@ -3440,33 +3616,121 @@ button.status-glyph.is-actionable:focus-visible {
 .mongle-avatar.is-error .mongle-avatar-body {
   animation: mongle-shiver 4s ease-in-out infinite; animation-name: var(--state-motion, mongle-shiver);
 }
-:root[data-avatar-motion="calm"] .mongle-avatar.is-running .mongle-avatar-body,
-:root[data-avatar-motion="calm"] .mongle-avatar.is-running .mongle-avatar-eyes,
+
+/* 미니(12px 이하, 묶음 줄 앞의 일하는 구성원)는 몸 한 층만 움직인다 — 작업 중이면 출렁임 하나. 활동·눈·빛은 움직이지 않는다. */
+.mongle-avatar.is-running.is-tier-mini {
+  animation-name: var(--state-motion, mongle-squish); animation-duration: calc(1.4s * var(--mongle-tempo, 1));
+}
+.mongle-avatar.is-running.is-tier-mini .mongle-avatar-body,
+.mongle-avatar.is-tier-mini .mongle-avatar-eyes,
+.mongle-avatar.is-tier-mini .mongle-avatar-floor { animation: none; }
+
+/* 「아바타 차분하게」 — 일하는 동안은 활동별 정지 포즈로 서고(손·소품은 남는다), 사람을 부를 때만 움직인다. */
+:root[data-avatar-motion="calm"] .mongle-avatar.is-running,
+:root[data-avatar-motion="calm"] .mongle-avatar.is-running *,
 :root[data-avatar-motion="calm"] .mongle-avatar.is-idle .mongle-avatar-eyes,
 :root[data-avatar-motion="calm"] .mongle-avatar.is-unseen .mongle-avatar-spark {
-  animation: none;
+  animation: none !important;
 }
 
+@keyframes mongle-sway {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3deg); }
+  75% { transform: rotate(3deg); }
+}
 @keyframes mongle-squish {
   0%, 100% { transform: scale(1, 1); }
-  45% { transform: scale(1.07, 0.9); }
-  70% { transform: scale(0.97, 1.05) translateY(-0.6px); }
+  45% { transform: scale(1.06, 0.91); }
+  70% { transform: scale(0.97, 1.04); }
+}
+/* 기본 리듬 한 주기 — 1.4초 출렁임 다섯 번이고, 마지막 번에는 폴짝 뛰었다 내려앉는다. 1.4초마다 휴식 자세라 활동 교체 경계와 맞는다. */
+@keyframes mongle-idle {
+  0%, 20%, 40%, 60%, 80%, 100% { transform: translate(0, 0) scale(1, 1); }
+  9%, 29%, 49%, 69% { transform: translate(0, 0) scale(1.06, 0.91); }
+  14%, 34%, 54%, 74% { transform: translate(0, 0) scale(0.97, 1.04); }
+  84% { transform: translate(0, -7.5%) scale(0.97, 1.04); }
+  89% { transform: translate(0, 0) scale(1.06, 0.91); }
+  93% { transform: translate(0, -2.5%) scale(0.99, 1.02); }
+  96% { transform: translate(0, 0) scale(1.02, 0.98); }
 }
 @keyframes mongle-look {
-  0%, 40%, 100% { transform: translateX(0); }
-  55%, 85% { transform: translateX(1.2px); }
+  0%, 60%, 85%, 91%, 100% { transform: translate(0, 0) scale(1, 1); }
+  18%, 30% { transform: translate(1.1px, 0) scale(1, 1); }
+  40%, 52% { transform: translate(-1px, 0.3px) scale(1, 1); }
+  88% { transform: translate(0, 0) scale(1, 0.12); }
 }
-@keyframes mongle-sway {
-  0%, 100% { transform: rotate(-6deg); }
-  50% { transform: rotate(6deg); }
+@keyframes mongle-think-body { 0%, 100% { transform: translate(0, 0) scale(1, 1); } 50% { transform: translate(0, 0.625%) scale(1.025, 0.975); } }
+@keyframes mongle-think-eyes { 0%, 100% { transform: translate(0, 0); } 12%, 40% { transform: translate(-0.8px, -0.9px); } 55%, 85% { transform: translate(0.6px, -0.9px); } }
+@keyframes mongle-read-body { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.02, 0.98); } }
+@keyframes mongle-read-eyes { 0%, 100% { transform: translate(0, 0); } 8% { transform: translate(-1.1px, 0.9px); } 46%, 52% { transform: translate(1.1px, 0.9px); } 62% { transform: translate(-1.1px, 0.9px); } 88% { transform: translate(0, 0.9px); } }
+@keyframes mongle-edit-body { 0%, 26%, 52%, 100% { transform: scale(1, 1); } 13%, 39% { transform: scale(1.08, 0.88); } }
+@keyframes mongle-edit-eyes { 0%, 100% { transform: translate(0, 0) scale(1, 1); } 8%, 60% { transform: translate(0, 0.7px) scale(1, 0.7); } }
+@keyframes mongle-run-body { 0%, 62%, 100% { transform: translate(0, 0) scale(1, 1); } 14% { transform: translate(0, 0) scale(1.09, 0.87); } 30% { transform: translate(0, -8.75%) scale(0.94, 1.08); } 46% { transform: translate(0, 0) scale(1.07, 0.9); } }
+@keyframes mongle-run-eyes { 0%, 30%, 62%, 100% { transform: scale(1, 1); } 14%, 46% { transform: scale(1, 0.45); } }
+@keyframes mongle-fetch-body { 0%, 100% { transform: translate(0, 0) scale(1, 1); } 18%, 38% { transform: translate(-2.5%, 0) scale(0.97, 1.04); } 58%, 78% { transform: translate(2.5%, 0) scale(0.97, 1.04); } }
+@keyframes mongle-fetch-eyes { 0%, 100% { transform: translate(0, 0); } 18%, 38% { transform: translate(-1.2px, -0.6px); } 58%, 78% { transform: translate(1.2px, -0.6px); } }
+@keyframes mongle-delegate-body { 0%, 45%, 100% { transform: translate(0, 0) scale(1, 1); } 15% { transform: translate(0, 0) scale(1.07, 0.9); } 30% { transform: translate(-1.875%, 0) scale(0.96, 1.05); } }
+@keyframes mongle-delegate-eyes { 0%, 100% { transform: translate(0, 0); } 30%, 80% { transform: translate(0.9px, 0); } }
+@keyframes mongle-delegate-echo { 0%, 22% { transform: translate(0, 0); opacity: 0; } 40% { transform: translate(2.5px, 0); opacity: 0.6; } 75% { transform: translate(7.5px, -1px); opacity: 0.3; } 100% { transform: translate(9px, -1px); opacity: 0; } }
+@keyframes mongle-text-body { 0%, 50%, 100% { transform: translate(0, 0) scale(1, 1); } 25% { transform: translate(0, -1.5625%) scale(0.98, 1.02); } 75% { transform: translate(0, -0.9375%) scale(0.99, 1.01); } }
+@keyframes mongle-text-eyes { 0%, 100% { transform: scale(1, 1); } 20%, 80% { transform: scale(1, 0.75); } }
+@keyframes mongle-compact-body { 0%, 100% { transform: scale(1, 1); } 20%, 60% { transform: scale(0.88, 1.08); } 75% { transform: scale(1.04, 0.96); } }
+@keyframes mongle-compact-eyes { 0%, 100% { transform: scale(1, 1); } 20%, 60% { transform: scale(1, 0.3); } }
+@keyframes mongle-act-enter { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes mongle-act-leave { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
+@keyframes mongle-big-spin {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(0, 0.7px) rotate(0deg); }
+  26% { transform: translate(0, -4.2px) rotate(180deg); }
+  42% { transform: translate(0, 0) rotate(360deg); }
+  46% { transform: translate(0, 0.5px) rotate(360deg); }
+  50%, 100% { transform: translate(0, 0) rotate(360deg); }
 }
-@keyframes mongle-breathe {
-  0%, 100% { opacity: 0.35; transform: scale(0.94); }
-  50% { opacity: 1; transform: scale(1.04); }
+@keyframes mongle-big-tiptoe { 0%, 50%, 100% { transform: translate(0, 0); } 18%, 34% { transform: translate(0, -1.8px); } }
+@keyframes mongle-big-pop { 0%, 50%, 100% { transform: translate(0, 0) scale(1, 1); } 14% { transform: translate(0, 0) scale(1.1, 0.88); } 28% { transform: translate(0, -1.6px) scale(0.94, 1.08); } 40% { transform: translate(0, 0) scale(1.03, 0.97); } }
+@keyframes mongle-big-tilt { 0%, 50%, 100% { transform: rotate(0deg); } 14%, 36% { transform: rotate(-8deg); } }
+@keyframes mongle-big-bounce { 0%, 50%, 100% { transform: translate(0, 0); } 12% { transform: translate(0, -1.8px); } 24% { transform: translate(0, 0); } 36% { transform: translate(0, -1px); } }
+@keyframes mongle-big-wring { 0%, 50%, 100% { transform: rotate(0deg); } 16% { transform: rotate(-11deg); } 34% { transform: rotate(10deg); } }
+@keyframes mongle-read-page { 0%, 48% { transform: scale(1, 1); opacity: 0; } 50% { transform: scale(1, 1); opacity: 1; } 70% { transform: scale(-1, 1); opacity: 1; } 74%, 100% { transform: scale(-1, 1); opacity: 0; } }
+@keyframes mongle-read-hand { 0%, 46%, 80%, 100% { transform: translate(0, 0); } 52% { transform: translate(-1px, -1.4px); } 66% { transform: translate(-5px, -0.8px); } }
+@keyframes mongle-edit-scribe { 0%, 70%, 100% { transform: translate(0, 0); } 12% { transform: translate(-1px, 0.5px); } 24% { transform: translate(0.6px, -0.3px); } 36% { transform: translate(-0.8px, 0.6px); } 48% { transform: translate(0.7px, -0.1px); } 60% { transform: translate(-0.3px, 0.3px); } }
+@keyframes mongle-run-hands { 0%, 62%, 100% { transform: translate(0, 0); } 14% { transform: translate(0, 1.4px); } 30% { transform: translate(0, -2.2px); } 46% { transform: translate(0, 0.8px); } }
+@keyframes mongle-fetch-scope { 0%, 100% { transform: rotate(0deg); } 18%, 38% { transform: rotate(-16deg); } 58%, 80% { transform: rotate(12deg); } }
+@keyframes mongle-delegate-wave { 0%, 100% { transform: rotate(0deg); } 20% { transform: rotate(22deg); } 40% { transform: rotate(-12deg); } 60% { transform: rotate(22deg); } 80% { transform: rotate(-6deg); } }
+@keyframes mongle-think-tap { 0%, 30%, 50%, 100% { transform: translate(0, 0); } 20%, 40% { transform: translate(0, -0.6px); } }
+@keyframes mongle-think-dots { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes mongle-text-hand { 0%, 50%, 100% { transform: translate(0, 0); } 25% { transform: translate(0, -2.2px); } }
+@keyframes mongle-compact-hands { 0%, 100% { transform: scale(1, 1); } 20%, 60% { transform: scale(0.82, 1); } 75% { transform: scale(1.03, 1); } }
+@keyframes mongle-call {
+  0%, 35%, 100% { translate: 0 0; scale: 1 1; }
+  6% { scale: 1.06 0.92; translate: 0 0; }
+  13% { scale: 0.95 1.07; translate: 0 -2px; }
+  19% { scale: 1.05 0.94; translate: 0 0; }
+  24% { scale: 0.97 1.04; translate: 0 -1.1px; }
+  30% { scale: 1.03 0.97; translate: 0 0; }
 }
-@keyframes mongle-pop {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.18); }
+@keyframes mongle-floor-call {
+  0%, 35%, 100% { transform: scale(1, 1); opacity: 0.85; }
+  6% { transform: scale(1.08, 1); opacity: 0.9; }
+  13% { transform: scale(0.68, 1); opacity: 0.45; }
+  19% { transform: scale(1.05, 1); opacity: 0.9; }
+  24% { transform: scale(0.82, 1); opacity: 0.6; }
+}
+@keyframes mongle-ponder { 0%, 100% { rotate: 0deg; } 12%, 40% { rotate: -8deg; } 55%, 83% { rotate: 8deg; } }
+@keyframes mongle-ponder-eyes { 0%, 100% { transform: translate(0, 0); } 12%, 40% { transform: translate(-0.8px, 0); } 55%, 83% { transform: translate(0.8px, 0); } }
+@keyframes mongle-floor-ponder { 0%, 100% { transform: translate(0, 0); } 12%, 40% { transform: translate(-1px, 0); } 55%, 83% { transform: translate(1px, 0); } }
+@keyframes mongle-present {
+  0%, 76%, 100% { scale: 1 1; translate: 0 0; }
+  10% { scale: 1.06 0.91; translate: 0 0; }
+  22%, 58% { scale: 0.95 1.07; translate: 0 -0.6px; }
+  68% { scale: 1.03 0.97; translate: 0 0; }
+}
+@keyframes mongle-floor-present { 0%, 76%, 100% { transform: scale(1, 1); opacity: 0.7; } 22%, 58% { transform: scale(1.15, 1); opacity: 0.95; } }
+@keyframes mongle-settle {
+  0% { scale: 1 1; translate: 0 0; }
+  35% { scale: 0.96 1.06; translate: 0 -0.7px; }
+  70% { scale: 1.07 0.91; translate: 0 0; }
+  100% { scale: 1.05 0.93; translate: 0 0; }
 }
 @keyframes mongle-wink {
   0%, 92%, 100% { transform: scaleY(1); }
@@ -3480,6 +3744,7 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .mongle-avatar,
   .mongle-avatar * {
     animation: none !important;
   }
