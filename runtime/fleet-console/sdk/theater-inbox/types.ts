@@ -114,9 +114,11 @@ export interface TheaterInboxSectionDescriptor {
   openConversation?(context: { readonly theater: ConsoleTheaterSummary; readonly pageId: string }): boolean;
   /**
    * Rail entry ids (`RailEntryDescriptor.id`) that mean nothing while this section is the one shown in the conversation
-   * layout's side panel, such as Objectives for the Commodore, who has no objectives of its own. The panel head leaves
-   * them out of its tool row and its "More" menu for this section only; other sections, Operation conversations, and
-   * the desktop rail keep them.
+   * layout's side panel, such as Objectives for the Commodore, who has no objectives of its own.
+   *
+   * @deprecated The side panel head no longer carries a tool row: every center conversation shows the same common
+   * toolbar, so this list no longer hides anything. Opening the section still treats a listed tool as one not to keep
+   * open. Kept so existing plugins keep compiling; do not add new uses.
    */
   readonly omitsRailEntries?: readonly string[];
 }

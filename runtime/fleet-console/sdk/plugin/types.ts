@@ -371,7 +371,11 @@ export interface ClientConversationCapability {
   isActive(): boolean;
   /** 켜짐·꺼짐과 지금 선 대화가 바뀌면 깨운다. */
   subscribe(listener: () => void): () => void;
-  /** 가운데 칸에 대화를 세운다. 꺼져 있으면 아무 일도 하지 않고 false 를 돌려준다. */
+  /**
+   * 가운데 칸에 대화를 세운다. 꺼져 있으면 아무 일도 하지 않고 false 를 돌려준다. 대화가 한 Theater 의 것이면 등록된 Theater id 를
+   * `params.theaterId`(문자열)로 싣는다 — 호스트는 그 값을 가운데 대화의 Theater 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+   * 없으면 Theater 도구는 비활성으로 선다.
+   */
   open(surfaceId: string, params?: Readonly<Record<string, unknown>>): boolean;
   /** 지금 선 대화를 걷는다. surfaceId 를 주면 그 대화일 때만 걷는다. */
   close(surfaceId?: string): void;

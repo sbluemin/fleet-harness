@@ -562,6 +562,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
         language={language}
         operationKinds={registry.operationKinds}
         onClose={handleClose}
+        toolContext={toolsContext}
       />
       {toastRegion}
       <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />

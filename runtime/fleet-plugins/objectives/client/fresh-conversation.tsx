@@ -23,10 +23,14 @@ export function connectFreshConversation(next: ClientConversationCapability | un
   return () => { if (port === next) port = null; };
 }
 
-/** 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다. */
+/**
+ * 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다.
+ * 목표의 Theater 를 함께 싣는다 — 호스트는 가운데 대화의 Theater 를 `params.theaterId` 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+ */
 export function openFreshConversation(objectiveId: string): boolean {
   if (!port || !port.isActive()) return false;
-  return port.open(FRESH_SURFACE_ID, { objectiveId });
+  const theaterId = findObjective(objectiveId)?.theaterId;
+  return port.open(FRESH_SURFACE_ID, theaterId ? { objectiveId, theaterId } : { objectiveId });
 }
 
 /** 지금 가운데 칸에 시작 화면이 선 목표. 없으면 null. */
