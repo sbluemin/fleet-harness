@@ -21,7 +21,6 @@ import {
   useFollowupSelection,
 } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
-import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchedWords, localized, routingReason, useLaunchRows } from "./launch-control.js";
 import { memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
@@ -574,12 +573,6 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
       {wide && !judging ? <div className="objectives-routing-banner" role="note">{wide === "routing_disabled" ? t("objectives.routing.banner.disabled", { model }) : t("objectives.routing.banner.other", { reason: routingReason(t, wide), model })}</div> : null}
       <div className="objectives-routing-list">{objective.members.map(memberRow)}</div>
       {state.error ? <p className="objectives-composer-panel-error" role="alert">{state.error === "routing_preview_stale" ? reasonText(t, state.error) : t("objectives.routing.failed", { reason: reasonText(t, state.error) })}</p> : null}
-      {/* 켬/끔은 콘솔 공용 스위치 한 모양 — 목표에 저장되고 다음 개시에도 남는다. 끄면 다음 개시부터 이 칸 없이 서버가 판단한다. */}
-      <div className="objectives-routing-switch">
-        <SettingsToggle checked={objective.routingConfirm} busy={sending} ariaLabel={t("objectives.routing.confirm")}
-          onChange={(next) => void request("/objective/patch", { objectiveId, patch: { routingConfirm: next } }).catch((failure: unknown) => setState((current) => ({ ...current, error: codeOf(failure) })))} />
-        <span className="objectives-routing-switch-copy"><b>{t("objectives.routing.confirm")}</b><span>{t("objectives.routing.confirmHint", { count: targets.length })}</span></span>
-      </div>
       <div className="objectives-routing-foot">
         <span>{targets.length ? t("objectives.routing.foot", { count: targets.length, minutes: ttlMinutes }) : t("objectives.routing.footNone")}</span>
         {/* 재판단 대기·보내는 중은 일시 상태라 aria-disabled로 막는다(onClick이 거른다) — 키보드로 막 누른 「다시 판단」의 포커스를 지킨다. */}

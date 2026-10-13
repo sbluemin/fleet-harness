@@ -9,10 +9,10 @@ import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyp
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
-import { DecisionGlyph, DecisionList, PersonHoldNote } from "./decisions.js";
+import { DecisionList, PersonHoldNote } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
-import { ObjectiveResults, ResultsGlyph, ResultsHeadTools, resultGroupKey } from "./results.js";
+import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -116,7 +116,6 @@ export function dueLabel(iso: string, language: "en" | "ko"): string {
 }
 export const SunGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3" /><path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M3.4 12.6l1.3-1.3M11.3 4.7l1.3-1.3" /></svg>;
 export const CalGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" /></svg>;
-const CoordGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="4" r="2" /><circle cx="4" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><path d="M7 5.7L5 10.3M9 5.7l2 4.6" /></svg>;
 /** 명단 일괄 모델 설정 입구 트리거 — 3개 노드와 정렬 제어 화살표. */
 const BatchTunerGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="3.8" cy="4.5" r="1.4" /><circle cx="3.8" cy="8" r="1.4" /><circle cx="3.8" cy="11.5" r="1.4" /><path d="M7.5 4.5h5M7.5 8h3.5M7.5 11.5h5" /><path d="M11 3l2 1.5-2 1.5M9.5 6.5l2 1.5-2 1.5M11 10l2 1.5-2 1.5" /></svg>;
 /** 지휘관과 같게 — 4각 스파크 별에서 우하단 수신 궤도로 꺾여 내려오는 동기화선. */
@@ -616,7 +615,8 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   ) : null;
 
   return <div className="objectives-members">
-    <SectionHead glyph={<CoordGlyph />} label={t("objectives.members.title")} tools={<span>{objective.members.length}</span>} actions={actions} />
+    {/* 탭이 이름을 말하므로 머리는 임무 탭과 같은 메타 한 줄 — 왼쪽은 수, 오른쪽은 일괄 설정. */}
+    <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.members.title")} {objective.members.length}</span>{actions ? <span className="objectives-row-tools">{actions}</span> : null}</div>
     <div id="objectives-sec-members">
     {lead}
     {objective.members.length === 0 ? <p className="objectives-members-empty">{t("objectives.members.empty")}</p> : null}
@@ -1551,11 +1551,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       {/* 결과물 장부 — 임무 순서의 묶음과 마지막 기록 한 줄. 임무 밖 연결은 끝에 남기고, 그래프 팝업과 묶음 머리가 왕복한다.
           사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
       <div className="objectives-group objectives-results-group">
-        <SectionHead
-          glyph={<ResultsGlyph />}
-          label={t("objectives.results.title")}
-          tools={<ResultsHeadTools objective={objective} t={t} expanded />}
-        />
+        <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.results.title")} {objective.results.length > 0 ? objective.results.length : t("objectives.results.none")}</span></div>
         {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
       </div>
   </>);
@@ -1631,7 +1627,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const sDecisions = (<>
       <div className="objectives-group">
         {objective.decisions.length > 0 ? <>
-          <SectionHead glyph={<DecisionGlyph />} label={t("objectives.decisions.title")} tools={<span className="objectives-criteria-count">{objective.decisions.length}</span>} />
+          <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.decisions.title")} {objective.decisions.length}</span></div>
           <DecisionList objective={objective} t={t} language={language} flash={decisionFlash} memberMark={memberMarkOf} />
         </> : <p className="objectives-tab-empty">{t("objectives.tabs.decisionsEmpty")}</p>}
       </div>

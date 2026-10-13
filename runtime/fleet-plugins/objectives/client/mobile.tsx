@@ -23,8 +23,8 @@ import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.
 import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
-import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, objectivesApi, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
+import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -479,6 +479,9 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const theaterId = objective?.theaterId ?? null;
   const tab = detailTabOf(useObjectiveView(theaterId).detailTab);
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  // 좁은 폭에서 탭 바가 넘치면 고른 탭이 보이게 가로로만 당긴다.
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [tab]);
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
   const locale = language === "ko" ? "ko" : "en";
@@ -493,11 +496,11 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     <div className="objectives-m-tabbar">
       <button type="button" className={`objectives-m-tglyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /></button>
       <button type="button" className={`objectives-m-tglyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph />{objective.dueDate ? <span aria-hidden="true">{dueShort(objective.dueDate, locale)}</span> : null}
+        <CalGlyph />
       </button>
       {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
       <span className="objectives-m-tsep" aria-hidden="true" />
-      <div className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
+      <div ref={tabsRef} className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
         {DETAIL_TABS.map((key) => (
           <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => pickTab(key)}>
             {t(`objectives.tabs.${key}`)}{key === "decisions" && objective.decisionRequest && !objective.done ? <span className="objectives-m-tdot" role="img" aria-label={t("objectives.tabs.decisionDot")} /> : null}

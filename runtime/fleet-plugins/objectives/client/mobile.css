@@ -10,19 +10,21 @@
 .objectives-m.is-embedded { height: auto; overflow: visible; background: transparent; }
 .objectives-m.is-embedded .objectives-m-pad { padding: 0 0 8px; }
 /* 머리 줄 — 오늘·기한 글리프 | 다섯 탭. 탭은 폰 정보 화면의 탭(44 높이·보조 글자, 고르면 굵은 본문 잉크와 2px 밑줄)과 같은 문법이다.
-   글리프는 켜면 본문 잉크, 기한이 지나면 위험 색. 넘치면 줄바꿈 없이 가로로 넘긴다. */
+   글리프는 켜면 본문 잉크, 기한이 지나면 위험 색(날짜 글자는 폰에서 싣지 않는다). 넘치면 줄바꿈 없이 가로로 넘기고,
+   그 폭(360 미만)에서는 오른쪽 24px 이 흐려져 더 있다는 것을 말한다 — 그래프 팬의 가장자리 페이드와 같은 문법. */
 .objectives-m-tabbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--m-hairline); background: var(--m-bg); overflow-x: auto; scrollbar-width: none; }
 .objectives-m-tabbar::-webkit-scrollbar { display: none; }
 .objectives-m.is-embedded .objectives-m-tabbar { position: static; margin-bottom: 12px; padding: 0; background: transparent; }
-.objectives-m .objectives-m-tglyph { flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 36px; height: 44px; padding: 0 6px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
+.objectives-m .objectives-m-tglyph { flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 32px; height: 44px; padding: 0 4px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
 .objectives-m .objectives-m-tglyph svg { width: 18px; height: 18px; flex: none; }
 .objectives-m .objectives-m-tglyph.is-on { color: var(--m-text); }
 .objectives-m .objectives-m-tglyph.is-overdue { color: var(--m-danger); }
 .objectives-m .objectives-m-tglyph:disabled { opacity: .5; cursor: default; }
-.objectives-m-tsep { flex: none; width: 1px; height: 16px; margin: 0 6px 0 4px; background: var(--m-hairline-strong); }
+.objectives-m-tsep { flex: none; width: 1px; height: 16px; margin: 0 4px 0 2px; background: var(--m-hairline-strong); }
 .objectives-m-tabs { display: flex; flex: none; }
-.objectives-m .objectives-m-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 11px; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; }
+.objectives-m .objectives-m-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 8px; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; }
 .objectives-m .objectives-m-tabs button[aria-selected="true"] { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-inverse); }
+@media (max-width: 359px) { .objectives-m-tabbar { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); } }
 .objectives-m-tdot { position: absolute; top: 10px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--m-awaiting); }
 /* 회고 — 데스크톱 표를 모바일 잉크로 읽는다. 카드 안쪽 여백은 카드가 준다. */
 .objectives-m-retro .objectives-retro { padding: 0; }

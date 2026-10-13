@@ -75,17 +75,6 @@ function bytesLabel(bytes: number): string {
 
 const extension = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowerCase();
 
-/** 머리 오른쪽 — 개수, 접혔을 때 조회 실패가 있으면 그 사실도. 결과물이 없으면 「없음」만. */
-export function ResultsHeadTools({ objective, t, expanded }: { readonly objective: Objective; readonly t: T; readonly expanded: boolean }) {
-  const results = objective.results;
-  if (results.length === 0) return <span className="objectives-criteria-count">{t("objectives.results.none")}</span>;
-  const failed = results.some((result) => result.kind === "pr" && result.observation.state === "error");
-  return <>
-    {!expanded && failed ? <span className="objectives-result-state is-error"><i aria-hidden="true" />{t("objectives.results.prFailed")}</span> : null}
-    <span className="objectives-criteria-count">{t("objectives.results.count", { count: results.length })}</span>
-  </>;
-}
-
 export const resultGroupKey = (objectiveId: string, missionId: string = "loose") => `result:${objectiveId}:${missionId}`;
 
 export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup }: {

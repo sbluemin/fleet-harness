@@ -16,8 +16,6 @@ import { returnPersonHold } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-/** 결정 표식 — 같은 말풍선에 체크. 임무 줄의 결정 수와 「결정」 머리에 쓴다. */
-export const DecisionGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" aria-hidden="true"><path d="M3.2 2.8h9.6a1.4 1.4 0 0 1 1.4 1.4v6a1.4 1.4 0 0 1-1.4 1.4H7.4L4.4 14v-2.4H3.2a1.4 1.4 0 0 1-1.4-1.4v-6a1.4 1.4 0 0 1 1.4-1.4z" /><path d="M5.6 7.2l1.7 1.7 3.2-3.4" /></svg>;
 
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 

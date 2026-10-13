@@ -56,10 +56,11 @@
 .objectives-tab-body > .objectives-extension-current { margin-top: 6px; }
 .objectives-tab-meta { min-height: 36px; }
 .objectives-tab-meta .objectives-graph-counts { margin-left: 0; }
+/* 한 구획짜리 탭의 메타 줄 — 탭이 이름을 말하므로 수만 흐리게 선다. */
+.objectives-tab-count { font: var(--t-2xs)/1 var(--font-ui); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-tab-empty { margin: 0; padding: 14px 20px 10px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
 .objectives-crew-group > .objectives-members { border-top: 0; padding-top: 0; }
 .objectives-member.is-commander .objectives-member-role-fit { color: var(--text-primary); }
-.objectives-crew-group .objectives-routing-switch { padding: 2px 14px 8px 52px; }
 
 /* 빈 상태 · 목표 아닌 세션 — 머리 한 줄(라벨 · 전환 ⌄ · 자리 버튼) 아래 가운데 안내. 상자·채움 없이 글자로만 말한다. */
 .objectives-pick-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--objectives-detail-face); }
@@ -1029,7 +1030,8 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-member-reason { margin: -2px 14px 6px 52px; font-size: var(--t-xs); line-height: 1.45; color: var(--warn-ink); }
 
 /* 개시 띠의 스위치 — 콘솔 공용 스위치(SettingsToggle) 옆에 낱말과 한 줄 설명. */
-.objectives-routing-switch { display: flex; align-items: flex-start; gap: 10px; padding: 8px 14px 0; }
+/* 개시 전 라우팅 확인 — 구성원 탭 지휘관 줄 아래 하나뿐인 입구. 들여쓰기는 구성원 이름 열(22 + 20 + 10). */
+.objectives-routing-switch { display: flex; align-items: flex-start; gap: 10px; padding: 2px 14px 8px 52px; }
 .objectives-routing-switch .fc-settings-toggle { flex: none; margin-top: 1px; }
 .objectives-routing-switch-copy { display: grid; gap: 2px; min-width: 0; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-routing-switch-copy b { color: var(--text-primary); font-weight: var(--weight-medium); }
@@ -1071,7 +1073,6 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-composer-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px 2px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .objectives-composer-panel-head > span { min-width: 0; }
 .objectives-composer-panel-head .objectives-glyph { border-color: transparent; }
-.objectives-composer-panel .objectives-routing-switch,
 .objectives-composer-panel .objectives-routing-foot { padding-inline: 8px; }
 .objectives-composer-panel .objectives-routing-banner { margin-inline: 8px; }
 .objectives-composer-panel .objectives-followup-list { padding: 0; }
