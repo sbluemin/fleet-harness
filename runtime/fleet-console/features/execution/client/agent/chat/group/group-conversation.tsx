@@ -109,6 +109,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
     const column = log?.firstElementChild;
     if (!log || !column || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
+      // 산 채로 숨긴 대화의 배치는 읽기 위치나 따라가기 의도를 바꾸지 않는다.
+      if (log.closest("[inert]") || log.clientHeight === 0) return;
       const height = log.scrollHeight;
       placed.current = { first: placed.current?.first, height };
       if (nearBottomRef.current) {
@@ -165,10 +167,12 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
         aria-busy={snapshot.loading}
         onScroll={(event) => {
           const log = event.currentTarget;
+          if (log.closest("[inert]") || log.clientHeight === 0) return;
           // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 다음 조각이 먼저 자라도 따라가기를 끊지 않는다.
           if (log.scrollTop === programmaticTop.current) return;
           programmaticTop.current = null;
-          nearBottomRef.current = (placed.current?.height ?? log.scrollHeight) - log.scrollTop - log.clientHeight < 60;
+          // 복귀·폭 전이로 높이가 줄면 브라우저가 먼저 scrollTop을 제한한다. RO 전의 cached 높이는 위로 읽기로 오인한다.
+          nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
         }}
       >
         <div className="group-chat-column">
