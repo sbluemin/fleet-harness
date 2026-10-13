@@ -1,7 +1,8 @@
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createConversationStream } from "@fleet-console/sdk/conversation";
 
 import {
   chatEventsFromSdkMessage,
@@ -15,7 +16,56 @@ import {
   type AgentChatStreamEvent,
 } from "../../features/execution/host/agent/chat-events.js";
 import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX } from "../../features/execution/host/agent/launch-attachments.js";
-import { readChatJournalEvent } from "../../features/execution/client/agent/chat/chat-events.js";
+import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatStreamEvent as AgentChatEvent } from "../../features/execution/client/agent/chat/chat-events.js";
+
+// 프레임 적용은 새 수명 경계다. 기존 매핑 계약만으로는 숨은 탭·정정 뒤의 늦은 델타를 잡지 못한다.
+describe("conversation stream lifecycle", () => {
+  it("settles pending speech at anchors, hidden-page recovery and teardown without reviving cleared history", () => {
+    vi.useFakeTimers();
+    const page = Object.assign(new EventTarget(), { visibilityState: "hidden" });
+    vi.stubGlobal("document", page);
+    let frame: FrameRequestCallback | undefined;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frame = callback; return 1; });
+    vi.stubGlobal("cancelAnimationFrame", () => undefined);
+    let log = reduceAgentChatLog(initialAgentChatLogState, { kind: "turn-start", at: 1 });
+    const stream = createConversationStream<AgentChatEvent>({
+      delta: (event) => event.kind === "text-delta" ? { key: "operation", text: event.text } : null,
+      withText: (_event, text) => ({ kind: "text-delta", text }),
+      apply: (events) => { log = events.reduce(reduceAgentChatLog, log); },
+    });
+    try {
+      stream.push({ kind: "text-delta", text: "first " });
+      stream.push({ kind: "text-delta", text: "answer" });
+      frame?.(16);
+      expect(log.turns.at(-1)?.draft).toBe("first answer");
+      stream.push({ kind: "text-delta", text: " stale tail" });
+      stream.push({ kind: "text", text: "corrected answer" });
+      stream.push({ kind: "turn-end", ok: true });
+      vi.runAllTimers();
+      expect(log.turns.at(-1)).toMatchObject({ state: "done", draft: "", items: [{ type: "text", text: "corrected answer" }] });
+      stream.push({ kind: "turn-start", at: 2 });
+      stream.push({ kind: "text-delta", text: "background speech" });
+      vi.advanceTimersByTime(100);
+      expect(log.turns.at(-1)?.draft).toBe("background speech");
+      stream.push({ kind: "text-delta", text: " after return" });
+      page.visibilityState = "visible";
+      page.dispatchEvent(new Event("visibilitychange"));
+      expect(log.turns.at(-1)?.draft).toBe("background speech after return");
+      stream.push({ kind: "text-delta", text: "x".repeat(120_000) });
+      stream.dispose();
+      expect(log.turns.at(-1)?.draft.length).toBeLessThanOrEqual(60_000);
+      log = reduceAgentChatLog(log, { kind: "cleared" });
+      stream.push({ kind: "text-delta", text: "old connection" });
+      page.dispatchEvent(new Event("visibilitychange"));
+      vi.runAllTimers();
+      expect(log.turns).toEqual([]);
+    } finally {
+      stream.dispose();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("chat transcript mapping", () => {
   it("maps a plain user line to a dispatch", () => {

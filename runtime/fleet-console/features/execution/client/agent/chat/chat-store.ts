@@ -1,4 +1,5 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { createConversationStream } from "@fleet-console/sdk/conversation";
 
 import { TerminalTicketError, buildTerminalWsUrl } from "../../terminal/shared/terminal-connection.js";
 import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatLogState } from "./chat-events.js";
@@ -48,6 +49,15 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
     }
     setConnection("connecting");
     setLog(initialAgentChatLogState);
+    const stream = createConversationStream<{ entry: NonNullable<ReturnType<typeof readChatJournalEvent>>; receivedAt: number }>({
+      delta: ({ entry }) => entry.event.kind === "text-delta" ? { key: operationId, text: entry.event.text } : null,
+      withText: (row, text) => ({ ...row, entry: { ...row.entry, event: { kind: "text-delta", text } } }),
+      // 적용 프레임이 아닌 수신 시각이다. 옛 재생의 미확정 시각만 기존처럼 비워 둔다.
+      apply: (events) => setLog((current) => events.reduce((state, { entry, receivedAt }) => reduceAgentChatLog(state, {
+        ...entry.event,
+        receivedAt: entry.at ?? (state.replaying ? undefined : receivedAt),
+      }), current)),
+    });
     const session = createChatSocketSession({
       operationId,
       onConnection: (next) => {
@@ -55,6 +65,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
         // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
         // 재접속 리플레이가 남은 턴·잡·질문 카드 위에 겹친다(옛 EventSource onopen과 같은 자리).
         if (next === "open") {
+          stream.flush();
           // 화면 로그는 snapshot으로 다시 쓰되, 서버가 준 누적 턴 좌표는 재접속 전 값을 보존한다.
           // 저널 상한으로 과거 행이 잘려도 이 좌표와 새 snapshot-end의 차이는 단조다.
           setLog((current) => ({ ...initialAgentChatLogState, observedTurns: current.observedTurns }));
@@ -66,15 +77,13 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
         if (!entry) return;
         // 서버 원장 시각이 생각 공백의 권위다 — 재접속 snapshot이 한꺼번에 도착해도 원래
         // 간격을 복원한다. 옛 서버의 저널에는 at이 없으므로 그때만 수신 시각으로 보완한다.
-        setLog((current) => reduceAgentChatLog(current, {
-          ...entry.event,
-          receivedAt: entry.at ?? (current.replaying ? undefined : Date.now()),
-        }));
+        stream.push({ entry, receivedAt: Date.now() });
       },
     });
     sessionRef.current = session;
     session.start();
     return () => {
+      stream.dispose();
       session.dispose();
       if (sessionRef.current === session) sessionRef.current = null;
     };

@@ -5,9 +5,9 @@
   "type": "module",
   "exports": {
     "./conversation": {
-      "types": "./conversation/types.ts",
-      "import": "./conversation/types.ts",
-      "default": "./conversation/types.ts"
+      "types": "./conversation/index.ts",
+      "import": "./conversation/index.ts",
+      "default": "./conversation/index.ts"
     },
     "./mcp": {
       "types": "./mcp/types.ts",
