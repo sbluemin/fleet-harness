@@ -462,7 +462,7 @@
   white-space: nowrap;
 }
 
-/* 대화 행의 제목은 Theater 이름과 같은 최고 명도 잉크다 — 활성·고름·최소화는 면 워시·점선·아바타 감쇠가 말하고 이름 잉크를
+/* 대화 행의 제목은 Theater 이름과 같은 최고 명도 잉크다 — 활성·고름은 면 워시·점선이 말하고 이름 잉크를
    바꾸지 않는다. 사용자 accent 는 정체성 채널이라 그대로 이름을 칠한다. */
 .side-bar-cluster-row--conversation:not([style*="--user-accent"]) .side-bar-cluster-row-title,
 .side-bar-chip--conversation:not([style*="--user-accent"]) .side-bar-chip-name {

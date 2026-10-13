@@ -1092,14 +1092,8 @@ describe("Instrument core design contract", () => {
     expect(chipIdleBlock).not.toContain("var(--surface-panel)");
     // hover/active도 원색이 아니라 2티어 글자색 쪽 믹스 — Whites chrome 워시 위 본문 AA의 하한이다.
     expect(chipActiveBlock).toContain("color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));");
-    // 최소화 티어는 accent 위에서도 남는다 — hover 규칙과 같은 명세성이라 순서가 곧 계약이다.
-    const chipHoverIndex = components.indexOf('.side-bar-chip[style*="--user-accent"]:hover .side-bar-chip-name');
-    const chipMinimizedIndex = components.indexOf('.side-bar-chip[style*="--user-accent"].side-bar-chip--minimized .side-bar-chip-name {');
-    expect(chipHoverIndex).toBeGreaterThan(-1);
-    expect(chipMinimizedIndex).toBeGreaterThan(chipHoverIndex);
-    expect(components.slice(chipMinimizedIndex).match(/\{[^}]*\}/)?.[0]).toContain("color: color-mix(in oklab, var(--user-accent) 55%, var(--ink-muted));");
-    // 소비처는 사이드바 칩·클러스터 행의 제목 잉크 세 단뿐이다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(3);
+    // 소비처는 사이드바 칩·클러스터 행의 제목 잉크 두 단(언포커스·hover/active)뿐이다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(2);
     expect([chip, components].join("\n")).not.toMatch(/--op-accent|--chip-accent/);
   });
 
@@ -1361,8 +1355,8 @@ describe("Instrument core design contract", () => {
 
   it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
     const components = source("styles/components.css");
-    const restingActions = components.match(/\.side-bar-chip-close,\n\.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
-    const revealedActions = components.match(/\.side-bar-chip:hover \.side-bar-chip-close,[^]*?\.side-bar-chip:focus-within \.side-bar-chip-minimize \{[^}]*\}/)?.[0] ?? "";
+    const restingActions = components.match(/\.side-bar-chip-close \{[^}]*\}/)?.[0] ?? "";
+    const revealedActions = components.match(/\.side-bar-chip:hover \.side-bar-chip-close,\n\.side-bar-chip:focus-within \.side-bar-chip-close \{[^}]*\}/)?.[0] ?? "";
 
     expect(restingActions).toContain("flex: 0 0 0;");
     expect(restingActions).toContain("width: 0;");
@@ -1379,7 +1373,7 @@ describe("Instrument core design contract", () => {
     expect(revealedActions).toContain("margin-left: 0;");
     expect(revealedActions).toContain("opacity: 1;");
     expect(revealedActions).toContain("pointer-events: auto;");
-    expect(components).toContain(".side-bar-chip-close,\n  .side-bar-chip-minimize {\n    transition-duration: 0.01ms;");
+    expect(components).toContain("  .side-bar-chip-close {\n    transition-duration: 0.01ms;");
   });
 
   // 「한 패널만 크게」는 스냅 유지의 전체 칸이 진다 — 옛 최대화 상태를 들고 있는지 묻던 계약은
@@ -1410,9 +1404,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("<StatusRecoveryShelves");
     // 0건 섹션·선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
     expect(sidebar).toContain("statusSections.filter((section) => section.entries.length > 0)");
-    expect(sidebar).toContain("if (minimizedSection.entries.length === 0 && dormantSection.entries.length === 0) return null;");
+    expect(sidebar).toContain("if (dormantSection.entries.length === 0) return null;");
     expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: var\(--control-wash\);/);
-    expect(components).toContain(".side-bar-status-section--minimized {");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
@@ -1776,8 +1769,6 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain('className="side-bar-ghost-theater-anchor"');
     expect(sidebar).not.toContain('className="side-bar-ghost-theater-row" onClick={openTheaterBrowser} disabled={addingTheater} aria-label');
     expect(sidebar).toContain('aria-label={t("sidebar.list.aria")}');
-    expect(sidebar).not.toContain("restoreMinimized");
-    expect(sidebar).not.toContain("Formation view including minimized panels");
     expect(components).toContain(".side-bar-ghost-theater-anchor {");
     expect(components).toContain("border: 1px dashed var(--ink-rim);");
     expect(components).not.toContain(".side-bar-formation-group {");
@@ -2979,9 +2970,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".canvas-fleet-map-marker.is-shell,");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
-    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
-    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-status:is(.is-idle, .is-ended, .is-done, .is-fresh) {\n  opacity: 0.62;");
-    expect(components).not.toMatch(/\.side-bar-chip--minimized \{[^}]*opacity/);
 
     expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
     expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");

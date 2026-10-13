@@ -214,7 +214,7 @@ interface SideBarClusterRowProps {
   readonly dropTarget?: boolean;
   /** 뿌리 Operation 의 사용자 accent — 칩처럼 제목 잉크만 소유한다. */
   readonly accentValue?: string | null;
-  /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(최소화 복원·휴면·Theater 전환 포함). */
+  /** 칩과 같은 포커스 경로 — 뿌리가 선 줄을 누르면 그 Operation 패널로 간다(휴면·Theater 전환 포함). */
   readonly onFocus: (operationId: string) => void;
   /**
    * 「더블클릭으로 열기」 — 있으면 뿌리가 선 줄의 한 번 클릭과 Space 는 열지 않고 고르기만 하고, 더블클릭과 Enter 가 연다.
@@ -249,7 +249,6 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 사이드바에서 고른(열지 않은) 뿌리 — 열림(면+테두리)과 다른 문법(점선 테두리)이라 한 줄 하이라이트 규칙과 겹치지 않는다.
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
-  const minimized = anchor?.minimized === true;
   // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
   const conversationRow = useSideBarRowStyle() === "conversation";
   const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
@@ -388,7 +387,6 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         consoleUseWrapClassName(wrap),
         active ? "side-bar-cluster-row--active" : "",
         selected ? "side-bar-cluster-row--selected" : "",
-        minimized ? "side-bar-cluster-row--minimized" : "",
         conversationRow ? "side-bar-cluster-row--conversation" : "",
         dragging ? "is-dragging" : "",
         dropTarget ? "is-drop-target" : "",

@@ -3135,13 +3135,6 @@
   --activity-color: var(--ink-fog);
 }
 
-/* 최소화는 활동 상태가 아니라 사용자가 고른 표시 상태다 — 신호 채널(aurora·warn·positive·coral)을
-   빌리지 않고, 휴면이 쓰는 brass 혼합과도 구분되도록 차가운 중성 잉크를 그대로 쓴다. 밝기도 상태
-   비콘들(L 70~77%)보다 낮아 신호로 읽히지 않는다. */
-.side-bar-status-section--minimized {
-  --activity-color: var(--ink-fog);
-}
-
 .status-dot {
   /* accent-immune: beacon dots are system status signals, never user accent fill. */
   width: 8px;
@@ -4170,14 +4163,6 @@ button.status-glyph.is-actionable:focus-visible {
   padding: 0;
 }
 
-/* 최소화 선반 — 휴면 선반과 같은 무채색 문법을 쓰되 그 위에 선다. 내가 직접 내린 것이 세션이
-   스스로 잠든 것보다 손에 가깝기 때문이다. 빈 선반은 렌더하지 않는다. */
-.side-bar-recovery-minimized-shelf {
-  flex: none;
-  border-top: 1px solid var(--surface-rim);
-  padding: var(--space-1) 0;
-}
-
 /* Theater 안의 복구 선반(상태별 보기)은 구분선을 갖지 않는다. 선을 그으면 Theater 경계처럼
    읽히므로 상태 섹션(대기·실행 중·유휴)과 같은 문법으로 잇달아 선다. */
 .side-bar-status-recovery-shelves {
@@ -4192,12 +4177,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 .side-bar-status-recovery-shelf .side-bar-status-section {
   padding-bottom: 0;
-}
-
-.side-bar-recovery-minimized-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
 }
 
 .side-bar-theater-error {
@@ -4919,7 +4898,7 @@ button.status-glyph.is-actionable:focus-visible {
     transform var(--duration-fast) var(--ease-spring);
 }
 
-/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 제목 글꼴·잉크, 머무름·키보드 포커스·활성·최소화·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
+/* 묶음 줄(목표) — 1줄 제목, 2줄 mono 메타. 제목 글꼴·잉크, 머무름·키보드 포커스·활성·accent 이름 잉크는 아래 칩 규칙을 함께 쓴다:
    뿌리가 선 줄은 칩 자리를 이어받았으니 활성 Operation 일 때 칩과 같은 값으로 하이라이트한다(왼쪽 띠 없음).
    바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
 .side-bar-cluster-row {
@@ -4974,21 +4953,6 @@ button.status-glyph.is-actionable:focus-visible {
   color: var(--text-primary);
 }
 
-/* minimized: 이름은 판독 가능한 --ink-muted 티어로 유지하고 "치워둠" 신호는 아이콘 감쇠로만
-   전달한다. 예전의 칩 전체 opacity(색 × 투명도 이중 감쇠)는 이름 대비를 WCAG 하한 아래로
-   무너뜨렸다(instrument 1.84:1). 위계: active brass › 기본 ink-spectral › 최소화 ink-muted. */
-.side-bar-cluster-row--minimized .side-bar-cluster-row-title,
-.side-bar-chip--minimized .side-bar-chip-name {
-  color: var(--ink-muted);
-}
-
-/* 치워둠 감쇠는 쉬는 얼굴(대기·끝남·완료·시작 전)에만 — 일하거나 사람을 부르는 아바타는 창을 치워도 상태를
-   말하는 표식이라 히어로와 같은 몸 색으로 선다. 끝남·완료·시작 전의 차분함은 .mongle-avatar 의 fill 규칙이 따로 소유한다. */
-.side-bar-cluster-row--minimized .side-bar-cluster-row-glyph .mongle-avatar:is(.is-idle, .is-ended, .is-done, .is-fresh),
-.side-bar-chip--minimized .side-bar-chip-status:is(.is-idle, .is-ended, .is-done, .is-fresh) {
-  opacity: 0.62;
-}
-
 /* drop-target: 드래그 위치 표시 */
 .side-bar-chip--drop-target {
   border-color: color-mix(in oklch, var(--aurora) 60%, transparent);
@@ -5025,14 +4989,6 @@ button.status-glyph.is-actionable:focus-visible {
 .side-bar-chip[style*="--user-accent"]:hover .side-bar-chip-name,
 .side-bar-chip[style*="--user-accent"].side-bar-chip--active .side-bar-chip-name {
   color: color-mix(in oklab, var(--user-accent) 75%, var(--text-secondary));
-}
-
-/* 최소화된 칩은 "치워둠" 티어(--ink-muted)를 accent 위에서도 유지한다 — 언포커스보다 한 단계 더 물러난
-   45% 믹스이며 hover로 되살아나지 않는다(무액센트 최소화 칩도 hover에 색을 바꾸지 않는다). 위 hover 규칙과
-   같은 명세성(0,3,1)이므로 반드시 그 뒤에 온다. Whites chrome 위 최소 5.5:1. */
-.side-bar-cluster-row[style*="--user-accent"].side-bar-cluster-row--minimized .side-bar-cluster-row-title,
-.side-bar-chip[style*="--user-accent"].side-bar-chip--minimized .side-bar-chip-name {
-  color: color-mix(in oklab, var(--user-accent) 55%, var(--ink-muted));
 }
 
 /* 이름 왼쪽 상태 슬롯 — 조작 표면이 아니라 마크를 담는 자리다(칩 본체가 클릭을 소유한다). */
@@ -5136,11 +5092,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 .operation-context--deviates {
   color: var(--text-secondary);
-}
-
-/* 사이드바 칩의 "지금 어디" 줄 — 공통 .operation-context 문법을 쓰고, 최소화된 칩에서만 잉크가 한 단계 내려간다. */
-.side-bar-chip--minimized .side-bar-chip-context {
-  color: var(--ink-muted);
 }
 
 /* 칩을 겨눴을 때 뜨는 상세 — 칩이 줄인 사실만 라벨·값 세 줄로 말한다. 제목도 조작 안내도 얹지
@@ -5247,10 +5198,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 .side-bar-chip-context--deviates {
   color: var(--text-secondary);
-}
-
-.side-bar-chip--minimized .side-bar-chip-context {
-  color: var(--ink-muted);
 }
 
 .side-bar-chip-rename-input {
@@ -5363,7 +5310,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 /* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
 .side-bar-chip-cluster-strip { align-self: flex-start; margin: 1px 0 0 -3px; max-width: 100%; pointer-events: none; }
-.side-bar-chip--minimized .side-bar-chip-cluster-strip { opacity: 0.7; }
 
 .side-bar-chip-group-mark {
   display: block;
@@ -5400,8 +5346,7 @@ button.status-glyph.is-actionable:focus-visible {
   to { background: transparent; }
 }
 
-.side-bar-chip-close,
-.side-bar-chip-minimize {
+.side-bar-chip-close {
   display: grid;
   place-items: center;
   flex: 0 0 0;
@@ -5432,9 +5377,7 @@ button.status-glyph.is-actionable:focus-visible {
    호버·포커스에서만 레이아웃에 펼쳐지는 초밀집 액션이라 20px를 유지한다. 24px로 올리면 armed
    "Close?" 확장폭이 칩 최대폭 계약을 넘겨 잘린다. */
 .side-bar-chip:hover .side-bar-chip-close,
-.side-bar-chip:focus-within .side-bar-chip-close,
-.side-bar-chip:hover .side-bar-chip-minimize,
-.side-bar-chip:focus-within .side-bar-chip-minimize {
+.side-bar-chip:focus-within .side-bar-chip-close {
   flex: none;
   width: 20px;
   height: 20px;
@@ -5448,9 +5391,7 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 .side-bar-chip-close:hover,
-.side-bar-chip-close:focus-visible,
-.side-bar-chip-minimize:hover,
-.side-bar-chip-minimize:focus-visible {
+.side-bar-chip-close:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   color: var(--text-secondary);
@@ -5462,14 +5403,8 @@ button.status-glyph.is-actionable:focus-visible {
   height: 12px;
 }
 
-.side-bar-chip-minimize svg {
-  width: 12px;
-  height: 12px;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .side-bar-chip-close,
-  .side-bar-chip-minimize {
+  .side-bar-chip-close {
     transition-duration: 0.01ms;
   }
 

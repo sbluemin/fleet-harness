@@ -482,7 +482,7 @@ export function OperationSearch({
     if (entry.activity === "ended") {
       actions.push({ id: "resume", label: t("chrome.operationSearch.actionResume"), glyph: "operation-resume", run: () => runAction({ kind: "resume-operation", operationId: entry.operationId }, false) });
     }
-    // 이름 변경·최소화는 사이드바가 소비하는 요청이다. 모바일 셸에는 사이드바가 없어 요청이 아무 데도
+    // 이름 변경은 사이드바가 소비하는 요청이다. 모바일 셸에는 사이드바가 없어 요청이 아무 데도
     // 닿지 않고 나중에 데스크톱 사이드바가 서면 뒤늦게 재생되므로, 그 표면에서는 띠에 올리지 않는다.
     if (getViewModeSnapshot().effective !== "mobile") {
       actions.push(
