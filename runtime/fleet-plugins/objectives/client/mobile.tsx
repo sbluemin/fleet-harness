@@ -327,8 +327,9 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
   // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 확인이 꺼져 있으면 서버가 개시 때 판단한다.
   const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id))) : [];
-  // 띠의 주 동작이 개시·재개일 때만 개시 카드가 주 단추다 — 다른 할 일(답·인계)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
-  const primary = choices.primary === "start" || choices.primary === "resume";
+  // 띠의 주 동작이 개시·재개일 때 개시 카드가 주 단추다 — 폰에 있는 다른 할 일(답·인계·완료 등)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
+  // 띠의 주 동작이 폰에 없는 것(구상·재구상·스티어링·확장)이면 이 화면에서 경쟁할 걸음이 없으므로 개시가 주 단추다.
+  const primary = choices.primary === "start" || choices.primary === "resume" || (choices.primary !== null && !PHONE_STEPS.has(choices.primary));
   const commence = done ? null
     : has("start") || has("resume")
       ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review, primary }
@@ -346,6 +347,9 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   // 후속 후보가 있으면 완료는 띠처럼 곧바로 하지 않고 후보 고르기 시트를 거친다(finish.followups).
   return { recipients, message: has("message"), complete: has("complete"), handOff: has("handOff"), stop: has("stop"), commence, finish };
 }
+
+/** 폰 상세가 직접 세우는 띠의 걸음 — 결정 답(본문 카드)과 동작 줄의 메시지·완료·검토로 넘기기·중단. 구상·스티어링·확장은 폰에 없다. */
+const PHONE_STEPS: ReadonlySet<string> = new Set(["decide", "decideMember", "message", "complete", "handOff", "stop"]);
 
 /** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
 const FIELD_GAP_PX = 8;
