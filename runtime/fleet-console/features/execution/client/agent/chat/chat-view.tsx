@@ -6,6 +6,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
 
 import { getT } from "../i18n/index.js";
+import { useViewMode } from "../../../../../core/client/src/integration/view-mode-store.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import { getTerminalPrefsSnapshot, useChatHistoryAutoFold, useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
@@ -45,7 +46,6 @@ import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } fro
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
-import { useConversationLayout } from "../../../../settings/client/use-conversation-layout.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import { LiveSpeakerMark, SpeakerMark } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
@@ -165,7 +165,7 @@ export function AgentChatView({
   // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Operation 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
   // 말풍선 문법에 서되, 상단 막대·⋮·입력 독·안전 영역 같은 모바일 고유의 틀은 셸과 [data-mobile-surface] 규칙이 그대로 진다.
   const mobileSurface = useMobileSurface();
-  const conversationStyle = (useConversationLayout() || mobileSurface) && !isMemberChat;
+  const conversationStyle = (useViewMode().effective === "desktop" || mobileSurface) && !isMemberChat;
   // 모바일 대화는 스레드 전체를 처음부터 편다 — 데스크톱 대화 화면(그룹 대화)이 지난 문답을 접지 않는 것과 같다. 「이전 대화」 띠와
   // 자동 접기는 이 화면에서 서지 않는다(데스크톱 패널의 자동 접기 선호는 그대로 그 패널의 것이다).
   const wholeThread = mobileSurface && conversationStyle;

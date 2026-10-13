@@ -4,7 +4,6 @@ import { consoleUseWrapClassName, gestureCallerLabel, getClusterListWrap, getFir
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationGroup } from "../../../../core/client/src/integration/types.js";
 import { resolveAccentColor } from "../operation-accent.js";
-import { useSideBarRowStyle } from "./side-bar-row-style.js";
 
 interface GroupHeaderProps {
   readonly group: OperationGroup;
@@ -37,8 +36,7 @@ export function OperationsSideBarGroupHeader({
 }: GroupHeaderProps) {
   const t = useT();
   const suppressClickRef = useRef(false);
-  // 대화 중심 화면의 그룹 머리는 구분선 라벨이다 — 라벨 자체가 접기이고, 끌기는 라벨을 잡아도 된다. 캔버스 배치는 화살표 버튼만 접는다.
-  const labelRow = useSideBarRowStyle() === "conversation";
+  // 그룹 머리는 구분선 라벨이다 — 라벨 자체가 접기이고, 끌기는 라벨을 잡아도 된다.
   const grpColor = resolveAccentColor(group.color);
   // Console Use — 에이전트가 이 그룹을 만들거나 고치면 헤더 전체가 감싸인다. 만든 이는 툴팁에만 남는다(사실이지 사건이 아니다).
   const wrap = useSyncExternalStore(
@@ -64,7 +62,7 @@ export function OperationsSideBarGroupHeader({
     onContextMenu(group.id, event.currentTarget.getBoundingClientRect());
   };
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.target instanceof Element && event.target.closest(labelRow ? ".side-bar-group-header__plus" : "button")) return;
+    if (event.target instanceof Element && event.target.closest(".side-bar-group-header__plus")) return;
     onPointerDragStart(event, group.id);
   };
   const handlePointerUp = () => {
@@ -85,7 +83,7 @@ export function OperationsSideBarGroupHeader({
       onContextMenu={handleContextMenu}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      onClick={labelRow ? (event) => { if (!(event.target instanceof Element && event.target.closest("button"))) toggle(); } : undefined}
+      onClick={(event) => { if (!(event.target instanceof Element && event.target.closest("button"))) toggle(); }}
       role="group"
       aria-label={group.name}
       title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : creator ? t("sidebar.group.createdBy", { caller: gestureCallerLabel(creator.caller) }) : undefined}
@@ -93,16 +91,16 @@ export function OperationsSideBarGroupHeader({
       <button
         type="button"
         className="side-bar-group-header__toggle"
-        onClick={labelRow ? toggle : () => onToggle(group.id)}
+        onClick={toggle}
         aria-expanded={!collapsed}
         aria-label={collapsed ? t("sidebar.group.expand", { name: group.name }) : t("sidebar.group.collapse", { name: group.name })}
         title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
       >
         <CollapseArrow collapsed={collapsed} />
       </button>
-      {labelRow ? <span className="side-bar-group-header__mark" aria-hidden="true" /> : null}
+      <span className="side-bar-group-header__mark" aria-hidden="true" />
       <span className="side-bar-group-header__name">{group.name}</span>
-      {labelRow ? <span className="side-bar-group-header__rule" aria-hidden="true" /> : null}
+      <span className="side-bar-group-header__rule" aria-hidden="true" />
       <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
       {onOpenLaunch ? (
         <button
@@ -126,13 +124,12 @@ export function OperationsSideBarGroupHeader({
 /** 그룹이 있는 Theater 의 「미분류」 머리 — 대화 중심 화면에서는 그룹 라벨과 같은 구분선 형식(표식 자리·헤어라인·개수)이다. */
 export function SideBarUngroupedLabel({ count }: { readonly count: number }) {
   const t = useT();
-  const labelRow = useSideBarRowStyle() === "conversation";
   return (
-    <div className={`side-bar-ungrouped-label${labelRow ? " is-label-row" : ""}`} aria-label={t("sidebar.ungrouped.aria")}>
-      {labelRow ? <span className="side-bar-group-header__mark" aria-hidden="true" /> : null}
-      <span className={labelRow ? "side-bar-group-header__name" : undefined}>{t("sidebar.ungrouped.label")}</span>
-      {labelRow ? <span className="side-bar-group-header__rule" aria-hidden="true" /> : null}
-      {labelRow ? <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span> : null}
+    <div className="side-bar-ungrouped-label is-label-row" aria-label={t("sidebar.ungrouped.aria")}>
+      <span className="side-bar-group-header__mark" aria-hidden="true" />
+      <span className="side-bar-group-header__name">{t("sidebar.ungrouped.label")}</span>
+      <span className="side-bar-group-header__rule" aria-hidden="true" />
+      <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
     </div>
   );
 }

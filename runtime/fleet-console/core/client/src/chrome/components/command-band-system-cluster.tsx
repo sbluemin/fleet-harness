@@ -16,7 +16,7 @@ import { openSettingsSurface } from "../../../../../features/settings/client/set
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
-import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/sidebar/canvas-context-menu.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/sidebar/operation-launch-context-menu.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 
@@ -383,7 +383,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
       return;
     }
     setOpen(false);
-    // 레일은 /operations에만 마운트된다 — 표면을 부르기 전에 캔버스로 돌아간다.
+    // 레일은 /operations에만 마운트된다 — 표면을 부르기 전에 대화 화면으로 돌아간다.
     navigate("/operations");
     openSettingsSurface("connectivity");
   };

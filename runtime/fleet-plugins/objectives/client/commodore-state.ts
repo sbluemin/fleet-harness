@@ -175,34 +175,23 @@ export function subscribeCommodore(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** 활성 Theater 가 바뀌었을 때만 울리는 구독자 — 사령관 사건은 `subscribeCommodore` 가 따로 알린다. */
-const activeTheaterListeners = new Set<() => void>();
-
-/** Quick Launch '@' 덱이 다시 읽을 때 — 사령관 상태가 바뀌었거나 활성 Theater 가 바뀌었다. */
-export function subscribeCommodoreMentions(listener: () => void): () => void {
-  const offCommodore = subscribeCommodore(listener);
-  activeTheaterListeners.add(listener);
-  return () => { offCommodore(); activeTheaterListeners.delete(listener); };
-}
-
-/** 지금 사람이 보고 있는 Theater — '@' 덱은 그 Theater 의 사령관만 행선지로 세운다. */
-export function commodoreActiveTheaterId(): string | null {
-  return installed?.consoleState.getActiveTheaterId() ?? null;
-}
+/** 모든 등록 Theater의 사령관이 같은 행선지 목록을 공유한다. */
+export function subscribeCommodoreMentions(listener: () => void): () => void { return subscribeCommodore(listener); }
+export function commodoreTheaterIds(): readonly string[] { return installed?.consoleState.getTheaters().map((theater) => theater.id) ?? []; }
 
 export function installCommodoreState(ctx: PluginInstallContext): () => void {
   installed = ctx;
   enabledSnapshot = readEnabled();
   experimentsKnown = readExperimentsKnown();
-  // 사이드바 줄이 서지 않는 화면에서도 '@' 덱이 활성 Theater 의 사령관을 알 수 있게, 활성 Theater 는 직접 읽어 둔다.
-  let activeTheater = ctx.consoleState.getActiveTheaterId();
-  if (activeTheater) void loadCommodore(activeTheater);
+  const loadRegistered = () => { for (const theaterId of commodoreTheaterIds()) void loadCommodore(theaterId); };
+  let registered = commodoreTheaterIds().join("\0");
+  loadRegistered();
   const offConsole = ctx.consoleState.subscribe(() => {
-    const next = ctx.consoleState.getActiveTheaterId();
-    if (next === activeTheater) return;
-    activeTheater = next;
-    if (next) void loadCommodore(next);
-    for (const listener of [...activeTheaterListeners]) listener();
+    const next = commodoreTheaterIds().join("\0");
+    if (next === registered) return;
+    registered = next;
+    loadRegistered();
+    notify();
   });
   const applyEvent = (event: CommodoreEvent) => {
     if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
@@ -267,7 +256,7 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     enabledSnapshot = next;
     // 켜고 끈 결과는 서버의 view(enabled·active)에도 실린다 — 읽어 둔 Theater 를 다시 읽는다.
     for (const [theaterId, current] of theaters) if (current.view) void loadCommodore(theaterId, true);
-    if (next && activeTheater) void loadCommodore(activeTheater);
+    if (next) loadRegistered();
     notify();
   });
   return () => {

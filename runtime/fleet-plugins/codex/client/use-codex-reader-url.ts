@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { prepareReaderSessionScroll, stepReaderHistoryTo } from "./codex-host.js";
 import { openCodexRailPanel } from "./host.js";
-import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, setActiveTheater } from "./reader-store.js";
+import { closeCodexReader, collapseCodexReader, expandCodexReader, openCodexReader, viewTheater } from "./reader-store.js";
 
 import { mobileWikiActive } from "./mobile-stack.js";
 
@@ -42,7 +42,7 @@ export function useCodexReaderUrlSync(): void {
   const {
     codexReader: reader,
     codexReaderExpanded: expanded,
-    activeTheaterId: theaterId,
+    theaterId,
     theaters,
   } = useReaderState();
 
@@ -85,7 +85,7 @@ export function useCodexReaderUrlSync(): void {
     if (target.theaterId && target.theaterId !== theaterId) {
       // 링크가 다른 Theater의 문서를 가리키면 그 Theater로 옮겨서 연다.
       if (theaters.some((entry) => entry.id === target.theaterId)) {
-        setActiveTheater(target.theaterId);
+        viewTheater(target.theaterId);
         return;
       }
       // 이 콘솔이 모르는 Theater다. 지금 Theater에서 같은 id를 찾으면 링크가 약속한

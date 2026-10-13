@@ -1,10 +1,13 @@
+import { openTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { setMobileListTheaterId } from "../chrome/mobile/mobile-store.js";
+import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
 import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
-import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
+import { closeMobileOperation, readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
-import { getViewModeSnapshot } from "./view-mode-store.js";
+import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
 import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-entry.js";
 import { openSettingsSurface } from "../../../../features/settings/client/settings-door.js";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
@@ -22,11 +25,24 @@ import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getArenaInsets, subscribeArenaInsets } from "../../../../features/workspace/client/conversation/arena-insets.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
-import { isConversationLayoutActive, subscribeConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
-  openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+  openQuickLaunchWithDraft, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+
+function viewTheaterInbox(theaterId: string): void {
+  if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
+  if (getViewModeSnapshot().effective === "mobile") {
+    setMobileListTheaterId(theaterId);
+    closeMobileOperation();
+    setMobileDestination({ kind: "home" });
+  }
+  else {
+    closeConversationSurface();
+    openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "system-prompt" });
+  }
+  navigateConsoleRoute("/operations");
+}
 
 export interface HostCapabilityDependencies {
   /**
@@ -85,7 +101,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     bindings,
     activateTheater: (theaterId) => {
       if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
-      setActiveTheater(theaterId);
+      viewTheaterInbox(theaterId);
       return true;
     },
     openRail: revealRailPanel,
@@ -99,7 +115,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
         return true;
       }
       // 대화 중심 화면의 설정은 레일 페인이 아니라 가운데 모달이다 — 팔레트 검색 결과·플러그인의 설정 목표도 같은 문으로 든다.
-      if (target.paneId === SETTINGS_PANE_ID && isConversationLayoutActive()) {
+      if (target.paneId === SETTINGS_PANE_ID && (getViewModeSnapshot().effective === "desktop")) {
         navigateConsoleRoute("/operations");
         openSettingsSurface(target.params?.section);
         return true;
@@ -152,7 +168,7 @@ export function createHostCapabilities(
     operations: {
       ...base.operations,
       // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
-      // 확장 표면은 focusOperation 이 정리한다 — 플러그인은 자기 표면을 따로 닫지 않는다.
+      // 확대 도구는 focusOperation이 접어 대화를 드러낸다 — 도구 자체는 같은 자리에 남는다.
       focus: (operationId) => focusOperation(operationId),
     },
     notifications: {
@@ -205,13 +221,15 @@ export function createHostCapabilities(
           ...(own && parents!.has(operation.id) ? { ownActivity: resolveOperationRuntimeActivity(operation, own) } : {}),
         }));
       },
-      getActiveTheaterId: () => getState().activeTheaterId,
+      getActiveTheaterId: getViewedTheaterId,
+      getViewedTheaterId,
+      viewTheater: viewTheaterInbox,
       getActiveOperationId: () => getState().activeOperationId,
       getConnection: () => getState().connection,
       getOperationRuntimeHydration: () => getState().operationRuntimeHydration,
       getSelectedOperationId: () => getState().selectedOperationId,
-      setActiveTheater: (theaterId) => setActiveTheater(theaterId),
-      subscribe: (listener) => subscribe(listener),
+      setActiveTheater: viewTheaterInbox,
+      subscribe: subscribeViewedTheater,
       // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
       getMapInsets: () => {
         const settled = getArenaInsets();
@@ -249,7 +267,7 @@ export function createHostCapabilities(
         if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
         const result = await handler(request, capabilities);
         if (result && !result.ok) return result;
-        setActiveTheater(request.theaterId);
+        viewTheaterInbox(request.theaterId);
         capabilities.rail.open(binding!.entry.id);
         navigateConsoleRoute("/operations");
         return { ok: true };
@@ -297,9 +315,9 @@ export function createHostCapabilities(
     theaterInbox: theaterInboxCapability,
     // 대화 중심 화면 — 켜짐 여부와 가운데 칸의 플러그인 대화. 꺼져 있으면 open 은 아무것도 세우지 않는다.
     conversation: {
-      isActive: () => isConversationLayoutActive(),
+      isActive: () => (getViewModeSnapshot().effective === "desktop"),
       subscribe: (listener) => {
-        const disposeLayout = subscribeConversationLayout(listener);
+        const disposeLayout = subscribeViewMode(listener);
         const disposeSurface = subscribeConversationSurface(listener);
         const disposeSubject = subscribeConversationSubject(listener);
         return () => { disposeLayout(); disposeSurface(); disposeSubject(); };

@@ -13,7 +13,7 @@ interface RailStore {
   readonly panelSoloWidth: number | null;
   readonly panelSoloMaxWidth: number | null;
   readonly panelWidthReset: number;
-  /** 도구 패널 카드가 캔버스 위에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. 끄는 동안에도 매 프레임 따라간다. */
+  /** 도구 패널 카드가 대화 화면에서 점유하는 실측 폭(px) — RightRail이 보고하고 아레나 계산이 소비한다. 끄는 동안에도 매 프레임 따라간다. */
   readonly railOccupiedPx: number;
   /** 끌기가 끝나 확정된 점유 폭(px). 끄는 동안에는 끌기 직전 값에 머문다. */
   readonly railSettledPx: number;

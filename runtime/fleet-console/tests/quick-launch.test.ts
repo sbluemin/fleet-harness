@@ -61,11 +61,9 @@ describe("quick launch preferences", () => {
 
 describe("pending request lifecycle", () => {
   it("drops a pending Quick Launch when its Theater is removed", () => {
-    // 소비 조건이 request.theaterId === activeTheaterId이므로, Theater가 사라지면 조건이 영영
-    // 성립하지 않는다. 함께 버리지 않으면 프롬프트가 실행되지도 지워지지도 않은 채 남는다.
+    // 사라진 Theater를 가리키는 발사 요청은 실행하지 않고 함께 버린다.
     setState({
       theaters: [makeTheater("t1"), makeTheater("t2")],
-      activeTheaterId: "t1",
       pendingQuickLaunch: {
         theaterId: "t1",
         pluginId: "terminal",
@@ -109,7 +107,6 @@ describe("resolveMentionEntry", () => {
       makeOperation("op-far", { theaterId: "th-b" }),
     ],
     operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
-    activeTheaterId: "th-a",
   };
 
   it("refuses a type that takes no messages, an Operation waiting on its own prompt, and an unknown id", () => {

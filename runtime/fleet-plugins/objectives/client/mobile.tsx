@@ -21,7 +21,7 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
-import { activeTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { viewedTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -182,7 +182,7 @@ function readFinished(theaterId: string): void {
 
 /** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
 function followFinished(): void {
-  const theaterId = activeTheaterId();
+  const theaterId = viewedTheaterId();
   if (!theaterId) return;
   const state = readTheater(theaterId);
   if (!state.loaded) return;

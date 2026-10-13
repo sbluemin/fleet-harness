@@ -322,7 +322,7 @@ export function CommandBandBrand({ environment }: { readonly environment: Return
         aria-haspopup="dialog"
         aria-expanded={environment.open}
         onKeyDown={(event) => {
-          // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+          // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
           if (event.code === "Space") event.stopPropagation();
         }}
         onClick={environment.toggle}

@@ -12,19 +12,15 @@ import { getState, setState } from "../core/client/src/integration/store.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
 import { searchRailPanels } from "../core/client/src/integration/operation-search.js";
 
-// 레일 착지는 이전 화면(캔버스)의 경로다 — 기본인 대화 중심 화면에서는 설정이 레일 대신 모달로 선다.
-vi.mock("../features/settings/client/use-conversation-layout.js", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../features/settings/client/use-conversation-layout.js")>(),
-  isConversationLayoutActive: () => false,
-}));
+import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settings/client/settings-door.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
-  setState({ theaters: ["a", "b"].map((id) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 })), activeTheaterId: "a" });
+  setState({ theaters: ["a", "b"].map((id) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 })) });
   const pane: PaneDescriptor = { id: "file-doc", role: "detail", mounts: ["rail"], title: () => "File", render: () => null };
   const bindings: PaneTargetBinding[] = [{ entry: { id: "files", title: "Files", icon: null, panes: [pane.id], handles: { openFile: () => ({ paneId: pane.id }) } }, panes: [pane] }];
   const host = createHostCapabilities(undefined, { railBindings: bindings });
@@ -32,13 +28,11 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     const request = { theaterId: "b", path: "src/main.ts", pathKind: "theater-relative" as const, line: 12, column: 3, source: "agent-chat" as const };
     expect(await host.navigate.openFile(request)).toEqual({ ok: true });
     const first = getPaneStoreSnapshot().rail[0]!;
-    expect(getState().activeTheaterId).toBe("b");
     expect(getRailStoreSnapshot().activePanelId).toBe("files");
     expect(first.params).toMatchObject({ theaterId: "b", path: "src/main.ts", pathKind: "theater-relative", line: "12", column: "3" });
     expect(await host.navigate.openFile(request)).toEqual({ ok: true });
     expect(getPaneStoreSnapshot().rail[0]!.params.requestId).not.toBe(first.params.requestId);
     expect(landPaneTarget({ paneId: pane.id, theaterId: "a", params: { path: "README.md" } }, createHostPaneTargetPorts(bindings), "files")).toEqual({ ok: true });
-    expect(getState().activeTheaterId).toBe("a");
     expect(getPaneStoreSnapshot().rail[0]!.params).toMatchObject({ theaterId: "a", path: "README.md" });
     const queries: string[] = [];
     const results = await searchRailPanels([{ id: "files", title: "Files", fileReferences: true, search: async ({ query }) => {
@@ -58,7 +52,7 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     const settings = { ...pane, id: "settings", role: "primary" as const };
     const settingsHost = createHostCapabilities(undefined, { railBindings: [{ entry: { id: "settings", title: "Settings", icon: null, panes: ["settings"] }, panes: [settings] }] });
     settingsHost.rail.open("settings", { section: "experiments" });
-    expect(getPaneStoreSnapshot().rail.find((item) => item.paneId === "settings")?.params.section).toBe("experiments");
+    expect(getSettingsModalSnapshot()).toEqual({ open: true, section: "experiments" });
     expect(await createHostCapabilities().navigate.openFile(request)).toEqual({ ok: false, reason: "no_handler" });
     expect(await createHostCapabilities().navigate.openWikiEntry({ theaterId: "a", entryId: "entry" })).toEqual({ ok: false, reason: "no_handler" });
   } finally { unbind(); }

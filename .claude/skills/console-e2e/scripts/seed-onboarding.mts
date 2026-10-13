@@ -52,7 +52,7 @@ register(`data:text/javascript,${encodeURIComponent(`export async function resol
 const { CORE_ONBOARDING } = await load(join(consoleSrc, "core/client/src/integration/onboarding.ts"));
 const { hintSeenKey, tourSeenKey } = await load(join(consoleSrc, "features/onboarding/client/seen-store.ts"));
 const { COMMISSIONING_SEEN_KEY } = await load(join(consoleSrc, "core/client/src/integration/store.ts"));
-const { EFFORT_CONFIRM_TIP_SEEN_KEY } = await load(join(consoleSrc, "features/workspace/client/sidebar/canvas-context-menu.tsx"));
+const { EFFORT_CONFIRM_TIP_SEEN_KEY } = await load(join(consoleSrc, "features/workspace/client/sidebar/operation-launch-context-menu.tsx"));
 
 // The Console composes built-in plugins from each `client/index.tsx` `plugins` export (virtual:fleet-plugins in
 // core/client/vite.config.ts), and its registry takes `onboarding` from each plugin definition.

@@ -44,16 +44,6 @@ export function visibleWorkspace(workspace: OperationWorkspace | null | undefine
 }
 
 /**
- * 사이드바 칩이 그리는 몫 — 브랜치만. 폴더는 칩에서 내려가고 hover 상세 카드가 진다.
- * 목록을 훑는 자리에 잘린 경로를 두 겹으로 쌓지 않기 위한 분리이며, 접근성 이름은
- * {@link describeWorkspace}가 계속 폴더까지 싣는다. ⌘K 팔레트는 폭이 넓고 목록 스캔이
- * 아니므로 원래의 브랜치·폴더 문법을 그대로 쓴다.
- */
-export function chipWorkspace(workspace: OperationWorkspace | null): OperationWorkspace | null {
-  return workspace && workspace.branch ? { branch: workspace.branch, folder: null, outside: false } : null;
-}
-
-/**
  * 상세 카드의 "위치" 한 줄 — 세션이 지금 서 있는 자리다. 브랜치는 칩이 이미 싣고 있으므로 여기서는
  * 말하지 않는다. Theater 이름을 뿌리로 삼아 그 아래 경로를 잇고, 루트면 Theater 이름만 남는다.
  * Theater 밖으로 나간 세션은 상대 경로가 없으므로 마지막 마디만 `…/`에 달아 그 사실을 형태로 남긴다.

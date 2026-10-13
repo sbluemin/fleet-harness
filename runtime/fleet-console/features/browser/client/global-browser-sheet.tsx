@@ -229,7 +229,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       return undefined;
     }
     const stage = document.querySelector<HTMLElement>(".conversation-stage");
-    const conversationLayout = document.documentElement.dataset.conversationLayout === "true";
+    const conversationLayout = document.documentElement.dataset.viewMode === "desktop";
     const target = seat ?? (conversationLayout ? stage : null);
     if (target !== null) {
       const rect = target.getBoundingClientRect();
@@ -407,7 +407,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     remeasure();
     // 대화 중심 화면에서는 시트가 서는 순간 분할 자리가 펼쳐지기 시작한다 — 관찰자가 놓친 첫 변화도 따라가게 한 번 판정한다.
     // 분할 자리가 없는 배치(기존 시트)는 이 판정을 거치지 않는다.
-    if (document.querySelector(SPLIT_SEAT_SELECTOR) !== null || document.documentElement.dataset.conversationLayout === "true") onChromeChange();
+    if (document.querySelector(SPLIT_SEAT_SELECTOR) !== null || document.documentElement.dataset.viewMode === "desktop") onChromeChange();
     window.addEventListener("resize", remeasure);
     const timer = setInterval(remeasure, 1000);
     return () => {

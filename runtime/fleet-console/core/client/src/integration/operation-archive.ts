@@ -5,7 +5,7 @@
 // 목록 본문은 시트가 열려 있을 때만 다시 읽는다.
 
 import { useSyncExternalStore } from "react";
-import { getState, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater } from "./store.js";
+import { getState, requestOperationKeyboardFocus, setActiveOperation } from "./store.js";
 import { closeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 
 import {
@@ -89,7 +89,6 @@ export function openRestoredOperation(id: string): boolean {
   const node = getState().operations.find((operation) => operation.id === id);
   if (!node) return false;
   closeConversationSurface();
-  if (getState().activeTheaterId !== node.theaterId) setActiveTheater(node.theaterId);
   setActiveOperation(node.id);
   requestOperationKeyboardFocus(node.id);
   return true;

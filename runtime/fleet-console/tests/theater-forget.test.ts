@@ -39,7 +39,7 @@ beforeEach(() => {
   mocks.fetchOperations.mockResolvedValue([]);
   mocks.fetchGroups.mockResolvedValue([]);
   mocks.forgetTheater.mockResolvedValue({ ok: true, deletion: RECEIPT });
-  mocks.getState.mockReturnValue({ activeTheaterId: null, theaters: [{ id: "theater-a" }] });
+  mocks.getState.mockReturnValue({ theaters: [{ id: "theater-a" }] });
 });
 
 describe("forgetTheaterCompletely", () => {

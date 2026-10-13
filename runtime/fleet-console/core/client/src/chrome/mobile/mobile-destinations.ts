@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -117,7 +118,7 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
   const bindings = useRailEntries();
   const locale = useConsoleLocale();
   const useRequests = useAllOperationUseRequests();
-  const theaterId = state.activeTheaterId;
+  const theaterId = getViewedTheaterId();
   // 엔트리마다 구독을 모아 하나의 틱으로 묶는다 — 갱신 신호가 오면 아래 스냅샷을 다시 읽는다.
   const tick = useSyncExternalStore(
     (listener) => {

@@ -12,11 +12,11 @@ import { appendSeen } from "../../../onboarding/client/seen-store.js";
 import { launchProviderFromGroupId, launchProviderGlyph } from "../../../execution/client/components/launch-provider-glyphs.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 
-interface CanvasContextMenuProps {
+interface OperationLaunchContextMenuProps {
   // body 포털에서 쓰는 Console 뷰포트 좌표. 메뉴를 이 지점에 띄운다.
   readonly anchor: { readonly x: number; readonly y: number };
   readonly viewportBounds?: { readonly width: number; readonly height: number };
-  // above = anchor.y를 캔버스 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
+  // above = anchor.y를 화면 하단 거리로 보고 메뉴를 위로 띄운다(런처). cursor = anchor를 좌상단으로 본다(우클릭).
   readonly placement?: "above" | "cursor";
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly canLaunch: boolean;
@@ -25,18 +25,18 @@ interface CanvasContextMenuProps {
   readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>) => void;
   readonly onClose: () => void;
   /** 실행 종류 목록 아래, 구분선 뒤에 서는 호스트 항목(예: Theater 머리 「+」의 「새 그룹…」). 방향키가 같은 목록으로 훑는다. */
-  readonly footerItems?: readonly CanvasContextMenuFooterItem[];
+  readonly footerItems?: readonly OperationLaunchContextMenuFooterItem[];
 }
 
-export interface CanvasContextMenuFooterItem {
+export interface OperationLaunchContextMenuFooterItem {
   readonly id: string;
   readonly label: string;
   readonly icon: ReactNode;
   readonly onSelect: () => void;
 }
 
-// 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .canvas-context-menu의 width,
-// .operation-launch-control--canvas .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
+// 폭은 세 곳이 함께 알아야 한다 — 이 상수(측정 전 clamp 폴백), .operation-launch-context-menu의 width,
+// .operation-launch-control--anchored .operation-launch-menu의 min-width. 하나만 고치면 컴파일은
 // 되고 치수만 조용히 어긋난다.
 // 강도 확인 팁 — 투어 카탈로그 항목은 아니지만 같은 seenFeatureTours 필드에 실어, "화면 안내 다시 보기"가 투어·
 // 첫 실행 안내와 함께 되돌린다.
@@ -59,7 +59,7 @@ const EFFORT_POPUP_ID = "operation-launch-effort-track";
 const ASIDE_WIDTH = 208;
 const ASIDE_GAP = 8;
 // 방향키가 훑는 항목. 실행 종류 행과 모델 행은 이제 같은 목록의 형제라 한 집합으로 돈다.
-const MENU_ITEM_SELECTOR = ".canvas-context-menu-item, .operation-launch-variant-row";
+const MENU_ITEM_SELECTOR = ".operation-launch-context-menu-item, .operation-launch-variant-row";
 // 방향 스트립 hover 글라이드 속도(px/초). 스트립 안쪽으로 깊이 들어갈수록 가속한다 —
 // 스트립 가장자리를 스치면 천천히, 끝까지 밀어 넣으면 빠르게. rAF 타임스탬프로 경과 시간을
 // 곱해 이동하므로 60Hz든 120Hz든 초당 속도가 같다.
@@ -78,7 +78,7 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
-export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, footerItems }: CanvasContextMenuProps) {
+export function OperationLaunchContextMenu({ anchor, viewportBounds, placement = "cursor", catalog, canLaunch, renderKindIcon, onLaunchKind, onClose, footerItems }: OperationLaunchContextMenuProps) {
   const t = useT();
   const globalSettings = useGlobalSettingsStore();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -185,7 +185,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   };
   const updateEdgeDepth = (event: { readonly clientY: number; readonly currentTarget: Element }, direction: -1 | 1) => {
     // 스트립 호스트는 height:0(sticky 앵커)이라 재면 항상 0이 나온다 — 보이는 fill(26px)을 잰다.
-    const rect = event.currentTarget.querySelector(".canvas-context-menu-edge-fill")?.getBoundingClientRect();
+    const rect = event.currentTarget.querySelector(".operation-launch-context-menu-edge-fill")?.getBoundingClientRect();
     if (!rect || rect.height <= 0) return;
     const into = direction === 1 ? (event.clientY - rect.top) / rect.height : (rect.bottom - event.clientY) / rect.height;
     glideRef.current.depth = Math.max(0, Math.min(1, into));
@@ -337,13 +337,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     };
     document.addEventListener("mousedown", handlePointer);
     document.addEventListener("keydown", handleKey);
-    // 호출 측에 닫기 신호 한 번 더 — pointerdown 단계에서 가로채는 레이어(캔버스는 pan을 위해
+    // 호출 측의 다른 입구가 보내는 닫기 신호도 받는다 — pointerdown을 가로채는 레이어가
     // preventDefault+포인터 캡처를 걸어 마우스 이벤트 합성이 끊긴다)가 mousedown을 삼켜도 닫히도록.
-    window.addEventListener("canvas-context-menu-close", onClose);
+    window.addEventListener("operation-launch-context-menu-close", onClose);
     return () => {
       document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
-      window.removeEventListener("canvas-context-menu-close", onClose);
+      window.removeEventListener("operation-launch-context-menu-close", onClose);
     };
   }, [onClose]);
 
@@ -549,13 +549,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   return (
     <div
-      className={`operation-launch-control operation-launch-control--canvas ${placement === "above" ? "operation-launch-control--up" : ""}`}
+      className={`operation-launch-control operation-launch-control--anchored ${placement === "above" ? "operation-launch-control--up" : ""}`}
       ref={containerRef}
       style={clampedAnchorStyle(anchor, viewportBounds, placement, menuSize)}
-      data-canvas-blocker
     >
       <div
-        className="operation-launch-menu theater-menu canvas-context-menu"
+        className="operation-launch-menu theater-menu operation-launch-context-menu"
         role="menu"
         aria-label={menuLabel}
         aria-orientation="vertical"
@@ -585,11 +584,11 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         {/* 게이지·스트립은 sticky라 배치와 무관하게 스크롤 포트
             가장자리에 붙고, height:0이라 목록 흐름을 밀지 않는다. 전부 aria-hidden 포인터 전용
             장치다 — 키보드는 기존 방향키 포커스 추적이, 보조기술은 목록 자체가 담당한다. */}
-        <div ref={gaugeRef} className="canvas-context-menu-gauge" aria-hidden="true">
-          <div ref={gaugeThumbRef} className="canvas-context-menu-gauge-thumb" />
+        <div ref={gaugeRef} className="operation-launch-context-menu-gauge" aria-hidden="true">
+          <div ref={gaugeThumbRef} className="operation-launch-context-menu-gauge-thumb" />
         </div>
         <div
-          className={`canvas-context-menu-edge canvas-context-menu-edge--top${edgeState.up ? " is-on" : ""}`}
+          className={`operation-launch-context-menu-edge operation-launch-context-menu-edge--top${edgeState.up ? " is-on" : ""}`}
           aria-hidden="true"
           // 글라이드는 실제 포인터 이동에만 시작한다. pointerenter는 키보드·휠 스크롤이 정지한
           // 포인터 아래로 스트립을 데려와도(재히트테스트) 발화하므로, enter로 걸면 키보드 탐색
@@ -603,7 +602,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => jumpEdgePage(-1)}
         >
-          <div className="canvas-context-menu-edge-fill"><EdgeChevron direction="up" /></div>
+          <div className="operation-launch-context-menu-edge-fill"><EdgeChevron direction="up" /></div>
         </div>
         {launchCatalog.length > 0 ? <>
           {launchCatalog.map((plugin, index) => {
@@ -622,7 +621,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                     <button
                       type="button"
                       role="menuitem"
-                      className={`theater-menu-item canvas-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}`}
+                      className={`theater-menu-item operation-launch-context-menu-item operation-launch-menu-item${annotation ? " operation-launch-menu-item--annotated" : ""}`}
                       // 실행 종류의 안정 식별자. 기능 투어처럼 특정 항목을 짚어야 하는 바깥 선택자가
                       // 번역 가능한 title/label 문자열 대신 이 속성에 걸리도록 한다.
                       data-operation-launch-kind={kind.id}
@@ -796,8 +795,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
                 key={item.id}
                 type="button"
                 role="menuitem"
-                className="theater-menu-item canvas-context-menu-item"
-                data-canvas-menu-footer={item.id}
+                className="theater-menu-item operation-launch-context-menu-item"
+                data-launch-menu-footer={item.id}
                 tabIndex={-1}
                 onMouseEnter={() => setHoverKey(null)}
                 onClick={item.onSelect}
@@ -809,7 +808,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           </div>
         ) : null}
         <div
-          className={`canvas-context-menu-edge canvas-context-menu-edge--bottom${edgeState.down ? " is-on" : ""}`}
+          className={`operation-launch-context-menu-edge operation-launch-context-menu-edge--bottom${edgeState.down ? " is-on" : ""}`}
           aria-hidden="true"
           onPointerMove={(event) => {
             updateEdgeDepth(event, 1);
@@ -819,13 +818,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => jumpEdgePage(1)}
         >
-          <div className="canvas-context-menu-edge-fill"><EdgeChevron direction="down" /></div>
+          <div className="operation-launch-context-menu-edge-fill"><EdgeChevron direction="down" /></div>
         </div>
       </div>
       {activeDescription && asideSide
         ? (
           <p
-            className={`canvas-context-menu-aside${asideSide === "left" ? " canvas-context-menu-aside--flip" : ""}`}
+            className={`operation-launch-context-menu-aside${asideSide === "left" ? " operation-launch-context-menu-aside--flip" : ""}`}
             aria-hidden="true"
           >
             {activeDescription}
@@ -958,7 +957,7 @@ function effortKey(kindKey: string, groupId: string, rowId: string): string {
 }
 
 // 어사이드는 기본으로 메뉴 오른쪽에 선다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집고, 양쪽 모두
-// 좁으면(캔버스가 대략 516px 아래) 아예 펴지 않는다 — 뒤집기만 하고 왼쪽 여백을 안 보면 설명이
+// 좁으면(화면이 대략 516px 아래) 아예 펴지 않는다 — 뒤집기만 하고 왼쪽 여백을 안 보면 설명이
 // 화면 왼쪽으로 밀려 앞부분이 잘린 채 남는다. 펴지 못해도 한 단어 대비는 행에 그대로 있고
 // 설명 문장은 버튼의 접근 이름에 남으므로, 안 보이는 것보다 안 띄우는 쪽이 정직하다.
 function asidePlacement(
@@ -984,14 +983,14 @@ function clampedAnchorStyle(
   const maxHeight = bounds
     ? Math.max(MENU_MIN_HEIGHT, Math.min(MENU_MAX_HEIGHT, bounds.height - MENU_MARGIN * 2))
     : MENU_MAX_HEIGHT;
-  const base = { "--canvas-menu-max-height": `${maxHeight}px` };
+  const base = { "--launch-menu-max-height": `${maxHeight}px` };
   const width = size?.width ?? MENU_WIDTH;
   // 측정 전 첫 렌더는 높이 0으로 두어 커서 좌표를 그대로 쓴다 —
   // useLayoutEffect 측정이 페인트 전에 반영되므로 위치가 튀지 않는다.
   const height = size?.height ?? 0;
   const left = bounds ? Math.max(MENU_MARGIN, Math.min(anchor.x, bounds.width - width - MENU_MARGIN)) : anchor.x;
   if (placement === "above") {
-    // anchor.y = 캔버스 하단에서 메뉴 바닥까지의 거리. 메뉴는 위로 자란다.
+    // anchor.y = 화면 하단에서 메뉴 바닥까지의 거리. 메뉴는 위로 자란다.
     return { ...base, left, bottom: Math.max(MENU_MARGIN, anchor.y) } as CSSProperties;
   }
   if (!bounds) return { ...base, left, top: anchor.y } as CSSProperties;

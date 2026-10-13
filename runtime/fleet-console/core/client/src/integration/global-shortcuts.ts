@@ -69,7 +69,7 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
     if (matches("console.search-operations")) {
-      // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
+      // Codex 확대 읽기가 대화 칸을 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
       // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
       if (windowFor.document.body.dataset.codexReading === "true") return;
       if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;

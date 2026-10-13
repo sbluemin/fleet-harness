@@ -568,7 +568,7 @@ export function refreshObserverStatus(): void {
     return;
   }
   const generation = connectionGeneration;
-  statusRefreshInFlight = fetchObserverStatus(getState().activeTheaterId)
+  statusRefreshInFlight = fetchObserverStatus(null)
     .then((status) => {
       if (generation === connectionGeneration) applyObserverStatus(status);
     })

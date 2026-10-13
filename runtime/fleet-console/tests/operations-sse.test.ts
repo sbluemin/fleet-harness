@@ -124,19 +124,19 @@ describe("operations SSE update availability", () => {
   it("re-reads observer status instead of trusting an update frame payload", async () => {
     const status = { version: "1.0.0", updateAvailable: true };
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: "theater-1", controlReclaimed: null });
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
     mocks.fetchObserverStatus.mockResolvedValue(status);
 
     connectOperationsSse();
     TestEventSource.instances[0]?.emit("update:available");
 
     await vi.waitFor(() => expect(mocks.applyObserverStatus).toHaveBeenCalledWith(status));
-    expect(mocks.fetchObserverStatus).toHaveBeenCalledWith("theater-1");
+    expect(mocks.fetchObserverStatus).toHaveBeenCalledWith(null);
   });
 
   it("does not hydrate or connect a delayed manual snapshot from a superseded generation", async () => {
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: null, controlReclaimed: null });
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
     let resolveStaleOperations: (operations: readonly { readonly id: string }[]) => void = () => {
       throw new Error("stale operations fetch did not start");
     };
@@ -275,7 +275,7 @@ describe("operations SSE update availability", () => {
   it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
-    mocks.getState.mockReturnValue({ activeTheaterId: null, controlReclaimed: null });
+    mocks.getState.mockReturnValue({ controlReclaimed: null });
     const actualState = await vi.importActual<typeof import("../core/client/src/integration/store.js")>("../core/client/src/integration/store.js");
     actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
 

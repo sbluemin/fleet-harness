@@ -85,8 +85,7 @@ export function OperationBodySlot({ operationId, config, className = "" }: {
   return <div className={className} ref={attach} data-operation-body-slot={operationId} />;
 }
 
-export function OperationBodyPool({ operations, operationKinds, capabilities, defaultConfig, bodyLayout, releaseParkedBodies, children }: {
-  readonly bodyLayout: "canvas" | "conversation";
+export function OperationBodyPool({ operations, operationKinds, capabilities, defaultConfig, releaseParkedBodies, children }: {
   readonly releaseParkedBodies: boolean;
   readonly operations: readonly OperationNode[];
   readonly operationKinds: readonly OperationKindDescriptor[];
@@ -135,8 +134,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
           if (!descriptor?.render) return null;
           const config = configsRef.current.get(operation.id) ?? defaultConfig(operation);
           const parked = !slotsRef.current.has(operation.id);
-          // 대화 화면에는 지금 슬롯에 선 본문만 둔다. 캔버스·모바일의 같은 배치 안 이동은
-          // 기존 portal 보존을 쓰되, 배치가 바뀌면 key가 이전 본문과 UI 자원을 언마운트한다.
+          // 데스크톱은 지금 슬롯에 선 본문만 둔다. 모바일 화면 사이 이동은 portal을 보존한다.
           if (releaseParkedBodies && parked) return null;
           const lastVisibleZoom = lastVisibleZoomsRef.current.get(operation.id);
           const bodyConfig = parked && lastVisibleZoom !== undefined
@@ -148,7 +146,7 @@ export function OperationBodyPool({ operations, operationKinds, capabilities, de
           };
           return (
             <PooledOperationBody
-              key={`${bodyLayout}:${operation.id}`}
+              key={operation.id}
               operation={operation}
               descriptor={descriptor}
               config={bodyConfig}

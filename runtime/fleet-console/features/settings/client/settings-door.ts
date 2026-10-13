@@ -3,16 +3,13 @@ import { useSyncExternalStore } from "react";
 import { openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "./settings-entry.js";
-import { isConversationLayoutActive } from "./use-conversation-layout.js";
+import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 
 /**
  * 설정의 문 — 어디서 부르든 설정 표면 하나가 선다.
  *
- * 기존 배치에서 설정은 레일 페인이다(콘솔 자체가 테마·유리 설정의 미리보기). 대화 중심 화면에서는 오른쪽 패널이
- * 가운데 대화의 세부 정보 자리라, 설정이 그 자리를 빼앗으면 Theater 패널이 닫히고 대화 칸이 출렁인다. 그래서
- * 대화 중심 화면의 설정은 화면 가운데 모달로 선다 — 뒤의 패널은 그대로 남는다.
- *
- * 두 배치가 같은 섹션 레지스트리·같은 본문을 쓰고, 다른 것은 그릇뿐이다. 그릇을 고르는 판정은 여기 한 곳이다.
+ * 데스크톱 설정은 화면 가운데 모달로 선다 — 대화의 세부 정보 자리인 오른쪽 패널은 그대로 남는다.
+ * 모바일은 자기 설정 화면을 쓰고, 같은 섹션 레지스트리·본문을 공유한다.
  * 모달의 열림·섹션은 이 모듈이 진다(호스트 번들 안의 모듈 상태 — 플러그인은 pane 목표로 들어오고, 그 길은
  * plugin-capabilities 의 showTarget 이 이 문으로 돌린다).
  */
@@ -63,7 +60,7 @@ export function setSettingsModalSection(section: string): void {
  * 레일은 /operations 에만 서므로 다른 화면에서 부르는 쪽은 먼저 그 화면으로 간다(지금까지와 같은 계약).
  */
 export function openSettingsSurface(section?: string): void {
-  if (isConversationLayoutActive()) {
+  if (getViewModeSnapshot().effective === "desktop") {
     openSettingsModal(section ?? null);
     return;
   }

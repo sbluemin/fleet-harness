@@ -2,7 +2,7 @@ import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/r
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { getT } from "./i18n.js";
-import { isConversationLayoutActive } from "../../settings/client/use-conversation-layout.js";
+import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { globalBrowserAttention, isGlobalBrowserOpen, requestBrowserChooser, subscribeGlobalBrowserOpen, toggleGlobalBrowser } from "./global-browser-store.js";
 
 /**
@@ -23,7 +23,7 @@ function activateGlobalBrowser(_ctx: RailPanelContext): void {
   // 대화 중심 화면에서 칸을 눌러 열 때는 「Fleet 브라우저 / Operation 브라우저」 선택 카드를 칸 아래에 세운다(가운데 pill 의
   // 지구본과 같은 카드). 단축키는 이름 그대로 Fleet 브라우저를 바로 여닫는다 — 누른 칸이 포커스를 쥔 때만 클릭으로 읽는다.
   const trigger = document.getElementById(`rail-tab-${GLOBAL_BROWSER_RAIL_ENTRY_ID}`);
-  if (!isGlobalBrowserOpen() && isConversationLayoutActive() && trigger !== null && document.activeElement === trigger) {
+  if (!isGlobalBrowserOpen() && getViewModeSnapshot().effective === "desktop" && trigger !== null && document.activeElement === trigger) {
     requestBrowserChooser(trigger);
     return;
   }

@@ -7,7 +7,7 @@ import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useT } from "../../i18n/index.js";
 import { GearGlyph, SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { openSettingsModal, closeSettingsModal, useSettingsModal } from "../../../../../features/settings/client/settings-door.js";
-import { useConversationLayout } from "../../../../../features/settings/client/use-conversation-layout.js";
+import { useViewMode } from "../../integration/view-mode-store.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { toggleOperationSearch } from "../../integration/store.js";
 import { setToolbarToolsSlot, useToolbarHost } from "../../integration/toolbar-slots.js";
@@ -23,7 +23,7 @@ import { ToolbarTipLayer } from "./toolbar-tip.js";
  *
  * 줄은 자기 DOM 노드를 하나 만들어 들고, 자리가 바뀌면 그 노드를 새 자리로 옮긴다. React는 같은
  * 노드에 계속 포털하므로 안의 항목이 다시 마운트되지 않는다 — 플러그인은 자리가 사라졌다고 보지
- * 않고(부관이 캔버스로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
+ * 않고(부관이 대화 화면으로 돌아가지 않는다), 열린 메뉴·도구 칸의 포털도 끊기지 않는다.
  *
  * 접으면 플러그인·시스템 칸만 말려 들어가고 Bridge는 남는다. 도구모음은 화면과 무관하게 같은 내용으로 선다.
  *
@@ -50,12 +50,7 @@ function writeFolded(folded: boolean): void {
   }
 }
 
-interface ConsoleToolbarProps {
-  /** operations 화면인가. 참이면 설정 톱니가 그 화면에서 바로 연다. */
-  readonly canvas: boolean;
-}
-
-export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
+export function ConsoleToolbar() {
   const t = useT();
   const bandHost = useToolbarHost("band");
   const host = bandHost;
@@ -127,7 +122,7 @@ export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
           </button>
           <HostSwitcher />
           <ConsoleHelpMenu />
-          <ToolbarSettingsButton canvas={canvas} />
+          <ToolbarSettingsButton />
         </div>
       </div>
       <ToolbarBridge />
@@ -139,16 +134,16 @@ export function ConsoleToolbar({ canvas }: ConsoleToolbarProps) {
 /**
  * 설정 — 시스템 칸의 맨 끝. 톱니는 메뉴가 아니라 설정 표면(레일 패널)의 문이고, 켜짐은 레일 도구와 같은
  * 활성 표식으로 "지금 여기"를 말한다. 문서 id(rail-settings-toggle)는 설정 패널의 이름표(aria-labelledby)와
- * 온보딩 앵커가 가리키므로 그대로 둔다. 레일은 /operations에만 서므로, 다른 화면에서는 캔버스로 돌아간 뒤 연다.
+ * 온보딩 앵커가 가리키므로 그대로 둔다. 레일은 /operations에만 서므로, 다른 화면에서는 대화 화면으로 돌아간 뒤 연다.
  */
-export function ToolbarSettingsButton({ canvas, menuItem = false }: { readonly canvas: boolean; readonly menuItem?: boolean }) {
+export function ToolbarSettingsButton({ operationsViewVisible = false, menuItem = false }: { readonly operationsViewVisible?: boolean; readonly menuItem?: boolean }) {
   const t = useT();
   const navigate = useNavigate();
   const activePanelId = useRailActivePanelId();
   // 대화 중심 화면에서 같은 문은 가운데 모달을 연다(settings-door.ts) — 켜짐도 그 모달이 서 있는가로 읽는다.
-  const conversation = useConversationLayout();
+  const conversation = useViewMode().effective === "desktop";
   const modal = useSettingsModal();
-  const active = conversation ? modal.open : canvas && activePanelId === SETTINGS_RAIL_ENTRY_ID;
+  const active = conversation ? modal.open : operationsViewVisible && activePanelId === SETTINGS_RAIL_ENTRY_ID;
   return (
     <button
       id="rail-settings-toggle"
@@ -162,11 +157,11 @@ export function ToolbarSettingsButton({ canvas, menuItem = false }: { readonly c
       data-tip={t("settings.title")}
       onClick={() => {
         if (conversation) {
-          if (!canvas) navigate("/operations");
+          if (!operationsViewVisible) navigate("/operations");
           if (modal.open) closeSettingsModal(); else openSettingsModal();
           return;
         }
-        if (canvas) { toggleRailPanel(SETTINGS_RAIL_ENTRY_ID); return; }
+        if (operationsViewVisible) { toggleRailPanel(SETTINGS_RAIL_ENTRY_ID); return; }
         navigate("/operations");
         openRailPanel(SETTINGS_RAIL_ENTRY_ID);
       }}

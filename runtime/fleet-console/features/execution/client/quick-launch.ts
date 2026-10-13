@@ -418,7 +418,6 @@ export function resolveFocusedMention(
   if (!state.operationsViewActive || !operationId) return null;
   const entry = resolveMentionEntry(state, messageableTypesByPlugin, operationId);
   if (!entry) return null;
-  if (entry.theaterId !== state.activeTheaterId && entry.operationId !== visibleOperationId) return null;
   return entry;
 }
 

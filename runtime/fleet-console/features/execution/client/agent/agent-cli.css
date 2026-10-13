@@ -1975,7 +1975,7 @@
 
 /* ── 모바일 휴면 화면(D23) — 현행 재개 카드를 모바일 문법으로: 화면 가운데, 광륜 없이, 재개는 주 알약(반전).
    카드 전체가 누르는 자리라는 계약은 그대로 둔다(같은 버튼). */
-[data-mobile-surface] .canvas-operation-dormant {
+[data-mobile-surface] .operation-dormant {
   position: absolute;
   inset: 0;
   height: auto;
@@ -1985,7 +1985,7 @@
   color: var(--m-text);
 }
 
-[data-mobile-surface] .canvas-operation-dormant-status {
+[data-mobile-surface] .operation-dormant-status {
   color: var(--m-text-faint);
   font-family: var(--m-sans);
   font-size: var(--m-fs-caption);
@@ -1994,14 +1994,14 @@
   text-transform: none;
 }
 
-[data-mobile-surface] .canvas-operation-dormant-body,
-[data-mobile-surface] .canvas-operation-dormant-error {
+[data-mobile-surface] .operation-dormant-body,
+[data-mobile-surface] .operation-dormant-error {
   color: var(--m-text-muted);
   font-family: var(--m-sans);
   font-size: var(--m-fs-secondary);
 }
 
-[data-mobile-surface] .canvas-operation-dormant-action {
+[data-mobile-surface] .operation-dormant-action {
   justify-self: center;
   display: inline-flex;
   align-items: center;
@@ -2019,7 +2019,7 @@
   box-shadow: none;
 }
 
-[data-mobile-surface] .canvas-operation-dormant-action--ghost {
+[data-mobile-surface] .operation-dormant-action--ghost {
   background: var(--m-chip);
   color: var(--m-text);
 }

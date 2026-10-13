@@ -126,7 +126,6 @@ export function UseRequestCorner({ language, compact, describeSource }: {
       className={`use-corner${!hasRequests ? " is-empty" : expanded ? "" : " is-folded"}`}
       role={showStack ? "region" : undefined}
       aria-label={showStack ? t("terminal.useRequest.corner.region") : undefined}
-      data-canvas-blocker
       data-keep-operation-active
       onKeyDown={onKeyDown}
     >
