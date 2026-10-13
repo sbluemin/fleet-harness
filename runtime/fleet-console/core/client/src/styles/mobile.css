@@ -1303,6 +1303,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-hero small { display: inline-flex; align-items: center; gap: 6px; color: var(--m-text-muted); font-size: var(--m-fs-meta); }
 .mobile-conv-hero small.is-faint { color: var(--m-text-faint); }
 .mobile-conv-hero small.is-danger { color: var(--m-danger); }
+/* 대표 목적지가 세는 사람이 답할 일 — 칩의 수와 같은 대기 신호 잉크. 상태 줄 끝에 선다. */
+.mobile-conv-hero-count { color: var(--m-awaiting); font-variant-numeric: tabular-nums; }
 .mobile-conv-hero.is-featured { position: relative; width: 100%; color: var(--m-text); background: transparent; border: 0; --pr-r: 18px; }
 
 .mobile-conv-section { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 20px 6px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }

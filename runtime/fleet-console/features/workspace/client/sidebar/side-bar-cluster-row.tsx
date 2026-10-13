@@ -233,7 +233,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // Console Use — 에이전트가 이 목표를 읽거나 고치면 Operation 칩과 같은 펄스로 줄 전체가 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => rowWrapOf(item), () => null);
   const state = rowGlyphState(item);
-  const label = state === "fresh"
+  // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Operation 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
+  const label = row.commodore && !anchor && item.fold.length === 0
+    ? t("conversation.row.decision")
+    : state === "fresh"
     ? t("sidebar.row.glyph.fresh")
     : state === "review"
       ? t("sidebar.row.glyph.review")

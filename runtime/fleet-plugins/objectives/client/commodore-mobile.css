@@ -129,7 +129,8 @@
 .objectives-cm-ask-n { margin-left: auto; }
 .objectives-cm-ask-glyph { display: inline-grid; place-items: center; width: 16px; height: 16px; }
 .objectives-cm-ask-glyph svg { width: 16px; height: 16px; }
-.objectives-cm-ask-reason { margin: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklch, var(--m-text) 9%, transparent); color: var(--m-text-muted); font-size: var(--m-fs-small); line-height: 18px; overflow-wrap: anywhere; }
+/* 본문은 --m-text-nav — 옅은 띠 위 작은 글자가 두 테마 모두 4.5 대비를 넘는다(--m-text-muted 는 다크에서 4.2). */
+.objectives-cm-ask-reason { margin: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklch, var(--m-text) 9%, transparent); color: var(--m-text-nav); font-size: var(--m-fs-small); line-height: 18px; overflow-wrap: anywhere; }
 .objectives-cm-ask-reason b { margin-right: 6px; color: var(--m-text); }
 .objectives-cm-ask-about { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); }
 .objectives-cm .objectives-cm-ask-objective { color: var(--m-text-muted); text-decoration: underline; text-underline-offset: 2px; }

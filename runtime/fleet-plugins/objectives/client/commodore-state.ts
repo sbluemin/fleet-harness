@@ -403,9 +403,20 @@ export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => 
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
-/** 사령관의 질문에 답한다 — 모든 질문의 답을 한 번에. 결과 상태로 화면을 바로 고치고(질문이 끝나 카드가 내려간다), 거절은 코드를 던진다. */
+/** 이미 끝났거나 사라진 질문의 거절 — 화면이 낡았다는 뜻이라 상태를 한 번 다시 읽는다. */
+const STALE_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "ask_already_answered", "unknown_ask"]);
+
+/**
+ * 사령관의 질문에 답한다 — 모든 질문의 답을 한 번에. 결과 상태로 화면을 바로 고치고(질문이 끝나 카드가 내려간다), 거절은 코드를 던진다.
+ * 질문이 이미 끝났다는 거절이면 그 보내기 한 번에 상태를 한 번 다시 읽어 카드·줄을 걷는다(다시 읽기는 거절을 되풀이하지 않는다).
+ */
 export async function answerCommodoreAsk(theaterId: string, askId: string, answers: readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[]): Promise<void> {
-  await write(theaterId, "/commodore/ask/answer", { askId, answers });
+  try {
+    await write(theaterId, "/commodore/ask/answer", { askId, answers });
+  } catch (error) {
+    if (error instanceof Error && STALE_ASK_CODES.has(error.message)) void loadCommodore(theaterId, true).catch(() => undefined);
+    throw error;
+  }
 }
 
 export function uploadCommodoreAttachment(file: Blob): Promise<{ readonly id: string }> {
