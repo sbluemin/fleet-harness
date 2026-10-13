@@ -20,7 +20,7 @@ export interface TerminalConnectionOptions {
    * 티켓 요청 본문에 얹을 추가 필드. 전역 Shell이 첫 기동에서 cwd를 못 박을 Theater를
    * 알리는 통로다 — 세션 식별자가 아니므로 소켓 URL에는 실리지 않는다.
    */
-  readonly ticketFields?: Readonly<Record<string, string>>;
+  readonly ticketFields?: Readonly<Record<string, unknown>>;
   readonly wsPath: string;
   /** 콘솔 테마 극성 — ticket 요청에 실려 spawn env COLORFGBG 힌트가 된다(최초 spawn 시점 고정). */
   readonly colorScheme?: "light" | "dark";
@@ -349,7 +349,7 @@ export function buildTerminalWsUrl(ticket: string, targetLocation: Pick<Location
   return `${protocol}://${targetLocation.host}${pathname}?ticket=${encodeURIComponent(ticket)}`;
 }
 
-async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, string>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole; readonly generation?: number }> {
+async function requestTerminalTicket(ticketPath: string, operationId: string, signal: AbortSignal, colorScheme?: "light" | "dark", role?: TerminalSocketRole, ticketFields?: Readonly<Record<string, unknown>>): Promise<{ readonly ticket: string; readonly ttlMs: number; readonly role: TerminalSocketRole; readonly generation?: number }> {
   const response = await fetch(ticketPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

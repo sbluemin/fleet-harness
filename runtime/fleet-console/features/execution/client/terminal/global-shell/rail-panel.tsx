@@ -15,6 +15,7 @@ const SHELL_SURFACE_ID = "shell";
  */
 export const globalShellEntry: RailEntryDescriptor = {
   id: "global-shell",
+  scope: "fleet",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
   // 셸이 서 있는 동안 아이콘이 켜져 있다 — 어느 표면을 여는지 호스트에게 말해 둔다.
@@ -25,7 +26,7 @@ export const globalShellEntry: RailEntryDescriptor = {
     const surfaces = ctx.surfaces;
     if (!surfaces) return;
     if (surfaces.isOpen(SHELL_SURFACE_ID)) surfaces.closeSurface(SHELL_SURFACE_ID);
-    else surfaces.open({ surfaceId: SHELL_SURFACE_ID });
+    else surfaces.open({ surfaceId: SHELL_SURFACE_ID, ...(ctx.theaterId ? { params: { cwdTheaterId: ctx.theaterId } } : {}) });
   },
 };
 

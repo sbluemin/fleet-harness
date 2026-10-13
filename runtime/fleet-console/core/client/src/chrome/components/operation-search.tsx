@@ -117,19 +117,19 @@ export function OperationSearch({
     if (mode !== "operations") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
+    if (!matchesShell || !desktopView) return providerSearchGroups;
     const theaterId = getViewedTheaterId();
-    if (!matchesShell || !theaterId || !desktopView) return providerSearchGroups;
     return [...providerSearchGroups, {
       panelId: "global-shell",
       panelTitle: "Shell",
       results: [
         { id: "open-shell", title: t("chrome.operationSearch.openShell"), activate: () => undefined },
-        { id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
+        ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
           const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
           if (result?.ok) return;
           setShellNotice(t(result ? `chrome.operationSearch.shell.${result.reason}` : "chrome.operationSearch.shell.failed"));
           throw new Error("shell_open_refused");
-        } },
+        } }] : []),
       ],
     }];
   }, [providerSearchGroups, mode, text, getViewedTheaterId(), desktopView, capabilities, t]);

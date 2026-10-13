@@ -138,7 +138,6 @@ function ConnectedApp() {
       document.removeEventListener("focusout", afterFocus);
     };
   }, []);
-  const [shellTheaterNotice, setShellTheaterNotice] = useState(false);
   // 테마 극성(다크↔라이트) 전환 1회성 전역 안내 — 이전에는 터미널 패널마다 힌트가 떠서 전환 한 번에
   // 패널 수만큼 닫아야 했다. 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로 안내는 유지하되,
   // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 마운트 첫 실행에 심는다 — main.tsx가 주입/저장
@@ -449,10 +448,6 @@ function ConnectedApp() {
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
         if (getViewedTheaterId() === null) {
-          if (entryId === "global-shell") {
-            setShellTheaterNotice(true);
-            return true;
-          }
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }
@@ -620,7 +615,6 @@ function ConnectedApp() {
         />
         <ControlCurtain />
         <ToastHost>
-          <Toast open={shellTheaterNotice} title={t("chrome.toast.shellNeedsTheater")} onDismiss={() => setShellTheaterNotice(false)} />
           {/* 준비되지 않은 플러그인은 패널이 그냥 없는 것으로 보였다 — 서버 로그에만 남아
               운영자에게는 이유가 도달하지 않았다. 한 번은 말하고 지나간다. */}
           <Toast

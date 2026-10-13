@@ -17,7 +17,7 @@ describe("shell ticket role", () => {
     const issued: TerminalTicketContext[] = [];
     const { call, responses } = await mount({ role: "viewer", issued });
 
-    await call({ theaterId: "theater-1", role: "control" });
+    await call({ cwd: { theaterId: "theater-1" }, role: "control" });
 
     expect(issued).toHaveLength(1);
     expect(issued[0]!.role).toBe("viewer");
@@ -28,7 +28,7 @@ describe("shell ticket role", () => {
     const issued: TerminalTicketContext[] = [];
     const { call, responses } = await mount({ role: "control", issued });
 
-    await call({ theaterId: "theater-1" });
+    await call({ cwd: { theaterId: "theater-1" } });
 
     expect(issued[0]!.role).toBeUndefined();
     expect(responses.at(-1)).toMatchObject({ status: 200, body: { role: "control" } });
@@ -36,7 +36,7 @@ describe("shell ticket role", () => {
 
   it("still honours an explicit viewer request while control is available", async () => {
     const issued: TerminalTicketContext[] = [];
-    await mount({ role: "control", issued }).then(({ call }) => call({ theaterId: "theater-1", role: "viewer" }));
+    await mount({ role: "control", issued }).then(({ call }) => call({ cwd: { theaterId: "theater-1" }, role: "viewer" }));
 
     expect(issued[0]!.role).toBe("viewer");
   });
@@ -95,7 +95,7 @@ async function mount(options: MountOptions): Promise<{
         list: () => [],
       },
       paths: {
-        resolveTheaterPath: () => "/tmp/theater",
+        resolveTheaterPath: () => process.cwd(),
         workspaceHash: () => "theater-1",
         ensureWorkspaceDirectory: (cwd: string) => ({ path: `/tmp/ws/${cwd.replace(/\W+/g, "-")}`, id: "ws" }),
         withDirectoryLock: <T,>(_lockDir: string, operation: () => T): T => operation(),
