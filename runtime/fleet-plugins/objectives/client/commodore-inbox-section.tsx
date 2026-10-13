@@ -7,7 +7,7 @@ import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
+import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextTokens, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
@@ -48,8 +48,6 @@ import { DEFAULT_LAUNCH } from "./launch-control.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-/** 서버 `COMMODORE_CONTEXT_ROTATE_RATIO` 와 같다. 그 파일은 서버 모듈이라 브라우저가 값으로 가져오지 않는다. */
-const CONTEXT_ROTATE_RATIO = 0.75;
 const PATROL_MENU_WIDTH = 248;
 const PATROL_MENU_MARGIN = 12;
 /** 본문이 이보다 좁으면 기록 곁 칸(목표)을 기록 아래로 내린다 — 옛 시트의 좁은 모양과 같은 자리. */
@@ -573,7 +571,10 @@ function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void
 }
 
 
-/** 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 교대 기준선만 말한다. */
+/**
+ * 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 압축 기준선만 말한다. 기준선은 서버가 보낸 압축 지점이고,
+ * 서버도 그 지점을 모르면(호스트가 모르는 Gateway 모델) 기준선과 「압축 기준까지」 없이 사용량만 말한다.
+ */
 function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context: NonNullable<CommodoreRunStatus["context"]> }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
@@ -596,7 +597,8 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
     };
   }, [open]);
   const occupied = context.inputTokens;
-  const limit = CONTEXT_ROTATE_RATIO;
+  const compactAt = context.compactAt;
+  const limit = compactAt !== undefined && context.window > 0 ? Math.min(1, compactAt / context.window) : 1;
   const ratio = context.window > 0 ? occupied / context.window : 0;
   const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
   const percent = Math.round(ratio * 100);
@@ -604,7 +606,7 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   const filled = Math.max(0, Math.min(1, ratio)) * circumference;
-  const untilRotate = Math.max(0, context.window * limit - occupied);
+  const untilCompact = compactAt !== undefined ? Math.max(0, compactAt - occupied) : null;
   const free = Math.max(0, context.window - occupied);
   return (
     <span className={`objectives-commodore-ctx${tone}`} ref={wrapRef}>
@@ -629,29 +631,18 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
           </div>
           <div className="objectives-commodore-ctx-bar">
             <i style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-            <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} />
+            {untilCompact !== null ? <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} /> : null}
           </div>
           <ul className="objectives-commodore-ctx-rows">
             <li><span className="objectives-commodore-ctx-swatch" /><span>{t("objectives.commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
-            <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilRotate")}</span><span>{formatContextTokens(untilRotate)}</span><span>{Math.round(limit * 100)}%</span></li>
+            {untilCompact !== null ? <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li> : null}
             <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("objectives.commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
           </ul>
-          <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot")}</p>
+          {untilCompact !== null ? <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot", { percent: Math.round(limit * 100) })}</p> : null}
         </div>
       ) : null}
     </span>
   );
-}
-
-function formatContextTokens(tokens: number): string {
-  if (tokens < 1_000) return String(Math.round(tokens));
-  if (tokens >= 1_000_000) {
-    const millions = tokens / 1_000_000;
-    const text = millions < 10 ? millions.toFixed(1) : String(Math.round(millions));
-    return `${text.endsWith(".0") ? text.slice(0, -2) : text}M`;
-  }
-  const thousands = tokens / 1_000;
-  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
 /**

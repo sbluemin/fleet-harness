@@ -50,7 +50,8 @@ await session.dispose();
 - `consoleUse`는 Console 기본 도구(`CONSOLE_USE_TOOLS`: `console_context`·`console_sidebar`·`console_launcher`·`console_operation`·`console_operation_analyst`)의 명시적 요청이며 `tools`를 생략하면 전부다. 읽기 전용은 도구 목록이 아니라 action 필터다. `allowControl: true`가 없으면 `read` action만 실리고 쓰기만 있는 `console_launcher`와 분석가 패널은 빠진다. `allowControl: true`를 요청하면 호스트가 플러그인 호출자를 바인딩하며, 실행은 Operation 토글 또는 부관 grant에 따른다. 플러그인은 다른 호출자나 Operation을 가장할 수 없다. `enabled`는 호출마다 평가하고 `snapshot`은 보조 관측만 제공한다. 전역 Admiral 도구는 자동 연결하지 않는다.
 - 실행 영수증과 자동 정책의 소유자는 Operation 또는 플러그인으로 구분한다. 부관단은 플러그인 단위로 정책을 공유하므로 대화를 닫아도 유지되지만, 호스트 재시작 시에는 일시 중지되고 플러그인이 해제되면 더 실행하지 않는다.
 - 임시 cwd·격리 SDK config·도구 연결은 Console 소유다. 플러그인 등록 실패와 Console 종료 시에도 정리한다. 정상 종료를 거치지 않은 프로세스의 디스크 잔재는 세션 재개 권한이 아니다.
-- `text`, `thinking`, `tool-start`, `tool-end`, `result`, `cancelled`는 서버 이벤트다. 사용량은 공급자가 보고한 경우에만 포함한다. 브라우저에 원시 도구 입력·오류·파일 경로를 그대로 전달하지 않는다.
+- `text`, `thinking`, `tool-start`, `tool-end`, `result`, `cancelled`, `compacted`, `compact-failed`는 서버 이벤트다. 사용량은 공급자가 보고한 경우에만 포함한다. `usage.inputTokens`는 턴의 호출 합이고, 대화 크기는 마지막 호출의 입력인 `usage.contextTokens`다. 브라우저에 원시 도구 입력·오류·파일 경로를 그대로 전달하지 않는다. 모르는 이벤트 종류는 무시한다.
+- `conversation` 세션은 문맥이 차면 같은 세션 안에서 대화를 요약해 이어 가고 그때 `compacted`(압축 전후 토큰)를 낸다. 요약에 실패하면 `compact-failed`를 내고 대화는 줄지 않는다 — 창을 넘긴 세션이면 이어지는 턴이 오류로 끝나므로, 오래 가는 세션의 소유자는 그때 세션을 바꾼다. `compactAt`(토큰)은 그 지점을 정한다. 호스트가 실행기의 자동 압축 창으로 옮기며, 네이티브 Claude 모델에만 적용된다 — Gateway 모델(비-Claude)은 Gateway의 compact 정책을 따른다. 그런 세션에서 호스트는 `contextTokens`와 `compacted`의 토큰을 공급자의 실제 토큰으로 되돌리고, 같은 단위의 창과 실제 압축 지점을 `usage.context`로 싣는다(모르면 `null`). 생략하면 실행기의 기본 지점이다.
 - 이 SDK는 same-process 플러그인을 샌드박싱하지 않는다. 플러그인의 업무 권한과 사용자의 최종 승인 규칙은 바뀌지 않는다.
 
 ## 소비자

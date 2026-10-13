@@ -15,9 +15,18 @@ export interface PluginAttachmentHost {
 
 export type AgentEffort = "low" | "medium" | "high" | "xhigh" | "max";
 export interface AgentUsage {
+  /** 이 턴의 주 루프 호출들이 읽은 입력의 합(캐시 포함). 도구를 쓴 턴에서는 대화 크기보다 크다. */
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly costUsd?: number;
+  /** 이 턴의 마지막 호출이 읽은 입력(캐시 포함) — 다음 턴이 이어받는 대화의 크기. 관찰하지 못했으면 없다. */
+  readonly contextTokens?: number;
+  /**
+   * 압축 지점을 호출자가 아니라 실행 경로가 정하는 세션(Gateway 모델)에서, `contextTokens`와 같은 단위의 창과 실제 압축 지점.
+   * 호스트는 그 세션의 토큰을 공급자의 실제 토큰으로 되돌려 싣는다. `null`은 호스트도 모른다는 뜻이다(토큰은 실행기가 말한 그대로다).
+   * 없으면 세션이 요청한 `compactAt`이 압축 지점이다.
+   */
+  readonly context?: { readonly window: number | null; readonly compactAt: number | null };
 }
 
 /** 서버 내부 이벤트다. 플러그인은 브라우저 DTO로 변환할 때 도구 입력과 오류를 정제한다. */
@@ -27,7 +36,11 @@ export type AgentEvent =
   | { readonly kind: "tool-start"; readonly id?: string; readonly name: string; readonly input: unknown }
   | { readonly kind: "tool-end"; readonly id?: string; readonly name?: string; readonly isError: boolean }
   | { readonly kind: "result"; readonly isError: boolean; readonly detail?: string; readonly source: "message" | "incomplete" | "watchdog"; readonly usage?: AgentUsage }
-  | { readonly kind: "cancelled" };
+  | { readonly kind: "cancelled" }
+  /** 세션이 대화를 요약해 같은 세션으로 이어 갔다. 턴 시작에도, 도구 루프 중간에도 올 수 있다. 모르는 소비자는 무시한다. */
+  | { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
+  /** 세션이 대화를 요약하려다 실패했다 — 대화는 줄지 않았다. 창을 넘긴 세션이면 이어지는 턴이 오류로 끝난다. 모르는 소비자는 무시한다. */
+  | { readonly kind: "compact-failed" };
 
 export interface AgentToolGroup {
   readonly name: string;
@@ -43,6 +56,14 @@ export interface AgentSessionOptions {
   readonly timeoutMs?: number;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
+  /**
+   * `conversation` 세션이 대화를 요약해 이어 갈 문맥 토큰 수. 생략하면 실행기의 기본 지점이다.
+   *
+   * 호스트는 이 값을 자식의 자동 압축 창으로 옮긴다 — 네이티브 Claude 모델에서는 대화가 이 크기에 닿을 때 압축된다.
+   * Gateway 모델(비-Claude)은 Gateway가 사용량을 공급자 창으로 투영하고 자기 compact 정책으로 압축 시점을 정하므로
+   * 이 값을 적용하지 않는다.
+   */
+  readonly compactAt?: number;
   /** 플러그인 실행은 파일·셸·하위 Agent를 기본 제공하지 않는다. */
   readonly tools?: {
     readonly builtins?: readonly ("WebSearch" | "WebFetch")[];

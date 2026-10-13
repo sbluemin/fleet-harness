@@ -11,7 +11,7 @@ import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoo
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
-import { COMMODORE_CONTEXT_ROTATE_RATIO, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
@@ -200,9 +200,12 @@ interface Runner {
   patrolRequest: { readonly at: number; readonly reason: string } | null;
   /** 마지막 턴이 끝난 시각 — 기본 순찰은 여기서 한 간격 뒤다. */
   lastTurnAt: number;
+  /** 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰). */
   lastInputTokens: number;
   /** 지금 세션의 모델 창. 마지막 입력 토큰과 짝이다. */
   contextWindow: number;
+  /** 지금 세션이 대화를 요약할 지점(토큰). 실행 경로가 정하는데 호스트도 모르면 null 이다. */
+  compactAt: number | null;
   coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
@@ -251,7 +254,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
@@ -319,8 +322,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
     // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
     const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
+    // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
+    const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
+      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
@@ -332,6 +337,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.coordinates = coordinates;
     runner.language = language;
     runner.contextWindow = coordinates.contextWindow;
+    runner.compactAt = compactAt;
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
@@ -415,7 +421,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let session = runner.session;
       let replacementSummary: readonly string[] | undefined;
       try {
-        // 교대 — 좌표가 바뀌었거나 문맥이 길어졌거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
+        // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
+        // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다.
         preparedMessages = selected.map((message) => {
           if (!message.attachments?.length) return message.text;
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
@@ -424,7 +431,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           return { text: message.text, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
-        const rotate = runner.rotateNext ?? (session && (needsRotation(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
+        const rotate = runner.rotateNext ?? (session && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
@@ -472,6 +479,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         for (const [code, reason] of pending) if (!runner.pending.has(code)) runner.pending.set(code, reason);
         runner.messages.unshift(...messages);
         if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
+        // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
+        // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
+        else if (outcome.outcome === "error" && outcome.compactionFailed) { runner.rotateNext ??= "replaced"; }
         scheduleRetry(runner, outcome.error ?? "turn_failed");
         return;
       }
@@ -492,24 +502,30 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
 
   const noteOutcome = (runner: Runner, outcome: CommodoreTurnOutcome) => {
-    if (outcome.usage) runner.lastInputTokens = outcome.usage.inputTokens;
+    // 대화 크기는 마지막 호출의 입력이다 — 턴 합계는 도구를 쓴 만큼 부풀고 압축으로 줄어든 대화를 말하지 못한다.
+    if (outcome.usage) runner.lastInputTokens = outcome.usage.contextTokens ?? outcome.usage.inputTokens;
+    // Gateway 모델 세션은 압축 지점을 Gateway 가 정한다 — 호스트가 그 지점과 창을 토큰과 같은 단위로 알려 주면 그것을 쓴다.
+    const context = outcome.usage?.context;
+    if (context) {
+      if (context.window !== null) runner.contextWindow = context.window;
+      runner.compactAt = context.compactAt;
+    }
     // 교대 요약의 재료 — 이 턴의 보드 행위 수와 결말만. 내용은 사령관이 도구로 다시 읽는다.
     const at = new Date(now()).toISOString();
     runner.recentActions.push(`${at}: ${outcome.outcome}${outcome.actions ? `, ${outcome.actions} board action${outcome.actions === 1 ? "" : "s"}` : ""}`);
     if (runner.recentActions.length > RECENT_ACTIONS * 2) runner.recentActions.splice(0, runner.recentActions.length - RECENT_ACTIONS);
   };
 
-  const needsRotation = (runner: Runner) => {
+  const coordinatesChanged = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.theaterId);
-    if (!runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId)) return true;
-    return runner.lastInputTokens >= COMMODORE_CONTEXT_ROTATE_RATIO * coordinates.contextWindow;
+    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId);
   };
 
   const start = (theaterId: string, reason: WakeCode, wakeImmediately = true) => {
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
@@ -897,7 +913,7 @@ function inboxDigest(objectives: readonly Objective[], observe?: BoardObserver):
   return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
-/** 모델 문맥 — 네 Claude 가족(정준·bare)은 1M, 그 밖 bare 모델은 200k(교대 판단에만 쓴다). */
+/** 모델 문맥 — 네 Claude 가족(정준·bare)은 1M, 그 밖 bare 모델은 200k(압축 지점과 문맥 미터에만 쓴다). */
 function contextWindow(model: string): number {
   const id = canonicalModelId(model);
   if (/\[1m\]/i.test(id) || id === "fable" || id === "opus" || id === "sonnet" || id === "haiku") return 1_000_000;

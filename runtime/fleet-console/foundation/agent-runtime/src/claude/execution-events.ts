@@ -22,12 +22,34 @@ export type ClaudeExecutionEvent =
       readonly source: "message" | "incomplete" | "watchdog";
       /** 자식이 보고한 턴의 사용량. 결과 메시지가 싣지 않으면 없다. */
       readonly usage?: ClaudeExecutionUsage;
-    };
+    }
+  /**
+   * 자식이 대화를 요약해 이어 갔다(`compact_boundary`). 턴 시작이든 도구 루프 중간이든 그 자리에서 온다.
+   * 토큰은 자식이 말한 그대로다 — 게이트웨이 모델이면 게이트웨이가 투영한 Claude 좌표다.
+   */
+  | {
+      readonly kind: "compacted";
+      readonly trigger: "auto" | "manual";
+      readonly preTokens: number;
+      readonly postTokens?: number;
+    }
+  /**
+   * 자식이 대화를 요약하려다 실패했다(`status`의 `compact_result: "failed"`). 대화는 줄지 않은 채 남는다 — 창 안이면 턴은
+   * 이어지고, 창을 넘었으면 턴이 오류로 끝나며 같은 세션의 다음 턴도 같다(2.1.296 실측). 오류 문구는 싣지 않는다.
+   */
+  | { readonly kind: "compact-failed" };
 
 export interface ClaudeExecutionUsage {
+  /** 이 턴의 주 루프 호출들이 읽은 입력의 합(캐시 포함). 도구 루프가 돌면 호출마다 다시 더해진다. */
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly costUsd?: number;
+  /**
+   * 이 턴의 마지막 주 루프 호출이 읽은 입력(캐시 포함) — 다음 턴이 이어받는 대화의 크기다. `inputTokens`는
+   * 합이라 대화 크기로 읽으면 도구를 쓴 만큼 부풀고(실측: 40k+41k 호출이 81k), 압축 뒤의 줄어든 대화도 말하지 못한다.
+   * 결과 전에 호출이 하나도 관찰되지 않으면 없다.
+   */
+  readonly contextTokens?: number;
 }
 
 export interface ClaudeExecutionEventDecoder {
@@ -44,16 +66,46 @@ export interface ClaudeExecutionEventDecoder {
  */
 export function createClaudeExecutionEventDecoder(): ClaudeExecutionEventDecoder {
   const toolNames = new Map<string, string>();
+  // 마지막 주 루프 호출의 입력. 서브에이전트(`parent_tool_use_id`)의 호출은 이 대화의 크기가 아니다.
+  let contextTokens: number | null = null;
   return {
     decode(message: ClaudeGatewayMessage): readonly ClaudeExecutionEvent[] {
       if (!isRecord(message)) return [];
       if (message.type === "stream_event") return decodeStreamEvent(message);
-      if (message.type === "assistant") return decodeAssistant(message, toolNames);
+      if (message.type === "assistant") {
+        if (message.parent_tool_use_id == null) contextTokens = callInputTokens(record(message.message).usage) ?? contextTokens;
+        return decodeAssistant(message, toolNames);
+      }
       if (message.type === "user") return decodeUser(message, toolNames);
-      if (message.type === "result") return decodeResult(message);
+      if (message.type === "system" && message.subtype === "compact_boundary") {
+        const event = decodeCompactBoundary(message);
+        // 압축 뒤 호출이 아직 없으면 요약된 대화의 크기가 지금의 크기다.
+        if (event?.kind === "compacted" && event.postTokens !== undefined) contextTokens = event.postTokens;
+        return event ? [event] : [];
+      }
+      if (message.type === "system" && message.subtype === "status" && message.compact_result === "failed") return [{ kind: "compact-failed" }];
+      if (message.type === "result") return decodeResult(message, contextTokens);
       return [];
     },
   };
+}
+
+function decodeCompactBoundary(message: Record<string, unknown>): ClaudeExecutionEvent | null {
+  const meta = record(message.compact_metadata);
+  if (typeof meta.pre_tokens !== "number" || !Number.isFinite(meta.pre_tokens)) return null;
+  return {
+    kind: "compacted",
+    trigger: meta.trigger === "manual" ? "manual" : "auto",
+    preTokens: meta.pre_tokens,
+    ...(typeof meta.post_tokens === "number" && Number.isFinite(meta.post_tokens) ? { postTokens: meta.post_tokens } : {}),
+  };
+}
+
+/** 호출 하나의 입력 — 자식의 압축 판정과 같은 합(`input + cache_read + cache_creation`)이다. */
+function callInputTokens(value: unknown): number | null {
+  const usage = record(value);
+  if (typeof usage.input_tokens !== "number") return null;
+  return usage.input_tokens + numberOr(usage.cache_read_input_tokens) + numberOr(usage.cache_creation_input_tokens);
 }
 
 function decodeStreamEvent(message: Record<string, unknown>): readonly ClaudeExecutionEvent[] {
@@ -108,8 +160,9 @@ function decodeUser(
   return events;
 }
 
-function decodeResult(message: Record<string, unknown>): readonly ClaudeExecutionEvent[] {
-  const usage = decodeUsage(message);
+function decodeResult(message: Record<string, unknown>, contextTokens: number | null): readonly ClaudeExecutionEvent[] {
+  const decoded = decodeUsage(message);
+  const usage = decoded === null || contextTokens === null ? decoded : { ...decoded, contextTokens };
   return [{
     kind: "result",
     isError: message.is_error === true,

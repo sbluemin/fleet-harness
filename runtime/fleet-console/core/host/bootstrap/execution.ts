@@ -97,6 +97,8 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     attachmentsForPlugin: agent.attachmentsForPlugin,
     /** 설치된 Claude Code 실행 파일. 풀 수 없으면 `undefined`다. 플러그인 에이전트가 SDK 동봉본 대신 이것을 쓴다. */
     resolveClaudeExecutable,
+    /** Gateway의 compact 정책. 플러그인 에이전트가 Gateway 모델 세션의 문맥을 실제 공급자 창으로 되돌릴 때 읽는다. */
+    readGatewayCompactCeiling: () => aiGatewayStore.read().compactCeiling ?? null,
     /** 설치된 Claude Code가 별칭을 푸는 버전 조회. 플러그인 로스터 포트의 별칭 고정이 쓴다. */
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */

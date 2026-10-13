@@ -35,6 +35,8 @@ export interface ClaudeGatewayLaunchEnvOptions {
    * 보장해야 한다. 다른 경로를 넣으면 자식은 그 경로가 아니라 상속된 홈을 쓴다.
    */
   readonly homeKind?: "isolated" | "shared";
+  /** 호출자가 명시한 자동 압축 창(토큰). 있으면 상속값과 기본 ceiling보다 앞선다. */
+  readonly autoCompactWindow?: number;
 }
 
 /**
@@ -68,7 +70,10 @@ export function claudeGatewayLaunchEnv(
   env.ENABLE_TOOL_SEARCH = "true";
   // 네이티브 Claude 실행 id는 네 가족 모두 `[1m]`이다. 이 ceiling은 그 마커의 선제 압축을 켜고,
   // unmarked custom model에서는 Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
-  env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= "1000000";
+  // 호출자가 창을 명시했으면 그 값이 이긴다 — 이 env는 Claude Code에서 settings보다 우선하므로
+  // 다른 자리로는 기본 ceiling을 넘을 수 없다.
+  if (options.autoCompactWindow !== undefined) env.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(options.autoCompactWindow);
+  else env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= "1000000";
   // 위임은 한 단으로 끝난다. 1이면 세션 자신(depth 0)만 Agent를 부를 수 있고, 그 아래
   // 서브에이전트에게는 Agent 도구가 실리지 않는다 — 호출 후 거절이 아니라 목록에서 사라진다.
   // Admiral의 PTY 자식(`fleet-admiral/src/agent-cli/claude/factory.ts`)에 같은 값이 있고,
