@@ -9,13 +9,15 @@ import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet
 import { getMobileSheetStack, popMobileSheet, pushMobileSheet, type MobileSheetKind } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import {
+  isNearPromptLimit,
   isOverPromptLimit,
   openTheaterSystemPrompt,
   subscribeTheaterSystemPromptOpen,
   TheaterSubagentsSection,
   useFocusAfterReset,
-  useTheaterPromptCaption,
   useTheaterPromptController,
+  useTheaterPromptEmptyNotice,
+  useTheaterPromptModeDescriptions,
   useTheaterPromptModeNames,
   type TheaterPromptOpenRequest,
 } from "./theater-prompt-editor.js";
@@ -108,13 +110,15 @@ export function TheaterSystemPromptSheet() {
 
   useFocusAfterReset(controller, { undo: () => undoRef.current, select: () => null });
   const modeNames = useTheaterPromptModeNames();
-  const caption = useTheaterPromptCaption(controller.draft);
+  const modeDescriptions = useTheaterPromptModeDescriptions();
+  const emptyNotice = useTheaterPromptEmptyNotice(controller.draft);
 
   if (!request || !mobile) return null;
   const theater = request.theater;
   const { draft, stored, undo, status, loading, loadFailed, forgotten, unsaved, copied } = controller;
   const modes = Object.keys(modeNames) as ClaudeCodeSystemPromptMode[];
   const over = isOverPromptLimit(draft);
+  const near = isNearPromptLimit(draft);
   const copyDraft = () => controller.copyDraft(() => {
     const field = forgottenTextRef.current ?? draftTextRef.current;
     if (field) { field.focus(); field.select(); }
@@ -137,16 +141,17 @@ export function TheaterSystemPromptSheet() {
       </> : loading ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
         : loadFailed ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
           <div className="mobile-group settings-mobile-card" role="radiogroup" aria-label={t("sidebar.theater.prompt.modeLabel")}>
-            {modes.map((mode) => <MobileRadioRow key={mode} checked={draft.mode === mode} label={modeNames[mode]} onSelect={() => controller.changeMode(mode)} />)}
+            {/* 데스크톱 칸과 같은 안 B — 줄마다 그 모드의 결과 문장을 달아 고르기 전에 읽히게 한다. */}
+            {modes.map((mode) => <MobileRadioRow key={mode} checked={draft.mode === mode} label={modeNames[mode]} sub={modeDescriptions[mode]} onSelect={() => controller.changeMode(mode)} />)}
           </div>
           {draft.mode === "on" && draft.body ? <p className="settings-mobile-kept">{t("sidebar.theater.prompt.kept", { count: draft.body.length })} · {t(over ? "sidebar.theater.prompt.draftNotApplied" : "sidebar.theater.prompt.keptHelp")}</p> : null}
           {draft.mode !== "on" ? <label className="settings-mobile-body">
             <MobileGroupLabel>{t("sidebar.theater.prompt.bodyLabel")}</MobileGroupLabel>
             <SyncedTextarea ref={draftTextRef} className="mobile-field" value={draft.body} onChange={(event) => controller.changeBody(event.target.value)} onBlur={controller.flush} rows={5} aria-invalid={over} />
-            <small className={`settings-mobile-count${over ? " is-over" : ""}`}>{draft.body.length.toLocaleString()} / 16,000</small>
+            <small className={`settings-mobile-count${over ? " is-over" : near ? " is-near" : ""}`}>{draft.body.length.toLocaleString()} / 16,000</small>
           </label> : null}
-          {/* The default needs no explanation; the other modes change what reaches the model, so they say so. */}
-          {draft.mode !== "on" ? <p className={`settings-mobile-note${draft.mode === "off" ? " is-warning" : ""}`}>{caption}</p> : null}
+          {/* 결과 문장은 모드 줄이 이미 말한다. 지침이 비었을 때만 그 결과를 따로 세우고, 「내 지침만」이면 경고다. */}
+          {emptyNotice ? <p className={`settings-mobile-note${draft.mode === "off" ? " is-warning" : ""}`}>{emptyNotice}</p> : null}
           {stored || undo ? <p className="settings-mobile-note">
             {stored ? <>{t("sidebar.theater.prompt.own")} · <button type="button" className="settings-mobile-textlink" onClick={controller.reset}>{t("sidebar.theater.prompt.reset")}</button></> : null}
             {undo ? <><span role="status">{t("sidebar.theater.prompt.resetDone")}</span> <button ref={undoRef} type="button" className="settings-mobile-textlink" onClick={controller.restore}>{t("sidebar.theater.prompt.undo")}</button></> : null}

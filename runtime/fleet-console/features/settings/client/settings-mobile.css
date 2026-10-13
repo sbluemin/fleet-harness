@@ -14,6 +14,7 @@
 .settings-mobile-body { display: flex; flex-direction: column; gap: 6px; }
 .settings-mobile-body textarea { min-height: 104px; resize: vertical; line-height: 22px; }
 .settings-mobile-count { align-self: flex-end; color: var(--m-text-faint); font-size: var(--t-sm); }
+.settings-mobile-count.is-near { color: var(--m-running); }
 .settings-mobile-count.is-over { color: var(--m-danger); }
 .settings-mobile-kept { margin: 0; padding: 0 4px; color: var(--m-text-muted); font-size: var(--t-sm); white-space: pre-wrap; }
 .mobile-group.settings-mobile-card { padding: 0; }
