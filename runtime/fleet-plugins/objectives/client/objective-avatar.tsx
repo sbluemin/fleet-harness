@@ -13,14 +13,16 @@ import type { Objective } from "../server/types.js";
  * 표식은 늘 장식이다(aria-hidden) — 이름은 곁의 글자가 말한다. 크기는 자리마다 CSS 가 정한다.
  * 같은 사람이 임무 줄·메뉴·그래프에 여러 번 서므로, 움직임은 명단 한 자리(`still={false}`)에만 두고 나머지는 얼굴과 배지로만 상태를 말한다.
  */
-export function ObjectiveAvatar({ operationId, role, state, still = true }: {
+export function ObjectiveAvatar({ operationId, role, state, still = true, size = 20 }: {
   readonly operationId: string;
   readonly role: Extract<MongleRole, "commander" | "member">;
   readonly state: MongleState;
   readonly still?: boolean;
+  /** 그리는 크기 — 얼굴의 세부 단계를 정한다. 보이는 크기는 자리마다 CSS 가 맞춘다. */
+  readonly size?: number;
 }) {
   const look = useMongleLook(operationAvatarKey(operationId));
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={20} label="" decorative className={`objectives-avatar${still ? " is-still" : ""}`} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} size={size} label="" decorative className={`objectives-avatar${still ? " is-still" : ""}`} />;
 }
 
 /** 보드가 읽는 활동 낱말 → 얼굴의 활동 사실. 세션이 없거나 사라진 자리(closed·unknown)는 시작 전이다. */

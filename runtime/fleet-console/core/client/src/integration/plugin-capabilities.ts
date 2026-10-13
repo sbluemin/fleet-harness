@@ -20,6 +20,7 @@ import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } fro
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationRuntimeActivity } from "../../../../features/execution/client/operation-activity.js";
 import { AgentChatTranscript, AgentConversation } from "../../../../features/execution/client/agent/index.js";
+import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
@@ -331,6 +332,9 @@ export function createHostCapabilities(
       current: () => publicSurface(getConversationSurface()),
       // 대화 중심 화면의 셸과 모바일 셸이 같은 자리(conversation-slots)에 지금 선 대화의 주인을 싣는다.
       subjectOperationId: () => getConversationSubject()?.id ?? null,
+      ledgerOperationId: (rootOperationId) => ledgerOperationId(rootOperationId),
+      openLedger: (rootOperationId, operationId) => openLedger(rootOperationId, operationId),
+      subscribeLedger: (listener) => subscribeLedger(listener),
     },
     composer: {
       open: (options) => {

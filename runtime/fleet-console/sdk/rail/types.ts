@@ -154,6 +154,11 @@ export interface RailEntryDescriptor {
    */
   readonly conversationTab?: boolean;
   /**
+   * 대화 중심 화면에서 Operation 대화의 오른쪽 패널 머리에 이 엔트리(`conversationTab`)가 한 낱말 단추 대신 펼칠 하위 탭과 그 앞의 도구.
+   * 폰과 기존 배치의 레일은 이 값을 읽지 않는다.
+   */
+  readonly conversationTabs?: RailEntryConversationTabs;
+  /**
    * 이 엔트리가 팔레트 검색 결과를 낼 수 있다면 그 공급자.
    *
    * 검색은 보통 페인에 붙는다 — 결과를 고르면 "어느 페인에 어떤 params로" 열지를 알아야 하고,
@@ -321,6 +326,37 @@ export interface RailEntryActive {
   readonly subscribe: (listener: () => void) => () => void;
   /** 지금 이 entry의 표면이 서 있는가. */
   readonly isActive: () => boolean;
+}
+
+/** 패널 머리 줄의 하위 탭 하나. */
+export interface RailEntryConversationTab {
+  readonly id: string;
+  readonly title: LocalizedText;
+  /** 낱말 곁 점 — `attention` 은 사람이 답할 일, `unseen` 은 안 읽은 것. `label` 은 스크린 리더가 읽는다. */
+  readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: LocalizedText };
+  /**
+   * 이 탭이 대상의 「구성원」 탭을 대신한다 — 호스트는 자기 구성원 탭을 걷고, 그 탭이 켜져 있었으면 이 탭으로 옮긴다.
+   * 한 머리에 「구성원」이 둘 서지 않게 한다.
+   */
+  readonly replacesMembers?: boolean;
+}
+
+/** 하위 탭 줄의 지금 모습. 호스트는 `useSyncExternalStore` 로 읽으므로 같은 상태에는 같은 객체를 돌려준다. */
+export interface RailEntryConversationTabsState {
+  readonly tabs: readonly RailEntryConversationTab[];
+  /** 고른 탭 — 엔트리의 패널이 열려 있을 때만 켜짐으로 선다. */
+  readonly selected: string;
+}
+
+/**
+ * 패널 머리 하위 탭의 공급원. 탭을 누르면 호스트가 `select` 를 부르고, 엔트리의 패널이 닫혀 있으면 엔트리를 연다(`activate` 가 있으면 그것).
+ */
+export interface RailEntryConversationTabs {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly read: (theaterId: string | null) => RailEntryConversationTabsState;
+  readonly select: (tabId: string, theaterId: string | null) => void;
+  /** 탭 앞에 설 도구(예: 목표의 오늘·기한) — 하위 탭이 설 때만 그린다. 모양은 플러그인이 진다. */
+  readonly renderTools?: (ctx: { readonly theaterId: string | null; readonly language: ConsoleLocale }) => ReactNode;
 }
 
 /**

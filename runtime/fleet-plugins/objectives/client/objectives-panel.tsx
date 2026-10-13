@@ -16,12 +16,11 @@ import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
-import { DatePicker } from "./date-picker.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { openNewOperation, hasDecisionRequest, focusOperation, followActiveOperation, listedOperationSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
+import { canOpenLedger, toggleLedger, useLedgerOperation, openNewOperation, hasDecisionRequest, focusOperation, followActiveOperation, listedOperationSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
 import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./commodore-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
@@ -39,7 +38,6 @@ import { FollowupBatchResults, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
-import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 export interface ObjectiveContext {
   readonly theaterId: string | null;
@@ -58,7 +56,8 @@ const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
 
 /**
- * 상세 탭 — 머리 줄의 오늘·기한 글리프 뒤에 「목표 · 구성원 · 임무 · 결정사항 · 결과물」 다섯 낱말이 선다. 탭은 요청한 내용만 담고,
+ * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래 글자 탭 줄)에 오늘·기한 글리프와 「목표 · 구성원 · 임무 · 결정사항 · 결과물」 다섯 낱말이
+ * 선다(head-tabs.tsx). 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
  * 목표 전체의 상태는 머리에, 지금 할 일은 하단 띠에 둔다. 고른 탭은 Theater 별 보기 상태에 하나로 남는다(목표를 바꿔도 그 탭으로 연다).
  * 목록 칸은 없다 — 목표는 Console 사이드바 그룹 트리의 줄로 서고, 사이드바가 접힌 자리에서는 제목 ⌄ 전환 목록이 대신한다.
  */
@@ -388,20 +387,32 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 /** 라우팅이 꺼졌거나 후보가 없는 것은 실패가 아니라 설정 상태다 — 폴백 줄도 시트처럼 중립으로 말한다. */
 
 /** 구성원 표식 — 그 구성원 Operation 의 몽글 아바타(사이드바와 같은 모습). 세션이 아직 없으면 시작 전 얼굴이다. 이름은 곁의 글자가 말한다. */
-function MemberMark({ objective, member, operationState, still }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean }) {
-  return <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? operationState(member.id) : "closed")} still={still} />;
+function MemberMark({ objective, member, operationState, still, size }: { objective: Objective; member: ObjectiveMember; operationState: (operationId: string) => string; still?: boolean; size?: number }) {
+  return <ObjectiveAvatar operationId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? operationState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
 }
 
 /**
  * 지휘관 표식 — 목표 Operation 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
  * 기준이라 구성원 활동을 끌어올린 값(`operationState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
  */
-function CommanderMark({ objective, operationState }: { objective: Objective; operationState: (operationId: string) => string }) {
-  return <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, operationState(objective.id))} />;
+function CommanderMark({ objective, operationState, size }: { objective: Objective; operationState: (operationId: string) => string; size?: number }) {
+  return <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, operationState(objective.id))} {...(size ? { size } : {})} />;
+}
+
+/**
+ * 원장 단추 — 표식을 누르면 그 참여자의 원장(가운데 칸의 읽기 전용 기록)이 열리고, 연 참여자를 다시 누르면 대화로 돌아간다. 호스트 「구성원」
+ * 탭의 줄 누름과 같다. 아직 띄운 적 없는 참여자나 원장을 열 수 없는 호스트에서는 표식만 선다.
+ */
+function LedgerMark({ rootId, operationId, name, open, available, t, children }: { rootId: string; operationId: string; name: string; open: boolean; available: boolean; t: T; children: ReactNode }) {
+  if (!available) return <>{children}</>;
+  const label = open ? t("objectives.members.closeLedger") : t("objectives.members.openLedger", { name });
+  return <button type="button" className="objectives-member-ledger" aria-pressed={open} aria-label={label} title={label} onClick={() => toggleLedger(rootId, operationId)}>{children}</button>;
 }
 
 /** 구성원 탭의 명단 — 머리(셈·일괄 설정) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
 function MemberRoster({ objective, t, call, request, operationState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
+  const ledger = useLedgerOperation(objective.id);
+  const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
   const remove = (member: ObjectiveMember) => void call("/member/remove", { objectiveId: objective.id, memberId: member.id });
   const saving = useRef(new Set<string>());
@@ -641,8 +652,10 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
       const allowed = memberSubagents(member);
       return (
         <div key={member.id} className="objectives-member-slot">
-        <div className="objectives-member">
-          <MemberMark objective={objective} member={member} operationState={operationState} still={false} />
+        <div className={`objectives-member${ledger === member.id ? " is-ledger" : ""}`}>
+          <LedgerMark rootId={objective.id} operationId={member.id} name={member.role} open={ledger === member.id} available={ledgerReady && state !== "closed"} t={t}>
+            <MemberMark objective={objective} member={member} operationState={operationState} still={false} size={28} />
+          </LedgerMark>
           <div className="objectives-member-body">
             <span className="objectives-member-name">
               {/* 너비는 글자 수가 아니라 실제 글자 폭으로 — 숨은 복제(data-value)가 칸을 잡는다(한글처럼 넓은 글자도 잘리지 않게). */}
@@ -1382,14 +1395,12 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     onTabRef.current("missions");
     setMissionReveal({ id: highlightMission, at: Date.now() });
   }, [highlightMission]);
-  const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
   // 후속 후보 — 고르기·폐기는 하단 띠가 맡고, 상세에는 완료 뒤 결과만 결과물 탭의 접힌 묶음으로 선다.
   const followupOpenList = openFollowups(objective);
   const followupBatches = readBatches(objective);
   const followupHistory = readHistory(objective);
   const followupOrigin = readOrigin(objective);
 
-  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
   const extension = objective.extensions.at(-1);
   const missionExtension = (id: string) => extensionOf(objective.extensions, id, "mission");
@@ -1400,42 +1411,6 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       <div><ExtensionChip n={extension.n} t={t} /><time dateTime={new Date(extension.at).toISOString()}>{t("objectives.extend.started", { date: recordTime(extension.at, language, "") })}</time></div>
       <p className="objectives-extension-request"><b>{t("objectives.extend.request")}</b><LinkText text={extension.context} /></p>
     </div> : null;
-  // 머리 줄 — 오늘·기한 글리프 | 다섯 탭. 지금의 「일정」 두 줄을 단추로 줄였다: 켜면 brass, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」이 맡는다.
-  // 상세의 첫 줄이다 — 제목·완료·보관은 가운데 대화의 머리가 맡는다.
-  const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
-  const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
-  const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, language) }) : t("objectives.schedule.setDue");
-  const tabDot = (key: DetailTab) => key === "decisions" && objective.decisionRequest && !objective.done
-    ? <span className="objectives-tab-dot" role="img" aria-label={t("objectives.tabs.decisionDot")} />
-    : key === "missions" && unseenAny ? <span className="objectives-tab-dot is-unseen" role="img" aria-label={t("objectives.tabs.unseenDot")} /> : null;
-  const tabKeys = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const at = DETAIL_TABS.indexOf(tab);
-    const next = event.key === "ArrowRight" ? DETAIL_TABS[(at + 1) % DETAIL_TABS.length]
-      : event.key === "ArrowLeft" ? DETAIL_TABS[(at + DETAIL_TABS.length - 1) % DETAIL_TABS.length]
-      : event.key === "Home" ? DETAIL_TABS[0] : event.key === "End" ? DETAIL_TABS[DETAIL_TABS.length - 1] : null;
-    if (!next) return;
-    event.preventDefault();
-    const doc = event.currentTarget.ownerDocument;
-    onTab(next);
-    requestAnimationFrame(() => doc.getElementById(`objectives-tab-${objective.id}-${next}`)?.focus());
-  };
-  const tabBar = (
-    <div className="objectives-tabbar">
-      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => void call("/objective/patch", { objectiveId: objective.id, patch: { today: !objective.today } })}><SunGlyph /></button>
-      <button type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph />{objective.dueDate ? <span className="objectives-tab-due" aria-hidden="true">{dueShort(objective.dueDate, language)}</span> : null}
-      </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={language} t={t} onPick={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { dueDate: next } })} onClose={() => setDateAnchor(null)} /> : null}
-      <span className="objectives-tab-sep" aria-hidden="true" />
-      <div className="objectives-tabs" role="tablist" aria-label={t("objectives.tabs.aria")} onKeyDown={tabKeys}>
-        {DETAIL_TABS.map((key) => (
-          <button key={key} type="button" role="tab" id={`objectives-tab-${objective.id}-${key}`} className="objectives-tab" aria-selected={key === tab} aria-controls={`objectives-tabpanel-${objective.id}`} tabIndex={key === tab ? 0 : -1}
-            {...(key === "crew" || key === "missions" ? { "data-objectives-tour": key } : {})}
-            onClick={() => onTab(key)}>{t(`objectives.tabs.${key}`)}{tabDot(key)}</button>
-        ))}
-      </div>
-    </div>
-  );
   // 지휘관·구성원의 상태 낱말 — 명단 줄과 「메시지」의 받는 이가 같은 말을 쓴다.
   const memberStateWord = (state: string, outcome?: string) => {
     const isWorkingOrAwaiting = state === "running" || state === "awaiting";
@@ -1447,9 +1422,12 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   };
   // 지휘관 실행 설정 — 구성원 탭 첫 줄, 구성원과 같은 줄 문법(몽글·이름·설명 | 모델·강도·상태). 보기는 채팅으로 고정이라 고르지 않는다.
   const commanderState = operationOwnState(objective.id);
+  const ledger = useLedgerOperation(objective.id);
   const commanderRow = (
-    <div className="objectives-member is-commander">
-      <CommanderMark objective={objective} operationState={operationState} />
+    <div className={`objectives-member is-commander${ledger === objective.id ? " is-ledger" : ""}`}>
+      <LedgerMark rootId={objective.id} operationId={objective.id} name={t("objectives.commander.title")} open={ledger === objective.id} available={canOpenLedger() && commanderState !== "closed"} t={t}>
+        <CommanderMark objective={objective} operationState={operationState} size={28} />
+      </LedgerMark>
       <div className="objectives-member-body">
         <span className="objectives-member-name"><span className="objectives-member-role-fit">{t("objectives.commander.title")}</span></span>
         <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>
@@ -1460,20 +1438,9 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       </div>
     </div>
   );
-  // 개시 전 라우팅 결과 확인 — 라우팅으로 띄울 구성원이 있을 때 지휘관 줄 곁에 선다. 하단 띠의 같은 스위치(목표에 저장)를 꺼 두면 확인이 뜨지 않으므로
-  // 다시 켜는 입구가 여기다.
-  const routeCount = objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, operationState)).length;
-  const [routingSaving, setRoutingSaving] = useState(false);
-  const routingSwitch = routeCount > 0 && touchable ? (
-    <div className="objectives-routing-switch">
-      <SettingsToggle checked={objective.routingConfirm} busy={routingSaving} ariaLabel={t("objectives.routing.confirm")}
-        onChange={(next) => { setRoutingSaving(true); void call("/objective/patch", { objectiveId: objective.id, patch: { routingConfirm: next } }).finally(() => setRoutingSaving(false)); }} />
-      <span className="objectives-routing-switch-copy"><b>{t("objectives.routing.confirm")}</b><span>{t("objectives.routing.confirmHint", { count: routeCount })}</span></span>
-    </div>
-  ) : null;
   const sCrew = (
       <div className="objectives-group objectives-crew-group">
-        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} lead={<>{commanderRow}{routingSwitch}</>} />
+        <MemberRoster objective={objective} t={t} call={call} request={request} operationState={operationState} rows={launchRows} touchable={touchable} lead={commanderRow} />
       </div>
   );
   const sOrigin = (<>
@@ -1690,8 +1657,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     : <>{sResults}{sResultFolds}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
-      {tabBar}
-      <div className="objectives-detail-scroll" id={`objectives-tabpanel-${objective.id}`} role="tabpanel" aria-labelledby={`objectives-tab-${objective.id}-${tab}`}>
+      <div className="objectives-detail-scroll">
         <div className={`objectives-tab-body is-${tab}`}>{sExtension}{panel}</div>
       </div>
       {bottom}

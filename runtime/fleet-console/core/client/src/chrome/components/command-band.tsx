@@ -342,11 +342,6 @@ export function CommandBandBrand({ environment }: { readonly environment: Return
   );
 }
 
-/** 밴드 밖(대화 중심 화면의 사이드바)에 서는 브랜드 — 진단 상태를 스스로 쥔다. */
-export function StandaloneBrand() {
-  return <CommandBandBrand environment={useEnvironmentDiagnostics()} />;
-}
-
 function BrandHome() {
   const t = useT();
   return <Link className="command-band-brand" to="/operations" aria-label={t("chrome.commandBand.operations")}><BrandMarkIcon /><span className="command-band-brand-wordmark">Fleet</span></Link>;

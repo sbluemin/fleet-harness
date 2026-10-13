@@ -75,7 +75,7 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
     // 첨부 등 바이트를 받는 경계도 같은 실행 중 편집 규칙과 귀속을 쓴다.
     unlessBusy, steerable, edited, markEdited,
     // 제목·브리핑 편집은 옛 보드를 전제로 한 결정 요청을 거둔다 — 사령관은 사람에게 넘긴 질문을 그렇게 지우지 못한다. 사람의 편집은 답이 아니다.
-    patch: holding(({ patch }: Ref & { patch: PatchObjectiveInput }) => (patch.title !== undefined || patch.note !== undefined ? ["decision"] : []), steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["title", "note", "routingConfirm"]), ({ objectiveId, patch }) => edited(objectiveId, [
+    patch: holding(({ patch }: Ref & { patch: PatchObjectiveInput }) => (patch.title !== undefined || patch.note !== undefined ? ["decision"] : []), steerable(({ patch }: Ref & { patch: PatchObjectiveInput }) => only(patch, ["title", "note"]), ({ objectiveId, patch }) => edited(objectiveId, [
       ...(patch.title !== undefined ? ["title" as const] : []), ...(patch.note !== undefined ? ["note" as const] : []),
     ], async () => {
       const { title, groupId, launch: preset, ...own } = patch;

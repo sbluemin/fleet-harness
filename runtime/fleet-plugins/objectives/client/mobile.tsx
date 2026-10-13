@@ -285,8 +285,8 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const choices = bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: activityOf(operations, objective.id) !== "closed", recipientCount: recipients.length });
   const has = (key: (typeof choices.alts)[number]) => choices.primary === key || choices.alts.includes(key);
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
-  // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 확인이 꺼져 있으면 서버가 개시 때 판단한다.
-  const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id))) : [];
+  // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 개시는 늘 그 판단 결과를 먼저 확인한다.
+  const review = objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id)));
   // 띠의 주 동작이 개시·재개일 때 개시 카드가 주 단추다 — 폰에 있는 다른 할 일(답·인계·완료 등)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
   // 띠의 주 동작이 폰에 없는 것(구상·재구상·스티어링·확장)이면 이 화면에서 경쟁할 걸음이 없으므로 개시가 주 단추다.
   const primary = choices.primary === "start" || choices.primary === "resume" || (choices.primary !== null && !PHONE_STEPS.has(choices.primary));

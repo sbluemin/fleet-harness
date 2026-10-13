@@ -1012,6 +1012,30 @@
   right: -4px;
 }
 
+/* 하위 탭을 내는 도구(목표)의 탭 앞 도구(오늘·기한) — 플러그인이 그리고, 머리는 자리와 뒤의 가는 구분선만 진다. */
+.conversation-panel-tabs .right-rail-tab-tools {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  padding-right: 8px;
+  border-right: 1px solid var(--hairline-strong);
+}
+
+/* 하위 탭 낱말 곁 점 — 사람이 답할 일(aurora), 안 읽은 기록(brass). */
+.conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-dot {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--aurora);
+}
+
+.conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-dot.is-unseen { background: var(--brass); }
+
 /* ── 사용량 캡슐: 가운데 칸 맨 위 줄 오른쪽 끝 ─────────────────────────────────────────
    pill 은 가운데에서 대상만 말한다 — 사용량(계정 전역)은 오른쪽 끝에 따로 떠 있다. pill 줄은 그 폭을 양쪽에 같게 비워 pill 이 가운데에
    남고 둘이 겹치지 않는다. 실제로 남는 자리가 모자랄 때만 단계를 낮춘다: 전체(두 줄 값) → 표식만 → 첫 칸 하나(data-tier, quota.css). */
@@ -1059,9 +1083,6 @@
 }
 
 /* 브랜드(앰블럼 = 환경 진단, 워드마크 = 홈)는 밴드 왼쪽과 같은 한 벌이 사이드바 맨 위 줄 왼쪽에 선다. */
-.side-bar-top-strip.is-compact > .command-band-brand { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 0 1 auto; overflow: visible; }
-.side-bar-top-strip.is-compact > .command-band-brand :is(.command-band-brand-glyph, svg) { width: 22px; height: 22px; flex: none; }
-.side-bar-top-strip.is-compact > .command-band-brand .command-band-brand-wordmark { white-space: nowrap; }
 
 .console-shell.is-operations-view .side-bar-top-strip .conversation-round {
   width: 30px;

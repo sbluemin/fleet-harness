@@ -311,8 +311,8 @@ async function runAction(objectiveId: string, key: IntentKey, context: string): 
       case "extend": await request("/objective/extend", { objectiveId, context }); return { outcome: "done" };
       case "steer": await request("/commander/steer", { objectiveId, ...withContext }); return { outcome: "done" };
       case "start": case "resume": case "steerIdle": {
-        // 확인을 켰으면 개시가 판단 → 확인 → 기동으로 나뉜다 — 여기서는 칸만 열고 말은 칸이 이어받는다.
-        if (objective.routingConfirm && routingTargetsOf(objective, live).length > 0) {
+        // 라우팅으로 띄울 구성원이 있으면 개시는 늘 판단 → 확인 → 기동으로 나뉜다 — 여기서는 칸만 열고 말은 칸이 이어받는다.
+        if (routingTargetsOf(objective, live).length > 0) {
           if (sheetsSending.has(objectiveId)) return { outcome: "failed", notice: { tone: "info", text: localized((t) => t("objectives.band.sending")) } };
           setSheet(objectiveId, { intent: key, context });
           return { outcome: "held" };

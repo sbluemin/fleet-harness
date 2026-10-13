@@ -3506,8 +3506,8 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 큰 동작 — 활동 주기의 두 배짜리 층이고 앞 절반 안에서 휴식 자세로 돌아온다. 진입 때 한 번, 그 뒤로 두 주기에 한 번이다.
-   목록 크기에서는 동시에 켜는 아바타 수를 컴포넌트가 제한한다(is-big). 앱 감속·비포커스 창에서는 이 층만 끈다. */
-.mongle-avatar.is-running.is-big.is-act-run .mongle-avatar-big { animation: mongle-big-spin calc(2.8s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-spin); }
+   목록 크기에서는 동시에 켜는 아바타 수를 컴포넌트가 제한한다(is-big). 앱 감속·비포커스 창에서는 이 층만 끈다.
+   실행(run)은 큰 동작이 없다 — 한 바퀴 도는 회전은 걷었고, 손·소품만 움직인다. */
 .mongle-avatar.is-running.is-big.is-act-fetch .mongle-avatar-big { animation: mongle-big-tiptoe calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-tiptoe); }
 .mongle-avatar.is-running.is-big.is-act-delegate .mongle-avatar-big { animation: mongle-big-pop calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-pop); }
 .mongle-avatar.is-running.is-big.is-act-think .mongle-avatar-big { animation: mongle-big-tilt calc(3.2s * var(--mongle-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, mongle-big-tilt); }
@@ -3678,14 +3678,6 @@ button.status-glyph.is-actionable:focus-visible {
 @keyframes mongle-compact-eyes { 0%, 100% { transform: scale(1, 1); } 20%, 60% { transform: scale(1, 0.3); } }
 @keyframes mongle-act-enter { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes mongle-act-leave { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
-@keyframes mongle-big-spin {
-  0% { transform: translate(0, 0) rotate(0deg); }
-  10% { transform: translate(0, 0.7px) rotate(0deg); }
-  26% { transform: translate(0, -4.2px) rotate(180deg); }
-  42% { transform: translate(0, 0) rotate(360deg); }
-  46% { transform: translate(0, 0.5px) rotate(360deg); }
-  50%, 100% { transform: translate(0, 0) rotate(360deg); }
-}
 @keyframes mongle-big-tiptoe { 0%, 50%, 100% { transform: translate(0, 0); } 18%, 34% { transform: translate(0, -1.8px); } }
 @keyframes mongle-big-pop { 0%, 50%, 100% { transform: translate(0, 0) scale(1, 1); } 14% { transform: translate(0, 0) scale(1.1, 0.88); } 28% { transform: translate(0, -1.6px) scale(0.94, 1.08); } 40% { transform: translate(0, 0) scale(1.03, 0.97); } }
 @keyframes mongle-big-tilt { 0%, 50%, 100% { transform: rotate(0deg); } 14%, 36% { transform: rotate(-8deg); } }
@@ -5212,7 +5204,8 @@ button.status-glyph.is-actionable:focus-visible {
    바탕은 공유한 상태 규칙보다 앞에 서야 한다 — 뒤에 서면 바탕의 border 가 같은 특이도의 활성 테두리를 덮는다. */
 .side-bar-cluster-row {
   display: grid;
-  grid-template-columns: 24px 1fr auto;
+  /* 표식 칸은 지휘관 아바타(30px)만큼 — 대화 행은 두 줄이라 줄 높이는 그대로다. 일반 Operation 칩의 24px 비콘 칸과는 따로 선다. */
+  grid-template-columns: 30px 1fr auto;
   gap: 8px;
   align-items: center;
   padding: 6px 8px;
@@ -5923,6 +5916,8 @@ button.status-glyph.is-actionable:focus-visible {
 
 .side-bar-cluster-row-glyph {
   justify-self: center;
+  /* 아바타가 줄 높이를 늘리지 않는다 — 위아래 안쪽 여백(6px)까지만 쓰므로 한 줄짜리 행도 높이가 그대로다. */
+  margin-block: -6px;
 }
 
 /* 줄 앞 표식은 몽글 아바타다 — 누를 수 있는 것은 검토 대기의 아바타 하나(완료·후속 선택)뿐이고, 버튼 껍데기는 비운다. */
@@ -5967,8 +5962,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--surface-panel);
 }
 
-/* 칩의 24px 비콘 칸과 같은 격자 — 글리프 칸 폭이 같아 제목이 칩 이름과 같은 x에서 시작하고,
-   메타 없는 한 줄이면 칩과 같은 높이에 상태 글리프가 줄 가운데에 선다. */
+/* 제목·메타 줄 — 메타 없는 한 줄이면 상태 표식이 줄 가운데에 선다. */
 .side-bar-cluster-row-main {
   display: flex;
   flex-direction: column;

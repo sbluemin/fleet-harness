@@ -15,7 +15,7 @@ import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePlu
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
-import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
+import { openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
@@ -26,6 +26,7 @@ import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
+import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { closeGlobalBrowser, globalBrowserUnseenLabel, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
@@ -210,6 +211,23 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const standIn = useConversationStandIn();
   const inbox = useTheaterInboxState();
   const operationConversation = (subject !== null || standIn !== null) && inbox === null;
+  // 하위 탭을 내는 도구(목표)가 「구성원」을 대신하면 대상의 구성원 탭은 서지 않는다 — 그 자리에 도구의 구성원 탭이 선다.
+  const bindings = useDesktopRailEntries();
+  const activePanelId = useRailActivePanelId();
+  const tabsEntry = operationConversation
+    ? bindings.find((binding) => !binding.core && binding.entry.conversationTab === true && binding.entry.conversationTabs !== undefined && binding.entry.visible?.() !== false)?.entry ?? null
+    : null;
+  const tabsTheaterId = tabsEntry?.scope === "fleet" ? null : context.theaterId;
+  const tabsState = useConversationTabsState(tabsEntry?.conversationTabs, tabsTheaterId);
+  const membersStandIn = tabsState?.tabs.find((tab) => tab.replacesMembers === true) ?? null;
+  const coreFilter = membersStandIn === null
+    ? sections.filter
+    : (entryId: string) => entryId !== CONVERSATION_MEMBERS_TAB_ID && (sections.filter?.(entryId) ?? true);
+  // 걷힌 구성원 탭이 켜져 있었으면(대화를 옮기기 전에 열어 둔 것) 대신하는 탭으로 옮긴다.
+  useEffect(() => {
+    if (tabsEntry === null || membersStandIn === null || activePanelId !== CONVERSATION_MEMBERS_TAB_ID) return;
+    openConversationTab(tabsEntry, context, membersStandIn.id, false);
+  }, [tabsEntry, membersStandIn, activePanelId, context]);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
@@ -298,7 +316,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           <span className="conversation-panel-tabs">
             {/* Operation 대화에서는 대화에서 곧장 이어 가는 도구(목표)가 대상의 탭(구성원)보다 앞에 선다 — 「목표 | 구성원」. */}
             {operationConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
-            <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
+            <RailToolIcons context={context} variant="text" scope="core" {...(coreFilter ? { coreFilter } : {})} />
           </span>
         </div>
         <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>

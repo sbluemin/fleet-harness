@@ -11,7 +11,7 @@ const CLEAR = 3;
 const MIN_LABEL = 120;
 const MIN_LANE = 16;
 /** 줄 간격 — 노드 위의 기록 표식(r+6)과 윗줄 노드 아래의 담당 표식(r+10)이 같은 레인에서 겹치지 않는 최소에 맞춘다. 시각 검수가 조정하는 값. */
-export const ROW_H = { narrow: 40, wide: 42 } as const;
+export const ROW_H = { narrow: 52, wide: 56 } as const;
 
 interface Segment { a: Point; b: Point }
 interface Vertical { x: number; y1: number; y2: number }

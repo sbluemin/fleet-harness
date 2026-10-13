@@ -485,9 +485,9 @@ function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
   const { operations, nestedOperations, operationRuntime } = useConsoleState();
   const foldMarks = new Map(item.fold.map((entry) => [entry.operation.id, entry.mark ?? entry.status ?? "idle"] as const));
   const working = clusterWorkingMembers(layout.cluster, anchor?.operation.id ?? layout.cluster.root, { operations, nestedOperations, operationRuntime }, foldMarks);
-  // 대화 행의 지휘관 아바타는 22px 이다 — 사령관 카드(32px)보다 한 단 작아 Theater 아래의 소속으로 읽힌다.
-  const full = 22;
-  const size = working.length > 0 ? 19 : full;
+  // 대화 행의 지휘관 아바타는 30px 이다 — 제목·진행 두 줄을 함께 받친다. 일반 Operation 칩(22px)은 그대로다.
+  const full = 30;
+  const size = working.length > 0 ? 26 : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
   const commander = row.commodore && !anchor
     ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
@@ -501,7 +501,7 @@ function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
       <span className="side-bar-cluster-avatars-minis" aria-hidden="true">
         {working.map((entry) => (
           <span key={entry.operation.id} className="side-bar-cluster-avatars-mini">
-            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={11} label="" decorative />
+            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={14} label="" decorative />
           </span>
         ))}
       </span>

@@ -24,7 +24,7 @@ import { getConversationSurface, subscribeConversationSurface } from "../../../.
 import { stopAgentChatTurn } from "../../api.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
-import { frameCommanderLedger, setCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
+import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, SettledDecisionLine, UseRequestGroupCard, type SettledDecision } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
@@ -105,10 +105,22 @@ function hasRoster(rootId: string): boolean {
 }
 
 /** 원장을 연다 — 루트 id 면 지휘관 원장, 구성원 id 면 그 구성원 원장, null 이면 대화로 돌아간다. 둘은 동시에 서지 않는다. */
-function openLedger(rootId: string, operationId: string | null): void {
+export function openLedger(rootId: string, operationId: string | null): void {
   const commander = operationId === rootId;
   setCommanderLedger(rootId, commander);
   selectNestedBody(rootId, commander ? null : operationId);
+}
+
+/** 지금 연 원장의 참여자 — 지휘관이면 루트 id, 구성원이면 그 id, 대화를 보고 있으면 null. 「구성원」 탭의 켜짐과 같은 판정이다. */
+export function ledgerOperationId(rootId: string): string | null {
+  return getState().nestedBodySelection[rootId] ?? (isCommanderLedgerChosen(rootId) ? rootId : null);
+}
+
+/** 원장 고름(구성원 본문 선택·지휘관 원장)이 바뀌면 깨운다. */
+export function subscribeLedger(listener: () => void): () => void {
+  const offConsole = subscribeConsole(listener);
+  const offCommander = subscribeCommanderLedger(listener);
+  return () => { offConsole(); offCommander(); };
 }
 
 /** 이 채팅 루트의 가운데 칸이 그룹 대화인가 — 목표 대화의 뿌리이거나 구성원을 가진 채팅. 모바일 본문도 같은 판정을 쓴다. */

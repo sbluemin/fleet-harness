@@ -13,7 +13,9 @@
 /* 이름 칸 — 레인 오른쪽 끝에서 캔버스 오른쪽 여백까지(left·right 는 배치가 준다), 제 노드의 줄 가운데에 선다. 두 줄까지 보이고 줄임표로 끝난다. */
 .objectives-graph-label { position: absolute; z-index: 2; display: flex; align-items: center; gap: 8px; min-width: 0; transform: translateY(-50%); font-size: var(--t-xs); line-height: var(--graph-label-line); color: var(--text-secondary); cursor: pointer; touch-action: none; }
 .objectives-graph-name { flex: 0 1 auto; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; word-break: keep-all; overflow-wrap: anywhere; }
-.objectives-graph-owner { flex: none; margin-left: auto; font-size: var(--t-2xs); color: var(--text-tertiary); white-space: nowrap; }
+/* 맡은 이 — 구성원 설명처럼 임무 이름 아래 한 줄, 흐린 작은 글자. */
+.objectives-graph-text { flex: 0 1 auto; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.objectives-graph-owner { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); line-height: 1.35; color: var(--text-tertiary); }
 .objectives-graph-label > .objectives-extension-chip { display: inline-flex; flex: none; box-sizing: border-box; height: 20px; }
 .objectives-graph-label.is-root { color: var(--text-tertiary); }
 .objectives-graph-label.is-done { color: var(--brass-ink); }
@@ -129,6 +131,7 @@
 .objectives-graph-dragline path.is-no { stroke: var(--coral); }
 
 .objectives-branch-graph.is-wide .objectives-graph-label { font-size: var(--t-sm); }
+.objectives-branch-graph.is-wide .objectives-graph-owner { font-size: var(--t-xs); }
 .objectives-branch-graph.is-wide .objectives-graph-label.is-root { font-size: var(--t-2xs); }
 
 /* 시안의 상태 셈과 권한 대기 줄은 그래프 밖 머리에만 둔다. */

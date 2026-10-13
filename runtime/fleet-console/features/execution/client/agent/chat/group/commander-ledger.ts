@@ -39,6 +39,16 @@ export function setCommanderLedger(rootOperationId: string, open: boolean): void
   notify();
 }
 
+/** 지휘관 원장을 골랐는가 — 플러그인 능력(`conversation.ledgerOperationId`)이 읽는다. */
+export function isCommanderLedgerChosen(rootOperationId: string): boolean {
+  return chosen.has(rootOperationId);
+}
+
+/** 고름이 바뀌면 깨운다. */
+export function subscribeCommanderLedger(listener: () => void): () => void {
+  return subscribe(listener);
+}
+
 export function useCommanderLedgerChosen(rootOperationId: string | null): boolean {
   useSyncExternalStore(subscribe, getRevision, getRevision);
   return rootOperationId !== null && chosen.has(rootOperationId);

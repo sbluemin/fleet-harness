@@ -7,7 +7,7 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
-import type { RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
+import type { RailEntryConversationTabs, RailEntryConversationTabsState, RailEntryDescriptor, RailPanelContext } from "@fleet-console/sdk/rail";
 
 import { useExpandedSurfaces } from "../expanded-surface/store.js";
 import "../../styles/rail.css";
@@ -486,9 +486,13 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
       )
       : (
         <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
-          {run.bindings.map(({ entry }) => (
-            <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))} text={text} />
-          ))}
+          {run.bindings.map(({ entry }) => {
+            const isActive = activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId));
+            // 대화 중심 화면 패널 머리에서는 하위 탭을 내는 도구(목표)가 한 낱말 대신 그 탭들로 선다.
+            return text && entry.conversationTabs
+              ? <RailConversationTabs key={entry.id} entry={entry} tabs={entry.conversationTabs} context={context} language={language} isActive={isActive} />
+              : <RailIcon key={entry.id} entry={entry} context={context} language={language} isActive={isActive} text={text} />;
+          })}
         </div>
       ));
   }
@@ -670,6 +674,68 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       {text ? <span className="right-rail-ico-label">{title}</span> : icon}
       {attentionCount > 0 ? <span className="right-rail-ico-badge" aria-hidden="true">{attentionCount > 99 ? "99+" : attentionCount}</span> : null}
     </button>
+  );
+}
+
+function subscribeNoTabs(): () => void { return () => undefined; }
+function readNoTabs(): null { return null; }
+
+/** 엔트리 하위 탭 줄의 지금 모습 — 공급원이 없으면 null. */
+export function useConversationTabsState(tabs: RailEntryConversationTabs | null | undefined, theaterId: string | null): RailEntryConversationTabsState | null {
+  const read = () => (tabs ? tabs.read(theaterId) : null);
+  return useSyncExternalStore(tabs?.subscribe ?? subscribeNoTabs, tabs ? read : readNoTabs, tabs ? read : readNoTabs);
+}
+
+/** 하위 탭을 고른다 — 엔트리의 패널이 닫혀 있으면 연다(누른 탭이 곧 보일 칸이다). 패널 머리의 「구성원」 대체도 이 길을 쓴다. */
+export function openConversationTab(entry: RailEntryDescriptor, context: RailToolContext, tabId: string, isActive: boolean): void {
+  const theaterId = entry.scope === "fleet" ? null : context.theaterId;
+  if (theaterId === null && entry.scope !== "fleet") return;
+  entry.conversationTabs?.select(tabId, theaterId);
+  if (isActive) return;
+  if (entry.activate) entry.activate(context);
+  else openRailPanel(entry.id);
+}
+
+/**
+ * 하위 탭을 내는 도구의 글자 탭 줄 — 도구(오늘·기한 등)가 앞에, 하위 탭이 대상의 글자 탭과 같은 문법으로 선다. 탭의 켜짐은 엔트리의
+ * 패널이 열려 있을 때만이다. 탭 단추의 문서 id 는
+ * `rail-tab-<엔트리 id>-<탭 id>` 이다(온보딩 앵커가 가리킨다).
+ */
+function RailConversationTabs({ entry, tabs, context, language, isActive }: {
+  readonly entry: RailEntryDescriptor;
+  readonly tabs: RailEntryConversationTabs;
+  readonly context: RailToolContext;
+  readonly language: ConsoleLocale;
+  readonly isActive: boolean;
+}) {
+  const theaterId = entry.scope === "fleet" ? null : context.theaterId;
+  const state = useConversationTabsState(tabs, theaterId);
+  if (state === null) return null;
+  return (
+    <>
+      {tabs.renderTools ? <span className="right-rail-tab-tools">{tabs.renderTools({ theaterId, language })}</span> : null}
+      {state.tabs.map((tab) => {
+        const title = resolveLocalizedText(tab.title, language);
+        const named = tab.dot ? `${title} · ${resolveLocalizedText(tab.dot.label, language)}` : title;
+        const pressed = isActive && tab.id === state.selected;
+        return (
+          <button
+            key={tab.id}
+            id={`rail-tab-${entry.id}-${tab.id}`}
+            type="button"
+            className={`right-rail-ico is-text${pressed ? " is-active" : ""}`}
+            aria-pressed={pressed}
+            aria-label={named}
+            data-tip={named}
+            data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}
+            onClick={() => openConversationTab(entry, context, tab.id, isActive)}
+          >
+            <span className="right-rail-ico-label">{title}</span>
+            {tab.dot ? <span className={`right-rail-ico-dot is-${tab.dot.tone}`} aria-hidden="true" /> : null}
+          </button>
+        );
+      })}
+    </>
   );
 }
 

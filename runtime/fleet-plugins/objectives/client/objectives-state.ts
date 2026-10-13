@@ -719,6 +719,11 @@ export function runtimeHydration(): OperationRuntimeHydration {
   return installed?.consoleState.getOperationRuntimeHydration?.() ?? "ready";
 }
 
+/** 목표가 따라가는 Operation — 패널 머리 하위 탭이 패널이 닫힌 동안 어느 목표의 탭을 세울지 고를 때 읽는다. */
+export function followedOperationId(): string | null {
+  return contextOperationId();
+}
+
 /** 목표가 따라가는 Operation — 사이드바에서 열지 않고 고른 것이 있으면 그것, 없으면 캔버스의 활성 Operation. */
 function contextOperationId(host: PluginInstallContext | null = installed): string | null {
   return host?.consoleState.getSelectedOperationId?.() ?? host?.consoleState.getActiveOperationId() ?? null;
@@ -807,8 +812,11 @@ function clearSelectionTheater(): void {
 }
 
 /** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
+export function objectiveDisplayTheaterId(contextTheaterId: string | null): string | null {
+  return selectionTheater?.contextTheaterId === contextTheaterId ? selectionTheater.theaterId : contextTheaterId;
+}
 export function useObjectiveDisplayTheater(contextTheaterId: string | null): string | null {
-  const read = () => selectionTheater?.contextTheaterId === contextTheaterId ? selectionTheater.theaterId : contextTheaterId;
+  const read = () => objectiveDisplayTheaterId(contextTheaterId);
   const theaterId = useSyncExternalStore(subscribeObjective, read, read);
   useEffect(() => {
     if (selectionTheater && selectionTheater.contextTheaterId !== contextTheaterId) clearSelectionTheater();
@@ -995,6 +1003,33 @@ function showObjectiveConversation(objectiveId: string, theaterId: string): bool
   const objective = readTheater(theaterId).objectives.find((candidate) => candidate.id === objectiveId);
   if (!objective || objective.commander.started) return false;
   return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId });
+}
+
+/**
+ * 구성원 탭 줄의 원장 — 호스트 「구성원」 탭의 줄 누름과 같다(그 탭은 목표가 있는 대화에서 이 탭으로 대신 선다). 지금 연 참여자를 다시
+ * 누르면 대화로 돌아간다. 가운데 칸이 그 목표의 대화가 아니면 지휘관 대화부터 세운다. 원장을 열 수 없는 호스트에서는 null·무동작이다.
+ */
+export function ledgerOperationOf(rootOperationId: string): string | null {
+  return installed?.conversation?.ledgerOperationId?.(rootOperationId) ?? null;
+}
+export function canOpenLedger(): boolean {
+  return !!installed?.conversation?.openLedger && installed.conversation.isActive();
+}
+export function toggleLedger(rootOperationId: string, operationId: string): void {
+  const host = installed;
+  const conversation = host?.conversation;
+  if (!host || !conversation?.openLedger) return;
+  const subject = conversation.subjectOperationId?.() ?? null;
+  const subjectRoot = subject ? host.consoleState.getOperations({ nested: true }).find((operation) => operation.id === subject)?.parentOperationId ?? subject : null;
+  if (subjectRoot !== rootOperationId) host.operations.focus(rootOperationId, { snap: "full" });
+  conversation.openLedger(rootOperationId, ledgerOperationOf(rootOperationId) === operationId ? null : operationId);
+}
+export function subscribeLedger(listener: () => void): () => void {
+  return installed?.conversation?.subscribeLedger?.(listener) ?? (() => undefined);
+}
+export function useLedgerOperation(rootOperationId: string): string | null {
+  const read = () => ledgerOperationOf(rootOperationId);
+  return useSyncExternalStore(subscribeLedger, read, read);
 }
 
 /**

@@ -177,7 +177,6 @@ export interface ObjectivePatch {
   readonly planRequestBy?: ObjectiveActor;
   readonly dueDate?: string | null;
   readonly today?: boolean;
-  readonly routingConfirm?: boolean;
 }
 
 export interface ObjectiveStore {
@@ -581,7 +580,7 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.followupBatches?.length) delete out.followupBatches;
   for (const key of ["planning", "criteriaOpen", "today", "commenced"] as const) if (out[key] !== true) delete out[key];
   if (typeof objective.enlisted !== "boolean") delete out.enlisted;
-  if (objective.routingConfirm !== false) delete out.routingConfirm;
+  delete out.routingConfirm;
   if (!(objective.attachments?.length)) delete out.attachments;
   if (!objective.results?.length) delete out.results;
   if (!objective.evidence?.length) delete out.evidence;
@@ -841,7 +840,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       // 불린이 아닌 저장값은 손상이 아니라 「정하지 않음」으로 읽는다 — 이 값 하나로 목표를 격리하지 않는다.
       ...(typeof stored.commodoreOperated === "boolean" ? { commodoreOperated: stored.commodoreOperated } : {}),
       operator: objectiveOperator(stored, (id) => load(node?.theaterId ?? pending!.theaterId).get(id)),
-      routingConfirm: stored.routingConfirm !== false,
       missions: stored.missions.map((mission) => {
         const member = mission.member ? byMember.get(mission.member) : null;
         return {
@@ -1334,7 +1332,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       ...(input.planRequest !== undefined ? { planRequest: input.planRequest, planRequestBy: input.planRequestBy ?? "human" } : {}),
       ...(input.dueDate !== undefined ? { dueDate: input.dueDate ?? undefined } : {}),
       ...(input.today !== undefined ? { today: input.today ? true as const : undefined } : {}),
-      ...(input.routingConfirm !== undefined ? { routingConfirm: input.routingConfirm ? undefined : false as const } : {}),
     })),
 
     memberFailure: (memberId) => storedFailure(storedMemberOf(memberId)?.failure),

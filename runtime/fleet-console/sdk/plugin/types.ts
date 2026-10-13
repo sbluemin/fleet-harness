@@ -399,6 +399,14 @@ export interface ClientConversationCapability {
    * 대화 중심 화면이 꺼진 호스트(모바일)에서도 그 대화를 실제로 볼 때만 여는 연결이 읽는다. subscribe 가 바뀜을 깨운다.
    */
   subjectOperationId?(): string | null;
+  /**
+   * 그룹 대화 참여자의 원장(가운데 칸에 읽기 전용으로 세운 그 참여자의 기존 본문) — 지금 연 참여자 id(지휘관이면 루트 id), 대화를 보고
+   * 있으면 null. `subscribeLedger` 가 바뀜을 깨운다.
+   */
+  ledgerOperationId?(rootOperationId: string): string | null;
+  /** 원장을 연다 — 루트 id 면 지휘관, 구성원 id 면 그 구성원, null 이면 대화로 돌아간다. 호스트 「구성원」 탭의 줄 누름과 같다. */
+  openLedger?(rootOperationId: string, operationId: string | null): void;
+  subscribeLedger?(listener: () => void): () => void;
 }
 
 /**

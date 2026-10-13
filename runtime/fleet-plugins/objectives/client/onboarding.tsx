@@ -37,14 +37,14 @@ export const objectivesOnboarding: OnboardingContribution = {
     },
     {
       id: "objectives-detail",
-      // 목표 하나를 처음 연 순간 — 그 목표의 구획을 화면 순서대로 짚는다. 구획은 모두 늘 렌더되므로 목표 상태와 무관하게
+      // 목표 하나를 처음 연 순간 — 그 목표의 구획을 화면 순서대로 짚는다. 구성원·임무 탭은 Console 패널 머리의 탭 단추(rail-tab-<엔트리>-<탭>)다. 구획은 모두 늘 렌더되므로 목표 상태와 무관하게
       // 다섯 스텝이 선다. 목록이 DOM에 남아 있는 한 미루면 영영 뜨지 않으므로 미루지 않는다.
       spotlight: null,
       walkthrough: [
-        { anchor: `${DETAIL} [data-objectives-tour="crew"]`, title: T("objectives.onboarding.detail.step1Title"), body: T("objectives.onboarding.detail.step1Body") },
+        { anchor: "#rail-tab-objectives-crew", title: T("objectives.onboarding.detail.step1Title"), body: T("objectives.onboarding.detail.step1Body") },
         { anchor: `${DETAIL} [data-objectives-tour="brief"]`, title: T("objectives.onboarding.detail.step2Title"), body: T("objectives.onboarding.detail.step2Body") },
         { anchor: `${DETAIL} [data-objectives-tour="criteria"]`, title: T("objectives.onboarding.detail.step3Title"), body: T("objectives.onboarding.detail.step3Body") },
-        { anchor: `${DETAIL} [data-objectives-tour="missions"]`, title: T("objectives.onboarding.detail.step4Title"), body: T("objectives.onboarding.detail.step4Body") },
+        { anchor: "#rail-tab-objectives-missions", title: T("objectives.onboarding.detail.step4Title"), body: T("objectives.onboarding.detail.step4Body") },
         // 구상·개시는 구성원 채팅 입력창 위 제안 줄에 선다 — 다른 번들의 DOM 이라 짚지 않고 말로만 안내한다.
         { anchor: null, title: T("objectives.onboarding.detail.step5Title"), body: T("objectives.onboarding.detail.step5Body") },
       ],

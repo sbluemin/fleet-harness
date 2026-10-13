@@ -638,7 +638,7 @@ export interface StoredObjective {
   readonly enlisted?: boolean;
   /** 개시했다 — 구상만 한 목표는 아직 시작 전이다. */
   readonly commenced?: true;
-  /** 사람이 「개시 전 라우팅 결과 확인」을 껐다 — 기본은 켬이라 끈 것만 저장한다. */
+  /** 옛 판의 「개시 전 라우팅 결과 확인」 끔 — 확인은 이제 늘 거친다. 읽지 않고 다음 저장 때 지운다. */
   readonly routingConfirm?: false;
   /** 옛 정리 레코드의 이관 대기 표시. 보관 확정 뒤 archivedRemoval로 옮기며 기간으로 지우지 않는다. */
   readonly removed?: StoredRemoval;
@@ -816,8 +816,6 @@ export interface Objective {
   readonly commodoreOperated?: boolean;
   /** 지금 이 목표를 운영하는 쪽 — 서버가 `objectiveOperator` 로 낸 값. 화면은 판정을 다시 하지 않고 이 값을 읽는다. */
   readonly operator: ObjectiveOperator;
-  /** 사람의 개시가 라우팅으로 새로 띄울 구성원의 판단 결과를 먼저 보여 준다. 지휘관 도구·후속 목표의 기동은 묻지 않는다. */
-  readonly routingConfirm: boolean;
   /** 에이전트가 지웠거나 다른 목표로 합쳤다 — 보드의 보통 구역에서 빠지고, 사람이 되돌릴 수 있다. */
   readonly removed: {
     readonly at: number;
@@ -1098,7 +1096,6 @@ export const patchObjectiveSchema = z.object({
   dueDate: dueDate.optional(),
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
-  routingConfirm: z.boolean().optional(),
   /** 지휘관 모델·강도 — 지휘관 Operation 에 쓴다. */
   launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
 }).strict();

@@ -35,7 +35,6 @@ import { setMobileDestination, takeMobileConversationDestination } from "../../.
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
-import { StandaloneBrand } from "../../../core/client/src/chrome/components/command-band.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
@@ -511,7 +510,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       onCancelAddTheater={cancelAddTheater}
       onForgetTheater={handleForgetTheater}
       topStripVariant="compact"
-      topStripLeading={<StandaloneBrand />}
       topStripTrailing={<ConversationSideBarActions />}
       topAccessory={<ConversationSideBarTop />}
       archiveInBottomAccessory
