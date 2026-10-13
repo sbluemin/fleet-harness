@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.233.0] - 2026-10-13
+
+### fleet-console
+
+#### Added
+- The Commodore can preserve images from your messages in an objective's brief for its Commander to open. Images not saved during that turn must be sent again to attach later.
+- In Fleet Desktop, the Commodore can browse in its own Session Browser, kept separate from your Fleet Browser tabs.
+
+#### Changed
+- Commencing an objective now always shows the AI Gateway routing for members that have not launched yet before it starts them; the option to skip that review is gone.
+- Objective rows in the sidebar show larger Commander and member avatars without making the rows taller.
+- Agent sessions no longer stop on pop-up questions or plan approvals in their panel; they ask in their reply instead and no longer enter plan mode, and Objectives sessions keep asking through decision requests on the board.
+- With Fold turns on, a long reply in group chat now scrolls in place under the mouse wheel, so you can read the rest without expanding it.
+- On a phone, you work with an objective from its conversation: the conversation info screen's Objectives tab shows the objective's board, where you can answer decisions, message, commence, complete, hand off for review, or stop. The separate Objectives shortcut and list are gone.
+- The phone's home lists objectives that have not started in a "Not started" section below your conversations; tapping one opens its start screen, where you can also rename or archive it. Completed objectives gather in a collapsed "Done" section beneath it, and you can open one to review it without restoring it.
+- Avatars now act out what a Chat Mode agent is doing, in the sidebar as well as the conversation panel: reading, editing, running commands, searching the web, delegating, thinking, writing a reply, or compacting. Terminal sessions keep a general working rhythm.
+- Avatars that need you now ask with a gesture and a glow at their feet instead of a ring and badge, and a finished member stretches once and settles instead of showing a check mark. With reduced motion or Calm avatars, each activity holds a still pose.
+- Objective details are now organized into Objective, Members, Missions, Decisions, and Results tabs under the Commander's name in the right panel, with Today and due date as quick glyphs beside them; Members there replaces the separate member list and opens a member's ledger from its avatar. The mission graph flows top to bottom with each mission's owner under its name, and objective actions such as plan, commence, and complete move from the board's bottom bar into the member chat composer.
+- Objective Commanders always run in the chat view, and a dormant Commander that was started in the terminal resumes in chat with the same conversation.
+- Theater actions now open by right-clicking a Theater in the sidebar, pressing the context-menu key or Shift+F10, or long-pressing it on touch screens and in the phone's Theater list, instead of from a "..." button.
+- Theater system prompt settings are simpler: each prompt choice is listed with what a new session will get, so the effect of an empty instruction is clear before you pick it.
+- Every registered Theater works without mounting it first: open its conversations and manage its groups directly, and the right-side tools follow the Theater of the conversation you are viewing.
+- Codex, Files, Repository, Shell and Skills now sit in one tool bar above every conversation, including Commodore and Commander chats, and open for that conversation's Theater.
+- Shell is a single Console-wide terminal that opens even without a Theater and starts in the root of the Theater you last viewed.
+- The globe above Commander and Commodore chats lets you choose Fleet Browser or Session Browser, the new name for Operation Browser; the separate Fleet Browser entry is gone and Shift+Cmd+B still toggles it.
+- Commodore chats no longer show the CLI/chat view switch.
+
+#### Fixed
+- Operations in the sidebar no longer show a minimize button that did nothing, now that the canvas is gone.
+
+#### Removed
+- The Fleet emblem and wordmark no longer appear at the top of the sidebar; in development consoles this also removes the emblem's environment diagnostics shortcut.
+- Objectives no longer opens as a separate wide view; it stays in the right sidebar beside the conversation.
+- The Glass effect opacity sliders are gone from Appearance settings now that the canvas is gone. If you had changed them, Console returns to its default look.
+
 ## [1.232.0] - 2026-10-13
 
 ### fleet-console
