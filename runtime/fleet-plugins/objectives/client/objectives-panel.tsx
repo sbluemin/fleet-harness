@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
@@ -22,7 +22,7 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberRoutedTag, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { openNewOperation, hasDecisionRequest, focusOperation, followActiveOperation, listedOperationSummaries, loadTheater, notifyObjectiveSurface, patchObjectiveView, post, takeReveal, useOperationSummaries, useReveal, useObjectiveTheater, useObjectiveView, useObjectiveDisplayTheater } from "./objectives-state.js";
-import { openFreshConversation } from "./fresh-conversation.js";
+import { freshConversationObjectiveId, openFreshConversation, shownFinishedObjective, subscribeFreshConversation, subscribeShownFinished } from "./fresh-conversation.js";
 import { personTurnAt, useCommodoreBoard } from "./commodore-state.js";
 import { ObjectiveSwitcher } from "./switcher.js";
 import {
@@ -174,10 +174,13 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   // 목표 상세는 대화 중심 화면의 우측 레일에만 선다 — 머리(제목·완료·보관·작업 줄)는 가운데 대화의 머리와 레일 캡션이 맡는다.
   useEffect(() => { if (theaterId) void loadTheater(ctx.api, theaterId); }, [ctx.api, theaterId]);
   // 남겨 둔 자리가 사라졌으면(항목 삭제) 그 자리만 거둔다 — 다른 곳에서 지워진 것을 붙들고 빈 화면을 보이지 않게.
+  // 가운데 칸이 보관된 완료 목표의 완료 화면이면 그 목표는 목록에 없어도 남는다 — 보드는 읽어 둔 끝난 목표 레코드를 보인다(완료라 고칠 수 없다).
+  const standingId = useSyncExternalStore(subscribeFreshConversation, freshConversationObjectiveId, freshConversationObjectiveId);
+  const shownDone = useSyncExternalStore(subscribeShownFinished, shownFinishedObjective, shownFinishedObjective);
   useEffect(() => {
     if (!state.loaded) return;
-    if (selected && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
-  }, [state.loaded, state.objectives, selected, setSelected]);
+    if (selected && selected !== standingId && !state.objectives.some((objective) => objective.id === selected)) setSelected(null);
+  }, [state.loaded, state.objectives, selected, setSelected, standingId]);
 
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다(행·비콘·목록). 호출부는 남겨 두되 아무것도 띄우지 않는다.
   const toast = useCallback((_text: string, _undo?: () => Promise<void>) => undefined, []);
@@ -219,7 +222,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
       : { state: "ended", label: stateLabel("ended") };
   };
 
-  const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? null : null;
+  const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? (shownDone?.id === selected ? shownDone : null) : null;
   const detailRef = useRef<HTMLElement | null>(null);
   // 사람의 차례만 센다 — 사이드바 「내 결정」·레일 배지와 같은 판정(`personTurnAt`). 상세 머리의 「다른 요청」이 이 줄을 돈다.
   // 사령관이 맡은 요청은 접힌 「사령관이 맡음」에서 연다.

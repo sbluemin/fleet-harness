@@ -5,7 +5,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 
 import type { Objective } from "../server/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, finishedObjectivesLoaded, focusOperation, listedOperationSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusOperation, listedOperationSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -27,13 +27,19 @@ export function connectFreshConversation(next: ClientConversationCapability | un
 /**
  * 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다.
  * 목표의 Theater 를 함께 싣는다 — 호스트는 가운데 대화의 Theater 를 `params.theaterId` 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
- * `theaterId` 를 주면 보관된 완료 목표를 아직 읽지 않았을 때 어느 Theater 의 끝난 목표를 읽을지도 말한다.
+ * `theaterId` 를 주면 보관된 완료 목표를 찾을 Theater 도 된다 — 읽어 둔 끝난 목표에 없으면(그 뒤에 완료로 보관됐다) 다시 읽고, 다 읽기 전에는 칸이 서 있다.
  */
 export function openFreshConversation(objectiveId: string, theaterId?: string): boolean {
   if (!port || !port.isActive()) return false;
-  if (theaterId) ensureFinishedObjectives(theaterId);
+  if (theaterId) refreshFinishedFor(objectiveId, theaterId);
   const target = theaterId ?? findObjective(objectiveId)?.theaterId;
   return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}) });
+}
+
+/** 살아 있는 목록에도 읽어 둔 끝난 목표에도 없으면 그 Theater 의 끝난 목표를 다시 읽는다 — 끝난 목표 캐시는 완료로 보관되기 전에 읽혔을 수 있다. */
+function refreshFinishedFor(objectiveId: string, theaterId: string): void {
+  if (findAnyObjective(objectiveId) === null) loadFinishedObjectives(theaterId);
+  else ensureFinishedObjectives(theaterId);
 }
 
 /**
@@ -53,6 +59,24 @@ export function freshConversationObjectiveId(): string | null {
   return typeof objectiveId === "string" ? objectiveId : null;
 }
 
+/**
+ * 가운데 완료 화면이 세운 보관된 완료 목표 — 살아 있는 목록에 없고 읽어 둔 끝난 목표에만 있는 레코드. 레일의 보드가 같은 레코드를 보인다.
+ * 없으면 null. 같은 상태면 같은 참조다.
+ */
+export function shownFinishedObjective(): Objective | null {
+  const objectiveId = freshConversationObjectiveId();
+  if (!objectiveId) return null;
+  const finished = findFinishedObjective(objectiveId);
+  return finished !== null && findAnyObjective(objectiveId) === finished ? finished : null;
+}
+
+/** 가운데 칸이나 끝난 목표가 바뀌면 깨운다. */
+export function subscribeShownFinished(listener: () => void): () => void {
+  const offFresh = subscribeFreshConversation(listener);
+  const offFinished = subscribeFinishedObjectivesStore(listener);
+  return () => { offFresh(); offFinished(); };
+}
+
 /** 대화 배치·가운데 칸이 바뀌면 깨운다 — 사이드바 줄의 선택 표시가 가운데 칸을 따른다. */
 export function subscribeFreshConversation(listener: () => void): () => void {
   return port?.subscribe(listener) ?? (() => {});
@@ -69,14 +93,16 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   const t = getT(language);
   const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
   const live = useSyncExternalStore(subscribeObjective, () => commanderLive(objectiveId), () => commanderLive(objectiveId));
-  // 보관된 완료 목표는 그 Theater 의 끝난 목표를 읽은 뒤에야 찾는다 — 읽기 전에는 칸을 걷지 않는다.
-  const pending = useSyncExternalStore(subscribeObjectiveOrFinished, () => theaterId !== null && !finishedObjectivesLoaded(theaterId), () => false);
-  useEffect(() => { ensureFinishedObjectives(theaterId); }, [theaterId]);
+  // 보관된 완료 목표는 그 Theater 의 끝난 목표를 (다시) 읽은 뒤에야 찾는다 — 읽는 동안에는 칸을 걷지 않는다.
+  const waiting = () => theaterId !== null && (!finishedObjectivesLoaded(theaterId) || finishedObjectivesLoading(theaterId));
+  const pending = useSyncExternalStore(subscribeObjectiveOrFinished, waiting, () => false);
+  useEffect(() => { if (theaterId) refreshFinishedFor(objectiveId, theaterId); }, [objectiveId, theaterId]);
   // 개시·범위 넓히기로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
+  // 읽는 중인지는 렌더 값이 아니라 지금 값으로 본다 — 바로 위 효과가 같은 커밋에서 다시 읽기를 시작했을 수 있다.
   useEffect(() => {
     if (live) focusOperation(objectiveId);
-    else if ((objective === null && !pending) || objective?.removed) onClose();
-  }, [live, objective, objectiveId, onClose, pending]);
+    else if ((objective === null && !waiting()) || objective?.removed) onClose();
+  }, [live, objective, objectiveId, onClose, pending]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!objective) return null;
   const met = objective.criteria.filter((criterion) => !!criterion.met).length;
   return (

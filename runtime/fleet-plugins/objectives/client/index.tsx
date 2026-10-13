@@ -15,7 +15,7 @@ import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, openObjectiveFromCluster, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
+import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, openObjectiveFromCluster, patchObjectiveView, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -103,11 +103,15 @@ export const objectivesEntry: RailEntryDescriptor = {
     return result.objectives.map((objective) => ({
       id: `objectives:${objective.id}`, title: objective.title, subtitle: objective.done ? `${subtitle} · ${t("objectives.graph.state.done")}` : subtitle,
       activate: () => {
-        if (objective.done && openObjectiveConversation(objective.id, theaterId)) return;
-        // 사이드바 줄과 같다 — 레일은 그 목표를, 가운데 칸은 그 지휘관 대화(없으면 시작 화면)를 세운다. 레일만 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다.
-        revealObjective({ objectiveId: objective.id });
-        openObjectiveFromCluster(theaterId, objective.id);
-        if (!objective.done) openObjectiveConversation(objective.id, theaterId);
+        // 가운데 칸에 그 목표의 대화(지휘관 대화, 없으면 시작·완료 화면)를 세운다 — 보이는 Theater 는 그 대화를 따라온다.
+        // 레일만 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다.
+        const shown = openObjectiveConversation(objective.id, theaterId);
+        // 완료로 보관된 목표는 살아 있는 목록에 없다 — 레일의 보드는 가운데 완료 화면이 읽은 끝난 목표 레코드를 고른다.
+        if (objective.done && shown) patchObjectiveView(theaterId, () => ({ selected: objective.id, externalSelectionId: null }));
+        else revealObjective({ objectiveId: objective.id });
+        // 대화를 세웠으면 Theater 를 따로 옮기지 않는다(옮기기는 가운데 대화를 걷는다) — 레일 패널만 연다.
+        if (shown) openObjectiveFromCluster();
+        else openObjectiveFromCluster(theaterId, objective.id);
       },
     }));
   },

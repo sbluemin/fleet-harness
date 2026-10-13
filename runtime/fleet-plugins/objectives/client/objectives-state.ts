@@ -582,6 +582,7 @@ export function loadFinishedObjectives(theaterId: string): void {
   const api = objectivesApi();
   if (!api || finishedInflight.has(theaterId)) return;
   finishedInflight.add(theaterId);
+  for (const listener of finishedListeners) listener();
   void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
     .then((result) => {
       if (!Array.isArray(result?.objectives)) return;
@@ -590,12 +591,20 @@ export function loadFinishedObjectives(theaterId: string): void {
       for (const listener of finishedListeners) listener();
     })
     .catch(() => undefined)
-    .finally(() => { finishedInflight.delete(theaterId); });
+    .finally(() => {
+      finishedInflight.delete(theaterId);
+      for (const listener of finishedListeners) listener();
+    });
 }
 
 /** 아직 읽지 않은 Theater 면 읽는다. */
 export function ensureFinishedObjectives(theaterId: string | null): void {
   if (theaterId && !finishedByTheater.has(theaterId)) loadFinishedObjectives(theaterId);
+}
+
+/** 그 Theater 의 끝난 목표를 지금 읽는 중이다. */
+export function finishedObjectivesLoading(theaterId: string): boolean {
+  return finishedInflight.has(theaterId);
 }
 
 /** 그 Theater 의 끝난 목표를 한 번이라도 읽었다. */
