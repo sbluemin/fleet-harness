@@ -68,7 +68,9 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     const gateway = gatewayModelWindow(options.model);
     const emit = (event: AgentEvent) => {
       if (closed || cancelled) return;
-      const framed = gateway === undefined ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null);
+      // 좌표를 바꾸는 것은 압축과 사용량을 실은 결과뿐이다 — 스트림 delta마다 Gateway 설정을 읽지 않는다.
+      const reframes = event.kind === "compacted" || (event.kind === "result" && event.usage !== undefined);
+      const framed = gateway === undefined || !reframes ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null);
       options.onEvent?.(redact(framed) as typeof framed);
     };
     const loop = createClaudeExecutionLoop({
