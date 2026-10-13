@@ -4,14 +4,14 @@ import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreAsk } from "../server/commodore/types.js";
-import { MAX_DECISION_ANSWER } from "../server/types.js";
+import { MAX_SHORT_INPUT } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { answerCommodoreAsk, openAsks, useCommodore } from "./commodore-state.js";
+import { answerCommodoreAsk, askObjectiveTitle, openAsks, useCommodore } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { revealObjective } from "./objectives-state.js";
+import { revealObjective, useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -30,12 +30,13 @@ export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "a
 /** `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로. */
 export function CommodoreAskCards({ theaterId, t, phone = false, onEnded }: { readonly theaterId: string; readonly t: T; readonly phone?: boolean; readonly onEnded?: (error: unknown) => void }) {
   const { view } = useCommodore(theaterId);
+  const board = useObjectiveTheater(theaterId);
   const asks = openAsks(theaterId);
   if (asks.length === 0) return null;
-  const titles = view?.asks?.objectives ?? {};
+  const titleOf = (objectiveId: string) => askObjectiveTitle(board, view?.asks?.objectives, objectiveId);
   return (
     <div className={phone ? "objectives-cm-asks" : "objectives-asks"}>
-      {asks.map((ask) => <AskCard key={ask.id} ask={ask} theaterId={theaterId} objectiveTitle={ask.objectiveId ? titles[ask.objectiveId]?.title ?? null : null} t={t} phone={phone} onEnded={onEnded} />)}
+      {asks.map((ask) => <AskCard key={ask.id} ask={ask} theaterId={theaterId} objectiveTitle={ask.objectiveId ? titleOf(ask.objectiveId) : null} t={t} phone={phone} onEnded={onEnded} />)}
     </div>
   );
 }
@@ -131,7 +132,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
             <SyncedTextarea
               className={c.free}
               rows={1}
-              maxLength={MAX_DECISION_ANSWER}
+              maxLength={MAX_SHORT_INPUT}
               disabled={sending}
               value={current.text}
               aria-label={t("objectives.decision.writeAria", { n: index + 1 })}

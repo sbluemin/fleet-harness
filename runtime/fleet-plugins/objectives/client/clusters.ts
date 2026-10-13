@@ -12,11 +12,11 @@ import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation, openCommodoreLog } from "./commodore-conversation.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
 import { renderCommodoreRowGlyph, renderCommodoreRowGlyphOff } from "./commodore-mention-glyph.js";
-import { commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore } from "./commodore-state.js";
+import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, openAsks, openAskTheaters, personTurnAt, readCommodore, subscribeCommodore } from "./commodore-state.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, readTheater, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -361,9 +361,10 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   }
   // 사령관의 질문 — 목표 묶음이 아닌 줄로 「내 결정」에 선다(물은 시각순). 누르면 질문 카드가 선 사령관 기록이 열린다.
   for (const theaterId of openAskTheaters()) {
-    const titles = readCommodore(theaterId).view?.asks?.objectives ?? {};
+    const served = readCommodore(theaterId).view?.asks?.objectives;
+    const board = readTheater(theaterId);
     for (const ask of openAsks(theaterId)) {
-      const objectiveTitle = ask.objectiveId ? titles[ask.objectiveId]?.title ?? null : null;
+      const objectiveTitle = ask.objectiveId ? askObjectiveTitle(board, served, ask.objectiveId) : null;
       out.push({
         id: `commodore-ask:${ask.id}`, theaterId, title: ask.questions[0]?.text ?? "", members: [], open: () => openCommodoreLog(theaterId),
         row: {
