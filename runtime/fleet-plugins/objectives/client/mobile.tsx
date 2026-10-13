@@ -9,7 +9,7 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/se
 
 import { livePersonHold } from "../server/board-state.js";
 import { ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
-import { bandChoices, bandFailure, bandReason } from "./action-band.js";
+import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, decisionTurn, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import type { CommodoreAsk } from "../server/commodore/types.js";
@@ -248,6 +248,9 @@ export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
 // ── 상세 ──
 
 interface Recipient { readonly id: string; readonly role: string; readonly state: string }
+/** 띠가 지금 「완료」를 세우지 못하는 사정 — 누르기 전의 상태다(거절 문구가 아니다). */
+type FinishBlock = "awaiting" | "working" | "gated" | "steer" | "notInReview";
+
 interface ObjectiveActions {
   readonly recipients: readonly Recipient[];
   readonly message: boolean;
@@ -260,10 +263,10 @@ interface ObjectiveActions {
    */
   readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[] } | null;
   /**
-   * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정의 거절 코드(띠의 판정 순서와 같다), null 이면
+   * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정(띠의 판정 순서와 같다), null 이면
    * 누를 수 있다. followups 는 완료가 후속 후보 고르기를 거쳐야 하는가(띠의 followupAvailable) — 그러면 완료는 고르기 시트를 연다.
    */
-  readonly finish: { readonly blocked: string | null; readonly followups: boolean } | null;
+  readonly finish: { readonly blocked: FinishBlock | null; readonly followups: boolean } | null;
 }
 
 /**
@@ -293,13 +296,13 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
       ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review }
       : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review }
         : working ? { kind, reason: t("objectives.mobile.commence.working"), review } : null;
-  const finish = done || !objective.awaitingReview ? null : {
+  const finish: ObjectiveActions["finish"] = done || !objective.awaitingReview ? null : {
     blocked: choices.primary === "complete" && !choices.gated ? null
-      : commanderAwaiting ? "session_awaiting_input"
-        : working ? "objective_busy"
-          : memberAwaiting ? "session_awaiting_input"
-            : choices.gated ? "criteria_pending"
-              : steeredEdits(objective) ? "steer_required" : "not_in_review",
+      : commanderAwaiting ? "awaiting"
+        : working ? "working"
+          : memberAwaiting ? "awaiting"
+            : choices.gated ? "gated"
+              : steeredEdits(objective) ? "steer" : "notInReview",
     followups: choices.followupAvailable,
   };
   // 후속 후보가 있으면 완료는 띠처럼 곧바로 하지 않고 후보 고르기 시트를 거친다(finish.followups).
@@ -395,6 +398,14 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
       .then(({ objective: archived, deleted }) => { if (deleted) removeObjectiveLocally(id); else upsertObjectiveLocally(archived); panes.close(); })
       .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api, panes]);
+  // 한 번 보였던 목표가 목록에서 사라지면(완료·보관으로 Operation 이 보관함에 들어갔다) 빈 상세를 남기지 않고 닫는다 — 보관 경로의 닫기와 같다.
+  const shownOnce = useRef(false);
+  useEffect(() => {
+    if (objective) { shownOnce.current = true; return; }
+    if (!shownOnce.current || !visible) return;
+    shownOnce.current = false;
+    panes.close();
+  }, [objective, visible, panes]);
   const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${archivable ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
@@ -457,10 +468,21 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
 
 // ── 넘김 답하기 ──
 
-/** 후속 후보를 지금 고를 수 있는지의 한 줄 — 고를 수 없으면 데스크톱 본문 구획의 말로, 띠가 다른 할 일을 먼저 세우면 띠의 사유 낱말로 말한다. */
+/** 막힌 사정을 누르기 전의 상태로 말한다 — 개시 카드와 같은 상태 문구를 먼저 쓰고, 띠의 거절 문구는 쓰지 않는다. */
+function finishBlockText(t: T, objective: Objective, block: FinishBlock): string {
+  switch (block) {
+    case "working": return t("objectives.mobile.commence.working");
+    case "awaiting": return t("objectives.mobile.finish.awaiting");
+    case "gated": return t("objectives.band.gated", { count: objective.criteriaProposals.length });
+    case "steer": return t("objectives.band.reason.steerRequired");
+    case "notInReview": return t("objectives.band.reason.notInReview");
+  }
+}
+
+/** 후속 후보를 지금 고를 수 있는지의 한 줄 — 고를 수 없으면 데스크톱 본문 구획의 말로, 띠가 다른 할 일을 먼저 세우면 그 상태로 말한다. */
 function followupNote(objective: Objective, finish: ObjectiveActions["finish"], t: T, count: number): string {
   if (finish?.followups) return t("objectives.followup.listTip", { n: count });
-  if (isFollowupSelectable(objective)) return bandReason(t, finish?.blocked ?? "not_in_review");
+  if (isFollowupSelectable(objective)) return finishBlockText(t, objective, finish?.blocked ?? "notInReview");
   const gate = followupGate(objective);
   return gate === "steer" ? t("objectives.followup.bodyEdited")
     : gate === "criteria" ? t("objectives.followup.bodyGated")
@@ -471,7 +493,7 @@ function followupNote(objective: Objective, finish: ObjectiveActions["finish"], 
 /**
  * 사령관이 넘긴 완료 검토·후속 후보 — 이유·돌려주기(`PersonHoldNote`) 카드에 그 항목에 직접 답하는 단추를 붙인다.
  * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
- * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 띠의 사유 낱말로 막힌 사정을 말한다.
+ * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
  * 둘이 함께 서면 두 카드가 같은 시트를 연다 — 넘김은 따로 돌려줄 수 있어, 하나를 돌려준 뒤에도 남은 카드만으로 답이 된다.
  * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다(데스크톱 본문 구획과 같다).
  */
@@ -490,7 +512,7 @@ function HoldAnswers({ objective, finish, t, language, api, onPick }: {
   const followupHeld = livePersonHold(objective, "followup") !== null;
   if (!reviewHeld && !followupHeld) return null;
   const count = openFollowups(objective).length;
-  const blocked = finish?.blocked ?? "not_in_review";
+  const blocked = finish?.blocked ?? "notInReview";
   const completable = !!finish && finish.blocked === null;
   const pickable = !!finish?.followups;
   const complete = () => {
@@ -502,7 +524,7 @@ function HoldAnswers({ objective, finish, t, language, api, onPick }: {
       .catch((error: unknown) => setFault(bandFailure(t, error, { message: false, talk: false })))
       .finally(() => setBusy(false));
   };
-  const reviewDesc = !completable ? bandReason(t, blocked)
+  const reviewDesc = !completable ? finishBlockText(t, objective, blocked)
     : pickable ? t("objectives.followup.sub", { n: count })
       : t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub");
   return (
@@ -546,12 +568,21 @@ function FollowupSheet({ objective, finish, t, api, language, onClose }: {
   const [openId, setOpenId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 고른 후보가 고쳐져 선택이 풀렸다 — 사람이 모르고 0건으로 완료하지 않게, 다시 고르거나 닫을 때까지 시트에 한 줄 남긴다.
+  const [revised, setRevised] = useState(false);
+  // 이 시트가 마지막으로 본 선택(id → 고른 순간의 rev) — 다른 곳에서 먼저 풀어도 무엇이 풀렸는지 안다.
+  const seenRevs = useRef(new Map(readSelectionRevs(objectiveId)));
   const idsKey = candidates.map((candidate) => `${candidate.id}:${candidate.rev}`).join(",");
   // 띠와 같다 — 목록에서 사라진 id 는 초안에서 거두고, rev 가 바뀐 id 는 선택을 풀어 고친 본문을 확인한 뒤 다시 고르게 한다.
   useEffect(() => {
     const openRevs = new Map(idsKey ? idsKey.split(",").map((entry) => { const at = entry.lastIndexOf(":"); return [entry.slice(0, at), Number(entry.slice(at + 1))] as const; }) : []);
+    const changed = [...seenRevs.current].some(([id, rev]) => openRevs.has(id) && openRevs.get(id) !== rev);
     pruneSelection(objectiveId, openRevs);
+    seenRevs.current = new Map(readSelectionRevs(objectiveId));
+    if (changed) setRevised(true);
   }, [objectiveId, idsKey]);
+  // 선택이 바뀌면 본 선택도 따라간다 — 위 효과가 먼저 돌아 같은 커밋의 rev 변경을 놓치지 않는다.
+  useEffect(() => { seenRevs.current = new Map(readSelectionRevs(objectiveId)); }, [objectiveId, selection]);
   const total = candidates.length;
   const picked = candidates.filter((candidate) => selection.has(candidate.id)).length;
   const submit = async () => {
@@ -591,11 +622,12 @@ function FollowupSheet({ objective, finish, t, api, language, onClose }: {
           idPrefix={`m-${objectiveId}`}
           openId={openId}
           onOpenChange={setOpenId}
-          onToggleCheck={(candidateId, checked) => { const rev = candidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objectiveId, candidateId, checked, rev); setError(null); }}
+          onToggleCheck={(candidateId, checked) => { const rev = candidates.find((candidate) => candidate.id === candidateId)?.rev ?? 1; toggleFollowupSelection(objectiveId, candidateId, checked, rev); setError(null); setRevised(false); }}
           onDiscard={discard}
         />
         <FollowupDiscardedTrace discarded={discardedFollowups(objective)} t={t} />
       </div>
+      {revised && !error ? <p className="objectives-m-fault" role="status">{t("objectives.band.reason.followupChanged")}</p> : null}
       {error ? <p className="objectives-m-fault" role="alert">{error}</p>
         : selectable ? <p className="objectives-m-secnote">{picked === 0 ? t("objectives.followup.sendEmpty", { n: total }) : t("objectives.followup.sendSome", { k: picked })}</p>
         : null}

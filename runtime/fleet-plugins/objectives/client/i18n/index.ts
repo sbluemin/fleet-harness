@@ -917,6 +917,7 @@ export const objectivesEn = {
   "objectives.mobile.routing.hint": "Commence launches the {count} routed members with the models above.",
   "objectives.mobile.routing.stale": "The reviewed routing changed, so it was loaded again — check it and commence again.",
   "objectives.mobile.followup.pick": "Pick follow-ups",
+  "objectives.mobile.finish.awaiting": "A permission request is waiting — answer it first",
 };
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
@@ -1835,6 +1836,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.mobile.routing.hint": "개시하면 라우팅 구성원 {count}명을 위 모델로 띄웁니다.",
   "objectives.mobile.routing.stale": "확인한 라우팅 결과가 바뀌어 다시 받았습니다 — 확인하고 다시 개시하세요.",
   "objectives.mobile.followup.pick": "후속 고르기",
+  "objectives.mobile.finish.awaiting": "허용 요청이 기다리고 있습니다 — 먼저 답하세요",
 };
 
 const OBJECTIVE_MESSAGES = { en: objectivesEn, ko: objectivesKo } as const;

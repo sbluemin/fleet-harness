@@ -191,17 +191,11 @@ const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
   resume_unavailable: "objectives.band.reason.recipientUnreachable",
 };
 
-/** 거절 코드를 띠의 사유 낱말로 — 모르는 코드는 그대로 둔다. 모바일 넘김 카드가 막힌 사정도 같은 말로 낸다. */
-export function bandReason(t: T, code: string): string {
-  const reasonKey = REASONS[code];
-  return reasonKey ? t(reasonKey) : t("objectives.band.reason.other", { code });
-}
-
 /** 실패 코드를 띠의 사유 한 줄로 — 메시지의 거절은 받는 이의 사정이 먼저다. 모바일 ⋮ 도 같은 문구를 쓴다. */
 export function bandFailure(t: T, error: unknown, options: { readonly message: boolean; readonly talk: boolean }): string {
   const code = error instanceof Error ? error.message : "unknown";
-  const messageKey = options.message ? MESSAGE_REASONS[code] : undefined;
-  const reason = messageKey ? t(messageKey) : bandReason(t, code);
+  const reasonKey = options.message ? MESSAGE_REASONS[code] ?? REASONS[code] : REASONS[code];
+  const reason = reasonKey ? t(reasonKey) : t("objectives.band.reason.other", { code });
   return t(options.talk ? "objectives.band.failed" : "objectives.band.failedAction", { reason });
 }
 

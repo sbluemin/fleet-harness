@@ -142,6 +142,10 @@
 .objectives-m .objectives-m-b2 { height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-inverse); color: var(--m-on-inverse); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
 .objectives-m .objectives-m-b2:disabled { opacity: .4; cursor: default; }
 .objectives-m .objectives-m-b2.is-quiet { background: transparent; color: var(--m-text-muted); box-shadow: inset 0 0 0 1px var(--m-hairline-strong); }
+/* 누를 자리 44 — 보이는 알약(40)은 그대로 두고 투명 ::before 를 위아래 2씩 내민다(R3 누름 겹침은 ::after 라 겹치지 않는다).
+   옆 단추와는 가로로 내밀지 않아 칸이 겹치지 않는다. 시트의 알약(.objectives-m-pill2)도 같다. */
+.objectives-m .objectives-m-b2, .objectives-m-sheet-layer .objectives-m-pill2 { position: relative; }
+.objectives-m .objectives-m-b2::before, .objectives-m-sheet-layer .objectives-m-pill2::before { content: ""; position: absolute; inset: -2px 0; }
 .objectives-m-fault { margin: 0; font-size: var(--m-fs-caption); color: var(--m-danger); }
 
 /* 보조 알약 — 받는 사람 칩, 시트의 「보내기」(.is-inv). */
