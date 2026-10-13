@@ -1210,12 +1210,12 @@ function DormantChatView({ context, session }: { readonly context: OperationRend
   }, [context, session.sessionId]);
 
   return (
-    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(); }}>
-      <span className="canvas-operation-dormant-status">{t("terminal.chat.dormantStatus")}</span>
-      <span className="canvas-operation-dormant-body">
+    <button type="button" className="operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(); }}>
+      <span className="operation-dormant-status">{t("terminal.chat.dormantStatus")}</span>
+      <span className="operation-dormant-body">
         {resumeState === "error" ? t("terminal.chat.dormantResumeFailed") : t("terminal.chat.dormantBody")}
       </span>
-      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+      <span className={`operation-dormant-action${resumeState === "resuming" ? " operation-dormant-action--pending" : ""}`}>
         {resumeState === "resuming" ? t("terminal.chat.dormantResuming") : t(resumeState === "error" ? "terminal.dormant.tryAgain" : "terminal.chat.dormantResume")}
       </span>
     </button>
@@ -1246,27 +1246,27 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
 
   if (resumeState === "error" || resumeState === "launch-option-error") {
     return (
-      <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
-        <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
-        <p className="canvas-operation-dormant-error">
+      <div className="operation-dormant operation-dormant--error" role="alert">
+        <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
+        <p className="operation-dormant-error">
           {resumeState === "launch-option-error"
             ? t("terminal.dormant.resumeLaunchOptionFailedBody", { name: session.label || session.cwdLabel })
             : freshOnly
               ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
               : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
-        <div className="canvas-operation-dormant-error-actions">
+        <div className="operation-dormant-error-actions">
           {freshOnly ? (
-            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(true); }}>
+            <button type="button" className="operation-dormant-action" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           ) : (
-            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
+            <button type="button" className="operation-dormant-action" onClick={() => { void resume(false); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           )}
           {resumeState === "launch-option-error" || freshOnly ? null : (
-            <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
+            <button type="button" className="operation-dormant-action operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.startFresh")}
             </button>
           )}
@@ -1276,9 +1276,9 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   }
 
   return (
-    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
-      <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
-      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+    <button type="button" className="operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
+      <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
+      <span className={`operation-dormant-action${resumeState === "resuming" ? " operation-dormant-action--pending" : ""}`}>
         {resumeState === "resuming"
           ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
           : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}

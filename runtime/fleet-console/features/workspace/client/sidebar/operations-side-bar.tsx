@@ -14,7 +14,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { CanvasContextMenu } from "./canvas-context-menu.js";
+import { OperationLaunchContextMenu } from "./operation-launch-context-menu.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -23,10 +23,9 @@ import { operationAccentFromNode, resolveAccentColor } from "../operation-accent
 import { getTheaterGroupCollapse, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCollapsedGroups, useOperationAccent, useStoredTheaterRevision } from "./group-collapse-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive, useTheaterInboxReturnTarget } from "../theater-contributions.js";
+import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
 import { useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
-import { isConversationLayoutActive } from "../../../settings/client/use-conversation-layout.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -36,7 +35,6 @@ import {
   type SideBarOperationMenuAction,
 } from "./interaction.js";
 import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-chip.js";
-import { useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
@@ -998,9 +996,9 @@ export function OperationsSideBar({
     if (event.defaultPrevented) return;
     event.preventDefault();
     setActiveContextMenu(null);
-    // 캔버스(Map) 쪽에 이미 열린 캔버스 제어 메뉴는 사이드바 <aside> 안에 있지 않아
+    // 다른 입구에서 열린 실행 메뉴도 함께 닫는다.
     // 포털의 mousedown 외부-클릭 닫기가 안 잡는다 — 포털이 구독하는 닫기 신호를 함께 본다.
-    window.dispatchEvent(new Event("canvas-context-menu-close"));
+    window.dispatchEvent(new Event("operation-launch-context-menu-close"));
     if (theaters.length === 0) {
       setNewMenu(null);
       return;
@@ -1122,7 +1120,6 @@ export function OperationsSideBar({
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}
       data-resizing={resizing ? "true" : undefined}
-      data-canvas-blocker
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       inert={collapsed && !sideBar.peeking}
       onContextMenu={openNewMenuAtCursor}
@@ -1185,7 +1182,7 @@ export function OperationsSideBar({
               theaterId: theater.id,
               operations,
               operationOrder: operationOrderFromNodes(operations.filter((operation) => operation.theaterId === theater.id)),
-              // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
+              // 비활성 Theater의 칩은 지금 열린 대화가 아니므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               selectedOperationId: doubleClickOpen ? selectedOperationId : null,
               operationNotifications,
@@ -1434,7 +1431,7 @@ export function OperationsSideBar({
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 
       {newMenu ? createPortal(
-        <CanvasContextMenu
+        <OperationLaunchContextMenu
           key={`${newMenu.anchor.x}:${newMenu.anchor.y}`}
           anchor={newMenu.anchor}
           viewportBounds={newMenu.viewportBounds}
@@ -1709,7 +1706,6 @@ function TheaterSectionHeader({
 }: TheaterSectionHeaderProps) {
   const t = useT();
   // 대화 중심 화면의 머리는 사령관 카드다 — 큰 아바타, 둘째 줄 요약, ⋯ 메뉴. 머리 제어는 머무를 때·활성일 때 선다(CSS).
-  const card = useSideBarRowStyle() === "conversation";
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
   // Console Use — 에이전트가 이 Theater 의 목록·그룹을 읽으면 헤더 행 전체가 감싸인다. Theater 바로 아래 선 목표 줄의 묶음 머리이기도 하다.
@@ -1724,8 +1720,6 @@ function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
   const mark = useTheaterContributionMark(contributionSummary, active);
   const live = useTheaterHeaderLive(theater.id);
-  // Inbox 를 닫을 때 입구(우클릭 메뉴 항목 등)가 사라졌으면 포커스가 이 머리로 돌아온다.
-  useTheaterInboxReturnTarget(theater.id, () => activateRef.current);
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
   const keyFinishRef = useRef(false);
@@ -1742,12 +1736,12 @@ function TheaterSectionHeader({
         ...(summary.waiting > 0 ? [t("sidebar.theater.summary.waiting", { count: summary.waiting })] : []),
       ].join(" · ");
   // 둘째 줄 — 별칭이 있으면 원래 Theater 이름이 먼저 선다(어느 폴더인지 늘 보인다). 사령관 카드는 그 뒤에 요약을 잇는다.
-  const subline = [...(theater.alias ? [theater.label] : []), ...(card ? [summaryText] : [])].join(" · ");
+  const subline = [...(theater.alias ? [theater.label] : []), summaryText].join(" · ");
   const headerClassName = [
     "side-bar-theater-header",
     consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
-    card ? "is-card" : "",
+    "is-card",
     dragging ? "side-bar-theater-header--dragging" : "",
     dropTarget ? "side-bar-theater-header--drop-target" : "",
   ].filter(Boolean).join(" ");
@@ -1755,8 +1749,7 @@ function TheaterSectionHeader({
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    if (isConversationLayoutActive()) return;
-    onContextMenu(event.currentTarget.getBoundingClientRect());
+
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -1782,15 +1775,14 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // 이름은 Theater 를 전환한다. 대화 중심 화면은 한 번 누르면 그 Theater 의 대화도 열고, 기존 배치는 활성 Theater 에서만
-  // Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
+  // 이름은 Theater 를 전환하고 그 Theater 의 대화를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
     if (!active) onSelectTheater(theater.id);
-    if (active || isConversationLayoutActive()) onOpenInbox(theater, activateRef.current);
+    onOpenInbox(theater, activateRef.current);
   };
   const collapseLabel = collapsed
     ? t("sidebar.theater.expand", { theater: displayName })
@@ -1798,7 +1790,7 @@ function TheaterSectionHeader({
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 플러그인 표식이 없을 때도 Theater 는 사령관 아바타로 선다 — 기여가 주는 얼굴이 없으니 쉼이다. */}
-      <TheaterAvatar theaterId={theater.id} size={card ? 32 : 18} label="" decorative />
+      <TheaterAvatar theaterId={theater.id} size={32} label="" decorative />
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
@@ -1832,7 +1824,7 @@ function TheaterSectionHeader({
           {mark === null ? avatarAnchor(false) : null}
           <span className="side-bar-theater-text">
             <TheaterAliasInput theater={theater} onDone={(alias, viaKey) => { keyFinishRef.current = viaKey; onFinishAliasEdit(theater.id, alias); }} />
-            {card ? <span className="side-bar-theater-sub">{[theater.label, summaryText].join(" · ")}</span> : null}
+            <span className="side-bar-theater-sub">{[theater.label, summaryText].join(" · ")}</span>
           </span>
         </>
       ) : (
@@ -1856,8 +1848,7 @@ function TheaterSectionHeader({
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
         {/* Theater 동작(별칭·시스템 프롬프트·새 그룹·Theater 잊기)은 머리 우클릭(Shift+F10) 메뉴에 있다. 사령관 카드는 머리 우클릭을
             받지 않으므로(대화 중심 화면) 같은 메뉴를 ⋯ 로 연다. 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
-        {card ? (
-          <button
+        <button
             type="button"
             className="side-bar-theater-row-btn side-bar-theater-more-btn"
             aria-haspopup="menu"
@@ -1866,8 +1857,7 @@ function TheaterSectionHeader({
             onClick={(event) => onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
           >
             <MoreIcon />
-          </button>
-        ) : null}
+        </button>
         <button
           type="button"
           className="side-bar-theater-row-btn side-bar-theater-collapse-btn"

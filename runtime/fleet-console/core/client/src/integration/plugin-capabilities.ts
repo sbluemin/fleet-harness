@@ -4,7 +4,7 @@ import { conversationTabId, getMobileDestination, requestMobileConversationTab, 
 import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
-import { getViewModeSnapshot } from "./view-mode-store.js";
+import { getViewModeSnapshot, subscribeViewMode } from "./view-mode-store.js";
 import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-entry.js";
 import { openSettingsSurface } from "../../../../features/settings/client/settings-door.js";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
@@ -22,7 +22,6 @@ import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getArenaInsets, subscribeArenaInsets } from "../../../../features/workspace/client/conversation/arena-insets.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
-import { isConversationLayoutActive, subscribeConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
@@ -99,7 +98,7 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
         return true;
       }
       // 대화 중심 화면의 설정은 레일 페인이 아니라 가운데 모달이다 — 팔레트 검색 결과·플러그인의 설정 목표도 같은 문으로 든다.
-      if (target.paneId === SETTINGS_PANE_ID && isConversationLayoutActive()) {
+      if (target.paneId === SETTINGS_PANE_ID && (getViewModeSnapshot().effective === "desktop")) {
         navigateConsoleRoute("/operations");
         openSettingsSurface(target.params?.section);
         return true;
@@ -297,9 +296,9 @@ export function createHostCapabilities(
     theaterInbox: theaterInboxCapability,
     // 대화 중심 화면 — 켜짐 여부와 가운데 칸의 플러그인 대화. 꺼져 있으면 open 은 아무것도 세우지 않는다.
     conversation: {
-      isActive: () => isConversationLayoutActive(),
+      isActive: () => (getViewModeSnapshot().effective === "desktop"),
       subscribe: (listener) => {
-        const disposeLayout = subscribeConversationLayout(listener);
+        const disposeLayout = subscribeViewMode(listener);
         const disposeSurface = subscribeConversationSurface(listener);
         const disposeSubject = subscribeConversationSubject(listener);
         return () => { disposeLayout(); disposeSurface(); disposeSubject(); };

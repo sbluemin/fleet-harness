@@ -4,7 +4,7 @@
    떠 있는 것은 가운데 머리 pill 과 아래 입력 캡슐뿐이다.
    색은 테마 토큰만 쓴다. 선택·위치는 brass 한 채널이 말하고, 상태는 원형 글리프가 말한다. */
 
-.console-shell.is-conversation-layout {
+.console-shell.is-operations-view {
   /* 대화·세부 정보의 바탕과 사이드바의 바탕 — 네 테마 모두 기존 토큰에서 고른다(새 색 체계를 만들지 않는다).
      Desktop 의 Windows 캡션 버튼 띠도 대화 바탕과 같은 색이다(desktop-contract.ts DESKTOP_CONVERSATION_OVERLAYS). */
   --conversation-surface: var(--canvas-abyss);
@@ -71,7 +71,7 @@
   --glass-panel-face: transparent;
 }
 
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .console-body.is-conversation .right-rail-panel-slot {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .console-body.is-conversation .right-rail-panel-slot {
   --surface-panel-raised: var(--surface-panel);
 }
 
@@ -238,7 +238,7 @@
 
 /* 대화 다크의 제목 pill 은 입력 캡슐과 같은 불투명 캡슐이다(레퍼런스 #1f1f1f). 유리 면·테두리 토큰을 캡슐 값으로 다시 꽂아,
    기본·hover 규칙을 그대로 쓴다. 라이트는 지금의 유리 면 그대로다. */
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-pill {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .conversation-pill {
   --surface-glass-strong: var(--surface-capsule);
   --surface-rim-strong: var(--surface-capsule-rim);
 }
@@ -334,12 +334,12 @@
    --text-secondary 는 레퍼런스 보조 글자 실측(#a7a7a7, L 72.8%)이라 응답 전체가 흐린 회색으로 보였다(문단·목록 항목은 공용
    `.markdown-body p, li` 가 다시 --text-secondary 를 준다). 가운데 칸의 응답(1:1·그룹·사령관
    기록)만 --text-primary(L 97%)로 올린다. 인라인 코드는 Fleet 의 금색 글자를 지킨다. 라이트·토글 끔은 그대로다. */
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body,
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body :is(p, li) {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .conversation-body .markdown-body,
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .conversation-body .markdown-body :is(p, li) {
   color: var(--text-primary);
 }
 
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-body .markdown-body :not(pre) > code {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .conversation-body .markdown-body :not(pre) > code {
   color: var(--brass-bright);
 }
 
@@ -422,7 +422,7 @@
 
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
-.console-shell.is-conversation-layout .operations-side-bar.is-expanded { overflow: visible; }
+.console-shell.is-operations-view .operations-side-bar.is-expanded { overflow: visible; }
 .operations-side-bar.is-closed .conversation-side-top {
   display: none;
 }
@@ -446,7 +446,7 @@
 .side-bar-cluster-row--conversation .side-bar-cluster-row-title {
   font-weight: var(--weight-medium);
 }
-.console-shell.is-conversation-layout .side-bar-cluster-avatars-mini {
+.console-shell.is-operations-view .side-bar-cluster-avatars-mini {
   background: var(--conversation-side);
 }
 
@@ -893,7 +893,7 @@
 
 /* 대화 다크의 켜진 탭은 봇 말풍선과 같은 한 단 밝은 면이다(레퍼런스 #1b1b1b ≈ --surface-panel). 흰 알파 워시는 새 바탕 위에서
    그보다 밝게 떴다. */
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) .conversation-panel-tabs .right-rail-ico.is-text.is-active {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) .conversation-panel-tabs .right-rail-ico.is-text.is-active {
   background: var(--surface-panel);
 }
 
@@ -930,7 +930,7 @@
 }
 
 /* ── 사이드바 맨 위 줄: 보기·정렬·접기와 찾기·새로 만들기를 한 줄, 한 문법으로 ──────────── */
-.console-shell.is-conversation-layout .side-bar-top-strip {
+.console-shell.is-operations-view .side-bar-top-strip {
   z-index: 3;
   height: var(--conversation-top-row);
   margin: 0;
@@ -944,7 +944,7 @@
 .side-bar-top-strip.is-compact > * { flex: none; }
 .side-bar-top-strip.is-compact > .side-bar-top-strip-spacer { flex: 1 1 0; min-width: 0; }
 
-.console-shell.is-conversation-layout .side-bar-top-strip :is(.side-bar-collapse, .side-bar-status-view-toggle, .side-bar-view-menu-button) {
+.console-shell.is-operations-view .side-bar-top-strip :is(.side-bar-collapse, .side-bar-status-view-toggle, .side-bar-view-menu-button) {
   width: 30px;
   height: 30px;
   border-radius: var(--radius-pill);
@@ -955,7 +955,7 @@
 .side-bar-top-strip.is-compact > .command-band-brand :is(.command-band-brand-glyph, svg) { width: 22px; height: 22px; flex: none; }
 .side-bar-top-strip.is-compact > .command-band-brand .command-band-brand-wordmark { white-space: nowrap; }
 
-.console-shell.is-conversation-layout .side-bar-top-strip .conversation-round {
+.console-shell.is-operations-view .side-bar-top-strip .conversation-round {
   width: 30px;
   height: 30px;
 }
@@ -968,7 +968,7 @@
    목록 위에 단추가 뜨므로 줄 안쪽만 바탕에서 투명으로 옅어지는 짧은 그라디언트를 둔다(가리는 띠가 아니다).
    부관 고정 줄이 서면 그 줄이 맨 위 줄 아래에 고정으로 서고 목록은 그 아래서 시작한다. 오른쪽 세부 정보 머리는 글자 탭이라 내용이
    그 밑으로 흐르면 읽히지 않는다 — 효과 없이 바탕과 같은 면의 고정 줄로 둔다. */
-.console-shell.is-conversation-layout .side-bar-top-strip {
+.console-shell.is-operations-view .side-bar-top-strip {
   position: absolute;
   top: 0;
   right: 0;
@@ -977,19 +977,19 @@
   background: linear-gradient(to bottom, color-mix(in oklch, var(--conversation-side) 88%, transparent) 40%, color-mix(in oklch, var(--conversation-side) 0%, transparent));
 }
 
-.console-shell.is-conversation-layout .side-bar-top-strip > * { pointer-events: auto; }
-.console-shell.is-conversation-layout .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
+.console-shell.is-operations-view .side-bar-top-strip > * { pointer-events: auto; }
+.console-shell.is-operations-view .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
 
-.console-shell.is-conversation-layout .operations-side-bar-chips {
+.console-shell.is-operations-view .operations-side-bar-chips {
   padding-top: calc(var(--space-1) + var(--conversation-top-row));
 }
 
 /* 부관이 출근하지 않으면 고정 줄은 비어 있다 — 그 래퍼도 자리를 차지하지 않는다. */
 .conversation-side-top:has(> .conversation-side-pinned:empty) { display: none; }
-.console-shell.is-conversation-layout .conversation-side-top { margin-top: var(--conversation-top-row); }
-.console-shell.is-conversation-layout .operations-side-bar:has(.conversation-side-pinned:not(:empty)) .operations-side-bar-chips { padding-top: var(--space-1); }
+.console-shell.is-operations-view .conversation-side-top { margin-top: var(--conversation-top-row); }
+.console-shell.is-operations-view .operations-side-bar:has(.conversation-side-pinned:not(:empty)) .operations-side-bar-chips { padding-top: var(--space-1); }
 
-.console-shell.is-conversation-layout .side-bar-top-strip .side-bar-view-menu-button {
+.console-shell.is-operations-view .side-bar-top-strip .side-bar-view-menu-button {
   background: color-mix(in oklch, var(--conversation-side) 80%, transparent);
 }
 
@@ -998,18 +998,18 @@
 }
 
 /* ── 사이드바 행: Grok 처럼 한 리듬, 선택은 면 워시만 ─────────────────────────────── */
-.console-shell.is-conversation-layout :is(.side-bar-chip--conversation, .side-bar-cluster-row) {
+.console-shell.is-operations-view :is(.side-bar-chip--conversation, .side-bar-cluster-row) {
   border-radius: 10px;
 }
 
 /* 「확인 필요」 구역은 카드 테두리가 받쳐 주던 바깥 자리가 없어졌으므로 행과 같은 안쪽 여백에 선다. */
-.console-shell.is-conversation-layout .side-bar-attention {
+.console-shell.is-operations-view .side-bar-attention {
   margin-inline: var(--space-2);
 }
 
 /* 열린 행은 면 하나로 말한다 — 테두리·왼쪽 띠를 두지 않는다. 면은 --surface-row-selected 다: 기본은 brass 위치 채널의 워시이고,
    대화 다크는 사람이 고른 레퍼런스대로 중립 회색 면(#202020)이다. 이름 잉크는 위의 대화 행 규칙이 지킨다. */
-.console-shell.is-conversation-layout :is(.side-bar-cluster-row--active, .side-bar-chip--active) {
+.console-shell.is-operations-view :is(.side-bar-cluster-row--active, .side-bar-chip--active) {
   border-color: transparent;
   background: var(--surface-row-selected);
 }
@@ -1019,7 +1019,7 @@
    이름은 활성 여부와 무관하게 최고 명도다 — 사령관 이름이 그 아래 지휘관 이름보다 흐리면 크기·굵기가 말한 위계를 대비가 뒤집는다.
    자율 운영이 꺼진 사령관은 다른 표면과 같이 아바타가 회색으로 가라앉는다(`.mongle-avatar.is-off`). 아바타 둘레에 고리를 두지 않는다.
    머리 제어(⋯·접기·「+」)는 머무르거나 포커스가 들어오거나 활성일 때 선다 — 터치에서는 늘 선다. */
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card {
+.console-shell.is-operations-view .side-bar-theater-header.is-card {
   min-height: 52px;
   box-sizing: border-box;
   gap: 10px;
@@ -1027,23 +1027,23 @@
   border-radius: var(--radius-md);
   color: var(--text-secondary);
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-activate {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-activate {
   gap: 10px;
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-anchor {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor {
   width: 32px;
   height: 32px;
 }
 /* 플러그인 표식(사령관 글리프 단추)도 카드 크기로 선다 — 표식이 제 크기를 적어 두어도 카드 칸이 정한다. */
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-anchor > button,
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-anchor .mongle-avatar {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor > button,
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor .mongle-avatar {
   width: 32px;
   height: 32px;
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-name {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-name {
   font-size: var(--t-base);
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-name:not(.is-live) {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-name:not(.is-live) {
   color: var(--text-primary);
 }
 .side-bar-theater-sub {
@@ -1056,15 +1056,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-row-controls {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
-.console-shell.is-conversation-layout .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls {
+.console-shell.is-operations-view .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls {
   opacity: 1;
 }
 @media (hover: none) {
-  .console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-row-controls { opacity: 1; }
+  .console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls { opacity: 1; }
 }
 .side-bar-theater-more-btn {
   width: 24px;
@@ -1082,7 +1082,7 @@
   font-weight: var(--weight-bold);
   outline: none;
 }
-.console-shell.is-conversation-layout .side-bar-theater-groups {
+.console-shell.is-operations-view .side-bar-theater-groups {
   padding-left: 14px;
 }
 
@@ -1090,14 +1090,14 @@
    그룹은 소리를 줄인 20px 라벨이다 — 배경 워시·3px 레일·숫자 배지 없이 5px 그룹색 표식, 이름, 헤어라인, 개수. 라벨을 누르면 접고(머무를 때
    ⌄ 가 표식 자리에 선다), 「이 그룹에 Operation 추가」는 머무르거나 포커스가 들어오면 개수 자리에 「+」로 선다. 이름·색·해제는 우클릭.
    「미분류」도 같은 라벨 형식이다. */
-.console-shell.is-conversation-layout .side-bar-group-section {
+.console-shell.is-operations-view .side-bar-group-section {
   margin: 4px 0 0;
   padding: 0;
   border-left: 0;
   border-radius: 0;
   background: none;
 }
-.console-shell.is-conversation-layout :is(.side-bar-group-header, .side-bar-ungrouped-label.is-label-row) {
+.console-shell.is-operations-view :is(.side-bar-group-header, .side-bar-ungrouped-label.is-label-row) {
   position: relative;
   display: flex;
   align-items: center;
@@ -1112,13 +1112,13 @@
   letter-spacing: normal;
   text-transform: none;
 }
-.console-shell.is-conversation-layout .side-bar-group-header {
+.console-shell.is-operations-view .side-bar-group-header {
   cursor: pointer;
 }
-.console-shell.is-conversation-layout .side-bar-ungrouped-section:has(> .side-bar-ungrouped-label.is-label-row) {
+.console-shell.is-operations-view .side-bar-ungrouped-section:has(> .side-bar-ungrouped-label.is-label-row) {
   margin-top: 4px;
 }
-.console-shell.is-conversation-layout .side-bar-group-header--collapsed {
+.console-shell.is-operations-view .side-bar-group-header--collapsed {
   background: transparent;
 }
 .side-bar-group-header__mark {
@@ -1128,7 +1128,7 @@
   border-radius: 1px;
   background: var(--grp-color, transparent);
 }
-.console-shell.is-conversation-layout :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__name {
+.console-shell.is-operations-view :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__name {
   flex: 0 1 auto;
   max-width: 60%;
   font-size: var(--t-2xs);
@@ -1137,7 +1137,7 @@
   text-transform: none;
   color: var(--text-tertiary);
 }
-.console-shell.is-conversation-layout .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__name {
+.console-shell.is-operations-view .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__name {
   color: var(--text-secondary);
 }
 .side-bar-group-header__rule {
@@ -1146,15 +1146,15 @@
   height: 1px;
   background: var(--hairline);
 }
-.console-shell.is-conversation-layout :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__count,
-.console-shell.is-conversation-layout .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
+.console-shell.is-operations-view :is(.side-bar-group-header, .side-bar-ungrouped-label) .side-bar-group-header__count,
+.console-shell.is-operations-view .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
   min-width: 0;
   font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   color: var(--text-tertiary);
 }
 /* ⌄ 는 표식 자리에 겹쳐 선다 — 머무르거나 포커스가 들어오거나 접혀 있을 때만 보이고, 그동안 표식은 물러난다. 키보드 포커스는 늘 이 단추가 받는다. */
-.console-shell.is-conversation-layout .side-bar-group-header__toggle {
+.console-shell.is-operations-view .side-bar-group-header__toggle {
   position: absolute;
   top: 0;
   left: 3px;
@@ -1163,32 +1163,32 @@
   border: 0;
   opacity: 0;
 }
-.console-shell.is-conversation-layout .side-bar-group-header__arrow {
+.console-shell.is-operations-view .side-bar-group-header__arrow {
   width: 10px;
   height: 10px;
 }
-.console-shell.is-conversation-layout :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__toggle {
+.console-shell.is-operations-view :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__toggle {
   opacity: 1;
 }
-.console-shell.is-conversation-layout :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__mark {
+.console-shell.is-operations-view :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__mark {
   visibility: hidden;
 }
-.console-shell.is-conversation-layout .side-bar-group-header__plus {
+.console-shell.is-operations-view .side-bar-group-header__plus {
   display: none;
 }
-.console-shell.is-conversation-layout .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__plus {
+.console-shell.is-operations-view .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__plus {
   display: grid;
 }
-.console-shell.is-conversation-layout .side-bar-group-header:is(:hover, :focus-within):has(.side-bar-group-header__plus) .side-bar-group-header__count {
+.console-shell.is-operations-view .side-bar-group-header:is(:hover, :focus-within):has(.side-bar-group-header__plus) .side-bar-group-header__count {
   display: none;
 }
 @media (hover: none) {
-  .console-shell.is-conversation-layout .side-bar-group-header__plus { display: grid; }
+  .console-shell.is-operations-view .side-bar-group-header__plus { display: grid; }
 }
 
 /* 활성 Theater 구역의 2px brass 스파인(components.css)도 이 배치에서는 걷는다 — 사이드바가 창 가장자리에 붙으므로
    스파인이 창 왼쪽 끝의 세로 띠로 읽힌다. 활성은 헤더의 이름 명도와 이니셜 배지가 말한다. */
-.console-shell.is-conversation-layout .side-bar-theater-section--active {
+.console-shell.is-operations-view .side-bar-theater-section--active {
   background: none;
 }
 
@@ -1298,21 +1298,21 @@
 /* ── Desktop 셸: 맨 위 줄은 창을 끄는 자리, 네이티브 컨트롤과 한 줄 ─────────────────── */
 /* 가운데·사이드바의 맨 위 줄은 내용 위에 겹친 투명 줄이다. Electron 의 app-region 은 휠을 아래 내용으로 넘기므로 그 줄 위에서도
    스크롤은 되지만, 클릭·드래그 선택은 창 끌기가 가져간다 — 그래서 drag 는 단추·pill 을 뺀 빈 자리뿐이고 높이는 52px 한 줄이다. */
-html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) {
+html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) {
   -webkit-app-region: drag;
 }
 
 /* 사용량 캡슐은 칸의 첫 자식이라 DOM 순서로 pill 줄(대화 칸·확장 표면 머리)보다 앞선다 — 아래 순서 규칙대로 그 위를 덮는 pill 줄의
    drag 가 캡슐의 no-drag 를 다시 덮어 클릭이 창 끌기로 먹힌다. pill 줄의 drag 상자를 캡슐 몫(--conversation-quota-space) 앞에서
    끝내고 그만큼 오른쪽 안쪽 여백을 줄여, 내용 상자(가운데 pill 자리)는 그대로 둔 채 두 사각형이 겹치지 않게 한다. */
-html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-pill-row {
+html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-pill-row {
   right: var(--conversation-quota-space);
   padding-right: calc(max(var(--conversation-quota-space), var(--conversation-lead-space, 0px)) + var(--conversation-caption-reserve) - var(--conversation-quota-space));
 }
 
-html[data-desktop-shell="true"] .console-shell.is-conversation-layout .conversation-quota,
-html[data-desktop-shell="true"] .console-shell.is-conversation-layout .expanded-surface-lead,
-html[data-desktop-shell="true"] .console-shell.is-conversation-layout :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
+html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-quota,
+html[data-desktop-shell="true"] .console-shell.is-operations-view .expanded-surface-lead,
+html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
 }
 
@@ -1330,7 +1330,7 @@ html[data-desktop-shell="true"] .conversation-split.is-open {
 /* macOS 신호등 — 셸이 52px 줄의 가운데(y 19, x 16)에 세운다(window-policy.ts trafficLightPosition, chrome.band).
    신호등 세 개가 차지한 76 DIP 를 비우고 그 오른쪽에서 단추가 시작한다. 신호등은 네이티브라 줌을 타지 않으므로
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바가 접혀 있으면 가운데 열의 맨 위 줄이 비운다. */
-html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-conversation-layout .side-bar-top-strip {
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-operations-view .side-bar-top-strip {
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
 }
 
@@ -1374,7 +1374,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-
 }
 
 /* 대화 중심 화면이 켜진 Desktop 은 다른 화면(설정 등)의 밴드도 같은 52px 줄이다 — 신호등·캡션 띠가 그 높이에 맞춰 서 있다. */
-html[data-desktop-shell="true"][data-conversation-layout="true"] {
+html[data-desktop-shell="true"][data-view-mode="desktop"] {
   --chrome-band-height: 52px;
 }
 

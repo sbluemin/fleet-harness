@@ -24,21 +24,10 @@ const listeners = new Set<Listener>();
 let activeTheaterId: string | null = null;
 let slice: GroupCollapseSlice = EMPTY_SLICE;
 let storedTheaterRevision = 0;
-let persistHook: ((theaterId: string) => void) | null = null;
-
-/** 활성 Theater 저장을 캔버스 저장과 한 번에 맞춘다. 훅이 없으면 이 스토어가 필드만 병합해 적는다. */
-export function registerGroupCollapsePersistHook(hook: ((theaterId: string) => void) | null): void {
-  persistHook = hook;
-}
-
 export function loadGroupCollapseForTheater(theaterId: string | null): void {
   activeTheaterId = theaterId;
   slice = theaterId ? readSlice(theaterId) : EMPTY_SLICE;
   emit();
-}
-
-export function getGroupCollapseTheaterId(): string | null {
-  return activeTheaterId;
 }
 
 export function getGroupCollapseSlice(): GroupCollapseSlice {
@@ -101,12 +90,6 @@ export function useStoredTheaterRevision(): number {
   return useSyncExternalStore(subscribe, getStoredTheaterRevision, getStoredTheaterRevision);
 }
 
-/** 비활성 Theater의 캔버스 저장이 바뀌었을 때 사이드바가 그 스냅샷을 다시 읽게 한다. */
-export function bumpStoredTheaterRevision(): void {
-  storedTheaterRevision += 1;
-  emit();
-}
-
 function subscribe(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
@@ -130,10 +113,6 @@ function emit(): void {
 
 function persistActive(): void {
   if (!activeTheaterId) return;
-  if (persistHook) {
-    persistHook(activeTheaterId);
-    return;
-  }
   writeSlice(activeTheaterId, slice);
 }
 

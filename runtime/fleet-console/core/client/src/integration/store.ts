@@ -572,7 +572,7 @@ export function applyOperationUpdate(operation: OperationNode, confirmedOrder = 
 
 /**
  * 제거 사건 — 다른 창이나 에이전트가 닫은(삭제 유예에 들어간) Operation 을 재조회 없이 내린다.
- * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 캔버스가 사라진 카드를 기다린다.
+ * 활성 대상이었다면 비운다: 없는 패널을 겨눈 채 두면 대화 화면이 사라진 본문를 기다린다.
  */
 export function applyOperationRemoved(operationId: string): void {
   if (!findOperation(operationId)) return;
@@ -614,7 +614,7 @@ export function setActiveTheater(theaterId: string | null): void {
 }
 
 // 구성원은 패널로 서지 않는다 — 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다.
-// 판정은 스토어의 구성원 목록 하나라 캔버스가 마운트되지 않은 화면(모바일)에서도 같다.
+// 판정은 스토어의 구성원 목록 하나라 다른 셸(모바일)에서도 같다.
 export function setActiveOperation(
   requestedOperationId: string | null,
   options?: { readonly acknowledged?: boolean },
@@ -626,7 +626,7 @@ export function setActiveOperation(
     : options?.acknowledged === false
       ? false
       : acknowledgeIdleArrival(operationId);
-  // 캔버스·사이드바·모바일 셸의 보통 포커스는 여기로 온다 — 팔레트의 「최근」 순서가 그 손길에도 반응하려면
+  // 대화 화면·사이드바·모바일 셸의 보통 포커스는 여기로 온다 — 팔레트의 「최근」 순서가 그 손길에도 반응하려면
   // 교차 Theater 전용 경로(focusOperation)만이 아니라 이 공용 활성화에서도 기록해야 한다.
   if (operationId !== null) noteOperationFocused(operationId);
   const body = nested ? withNestedBody(nested.parentOperationId!, nested.id) : {};
@@ -1182,7 +1182,7 @@ export function expandCodexReader(): void {
   if (state.codexReader === null) return;
   setState({ codexReaderExpanded: true });
   // 확대는 곧 슬롯을 하나 차지하는 일이다. 표면을 열지 않고 플래그만 세우면 리더가
-  // 캔버스에 직접 겹쳐 그려져 다른 표면을 덮는다.
+  // 대화 칸에 직접 겹쳐 그려져 다른 표면을 덮는다.
   openExpandedSurface({ surfaceId: CODEX_SURFACE_ID });
 }
 

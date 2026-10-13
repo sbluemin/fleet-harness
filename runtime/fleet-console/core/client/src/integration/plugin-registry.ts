@@ -257,7 +257,7 @@ function deputyLast(entries: readonly CommandBandEntryDescriptor[]): readonly Co
 
 /**
  * 여러 플러그인의 묶음 원천을 하나로. 어느 원천도 참조가 바뀌지 않았으면 합친 배열도 같은 참조를 돌려준다 —
- * 사이드바·캔버스가 useSyncExternalStore 로 읽으므로 참조가 흔들리면 매 사건마다 다시 그린다.
+ * 사이드바·대화 화면이 useSyncExternalStore 로 읽으므로 참조가 흔들리면 매 사건마다 다시 그린다.
  */
 export function combineClusterSources(sources: readonly { readonly pluginId: string; readonly source: OperationClusterSource }[]): OperationClusterSource {
   if (sources.length === 0) return { subscribe: () => () => undefined, get: () => NO_CLUSTERS };

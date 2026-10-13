@@ -39,11 +39,8 @@ import { closeConversationSurface, useConversationSurface, type ConversationSurf
 import "./conversation.css";
 
 /**
- * 대화 중심 화면 — 데스크톱 Operations 의 기본 셸. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 캔버스가 선다.
- *
- * 세 칸이다: 왼쪽 사이드바(기존 그룹 트리 + 이 모듈이 더한 위·아래 줄), 가운데 대화 칸(Operation 하나),
- * 오른쪽 패널(기존 레일 카드 + 머리의 글자 탭). 캔버스는 마운트하지 않으므로 패널 좌표·Map 기록을
- * 이 셸이 바꾸지 않는다 — 토글을 끄면 캔버스가 켜기 전 그대로 돌아온다.
+ * 데스크톱 Operations 셸 — 왼쪽 사이드바, 가운데 대화, 오른쪽 세부 정보 패널의 세 칸이다.
+ * 본문 geometry는 칸의 실측이고, 이전 패널 좌표 저장은 변경하지 않는다.
  */
 
 const LAST_PANEL_KEY = "fleet-console.conversation.lastPanel";
@@ -73,8 +70,7 @@ function writeLastPanel(id: string): void {
 /** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Operation 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
   useEffect(() => mountConversationOperationTabsHost(), []);
-  // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면(토글 끔)
-  // 캔버스의 기본(읽기 폭)으로 돌아간다.
+  // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면 기본 읽기 폭으로 돌아간다.
   useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
   const activePanelId = useRailActivePanelId();
@@ -157,7 +153,7 @@ const PlusGlyph = () => (
  */
 export function ConversationSideBarActions() {
   const t = useT();
-  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다 — 캔버스 배치의 유령 행과 같은 규칙이다.
+  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다.
   const { addingTheater } = useConsoleState();
   return (
     <span className="conversation-side-actions">
@@ -846,7 +842,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const descriptor = operationKinds.find((kind) => kind.pluginId === bodyOwner.pluginId && kind.type === bodyOwner.type)
     ?? operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
 
-  // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 캔버스 좌표가 아니므로 어디에도 저장하지 않는다.
+  // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 이 값은 어디에도 저장하지 않는다.
   const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 720, height: 640, zIndex: 0 });
   const bodyRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -1104,7 +1100,7 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, state, langua
   );
 }
 
-/** 칸 안의 Operation 브라우저 — 캔버스의 companion 프레임과 같은 두 슬롯(캡션·본문)을 같은 context로 그린다. */
+/** 칸 안의 Operation 브라우저 — 캡션과 본문의 두 슬롯을 같은 context로 그린다. */
 function OperationBrowserSplitPane({ operation, state, language, operationKinds }: {
   readonly operation: OperationNode;
   readonly state: ConsoleState;

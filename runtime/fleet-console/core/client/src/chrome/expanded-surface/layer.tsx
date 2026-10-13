@@ -35,7 +35,7 @@ import {
  * 두 최소폭을 실제 가용 폭에 맞춘다.
  *
  * 선언된 최소폭은 희망이지 물리가 아니다. 두 페인을 합쳐도 둘의 최소폭을 못 담는 좁은
- * 캔버스에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
+ * 대화 칸에서 최소폭을 그대로 지키면 분할선이 통째로 얼어붙어, 사용자에게는 고장으로
  * 읽힌다. 그럴 때는 비율을 지키며 함께 물러난다.
  */
 function fitMinimums(left: number, right: number, pair: number): readonly [number, number] {
@@ -57,22 +57,16 @@ const FLOAT_BLOCK_GUTTER_PX = 4;
 const LEAD_PILL_GAP_PX = 12;
 
 /**
- * 확대 표면 레이어 — 캔버스 좌표 상자 안에 정박하는 비모달 작업면.
- *
- * 캔버스 안에 portal하는 이유는 사이드바·레일 폭을 침범하지 않고 그들의 리사이즈를
- * 공짜로 따라가기 위함이다. 캔버스만 pointer-events를 잃고 사이드바·레일은 계속
- * 살아 있으므로 focus trap도 inert도 걸지 않는다 — 모달이 아니다.
- *
- * 대화 중심 화면(`placement="conversation"`)에는 캔버스가 없다. 그때는 가운데 대화 칸에 portal해
+ * 확대 표면 레이어 — 가운데 대화 칸에 정박하는 비모달 작업면. 사이드바·레일은 계속
+ * 살아 있으므로 focus trap도 inert도 걸지 않는다. 가운데 대화 칸에 portal해
  * 칸 자체가 잠시 표면이 된다 — 사이드바·오른쪽 열은 칸 경계 밖이라 가려지지 않는다. 칸 머리 줄은
  * 대화 pill 줄과 같은 문법(가운데 이름 pill)이고, 「대화」로 접어 두면 페인은 산 채로 숨고
  * 같은 자리에 「다시 열기」 칩이 남는다.
  */
-export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly placement?: "conversation" } = {}) {
+export function ExpandedSurfaceLayer() {
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances, focusedInstanceId } = useExpandedSurfaces();
-  const conversation = placement === "conversation";
-  const stowed = useExpandedSurfacesStowed() && conversation;
+  const stowed = useExpandedSurfacesStowed();
   const t = useT();
   const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId, () => null);
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
@@ -103,7 +97,7 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
 
   const open = instances.length > 0;
 
-  // 확대 표면이 서 있다는 유일한 교차 모듈 신호. CSS(캔버스 포인터 차단)와
+  // 확대 표면이 서 있다는 유일한 교차 모듈 신호. CSS(대화 칸 표면 표시)와
   // 전역 단축키 양보가 이 한 속성을 읽는다. 대화 칸에 접어 둔 동안은 대화가 칸의 주인이다.
   useEffect(() => {
     if (!open || stowed) return;
@@ -117,10 +111,10 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
   // body로 떨어진다. 커밋 뒤에 찾아 두고, 찾기 전에는 아무것도 세우지 않는다.
   const [stageHost, setStageHost] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
-    if (!conversation || !open) return;
+    if (!open) return;
     const found = document.querySelector<HTMLElement>(".conversation-stage");
     setStageHost((current) => (current === found ? current : found));
-  }, [conversation, open]);
+  }, [open]);
 
   // 페인 제목 — 머리 pill·칩이 초점 페인의 이름을 말한다. 제목은 페인이 컨텍스트로 풀어 올려 준다.
   const [paneTitles, setPaneTitles] = useState<Readonly<Record<string, string>>>({});
@@ -134,7 +128,7 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
   useLayoutEffect(() => {
     const stage = stageHost;
     const lead = leadRef.current;
-    if (!conversation || !stage || !lead || !open) return;
+    if (!stage || !lead || !open) return;
     const publish = () => {
       const space = Math.ceil(lead.getBoundingClientRect().right - stage.getBoundingClientRect().left) + LEAD_PILL_GAP_PX;
       stage.style.setProperty("--conversation-lead-space", `${Math.max(0, space)}px`);
@@ -147,7 +141,7 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
       observer?.disconnect();
       stage.style.removeProperty("--conversation-lead-space");
     };
-  }, [conversation, open, stageHost, stowed]);
+  }, [open, stageHost, stowed]);
 
   // 실제로 놓인 페인 폭을 표면에 통보한다 — 표면은 이 값으로 스스로 열화한다.
   useEffect(() => {
@@ -277,15 +271,13 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
         event.preventDefault();
         // 대화 칸에서는 Esc가 칸을 대화에 돌려준다 — 페인은 접어 둘 뿐 닫지 않는다(「대화」 단추와 같은 길).
         // 접힌 페인은 inert 라 그 안의 포커스가 갈 곳을 잃는다 — 같은 자리의 「다시 열기」로 옮긴다.
-        if (conversation) {
-          stowExpandedSurfaces();
-          queueMicrotask(() => leadRef.current?.focus({ preventScroll: true }));
-        } else closeExpandedSurface(target.instanceId);
+        stowExpandedSurfaces();
+        queueMicrotask(() => leadRef.current?.focus({ preventScroll: true }));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [conversation, instances, open]);
+  }, [instances, open]);
 
   if (!open) return null;
 
@@ -320,57 +312,53 @@ export function ExpandedSurfaceLayer({ placement = "conversation" }: { readonly 
     );
   });
 
-  if (conversation) {
-    // 칸을 찾기 전에는 세우지 않는다 — body로 떨어지면 창 전체를 덮는다.
-    if (!stageHost) return null;
-    const lead = instances.find((instance) => instance.instanceId === focusedInstanceId) ?? instances[0]!;
-    const title = paneTitles[lead.instanceId] || t("chrome.expandedSurface.regionAria");
-    const more = instances.length - 1;
-    return createPortal(
-      <>
-        <div
-          className={`expanded-surface is-conversation${stowed ? " is-stowed" : ""}`}
-          data-pane-count={instances.length}
-          role="region"
-          aria-label={t("chrome.expandedSurface.regionAria")}
-          inert={stowed}
-        >
-          <div className="conversation-pill-row expanded-surface-head">
-            <span className="conversation-pill expanded-surface-head-pill">
-              <span className="conversation-pill-title">{title}</span>
-              {more > 0 ? <span className="conversation-pill-sub">· {t("chrome.expandedSurface.morePanes", { count: more })}</span> : null}
-            </span>
-          </div>
-          <div ref={gridRef} className="expanded-surface-grid" style={{ gridTemplateColumns: template }}>
-            {panes}
-          </div>
+  // 칸을 찾기 전에는 세우지 않는다 — body로 떨어지면 창 전체를 덮는다.
+  if (!stageHost) return null;
+  const lead = instances.find((instance) => instance.instanceId === focusedInstanceId) ?? instances[0]!;
+  const title = paneTitles[lead.instanceId] || t("chrome.expandedSurface.regionAria");
+  const more = instances.length - 1;
+  return createPortal(
+    <>
+      <div
+        className={`expanded-surface is-conversation${stowed ? " is-stowed" : ""}`}
+        data-pane-count={instances.length}
+        role="region"
+        aria-label={t("chrome.expandedSurface.regionAria")}
+        inert={stowed}
+      >
+        <div className="conversation-pill-row expanded-surface-head">
+          <span className="conversation-pill expanded-surface-head-pill">
+            <span className="conversation-pill-title">{title}</span>
+            {more > 0 ? <span className="conversation-pill-sub">· {t("chrome.expandedSurface.morePanes", { count: more })}</span> : null}
+          </span>
         </div>
-        <button
-          ref={leadRef}
-          type="button"
-          className={`expanded-surface-lead${stowed ? " is-reopen" : ""}`}
-          aria-label={stowed ? t("chrome.expandedSurface.reopenAria", { title }) : t("chrome.expandedSurface.backAria")}
-          title={stowed ? t("chrome.expandedSurface.reopenAria", { title }) : t("chrome.expandedSurface.backAria")}
-          onClick={stowed ? restoreExpandedSurfaces : stowExpandedSurfaces}
-        >
-          {stowed ? (
-            <>
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 6.5V3h3.5M13 9.5V13H9.5M3 3l4 4M13 13l-4-4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span className="expanded-surface-lead-label">{title}</span>
-            </>
-          ) : (
-            <>
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-              <span className="expanded-surface-lead-label">{t("chrome.expandedSurface.back")}</span>
-            </>
-          )}
-        </button>
-      </>,
-      stageHost,
-    );
-  }
-
-  return null;
+        <div ref={gridRef} className="expanded-surface-grid" style={{ gridTemplateColumns: template }}>
+          {panes}
+        </div>
+      </div>
+      <button
+        ref={leadRef}
+        type="button"
+        className={`expanded-surface-lead${stowed ? " is-reopen" : ""}`}
+        aria-label={stowed ? t("chrome.expandedSurface.reopenAria", { title }) : t("chrome.expandedSurface.backAria")}
+        title={stowed ? t("chrome.expandedSurface.reopenAria", { title }) : t("chrome.expandedSurface.backAria")}
+        onClick={stowed ? restoreExpandedSurfaces : stowExpandedSurfaces}
+      >
+        {stowed ? (
+          <>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 6.5V3h3.5M13 9.5V13H9.5M3 3l4 4M13 13l-4-4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span className="expanded-surface-lead-label">{title}</span>
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M9.5 3.5 5 8l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            <span className="expanded-surface-lead-label">{t("chrome.expandedSurface.back")}</span>
+          </>
+        )}
+      </button>
+    </>,
+    stageHost,
+  );
 }
 
 export function SurfacePane({

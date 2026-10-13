@@ -39,7 +39,7 @@ describe("Session Analyst entry chip readiness", () => {
     const onRequestCompanions = vi.fn();
     await renderOperation(fetch, "dormant", onRequestCompanions);
 
-    const resume = container?.querySelector<HTMLButtonElement>(".canvas-operation-dormant");
+    const resume = container?.querySelector<HTMLButtonElement>(".operation-dormant");
     const resumeClick = vi.fn();
     resume?.addEventListener("click", resumeClick);
     const handle = analystHandle();

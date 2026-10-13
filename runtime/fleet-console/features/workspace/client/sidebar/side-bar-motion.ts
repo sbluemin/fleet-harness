@@ -1,134 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 
-/**
- * 사이드바 접기/펼치기가 진행 중인 동안 `body[data-side-bar-animating="true"]`를 세운다.
- *
- * 사이드바의 200ms width 전환은 그리드 중앙 트랙을 매 프레임 리플로우시키고, 그 폭을 받은
- * `.canvas-operation`은 자기 몫의 360ms geometry 글라이드를 탄다. 타깃이 매 프레임 새로 잡히므로
- * 프레임 상자는 사이드바가 멈춘 뒤에도 360ms 더 움직이고, 터미널의 refit 디바운스는 그 끝에서야
- * 풀린다 — 실측 664ms 동안 xterm이 옛 cols/rows로 남아 잘리거나 빈 띠를 남겼다.
- * 이 플래그가 그 구간에서만 프레임 글라이드를 끊어 상자가 스테이지를 즉시 따라가게 한다.
- *
- * 시작/종료 판정을 타이머가 아니라 전환 이벤트에 맡기는 이유: CSS의 200ms를 JS에 복제하면 둘이
- * 조용히 어긋나고, prefers-reduced-motion에서는 전환 자체가 없어 타이머만 헛돈다. transitionrun이
- * 오지 않으면 플래그도 서지 않으므로 모션이 꺼진 환경은 자동으로 무해하다.
- *
- * 드래그 리사이즈는 이 경로를 타지 않는다 — `[data-resizing="true"]`가 전환을 아예 끄므로
- * width 전환 이벤트가 발생하지 않는다.
- */
-const ANIMATING_ATTRIBUTE = "data-side-bar-animating";
 const SIDE_BAR_CLASS = "operations-side-bar";
-
-// 플래그의 주인은 둘이다 — 카드의 실제 width 전환(관찰자)과, 전환 없이 인셋만 움직이는 추종(탐침 구동).
-// 어느 한쪽이라도 붙들고 있으면 선다. 같은 호스트 번들 안의 두 경로라 모듈 상태로 합친다.
-let transitionHoldsFlag = false;
-let followHolds = 0;
-
-function syncAnimatingFlag(): void {
-  if (typeof document === "undefined") return;
-  if (transitionHoldsFlag || followHolds > 0) document.body.setAttribute(ANIMATING_ATTRIBUTE, "true");
-  else document.body.removeAttribute(ANIMATING_ATTRIBUTE);
-}
-
-/**
- * 다음 프레임에 부른다. transitionend·약속 콜백 안에서 건 rAF는 같은 프레임의 콜백 목록에 들어가 그 프레임
- * 스타일 계산 전에 돈다 — 억제 플래그를 걷는 일이 마지막 인셋 커밋과 한 프레임에 겹치면 그 몇 px이 패널
- * 글라이드를 탄다. 한 번 더 미뤄 마지막 커밋의 스타일 계산이 플래그 아래에서 끝나게 한다.
- */
-function afterNextFrame(callback: () => void): () => void {
-  let inner = 0;
-  const outer = requestAnimationFrame(() => {
-    inner = requestAnimationFrame(callback);
-  });
-  return () => {
-    cancelAnimationFrame(outer);
-    cancelAnimationFrame(inner);
-  };
-}
-
-function isSideBarWidthTransition(event: TransitionEvent): boolean {
-  if (event.propertyName !== "width") return false;
-  const target = event.target;
-  return target instanceof HTMLElement && target.classList.contains(SIDE_BAR_CLASS);
-}
-
-export function observeSideBarCollapseMotion(): () => void {
-  if (typeof document === "undefined") return () => undefined;
-
-  // 사이드바는 페이지에 따라 마운트되므로 문서 단에서 버블링된 전환 이벤트를 받는다.
-  // 동시에 두 개가 살아 있지 않아 참조 계수는 필요하지 않다.
-  let animating: HTMLElement | null = null;
-  let detachWatch: number | null = null;
-  let deferredClear: (() => void) | null = null;
-
-  const clear = () => {
-    animating = null;
-    if (detachWatch !== null) {
-      cancelAnimationFrame(detachWatch);
-      detachWatch = null;
-    }
-    if (deferredClear !== null) {
-      deferredClear();
-      deferredClear = null;
-    }
-    transitionHoldsFlag = false;
-    syncAnimatingFlag();
-  };
-
-  /**
-   * 전환 중이던 사이드바가 트리에서 빠지면 종료 이벤트가 document까지 오지 않는다 — 이벤트는
-   * 분리된 노드에서 발생하므로 버블링 경로에 document가 없다. 접기 200ms 안에 페이지를 떠나
-   * 사이드바가 언마운트되면 이 경로를 밟고,
-   * 플래그가 남아 패널 모션이 다음 토글까지 죽는다.
-   * 관찰자는 App에 계속 살아 있어 스스로 회복하지도 못한다. 그래서 분리 여부를 직접 지켜본다.
-   */
-  const watchForDetach = () => {
-    detachWatch = requestAnimationFrame(() => {
-      detachWatch = null;
-      if (!animating) return;
-      if (!animating.isConnected) {
-        clear();
-        return;
-      }
-      watchForDetach();
-    });
-  };
-
-  const start = (event: TransitionEvent) => {
-    if (!isSideBarWidthTransition(event)) return;
-    // 되돌리기(cancel 직후 새 run)는 이전 종료가 예약한 해제를 무른다 — 새 전환 도중 플래그가 걷히면 안 된다.
-    if (deferredClear !== null) {
-      deferredClear();
-      deferredClear = null;
-    }
-    animating = event.target as HTMLElement;
-    transitionHoldsFlag = true;
-    syncAnimatingFlag();
-    if (detachWatch === null) watchForDetach();
-  };
-  // 해제는 다음 프레임으로 미룬다. 아레나 인셋 추종(useSideBarFollowedInset)의 마지막 커밋이 전환이 끝난 그 프레임에
-  // 서는데, 그때 플래그가 이미 걷혀 있으면 마지막 몇 px이 되살아난 패널 글라이드를 탄다.
-  const stop = (event: TransitionEvent) => {
-    if (!isSideBarWidthTransition(event)) return;
-    deferredClear?.();
-    deferredClear = afterNextFrame(() => {
-      deferredClear = null;
-      clear();
-    });
-  };
-
-  document.addEventListener("transitionrun", start);
-  document.addEventListener("transitionend", stop);
-  document.addEventListener("transitioncancel", stop);
-
-  return () => {
-    document.removeEventListener("transitionrun", start);
-    document.removeEventListener("transitionend", stop);
-    document.removeEventListener("transitioncancel", stop);
-    clear();
-  };
-}
 
 /**
  * 사이드바가 width 전환으로 여닫히는 동안 대화 칸의 왼쪽 인셋이 사이드바를 매 프레임 따라가게 한다.
@@ -140,9 +13,9 @@ export function observeSideBarCollapseMotion(): () => void {
  *
  * 인셋은 카드 폭 자체가 아니라 카드 width 전환의 진행률로 옛 인셋에서 새 인셋까지 보간한다. 열린 인셋은
  * 폭 + 여백이고 닫힌 인셋은 0이라, 폭을 그대로 쓰면 끝에서 여백만큼 계단이 생긴다. 전환 길이·곡선은
- * CSS가 소유하고 여기서는 읽기만 한다(`body[data-side-bar-animating]`와 같은 원칙). 전환이 없으면
- * (드래그 리사이즈·reduced motion) 목표 인셋이 그대로 선다. 프레임 글라이드 억제 규칙은 그대로라
- * 패널 상자는 인셋을 즉시 따라가고, 터미널 refit은 사이드바가 멈춘 뒤에 걸린다.
+ * CSS가 소유하고 여기서는 읽기만 한다. 전환이 없으면
+ * (드래그 리사이즈·reduced motion) 목표 인셋이 그대로 선다. 대화 칸은 인셋을 따라가고,
+ * 터미널 refit은 사이드바가 멈춘 뒤에 걸린다.
  */
 export function useSideBarFollowedInset(targetInset: number): number {
   const [followed, setFollowed] = useState<number | null>(null);
@@ -255,7 +128,7 @@ interface FollowDriver {
   readonly finished: Promise<unknown>;
   /** 구동이 끝까지 진행했는가(끊김은 아니다). */
   readonly done: () => boolean;
-  /** 추종이 끝나거나 끊길 때 한 번. settled면 플래그를 한 프레임 뒤에 놓는다. */
+  /** 추종이 끝나거나 끊길 때 탐침 자원을 회수한다. */
   readonly release: (settled: boolean) => void;
 }
 
@@ -266,13 +139,12 @@ interface FollowDriver {
  * width를 먼저 따른다. 인셋은 지금 카드를 실제로 옮기는 쪽을 따라야 카드와 틈·겹침이 없다.
  *
  * - 이 커밋이 막 연 width·translate·transform 전환(진행 0)이면 그 전환을 탄다 — 인셋이 카드와 같은 길이·
- *   곡선으로 함께 간다. 관찰자는 width 전환만 보고 억제 플래그를 세우므로, 그 밖의 축을 탈 때는 추종이
- *   플래그를 직접 붙든다.
+ *   곡선으로 함께 간다.
  * - 이미 진행 중이던 전환(엣지 호버 픽이 먼저 연 폭)을 잡았거나, 전환이 없는데 카드가 보이면(픽으로 다
  *   펼쳐진 카드를 고정) 카드의 남은 진행에 인셋을 실을 수 없다. 남은 짧은 구간에 인셋 전체를 몰면 첫
- *   프레임부터 큰 걸음이 된다. 그래서 빈 애니메이션을 탐침으로 새로 굴려 그 진행을 쓴다 — 캔버스가 카드보다
+ *   프레임부터 큰 걸음이 된다. 그래서 빈 애니메이션을 탐침으로 새로 굴려 그 진행을 쓴다 — 대화 칸이 카드보다
  *   조금 늦게 끝나도 걸음은 일반 토글과 같다. 탐침의 길이·곡선은 잡힌 전환 축의 것을, 없으면 width 전환의
- *   것을 쓴다. 그동안 패널 글라이드 억제 플래그를 직접 붙든다.
+ *   것을 쓴다.
  * - 전환이 꺼진 경우(드래그 리사이즈·reduced motion)에만 목표 인셋이 즉시 선다.
  */
 function followDriverFor(card: HTMLElement): FollowDriver | null {
@@ -287,8 +159,7 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
   const running = CARD_MOTION_PROPERTIES.map((property) => moving.find((animation) => animation.transitionProperty === property))
     .find((animation) => animation !== undefined);
   if (running && (effectProgress(running) ?? 0) <= FRESH_TRANSITION_PROGRESS) {
-    const release = running.transitionProperty === "width" ? () => undefined : holdAnimatingFlag();
-    return { progress: () => effectProgress(running), finished: running.finished, done: () => running.playState === "finished", release };
+    return { progress: () => effectProgress(running), finished: running.finished, done: () => running.playState === "finished", release: () => undefined };
   }
   if (typeof card.animate !== "function") return null;
   const timing = cardTransitionTiming(card, running?.transitionProperty ?? "width");
@@ -299,37 +170,16 @@ function followDriverFor(card: HTMLElement): FollowDriver | null {
   } catch {
     return null;
   }
-  const release = holdAnimatingFlag();
   return {
     progress: () => effectProgress(probe),
     finished: probe.finished,
     done: () => probe.playState === "finished",
-    release: (settled) => {
-      probe.cancel();
-      release(settled);
-    },
+    release: () => probe.cancel(),
   };
 }
 
 /** 카드를 옮기는 전환 축 — 앞쪽이 우선이다. */
 const CARD_MOTION_PROPERTIES: readonly string[] = ["width", "translate", "transform"];
-
-/** 추종이 억제 플래그를 붙든다. 반환한 해제는 한 번만 듣고, settled면 다음 프레임에 놓는다. */
-function holdAnimatingFlag(): (settled: boolean) => void {
-  followHolds += 1;
-  syncAnimatingFlag();
-  let released = false;
-  return (settled) => {
-    if (released) return;
-    released = true;
-    const drop = () => {
-      followHolds = Math.max(0, followHolds - 1);
-      syncAnimatingFlag();
-    };
-    if (settled) afterNextFrame(drop);
-    else drop();
-  };
-}
 
 function effectProgress(animation: Animation): number | null {
   const progress = animation.effect?.getComputedTiming().progress;

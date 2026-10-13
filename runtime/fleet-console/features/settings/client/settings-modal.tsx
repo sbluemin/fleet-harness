@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Keyb
 import { createPortal } from "react-dom";
 
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
-import { getPaneStoreSnapshot, openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
+import { getPaneStoreSnapshot } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { closeRailPanel, openRailPanel, useRailActivePanelId } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
@@ -27,11 +27,9 @@ import "./settings-modal.css";
  * 레일 페인과 같은 섹션 렌더러를 쓴다 — 그릇만 다르다(settings-door.ts). 검색은 왼쪽 목록을 거른다: 찾는 동안에도
  * 오른쪽 본문은 그대로 서 있고, Enter 는 첫 결과로 간다.
  */
-export function SettingsModalHost({ visible, layoutOn, mobile }: {
+export function SettingsModalHost({ visible, mobile }: {
   /** 대화 중심 화면이 지금 그려져 있는가(데스크톱 + Operations 화면). */
   readonly visible: boolean;
-  /** 대화 중심 화면인가(「이전 화면으로 돌아가기」가 꺼져 있다) — 화면과 무관하다. */
-  readonly layoutOn: boolean;
   readonly mobile: boolean;
 }) {
   const modal = useSettingsModal();
@@ -39,24 +37,20 @@ export function SettingsModalHost({ visible, layoutOn, mobile }: {
   const lastPanelRef = useRef<string | null>(null);
   if (railActive !== null && railActive !== SETTINGS_RAIL_ENTRY_ID) lastPanelRef.current = railActive;
 
-  // 배치가 바뀌어도 열린 설정은 그 자리를 잃지 않는다. 모달에서 「대화 중심 화면」을 끄면 같은 섹션이 레일로 옮겨
-  // 서고, 레일에 서 있던 설정(저장된 레일 상태·레일 문을 직접 부른 길)은 대화 중심 화면에서 모달로 옮겨 선다.
+  // 모바일로 바뀌면 모달을 닫는다. 저장된 레일 설정은 데스크톱에서 같은 섹션의 모달로 옮겨 선다.
   useLayoutEffect(() => {
-    if (!layoutOn && modal.open) {
+    if (mobile && modal.open) {
       closeSettingsModal();
-      if (mobile) return;
-      openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-      if (modal.section !== null) openPane({ paneId: SETTINGS_PANE_ID, params: { section: modal.section } });
       return;
     }
-    if (layoutOn && !mobile && railActive === SETTINGS_RAIL_ENTRY_ID) {
+    if (!mobile && railActive === SETTINGS_RAIL_ENTRY_ID) {
       const section = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === SETTINGS_PANE_ID)?.params.section;
       closeRailPanel(SETTINGS_RAIL_ENTRY_ID);
       // 레일은 독점 슬롯이라 설정이 서며 앞의 패널을 내렸다 — 모달은 패널을 밀어내지 않으므로 그 패널을 되세운다.
       if (lastPanelRef.current !== null) openRailPanel(lastPanelRef.current);
       openSettingsModal(section ?? null);
     }
-  }, [layoutOn, mobile, modal.open, modal.section, railActive]);
+  }, [mobile, modal.open, railActive]);
 
   return visible && modal.open ? <SettingsModal section={modal.section} /> : null;
 }

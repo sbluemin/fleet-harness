@@ -35,10 +35,8 @@ import { OperationBodyPool, type OperationBodyConfig } from "../../../core/clien
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { StandaloneBrand } from "../../../core/client/src/chrome/components/command-band.js";
-import { registerTheaterInboxForget } from "./theater-inbox/store.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarTop, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
-import { SideBarRowStyleContext } from "./sidebar/side-bar-row-style.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 import { setConversationOperationRename } from "./conversation/conversation-slots.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
@@ -504,7 +502,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const handleForgetTheater = useCallback(async (theaterId: string) => {
     onDeferredDeletion(await forgetTheaterCompletely(theaterId));
   }, [onDeferredDeletion]);
-  useEffect(() => registerTheaterInboxForget((theaterId) => { void handleForgetTheater(theaterId); }), [handleForgetTheater]);
 
   const sideBarChrome = (
     <OperationsSideBar
@@ -579,25 +576,23 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     />
   ) : null;
   const conversationShell = (
-    <SideBarRowStyleContext.Provider value="conversation">
-      <div className="console-body is-conversation">
-        <ConversationShellHost />
-        {mutationErrorBanner}
-        {sideBarChrome}
-        <ConversationStage
-          state={state}
-          insets={conversationInsets}
-          language={language}
-          operationKinds={registry.operationKinds}
-          onClose={handleClose}
-        />
-        {toastRegion}
-        <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} expandedSurfaceInArena />
-        <SideBarEdgeDock />
-        {operationMenuLayer}
-        <ExpandedSurfaceLayer placement="conversation" />
-      </div>
-    </SideBarRowStyleContext.Provider>
+    <div className="console-body is-conversation">
+      <ConversationShellHost />
+      {mutationErrorBanner}
+      {sideBarChrome}
+      <ConversationStage
+        state={state}
+        insets={conversationInsets}
+        language={language}
+        operationKinds={registry.operationKinds}
+        onClose={handleClose}
+      />
+      {toastRegion}
+      <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+      <SideBarEdgeDock />
+      {operationMenuLayer}
+      <ExpandedSurfaceLayer />
+    </div>
   );
   const shell = viewMode.effective === "mobile" ? (
     <MobileShell
@@ -616,7 +611,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   ) : conversationShell;
   return (
     <OperationBodyPool
-      bodyLayout="conversation"
       releaseParkedBodies={viewMode.effective !== "mobile"}
       operations={pooledOperations}
       operationKinds={registry.operationKinds}

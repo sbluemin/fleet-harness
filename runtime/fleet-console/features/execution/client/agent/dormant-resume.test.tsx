@@ -64,7 +64,7 @@ describe("dormant resume feedback", () => {
     act(() => dormantButton().click());
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-    const card = container?.querySelector(".canvas-operation-dormant--error");
+    const card = container?.querySelector(".operation-dormant--error");
     expect(card).not.toBeNull();
     expect(card?.getAttribute("role")).toBe("alert");
     expect(card?.textContent).toContain("Couldn’t resume this session");
@@ -118,7 +118,7 @@ describe("dormant resume feedback", () => {
     expect(surfaces.mounts).toHaveLength(2);
     expect(surfaces.mounts[1]?.mounted).toBe(true);
     expect(container?.querySelector(".terminal-surface-stub")).not.toBeNull();
-    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
+    expect(container?.querySelector("button.operation-dormant")).toBeNull();
   });
 });
 
@@ -215,7 +215,7 @@ function createContext(
 }
 
 function dormantButton(): HTMLButtonElement {
-  const button = container?.querySelector<HTMLButtonElement>("button.canvas-operation-dormant");
+  const button = container?.querySelector<HTMLButtonElement>("button.operation-dormant");
   if (!button) throw new Error("Dormant resume button must render.");
   return button;
 }

@@ -2,11 +2,10 @@ import { isBlockingDialogOpen } from "./shortcuts.js";
 import { setActiveOperation } from "./store.js";
 
 // 대화 화면에서 사이드바·레일·커맨드 밴드 밖을 누르면 활성 Operation을 푼다.
-// 좌·우 사이드바는 data-canvas-blocker라서 제스처만 막고 활성화는 풀린다.
+// 좌·우 사이드바의 빈 곳을 누르면 Operation 활성화가 풀린다.
 // 칩은 그 Operation을 고르는 진입점이고, 커맨드 밴드·패널 포털 메뉴는 활성 Operation을
 // 전제로 하므로 별도 표식으로 유지한다.
 const KEEP_ACTIVE_SELECTOR = [
-  "[data-canvas-operation]",
   "[data-side-bar-chip-id]",
   "[data-keep-operation-active]",
 ].join(", ");

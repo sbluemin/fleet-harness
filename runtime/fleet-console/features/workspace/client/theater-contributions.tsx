@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleTheaterSummary, TheaterContribution, TheaterFace } from "@fleet-console/sdk/plugin";
 import type { TheaterInboxAddress } from "@fleet-console/sdk/theater-inbox";
@@ -6,7 +6,6 @@ import type { MongleState } from "@fleet-console/sdk/avatars";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
-import { registerTheaterInboxReturnTarget } from "./theater-inbox/store.js";
 import { scopedTheaterInbox } from "./theater-inbox/scoped.js";
 
 interface TheaterContributionProps {
@@ -33,18 +32,6 @@ export function TheaterContributionRows({ theater, active }: TheaterContribution
       ))}
     </div>
   );
-}
-
-/**
- * Theater Inbox 를 닫을 때 입구가 사라졌으면(우클릭 메뉴의 항목 등) 포커스를 돌려줄 그 Theater 의 머리를 등록한다 — 시트가
- * 사이드바를 뒤지지 않게 머리가 직접 넘긴다.
- */
-export function useTheaterInboxReturnTarget(theaterId: string, resolve: () => HTMLElement | null): void {
-  const resolveRef = useRef(resolve);
-  resolveRef.current = resolve;
-  useLayoutEffect(() => {
-    registerTheaterInboxReturnTarget(theaterId, () => resolveRef.current());
-  }, [theaterId]);
 }
 
 /** Theater 동작(우클릭·Shift+F10) 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */

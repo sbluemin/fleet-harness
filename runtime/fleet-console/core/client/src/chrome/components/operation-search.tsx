@@ -77,7 +77,7 @@ interface OperationSearchProps {
   readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly ClientExecutionProvider[];
-  // 팔레트 보관도 캔버스·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
+  // 팔레트 보관도 대화 화면·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
   readonly onArchived?: (outcome: ArchiveOutcome) => void;
   readonly canUndoLastClose?: () => boolean;
   /** 되돌릴 마지막 일의 종류 — 「보관 되돌리기」와 Theater 잊기의 「실행 취소」를 가른다. */
@@ -341,7 +341,7 @@ export function OperationSearch({
       }
       case "switch-theater": {
         if (current) break;
-        // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
+        // Theater 전환은 대화 화면으로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
         setActiveTheater(action.theaterId);
         navigate("/operations");

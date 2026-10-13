@@ -44,16 +44,11 @@ interface RightRailProps {
    */
   readonly header?: ReactNode;
   /**
-   * 레일이 남겨 둘 가운데 폭(px). 생략하면 지금처럼 148px — 캔버스 아레나의 최소 노출 폭이다. 대화 중심 화면은 대화 칸의
+   * 레일이 남겨 둘 가운데 폭(px). 생략하면 148px이다. 대화 중심 화면은 대화 칸의
    * 최소 폭과 여백을 넘긴다. 카드 폭 상한만 바뀌고, 도구별로 기억한 폭은 그대로 보존된다.
    */
   readonly reservedArenaWidth?: number;
-  /**
-   * 확장 표면이 레일 옆이 아니라 남겨 둔 가운데 폭 **안**에 서는가 — 대화 중심 화면은 표면이 대화 칸에 선다. 그때 가운데 예약은
-   * 칸 최소 폭과 표면 최소 폭의 합이 아니라 큰 쪽이고, 세 열이 맞붙어 사이드바 틈도 없다. 문서가 목록 옆에 붙으면 칸이 물러나고,
-   * 그래도 모자랄 때는 문서를 칸 위로 펼치지 않고 레일 열 안에서 목록을 덮는다. 생략하면 캔버스 배치 그대로다.
-   */
-  readonly expandedSurfaceInArena?: boolean;
+
 }
 
 /** rail 컨텍스트마다 새 능력 객체를 만들면 패널 본문이 매 렌더 재마운트된다. */
@@ -76,7 +71,7 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
  * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
  */
 // 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
-export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation, header, reservedArenaWidth = 148, expandedSurfaceInArena = false }: RightRailProps) {
+export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation, header, reservedArenaWidth = 148 }: RightRailProps) {
   const t = useT();
   const connection = useSyncExternalStore(subscribe, () => getState().connection, () => "connecting" as const);
   const connectionLostAt = useSyncExternalStore(subscribe, () => getState().connectionLostAt, () => null);
@@ -111,19 +106,17 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
   // 레일 카드가 사이드바 카드를 덮는다(Codex 리뷰 확정). 아레나 좌측 인셋과 같은 산식이다.
   const sideBar = useSideBarState();
   // 대화 중심 화면은 세 열이 맞붙는다 — 사이드바 카드 바깥 틈(24)이 없다.
-  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar) > 0 ? sideBarOccupiedWidth(sideBar) + (expandedSurfaceInArena ? 0 : 24) : 0;
+  const sideBarOccupiedPx = sideBarOccupiedWidth(sideBar);
   // 카드+extra가 함께 쓰는 가용 예산. 카드 상한은 예산에서 extra를 뺀 값이되, 예산이
   // 바닥나면 MIN 바닥이 이긴다 — 그때 넘치는 쪽은 아래 슬롯 총폭 캡이 extra를 깎아 회수한다.
   const fullBudget = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - reservedArenaWidth - sideBarOccupiedPx));
-  // 캔버스에서는 표면이 레일 옆 아레나에 서므로 두 예약을 더한다. 표면이 가운데 칸 안에 서면 칸이 곧 표면이라 큰 쪽만 남긴다.
-  const dockBudget = expandedSurfaceInArena
-    ? Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - Math.max(reservedArenaWidth, expandedMinimum) - sideBarOccupiedPx))
-    : Math.max(MIN_PANEL_WIDTH, fullBudget - expandedMinimum);
+  // 가운데 칸에 확장 표면이 서므로 대화와 표면의 최소 폭 중 큰 쪽만 예약한다.
+  const dockBudget = Math.max(MIN_PANEL_WIDTH, Math.floor(viewportWidth - Math.max(reservedArenaWidth, expandedMinimum) - sideBarOccupiedPx));
   const wholeOverlay = expandedMinimum > 0 && primaryPaneOf(activeBinding)?.widthClass === "broad";
   const overlayDetails = !wholeOverlay && expandedMinimum > 0 && requestedExtraWidth > 0
     && declaredWidthOf(activeBinding) + requestedExtraWidth > dockBudget;
   // 칸 안 표면 배치의 대비 경로 — 문서가 레일 열 안에서 목록을 덮는다. 열은 문서 폭까지(예산 안에서) 넓어져 칸이 그만큼 물러난다.
-  const overlayInRail = overlayDetails && expandedSurfaceInArena;
+  const overlayInRail = overlayDetails;
   const extraWidth = overlayDetails ? 0 : requestedExtra;
   const widthBudget = wholeOverlay ? fullBudget : dockBudget;
   const maxPanelWidth = Math.max(MIN_PANEL_WIDTH, widthBudget - extraWidth);

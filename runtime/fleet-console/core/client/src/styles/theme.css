@@ -1009,7 +1009,7 @@
    본문 글자 #f5f5f5(97%) = --ink-pearl, 시각·보조 글자 #a7a7a7(72.8%) = --ink-muted.
    강조(brass 금색)·신호·정체성 색은 Carbon 값 그대로다 — 면과 글자만 레퍼런스처럼 중립이고, 금색 강조는 Fleet 의 것을 지킨다.
    측정 근거: 목표 증거 ref/(measure-colors.mjs·colors.json, measure-geometry.mjs) 와 tobe/token-changes.md. */
-:root[data-conversation-layout="true"]:not([data-theme="whites"]) {
+:root[data-view-mode="desktop"]:not([data-theme="whites"]) {
   --ink-abyss: oklch(15% 0 0);
   --ink-deep: oklch(17.8% 0 0);
   --ink-mid: oklch(26.9% 0 0);

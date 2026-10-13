@@ -12,7 +12,7 @@ import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/c
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "../conversation/conversation-surface-store.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
-import { useSectionStates, type ResolvedTheaterInboxSection } from "./theater-inbox-sheet.js";
+import { useSectionStates, type ResolvedTheaterInboxSection } from "./section-states.js";
 import { useTheaterInboxState, type TheaterInboxOpenState } from "./store.js";
 
 /** 오른쪽 패널에 선 Inbox 칸 탭의 id — 레일 전체에서 고유해야 한다. */

@@ -7,7 +7,7 @@ import { setSideBarCollapsed, setSideBarPeeking, useSideBarState } from "../../.
 /* Periscope 엣지 독 — 접힌 패널이 남기는 유일한 문.
    접힘은 완전 소멸이되(아레나 인셋 0), 화면 엣지의 brass 필라멘트가 "여기 문이 있다"를
    말하고(brass = 위치/호버 채널), 호버가 패널을 오버레이로 픽한다. 픽은 dock 상태를
-   건드리지 않으므로 캔버스 기하도 흔들리지 않는다. 클릭·Enter는 픽이 아니라 고정(펼침)이다 —
+   건드리지 않으므로 대화 칸 크기도 흔들리지 않는다. 클릭·Enter는 픽이 아니라 고정(펼침)이다 —
    호버 없는 입력(키보드·터치)에는 미리보기 단계가 없고 문이 곧장 열린다. 전체화면 밴드의
    상단 엣지 리빌(command-band-edge-reveal)과 같은 문법의 좌·우 확장. */
 
@@ -52,14 +52,14 @@ function EdgeDock({ side, peeking, label, triggerClassName, panelSelector, onPee
   // 픽을 지운 뒤라 no-op이다.
   useEffect(() => () => { onPeek(false); }, [onPeek]);
   const handlePointerLeave = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    // 독 → 패널로 건너가는 이동은 픽의 연속이다. 그 외(캔버스·상하 이탈)는 픽을 끝낸다 —
+    // 독 → 패널로 건너가는 이동은 픽의 연속이다. 그 외(대화 칸·상하 이탈)는 픽을 끝낸다 —
     // 패널 쪽 이탈은 패널 자신의 pointerleave가 대칭으로 끝낸다.
     const next = event.relatedTarget;
     if (next instanceof Element && next.closest(panelSelector) !== null) return;
     onPeek(false);
   };
   return (
-    <div className={`panel-edge-dock is-${side}${peeking ? " is-peeking" : ""}`} data-canvas-blocker>
+    <div className={`panel-edge-dock is-${side}${peeking ? " is-peeking" : ""}`}>
       {/* 필라멘트는 트리거 뒤 형제다 — :focus-visible ~ 형제 셀렉터가 포커스 점등을 잇는다. */}
       <button
         type="button"

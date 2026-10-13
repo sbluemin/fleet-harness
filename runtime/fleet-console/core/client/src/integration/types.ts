@@ -11,7 +11,7 @@ export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
 /**
  * Quick Launch 컴포저가 확정한 실행 의도.
  *
- * `variant`는 캔버스 우클릭 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
+ * `variant`는 사이드바 실행 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
  * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Operation
  * payload로 되돌아오지 않는다.
  */

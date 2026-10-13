@@ -12,15 +12,11 @@ import { getState, setState } from "../core/client/src/integration/store.js";
 import { bindConsoleNavigate } from "../core/client/src/integration/console-location.js";
 import { searchRailPanels } from "../core/client/src/integration/operation-search.js";
 
-// 레일 착지는 이전 화면(캔버스)의 경로다 — 기본인 대화 중심 화면에서는 설정이 레일 대신 모달로 선다.
-vi.mock("../features/settings/client/use-conversation-layout.js", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../features/settings/client/use-conversation-layout.js")>(),
-  isConversationLayoutActive: () => false,
-}));
+import { getSettingsModalSnapshot, closeSettingsModal } from "../features/settings/client/settings-door.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
@@ -58,7 +54,7 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     const settings = { ...pane, id: "settings", role: "primary" as const };
     const settingsHost = createHostCapabilities(undefined, { railBindings: [{ entry: { id: "settings", title: "Settings", icon: null, panes: ["settings"] }, panes: [settings] }] });
     settingsHost.rail.open("settings", { section: "experiments" });
-    expect(getPaneStoreSnapshot().rail.find((item) => item.paneId === "settings")?.params.section).toBe("experiments");
+    expect(getSettingsModalSnapshot()).toEqual({ open: true, section: "experiments" });
     expect(await createHostCapabilities().navigate.openFile(request)).toEqual({ ok: false, reason: "no_handler" });
     expect(await createHostCapabilities().navigate.openWikiEntry({ theaterId: "a", entryId: "entry" })).toEqual({ ok: false, reason: "no_handler" });
   } finally { unbind(); }
