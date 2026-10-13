@@ -301,7 +301,6 @@ span.objectives-row-main { cursor: default; }
   max-height: min(520px, calc(100vh - 24px)); overflow-y: auto; scrollbar-width: none;
 }
 .objectives-menu::-webkit-scrollbar { display: none; }
-.objectives-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
 .objectives-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }
 .objectives-menu-item:hover, .objectives-menu-item:focus-visible { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 12%, transparent); outline: none; }
 .objectives-menu-item.is-active { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
@@ -316,7 +315,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.objectives-menu-divider { height: 1px; margin: var(--space-1) var(--space-1); background: var(--surface-rim); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */
 .objectives-members { padding: 5px 0 8px; border-top: 1px solid var(--surface-rim); }
@@ -1542,11 +1540,5 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-fresh-brief { margin: 0; max-width: 68ch; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden; }
 .objectives-fresh-brief.is-empty { color: var(--text-tertiary); }
 .objectives-fresh-meta { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
-.objectives-fresh-commence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
-.objectives-fresh-start-button { padding: 8px 18px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); color: var(--brass-ink); font: inherit; font-size: var(--t-md); font-weight: var(--weight-bold); cursor: pointer; }
-.objectives-fresh-start-button:hover:not(:disabled), .objectives-fresh-start-button:focus-visible { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); outline: none; }
-.objectives-fresh-start-button:disabled { color: var(--text-tertiary); cursor: default; }
-.objectives-fresh-desc { min-width: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
-.objectives-fresh-failure { margin: 0; color: var(--coral); font-size: var(--t-sm); }
 .objectives-fresh-foot { flex: none; padding: 12px clamp(16px, 4cqi, 48px) 16px; }
 .objectives-fresh-composer { display: flex; align-items: center; min-height: 48px; box-sizing: border-box; padding: 7px var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel-raised); color: var(--text-tertiary); font-size: var(--t-md); opacity: 0.6; cursor: default; }
