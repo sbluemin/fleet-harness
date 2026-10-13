@@ -1358,8 +1358,8 @@ export interface FleetPluginConsoleControlHost {
    */
   setSubagentSpawn?(operationId: string, policy: "blocked" | "default"): void;
   /**
-   * 이미 있는 Operation의 사람 질문(`AskUserQuestion`) 정책. 다음 기동부터 도구 목록에 반영되고, 살아 있는 채팅 세션은
-   * 남은 질문 호출을 카드 없이 거절한다. 떠 있는 터미널 프로세스는 중단하지 않는다. 없는 Operation은 무시한다.
+   * @deprecated Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 빼므로 정할 정책이 없다.
+   * 호스트는 이 메서드를 제공하지 않는다 — 옛 플러그인의 `?.()` 호출은 아무 일도 하지 않는다.
    */
   setUserQuestions?(operationId: string, policy: "blocked" | "default"): void;
   /**

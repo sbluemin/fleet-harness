@@ -291,8 +291,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.dormant ? { dormant: true } : {}),
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
-      // 목표의 세션은 AskUserQuestion 으로 사람에게 묻지 않는다 — 구성원은 지휘관에게 SendMessage 로, 지휘관은 보드의 결정 요청으로 묻는다.
-      disableUserQuestions: true,
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(groupId ? { groupId } : {}),
@@ -333,8 +331,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const key = `objectives.commander:${objectiveId}`;
     if (existing) {
       await accessOperation(objectiveId);
-      // 이 변경 전에 태어났거나 따로 만든 Operation 을 지휘관으로 쓰는 경우 — 다음 기동부터 사람 질문을 뺀다.
-      blockUserQuestions(objectiveId);
       if (pendingCommander) {
         const marker = existing.payload.launchKey as { owner?: string; key?: string } | undefined;
         if (marker?.owner !== ctx.pluginId || marker.key !== key) throw new ObjectiveStoreError("operation_id_taken");
@@ -476,10 +472,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   const rememberSubagentSpawn = (operationId: string, allowed: boolean) => {
     ctx.host.consoleControl?.setSubagentSpawn?.(operationId, allowed ? "default" : "blocked");
   };
-  /** 목표 세션(지휘관·구성원)의 다음 기동에서 사람 질문을 뺀다. 떠 있는 터미널은 중단하지 않고, 살아 있는 채팅은 남은 질문을 거절한다. */
-  const blockUserQuestions = (operationId: string) => {
-    ctx.host.consoleControl?.setUserQuestions?.(operationId, "blocked");
-  };
   /**
    * 지휘관이 지금 쓰는 뷰 — 후속 목표의 지휘관이 이어받는다. 살아 있는 지휘관은 지금 보이는 표면을, 미기동·휴면이면 저장된
    * 시작 뷰를 쓴다(표식이 없는 옛 지휘관은 터미널이다).
@@ -535,7 +527,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       try {
         const created = ctx.host.operations.create({ id, theaterId: config.theaterId, type: "agent", pluginId: null,
           title: config.title, createdAt: config.createdAt,
-          payload: { dormantBorn: true, restoredDormant: true, userQuestions: "blocked", launchKey: { owner: ctx.pluginId, key },
+          payload: { dormantBorn: true, restoredDormant: true, launchKey: { owner: ctx.pluginId, key },
             ...(config.viewMode === "chat" ? { chatMode: true, chatBorn: true } : {}),
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}) } } });
@@ -617,7 +609,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const node = operationId ? ctx.host.operations.get(operationId) : null;
       if (node && node.theaterId !== current.theaterId) throw new ObjectiveStoreError("unknown_operation");
       if (operationId && node && observation?.lifecycle === "live") {
-        blockUserQuestions(operationId);
         touchLive(operationId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), operationId, state: "live" });
         continue;
@@ -625,7 +616,6 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       if (operationId && node && observation?.lifecycle === "dormant") {
         // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
         rememberSubagentSpawn(operationId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
-        blockUserQuestions(operationId);
         const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
         // 이번 턴 뒤를 기다리던 예약이면 잠든 지금이 그 뒤다 — 이 재개가 그 좌표로 서게 먼저 적용한다.
         settleDormant(objectiveId, member.id);

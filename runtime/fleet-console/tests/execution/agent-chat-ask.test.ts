@@ -11,9 +11,9 @@ import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/exe
  * 대화형 도구 왕복의 계약.
  *
  * 실측(SDK 0.3.212)이 고정한 사실 위에 선다: `canUseTool`을 주면 자식이 `AskUserQuestion`·
- * `ExitPlanMode`를 갖고, 답변은 그 콜백의 반환으로만 자식에게 닿는다. 질문은
- * `updatedInput.answers`로, 계획은 allow 자체가 승인이며, deny의 message는 계획 쪽에서
- * 수정 요청이 되어 모델이 계획을 고쳐 다시 낸다.
+ * `ExitPlanMode`를 갖고, 답변은 그 콜백의 반환으로만 자식에게 닿는다. 계획은 allow 자체가
+ * 승인이며, deny의 message는 수정 요청이 되어 모델이 계획을 고쳐 다시 낸다. 질문 도구는
+ * Console이 도구 목록에서 빼므로, 그래도 닿은 호출은 카드 없이 거절된다.
  */
 
 const temporaryDirectories: string[] = [];
@@ -91,9 +91,8 @@ function createPausedSdkFactory() {
   };
 }
 
-function seedFor(awaitingLog: boolean[], userQuestionsBlocked?: () => boolean): AgentChatSessionSeed {
+function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
   return {
-    ...(userQuestionsBlocked ? { userQuestionsBlocked } : {}),
     baseUrl: "http://127.0.0.1:9/gateway",
     model: "opus[1m]",
     cwd: "/tmp/workspace",
@@ -133,8 +132,8 @@ const QUESTION_INPUT = {
   }],
 };
 
-async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof createPausedSdkFactory>, awaitingLog: boolean[], userQuestionsBlocked?: () => boolean) {
-  const session = await registry.ensure("op-ask", () => seedFor(awaitingLog, userQuestionsBlocked));
+async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof createPausedSdkFactory>, awaitingLog: boolean[]) {
+  const session = await registry.ensure("op-ask", () => seedFor(awaitingLog));
   const events: AgentChatJournalEvent[] = [];
   session.subscribe((entry) => events.push(entry));
   session.send("decide the log format");
@@ -143,40 +142,6 @@ async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof 
 }
 
 describe("AgentChatRegistry — interactive tools", () => {
-  it("parks the question, reports awaiting, and hands the answer back as updatedInput", async () => {
-    const sdk = createPausedSdkFactory();
-    const registry = new AgentChatRegistry(sdk.factory);
-    const awaitingLog: boolean[] = [];
-    const { session, events } = await startSession(registry, sdk, awaitingLog);
-
-    const decision = sdk.ask("AskUserQuestion", QUESTION_INPUT);
-    await vi.waitFor(() => {
-      expect(events.some((entry) => entry.event.kind === "ask")).toBe(true);
-    });
-    expect(awaitingLog).toEqual([true]);
-    expect(session.awaiting).toBe(true);
-
-    expect(session.answer("tool-1", { answers: ["JSON"] })).toEqual({ ok: true, outcome: "answered" });
-    // 답은 권한 응답에 실려 돌아간다 — 질문 텍스트를 키로 하는 answers 하나가 통로다.
-    await expect(decision).resolves.toEqual({
-      behavior: "allow",
-      updatedInput: { ...QUESTION_INPUT, answers: { "Should logs be JSON or plain text?": "JSON" } },
-    });
-    expect(awaitingLog).toEqual([true, false]);
-    expect(session.awaiting).toBe(false);
-
-    const settled = events.map((entry) => entry.event).find((event) => event.kind === "ask-settled");
-    expect(settled).toEqual({
-      kind: "ask-settled",
-      id: "tool-1",
-      outcome: "answered",
-      answers: [{ header: "Log format", value: "JSON" }],
-    });
-
-    sdk.finish();
-    await registry.disposeAll();
-  });
-
   it("treats a plan approval as allow and a change request as a denial carrying the message", async () => {
     const sdk = createPausedSdkFactory();
     const registry = new AgentChatRegistry(sdk.factory);
@@ -200,21 +165,19 @@ describe("AgentChatRegistry — interactive tools", () => {
     await registry.disposeAll();
   });
 
-  it("refuses a question from a session whose questions are off, without a card or awaiting, and still parks a plan", async () => {
+  it("refuses a question without a card or awaiting, and still parks a plan", async () => {
     const sdk = createPausedSdkFactory();
     const registry = new AgentChatRegistry(sdk.factory);
     const awaitingLog: boolean[] = [];
-    // 세션이 연 뒤 정책이 막혀도 남은 호출이 거절되도록 호출마다 읽는다.
-    let blocked = false;
-    const { session, events } = await startSession(registry, sdk, awaitingLog, () => blocked);
-    blocked = true;
+    // 질문 도구는 도구 목록에서 빠진다 — 그래도 닿은 호출은 카드 없이 거절한다.
+    const { session, events } = await startSession(registry, sdk, awaitingLog);
 
     await expect(sdk.ask("AskUserQuestion", QUESTION_INPUT, "tool-off")).resolves.toMatchObject({ behavior: "deny" });
     expect(events.some((entry) => entry.event.kind === "ask")).toBe(false);
     expect(awaitingLog).toEqual([]);
     expect(session.awaiting).toBe(false);
 
-    // 계획 승인은 이 정책 밖이다.
+    // 계획 승인은 이 거절 밖이다.
     void sdk.ask("ExitPlanMode", { plan: "1. rename" }, "plan-kept");
     await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
 
@@ -232,7 +195,7 @@ describe("AgentChatRegistry — interactive tools", () => {
     // 리스너가 아니라 턴 종료 정리에 기대야 하고, 그 사이 화면은 끝난 턴을 대기로 보인다.
     const aborted = new AbortController();
     aborted.abort();
-    await expect(sdk.askWith("AskUserQuestion", QUESTION_INPUT, "tool-dead", aborted.signal))
+    await expect(sdk.askWith("ExitPlanMode", { plan: "1. rename" }, "plan-dead", aborted.signal))
       .resolves.toEqual({ behavior: "deny", message: "The turn ended before the question was answered." });
     expect(session.awaiting).toBe(false);
     expect(awaitingLog).toEqual([]);
@@ -241,13 +204,13 @@ describe("AgentChatRegistry — interactive tools", () => {
     await registry.disposeAll();
   });
 
-  it("releases a parked question when the session is disposed", async () => {
+  it("releases a parked plan when the session is disposed", async () => {
     const sdk = createPausedSdkFactory();
     const registry = new AgentChatRegistry(sdk.factory);
     const awaitingLog: boolean[] = [];
     const { session } = await startSession(registry, sdk, awaitingLog);
 
-    const decision = sdk.ask("AskUserQuestion", QUESTION_INPUT);
+    const decision = sdk.ask("ExitPlanMode", { plan: "1. rename" });
     await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
 
     // 만료가 없으므로 이 경로가 유일한 안전망이다 — 풀리지 않은 답 하나가 SDK 스트림을 영원히 붙든다.

@@ -139,7 +139,8 @@ describe("agent chat mode routes", () => {
     expect(harness.sends).toEqual([]);
     expect(await delivered).toMatchObject({ operationId: sessionId });
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build"]));
-    expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ systemPrompt: { mode: "append", text: "Theater rules" } });
+    // 목표 밖의 평범한 채팅 Operation도 사람에게 묻는 도구 없이 연다.
+    expect(harness.openSession.mock.calls[0]?.[0]).toMatchObject({ systemPrompt: { mode: "append", text: "Theater rules" }, disallowedTools: ["AskUserQuestion"] });
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
     const launched = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).operationId;
@@ -155,13 +156,13 @@ describe("agent chat mode routes", () => {
     expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
     await vi.waitFor(() => expect(readOperationLaunch(harness.operation(commander)!.payload).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
-    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task"] });
-    // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 차단 규칙이 없다.
+    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task", "AskUserQuestion"] });
+    // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 서브에이전트 차단 규칙이 없다.
     const member = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).operationId;
     harness.setSubagentSpawn(member, "default");
     await harness.consoleControl.request(caller, { kind: "send", operationId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
-    expect(harness.openSession.mock.calls.at(-1)?.[0]).not.toHaveProperty("disallowedTools");
+    expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion"] });
     const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).operationId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
