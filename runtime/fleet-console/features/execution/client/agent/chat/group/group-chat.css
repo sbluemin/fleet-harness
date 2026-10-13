@@ -835,16 +835,40 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-chat-notes-item { min-width: 0; overflow-wrap: anywhere; }
 .group-chat-notes-list .group-chat-line-actions { margin-top: var(--space-1); }
 
-/* 높이 상한 — 넘치는 말풍선만 아래를 바탕으로 흐리고 「전체 보기」를 단다. 흐림은 말풍선 면과 같은 토큰이다. */
-.group-chat-bubble.is-capped { max-height: 320px; overflow: hidden; }
-.group-chat-bubble.is-clipped { position: relative; }
+/* 높이 상한 — 상한은 본문 칸(.group-chat-bubble-body)이 지고, 말풍선은 여백 없는 틀이 되어 본문 칸을 둥근 면 안에 가둔다.
+   넘치는 말풍선만 가려진 가장자리를 바탕으로 흐리고 「전체 보기」를 단다. 흐림은 틀에 고정되어 본문을 굴려도 제자리다.
+   흐림은 말풍선 면과 같은 토큰이다(대화 다크의 봇 말풍선은 한 단 낮은 면이라 그 면을 함께 받는다). */
+.group-chat-bubble.is-capped { position: relative; padding: 0; overflow: hidden; --group-chat-bubble-face: var(--surface-panel-raised); }
+:root[data-conversation-layout="true"]:not([data-theme="whites"]) .group-chat-bubble.is-capped { --group-chat-bubble-face: var(--surface-panel); }
+.group-chat-bubble.is-capped > .group-chat-bubble-body { max-height: 320px; padding: 10px 14px; overflow: hidden; }
+/* 마우스 환경에서만 본문 칸을 그 자리에서 굴린다 — 터치 화면에서는 화면을 덮는 말풍선이 스와이프를 가두므로 지금처럼 「전체 보기」로 편다.
+   overscroll-behavior 는 막지 않는다 — 위·아래 끝에 닿은 휠은 바깥 대화로 이어진다. 스크롤바는 전역의 얇은 스크롤바 그대로이고,
+   트랙만 둥근 모서리 안으로 들인다. */
+@media (hover: hover) and (pointer: fine) {
+  .group-chat-bubble.is-capped > .group-chat-bubble-body { overflow-y: auto; }
+  .group-chat-bubble.is-capped > .group-chat-bubble-body::-webkit-scrollbar-track { margin-block: 14px; }
+}
+/* 키보드 — 브라우저는 굴릴 수 있는 본문 칸을 탭 정거장으로 세운다. 본문 칸의 링은 틀의 둥근 면에 잘리므로 링은 틀이 진다. */
+.group-chat-bubble.is-capped > .group-chat-bubble-body:focus-visible { outline: none; }
+.group-chat-bubble.is-capped:has(> .group-chat-bubble-body:focus-visible) { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-chat-bubble.is-clipped::before,
 .group-chat-bubble.is-clipped::after {
   content: "";
   position: absolute;
-  inset: auto 0 0 0;
-  height: 64px;
-  background: linear-gradient(to bottom, transparent, var(--surface-panel-raised));
+  inset-inline: 0;
   pointer-events: none;
+}
+/* 아래 흐림은 끝까지 내리면 걷힌다. 위 흐림은 맨 위가 아닐 때만 짧게 선다 — 위에도 가려진 줄이 있다는 표시다. */
+.group-chat-bubble.is-clipped::after {
+  bottom: 0;
+  height: 64px;
+  background: linear-gradient(to bottom, transparent, var(--group-chat-bubble-face));
+}
+.group-chat-bubble.is-clipped.is-at-end::after { display: none; }
+.group-chat-bubble.is-clipped.is-scrolled::before {
+  top: 0;
+  height: 28px;
+  background: linear-gradient(to top, transparent, var(--group-chat-bubble-face));
 }
 .group-chat-more { align-self: flex-start; margin-left: var(--space-1); }
 
