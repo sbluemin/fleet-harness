@@ -273,11 +273,15 @@ function mergeFields(tool: string, actions: readonly { readonly properties: Read
 function mergeField(tool: string, key: string, variants: readonly JsonSchema[]): JsonSchema {
   const distinct = [...new Map(variants.map((variant) => [JSON.stringify(variant), variant])).values()];
   if (distinct.length === 1) return distinct[0]!;
+  const description = distinct.map((variant) => variant.description).find((value): value is string => typeof value === "string");
+  // describe 만 다른 같은 스키마(같은 배열을 action 마다 다르게 설명한 objectiveIds 같은)는 구조를 그대로 둔다 — 아래의 느슨한 합치기는
+  // 배열·객체의 items/properties 를 버려, 원소를 말하지 못하는 광고 스키마가 되고 Codex strict 변환도 그 도구를 포기한다.
+  const shapes = distinct.map(({ description: _description, ...shape }) => shape);
+  if (new Set(shapes.map((shape) => JSON.stringify(shape))).size === 1) return description ? { ...shapes[0]!, description } : shapes[0]!;
   const kinds = distinct.map(baseTypes);
   const signature = (types: ReadonlySet<string>) => [...types].filter((type) => type !== "null").map((type) => type === "integer" ? "number" : type).sort().join("|");
   if (new Set(kinds.map(signature)).size !== 1) throw new Error(`Console Use field ${tool}.${key} has conflicting types across actions`);
   const nullable = kinds.some((types) => types.has("null"));
-  const description = distinct.map((variant) => variant.description).find((value): value is string => typeof value === "string");
   const branches = distinct.map((variant) => nonNull(variant));
   const types = [...new Set(kinds.flatMap((types) => [...types]).filter((type) => type !== "null"))];
   let loose: JsonSchema;
