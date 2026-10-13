@@ -7,7 +7,8 @@ import type { ClientTheaterInboxCapability, TheaterInboxAddress } from "@fleet-c
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { conversationSurfaceInboxSectionId, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
-import { registerConversationOperationTab } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { registerConversationOperationTab, useConversationOperationTabPanels } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
+import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "../conversation/conversation-surface-store.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
@@ -24,6 +25,17 @@ function addressOfTab(id: string | null): TheaterInboxAddress | null {
   const rest = id.slice("theater-inbox:".length);
   const cut = rest.lastIndexOf(":");
   return cut > 0 ? { sectionId: rest.slice(0, cut), pageId: rest.slice(cut + 1) } : null;
+}
+
+/** 활성 패널이 대화를 세워도 남길 도구인가 — 레일에 본문이 서는 도구 엔트리이고, 대화 탭·Inbox 칸·섹션이 뺀 도구가 아니다. */
+function keptToolPanel(
+  active: string | null,
+  rail: { readonly bindings: readonly RailEntryBinding[]; readonly operationTabs: readonly { readonly id: string }[] },
+  omitted: readonly string[] | undefined,
+): boolean {
+  if (active === null || addressOfTab(active) !== null || rail.operationTabs.some((tab) => tab.id === active)) return false;
+  const binding = rail.bindings.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
+  return binding !== undefined && binding.entry.conversationTab !== true && !(omitted ?? []).includes(active);
 }
 
 export interface TheaterInboxPanelProps {
@@ -103,6 +115,10 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
   // 탭(같은 칸을 대신하는 것, 없으면 기본 탭)을 연다.
   const opened = useRef(false);
   const request = open.focusRequest;
+  const bindings = useDesktopRailEntries();
+  const operationTabs = useConversationOperationTabPanels();
+  const railRef = useRef({ bindings, operationTabs });
+  railRef.current = { bindings, operationTabs };
   useEffect(() => {
     if (request === null) return;
     const index = sections.findIndex((section) => section.id === open.address.sectionId);
@@ -118,6 +134,9 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
       return;
     }
     let tabId = theaterInboxPanelTabId(open.address);
+    // 대화를 세우기 전에 보던 패널이 도구(파일 등)이고 이 섹션에서도 서는 도구면 대화를 세운 뒤에도 그 도구를 둔다. 닫혀 있었거나 앞
+    // 대화의 탭(목표·구성원)·Inbox 칸이었으면 대화의 탭을 연다.
+    const kept = keptToolPanel(getRailStoreSnapshot().activePanelId, railRef.current, section.descriptor.omitsRailEntries);
     let inCenter = section.id === centerSectionId;
     if (!inCenter && section.descriptor.openConversation) {
       try { inCenter = section.descriptor.openConversation({ theater, pageId: page.id }); } catch { inCenter = false; }
@@ -135,6 +154,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
       tabId = surfaceTabId;
     }
     opened.current = true;
+    if (inCenter && kept) return;
     openRailPanel(tabId);
     // 요청 하나에 한 번 — 섹션 상태가 바뀌어도 다시 열지 않는다(로딩이 풀릴 때만 다시 돈다).
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,6 +183,16 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     previousSubject.current = subjectId;
     if (subjectId !== null && subjectId !== previous) navigation.close();
   }, [navigation, subjectId]);
+
+  // 가운데 칸에 이 Theater 섹션을 대신하지 않는 플러그인 대화(시작 전 목표 등)가 새로 서도 Theater 를 걷는다 — 그 대화는 Operation 이
+  // 아니라 대상이 비므로 위의 길로는 걷히지 않는다. 사령관처럼 이 Theater 의 섹션을 대신하는 대화는 Theater 를 연 채 둔다.
+  const selection = useConversationSurface();
+  const previousSelection = useRef(selection);
+  useEffect(() => {
+    const previous = previousSelection.current;
+    previousSelection.current = selection;
+    if (selection !== null && selection !== previous && center === null) navigation.close();
+  }, [center, navigation, selection]);
 
   // 걷힐 때 이 Theater 의 칸 탭이 연 패널을 닫는다(대화의 탭은 대화가 걷는다).
   useEffect(() => () => {
