@@ -581,18 +581,20 @@ const finishedFailed = new Set<string>();
 let finishedRevision = 0;
 const noteFinished = () => { for (const listener of finishedListeners) listener(); };
 
+/** 읽는 사이 다시 낡은 Theater — 그 읽기가 끝나면 한 번 더 읽는다(읽는 중의 응답은 바뀌기 전 목록일 수 있다). */
+const finishedDirty = new Set<string>();
+
 /**
- * 목표 사건(`objectives:objective`)이 읽어 둔 끝난 목표를 낡게 하면 그 Theater 의 캐시를 버린다 — 캐시에 있던 목표가 바뀌었거나(확장으로 복원),
- * 완료로 보관된 목표가 왔다(다시 완료). 확장했다가 다시 완료한 목표가 옛 완료 기록으로 서지 않게, 다음에 열 때 다시 읽는다. 보관·복원 Operation
- * 사건은 브라우저로 나오지 않으므로 이 사건이 수명주기를 말한다. 폰 「끝남」은 살아 있는 명단이 바뀌어 스스로 다시 읽는다.
+ * 목표 사건(`objectives:objective`)이 읽어 둔 끝난 목표를 낡게 하면 그 Theater 의 목록을 그 자리에서 다시 읽는다 — 캐시에 있던 목표가
+ * 바뀌었거나(확장으로 복원), 완료로 보관된 목표가 왔다(다시 완료). 캐시는 지우지 않는다: 다시 읽는 동안 지금 보고 있는 완료 화면은 기존
+ * 레코드로 서 있고, 새 목록이 오면 바뀐다. 보관·복원 Operation 사건은 브라우저로 나오지 않으므로 이 사건이 수명주기를 말한다.
  */
 function invalidateFinishedFor(theaterId: string, objectiveId: string, objective: Objective | null): void {
   const list = finishedByTheater.get(theaterId);
   if (!list) return;
   if (!list.some((entry) => entry.id === objectiveId) && !(objective?.done && objective.archived)) return;
-  finishedByTheater.delete(theaterId);
-  finishedRevision += 1;
-  noteFinished();
+  if (finishedInflight.has(theaterId)) finishedDirty.add(theaterId);
+  else loadFinishedObjectives(theaterId);
 }
 
 /** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
@@ -612,6 +614,7 @@ export function loadFinishedObjectives(theaterId: string): void {
     .finally(() => {
       finishedInflight.delete(theaterId);
       noteFinished();
+      if (finishedDirty.delete(theaterId)) loadFinishedObjectives(theaterId);
     });
 }
 
