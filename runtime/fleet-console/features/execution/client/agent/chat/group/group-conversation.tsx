@@ -171,11 +171,13 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
           // 우리가 바닥으로 옮긴 scroll 사건은 읽기 의도가 아니다. 다음 조각이 먼저 자라도 따라가기를 끊지 않는다.
           if (log.scrollTop === programmaticTop.current) return;
           programmaticTop.current = null;
-          // 판정 높이는 지금 높이와 마지막 RO 높이 중 작은 쪽이다. 복귀·폭 전이로 줄면 브라우저가 먼저 scrollTop을 제한하므로
-          // 지금 높이로 재고(RO 전의 cached 높이는 위로 읽기로 오인한다), 원장 재생처럼 clamp·anchoring 사건이 닿기 전에 칼럼이
-          // 먼저 자라면 RO 전 높이로 잰다(그 성장을 사람이 위로 올린 것으로 오인하지 않는다 — 다음 RO 가 따라간다).
+          // 따라가는 중이면 판정 높이는 지금 높이와 마지막 RO 높이 중 작은 쪽이다. 복귀·폭 전이로 줄면 브라우저가 먼저 scrollTop을
+          // 제한하므로 지금 높이로 재고(RO 전의 cached 높이는 위로 읽기로 오인한다), 원장 재생처럼 clamp·anchoring 사건이 닿기 전에
+          // 칼럼이 먼저 자라면 RO 전 높이로 잰다(그 성장을 사람이 위로 올린 것으로 오인하지 않는다 — 다음 RO 가 따라간다).
+          // 위로 올려 읽는 중이면 지금 높이로만 잰다 — 보이는 줄 위가 자라 anchoring 이 올린 scrollTop 을 짧은 cached 높이와 견주면
+          // 바닥에 닿은 것으로 오인해 읽던 사람을 바닥으로 끌어내린다.
           const cached = placed.current?.height;
-          const height = cached ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
+          const height = cached && nearBottomRef.current ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
           nearBottomRef.current = height - log.scrollTop - log.clientHeight < 60;
         }}
       >
