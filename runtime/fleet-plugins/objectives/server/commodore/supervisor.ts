@@ -479,6 +479,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         for (const [code, reason] of pending) if (!runner.pending.has(code)) runner.pending.set(code, reason);
         runner.messages.unshift(...messages);
         if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
+        // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
+        // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
+        else if (outcome.outcome === "error" && outcome.compactionFailed) { runner.rotateNext ??= "replaced"; }
         scheduleRetry(runner, outcome.error ?? "turn_failed");
         return;
       }

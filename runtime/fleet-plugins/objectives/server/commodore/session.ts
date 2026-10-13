@@ -58,6 +58,8 @@ export interface CommodoreTurnInput {
 
 export interface CommodoreTurnOutcome {
   readonly outcome: "ok" | "error" | "cancelled";
+  /** 이 턴에서 대화 요약이 실패했고 그 뒤 성공하지 못했다 — 오류 턴이면 이 세션은 넘친 채로 남는다. */
+  readonly compactionFailed?: true;
   readonly usage?: AgentUsage;
   readonly error?: string;
   /** 이 턴에서 보드에 쓴 행위 수. */
@@ -96,6 +98,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const toolErrors = new Map<string, string>();
   let turnActions = 0;
   let turnResult: CommodoreTurnOutcome | null = null;
+  let compactionFailed = false;
 
   const record = (entry: CommodoreTranscriptInput) => {
     try { options.store.transcriptAppend(options.theaterId, entry); }
@@ -150,11 +153,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       case "result": {
         flushText(); flushTools();
         const error = event.isError ? clip(event.detail ?? event.source, MAX_ERROR) : undefined;
-        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), actions: turnActions };
+        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
         record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(error ? { error } : {}) });
         return;
       }
+      case "compact-failed": compactionFailed = true; return;
       case "compacted":
+        compactionFailed = false;
         flushText();
         record({ kind: "compacted", trigger: event.trigger, preTokens: Math.round(event.preTokens), ...(event.postTokens !== undefined ? { postTokens: Math.round(event.postTokens) } : {}) });
         return;
@@ -196,7 +201,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
-      turnActions = 0; turnResult = null; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
+      turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear();
       record({ kind: "wake", reasons: input.reasons });
       if (input.scope) {
         // 한 쪽이 상한을 넘으면 앞부분만 싣고 나머지는 수로 — 줄 하나가 스키마에 걸려 통째로 빠지지 않게.

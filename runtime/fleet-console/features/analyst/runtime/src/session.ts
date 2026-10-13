@@ -146,6 +146,7 @@ export function toAnalystEvents(event: ClaudeExecutionEvent): readonly AnalystEv
       return [{ type: "complete" }];
     // 분석 세션은 한 번의 분석이다 — 압축을 따로 알리지 않는다.
     case "compacted":
+    case "compact-failed":
       return [];
   }
 }

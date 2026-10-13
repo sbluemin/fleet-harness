@@ -38,7 +38,9 @@ export type AgentEvent =
   | { readonly kind: "result"; readonly isError: boolean; readonly detail?: string; readonly source: "message" | "incomplete" | "watchdog"; readonly usage?: AgentUsage }
   | { readonly kind: "cancelled" }
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다. 턴 시작에도, 도구 루프 중간에도 올 수 있다. 모르는 소비자는 무시한다. */
-  | { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number };
+  | { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
+  /** 세션이 대화를 요약하려다 실패했다 — 대화는 줄지 않았다. 창을 넘긴 세션이면 이어지는 턴이 오류로 끝난다. 모르는 소비자는 무시한다. */
+  | { readonly kind: "compact-failed" };
 
 export interface AgentToolGroup {
   readonly name: string;

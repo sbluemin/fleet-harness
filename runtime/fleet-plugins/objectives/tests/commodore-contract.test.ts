@@ -563,6 +563,7 @@ describe("commodore supervisor", () => {
       let fail: string | null = null;
       let inputTokens = 1_000;
       let compaction: { readonly preTokens: number; readonly postTokens: number } | null = null;
+      let compactionFails = false;
       let holdTurn = false;
       let completeOnCancel = false;
       let cancelTurn: (() => void) | undefined;
@@ -579,6 +580,12 @@ describe("commodore supervisor", () => {
                 return;
               }
               if (compaction) { options.onEvent?.({ kind: "compacted", trigger: "auto", ...compaction }); compaction = null; }
+              // 요약이 실패한 채 창을 넘긴 세션 — Claude Code(2.1.296 실측)는 압축 실패를 알리고 턴을 오류로 끝내며, 다음 턴도 같다.
+              if (compactionFails) {
+                options.onEvent?.({ kind: "compact-failed" });
+                options.onEvent?.({ kind: "result", isError: true, source: "message", detail: "Prompt is too long · automatic compaction failed", usage: { inputTokens: 0, outputTokens: 0, contextTokens: 0 } });
+                return;
+              }
               options.onEvent?.({ kind: "text", text: "ok" });
               // 턴 합계(inputTokens)는 도구 호출마다 다시 더해진 값이고, 대화 크기는 마지막 호출의 입력(contextTokens)이다.
               options.onEvent?.({ kind: "result", isError: false, source: "message", usage: { inputTokens: inputTokens * 2, outputTokens: 10, costUsd: 0.01, contextTokens: inputTokens } });
@@ -766,15 +773,19 @@ describe("commodore supervisor", () => {
       expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "compacted")).toMatchObject({ trigger: "auto", preTokens: 760_000, postTokens: 12_000 });
       expect(supervisor.status("t1")).toMatchObject({ context: { inputTokens: 14_000 } });
 
-      // 교대 — 좌표가 바뀌면 다음 깨움에서 새 세션 + 최근 행위 요약. 기록은 끊기지 않는다.
-      h.store.setCoordinates("t1", { model: "codex--gpt-6-luna", effort: "high" });
-      inputTokens = 1_000;
+      // 교대 — 요약이 실패해 넘친 세션은 같은 세션으로 다시 시도하지 않는다. 다음 시도가 새 세션 + 최근 행위 요약으로 연다.
+      compactionFails = true;
       h.store.addIntel("t1", { text: "f" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying" });
+      expect(sessions).toHaveLength(1);
+      compactionFails = false;
+      inputTokens = 1_000;
+      await supervisor.retry("t1");
       expect(sessions).toHaveLength(2);
       expect(sessions[0]!.disposed).toBe(true);
       expect(sessionEvents()).toEqual(["restarted", "replaced"]);
-      expect(tokens().at(-1)).toEqual(["intel:1", "rotated"]);
+      expect(tokens().at(-1)).toEqual(["intel:1", "retry", "rotated"]);
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);
 

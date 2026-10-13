@@ -32,7 +32,12 @@ export type ClaudeExecutionEvent =
       readonly trigger: "auto" | "manual";
       readonly preTokens: number;
       readonly postTokens?: number;
-    };
+    }
+  /**
+   * 자식이 대화를 요약하려다 실패했다(`status`의 `compact_result: "failed"`). 대화는 줄지 않은 채 남는다 — 창 안이면 턴은
+   * 이어지고, 창을 넘었으면 턴이 오류로 끝나며 같은 세션의 다음 턴도 같다(2.1.296 실측). 오류 문구는 싣지 않는다.
+   */
+  | { readonly kind: "compact-failed" };
 
 export interface ClaudeExecutionUsage {
   /** 이 턴의 주 루프 호출들이 읽은 입력의 합(캐시 포함). 도구 루프가 돌면 호출마다 다시 더해진다. */
@@ -78,6 +83,7 @@ export function createClaudeExecutionEventDecoder(): ClaudeExecutionEventDecoder
         if (event?.kind === "compacted" && event.postTokens !== undefined) contextTokens = event.postTokens;
         return event ? [event] : [];
       }
+      if (message.type === "system" && message.subtype === "status" && message.compact_result === "failed") return [{ kind: "compact-failed" }];
       if (message.type === "result") return decodeResult(message, contextTokens);
       return [];
     },
