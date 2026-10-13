@@ -12,6 +12,8 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { closeRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
+import { useRailPanes } from "../pane/pane-store.js";
+import { getMobileDestination, setMobileDestination } from "./mobile-store.js";
 import { MobileBarContext, useClaimMobileBar, useMobilePluginBar } from "./mobile-bar-context.js";
 import "../../styles/rail.css";
 
@@ -30,12 +32,26 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const bar = useMobilePluginBar({ title });
 
   // 페인이 서려면 레일 스토어가 이 엔트리를 열어 둔 상태여야 한다. 화면을 떠나면 닫는다.
+  // 주소에 primary 페인의 params가 남아 있으면(새로고침·딥링크) 그 params로 연다.
   useEffect(() => {
     if (!binding || (binding.panes.length === 0)) return;
-    capabilities.rail.open(entryId);
+    const current = getMobileDestination();
+    const params = current.kind === "plugin" && current.entryId === entryId ? current.params : undefined;
+    if (params) capabilities.rail.open(entryId, params);
+    else capabilities.rail.open(entryId);
     return () => { closeRailPanel(entryId); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryId, binding === undefined]);
+
+  // primary 페인이 `panes.replaceParams`로 대상을 바꾸면 그 params를 목적지 주소에 옮겨 적는다(SDK: 「주소도 함께 바뀐다」).
+  // 호스트가 열 때 붙이는 일회성 `requestId`는 주소가 아니다. 페인 인스턴스가 아직 없으면(여는 중) 쓰지 않는다 — 복원할 params를 지우지 않게.
+  const primaryId = binding?.panes.find((pane) => pane.role === "primary")?.id;
+  const primaryParams = useRailPanes().find((instance) => instance.paneId === primaryId)?.params;
+  useEffect(() => {
+    if (primaryParams === undefined || activeRail !== entryId) return;
+    const kept = Object.fromEntries(Object.entries(primaryParams).filter(([key]) => key !== "requestId"));
+    setMobileDestination(Object.keys(kept).length > 0 ? { kind: "plugin", entryId, params: kept } : { kind: "plugin", entryId });
+  }, [activeRail, entryId, primaryParams]);
 
   if (binding && binding.panes.length === 0 && binding.entry.surfaceId) {
     return <MobileSurfaceScreen surfaceId={binding.entry.surfaceId} title={title} theme={theme} language={language} />;

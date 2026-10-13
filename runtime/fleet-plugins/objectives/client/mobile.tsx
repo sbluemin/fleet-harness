@@ -173,15 +173,23 @@ export function finishedObjectiveItems(theaterId: string | null, locale: Console
 /**
  * 폰의 목표 화면 — 칩 없는 목적지(`destination.chip: false`)의 본문이다. 목표 목록은 폰에 없고, 이 화면의 입구는 플러그인의 착지(`openObjectiveOnPhone`)뿐이다:
  * 지휘관 Operation 이 없는 목표나 대화 탭이 서지 못한 목표를 reveal(또는 호스트가 돌려준 params)로 받아 그 상세를 뿌리(depth 0)로 세운다 — ‹ 는 홈이다.
+ * 고른 목표는 페인 params(`objectiveId`)에 두어 호스트의 목적지 주소로 새로고침을 넘긴다.
  */
 export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   const reveal = useReveal();
-  const [objectiveId, setObjectiveId] = useState(() => ctx.params.objectiveId ?? ctx.params.operationId ?? "");
+  const { panes } = ctx;
+  // 보이는 목표는 페인 주소(params)가 든다 — 호스트가 목적지 주소에 옮겨 적어, 새로고침·딥링크에도 같은 목표가 선다.
+  // 착지는 reveal 로 오거나(시작 전 줄·질문 카드) 호스트가 대화 탭 대신 돌려준 `operationId` 로 온다 — 둘 다 `objectiveId` 하나로 고쳐 적는다.
+  // primary params 는 화면을 닫아도 남는다(호스트 계약) — 새 착지의 reveal 이 아직 집히기 전이면 그것을 먼저 그려 옛 목표가 한 번 비치지 않게 한다.
+  const objectiveId = reveal?.objectiveId ?? ctx.params.objectiveId ?? ctx.params.operationId ?? "";
   useEffect(() => {
     if (!reveal) return;
     const target = takeReveal();
-    if (target) setObjectiveId(target.objectiveId);
-  }, [reveal]);
+    if (target) panes.replaceParams({ objectiveId: target.objectiveId });
+  }, [reveal, panes]);
+  useEffect(() => {
+    if (ctx.params.objectiveId === undefined && ctx.params.operationId) panes.replaceParams({ objectiveId: ctx.params.operationId });
+  }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
   // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
   const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
   const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);

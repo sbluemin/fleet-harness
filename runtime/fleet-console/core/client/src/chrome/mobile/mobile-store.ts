@@ -35,7 +35,11 @@ export type MobileDestination =
   | { readonly kind: "archive" }
   | { readonly kind: "search"; readonly scope?: "archive" }
   | { readonly kind: "plugins" }
-  | { readonly kind: "plugin"; readonly entryId: string };
+  /**
+   * 플러그인 목적지 화면. `params`는 그 화면 primary 페인의 주소(`PaneContext.params`) — 페인이 `panes.replaceParams`로 대상을 바꾸면
+   * 화면이 여기에 옮겨 적고, 새로고침·딥링크는 그 params로 페인을 다시 연다(`?dest=plugin:<엔트리>?<params>`).
+   */
+  | { readonly kind: "plugin"; readonly entryId: string; readonly params?: Readonly<Record<string, string>> };
 
 // 새로고침해도 보던 목적지를 잃지 않게 주소(`?dest=`)에 남긴다 — 첫 화면(IA-G2)은 앱을 새로 열 때의 기본이고, 새로고침은 그 자리 유지다.
 const DEST_PARAM = "dest";
@@ -46,16 +50,32 @@ function readDestinationFromUrl(): MobileDestination {
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
   if (raw !== null && raw.startsWith("info:") && raw.length > 5) return { kind: "info", tab: raw.slice(5) };
-  if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
+  if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) {
+    const [entryId = "", query] = splitOnce(raw.slice(7), "?");
+    const params = query === undefined ? {} : Object.fromEntries(new URLSearchParams(query));
+    if (entryId) return Object.keys(params).length > 0 ? { kind: "plugin", entryId, params } : { kind: "plugin", entryId };
+  }
   return { kind: "home" };
 }
 
 export function syncMobileDestinationUrl(): void { writeDestinationToUrl(destination); }
 
+function splitOnce(value: string, separator: string): [string, string | undefined] {
+  const index = value.indexOf(separator);
+  return index < 0 ? [value, undefined] : [value.slice(0, index), value.slice(index + 1)];
+}
+
+/** 목적지 params의 주소 꼬리 — 키 순서를 고정해 같은 params가 같은 주소가 되게 한다. */
+function paramsSuffix(params: Readonly<Record<string, string>> | undefined): string {
+  if (!params) return "";
+  const query = new URLSearchParams(Object.entries(params).sort(([left], [right]) => left.localeCompare(right))).toString();
+  return query ? `?${query}` : "";
+}
+
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
+  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
     : next.kind === "info" && next.tab !== undefined ? `info:${next.tab}` : next.kind;
   if ((url.searchParams.get(DEST_PARAM)) === value) return;
   if (value === null) url.searchParams.delete(DEST_PARAM);
@@ -73,7 +93,8 @@ export function getMobileDestination(): MobileDestination { return destination; 
 
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
-    && (destination as { tab?: string }).tab === (next as { tab?: string }).tab) return;
+    && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
+    && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;
   destination = next;
   writeDestinationToUrl(next);
   emit();
@@ -116,7 +137,8 @@ export function useMobileTool(): MobileTool | null {
 export function setMobileTool(next: MobileTool | null): void {
   if (next?.kind === "rail" && destinationEntryIds.has(next.id)) {
     activeTool = null;
-    setMobileDestination({ kind: "plugin", entryId: next.id });
+    // 이미 그 목적지 화면이면 주소(params)를 지킨다 — 화면이 마운트하며 다시 여는 길이 복원한 params를 지우지 않게.
+    if (!(destination.kind === "plugin" && destination.entryId === next.id)) setMobileDestination({ kind: "plugin", entryId: next.id });
     emit();
     return;
   }
