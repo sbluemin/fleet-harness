@@ -30,7 +30,7 @@ import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/ag
 import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
-import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, withUserQuestions, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
+import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, readOperationLaunch, withSubagentSpawn, type OperationLaunchChangedEvent } from "@fleet-console/sdk/operations";
 import { resolveExperimentSettings, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
@@ -1213,15 +1213,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const node = operations.get(operationId);
         if (!node) return;
         const next = withSubagentSpawn(node.payload, policy);
-        if (next === node.payload) return;
-        pluginHostCapabilities.operations.patch(operationId, { payload: next });
-      },
-      // 서브에이전트 정책과 같은 영속 경로. 살아 있는 채팅은 이 값을 호출마다 읽는다.
-      setUserQuestions: (operationId, policy) => {
-        if (policy !== "blocked" && policy !== "default") return;
-        const node = operations.get(operationId);
-        if (!node) return;
-        const next = withUserQuestions(node.payload, policy);
         if (next === node.payload) return;
         pluginHostCapabilities.operations.patch(operationId, { payload: next });
       },

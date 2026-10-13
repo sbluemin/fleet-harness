@@ -199,11 +199,6 @@ export interface AgentChatSessionSeed {
    */
   readonly onPeerMessageReceived?: (peer: { readonly fromName: string; readonly at: number }) => void;
   readonly cancelComputerUse?: () => void;
-  /**
-   * 이 Operation이 사람에게 묻지 않는가. 새 세션은 도구 목록에서 이미 빠지지만, 정책이 막히기 전에 연 세션은 도구를
-   * 들고 있다 — 그 호출은 카드도 대기도 세우지 않고 거절한다. 호출마다 읽으므로 정책 변경이 곧바로 듣는다.
-   */
-  readonly userQuestionsBlocked?: () => boolean;
   readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
@@ -292,8 +287,8 @@ export function createChatSdkFactory(spawnProcess?: ClaudeProcessSpawner): Creat
   return (options) => createClaudeGatewaySdk({ ...options, modelPolicy: claudeGatewayModelPolicy, ...(spawnProcess ? { spawnProcess } : {}) });
 }
 
-/** 질문 정책이 막힌 세션의 남은 질문 호출에 돌려주는 거절 — 자식이 읽는 사실 한 줄이다. */
-const USER_QUESTIONS_OFF = "Asking the person is turned off for this session. Send what needs deciding to the session that assigned this work.";
+/** 사람에게 묻는 도구 호출에 돌려주는 거절 — 자식이 읽는 사실 한 줄이다. 도구 이름은 문맥에 싣지 않는다. */
+const USER_QUESTIONS_OFF = "This session has no way to ask the person directly. Raise what needs deciding through the channel your instructions name, or state it in your reply.";
 
 const JOURNAL_CAP = 2_000;
 /** 전사 쪽에 싣는 저널 줄 — 표시용(델타·큐·맥박)은 뺀다. */
@@ -2212,8 +2207,9 @@ class AgentChatSession {
     context: { readonly toolUseId: string; readonly signal: AbortSignal },
   ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> {
     if (!AGENT_CHAT_ASK_TOOLS.has(name)) return { behavior: "allow" };
-    // 계획 승인(ExitPlanMode)은 이 정책 밖이다 — 사람에게 묻는 질문만 거절한다.
-    if (name === "AskUserQuestion" && this.seed.userQuestionsBlocked?.() === true) return { behavior: "deny", message: USER_QUESTIONS_OFF };
+    // 도구 목록에서 이미 빠지므로 여기 닿는 질문은 없어야 한다 — 닿으면 카드도 대기도 세우지 않고 거절한다.
+    // 계획 승인(ExitPlanMode)도 도구 목록에서 빠진다 — 이 거절 밖이며, 닿으면 지난 세션과 같은 카드를 세운다.
+    if (name === "AskUserQuestion") return { behavior: "deny", message: USER_QUESTIONS_OFF };
     const id = context.toolUseId.length > 0 ? context.toolUseId : `ask-${this.seq + 1}`;
     const parsed = agentChatAskFromToolInput(name, id, input);
     if (!parsed) return { behavior: "allow" };

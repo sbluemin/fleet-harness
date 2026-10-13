@@ -104,11 +104,10 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableUserQuestions?: boolean; groupId?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
   const slept: string[] = [];
   const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
-  const userQuestions: { operationId: string; policy: "blocked" | "default" }[] = [];
   // 호스트처럼 표면은 채팅 표식이 말하고, 살아 있는 세션은 지금 보이는 표면으로 덮을 수 있다.
   const surfaces = new Map<string, "chat" | "terminal">();
   // 떠 있는 채팅의 호스트 좌표 — 호스트처럼 턴이 돌면 예약만, 유휴면 곧바로 적용하고 세션 좌표를 고친다. 강도는 모델의 칩만 받는다.
@@ -214,7 +213,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
             return { operationId: id };
           }
           if (input.launchKey) keyed.set(input.launchKey, id);
-          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableUserQuestions: input.disableUserQuestions, groupId: input.groupId });
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
           const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
@@ -240,7 +239,6 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
           return { ok: true, lifecycle: "dormant" };
         },
         setSubagentSpawn: (operationId: string, policy: "blocked" | "default") => { subagentSpawns.push({ operationId, policy }); },
-        setUserQuestions: (operationId: string, policy: "blocked" | "default") => { userQuestions.push({ operationId, policy }); },
         coordinates: (operationId: string) => hostChat.get(operationId) ?? null,
         advertisedTools: (operationId: string) => advertised.get(operationId) ?? null,
         setCoordinates: async (operationId: string, input: { model: string; effort: string | null }) => {
@@ -301,7 +299,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, userQuestions, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
+  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
     // 호스트처럼 본문 없이 보낸·받은 Operation 과 시각만 건넨다.
     emitSessionMessage: (fromOperationId: string, toOperationId: string, at = clock) => { for (const listener of sessionMessageListeners) listener({ fromOperationId, toOperationId, at }); } };
 }
@@ -477,7 +475,7 @@ describe("Objectives contract", () => {
 
   it("lets a person opt one member into subagents without blocking the others or the live process", async () => {
     let routingOrigin: string | null = null;
-    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, userQuestions, savedObjective, operations, operationsHost, surfaces } = harness(() => routingOrigin);
+    const { store, launch, call, launches, resumed, activity, interrupted, subagentSpawns, savedObjective, operations, operationsHost, surfaces } = harness(() => routingOrigin);
     const objective = await launch.create({ theaterId: "t1", title: "Opt in", groupId: null, note: "brief" });
     const allowed = store.memberAdd(objective.id, { role: "build", subagents: true }, "human").members[0]!;
     const blocked = store.memberAdd(objective.id, { role: "research" }, "human").members[1]!;
@@ -486,8 +484,6 @@ describe("Objectives contract", () => {
     store.setPlanning(objective.id, false);
     await launch.muster(objective.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
-    // 구성원만 사람에게 묻지 않는다 — 지휘관은 질문을 그대로 가진다.
-    expect(launches.map((entry) => entry.disableUserQuestions)).toEqual([true, true, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
     const roster = store.find(objective.id)!;
@@ -507,8 +503,6 @@ describe("Objectives contract", () => {
     expect((await launch.muster(objective.id)).find((member) => member.id === blocked.id)!.state).toBe("resumed");
     expect(subagentSpawns).toEqual([{ operationId: blockedOperationId, policy: "default" }]);
     expect(resumed).toEqual([blockedOperationId]);
-    // 재개 전에 질문 차단을 다시 채운다 — 이 정책 전에 뜬 구성원도 재개로 풀려나지 않는다.
-    expect(userQuestions).toContainEqual({ operationId: blockedOperationId, policy: "blocked" });
     await launch.memberPatched(objective.id, allowed.id, { subagents: false });
     expect(store.find(objective.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
     expect(subagentSpawns.at(-1)).toEqual({ operationId: allowed.id, policy: "blocked" });
@@ -1307,10 +1301,9 @@ describe("Objectives contract", () => {
     store.setPlanning("sidebar", false);
     await launch.startCommander("sidebar");
     expect(store.find("sidebar")).toMatchObject({ commenced: true });
-    // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 그래도 사람에게 묻지 않고, 주소를 지어내지 않고 null 로 받는다.
+    // 따로 만든 지휘관에게는 고정 이름이 없다 — 구성원은 주소를 지어내지 않고 null 로 받는다.
     const helper = store.memberAdd("sidebar", { role: "helper" }, "human").members.at(-1)!;
     await launch.muster("sidebar");
-    expect(launches.at(-1)?.disableUserQuestions).toBe(true);
     const helperOperation = helper.id;
     expect((await call("mine", {}, helperOperation)).structuredContent).toMatchObject({ role: "member", commander: { session: null } });
   });
