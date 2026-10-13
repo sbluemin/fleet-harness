@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 
-import { decisionQuestionSchema, MAX_DECISION_QUESTIONS, ownAnswer } from "../types.js";
+import { decisionQuestionSchema, MAX_DECISION_ANSWER_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, ownAnswer } from "../types.js";
 import { refuse, text } from "../views.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import { COMMODORE_PATROL_MINUTES, MAX_ASK_REASON, patrolIntervalMs, type CommodoreAsk, type CommodoreSource } from "./types.js";
@@ -76,7 +76,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
   const askView = (ask: CommodoreAsk) => ({
     askId: ask.id, at: stamp(ask.at), reason: ask.reason, objectiveId: ask.objectiveId,
     state: ask.settled?.outcome ?? "open",
-    questions: ask.questions.map((question) => ({ text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })),
+    questions: ask.questions.map((question) => ({ ...(question.header ? { header: question.header } : {}), text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })),
     ...(ask.settled ? { settledAt: stamp(ask.settled.at) } : {}),
     // 답 줄은 저장된 답의 순서다 — 내 의견(선택지를 모두 버리고 쓴 말) 표시는 같은 답에서 판정한다.
     ...(ask.settled?.outcome === "answered" ? { answers: askAnswerLines(ask).map((line, index) => {
@@ -106,7 +106,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
       return { at: stamp(at), reason, patrolIntervalMinutes: intervalMinutes, ...(minutes < inMinutes ? { shortened: true } : {}) };
     }),
     // 사람에게 묻기 — 보드 항목이 아닌 물음. 질문 모양과 상한은 지휘관의 결정 요청과 같다(멤버·임무 가리킴만 없다).
-    tool("ask_person", "Ask the person something that is not a waiting board item (those you hand over with hand_to_person). Each question has 2-4 options or none; the person may always answer in their own words. Their answer wakes you; read it with asks.", z.object({
+    tool("ask_person", `Ask the person something that is not a waiting board item (those you hand over with hand_to_person). Ask 1-${MAX_DECISION_QUESTIONS} questions. Each question has a header (a chip label of at most ${MAX_DECISION_HEADER_INPUT} characters), the question text, and either no options, when the person should write the answer, or 2-${MAX_DECISION_OPTIONS} distinct options: a concise label and an optional description; set multiSelect to allow more than one choice. The person can always write an answer of their own of up to ${MAX_DECISION_ANSWER_INPUT} characters, alongside a choice or instead of every option, so do not add an "Other" option. Their answer wakes you; read it with asks.`, z.object({
       questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS),
       reason: z.string().trim().min(1).max(MAX_ASK_REASON),
       objectiveId: z.string().min(1).max(128).optional(),

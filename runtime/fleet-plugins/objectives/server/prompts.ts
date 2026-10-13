@@ -145,7 +145,8 @@ export function decisionTurn(objective: Objective, request: DecisionRequest, ans
   const blocks = request.questions.map((question, index) => {
     const answer = answers.find((entry) => entry.questionId === question.id);
     const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => quote(option.description ? `${option.label} — ${option.description}` : option.label));
-    const lines = [`${index + 1}. ${quote(question.text)}`];
+    // 머리말이 있으면 번호 줄에 세우고 질문 인용은 다음 줄로 — 머리말이 생기기 전의 요청은 번호와 질문만.
+    const lines = [`${index + 1}. ${question.header ? `${question.header}\n` : ""}${quote(question.text)}`];
     if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}:\n${picked.join("\n")}`);
     // 고른 것에 붙인 말, 선택지를 모두 버린 내 의견, 선택지가 없는 질문의 답을 이름으로 가른다.
     const label = picked.length ? (ko ? "덧붙인 말" : "Added") : answer && ownAnswer(question, answer) ? (ko ? "선택지 대신 내 의견" : "Own answer instead of the options") : (ko ? "직접 쓴 말" : "Written");

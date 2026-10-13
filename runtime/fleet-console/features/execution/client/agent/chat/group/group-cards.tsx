@@ -109,6 +109,7 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
       ) : null}
       {decision.questions.map((question, at) => (
         <div key={question.id} className="group-card-question">
+          {question.header ? <span className="group-card-header">{question.header}</span> : null}
           <p className="group-card-title">{many ? `${at + 1}. ` : ""}{question.text}</p>
           {question.options.map((option, optionAt) => {
             const on = (picks[question.id] ?? []).includes(option.id);
@@ -133,6 +134,7 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
             className="group-card-own"
             type="text"
             value={texts[question.id] ?? ""}
+            maxLength={decision.answerMaxLength}
             disabled={sending}
             placeholder={t("group.decision.own")}
             aria-label={t("group.decision.own")}

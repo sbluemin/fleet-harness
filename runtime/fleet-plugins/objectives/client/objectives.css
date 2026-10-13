@@ -1212,6 +1212,8 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-decision-body { display: flex; flex-direction: column; gap: 10px; max-height: min(52vh, 460px); overflow: auto; }
 .objectives-decision-q { display: flex; flex-direction: column; gap: 6px; }
 .objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklab, var(--brass) 18%, var(--surface-rim)); }
+/* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 상태가 아니라 분류라 신호색 없이 옅은 면 위 무채색 잉크. 기록 줄에서는 질문 앞에 선다. */
+.objectives-decision-header { display: inline-block; align-self: flex-start; max-width: 100%; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; vertical-align: 1px; }
 .objectives-decision-q-top { display: flex; gap: 6px; align-items: baseline; }
 .objectives-decision-q-n { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-q-text { margin: 0; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }

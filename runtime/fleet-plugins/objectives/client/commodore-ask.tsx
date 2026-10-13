@@ -4,7 +4,7 @@ import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreAsk } from "../server/commodore/types.js";
-import { MAX_SHORT_INPUT } from "../server/types.js";
+import { MAX_DECISION_ANSWER_INPUT } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
 import { errorWord } from "./commodore-chat.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
@@ -93,8 +93,8 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
     </button>
   ) : null;
   const c = phone
-    ? { card: "objectives-cm-ask", head: "objectives-cm-ask-hd", reason: "objectives-cm-ask-reason", q: "objectives-cm-ask-q", text: "objectives-cm-ask-qtext", opts: "objectives-cm-ask-opts", opt: "objectives-cm-ask-opt", free: "objectives-cm-ask-free", foot: "objectives-cm-ask-ft", route: "objectives-cm-ask-route", send: "objectives-cm-ask-send", fault: "objectives-cm-ask-fault" }
-    : { card: "objectives-decision-request objectives-ask", head: "objectives-decision-head", reason: "objectives-decision-handed", q: "objectives-decision-q", text: "objectives-decision-q-text", opts: "objectives-decision-opts", opt: "objectives-decision-opt", free: "objectives-decision-free", foot: "objectives-decision-submit", route: "objectives-decision-route", send: "objectives-decision-send", fault: "objectives-decision-fault" };
+    ? { card: "objectives-cm-ask", head: "objectives-cm-ask-hd", reason: "objectives-cm-ask-reason", q: "objectives-cm-ask-q", header: "objectives-cm-ask-header", text: "objectives-cm-ask-qtext", opts: "objectives-cm-ask-opts", opt: "objectives-cm-ask-opt", free: "objectives-cm-ask-free", foot: "objectives-cm-ask-ft", route: "objectives-cm-ask-route", send: "objectives-cm-ask-send", fault: "objectives-cm-ask-fault" }
+    : { card: "objectives-decision-request objectives-ask", head: "objectives-decision-head", reason: "objectives-decision-handed", q: "objectives-decision-q", header: "objectives-decision-header", text: "objectives-decision-q-text", opts: "objectives-decision-opts", opt: "objectives-decision-opt", free: "objectives-decision-free", foot: "objectives-decision-submit", route: "objectives-decision-route", send: "objectives-decision-send", fault: "objectives-decision-fault" };
   return (
     <section className={c.card} aria-label={t("objectives.ask.title")}>
       {/* 사람의 결정을 기다린다 — 결정 요청과 같은 궤도. 폰은 테두리 잉크가 말한다. */}
@@ -112,6 +112,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
         const hasOptions = question.options.length > 0;
         return (
           <div key={question.id} className={c.q}>
+            {question.header ? <span className={c.header}>{question.header}</span> : null}
             <p className={c.text}>{many ? <span className="objectives-ask-n">{index + 1}</span> : null}<LinkText text={question.text} /></p>
             {hasOptions ? (
               <div className={c.opts} role={question.multiSelect ? "group" : "radiogroup"} aria-label={t("objectives.decision.optionsAria", { n: index + 1 })}>
@@ -132,7 +133,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
             <SyncedTextarea
               className={c.free}
               rows={1}
-              maxLength={MAX_SHORT_INPUT}
+              maxLength={MAX_DECISION_ANSWER_INPUT}
               disabled={sending}
               value={current.text}
               aria-label={t("objectives.decision.writeAria", { n: index + 1 })}

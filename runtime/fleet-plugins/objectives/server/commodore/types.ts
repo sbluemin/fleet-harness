@@ -2,7 +2,7 @@ import { AGENT_EFFORTS, type AgentEffort } from "@fleet-console/sdk/models";
 import { isExperimentModelId } from "@fleet-console/sdk/settings";
 import { z } from "zod";
 
-import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS } from "../types.js";
+import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTION, MAX_DECISION_QUESTIONS, storedDecisionHeader } from "../types.js";
 
 /**
  * 사령관(Commodore) — Theater 마다 하나, Objectives 플러그인이 소유하는 자율 운영 세션의 Theater 상태.
@@ -78,7 +78,8 @@ export const MAX_OPEN_ASKS = 4;
 export const MAX_KEPT_ASKS = 20;
 export const MAX_ASK_REASON = 300;
 const askOption = z.object({ id: ids, label: z.string().min(1).max(MAX_DECISION_LABEL), description: z.string().max(MAX_DECISION_DESCRIPTION).optional() }).strict();
-const askQuestion = z.object({ id: ids, text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(askOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict();
+// 머리말은 생기기 전에 물은 질문에는 없다 — 그 질문도 그대로 읽는다.
+const askQuestion = z.object({ id: ids, header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(askOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict();
 const askAnswer = z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict();
 export const commodoreAskSchema = z.object({
   id: ids,

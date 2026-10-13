@@ -477,6 +477,8 @@ export interface DecisionOption {
 /** 결정 요청의 질문 하나 — 선택지가 없으면 사람이 직접 쓴다(선택지가 있어도 직접 쓸 수 있다). 임무·구성원은 맥락 가리킴이다. */
 export interface DecisionQuestion {
   readonly id: string;
+  /** 칩으로 서는 짧은 머리말 — 머리말이 생기기 전에 올린 요청에는 없다. */
+  readonly header?: string;
   readonly text: string;
   readonly options: readonly DecisionOption[];
   readonly multiSelect: boolean;
@@ -506,7 +508,7 @@ export interface Decision {
   readonly id: string;
   readonly requestId: string;
   readonly questionId: string;
-  readonly question: { readonly text: string; readonly options: readonly DecisionOption[]; readonly multiSelect: boolean };
+  readonly question: { readonly header?: string; readonly text: string; readonly options: readonly DecisionOption[]; readonly multiSelect: boolean };
   readonly answer: { readonly selectedOptionIds: readonly string[]; readonly text: string };
   readonly at: number;
   readonly missionId?: string;
@@ -1217,10 +1219,18 @@ export const followupSelectionSchema = z.object({
 /** 새 입력에만 쓰는 상한 — 저장된 기록의 이전 상한은 유지한다. */
 export const MAX_SHORT_INPUT = 50;
 export const MAX_DECISION_QUESTION_INPUT = 100;
+/** 질문 머리말 — 칩으로 서는 아주 짧은 이름(예: 「배포 범위」). */
+export const MAX_DECISION_HEADER_INPUT = 12;
+/** 사람이 직접 쓰는 답 — 결정 요청·사령관의 질문에 쓰는 모든 답 입력의 상한. */
+export const MAX_DECISION_ANSWER_INPUT = 150;
 
-/** 지휘관이 올리는 질문 — 선택지는 0개(직접 쓰기만) 또는 2개 이상. 임무·구성원은 같은 목표의 id 다. */
+/**
+ * 지휘관이 올리는 질문 — 머리말 칩, 질문 문장, 선택지는 0개(직접 쓰기만) 또는 2개 이상. 선택지가 있어도 사람은 늘 직접 쓴 답을
+ * 함께 보낼 수 있다. 임무·구성원은 같은 목표의 id 다.
+ */
 export const decisionQuestionSchema = z.object({
-  text: z.string().trim().min(1).max(MAX_DECISION_QUESTION_INPUT),
+  header: z.string().trim().min(1).max(MAX_DECISION_HEADER_INPUT).describe(`Very short label shown as a chip above the question (max ${MAX_DECISION_HEADER_INPUT} chars), e.g. "Scope" or "Release".`),
+  text: z.string().trim().min(1).max(MAX_DECISION_QUESTION_INPUT).describe("The complete question, clear and specific."),
   options: z.array(z.object({ label: z.string().trim().min(1).max(MAX_SHORT_INPUT), description: z.string().trim().max(MAX_SHORT_INPUT).optional() }).strict()).max(MAX_DECISION_OPTIONS).refine((options) => options.length !== 1, { message: "one_option" }),
   multiSelect: z.boolean().optional(),
   missionId: ids.optional(),
@@ -1230,18 +1240,20 @@ export type DecisionQuestionInput = z.output<typeof decisionQuestionSchema>;
 /** 사람이 보드에서 보내는 답 — 요청의 모든 질문에 한 번에. 직접 쓴 말은 다듬지 않고 그대로 싣는다. */
 export const decisionAnswersSchema = z.object({
   requestId: ids,
-  answers: z.array(z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_SHORT_INPUT) }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
+  answers: z.array(z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER_INPUT) }).strict()).min(1).max(MAX_DECISION_QUESTIONS),
 }).strict();
 export type DecisionAnswersInput = z.output<typeof decisionAnswersSchema>;
+/** 저장된 머리말 — 머리말이 없던 때의 요청·기록은 그대로 읽는다. */
+export const storedDecisionHeader = z.string().min(1).max(MAX_DECISION_LABEL);
 const storedDecisionOption = z.object({ id: ids, label: z.string().min(1).max(MAX_DECISION_LABEL), description: z.string().max(MAX_DECISION_DESCRIPTION).optional() }).strict();
 const storedDecisionAnswer = z.object({ questionId: ids, selectedOptionIds: z.array(ids).max(MAX_DECISION_OPTIONS), text: z.string().max(MAX_DECISION_ANSWER) }).strict();
 /** 저장된 결정 필드 — 모양이 어긋난 파일은 다른 손상과 같이 비켜 둔다. */
 export const storedDecisionFieldsSchema = z.object({
-  decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
+  decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
   decisionRequestRevision: z.number().int().min(0).optional(),
   decisionDelivery: z.object({ by: objectiveActorSchema.optional(), requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
   decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(),
-    question: z.object({ text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
+    question: z.object({ header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });
 

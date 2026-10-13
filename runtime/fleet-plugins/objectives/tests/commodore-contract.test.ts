@@ -793,7 +793,7 @@ describe("commodore supervisor", () => {
       // 끝난 질문은 다른 답으로 덮이지 않고 거둘 수도 없다.
       const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "commodore")!.tools.find((tool) => tool.name === name)!;
       const useTool = async (name: string, args: Record<string, unknown>) => ((await commodoreTool(name).execute(args, { cwd: theaterRoot })) as { structuredContent: Record<string, unknown> }).structuredContent;
-      const asked = await useTool("ask_person", { questions: [{ text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
+      const asked = await useTool("ask_person", { questions: [{ header: "Candidates", text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
       expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });
       const ask = h.store.read("t1")!.asks!.find((entry) => entry.id === asked.askId)!;
       const answer = (optionIndex: number) => h.route("commodore/ask/answer", { theaterId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });

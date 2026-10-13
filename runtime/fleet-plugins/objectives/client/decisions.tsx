@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ownAnswer, type Decision, type DecisionQuestion, type Objective, type PersonHoldTarget } from "../server/types.js";
+import { MAX_DECISION_ANSWER_INPUT, ownAnswer, type Decision, type DecisionQuestion, type Objective, type PersonHoldTarget } from "../server/types.js";
 import { actorDid } from "./actors.js";
 import { livePersonHold } from "../server/board-state.js";
 import { decisionTurn, useCommodoreBoard } from "./commodore-state.js";
@@ -148,6 +148,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
           const ownLabelId = `objectives-decision-own-label-${question.id}`;
           return (
             <div key={question.id} className="objectives-decision-q">
+              {question.header ? <span className="objectives-decision-header">{question.header}</span> : null}
               <div className="objectives-decision-q-top">
                 {many ? <span className="objectives-decision-q-n">{n}</span> : null}
                 <p className="objectives-decision-q-text"><LinkText text={question.text} /></p>
@@ -197,7 +198,7 @@ export function DecisionRequestBlock({ objective, t, language, send, missionNumb
               <SyncedTextarea
                 className="objectives-decision-free"
                 rows={1}
-                maxLength={50}
+                maxLength={MAX_DECISION_ANSWER_INPUT}
                 disabled={sending}
                 value={draft.text}
                 data-question-id={question.id}
@@ -315,7 +316,7 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
         const member = decision.memberId ? memberMark(decision.memberId) : null;
         return (
           <div key={decision.id} data-decision-id={decision.id} className={`objectives-decision${flash === decision.id ? " is-flash" : ""}`}>
-            <p className="objectives-decision-q-copy"><LinkText text={decision.question.text} /></p>
+            <p className="objectives-decision-q-copy">{decision.question.header ? <span className="objectives-decision-header">{decision.question.header}</span> : null}<LinkText text={decision.question.text} /></p>
             <p className="objectives-decision-a">{ownAnswer(decision.question, decision.answer) ? <span className="objectives-decision-chip">{t("objectives.decisions.own")}</span> : null}<LinkText text={answerText(decision)} /></p>
             <p className="objectives-decision-meta">
               <span>{stamp(decision.at, language)}</span>

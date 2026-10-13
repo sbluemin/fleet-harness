@@ -1527,8 +1527,8 @@ describe("Objectives contract", () => {
     const member = store.find(commander)!.members[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
     const questions = [
-      { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
-      { text: "Anything else?", options: [] },
+      { header: "Publishing", text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
+      { header: "Notes", text: "Anything else?", options: [] },
     ];
     // 요청은 지휘관만 올린다. 늦은 revision 은 새 보드를 덮지 못한다.
     const first = await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander);
@@ -1561,7 +1561,10 @@ describe("Objectives contract", () => {
     // 연결 뒤 새 질문이 선 동안 늦게 도착한 중복 잇기는 보드 편집이 아니다. 새 요청을 지우지 않는다.
     expect((await route("edge/toggle", link)).value.linked).toBe(true);
     expect(store.find(commander)!.decisionRequest).toEqual(placed);
-    const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: "no" }];
+    // 사람이 직접 쓰는 답은 150자까지 — 넘는 답은 요청 형식 오류로 받지 않는다.
+    const written = "n".repeat(150);
+    const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: written }];
+    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0], { ...answers[1]!, text: `${written}n` }] })).status).toBe(400);
     // 빈 답·빠진 질문은 받지 않는다. 전달이 실패하면 요청이 남고 결정은 쌓이지 않는다.
     expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0]] })).value.error).toBe("invalid_answers");
     hostFault.sendError = "capability_unavailable";
@@ -1583,8 +1586,8 @@ describe("Objectives contract", () => {
     expect(answered.decisionRequest).toBeNull();
     expect(answered.criteriaProposals).toHaveLength(1);
     expect(answered.decisions).toMatchObject([
-      { requestId: placed.id, question: { text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }] }, answer: { text: "then stop" }, missionId, memberId: member },
-      { requestId: placed.id, answer: { selectedOptionIds: [], text: "no" } },
+      { requestId: placed.id, question: { header: "Publishing", text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }] }, answer: { text: "then stop" }, missionId, memberId: member },
+      { requestId: placed.id, answer: { selectedOptionIds: [], text: written } },
     ]);
     // 같은 답의 재전송은 다시 보내지도 쌓지도 않는다. 다른 답은 남은 결정을 덮지 않는다.
     const sends = sent.length;
@@ -1592,12 +1595,12 @@ describe("Objectives contract", () => {
     expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [{ ...answers[0]!, text: "merge" }, answers[1]] })).value.error).toBe("decision_already_submitted");
     expect(sent.length).toBe(sends);
     // 구성원은 사람의 답을 보드에서 읽고, 결정은 다시 읽어 들인 저장에도 그대로다.
-    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ question: "How far should publishing go?", text: "then stop", missionId, memberId: member }, { text: "no" }] });
+    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ header: "Publishing", question: "How far should publishing go?", text: "then stop", missionId, memberId: member }, { text: written }] });
     const reloaded = createObjectiveStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), operations: operationsHost, emit: () => {} });
     expect(reloaded.find(commander)!.decisions).toHaveLength(2);
     // 기다리는 요청 — 그 안에 온 답은 도구 응답으로 돌아가고 결정으로 남는다. 프롬프트는 보내지 않는다.
     const waiting = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 60_000 }).find((tool) => tool.name === "request_decision")!;
-    const ask = (revision: number) => waiting.execute({ objectiveId: commander, expectedRevision: revision, questions: [{ text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "operation", operationId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
+    const ask = (revision: number) => waiting.execute({ objectiveId: commander, expectedRevision: revision, questions: [{ header: "Publish", text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "operation", operationId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
     const pendingAsk = ask(store.find(commander)!.decisionRequestRevision);
     await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
     const live = store.find(commander)!.decisionRequest!;
@@ -1610,10 +1613,11 @@ describe("Objectives contract", () => {
     expect(sent.length).toBe(beforeAnswer);
     expect(store.find(commander)).toMatchObject({ decisionRequest: null });
     expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
-    // 입력 한도를 줄여도 이전 버전이 저장한 긴 요청·답·사령관 이유 때문에 목표 전체가 사라지지 않는다.
+    // 입력 한도를 줄여도 이전 버전이 저장한 긴 요청·답·사령관 이유, 머리말이 없던 때의 질문 때문에 목표 전체가 사라지지 않는다.
     const file = path.join(objectivesDir, commander, "objective.json");
     const legacy = JSON.parse(fs.readFileSync(file, "utf8"));
-    const legacyQuestion = { ...placed.questions[0], text: "q".repeat(1000), options: placed.questions[0]!.options.map((option) => ({ ...option, label: "l".repeat(120), description: "d".repeat(300) })) };
+    const { header: _header, ...headless } = placed.questions[0]!;
+    const legacyQuestion = { ...headless, text: "q".repeat(1000), options: placed.questions[0]!.options.map((option) => ({ ...option, label: "l".repeat(120), description: "d".repeat(300) })) };
     legacy.decisionRequest = { ...placed, questions: [legacyQuestion] };
     legacy.decisionDelivery = { requestId: placed.id, at: 1, answers: [{ questionId: legacyQuestion.id, selectedOptionIds: [], text: "a".repeat(2000) }], by: { ...actor, why: "w".repeat(100) } };
     legacy.decisions[0].question = { text: legacyQuestion.text, options: legacyQuestion.options, multiSelect: legacyQuestion.multiSelect };
@@ -2047,7 +2051,7 @@ describe("Objectives contract", () => {
     expect(outsider.structuredContent).toMatchObject({ session: { kind: "commander" } });
     const mine = await command("read", {}, id);
     const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
-    const continueQuestion = [{ text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
+    const continueQuestion = [{ header: "Backlog", text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
     const asked = await command("request_decision", { expectedRevision: revision, questions: continueQuestion }, id);
     // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
     expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, replacedRequestId: null, decisionRequestRevision: asked.decisionRequestRevision });
@@ -2131,7 +2135,7 @@ describe("Objectives contract", () => {
       store.handOff(objective.id, { by: "commander", retrospective });
       store.missionPatch(objective.id, objective.missions[0]!.id, { done: false });
       store.decisionRequest(objective.id, { expectedRevision: store.find(objective.id)!.decisionRequestRevision,
-        questions: [{ text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
+        questions: [{ header: "Backlog", text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
     }
     type Page = { total: number; offset: number; nextOffset: number | null; objectives: { id: string; criteriaCount: number }[] };
     for (const args of [...[undefined, "all", "today", "due", "agent"].map((filter) => ({ action: "list", ...(filter ? { filter } : {}) })),

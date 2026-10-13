@@ -24,10 +24,14 @@ export interface ConversationDecision {
   readonly createdAt: number;
   readonly questions: readonly {
     readonly id: string;
+    /** 질문 위에 칩으로 서는 짧은 머리말. 없으면 서지 않는다. */
+    readonly header?: string;
     readonly text: string;
     readonly multiSelect: boolean;
     readonly options: readonly { readonly id: string; readonly label: string; readonly description?: string }[];
   }[];
+  /** 사람이 직접 쓰는 답 한 칸의 글자 수 상한 — 플러그인이 받는 상한을 그대로 건넨다. 없으면 호스트가 막지 않는다. */
+  readonly answerMaxLength?: number;
   /** 결정 쓰기는 플러그인의 승인 표면을 통해서만 한다. */
   readonly open: () => void;
   /** 기존 보드 결정 제출 경로. 오래된 요청/전달 실패는 reject한다. */

@@ -104,6 +104,7 @@ export interface CommodoreStore {
 }
 
 export interface AskQuestionInput {
+  readonly header?: string | undefined;
   readonly text: string;
   readonly options: readonly { readonly label: string; readonly description?: string | undefined }[];
   readonly multiSelect?: boolean | undefined;
@@ -300,8 +301,8 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(theaterId);
       const asks = current.asks ?? [];
       // 저장될 모양 그대로 비교한다 — 같은 목표에 같은 질문이 서 있으면 다시 묻지 않는다.
-      const shape = (questions: readonly { readonly text: string; readonly options: readonly { readonly label: string; readonly description?: string | undefined }[]; readonly multiSelect?: boolean | undefined }[]) =>
-        questions.map((question) => ({ text: question.text, options: question.options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })), multiSelect: question.options.length > 0 && question.multiSelect === true }));
+      const shape = (questions: readonly AskQuestionInput[]) =>
+        questions.map((question) => ({ ...(question.header ? { header: question.header } : {}), text: question.text, options: question.options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })), multiSelect: question.options.length > 0 && question.multiSelect === true }));
       const objectiveId = input.objective?.id ?? null;
       const same = asks.find((ask) => !ask.settled && ask.objectiveId === objectiveId && isDeepStrictEqual(shape(ask.questions), shape(input.questions)));
       if (same) return { state: current, ask: same, reused: true };
