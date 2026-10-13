@@ -40,8 +40,7 @@
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
-   폭 전환으로 spring 펼침/접힘을 구현한다. 슬롯 재질은 알파 슬라이더가 조절하는 자체
-   ::before가 진다(구 overlay 변형의 판독성 계약을 기본으로 승격). */
+   폭 전환으로 spring 펼침/접힘을 구현한다. 슬롯 재질은 자체 ::before가 진다(구 overlay 변형의 판독성 계약을 기본으로 승격). */
 .right-rail-panel-slot {
   --right-rail-panel-width: inherit;
   position: relative;
@@ -65,8 +64,7 @@
   z-index: 0;
   /* 게이트가 닫히면 --surface-glass-strong(maritime/carbon은 78~80% 알파)만으로는 Map이 비쳐
      보인다 — 최하단 불투명 --ink-deep 언더레이가 불투명 폴백을 보장한다. 게이트가 열리면 rail
-     채널의 알파가 「도구 패널 불투명도」에서 역산되어, 92:8 믹스의 결과 알파가 슬라이더 수치
-     (20–100%, 100 = 완전 불투명)와 같다(theme.css --glass-on-tint-rail). */
+     채널의 알파가 92:8 믹스의 결과 알파에서 역산된 테마별 고정값이다(theme.css --glass-on-tint-rail). */
   background:
     linear-gradient(
       color-mix(in oklch, var(--glass-tint-rail) 92%, var(--ink-deep)),
@@ -355,7 +353,7 @@
   min-height: 0;
 }
 
-/* 분할된 detail 창은 문서·로그를 읽는 시트다 — 「도구 패널 불투명도」를 따르는 슬롯 유리
+/* 분할된 detail 창은 문서·로그를 읽는 시트다 — 반투명 슬롯 유리
    (.right-rail-panel-slot::before)만 깔리면 다크에서 뒤 캔버스의 글자가 본문과 겹쳐 비친다.
    읽는 시트의 판독성 계약대로 확장 표면과 같은 재질을 불투명 --float-underlay 위에 깐다.
    목록(primary)은 슬롯 유리를 그대로 쓴다. 오버레이 창은 아래 .is-overlay가 덮는다. */

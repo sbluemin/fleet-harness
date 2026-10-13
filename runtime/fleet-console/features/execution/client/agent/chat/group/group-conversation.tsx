@@ -631,12 +631,15 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             {via}
           </span>
         ) : report ? <span className="group-chat-agent-head">{name}{reportTag}</span> : name}
-        <div ref={clip.ref} className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
-          {/* 첨부는 사람 말풍선과 같은 자리(본문 앞)에 선다 — 문면 없이 첨부만 실은 말도 빈 말풍선이 아니다. */}
-          {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
-          {entry.text.trim().length === 0
-            ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
-            : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
+        <div className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
+          {/* 본문 칸 — 높이 상한에 걸리면 이 칸이 그 자리에서 스크롤되고 흐림은 말풍선(바깥 틀)에 고정된다. 상한이 없으면 꾸밈 없는 블록이다. */}
+          <div ref={clip.ref} className="group-chat-bubble-body">
+            {/* 첨부는 사람 말풍선과 같은 자리(본문 앞)에 선다 — 문면 없이 첨부만 실은 말도 빈 말풍선이 아니다. */}
+            {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
+            {entry.text.trim().length === 0
+              ? entry.streaming ? <span className="group-chat-writing agent-chat-live-text">{t("group.streaming")}</span> : null
+              : <StreamedMarkdown text={entry.text} streaming={entry.streaming} preserveStreamingDom className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
+          </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
         {report && continued ? <span className="group-chat-agent-head is-after">{reportTag}</span> : null}
@@ -649,31 +652,37 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     </div>
   );
 }
-/** 말풍선 높이 상한(시안 B). 넘치는 말풍선만 아래를 흐리고 「전체 보기」를 단다. */
-const BUBBLE_CAP_PX = 320;
-
 /**
- * 말풍선 높이 상한 — 글자 수가 아니라 그려진 높이로 넘침을 잰다(표·코드는 짧은 글로도 길다). 흐르는 동안 자라는 높이도 따라 잰다.
+ * 말풍선 높이 상한(시안 B, 상한 값은 CSS 의 본문 칸 max-height) — 글자 수가 아니라 그려진 높이로 넘침을 잰다(표·코드는 짧은 글로도 길다).
+ * 늦게 그려지는 마크다운(표·그림)으로 자라는 높이도 따라 잰다. 넘치는 본문 칸은 그 자리에서 스크롤되고(마우스 환경), 가려진 위·아래 가장자리만 흐린다.
+ * 턴 접기에서 흐르는 말은 말풍선이 아니라 「쓰는 중」 칩으로 서므로(foldTimeline) 상한이 걸린 말풍선은 이미 완성된 말이다.
  * 펼친 말풍선은 이 화면을 보는 동안 펼친 채다(같은 말은 완성 때도 같은 key 라 펼침이 이어진다).
  */
 function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
   const [element, setElement] = React.useState<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = React.useState(false);
   const [overflowing, setOverflowing] = React.useState(false);
+  // 위로 가려진 줄이 있다(맨 위가 아니다) · 끝까지 내렸다.
+  const [scrolled, setScrolled] = React.useState(false);
+  const [atEnd, setAtEnd] = React.useState(false);
   const active = enabled && !expanded;
   React.useLayoutEffect(() => {
-    if (!active || !element) { setOverflowing(false); return; }
-    const measure = () => setOverflowing(element.scrollHeight > BUBBLE_CAP_PX + 1);
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    // 말풍선 자체는 상한에서 멈추므로 자라는 본문(첫 자식)을 함께 본다.
-    observer.observe(element);
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
-    return () => observer.disconnect();
+    if (!active || !element) { setOverflowing(false); setScrolled(false); setAtEnd(false); return; }
+    const read = () => {
+      setOverflowing(element.scrollHeight > element.clientHeight + 1);
+      setScrolled(element.scrollTop > 1);
+      setAtEnd(element.scrollTop + element.clientHeight >= element.scrollHeight - 1);
+    };
+    read();
+    element.addEventListener("scroll", read, { passive: true });
+    // 본문 칸 자체는 상한에서 멈추므로 자라는 자식들(첨부·본문)을 함께 본다.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
+    if (observer) for (const target of [element, ...Array.from(element.children)]) observer.observe(target);
+    return () => { element.removeEventListener("scroll", read); observer?.disconnect(); };
   }, [active, element]);
   const expand = React.useCallback(() => setExpanded(true), []);
-  return { ref: setElement, className: active ? ` is-capped${overflowing ? " is-clipped" : ""}` : "", clipped: active && overflowing, expand };
+  const edges = overflowing ? `${scrolled ? " is-scrolled" : ""}${atEnd ? " is-at-end" : ""}` : "";
+  return { ref: setElement, className: active ? ` is-capped${overflowing ? " is-clipped" : ""}${edges}` : "", clipped: active && overflowing, expand };
 }
 
 

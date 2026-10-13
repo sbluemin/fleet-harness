@@ -17,7 +17,7 @@ import {
 } from "./sections.js";
 import { closeSettingsModal, openSettingsModal, setSettingsModalSection, useSettingsModal } from "./settings-door.js";
 import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "./settings-entry.js";
-import { buildChips, ChromeMaterialRows, hostSectionOf, type SettingsChip } from "./settings-pane.js";
+import { buildChips, hostSectionOf, type SettingsChip } from "./settings-pane.js";
 import "./settings-modal.css";
 
 /**
@@ -214,7 +214,7 @@ function SettingsModal({ section }: { readonly section: string | null }) {
             {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
             {/* 카드·행 문법은 레일 페인의 것을 그대로 받고(settings-pane), 모달 그릇의 여백·둥근 면만 덧입힌다(settings-modal.css). */}
             <div className="settings-pane settings-modal-sections">
-              {renderSettingsSection(activeId, state, saving, pluginSections, t, { themeCardExtras: <ChromeMaterialRows /> })}
+              {renderSettingsSection(activeId, state, saving, pluginSections, t)}
             </div>
           </div>
         </section>
