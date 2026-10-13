@@ -1816,8 +1816,6 @@ function TheaterSectionHeader({
   // 이름은 Theater 를 전환한다. 대화 중심 화면은 한 번 누르면 그 Theater 의 대화도 열고, 기존 배치는 활성 Theater 에서만
   // Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
   const select = () => {
-    // 길게 누르기로 메뉴를 연 손가락을 뗀 click 은 전환·Inbox 열기가 아니다.
-    if (longPress.consumeClick()) return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
