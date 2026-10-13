@@ -140,7 +140,7 @@ export function TheaterSystemPromptSheet() {
         <p className="settings-mobile-note">{t(unsaved ? "sidebar.theater.prompt.forgottenRestoreUnsaved" : "sidebar.theater.prompt.forgottenRestore")}</p>
       </> : loading ? <p className="settings-mobile-note" role="status">{t("sidebar.theater.prompt.loading")}</p>
         : loadFailed ? <p className="settings-mobile-note is-error" role="alert">{t("sidebar.theater.prompt.loadFailed")}</p> : <>
-          <div className="mobile-group settings-mobile-card" role="radiogroup" aria-label={t("sidebar.theater.prompt.modeLabel")}>
+          <div className="mobile-group settings-mobile-card settings-mobile-prompt-modes" role="radiogroup" aria-label={t("sidebar.theater.prompt.modeLabel")}>
             {/* 데스크톱 칸과 같은 안 B — 줄마다 그 모드의 결과 문장을 달아 고르기 전에 읽히게 한다. */}
             {modes.map((mode) => <MobileRadioRow key={mode} checked={draft.mode === mode} label={modeNames[mode]} sub={modeDescriptions[mode]} onSelect={() => controller.changeMode(mode)} />)}
           </div>

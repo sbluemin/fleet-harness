@@ -18,3 +18,5 @@
 .settings-mobile-count.is-over { color: var(--m-danger); }
 .settings-mobile-kept { margin: 0; padding: 0 4px; color: var(--m-text-muted); font-size: var(--t-sm); white-space: pre-wrap; }
 .mobile-group.settings-mobile-card { padding: 0; }
+/* 시스템 프롬프트 모드 설명은 한국어 음절 중간에서 끊지 않는다(「기본 프/롬프트」). 공유 MobileRadioRow 는 그대로 두고 이 묶음에만 건다. */
+.settings-mobile-prompt-modes .mobile-group-row-copy small { word-break: keep-all; overflow-wrap: anywhere; }
