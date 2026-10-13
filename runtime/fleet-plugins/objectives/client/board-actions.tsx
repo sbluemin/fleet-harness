@@ -196,6 +196,11 @@ const setSheet = (objectiveId: string, value: { readonly intent: IntentKey; read
   for (const listener of sheetListeners) listener();
 };
 const subscribeSheets = (listener: () => void) => { sheetListeners.add(listener); return () => { sheetListeners.delete(listener); }; };
+/**
+ * 칸이 「이대로 개시」를 보내는 중인 목표 — 그 응답 전에는 같은 목표의 개시를 다시 받지 않는다. 다시 받으면 앞선 개시의 정산이 새로 쓴
+ * 말의 판을 걷어 버린다(입력창은 동작 id 로 정산한다). 거절은 실패로 돌려 입력창이 쓴 말과 기억한 판을 그대로 둔다.
+ */
+const sheetsSending = new Set<string>();
 
 // ── 계약 ──────────────────────────────────────────────────────────────────
 
@@ -308,6 +313,7 @@ async function runAction(objectiveId: string, key: IntentKey, context: string): 
       case "start": case "resume": case "steerIdle": {
         // 확인을 켰으면 개시가 판단 → 확인 → 기동으로 나뉜다 — 여기서는 칸만 열고 말은 칸이 이어받는다.
         if (objective.routingConfirm && routingTargetsOf(objective, live).length > 0) {
+          if (sheetsSending.has(objectiveId)) return { outcome: "failed", notice: { tone: "info", text: localized((t) => t("objectives.band.sending")) } };
           setSheet(objectiveId, { intent: key, context });
           return { outcome: "held" };
         }
@@ -505,6 +511,7 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
   const go = async () => {
     if (sending || settling) return;
     setSending(true);
+    sheetsSending.add(objectiveId);
     try {
       const result = await request("/commander/start", { objectiveId, routing: "preview", ...(context ? { context } : {}) });
       token.current += 1;
@@ -516,6 +523,7 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
       if (code === "routing_preview_stale") load(false);
       setState((current) => ({ ...current, error: code }));
     } finally {
+      sheetsSending.delete(objectiveId);
       setSending(false);
     }
   };

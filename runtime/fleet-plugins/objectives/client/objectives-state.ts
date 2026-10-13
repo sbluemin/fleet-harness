@@ -315,6 +315,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
     const event = payload as ObjectiveEvent | null;
     if (!event || typeof event.objectiveId !== "string" || typeof event.theaterId !== "string") return;
     unknownToServer.delete(event.objectiveId);
+    invalidateFinishedFor(event.theaterId, event.objectiveId, event.objective ?? null);
     const current = theaters.get(event.theaterId) ?? EMPTY;
     if (event.op === "remove") { operationLocations.set(event.objectiveId, "deleted"); setTheater(event.theaterId, { objectives: current.objectives.filter((objective) => objective.id !== event.objectiveId) }); return; }
     if (!event.objective) return;
@@ -575,25 +576,42 @@ export function readAllTheaters(): readonly TheaterState[] {
 const finishedByTheater = new Map<string, readonly Objective[]>();
 const finishedListeners = new Set<() => void>();
 const finishedInflight = new Set<string>();
+/** 마지막 읽기가 실패한 Theater — 완료 화면이 오류와 다시 시도를 보인다. 다음 읽기가 성공하면 걷힌다. */
+const finishedFailed = new Set<string>();
 let finishedRevision = 0;
+const noteFinished = () => { for (const listener of finishedListeners) listener(); };
+
+/**
+ * 목표 사건(`objectives:objective`)이 읽어 둔 끝난 목표를 낡게 하면 그 Theater 의 캐시를 버린다 — 캐시에 있던 목표가 바뀌었거나(확장으로 복원),
+ * 완료로 보관된 목표가 왔다(다시 완료). 확장했다가 다시 완료한 목표가 옛 완료 기록으로 서지 않게, 다음에 열 때 다시 읽는다. 보관·복원 Operation
+ * 사건은 브라우저로 나오지 않으므로 이 사건이 수명주기를 말한다. 폰 「끝남」은 살아 있는 명단이 바뀌어 스스로 다시 읽는다.
+ */
+function invalidateFinishedFor(theaterId: string, objectiveId: string, objective: Objective | null): void {
+  const list = finishedByTheater.get(theaterId);
+  if (!list) return;
+  if (!list.some((entry) => entry.id === objectiveId) && !(objective?.done && objective.archived)) return;
+  finishedByTheater.delete(theaterId);
+  finishedRevision += 1;
+  noteFinished();
+}
 
 /** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
 export function loadFinishedObjectives(theaterId: string): void {
   const api = objectivesApi();
   if (!api || finishedInflight.has(theaterId)) return;
   finishedInflight.add(theaterId);
-  for (const listener of finishedListeners) listener();
+  finishedFailed.delete(theaterId);
+  noteFinished();
   void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
     .then((result) => {
-      if (!Array.isArray(result?.objectives)) return;
+      if (!Array.isArray(result?.objectives)) throw new Error("finished_unreadable");
       finishedByTheater.set(theaterId, result.objectives);
       finishedRevision += 1;
-      for (const listener of finishedListeners) listener();
     })
-    .catch(() => undefined)
+    .catch(() => { finishedFailed.add(theaterId); })
     .finally(() => {
       finishedInflight.delete(theaterId);
-      for (const listener of finishedListeners) listener();
+      noteFinished();
     });
 }
 
@@ -605,6 +623,11 @@ export function ensureFinishedObjectives(theaterId: string | null): void {
 /** 그 Theater 의 끝난 목표를 지금 읽는 중이다. */
 export function finishedObjectivesLoading(theaterId: string): boolean {
   return finishedInflight.has(theaterId);
+}
+
+/** 그 Theater 의 마지막 끝난 목표 읽기가 실패했다(읽는 중이 아니다). */
+export function finishedObjectivesFailed(theaterId: string): boolean {
+  return finishedFailed.has(theaterId) && !finishedInflight.has(theaterId);
 }
 
 /** 그 Theater 의 끝난 목표를 한 번이라도 읽었다. */
