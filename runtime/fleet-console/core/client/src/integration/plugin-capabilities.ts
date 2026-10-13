@@ -1,8 +1,7 @@
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
-import { getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
+import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
 import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
-import { conversationTabId } from "../chrome/mobile/mobile-destinations.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";

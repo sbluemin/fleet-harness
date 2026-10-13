@@ -79,6 +79,11 @@ export function setMobileDestination(next: MobileDestination): void {
   emit();
 }
 
+/** 대화 정보 화면에서 엔트리(`mobile.conversationPane`)가 세우는 탭의 id — 착지 요청과 탭 목록이 같은 id를 쓴다. */
+export function conversationTabId(entryId: string): string {
+  return `entry:${entryId}`;
+}
+
 /**
  * 대화를 열면서 그 정보 화면의 탭으로 착지하라는 한 번짜리 요청. 대화 열기는 포커스 요청(`focusOperation`)을 거쳐 Operations 화면이
  * 소비하며 목적지를 홈으로 되돌리므로, 그 소비가 같은 대화에 대해 이 요청을 집어 정보 화면으로 세운다. 다른 대화의 소비는 요청을 버린다.

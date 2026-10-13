@@ -17,12 +17,11 @@ import { PaneBody, usePaneContext } from "../pane/pane-body.js";
 import { usePaneIndex, useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { useRegisteredConversationOperationTabs } from "../rail/operation-tabs.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { conversationTabId } from "./mobile-destinations.js";
 import { ConversationAvatar, useMobileConversationOf } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { operationHarnessLabel } from "./mobile-operation-label.js";
 import { mobileOperationMenuItems } from "./mobile-operation-menu.js";
-import { pushMobileSheet, setMobileDestination, useMobileDestination, useMobileOperationMenu } from "./mobile-store.js";
+import { conversationTabId, pushMobileSheet, setMobileDestination, useMobileDestination, useMobileOperationMenu } from "./mobile-store.js";
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
