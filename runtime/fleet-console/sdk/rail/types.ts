@@ -209,6 +209,17 @@ export interface RailEntryMobile {
    */
   readonly desktop?: false;
   /**
+   * 폰의 대화 정보 화면에서 이 엔트리(`conversationTab: true`)의 탭 본문으로 세울 페인. 생략하면 폰 대화 정보 화면에 이 엔트리의 탭이 없다.
+   * 호스트는 그 페인을 탭 본문에 params `{ operationId }`(정보 화면의 대화 주인 Operation)로 세우고 `mobileBar`는 싣지 않는다 —
+   * 막대가 없다는 것이 「대화 정보 화면 안에 심겼다」는 신호이고, 동작은 페인이 본문 안에 스스로 그린다. 닫을 자리가 없으므로 `panes.close()`는 아무 일도 하지 않는다.
+   *
+   * 폰에서 이 엔트리로 가는 착지(데스크톱은 읽지 않는다):
+   * - `rail.open(id, { operationId })` — 그 Operation 대화를 열고 정보 화면의 이 탭을 세운다. 그 대화에 탭이 서지 않거나(`shown`) Operation이 없으면 기존 `rail.open` 경로다.
+   * - 이 엔트리의 확대 표면(`surfaceId`) 열기 — 지금 열린 대화의 이 탭으로 연다. 열린 대화가 없거나 탭이 서지 않는 대화면 기존 경로(도구 시트)다.
+   * - `attention.items`의 행 — 호스트는 엔트리의 자리로 먼저 이동하지 않고 `open`을 부른다. 착지는 `open`이 위 둘로 정한다.
+   */
+  readonly conversationPane?: RailEntryConversationPane;
+  /**
    * 홈의 바로가기 칩으로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
@@ -235,6 +246,25 @@ export interface RailEntryMobile {
      * 데스크톱 레일 제목이 「Codex — 프로젝트 위키」처럼 길어도 모바일 칩에는 「위키」가 서게 한다.
      */
     readonly label?: LocalizedText;
+    /**
+     * `false`면 이 목적지는 홈 바로가기 칩·대표 자리에 서지 않는다 — 화면은 그대로 목적지로 열리지만(`rail.open`이 도구 시트가 아니라 이 화면을 세운다)
+     * 입구는 플러그인이 정한 착지뿐이다. 목적지라 「더보기」의 「플러그인」 화면 행에도 서지 않는다. 생략하면 칩으로 선다.
+     */
+    readonly chip?: false;
+  };
+}
+
+/** 폰 대화 정보 화면의 탭 본문 — `RailEntryMobile.conversationPane`. */
+export interface RailEntryConversationPane {
+  /** 탭 본문으로 세울 페인 id(이 플러그인이 등록한 페인). */
+  readonly paneId: string;
+  /**
+   * 이 대화에 탭을 세울지. 생략하면 모든 대화에 선다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이 같은 상태에 같은 값을
+   * 돌려준다. `operationId`는 정보 화면의 대화 주인 Operation이다.
+   */
+  readonly shown?: {
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly get: (operationId: string) => boolean;
   };
 }
 
@@ -295,6 +325,9 @@ export interface RailEntryAttentionItem {
   readonly title: string;
   /** 행의 보조 줄(예: 「결정 요청 1건」). */
   readonly reason: string;
-  /** 행을 눌렀을 때. 호스트는 이 엔트리의 자리로 먼저 이동한 **뒤에** 부른다. */
+  /**
+   * 행을 눌렀을 때. 호스트는 이 엔트리의 자리로 먼저 이동한 **뒤에** 부른다 — 단 엔트리가 `mobile.conversationPane`을 선언했으면 먼저 이동하지 않고,
+   * 착지(그 대화의 탭 또는 목적지 화면)는 `open`이 정한다.
+   */
   readonly open: () => void;
 }

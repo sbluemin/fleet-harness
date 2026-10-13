@@ -28,7 +28,25 @@ export function mobileDestinationBindings(bindings: readonly RailEntryBinding[],
  * 기존 필드(order·shown·trailing)만 소비한다. 없으면 null이고 홈은 Theater의 정체를 대표로 보인다.
  */
 export function featuredDestinationBinding(shown: readonly RailEntryBinding[]): RailEntryBinding | null {
-  return shown.find((binding) => binding.entry.mobile?.destination?.trailing !== undefined) ?? null;
+  return shown.find((binding) => binding.entry.mobile?.destination?.trailing !== undefined && isChipDestination(binding)) ?? null;
+}
+
+/** 홈 입구(바로가기 칩·대표 자리)에 서는 목적지인가 — `destination.chip: false`는 화면만 목적지로 열리고 입구는 플러그인의 착지뿐이다. */
+export function isChipDestination(binding: RailEntryBinding): boolean {
+  return binding.entry.mobile?.destination?.chip !== false;
+}
+
+/** 대화 정보 화면에서 엔트리(`mobile.conversationPane`)가 세우는 탭의 id — 착지 요청과 탭 목록이 같은 id를 쓴다. */
+export function conversationTabId(entryId: string): string {
+  return `entry:${entryId}`;
+}
+
+/**
+ * 「확인 필요」의 플러그인 행을 누를 때 호스트가 먼저 그 엔트리의 목적지로 옮길지 — 대화 탭을 선언한 엔트리는 행의 `open`이 착지(그 대화의 탭 또는
+ * 목적지 화면)를 정하므로 먼저 옮기지 않는다(`RailEntryAttentionItem.open`).
+ */
+export function attentionMovesFirst(bindings: readonly RailEntryBinding[], entryId: string): boolean {
+  return bindings.find((binding) => binding.entry.id === entryId)?.entry.mobile?.conversationPane === undefined;
 }
 
 function destinationShown(binding: RailEntryBinding, theaterId: string | null): boolean {

@@ -13,10 +13,10 @@ import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, ins
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
-import { decisionAttentionItems, MobileObjectiveDetail, personTurnCount, MobileObjectiveList, OBJECTIVE_MOBILE_DETAIL_PANE, subscribeDecisionAttention } from "./mobile.js";
+import { decisionAttentionItems, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, readAllTheaters, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
+import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -34,21 +34,24 @@ export const objectivesPane: PaneDescriptor = {
   mounts: ["rail"],
   title: (ctx) => getT(ctx.language)("objectives.panel.title"),
   widthClass: "standard",
-  // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 모바일 목록이 선다.
+  // 모바일 목적지 화면에서는 호스트가 막대 창구(mobileBar)를 싣는다 — 그때만 폰의 목표 화면(목록 없이 착지한 목표 하나)이 선다.
   render: (ctx) => ctx.mobileBar
-    ? <MobileObjectiveList ctx={ctx} />
+    ? <MobileObjectiveScreen ctx={ctx} />
     : <ObjectivePanel ctx={{ theaterId: ctx.theaterId, api: ctx.api, language: ctx.language, place: "rail", openLink: ctx.openLink, ...(ctx.sideBarVisible === undefined ? {} : { sideBarVisible: ctx.sideBarVisible }) }} />,
 };
 
-/** 모바일 목표 상세 — 모바일 목록이 `panes.open`으로만 연다. 데스크톱 보드는 이 페인을 열지 않는다. */
+/**
+ * 폰 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Operation(`params.operationId`)을 실어 세운다.
+ * 데스크톱 보드는 이 페인을 열지 않는다.
+ */
 export const objectivesMobileDetailPane: PaneDescriptor = {
   id: OBJECTIVE_MOBILE_DETAIL_PANE,
   role: "detail",
   mounts: ["rail"],
-  title: (ctx) => readAllTheaters().flatMap((state) => state.objectives).find((objective) => objective.id === ctx.params.objectiveId)?.title ?? getT(ctx.language)("objectives.panel.title"),
-  // 막대는 모바일 호스트가 그린다 — 페인 캡션을 겹쳐 세우지 않는다.
+  title: (ctx) => objectiveOfOperation(ctx.params.operationId ?? "")?.title ?? getT(ctx.language)("objectives.panel.title"),
+  // 머리는 호스트의 정보 화면이 그린다 — 페인 캡션을 겹쳐 세우지 않는다.
   hideCaption: true,
-  render: (ctx) => <MobileObjectiveDetail ctx={ctx} />,
+  render: (ctx) => <MobileConversationObjective ctx={ctx} />,
 };
 
 export const objectivesSurface: ExpandedSurfaceDescriptor = {
@@ -66,7 +69,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   title: (locale) => getT(locale)("objectives.panel.title"),
   icon: () => <ObjectiveIcon />,
   scope: "theater",
-  // primary 가 맨 앞이어야 한다 — 레일 표면은 첫 primary 를 세운다. 상세는 모바일 목록만 연다.
+  // primary 가 맨 앞이어야 한다 — 레일 표면은 첫 primary 를 세운다. 상세는 폰 대화 정보 화면의 탭 본문이다.
   panes: [OBJECTIVE_SURFACE_ID, OBJECTIVE_MOBILE_DETAIL_PANE],
   surfaceId: OBJECTIVE_SURFACE_ID,
   activate: (ctx) => toggleObjectivePlace(ctx.rail, ctx.surfaces),
@@ -85,12 +88,17 @@ export const objectivesEntry: RailEntryDescriptor = {
     },
     count: (theaterId) => (isCommodoreConversationActive() ? 0 : personTurnCount(theaterId)),
     label: (count, locale) => getT(locale)("objectives.requests.badge", { count }),
-    // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표 상세.
+    // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표의 대화 「목표」 탭(지휘관 Operation 이 없으면 목표 화면).
     items: decisionAttentionItems,
   },
-  // 모바일 홈 바로가기 칩 — Theater 다음, 파일·위키 위.
-  // 모바일 바로가기 칩·「플러그인」 화면의 아이콘 — 시안 아이콘 한 벌(impl-spec §A)이다. 데스크톱 레일 아이콘은 그대로.
-  mobile: { destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title") }, icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></svg> },
+  // 폰에는 목표 보드(목록)를 따로 두지 않는다 — 홈 칩 없이(`chip: false`) 목적지 화면만 남아 착지한 목표 하나를 세우고(시작 전 목표 등),
+  // 목표의 내용·동작은 그 대화의 정보 화면 「목표」 탭이 받는다(`conversationPane`, 목표에 속한 대화에만 선다).
+  // 아이콘은 시안 아이콘 한 벌(impl-spec §A)이다 — 「확인 필요」 행의 출처 표식에 쓴다. 데스크톱 레일 아이콘은 그대로.
+  mobile: {
+    destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title"), chip: false },
+    conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, shown: { subscribe: subscribeObjective, get: (operationId) => objectiveOfOperation(operationId) !== null } },
+    icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></svg>,
+  },
   search: async ({ query, theaterId, limit, language }) => {
     const api = objectivesApi();
     if (!api) return [];
@@ -114,7 +122,7 @@ export const commodoreMobilePane: PaneDescriptor = {
 };
 
 /**
- * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 바로가기 「목표」 앞에 「사령관」 목적지로 선다.
+ * 폰 전용 엔트리 — 실험 기능 「자율 운영」이 켜져 있을 때만 홈 대표 자리(바로가기 칩)에 「사령관」 목적지로 선다.
  * 데스크톱 레일·팔레트에는 오르지 않는다(`mobile.desktop: false`).
  */
 export const commodoreEntry: RailEntryDescriptor = {
@@ -123,7 +131,7 @@ export const commodoreEntry: RailEntryDescriptor = {
   icon: () => <PennantIcon />,
   scope: "theater",
   panes: [COMMODORE_MOBILE_PANE],
-  // 「목표」(order 10) 앞 칩. 칩 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
+  // 목적지 order 5(「목표」 목적지 10 앞). 칩 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
   mobile: { desktop: false, destination: { order: 5, shown: commodoreDestinationShown, trailing: commodoreDestinationTrailing }, icon: () => <PennantIcon /> },
   // 사령관 칩 배지 — 사령관이 사람에게 물어 답을 기다리는 질문 수(`openAsks`). 행은 「목표」의 확인 필요가 같은 질문을 이미 세우므로 두지 않는다.
   attention: {

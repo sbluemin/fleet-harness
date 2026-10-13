@@ -13,7 +13,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { entryIconOf } from "./mobile-destinations.js";
+import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
@@ -84,7 +84,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
                   ) : null;
                 }
                 return (
-                  <button type="button" data-press="r1" className="mobile-conv-row" key={row.key} onClick={() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); row.item.open(); }}>
+                  <button type="button" data-press="r1" className="mobile-conv-row" key={row.key} onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) setMobileDestination({ kind: "plugin", entryId: row.entryId }); row.item.open(); }}>
                     <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
                     <span className="mobile-conv-row-copy">
                       <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.item.title}</span></span>

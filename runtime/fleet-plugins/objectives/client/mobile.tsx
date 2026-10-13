@@ -10,8 +10,7 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/se
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
-import { memberFailureNote } from "./clusters.js";
-import { commodoreBoardOf, decisionTurn, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
+import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import type { CommodoreAsk } from "../server/commodore/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -22,12 +21,13 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
-import { focusOperation, hasDecisionRequest, post, returnPersonHold, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { focusOperation, hasDecisionRequest, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
- * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물).
- * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
+ * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물) 하나를 두 자리에 세운다. 폰에는 목표 목록(보드)이 없다.
+ * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
+ * 지휘관 Operation 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
  * 노출 판정도 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
@@ -50,8 +50,6 @@ const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: numbe
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
 const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 20}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
-/** 호스트 모바일 ⋮의 보관 아이콘과 같은 상자. */
-const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;
 const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none" /></Icon>;
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
 const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
@@ -138,111 +136,37 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
       id: objective.id,
       title: objective.title,
       reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
-      open: () => revealObjective({ objectiveId: objective.id }),
+      open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
     })),
   ];
   attentionMemo.set(key, { source, asks, locale, answering, items });
   return items;
 }
 
-// ── 목록 ──
+// ── 목표 화면 ──
 
-export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
-  const t = getT(ctx.language);
-  const state = useObjectiveTheater(ctx.theaterId);
-  const commodore = useCommodoreBoard(ctx.theaterId ?? "");
-  const operations = operationIndex(useOperationSummaries());
+/**
+ * 폰의 목표 화면 — 칩 없는 목적지(`destination.chip: false`)의 본문이다. 목표 목록은 폰에 없고, 이 화면의 입구는 플러그인의 착지(`openObjectiveOnPhone`)뿐이다:
+ * 지휘관 Operation 이 없는 목표나 대화 탭이 서지 못한 목표를 reveal(또는 호스트가 돌려준 params)로 받아 그 상세를 뿌리(depth 0)로 세운다 — ‹ 는 홈이다.
+ */
+export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   const reveal = useReveal();
-  const [doneOpen, setDoneOpen] = useState(false);
-  // 「시작 전」은 펼친 채로 연다 — 접어 두면 시작 전 목표 하나를 여는 데 한 번 더 눌러야 한다.
-  const [freshOpen, setFreshOpen] = useState(true);
-  // 「사령관이 맡음」은 접힌 채로 연다 — 사람이 답할 것이 아니다.
-  const [handledOpen, setHandledOpen] = useState(false);
-  const { mobileBar, panes, visible } = ctx;
-  const title = t("objectives.panel.title");
-
-  // 상세에서 돌아오면 막대를 다시 뿌리로 — 마지막 선언이 이기므로 보일 때마다 선언한다.
-  useEffect(() => { if (visible) mobileBar?.set({ title, depth: 0 }); }, [mobileBar, visible, title]);
-  // 「확인 필요」 행·팔레트가 남긴 reveal 을 집어 상세를 연다.
+  const [objectiveId, setObjectiveId] = useState(() => ctx.params.objectiveId ?? ctx.params.operationId ?? "");
   useEffect(() => {
     if (!reveal) return;
     const target = takeReveal();
-    if (target) panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: target.objectiveId } });
-  }, [reveal, panes]);
+    if (target) setObjectiveId(target.objectiveId);
+  }, [reveal]);
+  return <MobileObjectiveDetail ctx={ctx} objectiveId={objectiveId} />;
+}
 
-  const shown = state.objectives.filter(isListedObjective);
-  // 데스크톱 결정 구역과 같은 판정 — 사람의 차례는 「내 결정」, 자율 운영 중 사령관이 맡은 결정 요청은 접힌 「사령관이 맡음」.
-  const need = shown.filter((objective) => !objective.done && personTurnAt(objective, commodore.active) !== null);
-  const handled = shown.filter((objective) => personTurnAt(objective, commodore.active) === null && decisionTurn(objective, commodore.active) === "commodore");
-  const zoned = new Set([...need, ...handled].map((objective) => objective.id));
-  // 데스크톱 접기(`switcher.tsx` freshOf)와 같은 판정 — 개시 전이고, 지휘관 Operation 이 없고, 검토 대기가 아니다.
-  const fresh = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
-  const live = shown.filter((objective) => !objective.done && !zoned.has(objective.id));
-  const running = live.filter((objective) => !fresh(objective));
-  const notStarted = live.filter(fresh);
-  const done = shown.filter((objective) => !!objective.done);
-  const open = (objective: Objective) => panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: objective.id } });
-
-  const row = (objective: Objective) => {
-    const pending = hasDecisionRequest(objective);
-    const turn = decisionTurn(objective, commodore.active);
-    const handed = livePersonHolds(objective).length > 0;
-    // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
-    const members = objective.members.length;
-    const total = objective.criteria.length;
-    // 데스크톱 사이드바 줄 메모와 같은 판정 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
-    const failed = memberFailureNote(objective);
-    return (
-      <button key={objective.id} type="button" data-press="r2" className="objectives-m-row is-two" onClick={() => open(objective)}>
-        <CommanderMark objective={objective} operations={operations} />
-        <span className="objectives-m-tx">
-          {objective.title}
-          <small className={turn === "person" || handed ? "is-awaiting" : undefined}>
-            {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
-            {turn === "commodore" ? `${t("objectives.commodore.note.answering")} · ` : ""}
-            {handed ? `${t("objectives.commodore.note.handed")} · ` : ""}
-            {failed ? <><span className="objectives-m-failed">{t(failed)}</span>{" · "}</> : null}
-            {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
-          </small>
-        </span>
-      </button>
-    );
-  };
-
-  if (!state.loaded) return <div className="objectives-m" aria-busy="true" />;
-  return (
-    <div className="objectives-m">
-      <div className="objectives-m-pad">
-        {shown.length === 0 ? <p className="objectives-m-note">{t("objectives.mobile.empty")}</p> : null}
-        {need.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.need")}</h2><div className="objectives-m-grp">{need.map(row)}</div></> : null}
-        {handled.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={handledOpen} onClick={() => setHandledOpen((value) => !value)}>
-              {t("objectives.mobile.zone.handled", { count: handled.length })}<Chevron open={handledOpen} size={16} />
-            </button>
-            {handledOpen ? <div className="objectives-m-grp">{handled.map(row)}</div> : null}
-          </>
-        ) : null}
-        {running.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.running")}</h2><div className="objectives-m-grp">{running.map(row)}</div></> : null}
-        {notStarted.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={freshOpen} onClick={() => setFreshOpen((value) => !value)}>
-              {t("objectives.mobile.zone.fresh", { count: notStarted.length })}<Chevron open={freshOpen} size={16} />
-            </button>
-            {freshOpen ? <div className="objectives-m-grp">{notStarted.map(row)}</div> : null}
-          </>
-        ) : null}
-        {shown.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
-              {t("objectives.mobile.zone.done", { count: done.length })}<Chevron open={doneOpen} size={16} />
-            </button>
-            {doneOpen && done.length > 0 ? <div className="objectives-m-grp">{done.map(row)}</div> : null}
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
+/** 대화 주인 Operation 의 목표 — 지휘관 Operation 이면 그 목표, 구성원 Operation 이면 그 구성원이 속한 목표. 같은 상태면 같은 참조. */
+export function objectiveOfOperation(operationId: string): Objective | null {
+  for (const state of readAllTheaters()) {
+    const found = state.objectives.find((objective) => isListedObjective(objective) && (objective.id === operationId || objective.members.some((member) => member.id === operationId)));
+    if (found) return found;
+  }
+  return null;
 }
 
 // ── 상세 ──
@@ -317,7 +241,8 @@ const TEXT_FIELD = "textarea, input:is(:not([type]), [type=text], [type=search],
  * 가상 키보드가 뷰포트를 줄여도 포커스한 입력이 화면 안에 남게 한다. WebView(adjustResize)는 높이만 줄이고 이 화면의
  * 내부 스크롤 칸(.objectives-m) 안의 입력은 끌어올리지 않는다(실기기: 결정 질문 2의 자유 입력이 키보드 아래 214.8px에 숨었다).
  * 포커스와 뷰포트 resize 때, 이미 보이는 입력은 그대로 두고 가려진 만큼만 이 칸을 스크롤한다(nearest). 셸·문서의 다른 스크롤
- * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다.
+ * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다. 대화 정보 화면에 심긴 상세는 스스로 스크롤하지 않으므로
+ * 그때 이 칸은 가장 가까운 스크롤 조상(정보 화면)이다.
  */
 function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | null }) {
   useEffect(() => {
@@ -329,13 +254,14 @@ function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | nul
         const field = document.activeElement;
         // 키보드를 부르는 글 입력만 — 설정 토글(checkbox)처럼 키보드 없는 입력은 포커스돼도 움직이지 않는다.
         if (!root || !(field instanceof HTMLElement) || !field.matches(TEXT_FIELD) || !root.contains(field)) return;
+        const scroller = scrollerOf(root);
         const viewport = window.visualViewport;
-        const box = root.getBoundingClientRect();
+        const box = scroller.getBoundingClientRect();
         const top = Math.max(box.top, viewport?.offsetTop ?? 0);
         const bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : window.innerHeight);
         const rect = field.getBoundingClientRect();
-        if (rect.bottom > bottom) root.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
-        else if (rect.top < top) root.scrollTop -= top - rect.top + FIELD_GAP_PX;
+        if (rect.bottom > bottom) scroller.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
+        else if (rect.top < top) scroller.scrollTop -= top - rect.top + FIELD_GAP_PX;
       });
     };
     document.addEventListener("focusin", settle);
@@ -350,14 +276,36 @@ function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | nul
   }, [rootRef]);
 }
 
-export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
+/** 입력을 끌어올릴 스크롤 칸 — 상세 자신(.objectives-m)이 스크롤하면 그것, 아니면 가장 가까운 스크롤 조상이다. */
+function scrollerOf(root: HTMLElement): HTMLElement {
+  for (let node: HTMLElement | null = root; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+  }
+  return root;
+}
+
+/** 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 params 로 싣는다(막대 창구 없음). */
+export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext }) {
+  const operationId = ctx.params.operationId ?? "";
+  const objective = useSyncExternalStore(subscribeObjective, () => objectiveOfOperation(operationId), () => objectiveOfOperation(operationId));
+  return <MobileObjectiveDetail ctx={ctx} objectiveId={objective?.id ?? ""} />;
+}
+
+/**
+ * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)에서는 호스트 막대(`mobileBar`)에 제목·⋮ 동작을 선언하는 뿌리이고,
+ * 대화 정보 화면의 「목표」 탭에서는 막대가 없어 같은 동작을 본문 맨 위 동작 줄로 그린다. 제목은 정보 화면 머리가 말하므로 본문에 다시 세우지 않는다.
+ * 보관은 두 자리 모두 두지 않는다 — Operation 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Operation 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
+ */
+export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
   const t = getT(ctx.language);
   const language = ctx.language ?? "en";
-  const objectiveId = ctx.params.objectiveId ?? "";
   const objective = useObjective(objectiveId);
   const operations = operationIndex(useOperationSummaries());
-  const { mobileBar, panes, visible, api } = ctx;
-  const title = objective?.title ?? "";
+  const { mobileBar, visible, api } = ctx;
+  // 막대가 없으면 대화 정보 화면의 「목표」 탭에 심긴 것이다 — 동작은 본문 맨 위 동작 줄로 그린다.
+  const embedded = !mobileBar;
+  const title = objective?.title ?? t("objectives.panel.title");
   const [sheet, setSheet] = useState(false);
   const [routingSheet, setRoutingSheet] = useState(false);
   const [followupSheet, setFollowupSheet] = useState(false);
@@ -370,6 +318,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     const timer = setTimeout(() => setToast(null), TOAST_MS);
     return () => clearTimeout(timer);
   }, [toast]);
+  // 탭으로 착지한 목표의 reveal 은 이 자리가 집는다 — 남겨 두면 나중에 목표 화면이 열릴 때 엉뚱하게 이 목표를 세운다.
+  const reveal = useReveal();
+  useEffect(() => { if (embedded && reveal && reveal.objectiveId === objectiveId) takeReveal(); }, [embedded, reveal, objectiveId]);
 
   const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
   const actions = objective ? objectiveActions(objective, operations, t, launchAvailable) : null;
@@ -382,53 +333,48 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const followupCount = objective && !objective.done ? openFollowups(objective).length : 0;
   useEffect(() => { if (followupCount === 0) setFollowupSheet(false); }, [followupCount]);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
-  // 데스크톱 상세 머리와 같은 조건 — 지휘관 묶음이 일하는 동안은 보관 입구를 내지 않는다.
-  const archivable = objective?.hasOperation === true && (!!objective.done || !WORKING.has(activityOf(operations, objective.id)));
-  const latest = useRef({ actions, objectiveId, say, language, t, archivable });
-  latest.current = { actions, objectiveId, say, language, t, archivable };
+  const latest = useRef({ actions, objectiveId, say, language, t });
+  latest.current = { actions, objectiveId, say, language, t };
   const act = useCallback((path: string) => {
     const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
     void post(api, path, { objectiveId: id, language: locale }).catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api]);
-  // 보관은 데스크톱 상세 머리와 같은 경로·판정이다 — Operation 이 있으면 Operation 단위로 보관함에 서고, 상세는 닫는다.
-  // 기동 전 목표의 영구 삭제는 되돌릴 수 없어 확인 문법이 있는 데스크톱에만 둔다.
-  const archive = useCallback(() => {
-    const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
-    void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: id, language: locale })
-      .then(({ objective: archived, deleted }) => { if (deleted) removeObjectiveLocally(id); else upsertObjectiveLocally(archived); panes.close(); })
-      .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
-  }, [api, panes]);
-  // 한 번 보였던 목표가 목록에서 사라지면(완료·보관으로 Operation 이 보관함에 들어갔다) 빈 상세를 남기지 않고 닫는다 — 보관 경로의 닫기와 같다.
-  const shownOnce = useRef(false);
-  useEffect(() => {
-    if (objective) { shownOnce.current = true; return; }
-    if (!shownOnce.current || !visible) return;
-    shownOnce.current = false;
-    panes.close();
-  }, [objective, visible, panes]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${archivable ? 1 : 0}` : "";
+  // 사람 동작 — 막대의 ⋮ 항목과 심긴 자리의 동작 줄이 같은 목록이다. 누르는 순간의 판정은 ref 로 읽는다.
+  const personActions = useCallback((current: ObjectiveActions | null): MobileBarMenuItem[] => {
+    if (!current) return [];
+    const items: MobileBarMenuItem[] = [];
+    // 「메시지」는 늘 선다 — 받을 세션이 없거나 띠가 다른 할 일을 먼저 세우는 동안은 흐리게.
+    items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
+    // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
+    if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
+    if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
+    // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
+    if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
+    return items;
+  }, [act, t]);
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
-    const current = latest.current.actions;
-    const items: MobileBarMenuItem[] = [];
-    if (current) {
-      // 「메시지」는 늘 선다 — 받을 세션이 없거나 띠가 다른 할 일을 먼저 세우는 동안은 흐리게.
-      items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
-      // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
-      if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
-      if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
-      // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
-      if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
-      // 보관은 일반 색 — 보관함에서 복원하면 임무·기록과 함께 돌아온다(호스트 세션 ⋮의 보관과 같은 자리, 맨 끝).
-      if (latest.current.archivable) items.push({ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive });
-    }
-    mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, panes, menuKey, t, act, archive]);
+    const items = personActions(latest.current.actions);
+    // 목표 화면의 뿌리다 — ‹ 는 홈으로 간다.
+    mobileBar.set({ title, depth: 0, ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
+  }, [mobileBar, visible, title, menuKey, t, personActions]);
 
-  if (!objective || !actions) return <div ref={rootRef} className="objectives-m" />;
+  const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
+  if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
+  const rowActions = embedded ? personActions(actions) : [];
   return (
-    <div ref={rootRef} className="objectives-m">
+    <div ref={rootRef} className={rootClass}>
       <div className="objectives-m-pad">
+        {rowActions.length > 0 ? (
+          <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
+            {rowActions.map((item) => (
+              <button type="button" key={item.id} data-press="r3" className="objectives-m-act" disabled={item.disabled} onClick={item.run}>
+                {item.icon}<span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />

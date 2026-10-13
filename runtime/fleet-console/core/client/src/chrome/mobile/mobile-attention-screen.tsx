@@ -14,7 +14,7 @@ import { AttentionReason } from "./mobile-attention-reason.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
-import { entryIconOf } from "./mobile-destinations.js";
+import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { setMobileDestination } from "./mobile-store.js";
 
 /** S-35 「확인 필요」 전체 화면 — 홈 맨 위 묶음이 세 건까지만 싣는 것의 전부. 답하면 이 목록에서 빠진다. */
@@ -42,7 +42,7 @@ export function MobileAttentionScreen() {
                 <span className="mobile-group-row-copy">{row.operation.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
               </button>
             ) : (
-              <button type="button" className="mobile-group-row is-two" key={row.key} onClick={() => { setMobileDestination({ kind: "plugin", entryId: row.entryId }); navigateConsoleRoute("/operations"); row.item.open(); }}>
+              <button type="button" className="mobile-group-row is-two" key={row.key} onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) { setMobileDestination({ kind: "plugin", entryId: row.entryId }); navigateConsoleRoute("/operations"); } row.item.open(); }}>
                 <span className="mobile-group-row-icon" aria-hidden="true">{entryIconOf(bindings, row.entryId)}</span>
                 <span className="mobile-group-row-copy">{row.item.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                 {sourceName(row.entryId) ? <span className="mobile-group-row-value">{sourceName(row.entryId)}</span> : null}

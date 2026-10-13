@@ -155,12 +155,15 @@ export function CommodoreTrail({
   theaterId,
   width,
   onReveal,
+  onOpenObjective,
 }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly theaterId: string;
   readonly width?: number;
   readonly onReveal?: (at: number) => void;
+  /** 목표 제목을 눌렀을 때 — 생략하면 열린 목표 표면이 그 목표를 가리키게(reveal)만 한다. 폰은 그 목표의 대화 「목표」 탭으로 간다. */
+  readonly onOpenObjective?: (objectiveId: string) => void;
 }) {
   const { objectives } = useObjectiveTheater(theaterId);
   const groups = useMemo(() => commodoreTrail(t, theaterId, objectives), [t, theaterId, objectives]);
@@ -221,7 +224,7 @@ export function CommodoreTrail({
             <ul ref={listRef} className="objectives-commodore-trail-list">
               {groups.map((group) => (
                 <li key={group.objectiveId} className={`objectives-commodore-trail-group${group.done ? " is-done" : ""}`}>
-                  <button type="button" className="objectives-commodore-trail-objective" title={t("objectives.commodore.trail.open")} onClick={() => revealObjective({ objectiveId: group.objectiveId })}>{group.title}</button>
+                  <button type="button" className="objectives-commodore-trail-objective" title={t("objectives.commodore.trail.open")} onClick={() => { if (onOpenObjective) onOpenObjective(group.objectiveId); else revealObjective({ objectiveId: group.objectiveId }); }}>{group.title}</button>
                   <ul className="objectives-commodore-trail-entries">
                     {group.entries.map((entry) => {
                       const body = (

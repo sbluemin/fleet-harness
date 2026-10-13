@@ -26,8 +26,11 @@ function subscribe(listener: Listener): () => void {
  */
 export type MobileDestination =
   | { readonly kind: "home" }
-  /** 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다. */
-  | { readonly kind: "info" }
+  /**
+   * 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다.
+   * `tab`은 처음 세울 탭(엔트리의 `mobile.conversationPane`으로 오는 착지) — 생략하면 「정보」 탭이다.
+   */
+  | { readonly kind: "info"; readonly tab?: string }
   | { readonly kind: "attention" }
   | { readonly kind: "archive" }
   | { readonly kind: "search"; readonly scope?: "archive" }
@@ -42,6 +45,7 @@ function readDestinationFromUrl(): MobileDestination {
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
+  if (raw !== null && raw.startsWith("info:") && raw.length > 5) return { kind: "info", tab: raw.slice(5) };
   if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
   return { kind: "home" };
 }
@@ -51,7 +55,8 @@ export function syncMobileDestinationUrl(): void { writeDestinationToUrl(destina
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind === "search" && next.scope === "archive" ? "search:archive" : next.kind;
+  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
+    : next.kind === "info" && next.tab !== undefined ? `info:${next.tab}` : next.kind;
   if ((url.searchParams.get(DEST_PARAM)) === value) return;
   if (value === null) url.searchParams.delete(DEST_PARAM);
   else url.searchParams.set(DEST_PARAM, value);
@@ -67,10 +72,28 @@ export function useMobileDestination(): MobileDestination {
 export function getMobileDestination(): MobileDestination { return destination; }
 
 export function setMobileDestination(next: MobileDestination): void {
-  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope) return;
+  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
+    && (destination as { tab?: string }).tab === (next as { tab?: string }).tab) return;
   destination = next;
   writeDestinationToUrl(next);
   emit();
+}
+
+/**
+ * 대화를 열면서 그 정보 화면의 탭으로 착지하라는 한 번짜리 요청. 대화 열기는 포커스 요청(`focusOperation`)을 거쳐 Operations 화면이
+ * 소비하며 목적지를 홈으로 되돌리므로, 그 소비가 같은 대화에 대해 이 요청을 집어 정보 화면으로 세운다. 다른 대화의 소비는 요청을 버린다.
+ */
+let pendingConversationTab: { readonly operationId: string; readonly tab: string } | null = null;
+
+export function requestMobileConversationTab(operationId: string, tab: string): void {
+  pendingConversationTab = { operationId, tab };
+}
+
+/** 대화 열기 요청을 소비할 때의 목적지 — 그 대화에 걸린 탭 요청이 있으면 정보 화면, 아니면 홈. */
+export function takeMobileConversationDestination(operationId: string): MobileDestination {
+  const pending = pendingConversationTab;
+  pendingConversationTab = null;
+  return pending?.operationId === operationId ? { kind: "info", tab: pending.tab } : { kind: "home" };
 }
 
 // ── 도구 시트(목적지가 아닌 레일 엔트리·확대 표면) ────────────────────────
