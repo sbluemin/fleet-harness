@@ -845,6 +845,11 @@ export interface OperationClusterRow {
    */
   readonly decisionNote?: LocalizedText;
   /**
+   * 이 줄은 목표 묶음이 아니라 Theater 의 사령관(자율 운영자)이 사람에게 직접 묻는 일이다 — 호스트는 지휘관 대신 그 Theater 사령관의
+   * 아바타로 그린다. 뿌리(`root`)가 없는 줄에만 뜻이 있다.
+   */
+  readonly commodore?: true;
+  /**
    * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 「내 결정」이 아니라 접힌 맡김 구역에 `at`
    * 순으로 선다. `zone` 은 그 구역 머리 이름이다(같은 플러그인의 줄은 같은 말을 내고, 호스트는 처음 것을 쓴다).
    * `decisionRequestedAt` 이 함께 있으면 그 줄은 「내 결정」에 선다.

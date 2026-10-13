@@ -9,7 +9,7 @@ import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, P
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
-import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
@@ -125,6 +125,12 @@ export const commodoreEntry: RailEntryDescriptor = {
   panes: [COMMODORE_MOBILE_PANE],
   // 「목표」(order 10) 앞 칩. 칩 오른쪽 칸은 자율 운영 루프의 상태(S-53 CM-1c)다.
   mobile: { desktop: false, destination: { order: 5, shown: commodoreDestinationShown, trailing: commodoreDestinationTrailing }, icon: () => <PennantIcon /> },
+  // 사령관 칩 배지 — 사령관이 사람에게 물어 답을 기다리는 질문 수(`openAsks`). 행은 「목표」의 확인 필요가 같은 질문을 이미 세우므로 두지 않는다.
+  attention: {
+    subscribe: subscribeCommodore,
+    count: (theaterId) => openAsks(theaterId).length,
+    label: (count, locale) => getT(locale)("objectives.ask.badge", { count }),
+  },
 };
 
 const objectivesPlugin = definePlugin({

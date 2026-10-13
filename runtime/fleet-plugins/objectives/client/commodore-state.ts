@@ -7,7 +7,7 @@ import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/s
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
-import type { CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { livePersonHold, reasonAwaits } from "../server/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
 import { post } from "./objectives-state.js";
@@ -403,6 +403,11 @@ export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => 
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
+/** 사령관의 질문에 답한다 — 모든 질문의 답을 한 번에. 결과 상태로 화면을 바로 고치고(질문이 끝나 카드가 내려간다), 거절은 코드를 던진다. */
+export async function answerCommodoreAsk(theaterId: string, askId: string, answers: readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[]): Promise<void> {
+  await write(theaterId, "/commodore/ask/answer", { askId, answers });
+}
+
 export function uploadCommodoreAttachment(file: Blob): Promise<{ readonly id: string }> {
   if (!installed) return Promise.reject(new Error("not_installed"));
   return uploadComposerAttachment(file, (path, init) => installed!.api.fetch(null, path, init));
@@ -428,6 +433,27 @@ export async function messageCommodore(theaterId: string, text: string, attachme
 /** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
 export function isRunningObjective(objective: Objective): boolean {
   return !objective.removed && !objective.done && objective.commander.started && !objective.awaitingReview && !objective.awaitingHandoff;
+}
+
+const NO_ASKS: readonly CommodoreAsk[] = [];
+const openAskMemo = new Map<string, { readonly source: readonly CommodoreAsk[] | undefined; readonly open: readonly CommodoreAsk[] }>();
+/**
+ * 사령관이 사람에게 물어 아직 답을 기다리는 질문 — 물은 순서. 「내 결정」 줄·레일 배지·확인 필요·사령관 얼굴 배지·폰 칩 배지·질문 카드가
+ * 모두 이 하나를 읽는다. 읽지 않은 Theater 는 없다. 같은 상태면 같은 배열을 돌려준다(스냅샷).
+ */
+export function openAsks(theaterId: string | null): readonly CommodoreAsk[] {
+  if (!theaterId) return NO_ASKS;
+  const source = theaters.get(theaterId)?.view?.state.asks;
+  const hit = openAskMemo.get(theaterId);
+  if (hit && hit.source === source) return hit.open;
+  const open = source?.some((ask) => !ask.settled) ? source.filter((ask) => !ask.settled) : NO_ASKS;
+  openAskMemo.set(theaterId, { source, open });
+  return open;
+}
+
+/** 서 있는 질문이 있는 Theater — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다(읽은 Theater 만). */
+export function openAskTheaters(): readonly string[] {
+  return [...theaters.keys()].filter((theaterId) => openAsks(theaterId).length > 0);
 }
 
 /**

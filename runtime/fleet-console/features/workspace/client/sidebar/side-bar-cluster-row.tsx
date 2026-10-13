@@ -16,7 +16,7 @@ import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarDelegatedZoneExpanded, setSideBarFreshFoldExpanded, useSideBarDelegatedZones } from "./operations-side-bar-store.js";
 import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
-import { operationAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
@@ -500,7 +500,10 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
   // 대화 행의 지휘관 아바타는 22px 이다 — 사령관 카드(32px)보다 한 단 작아 Theater 아래의 소속으로 읽힌다.
   const full = conversation ? 22 : 20;
   const size = working.length > 0 ? (conversation ? 19 : 17) : full;
-  const commander = anchor
+  // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
+  const commander = row.commodore && !anchor
+    ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
+    : anchor
     ? <OperationAvatar operation={anchor.operation} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />
     : <KeyedAvatar avatarKey={operationAvatarKey(layout.cluster.root ?? layout.cluster.avatarOperationId ?? layout.cluster.id)} role="commander" state={commanderState} size={size} label={label} decorative={decorative} />;
   if (working.length === 0) return commander;

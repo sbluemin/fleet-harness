@@ -2,7 +2,7 @@ import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversat
 import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import type { Objective } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
 import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
@@ -15,7 +15,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 도구는 이름과 한 줄 요약(입력 전체는 기록에 없다)이다. 사고는 채팅처럼 내용을 그리지 않는다. 세션 교대와 오류는 구분선이다.
  * 저장하지 않는 라이브 사건(글자 흐름·진행 중 도구 이름)은 마지막 확정 줄 뒤에 이어 붙는다 — 확정 줄이 오면 그 몫은 버려진다.
  */
-export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[]): readonly AgentChatTranscriptEntry[] {
+export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
@@ -77,6 +77,21 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         push({ kind: "note", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
         break;
       }
+      // 사령관이 물었다 — 그 턴 안의 글로 선다(이유·질문·선택지). 지금 상태(답을 기다림·답함·거둠)는 상태의 질문에서 읽는다.
+      case "ask":
+        resume(entry.at);
+        push({ kind: "text", text: askMarkdown(t, entry, asks) }, entry.at);
+        break;
+      // 사람이 답했다 — 사람의 말처럼 선다(턴 중이면 그 턴 안).
+      case "ask-answered": {
+        const text = answeredText(t, entry);
+        if (turnAt !== null) push({ kind: "turn-inject", text, at: entry.at }, entry.at);
+        else {
+          push({ kind: "dispatch", text, at: entry.at }, entry.at);
+          push({ kind: "turn-end", ok: true }, entry.at);
+        }
+        break;
+      }
       case "thinking":
       case "undelivered":
         break;
@@ -98,7 +113,7 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
  * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
-export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[]): readonly AgentConversationEntry[] {
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[]): readonly AgentConversationEntry[] {
   const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
@@ -144,6 +159,18 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("objectives.commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("objectives.commodore.log.error", { code }) });
         break;
       }
+      // 물음과 답은 보드 행위 줄과 같은 가운데 줄이다 — 물음은 사령관, 답은 사람이 낸 줄. 펼치면 이유·질문(답)이 선다.
+      case "ask": {
+        const status = askStatusWord(t, entry.askId, asks);
+        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: entry.objective?.id ?? "",
+          action: [t("objectives.ask.logged"), entry.objective?.title, status].filter(Boolean).join(" · "),
+          text: [entry.reason, ...entry.questions.map((question, index) => questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0))].join("\n") });
+        break;
+      }
+      case "ask-answered":
+        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: human, objectiveId: "",
+          action: t("objectives.ask.answered"), text: entry.answers.map((answer) => `${answer.question}\n→ ${answerWords(answer)}`).join("\n") });
+        break;
       case "thinking":
       case "undelivered":
       case "wake-scope":
@@ -215,8 +242,8 @@ export type CommodoreLogBlock =
   | { readonly kind: "note"; readonly text: string; readonly at?: number; readonly tone?: "warn" };
 
 /** 채팅 어휘를 턴과 구분선으로 가른다. 접힘은 그리는 쪽이 정하고, 여기서는 줄을 만들기 위한 사실만 뽑는다. */
-export function commodoreLogBlocks(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[]): readonly CommodoreLogBlock[] {
-  const chat = commodoreChatEntries(t, entries, live);
+export function commodoreLogBlocks(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly CommodoreLogBlock[] {
+  const chat = commodoreChatEntries(t, entries, live, asks);
   const blocks: CommodoreLogBlock[] = [];
   const ordinal = new Map<number, number>();
   let bucket: AgentChatTranscriptEntry[] = [];
@@ -296,6 +323,37 @@ function plainFirstLine(text: string): string {
 function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string {
   if (tool.action) return [actionWord(t, tool.action), tool.title].filter(Boolean).join(" · ");
   return tool.summary ?? "";
+}
+
+/* ── 사령관의 질문 줄 ─────────────────────────────────────────────── */
+
+type AskEntry = Extract<CommodoreTranscriptEntry, { kind: "ask" }>;
+type AnsweredEntry = Extract<CommodoreTranscriptEntry, { kind: "ask-answered" }>;
+
+/** 질문의 지금 — 상태에 남은 질문에서 읽는다. 보관 상한 밖으로 밀려난 질문은 모른다(말하지 않는다). */
+function askStatusWord(t: T, askId: string, asks: readonly CommodoreAsk[] | undefined): string | null {
+  const ask = asks?.find((candidate) => candidate.id === askId);
+  if (!ask) return null;
+  if (!ask.settled) return t("objectives.ask.status.open");
+  return t(ask.settled.outcome === "withdrawn" ? "objectives.ask.status.withdrawn" : "objectives.ask.status.answered");
+}
+
+/** 질문 한 줄 — 번호(여럿일 때), 질문, 선택지 이름(「 / 」로 잇는다), 여러 개 고르기 표시. */
+function questionLine(t: T, question: AskEntry["questions"][number], n: number): string {
+  const options = question.options.length ? ` — ${question.options.join(" / ")}${question.multiSelect ? ` (${t("objectives.ask.multi")})` : ""}` : "";
+  return `${n ? `${n}. ` : ""}${question.text}${options}`;
+}
+
+const answerWords = (answer: AnsweredEntry["answers"][number]): string => [answer.selected.join(" · "), answer.text.trim()].filter(Boolean).join(" — ");
+
+function askMarkdown(t: T, entry: AskEntry, asks: readonly CommodoreAsk[] | undefined): string {
+  const head = [`**${t("objectives.ask.logged")}**`, entry.objective?.title, askStatusWord(t, entry.askId, asks)].filter(Boolean).join(" · ");
+  const lines = entry.questions.map((question, index) => `- ${questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0)}`);
+  return [head, `> ${entry.reason.replaceAll("\n", "\n> ")}`, ...lines].join("\n\n");
+}
+
+function answeredText(t: T, entry: AnsweredEntry): string {
+  return [t("objectives.ask.answered"), ...entry.answers.map((answer) => `${answer.question}\n→ ${answerWords(answer)}`)].join("\n");
 }
 
 export function errorWord(t: T, code: string): string {

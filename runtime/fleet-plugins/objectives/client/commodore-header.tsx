@@ -8,6 +8,7 @@ import {
   isCommodoreWaiting,
   loadCommodore,
   noteCommodoreLanguage,
+  openAsks,
   readCommodore,
   readCommodoreExperiment,
   setCommodoreAutonomy,
@@ -85,6 +86,9 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const state = commodoreMongleState(view, board.objectives);
   // 꺼짐 회색은 다른 표면의 Theater 아바타와 같은 규칙이다 — `header.face` 의 off 와 같은 조건(자율 운영 꺼짐)이다.
   const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
+  // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
+  const asks = openAsks(theater.id).length;
+  const asksWord = asks > 0 ? t("objectives.ask.badge", { count: asks }) : null;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     if (busy || !view) return;
@@ -95,12 +99,12 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
     <button
       type="button"
       className={`objectives-commodore-mark ${on ? "is-on" : "is-off"}${warn ? " is-warn" : ""}`}
-      aria-label={t(on ? "objectives.commodore.mark.onAria" : "objectives.commodore.mark.offAria", { theater: theater.label })}
+      aria-label={[t(on ? "objectives.commodore.mark.onAria" : "objectives.commodore.mark.offAria", { theater: theater.label }), asksWord].filter(Boolean).join(", ")}
       aria-pressed={on}
       aria-busy={busy || undefined}
       aria-disabled={busy || undefined}
       disabled={!view}
-      title={[status, t(on ? "objectives.commodore.mark.onTitle" : "objectives.commodore.mark.offTitle")].join("\n")}
+      title={[status, asksWord, t(on ? "objectives.commodore.mark.onTitle" : "objectives.commodore.mark.offTitle")].filter(Boolean).join("\n")}
       onClick={toggleAutonomy}
       onMouseEnter={peek(true)}
       onMouseLeave={peek(false)}
@@ -108,6 +112,7 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
       onBlur={peek(false)}
     >
       {glyph}
+      {asks > 0 ? <span className="objectives-commodore-mark-badge" aria-hidden="true">{asks}</span> : null}
     </button>
   );
 }
