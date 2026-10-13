@@ -8,6 +8,7 @@ import { globalBrowserEntry } from "../../../../features/browser/client/global-b
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
 import { GlobalBrowserSheet } from "../../../../features/browser/client/global-browser-sheet.js";
 import { GlobalLinkCardHost } from "../../../../features/browser/client/global-link-card.js";
+import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import { connectShellLaunchContext, PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
 import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { preloadTerminalFallbackFonts } from "../../../../features/execution/client/terminal/shared/terminal-fallback-fonts.js";
@@ -46,7 +47,7 @@ export const consoleExecution: ClientExecutionProvider = {
     // 문서 수준 링크 라우터 — Console 수명 동안 한 번 선다.
     installGlobalLinkRouter();
     const disconnectShellSession = connectShellSession(ctx.consoleEvents);
-    const disconnectShellLaunchContext = connectShellLaunchContext(ctx.consoleState);
+    const disconnectShellLaunchContext = connectShellLaunchContext(ctx.consoleState, { get: getViewedTheaterId, subscribe: subscribeViewedTheater });
     const disposeAgent = agentExecution.install?.(ctx);
     return () => {
       disconnectShellSession();

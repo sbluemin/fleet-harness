@@ -42,16 +42,21 @@ let shellParkingNode: HTMLDivElement | null = null;
 const shellMountListeners = new Set<() => void>();
 let lastViewedTheaterId: string | null = null;
 
-/** 대화 선택을 관찰하되 Shell을 옮기지는 않는다. 첫 열기에서만 이 좌표를 붙잡는다. */
-export function connectShellLaunchContext(state: ClientConsoleStateCapability): () => void {
+/** Shell 첫 열기가 붙잡을 "지금 보는 대화의 Theater" 출처 — 코어가 주입한다(features는 코어를 import하지 않는다). */
+export interface ShellViewedTheaterPort {
+  readonly get: () => string | null;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+/** 지금 보는 대화의 Theater를 관찰하되 Shell을 옮기지는 않는다. 첫 열기에서만 이 좌표를 붙잡는다. */
+export function connectShellLaunchContext(state: ClientConsoleStateCapability, viewed: ShellViewedTheaterPort): () => void {
   const update = () => {
-    const selected = state.getSelectedOperationId?.() ?? state.getActiveOperationId();
-    const operation = state.getOperations({ nested: true }).find((item) => item.id === selected);
-    if (operation) lastViewedTheaterId = operation.theaterId;
+    const current = viewed.get();
+    if (current !== null) lastViewedTheaterId = current;
     if (!state.getTheaters().some((item) => item.id === lastViewedTheaterId)) lastViewedTheaterId = null;
   };
   update();
-  const unsubscribe = state.subscribe(update);
+  const unsubscribe = viewed.subscribe(update);
   return () => { unsubscribe(); lastViewedTheaterId = null; };
 }
 
