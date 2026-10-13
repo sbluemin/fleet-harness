@@ -849,8 +849,12 @@ export function openNewOperation(): void {
 
 /** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
 export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): void {
-  // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
-  if (installed && theaterId) installed.consoleState.viewTheater?.(theaterId);
+  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
+  // 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater 설정)를 연다 — 이미 그 Theater 를 보고 있으면 부르지 않는다.
+  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 패널은 그 대화의 Theater 를
+  // 따르므로 옮기지 않는다(옮기면 「목표」 대신 Theater 설정 탭이 열리고, 서 있던 시작 화면이 걷힌다).
+  const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
+  if (installed && theaterId && place !== "rail" && viewed !== theaterId) installed.consoleState.viewTheater?.(theaterId);
   if (place === "rail") {
     installed?.rail.open(OBJECTIVE_PANEL_ID);
     installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);

@@ -347,7 +347,9 @@
   flex: none;
 }
 
-.conversation-pill-tools-more-wrap.is-idle { display: none; }
+/* 「⋯」는 걷힌 도구가 있을 때만 선다 — 측정(ConversationToolbar)이 data-more 로 정한다. 상태(React)를 기다리지 않아 같은 측정 안에서
+   「⋯」가 선 채로 들어가는지 잴 수 있다. */
+.conversation-pill-tools:not([data-more="shown"]) .conversation-pill-tools-more-wrap { display: none; }
 
 .conversation-pill-tools-menu {
   position: absolute;

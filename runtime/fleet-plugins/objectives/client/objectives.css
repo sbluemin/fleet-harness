@@ -1755,11 +1755,12 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
    시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */
 .objectives-commodore-conversation { position: relative; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-/* 기록 비우기 — 머리 pill 바로 옆 단추 묶음(호스트의 .conversation-pill-actions, descriptor actions)에 선다. 단추는 그 묶음의
-   다른 단추(.conversation-round)와 같은 32px 원이고, hover 도 그 원의 테두리·잉크로만 말한다 — 면이 단추 모양을 벗어나지 않는다. */
-/* 확인 문구는 단추 아래 작은 말풍선이다 — 묶음의 폭을 늘리지 않아 좁은 칸에서도 pill 이 밀려 찌그러지지 않는다. */
-.objectives-commodore-clear-wrap.is-round { position: relative; margin-left: 0; }
-.objectives-commodore-clear-wrap.is-round .objectives-commodore-clear-confirm {
+/* 기록 비우기 — 머리 pill 바로 옆 대화 동작 묶음(호스트의 .conversation-pill-actions, descriptor actions)에 선다. 단추는 그 묶음의
+   지구본과 같은 24px 평면 캡션 단추(.fleet-caption-action)이고 이름은 캡션 말풍선이 말한다. 32px 원형 단추는 이 자리에 쓰지 않는다. */
+/* 확인 문구는 단추 아래 작은 말풍선이다 — 묶음의 폭을 늘리지 않아 좁은 칸에서도 pill 이 밀려 찌그러지지 않는다. 확인을 기다리는 동안은
+   이름 말풍선이 물러나 둘이 겹치지 않는다. */
+.objectives-commodore-clear-wrap.is-caption { position: relative; display: inline-flex; margin-left: 0; }
+.objectives-commodore-clear-wrap.is-caption .objectives-commodore-clear-confirm {
   position: absolute;
   top: calc(100% + 8px);
   right: -4px;
@@ -1772,19 +1773,13 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   white-space: nowrap;
   pointer-events: none;
 }
-.objectives-commodore-clear.is-round {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  background: var(--surface-glass);
-  color: var(--text-secondary);
+.objectives-commodore-clear-wrap.is-caption:has(.is-armed) .fleet-caption-tip { opacity: 0; transition-delay: 0s; }
+/* 한 번 눌러 확인을 기다리는 동안은 파괴 쪽(coral) 잉크다 — 캡션 단추의 hover(brass)보다 앞선다. */
+.objectives-commodore-clear-wrap.is-caption > .fleet-caption-slot > .fleet-caption-action.is-armed {
+  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  color: var(--coral-ink);
 }
-.objectives-commodore-clear.is-round svg { width: 15px; height: 15px; }
-.objectives-commodore-clear.is-round:hover,
-.objectives-commodore-clear.is-round:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); background: var(--surface-glass); color: var(--text-primary); outline: none; }
-.objectives-commodore-clear.is-round.is-armed { border-color: color-mix(in oklch, var(--coral) 45%, var(--surface-rim-strong)); background: color-mix(in oklch, var(--coral) 10%, var(--surface-glass)); color: var(--coral-ink); }
 .objectives-commodore-conversation-status { display: block; min-width: 0; margin-top: 6px; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }
 .objectives-commodore-conversation-back {
   display: block;

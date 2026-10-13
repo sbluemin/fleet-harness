@@ -14,6 +14,7 @@ import { closeConversationSurface, getConversationSurface, useConversationSurfac
 import { useConversationSubject } from "../conversation/conversation-slots.js";
 import { useSectionStates, type ResolvedTheaterInboxSection } from "./section-states.js";
 import { useTheaterInboxState, type TheaterInboxOpenState } from "./store.js";
+import "./theater-inbox-panel.css";
 
 /** 오른쪽 패널에 선 Inbox 칸 탭의 id — 레일 전체에서 고유해야 한다. */
 export function theaterInboxPanelTabId(address: TheaterInboxAddress): string {

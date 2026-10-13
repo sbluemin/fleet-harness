@@ -266,7 +266,7 @@ function CommodoreConversationActions({ theaterId, language }: { readonly theate
     <CommodoreClearButton
       t={t}
       theaterId={theaterId}
-      variant="round"
+      variant="caption"
       onFail={(error) => setConversationFailure(theaterId, failureWord(t, error))}
       onClear={() => setConversationFailure(theaterId, null)}
     />

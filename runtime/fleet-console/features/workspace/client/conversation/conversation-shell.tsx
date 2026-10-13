@@ -478,8 +478,10 @@ function usePanelSections(): {
   return { list, activeId, filter, open };
 }
 
-/** 공통 도구모음의 「⋯」 단추(24px)와 그 틈 — 도구가 넘칠 때 묶음 끝에 남겨 둘 자리. */
-const TOOLBAR_MORE_RESERVE = 26;
+/** 머리 pill 이름의 하한 — 도구가 모두 「⋯」로 걷힌 다음에야 이름이 이 폭까지 줄어든다(이름이 더 짧으면 그 폭). */
+const TITLE_FLOOR = 120;
+/** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
+const PILL_TITLE_CAP = 620;
 
 interface OverflowTab {
   readonly label: string;
@@ -689,10 +691,13 @@ function ConversationQuota() {
       const center = pillGroupNaturalWidth(stage);
       // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
       const right = Number.parseFloat(getComputedStyle(box).right) || 0;
-      const available = (stage.clientWidth - center) / 2 - right - QUOTA_PILL_GAP;
-      const tier: QuotaTier = widths.full <= available ? "full" : widths.marks <= available ? "marks" : "single";
+      // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
+      const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
+      // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
+      const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
+      const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
       box.dataset.tier = tier;
-      stage.style.setProperty("--conversation-quota-space", `${Math.ceil(widths[tier] + right + QUOTA_PILL_GAP)}px`);
+      stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
     };
     const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
     measure();
@@ -727,10 +732,16 @@ function ConversationQuota() {
 type QuotaTier = "full" | "marks" | "single";
 /** 사용량 캡슐과 pill 묶음 사이의 최소 틈. */
 const QUOTA_PILL_GAP = 12;
+/** 정수 폭으로 센 가운데 묶음의 원래 폭이 실제보다 작을 수 있는 몫 — 사용량 단계 판정에 남기는 여유. */
+const QUOTA_ROUNDING_SLACK = 2;
 
-/** pill 줄 가운데 묶음(이름 pill·다음·단추 묶음)의 원래 폭 — 이름이 말줄임으로 줄어든 만큼을 되돌려 센다(최대 620). */
+/**
+ * pill 줄 가운데 묶음(이름 pill·다음·단추 묶음)의 원래 폭 — 이름이 말줄임으로 줄어든 만큼을 되돌려 센다(최대 620).
+ * 대화 열의 줄만 잰다 — 확대 표면 머리(접힌 칩 포함)도 칸에 portal 된 같은 이름의 줄이고, 대화 열이 다시 서면(대상 전환) DOM 순서가
+ * 그 뒤로 밀려 첫 줄이 표면 머리가 된다.
+ */
 function pillGroupNaturalWidth(stage: HTMLElement): number {
-  const row = stage.querySelector<HTMLElement>(".conversation-pill-row");
+  const row = stage.querySelector<HTMLElement>(":scope > .conversation-column > .conversation-pill-row");
   return row === null ? 0 : pillRowNaturalWidth(row);
 }
 
@@ -746,7 +757,7 @@ function pillRowNaturalWidth(row: HTMLElement): number {
     if (item.classList.contains("conversation-pill")) {
       const title = item.querySelector<HTMLElement>(".conversation-pill-title");
       const natural = item.offsetWidth + (title ? title.scrollWidth - title.clientWidth : 0);
-      total += Math.min(natural, 620);
+      total += Math.min(natural, PILL_TITLE_CAP);
     } else if (item.classList.contains("conversation-pill-tools")) {
       total += Number.parseFloat(item.dataset.naturalWidth ?? "") || item.offsetWidth;
     } else {
@@ -795,47 +806,77 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
     const row = tools?.closest<HTMLElement>(".conversation-pill-row") ?? null;
     if (!tools || !itemsBox || !row) return;
     let frame = 0;
+    // 줄이 넘치지 않고, 이름이 자리 때문에(620px 상한 때문이 아니라) 잘리지 않으면 들어간 것이다. 실제 배치를 읽는다 — 원래 폭을
+    // 셈으로만 맞추면 글꼴이 늦게 와 이름이 길어지는 것처럼 셈 밖의 변화에 이름이 먼저 잘린다.
+    // 정수로 반올림한 clientWidth·scrollWidth 는 1px 밑의 말줄임을 놓친다 — 이름은 글자 범위의 실제 폭과, 줄은 상자의 실제 폭과 견준다.
+    const range = typeof document === "undefined" ? null : document.createRange();
+    const fits = (pill: HTMLElement | null, title: HTMLElement | null) => {
+      if (title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
+        range.selectNodeContents(title);
+        if (range.getBoundingClientRect().width > title.getBoundingClientRect().width + 0.01) return false;
+      }
+      const children = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.offsetWidth > 0);
+      if (children.length === 0) return true;
+      const style = getComputedStyle(row);
+      const content = row.getBoundingClientRect().width - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      const extent = children[children.length - 1]!.getBoundingClientRect().right - children[0]!.getBoundingClientRect().left;
+      return extent <= content + 0.01;
+    };
+    const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
+    // 줄 폭(칸 폭·사용량 캡슐 예약)뿐 아니라 줄 안 요소의 폭도 본다 — 글꼴·컨테이너 질의·인라인 스타일처럼 줄 크기나 관찰하는 속성을
+    // 바꾸지 않고 이름·대화 동작의 폭만 바꾸는 변화에도 이름이 먼저 잘리지 않게. 같은 대상을 다시 observe 해도 하나로 친다.
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     const measure = () => {
       frame = 0;
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
       for (const item of items) item.removeAttribute("data-overflow");
-      // 모두 세운 폭 — 「⋯」는 빼고 잰다. 사용량 캡슐이 이 값으로 자기 단계를 고른다(pillRowNaturalWidth).
-      const moreWrap = moreRef.current?.parentElement ?? null;
-      const gap = Number.parseFloat(getComputedStyle(tools).columnGap) || 0;
-      const moreWidth = moreWrap !== null && moreWrap.offsetWidth > 0 ? moreWrap.offsetWidth + gap : 0;
-      const natural = Math.max(0, tools.offsetWidth - moreWidth);
+      tools.dataset.more = "hidden";
+      if (resize !== null) {
+        resize.observe(row);
+        // 테두리 상자로 본다 — 내용 상자만 보면 안쪽 여백·테두리만 바뀐 요소의 폭 변화를 놓친다.
+        for (const child of row.children) if (child !== tools) resize.observe(child, { box: "border-box" });
+        const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
+        if (titleElement !== null) resize.observe(titleElement);
+      }
+      // 이름의 하한 — 도구가 모두 걷힌 뒤에도 이름은 TITLE_FLOOR(이름이 그보다 짧으면 그 폭) 밑으로 줄지 않는다.
+      const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
+      const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
+      if (title !== null) {
+        title.style.minWidth = "";
+        range?.selectNodeContents(title);
+        const natural = range === null ? title.scrollWidth : range.getBoundingClientRect().width;
+        title.style.minWidth = `${Math.min(TITLE_FLOOR, Math.ceil(natural))}px`;
+      }
+      // 모두 세운 폭(「⋯」 없이) — 사용량 캡슐이 이 값으로 자기 단계를 먼저 고른다(pillRowNaturalWidth).
+      const natural = tools.offsetWidth;
       if (tools.dataset.naturalWidth !== String(natural)) tools.dataset.naturalWidth = String(natural);
-      const rowStyle = getComputedStyle(row);
-      const available = row.clientWidth - (Number.parseFloat(rowStyle.paddingLeft) || 0) - (Number.parseFloat(rowStyle.paddingRight) || 0);
-      const excess = pillRowNaturalWidth(row) - available;
       const next: HiddenTool[] = [];
-      if (excess > 0) {
-        // 오른쪽 끝(Console 도구)부터 걷는다 — 걷힌 도구는 「⋯」 자리만큼 더 비워야 한다.
-        let freed = 0;
-        for (let index = items.length - 1; index >= 0 && freed < excess + TOOLBAR_MORE_RESERVE; index -= 1) {
+      if (!fits(pill, title)) {
+        // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지. 남은 줄이 구분선으로 끝나면 그것도 걷는다
+        // (구분선은 두 범위 사이에서만 뜻이 있다). 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.
+        tools.dataset.more = "shown";
+        for (let index = items.length - 1; index >= 0; index -= 1) {
           const item = items[index]!;
-          freed += item.getBoundingClientRect().width + gap;
           item.setAttribute("data-overflow", "true");
           if (item instanceof HTMLButtonElement && item.id.startsWith("rail-tab-")) {
             next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled, element: item });
           }
+          const previous = items[index - 1];
+          if (previous?.classList.contains("right-rail-divider")) { previous.setAttribute("data-overflow", "true"); index -= 1; }
+          if (fits(pill, title)) break;
         }
-        // 남은 줄이 구분선으로 끝나면 그것도 걷는다 — 구분선은 두 범위 사이에서만 뜻이 있다.
-        const shown = items.filter((item) => !item.hasAttribute("data-overflow"));
-        const last = shown[shown.length - 1];
-        if (last?.classList.contains("right-rail-divider")) last.setAttribute("data-overflow", "true");
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };
-    const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
     measure();
-    // 줄 폭(칸 폭·사용량 캡슐 예약)이 바뀌거나 이름·대화 동작·도구가 서고 걷히면 다시 잰다. 이 묶음이 다는 data-overflow·
-    // data-natural-width 는 관찰하지 않는다.
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
-    resize?.observe(row);
+    // 이름·대화 동작·도구가 서고 걷히면 다시 잰다. 이 묶음이 다는 data-overflow·data-more·data-natural-width 와 이름의 하한(style)은
+    // 관찰하지 않는다.
     const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
     mutation?.observe(row, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "disabled"] });
-    return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
+    // 웹 글꼴이 늦게 오면 이름·단추의 폭이 줄 크기 변화 없이 바뀐다 — 그때도 다시 잰다.
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    fonts?.addEventListener?.("loadingdone", schedule);
+    return () => { resize?.disconnect(); mutation?.disconnect(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
   }, []);
   useEffect(() => {
     if (!menuOpen) return;
@@ -856,7 +897,7 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
       <span className="conversation-pill-tools-items" ref={itemsRef}>
         <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={isCommonTool} />
       </span>
-      <span className={`conversation-pill-tools-more-wrap${hidden.length > 0 ? "" : " is-idle"}`}>
+      <span className="conversation-pill-tools-more-wrap">
         <button
           type="button"
           ref={moreRef}

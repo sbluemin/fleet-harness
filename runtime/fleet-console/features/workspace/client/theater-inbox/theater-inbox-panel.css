@@ -1,0 +1,6 @@
+/* Theater 패널 — 대화 중심 화면의 오른쪽 패널에 Theater Inbox 섹션 본문을 세운다(시트 없이). 본문은 섹션이 스크롤을 정하고,
+   「적용」 줄은 맨 아래에 붙는다. 예전 Inbox 시트(theater-inbox-sheet.css)가 함께 지던 패널 규칙을 그대로 옮겼다. */
+.theater-inbox-panel-page { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; }
+.theater-inbox-panel-body { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.theater-inbox-applies { flex: none; display: flex; align-items: baseline; gap: 10px; margin: 0; padding: 10px var(--space-4) 12px; border-top: 1px solid var(--hairline); color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1.5; }
+.theater-inbox-applies > span { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
