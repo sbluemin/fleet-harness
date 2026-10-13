@@ -736,7 +736,7 @@ function sanitizeOperationNode(node: OperationNode, deps: OperationsRouterDeps):
 async function handleGroupCollection(req: http.IncomingMessage, res: http.ServerResponse, deps: OperationsRouterDeps): Promise<void> {
   if (req.method === "GET") {
     // operations 컬렉션(handleCollection)과 동일한 계약: theaterId가 있으면 Theater별, 없으면 전체.
-    // 클라이언트는 전체 groups를 받아 activeTheaterId로 필터하므로(theaterGroups) null 호출도 200이어야 한다.
+    // 클라이언트는 모든 Theater의 그룹을 표시하므로 null 호출도 전체 목록을 반환해야 한다.
     const theaterId = readRequestUrl(req).searchParams.get("theaterId");
     const groups = theaterId ? deps.store.listGroups(theaterId) : deps.store.listAllGroups();
     deps.writeJson(res, 200, { groups });

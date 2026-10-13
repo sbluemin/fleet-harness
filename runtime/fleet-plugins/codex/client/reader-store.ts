@@ -22,7 +22,7 @@ interface ReaderState {
   readonly codexReaderExpanded: boolean;
   /** 호스트가 아는 Theater 사실 — 능력에서 읽어 매 스냅샷에 실어 준다. */
   readonly theaters: readonly { readonly id: string; readonly label: string }[];
-  readonly activeTheaterId: string | null;
+  readonly theaterId: string | null;
 }
 
 const listeners = new Set<() => void>();
@@ -36,7 +36,7 @@ function snapshot(): ReaderState {
     codexReader: reader,
     codexReaderExpanded: expanded,
     theaters: consoleState?.getTheaters() ?? [],
-    activeTheaterId: consoleState?.getActiveTheaterId() ?? null,
+    theaterId: consoleState?.getViewedTheaterId?.() ?? null,
   };
 }
 
@@ -44,7 +44,7 @@ function publish(): void {
   const next = snapshot();
   const same = next.codexReader === state.codexReader
     && next.codexReaderExpanded === state.codexReaderExpanded
-    && next.activeTheaterId === state.activeTheaterId
+    && next.theaterId === state.theaterId
     && next.theaters.length === state.theaters.length
     && next.theaters.every((t, i) => t.id === state.theaters[i]?.id && t.label === state.theaters[i]?.label);
   if (same) return;
@@ -59,7 +59,7 @@ function publish(): void {
  *
  * 그 구독은 구독자 수와 무관하게 **바인딩 시점에** 선다. 예전에는 `subscribeReader` 안에서
  * 능력을 한 번 읽었는데, 상주 기여는 install보다 먼저 마운트되므로 그때는 아직 빈손이었다.
- * 결과로 Theater가 붙어도 스냅샷의 activeTheaterId가 null로 굳어, 공유 링크가 가리킨 문서가
+ * 결과로 Theater가 붙어도 스냅샷의 theaterId가 null로 굳어, 공유 링크가 가리킨 문서가
  * 영영 열리지 않았다.
  */
 let hostRelease: (() => void) | null = null;
@@ -126,7 +126,7 @@ function expandedReaderParams(): Readonly<Record<string, string>> {
   if (reader) for (const [key, value] of Object.entries(reader)) {
     if (typeof value === "string") params[key] = value;
   }
-  const theaterId = hostCapabilities.bound()?.consoleState.getActiveTheaterId();
+  const theaterId = hostCapabilities.bound()?.consoleState.getViewedTheaterId?.();
   if (theaterId) params.theaterId = theaterId;
   return params;
 }
@@ -187,8 +187,8 @@ function closeSurfaceSlots(): void {
   hostCapabilities.bound()?.surfaces.closeSurface(SURFACE_ID);
 }
 
-export function setActiveTheater(theaterId: string): void {
-  hostCapabilities().consoleState.setActiveTheater(theaterId);
+export function viewTheater(theaterId: string): void {
+  hostCapabilities().consoleState.viewTheater?.(theaterId);
 }
 
 export function useConsoleLocale(): ConsoleLocale {

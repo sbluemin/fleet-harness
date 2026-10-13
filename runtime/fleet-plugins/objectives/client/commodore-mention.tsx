@@ -1,13 +1,13 @@
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { commodoreActiveTheaterId, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore } from "./commodore-state.js";
+import { commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
 
 const TARGET_PREFIX = "commodore:";
 
 /**
- * Quick Launch '@' 덱에 서는 지금 Theater 의 사령관.
+ * Quick Launch '@' 덱에 서는 등록된 모든 Theater의 사령관.
  *
  * 실험 기능 「자율 운영」과 그 Theater 의 자율 운영이 모두 켜져 있을 때만 낸다. 어느 하나라도 꺼져 있으면 서버가 메시지를
  * 거절한다(`commodore_disabled`·`commodore_inactive`) — 보내도 닿지 않는 행선지를 고를 수 있게 둘 이유가 없으므로
@@ -17,17 +17,11 @@ const TARGET_PREFIX = "commodore:";
  * 밴드가 이미 「사령관」을 말하므로 행 이름은 Theater 다 — 행선지 태그가 「사령관 · fleet-harness」로 읽힌다.
  */
 export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
-  const theaterId = commodoreActiveTheaterId();
-  if (!theaterId || !commodoreBoardOf(theaterId).active) return [];
   const t = getT(commodoreLanguage());
-  const theater = commodoreTheaterLabel(theaterId) || theaterId;
-  return [{
-    id: `${TARGET_PREFIX}${theaterId}`,
-    label: theater,
-    categoryLabel: t("objectives.commodore.name"),
-    description: t("objectives.commodore.mention.description", { theater }),
-    renderMark: () => <CommodoreMentionGlyph />,
-  }];
+  return commodoreTheaterIds().filter((theaterId) => commodoreBoardOf(theaterId).active).map((theaterId) => {
+    const theater = commodoreTheaterLabel(theaterId) || theaterId;
+    return { id: `${TARGET_PREFIX}${theaterId}`, label: theater, categoryLabel: t("objectives.commodore.name"), description: t("objectives.commodore.mention.description", { theater }), renderMark: () => <CommodoreMentionGlyph /> };
+  });
 }
 
 /** 고른 사령관에게 보낸다 — 사령관 기록 서랍의 입력과 같은 경로(`commodore/message`)다. */

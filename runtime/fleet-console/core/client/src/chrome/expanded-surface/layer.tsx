@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { reportExpandedMinWidth, useDetailOverlayLeft } from "../rail/rail-store.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -68,7 +69,7 @@ export function ExpandedSurfaceLayer() {
   const { instances, focusedInstanceId } = useExpandedSurfaces();
   const stowed = useExpandedSurfacesStowed();
   const t = useT();
-  const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId, () => null);
+  const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId(), () => null);
   const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");

@@ -1,3 +1,6 @@
+import { openTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { setMobileListTheaterId } from "../chrome/mobile/mobile-store.js";
+import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
 import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
@@ -25,7 +28,17 @@ import { theaterInboxCapability } from "../../../../features/workspace/client/th
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
-  openQuickLaunchWithDraft, raiseOperationNotification, setActiveTheater, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+  openQuickLaunchWithDraft, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+
+function viewTheaterInbox(theaterId: string): void {
+  if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
+  if (getViewModeSnapshot().effective === "mobile") setMobileListTheaterId(theaterId);
+  else {
+    closeConversationSurface();
+    openTheaterInbox({ theaterId, sectionId: "console:settings", pageId: "system-prompt" });
+  }
+  navigateConsoleRoute("/operations");
+}
 
 export interface HostCapabilityDependencies {
   /**
@@ -84,7 +97,6 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     bindings,
     activateTheater: (theaterId) => {
       if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
-      setActiveTheater(theaterId);
       return true;
     },
     openRail: revealRailPanel,
@@ -204,13 +216,15 @@ export function createHostCapabilities(
           ...(own && parents!.has(operation.id) ? { ownActivity: resolveOperationRuntimeActivity(operation, own) } : {}),
         }));
       },
-      getActiveTheaterId: () => getState().activeTheaterId,
+      getActiveTheaterId: getViewedTheaterId,
+      getViewedTheaterId,
+      viewTheater: viewTheaterInbox,
       getActiveOperationId: () => getState().activeOperationId,
       getConnection: () => getState().connection,
       getOperationRuntimeHydration: () => getState().operationRuntimeHydration,
       getSelectedOperationId: () => getState().selectedOperationId,
-      setActiveTheater: (theaterId) => setActiveTheater(theaterId),
-      subscribe: (listener) => subscribe(listener),
+      setActiveTheater: viewTheaterInbox,
+      subscribe: subscribeViewedTheater,
       // 확정 인셋은 아레나 스토어에서, 레일을 끄는 동안의 차이는 레일 스토어에서 — 캔버스가 --arena-right 를 따라가는 것과 같은 셈.
       getMapInsets: () => {
         const settled = getArenaInsets();
@@ -248,7 +262,7 @@ export function createHostCapabilities(
         if (!getState().theaters.some((theater) => theater.id === request.theaterId)) return { ok: false, reason: "not_found" };
         const result = await handler(request, capabilities);
         if (result && !result.ok) return result;
-        setActiveTheater(request.theaterId);
+        viewTheaterInbox(request.theaterId);
         capabilities.rail.open(binding!.entry.id);
         navigateConsoleRoute("/operations");
         return { ok: true };

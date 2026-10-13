@@ -36,7 +36,6 @@ import type {
 
 type Listener = () => void;
 
-const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
@@ -89,7 +88,6 @@ let state: ConsoleState = {
   nestedBodySelection: {},
   operationsHydrated: false,
   groups: [],
-  activeTheaterId: null,
   activeOperationId: null,
   activeOperationAcknowledged: true,
   selectedOperationId: null,
@@ -153,20 +151,19 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export function setState(patch: Partial<ConsoleState>): void {
-  state = withLiveSelection(state, { ...state, ...partitionOperationsPatch(patch) });
+  state = withLiveSelection({ ...state, ...partitionOperationsPatch(patch) });
   emit();
 }
 
 /**
  * 선택은 살아 있는 Operation 을 가리킬 때만 남는다 — 제거·보관이 어느 경로로 오든 여기 한 곳에서 거둔다. 사라진
- * Operation 을 가리킨 채 남으면 목표가 없는 문맥을 따라간다. 다른 Theater 로 옮겨 가면 그 Theater 의 것이 아닌 선택도 거둔다.
+ * Operation 을 가리킨 채 남으면 목표가 없는 문맥을 따라간다. Theater 사이 이동은 선택의 수명과 무관하다.
  */
-function withLiveSelection(previous: ConsoleState, next: ConsoleState): ConsoleState {
+function withLiveSelection(next: ConsoleState): ConsoleState {
   const selectedId = next.selectedOperationId;
   if (selectedId === null) return next;
   const selected = next.operations.find((operation) => operation.id === selectedId);
-  const leftTheater = next.activeTheaterId !== previous.activeTheaterId && selected?.theaterId !== next.activeTheaterId;
-  if (selected && !leftTheater && selectedId !== next.activeOperationId) return next;
+  if (selected && selectedId !== next.activeOperationId) return next;
   return { ...next, selectedOperationId: null };
 }
 
@@ -456,8 +453,7 @@ function trackDesktopZoomFactor(): void {
 
 
 export function hydrateTheaters(theaters: readonly TheaterInfo[]): void {
-  const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId);
-  setState({ theaters, activeTheaterId });
+  setState({ theaters });
 }
 
 export function hydrateTheaterBootstrap(bootstrap: TheaterBootstrap): void {
@@ -603,16 +599,6 @@ export function applyGroupRemoved(groupId: string): void {
   setState({ groups: state.groups.filter((item) => item.id !== groupId) });
 }
 
-// 활성 Operation 은 활성 Theater 의 것이다 — 떠난 Theater 의 활성을 남기면 문맥을 따르는 표면(목표 레일 등)이
-// 보이지 않는 Operation을 계속 겨눈다. 포인터 전환은 사이드바 pointerdown 이 이미 비우고, 키보드·팔레트·플러그인 전환도
-// 여기서 같아진다. 등록된 전환 억제가 켜져 있으면 다른 Theater 의 활성을 그대로 둔다.
-export function setActiveTheater(theaterId: string | null): void {
-  writeStoredActiveTheaterId(theaterId);
-  const activeTheaterOf = state.operations.find((operation) => operation.id === state.activeOperationId)?.theaterId;
-  const leftActive = activeTheaterOf !== undefined && activeTheaterOf !== theaterId && !focusTheaterSwitchSuppressed();
-  setState({ activeTheaterId: theaterId, ...(leftActive ? { activeOperationId: null, activeOperationAcknowledged: true } : {}) });
-}
-
 // 구성원은 패널로 서지 않는다 — 구성원을 가리킨 포커스는 부모 패널로 가고, 부모 패널이 그 구성원의 본문을 보인다.
 // 판정은 스토어의 구성원 목록 하나라 다른 셸(모바일)에서도 같다.
 export function setActiveOperation(
@@ -746,10 +732,8 @@ export function beginAddTheater(): void {
 
 export function completeAddTheater(theater: TheaterInfo): void {
   const theaters = [theater, ...state.theaters.filter((item) => item.id !== theater.id)];
-  writeStoredActiveTheaterId(theater.id);
   setState({
     theaters,
-    activeTheaterId: theater.id,
     addingTheater: false,
     theaterError: null,
   });
@@ -761,14 +745,6 @@ export function cancelAddTheater(): void {
 
 export function failAddTheater(error: string): void {
   setState({ addingTheater: false, theaterError: error });
-}
-
-// 포커스가 Theater를 전환하면 안 되는 모드가 등록하는 가드. 가드가 true를 반환하는 동안
-// focusOperation은 activeTheater를 보존한 채 포커스 요청만 흘려보낸다.
-let focusTheaterSwitchSuppressed: () => boolean = () => false;
-
-export function registerFocusTheaterSwitchSuppression(guard: () => boolean): void {
-  focusTheaterSwitchSuppressed = guard;
 }
 
 /**
@@ -792,12 +768,9 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
   if (!operation) return;
   revealOperationStage();
   noteOperationFocused(operationId);
-  const suppressSwitch = focusTheaterSwitchSuppressed() && operation.theaterId !== state.activeTheaterId;
-  if (!suppressSwitch) writeStoredActiveTheaterId(operation.theaterId);
   const activeOperationAcknowledged = acknowledgeIdleArrival(operationId);
   const body = options?.keepBody === true && !nested ? {} : withNestedBody(operationId, nested ? nested.id : null);
   setState({
-    ...(suppressSwitch ? {} : { activeTheaterId: operation.theaterId }),
     activeOperationId: operationId,
     activeOperationAcknowledged,
     pendingOperationFocus: operationId,
@@ -1227,27 +1200,19 @@ export async function migrateStoredCommissioningSeen(): Promise<boolean> {
 
 export function removeTheater(theaterId: string): void {
   const theaters = state.theaters.filter((theater) => theater.id !== theaterId);
-  const activeTheaterId = chooseActiveTheaterId(theaters, state.activeTheaterId === theaterId ? null : state.activeTheaterId);
   const operationNotifications = pruneNotificationsForTheater(state.operationNotifications, theaterId);
   const removedOperationIds = new Set(allOperations().filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
   const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
-  // 사라진 Theater를 겨눈 Quick Launch 요청은 여기서 함께 버린다. 소비 조건이
-  // request.theaterId === activeTheaterId라, 그 Theater가 없어지면 조건이 영영 성립하지 않아
-  // 프롬프트가 실행되지도 지워지지도 않은 채 남는다.
+  // 사라진 Theater를 겨눈 Quick Launch 요청도 함께 버린다.
   const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
-  writeStoredActiveTheaterId(activeTheaterId);
-  setState({ theaters, activeTheaterId, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch });
+  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch });
 }
 
 export function dismissNotificationsForOperation(operationId: string): void {
   const operationNotifications = removeNotificationForOperation(state.operationNotifications, operationId);
   if (operationNotifications === state.operationNotifications) return;
   setState({ operationNotifications });
-}
-
-export function activeTheater(current: ConsoleState): TheaterInfo | null {
-  return current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
 }
 
 export function operationSearchEntries(current: ConsoleState) {
@@ -1284,40 +1249,10 @@ function pruneNotificationsForTheater(
   return changed ? next : notifications;
 }
 
-function chooseActiveTheaterId(theaters: readonly TheaterInfo[], currentActiveId: string | null): string | null {
-  const ids = new Set(theaters.map((theater) => theater.id));
-  const stored = readStoredActiveTheaterId();
-  if (stored && ids.has(stored)) return stored;
-  if (currentActiveId && ids.has(currentActiveId)) return currentActiveId;
-  return theaters[0]?.id ?? null;
-}
-
 function mapNotificationKind(kind: string): NotificationKind {
   const normalized = kind.toLowerCase();
   if (normalized === "ended" || normalized.includes(".end") || normalized.includes("done")) return "ended";
   return "input-waiting";
-}
-
-function readStoredActiveTheaterId(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(ACTIVE_THEATER_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredActiveTheaterId(theaterId: string | null): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (theaterId) {
-      window.localStorage.setItem(ACTIVE_THEATER_STORAGE_KEY, theaterId);
-    } else {
-      window.localStorage.removeItem(ACTIVE_THEATER_STORAGE_KEY);
-    }
-  } catch {
-    // 브라우저 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
-  }
 }
 
 function readStoredNotificationPreferences(): NotificationPreferences {

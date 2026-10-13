@@ -13,7 +13,6 @@ vi.mock("@fleet-console/sdk/operations/browser", async (original) => ({
 vi.mock("../core/client/src/integration/api.js", () => ({ fetchOperations: async () => [] }));
 import { ArchiveSheet, ArchivePurgeButton } from "../features/workspace/client/archive/archive-sheet.js";
 import { closeArchiveSheet, openArchiveSheet, refreshOperationArchive } from "../core/client/src/integration/operation-archive.js";
-import { setActiveTheater } from "../core/client/src/integration/store.js";
 
 /** 기존 한 번 누르기 시험을 두 번 확정·반복 키·삭제 후 비파괴 초점 계약으로 대체한다. */
 describe("archive destructive action safeguards", () => {
@@ -78,7 +77,7 @@ describe("archive destructive action safeguards", () => {
     const container = document.createElement("div"); document.body.append(container);
     const root = createRoot(container);
     cleanup = () => { act(() => root.unmount()); container.remove(); };
-    await act(async () => { setActiveTheater("theater"); openArchiveSheet(); await refreshOperationArchive(); root.render(createElement(ArchiveSheet)); });
+    await act(async () => { openArchiveSheet(); await refreshOperationArchive(); root.render(createElement(ArchiveSheet)); });
     const row = (id: string) => document.querySelector<HTMLElement>(`[data-operation-id="${id}"]`)!;
     const deleteButton = row("a").querySelector<HTMLButtonElement>(".archive-sheet-purge")!;
     await act(async () => { deleteButton.focus(); deleteButton.click(); });

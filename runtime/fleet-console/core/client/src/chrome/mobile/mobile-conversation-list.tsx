@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useMemo } from "react";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
@@ -38,11 +39,11 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   // 이 화면이 자기 머리를 그린다 — 호스트 상단 막대는 숨긴다.
   useClaimMobileBar({ variant: "centered", title: "", leading: "back", hidden: true });
 
-  const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
+  const theater = state.theaters.find((item) => item.id === getViewedTheaterId()) ?? null;
   const consoleName = appearance.console?.label ?? window.location.hostname;
   const inTheater = useMemo(() => conversations
-    .filter((conversation) => conversation.operation.theaterId === state.activeTheaterId)
-    .sort((left, right) => right.operation.ts.updatedAt - left.operation.ts.updatedAt || right.operation.ts.createdAt - left.operation.ts.createdAt), [conversations, state.activeTheaterId]);
+    .filter((conversation) => conversation.operation.theaterId === getViewedTheaterId())
+    .sort((left, right) => right.operation.ts.updatedAt - left.operation.ts.updatedAt || right.operation.ts.createdAt - left.operation.ts.createdAt), [conversations, getViewedTheaterId()]);
   const byId = useMemo(() => new Map(inTheater.map((conversation) => [conversation.operation.id, conversation])), [inTheater]);
   const attentionOperationIds = new Set(attention.flatMap((row) => row.kind === "operation" ? [row.operation.id] : []));
   const rest = inTheater.filter((conversation) => !attentionOperationIds.has(conversation.operation.id));
@@ -107,7 +108,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         ) : rest.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : rest.map((conversation) => (
           <ConversationRow key={conversation.operation.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />
         ))}
-        <MobileHomeSections theaterId={state.activeTheaterId} />
+        <MobileHomeSections theaterId={getViewedTheaterId()} />
       </div>
     </section>
   );

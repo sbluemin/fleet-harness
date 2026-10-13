@@ -288,7 +288,6 @@ export interface ConsoleState {
   readonly nestedBodySelection: Readonly<Record<string, string>>;
   readonly operationsHydrated: boolean;
   readonly groups: readonly OperationGroup[];
-  readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly activeOperationAcknowledged: boolean;
   /**

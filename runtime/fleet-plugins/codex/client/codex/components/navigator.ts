@@ -204,7 +204,7 @@ export function mountNavigatorInto(
   let activeTagKey: string | null = null;
   let composing = false;
   let activeTag: string | null = null;
-  let activeTheaterId = options.initialTheaterId;
+  let viewedTheaterId = options.initialTheaterId;
   let serverResults: SearchEntry[] = [];
   let sortOrder = readSortOrder();
   let mode: "entries" | "schema" = "entries";
@@ -422,7 +422,7 @@ export function mountNavigatorInto(
   function loadHealth(): void {
     healthPopoverOpen = false;
     renderHealth();
-    if (!activeTheaterId) return;
+    if (!viewedTheaterId) return;
     void revalidateScopes(["queue"]).catch(() => {});
   }
 
@@ -566,7 +566,7 @@ export function mountNavigatorInto(
     if (!currentQuery) return;
 
     const requestEpoch = searchEpoch;
-    const theaterId = activeTheaterId;
+    const theaterId = viewedTheaterId;
     const query = currentQuery;
     const controller = new AbortController();
     searchController = controller;
@@ -575,7 +575,7 @@ export function mountNavigatorInto(
       tags: activeTag ? [activeTag] : undefined,
       signal: controller.signal,
     }).then((result) => {
-      if (controller.signal.aborted || requestEpoch !== searchEpoch || theaterId !== activeTheaterId || query !== currentQuery) return;
+      if (controller.signal.aborted || requestEpoch !== searchEpoch || theaterId !== viewedTheaterId || query !== currentQuery) return;
       serverResults = result.entries;
       renderList(getState());
     }).catch(() => {
@@ -784,7 +784,7 @@ export function mountNavigatorInto(
       root.innerHTML = "";
     },
     setTheater(theaterId: string | null): void {
-      activeTheaterId = theaterId;
+      viewedTheaterId = theaterId;
       currentQuery = "";
       currentEntryId = null;
       activeOptionKey = null;

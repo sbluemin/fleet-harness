@@ -1,3 +1,4 @@
+import { getViewedTheaterId, useViewedTheaterId } from "../../../core/client/src/integration/viewed-theater.js";
 import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -13,7 +14,7 @@ import { archiveOperationFromUi, resumeDormantOnOpen, resumeOperationInPlace, ty
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { operationAccentFromNode } from "./operation-accent.js";
-import { getGroupCollapseSlice, getTheaterGroupCollapse, loadGroupCollapseForTheater, pruneOperationAccents } from "./sidebar/group-collapse-store.js";
+import { getTheaterGroupCollapse, pruneOperationAccents } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
@@ -27,7 +28,7 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -56,6 +57,7 @@ interface OperationsProps {
 }
 
 export function Operations({ state, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
+  const viewedTheaterId = useViewedTheaterId();
   const registry = usePluginRegistry();
   const viewMode = useViewMode();
   const globalSettings = useGlobalSettingsStore();
@@ -94,11 +96,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     bottom: 0,
   }), [followedSideBarInset, railOccupiedPx]);
 
-  const operationOrder = useMemo(
-    () => sortedTheaterOperations(state).map((operation) => operation.id),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.operations, state.activeTheaterId],
-  );
   const stateRef = useRef(state);
   const operationMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const catalogRequestEpochRef = useRef(0);
@@ -149,27 +146,18 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }, []);
 
   useEffect(() => {
-    loadGroupCollapseForTheater(state.activeTheaterId);
-  }, [state.activeTheaterId]);
-
-  useEffect(() => {
     if (!state.operationsHydrated) return;
-    pruneOperationAccents(new Set(operationOrder));
-  }, [operationOrder, state.operationsHydrated]);
+    for (const theater of state.theaters) pruneOperationAccents(theater.id, new Set(state.operations.filter((operation) => operation.theaterId === theater.id).map((operation) => operation.id)));
+  }, [state.operations, state.theaters, state.operationsHydrated]);
 
   useEffect(() => {
-    if (!state.activeTheaterId) {
-      catalogRequestEpochRef.current += 1;
-      setCatalog([]);
-      return;
-    }
     window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
     refreshCatalog();
     return () => {
       window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
       catalogRequestEpochRef.current += 1;
     };
-  }, [refreshCatalog, state.activeTheaterId]);
+  }, [refreshCatalog]);
 
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 상태별 보기다.
   useEffect(() => {
@@ -195,14 +183,12 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       event.preventDefault();
       event.stopImmediatePropagation();
       const snapshot = stateRef.current;
-      const theaterOperations = snapshot.operations.filter((operation) => operation.theaterId === snapshot.activeTheaterId);
+      const theaterOperations = snapshot.operations;
       // 사이드바 'Sort by status'(statusAxis)는 순환 순서에 관여하지 않는다.
-      const order = focusCycleOperationIds(
-        theaterOperations,
-        snapshot.groups.filter((group) => group.theaterId === snapshot.activeTheaterId),
-        operationOrderFromNodes(theaterOperations),
-        getGroupCollapseSlice().collapsedGroups,
-      );
+      const order = snapshot.theaters.flatMap((theater) => {
+        const operations = snapshot.operations.filter((operation) => operation.theaterId === theater.id);
+        return focusCycleOperationIds(operations, snapshot.groups.filter((group) => group.theaterId === theater.id), operationOrderFromNodes(operations), getTheaterGroupCollapse(theater.id).collapsedGroups);
+      });
       if (order.length === 0) return;
       const nextId = nextOperationId(order, snapshot.activeOperationId, arrowAction === "focus-next" ? 1 : -1);
       if (!nextId) return;
@@ -233,7 +219,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
     if (viewMode.effective === "mobile") {
-      const operation = state.operations.find((candidate) => candidate.id === operationId && candidate.theaterId === state.activeTheaterId);
+      const operation = state.operations.find((candidate) => candidate.id === operationId);
       if (operation) {
         // 플러그인 화면(목표 상세 등)에서 세션 행을 눌러 온 요청이면 그 화면 대신 Operation이 서야 한다.
         // 대화 탭으로 착지하라는 요청(`mobile.conversationPane`)이 이 대화에 걸려 있으면 그 정보 화면이 선다.
@@ -252,14 +238,11 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const operation = state.operations.find((candidate) => candidate.id === operationId);
     if (operation) focusConversationOperation(operation);
     consumeOperationFocus();
-  }, [state.activeTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
+  }, [viewedTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
-  const canLaunch = !!state.activeTheaterId && !state.addingTheater;
-  const theaterOperations = (state.operations ?? []).filter((op) => op.theaterId === state.activeTheaterId);
-  const pooledOperations = useMemo(() => {
-    const inScope = (op: OperationNode) => op.theaterId === state.activeTheaterId;
-    return [...state.operations.filter(inScope), ...state.nestedOperations.filter(inScope)];
-  }, [state.activeTheaterId, state.nestedOperations, state.operations]);
+  const canLaunch = state.theaters.length > 0 && !state.addingTheater;
+  const theaterOperations = state.operations;
+  const pooledOperations = useMemo(() => [...state.operations, ...state.nestedOperations], [state.operations, state.nestedOperations]);
   const renderKindIcon = useCallback((pluginId: string | null, kind: OperationLaunchKind): ReactNode => {
     const plugin = registry.providers.find((p) => p.id === pluginId);
     return plugin?.renderLaunchIcon?.(kind) ?? null;
@@ -270,8 +253,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     kind: OperationLaunchKind,
     variant?: Readonly<Record<string, string>>,
     groupId?: string | null,
+    launchTheaterId: string | null = getViewedTheaterId(),
   ) => {
-    const launchTheaterId = stateRef.current.activeTheaterId;
     if (!launchTheaterId) return;
     void launchViaPlugin(pluginId, kind, defaultLaunchGeometry(), launchTheaterId, registry.providers, variant, groupId);
   }, [registry.providers]);
@@ -279,12 +262,12 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const handleRailLaunchOperation = useCallback((pluginId: string | null, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
   }, [handleSideBarLaunchKind]);
-  const toolsContext = useRailPanelContext(state.activeTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
+  const toolsContext = useRailPanelContext(viewedTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
 
-  // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만 실행한다.
+  // Quick Launch 요청이 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
   useEffect(() => {
     const request = state.pendingQuickLaunch;
-    if (!request || request.theaterId !== state.activeTheaterId) return;
+    if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeQuickLaunch();
     void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
       .then(() => {
@@ -300,7 +283,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
           request.attachments ?? null,
         );
       });
-  }, [registry.providers, state.activeTheaterId, state.pendingQuickLaunch]);
+  }, [registry.providers, state.theaters, state.pendingQuickLaunch]);
 
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
@@ -313,11 +296,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
     const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.providers, handleFocus);
-    if (operation.theaterId !== stateRef.current.activeTheaterId) {
-      setActiveTheater(operation.theaterId);
-      resume();
-      return;
-    }
     resume();
   }, [handleFocus, registry.providers]);
 
@@ -393,7 +371,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }, []);
   useEffect(() => {
     setOperationMenu(null);
-  }, [state.activeTheaterId]);
+  }, [viewedTheaterId]);
   const menuOperation = operationMenu
     ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
@@ -506,7 +484,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const sideBarChrome = (
     <OperationsSideBar
       theaters={state.theaters}
-      activeTheaterId={state.activeTheaterId}
       operations={state.operations}
       groups={state.groups}
       activeOperationId={state.activeOperationId}
@@ -530,7 +507,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       onReorderTheaters={handleReorderTheaters}
       onSetTheaterAlias={handleSetTheaterAlias}
       onUngroupAll={handleUngroupAll}
-      onSelectTheater={setActiveTheater}
       onAddTheater={handleAddTheater}
       onCancelAddTheater={cancelAddTheater}
       onForgetTheater={handleForgetTheater}
@@ -588,7 +564,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
         onClose={handleClose}
       />
       {toastRegion}
-      <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+      <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       <SideBarEdgeDock />
       {operationMenuLayer}
       <ExpandedSurfaceLayer />
@@ -624,7 +600,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
 
 function focusConversationOperation(operation: OperationNode): void {
   closeConversationSurface();
-  if (getState().activeTheaterId !== operation.theaterId) setActiveTheater(operation.theaterId);
   setActiveOperation(operation.id);
   requestOperationKeyboardFocus(operation.id);
 }
@@ -639,11 +614,6 @@ function readShortenByChars(error: unknown): number | null {
   if (!(error instanceof Error) || !("shortenByChars" in error)) return null;
   const value = (error as { readonly shortenByChars?: unknown }).shortenByChars;
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function sortedTheaterOperations(state: ConsoleState): readonly OperationNode[] {
-  const operations = state.operations.filter((operation) => operation.theaterId === state.activeTheaterId);
-  return sortOperationsByOrder(operations, operationOrderFromNodes(operations));
 }
 
 function ensurePluginGeometry(operation: OperationNode): OperationGeometry {

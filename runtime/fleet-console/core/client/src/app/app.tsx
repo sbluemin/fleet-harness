@@ -1,3 +1,4 @@
+import { getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-theater.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
@@ -90,6 +91,7 @@ export function App() {
 }
 
 function ConnectedApp() {
+  useViewedTheaterId();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const location = useLocation();
@@ -446,7 +448,7 @@ function ConnectedApp() {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
-        if (getState().activeTheaterId === null) {
+        if (getViewedTheaterId() === null) {
           if (entryId === "global-shell") {
             setShellTheaterNotice(true);
             return true;
@@ -458,8 +460,8 @@ function ConnectedApp() {
         if (entry.activate) {
           const capabilities = createHostCapabilities(undefined, { railBindings });
           entry.activate({
-            theaterId: getState().activeTheaterId,
-            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getState().activeTheaterId)?.label ?? "" },
+            theaterId: getViewedTheaterId(),
+            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getViewedTheaterId())?.label ?? "" },
             api: capabilities.api,
             surfaces: capabilities.surfaces,
             rail: capabilities.rail,

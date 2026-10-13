@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "./viewed-theater.js";
 import type { ReactNode } from "react";
 
 import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
@@ -134,9 +135,9 @@ export function buildPaletteCommands(
     const { aliasLabel, extraAliases, ...rest } = entry;
     commands.push({ ...rest, current: entry.current ?? false, aliases: [...(aliasLabel === rest.label ? [] : [aliasLabel]), ...(extraAliases ?? [])] });
   };
-  const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
+  const activeTheater = current.theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
   const activeOperation = current.operations.find(
-    (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
+    (operation) => operation.id === current.activeOperationId,
   ) ?? null;
   if (options?.canUndoLastClose === true) {
     // 되돌릴 마지막 일이 보관이면 「보관 되돌리기」, Theater 잊기 같은 삭제면 기존 「실행 취소」다.
@@ -159,7 +160,7 @@ export function buildPaletteCommands(
     push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
   }
   for (const theater of current.theaters) {
-    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === current.activeTheaterId, action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
+    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === getViewedTheaterId(), action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {

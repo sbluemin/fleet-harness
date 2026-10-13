@@ -511,12 +511,11 @@ interface ConversationStageProps {
  */
 function useStageSubject(state: ConsoleState): OperationNode | null {
   const lastRef = useRef<string | null>(null);
-  const inTheater = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id && operation.theaterId === state.activeTheaterId) ?? null;
-  const active = inTheater(state.activeOperationId);
+  const operationOf = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id) ?? null;
+  const active = operationOf(state.activeOperationId);
   const latest = () => state.operations
-    .filter((operation) => operation.theaterId === state.activeTheaterId)
     .reduce<OperationNode | null>((best, operation) => (best === null || operation.ts.updatedAt > best.ts.updatedAt ? operation : best), null);
-  const subject = active ?? inTheater(lastRef.current) ?? latest();
+  const subject = active ?? operationOf(lastRef.current) ?? latest();
   lastRef.current = subject?.id ?? null;
   return subject;
 }

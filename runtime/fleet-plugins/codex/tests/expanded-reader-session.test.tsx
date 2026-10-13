@@ -23,7 +23,7 @@ it("reconstructs a non-entry reader from its restored slot without reopening the
   const close = vi.fn();
   const openRail = vi.fn();
   bindCodexHost({
-    consoleState: { getActiveTheaterId: () => "theater-a", getTheaters: () => [{ id: "theater-a", label: "A" }], subscribe: () => () => undefined },
+    consoleState: { getViewedTheaterId: () => "theater-a", getTheaters: () => [{ id: "theater-a", label: "A" }], subscribe: () => () => undefined },
     surfaces: { open },
     rail: { open: openRail },
   } as unknown as Parameters<typeof bindCodexHost>[0]);

@@ -16,7 +16,7 @@ import { askObjectiveTitle, commodoreBoardOf, commodoreRevision, decisionTurn, l
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeOperationId, activeTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, readTheater, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { activeOperationId, viewedTheaterId, isObjectiveSurfaceOpen, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, readObjectiveView, readTheater, revealObjective, runtimeHydration, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -424,7 +424,7 @@ export const objectivesClusterSource: OperationClusterSource = {
     // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
     // Operation 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
     const surfaceOpen = isObjectiveSurfaceOpen() && !activeOperationId();
-    const theaterId = activeTheaterId();
+    const theaterId = viewedTheaterId();
     // 가운데 칸에 시작 전 목표가 서 있으면 그 줄이 하이라이트를 가진다 — 패널을 닫아도 가운데 칸이 가리키는 대상은 그대로다.
     const selected = freshConversationObjectiveId() ?? (surfaceOpen ? readObjectiveView(theaterId).selected : null);
     // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.

@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type CSSProperties } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -16,7 +17,7 @@ import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/an
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
 import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../../../../core/client/src/integration/store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
@@ -465,14 +466,14 @@ export function QuickLaunch() {
     setAttachmentErrorKey(null);
     setDragOver(false);
     setZoomedKey(null);
-    setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
+    setTheaterId(rememberedTheater ?? getViewedTheaterId());
     setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
     // 모델·강도와 같은 계층이므로 열림마다 기억에서 되읽는다 — 마운트 초기값만 읽으면 다른 표면이
     // 바꾼 값이 이 컴포저에만 반영되지 않는다.
     setStartView(remembered.view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, state.activeTheaterId, theaters]);
+  }, [open, getViewedTheaterId(), theaters]);
 
   // 이미 열린 모달에 시드가 도착하면 열림 전이가 없다. 회신 버튼은 그 회차의 주소이므로
   // 쓰고 있던 문면도 버리고 행선지를 심는다. 시드는 resolveOpeningMention이 읽는 즉시
@@ -1160,7 +1161,6 @@ export function QuickLaunch() {
     writeQuickLaunchSelection({ ...readQuickLaunchSelection(), theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused, view: startView });
     // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
     // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
-    setActiveTheater(theaterId);
     requestQuickLaunch({
       theaterId,
       pluginId: target.pluginId,

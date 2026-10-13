@@ -549,7 +549,12 @@ export interface ClientConsoleStateCapability {
    * 플러그인만 `{ nested: true }` 로 함께 읽는다.
    */
   getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
+  /** @deprecated Mount는 없다. 지금 보는 대화의 Theater를 반환한다. getViewedTheaterId를 사용한다. */
   getActiveTheaterId(): string | null;
+  /** 지금 화면에 보이는 대화 또는 모바일 목록의 Theater. 빈 칸은 null이다. */
+  getViewedTheaterId?(): string | null;
+  /** 마운트하지 않고 해당 Theater의 Inbox를 연다. */
+  viewTheater?(theaterId: string): void;
   /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
   getActiveOperationId(): string | null;
   /**
@@ -571,6 +576,7 @@ export interface ClientConsoleStateCapability {
    * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 고른 것이 없는 것(null)으로 다룬다.
    */
   getSelectedOperationId?(): string | null;
+  /** @deprecated Mount는 없다. viewTheater와 같이 해당 Theater의 Inbox를 연다. */
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
   /**
@@ -660,10 +666,10 @@ export interface OperationCaptionContribution {
   readonly render: (context: OperationCaptionContributionContext) => ReactNode;
 }
 
-/** What a Theater contribution knows: the Theater as the sidebar shows it, whether it is the mounted one, and the UI language. */
+/** 사이드바가 보여 주는 Theater와 화면 언어. 모든 등록 Theater는 동등하게 사용할 수 있다. */
 export interface TheaterContributionContext {
   readonly theater: ConsoleTheaterSummary;
-  /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
+  /** @deprecated Mount는 없다. 등록된 모든 Theater에 대해 true이다. */
   readonly active: boolean;
   readonly language: "en" | "ko";
   /**

@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
@@ -19,10 +20,10 @@ export function MobileHomeFeatured({ state, conversationCount }: { readonly stat
   const t = useT();
   const locale = useConsoleLocale();
   const bindings = useRailEntries();
-  const shown = useMobileDestinationBindings(bindings, state.activeTheaterId);
-  const trailing = useMobileDestinationTrailing(bindings, state.activeTheaterId);
+  const shown = useMobileDestinationBindings(bindings, getViewedTheaterId());
+  const trailing = useMobileDestinationTrailing(bindings, getViewedTheaterId());
   const { pluginCounts } = useMobileAttention(state);
-  const theater = state.theaters.find((item) => item.id === state.activeTheaterId) ?? null;
+  const theater = state.theaters.find((item) => item.id === getViewedTheaterId()) ?? null;
   if (theater === null) return null;
   const featured = featuredDestinationBinding(shown);
   if (featured === null) {

@@ -16,7 +16,7 @@ import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { activeTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
+import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, onObjectiveSurfaceClose, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePlace } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -155,8 +155,6 @@ const objectivesPlugin = definePlugin({
     const disposeFresh = connectFreshConversation(ctx.conversation);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
-    const theaterId = activeTheaterId();
-    if (theaterId) void loadTheater(ctx.api, theaterId);
     return () => { disposeRoster(); disposeFresh(); disposeConversation(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,

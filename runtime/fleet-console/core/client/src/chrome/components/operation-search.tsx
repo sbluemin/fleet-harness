@@ -1,3 +1,6 @@
+import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
@@ -65,7 +68,6 @@ import {
   operationSearchEntries,
   requestOperationLaunchMenu,
   requestSideBarAddTheater,
-  setActiveTheater,
   setActiveTheme,
   setOperationSearchMode,
 } from "../../integration/store.js";
@@ -115,8 +117,8 @@ export function OperationSearch({
     if (mode !== "operations") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
-    if (!matchesShell || !state.activeTheaterId || !desktopView) return providerSearchGroups;
-    const theaterId = state.activeTheaterId;
+    const theaterId = getViewedTheaterId();
+    if (!matchesShell || !theaterId || !desktopView) return providerSearchGroups;
     return [...providerSearchGroups, {
       panelId: "global-shell",
       panelTitle: "Shell",
@@ -130,7 +132,7 @@ export function OperationSearch({
         } },
       ],
     }];
-  }, [providerSearchGroups, mode, text, state.activeTheaterId, desktopView, capabilities, t]);
+  }, [providerSearchGroups, mode, text, getViewedTheaterId(), desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
@@ -159,9 +161,9 @@ export function OperationSearch({
   }, [state, archive.snapshot]);
   const filteredEntries = useMemo(
     () => mode === "operations"
-      ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), state.activeTheaterId, searchTokens(text).length > 0)
+      ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), getViewedTheaterId(), searchTokens(text).length > 0)
       : [],
-    [entries, mode, state.activeTheaterId, text],
+    [entries, mode, getViewedTheaterId(), text],
   );
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
@@ -219,7 +221,7 @@ export function OperationSearch({
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
-    const theaterId = state.activeTheaterId;
+    const theaterId = getViewedTheaterId();
     if (!state.operationSearchOpen || text.trim() === "" || !theaterId || mode !== "operations") return;
 
     const abort = new AbortController();
@@ -234,7 +236,7 @@ export function OperationSearch({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [mode, text, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
+  }, [mode, text, railPanels, getViewedTheaterId(), state.operationSearchOpen, t]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -343,7 +345,8 @@ export function OperationSearch({
         if (current) break;
         // Theater 전환은 대화 화면으로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
-        setActiveTheater(action.theaterId);
+        closeConversationSurface();
+        openTheaterInbox({ theaterId: action.theaterId, sectionId: "console:settings", pageId: "system-prompt" });
         navigate("/operations");
         break;
       }
@@ -753,7 +756,7 @@ export function OperationSearch({
               {renderRailGroups(true)}
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId) + (group.archived ? "-archived" : "");
-                const activeGroup = !group.archived && group.theaterId === state.activeTheaterId;
+                const activeGroup = !group.archived && group.theaterId === getViewedTheaterId();
                 return (
                   <section className="operation-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
                     <h2 id={headingId} className="operation-search-section-heading">

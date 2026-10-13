@@ -1,3 +1,5 @@
+import { setMobileListTheaterId } from "./mobile-store.js";
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
@@ -9,7 +11,7 @@ import { openTheaterSystemPrompt } from "../../../../../features/settings/client
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, openQuickLaunch, setActiveTheater } from "../../integration/store.js";
+import { getState, openQuickLaunch } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -67,7 +69,7 @@ async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Pr
   await registerTheaterFromPath(path);
   const current = getState();
   if (current.theaterError !== null) return;
-  const label = current.theaters.find((theater) => theater.id === current.activeTheaterId)?.label;
+  const label = current.theaters.find((theater) => theater.id === getViewedTheaterId())?.label;
   if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
 }
 
@@ -109,7 +111,7 @@ function RenameSheet({ state, operationId }: { readonly state: ConsoleState; rea
 function TheaterSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const cancel = () => popMobileSheet();
-  const active = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
+  const active = state.theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
   const pluginRows = useTheaterSheetPluginRows(active?.id ?? null);
   return (
     <>
@@ -117,14 +119,14 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
         {state.theaters.map((theater) => {
           const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
           const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
-          const here = theater.id === state.activeTheaterId;
+          const here = theater.id === getViewedTheaterId();
           return (
             <button
               type="button"
               className="mobile-sheet-row"
               key={theater.id}
               aria-current={here ? "true" : undefined}
-              onClick={() => { setActiveTheater(theater.id); closeMobileSheets(); }}
+              onClick={() => { setMobileListTheaterId(theater.id); closeMobileSheets(); }}
             >
               <TheaterAvatar theaterId={theater.id} size={28} label="" decorative />
               <span className="mobile-sheet-row-copy">
@@ -253,8 +255,8 @@ function runAfterSheetRelease(action: () => void): void {
 function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const bindings = useRailEntries();
-  const shell = useMobileDestinationBindings(bindings, state.activeTheaterId).find((binding) => binding.entry.id === globalShellEntry.id);
-  const hasTheater = state.activeTheaterId !== null;
+  const shell = useMobileDestinationBindings(bindings, getViewedTheaterId()).find((binding) => binding.entry.id === globalShellEntry.id);
+  const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
       <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openQuickLaunch)}>

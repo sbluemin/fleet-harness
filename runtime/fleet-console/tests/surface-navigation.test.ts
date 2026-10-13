@@ -20,7 +20,7 @@ afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
-  setState({ theaters: ["a", "b"].map((id) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 })), activeTheaterId: "a" });
+  setState({ theaters: ["a", "b"].map((id) => ({ id, label: id, createdAt: "now", lastOpenedAt: "now", hasWiki: false, activeAdmiralCount: 0 })) });
   const pane: PaneDescriptor = { id: "file-doc", role: "detail", mounts: ["rail"], title: () => "File", render: () => null };
   const bindings: PaneTargetBinding[] = [{ entry: { id: "files", title: "Files", icon: null, panes: [pane.id], handles: { openFile: () => ({ paneId: pane.id }) } }, panes: [pane] }];
   const host = createHostCapabilities(undefined, { railBindings: bindings });
@@ -28,13 +28,11 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     const request = { theaterId: "b", path: "src/main.ts", pathKind: "theater-relative" as const, line: 12, column: 3, source: "agent-chat" as const };
     expect(await host.navigate.openFile(request)).toEqual({ ok: true });
     const first = getPaneStoreSnapshot().rail[0]!;
-    expect(getState().activeTheaterId).toBe("b");
     expect(getRailStoreSnapshot().activePanelId).toBe("files");
     expect(first.params).toMatchObject({ theaterId: "b", path: "src/main.ts", pathKind: "theater-relative", line: "12", column: "3" });
     expect(await host.navigate.openFile(request)).toEqual({ ok: true });
     expect(getPaneStoreSnapshot().rail[0]!.params.requestId).not.toBe(first.params.requestId);
     expect(landPaneTarget({ paneId: pane.id, theaterId: "a", params: { path: "README.md" } }, createHostPaneTargetPorts(bindings), "files")).toEqual({ ok: true });
-    expect(getState().activeTheaterId).toBe("a");
     expect(getPaneStoreSnapshot().rail[0]!.params).toMatchObject({ theaterId: "a", path: "README.md" });
     const queries: string[] = [];
     const results = await searchRailPanels([{ id: "files", title: "Files", fileReferences: true, search: async ({ query }) => {

@@ -10,19 +10,19 @@ import { scopedTheaterInbox } from "./theater-inbox/scoped.js";
 
 interface TheaterContributionProps {
   readonly theater: ConsoleTheaterSummary;
-  readonly active: boolean;
+
 }
 
 /**
  * 플러그인이 Theater 머리 바로 아래에 세우는 줄. 한 기여의 실패가 Theater 목록을 비우지 않도록 각각 경계로 감싸고,
  * 아무도 그리지 않으면 자리도 없다.
  */
-export function TheaterContributionRows({ theater, active }: TheaterContributionProps) {
+export function TheaterContributionRows({ theater }: TheaterContributionProps) {
   const { theaterContributions } = usePluginRegistry();
   const language = useConsoleLocale();
   const rows = theaterContributions.filter((contribution) => contribution.row);
   if (rows.length === 0) return null;
-  const base = { theater: { id: theater.id, label: theater.label }, active, language };
+  const base = { theater: { id: theater.id, label: theater.label }, active: true, language };
   return (
     <div className="side-bar-theater-contributions" data-theater-id={theater.id}>
       {rows.map((contribution) => (
@@ -35,12 +35,12 @@ export function TheaterContributionRows({ theater, active }: TheaterContribution
 }
 
 /** Theater 동작(우클릭·Shift+F10) 메뉴의 플러그인 항목 — 호스트의 시스템 프롬프트 항목 다음, 호스트의 구분선 앞에 선다. */
-export function TheaterContributionMenuItems({ theater, active, onClose }: TheaterContributionProps & { readonly onClose: () => void }) {
+export function TheaterContributionMenuItems({ theater, onClose }: TheaterContributionProps & { readonly onClose: () => void }) {
   const { theaterContributions } = usePluginRegistry();
   const language = useConsoleLocale();
   const menus = theaterContributions.filter((contribution) => contribution.menu);
   if (menus.length === 0) return null;
-  const base = { theater: { id: theater.id, label: theater.label }, active, language, onClose };
+  const base = { theater: { id: theater.id, label: theater.label }, active: true, language, onClose };
   return (
     <>
       {menus.map((contribution) => (
@@ -70,7 +70,7 @@ function useHeaderSubscription(contributions: readonly TheaterContribution[]): (
  * 머리 표식 — 이니셜 칩 자리에 서는 플러그인 표식(예: 자율 운영의 사령관 글리프). 처음으로 표식을 돌려준 기여가 이긴다.
  * 아무도 돌려주지 않으면 null 이고, 머리는 이니셜 칩을 그대로 세운다.
  */
-export function useTheaterContributionMark(theater: ConsoleTheaterSummary, active: boolean): ReactNode | null {
+export function useTheaterContributionMark(theater: ConsoleTheaterSummary): ReactNode | null {
   const { theaterContributions } = usePluginRegistry();
   const language = useConsoleLocale();
   const marks = useMemo(() => theaterContributions.filter((contribution) => contribution.mark), [theaterContributions]);
@@ -79,19 +79,19 @@ export function useTheaterContributionMark(theater: ConsoleTheaterSummary, activ
   const pick = useCallback(() => {
     for (const contribution of marks) {
       try {
-        if (contribution.mark?.({ theater, active, language, theaterInbox: scopedTheaterInbox(contribution.id) }) != null) return contribution.id;
+        if (contribution.mark?.({ theater, active: true, language, theaterInbox: scopedTheaterInbox(contribution.id) }) != null) return contribution.id;
       } catch {
         // 한 기여의 실패는 다음 기여에게 자리를 넘긴다.
       }
     }
     return null;
-  }, [marks, theater, active, language]);
+  }, [marks, theater, language]);
   const ownerId = useSyncExternalStore(subscribe, pick, pick);
   const owner = ownerId === null ? null : marks.find((contribution) => contribution.id === ownerId) ?? null;
   if (!owner?.mark) return null;
   return (
     <PluginErrorBoundary fallback={<></>}>
-      {owner.mark({ theater, active, language, theaterInbox: scopedTheaterInbox(owner.id) })}
+      {owner.mark({ theater, active: true, language, theaterInbox: scopedTheaterInbox(owner.id) })}
     </PluginErrorBoundary>
   );
 }

@@ -107,7 +107,7 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   const reader = state.codexReader;
   const hasReader = reader !== null;
   const expanded = state.codexReaderExpanded;
-  const activeTheater = state.theaters.find((t) => t.id === state.activeTheaterId) ?? null;
+  const activeTheater = state.theaters.find((t) => t.id === theaterId) ?? null;
   const hasTheaters = state.theaters.length > 0;
   const workspaceId = workspace?.contextKey === contextKey && workspace.hasWiki ? workspace.id : null;
   const shouldMountCodex = workspaceId !== null;
