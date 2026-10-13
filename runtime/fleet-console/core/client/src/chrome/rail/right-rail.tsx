@@ -628,11 +628,10 @@ interface RailIconProps {
 }
 
 function RailIcon({ entry, context, language, isActive, text = false }: RailIconProps) {
-  const t = useT();
   const handleClick = useCallback(() => {
     if (entry.activate) {
       // fleet 범위는 Console 전역이라 Theater 없이도 선다. Theater를 다루는 entry는
-      // Theater 없이 열 수 없어 조용히 둔다(전역 Shell의 안내 문구와 같은 계약).
+      // Theater 없이 열 수 없어 조용히 둔다.
       if (context.theaterId === null && entry.scope !== "fleet") return;
       entry.activate(context);
       return;
@@ -657,9 +656,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
   const entryActive = entry.active;
   const customActive = useSyncExternalStore(entryActive?.subscribe ?? subscribeNothing, () => entryActive?.isActive() ?? false, () => false);
   const pressed = isActive || customActive;
-  const named = entry.id === "global-shell" && context.theaterId === null
-    ? `${title} — ${t("chrome.toast.shellNeedsTheater")}`
-    : attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
+  const named = attention && attentionCount > 0 ? `${title} · ${attention.label(attentionCount, language)}` : title;
 
   return (
     <button

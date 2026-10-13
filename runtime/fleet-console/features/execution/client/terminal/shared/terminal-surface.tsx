@@ -46,7 +46,7 @@ export interface TerminalSurfaceProps {
   readonly operationId: string;
   readonly ticketPath: string;
   /** 티켓 요청 본문에 얹을 추가 필드(전역 Shell의 첫 기동 Theater 등). */
-  readonly ticketFields?: Readonly<Record<string, string>>;
+  readonly ticketFields?: Readonly<Record<string, unknown>>;
   readonly wsPath: string;
   /** 독립 Shell은 terminal tint를, Operation 안의 Agent는 panel tint를 기준으로 투명 RGB floor를 만든다. */
   readonly surface?: "panel" | "shell";

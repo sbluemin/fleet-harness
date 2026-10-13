@@ -22,9 +22,14 @@ export interface ClientNavigateCapability {
   openWikiEntry(request: OpenWikiEntryRequest): Promise<OpenResult>;
 }
 
-export interface ShellOpenAtRequest {
+/** 전역 Shell의 작업 디렉터리 좌표. Theater는 경로의 경계이지 세션 키가 아니다. */
+export interface ShellCwdHint {
   readonly theaterId: string;
   readonly path?: string;
+}
+
+export interface ShellOpenAtRequest {
+  readonly cwd: ShellCwdHint;
 }
 
 export type ShellOpenAtResult = { readonly ok: true } | {

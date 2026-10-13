@@ -879,7 +879,7 @@ describe("console static and terminal ticket boundary", () => {
     const ticketResponse = await fetch(`${fixture.endpoint}api/v1/shell/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId: theater.id }),
+      body: JSON.stringify({ cwd: { theaterId: theater.id } }),
     });
     expect(ticketResponse.status).toBe(200);
     const { ticket } = await ticketResponse.json() as { readonly ticket: string };

@@ -115,22 +115,23 @@ export function OperationSearch({
     if (mode !== "operations") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
-    if (!matchesShell || !state.activeTheaterId || !desktopView) return providerSearchGroups;
-    const theaterId = state.activeTheaterId;
+    if (!matchesShell || !desktopView) return providerSearchGroups;
+    const selected = state.selectedOperationId ?? state.activeOperationId;
+    const theaterId = state.operations.find((operation) => operation.id === selected)?.theaterId;
     return [...providerSearchGroups, {
       panelId: "global-shell",
       panelTitle: "Shell",
       results: [
         { id: "open-shell", title: t("chrome.operationSearch.openShell"), activate: () => undefined },
-        { id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
-          const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
+        ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
+          const result = await capabilities.shell.openAt({ cwd: { theaterId } }).catch(() => null);
           if (result?.ok) return;
           setShellNotice(t(result ? `chrome.operationSearch.shell.${result.reason}` : "chrome.operationSearch.shell.failed"));
           throw new Error("shell_open_refused");
-        } },
+        } }] : []),
       ],
     }];
-  }, [providerSearchGroups, mode, text, state.activeTheaterId, desktopView, capabilities, t]);
+  }, [providerSearchGroups, mode, text, state.selectedOperationId, state.activeOperationId, state.operations, desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);

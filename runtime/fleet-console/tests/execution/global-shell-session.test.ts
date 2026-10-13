@@ -20,36 +20,37 @@ describe("console-global Shell session", () => {
   it("keys the PTY on a console-wide constant rather than an Operation id", async () => {
     const { call, issued } = mount();
 
-    await call({ theaterId: "theater-a" });
+    await call({ cwd: { theaterId: "theater-a" } });
 
     expect(issued[0]!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
     expect(issued[0]!.operationType).toBe("shell");
   });
 
-  it("refuses the first ticket without a Theater to stand in", async () => {
+  it("Theater 힌트가 없으면 사용자 홈에서 전역 Shell을 연다", async () => {
     const { call, responses, issued } = mount();
 
     await call({});
 
-    expect(responses.at(-1)).toMatchObject({ status: 400, body: { error: "theater_id_required" } });
-    expect(issued).toHaveLength(0);
+    expect(responses.at(-1)).toMatchObject({ status: 200 });
+    expect(issued[0]!.cwd).toBe(os.homedir());
+    expect(issued[0]!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
   });
 
   it("pins cwd at first launch and keeps it when the active Theater moves", async () => {
-    const paths: Record<string, string> = { "theater-a": "/repos/a", "theater-b": "/repos/b" };
+    const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
     const { call, issued } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
 
-    await call({ theaterId: "theater-a" });
+    await call({ cwd: { theaterId: "theater-a" } });
     // 사용자가 다른 Theater로 옮겨 간 뒤 셸을 다시 붙인다.
-    await call({ theaterId: "theater-b" });
+    await call({ cwd: { theaterId: "theater-b" } });
 
-    expect(issued.map((ticket) => ticket.cwd)).toEqual(["/repos/a", "/repos/a"]);
+    expect(issued.map((ticket) => ticket.cwd)).toEqual([realpathSync(process.cwd()), realpathSync(process.cwd())]);
   });
 
   it("reports an unknown Theater rather than opening a shell somewhere arbitrary", async () => {
     const { call, responses, issued } = mount({ resolveTheaterPath: () => null });
 
-    await call({ theaterId: "ghost" });
+    await call({ cwd: { theaterId: "ghost" } });
 
     expect(responses.at(-1)).toMatchObject({ status: 404, body: { error: "theater_not_found" } });
     expect(issued).toHaveLength(0);
@@ -65,14 +66,14 @@ describe("console-global Shell session", () => {
     try {
       const { openAt, responses, call, issued } = mount({ resolveTheaterPath: (id) => (id === "theater-a" ? fixture.root : null) });
 
-      await openAt({ theaterId: "theater-a", path: "../outside" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "../outside" } });
       expect(responses.at(-1)).toMatchObject({ status: 403, body: { error: "outside_theater" } });
-      await openAt({ theaterId: "theater-a", path: "escape/secret.txt" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "escape/secret.txt" } });
       expect(responses.at(-1)).toMatchObject({ status: 403, body: { error: "outside_theater" } });
 
-      await openAt({ theaterId: "theater-a", path: "src/app.ts" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src/app.ts" } });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "pinned" } });
-      await call({ theaterId: "theater-a" });
+      await call({ cwd: { theaterId: "theater-a" } });
       expect(issued.at(-1)!.cwd).toBe(path.join(fixture.root, "src"));
     } finally {
       fixture.dispose();
@@ -89,41 +90,41 @@ describe("console-global Shell session", () => {
       const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
       const spawned = await launch(fixture.root);
 
-      await openAt({ theaterId: "theater-a", path: "src" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       expect(writes).toHaveLength(0);
 
       // 셸이 전경이어도 첫 프롬프트 전(rc 실행 중)이면 그 스크립트가 `cd …`를 입력으로 받는다.
       shell.foreground = path.basename(spawned.bin);
-      await openAt({ theaterId: "theater-a", path: "src" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       // 프롬프트 뒤에 줄이 실행돼 아직 다음 프롬프트가 없으면(`cd /tmp; read x`의 read) 마찬가지다 —
       // 그 사이의 cwd 보고(chpwd)는 프롬프트를 다시 열지 않는다.
       shell.line = { promptSeen: true, promptOpen: false, inputPending: false };
-      await openAt({ theaterId: "theater-a", path: "src" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       expect(writes).toHaveLength(0);
 
       // 프롬프트에 사용자가 치다 만 글자가 있으면 그 뒤에 `cd …`가 붙어 실행된다.
       shell.line = { promptSeen: true, promptOpen: true, inputPending: true };
-      await openAt({ theaterId: "theater-a", path: "src" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_input_pending" } });
       expect(writes).toHaveLength(0);
 
       shell.line = { promptSeen: true, promptOpen: true, inputPending: false };
-      await openAt({ theaterId: "theater-a", path: "src" });
+      await openAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "cd" } });
       expect(writes).toEqual([`cd -- '${path.join(fixture.root, "src")}'\r`]);
 
       // 재시작은 돌고 있는 프로그램째 끝내고 요청 위치를 다음 기동으로 못 박는다. 옛 PTY의 종료 통지가
       // 늦게 한 번 더 와도 그 새 고정을 지우지 못해야 한다.
       shell.foreground = "vim";
-      await restartAt({ theaterId: "theater-a", path: "src" });
+      await restartAt({ cwd: { theaterId: "theater-a", path: "src" } });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "pinned" } });
       expect(terminated).toContain(GLOBAL_SHELL_SESSION_ID);
       shell.live = false;
       exit(GLOBAL_SHELL_SESSION_ID);
-      await call({ theaterId: "theater-a" });
+      await call({ cwd: { theaterId: "theater-a" } });
       expect(issued.at(-1)!.cwd).toBe(path.join(fixture.root, "src"));
     } finally {
       if (previousShell === undefined) delete process.env.SHELL;
@@ -185,7 +186,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     basePath: "/api/v1",
     registerRouter: (routePath: string, handler: RouteHandler) => { routes.set(routePath, handler); },
     host: {
-      paths: { resolveTheaterPath: options.resolveTheaterPath ?? (() => "/repos/a"), consoleDataDir: options.consoleDataDir ?? "" },
+      paths: { resolveTheaterPath: options.resolveTheaterPath ?? (() => process.cwd()), consoleDataDir: options.consoleDataDir ?? "" },
       events: { publish: () => undefined, registerSseChannel: () => () => undefined },
       http: {
         writeJson: (_res: http.ServerResponse, status: number, body: unknown) => { responses.push({ status, body }); },

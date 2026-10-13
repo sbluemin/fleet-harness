@@ -437,7 +437,6 @@ export const chromeEn = {
   "archive.notice.restoreParentMissing": "Couldn't restore: its Theater no longer exists.",
   "archive.notice.purgeStale": "The archive changed, so nothing was deleted. Try again.",
   "archive.notice.purgeFailed": "Couldn't delete. Try again.",
-  "chrome.toast.shellNeedsTheater": "Add or select a Theater before opening Shell.",
   "chrome.toast.themeLight": "Console switched to a light theme. Apps running inside terminals may need their own theme changed or a restart.",
   "chrome.toast.themeDark": "Console switched to a dark theme. Apps running inside terminals may need their own theme changed or a restart.",
 
@@ -974,7 +973,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "archive.notice.restoreParentMissing": "복원하지 못했습니다. 원래 Theater가 더 이상 없습니다.",
   "archive.notice.purgeStale": "보관함이 바뀌어 삭제하지 않았습니다. 다시 시도해 주세요.",
   "archive.notice.purgeFailed": "영구 삭제하지 못했습니다. 다시 시도해 주세요.",
-  "chrome.toast.shellNeedsTheater": "Shell을 열려면 먼저 Theater를 등록하거나 선택하세요.",
   "chrome.toast.themeLight": "콘솔이 라이트 테마로 전환되었습니다. 터미널 안에서 실행 중인 앱은 자체 테마를 바꾸거나 다시 시작해야 할 수 있습니다.",
   "chrome.toast.themeDark": "콘솔이 다크 테마로 전환되었습니다. 터미널 안에서 실행 중인 앱은 자체 테마를 바꾸거나 다시 시작해야 할 수 있습니다.",
 
