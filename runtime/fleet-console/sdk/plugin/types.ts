@@ -364,6 +364,13 @@ export interface ConversationSurfaceDescriptor {
    * 묶음 대화(`OperationCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
    */
   readonly standInOperationId?: (ctx: ConversationSurfaceContext) => string | null;
+  /**
+   * 이 대화의 에이전트 세션이 쓰는 Session 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
+   * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Operation 대화와 같은 지구본을 세우고, 누르면 「Fleet 브라우저 /
+   * Session 브라우저」 카드를 연다. Session 행은 이 플러그인 id 와 scopeId 로 찾은 세션 브라우저를 대화 옆 칸에 연다 — 세션이 아직
+   * 한 번도 서지 않았으면 그 행은 닫힌 채 까닭을 말한다. 없거나 null 이면 지구본을 세우지 않는다.
+   */
+  readonly sessionBrowser?: (ctx: ConversationSurfaceContext) => { readonly scopeId: string } | null;
 }
 
 export interface ClientConversationCapability {

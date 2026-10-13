@@ -4,7 +4,6 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
-import { globalBrowserEntry } from "../../../../features/browser/client/global-browser-entry.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
 import { GlobalBrowserSheet } from "../../../../features/browser/client/global-browser-sheet.js";
 import { GlobalLinkCardHost } from "../../../../features/browser/client/global-link-card.js";
@@ -26,10 +25,9 @@ import "@fontsource/nanum-gothic-coding/korean-700.css";
 export const consoleExecution: ClientExecutionProvider = {
   ...agentExecution,
   id: null,
-  // 전역 Fleet 브라우저는 fleet 범위 맨 앞에 선다 — consoleExecution이 첫 provider라
-  // 플러그인 fleet 도구보다 앞선다. 시트는 레일 패널·확대 표면이 아니라 Console 전역
-  // 영속 컴포넌트로 산다. 모바일에서는 시트 스스로 그리지 않는다.
-  railEntries: [globalShellEntry, globalBrowserEntry],
+  // 전역 Fleet 브라우저는 레일 엔트리가 아니다 — 대화 머리의 지구본 카드와 ⇧⌘B 가 연다. 시트는 레일 패널·확대 표면이
+  // 아니라 Console 전역 영속 컴포넌트로 산다. 모바일에서는 시트 스스로 그리지 않는다.
+  railEntries: [globalShellEntry],
   expandedSurfaces: [shellSurface],
   persistentComponents: [
     { id: "terminal-shell-host", render: (ctx) => <PersistentShellHost language={ctx.language} theme={ctx.theme} /> },

@@ -404,6 +404,9 @@
   opacity: 0.42;
 }
 
+/* 플러그인 대화(사령관)의 브라우저 지구본 — 호스트가 대화 동작 맨 앞에 세운다. 단추는 Operation 대화의 지구본과 같은 캡션 동작이다. */
+.conversation-pill-browser { display: inline-flex; flex: none; }
+
 .conversation-round {
   flex: none;
   width: 32px;

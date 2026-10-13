@@ -9,7 +9,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
@@ -27,9 +27,14 @@ import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-c
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { closeGlobalBrowser, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen } from "../../../browser/client/global-browser-store.js";
+import { closeGlobalBrowser, globalBrowserUnseenLabel, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
+import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
+import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { getT as getBrowserT } from "../../../browser/client/i18n.js";
+import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { closeOperationBrowserSplit, openOperationBrowserSplit, useOperationBrowserSplit } from "./conversation-split-store.js";
+import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -532,6 +537,19 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     }
   }
   useEffect(() => { publishConversationStandIn(standInId); }, [standInId]);
+  // 플러그인 대화의 에이전트 세션이 Session 브라우저를 쓰면(사령관) 머리 지구본과 분할 칸이 그 세션의 scope 로 브라우저를 찾는다.
+  // 플러그인 id 는 호스트가 붙인 등록 id 다 — 대화가 다른 플러그인의 scope 를 가리킬 수 없다.
+  let sessionScopeId: string | null = null;
+  if (surfaceDescriptor?.sessionBrowser && surfaceDescriptor.pluginId && surface) {
+    try {
+      const scope = surfaceDescriptor.sessionBrowser({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
+      sessionScopeId = scope !== null && typeof scope.scopeId === "string" && scope.scopeId !== "" ? scope.scopeId : null;
+    } catch {
+      sessionScopeId = null;
+    }
+  }
+  const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
+  const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeOperationId = state.activeOperationId;
@@ -555,21 +573,26 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   usePanelFollowsSubject(surfaceDescriptor ? standInId : subject?.id ?? null);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
-  // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Operation 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
+  // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Session 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
   // 대화 열(right)과 칸(width)은 같은 전이(--duration-base · --ease-spring)로 함께 움직인다. Fleet 브라우저 시트는 그 칸의
-  // 사각형에 앉고(global-browser-sheet.tsx), Operation 브라우저는 칸 안에 그린다.
+  // 사각형에 앉고(global-browser-sheet.tsx), Session 브라우저(Operation 의 companion 이든 플러그인 세션의 것이든)는 칸 안에 그린다.
   const fleetBrowserOpen = useGlobalBrowserOpen();
   const operationSplit = useOperationBrowserSplit();
+  const sessionSplit = useSessionBrowserSplit();
   const desktop = isDesktopShell();
   const splitSubjectId = surfaceDescriptor ? null : subject?.id ?? null;
   const splitKind: SplitKind | null = desktop && fleetBrowserOpen
     ? "fleet"
-    : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation" : null;
-  // Fleet 브라우저가 열리면 Operation 브라우저 칸은 걷힌다 — 칸은 브라우저 하나만 싣는다. 대상이 바뀌어도 걷는다.
-  useEffect(() => { if (fleetBrowserOpen) closeOperationBrowserSplit(); }, [fleetBrowserOpen]);
+    : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation"
+      : sessionSplit !== null && sessionSplit.subjectKey === sessionSubjectKey ? "session" : null;
+  // Fleet 브라우저가 열리면 Session 브라우저 칸은 걷힌다 — 칸은 브라우저 하나만 싣는다. 대상이 바뀌어도 걷는다.
+  useEffect(() => { if (fleetBrowserOpen) { closeOperationBrowserSplit(); closeSessionBrowserSplit(); } }, [fleetBrowserOpen]);
   useEffect(() => {
     if (operationSplit !== null && operationSplit.subjectId !== splitSubjectId) closeOperationBrowserSplit();
   }, [operationSplit, splitSubjectId]);
+  useEffect(() => {
+    if (sessionSplit !== null && sessionSplit.subjectKey !== sessionSubjectKey) closeSessionBrowserSplit();
+  }, [sessionSplit, sessionSubjectKey]);
   const viewportWidth = useViewportWidth();
   const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets);
   const splitOperation = splitKind === "operation" && operationSplit !== null
@@ -599,6 +622,8 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           theme={state.activeTheme}
           onToggleDetails={toggleDetails}
           tools={tools}
+          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
+          browserSplitOpen={splitKind !== null}
         />
       ) : subject ? (
         <ConversationColumn
@@ -628,6 +653,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       seat={seat}
       fallbackRight={insets.right}
       operation={splitOperation}
+      sessionOwnerId={splitKind === "session" ? sessionSplit?.ownerId ?? null : null}
       state={state}
       language={language}
       operationKinds={operationKinds}
@@ -878,7 +904,7 @@ function ConversationToolbar({ context }: { readonly context: RailToolContext })
  * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
-function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools }: {
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSplitOpen }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
@@ -886,6 +912,10 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly onToggleDetails: () => void;
   /** 머리 줄 공통 도구모음 — 대화 동작 오른쪽에 선다. */
   readonly tools: ReactNode;
+  /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
+  readonly sessionBrowser: SurfaceSessionBrowser | null;
+  /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
+  readonly browserSplitOpen: boolean;
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
@@ -962,9 +992,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </button>
-        {actions === null || actions === false ? null : (
+        {(actions === null || actions === false) && sessionBrowser === null ? null : (
           <span className="conversation-pill-actions">
-            <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>
+            {/* 지구본은 대화 동작 맨 앞이다 — Operation 대화의 지구본과 같은 글리프·크기·카드다. 보기 전환(CLI/채팅)은 세우지 않는다. */}
+            {sessionBrowser === null ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />}
+            {actions === null || actions === false ? null : <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>}
           </span>
         )}
         {tools}
@@ -1156,7 +1188,7 @@ function noop(): void {}
 
 // ── 오른쪽 분할 칸 ─────────────────────────────────────────────────────────
 
-type SplitKind = "fleet" | "operation";
+type SplitKind = "fleet" | "operation" | "session";
 
 /** 브라우저 칸의 최소 폭 — 탭 줄과 주소창이 한 줄에 읽히는 폭이다. 대화 열은 CONVERSATION_MIN_WIDTH 를 지킨다. */
 const SPLIT_MIN_WIDTH = 360;
@@ -1200,13 +1232,15 @@ function useViewportWidth(): number {
 /**
  * 대화 열 오른쪽 칸. 늘 마운트되어 있고(닫히면 폭 0), 폭 전이로 펼쳐지고 접힌다 — 대화 칸의 right 전이와 같은 시간·곡선이다.
  * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 내용이 선다: Fleet 브라우저는 이 칸 위에 시트가 앉아 네이티브 뷰를 한 번
- * 놓고, Operation 브라우저는 이 칸 안에 그린다.
+ * 놓고, Session 브라우저(Operation 의 companion · 플러그인 세션의 것)는 이 칸 안에 그린다.
  */
-function ConversationSplit({ kind, seat, fallbackRight, operation, state, language, operationKinds }: {
+function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds }: {
   readonly kind: SplitKind | null;
   readonly seat: SplitSeat | null;
   readonly fallbackRight: number;
   readonly operation: OperationNode | null;
+  /** 플러그인 대화의 Session 브라우저 owner — kind 가 "session" 일 때만. */
+  readonly sessionOwnerId: string | null;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
@@ -1253,9 +1287,98 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, state, langua
       style={{ right: seat?.right ?? fallbackRight, width }}
       aria-hidden={open ? undefined : true}
     >
+      {open && settled && kind === "session" && sessionOwnerId !== null ? (
+        <SessionBrowserSplitPane key={sessionOwnerId} ownerId={sessionOwnerId} theme={state.activeTheme} language={language} />
+      ) : null}
       {open && settled && kind === "operation" && operation !== null ? (
         <OperationBrowserSplitPane operation={operation} state={state} language={language} operationKinds={operationKinds} />
       ) : null}
+    </div>
+  );
+}
+
+/** 플러그인 대화(사령관)가 쓰는 Session 브라우저 — 플러그인 id 는 호스트 등록 id, scopeId 는 그 대화가 돌려준 세션 scope 다. */
+interface SurfaceSessionBrowser {
+  readonly pluginId: string;
+  readonly scopeId: string;
+  /** 분할 칸이 이 대화의 것인지 가리는 열쇠 — `<pluginId>:<scopeId>`. */
+  readonly subjectKey: string;
+}
+
+/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. 붙여넣기 경로(onAttach)는 없다. */
+const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
+
+/**
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본(AgentCaptionActions `browser`)과 같은 글리프·크기·말풍선이다.
+ * 칸이 비어 있으면 「Fleet 브라우저 / Session 브라우저」 카드를 단추 아래에 세우고, 칸이 서 있으면 걷는다. Session 행은 누르는 순간
+ * 그 세션의 브라우저 owner 를 묻는다 — 세션이 아직 한 번도 서지 않았으면 행이 닫힌 채 까닭을 말한다. 엔진이 없거나 공유 중이면
+ * 지구본 자체가 닫힌 채 까닭을 말한다(Operation 지구본과 같은 판정). 시트를 띄우지 않고 연 Fleet 브라우저 뒤 탭 수가 모서리에 선다.
+ */
+function SurfaceBrowserButton({ session, language, splitOpen }: {
+  readonly session: SurfaceSessionBrowser;
+  readonly language: "en" | "ko";
+  readonly splitOpen: boolean;
+}) {
+  const t = getBrowserT(language);
+  const engine = useBrowserEngine();
+  const engineMissing = engine !== null && !engine.available;
+  const unseenTabs = useGlobalBrowserUnseenTabs();
+  const badge = engineMissing ? 0 : unseenTabs;
+  const slotRef = useRef<HTMLSpanElement | null>(null);
+  const pendingRef = useRef(0);
+  const base = engineMissing
+    ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
+    : t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
+  const label = badge > 0 ? `${base} · ${globalBrowserUnseenLabel(badge, language)}` : base;
+  const onClick = () => {
+    if (splitOpen) {
+      closeGlobalBrowser();
+      closeSessionBrowserSplit();
+      return;
+    }
+    const anchor = slotRef.current?.querySelector<HTMLElement>("button") ?? null;
+    if (anchor === null) return;
+    // 늦게 온 답이 그 사이 다시 누른 카드를 덮지 않게 마지막 요청만 카드를 세운다.
+    const request = ++pendingRef.current;
+    const { pluginId, scopeId, subjectKey } = session;
+    void resolveSessionBrowserTarget({ pluginId, scopeId })
+      .then((ownerId) => ({ ownerId, failed: false }), () => ({ ownerId: null, failed: true }))
+      .then(({ ownerId, failed }) => {
+        if (request !== pendingRef.current || !anchor.isConnected) return;
+        requestBrowserChooser(
+          anchor,
+          ownerId === null ? null : { open: () => openSessionBrowserSplit({ subjectKey, ownerId }) },
+          { sessionNotStarted: ownerId === null && !failed },
+        );
+      });
+  };
+  return (
+    <span ref={slotRef} className="conversation-pill-browser">
+      <CaptionActionButton actionId="browser" label={label} pressed={splitOpen} disabled={engineMissing} badge={badge} onClick={onClick}>
+        <CaptionBrowserUseGlyph />
+      </CaptionActionButton>
+    </span>
+  );
+}
+
+/** 칸 안의 플러그인 세션 Session 브라우저 — 캡션(탭 줄)과 본문을 그 owner 로 그린다. */
+function SessionBrowserSplitPane({ ownerId, theme, language }: {
+  readonly ownerId: string;
+  readonly theme: ConsoleState["activeTheme"];
+  readonly language: "en" | "ko";
+}) {
+  const t = useT();
+  return (
+    <div className="conversation-split-pane" data-keep-operation-active>
+      <header className="conversation-split-head">
+        <SessionBrowserCaption ownerId={ownerId} language={language} />
+        <button type="button" className="conversation-round conversation-split-close" onClick={closeSessionBrowserSplit} aria-label={t("conversation.split.close")} title={t("conversation.split.close")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+      </header>
+      <div className="conversation-split-body">
+        <SessionBrowserPanel ownerId={ownerId} language={language} theme={theme} bodyLive services={SESSION_BROWSER_SERVICES} />
+      </div>
     </div>
   );
 }

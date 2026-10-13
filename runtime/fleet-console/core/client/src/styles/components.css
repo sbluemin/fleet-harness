@@ -6676,6 +6676,28 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
+/* 사람의 손을 기다리는 수(보지 않은 Fleet 브라우저 뒤 탭 등) — 레일 도구 배지(.right-rail-ico-badge)와 같은 문법이다: brass 테두리만
+   두르고 채우지 않아 켜짐(워시)과 겹쳐도 켜짐으로 읽히지 않는다. */
+.fleet-caption-action-badge {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border: 1px solid var(--brass);
+  border-radius: var(--radius-pill);
+  background: var(--ink-abyss);
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
 @keyframes caption-action-live {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }

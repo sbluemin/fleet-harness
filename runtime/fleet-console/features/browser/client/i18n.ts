@@ -2,8 +2,8 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 export const browserEn = {
-  "terminal.browser.open": "Open Session Browser (Alt+B)",
-  "terminal.browser.exit": "Close Session Browser (Alt+B)",
+  "terminal.browser.open": "Open a browser",
+  "terminal.browser.exit": "Close browser",
   "terminal.browser.agentUsing": "The agent is using the browser — click to open it",
   "terminal.browser.desktopOnly": "The Session Browser opens only in the Fleet Desktop app.",
   "terminal.browser.desktopOnlyBody": "Open this Console in Fleet Desktop to browse with the agent. Browser tabs and phones can't show the browser.",
@@ -120,12 +120,13 @@ export const browserEn = {
   "terminal.chooser.aria": "Choose a browser",
   "terminal.chooser.operationBrowser": "Session Browser",
   "terminal.chooser.fleetHelp": "Opens beside the conversation, with your own tabs",
-  "terminal.chooser.operationHelp": "See the same tab as this Session's agent",
-  "terminal.chooser.noOperation": "No Session in this view",
+  "terminal.chooser.operationHelp": "See the same tab as this chat's agent",
+  "terminal.chooser.noOperation": "This chat has no Session Browser",
+  "terminal.chooser.sessionNotStarted": "This chat's session hasn't started yet",
 };
 export const browserKo: Record<keyof typeof browserEn, string> = {
-  "terminal.browser.open": "Session 브라우저 열기 (Alt+B)",
-  "terminal.browser.exit": "Session 브라우저 닫기 (Alt+B)",
+  "terminal.browser.open": "브라우저 열기",
+  "terminal.browser.exit": "브라우저 닫기",
   "terminal.browser.agentUsing": "에이전트가 브라우저를 쓰는 중 — 누르면 엽니다",
   "terminal.browser.desktopOnly": "Session 브라우저는 Fleet Desktop 앱에서만 열립니다.",
   "terminal.browser.desktopOnlyBody": "에이전트와 함께 브라우징하려면 이 Console을 Fleet Desktop에서 여세요. 브라우저 탭과 휴대폰에서는 보이지 않습니다.",
@@ -242,8 +243,9 @@ export const browserKo: Record<keyof typeof browserEn, string> = {
   "terminal.chooser.aria": "브라우저 고르기",
   "terminal.chooser.operationBrowser": "Session 브라우저",
   "terminal.chooser.fleetHelp": "대화 옆에 나란히 엽니다. 내 탭을 씁니다",
-  "terminal.chooser.operationHelp": "이 Session의 에이전트와 같은 탭을 봅니다",
-  "terminal.chooser.noOperation": "이 화면에는 Session이 없습니다",
+  "terminal.chooser.operationHelp": "이 채팅의 에이전트와 같은 탭을 봅니다",
+  "terminal.chooser.noOperation": "이 채팅에는 Session 브라우저가 없습니다",
+  "terminal.chooser.sessionNotStarted": "이 채팅의 세션이 아직 시작되지 않았습니다",
 };
 const messages = { en: browserEn, ko: browserKo };
 const translators = { en: createTranslator(messages, "en"), ko: createTranslator(messages, "ko") };
