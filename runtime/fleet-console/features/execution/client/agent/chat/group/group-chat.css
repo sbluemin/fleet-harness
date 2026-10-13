@@ -848,6 +848,9 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   .group-chat-bubble.is-capped > .group-chat-bubble-body { overflow-y: auto; }
   .group-chat-bubble.is-capped > .group-chat-bubble-body::-webkit-scrollbar-track { margin-block: 14px; }
 }
+/* 키보드 — 브라우저는 굴릴 수 있는 본문 칸을 탭 정거장으로 세운다. 본문 칸의 링은 틀의 둥근 면에 잘리므로 링은 틀이 진다. */
+.group-chat-bubble.is-capped > .group-chat-bubble-body:focus-visible { outline: none; }
+.group-chat-bubble.is-capped:has(> .group-chat-bubble-body:focus-visible) { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .group-chat-bubble.is-clipped::before,
 .group-chat-bubble.is-clipped::after {
   content: "";

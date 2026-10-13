@@ -654,8 +654,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
 }
 /**
  * 말풍선 높이 상한(시안 B, 상한 값은 CSS 의 본문 칸 max-height) — 글자 수가 아니라 그려진 높이로 넘침을 잰다(표·코드는 짧은 글로도 길다).
- * 흐르는 동안 자라는 높이도 따라 잰다. 넘치는 본문 칸은 그 자리에서 스크롤되고(마우스 환경), 가려진 위·아래 가장자리만 흐린다.
- * 사람이 끝까지 내린 채 흐르는 말이 자라면 끝을 따라간다 — 맨 위에 둔 말풍선은 처음부터 읽도록 그대로 둔다.
+ * 늦게 그려지는 마크다운(표·그림)으로 자라는 높이도 따라 잰다. 넘치는 본문 칸은 그 자리에서 스크롤되고(마우스 환경), 가려진 위·아래 가장자리만 흐린다.
+ * 턴 접기에서 흐르는 말은 말풍선이 아니라 「쓰는 중」 칩으로 서므로(foldTimeline) 상한이 걸린 말풍선은 이미 완성된 말이다.
  * 펼친 말풍선은 이 화면을 보는 동안 펼친 채다(같은 말은 완성 때도 같은 key 라 펼침이 이어진다).
  */
 function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
@@ -668,27 +668,16 @@ function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTML
   const active = enabled && !expanded;
   React.useLayoutEffect(() => {
     if (!active || !element) { setOverflowing(false); setScrolled(false); setAtEnd(false); return; }
-    let pinned = false;
     const read = () => {
-      const end = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
-      // 사람이 내려 끝에 닿은 자리만 따라갈 자리다 — scrollTop 0 의 끝은 아직 넘치지 않은 말풍선이다.
-      pinned = end && element.scrollTop > 0;
       setOverflowing(element.scrollHeight > element.clientHeight + 1);
       setScrolled(element.scrollTop > 1);
-      setAtEnd(end);
+      setAtEnd(element.scrollTop + element.clientHeight >= element.scrollHeight - 1);
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
-      if (pinned) element.scrollTop = element.scrollHeight;
-      // 본문 칸 자체는 상한에서 멈추므로 자라는 자식들을 함께 본다. 「쓰는 중」이 마크다운으로 바뀌듯 자식이 갈리면 새 자식도 본다.
-      for (const child of Array.from(element.children)) observer!.observe(child);
-      read();
-    });
     read();
     element.addEventListener("scroll", read, { passive: true });
-    if (observer) {
-      observer.observe(element);
-      for (const child of Array.from(element.children)) observer.observe(child);
-    }
+    // 본문 칸 자체는 상한에서 멈추므로 자라는 자식들(첨부·본문)을 함께 본다.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
+    if (observer) for (const target of [element, ...Array.from(element.children)]) observer.observe(target);
     return () => { element.removeEventListener("scroll", read); observer?.disconnect(); };
   }, [active, element]);
   const expand = React.useCallback(() => setExpanded(true), []);
