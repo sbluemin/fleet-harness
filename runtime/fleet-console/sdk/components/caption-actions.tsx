@@ -202,6 +202,11 @@ export interface CaptionActionButtonProps {
   readonly busy?: boolean;
   /** 명령을 받았고 아직 안 끝났다 — 마크가 돈다. */
   readonly pending?: boolean;
+  /**
+   * 사람의 손을 기다리는 수 — 버튼 모서리에 brass 테두리 수 배지로 선다(레일 도구 배지와 같은 문법). 0 이하는 그리지 않는다.
+   * 배지는 장식이라 그 뜻은 `label` 이 함께 말해야 한다.
+   */
+  readonly badge?: number;
   /** 크로스 번들 DOM 계약(`data-chat-tour`)을 이 버튼에 세운다. */
   readonly tourAnchor?: string;
   /** 에이전트가 이 면을 쓰는 중 — 버튼 자체가 표식이 된다(agent-control 채널 채움 + 퍼지는 링). */
@@ -222,6 +227,7 @@ export function CaptionActionButton({
   disabled = false,
   busy = false,
   pending = false,
+  badge = 0,
   tourAnchor,
   actionId,
   agent = false,
@@ -244,6 +250,7 @@ export function CaptionActionButton({
       >
         {children}
         {busy ? <span className="fleet-caption-action-live" aria-hidden="true" /> : null}
+        {badge > 0 ? <span className="fleet-caption-action-badge" aria-hidden="true">{badge > 99 ? "99+" : badge}</span> : null}
       </button>
     </CaptionTipHost>
   );

@@ -18,6 +18,16 @@ function subscribe(listener: Listener): () => void {
   return () => listeners.delete(listener);
 }
 
+/** 모바일 대화 목록의 Theater 필터만 기억한다. 데스크톱 동작·Operation 수명과 무관하며 영속화하지 않는다. */
+let mobileListTheaterId: string | null = null;
+export function getMobileListTheaterId(): string | null { return mobileListTheaterId; }
+export function setMobileListTheaterId(theaterId: string | null): void {
+  if (mobileListTheaterId === theaterId) return;
+  mobileListTheaterId = theaterId;
+  emit();
+}
+export function subscribeMobileState(listener: () => void): () => void { return subscribe(listener); }
+
 // ── /operations 안의 목적지 ──────────────────────────────────────────────
 
 /**

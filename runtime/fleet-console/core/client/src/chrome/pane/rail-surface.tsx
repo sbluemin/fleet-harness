@@ -427,7 +427,7 @@ function PaneHost({
   }, [descriptor.id, descriptor.role]);
 
   // 확대는 페인마다 만드는 기능이 아니라 표면 계약의 공통 동작이다 — 호스트 내장 표면이
-  // paneId를 받아 같은 본문을 캔버스 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
+  // paneId를 받아 같은 본문을 대화 칸 위에 세운다. 그래서 이 버튼은 어떤 detail 페인에도
   // 같은 방식으로 선다.
   const canExpand = !singlePane && descriptor.mounts.includes("expanded");
   // 확대는 닫힘이 아니다 — 같은 본문이 자리를 옮기는 것이므로 닫힘 통보를 보내지 않는다.

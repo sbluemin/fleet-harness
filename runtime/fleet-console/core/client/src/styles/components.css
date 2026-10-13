@@ -3890,15 +3890,15 @@ button.status-glyph.is-actionable:focus-visible {
   position: relative;
 }
 
-.operation-launch-control--canvas {
+.operation-launch-control--anchored {
   /* body 포털: Map의 contain/clip과 부유 사이드바를 벗어나 Console 전역에 선다. */
   position: fixed;
   z-index: var(--z-overlay);
   /* 캔버스 메뉴 폭의 단일 소유자. 메뉴 박스와 설명 어사이드의 기준점이 여기 하나로 모인다 —
      컨테이너에 폭이 없으면 어사이드의 100%가 메뉴 오른쪽이 아니라 왼쪽 모서리를 가리켜
      설명이 메뉴 위를 덮는다. 컴포넌트의 MENU_WIDTH(측정 전 clamp 폴백)만 이 값을 따로 안다. */
-  --canvas-menu-width: 264px;
-  width: var(--canvas-menu-width);
+  --launch-menu-width: 264px;
+  width: var(--launch-menu-width);
 }
 
 .workspace-add-button {
@@ -3951,11 +3951,11 @@ button.status-glyph.is-actionable:focus-visible {
   min-width: 168px;
 }
 
-.operation-launch-control--canvas .operation-launch-menu {
+.operation-launch-control--anchored .operation-launch-menu {
   top: 0;
   /* 설명 문장이 항목 안에서 접히면서 폭을 넓힐 이유가 사라졌다. 라벨과 한 단어짜리 대비만
      한 줄에 들어가면 된다. */
-  min-width: var(--canvas-menu-width);
+  min-width: var(--launch-menu-width);
 }
 
 /* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
@@ -4185,10 +4185,10 @@ button.status-glyph.is-actionable:focus-visible {
   color: var(--aurora);
 }
 
-.canvas-context-menu {
-  width: var(--canvas-menu-width);
+.operation-launch-context-menu {
+  width: var(--launch-menu-width);
   /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
-  max-height: var(--canvas-menu-max-height, 520px);
+  max-height: var(--launch-menu-max-height, 520px);
   overflow-y: auto;
   /* 네이티브 스크롤바는 걷어낸다 — 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼
      읽힌다. 절단 신호와 포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다.
@@ -4196,7 +4196,7 @@ button.status-glyph.is-actionable:focus-visible {
   scrollbar-width: none;
 }
 
-.canvas-context-menu::-webkit-scrollbar {
+.operation-launch-context-menu::-webkit-scrollbar {
   display: none;
 }
 
@@ -4204,7 +4204,7 @@ button.status-glyph.is-actionable:focus-visible {
    sticky+height:0이라 스크롤 포트 가장자리에
    붙고 목록 흐름을 밀지 않는다. 음수 오프셋은 메뉴 패딩(--space-1)을 넘어 테두리 안쪽까지
    덮기 위한 것이다. */
-.canvas-context-menu-edge {
+.operation-launch-context-menu-edge {
   position: sticky;
   z-index: 3;
   height: 0;
@@ -4214,21 +4214,21 @@ button.status-glyph.is-actionable:focus-visible {
   transition: opacity 0.18s ease;
 }
 
-.canvas-context-menu-edge--top {
+.operation-launch-context-menu-edge--top {
   top: calc(-1 * var(--space-1));
 }
 
-.canvas-context-menu-edge--bottom {
+.operation-launch-context-menu-edge--bottom {
   bottom: calc(-1 * var(--space-1));
 }
 
-.canvas-context-menu-edge.is-on {
+.operation-launch-context-menu-edge.is-on {
   opacity: 1;
   pointer-events: auto;
   cursor: pointer;
 }
 
-.canvas-context-menu-edge-fill {
+.operation-launch-context-menu-edge-fill {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4239,21 +4239,21 @@ button.status-glyph.is-actionable:focus-visible {
 
 /* 페이드는 메뉴 언더레이(.theater-menu의 불투명 --ink-deep 믹스)와 같은 식이어야 한다 —
    다른 색으로 접으면 접힘선이 띠처럼 분리돼 보인다. */
-.canvas-context-menu-edge--top .canvas-context-menu-edge-fill {
+.operation-launch-context-menu-edge--top .operation-launch-context-menu-edge-fill {
   background: linear-gradient(color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 35%, transparent);
 }
 
-.canvas-context-menu-edge--bottom .canvas-context-menu-edge-fill {
+.operation-launch-context-menu-edge--bottom .operation-launch-context-menu-edge-fill {
   transform: translateY(-100%);
   background: linear-gradient(transparent, color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 65%);
 }
 
 /* brass는 위치/hover 채널 — 스트립 hover 강조는 그 문법 그대로다. */
-.canvas-context-menu-edge.is-on:hover .canvas-context-menu-edge-fill {
+.operation-launch-context-menu-edge.is-on:hover .operation-launch-context-menu-edge-fill {
   color: var(--brass-ink);
 }
 
-.canvas-context-menu-edge-fill svg {
+.operation-launch-context-menu-edge-fill svg {
   width: 14px;
   height: 14px;
   display: block;
@@ -4261,7 +4261,7 @@ button.status-glyph.is-actionable:focus-visible {
 
 /* 스크롤 게이지 — 굴리는 동안에만 나타나는 표시 전용 위치 표식(is-on은 TSX 스크롤 핸들러가
    토글). 기하(top/height)는 프레임당 재렌더를 피해 TSX가 직접 쓴다. */
-.canvas-context-menu-gauge {
+.operation-launch-context-menu-gauge {
   position: sticky;
   top: calc(-1 * var(--space-1));
   z-index: 4;
@@ -4271,11 +4271,11 @@ button.status-glyph.is-actionable:focus-visible {
   transition: opacity 0.25s ease;
 }
 
-.canvas-context-menu-gauge.is-on {
+.operation-launch-context-menu-gauge.is-on {
   opacity: 1;
 }
 
-.canvas-context-menu-gauge-thumb {
+.operation-launch-context-menu-gauge-thumb {
   position: absolute;
   right: -1px;
   width: 2px;
@@ -4284,14 +4284,14 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 방향키 포커스 스크롤이 목표 행을 스트립(26px) 아래에 두고 멈추지 않게 여유를 준다. */
-.canvas-context-menu .canvas-context-menu-item,
-.canvas-context-menu .operation-launch-variant-row {
+.operation-launch-context-menu .operation-launch-context-menu-item,
+.operation-launch-context-menu .operation-launch-variant-row {
   scroll-margin-block: 28px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-context-menu-edge,
-  .canvas-context-menu-gauge {
+  .operation-launch-context-menu-edge,
+  .operation-launch-context-menu-gauge {
     transition: none;
   }
 }
@@ -4299,13 +4299,13 @@ button.status-glyph.is-actionable:focus-visible {
 /* 바깥 패딩은 캔버스 메뉴에서만 좁힌다 — 공유 .theater-menu를 고치면 사이드바 Theater 메뉴까지
    함께 얇아진다. 두 클래스를 함께 짚어야 하는 이유: .theater-menu의 padding 선언이 이 파일
    뒤쪽에 있어 한 클래스짜리 선택자로는 특이도가 같아 지고, 값은 조용히 8px로 남는다. */
-.operation-launch-menu.canvas-context-menu {
+.operation-launch-menu.operation-launch-context-menu {
   padding: var(--space-1);
 }
 
 /* 설명 어사이드 — 짚은 항목의 설명 문장을 메뉴 옆에 편다. 메뉴의 overflow 바깥 형제라
    스크롤 박스에 잘리지 않는다. */
-.canvas-context-menu-aside {
+.operation-launch-context-menu-aside {
   position: absolute;
   left: calc(100% + 8px);
   top: 0;
@@ -4330,20 +4330,20 @@ button.status-glyph.is-actionable:focus-visible {
 }
 
 /* 오른쪽 끝에서 열리면 왼쪽으로 뒤집는다 — 뒤집지 않으면 설명이 화면 밖으로 잘려 사라진다. */
-.canvas-context-menu-aside--flip {
+.operation-launch-context-menu-aside--flip {
   left: auto;
   right: calc(100% + 8px);
 }
 
 /* 항목은 tabIndex=-1이라 방향키로만 포커스가 옮겨온다. 프로그래매틱 포커스에서도 자리가
    보이도록 :focus-visible뿐 아니라 :focus에도 같은 brass 강조를 준다. */
-.canvas-context-menu-item:focus {
+.operation-launch-context-menu-item:focus {
   outline: none;
   color: var(--text-primary);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
 }
 
-.canvas-context-menu-help {
+.operation-launch-context-menu-help {
   display: grid;
   gap: var(--space-2);
 }
@@ -5353,106 +5353,6 @@ button.status-glyph.is-actionable:focus-visible {
 .operation-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
 .operation-decision-mark svg { width: 13px; height: 13px; }
 
-/* 옵트인 실험 「Operation 위치 표시」의 한 줄 — 사이드바 칩과 ⌘K 팔레트가 공유한다. 브랜치는 늘,
-   폴더는 Theater 루트를 벗어났을 때만. 글자색은 3티어이고 편차가 있을 때만 2티어로 한 단계 오른다.
-   상태(aurora/warn/coral/positive)·brass·--id-* 채널은 쓰지 않는다: 이 줄은 위치 사실이지 상태도 정체성도 아니다. */
-.operation-context {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  line-height: 1.3;
-  color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.operation-context > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.operation-context-branch {
-  flex: 0 1 auto;
-}
-
-.operation-context-branch::before {
-  content: "⎇ ";
-  opacity: 0.8;
-}
-
-.operation-context-sep {
-  flex: none;
-  opacity: 0.6;
-}
-
-.operation-context-folder {
-  flex: 1 1 auto;
-}
-
-.operation-context-folder.is-outside::before {
-  content: "↗ ";
-  opacity: 0.8;
-}
-
-.operation-context--deviates {
-  color: var(--text-secondary);
-}
-
-/* 칩을 겨눴을 때 뜨는 상세 — 칩이 줄인 사실만 라벨·값 세 줄로 말한다. 제목도 조작 안내도 얹지
-   않는다: 겨눈 사람은 어느 칩인지 이미 알고, 여기서 필요한 것은 칩에 없던 값뿐이다.
-   읽기 전용이라 포인터를 받지 않으며(pointer-events: none) 팝업 판독성은 theater-menu 계약을 따른다. */
-.operation-detail-card {
-  position: fixed;
-  z-index: 40;
-  display: grid;
-  gap: 3px;
-  min-width: 168px;
-  max-width: 300px;
-  padding: 8px 10px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
-    ),
-    var(--float-underlay);
-  box-shadow: var(--shadow-soft);
-  pointer-events: none;
-}
-
-.operation-detail-row {
-  display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.operation-detail-key {
-  font-family: var(--font-ui);
-  font-size: var(--font-size-2xs);
-  color: var(--ink-muted);
-  white-space: nowrap;
-}
-
-.operation-detail-value {
-  font-family: var(--font-code);
-  font-size: var(--font-code-size);
-  color: var(--text-secondary);
-  overflow-wrap: anywhere;
-}
-
-.operation-detail-row.is-stacked {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
-}
-
-
 .side-bar-chip-rename-input {
   flex: none;
   width: 100%;
@@ -6067,16 +5967,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: var(--surface-panel);
 }
 
-/* 메타가 붙은 두 줄은 위로 붙고, 글리프와 그룹 점은 제목 줄(13px × 1.3)의 세로 가운데에 선다. */
-.side-bar-cluster-row:has(.side-bar-cluster-row-meta) {
-  align-items: start;
-}
-
-.side-bar-cluster-row:has(.side-bar-cluster-row-meta) .side-bar-cluster-row-glyph {
-  margin-top: calc((var(--t-md) * 1.3 - 20px) / 2);
-}
-
-
 /* 칩의 24px 비콘 칸과 같은 격자 — 글리프 칸 폭이 같아 제목이 칩 이름과 같은 x에서 시작하고,
    메타 없는 한 줄이면 칩과 같은 높이에 상태 글리프가 줄 가운데에 선다. */
 .side-bar-cluster-row-main {
@@ -6101,50 +5991,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .side-bar-cluster-row-title {
   line-height: 1.3;
   white-space: nowrap;
-}
-
-.side-bar-cluster-row-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 1px;
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-}
-
-.side-bar-cluster-row-meta .is-req {
-  color: var(--aurora);
-}
-
-.side-bar-cluster-row-meta .is-late {
-  color: var(--coral);
-}
-
-/* 플러그인이 낸 줄 메모 — 맡은 이(accent)는 사령관 글리프의 켬과 같은 brass 잉크, 주의(warn)는 신호 토큰. */
-.side-bar-cluster-row-meta .is-accent {
-  color: var(--brass-ink);
-}
-
-.side-bar-cluster-row-meta .is-warn {
-  color: var(--warn-ink);
-}
-
-/* 후속 줄의 원래 목표와 출처(추가·최근 조작한 손) — 긴 제목은 한 줄로 말줄인다. */
-.side-bar-cluster-row-meta .is-from,
-.side-bar-cluster-row-meta .is-prov {
-  min-width: 0;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 후속은 단계·기한 오른쪽 같은 줄에 선다 — 줄바꿈 판정은 최소 폭(8ch)으로 하고, 남은 폭에서 내용 너비까지만 늘어나(뒤의 출처·메모는 바로 옆에 붙는다) 모자라면 한 줄 말줄임으로 줄어든다. */
-.side-bar-cluster-row-meta .is-from {
-  flex: 1 1 0;
-  min-width: 8ch;
-  max-width: max-content;
 }
 
 /* 「시작 전 N ›」 — 그룹 맨 아래 글자형 한 줄. 상자·채움·왼쪽 띠 없이 줄과 같은 격자에 서고, 머무를 때만 줄 배경이 옅게 선다. */
@@ -6830,6 +6676,28 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
+/* 사람의 손을 기다리는 수(보지 않은 Fleet 브라우저 뒤 탭 등) — 레일 도구 배지(.right-rail-ico-badge)와 같은 문법이다: brass 테두리만
+   두르고 채우지 않아 켜짐(워시)과 겹쳐도 켜짐으로 읽히지 않는다. */
+.fleet-caption-action-badge {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border: 1px solid var(--brass);
+  border-radius: var(--radius-pill);
+  background: var(--ink-abyss);
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 13px;
+  text-align: center;
+  pointer-events: none;
+}
+
 @keyframes caption-action-live {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
@@ -6909,7 +6777,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 재기동이 거절되면 카드가 알림으로 갈린다 — 같은 자리, 같은 정렬을 쓰되 안쪽은 버튼이
    아니라 세 조각짜리 설명이다. */
-.canvas-operation-dormant-failure {
+.operation-dormant-failure {
   display: grid;
   place-content: center;
   justify-items: center;
@@ -6918,11 +6786,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   padding: var(--space-3);
 }
 
-.canvas-operation-dormant-failure .fc-failure {
+.operation-dormant-failure .fc-failure {
   max-width: 420px;
 }
 
-.canvas-operation-dormant {
+.operation-dormant {
   display: grid;
   place-content: center;
   gap: var(--space-2);
@@ -6937,12 +6805,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   cursor: pointer;
 }
 
-.canvas-operation-dormant:hover,
-.canvas-operation-dormant:focus-visible {
+.operation-dormant:hover,
+.operation-dormant:focus-visible {
   background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 16%), transparent), transparent 38%);
 }
 
-.canvas-operation-dormant-status {
+.operation-dormant-status {
   color: var(--quiet-decor-ink);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
@@ -6954,7 +6822,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 휴면한 채팅 카드의 한 줄. 터미널 휴면은 "종료됨"과 버튼만으로 충분하지만, 채팅은 지금 무엇이
    보존되어 있는지(대화)를 말해야 재개를 누를지 판단할 수 있다. */
-.canvas-operation-dormant-body {
+.operation-dormant-body {
   max-width: 34ch;
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -6965,7 +6833,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   word-break: keep-all;
 }
 
-.canvas-operation-dormant-action {
+.operation-dormant-action {
   min-width: 118px;
   padding: 10px var(--space-5);
   border: 1px solid var(--quiet-resume-rim);
@@ -6979,17 +6847,17 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   box-shadow: 0 0 18px color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 12%), transparent);
 }
 
-.canvas-operation-dormant:disabled {
+.operation-dormant:disabled {
   cursor: default;
 }
 
-.canvas-operation-dormant:disabled:hover {
+.operation-dormant:disabled:hover {
   background:
     radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 10%), transparent), transparent 34%),
     color-mix(in oklch, var(--ink-deep) 74%, transparent);
 }
 
-.canvas-operation-dormant-action--pending {
+.operation-dormant-action--pending {
   animation: dormant-resume-pulse 1.1s ease-in-out infinite; animation-name: var(--state-motion, dormant-resume-pulse);
 }
 
@@ -6999,17 +6867,17 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-operation-dormant-action--pending {
+  .operation-dormant-action--pending {
     animation: none;
   }
 }
 
-.canvas-operation-dormant--error {
+.operation-dormant--error {
   cursor: default;
   padding: var(--space-5);
 }
 
-.canvas-operation-dormant-error {
+.operation-dormant-error {
   max-width: 34ch;
   margin: 0;
   color: var(--text-secondary);
@@ -7018,33 +6886,25 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   text-align: center;
 }
 
-.canvas-operation-dormant-error-actions {
+.operation-dormant-error-actions {
   display: flex;
   gap: var(--space-3);
 }
 
-.canvas-operation-dormant-action--ghost {
+.operation-dormant-action--ghost {
   border-color: var(--surface-rim-strong);
   background: var(--surface-glass);
   color: var(--text-secondary);
   box-shadow: none;
 }
 
-.canvas-operation-dormant-action--ghost:hover,
-.canvas-operation-dormant-action--ghost:focus-visible {
+.operation-dormant-action--ghost:hover,
+.operation-dormant-action--ghost:focus-visible {
   border-color: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
   color: var(--brass-bright);
 }
 
-@keyframes canvas-snap-assist-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: none; }
-}
 
-@keyframes canvas-snap-menu-in {
-  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
-  to { opacity: 1; transform: none; }
-}
 
 .theater-menu-new-group {
   color: var(--text-primary);
@@ -7954,7 +7814,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
    모델 행에는 표식이 없으므로 그 홈통 폭만큼 들여쓰지 않으면 모델 이름만 왼쪽으로 튀어나와,
    같은 메뉴 안에서 글자 열이 둘로 갈린다. 값은 .theater-menu-item의 라벨 자리를 그대로 옮긴 것
    (항목 패딩 + .theater-menu-check 14px + 간격)에서 자기 조상 패딩(entry·row)만 되뺀다. */
-.canvas-context-menu .operation-launch-variant-row {
+.operation-launch-context-menu .operation-launch-variant-row {
   padding-left: calc(var(--space-2) + 14px + var(--space-2) - var(--space-1));
 }
 
@@ -7992,7 +7852,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--text-primary);
 }
 
-.canvas-context-menu .operation-launch-variant-row:has(.operation-launch-surface-mark) {
+.operation-launch-context-menu .operation-launch-variant-row:has(.operation-launch-surface-mark) {
   padding-left: calc(var(--space-2) - var(--space-1));
 }
 
@@ -8087,9 +7947,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   --flyout-enter-x: -4px;
   z-index: 42;
   /* 콘텐츠(트랙·토글·라벨)에 맞춘다 — 고정 폭이면 짧을 때 라벨이 잘리고 길면
-     오른쪽에 빈 칸이 남는다. 배치 최악 폭은 canvas-context-menu의 EFFORT_SUBMENU_WIDTH. */
+     오른쪽에 빈 칸이 남는다. 배치 최악 폭은 operation-launch-context-menu의 EFFORT_SUBMENU_WIDTH. */
   width: max-content;
-  max-height: var(--canvas-menu-max-height, 520px);
+  max-height: var(--launch-menu-max-height, 520px);
   /* auto가 아니다 — apex burst의 transform scale이 스크롤 높이를 잠깐 밀어 세로
      스크롤바가 깜빡인다. 트랙+팁은 max-height 아래에 남는다. */
   overflow: hidden;

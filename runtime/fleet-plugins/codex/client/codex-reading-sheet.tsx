@@ -48,7 +48,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
   const {
     codexReader: reader,
     codexReaderExpanded: expanded,
-    activeTheaterId: theaterId,
+    theaterId,
   } = useReaderState();
   // 공유 링크로 곧장 들어오면 워크스페이스 해석이 아직 끝나지 않았다 — 그 결과를 구독해
   // 해석이 도착한 프레임에 리더를 세운다(그 전에는 세우지 않는다).

@@ -25,7 +25,7 @@ import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src
 import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
-import { useConversationLayout } from "./use-conversation-layout.js";
+import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
 import { pluginSettingsSectionId } from "./settings-entry.js";
 
@@ -129,7 +129,7 @@ function buildThemeOptions(t: T): readonly ThemeOption[] {
 /**
  * 대화 중심 화면의 테마 — 라이트(Whites 그대로)와 다크(고른 다크 테마가 무엇이든 「대화 다크」 한 벌, theme.css) 둘뿐이다.
  * 다크 카드는 지금 다크면 그 값을 그대로 가리키고, 라이트에서 다크로 갈 때만 Instrument 를 저장한다 — 이 화면이 저장된 다크 선택을
- * 덮어쓰지 않는다. 「이전 화면으로 돌아가기」를 켜면 저장된 테마 그대로 네 장이 다시 선다.
+ * 덮어쓰지 않는다. 모바일 설정은 저장된 테마의 네 가지 선택지를 그대로 쓴다.
  */
 function buildConversationThemeOptions(t: T, activeTheme: ThemeId): readonly ThemeOption[] {
   const dark: ThemeId = activeTheme === "whites" ? "instrument" : activeTheme;
@@ -330,9 +330,9 @@ export function ThemeCard({
   readonly saving: ReadonlySet<GlobalSettingsField>;
 }) {
   const t = useT();
-  const conversationLayout = useConversationLayout();
+  const desktop = useViewMode().effective === "desktop";
   const activeTheme = state?.theme ?? "instrument";
-  const themes = conversationLayout ? buildConversationThemeOptions(t, activeTheme) : buildThemeOptions(t);
+  const themes = desktop ? buildConversationThemeOptions(t, activeTheme) : buildThemeOptions(t);
   const selectTheme = (theme: ThemeId) => {
     if (isSavingGlobalSettingsField("theme")) return;
     const previousTheme = activeTheme;
@@ -397,7 +397,7 @@ export function ThemeCard({
                 쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 한다. */}
             <div className="theme-grid" role="group" aria-label={t("settings.theme.aria")}>
               {themes.map((theme) => {
-                const isActive = conversationLayout ? (theme.id === "whites") === (activeTheme === "whites") : theme.id === activeTheme;
+                const isActive = desktop ? (theme.id === "whites") === (activeTheme === "whites") : theme.id === activeTheme;
                 return (
                   <button
                     key={theme.id}
@@ -405,7 +405,7 @@ export function ThemeCard({
                     aria-pressed={isActive}
                     className={`theme-card ${isActive ? "is-active" : ""}`}
                     disabled={saving.has("theme") || state === null}
-                    onClick={() => { if (conversationLayout && isActive) return; selectTheme(theme.id); }}
+                    onClick={() => { if (desktop && isActive) return; selectTheme(theme.id); }}
                   >
                     <span className="theme-card-swatch" aria-hidden="true">
                       {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}

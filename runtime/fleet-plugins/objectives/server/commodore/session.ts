@@ -182,6 +182,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
         builtins: ["WebSearch", "WebFetch"],
+        browser: { scopeId: `commodore:${options.theaterId}` },
         custom: [{ name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : [])],
       },
       onEvent,

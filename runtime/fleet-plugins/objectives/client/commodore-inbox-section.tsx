@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerSubmitButton, SyncedTextarea } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
@@ -109,7 +110,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   onLeaveDesktop: ({ pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log"),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
-  // 사령관에게는 목표가 없다 — 대화 중심 화면의 오른쪽 패널이 이 섹션을 보일 때 도구 줄·「더보기」에서 목표 입구를 뺀다.
+  // 사령관에게는 목표가 없다 — 이 섹션을 열 때 열려 있던 목표 패널을 남기지 않는다. 도구 줄은 가운데 대화 머리의 공통 도구모음이
+  // 맡고, 그 도구모음은 목표를 싣지 않는다. 필드는 SDK 에서 @deprecated 다(남은 소비처가 없어지면 함께 걷는다).
   omitsRailEntries: [OBJECTIVES_ENTRY_ID],
 };
 
@@ -684,14 +686,26 @@ function useReleasedKey() {
   };
 }
 
-/** `round` — 대화 중심 화면 머리 pill 옆 단추 묶음의 둥근 단추(호스트의 pill 단추와 같은 32px 원). 기본은 시트 머리의 사각 단추다. */
-export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly variant?: "sheet" | "round"; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+/**
+ * `caption` — 대화 중심 화면 머리 pill 옆 대화 동작 묶음의 캡션 단추(호스트가 세우는 지구본과 같은 24px 평면 단추·말풍선 문법).
+ * 기본은 시트 머리의 사각 단추다.
+ */
+export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly variant?: "sheet" | "caption"; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const key = useReleasedKey();
-  const round = variant === "round" ? " is-round" : "";
-  return <div className={`objectives-commodore-clear-wrap${round}`}>
+  if (variant === "caption") {
+    return <div className="objectives-commodore-clear-wrap is-caption">
+      {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
+      <CaptionTipHost label={t("objectives.commodore.clear.title")}>
+        <button type="button" className={`fleet-caption-action${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} onPointerDown={(event) => { event.stopPropagation(); }} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+          <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
+        </button>
+      </CaptionTipHost>
+    </div>;
+  }
+  return <div className="objectives-commodore-clear-wrap">
     {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
-    <button type="button" className={`objectives-commodore-clear${round}${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} title={t("objectives.commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
+    <button type="button" className={`objectives-commodore-clear${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} title={t("objectives.commodore.clear.hint")} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
       <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
     </button>
   </div>;

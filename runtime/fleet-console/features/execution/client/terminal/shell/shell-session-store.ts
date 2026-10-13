@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  */
 export interface ShellSessionState {
   readonly open: boolean;
-  readonly pinnedTheaterId: string | null;
+  readonly pinned: boolean;
   readonly cwd: { readonly theaterId: string | null; readonly relative: string | null } | null;
   readonly cwdTracked: boolean;
   readonly atPrompt: boolean;
@@ -81,7 +81,7 @@ function isShellSessionState(value: unknown): value is ShellSessionState {
   const record = value as Record<string, unknown>;
   const cwd = record.cwd;
   return typeof record.open === "boolean"
-    && (record.pinnedTheaterId === null || typeof record.pinnedTheaterId === "string")
+    && typeof record.pinned === "boolean"
     && typeof record.cwdTracked === "boolean"
     && typeof record.atPrompt === "boolean"
     && typeof record.generation === "number"

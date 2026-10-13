@@ -35,7 +35,7 @@ function screenshotResult(width = 1404, height = 1177) {
   };
 }
 
-function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrowserScreenshotStore>, aborted = false) {
+function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrowserScreenshotStore>, aborted = false, screenshotDelivery?: "inline") {
   const service = {
     agentCall: (_id: string, _signal: AbortSignal, run: (signal: AbortSignal) => Promise<unknown>) => {
       const controller = new AbortController();
@@ -45,7 +45,7 @@ function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrow
     },
     screenshot: () => Promise.resolve({ ...screenshotResult(), data: bytes.toString("base64") }),
   };
-  const specs = createBrowserToolSpecs({ service: service as never, screenshots });
+  const specs = createBrowserToolSpecs({ service: service as never, screenshots, screenshotDelivery });
   const computer = specs.find((spec) => spec.id === "computer")!;
   return () => computer.execute({ action: "screenshot" }, { sessionLabel: OPERATION } as never) as Promise<{ content: { type: string; text?: string }[] }>;
 }
@@ -76,6 +76,10 @@ describe("operation browser screenshots", () => {
 
       screenshots.release(OPERATION);
       await expect(readFile(filePath!)).rejects.toThrow();
+      // 파일 읽기 권한이 없는 사령관 세션은 같은 캡처를 MCP 이미지로 받으며 로컬 경로에 의존하지 않는다.
+      const inline = await screenshotTool(CAPTURE, screenshots, false, "inline")();
+      expect(inline.content).toContainEqual({ type: "image", mimeType: "image/jpeg", data: CAPTURE.toString("base64") });
+      expect(inline.content.filter((block) => block.type === "text").map((block) => block.text).join("\n")).not.toContain("Read the image file");
     } finally {
       screenshots.cleanup();
     }

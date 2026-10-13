@@ -45,7 +45,7 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
           <div className="conversation-dock-divider" role="separator" />
           <ConsoleHelpMenu menuItem />
-          <div className="conversation-dock-settings" onClick={() => setOpen(false)}><ToolbarSettingsButton canvas menuItem /></div>
+          <div className="conversation-dock-settings" onClick={() => setOpen(false)}><ToolbarSettingsButton operationsViewVisible menuItem /></div>
         </div>
       </div>
       <ArchiveEntry compact />

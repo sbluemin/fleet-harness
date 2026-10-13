@@ -1,9 +1,12 @@
+import { getViewedTheaterId } from "./viewed-theater.js";
 import type { ReactNode } from "react";
 
 import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
+import { isDesktopShell } from "./desktop-shell.js";
+import { FleetBrowserGlyph } from "../../../../features/browser/client/global-browser-entry.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
@@ -50,6 +53,7 @@ export type PaletteCommandAction =
   | { readonly kind: "open-archive" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
+  | { readonly kind: "toggle-fleet-browser" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
@@ -134,9 +138,9 @@ export function buildPaletteCommands(
     const { aliasLabel, extraAliases, ...rest } = entry;
     commands.push({ ...rest, current: entry.current ?? false, aliases: [...(aliasLabel === rest.label ? [] : [aliasLabel]), ...(extraAliases ?? [])] });
   };
-  const activeTheater = current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
+  const activeTheater = current.theaters.find((theater) => theater.id === getViewedTheaterId()) ?? null;
   const activeOperation = current.operations.find(
-    (operation) => operation.id === current.activeOperationId && operation.theaterId === current.activeTheaterId,
+    (operation) => operation.id === current.activeOperationId,
   ) ?? null;
   if (options?.canUndoLastClose === true) {
     // 되돌릴 마지막 일이 보관이면 「보관 되돌리기」, Theater 잊기 같은 삭제면 기존 「실행 취소」다.
@@ -159,7 +163,7 @@ export function buildPaletteCommands(
     push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
   }
   for (const theater of current.theaters) {
-    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === current.activeTheaterId, action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
+    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === getViewedTheaterId(), action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
@@ -184,6 +188,20 @@ export function buildPaletteCommands(
       glyph: "rail-entry",
       shortcut: CORE_SHORTCUT_COMMANDS.find((command) => command.railEntryId === panel.id)?.id,
       ...(panel.icon === undefined ? {} : { railIcon: panel.icon }),
+    });
+  }
+  // Fleet 브라우저는 레일 칸이 아니다 — ⇧⌘B 와 같은 일급 명령으로 시트를 바로 여닫는다. 그릴 셸이 있는 문서(Desktop)에만 선다.
+  if (isDesktopShell()) {
+    push({
+      commandId: "toggle-fleet-browser",
+      label: t("shortcuts.console.toggleFleetBrowser"),
+      aliasLabel: alias("shortcuts.console.toggleFleetBrowser"),
+      extraAliases: ["browser", "브라우저"],
+      action: { kind: "toggle-fleet-browser" },
+      group: "panel",
+      glyph: "rail-entry",
+      shortcut: "console.toggle-fleet-browser",
+      railIcon: FleetBrowserGlyph,
     });
   }
   push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });

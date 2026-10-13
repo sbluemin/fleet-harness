@@ -1,3 +1,4 @@
+import { useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
@@ -80,12 +81,13 @@ function ArchiveSheetDialog() {
   const t = useT();
   const locale = useConsoleLocale();
   const state = useConsoleState();
+  const viewedTheaterId = useViewedTheaterId();
   const archive = useOperationArchive();
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const [query, setQuery] = useState("");
-  const [allTheaters, setAllTheaters] = useState(false);
+  const [allTheaters, setAllTheaters] = useState(true);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const anchorRef = useRef<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
@@ -102,16 +104,16 @@ function ArchiveSheetDialog() {
   const lastFocused = useRef<{ id: string; index: number } | null>(null);
 
   const theaterIds = state.theaters.map((theater) => theater.id);
-  const scopedIds = allTheaters ? theaterIds : state.activeTheaterId ? [state.activeTheaterId] : [];
+  const scopedIds = allTheaters ? theaterIds : viewedTheaterId ? [viewedTheaterId] : [];
   const allSections = useArchiveSections("", theaterIds);
-  const currentSections = useArchiveSections("", state.activeTheaterId ? [state.activeTheaterId] : []);
+  const currentSections = useArchiveSections("", viewedTheaterId ? [viewedTheaterId] : []);
   const sections = useArchiveSections(query, scopedIds).filter((entry) => entry.count > 0);
-  const otherIds = theaterIds.filter((id) => id !== state.activeTheaterId);
+  const otherIds = theaterIds.filter((id) => id !== viewedTheaterId);
   const otherSections = useArchiveSections(query, otherIds);
-  const currentCount = (state.activeTheaterId ? archive.totalsByTheater[state.activeTheaterId] ?? 0 : 0) + currentSections.reduce((sum, entry) => sum + entry.count, 0);
+  const currentCount = (viewedTheaterId ? archive.totalsByTheater[viewedTheaterId] ?? 0 : 0) + currentSections.reduce((sum, entry) => sum + entry.count, 0);
   const allCount = archive.total + allSections.reduce((sum, entry) => sum + entry.count, 0);
   const total = allTheaters ? allCount : currentCount;
-  const activeLabel = state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? t("archive.currentTheater");
+  const activeLabel = state.theaters.find((theater) => theater.id === viewedTheaterId)?.label ?? t("archive.currentTheater");
   const restoredIds = new Set(restored.map((entry) => entry.operation.id));
   const entries = [...(archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.operation.id)), ...restored];
   const allClusters = clustersOf(entries);
@@ -120,13 +122,13 @@ function ArchiveSheetDialog() {
     const haystack = [node.title, state.theaters.find((theater) => theater.id === node.theaterId)?.label, state.groups.find((group) => group.id === node.groupId)?.name, ...cluster.members].filter(Boolean).join(" ");
     return haystack.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   };
-  const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === state.activeTheaterId) && matches(cluster));
-  const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.operation.theaterId !== state.activeTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
+  const clusters = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === viewedTheaterId) && matches(cluster));
+  const otherCount = allTheaters || !query.trim() ? 0 : allClusters.filter((cluster) => !restoredIds.has(cluster.rootId) && cluster.root.operation.theaterId !== viewedTheaterId && matches(cluster)).length + otherSections.reduce((sum, entry) => sum + entry.count, 0);
   const pendingOf = (id: string) => archive.snapshot?.pendingPurges?.find((batch) => batch.operationIds.includes(id))
     ?? receipts.find((entry) => entry.until > clock && entry.batch.operationIds.includes(id))?.batch;
   const selectable = clusters.filter((cluster) => !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId));
   const selectedIds = selectable.filter((cluster) => selected.has(cluster.rootId)).map((cluster) => cluster.rootId);
-  const old = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === state.activeTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
+  const old = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === viewedTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
   const showTools = allCount > 0 || restored.length > 0;
 
   useLayoutEffect(() => {

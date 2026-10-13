@@ -1,3 +1,4 @@
+import { getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-theater.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
@@ -37,7 +38,6 @@ import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
-import { useConversationLayout } from "../../../../features/settings/client/use-conversation-layout.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
@@ -48,7 +48,6 @@ import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
-import { observeSideBarCollapseMotion } from "../../../../features/workspace/client/sidebar/side-bar-motion.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
@@ -58,6 +57,8 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
+import { isDesktopShell } from "../integration/desktop-shell.js";
+import { toggleGlobalBrowser } from "../../../../features/browser/client/global-browser-store.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -92,6 +93,7 @@ export function App() {
 }
 
 function ConnectedApp() {
+  useViewedTheaterId();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const location = useLocation();
@@ -138,7 +140,6 @@ function ConnectedApp() {
       document.removeEventListener("focusout", afterFocus);
     };
   }, []);
-  const [shellTheaterNotice, setShellTheaterNotice] = useState(false);
   // 테마 극성(다크↔라이트) 전환 1회성 전역 안내 — 이전에는 터미널 패널마다 힌트가 떠서 전환 한 번에
   // 패널 수만큼 닫아야 했다. 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로 안내는 유지하되,
   // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 마운트 첫 실행에 심는다 — main.tsx가 주입/저장
@@ -171,17 +172,7 @@ function ConnectedApp() {
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
   const mobileLayout = useViewMode().effective === "mobile";
-  // 데스크톱 Operations 화면은 대화 중심 배치다. 다른 화면(설정 등)에서는 밴드가 그대로 길을 낸다.
-  const conversationLayoutOn = useConversationLayout();
-  const conversationLayout = conversationLayoutOn && operationsViewVisible;
-  // 대화 중심 화면이 켜져 있다는 표식 — 화면과 무관하게 선다. Desktop 셸은 이때 신호등·캡션 버튼을 52px 맨 위 줄에 맞추므로
-  // (desktop-contract 의 chrome), 다른 화면의 밴드도 같은 높이로 선다(layout.css). 브라우저에서는 이 표식이 아무것도 바꾸지 않는다.
-  useEffect(() => {
-    const root = document.documentElement;
-    if (conversationLayoutOn) root.setAttribute("data-conversation-layout", "true");
-    else root.removeAttribute("data-conversation-layout");
-    return () => root.removeAttribute("data-conversation-layout");
-  }, [conversationLayoutOn]);
+  const desktopOperationsVisible = !mobileLayout && operationsViewVisible;
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
@@ -265,7 +256,6 @@ function ConnectedApp() {
 
   useEffect(() => subscribeOperationActivityTracking(), []);
 
-  useEffect(() => observeSideBarCollapseMotion(), []);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -459,11 +449,7 @@ function ConnectedApp() {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
         if (outcome === "suppress" || entry === undefined) return false;
-        if (getState().activeTheaterId === null) {
-          if (entryId === "global-shell") {
-            setShellTheaterNotice(true);
-            return true;
-          }
+        if (getViewedTheaterId() === null) {
           // fleet 범위는 Theater 없이도 선다 — 아래 공통 activate 경로로 떨어진다.
           if (entry.scope !== "fleet" || entry.activate === undefined) return false;
         }
@@ -471,8 +457,8 @@ function ConnectedApp() {
         if (entry.activate) {
           const capabilities = createHostCapabilities(undefined, { railBindings });
           entry.activate({
-            theaterId: getState().activeTheaterId,
-            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getState().activeTheaterId)?.label ?? "" },
+            theaterId: getViewedTheaterId(),
+            pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getViewedTheaterId())?.label ?? "" },
             api: capabilities.api,
             surfaces: capabilities.surfaces,
             rail: capabilities.rail,
@@ -485,6 +471,12 @@ function ConnectedApp() {
         if (surfaceId === undefined) return false;
         if (outcome === "apply" && getExpandedSurfaceState().instances.some((instance) => instance.surfaceId === surfaceId)) closeExpandedSurfacesOf(surfaceId);
         else openExpandedSurface({ surfaceId });
+        return true;
+      },
+      // ⇧⌘B — 카드 없이 Fleet 브라우저 시트를 바로 여닫는다. 네이티브 뷰가 없는 문서(웹 탭·모바일)에서는 키를 두고 간다.
+      toggleFleetBrowser: () => {
+        if (!isDesktopShell()) return false;
+        toggleGlobalBrowser();
         return true;
       },
       canUndoLastClose,
@@ -568,7 +560,7 @@ function ConnectedApp() {
   return (
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={[]}>
-      <div className={`console-shell${conversationLayout ? " is-conversation-layout" : ""}`}>
+      <div className={`console-shell${desktopOperationsVisible ? " is-operations-view" : ""}`}>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
@@ -578,9 +570,9 @@ function ConnectedApp() {
         <PersistentPluginComponents />
         {/* 대화 중심 화면에는 밴드가 없다 — 찾기·새 Operation·호스트·사용량·도움말·설정은 사이드바 위·아래 줄로, 도구는
             오른쪽 패널 머리의 글자 탭으로 옮겨 갔다(features/workspace/client/conversation). */}
-        {mobileLayout || conversationLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
+        {mobileLayout || operationsViewVisible ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         {/* 도구모음은 설정 화면의 밴드에만 선다. 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout || conversationLayout ? null : <ConsoleToolbar canvas={operationsViewVisible} />}
+        {mobileLayout || operationsViewVisible ? null : <ConsoleToolbar />}
         <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
@@ -618,7 +610,7 @@ function ConnectedApp() {
         <ArchiveSheet />
         <TheaterSystemPromptSheet />
         {/* 대화 중심 화면의 설정은 레일이 아니라 가운데 모달로 선다(settings-door.ts) — 배치가 바뀌면 열린 설정이 그릇을 갈아탄다. */}
-        <SettingsModalHost visible={conversationLayout && !mobileLayout} layoutOn={conversationLayoutOn} mobile={mobileLayout} />
+        <SettingsModalHost visible={desktopOperationsVisible} mobile={mobileLayout} />
         <TheaterInboxHost />
         <WhatsNewModal state={state} />
         {mobileLayout ? null : <CommissioningOverlay state={state} />}
@@ -631,7 +623,6 @@ function ConnectedApp() {
         />
         <ControlCurtain />
         <ToastHost>
-          <Toast open={shellTheaterNotice} title={t("chrome.toast.shellNeedsTheater")} onDismiss={() => setShellTheaterNotice(false)} />
           {/* 준비되지 않은 플러그인은 패널이 그냥 없는 것으로 보였다 — 서버 로그에만 남아
               운영자에게는 이유가 도달하지 않았다. 한 번은 말하고 지나간다. */}
           <Toast

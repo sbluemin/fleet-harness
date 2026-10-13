@@ -6,7 +6,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 import type { Objective } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { getT } from "./i18n/index.js";
-import { focusOperation, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, subscribeObjective } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, focusOperation, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, subscribeObjective } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -14,7 +14,8 @@ import { focusOperation, objectivesApi, openObjectiveFromCluster, operationSumma
  * 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
 
-export const FRESH_SURFACE_ID = "objective-fresh";
+// 표면 id 는 objectives-state 가 갖는다 — 다른 Theater 의 목표를 열 때 그쪽도 시작 화면을 세운다(순환 import 를 피한다).
+export { FRESH_SURFACE_ID };
 
 let port: ClientConversationCapability | null = null;
 
@@ -23,10 +24,14 @@ export function connectFreshConversation(next: ClientConversationCapability | un
   return () => { if (port === next) port = null; };
 }
 
-/** 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다. */
+/**
+ * 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다.
+ * 목표의 Theater 를 함께 싣는다 — 호스트는 가운데 대화의 Theater 를 `params.theaterId` 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+ */
 export function openFreshConversation(objectiveId: string): boolean {
   if (!port || !port.isActive()) return false;
-  return port.open(FRESH_SURFACE_ID, { objectiveId });
+  const theaterId = findObjective(objectiveId)?.theaterId;
+  return port.open(FRESH_SURFACE_ID, theaterId ? { objectiveId, theaterId } : { objectiveId });
 }
 
 /** 지금 가운데 칸에 시작 화면이 선 목표. 없으면 null. */

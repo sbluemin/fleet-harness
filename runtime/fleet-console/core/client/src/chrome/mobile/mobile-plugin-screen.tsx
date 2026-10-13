@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
@@ -26,7 +27,7 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const capabilities = useHostCapabilities();
   const bindings = useRailEntries();
   const binding = bindings.find((item) => item.entry.id === entryId);
-  const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
+  const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const activeRail = useRailActivePanelId();
   const title = binding ? resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, language) : "";
   const bar = useMobilePluginBar({ title });
@@ -76,8 +77,8 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
  */
 function MobileSurfaceScreen({ surfaceId, title, theme, language }: { readonly surfaceId: string; readonly title: string; readonly theme: ConsoleTheme; readonly language: "ko" | "en" }) {
   const capabilities = useHostCapabilities();
-  const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
-  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getState().activeTheaterId)?.label ?? "");
+  const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
+  const theaterLabel = useSyncExternalStore(subscribe, () => getState().theaters.find((item) => item.id === getViewedTheaterId())?.label ?? "");
   const descriptors = useExpandedSurfaceDescriptors();
   const { instances } = useExpandedSurfaces();
   const instance = instances.find((item) => item.surfaceId === surfaceId);

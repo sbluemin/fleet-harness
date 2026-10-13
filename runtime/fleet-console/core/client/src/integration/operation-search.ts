@@ -203,7 +203,7 @@ export function filterOperationSearchEntries(entries: readonly OperationSearchEn
  */
 export function orderOperationSearchEntries(
   entries: readonly OperationSearchEntry[],
-  activeTheaterId: string | null,
+  viewedTheaterId: string | null,
   hasQuery: boolean,
 ): readonly OperationSearchEntry[] {
   return entries
@@ -211,8 +211,8 @@ export function orderOperationSearchEntries(
     .sort((left, right) => {
       const archiveDelta = Number(left.entry.archived === true) - Number(right.entry.archived === true);
       if (archiveDelta !== 0) return archiveDelta;
-      const activeDelta = Number(right.entry.theaterId === activeTheaterId) - Number(left.entry.theaterId === activeTheaterId);
-      if (activeDelta !== 0) return activeDelta;
+      const viewedDelta = Number(right.entry.theaterId === viewedTheaterId) - Number(left.entry.theaterId === viewedTheaterId);
+      if (viewedDelta !== 0) return viewedDelta;
       if (hasQuery) return left.index - right.index;
       return recentOperationRank(left.entry.operationId) - recentOperationRank(right.entry.operationId) || left.index - right.index;
     })

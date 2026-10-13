@@ -41,6 +41,9 @@ export interface RevealTarget {
 const EMPTY: TheaterState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
 const theaters = new Map<string, TheaterState>();
 const listeners = new Set<() => void>();
+/** 대화 중심 화면 가운데 칸의 시작 전 목표 화면(fresh-conversation.tsx 의 conversationSurface). */
+export const FRESH_SURFACE_ID = "objective-fresh";
+
 let installed: PluginInstallContext | null = null;
 let reveal: RevealTarget | null = null;
 // useSyncExternalStore 는 스냅샷의 참조가 같아야 멈춘다 — 호스트의 getOperations 가 매번 새 배열을 줄 수 있으므로 여기서 한 번만 받아 둔다.
@@ -151,7 +154,7 @@ function scheduleRetry(sweep = false): void {
     retryAt = Number.POSITIVE_INFINITY;
     if (!installed) return;
     operationsSnapshot = installed.consoleState.getOperations({ nested: true });
-    loadAgentTheaters(installed.api, installed.consoleState.getActiveTheaterId());
+    loadRegisteredTheaters(installed.api);
     reconcileOperations(installed.api);
     scheduleRetry();
   }, next - now);
@@ -283,34 +286,18 @@ function setTheater(theaterId: string, next: Partial<TheaterState>): void {
   describeMissingOperations();
 }
 
-/**
- * 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤에만 나머지를 읽는다.
- * 나머지는 등록된 모든 Theater(비활성 Theater 의 사이드바에도 목표 줄이 선다)와, 스냅숏의 최상위 에이전트
- * Operation(`type==="agent" && !parentOperationId`)이 속한 Theater 다. 한 번 읽은 뒤에는 사건으로만 갱신하고, 스트림이 다시 붙으면
- * (`refreshAfterReconnect`) 같은 순서로 한 번 더 읽는다.
- */
-function loadAgentTheaters(api: ClientApiCapability, activeId: string | null): void {
-  const rest: string[] = [];
-  const seen = new Set<string>(activeId ? [activeId] : []);
-  const candidates = [
-    ...(installed?.consoleState.getTheaters() ?? []).map((theater) => theater.id),
-    ...operationsSnapshot.filter((operation) => operation.type === "agent" && !operation.parentOperationId).map((operation) => operation.theaterId),
-  ];
-  for (const theaterId of candidates) {
-    if (!theaterId || seen.has(theaterId)) continue;
-    seen.add(theaterId);
-    rest.push(theaterId);
-  }
-  // 세션이 일시 거절 중이면 기한이 지난 뒤 아직 못 읽은 첫 Theater 하나만 탐침으로 묻는다 — 성공하면 게이트가 내려가 나머지가 따라간다.
+/** 모든 등록 Theater와 관측된 Operation의 Theater를 같은 조회 정책으로 읽는다. */
+function loadRegisteredTheaters(api: ClientApiCapability): void {
+  const ids = [...new Set([...(installed?.consoleState.getTheaters() ?? []).map((theater) => theater.id), ...operationsSnapshot.filter((operation) => operation.type === "agent" && !operation.parentOperationId).map((operation) => operation.theaterId)])].filter(Boolean);
   if (degraded) {
     if (Date.now() < degraded.until || inflight.size > 0) return;
-    const probe = [...(activeId ? [activeId] : []), ...rest].find((theaterId) => !theaters.get(theaterId)?.loaded || refreshAfterReconnect.has(theaterId));
+    const probe = ids.find((theaterId) => !theaters.get(theaterId)?.loaded || refreshAfterReconnect.has(theaterId));
     if (probe) void loadTheater(api, probe, true);
     return;
   }
-  const lead = activeId ? loadTheater(api, activeId, refreshAfterReconnect.has(activeId)) : Promise.resolve();
+  const [first, ...rest] = ids;
+  const lead = first ? loadTheater(api, first, refreshAfterReconnect.has(first)) : Promise.resolve();
   void lead.then(() => {
-    // 활성 Theater 가 일시 거절을 받았으면 나머지를 한꺼번에 두드리지 않는다.
     if (installed?.api !== api || degraded) return;
     for (const theaterId of rest) void loadTheater(api, theaterId, refreshAfterReconnect.has(theaterId));
   });
@@ -383,28 +370,20 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
   const offReconnect = ctx.consoleEvents.onReconnect?.(() => {
     operationLocations.clear();
     for (const [theaterId, state] of theaters) if (state.loaded && !loadRetries.get(theaterId)?.permanent) refreshAfterReconnect.add(theaterId);
-    loadAgentTheaters(ctx.api, ctx.consoleState.getActiveTheaterId());
+    loadRegisteredTheaters(ctx.api);
   });
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Operation 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadTheater 는 멱등이다.
-  let lastTheater = ctx.consoleState.getActiveTheaterId();
   let lastContextOperation = contextOperationId(ctx);
   let listedTheaters = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
   let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
-  loadAgentTheaters(ctx.api, lastTheater);
+  loadRegisteredTheaters(ctx.api);
   const offConsole = ctx.consoleState.subscribe(() => {
     // live 동안의 잦은 통지가 아니라 non-live→live 전이에서만 스윕한다.
     const connection = ctx.consoleState.getConnection?.() ?? "live";
     if (connection === "live" && lastConnection !== "live") noteReconnected();
     lastConnection = connection;
-    const current = ctx.consoleState.getActiveTheaterId();
-    if (current !== lastTheater) {
-      lastTheater = current;
-      clearSelectionTheater();
-      // 사람이 그 Theater 를 보러 왔다 — 일시 실패로 미룬 조회를 게이트와 무관하게, 마지막 실패에서 첫 간격이 지났으면 지금 묻는다.
-      if (current && !theaters.get(current)?.loaded) { rearm(current); void loadTheater(ctx.api, current); }
-    }
     // 등록·복원으로 다시 나타난 Theater 는 확정 실패를 풀고 처음부터 묻는다.
     const theaterIds = new Set(ctx.consoleState.getTheaters().map((theater) => theater.id));
     for (const [theaterId, retry] of [...loadRetries]) if (retry.permanent && theaterIds.has(theaterId) && !listedTheaters.has(theaterId)) unsettle(theaterId);
@@ -420,7 +399,7 @@ export function installObjectiveState(ctx: PluginInstallContext): () => void {
       }
     }
     operationsSnapshot = ctx.consoleState.getOperations({ nested: true });
-    loadAgentTheaters(ctx.api, current);
+    loadRegisteredTheaters(ctx.api);
     reconcileOperations(ctx.api);
     notify();
     describeMissingOperations();
@@ -618,8 +597,8 @@ export function useOperationSummaries(): readonly ConsoleOperationSummary[] {
   return useSyncExternalStore(subscribeObjective, operationSummaries, operationSummaries);
 }
 
-export function activeTheaterId(): string | null {
-  return installed?.consoleState.getActiveTheaterId() ?? null;
+export function viewedTheaterId(): string | null {
+  return installed?.consoleState.getViewedTheaterId?.() ?? null;
 }
 
 export function activeOperationId(): string | null {
@@ -757,12 +736,12 @@ function selectOperationObjective(operationId: string, shown: () => boolean): vo
     }
   }
   if (!targetTheaterId) {
-    targetTheaterId = activeTheaterId();
+    targetTheaterId = viewedTheaterId();
   }
   if (!targetTheaterId) return;
 
   const theaterId = targetTheaterId;
-  selectionTheater = { contextTheaterId: activeTheaterId(), theaterId };
+  selectionTheater = { contextTheaterId: viewedTheaterId(), theaterId };
   const select = () => {
     if (token !== latestSelectionToken || !shown()) return;
     if (selectionTheater?.theaterId !== theaterId) return;
@@ -872,9 +851,22 @@ export function openNewOperation(): void {
 }
 
 /** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): void {
-  // 비활성 Theater 의 줄 — 그 Theater 로 옮긴 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
-  if (installed && theaterId && installed.consoleState.getActiveTheaterId() !== theaterId) installed.consoleState.setActiveTheater(theaterId);
+export function openObjectiveFromCluster(theaterId?: string, place?: "rail", objectiveId?: string): void {
+  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
+  // 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
+  // 파생되고, 표면·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
+  // 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
+  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 옮기지 않는다.
+  const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
+  if (installed && theaterId && place !== "rail" && viewed !== theaterId) {
+    if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
+      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다 — 그 이동이 확대 표면을 접는다. 보이는 Theater 는 같은 커밋의 더 이른
+      // effect 에서 바뀌므로, 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 표면을 연다(열기는 접힌 표면을 편다).
+      whenViewing(theaterId, () => { setTimeout(() => installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID }), 0); });
+      return;
+    }
+    installed.consoleState.viewTheater?.(theaterId);
+  }
   if (place === "rail") {
     installed?.rail.open(OBJECTIVE_PANEL_ID);
     installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
@@ -882,6 +874,44 @@ export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): vo
   }
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+}
+
+/** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */
+function whenViewing(theaterId: string, run: () => void): void {
+  const host = installed;
+  if (!host) return;
+  const viewing = () => host.consoleState.getViewedTheaterId?.() === theaterId;
+  if (viewing()) { run(); return; }
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    off();
+    clearTimeout(timer);
+    run();
+  };
+  const off = host.consoleState.subscribe(() => { if (viewing()) finish(); });
+  const timer = setTimeout(finish, VIEWING_WAIT_MS);
+}
+
+/** 대화 이동을 기다리는 상한 — 호스트의 이동은 다음 렌더 안에 끝난다. */
+const VIEWING_WAIT_MS = 1000;
+
+/**
+ * 대화 중심 화면 — 그 목표의 대화를 가운데 칸에 세운다. 지휘관 Operation 이 목록에 있으면 그 대화로 옮기고(보관된 지휘관은 복원하지
+ * 않는다), 아직 개시하지 않은 목표면 시작 화면을 세운다. 세웠으면 true — 대화 중심 화면이 아니거나 세울 대화가 없으면 false.
+ */
+function showObjectiveConversation(objectiveId: string, theaterId: string): boolean {
+  const host = installed;
+  const conversation = host?.conversation;
+  if (!host || !conversation?.isActive()) return false;
+  if (host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === objectiveId)) {
+    host.operations.focus(objectiveId, { snap: "full" });
+    return true;
+  }
+  const objective = readTheater(theaterId).objectives.find((candidate) => candidate.id === objectiveId);
+  if (!objective || objective.commander.started) return false;
+  return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId });
 }
 
 /**
@@ -892,7 +922,7 @@ export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): vo
 export function openObjectiveOnPhone(objectiveId: string, theaterId?: string): void {
   const host = installed;
   if (!host) return;
-  if (theaterId && host.consoleState.getActiveTheaterId() !== theaterId) host.consoleState.setActiveTheater(theaterId);
+  if (theaterId) host.consoleState.viewTheater?.(theaterId);
   revealObjective({ objectiveId });
   const hasCommander = host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === objectiveId);
   if (hasCommander) host.rail.open(OBJECTIVE_PANEL_ID, { operationId: objectiveId });

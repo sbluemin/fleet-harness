@@ -239,7 +239,6 @@ export function getStatusTransitionTick(id: string): number | undefined {
 export function trackOperationActivityTransitions(input: {
   readonly operations: readonly OperationNode[];
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
-  readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly activeOperationAcknowledged: boolean;
 }): readonly string[] {
@@ -276,7 +275,6 @@ export function trackOperationActivityTransitions(input: {
     // activeOperationAcknowledged 자체는 두어야 한다 — 그 값을 내리면 종료 복구(setActiveOperation)가
     // 전부터 있던 도착 마크까지 확인 처리해 지운다.
     const focusedAndAcknowledged = operation.id === input.activeOperationId
-      && operation.theaterId === input.activeTheaterId
       && input.activeOperationAcknowledged === true
       && !isIdleArrivalAcknowledgementSuspended();
     if (nextStatuses.get(operation.id) === "running") {
@@ -306,7 +304,6 @@ export function subscribeOperationActivityTracking(): () => void {
     trackOperationActivityTransitions({
       operations: state.operations,
       operationRuntime: state.operationRuntime,
-      activeTheaterId: state.activeTheaterId,
       activeOperationId: state.activeOperationId,
       activeOperationAcknowledged: state.activeOperationAcknowledged,
     });

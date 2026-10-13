@@ -7,6 +7,7 @@ import type { AgentEvent, AgentHost, AgentSession, AgentSessionOptions } from "@
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
+import { FLEET_BROWSER_MCP_SERVER, type BrowserPluginConnection, type BrowserPluginOptions } from "../../../browser/host/mcp.js";
 import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type ComputerUsePluginOptions } from "../../../computer-use/host/mcp.js";
 
 export interface PluginAgentDeps {
@@ -14,6 +15,7 @@ export interface PluginAgentDeps {
   readonly consoleUse: ConsoleUseMcpHost;
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
   readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
+  readonly browserMcp?: { connectPlugin(options: Omit<BrowserPluginOptions, "pluginId">): BrowserPluginConnection };
   readonly createSdk?: typeof createClaudeGatewaySdk;
   /** 설치된 Claude Code 실행 파일. 없으면 SDK 동봉본이 떠서 새 모델을 모르는 옛 버전이 될 수 있다. */
   readonly resolveExecutablePath?: () => Promise<string>;
@@ -56,6 +58,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
 
     let consoleConnection: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
     let computerConnection: ComputerUsePluginConnection | undefined;
+    let browserConnection: BrowserPluginConnection | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const builtins: string[] = [...(options.tools?.builtins ?? [])];
     const allowed: string[] = [...builtins];
@@ -120,7 +123,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           active = true;
           cancelled = false;
           try { await loop.run(text); }
-          finally { active = false; computerConnection?.revoke(); turnController?.abort(); turnController = null; }
+          finally { active = false; browserConnection?.endTurn(); computerConnection?.revoke(); turnController?.abort(); turnController = null; }
         });
         tail = work.catch(() => undefined);
         return work;
@@ -135,6 +138,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           return;
         }
         cancelled = true;
+        browserConnection?.endTurn();
         computerConnection?.revoke();
         turnController?.abort();
         loop.cancel();
@@ -144,11 +148,12 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         if (closing) return closing;
         closed = true;
         lifetime.abort();
+        browserConnection?.endTurn();
         turnController?.abort();
         closing = (async () => {
           try { await loop.dispose(); await tail; }
           finally {
-            try { await Promise.all([consoleConnection?.dispose(), computerConnection?.dispose()]); }
+            try { await Promise.all([consoleConnection?.dispose(), computerConnection?.dispose(), browserConnection?.dispose()]); }
             finally { sessions.delete(session); await fs.rm(cwd, { recursive: true, force: true }); }
           }
         })();
@@ -191,6 +196,15 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           servers[FLEET_COMPUTER_USE_MCP_SERVER] = computerConnection.embeddedServer;
           allowed.push(...computerConnection.toolNames.map((name) => `mcp__${FLEET_COMPUTER_USE_MCP_SERVER}__${name}`));
         }
+      }
+      if (options.tools?.browser) {
+        if (!deps.browserMcp) throw new Error("agent_browser_unavailable");
+        browserConnection = deps.browserMcp.connectPlugin({
+          scopeId: options.tools.browser.scopeId,
+          enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted,
+        });
+        servers[FLEET_BROWSER_MCP_SERVER] = browserConnection.embeddedServer;
+        allowed.push(...browserConnection.toolNames.map((name) => `mcp__${FLEET_BROWSER_MCP_SERVER}__${name}`));
       }
       await loop.start();
       if (disposed || closed) throw new Error("agent_host_disposed");
@@ -288,7 +302,8 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
   if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
   if (options.tools?.builtins?.some((tool) => tool !== "WebSearch" && tool !== "WebFetch")) throw new Error("agent_builtin_not_allowed");
-  const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER]);
+  if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
+  const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER]);
   for (const group of options.tools?.custom ?? []) {
     if (!/^[a-zA-Z0-9_-]+$/.test(group.name) || groups.has(group.name)) throw new Error("agent_tool_group_invalid");
     groups.add(group.name);

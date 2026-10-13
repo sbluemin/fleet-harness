@@ -5,12 +5,14 @@ import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
 export interface BrowserToolDeps {
   readonly service: BrowserService;
-  /** 캡처가 놓이는 자리. 스크린샷은 결과에 싣지 않고 언제나 여기 파일로 건넨다. */
+  /** CLI에 파일로 건네는 캡처가 놓이는 자리. */
   readonly screenshots: BrowserScreenshotStore;
+  /** 파일 읽기 도구가 없는 플러그인 세션은 MCP 이미지 블록으로 받는다. CLI는 기존 파일 전달을 유지한다. */
+  readonly screenshotDelivery?: "file" | "inline";
 }
 
 /**
- * 에이전트에 노출되는 Operation Browser 도구면 — Fleet 의 브라우저 어휘. 탭·항해·컴퓨터 조작·페이지 읽기·
+ * 에이전트에 노출되는 Session Browser 도구면 — Fleet 의 브라우저 어휘. 탭·항해·컴퓨터 조작·페이지 읽기·
  * 폼 입력·콘솔·네트워크·자바스크립트·뷰포트·배치를 한 벌로 묶고, 정책(호출자 Operation 판정, 로컬 전용)은
  * 도구가 아니라 MCP 호스트가 감싼다.
  *
@@ -18,7 +20,8 @@ export interface BrowserToolDeps {
  */
 
 type TextBlock = { type: "text"; text: string };
-type ToolResult = { content: TextBlock[]; isError: boolean };
+type BrowserContent = TextBlock | { type: "image"; data: string; mimeType: "image/jpeg" };
+type ToolResult = { content: BrowserContent[]; isError: boolean };
 
 function text(value: unknown, isError = false): ToolResult {
   return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }], isError };
@@ -54,12 +57,12 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
    * 한 장의 스크린샷. 화질은 JPEG 압축으로 줄이되 **해상도는 건드리지 않는다** — 줄인 해상도는 UI 의 작은
    * 글자, 특히 획이 조밀한 한글을 뭉개서 에이전트가 문구를 잘못 읽는 쪽으로 실패한다.
    *
-   * 캡처는 도구 결과에 싣지 않고 **언제나 파일로 건넨다**. 결과에 실린 base64 는 이미지가 아니라 텍스트로
+   * CLI 캡처는 도구 결과에 싣지 않고 **파일로 건넨다**. 결과에 실린 base64 는 이미지가 아니라 텍스트로
    * 값이 매겨져 한 장이 수만 토큰을 먹고, 그러고도 호출한 CLI 의 상한을 넘기면 결과가 통째로 흘러가
    * 모델은 이미지를 아예 보지 못한다. 경로는 몇 십 토큰이고 에이전트가 제 손으로 읽을 때 비로소 이미지로
    * 들어가니, 같은 장이 스무 배 넘게 싸면서 더 확실히 닿는다.
    */
-  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<TextBlock[]> => {
+  const screenshotBlock = async (operationId: string, tabId: string | null | undefined, signal: AbortSignal, clip?: { x: number; y: number; width: number; height: number }): Promise<BrowserContent[]> => {
     const shot = await service.screenshot(operationId, { tabId, clip, format: "jpeg", signal });
     const pixelLine = shot.pixels ? `Image ${shot.pixels.width}x${shot.pixels.height} pixels; pixel-to-CSS scale [${shot.width / shot.pixels.width}, ${shot.height / shot.pixels.height}]. Geometry ${shot.geometryVersion}.` : "";
     const viewportLine = `Reported viewport ${shot.viewport.width}x${shot.viewport.height} (${shot.viewport.preset}${shot.viewport.followsPane ? ", follows pane" : ", emulated"}).`;
@@ -72,6 +75,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     // 끊긴 호출은 파일을 남기지 않는다 — 브라우저를 거두면 이 호출은 그 자리에서 끊기고 회수도 이미 지나갔으므로,
     // 여기서 쓰면 사람이 거둔 페이지의 사본이 디렉터리를 되살리며 남는다. 결과 자체도 어차피 버려진다.
     if (signal.aborted) return [{ type: "text", text: geometry }];
+    if (deps.screenshotDelivery === "inline") return [{ type: "text", text: geometry }, { type: "image", data: shot.data, mimeType: "image/jpeg" }];
     try {
       const filePath = deps.screenshots.save(operationId, Buffer.from(shot.data, "base64"), "jpg");
       return [{ type: "text", text: `${geometry}\nThe image was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
@@ -103,7 +107,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const scopeSchema = { anyOf: targetBranches() };
   const targetSchema = { description: "Exactly one of ref, selector, or role/name; never combine them. selector and role/name take an optional within: a unique ancestor in one of the same forms. A ref is already unique and takes no within.", anyOf: targetBranches(scopeSchema) };
   const conditionSchema = { type: "object", properties: { target: targetSchema, state: { type: "string", enum: ["visible", "hidden", "enabled", "disabled", "checked", "unchecked"] }, attribute: { type: "string" }, equals: { type: "string" }, value: { type: "string" }, url: { type: "string" } }, additionalProperties: false };
-  const observation = async (mode: string | undefined, operationId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<TextBlock[]> => {
+  const observation = async (mode: string | undefined, operationId: string, tabId: string | null | undefined, signal: AbortSignal): Promise<BrowserContent[]> => {
     if (!mode || mode === "none") return [];
     // 입력 이후 관측 실패는 입력 실패가 아니다. 재전송을 유도하지 않는다.
     try {
@@ -131,18 +135,18 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     }
     return { content: [{ type: "text", text: JSON.stringify({ input: dispatch, verification, retryInput: false }) }, ...await observation(args.observe, operationId, args.tabId, signal)], isError: false };
   });
-  const capture = spec("capture", "Explicit screenshot only. Waits for native pane/layout readiness. Returns a local image file with actual pixel size, CSS capture area, offset and geometry version. Never infer page-action success from capture. Input coordinates remain viewport CSS pixels.", {
+  const capture = spec("capture", `Explicit screenshot only. Waits for native pane/layout readiness. Returns ${deps.screenshotDelivery === "inline" ? "an image" : "a local image file"} with actual pixel size, CSS capture area, offset and geometry version. Never infer page-action success from capture. Input coordinates remain viewport CSS pixels.`, {
     type: "object", properties: { tabId: TAB_ID, region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4 } }, additionalProperties: false,
   }, async (args, operationId, signal) => ({ content: await screenshotBlock(operationId, args.tabId, signal, args.region ? { x: args.region[0], y: args.region[1], width: args.region[2], height: args.region[3] } : undefined), isError: false }));
 
-  const navigate = spec("navigate", "Navigate an Operation Browser tab to a URL, or go back/forward/reload in its history. Operates on this Operation's browser (separate from the user's Console-wide Fleet Browser). Without tabId the active tab is used; if no tab is open, one is created. Any http(s) URL is allowed.", {
+  const navigate = spec("navigate", "Navigate a Session Browser tab to a URL, or go back/forward/reload in its history. Operates on this session's browser (separate from the user's Console-wide Fleet Browser). Without tabId the active tab is used; if no tab is open, one is created. Any http(s) URL is allowed.", {
     type: "object", properties: { url: { type: "string", description: "Absolute URL, or one of \"back\", \"forward\", \"reload\"." }, tabId: TAB_ID }, required: ["url"], additionalProperties: false,
   }, async (args, operationId) => {
     const result = await service.navigate(operationId, String(args.url), "agent", args.tabId ?? null);
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(operationId) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on this Operation's browser tab and take screenshots. Operates on this Operation's browser (separate from the user's Console-wide Fleet Browser). Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
+  const computer = spec("computer", "Use a mouse and keyboard on this session's browser tab and take screenshots. Operates on this session's browser (separate from the user's Console-wide Fleet Browser). Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
     type: "object", properties: {
       observe: { type: "string", enum: ["none", "snapshot", "screenshot"], description: "Optional post-action observation; default none." },
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
@@ -237,7 +241,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ viewport });
   });
 
-  const tabsContextTool = spec("tabs_context", "List every Operation Browser tab of this Operation with ids, URLs and which is active, plus the current viewport. Operates on this Operation's browser (separate from the user's Console-wide Fleet Browser).", { type: "object", properties: {}, additionalProperties: false }, async (_args, operationId) => text(tabsContext(operationId)));
+  const tabsContextTool = spec("tabs_context", "List every Session Browser tab of this session with ids, URLs and which is active, plus the current viewport. Operates on this session's browser (separate from the user's Console-wide Fleet Browser).", { type: "object", properties: {}, additionalProperties: false }, async (_args, operationId) => text(tabsContext(operationId)));
   const tabsCreate = spec("tabs_create", "Open a fresh blank Browser pane tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, async (_args, operationId) => { const tab = await service.createTab(operationId, null, "agent"); return text({ tabId: tab.id }); });
   const tabsClose = spec("tabs_close", "Close one Browser pane tab. Close tabs you opened when you are done, unless the user wants them kept.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.closeTab(operationId, String(args.tabId)); return text({ closed: args.tabId, ...tabsContext(operationId) }); });
   const tabsSelect = spec("tabs_select", "Bring one Browser pane tab to the front for the user.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, async (args, operationId) => { await service.selectTab(operationId, String(args.tabId)); return text(tabsContext(operationId)); });
@@ -251,7 +255,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     parameters: { type: "object", properties: { actions: { type: "array", minItems: 1, maxItems: 20, items: { type: "object", properties: { name: { type: "string" }, input: { type: "object" } }, required: ["name"] } } }, required: ["actions"], additionalProperties: false },
     execute: async (args, context) => {
       const actions = (args as { actions?: { name: string; input?: Record<string, unknown> }[] }).actions ?? [];
-      const content: TextBlock[] = [];
+      const content: BrowserContent[] = [];
       // 스텝마다 새 호출이 열리므로 「중단」은 세대로 이어 본다 — 한 번 눌렸으면 남은 스텝은 시작하지 않는다.
       const operationId = context.sessionLabel ?? "";
       const serial = service.interruptSerial(operationId);

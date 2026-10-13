@@ -10,7 +10,7 @@ import { getT } from "./i18n.js";
 import "./link-open-card.css";
 
 /**
- * 어느 브라우저로 열까 — 대화 중심 화면의 브라우저 단추가 세우는 두 행 카드(Fleet 브라우저 / Operation 브라우저).
+ * 어느 브라우저로 열까 — 대화 중심 화면의 브라우저 단추가 세우는 두 행 카드(Fleet 브라우저 / Session 브라우저).
  *
  * 링크 카드(link-open-card.tsx)와 같은 몸이다: 같은 층·면·행 문법(.link-open-*)과 R1 이름을 쓰고, 주소 줄과 「내 브라우저」
  * 행만 없다 — 열 주소가 없는 단추에서 묻는 것은 「어디에 펼칠까」뿐이다. 카드는 누른 단추 아래에서 펼쳐진다.
@@ -36,7 +36,7 @@ function BrowserChooserCard({ language, request }: { readonly language: ConsoleL
   const t = getT(language);
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 문을 닫지 않는다 — 링크 카드·캡션 지구본과 같은 판정이다.
-  // 웹 탭·휴대폰에는 Fleet 브라우저를 그릴 셸이 없다 — 그 행은 닫힌 채 이유를 말한다(Operation 행은 칸에서 같은 문을 보인다).
+  // 웹 탭·휴대폰에는 Fleet 브라우저를 그릴 셸이 없다 — 그 행은 닫힌 채 이유를 말한다(Session 행은 칸에서 같은 문을 보인다).
   const fleetMissing = !isDesktopShell();
   const engineMissing = engine !== null && !engine.available;
   const cardRef = React.useRef<HTMLDivElement | null>(null);
@@ -127,7 +127,7 @@ function BrowserChooserCard({ language, request }: { readonly language: ConsoleL
           <OperationBrowserGlyph />
           <span className="link-open-choice-text">
             <strong>{t("terminal.chooser.operationBrowser")}</strong>
-            <span>{unavailableHelp ?? (operationMissing ? t("terminal.chooser.noOperation") : t("terminal.chooser.operationHelp"))}</span>
+            <span>{unavailableHelp ?? (operationMissing ? t(request.sessionNotStarted ? "terminal.chooser.sessionNotStarted" : "terminal.chooser.noOperation") : t("terminal.chooser.operationHelp"))}</span>
           </span>
         </button>
       </div>

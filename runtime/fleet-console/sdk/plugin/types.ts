@@ -364,6 +364,13 @@ export interface ConversationSurfaceDescriptor {
    * 묶음 대화(`OperationCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
    */
   readonly standInOperationId?: (ctx: ConversationSurfaceContext) => string | null;
+  /**
+   * 이 대화의 에이전트 세션이 쓰는 Session 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
+   * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Operation 대화와 같은 지구본을 세우고, 누르면 「Fleet 브라우저 /
+   * Session 브라우저」 카드를 연다. Session 행은 이 플러그인 id 와 scopeId 로 찾은 세션 브라우저를 대화 옆 칸에 연다 — 세션이 아직
+   * 한 번도 서지 않았으면 그 행은 닫힌 채 까닭을 말한다. 없거나 null 이면 지구본을 세우지 않는다.
+   */
+  readonly sessionBrowser?: (ctx: ConversationSurfaceContext) => { readonly scopeId: string } | null;
 }
 
 export interface ClientConversationCapability {
@@ -371,7 +378,11 @@ export interface ClientConversationCapability {
   isActive(): boolean;
   /** 켜짐·꺼짐과 지금 선 대화가 바뀌면 깨운다. */
   subscribe(listener: () => void): () => void;
-  /** 가운데 칸에 대화를 세운다. 꺼져 있으면 아무 일도 하지 않고 false 를 돌려준다. */
+  /**
+   * 가운데 칸에 대화를 세운다. 꺼져 있으면 아무 일도 하지 않고 false 를 돌려준다. 대화가 한 Theater 의 것이면 등록된 Theater id 를
+   * `params.theaterId`(문자열)로 싣는다 — 호스트는 그 값을 가운데 대화의 Theater 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+   * 없으면 Theater 도구는 비활성으로 선다.
+   */
   open(surfaceId: string, params?: Readonly<Record<string, unknown>>): boolean;
   /** 지금 선 대화를 걷는다. surfaceId 를 주면 그 대화일 때만 걷는다. */
   close(surfaceId?: string): void;
@@ -549,7 +560,12 @@ export interface ClientConsoleStateCapability {
    * 플러그인만 `{ nested: true }` 로 함께 읽는다.
    */
   getOperations(options?: { readonly nested?: boolean }): readonly ConsoleOperationSummary[];
+  /** @deprecated Mount는 없다. 지금 보는 대화의 Theater를 반환한다. getViewedTheaterId를 사용한다. */
   getActiveTheaterId(): string | null;
+  /** 지금 화면에 보이는 대화 또는 모바일 목록의 Theater. 빈 칸은 null이다. */
+  getViewedTheaterId?(): string | null;
+  /** 마운트하지 않고 해당 Theater의 Inbox를 연다. */
+  viewTheater?(theaterId: string): void;
   /** 캔버스에서 활성인 Operation — 사이드바 칩·묶음 줄이 하이라이트하는 바로 그 값. 없으면 null. */
   getActiveOperationId(): string | null;
   /**
@@ -571,6 +587,7 @@ export interface ClientConsoleStateCapability {
    * 구버전 호스트에는 없을 수 있다(apiVersion 은 같다) — 없으면 고른 것이 없는 것(null)으로 다룬다.
    */
   getSelectedOperationId?(): string | null;
+  /** @deprecated Mount는 없다. viewTheater와 같이 해당 Theater의 Inbox를 연다. */
   setActiveTheater(theaterId: string): void;
   subscribe(listener: () => void): () => void;
   /**
@@ -660,10 +677,10 @@ export interface OperationCaptionContribution {
   readonly render: (context: OperationCaptionContributionContext) => ReactNode;
 }
 
-/** What a Theater contribution knows: the Theater as the sidebar shows it, whether it is the mounted one, and the UI language. */
+/** 사이드바가 보여 주는 Theater와 화면 언어. 모든 등록 Theater는 동등하게 사용할 수 있다. */
 export interface TheaterContributionContext {
   readonly theater: ConsoleTheaterSummary;
-  /** The Theater whose canvas is mounted. Inactive Theaters still show their rows in the sidebar. */
+  /** @deprecated Mount는 없다. 등록된 모든 Theater에 대해 true이다. */
   readonly active: boolean;
   readonly language: "en" | "ko";
   /**

@@ -17,7 +17,7 @@ import type { SideBarEntry } from "./operations-side-bar-chip.js";
 import { setSideBarDelegatedZoneExpanded, setSideBarFreshFoldExpanded, useSideBarDelegatedZones } from "./operations-side-bar-store.js";
 import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
-import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
+import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
 /**
@@ -243,22 +243,19 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       : state === "done"
         ? t("sidebar.row.glyph.done")
         : operationMarkLabel(state);
-  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Operation 이 캔버스에서 활성일 때만 선다. 목표 화면의 선택만으로는
+  // 하이라이트는 칩과 같은 조건이다 — 뿌리가 선 줄은 그 묶음의 Operation 이 대화 화면에서 활성일 때만 선다. 목표 화면의 선택만으로는
   // 서지 않는다(패널과 목표 화면이 서로 다른 줄을 가리키는 이중 하이라이트가 없게). 활성이 될 수 없는 뿌리 없는 줄만 화면의 선택을 따른다.
   const active = anchor ? anchor.active || item.fold.some((entry) => entry.active) : row.selected === true;
   // 사이드바에서 고른(열지 않은) 뿌리 — 열림(면+테두리)과 다른 문법(점선 테두리)이라 한 줄 하이라이트 규칙과 겹치지 않는다.
   const selected = !active && anchor?.selected === true;
   const selectMode = onSelect !== undefined && anchor !== null;
   // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
-  const conversationRow = useSideBarRowStyle() === "conversation";
   const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
   const inFreshFold = useContext(FreshFoldContext);
   // 「시작 전」 접기 안의 시작 전 줄은 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
   // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
-  const conversationLine = !conversationRow
-    ? null
-    : (decisionNote || null)
+  const conversationLine = (decisionNote || null)
       ?? rowPreview?.text
       ?? (inFreshFold && state === "fresh" ? null : row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
@@ -311,8 +308,8 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 대화 중심 화면의 줄은 제목과 상태 한 줄, 두 줄이다 — 단계만 상태 문구 앞에 서고, 기한(짧은 표기)·주의 메모는 대화 목록의 시각
   // 자리처럼 제목 줄 끝에 선다. 둘째 줄이 상태 문구(다음 행동)를 끝까지 싣게 하려는 자리 나눔이다. 결정 수·후속·출처·맡은 이 메모는
   // 접근 이름(아래 aria-label 의 meta 전부)으로만 말한다. 결정 요청은 상태 문구가 이미 말한다.
-  const leadMeta = conversationRow ? meta.filter((part) => part.key === "progress") : [];
-  const headMeta = !conversationRow ? [] : meta.flatMap((part) => (
+  const leadMeta = meta.filter((part) => part.key === "progress");
+  const headMeta = meta.flatMap((part) => (
     part.key === "due" && row.due ? [{ ...part, text: t("sidebar.row.dueShort", { date: formatDueShort(row.due.date) }) }]
       : part.key.startsWith("note-") && part.tone === "warn" ? [part]
         : []
@@ -370,7 +367,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
       return;
     }
     if (event.key === " ") {
-      // 캔버스의 Space-pan 과 버튼의 기본 활성화(=열기)를 모두 막고 고르기만 한다.
+      // 버튼의 기본 활성화(=열기)를 막고 고르기만 한다.
       event.preventDefault();
       event.stopPropagation();
       selectAnchor();
@@ -387,7 +384,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         consoleUseWrapClassName(wrap),
         active ? "side-bar-cluster-row--active" : "",
         selected ? "side-bar-cluster-row--selected" : "",
-        conversationRow ? "side-bar-cluster-row--conversation" : "",
+        "side-bar-cluster-row--conversation",
         dragging ? "is-dragging" : "",
         dropTarget ? "is-drop-target" : "",
       ].filter(Boolean).join(" ")}
@@ -414,11 +411,11 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
           title={label}
           onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); row.review!(locale); }}
         >
-          <ClusterRowAvatar item={item} rowState={state} label={label} conversation={conversationRow} decorative />
+          <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
         </button>
       ) : (
         <span className="side-bar-cluster-row-glyph">
-          <ClusterRowAvatar item={item} rowState={state} label={label} conversation={conversationRow} />
+          <ClusterRowAvatar item={item} rowState={state} label={label} />
         </span>
       )}
       <button
@@ -439,27 +436,18 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
         }}
         onKeyUp={selectMode ? (event) => { if (event.key === " ") event.preventDefault(); } : undefined}
       >
-        {conversationRow ? (
-          <span className="side-bar-cluster-row-head">
+        <span className="side-bar-cluster-row-head">
             {rename.renaming ? renameInput : titleNode}
             {headMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
             ))}
-          </span>
-        ) : rename.renaming ? renameInput : titleNode}
-        {conversationRow && (leadMeta.length > 0 || conversationLine) ? (
+        </span>
+        {leadMeta.length > 0 || conversationLine ? (
           <span className="side-bar-cluster-row-line" aria-hidden="true">
             {leadMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")}>{part.text}</span>
             ))}
             {conversationLine ? <span className="side-bar-chip-preview side-bar-cluster-row-preview">{conversationLine}</span> : null}
-          </span>
-        ) : null}
-        {!conversationRow && meta.length > 0 ? (
-          <span className="side-bar-cluster-row-meta" aria-hidden="true">
-            {meta.map((part) => (
-              <span key={part.key} className={[part.tone ? `is-${part.tone}` : "", part.prov ? "is-prov" : ""].filter(Boolean).join(" ") || undefined}>{part.text}</span>
-            ))}
           </span>
         ) : null}
       </button>
@@ -476,11 +464,10 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
  * 줄 앞 표식 — 지휘관 아바타와, 지금 일하는(진행·부름·안 본 답) 구성원 미니 아바타 최대 셋. 지휘관의 얼굴은 자기 상태를 말하고
  * (플러그인 글리프·결정 요청이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
  */
-function ClusterRowAvatar({ item, rowState, label, conversation, decorative = false }: {
+function ClusterRowAvatar({ item, rowState, label, decorative = false }: {
   readonly item: SideBarRowItem;
   readonly rowState: OperationClusterRowGlyph | OperationMarkVisual;
   readonly label: string;
-  readonly conversation: boolean;
   readonly decorative?: boolean;
 }) {
   const { row, anchor, layout } = item;
@@ -499,8 +486,8 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
   const foldMarks = new Map(item.fold.map((entry) => [entry.operation.id, entry.mark ?? entry.status ?? "idle"] as const));
   const working = clusterWorkingMembers(layout.cluster, anchor?.operation.id ?? layout.cluster.root, { operations, nestedOperations, operationRuntime }, foldMarks);
   // 대화 행의 지휘관 아바타는 22px 이다 — 사령관 카드(32px)보다 한 단 작아 Theater 아래의 소속으로 읽힌다.
-  const full = conversation ? 22 : 20;
-  const size = working.length > 0 ? (conversation ? 19 : 17) : full;
+  const full = 22;
+  const size = working.length > 0 ? 19 : full;
   // 사령관이 직접 묻는 줄은 그 Theater 사령관의 얼굴로 선다 — 지휘관 묶음이 아니다.
   const commander = row.commodore && !anchor
     ? <KeyedAvatar avatarKey={theaterAvatarKey(layout.cluster.theaterId)} role="commodore" state={commanderState} size={size} label={label} decorative={decorative} />
@@ -514,7 +501,7 @@ function ClusterRowAvatar({ item, rowState, label, conversation, decorative = fa
       <span className="side-bar-cluster-avatars-minis" aria-hidden="true">
         {working.map((entry) => (
           <span key={entry.operation.id} className="side-bar-cluster-avatars-mini">
-            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={conversation ? 11 : 10} label="" decorative />
+            <OperationAvatar operation={entry.operation} role="member" state={mongleStateOfMark(entry.mark)} size={11} label="" decorative />
           </span>
         ))}
       </span>
@@ -559,7 +546,7 @@ function ClusterRowMarkToggle({ mark, toggle }: { readonly mark: OperationCluste
         toggle.onToggle(locale);
       }}
       onKeyDown={(event) => {
-        // 캔버스의 Space-pan 이 버튼의 기본 활성화를 취소하지 않게 한다(시작 전 묶음 버튼과 같은 규칙).
+        // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다(시작 전 묶음 버튼과 같은 규칙).
         if (event.code === "Space") event.stopPropagation();
         if ((event.key === "Enter" || event.key === " ") && event.repeat) event.preventDefault();
       }}
@@ -597,7 +584,7 @@ export function SideBarRowZone({ theaterId, zone, count, label = null, children 
           title={pinTitle}
           aria-expanded={expanded}
           aria-label={t("sidebar.zone.delegatedAria", { title, n: count })}
-          // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+          // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
           onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
           onClick={() => setSideBarDelegatedZoneExpanded(theaterId, !expanded)}
         >
@@ -643,7 +630,7 @@ export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRo
         title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}
         aria-expanded={expanded}
         aria-label={t("sidebar.fold.freshAria", { n: items.length })}
-        // 캔버스의 Space-pan이 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
+        // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
         onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
         onClick={() => setSideBarFreshFoldExpanded(theaterId, groupId, !expanded)}
       >

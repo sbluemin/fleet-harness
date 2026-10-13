@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import type { ReactNode } from "react";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -30,8 +31,8 @@ export function MobileShortcutChips({ state }: { readonly state: ConsoleState })
   const locale = useConsoleLocale();
   const attention = useMobileAttentionRows();
   const bindings = useRailEntries();
-  const shown = useMobileDestinationBindings(bindings, state.activeTheaterId);
-  const trailing = useMobileDestinationTrailing(bindings, state.activeTheaterId);
+  const shown = useMobileDestinationBindings(bindings, getViewedTheaterId());
+  const trailing = useMobileDestinationTrailing(bindings, getViewedTheaterId());
 
   // 대표 행이 홈 맨 위에 서 있으면 그 목적지는 칩에서 뺀다 — 한 번에 닿는 자리가 이미 있다.
   const featured = featuredDestinationBinding(shown);

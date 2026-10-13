@@ -1,5 +1,6 @@
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
-import type { PersistentComponentContext } from "@fleet-console/sdk/plugin";
+import type { ClientConsoleStateCapability, PersistentComponentContext } from "@fleet-console/sdk/plugin";
+import type { ShellOpenAtRequest as ShellCwdHint } from "@fleet-console/sdk/navigation";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 
@@ -11,7 +12,7 @@ import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/co
 import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "../shared/index.js";
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { getShellSessionSnapshot, readShellSession } from "./shell-session-store.js";
-import { ShellTheaterBadge, ShellTheaterBand } from "./shell-theater.js";
+import { ShellTheaterBadge } from "./shell-theater.js";
 import "./shell.css";
 
 /**
@@ -29,6 +30,7 @@ const SHELL_MIN_PANE_WIDTH = 660;
 
 interface ShellMountState {
   readonly activated: boolean;
+  readonly cwdHint?: ShellCwdHint;
   readonly target: HTMLElement | null;
   readonly context: ExpandedSurfaceContext | null;
 }
@@ -38,6 +40,25 @@ let shellMountState = EMPTY_SHELL_MOUNT;
 let shellPersistentHost: HTMLDivElement | null = null;
 let shellParkingNode: HTMLDivElement | null = null;
 const shellMountListeners = new Set<() => void>();
+let lastViewedTheaterId: string | null = null;
+
+/** Shell 첫 열기가 붙잡을 "지금 보는 대화의 Theater" 출처 — 코어가 주입한다(features는 코어를 import하지 않는다). */
+export interface ShellViewedTheaterPort {
+  readonly get: () => string | null;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+/** 지금 보는 대화의 Theater를 관찰하되 Shell을 옮기지는 않는다. 첫 열기에서만 이 좌표를 붙잡는다. */
+export function connectShellLaunchContext(state: ClientConsoleStateCapability, viewed: ShellViewedTheaterPort): () => void {
+  const update = () => {
+    const current = viewed.get();
+    if (current !== null) lastViewedTheaterId = current;
+    if (!state.getTheaters().some((item) => item.id === lastViewedTheaterId)) lastViewedTheaterId = null;
+  };
+  update();
+  const unsubscribe = viewed.subscribe(update);
+  return () => { unsubscribe(); lastViewedTheaterId = null; };
+}
 
 function publishShellMount(next: ShellMountState): void {
   if (shellMountState === next) return;
@@ -64,12 +85,17 @@ function attachShellMount(target: HTMLElement, context: ExpandedSurfaceContext):
   // 같은 인스턴스의 새 target layout effect가 이전 target cleanup보다 먼저 올 수 있다. 이 시점에
   // DOM을 바로 옮겨 두면 뒤늦은 cleanup은 target 불일치로 무시되고 0×0 주차장을 거치지 않는다.
   if (shellPersistentHost && shellPersistentHost.parentElement !== target) target.append(shellPersistentHost);
-  publishShellMount({ activated: true, target, context });
+  const initialTheaterId = context.params.cwdTheaterId ?? lastViewedTheaterId;
+  publishShellMount({
+    activated: true, target, context,
+    cwdHint: shellMountState.activated ? shellMountState.cwdHint
+      : initialTheaterId ? { theaterId: initialTheaterId } : undefined,
+  });
 }
 
 function updateShellMount(target: HTMLElement, context: ExpandedSurfaceContext): void {
   if (shellMountState.target !== target) return;
-  publishShellMount({ activated: true, target, context });
+  publishShellMount({ ...shellMountState, target, context });
 }
 
 function detachShellMount(target: HTMLElement): void {
@@ -124,12 +150,7 @@ function ShellSurfaceBody({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
     if (target) updateShellMount(target, ctx);
   }, [ctx]);
 
-  return (
-    <>
-      <ShellTheaterBand ctx={ctx} />
-      <div ref={targetRef} className="global-shell-mount" />
-    </>
-  );
+  return <div ref={targetRef} className="global-shell-mount" />;
 }
 
 /**
@@ -203,12 +224,12 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
   const context = mount.context;
   const handleExit = (exit: TerminalExitInfo) => {
     const close = shellMountState.context?.close;
-    // PTY가 끝났다. 사용자가 `exit`로 끝냈으면 서버가 고정을 풀었고(pinnedTheaterId null), 그때는
+    // PTY가 끝났다. 사용자가 `exit`로 끝냈으면 서버가 고정을 풀었고(pinned false), 그때는
     // 보존할 세션이 없으니 portal을 내리고 페인도 거둔다. 재시작이 끝낸 것이면 서버가 이미 새 위치를
     // 못 박아 두었으니 페인은 그대로 두고 표면만 새로 붙인다 — 닫았다가 여는 깜빡임도, 열리자마자
     // 옛 종료가 페인을 닫는 경합도 없다.
     void readShellSession().then((state) => {
-      if (state && !state.open && state.pinnedTheaterId !== null) {
+      if (state && !state.open && state.pinned) {
         setCarryOver(exit.transcript ? { transcript: exit.transcript, reason: "replaced", cols: exit.cols } : undefined);
         setSurfaceKey((key) => key + 1);
         return;
@@ -237,7 +258,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
         locale={language ?? context.language ?? "en"}
         // 첫 기동에서만 서버가 읽는다 — 이후 cwd는 서버가 못 박아 두므로 Theater를
         // 옮겨 다녀도 셸의 발밑은 움직이지 않는다.
-        ticketFields={context.theaterId ? { theaterId: context.theaterId } : undefined}
+        ticketFields={mount.cwdHint ? { cwd: mount.cwdHint } : undefined}
         onExit={handleExit}
         fileLinks={shellFileLinks(context)}
         onOpenLink={(url, at) => {
@@ -267,10 +288,9 @@ function shellFileLinks(context: ExpandedSurfaceContext): TerminalFileLinks {
   return {
     context: () => {
       const session = getShellSessionSnapshot();
-      const cwdTheaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
-      const theaterId = cwdTheaterId ?? context.theaterId;
+      const theaterId = session?.open && session.cwd?.theaterId ? session.cwd.theaterId : null;
       if (!theaterId) return null;
-      const cwdRelative = cwdTheaterId && session?.cwdTracked ? session.cwd?.relative ?? null : null;
+      const cwdRelative = session?.cwdTracked ? session.cwd?.relative ?? null : null;
       return { theaterId, cwdRelative };
     },
     open: (target) => context.navigate.openFile({ ...target, source: "shell" }),

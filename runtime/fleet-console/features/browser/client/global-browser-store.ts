@@ -136,9 +136,9 @@ export function isGlobalBrowserOpen(): boolean {
 // ---------- 어느 브라우저로 열까 (대화 중심 화면) ----------
 
 /**
- * 대화 중심 화면에서 브라우저 단추(가운데 pill 의 지구본·Theater 패널 글리프)를 누르면 「Fleet 브라우저 / Operation 브라우저」
- * 두 행의 선택 카드가 그 단추 아래에 선다. 카드는 이 기능이 그린다(link-open-card 와 같은 문법). Operation 행을 무엇이
- * 여는지는 대화 칸이 안다 — 칸이 지금 대상의 여는 손잡이를 내건다(publishOperationBrowserTarget). 걸린 것이 없으면 그 행은
+ * 대화 중심 화면에서 브라우저 단추(가운데 pill 의 지구본 — Operation 대화와 사령관 같은 플러그인 대화)를 누르면 「Fleet 브라우저 /
+ * Session 브라우저」 두 행의 선택 카드가 그 단추 아래에 선다. 카드는 이 기능이 그린다(link-open-card 와 같은 문법). Session 행을
+ * 무엇이 여는지는 대화 칸이 안다 — 칸이 지금 대상의 여는 손잡이를 내건다(publishOperationBrowserTarget). 걸린 것이 없으면 그 행은
  * 닫힌 채 선다.
  */
 export interface OperationBrowserTarget {
@@ -148,6 +148,8 @@ export interface OperationBrowserTarget {
 export interface BrowserChooserRequest {
   readonly anchor: HTMLElement;
   readonly operation: OperationBrowserTarget | null;
+  /** Session 행이 닫힌 까닭이 「이 대화의 세션이 아직 서지 않음」이다(사령관처럼 세션이 나중에 서는 대화). */
+  readonly sessionNotStarted?: boolean;
 }
 
 let operationBrowserTarget: OperationBrowserTarget | null = null;
@@ -163,9 +165,13 @@ export function publishOperationBrowserTarget(target: OperationBrowserTarget | n
   operationBrowserTarget = target;
 }
 
-/** 선택 카드를 그 단추 아래에 세운다. Operation 행은 넘긴 손잡이(없으면 대화 칸이 내건 것)로 연다. */
-export function requestBrowserChooser(anchor: HTMLElement, operation: OperationBrowserTarget | null = operationBrowserTarget): void {
-  chooserRequest = { anchor, operation };
+/** 선택 카드를 그 단추 아래에 세운다. Session 행은 넘긴 손잡이(없으면 대화 칸이 내건 것)로 연다. */
+export function requestBrowserChooser(
+  anchor: HTMLElement,
+  operation: OperationBrowserTarget | null = operationBrowserTarget,
+  options?: { readonly sessionNotStarted?: boolean },
+): void {
+  chooserRequest = { anchor, operation, ...(options?.sessionNotStarted ? { sessionNotStarted: true } : {}) };
   notifyChooser();
 }
 
@@ -186,8 +192,8 @@ export function useBrowserChooserRequest(): BrowserChooserRequest | null {
 // ---------- 보이지 않는 뒤 탭 ----------
 
 /**
- * 시트를 띄우지 않고 연 뒤 탭 중 아직 보지 않은 수. 도구모음 칸의 점(대기 배지)이
- * 이 수를 읽는다. 시트를 열면 본 것으로 친다.
+ * 시트를 띄우지 않고 연 뒤 탭 중 아직 보지 않은 수. 대화 머리의 브라우저 지구본 모서리 배지가
+ * 이 수를 읽는다(시트가 닫혀 있을 때만). 시트를 열면 본 것으로 친다.
  */
 let unseenBackgroundTabs = 0;
 const backgroundListeners = new Set<() => void>();
@@ -222,11 +228,16 @@ function readBackgroundCount(): number {
   return unseenBackgroundTabs;
 }
 
-export const globalBrowserAttention = {
-  subscribe: subscribeBackground,
-  count: readBackgroundCount,
-  label: (count: number, locale: ConsoleLocale) => getT(locale)("terminal.globalBrowser.unseenTabs", { count: String(count) }),
-};
+/** 지구본 배지가 구독하는 보지 않은 뒤 탭 수 — 시트가 열려 있으면 0 이다. */
+export function useGlobalBrowserUnseenTabs(): number {
+  const unseen = React.useSyncExternalStore(subscribeBackground, readBackgroundCount, () => 0);
+  return useGlobalBrowserOpen() ? 0 : unseen;
+}
+
+/** 배지가 말하는 수의 이름 — 지구본 말풍선·스크린 리더가 이름 뒤에 붙여 읽는다. */
+export function globalBrowserUnseenLabel(count: number, locale: ConsoleLocale | undefined): string {
+  return getT(locale)("terminal.globalBrowser.unseenTabs", { count: String(count) });
+}
 
 // ---------- 전역 상태(SSE 재사용) ----------
 

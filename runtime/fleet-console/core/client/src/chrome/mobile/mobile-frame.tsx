@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -40,7 +41,7 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   const destination = useMobileDestination();
 
   // 목적지로 선언된 레일 엔트리를 스토어에 알린다 — 그 id를 연 요청(플러그인의 rail.open 등)은 시트가 아니라 화면이 된다.
-  const shownDestinations = useMobileDestinationBindings(bindings, state.activeTheaterId);
+  const shownDestinations = useMobileDestinationBindings(bindings, getViewedTheaterId());
   const destinationIds = useMemo(() => new Set(shownDestinations.map((binding) => binding.entry.id)), [shownDestinations]);
   registerMobileDestinationEntries(destinationIds);
   // 보고 있던 목적지가 `shown`에서 거둬지면(실험 기능을 끔·Theater 전환) 막다른 길이 되지 않게 홈으로 돌려보낸다.

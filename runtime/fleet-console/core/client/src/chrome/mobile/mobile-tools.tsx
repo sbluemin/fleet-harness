@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -43,7 +44,7 @@ const ignoreDivider = () => undefined;
 export function MobileTools({ theme, language }: { readonly theme: ConsoleTheme; readonly language: "ko" | "en" }) {
   const t = useT();
   const capabilities = useHostCapabilities();
-  const theaterId = useSyncExternalStore(subscribe, () => getState().activeTheaterId);
+  const theaterId = useSyncExternalStore(subscribe, () => getViewedTheaterId());
   const tool = useMobileTool();
   const registry = usePluginRegistry();
   const settingsRows = collectPluginSettingsSections(registry.providers, language, t, "mobile").filter((section) => section.mobile?.pluginRow !== undefined);

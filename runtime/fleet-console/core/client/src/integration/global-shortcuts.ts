@@ -26,6 +26,8 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly toggleQuickLaunch: () => void;
   readonly openPluginQuickLaunch?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
+  /** Fleet 브라우저 시트를 바로 여닫는다(카드 없이). 그릴 셸이 없는 문서에서는 false — 키를 소비하지 않는다. */
+  readonly toggleFleetBrowser?: () => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
 }
@@ -69,7 +71,7 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
     if (matches("console.search-operations")) {
-      // Codex 확대 읽기가 캔버스를 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
+      // Codex 확대 읽기가 대화 칸을 덮고 있는 동안 ⌘K는 그 화면의 항목 전환기다.
       // 여기서 양보하지 않으면 세션 검색과 전환기가 같은 키에 함께 열린다.
       if (windowFor.document.body.dataset.codexReading === "true") return;
       if (isForeignBlockingDialogOpen(windowFor.document, ".operation-search-overlay")) return;
@@ -89,6 +91,14 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
+    if (matches("console.toggle-fleet-browser")) {
+      // 길게 눌러도 한 번만 토글한다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
+      if (event.repeat || dependencies.toggleFleetBrowser?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
     const surfaceCommand = CORE_SHORTCUT_COMMANDS.find((command) => command.railEntryId !== undefined && matches(command.id));
     if (surfaceCommand?.railEntryId !== undefined) {
       // 길게 눌러도 한 번만 토글한다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.

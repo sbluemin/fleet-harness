@@ -1,5 +1,6 @@
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { homedir } from "node:os";
 
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
@@ -12,6 +13,7 @@ import { createShellTerminalLaunchResolver } from "./pty.js";
 import { applyShellCwdIntegration } from "./shell-cwd-integration.js";
 
 type TicketBody = {
+  readonly cwd?: OpenAtBody;
   readonly theaterId?: unknown;
   readonly colorScheme?: unknown;
   readonly role?: unknown;
@@ -28,7 +30,7 @@ type OpenAtBody = {
  */
 export interface ShellSessionState {
   readonly open: boolean;
-  readonly pinnedTheaterId: string | null;
+  readonly pinned: boolean;
   readonly cwd: { readonly theaterId: string | null; readonly relative: string | null } | null;
   /** cwd가 셸의 보고(OSC 7)를 따르는가. false면 spawn 위치에서 멈춘 값이다. */
   readonly cwdTracked: boolean;
@@ -48,12 +50,6 @@ export const SHELL_SESSION_EVENT_CHANNEL = "terminal:shell-session";
  * 전부 이 하나를 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도 죽고,
  * 복원할 휴면 상태라는 것 자체가 없다.
  */
-/**
- * `shell:` 접두를 쓰지 않는다. 세션 매니저는 그 접두를 "상태 미유지 theater-shell"의 표식으로
- * 읽어, 마지막 소켓이 떨어지고 4초 뒤 PTY를 정리한다. 전역 셸은 정반대 약속을 지고 있다 —
- * 레일에서 잠깐 치워 둔 셸은 돌아왔을 때 그 자리에 있어야 하고, cwd 고정도 함께 살아 있어야
- * 한다. 접두 하나가 그 약속을 4초짜리로 만든다.
- */
 const GLOBAL_SHELL_SESSION_ID = "console-shell";
 const GLOBAL_SHELL_OPERATION_TYPE = "shell";
 const SHELL_INTEGRATION_DIR = "shell-integration";
@@ -62,13 +58,12 @@ const SHELL_RESTART_EXIT_WAIT_MS = 5_000;
 
 export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: TerminalRuntime): void {
   /**
-   * cwd는 첫 기동 때 활성 Theater 경로로 한 번 못 박고, 사용자가 셸을 명시적으로
+   * cwd는 첫 기동 때 호출자가 알려 준 마지막 대화의 경로로 한 번 못 박고, 사용자가 셸을 명시적으로
    * 끝낼 때까지 유지한다. Theater를 옮겨 다닌다고 발밑이 바뀌면 반쯤 친 명령이
    * 다른 저장소에서 실행된다 — 셸의 현재 위치는 사용자만 바꿀 수 있어야 한다.
    * (`shell/open-at`은 사용자가 명시적으로 고른 이동이라 이 고정을 함께 옮긴다.)
    */
   let pinnedCwd: string | null = null;
-  let pinnedTheaterId: string | null = null;
   let generation = Date.now();
   /** 셸이 마지막으로 보고한(또는 spawn한) 절대 cwd. 서버 밖으로 나가지 않는다. */
   let currentCwd: string | null = null;
@@ -85,7 +80,6 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
 
   const release = () => {
     pinnedCwd = null;
-    pinnedTheaterId = null;
     currentCwd = null;
     cwdTracked = false;
     shellName = null;
@@ -116,7 +110,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
   }));
 
   // PTY가 스스로 끝나면(exit, 사용자가 `exit` 입력) 고정도 함께 풀린다 —
-  // 다음 기동은 그때의 활성 Theater에서 새로 시작한다.
+  // 다음 기동은 그때 마지막으로 본 대화의 경로에서 새로 시작한다.
   const unsubscribeExit = runtime.onExit((sessionId) => {
     if (sessionId !== GLOBAL_SHELL_SESSION_ID) return;
     if (restarting || liveGeneration === null) {
@@ -137,7 +131,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     const foreground = open ? runtime.getForegroundProcess(GLOBAL_SHELL_SESSION_ID) : null;
     return {
       open,
-      pinnedTheaterId,
+      pinned: pinnedCwd !== null,
       cwd: open && currentCwd ? locateInTheaters(ctx, currentCwd) : null,
       cwdTracked: open && cwdTracked,
       atPrompt: open && shellName !== null && foreground !== null && isShellProcess(foreground, shellName)
@@ -166,18 +160,14 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     const body = await ctx.host.http.readJsonBody<TicketBody>(req);
 
     if (pinnedCwd === null) {
-      const theaterId = typeof body?.theaterId === "string" ? body.theaterId : null;
-      if (!theaterId) {
-        ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
-        return true;
+      const hint = body?.cwd ?? (body?.theaterId !== undefined ? { theaterId: body.theaterId } : undefined);
+      if (hint === undefined || hint === null) {
+        pinnedCwd = homedir();
+      } else {
+        const target = resolveCwdHint(hint, res);
+        if (!target) return true;
+        pinnedCwd = target.directory;
       }
-      const theaterPath = ctx.host.paths.resolveTheaterPath(theaterId);
-      if (!theaterPath) {
-        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-        return true;
-      }
-      pinnedCwd = theaterPath;
-      pinnedTheaterId = theaterId;
     }
 
     if (!runtime.canAttach(GLOBAL_SHELL_SESSION_ID)) {
@@ -197,14 +187,13 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       operationId: GLOBAL_SHELL_SESSION_ID,
       operationType: GLOBAL_SHELL_OPERATION_TYPE,
       pluginId: null,
-      ...(pinnedTheaterId ? { theaterId: pinnedTheaterId } : {}),
       kind: "shell",
       ...(colorScheme ? { colorScheme } : {}),
       ...(role ? { role } : {}),
     });
     // 이 티켓이 붙을 PTY의 세대 — 살아 있으면 그것, 없으면 이 티켓의 부착이 만들 다음 것.
     const ticketGeneration = runtime.isLive(GLOBAL_SHELL_SESSION_ID) ? generation : generation + 1;
-    ctx.host.http.writeJson(res, 200, { ...ticket, pinnedTheaterId, generation: ticketGeneration });
+    ctx.host.http.writeJson(res, 200, { ...ticket, generation: ticketGeneration });
     return true;
   }, {
     method: "POST",
@@ -268,11 +257,9 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
     const target = await readMoveTarget(req, res);
     if (!target) return true;
-    const { theaterId } = target;
 
     if (!runtime.isLive(GLOBAL_SHELL_SESSION_ID)) {
       pinnedCwd = target.directory;
-      pinnedTheaterId = theaterId;
       publish();
       ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState() });
       return true;
@@ -294,7 +281,6 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return true;
     }
     pinnedCwd = target.directory;
-    pinnedTheaterId = theaterId;
     publish();
     ctx.host.http.writeJson(res, 200, { ok: true, action: "cd", state: readState() });
     return true;
@@ -338,7 +324,6 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     liveGeneration = null;
     release();
     pinnedCwd = target.directory;
-    pinnedTheaterId = target.theaterId;
     publish();
     await exited.catch(() => false);
     ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState() });
@@ -353,14 +338,19 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
   });
 
   /** 이동 요청의 공통 검사 — 등급·Theater·경로. 실패면 응답을 쓰고 null. */
-  async function readMoveTarget(req: Parameters<RouteHandler>[0]["req"], res: Parameters<RouteHandler>[0]["res"]): Promise<{ theaterId: string; directory: string } | null> {
+  async function readMoveTarget(req: Parameters<RouteHandler>[0]["req"], res: Parameters<RouteHandler>[0]["res"]): Promise<{ directory: string } | null> {
     // 관전 등급은 PTY에 입력을 쓸 수 없다 — 티켓이 관전으로 내려가는 것과 같은 판정이다.
     if (ctx.host.security.resolveTerminalSocketRole(req) === "viewer") {
       ctx.host.http.writeJson(res, 403, { error: "shell_read_only" });
       return null;
     }
     const body = await ctx.host.http.readJsonBody<OpenAtBody>(req);
-    const theaterId = typeof body?.theaterId === "string" ? body.theaterId : null;
+    return resolveCwdHint(body, res);
+  }
+
+  /** 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다. */
+  function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {
+    const theaterId = typeof hint?.theaterId === "string" ? hint.theaterId : null;
     if (!theaterId) {
       ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
       return null;
@@ -370,7 +360,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return null;
     }
-    const requested = body?.path === undefined || body.path === null ? "" : body.path;
+    const requested = hint?.path === undefined || hint.path === null ? "" : hint.path;
     if (typeof requested !== "string") {
       ctx.host.http.writeJson(res, 400, { error: "invalid_path" });
       return null;
@@ -380,7 +370,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, target.status, { error: target.error });
       return null;
     }
-    return { theaterId, directory: target.directory };
+    return { directory: target.directory };
   }
 }
 

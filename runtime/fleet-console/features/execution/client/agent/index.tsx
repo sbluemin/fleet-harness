@@ -34,7 +34,7 @@ isCompanionPanelVisible,
 } from "../../../analyst/client/analysis-visibility.js";
 import "../../../analyst/client/analysis.css";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { notifySharedFallback } from "../../../browser/client/global-browser-store.js";
+import { globalBrowserUnseenLabel, notifySharedFallback, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -546,7 +546,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
     </CaptionActionButton>
   );
 
-  // Operation Browser 문 — 실험이 켜진 Console에서만 선다. 허용은 패널 안에서 켠다.
+  // 브라우저 문 — 대화 중심 화면에서는 「Fleet 브라우저 / Session 브라우저」 카드를 여는 통합 지구본이다. 허용은 패널 안에서 켠다.
   const using = useOperationUse(context.operationId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
@@ -556,11 +556,15 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
+  // 시트를 띄우지 않고 연 Fleet 브라우저 뒤 탭 — 별도 도구 칸이 걷힌 뒤로는 이 지구본 모서리가 그 수를 말한다(시트가 닫혀 있을 때만).
+  const unseenTabs = useGlobalBrowserUnseenTabs();
+  const browserBadge = engineMissing ? 0 : unseenTabs;
   const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
-      label={browserLabel}
+      label={browserBadge > 0 ? `${browserLabel} · ${globalBrowserUnseenLabel(browserBadge, context.language)}` : browserLabel}
       pressed={browserOpen}
+      badge={browserBadge}
       disabled={engineMissing}
       agent={using.browser}
       {...(engineMissing ? {} : { tourAnchor: "browser" })}
@@ -1210,12 +1214,12 @@ function DormantChatView({ context, session }: { readonly context: OperationRend
   }, [context, session.sessionId]);
 
   return (
-    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(); }}>
-      <span className="canvas-operation-dormant-status">{t("terminal.chat.dormantStatus")}</span>
-      <span className="canvas-operation-dormant-body">
+    <button type="button" className="operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(); }}>
+      <span className="operation-dormant-status">{t("terminal.chat.dormantStatus")}</span>
+      <span className="operation-dormant-body">
         {resumeState === "error" ? t("terminal.chat.dormantResumeFailed") : t("terminal.chat.dormantBody")}
       </span>
-      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+      <span className={`operation-dormant-action${resumeState === "resuming" ? " operation-dormant-action--pending" : ""}`}>
         {resumeState === "resuming" ? t("terminal.chat.dormantResuming") : t(resumeState === "error" ? "terminal.dormant.tryAgain" : "terminal.chat.dormantResume")}
       </span>
     </button>
@@ -1246,27 +1250,27 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
 
   if (resumeState === "error" || resumeState === "launch-option-error") {
     return (
-      <div className="canvas-operation-dormant canvas-operation-dormant--error" role="alert">
-        <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
-        <p className="canvas-operation-dormant-error">
+      <div className="operation-dormant operation-dormant--error" role="alert">
+        <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
+        <p className="operation-dormant-error">
           {resumeState === "launch-option-error"
             ? t("terminal.dormant.resumeLaunchOptionFailedBody", { name: session.label || session.cwdLabel })
             : freshOnly
               ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
               : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
-        <div className="canvas-operation-dormant-error-actions">
+        <div className="operation-dormant-error-actions">
           {freshOnly ? (
-            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(true); }}>
+            <button type="button" className="operation-dormant-action" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           ) : (
-            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
+            <button type="button" className="operation-dormant-action" onClick={() => { void resume(false); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           )}
           {resumeState === "launch-option-error" || freshOnly ? null : (
-            <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
+            <button type="button" className="operation-dormant-action operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
               {t("terminal.dormant.startFresh")}
             </button>
           )}
@@ -1276,9 +1280,9 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   }
 
   return (
-    <button type="button" className="canvas-operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
-      <span className="canvas-operation-dormant-status">{t("terminal.dormant.status")}</span>
-      <span className={`canvas-operation-dormant-action${resumeState === "resuming" ? " canvas-operation-dormant-action--pending" : ""}`}>
+    <button type="button" className="operation-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
+      <span className="operation-dormant-status">{t("terminal.dormant.status")}</span>
+      <span className={`operation-dormant-action${resumeState === "resuming" ? " operation-dormant-action--pending" : ""}`}>
         {resumeState === "resuming"
           ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
           : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}

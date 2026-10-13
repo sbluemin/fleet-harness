@@ -1,3 +1,6 @@
+import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
 import { createHostPaneTargetPorts } from "../../integration/plugin-capabilities.js";
@@ -35,6 +38,7 @@ import { resolveOperationMarkVisual } from "../../../../../features/execution/cl
 import { archiveOperationFromUi, resumeOperationInPlace, type ArchiveOutcome } from "../../integration/operation-actions.js";
 import { openArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../integration/operation-archive.js";
 import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
+import { toggleGlobalBrowser } from "../../../../../features/browser/client/global-browser-store.js";
 import { fetchOperations } from "../../integration/api.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import {
@@ -65,7 +69,6 @@ import {
   operationSearchEntries,
   requestOperationLaunchMenu,
   requestSideBarAddTheater,
-  setActiveTheater,
   setActiveTheme,
   setOperationSearchMode,
 } from "../../integration/store.js";
@@ -77,7 +80,7 @@ interface OperationSearchProps {
   readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly ClientExecutionProvider[];
-  // 팔레트 보관도 캔버스·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
+  // 팔레트 보관도 대화 화면·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
   readonly onArchived?: (outcome: ArchiveOutcome) => void;
   readonly canUndoLastClose?: () => boolean;
   /** 되돌릴 마지막 일의 종류 — 「보관 되돌리기」와 Theater 잊기의 「실행 취소」를 가른다. */
@@ -115,22 +118,22 @@ export function OperationSearch({
     if (mode !== "operations") return [];
     const query = text.trim().toLowerCase();
     const matchesShell = query !== "" && ["shell", "셸", "쉘", "터미널", "terminal", "console"].some((alias) => alias.includes(query));
-    if (!matchesShell || !state.activeTheaterId || !desktopView) return providerSearchGroups;
-    const theaterId = state.activeTheaterId;
+    if (!matchesShell || !desktopView) return providerSearchGroups;
+    const theaterId = getViewedTheaterId();
     return [...providerSearchGroups, {
       panelId: "global-shell",
       panelTitle: "Shell",
       results: [
         { id: "open-shell", title: t("chrome.operationSearch.openShell"), activate: () => undefined },
-        { id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
+        ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
           const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
           if (result?.ok) return;
           setShellNotice(t(result ? `chrome.operationSearch.shell.${result.reason}` : "chrome.operationSearch.shell.failed"));
           throw new Error("shell_open_refused");
-        } },
+        } }] : []),
       ],
     }];
-  }, [providerSearchGroups, mode, text, state.activeTheaterId, desktopView, capabilities, t]);
+  }, [providerSearchGroups, mode, text, getViewedTheaterId(), desktopView, capabilities, t]);
   // 동작 띠가 펼쳐진 Operation 행과 그 안의 선택. 띠는 한 번에 하나만 선다.
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
@@ -159,9 +162,9 @@ export function OperationSearch({
   }, [state, archive.snapshot]);
   const filteredEntries = useMemo(
     () => mode === "operations"
-      ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), state.activeTheaterId, searchTokens(text).length > 0)
+      ? orderOperationSearchEntries(filterOperationSearchEntries(entries, text), getViewedTheaterId(), searchTokens(text).length > 0)
       : [],
-    [entries, mode, state.activeTheaterId, text],
+    [entries, mode, getViewedTheaterId(), text],
   );
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
@@ -219,7 +222,7 @@ export function OperationSearch({
   useEffect(() => {
     const generation = ++searchGenerationRef.current;
     setRailSearchGroups([]);
-    const theaterId = state.activeTheaterId;
+    const theaterId = getViewedTheaterId();
     if (!state.operationSearchOpen || text.trim() === "" || !theaterId || mode !== "operations") return;
 
     const abort = new AbortController();
@@ -234,7 +237,7 @@ export function OperationSearch({
       window.clearTimeout(timer);
       abort.abort();
     };
-  }, [mode, text, railPanels, state.activeTheaterId, state.operationSearchOpen, t]);
+  }, [mode, text, railPanels, getViewedTheaterId(), state.operationSearchOpen, t]);
 
   useEffect(() => {
     if (!state.operationSearchOpen) return;
@@ -341,9 +344,10 @@ export function OperationSearch({
       }
       case "switch-theater": {
         if (current) break;
-        // Theater 전환은 캔버스로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
+        // Theater 전환은 대화 화면으로 포커스 문맥을 넘기므로 selectEntry처럼 이전 포커스 복원을 억제한다.
         previousFocusRef.current = null;
-        setActiveTheater(action.theaterId);
+        closeConversationSurface();
+        openTheaterInbox({ theaterId: action.theaterId, sectionId: "console:settings", pageId: "system-prompt" });
         navigate("/operations");
         break;
       }
@@ -391,6 +395,12 @@ export function OperationSearch({
         if (action.surfaceId) openExpandedSurface({ surfaceId: action.surfaceId });
         else openRailPanel(action.panelId);
             break;
+      }
+      case "toggle-fleet-browser": {
+        // 시트는 Console 전역 영속 컴포넌트라 경로와 무관하게 선다. 닫히면 포커스는 시트가 연 자리로 돌아간다.
+        previousFocusRef.current = null;
+        toggleGlobalBrowser();
+        break;
       }
       case "toggle-sidebar": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
@@ -753,7 +763,7 @@ export function OperationSearch({
               {renderRailGroups(true)}
               {groups.map((group) => {
                 const headingId = operationGroupHeadingId(group.theaterId) + (group.archived ? "-archived" : "");
-                const activeGroup = !group.archived && group.theaterId === state.activeTheaterId;
+                const activeGroup = !group.archived && group.theaterId === getViewedTheaterId();
                 return (
                   <section className="operation-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
                     <h2 id={headingId} className="operation-search-section-heading">

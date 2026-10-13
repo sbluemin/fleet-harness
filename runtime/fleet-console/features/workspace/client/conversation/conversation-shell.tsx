@@ -9,13 +9,14 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { RailToolIcons, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
+import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
@@ -26,9 +27,14 @@ import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-c
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { closeGlobalBrowser, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen } from "../../../browser/client/global-browser-store.js";
+import { closeGlobalBrowser, globalBrowserUnseenLabel, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
+import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
+import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { getT as getBrowserT } from "../../../browser/client/i18n.js";
+import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { closeOperationBrowserSplit, openOperationBrowserSplit, useOperationBrowserSplit } from "./conversation-split-store.js";
+import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -39,11 +45,8 @@ import { closeConversationSurface, useConversationSurface, type ConversationSurf
 import "./conversation.css";
 
 /**
- * 대화 중심 화면 — 데스크톱 Operations 의 기본 셸. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 캔버스가 선다.
- *
- * 세 칸이다: 왼쪽 사이드바(기존 그룹 트리 + 이 모듈이 더한 위·아래 줄), 가운데 대화 칸(Operation 하나),
- * 오른쪽 패널(기존 레일 카드 + 머리의 글자 탭). 캔버스는 마운트하지 않으므로 패널 좌표·Map 기록을
- * 이 셸이 바꾸지 않는다 — 토글을 끄면 캔버스가 켜기 전 그대로 돌아온다.
+ * 데스크톱 Operations 셸 — 왼쪽 사이드바, 가운데 대화, 오른쪽 세부 정보 패널의 세 칸이다.
+ * 본문 geometry는 칸의 실측이고, 이전 패널 좌표 저장은 변경하지 않는다.
  */
 
 const LAST_PANEL_KEY = "fleet-console.conversation.lastPanel";
@@ -73,8 +76,7 @@ function writeLastPanel(id: string): void {
 /** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Operation 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
   useEffect(() => mountConversationOperationTabsHost(), []);
-  // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면(토글 끔)
-  // 캔버스의 기본(읽기 폭)으로 돌아간다.
+  // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면 기본 읽기 폭으로 돌아간다.
   useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
   const activePanelId = useRailActivePanelId();
@@ -157,7 +159,7 @@ const PlusGlyph = () => (
  */
 export function ConversationSideBarActions() {
   const t = useT();
-  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다 — 캔버스 배치의 유령 행과 같은 규칙이다.
+  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다.
   const { addingTheater } = useConsoleState();
   return (
     <span className="conversation-side-actions">
@@ -194,21 +196,20 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
 }
 
-/** 오른쪽 패널 머리 — 앞 묶음(Operation 탭)과 뒤 묶음(작전구역 도구)을 글자 탭으로. */
+/**
+ * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
+ * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
+ */
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
   const sections = usePanelSections();
-  // Theater 가 아닌 대화(가운데 칸의 Operation 대화)의 패널은 도구 줄을 세우지 않는다 — 대화에서 곧장 이어 가는 도구
-  // (conversationTab, 목표)만 대상의 글자 탭 오른쪽에 같은 글자 단추로 남는다. Theater 를 연 패널(사령관·Theater 설정)은 그대로다.
-  // 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도 Operation 대화와 같은 머리다.
+  // Operation 대화의 패널은 대화에서 곧장 이어 가는 도구(conversationTab, 목표)를 대상의 글자 탭 앞에 같은 글자 단추로 세운다.
+  // Theater 를 연 패널(사령관·Theater 설정)에는 서지 않는다. 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도
+  // Operation 대화와 같은 머리다.
   const subject = useConversationSubject();
   const standIn = useConversationStandIn();
   const inbox = useTheaterInboxState();
   const operationConversation = (subject !== null || standIn !== null) && inbox === null;
-  // Theater 를 연 동안 고른 섹션이 뜻 없는 도구를 선언하면(사령관에게는 목표가 없다) 그 섹션의 도구 줄·「더보기」에서만 뺀다.
-  const { theaterInboxSections } = usePluginRegistry();
-  const omitted = inbox === null ? undefined : theaterInboxSections.find((section) => section.id === sections.activeId)?.omitsRailEntries;
-  const toolFilter = omitted && omitted.length > 0 ? (entry: RailEntryDescriptor) => !omitted.includes(entry.id) : null;
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
   const [overflow, setOverflow] = useState<readonly OverflowTab[]>([]);
@@ -222,18 +223,14 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
     const measure = () => {
       frame = 0;
       for (const item of row.querySelectorAll<HTMLElement>("[data-overflow]")) item.removeAttribute("data-overflow");
-      // 줄마다 따로 잰다 — 대상 탭 줄과 도구 줄은 서로의 넘침에 끌려가지 않는다. 「⋯」는 도구 줄 끝에 서므로, 아직 서지 않았으면
-      // 도구 줄만 그 자리(MORE_RESERVE)를 남긴다. 넘친 것은 탭이든 도구든 같은 메뉴에 모인다.
-      const more = moreRef.current;
-      const moreShown = more !== null && more.offsetWidth > 0;
+      // 「⋯」는 줄 바깥(오른쪽 형제)에 서므로 줄이 그만큼 좁아지면 다시 잰다 — 따로 자리를 남기지 않는다.
       const rowLeft = row.getBoundingClientRect().left;
       const hidden: OverflowTab[] = [];
       for (const group of row.children) {
         if (!(group instanceof HTMLElement)) continue;
         const items = [...group.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
         if (items.every((item) => item.getBoundingClientRect().right - rowLeft <= row.clientWidth)) continue;
-        const reserve = group.classList.contains("conversation-panel-tools") && !moreShown ? MORE_RESERVE : 0;
-        const limit = row.clientWidth - reserve;
+        const limit = row.clientWidth;
         let cut = false;
         for (const item of items) {
           if (!cut && item.getBoundingClientRect().right - rowLeft > limit) cut = true;
@@ -294,8 +291,8 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           ))}
         </div>
       ) : null}
-      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)과 작전구역 도구 글리프가 Grok 세그먼트처럼
-          한 줄에 선다. 켜진 것은 둥근 면 하나로 말한다. 넘치는 것은 줄 끝 「⋯」 메뉴에 모인다(뒤쪽 도구부터). */}
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)이 Grok 세그먼트처럼 한 줄에 선다.
+          켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
@@ -303,11 +300,6 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
             {operationConversation ? <RailToolIcons context={context} variant="text" scope="tools" toolFilter={isConversationTab} /> : null}
             <RailToolIcons context={context} variant="text" scope="core" {...(sections.filter ? { coreFilter: sections.filter } : {})} />
           </span>
-          {operationConversation ? null : (
-            <span className="conversation-panel-tools">
-              <RailToolIcons context={context} variant="icons" scope="tools" {...(toolFilter ? { toolFilter } : {})} />
-            </span>
-          )}
         </div>
         <span className={`conversation-panel-more-wrap${overflow.length > 0 ? "" : " is-idle"}`}>
           <button
@@ -486,8 +478,12 @@ function usePanelSections(): {
   return { list, activeId, filter, open };
 }
 
-/** 「⋯」 단추(30px)와 그 틈 — 도구 줄이 넘칠 때 그 끝에 남겨 둘 자리. */
-const MORE_RESERVE = 38;
+/** 머리 pill 이름의 하한 — 도구가 모두 「⋯」로 걷힌 다음에야 이름이 이 폭까지 줄어든다(이름이 더 짧으면 그 폭). */
+const TITLE_FLOOR = 120;
+/** 머리 pill 부제(「· 구성원 n」 등)의 하한 — 줄이 모자라면 부제가 가장 먼저 이 폭까지 말줄임으로 줄어든다. */
+const SUB_FLOOR = 28;
+/** 머리 pill 의 폭 상한(conversation.css `.conversation-pill` max-width) — 이 상한 때문에 잘린 이름은 자리 부족이 아니다. */
+const PILL_TITLE_CAP = 620;
 
 interface OverflowTab {
   readonly label: string;
@@ -507,6 +503,8 @@ interface ConversationStageProps {
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly onClose: (operationId: string) => void;
+  /** 머리 줄 공통 도구모음의 문맥 — 보이는 대화의 Theater(useViewedTheaterId)로 만든다. 오른쪽 패널 본문과 같은 Theater 다. */
+  readonly toolContext: RailToolContext;
 }
 
 /**
@@ -515,17 +513,16 @@ interface ConversationStageProps {
  */
 function useStageSubject(state: ConsoleState): OperationNode | null {
   const lastRef = useRef<string | null>(null);
-  const inTheater = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id && operation.theaterId === state.activeTheaterId) ?? null;
-  const active = inTheater(state.activeOperationId);
+  const operationOf = (id: string | null) => id === null ? null : state.operations.find((operation) => operation.id === id) ?? null;
+  const active = operationOf(state.activeOperationId);
   const latest = () => state.operations
-    .filter((operation) => operation.theaterId === state.activeTheaterId)
     .reduce<OperationNode | null>((best, operation) => (best === null || operation.ts.updatedAt > best.ts.updatedAt ? operation : best), null);
-  const subject = active ?? inTheater(lastRef.current) ?? latest();
+  const subject = active ?? operationOf(lastRef.current) ?? latest();
   lastRef.current = subject?.id ?? null;
   return subject;
 }
 
-export function ConversationStage({ state, insets, language, operationKinds, onClose }: ConversationStageProps) {
+export function ConversationStage({ state, insets, language, operationKinds, onClose, toolContext }: ConversationStageProps) {
   const t = useT();
   const quickLaunchShortcut = useQuickLaunchShortcutLabel();
   const subject = useStageSubject(state);
@@ -544,6 +541,19 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     }
   }
   useEffect(() => { publishConversationStandIn(standInId); }, [standInId]);
+  // 플러그인 대화의 에이전트 세션이 Session 브라우저를 쓰면(사령관) 머리 지구본과 분할 칸이 그 세션의 scope 로 브라우저를 찾는다.
+  // 플러그인 id 는 호스트가 붙인 등록 id 다 — 대화가 다른 플러그인의 scope 를 가리킬 수 없다.
+  let sessionScopeId: string | null = null;
+  if (surfaceDescriptor?.sessionBrowser && surfaceDescriptor.pluginId && surface) {
+    try {
+      const scope = surfaceDescriptor.sessionBrowser({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
+      sessionScopeId = scope !== null && typeof scope.scopeId === "string" && scope.scopeId !== "" ? scope.scopeId : null;
+    } catch {
+      sessionScopeId = null;
+    }
+  }
+  const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
+  const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeOperationId = state.activeOperationId;
@@ -567,21 +577,26 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   usePanelFollowsSubject(surfaceDescriptor ? standInId : subject?.id ?? null);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
-  // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Operation 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
+  // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Session 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
   // 대화 열(right)과 칸(width)은 같은 전이(--duration-base · --ease-spring)로 함께 움직인다. Fleet 브라우저 시트는 그 칸의
-  // 사각형에 앉고(global-browser-sheet.tsx), Operation 브라우저는 칸 안에 그린다.
+  // 사각형에 앉고(global-browser-sheet.tsx), Session 브라우저(Operation 의 companion 이든 플러그인 세션의 것이든)는 칸 안에 그린다.
   const fleetBrowserOpen = useGlobalBrowserOpen();
   const operationSplit = useOperationBrowserSplit();
+  const sessionSplit = useSessionBrowserSplit();
   const desktop = isDesktopShell();
   const splitSubjectId = surfaceDescriptor ? null : subject?.id ?? null;
   const splitKind: SplitKind | null = desktop && fleetBrowserOpen
     ? "fleet"
-    : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation" : null;
-  // Fleet 브라우저가 열리면 Operation 브라우저 칸은 걷힌다 — 칸은 브라우저 하나만 싣는다. 대상이 바뀌어도 걷는다.
-  useEffect(() => { if (fleetBrowserOpen) closeOperationBrowserSplit(); }, [fleetBrowserOpen]);
+    : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation"
+      : sessionSplit !== null && sessionSplit.subjectKey === sessionSubjectKey ? "session" : null;
+  // Fleet 브라우저가 열리면 Session 브라우저 칸은 걷힌다 — 칸은 브라우저 하나만 싣는다. 대상이 바뀌어도 걷는다.
+  useEffect(() => { if (fleetBrowserOpen) { closeOperationBrowserSplit(); closeSessionBrowserSplit(); } }, [fleetBrowserOpen]);
   useEffect(() => {
     if (operationSplit !== null && operationSplit.subjectId !== splitSubjectId) closeOperationBrowserSplit();
   }, [operationSplit, splitSubjectId]);
+  useEffect(() => {
+    if (sessionSplit !== null && sessionSplit.subjectKey !== sessionSubjectKey) closeSessionBrowserSplit();
+  }, [sessionSplit, sessionSubjectKey]);
   const viewportWidth = useViewportWidth();
   const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets);
   const splitOperation = splitKind === "operation" && operationSplit !== null
@@ -589,6 +604,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       ?? state.nestedOperations.find((candidate) => candidate.id === operationSplit.operationId)
       ?? null
     : null;
+
+  // 가운데 칸 어느 대화(사령관·지휘관·일반 Operation·빈 칸)든 머리 줄 대화 동작 오른쪽에 같은 공통 도구모음이 선다.
+  const tools = <ConversationToolbar context={toolContext} />;
 
   return (
     <>
@@ -607,6 +625,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           language={language}
           theme={state.activeTheme}
           onToggleDetails={toggleDetails}
+          tools={tools}
+          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
+          browserSplitOpen={splitKind !== null}
         />
       ) : subject ? (
         <ConversationColumn
@@ -618,11 +639,16 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           onToggleDetails={toggleDetails}
           onClose={onClose}
           browserSplitOpen={splitKind !== null}
+          tools={tools}
         />
       ) : (
-        <div className="conversation-empty">
-          <strong>{t("conversation.empty.title")}</strong>
-          <span>{t("conversation.empty.body", { shortcut: quickLaunchShortcut })}</span>
+        // 빈 칸에도 같은 머리 줄 도구모음이 선다 — Theater 가 없으면 Theater 도구는 비활성이고 Console 도구(Shell·스킬)만 눌린다.
+        <div className="conversation-column">
+          <div className="conversation-pill-row">{tools}</div>
+          <div className="conversation-empty">
+            <strong>{t("conversation.empty.title")}</strong>
+            <span>{t("conversation.empty.body", { shortcut: quickLaunchShortcut })}</span>
+          </div>
         </div>
       )}
     </section>
@@ -631,6 +657,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       seat={seat}
       fallbackRight={insets.right}
       operation={splitOperation}
+      sessionOwnerId={splitKind === "session" ? sessionSplit?.ownerId ?? null : null}
       state={state}
       language={language}
       operationKinds={operationKinds}
@@ -666,17 +693,20 @@ function ConversationQuota() {
       const center = pillGroupNaturalWidth(stage);
       // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
       const right = Number.parseFloat(getComputedStyle(box).right) || 0;
-      const available = (stage.clientWidth - center) / 2 - right - QUOTA_PILL_GAP;
-      const tier: QuotaTier = widths.full <= available ? "full" : widths.marks <= available ? "marks" : "single";
+      // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
+      const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
+      // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
+      const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
+      const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
       box.dataset.tier = tier;
-      stage.style.setProperty("--conversation-quota-space", `${Math.ceil(widths[tier] + right + QUOTA_PILL_GAP)}px`);
+      stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
     };
     const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
     measure();
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resize?.observe(stage);
     for (const child of box.children) resize?.observe(child);
-    // 대상·이름·사용량 변경만 다시 잰다. 본문 글자 조각은 캡슐 자리와 무관하고 tier 측정의 강제 배치를 부르지 않는다.
+    // 대상·이름·사용량·도구모음 원래 폭 변경만 다시 잰다. 본문 글자 조각은 캡슐 자리와 무관하고 tier 측정의 강제 배치를 부르지 않는다.
     // 머리 줄 자체가 교체되는 전환도 감지하되 이 캡슐이 다는 data-tier 는 관찰하지 않는다.
     const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       if (records.some(({ target, addedNodes, removedNodes }) => {
@@ -686,7 +716,7 @@ function ConversationQuota() {
           && (node.matches(".conversation-pill-row") || node.querySelector(".conversation-pill-row") !== null));
       })) schedule();
     });
-    mutation?.observe(stage, { childList: true, subtree: true, characterData: true });
+    mutation?.observe(stage, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-natural-width"] });
     return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
   }, [usage.length]);
   if (usage.length === 0) return null;
@@ -704,19 +734,35 @@ function ConversationQuota() {
 type QuotaTier = "full" | "marks" | "single";
 /** 사용량 캡슐과 pill 묶음 사이의 최소 틈. */
 const QUOTA_PILL_GAP = 12;
+/** 정수 폭으로 센 가운데 묶음의 원래 폭이 실제보다 작을 수 있는 몫 — 사용량 단계 판정에 남기는 여유. */
+const QUOTA_ROUNDING_SLACK = 2;
 
-/** pill 줄 가운데 묶음(이름 pill·다음·단추 묶음)의 원래 폭 — 이름이 말줄임으로 줄어든 만큼을 되돌려 센다(최대 620). */
+/**
+ * pill 줄 가운데 묶음(이름 pill·다음·단추 묶음)의 원래 폭 — 이름이 말줄임으로 줄어든 만큼을 되돌려 센다(최대 620).
+ * 대화 열의 줄만 잰다 — 확대 표면 머리(접힌 칩 포함)도 칸에 portal 된 같은 이름의 줄이고, 대화 열이 다시 서면(대상 전환) DOM 순서가
+ * 그 뒤로 밀려 첫 줄이 표면 머리가 된다.
+ */
 function pillGroupNaturalWidth(stage: HTMLElement): number {
-  const row = stage.querySelector<HTMLElement>(".conversation-pill-row");
-  if (!row) return 0;
+  const row = stage.querySelector<HTMLElement>(":scope > .conversation-column > .conversation-pill-row");
+  return row === null ? 0 : pillRowNaturalWidth(row);
+}
+
+/**
+ * pill 줄 한 줄의 원래 폭. 공통 도구모음은 「⋯」로 걷힌 도구까지 센 폭(data-natural-width, ConversationToolbar 가 잰다)으로
+ * 센다 — 사용량 캡슐이 먼저 단계를 낮추고, 그래도 모자랄 때 도구가 걷힌다.
+ */
+function pillRowNaturalWidth(row: HTMLElement): number {
   const items = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
   const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
   let total = Math.max(0, items.length - 1) * gap;
   for (const item of items) {
     if (item.classList.contains("conversation-pill")) {
-      const title = item.querySelector<HTMLElement>(".conversation-pill-title");
-      const natural = item.offsetWidth + (title ? title.scrollWidth - title.clientWidth : 0);
-      total += Math.min(natural, 620);
+      // 말줄임으로 줄어든 이름·부제의 몫을 되돌려 센다.
+      let natural = item.offsetWidth;
+      for (const text of item.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub")) natural += text.scrollWidth - text.clientWidth;
+      total += Math.min(natural, PILL_TITLE_CAP);
+    } else if (item.classList.contains("conversation-pill-tools")) {
+      total += Number.parseFloat(item.dataset.naturalWidth ?? "") || item.offsetWidth;
     } else {
       total += item.offsetWidth;
     }
@@ -725,15 +771,214 @@ function pillGroupNaturalWidth(stage: HTMLElement): number {
 }
 
 /**
+ * 공통 도구모음에 서는 도구 — 대화에서 곧장 이어 가는 도구(conversationTab, 목표)는 Operation 대화의 오른쪽 패널 글자 탭이
+ * 맡으므로 뺀다. 그래서 사령관·지휘관·일반 Operation 대화·빈 칸의 도구 집합이 같다.
+ */
+function isCommonTool(entry: RailEntryDescriptor): boolean {
+  return entry.conversationTab !== true;
+}
+
+interface HiddenTool {
+  readonly entryId: string;
+  readonly active: boolean;
+  readonly disabled: boolean;
+  readonly element: HTMLButtonElement;
+}
+
+function sameHiddenTools(a: readonly HiddenTool[], b: readonly HiddenTool[]): boolean {
+  return a.length === b.length && a.every((tool, index) => tool.element === b[index]!.element && tool.active === b[index]!.active && tool.disabled === b[index]!.disabled);
+}
+
+/**
+ * 가운데 대화 머리 줄의 공통 도구모음 — 대화 동작 오른쪽에 선다. 순서·켜짐·배지·말풍선·단축키 표기는 레일 도구(RailToolIcons ·
+ * RailIcon) 그대로이고, Theater 도구 → 구분선 → Console 도구다. 문맥은 보이는 대화의 Theater 라 도구를 누르면 그 Theater 로 열린다.
+ * 줄은 한 줄이다: 자리가 모자라면(사용량 캡슐이 먼저 단계를 낮춘 뒤) 오른쪽 끝 도구부터 걷어 「⋯」 메뉴에 모은다. 이름 pill 은
+ * 도구가 모두 걷힌 다음에야 말줄임이 시작되고, 대화 동작은 걷히지 않는다.
+ */
+function ConversationToolbar({ context }: { readonly context: RailToolContext }) {
+  const t = useT();
+  const toolsRef = useRef<HTMLSpanElement | null>(null);
+  const itemsRef = useRef<HTMLSpanElement | null>(null);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
+  const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const bindings = useDesktopRailEntries();
+  useLayoutEffect(() => {
+    const tools = toolsRef.current;
+    const itemsBox = itemsRef.current;
+    const row = tools?.closest<HTMLElement>(".conversation-pill-row") ?? null;
+    if (!tools || !itemsBox || !row) return;
+    let frame = 0;
+    // 줄이 넘치지 않고, 이름이 자리 때문에(620px 상한 때문이 아니라) 잘리지 않으면 들어간 것이다. 실제 배치를 읽는다 — 원래 폭을
+    // 셈으로만 맞추면 글꼴이 늦게 와 이름이 길어지는 것처럼 셈 밖의 변화에 이름이 먼저 잘린다.
+    // 정수로 반올림한 clientWidth·scrollWidth 는 1px 밑의 말줄임을 놓친다 — 이름은 글자 범위의 실제 폭과, 줄은 상자의 실제 폭과 견준다.
+    const range = typeof document === "undefined" ? null : document.createRange();
+    const fits = (pill: HTMLElement | null, title: HTMLElement | null) => {
+      if (title !== null && pill !== null && range !== null && pill.getBoundingClientRect().width < PILL_TITLE_CAP - 0.5) {
+        range.selectNodeContents(title);
+        if (range.getBoundingClientRect().width > title.getBoundingClientRect().width + 0.01) return false;
+      }
+      // pill 안 내용이 pill 상자 밖으로 흐르면 들어가지 않은 것이다(마지막 내용의 오른쪽 끝 ≤ 상자 안쪽 오른쪽 끝).
+      if (pill !== null) {
+        const inner = [...pill.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.getClientRects().length > 0);
+        const last = inner[inner.length - 1];
+        const pillRect = pill.getBoundingClientRect();
+        const padRight = Number.parseFloat(getComputedStyle(pill).paddingRight) || 0;
+        if (last !== undefined && last.getBoundingClientRect().right > pillRect.right - padRight + 0.01) return false;
+      }
+      const children = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.offsetWidth > 0);
+      if (children.length === 0) return true;
+      const style = getComputedStyle(row);
+      const content = row.getBoundingClientRect().width - (Number.parseFloat(style.paddingLeft) || 0) - (Number.parseFloat(style.paddingRight) || 0);
+      const extent = children[children.length - 1]!.getBoundingClientRect().right - children[0]!.getBoundingClientRect().left;
+      return extent <= content + 0.01;
+    };
+    const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
+    // 줄 폭(칸 폭·사용량 캡슐 예약)뿐 아니라 줄 안 요소의 폭도 본다 — 글꼴·컨테이너 질의·인라인 스타일처럼 줄 크기나 관찰하는 속성을
+    // 바꾸지 않고 이름·대화 동작의 폭만 바꾸는 변화에도 이름이 먼저 잘리지 않게. 같은 대상을 다시 observe 해도 하나로 친다.
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    const measure = () => {
+      frame = 0;
+      const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
+      for (const item of items) item.removeAttribute("data-overflow");
+      tools.dataset.more = "hidden";
+      if (resize !== null) {
+        resize.observe(row);
+        // 테두리 상자로 본다 — 내용 상자만 보면 안쪽 여백·테두리만 바뀐 요소의 폭 변화를 놓친다.
+        for (const child of row.children) if (child !== tools) resize.observe(child, { box: "border-box" });
+        const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
+        if (titleElement !== null) resize.observe(titleElement);
+      }
+      // 줄이 모자랄 때 줄어드는 순서 — 부제(「· 구성원 n」 등)가 먼저 말줄임으로 SUB_FLOOR 까지, 그다음 도구가 「⋯」로, 마지막에
+      // 이름이 TITLE_FLOOR(이름이 그보다 짧으면 그 폭)까지. 도구가 남아 있는 동안 이름은 원래 폭에 묶어 둔다. pill 내용이 상자 밖으로
+      // 흐르면(부제·이름이 하한에 닿은 뒤) 들어가지 않은 것으로 보고 도구를 더 걷는다(fits).
+      const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
+      const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
+      const textWidth = (element: HTMLElement) => {
+        element.style.minWidth = "";
+        if (range === null) return element.scrollWidth;
+        range.selectNodeContents(element);
+        return range.getBoundingClientRect().width;
+      };
+      for (const sub of pill?.querySelectorAll<HTMLElement>(".conversation-pill-sub") ?? []) {
+        sub.style.minWidth = `${Math.min(SUB_FLOOR, Math.ceil(textWidth(sub)))}px`;
+      }
+      // 묶는 폭은 pill 상한(620px) 안이다 — 상한보다 긴 이름은 상한 때문에 말줄임되는 것이 맞다.
+      const titleNatural = title === null || pill === null ? 0
+        : Math.min(Math.ceil(textWidth(title)), Math.max(TITLE_FLOOR, Math.floor(PILL_TITLE_CAP - (pill.getBoundingClientRect().width - title.getBoundingClientRect().width))));
+      if (title !== null) title.style.minWidth = `${titleNatural}px`;
+      // 모두 세운 폭(「⋯」 없이) — 사용량 캡슐이 이 값으로 자기 단계를 먼저 고른다(pillRowNaturalWidth).
+      const natural = tools.offsetWidth;
+      if (tools.dataset.naturalWidth !== String(natural)) tools.dataset.naturalWidth = String(natural);
+      const next: HiddenTool[] = [];
+      if (!fits(pill, title)) {
+        // 오른쪽 끝(Console 도구)부터 하나씩 걷는다 — 「⋯」가 선 채로 들어갈 때까지. 남은 줄이 구분선으로 끝나면 그것도 걷는다
+        // (구분선은 두 범위 사이에서만 뜻이 있다). 다 걷어도 모자라면 그때부터 이름이 하한까지 줄어든다.
+        tools.dataset.more = "shown";
+        for (let index = items.length - 1; index >= 0; index -= 1) {
+          const item = items[index]!;
+          item.setAttribute("data-overflow", "true");
+          if (item instanceof HTMLButtonElement && item.id.startsWith("rail-tab-")) {
+            next.unshift({ entryId: item.id.slice("rail-tab-".length), active: item.classList.contains("is-active"), disabled: item.disabled, element: item });
+          }
+          const previous = items[index - 1];
+          if (previous?.classList.contains("right-rail-divider")) { previous.setAttribute("data-overflow", "true"); index -= 1; }
+          if (fits(pill, title)) break;
+        }
+        // 도구를 다 걷어도 모자라면 이름을 하한까지 풀어 준다.
+        if (title !== null && !fits(pill, title)) title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
+      }
+      setHidden((current) => sameHiddenTools(current, next) ? current : next);
+    };
+    measure();
+    // 이름·대화 동작·도구가 서고 걷히면 다시 잰다. 이 묶음이 다는 data-overflow·data-more·data-natural-width 와 이름의 하한(style)은
+    // 관찰하지 않는다.
+    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    mutation?.observe(row, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class", "disabled"] });
+    // 웹 글꼴이 늦게 오면 이름·단추의 폭이 줄 크기 변화 없이 바뀐다 — 그때도 다시 잰다.
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    fonts?.addEventListener?.("loadingdone", schedule);
+    return () => { resize?.disconnect(); mutation?.disconnect(); fonts?.removeEventListener?.("loadingdone", schedule); if (frame !== 0) cancelAnimationFrame(frame); };
+  }, []);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: PointerEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key !== "Escape" : moreRef.current?.parentElement?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+      if (event instanceof KeyboardEvent) moreRef.current?.focus();
+    };
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("keydown", close, true);
+    return () => { window.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", close, true); };
+  }, [menuOpen]);
+  useEffect(() => { if (hidden.length === 0) setMenuOpen(false); }, [hidden.length]);
+  const hiddenActive = hidden.some((tool) => tool.active);
+  const moreLabel = t("conversation.tools.more");
+  return (
+    <span className="conversation-pill-tools" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
+      <span className="conversation-pill-tools-items" ref={itemsRef}>
+        <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={isCommonTool} />
+      </span>
+      <span className="conversation-pill-tools-more-wrap">
+        <button
+          type="button"
+          ref={moreRef}
+          className={`right-rail-ico conversation-pill-tools-more${hiddenActive ? " is-active" : ""}`}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          aria-label={moreLabel}
+          data-tip={moreLabel}
+          tabIndex={hidden.length > 0 ? 0 : -1}
+          aria-hidden={hidden.length > 0 ? undefined : true}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.2" fill="currentColor" /><circle cx="8" cy="8" r="1.2" fill="currentColor" /><circle cx="12.5" cy="8" r="1.2" fill="currentColor" /></svg>
+        </button>
+        {menuOpen && hidden.length > 0 ? (
+          <div className="conversation-pill-tools-menu" role="menu" aria-label={moreLabel}>
+            {hidden.map((tool) => {
+              const entry = bindings.find((binding) => binding.entry.id === tool.entryId)?.entry ?? null;
+              const icon = entry === null ? null : typeof entry.icon === "function" ? entry.icon() : entry.icon;
+              const label = entry === null ? tool.element.getAttribute("aria-label") ?? "" : resolveLocalizedText(entry.title, context.language);
+              return (
+                <button
+                  key={tool.entryId}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={tool.active}
+                  disabled={tool.disabled}
+                  className={`conversation-pill-tools-menu-item${tool.active ? " is-active" : ""}`}
+                  onClick={() => { setMenuOpen(false); tool.element.click(); }}
+                >
+                  <span className="conversation-pill-tools-menu-icon" aria-hidden="true">{icon}</span>
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </span>
+      <ToolbarTipLayer rootRef={toolsRef} />
+    </span>
+  );
+}
+
+/**
  * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
-function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails }: {
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSplitOpen }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
   readonly theme: ConversationSurfaceContext["theme"];
   readonly onToggleDetails: () => void;
+  /** 머리 줄 공통 도구모음 — 대화 동작 오른쪽에 선다. */
+  readonly tools: ReactNode;
+  /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
+  readonly sessionBrowser: SurfaceSessionBrowser | null;
+  /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
+  readonly browserSplitOpen: boolean;
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
@@ -810,11 +1055,14 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </button>
-        {actions === null || actions === false ? null : (
+        {(actions === null || actions === false) && sessionBrowser === null ? null : (
           <span className="conversation-pill-actions">
-            <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>
+            {/* 지구본은 대화 동작 맨 앞이다 — Operation 대화의 지구본과 같은 글리프·크기·카드다. 보기 전환(CLI/채팅)은 세우지 않는다. */}
+            {sessionBrowser === null ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />}
+            {actions === null || actions === false ? null : <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>}
           </span>
         )}
+        {tools}
       </div>
       <div className="conversation-body is-surface">
         <PluginErrorBoundary fallback={null}>{descriptor.render(context)}</PluginErrorBoundary>
@@ -823,7 +1071,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, operation, language, operationKinds, onToggleDetails, onClose, browserSplitOpen }: {
+function ConversationColumn({ state, operation, language, operationKinds, onToggleDetails, onClose, browserSplitOpen, tools }: {
   readonly state: ConsoleState;
   readonly operation: OperationNode;
   readonly language: "en" | "ko";
@@ -832,6 +1080,8 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   readonly onClose: (operationId: string) => void;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Operation 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSplitOpen: boolean;
+  /** 머리 줄 공통 도구모음 — 대화 동작 오른쪽에 선다. */
+  readonly tools: ReactNode;
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
@@ -846,7 +1096,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const descriptor = operationKinds.find((kind) => kind.pluginId === bodyOwner.pluginId && kind.type === bodyOwner.type)
     ?? operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
 
-  // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 캔버스 좌표가 아니므로 어디에도 저장하지 않는다.
+  // 본문 크기 — 플러그인이 읽는 geometry 는 이 칸의 실측이다. 이 값은 어디에도 저장하지 않는다.
   const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 720, height: 640, zIndex: 0 });
   const bodyRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
@@ -982,6 +1232,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
           )}
           {/* Operation 메뉴(「...」)는 이 줄에 세우지 않는다 — 같은 메뉴가 사이드바 줄의 우클릭으로 열린다. */}
         </span>
+        {tools}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}
@@ -1000,7 +1251,7 @@ function noop(): void {}
 
 // ── 오른쪽 분할 칸 ─────────────────────────────────────────────────────────
 
-type SplitKind = "fleet" | "operation";
+type SplitKind = "fleet" | "operation" | "session";
 
 /** 브라우저 칸의 최소 폭 — 탭 줄과 주소창이 한 줄에 읽히는 폭이다. 대화 열은 CONVERSATION_MIN_WIDTH 를 지킨다. */
 const SPLIT_MIN_WIDTH = 360;
@@ -1044,13 +1295,15 @@ function useViewportWidth(): number {
 /**
  * 대화 열 오른쪽 칸. 늘 마운트되어 있고(닫히면 폭 0), 폭 전이로 펼쳐지고 접힌다 — 대화 칸의 right 전이와 같은 시간·곡선이다.
  * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 내용이 선다: Fleet 브라우저는 이 칸 위에 시트가 앉아 네이티브 뷰를 한 번
- * 놓고, Operation 브라우저는 이 칸 안에 그린다.
+ * 놓고, Session 브라우저(Operation 의 companion · 플러그인 세션의 것)는 이 칸 안에 그린다.
  */
-function ConversationSplit({ kind, seat, fallbackRight, operation, state, language, operationKinds }: {
+function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds }: {
   readonly kind: SplitKind | null;
   readonly seat: SplitSeat | null;
   readonly fallbackRight: number;
   readonly operation: OperationNode | null;
+  /** 플러그인 대화의 Session 브라우저 owner — kind 가 "session" 일 때만. */
+  readonly sessionOwnerId: string | null;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
@@ -1097,6 +1350,9 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, state, langua
       style={{ right: seat?.right ?? fallbackRight, width }}
       aria-hidden={open ? undefined : true}
     >
+      {open && settled && kind === "session" && sessionOwnerId !== null ? (
+        <SessionBrowserSplitPane key={sessionOwnerId} ownerId={sessionOwnerId} theme={state.activeTheme} language={language} />
+      ) : null}
       {open && settled && kind === "operation" && operation !== null ? (
         <OperationBrowserSplitPane operation={operation} state={state} language={language} operationKinds={operationKinds} />
       ) : null}
@@ -1104,7 +1360,93 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, state, langua
   );
 }
 
-/** 칸 안의 Operation 브라우저 — 캔버스의 companion 프레임과 같은 두 슬롯(캡션·본문)을 같은 context로 그린다. */
+/** 플러그인 대화(사령관)가 쓰는 Session 브라우저 — 플러그인 id 는 호스트 등록 id, scopeId 는 그 대화가 돌려준 세션 scope 다. */
+interface SurfaceSessionBrowser {
+  readonly pluginId: string;
+  readonly scopeId: string;
+  /** 분할 칸이 이 대화의 것인지 가리는 열쇠 — `<pluginId>:<scopeId>`. */
+  readonly subjectKey: string;
+}
+
+/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. 붙여넣기 경로(onAttach)는 없다. */
+const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
+
+/**
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본(AgentCaptionActions `browser`)과 같은 글리프·크기·말풍선이다.
+ * 칸이 비어 있으면 「Fleet 브라우저 / Session 브라우저」 카드를 단추 아래에 세우고, 칸이 서 있으면 걷는다. Session 행은 누르는 순간
+ * 그 세션의 브라우저 owner 를 묻는다 — 세션이 아직 한 번도 서지 않았으면 행이 닫힌 채 까닭을 말한다. 엔진이 없거나 공유 중이면
+ * 지구본 자체가 닫힌 채 까닭을 말한다(Operation 지구본과 같은 판정). 시트를 띄우지 않고 연 Fleet 브라우저 뒤 탭 수가 모서리에 선다.
+ */
+function SurfaceBrowserButton({ session, language, splitOpen }: {
+  readonly session: SurfaceSessionBrowser;
+  readonly language: "en" | "ko";
+  readonly splitOpen: boolean;
+}) {
+  const t = getBrowserT(language);
+  const engine = useBrowserEngine();
+  const engineMissing = engine !== null && !engine.available;
+  const unseenTabs = useGlobalBrowserUnseenTabs();
+  const badge = engineMissing ? 0 : unseenTabs;
+  const slotRef = useRef<HTMLSpanElement | null>(null);
+  const pendingRef = useRef(0);
+  const base = engineMissing
+    ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
+    : t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
+  const label = badge > 0 ? `${base} · ${globalBrowserUnseenLabel(badge, language)}` : base;
+  const onClick = () => {
+    if (splitOpen) {
+      closeGlobalBrowser();
+      closeSessionBrowserSplit();
+      return;
+    }
+    const anchor = slotRef.current?.querySelector<HTMLElement>("button") ?? null;
+    if (anchor === null) return;
+    // 늦게 온 답이 그 사이 다시 누른 카드를 덮지 않게 마지막 요청만 카드를 세운다.
+    const request = ++pendingRef.current;
+    const { pluginId, scopeId, subjectKey } = session;
+    void resolveSessionBrowserTarget({ pluginId, scopeId })
+      .then((ownerId) => ({ ownerId, failed: false }), () => ({ ownerId: null, failed: true }))
+      .then(({ ownerId, failed }) => {
+        if (request !== pendingRef.current || !anchor.isConnected) return;
+        requestBrowserChooser(
+          anchor,
+          ownerId === null ? null : { open: () => openSessionBrowserSplit({ subjectKey, ownerId }) },
+          { sessionNotStarted: ownerId === null && !failed },
+        );
+      });
+  };
+  return (
+    <span ref={slotRef} className="conversation-pill-browser">
+      <CaptionActionButton actionId="browser" label={label} pressed={splitOpen} disabled={engineMissing} badge={badge} onClick={onClick}>
+        <CaptionBrowserUseGlyph />
+      </CaptionActionButton>
+    </span>
+  );
+}
+
+/** 칸 안의 플러그인 세션 Session 브라우저 — 캡션(탭 줄)과 본문을 그 owner 로 그린다. */
+function SessionBrowserSplitPane({ ownerId, theme, language }: {
+  readonly ownerId: string;
+  readonly theme: ConsoleState["activeTheme"];
+  readonly language: "en" | "ko";
+}) {
+  const t = useT();
+  return (
+    <div className="conversation-split-pane" data-keep-operation-active>
+      <header className="conversation-split-head">
+        <SessionBrowserCaption ownerId={ownerId} language={language} />
+        <button type="button" className="conversation-round conversation-split-close" onClick={closeSessionBrowserSplit} aria-label={t("conversation.split.close")} title={t("conversation.split.close")}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+        </button>
+      </header>
+      <div className="conversation-split-body">
+        <SessionBrowserPanel ownerId={ownerId} language={language} theme={theme} bodyLive services={SESSION_BROWSER_SERVICES} />
+      </div>
+    </div>
+  );
+}
+
+/** 칸 안의 Operation 브라우저 — 캡션과 본문의 두 슬롯을 같은 context로 그린다. */
 function OperationBrowserSplitPane({ operation, state, language, operationKinds }: {
   readonly operation: OperationNode;
   readonly state: ConsoleState;

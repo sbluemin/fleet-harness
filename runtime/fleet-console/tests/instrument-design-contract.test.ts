@@ -68,7 +68,7 @@ const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx"
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
   "app/app.tsx",
-  "../../../features/workspace/client/sidebar/canvas-context-menu.tsx",
+  "../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx",
   "../../../features/workspace/client/operations.tsx",
   "chrome/components/command-band.tsx",
   "chrome/components/command-band-system-cluster.tsx",
@@ -178,7 +178,7 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
   // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
-  "--canvas-menu-max-height",
+  "--launch-menu-max-height",
   // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
   "--quick-launch-pop-max-height",
   // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
@@ -667,24 +667,24 @@ describe("Instrument core design contract", () => {
 
   it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
-    const menuBlock = components.match(/\n\.canvas-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const contextMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
+    const menuBlock = components.match(/\n\.operation-launch-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
 
     // 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼 읽힌다 — 스크롤 포트(휠·키보드·
     // 플라이아웃 scroll-follow)는 남기고 시각 장치만 메뉴 문법으로 바꾼다.
     expect(menuBlock).toContain("overflow-y: auto;");
     expect(menuBlock).toContain("scrollbar-width: none;");
-    expect(components).toContain(".canvas-context-menu::-webkit-scrollbar");
+    expect(components).toContain(".operation-launch-context-menu::-webkit-scrollbar");
 
     // 절단 신호·포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다. 전부 포인터
     // 전용 장치라 aria-hidden이어야 한다 — 키보드는 방향키 포커스 추적이, 보조기술은 목록
     // 자체가 담당한다.
-    expect(contextMenu).toContain("canvas-context-menu-edge canvas-context-menu-edge--top");
-    expect(contextMenu).toContain("canvas-context-menu-edge canvas-context-menu-edge--bottom");
-    expect(contextMenu).toContain('className="canvas-context-menu-gauge"');
+    expect(contextMenu).toContain("operation-launch-context-menu-edge operation-launch-context-menu-edge--top");
+    expect(contextMenu).toContain("operation-launch-context-menu-edge operation-launch-context-menu-edge--bottom");
+    expect(contextMenu).toContain('className="operation-launch-context-menu-gauge"');
 
     // 스트립 hover 강조는 brass(위치/hover 채널) 문법 그대로다.
-    expect(components).toContain(".canvas-context-menu-edge.is-on:hover .canvas-context-menu-edge-fill");
+    expect(components).toContain(".operation-launch-context-menu-edge.is-on:hover .operation-launch-context-menu-edge-fill");
 
     // reduced-motion에서는 연속 글라이드를 접는다 — 클릭 스텝·휠·키보드만 남긴다.
     expect(contextMenu).toContain("if (prefersReducedMotion()) return;");
@@ -1068,10 +1068,6 @@ describe("Instrument core design contract", () => {
 
     expect(chip).toContain('{ "--user-accent": accentValue }');
     // 캡션 명판·스파인·미니맵 도트는 캔버스와 함께 떠났다. 정체성은 사이드바 제목 잉크다.
-    expect(components).not.toContain(".canvas-operation-id-mark");
-    expect(components).not.toContain(".canvas-operation-spine");
-    expect(components).not.toContain('.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {');
-    expect(components).not.toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
     expect(components).not.toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
     // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
     expect(components).not.toContain("border-color: var(--user-accent)");
@@ -1302,7 +1298,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".reduce-panel-motion");
     // 캔버스 패널·companion·함대 지도·Watch Deck의 등장 안무는 화면과 함께 떠났다.
     expect(components).not.toContain("companion-frame-enter");
-    expect(components).not.toContain(".canvas-triage-deck.is-map-mode");
     expect(components).not.toContain(".operations-canvas.is-fleet-map");
     expect(components).not.toContain("@keyframes panel-enter");
     expect(components).not.toContain(".panel-motion-ghost");
@@ -1313,22 +1308,22 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     // (a) pending pulse는 opacity 2단 맥동 하나뿐 — 새 안무는 keyframe과 사용처가 함께 고정된다.
     expect(components).toContain("@keyframes dormant-resume-pulse");
-    expect(components).toContain(".canvas-operation-dormant-action--pending {\n  animation: dormant-resume-pulse");
+    expect(components).toContain(".operation-dormant-action--pending {\n  animation: dormant-resume-pulse");
     // (b) 접근성 폭백: pulse는 전용 reduced-motion 블록에서 무효화된다.
-    const pendingReducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.canvas-operation-dormant-action--pending \{\s*animation: none;\s*\}\s*\}/)?.[0] ?? "";
+    const pendingReducedMotion = components.match(/@media \(prefers-reduced-motion: reduce\) \{\s*\.operation-dormant-action--pending \{\s*animation: none;\s*\}\s*\}/)?.[0] ?? "";
     expect(pendingReducedMotion).toContain("animation: none;");
     // (c) 에러 카드 문법: 상태 채널은 signal/neutral 토큰만, 회복 액션의 강조는 brass(focus/hover) 채널만.
-    const errorBlock = components.match(/\.canvas-operation-dormant--error \{[^}]*\}/)?.[0] ?? "";
+    const errorBlock = components.match(/\.operation-dormant--error \{[^}]*\}/)?.[0] ?? "";
     expect(errorBlock).toContain("cursor: default;");
-    const errorText = components.match(/\.canvas-operation-dormant-error \{[^}]*\}/)?.[0] ?? "";
+    const errorText = components.match(/\.operation-dormant-error \{[^}]*\}/)?.[0] ?? "";
     expect(errorText).toContain("color: var(--text-secondary);");
-    const ghostAction = components.match(/\.canvas-operation-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
+    const ghostAction = components.match(/\.operation-dormant-action--ghost \{[^}]*\}/)?.[0] ?? "";
     expect(ghostAction).toContain("color: var(--text-secondary);");
-    const ghostHover = components.match(/\.canvas-operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
+    const ghostHover = components.match(/\.operation-dormant-action--ghost:hover,[^]*?\{[^}]*\}/)?.[0] ?? "";
     expect(ghostHover).toContain("color: var(--brass-bright);");
     // (d) pending/disabled 중에는 hover 강조가 다시 점화하지 않는다 — 쉬는 헤일로(배수 × 10%)에 머문다.
     // 헤일로 세기는 lights-out 배수(--quiet-halo-gain)를 따른다: 다크 0(광 없음), Whites 1.
-    const disabledHover = components.match(/\.canvas-operation-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
+    const disabledHover = components.match(/\.operation-dormant:disabled:hover \{[^}]*\}/)?.[0] ?? "";
     expect(disabledHover).toContain("var(--brass) calc(var(--quiet-halo-gain) * 10%)");
   });
 
@@ -1366,7 +1361,7 @@ describe("Instrument core design contract", () => {
   });
 
   // 「한 패널만 크게」는 스냅 유지의 전체 칸이 진다 — 옛 최대화 상태를 들고 있는지 묻던 계약은
-  // 퇴역했고, 그 자리는 전체 칸 진입·복원의 행동 계약(tests/canvas-snap-full.store.test.ts)이 받는다.
+  // 퇴역했고, 대화 본문이 전체 칸을 쓴다.
 
   it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
     const app = source("app/app.tsx");
@@ -1433,7 +1428,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".tenant-beacon");
     expect(components).toMatch(/\.status-glyph \{[^}]*width: 12px;[^}]*height: 12px;[^}]*border: 1\.3px solid var\(--hairline-strong\);[^}]*border-radius: 50%;/);
     expect(components).toMatch(/\.status-glyph\.is-running::before \{[^}]*animation: status-glyph-spin 1\.4s linear infinite;/);
-    expect(components).not.toContain(".canvas-triage-deck-card");
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).not.toMatch(/\.side-bar-status-section \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
@@ -1486,7 +1480,6 @@ describe("Instrument core design contract", () => {
     expect(chip).toContain("const markVisual = mark ?? status;");
     // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
     expect(commandBand).not.toContain("resolveOperationMarkVisual");
-    expect(components).not.toContain(".canvas-operation.is-unseen");
     expect(components).toContain(".side-bar-status-axis-live-tick {");
     // 대기 틱의 호스트는 Theater 정체성 표식이다 — 전역 스위치 위에서는 어느 Theater인지가 지워진다.
     expect(sidebar).toMatch(/side-bar-theater-anchor[\s\S]{0,400}side-bar-status-axis-live-tick/);
@@ -1597,7 +1590,7 @@ describe("Instrument core design contract", () => {
     const toolbarSource = source("chrome/toolbar/console-toolbar.tsx");
     expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)/);
     expect(rightRail).not.toContain("right-rail-settings-btn");
-    expect(toolbarSource).toContain("<ConsoleHelpMenu />\n          <ToolbarSettingsButton canvas={canvas} />\n        </div>");
+    expect(toolbarSource).toContain("<ConsoleHelpMenu />\n          <ToolbarSettingsButton />\n        </div>");
     expect(toolbarSource).toContain('id="rail-settings-toggle"');
     expect(toolbarSource).toContain("toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)");
     expect(rightRail).toContain('binding.entry.scope ?? "theater"');
@@ -1715,7 +1708,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).not.toContain("command-band-search");
     expect(toolbar).toContain("onClick={toggleOperationSearch}");
     expect(toolbar).toContain("<HostSwitcher />\n          <ConsoleHelpMenu />");
-    expect(app).toContain("<ConsoleToolbar canvas={operationsViewVisible} />");
+    expect(app).toContain("<ConsoleToolbar />");
     expect(app).not.toContain("warRoomActive");
     // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 좌측 사이드바의 접기는 패널 자신의 컨트롤이,
     // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역해
@@ -1736,13 +1729,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-side-bar.is-closed.is-peeking {");
     expect(rail).not.toContain(".is-peeking");
     expect(components).toContain(".panel-edge-dock-filament {");
-    // 엣지 독은 대화 화면 위 부유 크롬이다 — 바깥 클릭이 메뉴를 닫도록 blocker 마크를 단다.
-    expect(edgeDocks).toContain("data-canvas-blocker");
     // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치와 그 캡슐은 떠났다.
     expect(commandBand).toContain(`      <div className="command-band-center">
         <span ref={setToolbarHost} className="command-band-toolbar" />`);
-    expect(toolbar).not.toContain("CanvasModeSwitch");
-    expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).not.toContain("CanvasModeSwitch");
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} />");
     // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
     // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
@@ -1864,7 +1853,7 @@ describe("Instrument core design contract", () => {
     expect(expandedTerminalBlock).toContain("background: transparent;");
     expect(expandedTerminalBlock).toContain("box-shadow: none;");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
-    const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
+    const dormantBlock = components.match(/^\.operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
     expect(dormantBlock).not.toContain("var(--ink-deep)");
     // 캡 접합 규칙은 캡과 함께 원자적으로 퇴역했다 — 남으면 부유 카드의 상단 마감(테두리·
@@ -2823,7 +2812,7 @@ describe("Instrument core design contract", () => {
 
   it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {
     const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
+    const contextMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
     // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
     const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
     const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
@@ -2855,10 +2844,10 @@ describe("Instrument core design contract", () => {
 
     // 역할·플러그인·동작 이름을 반복하던 시각 헤더는 제거한다. 메뉴 역할은 aria-label이 맡고,
     // Terminal Shell은 rail 실행으로 이동해 Etc 그룹을 만들지 않는다.
-    expect(components).not.toContain(".canvas-context-menu-reticle");
-    expect(contextMenu).not.toContain('className="canvas-context-menu-reticle"');
-    expect(contextMenu).not.toContain("canvas-context-menu-head");
-    expect(components).not.toContain(".canvas-context-menu-head {");
+    expect(components).not.toContain(".operation-launch-context-menu-reticle");
+    expect(contextMenu).not.toContain('className="operation-launch-context-menu-reticle"');
+    expect(contextMenu).not.toContain("operation-launch-context-menu-head");
+    expect(components).not.toContain(".operation-launch-context-menu-head {");
     expect(contextMenu).toContain('aria-label={menuLabel}');
     expect(contextMenu).not.toContain('canvas.menu.etc');
     expect(contextMenu).not.toContain("operation-launch-provider-glyph--etc");
@@ -2867,12 +2856,12 @@ describe("Instrument core design contract", () => {
     // 폭은 컨테이너가 단일 소유자다. 컨테이너에 폭이 없으면 설명 어사이드의 100%가 메뉴
     // 오른쪽이 아니라 왼쪽 모서리를 가리켜 설명이 메뉴 위를 덮는다(실측으로 확인).
     expect(contextMenu).toContain("const MENU_WIDTH = 264;");
-    expect(components).toMatch(/\.operation-launch-control--canvas \{[^}]*--canvas-menu-width: 264px;[^}]*width: var\(--canvas-menu-width\);/);
-    expect(components).toContain(".canvas-context-menu {\n  width: var(--canvas-menu-width);");
-    expect(components).toMatch(/\.operation-launch-control--canvas \.operation-launch-menu \{[^}]*min-width: var\(--canvas-menu-width\);/);
+    expect(components).toMatch(/\.operation-launch-control--anchored \{[^}]*--launch-menu-width: 264px;[^}]*width: var\(--launch-menu-width\);/);
+    expect(components).toContain(".operation-launch-context-menu {\n  width: var(--launch-menu-width);");
+    expect(components).toMatch(/\.operation-launch-control--anchored \.operation-launch-menu \{[^}]*min-width: var\(--launch-menu-width\);/);
     // 캔버스 전용 패딩은 두 클래스를 함께 짚어야 한다 — 한 클래스면 뒤쪽의 .theater-menu와
     // 특이도가 같아 조용히 지고 8px로 남는다(실측으로 확인한 함정).
-    expect(components).toContain(".operation-launch-menu.canvas-context-menu {\n  padding: var(--space-1);");
+    expect(components).toContain(".operation-launch-menu.operation-launch-context-menu {\n  padding: var(--space-1);");
 
     // 메뉴 조상 관계가 올바라야 menuitem이 유효하다. dialog로 되돌아가면 ARIA가 깨진다.
     expect(contextMenu).toContain('role="menu"');
@@ -2933,7 +2922,6 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
-    expect(source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx")).not.toContain("CanvasContextMenuMode");
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
     // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
     expect(systemCluster).not.toContain("command-band-settings");
@@ -2954,13 +2942,10 @@ describe("Instrument core design contract", () => {
     expect(statusIcon).toContain('import { OperationAvatar, clusterFaceFacts, mongleStateOfMark } from "../../../workspace/client/avatars.js";');
     expect(statusIcon).toContain("mongleStateOfMark(status, clusterFaceFacts(clusters, operation.id))");
     // Shell이 Operation을 떠난 뒤로 이 칸에는 활동 비콘만 선다 — 종류 분기가 사라졌다.
-    expect(components).not.toContain(".canvas-fleet-map-marker.is-shell,");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
 
-    expect(components).not.toContain(".canvas-minimap-operation.is-plugin");
     expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
-    expect(components).not.toContain(".canvas-operation--shell");
     expect(components).not.toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
     expect(source("integration/store.ts")).toContain("--unfocused-panel-opacity");
@@ -3581,7 +3566,7 @@ describe("Effort track interaction grammar", () => {
     // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
     // 쓰므로 문구가 갈라지지 않는다.
     const common = source("i18n/messages/common.ts");
-    const canvasMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
+    const canvasMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
     expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
     expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
     for (const surface of [composer, canvasMenu]) {
@@ -3667,7 +3652,7 @@ describe("Effort track interaction grammar", () => {
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
     const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
-    const canvasMenu = source("../../../features/workspace/client/sidebar/canvas-context-menu.tsx");
+    const canvasMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 

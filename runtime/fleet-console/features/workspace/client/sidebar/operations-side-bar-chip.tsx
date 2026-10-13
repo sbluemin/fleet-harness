@@ -6,7 +6,7 @@ import { consoleUseWrapClassName, gestureCallerLabel, getOperationWrap, subscrib
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { OperationWorkspaceContext, chipWorkspace, describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
+import { describeWorkspace, visibleWorkspace } from "../../../execution/client/components/operation-workspace-context.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -22,7 +22,7 @@ import { OperationDetailCard } from "./operation-detail-card.js";
 import { pointOnText } from "./operations-side-bar-hit-test.js";
 import { DecisionRequestMark } from "../decision-request-mark.js";
 import { scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { CONVERSATION_ROW_PHRASE, useSideBarRowStyle } from "./side-bar-row-style.js";
+import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useConversationRowPreview } from "../conversation/conversation-slots.js";
 
 /** 포인터가 잠깐 지나가는 것과 겨누는 것을 가르는 시간. 목록을 훑는 동안 카드가 따라 뜨면 안 된다. */
@@ -131,10 +131,8 @@ export function OperationsSideBarChip({
   const session = useAgentState().sessions[operation.id];
   const context = visibleWorkspace(session?.workspace);
   // 대화 중심 화면의 행은 위치 줄 대신 상태 문구 한 줄을 둔다(위치는 겨누면 뜨는 상세 카드가 그대로 말한다).
-  const conversationRow = useSideBarRowStyle() === "conversation";
   // 미리보기 원천(그룹 타임라인)이 연결되면 마지막 발화가, 아니면 상태 문구가 그 줄에 선다 — 연결 지점은 이 한 곳이다.
   const rowPreview = useConversationRowPreview(operation.id);
-  const chipContext = conversationRow ? null : chipWorkspace(context);
   const workspaceContext = context ? describeWorkspace(t, context) : "";
   // 상태에 담는 것은 칩의 자리뿐이다: 내용을 스냅샷으로 얼려 두면 열어 둔 채 활동이나 작업 폴더가
   // 바뀌었을 때 카드가 지난 사실을 계속 말한다.
@@ -165,8 +163,7 @@ export function OperationsSideBarChip({
     statusLanded ? "side-bar-chip--status-landed" : "",
     dragging ? "side-bar-chip--dragging" : "",
     dropTarget ? "side-bar-chip--drop-target" : "",
-    chipContext ? "side-bar-chip--with-context" : "",
-    conversationRow ? "side-bar-chip--conversation" : "",
+    "side-bar-chip--conversation",
   ].filter(Boolean).join(" ");
   const chipStyle = {
     "--i": index,
@@ -363,7 +360,7 @@ export function OperationsSideBarChip({
           몸짓으로 말한다(구성원은 베이스만, 그 밖은 지휘관 안테나). 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 아바타가 그 이름을 진다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, { decisionRequest: cluster?.decisionRequest === true, awaitingReview: cluster?.awaitingReview === true })} size={conversationRow ? 22 : 20} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
+        <OperationAvatar operation={operation} state={mongleStateOfMark(markVisual, { decisionRequest: cluster?.decisionRequest === true, awaitingReview: cluster?.awaitingReview === true })} size={22} label={operationMarkLabel(markVisual)} className="side-bar-chip-status" />
       </span>
       <span className="side-bar-chip-text">
         {/* 이름 줄 — 스냅 표식은 이름의 생략 부호 밖에 서므로 제목이 길어도 잘리지 않는다.
@@ -388,8 +385,7 @@ export function OperationsSideBarChip({
             </>
           )}
         </span>
-        {chipContext ? <OperationWorkspaceContext workspace={chipContext} className="side-bar-chip-context" titled={false} /> : null}
-        {conversationRow && markVisual ? (
+        {markVisual ? (
           <span className="side-bar-chip-preview" aria-hidden="true">
             {rowPreview?.text ?? t(cluster?.decisionRequest ? "conversation.row.decision" : CONVERSATION_ROW_PHRASE[markVisual])}
           </span>

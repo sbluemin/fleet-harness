@@ -19,8 +19,8 @@ export interface ArchiveSectionCount {
  */
 export function useArchiveSections(query = "", theaterIds?: readonly string[]): readonly ArchiveSectionCount[] {
   const { archiveSections } = usePluginRegistry();
-  const theaterId = useConsoleState().activeTheaterId;
-  const idsKey = JSON.stringify(theaterIds ?? [theaterId]);
+  const registeredIds = useConsoleState().theaters.map((theater) => theater.id);
+  const idsKey = JSON.stringify(theaterIds ?? registeredIds);
   const subscribe = useCallback((listener: () => void) => {
     const offs = archiveSections.map((section) => section.subscribe(listener));
     return () => { for (const off of offs) off(); };
@@ -37,9 +37,8 @@ export function useArchiveSections(query = "", theaterIds?: readonly string[]): 
 /** 보관함 전체 수 — 보관한 Operation과 플러그인 칸의 수를 더한다. */
 function useArchiveTotal(): { readonly total: number; readonly sections: readonly ArchiveSectionCount[] } {
   const { totalsByTheater } = useOperationArchive();
-  const theaterId = useConsoleState().activeTheaterId;
   const sections = useArchiveSections();
-  return { total: (theaterId ? totalsByTheater[theaterId] ?? 0 : 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
+  return { total: Object.values(totalsByTheater).reduce((sum, count) => sum + count, 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
 }
 
 /** 사이드바 맨 아래의 보관함 입구 — 보관한 목록 바로 아래라 「치운 것은 여기 있다」가 한눈에 읽힌다. */

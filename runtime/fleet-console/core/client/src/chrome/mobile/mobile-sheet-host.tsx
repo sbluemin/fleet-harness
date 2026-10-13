@@ -1,3 +1,4 @@
+import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
@@ -10,7 +11,7 @@ import { openTheaterSystemPrompt } from "../../../../../features/settings/client
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, openQuickLaunch, setActiveTheater } from "../../integration/store.js";
+import { getState, openQuickLaunch } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -24,7 +25,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -71,7 +72,7 @@ async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Pr
   await registerTheaterFromPath(path);
   const current = getState();
   if (current.theaterError !== null) return;
-  const label = current.theaters.find((theater) => theater.id === current.activeTheaterId)?.label;
+  const label = current.theaters.find((theater) => theater.id === getViewedTheaterId())?.label;
   if (label) showMobileToast(t("mobile.toast.theaterAdded", { name: label }));
 }
 
@@ -122,7 +123,7 @@ function TheaterSheet({ state }: { readonly state: ConsoleState }) {
         {state.theaters.map((theater) => {
           const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
           const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
-          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === state.activeTheaterId} count={operations.length} awaiting={awaiting} />;
+          return <TheaterSheetRow key={theater.id} theater={theater} here={theater.id === getViewedTheaterId()} count={operations.length} awaiting={awaiting} />;
         })}
         <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })} disabled={state.addingTheater}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="plus" /></span>
@@ -164,7 +165,7 @@ function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater:
         openActions();
       }}
       onClick={() => {
-        setActiveTheater(theater.id);
+        setMobileListTheaterId(theater.id);
         closeMobileSheets();
       }}
     >
@@ -405,8 +406,8 @@ function runAfterSheetRelease(action: () => void): void {
 function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const bindings = useRailEntries();
-  const shell = useMobileDestinationBindings(bindings, state.activeTheaterId).find((binding) => binding.entry.id === globalShellEntry.id);
-  const hasTheater = state.activeTheaterId !== null;
+  const shell = useMobileDestinationBindings(bindings, getViewedTheaterId()).find((binding) => binding.entry.id === globalShellEntry.id);
+  const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
       <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openQuickLaunch)}>
