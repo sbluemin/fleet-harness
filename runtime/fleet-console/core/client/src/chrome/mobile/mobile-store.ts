@@ -26,13 +26,20 @@ function subscribe(listener: Listener): () => void {
  */
 export type MobileDestination =
   | { readonly kind: "home" }
-  /** 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다. */
-  | { readonly kind: "info" }
+  /**
+   * 열린 Operation(대화)의 정보 화면 — Operation 화면 머리 pill이 연다. 열린 Operation이 없으면 홈(대화 목록)으로 읽힌다.
+   * `tab`은 처음 세울 탭(엔트리의 `mobile.conversationPane`으로 오는 착지) — 생략하면 「정보」 탭이다.
+   */
+  | { readonly kind: "info"; readonly tab?: string }
   | { readonly kind: "attention" }
   | { readonly kind: "archive" }
   | { readonly kind: "search"; readonly scope?: "archive" }
   | { readonly kind: "plugins" }
-  | { readonly kind: "plugin"; readonly entryId: string };
+  /**
+   * 플러그인 목적지 화면. `params`는 그 화면 primary 페인의 주소(`PaneContext.params`) — 페인이 `panes.replaceParams`로 대상을 바꾸면
+   * 화면이 여기에 옮겨 적고, 새로고침·딥링크는 그 params로 페인을 다시 연다(`?dest=plugin:<엔트리>?<params>`).
+   */
+  | { readonly kind: "plugin"; readonly entryId: string; readonly params?: Readonly<Record<string, string>> };
 
 // 새로고침해도 보던 목적지를 잃지 않게 주소(`?dest=`)에 남긴다 — 첫 화면(IA-G2)은 앱을 새로 열 때의 기본이고, 새로고침은 그 자리 유지다.
 const DEST_PARAM = "dest";
@@ -42,16 +49,34 @@ function readDestinationFromUrl(): MobileDestination {
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
-  if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) return { kind: "plugin", entryId: raw.slice(7) };
+  if (raw !== null && raw.startsWith("info:") && raw.length > 5) return { kind: "info", tab: raw.slice(5) };
+  if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) {
+    const [entryId = "", query] = splitOnce(raw.slice(7), "?");
+    const params = query === undefined ? {} : Object.fromEntries(new URLSearchParams(query));
+    if (entryId) return Object.keys(params).length > 0 ? { kind: "plugin", entryId, params } : { kind: "plugin", entryId };
+  }
   return { kind: "home" };
 }
 
 export function syncMobileDestinationUrl(): void { writeDestinationToUrl(destination); }
 
+function splitOnce(value: string, separator: string): [string, string | undefined] {
+  const index = value.indexOf(separator);
+  return index < 0 ? [value, undefined] : [value.slice(0, index), value.slice(index + 1)];
+}
+
+/** 목적지 params의 주소 꼬리 — 키 순서를 고정해 같은 params가 같은 주소가 되게 한다. */
+function paramsSuffix(params: Readonly<Record<string, string>> | undefined): string {
+  if (!params) return "";
+  const query = new URLSearchParams(Object.entries(params).sort(([left], [right]) => left.localeCompare(right))).toString();
+  return query ? `?${query}` : "";
+}
+
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}` : next.kind === "search" && next.scope === "archive" ? "search:archive" : next.kind;
+  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
+    : next.kind === "info" && next.tab !== undefined ? `info:${next.tab}` : next.kind;
   if ((url.searchParams.get(DEST_PARAM)) === value) return;
   if (value === null) url.searchParams.delete(DEST_PARAM);
   else url.searchParams.set(DEST_PARAM, value);
@@ -67,10 +92,34 @@ export function useMobileDestination(): MobileDestination {
 export function getMobileDestination(): MobileDestination { return destination; }
 
 export function setMobileDestination(next: MobileDestination): void {
-  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope) return;
+  if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
+    && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
+    && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;
   destination = next;
   writeDestinationToUrl(next);
   emit();
+}
+
+/** 대화 정보 화면에서 엔트리(`mobile.conversationPane`)가 세우는 탭의 id — 착지 요청과 탭 목록이 같은 id를 쓴다. */
+export function conversationTabId(entryId: string): string {
+  return `entry:${entryId}`;
+}
+
+/**
+ * 대화를 열면서 그 정보 화면의 탭으로 착지하라는 한 번짜리 요청. 대화 열기는 포커스 요청(`focusOperation`)을 거쳐 Operations 화면이
+ * 소비하며 목적지를 홈으로 되돌리므로, 그 소비가 같은 대화에 대해 이 요청을 집어 정보 화면으로 세운다. 다른 대화의 소비는 요청을 버린다.
+ */
+let pendingConversationTab: { readonly operationId: string; readonly tab: string } | null = null;
+
+export function requestMobileConversationTab(operationId: string, tab: string): void {
+  pendingConversationTab = { operationId, tab };
+}
+
+/** 대화 열기 요청을 소비할 때의 목적지 — 그 대화에 걸린 탭 요청이 있으면 정보 화면, 아니면 홈. */
+export function takeMobileConversationDestination(operationId: string): MobileDestination {
+  const pending = pendingConversationTab;
+  pendingConversationTab = null;
+  return pending?.operationId === operationId ? { kind: "info", tab: pending.tab } : { kind: "home" };
 }
 
 // ── 도구 시트(목적지가 아닌 레일 엔트리·확대 표면) ────────────────────────
@@ -88,7 +137,8 @@ export function useMobileTool(): MobileTool | null {
 export function setMobileTool(next: MobileTool | null): void {
   if (next?.kind === "rail" && destinationEntryIds.has(next.id)) {
     activeTool = null;
-    setMobileDestination({ kind: "plugin", entryId: next.id });
+    // 이미 그 목적지 화면이면 주소(params)를 지킨다 — 화면이 마운트하며 다시 여는 길이 복원한 params를 지우지 않게.
+    if (!(destination.kind === "plugin" && destination.entryId === next.id)) setMobileDestination({ kind: "plugin", entryId: next.id });
     emit();
     return;
   }

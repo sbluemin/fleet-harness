@@ -144,6 +144,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
+    // 완료하면 지휘관 Operation 이 보관되어 /state 에서 빠진다 — 폰 홈의 「끝남」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
+    { name: "finished", method: "POST", summary: "Read the completed objectives of a Theater whose Commander Operation is archived, most recent first (the phone home's Done section).", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.all().filter((item) => item.theaterId === theaterId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },
     // 목표 레코드만 만든다 — 같은 ID의 지휘관 Operation은 첫 「구상」·「시작」 때 선다.

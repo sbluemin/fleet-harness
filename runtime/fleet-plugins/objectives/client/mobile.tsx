@@ -4,14 +4,13 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ConsoleOperationSummary } from "@fleet-console/sdk/plugin";
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
-import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
-import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import type { RailEntryAttentionItem, RailEntryFinishedItem } from "@fleet-console/sdk/rail";
+import { SettingsCard, SettingsRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
-import { memberFailureNote } from "./clusters.js";
-import { commodoreBoardOf, decisionTurn, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
+import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import type { CommodoreAsk } from "../server/commodore/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -22,12 +21,13 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
-import { focusOperation, hasDecisionRequest, post, returnPersonHold, readAllTheaters, readTheater, revealObjective, subscribeObjective, removeObjectiveLocally, takeReveal, upsertObjectiveLocally, useObjectiveTheater, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { activeTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
- * 모바일 목적지 「목표」 — 목록(결정 필요·진행 중·시작 전·끝남)과 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물).
- * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 상단 막대는 호스트가 그리고 여기서는 제목·깊이·뒤로·⋮ 항목만 선언한다.
+ * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물) 하나를 두 자리에 세운다. 폰에는 목표 목록(보드)이 없다.
+ * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
+ * 지휘관 Operation 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
  * 노출 판정도 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
@@ -50,8 +50,9 @@ const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: numbe
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
 const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 20}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
-/** 호스트 모바일 ⋮의 보관 아이콘과 같은 상자. */
+/** 호스트 모바일 ⋮의 보관·이름 변경 아이콘과 같은 모양. */
 const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;
+const PencilIcon = () => <Icon><path d="M4 20h4L19 9l-4-4L4 16v4z" /><path d="M13.5 6.5l4 4" /></Icon>;
 const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none" /></Icon>;
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
 const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
@@ -88,15 +89,22 @@ const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 
  */
 const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
 
-/** 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 같은 상태면 같은 참조. */
+/**
+ * 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 살아 있는 목록에 없으면 「끝남」(보관된 완료 목표)에서 찾는다.
+ * 같은 상태면 같은 참조.
+ */
 function findObjective(objectiveId: string): Objective | null {
   for (const state of readAllTheaters()) {
     const found = state.objectives.find((objective) => objective.id === objectiveId);
     if (found) return found;
   }
+  for (const finished of finishedByTheater.values()) {
+    const found = finished.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
   return null;
 }
-const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjective, () => findObjective(objectiveId), () => findObjective(objectiveId));
+const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
 
 // ── 「확인 필요」 행 ──
 
@@ -138,111 +146,139 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
       id: objective.id,
       title: objective.title,
       reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
-      open: () => revealObjective({ objectiveId: objective.id }),
+      open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
     })),
   ];
   attentionMemo.set(key, { source, asks, locale, answering, items });
   return items;
 }
 
-// ── 목록 ──
+// ── 홈 「끝남」 ──
 
-export function MobileObjectiveList({ ctx }: { readonly ctx: PaneContext }) {
-  const t = getT(ctx.language);
-  const state = useObjectiveTheater(ctx.theaterId);
-  const commodore = useCommodoreBoard(ctx.theaterId ?? "");
-  const operations = operationIndex(useOperationSummaries());
+/**
+ * 「끝남」의 원천 — 완료로 지휘관 Operation 이 보관된 목표들(`/finished`). 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다.
+ * 살아 있는 목록의 명단이 바뀔 때(완료로 보관돼 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. 보는 사람의 편의라 메모리에만 둔다.
+ */
+const finishedByTheater = new Map<string, readonly Objective[]>();
+const finishedListeners = new Set<() => void>();
+const finishedInflight = new Set<string>();
+let finishedRoster = "";
+
+function noteFinished(): void { for (const listener of finishedListeners) listener(); }
+
+function readFinished(theaterId: string): void {
+  const api = objectivesApi();
+  if (!api || finishedInflight.has(theaterId)) return;
+  finishedInflight.add(theaterId);
+  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
+    .then((result) => {
+      if (!Array.isArray(result?.objectives)) return;
+      finishedByTheater.set(theaterId, result.objectives);
+      noteFinished();
+    })
+    .catch(() => undefined)
+    .finally(() => { finishedInflight.delete(theaterId); });
+}
+
+/** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
+function followFinished(): void {
+  const theaterId = activeTheaterId();
+  if (!theaterId) return;
+  const state = readTheater(theaterId);
+  if (!state.loaded) return;
+  const roster = `${theaterId}|${state.objectives.map((objective) => objective.id).join(",")}`;
+  if (roster === finishedRoster) return;
+  finishedRoster = roster;
+  readFinished(theaterId);
+}
+
+/** 「끝남」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
+export function subscribeFinishedObjectives(listener: () => void): () => void {
+  finishedListeners.add(listener);
+  const off = subscribeObjective(() => { followFinished(); listener(); });
+  followFinished();
+  return () => { finishedListeners.delete(listener); off(); };
+}
+
+/** 목표 화면이 보관된 끝난 목표로 착지했는데(새로고침 등) 아직 읽지 않았으면 그 Theater 의 「끝남」을 읽는다. */
+function ensureFinished(theaterId: string | null): void {
+  if (theaterId && !finishedByTheater.has(theaterId)) readFinished(theaterId);
+}
+
+const subscribeObjectiveOrFinished = (listener: () => void): (() => void) => {
+  const off = subscribeObjective(listener);
+  finishedListeners.add(listener);
+  return () => { off(); finishedListeners.delete(listener); };
+};
+
+/**
+ * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 완료로 지휘관이 보관된 목표, 최근에 끝난 것부터. 복원돼 다시 살아 있는
+ * 목록에 선 목표는 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
+ */
+export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
+  if (theaterId === null) return [];
+  const t = getT(locale);
+  const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
+  return (finishedByTheater.get(theaterId) ?? [])
+    .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
+    .map((objective) => {
+      // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
+      const members = objective.members.length;
+      const total = objective.criteria.length;
+      return {
+        id: objective.id,
+        title: objective.title,
+        detail: total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members }),
+        avatarOperationId: objective.id,
+        open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
+      };
+    });
+}
+
+// ── 목표 화면 ──
+
+/**
+ * 폰의 목표 화면 — 칩 없는 목적지(`destination.chip: false`)의 본문이다. 목표 목록은 폰에 없고, 이 화면의 입구는 플러그인의 착지(`openObjectiveOnPhone`)뿐이다:
+ * 지휘관 Operation 이 없는 목표나 대화 탭이 서지 못한 목표를 reveal(또는 호스트가 돌려준 params)로 받아 그 상세를 뿌리(depth 0)로 세운다 — ‹ 는 홈이다.
+ * 고른 목표는 페인 params(`objectiveId`)에 두어 호스트의 목적지 주소로 새로고침을 넘긴다.
+ */
+export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   const reveal = useReveal();
-  const [doneOpen, setDoneOpen] = useState(false);
-  // 「시작 전」은 펼친 채로 연다 — 접어 두면 시작 전 목표 하나를 여는 데 한 번 더 눌러야 한다.
-  const [freshOpen, setFreshOpen] = useState(true);
-  // 「사령관이 맡음」은 접힌 채로 연다 — 사람이 답할 것이 아니다.
-  const [handledOpen, setHandledOpen] = useState(false);
-  const { mobileBar, panes, visible } = ctx;
-  const title = t("objectives.panel.title");
-
-  // 상세에서 돌아오면 막대를 다시 뿌리로 — 마지막 선언이 이기므로 보일 때마다 선언한다.
-  useEffect(() => { if (visible) mobileBar?.set({ title, depth: 0 }); }, [mobileBar, visible, title]);
-  // 「확인 필요」 행·팔레트가 남긴 reveal 을 집어 상세를 연다.
+  const { panes } = ctx;
+  // 보이는 목표는 페인 주소(params)가 든다 — 호스트가 목적지 주소에 옮겨 적어, 새로고침·딥링크에도 같은 목표가 선다.
+  // 착지는 reveal 로 오거나(시작 전 줄·질문 카드) 호스트가 대화 탭 대신 돌려준 `operationId` 로 온다 — 둘 다 `objectiveId` 하나로 고쳐 적는다.
+  // primary params 는 화면을 닫아도 남는다(호스트 계약) — 새 착지의 reveal 이 아직 집히기 전이면 그것을 먼저 그려 옛 목표가 한 번 비치지 않게 한다.
+  const objectiveId = reveal?.objectiveId ?? ctx.params.objectiveId ?? ctx.params.operationId ?? "";
   useEffect(() => {
     if (!reveal) return;
     const target = takeReveal();
-    if (target) panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: target.objectiveId } });
+    if (target) panes.replaceParams({ objectiveId: target.objectiveId });
   }, [reveal, panes]);
+  useEffect(() => {
+    if (ctx.params.objectiveId === undefined && ctx.params.operationId) panes.replaceParams({ objectiveId: ctx.params.operationId });
+  }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
+  // 보관된 끝난 목표로 착지했다면(「끝남」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
+  const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
+  useEffect(() => { if (objectiveId && !known) ensureFinished(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
+  // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
+  const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
+  const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);
+  useEffect(() => {
+    if (!objectiveId) return;
+    const previous = seen.current;
+    seen.current = { id: objectiveId, had: hasCommander };
+    if (previous?.id === objectiveId && !previous.had && hasCommander && ctx.visible) focusOperation(objectiveId);
+  }, [objectiveId, hasCommander, ctx.visible]);
+  return <MobileObjectiveDetail ctx={ctx} objectiveId={objectiveId} />;
+}
 
-  const shown = state.objectives.filter(isListedObjective);
-  // 데스크톱 결정 구역과 같은 판정 — 사람의 차례는 「내 결정」, 자율 운영 중 사령관이 맡은 결정 요청은 접힌 「사령관이 맡음」.
-  const need = shown.filter((objective) => !objective.done && personTurnAt(objective, commodore.active) !== null);
-  const handled = shown.filter((objective) => personTurnAt(objective, commodore.active) === null && decisionTurn(objective, commodore.active) === "commodore");
-  const zoned = new Set([...need, ...handled].map((objective) => objective.id));
-  // 데스크톱 접기(`switcher.tsx` freshOf)와 같은 판정 — 개시 전이고, 지휘관 Operation 이 없고, 검토 대기가 아니다.
-  const fresh = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
-  const live = shown.filter((objective) => !objective.done && !zoned.has(objective.id));
-  const running = live.filter((objective) => !fresh(objective));
-  const notStarted = live.filter(fresh);
-  const done = shown.filter((objective) => !!objective.done);
-  const open = (objective: Objective) => panes.open({ paneId: OBJECTIVE_MOBILE_DETAIL_PANE, params: { objectiveId: objective.id } });
-
-  const row = (objective: Objective) => {
-    const pending = hasDecisionRequest(objective);
-    const turn = decisionTurn(objective, commodore.active);
-    const handed = livePersonHolds(objective).length > 0;
-    // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
-    const members = objective.members.length;
-    const total = objective.criteria.length;
-    // 데스크톱 사이드바 줄 메모와 같은 판정 — 확인하지 않은 구성원 실패가 남은 동안만 선다.
-    const failed = memberFailureNote(objective);
-    return (
-      <button key={objective.id} type="button" data-press="r2" className="objectives-m-row is-two" onClick={() => open(objective)}>
-        <CommanderMark objective={objective} operations={operations} />
-        <span className="objectives-m-tx">
-          {objective.title}
-          <small className={turn === "person" || handed ? "is-awaiting" : undefined}>
-            {pending ? t("objectives.mobile.row.decision", { count: requestCount(objective) }) : ""}
-            {turn === "commodore" ? `${t("objectives.commodore.note.answering")} · ` : ""}
-            {handed ? `${t("objectives.commodore.note.handed")} · ` : ""}
-            {failed ? <><span className="objectives-m-failed">{t(failed)}</span>{" · "}</> : null}
-            {total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members })}
-          </small>
-        </span>
-      </button>
-    );
-  };
-
-  if (!state.loaded) return <div className="objectives-m" aria-busy="true" />;
-  return (
-    <div className="objectives-m">
-      <div className="objectives-m-pad">
-        {shown.length === 0 ? <p className="objectives-m-note">{t("objectives.mobile.empty")}</p> : null}
-        {need.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.need")}</h2><div className="objectives-m-grp">{need.map(row)}</div></> : null}
-        {handled.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={handledOpen} onClick={() => setHandledOpen((value) => !value)}>
-              {t("objectives.mobile.zone.handled", { count: handled.length })}<Chevron open={handledOpen} size={16} />
-            </button>
-            {handledOpen ? <div className="objectives-m-grp">{handled.map(row)}</div> : null}
-          </>
-        ) : null}
-        {running.length > 0 ? <><h2 className="objectives-m-glab">{t("objectives.mobile.zone.running")}</h2><div className="objectives-m-grp">{running.map(row)}</div></> : null}
-        {notStarted.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={freshOpen} onClick={() => setFreshOpen((value) => !value)}>
-              {t("objectives.mobile.zone.fresh", { count: notStarted.length })}<Chevron open={freshOpen} size={16} />
-            </button>
-            {freshOpen ? <div className="objectives-m-grp">{notStarted.map(row)}</div> : null}
-          </>
-        ) : null}
-        {shown.length > 0 ? (
-          <>
-            <button type="button" data-press="r1" className="objectives-m-glab is-fold" aria-expanded={doneOpen} onClick={() => setDoneOpen((value) => !value)}>
-              {t("objectives.mobile.zone.done", { count: done.length })}<Chevron open={doneOpen} size={16} />
-            </button>
-            {doneOpen && done.length > 0 ? <div className="objectives-m-grp">{done.map(row)}</div> : null}
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
+/** 대화 주인 Operation 의 목표 — 지휘관 Operation 이면 그 목표, 구성원 Operation 이면 그 구성원이 속한 목표. 같은 상태면 같은 참조. */
+export function objectiveOfOperation(operationId: string): Objective | null {
+  for (const state of readAllTheaters()) {
+    const found = state.objectives.find((objective) => isListedObjective(objective) && (objective.id === operationId || objective.members.some((member) => member.id === operationId)));
+    if (found) return found;
+  }
+  return null;
 }
 
 // ── 상세 ──
@@ -261,7 +297,7 @@ interface ObjectiveActions {
    * 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다.
    * review 는 개시가 라우팅으로 새로 띄울 구성원이다 — 라우팅 확인이 켜져 있을 때만 차고, 차 있으면 개시는 확인 시트를 거친다.
    */
-  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[] } | null;
+  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[]; readonly primary: boolean } | null;
   /**
    * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정(띠의 판정 순서와 같다), null 이면
    * 누를 수 있다. followups 는 완료가 후속 후보 고르기를 거쳐야 하는가(띠의 followupAvailable) — 그러면 완료는 고르기 시트를 연다.
@@ -291,11 +327,14 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
   // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 확인이 꺼져 있으면 서버가 개시 때 판단한다.
   const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id))) : [];
+  // 띠의 주 동작이 개시·재개일 때 개시 카드가 주 단추다 — 폰에 있는 다른 할 일(답·인계·완료 등)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
+  // 띠의 주 동작이 폰에 없는 것(구상·재구상·스티어링·확장)이면 이 화면에서 경쟁할 걸음이 없으므로 개시가 주 단추다.
+  const primary = choices.primary === "start" || choices.primary === "resume" || (choices.primary !== null && !PHONE_STEPS.has(choices.primary));
   const commence = done ? null
     : has("start") || has("resume")
-      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review }
-      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review }
-        : working ? { kind, reason: t("objectives.mobile.commence.working"), review } : null;
+      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review, primary }
+      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review, primary }
+        : working ? { kind, reason: t("objectives.mobile.commence.working"), review, primary } : null;
   const finish: ObjectiveActions["finish"] = done || !objective.awaitingReview ? null : {
     blocked: choices.primary === "complete" && !choices.gated ? null
       : commanderAwaiting ? "awaiting"
@@ -309,6 +348,9 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   return { recipients, message: has("message"), complete: has("complete"), handOff: has("handOff"), stop: has("stop"), commence, finish };
 }
 
+/** 폰 상세가 직접 세우는 띠의 걸음 — 결정 답(본문 카드)과 동작 줄의 메시지·완료·검토로 넘기기·중단. 구상·스티어링·확장은 폰에 없다. */
+const PHONE_STEPS: ReadonlySet<string> = new Set(["decide", "decideMember", "message", "complete", "handOff", "stop"]);
+
 /** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
 const FIELD_GAP_PX = 8;
 const TEXT_FIELD = "textarea, input:is(:not([type]), [type=text], [type=search], [type=email], [type=url], [type=tel], [type=number], [type=password])";
@@ -317,7 +359,8 @@ const TEXT_FIELD = "textarea, input:is(:not([type]), [type=text], [type=search],
  * 가상 키보드가 뷰포트를 줄여도 포커스한 입력이 화면 안에 남게 한다. WebView(adjustResize)는 높이만 줄이고 이 화면의
  * 내부 스크롤 칸(.objectives-m) 안의 입력은 끌어올리지 않는다(실기기: 결정 질문 2의 자유 입력이 키보드 아래 214.8px에 숨었다).
  * 포커스와 뷰포트 resize 때, 이미 보이는 입력은 그대로 두고 가려진 만큼만 이 칸을 스크롤한다(nearest). 셸·문서의 다른 스크롤
- * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다.
+ * 조상은 건드리지 않는다. 시트(포털)의 입력은 이 칸 밖이라 대상이 아니다. 대화 정보 화면에 심긴 상세는 스스로 스크롤하지 않으므로
+ * 그때 이 칸은 가장 가까운 스크롤 조상(정보 화면)이다.
  */
 function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | null }) {
   useEffect(() => {
@@ -329,13 +372,14 @@ function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | nul
         const field = document.activeElement;
         // 키보드를 부르는 글 입력만 — 설정 토글(checkbox)처럼 키보드 없는 입력은 포커스돼도 움직이지 않는다.
         if (!root || !(field instanceof HTMLElement) || !field.matches(TEXT_FIELD) || !root.contains(field)) return;
+        const scroller = scrollerOf(root);
         const viewport = window.visualViewport;
-        const box = root.getBoundingClientRect();
+        const box = scroller.getBoundingClientRect();
         const top = Math.max(box.top, viewport?.offsetTop ?? 0);
         const bottom = Math.min(box.bottom, viewport ? viewport.offsetTop + viewport.height : window.innerHeight);
         const rect = field.getBoundingClientRect();
-        if (rect.bottom > bottom) root.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
-        else if (rect.top < top) root.scrollTop -= top - rect.top + FIELD_GAP_PX;
+        if (rect.bottom > bottom) scroller.scrollTop += Math.min(rect.bottom - bottom + FIELD_GAP_PX, rect.top - top);
+        else if (rect.top < top) scroller.scrollTop -= top - rect.top + FIELD_GAP_PX;
       });
     };
     document.addEventListener("focusin", settle);
@@ -350,14 +394,36 @@ function useFocusedFieldInView(rootRef: { readonly current: HTMLDivElement | nul
   }, [rootRef]);
 }
 
-export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
+/** 입력을 끌어올릴 스크롤 칸 — 상세 자신(.objectives-m)이 스크롤하면 그것, 아니면 가장 가까운 스크롤 조상이다. */
+function scrollerOf(root: HTMLElement): HTMLElement {
+  for (let node: HTMLElement | null = root; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return node;
+  }
+  return root;
+}
+
+/** 대화 정보 화면의 「목표」 탭 본문 — 호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 params 로 싣는다(막대 창구 없음). */
+export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext }) {
+  const operationId = ctx.params.operationId ?? "";
+  const objective = useSyncExternalStore(subscribeObjective, () => objectiveOfOperation(operationId), () => objectiveOfOperation(operationId));
+  return <MobileObjectiveDetail ctx={ctx} objectiveId={objective?.id ?? ""} />;
+}
+
+/**
+ * 목표 상세 — 두 자리에 선다. 목표 화면(`MobileObjectiveScreen`)에서는 호스트 막대(`mobileBar`)에 제목·⋮ 동작을 선언하는 뿌리이고,
+ * 대화 정보 화면의 「목표」 탭에서는 막대가 없어 같은 동작을 본문 맨 위 동작 줄로 그린다. 제목은 정보 화면 머리가 말하므로 본문에 다시 세우지 않는다.
+ * 보관은 두 자리 모두 두지 않는다 — Operation 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Operation 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
+ */
+export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
   const t = getT(ctx.language);
   const language = ctx.language ?? "en";
-  const objectiveId = ctx.params.objectiveId ?? "";
   const objective = useObjective(objectiveId);
   const operations = operationIndex(useOperationSummaries());
-  const { mobileBar, panes, visible, api } = ctx;
-  const title = objective?.title ?? "";
+  const { mobileBar, visible, api } = ctx;
+  // 막대가 없으면 대화 정보 화면의 「목표」 탭에 심긴 것이다 — 동작은 본문 맨 위 동작 줄로 그린다.
+  const embedded = !mobileBar;
+  const title = objective?.title ?? t("objectives.panel.title");
   const [sheet, setSheet] = useState(false);
   const [routingSheet, setRoutingSheet] = useState(false);
   const [followupSheet, setFollowupSheet] = useState(false);
@@ -370,6 +436,9 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
     const timer = setTimeout(() => setToast(null), TOAST_MS);
     return () => clearTimeout(timer);
   }, [toast]);
+  // 탭으로 착지한 목표의 reveal 은 이 자리가 집는다 — 남겨 두면 나중에 목표 화면이 열릴 때 엉뚱하게 이 목표를 세운다.
+  const reveal = useReveal();
+  useEffect(() => { if (embedded && reveal && reveal.objectiveId === objectiveId) takeReveal(); }, [embedded, reveal, objectiveId]);
 
   const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
   const actions = objective ? objectiveActions(objective, operations, t, launchAvailable) : null;
@@ -382,53 +451,87 @@ export function MobileObjectiveDetail({ ctx }: { readonly ctx: PaneContext }) {
   const followupCount = objective && !objective.done ? openFollowups(objective).length : 0;
   useEffect(() => { if (followupCount === 0) setFollowupSheet(false); }, [followupCount]);
   // 막대 선언은 내용이 바뀔 때만 다시 한다 — 매 렌더 선언하면 호스트 갱신과 맞물려 돈다. 동작은 ref 로 최신을 부른다.
-  // 데스크톱 상세 머리와 같은 조건 — 지휘관 묶음이 일하는 동안은 보관 입구를 내지 않는다.
-  const archivable = objective?.hasOperation === true && (!!objective.done || !WORKING.has(activityOf(operations, objective.id)));
-  const latest = useRef({ actions, objectiveId, say, language, t, archivable });
-  latest.current = { actions, objectiveId, say, language, t, archivable };
+  const latest = useRef({ actions, objectiveId, say, language, t });
+  latest.current = { actions, objectiveId, say, language, t };
   const act = useCallback((path: string) => {
     const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
     void post(api, path, { objectiveId: id, language: locale }).catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api]);
-  // 보관은 데스크톱 상세 머리와 같은 경로·판정이다 — Operation 이 있으면 Operation 단위로 보관함에 서고, 상세는 닫는다.
-  // 기동 전 목표의 영구 삭제는 되돌릴 수 없어 확인 문법이 있는 데스크톱에만 둔다.
+  // 사람 동작 — 막대의 ⋮ 항목과 심긴 자리의 동작 줄이 같은 목록이다. 누르는 순간의 판정은 ref 로 읽는다.
+  const personActions = useCallback((current: ObjectiveActions | null): MobileBarMenuItem[] => {
+    if (!current) return [];
+    const items: MobileBarMenuItem[] = [];
+    // 「메시지」는 늘 선다 — 받을 세션이 없거나 띠가 다른 할 일을 먼저 세우는 동안은 흐리게.
+    items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
+    // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
+    if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
+    if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
+    // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
+    if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
+    return items;
+  }, [act, t]);
+  // 목표 화면의 상태 한 낱말(막대 보조 줄) — 시작 전 목표는 홈 행의 「시작 전」에서 이어지고, 보관된 끝난 목표는 읽기 전용임을 말한다.
+  const fresh = !!objective && !objective.done && !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
+  const stateWord = !objective ? null : fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : null;
+  // 시작 전 목표(Operation 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
+  const settingsHost = useMobileSettingsHost();
+  const tidy = !embedded && !!objective && !objective.hasOperation && !objective.done;
+  const rename = useCallback(() => {
+    const current = findObjective(latest.current.objectiveId);
+    if (!current || !settingsHost?.openInput) return;
+    const { t: translate, say: speak } = latest.current;
+    settingsHost.openInput({
+      title: translate("objectives.mobile.rename"),
+      value: current.title,
+      onSave: async (value) => {
+        const next = value.trim();
+        if (!next || next === current.title) return;
+        await post(api, "/objective/patch", { objectiveId: current.id, patch: { title: next } }).catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
+      },
+    });
+  }, [api, settingsHost]);
+  const { rail } = ctx;
   const archive = useCallback(() => {
-    const { objectiveId: id, say: speak, language: locale, t: translate } = latest.current;
-    void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: id, language: locale })
-      .then(({ objective: archived, deleted }) => { if (deleted) removeObjectiveLocally(id); else upsertObjectiveLocally(archived); panes.close(); })
+    const { objectiveId: id, say: speak, t: translate } = latest.current;
+    void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: id, restorable: true })
+      .then((result) => {
+        if (result?.objective) upsertObjectiveLocally(result.objective);
+        // 이 화면의 목표가 보관함으로 갔다 — 빈 화면을 남기지 않고 홈으로 돌아간다(폰 목적지 화면의 `rail.close`).
+        rail.close("objectives");
+      })
       .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
-  }, [api, panes]);
-  // 한 번 보였던 목표가 목록에서 사라지면(완료·보관으로 Operation 이 보관함에 들어갔다) 빈 상세를 남기지 않고 닫는다 — 보관 경로의 닫기와 같다.
-  const shownOnce = useRef(false);
-  useEffect(() => {
-    if (objective) { shownOnce.current = true; return; }
-    if (!shownOnce.current || !visible) return;
-    shownOnce.current = false;
-    panes.close();
-  }, [objective, visible, panes]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${archivable ? 1 : 0}` : "";
+  }, [api, rail]);
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
-    const current = latest.current.actions;
-    const items: MobileBarMenuItem[] = [];
-    if (current) {
-      // 「메시지」는 늘 선다 — 받을 세션이 없거나 띠가 다른 할 일을 먼저 세우는 동안은 흐리게.
-      items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
-      // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
-      if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
-      if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
-      // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
-      if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
-      // 보관은 일반 색 — 보관함에서 복원하면 임무·기록과 함께 돌아온다(호스트 세션 ⋮의 보관과 같은 자리, 맨 끝).
-      if (latest.current.archivable) items.push({ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive });
-    }
-    mobileBar.set({ title, depth: 1, onBack: () => panes.close(), ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, panes, menuKey, t, act, archive]);
+    const items: MobileBarMenuItem[] = [
+      ...personActions(latest.current.actions),
+      ...(tidy && settingsHost?.openInput ? [{ id: "rename", label: t("objectives.mobile.rename"), icon: <PencilIcon />, run: rename }] : []),
+      ...(tidy ? [{ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive }] : []),
+    ];
+    // 누를 수 있는 항목이 하나도 없으면 ⋮ 를 세우지 않는다 — 흐린 「메시지」 하나만 여는 메뉴가 되지 않게.
+    const usable = items.some((item) => !item.disabled);
+    // 목표 화면의 뿌리다 — ‹ 는 홈으로 간다.
+    mobileBar.set({ title, ...(stateWord ? { subtitle: stateWord } : {}), depth: 0, ...(usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
+  }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, settingsHost, rename, archive]);
 
-  if (!objective || !actions) return <div ref={rootRef} className="objectives-m" />;
+  const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
+  if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
+  // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
+  const embeddedActions = embedded ? personActions(actions) : [];
+  const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
   return (
-    <div ref={rootRef} className="objectives-m">
+    <div ref={rootRef} className={rootClass}>
       <div className="objectives-m-pad">
+        {rowActions.length > 0 ? (
+          <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
+            {rowActions.map((item) => (
+              <button type="button" key={item.id} data-press="r3" className="objectives-m-act" disabled={item.disabled} onClick={item.run}>
+                {item.icon}<span>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         <BriefCard objective={objective} t={t} />
         <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
@@ -668,9 +771,12 @@ function CommenceCard({ objective, commence, t, language, api, say, onReview }: 
     <section className="objectives-m-card" aria-label={t("objectives.commander.start")}>
       <h3 className="objectives-m-card-label">{t("objectives.commander.title")}</h3>
       <p className="objectives-m-prop-sub">{desc}</p>
-      <button type="button" data-press="r3" className="objectives-m-pbtn is-approve objectives-m-approve-all" disabled={busy || !!commence.reason} aria-busy={busy || undefined} onClick={start}>
-        {t("objectives.commander.start")}
-      </button>
+      {/* 막힌 동안은 단추 없이 사유만 — 누를 수 없는 넓은 막대가 다음 걸음처럼 서지 않게 한다. */}
+      {commence.reason ? null : (
+        <button type="button" data-press="r3" className={`objectives-m-pbtn${commence.primary ? " is-approve" : ""} objectives-m-approve-all`} disabled={busy} aria-busy={busy || undefined} onClick={start}>
+          {t("objectives.commander.start")}
+        </button>
+      )}
     </section>
   );
 }

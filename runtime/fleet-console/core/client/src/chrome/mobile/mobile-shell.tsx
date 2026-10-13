@@ -15,7 +15,7 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
-import { pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
+import { getMobileDestination, pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { MobileArchiveScreen } from "./mobile-archive-screen.js";
 import { MobileSearchScreen } from "./mobile-search-screen.js";
@@ -68,6 +68,8 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   const operationsHydrated = consoleState.operationsHydrated;
   useEffect(() => {
     if (selectedOperationId === null || selectedOperation || !operationsHydrated) return;
+    // 그 대화의 정보 화면이 서 있었으면(완료로 지휘관이 보관됨 등) 함께 접는다 — 주소에 `?dest=info`가 남으면 다음 뒤로가 아무 일 없이 소모된다.
+    if (getMobileDestination().kind === "info") setMobileDestination({ kind: "home" });
     replaceMobileOperationId(null);
     setSelectedOperationId(null);
     onSelectOperation(null);

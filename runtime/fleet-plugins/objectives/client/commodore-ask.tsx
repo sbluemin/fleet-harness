@@ -11,7 +11,7 @@ import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { answerCommodoreAsk, askObjectiveTitle, openAsks, useCommodore } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { openObjectiveFromCluster, revealObjective, useObjectiveTheater } from "./objectives-state.js";
+import { openObjectiveFromCluster, openObjectiveOnPhone, revealObjective, useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -88,7 +88,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
     } finally { setSending(false); }
   };
   const objective = ask.objectiveId ? (
-    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => { revealObjective({ objectiveId: ask.objectiveId! }); openObjectiveFromCluster(theaterId, phone ? "rail" : undefined); }}>
+    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => { if (phone) { openObjectiveOnPhone(ask.objectiveId!, theaterId); return; } revealObjective({ objectiveId: ask.objectiveId! }); openObjectiveFromCluster(theaterId); }}>
       {objectiveTitle ?? t("objectives.ask.objectiveGone")}
     </button>
   ) : null;

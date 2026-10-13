@@ -30,7 +30,7 @@ import { isShortcutRecording, matchesShortcutCommand } from "../../../core/clien
 import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
-import { setMobileDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
+import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
@@ -238,7 +238,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       const operation = state.operations.find((candidate) => candidate.id === operationId && candidate.theaterId === state.activeTheaterId);
       if (operation) {
         // 플러그인 화면(목표 상세 등)에서 세션 행을 눌러 온 요청이면 그 화면 대신 Operation이 서야 한다.
-        setMobileDestination({ kind: "home" });
+        // 대화 탭으로 착지하라는 요청(`mobile.conversationPane`)이 이 대화에 걸려 있으면 그 정보 화면이 선다.
+        setMobileDestination(takeMobileConversationDestination(operationId));
         const url = new URL(window.location.href);
         url.searchParams.set("op", operationId);
         // Operation끼리의 이동은 history를 늘리지 않는다 — 뒤로는 홈(대화 목록)이 받는다(S-51).

@@ -883,3 +883,18 @@ export function openObjectiveFromCluster(theaterId?: string, place?: "rail"): vo
   if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
   installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
 }
+
+/**
+ * 폰의 목표 착지 — 모바일 전용 입구(「확인 필요」 행·사령관 질문 카드·사령관 「목표」 탭)만 부른다. 지휘관 Operation 이 있으면 그 대화의
+ * 정보 화면 「목표」 탭(호스트가 `mobile.conversationPane` 으로 `rail.open(id, { operationId })` 를 받는다), 없으면 목표 화면(칩 없는 목적지)이
+ * 그 목표를 연다. reveal 은 두 착지가 같이 집는다 — 탭이 서지 못해 호스트가 목표 화면으로 돌려도 같은 목표가 선다.
+ */
+export function openObjectiveOnPhone(objectiveId: string, theaterId?: string): void {
+  const host = installed;
+  if (!host) return;
+  if (theaterId && host.consoleState.getActiveTheaterId() !== theaterId) host.consoleState.setActiveTheater(theaterId);
+  revealObjective({ objectiveId });
+  const hasCommander = host.consoleState.getOperations({ nested: true }).some((operation) => operation.id === objectiveId);
+  if (hasCommander) host.rail.open(OBJECTIVE_PANEL_ID, { operationId: objectiveId });
+  else host.rail.open(OBJECTIVE_PANEL_ID);
+}

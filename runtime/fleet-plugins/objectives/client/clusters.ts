@@ -87,7 +87,7 @@ type MemberFailureNoteKey = "objectives.note.memberFailed" | (typeof FAILURE_NOT
  * 목록 줄의 구성원 실패 표식 — 에이전트 inbox 의 `member-failed` 사유와 같은 판정(`inboxReasons`)을 그대로 쓴다. 실패가 풀리거나
  * 확인되면(acknowledged) 사유가 빠지고 표식도 내려간다. 확인하지 않은 실패가 모두 같은 사유(`memberFailureReason`)일 때만 그 사유로
  * 말한다 — 사유가 섞이거나 없는 실패가 하나라도 있으면 한 줄이 다른 실패를 그 사유로 덮지 않게 일반 표식이다. 구성원 행이 각자의 사유를 말한다.
- * 사이드바 줄·전환 목록·모바일 목록이 이 하나를 읽는다.
+ * 사이드바 줄·전환 목록이 이 하나를 읽는다.
  */
 export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | null => {
   if (!inboxReasons(objective).includes("member-failed")) return null;

@@ -1,6 +1,7 @@
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { ExpandedSurfaceOpenRequest } from "@fleet-console/sdk/expanded-surface";
-import { setMobileTool } from "../chrome/mobile/mobile-store.js";
+import { conversationTabId, getMobileDestination, requestMobileConversationTab, setMobileDestination, setMobileTool } from "../chrome/mobile/mobile-store.js";
+import { readMobileOperationId } from "../chrome/mobile/mobile-operation-url.js";
 import { landPaneTarget, type PaneTargetBinding, type PaneTargetPorts } from "../chrome/pane/pane-target.js";
 import { openPane } from "../chrome/pane/pane-store.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
@@ -41,6 +42,33 @@ function revealRailPanel(entryId: string): void {
     setMobileTool({ kind: "rail", id: entryId });
     navigateConsoleRoute("/operations");
   }
+}
+
+/**
+ * 폰에서 엔트리의 대화 탭(`mobile.conversationPane`)으로 착지한다 — 그 대화를 열고 정보 화면의 그 탭을 세운다. `operationId`가 null이면
+ * 지금 열린 대화(대화 화면·정보 화면이 서 있을 때)다. 대화가 없거나, 그 대화에 탭이 서지 않거나, 폰이 아니면 false — 부른 쪽이 기존 경로로 간다.
+ */
+function revealMobileConversationTab(binding: PaneTargetBinding | undefined, operationId: string | null): boolean {
+  const pane = binding?.entry.mobile?.conversationPane;
+  if (!binding || !pane || binding.entry.conversationTab !== true || getViewModeSnapshot().effective !== "mobile") return false;
+  const destination = getMobileDestination().kind;
+  const requested = operationId ?? (destination === "home" || destination === "info" ? readMobileOperationId() : null);
+  if (requested === null) return false;
+  // 구성원을 가리키면 대화 주인은 그 묶음의 부모다 — 정보 화면은 주인의 것이고, 포커스도 부모로 옮겨 간다.
+  const state = getState();
+  const owner = state.nestedOperations.find((node) => node.id === requested)?.parentOperationId ?? requested;
+  if (!state.operations.some((operation) => operation.id === owner)) return false;
+  if (pane.shown?.get(owner) === false) return false;
+  const tab = conversationTabId(binding.entry.id);
+  navigateConsoleRoute("/operations");
+  // 이미 열린 대화면 보던 본문(구성원)을 그대로 두고 정보 화면만 세운다.
+  if (readMobileOperationId() === owner) {
+    setMobileDestination({ kind: "info", tab });
+    return true;
+  }
+  requestMobileConversationTab(owner, tab);
+  focusOperation(owner);
+  return true;
 }
 
 function revealExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
@@ -238,18 +266,27 @@ export function createHostCapabilities(
       subscribe: (listener) => subscribeConsoleLocation(listener),
     },
     surfaces: {
-      open: (request) => revealExpandedSurface(request),
+      // 폰에서 대화 탭을 선언한 엔트리의 확대 표면은 지금 열린 대화의 그 탭으로 선다(`RailEntryMobile.conversationPane`).
+      open: (request) => (revealMobileConversationTab(readBindings().find((binding) => binding.entry.surfaceId === request.surfaceId), null) ? "" : revealExpandedSurface(request)),
       close: (instanceId) => closeExpandedSurface(instanceId),
       closeSurface: (surfaceId) => closeExpandedSurfacesOf(surfaceId),
       isOpen: (surfaceId) => getExpandedSurfaceState().instances.some((i) => i.surfaceId === surfaceId),
     },
     rail: {
       open: (panelId, params) => {
-        const primary = readBindings().find((binding) => binding.entry.id === panelId)?.panes.find((pane) => pane.role === "primary");
+        const binding = readBindings().find((item) => item.entry.id === panelId);
+        // 폰에서 대화를 가리킨 열기는 그 대화 정보 화면의 탭으로 선다(`RailEntryMobile.conversationPane`).
+        if (params?.operationId && revealMobileConversationTab(binding, params.operationId)) return;
+        const primary = binding?.panes.find((pane) => pane.role === "primary");
         if (params && primary) land({ paneId: primary.id, params });
         else revealRailPanel(panelId);
       },
-      close: (panelId) => closeRailPanel(panelId),
+      close: (panelId) => {
+        // 폰에서 지금 보이는 목적지 화면을 그 엔트리가 닫으면(보던 대상이 사라짐 등) 빈 화면 대신 홈으로 돌아간다.
+        const destination = getMobileDestination();
+        if (getViewModeSnapshot().effective === "mobile" && destination.kind === "plugin" && destination.entryId === panelId) setMobileDestination({ kind: "home" });
+        closeRailPanel(panelId);
+      },
       isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,
     },
     consoleEvents: {
