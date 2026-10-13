@@ -181,7 +181,7 @@ export class OpencodeGoResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
         onClose: unlinkAbort
-      })
+      }, argumentDecoding(payload.tools))
     };
   }
 }
@@ -279,16 +279,17 @@ type ReadOptions = UpstreamReadOptions;
 
 function parseOpenCodeGoEventStream(
   body: ReadableStream<Uint8Array> | null,
-  options: ReadOptions & { onClose: () => void }
+  options: ReadOptions & { onClose: () => void },
+  decoding: ArgumentDecoding,
 ): AsyncGenerator<CanonicalResponseEvent> {
   return parseUpstreamSseStream(
     body,
     { ...options, missingBodyMessage: "OpenCode Go streaming response had no body" },
-    parseEventFrame,
+    (frame) => parseEventFrame(frame, decoding),
   );
 }
 
-function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
+function parseEventFrame(frame: string, decoding: ArgumentDecoding): CanonicalResponseEvent | undefined {
   const { event: eventName, data } = parseSseFrameFields(frame);
   if (data.length === 0 || data === "[DONE]") {
     return undefined;
@@ -307,10 +308,10 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
     parsed = { ...parsed, type: eventName };
   }
-  return canonicalEvent(parsed);
+  return canonicalEvent(parsed, decoding);
 }
 
-function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
+function canonicalEvent(value: unknown, decoding: ArgumentDecoding): CanonicalResponseEvent | undefined {
   if (!isRecord(value) || typeof value.type !== "string") {
     throw new UpstreamProtocolError("OpenCode Go SSE event was not an object with a type");
   }
@@ -360,7 +361,7 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
       };
     case "response.output_item.added":
     case "response.output_item.done": {
-      const item = outputItem(value.item);
+      const item = outputItem(value.item, decoding);
       if (item === undefined) {
         return undefined;
       }
@@ -376,13 +377,15 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
     // when nothing was streamed ahead of it.
     case "response.function_call_arguments.delta":
       return undefined;
-    case "response.function_call_arguments.done":
+    case "response.function_call_arguments.done": {
+      const itemId = string(value.item_id, "item_id");
       return {
         type: value.type,
-        item_id: string(value.item_id, "item_id"),
+        item_id: itemId,
         output_index: number(value.output_index, "output_index"),
-        arguments: stripNullArguments(string(value.arguments, "arguments"))
+        arguments: stripNullArguments(string(value.arguments, "arguments"), decoding.nullPathsOf(itemId))
       };
+    }
     // `response.incomplete` is the same terminal as a completed response whose status is
     // `incomplete`; both become one `response.completed` that carries the reason.
     case "response.completed":
@@ -539,6 +542,11 @@ function readablePatternSchema(value: unknown): unknown {
  *
  * `stripNullArguments` is the inverse: the nulls this transform makes representable are
  * removed again before the call reaches the client, restoring omission semantics.
+ *
+ * That leaves a bare null meaning "absent" on the strict wire, so a property whose own schema
+ * already accepts null as a value — `dueDate: null` clears a due date, `member: null` assigns the
+ * Commander — would lose that value to the strip. Such a property spells its null as the
+ * `NULL_ARGUMENT` string instead, and the strip turns that string back into null.
  */
 /**
  * Keywords known to survive strict mode. An allowlist rather than a denylist: an unknown
@@ -648,7 +656,7 @@ function strictSchema(schema: unknown): unknown {
     );
     const rewritten: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(properties)) {
-      const child = strictSchema(value);
+      const child = nullArgumentSchema(strictSchema(value));
       rewritten[name] = required.has(name) ? child : nullableSchema(child);
     }
     next.properties = rewritten;
@@ -688,10 +696,63 @@ function nullableSchema(schema: unknown): unknown {
 }
 
 /**
+ * The strict-wire spelling of a null the client's schema accepts as a value. A bare null is
+ * already taken: strict mode makes every optional key required, and the model fills each one
+ * it does not use with null, so null has to keep meaning "absent" there.
+ */
+const NULL_ARGUMENT = "<null>";
+const NULL_ARGUMENT_NOTE = `For null, send the string "${NULL_ARGUMENT}"; a bare null omits this argument.`;
+
+/**
+ * Moves a property's own null onto the `NULL_ARGUMENT` string, so the strip below cannot
+ * mistake it for an omission. Only the property's top level is read: that is where a nullable
+ * zod field (`anyOf: [T, {type: "null"}]`) and a `type: [T, "null"]` union put it.
+ */
+function nullArgumentSchema(schema: unknown): unknown {
+  if (!isRecord(schema) || !admitsNull(schema)) return schema;
+  const { description, title, ...value } = schema;
+  const meta: Record<string, unknown> = {
+    ...(typeof title === "string" ? { title } : {}),
+    description: typeof description === "string" ? `${description} ${NULL_ARGUMENT_NOTE}` : NULL_ARGUMENT_NOTE,
+  };
+  const spelling = { type: "string", enum: [NULL_ARGUMENT] };
+  const branches = Array.isArray(value.anyOf)
+    ? value.anyOf.flatMap((branch) => (isRecord(branch) ? withoutNull(branch) : [branch]))
+    : withoutNull(value);
+  return { ...meta, anyOf: [...branches, spelling] };
+}
+
+function admitsNull(schema: Record<string, unknown>): boolean {
+  if (schema.type === "null") return true;
+  if (Array.isArray(schema.type) && schema.type.includes("null")) return true;
+  if (Array.isArray(schema.enum) && schema.enum.includes(null)) return true;
+  return Array.isArray(schema.anyOf) && schema.anyOf.some((branch) => isRecord(branch) && admitsNull(branch));
+}
+
+/** The schema without its null, or nothing when null is all it accepted. */
+function withoutNull(schema: Record<string, unknown>): Record<string, unknown>[] {
+  if (schema.type === "null") return [];
+  const next: Record<string, unknown> = { ...schema };
+  if (Array.isArray(next.type)) {
+    const types = next.type.filter((type) => type !== "null");
+    if (types.length === 0) return [];
+    next.type = types.length === 1 ? types[0] : types;
+  }
+  if (Array.isArray(next.enum)) {
+    const values = next.enum.filter((entry) => entry !== null);
+    if (values.length === 0) return [];
+    next.enum = values;
+  }
+  return [next];
+}
+
+/**
  * Removes the nulls strict mode requires, so the client sees an omitted argument rather than
  * an explicit null. Anthropic tool schemas treat absence — not null — as "not provided".
+ * A `NULL_ARGUMENT` string becomes the null the client asked for, but only at a path whose schema
+ * offered that spelling: anywhere else — `Edit.new_string`, say — the same text is the model's data.
  */
-function stripNullArguments(raw: string): string {
+function stripNullArguments(raw: string, nullPaths: ReadonlySet<string> | undefined): string {
   if (raw.length === 0 || !raw.includes("null")) return raw;
   let parsed: unknown;
   try {
@@ -700,14 +761,19 @@ function stripNullArguments(raw: string): string {
     return raw;
   }
   if (!isRecord(parsed)) return raw;
-  return JSON.stringify(withoutNulls(parsed));
+  return JSON.stringify(withoutNulls(parsed, nullPaths, ""));
 }
 
-function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
+function withoutNulls(
+  value: Record<string, unknown>,
+  nullPaths: ReadonlySet<string> | undefined,
+  prefix: string,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (entry === null) continue;
-    out[key] = withoutNullMembers(entry);
+    const path = prefix === "" ? key : `${prefix}.${key}`;
+    out[key] = entry === NULL_ARGUMENT && nullPaths?.has(path) ? null : withoutNullMembers(entry, nullPaths, path);
   }
   return out;
 }
@@ -715,13 +781,61 @@ function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
 // strict 재작성의 정확한 역변환: 재작성이 표현 가능하게 만든 것은 객체 프로퍼티 위치의
 // null뿐이므로 배열 속 객체까지 내려가 그 null만 제거하고, 배열 원소 자체의 null은
 // 재작성이 만든 값이 아니라 모델이 실제로 보낸 데이터이므로 보존한다.
-function withoutNullMembers(entry: unknown): unknown {
-  if (isRecord(entry)) return withoutNulls(entry);
-  if (Array.isArray(entry)) return entry.map(withoutNullMembers);
+function withoutNullMembers(entry: unknown, nullPaths: ReadonlySet<string> | undefined, path: string): unknown {
+  if (isRecord(entry)) return withoutNulls(entry, nullPaths, path);
+  if (Array.isArray(entry)) return entry.map((member) => withoutNullMembers(member, nullPaths, `${path}[]`));
   return entry;
 }
 
-function outputItem(value: unknown): CanonicalOutputItem | undefined {
+/**
+ * One response's view of where `NULL_ARGUMENT` is a null. Paths come from the strict schemas this
+ * request sent; `function_call_arguments.done` names only its item, so the tool is remembered from
+ * the item events that carry both.
+ */
+interface ArgumentDecoding {
+  named(itemId: string, toolName: string): void;
+  nullPathsOf(itemId: string): ReadonlySet<string> | undefined;
+}
+
+function argumentDecoding(tools: readonly unknown[] | undefined): ArgumentDecoding {
+  const pathsByTool = new Map<string, Set<string>>();
+  for (const tool of tools ?? []) {
+    if (!isRecord(tool) || tool.type !== "function" || tool.strict !== true || typeof tool.name !== "string") continue;
+    const paths = new Set<string>();
+    collectNullPaths(tool.parameters, "", paths);
+    if (paths.size > 0) pathsByTool.set(tool.name, paths);
+  }
+  const toolByItem = new Map<string, string>();
+  return {
+    named: (itemId, toolName) => { toolByItem.set(itemId, toolName); },
+    nullPathsOf: (itemId) => {
+      const toolName = toolByItem.get(itemId);
+      return toolName === undefined ? undefined : pathsByTool.get(toolName);
+    },
+  };
+}
+
+function collectNullPaths(schema: unknown, prefix: string, out: Set<string>): void {
+  if (!isRecord(schema)) return;
+  if (isRecord(schema.properties)) {
+    for (const [name, child] of Object.entries(schema.properties)) {
+      const path = prefix === "" ? name : `${prefix}.${name}`;
+      if (spellsNullArgument(child)) out.add(path);
+      collectNullPaths(child, path, out);
+    }
+  }
+  if (Array.isArray(schema.anyOf)) {
+    for (const branch of schema.anyOf) collectNullPaths(branch, prefix, out);
+  }
+  if (isRecord(schema.items)) collectNullPaths(schema.items, `${prefix}[]`, out);
+}
+
+function spellsNullArgument(schema: unknown): boolean {
+  return isRecord(schema) && Array.isArray(schema.anyOf) && schema.anyOf.some((branch) =>
+    isRecord(branch) && Array.isArray(branch.enum) && branch.enum.length === 1 && branch.enum[0] === NULL_ARGUMENT);
+}
+
+function outputItem(value: unknown, decoding: ArgumentDecoding): CanonicalOutputItem | undefined {
   const item = record(value, "item");
   if (item.type === "message") {
     return {
@@ -732,12 +846,14 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
   }
   if (item.type === "function_call") {
     const id = string(item.id, "item.id");
+    const name = string(item.name, "item.name");
+    decoding.named(id, name);
     return {
       id,
       type: "function_call",
       call_id: typeof item.call_id === "string" ? item.call_id : id,
-      name: string(item.name, "item.name"),
-      arguments: typeof item.arguments === "string" ? stripNullArguments(item.arguments) : ""
+      name,
+      arguments: typeof item.arguments === "string" ? stripNullArguments(item.arguments, decoding.nullPathsOf(id)) : ""
     };
   }
   if (item.type === "web_search_call") {

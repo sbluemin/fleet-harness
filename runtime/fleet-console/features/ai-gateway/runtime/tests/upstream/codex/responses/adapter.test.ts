@@ -233,6 +233,53 @@ describe("codex responses adapter", () => {
     ).not.toHaveProperty("pattern");
   });
 
+  it("keeps a schema's own null apart from strict mode's omission null", async () => {
+    // `dueDate: null` clears a due date and `member: null` assigns the Commander. Strict mode
+    // turns every unused optional key into a null the strip must remove, so those nulls need
+    // their own spelling or the call silently loses them.
+    // `note` never offered the spelling, so the same text there is the model's data.
+    const args = JSON.stringify({ dueDate: "<null>", member: null, note: "<null>" });
+    const call = { type: "function_call", id: "fc_1", call_id: "call_1", name: "edit" };
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      `data: ${JSON.stringify({ type: "response.output_item.added", output_index: 0, item: { ...call, arguments: "" } })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.function_call_arguments.done", item_id: "fc_1", output_index: 0, arguments: args })}\n\n`,
+      `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: { ...call, arguments: args } })}\n\n`,
+    ));
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "edit",
+        parameters: {
+          type: "object",
+          properties: {
+            dueDate: { anyOf: [{ type: "string" }, { type: "null" }], description: "null clears the due date." },
+            member: { type: ["string", "null"] },
+            note: { type: "string" },
+          },
+          required: ["dueDate"],
+        },
+      }],
+    }), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of response.events) events.push(event);
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      tools: Array<{ strict?: boolean; parameters: { properties: Record<string, { anyOf?: unknown[] }> } }>;
+    };
+    expect(body.tools[0]!.strict).toBe(true);
+    const nullSpelling = { type: "string", enum: ["<null>"] };
+    // Required: the spelling replaces null outright. Optional: a bare null still means absent.
+    expect(body.tools[0]!.parameters.properties.dueDate!.anyOf).toEqual([{ type: "string" }, nullSpelling]);
+    expect(body.tools[0]!.parameters.properties.member!.anyOf).toEqual([{ type: "string" }, nullSpelling, { type: "null" }]);
+
+    const decoded = JSON.stringify({ dueDate: null, note: "<null>" });
+    expect(events.find((event) => event.type === "response.function_call_arguments.done"))
+      .toMatchObject({ arguments: decoded });
+    expect(events.find((event) => event.type === "response.output_item.done"))
+      .toMatchObject({ item: { type: "function_call", arguments: decoded } });
+  });
+
   it("does not retry UND_ERR_SOCKET after caller-visible output was yielded", async () => {
     const encoder = new TextEncoder();
     const socketError = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
