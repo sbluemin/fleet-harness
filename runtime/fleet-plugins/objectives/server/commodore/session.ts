@@ -19,6 +19,8 @@ import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type Com
 export interface CommodoreSessionCoordinates {
   readonly model: string;
   readonly effort?: AgentEffort;
+  /** 대화를 요약해 이어 갈 문맥 토큰 — 세션이 열릴 때 정해진다. */
+  readonly compactAt?: number;
 }
 
 export interface CommodoreSessionOptions {
@@ -152,6 +154,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(error ? { error } : {}) });
         return;
       }
+      case "compacted":
+        flushText();
+        record({ kind: "compacted", trigger: event.trigger, preTokens: Math.round(event.preTokens), ...(event.postTokens !== undefined ? { postTokens: Math.round(event.postTokens) } : {}) });
+        return;
       case "cancelled":
         flushText(); flushTools();
         if (!turnResult) { turnResult = { outcome: "cancelled", actions: turnActions }; record({ kind: "result", outcome: "cancelled" }); }
@@ -168,6 +174,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",
+      ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
         builtins: ["WebSearch", "WebFetch"],
         custom: [{ name: COMMODORE_TOOL_GROUP, tools: tools.map(observed) }, ...(options.boardTools.length ? [{ name: BOARD_TOOL_GROUP, tools: options.boardTools.map(observed) }] : [])],

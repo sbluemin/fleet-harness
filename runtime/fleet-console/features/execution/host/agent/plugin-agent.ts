@@ -69,7 +69,8 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         const env = stripConsoleInternalEnv(process.env);
         delete env.FLEET_CONSOLE_SESSION_ID;
         const executablePath = await deps.resolveExecutablePath?.();
-        return (deps.createSdk ?? createClaudeGatewaySdk)({ baseUrl, models: [options.model], tempRoot: cwd, env, modelPolicy: claudeGatewayModelPolicy, ...(executablePath === undefined ? {} : { executablePath }) });
+        const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
+        return (deps.createSdk ?? createClaudeGatewaySdk)({ baseUrl, models: [options.model], tempRoot: cwd, env, modelPolicy: claudeGatewayModelPolicy, ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }) });
       },
       buildTurn: () => {
         turnController = new AbortController();
@@ -209,6 +210,32 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
   };
 }
 
+/**
+ * Claude Code가 자동 압축 창에서 빼는 몫 — 출력 예약 `min(maxOutputTokens, 20k)`과 여유 13k.
+ * 압축 지점은 `창 − 33k`다(2.1.293 바이너리 판독, 2.1.296 실측: 창 100k에서 67k). 출력 상한이 20k보다
+ * 작은 모델만 그 차이만큼 늦게 압축한다.
+ */
+const CLAUDE_AUTO_COMPACT_RESERVE = 33_000;
+/** Claude Code가 받는 자동 압축 창의 범위. 밖의 값은 자식이 이 끝으로 clamp한다. */
+const CLAUDE_AUTO_COMPACT_WINDOW_MIN = 100_000;
+const CLAUDE_AUTO_COMPACT_WINDOW_MAX = 1_000_000;
+
+/**
+ * 플러그인이 고른 압축 지점(문맥 토큰)을 자식의 자동 압축 창으로 옮긴다. 네이티브 Claude 모델만 옮긴다.
+ *
+ * Gateway 카탈로그 모델(discovery 항목이 있는 비-Claude)은 Gateway가 사용량을 공급자 창에서 Claude 좌표(200k/1M)로
+ * 비례 투영하고, 자기 compact 정책(공급자 창 − 16k 또는 compact-ceiling)이 압축 시점이 되도록 맞춘다. 거기에 창을 덮으면
+ * 투영된 좌표 위에서 판정이 바뀌어 실제 압축 지점이 어긋난다 — 128k 모델은 64k(50%)에서 압축하고, 200k를 넘는 모델은 좌표에
+ * 막혀 아무것도 바뀌지 않는다. 그래서 그 모델들은 Gateway 정책을 그대로 따른다.
+ */
+function claudeAutoCompactWindow(model: string, compactAt: number): number | undefined {
+  let catalog: boolean;
+  try { catalog = claudeGatewayModelPolicy.resolve(model).discovery !== undefined; }
+  catch { return undefined; }
+  if (catalog) return undefined;
+  return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
+}
+
 function validateOptions(options: AgentSessionOptions): void {
   if (!options || typeof options.model !== "string" || !options.model.trim() || typeof options.systemPrompt !== "string") throw new Error("agent_options_invalid");
   if (!["conversation", "oneshot"].includes(options.continuation) || !["result", "result-required"].includes(options.settlement)) throw new Error("agent_policy_invalid");
@@ -216,6 +243,7 @@ function validateOptions(options: AgentSessionOptions): void {
   for (const value of [options.timeoutMs, options.maxTurns, options.maxBudgetUsd]) if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new Error("agent_limit_invalid");
   if (options.timeoutMs !== undefined && options.settlement !== "result-required") throw new Error("agent_timeout_requires_result_settlement");
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
+  if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
   if (options.tools?.builtins?.some((tool) => tool !== "WebSearch" && tool !== "WebFetch")) throw new Error("agent_builtin_not_allowed");
   const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER]);
   for (const group of options.tools?.custom ?? []) {

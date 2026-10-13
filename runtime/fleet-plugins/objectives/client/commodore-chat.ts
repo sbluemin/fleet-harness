@@ -20,6 +20,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
+  // 턴 안의 압축은 그 턴이 닫힌 뒤 구분선으로 선다 — 턴 한가운데의 구분선은 턴을 둘로 가른다(턴 묶음은 구분선에서 끊긴다).
+  let heldNotes: { readonly text: string; readonly at: number }[] = [];
   // 읽어 온 기록 창은 아무 줄에서나 시작한다(쪽·보관 상한) — 깨움이 창 밖인 턴의 내용·결말이 먼저 오면 그 자리에서 턴을 연다.
   // 열지 않으면 결말이 턴을 닫지 못해, 지난 턴이 「작업 중」으로 굳고 답이 가려진다.
   const resume = (at: number) => {
@@ -31,6 +33,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
     if (turnAt === null) return;
     push({ kind: "turn-end", ok: outcome !== "error", ...(outcome === "cancelled" ? { stopped: true } : {}), durationMs: Math.max(0, at - turnAt) }, at);
     turnAt = null;
+    for (const note of heldNotes) push({ kind: "note", text: note.text, at: note.at }, note.at);
+    heldNotes = [];
   };
   for (const entry of entries) {
     switch (entry.kind) {
@@ -66,6 +70,10 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         resume(entry.at);
         end(entry.at, entry.outcome);
         if (entry.outcome === "error") push({ kind: "note", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }), at: entry.at, tone: "warn" }, entry.at);
+        break;
+      case "compacted":
+        if (turnAt !== null) heldNotes.push({ text: compactedText(t, entry), at: entry.at });
+        else push({ kind: "note", text: compactedText(t, entry), at: entry.at }, entry.at);
         break;
       case "session":
         end(entry.at, "cancelled");
@@ -146,6 +154,9 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "result":
         if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("objectives.commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("objectives.commodore.meta.error") }) });
         break;
+      case "compacted":
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: compactedText(t, entry) });
+        break;
       case "session":
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
         break;
@@ -180,6 +191,26 @@ export function commodoreConversationLiveEntries(t: T, entries: readonly Commodo
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
   return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("objectives.commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+}
+
+/** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */
+function compactedText(t: T, entry: Extract<CommodoreTranscriptEntry, { kind: "compacted" }>): string {
+  const tokens = entry.postTokens !== undefined
+    ? `${formatContextTokens(entry.preTokens)} → ${formatContextTokens(entry.postTokens)}`
+    : formatContextTokens(entry.preTokens);
+  return t("objectives.commodore.log.compacted", { tokens });
+}
+
+/** 문맥 토큰을 사람이 읽는 크기로(1.2k·750k·1M). */
+export function formatContextTokens(tokens: number): string {
+  if (tokens < 1_000) return String(Math.round(tokens));
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    const text = millions < 10 ? millions.toFixed(1) : String(Math.round(millions));
+    return `${text.endsWith(".0") ? text.slice(0, -2) : text}M`;
+  }
+  const thousands = tokens / 1_000;
+  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
 }
 
 /**

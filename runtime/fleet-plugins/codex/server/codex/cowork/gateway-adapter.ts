@@ -65,7 +65,7 @@ class CoworkGatewayClient extends EventEmitter implements CoworkAgentClient {
       this.emit("messageChunk", event.text);
       return;
     }
-    if (event.kind === "thinking") return;
+    if (event.kind === "thinking" || event.kind === "compacted") return;
     if (event.kind === "tool-start") {
       this.emit("toolCall", event.name, "running");
       return;

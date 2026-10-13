@@ -144,8 +144,16 @@ export const EMPTY_RUN_TOTALS: CommodoreRunTotals = Object.freeze({ session: 0, 
  * 감독자가 말하는 지금 상태 — 저장되지 않는다. `off` 는 실험 기능이나 자율 운영이 꺼진 것, `idle` 은 다음 깨움을 기다리는 것,
  * `turn` 은 사령관이 일하는 중, `retrying` 은 턴 오류 뒤 재시도 대기(`reason`·`retryAt`), `error` 는 재시도로도 못 푼 상태.
  */
-/** 마지막 턴의 입력 토큰이 모델 창의 이 비율에 닿으면 다음 깨움에서 세션을 교대한다. */
-export const COMMODORE_CONTEXT_ROTATE_RATIO = 0.75;
+/**
+ * 사령관 세션이 대화를 요약해 이어 가는 지점 — 모델 창에 대한 비율. 사령관은 이 지점에서 세션을 바꾸지 않고 같은 세션을 압축한다.
+ * 0.75 는 이전의 교대 지점이다: 한 세션이 쌓는 문맥과 턴마다 다시 읽는 비용이 교대 시절과 크게 달라지지 않게 같은 자리에 둔다.
+ */
+export const COMMODORE_COMPACT_RATIO = 0.75;
+
+/** 모델 창(토큰)에서 압축 지점(토큰)을 낸다. 호스트가 이 값을 실행기의 자동 압축 창으로 옮긴다(Agent SDK `compactAt`). */
+export function commodoreCompactAt(contextWindow: number): number {
+  return Math.round(contextWindow * COMMODORE_COMPACT_RATIO);
+}
 
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
@@ -154,8 +162,11 @@ export interface CommodoreRunStatus {
   readonly nextWakeAt?: number;
   /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
   readonly stalled?: readonly string[];
-  /** 마지막 턴이 실제로 쓴 입력 토큰과 그 세션의 창. 한 턴도 끝나기 전에는 없다. */
-  readonly context?: { readonly window: number; readonly inputTokens: number };
+  /**
+   * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰). 한 턴도 끝나기 전에는 없다.
+   * Gateway 모델(비-Claude)은 Gateway 의 compact 정책이 실제 지점을 정하므로 `compactAt` 은 목표값이다.
+   */
+  readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt: number };
   readonly totals: CommodoreRunTotals;
 }
 
@@ -189,6 +200,8 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
+  /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
+  | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
   | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string } }
   /** 자율 운영이 꺼질 때 아직 턴에 싣지 못한 사람의 메시지 — 기록의 그 `message` 줄 seq. 서랍이 그 메시지에 「전달되지 않음」을 단다. */
   | CommodoreTranscriptBase & { readonly kind: "undelivered"; readonly seqs: readonly number[] }
@@ -235,6 +248,8 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
+  // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
+  z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional() }).strict(),
   // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("undelivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),

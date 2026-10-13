@@ -38,6 +38,9 @@ export async function createClaudeGatewaySdk(
   if (options.executablePath !== undefined && (typeof options.executablePath !== "string" || !path.isAbsolute(options.executablePath) || options.executablePath.includes("\0"))) {
     throw new TypeError("executablePath must be an absolute executable path.");
   }
+  if (options.autoCompactWindow !== undefined && (!Number.isSafeInteger(options.autoCompactWindow) || options.autoCompactWindow <= 0)) {
+    throw new TypeError("autoCompactWindow must be a positive integer token count.");
+  }
   const baseUrl = normalizeBaseUrl(options.baseUrl);
   const accepted = resolveModels(options.models, options.modelPolicy.resolve);
   // 캐시는 카탈로그 별칭을 유효하게 만드는 장치다. 네이티브 모델은 실을 것이 없다.
@@ -86,6 +89,7 @@ export async function createClaudeGatewaySdk(
       baseUrl,
       configDir: configDir.path,
       homeKind: options.home?.kind === "shared" ? "shared" : "isolated",
+      ...(options.autoCompactWindow === undefined ? {} : { autoCompactWindow: options.autoCompactWindow }),
     }));
   };
 

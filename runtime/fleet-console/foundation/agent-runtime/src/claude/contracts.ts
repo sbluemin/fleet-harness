@@ -194,6 +194,15 @@ export interface ClaudeGatewaySdkOptions {
    * 지정한 경로가 실패해도 다른 실행기로 폴백하지 않는다. 턴 입력으로는 바꿀 수 없다. */
   readonly executablePath?: string;
   /**
+   * 자식의 자동 압축 창(토큰, Claude Code `CLAUDE_CODE_AUTO_COMPACT_WINDOW`의 단위). 주면 상속 환경의 값과
+   * 기본 1M ceiling을 모두 이 값으로 덮는다. 생략하면 지금과 같다(상속값, 없으면 1M).
+   *
+   * 자식은 이 창에서 `min(maxOutputTokens, 20k) + 13k`를 뺀 지점에서 대화를 요약해 이어 가고, 창을
+   * 100k–1M과 모델 창 안으로 clamp한다(2.1.293·2.1.296 실측). 압축 비율 override
+   * (`CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`)는 이 값이 명시된 창이므로 그대로 듣는다.
+   */
+  readonly autoCompactWindow?: number;
+  /**
    * 자식 CLI를 띄우는 호스트의 포트. 호스트가 자식의 수명을 직접 책임질 때(자기 process group에 두고 소유
    * 등록부에 올리는 Console) 넘긴다. 생략하면 SDK가 스스로 띄운다 — 지금까지와 같다.
    */
