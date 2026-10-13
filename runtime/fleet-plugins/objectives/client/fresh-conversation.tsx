@@ -81,7 +81,7 @@ function FreshObjectiveBody({ objectiveId, language, onClose }: { readonly objec
   const start = () => {
     if (busy || reason || !startable) return;
     if (review.length > 0) {
-      openObjectiveFromCluster(objective.theaterId, "rail");
+      openObjectiveFromCluster(objective.theaterId);
       setFailure(t("objectives.fresh.review"));
       return;
     }

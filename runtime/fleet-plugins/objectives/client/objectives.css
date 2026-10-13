@@ -11,16 +11,11 @@
   font-family: var(--font-ui);
   font-size: var(--t-md);
   color: var(--text-primary);
-  /* 도구 패널·확장 표면의 유리를 그대로 비춘다(게이트가 닫히면 불투명 패널). 상세 열은 그 위에
-     얹힌 약한 들림이다 — display: contents 뒤의 조각까지 같은 면을 쓰도록 변수로 나눠 준다. */
+  /* 상세 열은 레일 유리 위에 얹힌 약한 들림이다 — 조각마다 같은 면을 쓰도록 변수로 나눠 준다. */
   --objectives-detail-face: color-mix(in oklch, var(--glass-panel-face) 88%, var(--surface-panel-raised));
-  background: var(--glass-panel-face);
-}
-/* 레일 자리는 목표 상세를 읽는 시트다 — 반투명 슬롯 유리만 깔리면 다크에서 뒤 캔버스 글자가
-   상세 글자와 겹쳐 읽히지 않는다. 설정·분할 detail 창과 같은 재질을 불투명 --float-underlay 위에 깔고,
-   기존 면(--glass-panel-face)은 맨 위에 둔다 — 게이트가 닫힌 Whites·투명도 축소에서는 그 면이 불투명이라 그대로다.
-   스크롤러(.objectives-detail-scroll)의 조상에 까므로 세로 스크롤바 거터도 함께 덮는다. 확장 표면은 그대로 둔다. */
-.objectives-root.is-rail {
+  /* 레일 자리는 목표 상세를 읽는 시트다 — 반투명 슬롯 유리만 깔리면 다크에서 뒤 캔버스 글자가 상세 글자와 겹쳐 읽히지 않는다.
+     설정·분할 detail 창과 같은 재질을 불투명 --float-underlay 위에 깔고, 기존 면(--glass-panel-face)은 맨 위에 둔다 — 게이트가 닫힌
+     Whites·투명도 축소에서는 그 면이 불투명이라 그대로다. 스크롤러의 조상에 까므로 세로 스크롤바 거터도 함께 덮는다. */
   background:
     linear-gradient(var(--glass-panel-face), var(--glass-panel-face)),
     linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),
@@ -81,7 +76,7 @@
 /* 제목 ⌄ 전환 목록 — 사이드바가 접힌 자리에서 같은 그룹 트리를 머리 아래에 띄운다. 기준은 머리(position: relative).
    ⌄ 는 상자 없는 글자로 제목 끝에 붙는다: 제목은 글자 폭만 차지하고, ⌄ 뒤의 도구가 오른쪽으로 밀린다. brass 는 ⌄ 에만 — 제목은 편집 칸이다. */
 .objectives-switch-wrap { display: contents; }
-:is(.objectives-detail-head, .objectives-pick-head):has(> .objectives-switch-wrap) > :is(.objectives-detail-title, .objectives-pick-label) { flex: 0 1 auto; }
+.objectives-pick-head:has(> .objectives-switch-wrap) > .objectives-pick-label { flex: 0 1 auto; }
 .objectives-switch { flex: none; display: inline-grid; place-items: center; width: 16px; height: 25px; margin-right: auto; padding: 0; border: 0; background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .objectives-pick-head .objectives-switch { height: 18px; }
 .objectives-switch svg { width: 13px; height: 13px; }
@@ -143,23 +138,7 @@
 .objectives-pop-none .objectives-new-operation:hover { text-decoration: underline; text-underline-offset: 3px; }
 .objectives-pop-none .objectives-new-operation:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
-.objectives-place-button {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.objectives-place-button:hover { color: var(--brass-ink); }
-.objectives-place-button:focus-visible { color: var(--brass-ink); outline: 1px solid var(--brass); outline-offset: 1px; }
 
-.objectives-place-detail { display: grid; }
 
 /* 구획 머리는 접이식 낱말 — 상자·채움 없이 셰브런이 펼침을 말하고, 「완료됨」은 맨 아래 접힌 채 선다.
    초점은 범위 낱말처럼 황동 글자와 이름 밑줄로 자리를 말한다. */
@@ -170,31 +149,9 @@
 .objectives-stop:hover, .objectives-stop:focus-visible { color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); outline: none; }
 .objectives-stop-btn { display: inline-flex; align-items: center; gap: 4px; color: var(--coral); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .objectives-stop-btn:hover { border-color: var(--coral); }
-.objectives-busy-line { display: flex; align-items: center; gap: 8px; padding: 0 20px 8px 22px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; color: var(--text-tertiary); }
-.objectives-busy-line i { width: 6px; height: 6px; border-radius: 50%; background: var(--positive); animation: objectives-breathe 1.6s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
-.objectives-busy-line.is-stopped i { background: var(--warn); animation: none; }
 @keyframes objectives-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
-.objectives-detail.is-busy .objectives-detail-title, .objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
+.objectives-detail.is-busy .objectives-note:read-only { cursor: default; color: var(--text-secondary); }
 .objectives-detail.is-busy .objectives-row-main:disabled { cursor: default; opacity: 0.6; }
-.objectives-detail.is-busy .objectives-check { opacity: 0.35; cursor: default; }
-.objectives-check {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1.5px solid var(--text-tertiary);
-  background: transparent;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  color: var(--text-on-brass);
-  transition: background var(--duration-fast), border-color var(--duration-fast);
-}
-.objectives-check svg { width: 10px; height: 10px; opacity: 0; }
-/* 완료는 상태 글리프의 「완료」와 같은 중성 채움 + 1차 잉크 체크 — brass는 위치·초점만 말한다. */
-.objectives-check.is-on { background: color-mix(in oklch, var(--text-tertiary) 42%, transparent); border-color: transparent; color: var(--text-primary); }
-.objectives-check.is-on svg { opacity: 1; }
-.objectives-check:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
 /* 한 열에서 추가한 뒤 — 상세를 덮어 열지 않고 「추가됨 · 열기」가 입력줄에 선다. */
 
@@ -257,39 +214,6 @@
 .objectives-detail-bottom { flex: none; background: var(--objectives-detail-face); }
 .objectives-group { display: flex; flex-direction: column; padding: 6px 0; }
 .objectives-group + .objectives-group { border-top: 1px solid color-mix(in oklch, var(--surface-rim) 80%, transparent); }
-.objectives-detail-head { position: relative; display: flex; gap: 8px; align-items: flex-start; padding: 8px 20px 10px 22px; }
-.objectives-detail-head .objectives-check { margin-top: 3px; width: 18px; height: 18px; }
-/* 「다른 요청 N」 — 모든 폭에서 제목 뒤에 선다. 상자 없이 aurora 글자로 「사람 차례」를 말하고, 누르면 다음 요청 목표로 간다. */
-.objectives-detail-requests { flex: none; align-self: center; padding: 2px 0; border: 0; background: transparent; font-family: var(--font-ui); font-size: var(--t-xs); color: var(--aurora); white-space: nowrap; cursor: pointer; }
-.objectives-detail-requests:hover { text-decoration: underline; text-underline-offset: 3px; }
-.objectives-detail-requests:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-detail-head .objectives-check svg { width: 11px; height: 11px; }
-.objectives-detail-title {
-  flex: 1;
-  margin: 0;
-  font-size: var(--t-lg);
-  font-weight: var(--weight-medium);
-  line-height: 1.35;
-  background: transparent;
-  border: 0;
-  color: var(--text-primary);
-  font-family: inherit;
-  padding: 1px 0;
-  min-width: 0;
-  resize: none;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  field-sizing: content;
-}
-.objectives-detail-title:focus { outline: none; }
-/* 목표 닫기 — Operation이 있으면 보관(비파괴라 옆 자리 옮기기와 같은 황동 hover), 기동 전이면 영구 삭제(coral, 두 번 눌러 확정). */
-.objectives-detail-close { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); cursor: pointer; transition: color var(--duration-fast), background-color var(--duration-fast); }
-.objectives-detail-close svg { width: 16px; height: 16px; }
-.objectives-detail-close.is-archive svg { width: 14px; height: 14px; }
-.objectives-detail-close.is-archive:hover { color: var(--brass-ink); }
-.objectives-detail-close.is-delete:hover, .objectives-detail-close.is-delete.is-armed { color: var(--coral); }
-.objectives-detail-close.is-delete.is-armed { background: color-mix(in oklch, var(--coral) 16%, transparent); }
-.objectives-detail-close:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 
 /* 행 */
 .objectives-row { display: flex; align-items: center; gap: 14px; min-height: 44px; padding: 0 20px 0 22px; width: 100%; background: transparent; border: 0; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: default; position: relative; }
@@ -346,8 +270,6 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 /* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
 /* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
 /* 검토 대기 — 지휘관이 넘긴 가승인. aurora 로 「사람 차례」를 말하고, 완료 버튼 하나만 둔다. */
-.objectives-check.is-linked.is-review { border-color: var(--aurora); background: color-mix(in oklch, var(--aurora) 10%, transparent); }
-.objectives-check.is-linked.is-review i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
 .objectives-start-group { padding: 8px 14px 2px 16px; border: 0; }
 .objectives-start { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring); }
 .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--brass); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 24%, transparent), color-mix(in oklch, var(--brass) 10%, transparent)); }
@@ -662,9 +584,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 
 @container objectives-panel (width < 600px) {
   /* 좁은 폭은 안쪽 선을 22px 에서 14px 로 당긴다. */
-  .objectives-place-detail { margin-left: 0; }
   .objectives-pick-head { padding-right: 12px; padding-left: 14px; }
-  .objectives-detail-head { gap: 8px; padding-right: 12px; padding-left: 12px; }
   .objectives-row { padding-right: 12px; padding-left: 14px; gap: 8px; }
   .objectives-row-main { margin-left: -14px; margin-right: -12px; padding-left: 14px; padding-right: 12px; gap: 8px; }
   .objectives-records-inner { padding-left: 38px; padding-right: 8px; }
@@ -710,18 +630,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 /* 카드의 동그라미 — 지휘관이 연결되면 완료 버튼이 아니라 상태 고리가 된다. 대기: 가운데 점 · 진행: 도는 호 · 결정 대기: 숨 쉬는 aurora 고리 ·
    배경: 점선 · 끝남: dim 고리와 작은 정사각. 색은 신호 토큰만. 누를 수 없고, 겨누면 말풍선이 이유를 말한다. */
 
-.objectives-check.is-linked { position: relative; cursor: pointer; border-color: var(--hairline-strong); background: transparent; }
-.objectives-check.is-linked:disabled { cursor: default; }
-.objectives-check.is-linked i { position: absolute; inset: 0; border-radius: 50%; }
-.objectives-check.is-linked.is-idle i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: var(--text-tertiary); }
-.objectives-check.is-linked.is-running { border-color: color-mix(in oklch, var(--warn) 35%, transparent); }
-.objectives-check.is-linked.is-running i { border: 1.5px solid transparent; border-top-color: var(--warn); animation: objectives-spin 1.2s linear infinite; animation-name: var(--state-motion, objectives-spin); }
-.objectives-check.is-linked.is-awaiting { border-color: var(--aurora); animation: objectives-breathe 1.6s ease-in-out infinite; animation-name: var(--state-motion, objectives-breathe); }
-.objectives-check.is-linked.is-awaiting i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--aurora); }
-.objectives-check.is-linked.is-ended, .objectives-check.is-linked.is-unknown, .objectives-check.is-linked.is-closed { border-color: var(--hairline); }
-.objectives-check.is-linked.is-ended i::after, .objectives-check.is-linked.is-closed i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 1px; background: var(--text-tertiary); }
 @keyframes objectives-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .objectives-check.is-linked i, .objectives-check.is-linked { animation: none; } }
 
 
 /* 임무 배정 — 글리프 트리거와 메뉴의 특별 항목. 배정 낱말은 담당 줄과 같은 자리, 조금 더 dim. */
@@ -988,8 +897,6 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 .objectives-band.has-alt.is-review::before { border-color: color-mix(in oklch, var(--aurora) 30%, transparent); background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel)); }
 .objectives-comp.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(180deg, color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)), color-mix(in oklch, var(--aurora) 10%, var(--surface-panel))); }
 .objectives-comp.is-review .objectives-start { border-top-color: color-mix(in oklch, var(--aurora) 22%, transparent); }
-/* 인계 대기 — 아직 지휘관의 차례다. 활동 고리(실행·유휴)는 그대로 두고 가운데 점만 옅은 aurora 로 「검토 직전」을 말한다. 눌러도 완료하지 않고 상세를 연다. */
-.objectives-check.is-linked.is-handoff:not(.is-awaiting) i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: color-mix(in oklch, var(--aurora) 60%, transparent); }
 
 /* 확장 회차는 상태 색을 쓰지 않는다 — 숫자 칩과 구분선, 이전 회고의 접힘으로 범위를 나눈다. */
 .objectives-extension-chip { display: inline-flex; align-items: center; align-self: flex-start; box-sizing: border-box; min-width: 0; width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font: var(--t-2xs)/1.5 var(--font-ui); white-space: normal; overflow-wrap: anywhere; }
@@ -1165,23 +1072,11 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-decision-n { margin-left: auto; }
 .objectives-decision-glyph { display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; }
 .objectives-decision-glyph svg { width: 14px; height: 14px; }
-.objectives-decision-body { display: flex; flex-direction: column; gap: 10px; max-height: min(52vh, 460px); overflow: auto; }
 .objectives-decision-q { display: flex; flex-direction: column; gap: 6px; }
 .objectives-decision-q + .objectives-decision-q { padding-top: 10px; border-top: 1px solid color-mix(in oklab, var(--brass) 18%, var(--surface-rim)); }
 /* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 상태가 아니라 분류라 신호색 없이 옅은 면 위 무채색 잉크. 기록 줄에서는 질문 앞에 선다. */
 .objectives-decision-header { display: inline-block; align-self: flex-start; max-width: 100%; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; vertical-align: 1px; }
-.objectives-decision-q-top { display: flex; gap: 6px; align-items: baseline; }
-.objectives-decision-q-n { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-q-text { margin: 0; font-size: var(--t-sm); line-height: 1.45; color: var(--text-primary); overflow-wrap: anywhere; white-space: pre-wrap; }
-.objectives-decision-refs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding-left: 16px; font-size: var(--t-xs); }
-.objectives-decision-ref { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); text-align: left; }
-button.objectives-decision-ref { cursor: pointer; }
-button.objectives-decision-ref:hover { color: var(--text-primary); }
-button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-decision-ref .objectives-avatar { width: 16px; height: 16px; }
-.objectives-decision-ref-n { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-decision-ref.is-go { color: var(--text-primary); text-decoration: underline; text-decoration-color: color-mix(in oklch, var(--brass) 60%, transparent); text-underline-offset: 3px; }
-.objectives-decision-ref.is-go svg { width: 11px; height: 11px; }
 /* 선택지 — 고르는 줄과 설명의 링크를 겹치지 않는다. 고른 줄은 표시기와 글자 무게·옅은 면으로만 말한다. */
 .objectives-decision-opts { display: flex; flex-direction: column; padding-left: 12px; }
 .objectives-decision-opt { display: grid; grid-template-columns: 14px 1fr; align-items: start; color: var(--text-secondary); font-size: var(--t-sm); }
@@ -1196,16 +1091,12 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--brass); }
 .objectives-decision-opt.is-multi .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind::after { border-radius: 1px; }
 /* 「내 의견으로 답하기」 — 보드가 붙이는 줄. 지휘관 선택지와 점선으로 갈리고, 표시기는 고르기 전까지 점선 원이다(여러 개 고르는 질문에서도 원). */
-.objectives-decision-own-sep { margin: 4px 6px 2px 26px; border-top: 1px dashed var(--hairline-strong); }
 .objectives-decision-opt.is-own { color: var(--text-tertiary); }
 .objectives-decision-opt.is-own .objectives-decision-ind { border-style: dashed; }
 .objectives-decision-opt.is-own .objectives-decision-opt-pick[aria-checked="true"] .objectives-decision-ind { border-style: solid; }
-.objectives-decision-own-label { margin-left: 12px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--brass-ink); }
-.objectives-decision-hint { padding: 2px 0 0 26px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-free { margin-left: 12px; width: calc(100% - 12px); min-height: 32px; max-height: 160px; padding: 6px 9px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel); color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.4; resize: vertical; box-sizing: border-box; }
 .objectives-decision-free:focus { outline: none; border-color: color-mix(in oklch, var(--brass) 60%, transparent); }
 .objectives-decision-submit { display: flex; align-items: center; gap: 10px; }
-.objectives-decision-progress { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 답이 갈 곳 — 보내기 곁 한 줄. 남는 폭을 쥐고 좁으면 줄바꿈한다. */
 .objectives-decision-route { flex: 1 1 auto; min-width: 0; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-giveback { flex: none; height: 30px; padding: 0 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
@@ -1228,7 +1119,6 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-ask-objective:hover:not(:disabled), .objectives-ask-objective:focus-visible { color: var(--text-primary); outline: none; }
 .objectives-ask-objective:disabled { text-decoration: none; cursor: default; }
 .objectives-ask .objectives-decision-q { gap: 6px; }
-.objectives-decision-trace { margin: 0 14px 6px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 「결정」 — 질문(옅게)·답(원문)·시각과 관련 임무·구성원. 임무 줄의 결정 표식이 가리키면 잠시 비춘다. */
 .objectives-decisions { display: flex; flex-direction: column; padding: 0 12px 0 36px; }
 .objectives-decision { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; margin-inline: -4px; border-radius: var(--radius-xs); transition: background var(--duration-fast); }
@@ -1706,7 +1596,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 
 /* 자율 운영 중 결정 요청 머리의 「사령관이 답하는 중」 — 사이드바 줄 메모와 같은 brass 잉크. */
 /* 「사령관이 답하는 중」 — 맡은 이를 말할 뿐 사람의 차례가 아니라 무채색. */
-.objectives-decision-handler { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; }
 
 /* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
    시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */

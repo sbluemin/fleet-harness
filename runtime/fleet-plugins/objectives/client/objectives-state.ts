@@ -33,8 +33,6 @@ export interface RevealTarget {
   readonly missionId?: string;
   /** 사이드바 검토 대기 글리프에서 왔다 — 표면이 후속 후보 선택을 연다. */
   readonly followups?: boolean;
-  /** 사이드바 「+ 목표」로 막 만들었다 — 표면이 제목 칸에 포커스를 두고 전체 선택한다. */
-  readonly focusTitle?: boolean;
   readonly at: number;
 }
 
@@ -616,7 +614,7 @@ function contextOperationId(host: PluginInstallContext | null = installed): stri
 }
 
 /** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean; focusTitle?: boolean }): void {
+export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -770,7 +768,7 @@ function selectOperationObjective(operationId: string, shown: () => boolean): vo
 export function followActiveOperation(): void {
   if (reveal) return;
   const operationId = contextOperationId();
-  // 레일이든 확장 표면이든 — 열린 자리가 활성 Operation 을 보인다.
+  // 열린 레일 패널이 활성 Operation 의 목표를 보인다.
   if (operationId) selectOperationObjective(operationId, isObjectiveSurfaceOpen);
 }
 
@@ -805,47 +803,15 @@ export function focusOperation(operationId: string): void {
 }
 
 const OBJECTIVE_PANEL_ID = "objectives";
-const OBJECTIVE_PLACE_KEY = "objectives.lastPlace";
-type ObjectivePlace = "rail" | "expanded";
-
-function rememberObjectivePlace(place: ObjectivePlace): void {
-  installed?.preferences.write(OBJECTIVE_PLACE_KEY, place);
-}
-
-/** 아이콘·단축키는 현재 자리를 닫고, 닫혀 있으면 마지막 자리에 연다. */
-export function toggleObjectivePlace(rail = installed?.rail, surfaces = installed?.surfaces): void {
-  if (!rail || !surfaces) return;
-  if (rail.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("rail"); rail.close(OBJECTIVE_PANEL_ID); return; }
-  if (surfaces.isOpen(OBJECTIVE_PANEL_ID)) { rememberObjectivePlace("expanded"); surfaces.closeSurface(OBJECTIVE_PANEL_ID); return; }
-  const remembered = installed?.preferences.read<unknown>(OBJECTIVE_PLACE_KEY, "rail");
-  const place = remembered === "expanded" ? "expanded" : "rail";
-  if (place === "expanded") surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+/** 아이콘·단축키 — 레일의 목표 패널을 여닫는다. 목표는 레일에만 선다. */
+export function toggleObjectivePanel(rail = installed?.rail): void {
+  if (!rail) return;
+  if (rail.isOpen(OBJECTIVE_PANEL_ID)) rail.close(OBJECTIVE_PANEL_ID);
   else rail.open(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace(place);
-}
-
-export function expandObjective(): void {
-  if (!installed?.rail.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
-  installed.rail.close(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace("expanded");
-}
-
-export function dockObjective(): void {
-  if (!installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed.rail.open(OBJECTIVE_PANEL_ID);
-  installed.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
-  rememberObjectivePlace("rail");
-}
-
-export function onObjectiveSurfaceClose(): void {
-  // Esc나 다른 표면에 밀려 닫힌 경우에도 마지막 자리는 확장 표면이다.
-  // 도킹 전환의 close 통보는 dockObjective가 이어서 rail로 다시 쓴다.
-  rememberObjectivePlace("expanded");
 }
 
 export function isObjectiveSurfaceOpen(): boolean {
-  return !!installed && (installed.rail.isOpen(OBJECTIVE_PANEL_ID) || installed.surfaces.isOpen(OBJECTIVE_PANEL_ID));
+  return !!installed && installed.rail.isOpen(OBJECTIVE_PANEL_ID);
 }
 
 /** 목표가 하나도 없는 Theater 의 입구 — 목표는 새 Operation 에서 시작하니 호스트 컴포저를 연다. 어느 모양으로 서는지는 호스트 몫이다. */
@@ -853,30 +819,30 @@ export function openNewOperation(): void {
   installed?.composer.open();
 }
 
-/** 시작 전 줄은 레일에, 캡션 칩은 이미 열린 자리에 선다. 닫힌 칩만 확장 표면을 연다. 마지막 자리 선택은 바꾸지 않는다. */
-export function openObjectiveFromCluster(theaterId?: string, place?: "rail", objectiveId?: string): void {
-  // 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 표면을 연다. reveal 은 표면이 새 Theater 의 목록을 읽을 때 집힌다.
-  // 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
-  // 파생되고, 표면·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
-  // 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
-  // 레일로 여는 길(시작 전 목표)은 부르는 쪽이 그 목표의 대화를 가운데 칸에 세우거나 이미 세워 두었다 — 옮기지 않는다.
+/**
+ * 사이드바 줄·캡션 칩·질문 카드의 「이 목표로」 — 레일의 목표 패널을 연다(이미 열려 있으면 그대로).
+ * 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 연다. reveal 은 패널이 새 Theater 의 목록을 읽을 때 집힌다.
+ * 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
+ * 파생되고, 패널·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
+ * 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
+ */
+export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
   const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
-  if (installed && theaterId && place !== "rail" && viewed !== theaterId) {
+  if (installed && theaterId && viewed !== theaterId) {
     if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
-      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다 — 그 이동이 확대 표면을 접는다. 보이는 Theater 는 같은 커밋의 더 이른
-      // effect 에서 바뀌므로, 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 표면을 연다(열기는 접힌 표면을 편다).
-      whenViewing(theaterId, () => { setTimeout(() => installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID }), 0); });
+      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다. 보이는 Theater 는 같은 커밋의 더 이른 effect 에서 바뀌므로,
+      // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다.
+      whenViewing(theaterId, () => { setTimeout(openObjectivePanel, 0); });
       return;
     }
     installed.consoleState.viewTheater?.(theaterId);
   }
-  if (place === "rail") {
-    installed?.rail.open(OBJECTIVE_PANEL_ID);
-    installed?.surfaces.closeSurface(OBJECTIVE_PANEL_ID);
-    return;
-  }
-  if (installed?.rail.isOpen(OBJECTIVE_PANEL_ID) || installed?.surfaces.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed?.surfaces.open({ surfaceId: OBJECTIVE_PANEL_ID });
+  openObjectivePanel();
+}
+
+function openObjectivePanel(): void {
+  if (!installed || installed.rail.isOpen(OBJECTIVE_PANEL_ID)) return;
+  installed.rail.open(OBJECTIVE_PANEL_ID);
 }
 
 /** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */

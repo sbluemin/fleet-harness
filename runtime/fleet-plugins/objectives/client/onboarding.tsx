@@ -33,7 +33,6 @@ export const objectivesOnboarding: OnboardingContribution = {
         { anchor: `${PICK} [data-objectives-tour="pick"]`, title: T("objectives.onboarding.list.step1Title"), body: T("objectives.onboarding.list.step1Body") },
         // 사람의 입구는 호스트 사이드바 「+」의 새 Operation 이다 — 다른 번들의 DOM 이라 짚지 않고 말로만 안내한다.
         { anchor: null, title: T("objectives.onboarding.list.step2Title"), body: T("objectives.onboarding.list.step2Body"), example: T("objectives.onboarding.list.step2Example") },
-        { anchor: `${PICK} [data-objectives-tour="place"]`, title: T("objectives.onboarding.list.step3Title"), body: T("objectives.onboarding.list.step3Body") },
       ],
     },
     {
