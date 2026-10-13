@@ -1310,8 +1310,9 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-section { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 20px 6px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .mobile-conv-section button { position: relative; padding: 0; color: var(--m-text-nav); font: inherit; background: transparent; border: 0; --pr-inset: -6px -8px; --pr-r: 12px; }
 /* 홈 끝의 「시작 전」·「끝남」 접기 머리 — 섹션 이름 자체가 접는 단추다(링크 색이 아니라 섹션 글자색, 끝에 셰브런). */
-/* 누를 자리 44 — 단추 자체를 44 높이로 세우고 위아래 음수 여백으로 섹션 줄의 높이·글자 자리는 그대로 둔다(누름 층의 ::before 는 히트를 넓히지 않는다). */
-.mobile-conv-section.is-fold button { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: -12px 0; color: var(--m-text-muted); --pr-inset: 0 -8px; }
+/* 누를 자리 44 — 단추 자체를 44 높이로 세우고 위아래 음수 여백으로 섹션 줄의 높이·글자 자리는 그대로 둔다(누름 층의 ::before 는 히트를 넓히지 않는다).
+   아래 6px 는 DOM 뒤의 첫 행과 겹치므로 그 행보다 위에 세워 히트를 가져온다 — 그 행의 히트는 위 6px 만큼 줄어든다. */
+.mobile-conv-section.is-fold button { z-index: 1; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: -12px 0; color: var(--m-text-muted); --pr-inset: 0 -8px; }
 .mobile-conv-attention { margin: 2px 12px 6px; overflow: hidden; background: var(--m-surface); border-radius: 18px; }
 .mobile-conv-attention .mobile-conv-row { min-height: 64px; padding: 8px 14px; }
 .mobile-conv-attention .mobile-conv-row + .mobile-conv-row { border-top: 1px solid var(--m-hairline); }
