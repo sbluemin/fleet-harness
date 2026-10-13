@@ -7,6 +7,8 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
+import type { CommodoreAttachmentReader } from "../console-tools.js";
+import { ObjectiveStoreError } from "../store.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
@@ -58,7 +60,7 @@ export interface CommodoreSupervisorDeps {
   readonly language?: (theaterId: string) => "en" | "ko";
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
-  readonly boardTools: (theaterId: string) => readonly PluginMcpTool[];
+  readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader) => readonly PluginMcpTool[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
@@ -183,6 +185,8 @@ interface Runner {
   pending: Map<WakeCode, PendingReason>;
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
   messages: QueuedMessage[];
+  /** 이번 턴에 실은 메시지만 보드 도구가 복사할 수 있다. 대기·과거 메시지는 권한이 아니다. */
+  turnMessages: readonly QueuedMessage[];
   sessionImageBytes: number;
   sessionImageBase64Bytes: number;
   coalesce: ReturnType<typeof setTimeout> | null;
@@ -230,6 +234,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const releaseMessages = (runner: Runner, messages: readonly QueuedMessage[]) => {
     for (const message of messages) if (message.messageId) deps.attachments?.release(runner.theaterId, message.messageId);
+  };
+  const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
+    const unavailable = () => new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
+    if (!deps.attachments || runner.stopping || runner.ending || disposed || !runner.turnMessages.length) throw unavailable();
+    const selected = ids.map((id) => {
+      const message = runner.turnMessages.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
+      if (!message?.messageId) throw unavailable();
+      return { id, messageId: message.messageId };
+    });
+    const messages = new Map<string, ReturnType<PluginAttachmentHost["read"]>>();
+    for (const { messageId } of selected) if (!messages.has(messageId)) {
+      try { messages.set(messageId, deps.attachments.read(runner.theaterId, messageId)); }
+      catch { throw unavailable(); }
+    }
+    return selected.map(({ id, messageId }) => {
+      const image = messages.get(messageId)!.find((entry) => entry.id === id);
+      if (!image) throw unavailable();
+      return image;
+    });
   };
   const takeUndelivered = (runner: Runner) => {
     const messages = runner.messages.splice(0);
@@ -326,7 +349,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
       theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
-      boardTools: deps.boardTools(runner.theaterId).map((tool) => selfAttributed(runner, tool)), now,
+      boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner)).map((tool) => selfAttributed(runner, tool)), now,
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
@@ -428,7 +451,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
           const images = deps.attachments.read(runner.theaterId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
-          return { text: message.text, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
+          return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in add or edit_brief before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         const rotate = runner.rotateNext ?? (session && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES) ? "replaced" : null);
@@ -466,7 +489,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       // 실패한 턴도 CLI resume 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
       runner.sessionImageBytes += batchBytes;
       runner.sessionImageBase64Bytes += batchBase64Bytes;
-      const outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: preparedMessages } : {}) });
+      runner.turnMessages = messages;
+      let outcome: CommodoreTurnOutcome;
+      try {
+        outcome = await session.turn({ reasons, sentences, ...(scope ? { scope } : {}), ...(replacementSummary ? { replacementSummary } : {}), ...(messages.length ? { messages: preparedMessages } : {}) });
+      } finally { runner.turnMessages = []; }
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
       if (runner.stopping || runner.ending) {
@@ -525,7 +552,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);

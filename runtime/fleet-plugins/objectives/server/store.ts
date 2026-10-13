@@ -8,7 +8,7 @@ import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS } from "./attachments.js";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
 import { heldItemStands, objectiveOperator, type HoldSubject } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
@@ -134,6 +134,7 @@ export interface ObjectiveStoreOptions {
 /** 새 목표의 목표 고유값 — Operation 은 부르는 쪽이 먼저 만든다. */
 export interface ObjectiveInit {
   readonly note?: string;
+  readonly attachments?: readonly BriefAttachmentInput[];
   readonly dueDate?: string | null;
   readonly today?: boolean;
   readonly missions?: readonly { readonly text: string; readonly prerequisites?: readonly number[] }[];
@@ -313,7 +314,9 @@ export interface ObjectiveStore {
   evidenceSeal(objectiveId: string, ownerOperationId: string, input: EvidenceBytes): EvidenceMetadata;
   evidenceRead(objectiveId: string, resultId: string): Promise<{ readonly data: Buffer; readonly metadata: EvidenceMetadata }>;
   evidenceCollect(): void;
-  attachmentAdd(objectiveId: string, input: { readonly name: string; readonly type: ObjectiveAttachment["type"]; readonly data: Buffer; readonly width?: number; readonly height?: number }): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
+  attachmentAdd(objectiveId: string, input: BriefAttachmentInput): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
+  /** 브리핑·새 첨부·편집 귀속을 한 레코드 쓰기로 확정한다. 기존 첨부는 보존한다. */
+  briefEdit(objectiveId: string, note: string, attachments: readonly BriefAttachmentInput[], by: ObjectiveActor): Objective;
   attachmentRemove(objectiveId: string, attachmentId: string): Objective;
   /** 첨부 파일의 절대 경로 — 서버 안(파일 서빙·지휘관의 도구 응답)에서만 쓴다. */
   attachmentPath(objective: Objective, attachment: ObjectiveAttachment): string;
@@ -956,6 +959,43 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     actionCounts: { ...stored.actionCounts, [kind]: (stored.actionCounts?.[kind] ?? 0) + 1 },
   });
 
+  const editedStored = (stored: StoredObjective, kinds: readonly ObjectiveEditKind[], by: ObjectiveActor): StoredObjective => {
+    const next = withoutDecisionRequest(stored);
+    const merged = [...new Set([...(stored.edited?.kinds ?? []), ...kinds])];
+    const actors = stored.edited ? stored.edited.actors ?? ["human" as const] : [];
+    // 같은 사령관의 근거가 달라도 편집자 목록에는 한 번만 남긴다.
+    const editor: ObjectiveActor = typeof by === "object" && by.kind === "commodore" ? { kind: "commodore", theaterId: by.theaterId } : by;
+    const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(editor));
+    return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, editor] } };
+  };
+
+  /** 전부 검사한 뒤 이진을 준비한다. 어느 쓰기라도 실패하면 이번 묶음만 거두고 옛 레코드는 보존한다. */
+  const withAttachmentFiles = <T>(theaterId: string, objectiveId: string, existing: readonly ObjectiveAttachment[], inputs: readonly BriefAttachmentInput[], save: (attachments: readonly ObjectiveAttachment[]) => T): T => {
+    if (existing.length + inputs.length > MAX_ATTACHMENTS) throw new ObjectiveStoreError("too_many_attachments");
+    const top = existing.reduce((n, entry) => Math.max(n, entry.n), 0);
+    const prepared = inputs.map((input, index) => {
+      if (input.data.length > MAX_ATTACHMENT_BYTES) throw new ObjectiveStoreError("attachment_too_large");
+      const info = imageInfo(input.data);
+      if (!info || info.type !== input.type) throw new ObjectiveStoreError("attachment_unsupported");
+      const attachment: ObjectiveAttachment = { id: randomUUID(), n: top + index + 1, name: attachmentName(input.name, info.type), bytes: input.data.length, at: now(), ...info };
+      return { attachment, data: input.data, file: fileOf(theaterId, objectiveId, attachment) };
+    });
+    const written: string[] = [];
+    try {
+      for (const { file, data } of prepared) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        writeFileExclusive(file, data);
+        written.push(file);
+      }
+      return save([...existing, ...prepared.map(({ attachment }) => attachment)]);
+    } catch (error) {
+      // 레코드가 확정된 뒤 방송만 실패한 경우에는 레코드가 가리키는 이진을 거두지 않는다.
+      const kept = new Set((load(theaterId).get(objectiveId)?.attachments ?? []).map((entry) => fileOf(theaterId, objectiveId, entry)));
+      for (const file of written) if (!kept.has(file)) try { fs.rmSync(file, { force: true }); } catch { /* 자체 파일만 회수한다. */ }
+      throw error;
+    }
+  };
+
   /** 구성원을 담은 저장 목표 — 실패·턴 좌표 같은 구성원 상태를 그 목표 파일에 둔다. 없으면(제거됨) null. */
   const memberOwner = (memberId: string): StoredObjective | null => {
     for (const theaterId of theaterIds()) for (const stored of load(theaterId).values()) if ((stored.members ?? []).some((member) => member.id === memberId)) return stored;
@@ -1191,7 +1231,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         enlisted: true,
         missions: [...lineupOrder(missions)],
       };
-      return commit(theaterId, stored, true) ?? project(stored, node);
+      return withAttachmentFiles(theaterId, operationId, [], init.attachments ?? [], (attachments) => {
+        const complete = attachments.length ? { ...stored, attachments: [...attachments] } : stored;
+        return commit(theaterId, complete, true) ?? project(complete, node);
+      });
     },
 
     releaseGroups(scope) {
@@ -1730,14 +1773,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return update(objectiveId, (stored) => {
         if (kinds === null) return stored.edited ? { ...stored, edited: undefined } : stored;
         if (kinds.length === 0) return stored;
-        // 사람이 보드 내용을 고쳤다 — 앞선 결정 요청은 옛 보드를 전제로 한 질문이다.
-        const next = withoutDecisionRequest(stored);
-        const merged = [...new Set([...(stored.edited?.kinds ?? []), ...kinds])];
-        const actors = stored.edited ? stored.edited.actors ?? ["human" as const] : [];
-        // 편집자 목록은 누가 고쳤는지만 말한다 — 행위마다 다른 근거(why)로 같은 사령관이 여러 번 서지 않게 걷는다.
-        const editor: ObjectiveActor = typeof by === "object" && by.kind === "commodore" ? { kind: "commodore", theaterId: by.theaterId } : by;
-        const sameActor = actors.some((actor) => JSON.stringify(actor) === JSON.stringify(editor));
-        return { ...action(next, by, "edit", { kinds }), edited: { at: now(), kinds: merged, actors: sameActor ? actors : [...actors, editor] } };
+        // 보드 편집은 옛 보드를 전제로 한 결정 요청을 거둔다.
+        return editedStored(stored, kinds, by);
       }, kinds !== null);
     },
 
@@ -1879,29 +1916,18 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     attachmentAdd(objectiveId, input) {
       const { theaterId, stored } = locate(objectiveId);
       if (stored.done) throw new ObjectiveStoreError("objective_done");
-      const existing = stored.attachments ?? [];
-      if (existing.length >= MAX_ATTACHMENTS) throw new ObjectiveStoreError("too_many_attachments");
-      const attachment: ObjectiveAttachment = {
-        id: randomUUID(),
-        n: existing.reduce((top, entry) => Math.max(top, entry.n), 0) + 1,
-        name: input.name,
-        type: input.type,
-        bytes: input.data.length,
-        ...(input.width ? { width: input.width } : {}),
-        ...(input.height ? { height: input.height } : {}),
-        at: now(),
-      };
-      const file = fileOf(theaterId, objectiveId, attachment);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      // 이진 먼저, 레코드 나중 — 레코드 쓰기가 실패하면 방금 쓴 이진을 거둬 가리키는 이가 없는 파일을 남기지 않는다.
-      writeFileExclusive(file, input.data);
-      try {
-        const objective = update(objectiveId, (current) => ({ ...current, attachments: [...(current.attachments ?? []), attachment] }));
-        return { objective, attachment };
-      } catch (error) {
-        try { fs.rmSync(file, { force: true }); } catch { /* ignore */ }
-        throw error;
-      }
+      return withAttachmentFiles(theaterId, objectiveId, stored.attachments ?? [], [input], (attachments) => ({
+        objective: update(objectiveId, (current) => ({ ...current, attachments: [...attachments] })), attachment: attachments.at(-1)!,
+      }));
+    },
+
+    briefEdit(objectiveId, note, inputs, by) {
+      const { theaterId, stored } = locate(objectiveId);
+      if (stored.done) throw new ObjectiveStoreError("objective_done");
+      if (note.length > MAX_NOTE) throw new ObjectiveStoreError("invalid_request");
+      if (note === stored.note && inputs.length === 0) return project(stored, operationNode(objectiveId));
+      return withAttachmentFiles(theaterId, objectiveId, stored.attachments ?? [], inputs, (attachments) => update(objectiveId, (current) =>
+        editedStored({ ...current, note, attachments: [...attachments] }, ["note"], by)));
     },
 
     attachmentRemove(objectiveId, attachmentId) {

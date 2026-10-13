@@ -20,6 +20,7 @@ import { createCommodoreStore } from "../server/commodore/store.js";
 import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
+import type { CommodoreAttachmentReader } from "../server/console-tools.js";
 
 /**
  * 사령관 Theater 상태의 필수 계약 — 보드 곁 `commodore/` 에 한 건으로 영속되고, 지시 개정은 본문이 바뀔 때만 오르며,
@@ -276,17 +277,31 @@ describe("commodore supervisor", () => {
     const attachments = files.forPlugin("objectives");
     Object.assign(h.ctx.host, { attachments });
     const turns: AgentInput[] = [];
+    let readTurnAttachments: CommodoreAttachmentReader | undefined;
+    let activeId: string | undefined;
+    const copies: Uint8Array[] = [];
+    const foreign = files.save(Buffer.from("iVBORw0KGgo=", "base64")).id;
+    attachments.claim("t2", "another-message", [foreign], MAX_COMMODORE_MESSAGE_IMAGE_BYTES);
+    const rejected: string[] = [];
     let fail = true;
     let created = 0;
     const agent: AgentHost = { createSession: async (options) => { created += 1; return ({
-      send: async (input) => { turns.push(input); options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) }); },
+      send: async (input) => {
+        turns.push(input);
+        if (activeId && readTurnAttachments) {
+          copies.push(readTurnAttachments([activeId])[0]!.bytes);
+          try { readTurnAttachments([foreign]); } catch (error) { rejected.push((error as Error).message); }
+        }
+        options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
+      },
       cancel() {}, dispose: async () => undefined,
     }); } };
-    const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, read) => { readTurnAttachments = read; return []; }, emit: () => undefined });
     const hooks = { run: (id: string) => supervisor.status(id), clear: (id: string) => supervisor.clear(id) };
     const png = Buffer.from("iVBORw0KGgo=", "base64");
     const sendImage = async (bytes = png) => {
       const { id } = files.save(bytes);
+      activeId = id;
       const result = await h.route("commodore/message", { theaterId: "t1", text: "Look at this", attachmentIds: [id] }, hooks);
       return { id, result, entry: result.value.entry as { messageId: string } };
     };
@@ -300,12 +315,18 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(31 * 60_000);
       files.assertSaveCapacity();
       expect(attachments.read("t1", accepted.entry.messageId)[0]!.bytes).toEqual(png);
+      // 실패 뒤의 보존은 다음 재시도 턴을 위한 것이다 — 턴 밖의 도구는 그 바이트를 읽지 못한다.
+      expect(() => readTurnAttachments!([accepted.id])).toThrow("attachment_not_available");
       fail = false;
       await supervisor.retry("t1");
       const delivered = turns.at(-1)!;
       expect(typeof delivered).not.toBe("string");
       expect(delivered).toEqual(expect.arrayContaining([{ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } }]));
       expect(attachments.read("t1", accepted.entry.messageId)).toEqual([]);
+      expect(copies.at(-1)).toEqual(png);
+      expect(rejected).toEqual(expect.arrayContaining(["attachment_not_available"]));
+      expect(() => readTurnAttachments!([accepted.id])).toThrow("attachment_not_available");
+      expect((delivered as Exclude<AgentInput, string>).filter((block) => block.type === "text").some((block) => block.text.includes(accepted.id))).toBe(true);
       // raw 12 MiB와 같아도 파일마다 붙는 padding으로 base64 16 MiB를 넘기 전에 교대한다.
       await supervisor.clear("t1");
       const beforeBudget = created;

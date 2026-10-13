@@ -1,9 +1,11 @@
+import type { PluginAttachmentHost } from "@fleet-console/sdk/agent";
 import { type ConsoleCaller, type ConsoleUseCallTarget, type PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mcp/actions";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
 import { inboxAwaits, inboxReasons, livePersonHold } from "./board-state.js";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
@@ -22,7 +24,11 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
  * 제목·브리핑·기한 편집뿐이다. 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
+/** 감독자가 이번 턴에 전달한 메시지만 읽는다 — 모델 입력으로 메시지나 Theater를 고르지 않는다. */
+export type CommodoreAttachmentReader = (ids: readonly string[]) => ReturnType<PluginAttachmentHost["read"]>;
+
 const ids = z.string().min(1).max(128);
+const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Commodore: preserve this turn's image IDs in the brief, not as text; copy now, or ask to resend. No paths.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
 const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
@@ -64,7 +70,7 @@ const listTool = defineConsoleTool({
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
     models: { kind: "read", input: z.object(scope) },
-    add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
@@ -89,7 +95,7 @@ const detailTool = defineConsoleTool({
     routing: { kind: "read", input: z.object({ ...target, rejudge: z.boolean().optional().describe("Forces a new, billable judgment; otherwise results are reused for 10 minutes while roles are unchanged.") }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
     edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
-    edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the whole brief; list rows show only its start.") }),
+    edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief text; existing images stay. attachmentIds copies this turn's images atomically with the text."), attachmentIds }),
     edit_due: write({ dueDate }),
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
     criteria_reject: write({ proposalId: ids }),
@@ -123,15 +129,24 @@ export function createObjectiveConsoleTools(ctx: FleetPluginServerContext, store
 }
 
 /** 호스트가 호출자를 넣지 않는 사령관 전용 도구. Theater는 모델 입력이 아니라 생성 때 고정한다. */
-export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string): readonly PluginMcpTool[] {
-  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId });
+export function createCommodoreBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, theaterId: string, readAttachments?: CommodoreAttachmentReader): readonly PluginMcpTool[] {
+  return createBoardTools(ctx, store, launch, { kind: "commodore", theaterId }, readAttachments);
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly theaterId: string };
 type BoardCaller = ConsoleCaller | CommodoreCaller;
-function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller): readonly PluginMcpTool[] {
+function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, launch: LaunchService, bound?: CommodoreCaller, readAttachments?: CommodoreAttachmentReader): readonly PluginMcpTool[] {
   const { languageOf, sessions } = createBoardViews(ctx, store);
   const { rowView, historyView, detailRead } = createConsoleBoardViews(ctx, store);
   const modelCatalog = createModelCatalog(ctx);
+  const briefAttachments = (requested: readonly string[] | undefined): readonly BriefAttachmentInput[] => {
+    if (!requested?.length) return [];
+    if (!bound) throw new ObjectiveStoreError("commodore_caller_required");
+    if (!readAttachments) throw new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Only images delivered in the current turn can be copied. Ask the person to resend an earlier image." });
+    if (new Set(requested).size !== requested.length) throw new ObjectiveStoreError("duplicate_attachment");
+    const images = readAttachments(requested);
+    if (images.length !== requested.length || images.some((image, index) => image.id !== requested[index])) throw new ObjectiveStoreError("attachment_not_available");
+    return images.map((image) => ({ name: `image-${image.id}.${ATTACHMENT_TYPES[image.mime]}`, type: image.mime, data: Buffer.from(image.bytes) }));
+  };
   const addBudget = new Map<string, { at: number; count: number }>();
   const tidyBudget = new Map<string, { at: number; count: number }>();
   /** 호출자마다 10분 창의 호출 수 — 넘치면 false. */
@@ -234,11 +249,11 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const groupId = caller?.kind === "operation" ? ctx.host.operations.get(caller.operationId)?.groupId ?? null : null;
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const objective = await launch.create({
-          theaterId, groupId, title: call.title, ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
+          theaterId, groupId, title: call.title, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "operation" ? { addedBy: caller.operationId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
-        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, ...(kept.note ? { note: storedText(kept.note) } : {}) } });
+        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");
@@ -323,7 +338,9 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
               return discarded;
             }
             case "edit_title": return actions.patch({ ...ref, patch: { title: call.title } });
-            case "edit_brief": return actions.patch({ ...ref, patch: { note: call.brief } });
+            case "edit_brief": return call.attachmentIds
+              ? actions.editBrief({ ...ref, brief: call.brief, attachments: briefAttachments(call.attachmentIds) })
+              : actions.patch({ ...ref, patch: { note: call.brief } });
             case "edit_due": return actions.patch({ ...ref, patch: { dueDate: call.dueDate } });
             case "hand_to_person": return actions.handToPerson({ ...ref, target: call.target, reason: call.reason });
           }
@@ -332,7 +349,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const kept = store.find(updated.id);
         const stored = !kept ? undefined
           : call.action === "edit_title" ? { title: kept.title }
-          : call.action === "edit_brief" ? { brief: storedText(kept.note) }
+          : call.action === "edit_brief" ? { brief: storedText(kept.note), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) }
           : call.action === "edit_due" ? { dueDate: kept.dueDate }
           : undefined;
         const answered = call.action === "answer" ? store.storedAnswers(current.id, call.requestId) : null;
