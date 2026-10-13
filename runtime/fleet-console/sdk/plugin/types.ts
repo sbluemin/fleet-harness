@@ -704,7 +704,8 @@ export interface TheaterContribution {
    */
   readonly menu?: (context: TheaterMenuContext) => ReactNode;
   /**
-   * 폰의 Theater 시트 「지금 Theater」 묶음에 서는 행 — 시스템 프롬프트 다음, 「목록에서 빼기」 앞. 데스크톱은 이 필드를 읽지 않는다.
+   * 폰의 Theater 동작 시트(Theater 시트의 행을 길게 누르면 서는, 그 Theater 의 동작)에 서는 행 — 시스템 프롬프트 다음, 「새 그룹…」 앞.
+   * 활성이 아닌 Theater 에도 묻는다. 데스크톱은 이 필드를 읽지 않는다.
    * 데스크톱 `menu`는 DOM을 그리지만 폰 시트는 호스트의 행 문법으로 그리므로, 플러그인은 글과 동작만 준다.
    */
   readonly mobileRow?: TheaterContributionMobileRow;

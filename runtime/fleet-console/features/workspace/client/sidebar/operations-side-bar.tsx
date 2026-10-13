@@ -39,6 +39,8 @@ import { OperationsSideBarChip, type SideBarEntry } from "./operations-side-bar-
 import { useSideBarRowStyle } from "./side-bar-row-style.js";
 import { useAvatarClaims } from "../avatars.js";
 import { TheaterAvatar } from "../theater-avatar.js";
+import { useLongPress } from "../long-press.js";
+import { clampTheaterAlias } from "../theater.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, delegatedZoneLabelOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
@@ -130,7 +132,8 @@ type ActiveContextMenu =
   /** Operation 이 아직 없는 목표 줄(시작 전) — 줄이 선언한 이름 변경·보관만 싣는다. 줄의 동작은 연 순간의 것을 쥔다. */
   | { readonly kind: "row"; readonly clusterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly renamable: boolean; readonly archive: () => void }
   | { readonly kind: "group"; readonly groupId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null }
-  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean };
+  /** atCursor — 우클릭으로 열었으면 앵커는 커서 한 점이고 메뉴는 그 자리에 선다. 아니면(키·길게 누르기·「+」) 앵커 아래에 선다. */
+  | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean; readonly atCursor?: boolean };
 
 interface NewMenuState {
   readonly anchor: { readonly x: number; readonly y: number };
@@ -218,7 +221,10 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
-  readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  /** 이 머리의 Theater 메뉴를 연다 — 우클릭은 커서 자리(atCursor), 키·길게 누르기는 앵커 아래. */
+  readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
+  /** 열린 Theater 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 Theater 에서도 열리므로 머리가 대상을 말한다. */
+  readonly menuTarget: boolean;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
   /** 이 Theater 가 목표 줄의 묶음 머리일 때 — `theaterClusterHead`. */
   readonly clusterHead?: { readonly hiddenClusterIds: readonly string[]; readonly anyList: boolean } | undefined;
@@ -247,7 +253,8 @@ interface TheaterInactiveSectionProps extends TheaterAliasEditing {
   readonly onToggleCollapsed: (theaterId: string) => void;
   readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
-  readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
+  readonly menuTarget: boolean;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
 }
 
@@ -256,6 +263,8 @@ interface TheaterActionsMenuProps {
   readonly active: boolean;
   readonly groupCount: number;
   readonly anchor: DOMRect;
+  /** 앵커가 커서 한 점이다 — 메뉴 윗변을 커서에 두고, 아래가 모자라면 커서 위로 뒤집는다. */
+  readonly atCursor?: boolean;
   readonly onCreateGroup: (name: string) => void;
   readonly onForgetTheater: () => void;
   readonly onOpenSystemPrompt: () => void;
@@ -726,6 +735,7 @@ export function OperationsSideBar({
   const contextMenuGroup = activeContextMenu?.kind === "group"
     ? groups.find((g) => g.id === activeContextMenu.groupId) ?? null
     : null;
+  const theaterMenuTargetId = activeContextMenu?.kind === "theater" ? activeContextMenu.theaterId : null;
   const contextMenuTheater = activeContextMenu?.kind === "theater"
     ? theaters.find((theater) => theater.id === activeContextMenu.theaterId) ?? null
     : null;
@@ -974,6 +984,14 @@ export function OperationsSideBar({
     });
   };
 
+  // Theater 메뉴는 누른 그 Theater 를 대상으로 한다(전환하지 않는다). 길게 누르기는 손가락이 아직 머리 위에 있을 때 열리므로,
+  // 그 누름이 세워 둔 끌기 대기를 거둔다 — 메뉴가 열린 뒤 손가락이 미끄러져도 Theater 가 옮겨지지 않는다.
+  const openTheaterMenu = (theaterId: string, anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => {
+    if (dragRef.current && !dragRef.current.dragging) updateDrag(null);
+    setNewMenu(null);
+    setActiveContextMenu({ kind: "theater", theaterId, anchor, returnFocus, atCursor });
+  };
+
   const openTheaterBrowser = () => {
     setNewMenu(null);
     setActiveContextMenu(null);
@@ -1216,10 +1234,8 @@ export function OperationsSideBar({
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenInbox={openTheaterHeaderInbox}
                 onOpenLaunch={openTheaterLaunchMenu}
-                onContextMenu={(anchor, returnFocus) => {
-                  setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
-                }}
+                onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
+                menuTarget={theaterMenuTargetId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
             );
@@ -1249,10 +1265,8 @@ export function OperationsSideBar({
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenInbox={openTheaterHeaderInbox}
                 onOpenLaunch={openTheaterLaunchMenu}
-                onContextMenu={(anchor, returnFocus) => {
-                  setNewMenu(null);
-                  setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
-                }}
+                onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
+                menuTarget={theaterMenuTargetId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
               {!theaterCollapsed ? <TheaterContributionRows theater={theater} active /> : null}
@@ -1513,6 +1527,7 @@ export function OperationsSideBar({
           active={contextMenuTheater.id === activeTheaterId}
           groupCount={groups.filter((group) => group.theaterId === contextMenuTheater.id).length}
           anchor={activeContextMenu.anchor}
+          atCursor={activeContextMenu.atCursor === true}
           startWithNewGroup={activeContextMenu.newGroup === true}
           onCreateGroup={(name) => {
             onCreateGroup(contextMenuTheater.id, name);
@@ -1702,13 +1717,14 @@ function TheaterSectionHeader({
   onToggleCollapsed,
   onOpenLaunch,
   onContextMenu,
+  menuTarget,
   onStartAliasEdit,
   onFinishAliasEdit,
   onPointerDragStart,
   clusterHead,
 }: TheaterSectionHeaderProps) {
   const t = useT();
-  // 대화 중심 화면의 머리는 사령관 카드다 — 큰 아바타, 둘째 줄 요약, ⋯ 메뉴. 머리 제어는 머무를 때·활성일 때 선다(CSS).
+  // 대화 중심 화면의 머리는 사령관 카드다 — 큰 아바타, 둘째 줄 요약. 머리 제어(접기·「+」)는 머무를 때·활성일 때 선다(CSS).
   const card = useSideBarRowStyle() === "conversation";
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
@@ -1748,15 +1764,27 @@ function TheaterSectionHeader({
     consoleUseWrapClassName(wrap),
     active ? "is-active" : "",
     card ? "is-card" : "",
+    menuTarget ? "is-menu-target" : "",
     dragging ? "side-bar-theater-header--dragging" : "",
     dropTarget ? "side-bar-theater-header--drop-target" : "",
   ].filter(Boolean).join(" ");
   const headerStyle = dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined;
 
+  // Theater 동작(별칭·시스템 프롬프트·플러그인 항목·새 그룹·Theater 잊기)은 머리에서 연다 — 우클릭은 커서 자리에, 키(ContextMenu·
+  // Shift+F10)와 터치·펜 길게 누르기는 머리 아래에. 두 배치(기존·대화 중심) 모두 같다. 별도 「⋯」 단추는 두지 않는다.
+  const longPress = useLongPress<HTMLDivElement>((header) => {
+    onContextMenu(header.getBoundingClientRect(), activateRef.current, false);
+  });
+
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
+    // 별칭 입력 안의 우클릭은 입력의 것(붙여넣기 등)이다 — 브라우저 메뉴를 남기고, 사이드바 빈 자리 메뉴로도 번지지 않게 한다.
+    if (event.target instanceof Element && event.target.closest(".side-bar-theater-alias-input")) {
+      event.stopPropagation();
+      return;
+    }
     event.preventDefault();
-    if (isConversationLayoutActive()) return;
-    onContextMenu(event.currentTarget.getBoundingClientRect());
+    if (longPress.claimContextMenu(event)) return;
+    onContextMenu(new DOMRect(event.clientX, event.clientY, 0, 0), activateRef.current, true);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -1768,23 +1796,28 @@ function TheaterSectionHeader({
     }
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
-    onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget);
+    onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, false);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     // 행 컨트롤(접기·새 Operation)과 표식 안의 단추(자율 운영 끄기), 별칭 입력에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
+    // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
     if (event.target instanceof Element && (event.target.closest(".side-bar-theater-row-controls") || event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input"))) return;
+    longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
 
   const handlePointerUp = () => {
+    longPress.onPointerUp();
     if (dragging) suppressClickRef.current = true;
   };
 
   // 이름은 Theater 를 전환한다. 대화 중심 화면은 한 번 누르면 그 Theater 의 대화도 열고, 기존 배치는 활성 Theater 에서만
   // Inbox 를 연다. chevron 은 활성 여부와 무관하게 이 섹션만 접는다.
   const select = () => {
+    // 길게 누르기로 메뉴를 연 손가락을 뗀 click 은 전환·Inbox 열기가 아니다.
+    if (longPress.consumeClick()) return;
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
@@ -1814,7 +1847,9 @@ function TheaterSectionHeader({
       style={headerStyle}
       onContextMenu={handleContextMenu}
       onPointerDown={handlePointerDown}
+      onPointerMove={longPress.onPointerMove}
       onPointerUp={handlePointerUp}
+      onPointerCancel={longPress.onPointerCancel}
     >
       {mark !== null ? (
         // 플러그인 표식은 활성화 버튼 밖에 선다 — 표식이 자기 단추(자율 운영 끄기)를 품을 수 있게. 단추가 아닌 자리를 누르면
@@ -1844,7 +1879,7 @@ function TheaterSectionHeader({
           onClick={select}
           onKeyDown={handleKeyDown}
           aria-current={active ? "true" : undefined}
-          title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })}
+          title={wrap ? t("sidebar.theater.scan", { caller: gestureCallerLabel(wrap.gesture.caller), summary: wrap.gesture.summary }) : `${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
         >
           {mark === null ? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
@@ -1854,20 +1889,7 @@ function TheaterSectionHeader({
         </button>
       )}
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
-        {/* Theater 동작(별칭·시스템 프롬프트·새 그룹·Theater 잊기)은 머리 우클릭(Shift+F10) 메뉴에 있다. 사령관 카드는 머리 우클릭을
-            받지 않으므로(대화 중심 화면) 같은 메뉴를 ⋯ 로 연다. 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
-        {card ? (
-          <button
-            type="button"
-            className="side-bar-theater-row-btn side-bar-theater-more-btn"
-            aria-haspopup="menu"
-            aria-label={t("sidebar.theater.actionsMenuAria", { theater: displayName })}
-            title={t("sidebar.theater.actionsMenuAria", { theater: displayName })}
-            onClick={(event) => onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
-          >
-            <MoreIcon />
-          </button>
-        ) : null}
+        {/* Theater 동작은 머리의 우클릭·키·길게 누르기 메뉴에 있다(handleContextMenu). 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
         <button
           type="button"
           className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
@@ -1892,13 +1914,6 @@ function TheaterSectionHeader({
   );
 }
 
-/** 별칭 길이 상한 — 서버 검증과 같은 코드포인트 수다(UTF-16 단위인 maxLength 로는 이모지 별칭이 절반에서 막힌다). */
-const THEATER_ALIAS_MAX_CODEPOINTS = 40;
-const clampAlias = (value: string): string => {
-  const points = [...value];
-  return points.length > THEATER_ALIAS_MAX_CODEPOINTS ? points.slice(0, THEATER_ALIAS_MAX_CODEPOINTS).join("") : value;
-};
-
 /**
  * 머리 자리의 별칭 입력 — Enter 는 저장, Esc 나 다른 곳을 누르면 취소, 비우고 저장하면 해제다. 바뀐 것이 없으면 저장하지 않는다.
  * IME 조합 중의 Enter·Esc 는 조합의 것이라 편집을 끝내지 않는다.
@@ -1919,7 +1934,7 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
     onDone(alias, viaKey);
   };
   const commit = () => {
-    const next = clampAlias(value).trim();
+    const next = clampTheaterAlias(value).trim();
     finish(next === (theater.alias ?? "") ? undefined : next.length > 0 ? next : null, true);
   };
   return (
@@ -1930,9 +1945,9 @@ function TheaterAliasInput({ theater, onDone }: { readonly theater: TheaterInfo;
       value={value}
       placeholder={theater.label}
       aria-label={t("sidebar.theater.alias.inputAria", { theater: theater.label })}
-      onChange={(event) => setValue(composingRef.current ? event.target.value : clampAlias(event.target.value))}
+      onChange={(event) => setValue(composingRef.current ? event.target.value : clampTheaterAlias(event.target.value))}
       onCompositionStart={() => { composingRef.current = true; }}
-      onCompositionEnd={(event) => { composingRef.current = false; setValue(clampAlias(event.currentTarget.value)); }}
+      onCompositionEnd={(event) => { composingRef.current = false; setValue(clampTheaterAlias(event.currentTarget.value)); }}
       onKeyDown={(event) => {
         if (composingRef.current || event.nativeEvent.isComposing) return;
         if (event.key === "Enter") {
@@ -1975,6 +1990,7 @@ function TheaterInactiveSection({
   onOpenInbox,
   onOpenLaunch,
   onContextMenu,
+  menuTarget,
   onPointerDragStart,
 }: TheaterInactiveSectionProps) {
   const t = useT();
@@ -2067,6 +2083,7 @@ function TheaterInactiveSection({
         onOpenInbox={onOpenInbox}
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
+        menuTarget={menuTarget}
         onPointerDragStart={onPointerDragStart}
       />
       {!collapsed ? <TheaterContributionRows theater={theater} active={false} /> : null}
@@ -2173,7 +2190,7 @@ function TheaterInactiveSection({
   );
 }
 
-function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClearAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ theater, active, groupCount, anchor, atCursor = false, onCreateGroup, onForgetTheater, onOpenSystemPrompt, onEditAlias, onClearAlias, onClose, startWithNewGroup = false }: TheaterActionsMenuProps) {
   const t = useT();
   const [showNewInput, setShowNewInput] = useState(startWithNewGroup);
   const [prompt, setPrompt] = useState<TheaterSystemPrompt | null>(null);
@@ -2194,14 +2211,22 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup
   const inputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   // 사이드바 하단 행에서 anchor.bottom+6 고정 배치가 뷰포트 아래로 밀리면 스크롤로 닫혀
-  // Forget/New group에 도달할 수 없다(Codex P2) — 실측 높이로 상단을 클램프한다.
-  const [menuTop, setMenuTop] = useState(anchor.bottom + 6);
+  // Forget/New group에 도달할 수 없다(Codex P2) — 실측 크기로 상단을 클램프한다. 커서 자리 메뉴는 아래가 모자라면
+  // 커서 위로 뒤집고, 좁은 창의 오른쪽 끝 우클릭이 메뉴를 창 밖으로 밀지 않게 왼쪽도 클램프한다.
+  const [menuPosition, setMenuPosition] = useState(() => ({ left: anchor.left, top: atCursor ? anchor.top : anchor.bottom + 6 }));
 
   useLayoutEffect(() => {
-    const height = menuRef.current?.getBoundingClientRect().height ?? 0;
+    const rect = menuRef.current?.getBoundingClientRect();
+    const height = rect?.height ?? 0;
+    const width = rect?.width ?? 0;
     const maxTop = window.innerHeight - height - 8;
-    setMenuTop(Math.max(8, Math.min(anchor.bottom + 6, maxTop)));
-  }, [anchor, showNewInput]);
+    const below = atCursor ? anchor.top : anchor.bottom + 6;
+    const top = atCursor && below > maxTop ? anchor.top - height : below;
+    setMenuPosition({
+      left: Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(top, maxTop)),
+    });
+  }, [anchor, atCursor, showNewInput]);
 
   useEffect(() => {
     if (showNewInput) inputRef.current?.select();
@@ -2245,11 +2270,19 @@ function TheaterActionsMenu({ theater, active, groupCount, anchor, onCreateGroup
         aria-label={t("sidebar.theater.actionsMenuAria", { theater: theater.alias ?? theater.label })}
         style={{
           position: "fixed",
-          left: anchor.left,
-          top: menuTop,
+          left: menuPosition.left,
+          top: menuPosition.top,
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
+        {/* 대상 Theater — 활성이 아닌 Theater 에서도 열리므로 무엇을 다루는지 먼저 말한다. 메뉴의 aria-label 이 같은 이름을 읽는다. */}
+        <div className="theater-menu-title" aria-hidden="true">
+          <TheaterAvatar theaterId={theater.id} size={22} label="" decorative />
+          <span className="theater-menu-title-text">
+            <strong>{theater.alias ?? theater.label}</strong>
+            {theater.alias ? <span>{theater.label}</span> : null}
+          </span>
+        </div>
         {/* 사령관 별칭 — 머리 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). 원래 이름은 머리 둘째 줄에 남는다. */}
         <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
@@ -2343,16 +2376,6 @@ function PencilIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M10.6 3.2 12.8 5.4 6.2 12H4v-2.2z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="3.6" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12.4" cy="8" r="1.2" fill="currentColor" />
     </svg>
   );
 }

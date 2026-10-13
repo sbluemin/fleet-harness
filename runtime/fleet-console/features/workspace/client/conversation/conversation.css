@@ -1018,7 +1018,7 @@
    머리는 52px 카드다 — 32px 컬러 아바타, 이름, 둘째 줄의 원래 이름·요약. 지휘관 행(40px·22px)은 14px 안쪽에 선다.
    이름은 활성 여부와 무관하게 최고 명도다 — 사령관 이름이 그 아래 지휘관 이름보다 흐리면 크기·굵기가 말한 위계를 대비가 뒤집는다.
    자율 운영이 꺼진 사령관은 다른 표면과 같이 아바타가 회색으로 가라앉는다(`.mongle-avatar.is-off`). 아바타 둘레에 고리를 두지 않는다.
-   머리 제어(⋯·접기·「+」)는 머무르거나 포커스가 들어오거나 활성일 때 선다 — 터치에서는 늘 선다. */
+   머리 제어(접기·「+」)는 머무르거나 포커스가 들어오거나 활성일 때 선다 — 터치에서는 늘 선다. Theater 동작은 머리 우클릭·키·길게 누르기 메뉴다. */
 .console-shell.is-conversation-layout .side-bar-theater-header.is-card {
   min-height: 52px;
   box-sizing: border-box;
@@ -1065,9 +1065,6 @@
 }
 @media (hover: none) {
   .console-shell.is-conversation-layout .side-bar-theater-header.is-card .side-bar-theater-row-controls { opacity: 1; }
-}
-.side-bar-theater-more-btn {
-  width: 24px;
 }
 .side-bar-theater-alias-input {
   width: 100%;
