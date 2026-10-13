@@ -124,7 +124,7 @@ export function OperationSearch({
       results: [
         { id: "open-shell", title: t("chrome.operationSearch.openShell"), activate: () => undefined },
         ...(theaterId ? [{ id: "open-shell-here", title: t("chrome.operationSearch.openShellHere"), activate: async () => {
-          const result = await capabilities.shell.openAt({ cwd: { theaterId } }).catch(() => null);
+          const result = await capabilities.shell.openAt({ theaterId }).catch(() => null);
           if (result?.ok) return;
           setShellNotice(t(result ? `chrome.operationSearch.shell.${result.reason}` : "chrome.operationSearch.shell.failed"));
           throw new Error("shell_open_refused");

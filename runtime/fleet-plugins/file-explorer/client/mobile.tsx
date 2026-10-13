@@ -167,7 +167,7 @@ export function MobileFileDocument(ctx: PaneContext) {
   const openShell = useCallback(() => {
     const { theaterId: id, path: current, t: translate } = latest.current;
     if (!id || !current) return;
-    void shell.openAt({ cwd: { theaterId: id, path: parentDirOf(current) } })
+    void shell.openAt({ theaterId: id, path: parentDirOf(current) })
       .then((result) => { if (!result.ok) setToast({ text: translate(`fileExplorer.shell.${result.reason}`), at: Date.now() }); })
       .catch(() => setToast({ text: translate("fileExplorer.shell.failed"), at: Date.now() }));
   }, [shell]);

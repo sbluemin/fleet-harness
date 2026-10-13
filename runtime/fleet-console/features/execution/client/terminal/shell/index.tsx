@@ -1,6 +1,6 @@
 import type { ExpandedSurfaceContext, ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surface";
 import type { ClientConsoleStateCapability, PersistentComponentContext } from "@fleet-console/sdk/plugin";
-import type { ShellCwdHint } from "@fleet-console/sdk/navigation";
+import type { ShellOpenAtRequest as ShellCwdHint } from "@fleet-console/sdk/navigation";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 

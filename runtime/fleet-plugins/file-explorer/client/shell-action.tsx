@@ -21,7 +21,7 @@ export function useShellAction(shell: ClientShellCapability, theaterId: string |
     setPending(true);
     setNotice(null);
     try {
-      const result = await (restart ? shell.restartAt({ cwd: { theaterId, path } }) : shell.openAt({ cwd: { theaterId, path } }));
+      const result = await (restart ? shell.restartAt({ theaterId, path }) : shell.openAt({ theaterId, path }));
       if (id !== generation.current) return;
       if (!result.ok) setNotice({ path, reason: result.reason });
     } catch {

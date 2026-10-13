@@ -13,13 +13,15 @@ import { createShellTerminalLaunchResolver } from "./pty.js";
 import { applyShellCwdIntegration } from "./shell-cwd-integration.js";
 
 type TicketBody = {
-  readonly cwd?: { readonly theaterId?: unknown; readonly path?: unknown };
+  readonly cwd?: OpenAtBody;
+  readonly theaterId?: unknown;
   readonly colorScheme?: unknown;
   readonly role?: unknown;
 };
 
 type OpenAtBody = {
-  readonly cwd?: { readonly theaterId?: unknown; readonly path?: unknown };
+  readonly theaterId?: unknown;
+  readonly path?: unknown;
 };
 
 /**
@@ -158,7 +160,7 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     const body = await ctx.host.http.readJsonBody<TicketBody>(req);
 
     if (pinnedCwd === null) {
-      const hint = body?.cwd;
+      const hint = body?.cwd ?? (body?.theaterId !== undefined ? { theaterId: body.theaterId } : undefined);
       if (hint === undefined || hint === null) {
         pinnedCwd = homedir();
       } else {
@@ -343,11 +345,11 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return null;
     }
     const body = await ctx.host.http.readJsonBody<OpenAtBody>(req);
-    return resolveCwdHint(body?.cwd, res);
+    return resolveCwdHint(body, res);
   }
 
   /** 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다. */
-  function resolveCwdHint(hint: OpenAtBody["cwd"], res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {
+  function resolveCwdHint(hint: OpenAtBody | null | undefined, res: Parameters<RouteHandler>[0]["res"]): { directory: string } | null {
     const theaterId = typeof hint?.theaterId === "string" ? hint.theaterId : null;
     if (!theaterId) {
       ctx.host.http.writeJson(res, 400, { error: "theater_id_required" });
