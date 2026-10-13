@@ -551,7 +551,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions, (id) => theaters.get(id) !== null);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
-    getLegacyGlassOff: () => consoleSettingsStore.load().general?.liquidGlass === false,
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();

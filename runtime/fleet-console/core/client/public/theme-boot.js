@@ -2,7 +2,7 @@
 // CSP(script-src 'self')가 인라인 스크립트를 금지하므로 public 자산으로 제공한다.
 // 유효 id 목록은 client types.ts의 ThemeId와 수동 동기화한다(플레인 JS라 import 불가).
 (() => {
-  migrateLegacyGlassOff();
+  retireGlassOpacityKeys();
   stampMobileAppearance();
   // iOS Safari·WKWebView는 문서에 touchstart 리스너가 없으면 :active를 걸지 않는다 — 모바일 누름 문법
   // (S-52 PR-0d, mobile-press.css)이 손가락이 닿는 순간 회색 면을 보이게 하는 빈 passive 리스너다.
@@ -68,27 +68,24 @@ function stampMobileAppearance() {
   root.setAttribute("data-mobile-font-scale", fontScale);
 }
 
-// 퇴역한 리퀴드 글래스 스위치를 꺼 두었던 사람은 이 기기에서 처음 뜰 때 네 유리 불투명도를
-// 100%(완전 불투명)로 옮긴다 — 스위치가 사라져도 보던 화면이 그대로 남는다. 판단 근거는 서버
-// 저장값(static-console이 data-glass-legacy로 주입)이고, 구 부트 힌트는 미주입 서빙 경로에서만 본다. 기기마다 한 번뿐이다.
-// 키는 glass-opacity-store.ts와 수동 동기화한다(플레인 JS라 import 불가). 첫 페인트 앞에서
-// 돌아야 유리가 한 번 스쳤다 불투명해지는 플래시가 없다.
-function migrateLegacyGlassOff() {
-  const root = document.documentElement;
-  const legacyOff = root.getAttribute("data-glass-legacy") === "off";
-  // 서버가 주입했으면 그 판단이 권위값이다 — 다른 기기에서 다시 켠 뒤 남은 낡은 힌트로 이관하지 않는다.
-  const serverInjected = root.getAttribute("data-theme-source") === "server";
-  root.removeAttribute("data-glass-legacy");
+// 퇴역한 유리 불투명도 취향(묶음별 슬라이더·그 전의 리퀴드 글래스 스위치·더 옛 사이드바/레일 알파)이
+// 남긴 기기 저장값을 지운다. 이제 아무것도 읽지 않으므로 화면에는 닿지 않는다 — 정리만 한다.
+function retireGlassOpacityKeys() {
   try {
-    if (localStorage.getItem("fleet-console.glass.legacy-migrated") === "1") return;
-    if (legacyOff || (!serverInjected && localStorage.getItem("fleet-console.glass-hint") === "off")) {
-      for (const group of ["window", "bar", "side-bar", "rail"]) {
-        localStorage.setItem(`fleet-console.glass.${group}-opacity`, "100");
-      }
+    for (const key of [
+      "fleet-console.glass.window-opacity",
+      "fleet-console.glass.bar-opacity",
+      "fleet-console.glass.side-bar-opacity",
+      "fleet-console.glass.rail-opacity",
+      "fleet-console.glass.legacy-migrated",
+      "fleet-console.glass-hint",
+      "fleet-console.operations.side-glass-alpha",
+      "fleet-console.operations.side-glass-blur",
+      "fleet-console.rail.overlayAlpha",
+    ]) {
+      localStorage.removeItem(key);
     }
-    localStorage.removeItem("fleet-console.glass-hint");
-    localStorage.setItem("fleet-console.glass.legacy-migrated", "1");
   } catch {
-    // localStorage 접근 불가 환경에서는 이관할 기기 저장소도 없다.
+    // localStorage 접근 불가 환경에서는 지울 기기 저장소도 없다.
   }
 }
