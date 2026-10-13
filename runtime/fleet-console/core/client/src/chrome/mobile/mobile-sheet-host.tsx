@@ -164,7 +164,6 @@ function TheaterSheetRow({ theater, here, count, awaiting }: { readonly theater:
         openActions();
       }}
       onClick={() => {
-        if (longPress.consumeClick()) return;
         setActiveTheater(theater.id);
         closeMobileSheets();
       }}
