@@ -5,8 +5,9 @@
 .theater-prompt-page button { cursor: pointer; }
 .theater-prompt-page .theater-subagents { padding-top: 0; border-top: 0; max-width: 640px; }
 /* 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록, 맨 아래 되돌리기와 사령관 지시. 테두리는 목록 한 겹만 진다. */
-.theater-prompt-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.theater-prompt-heading { color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); }
+/* 좁은 패널(대화 중심 화면 오른쪽 칸, 스크롤바가 선 경우)에서는 제목이 글자 단위로 끊기지 않고 표식이 다음 줄로 내려간다. */
+.theater-prompt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }
+.theater-prompt-heading { flex: none; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-medium); white-space: nowrap; }
 /* 정한 값 표식 — 옛 상태 상자의 점(정함 brass, 정하지 않음 hairline)을 제목 옆 작은 캡슐로 옮겼다. */
 .theater-prompt-badge { display: inline-flex; align-items: center; gap: 6px; padding: 1px 8px 1px 7px; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); white-space: nowrap; }
 .theater-prompt-badge i { width: 6px; height: 6px; border-radius: 50%; background: var(--hairline-strong); }
@@ -23,7 +24,9 @@
 .theater-prompt-mode-choice { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: start; gap: 2px 12px; padding: 11px 14px; cursor: pointer; }
 .theater-prompt-mode.is-on .theater-prompt-mode-choice { cursor: default; }
 .theater-prompt-mode-name { color: var(--text-primary); font-weight: var(--weight-medium); line-height: 1.45; }
+/* 한국어 설명·상태 문장은 음절 중간에서 끊지 않는다(「실립니/다」). 띄어쓰기 없는 긴 낱말은 overflow-wrap 이 받는다. */
 .theater-prompt-mode-desc { grid-column: 2; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
+.theater-prompt-mode-desc, .theater-prompt-warning, .theater-prompt-editor .theater-prompt-caption, .theater-prompt-draft p, .theater-prompt-foot { word-break: keep-all; overflow-wrap: anywhere; }
 /* 라디오는 원격 접속 포트 선택(.remote-port-control)과 같은 레시피다 — OS 기본 외형을 빌리지 않는다. */
 .theater-prompt-mode-choice input[type="radio"] {
   appearance: none; grid-row: 1 / span 2; width: 16px; height: 16px; margin: 1px 0 0; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill);
