@@ -2017,8 +2017,8 @@ function ObjectiveDetail({ objective, t, language, launchAvailable, call, toast,
           hideHead ? null : <DecisionRequestBlock objective={objective} t={t} language={language} send={sendDecision} missionNumber={numberOf} memberMark={memberMarkOf} onOpenSession={focusOperation} onShowMission={showMission} />
         ) : decisionTrace ? <p className="objectives-decision-trace" role="status">{decisionTrace}</p> : null}
         {/* 완료 검토·후속 후보 고르기는 아래 띠에서 한다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 띠 바로 위에 둔다. */}
-        <PersonHoldNote objective={objective} target="review" t={t} />
-        <PersonHoldNote objective={objective} target="followup" t={t} />
+        <PersonHoldNote objective={objective} target="review" t={t} label={t("objectives.objectives.review")} />
+        <PersonHoldNote objective={objective} target="followup" t={t} label={t("objectives.followup.title")} />
         <ActionBand
           objective={objective}
           t={t}
