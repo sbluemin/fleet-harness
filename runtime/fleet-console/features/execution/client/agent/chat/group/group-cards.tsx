@@ -32,11 +32,13 @@ export interface SettledDecision {
  * 결정 요청 카드 — 질문마다 선택지와 직접 답하기. 모든 질문에 답해야 보낸다. 보내는 길은 하나다: 계약의 `decision.answer`
  * 가 있으면 그것만, 없으면 `actions.answerDecision` 만 부른다. 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
  */
-export function DecisionCard({ decision, actions, asker, language, onSettled }: {
+export function DecisionCard({ decision, actions, asker, language, phone = false, onSettled }: {
   readonly decision: ConversationDecision;
   readonly actions: GroupConversationActions | null;
   readonly asker: ConversationSpeaker | null;
   readonly language: ConsoleLocale | undefined;
+  /** 폰 그룹 대화 — 폰에는 보드가 없고 링크는 그 대화의 목표 탭으로 가므로 링크 이름을 바꾼다. */
+  readonly phone?: boolean;
   readonly onSettled: (settled: SettledDecision) => void;
 }) {
   const t = getGroupT(language);
@@ -101,7 +103,7 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
         {asker ? <SpeakerMark speaker={asker} size="sm" /> : null}
         <span className="group-card-who">{asker ? `${asker.name} · ${t("group.decision.badge")}` : t("group.decision.badge")}</span>
         {decision.handler && !handed ? <span className="group-card-handler">{text(decision.handler)}</span> : null}
-        <button type="button" className="group-chat-link" onClick={decision.open}>{t("group.decision.open")}</button>
+        <button type="button" className="group-chat-link" onClick={decision.open}>{t(phone ? "group.decision.openPhone" : "group.decision.open")}</button>
       </div>
       {handed ? (
         <p className="group-card-handed"><span className="group-card-handed-label">{text(handed.label)}</span>{handed.reason}</p>

@@ -146,18 +146,18 @@ function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
  * 실행 기능의 집계가 연다.
  */
 export function MobileGroupConversation({ root, language, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
-  return <RootBody root={root} language={language}>{children}</RootBody>;
+  return <RootBody root={root} language={language} phone>{children}</RootBody>;
 }
 
 /** 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문). */
-function RootBody({ root, language, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly children: React.ReactNode }) {
+function RootBody({ root, language, phone = false, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly children: React.ReactNode }) {
   const commanderLedger = useCommanderLedgerChosen(root.id);
   return commanderLedger
     ? <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>
-    : <RootConversation root={root} language={language} />;
+    : <RootConversation root={root} language={language} phone={phone} />;
 }
 
-function RootConversation({ root, language }: { readonly root: OperationNode; readonly language: "en" | "ko" }) {
+function RootConversation({ root, language, phone = false }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const fold = useFoldTurns();
   const actions = useGroupConversationActions(root.id);
@@ -180,6 +180,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
           actions={actions}
           asker={commander}
           language={language}
+          phone={phone}
           onSettled={(entry) => setSettled((current) => [...current.filter((item) => item.id !== entry.id), entry])}
         />
       ) : null}

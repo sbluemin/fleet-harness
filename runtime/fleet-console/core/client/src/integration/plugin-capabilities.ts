@@ -281,7 +281,12 @@ export function createHostCapabilities(
         if (params && primary) land({ paneId: primary.id, params });
         else revealRailPanel(panelId);
       },
-      close: (panelId) => closeRailPanel(panelId),
+      close: (panelId) => {
+        // 폰에서 지금 보이는 목적지 화면을 그 엔트리가 닫으면(보던 대상이 사라짐 등) 빈 화면 대신 홈으로 돌아간다.
+        const destination = getMobileDestination();
+        if (getViewModeSnapshot().effective === "mobile" && destination.kind === "plugin" && destination.entryId === panelId) setMobileDestination({ kind: "home" });
+        closeRailPanel(panelId);
+      },
       isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,
     },
     consoleEvents: {

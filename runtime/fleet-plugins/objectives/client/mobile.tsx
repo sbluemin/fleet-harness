@@ -5,7 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ConsoleOperationSummary } from "@fleet-console/sdk/plugin";
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryAttentionItem, RailEntryFinishedItem } from "@fleet-console/sdk/rail";
-import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
+import { SettingsCard, SettingsRow, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
@@ -21,7 +21,7 @@ import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
-import { focusOperation, hasDecisionRequest, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { activeTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -50,6 +50,9 @@ const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: numbe
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
 const CheckIcon = ({ size }: { readonly size?: number }) => <Icon size={size ?? 20}><path d="M5 12.5l4.5 4.5L19 7.5" /></Icon>;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
+/** 호스트 모바일 ⋮의 보관·이름 변경 아이콘과 같은 모양. */
+const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;
+const PencilIcon = () => <Icon><path d="M4 20h4L19 9l-4-4L4 16v4z" /><path d="M13.5 6.5l4 4" /></Icon>;
 const StopIcon = () => <Icon><rect x="7.5" y="7.5" width="9" height="9" rx="1.5" fill="currentColor" stroke="none" /></Icon>;
 const CloseIcon = () => <Icon><path d="M6 6l12 12M18 6L6 18" /></Icon>;
 const LockIcon = () => <Icon size={14}><rect x="5.5" y="10.5" width="13" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" /></Icon>;
@@ -86,15 +89,22 @@ const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 
  */
 const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
 
-/** 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 같은 상태면 같은 참조. */
+/**
+ * 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 살아 있는 목록에 없으면 「끝남」(보관된 완료 목표)에서 찾는다.
+ * 같은 상태면 같은 참조.
+ */
 function findObjective(objectiveId: string): Objective | null {
   for (const state of readAllTheaters()) {
     const found = state.objectives.find((objective) => objective.id === objectiveId);
     if (found) return found;
   }
+  for (const finished of finishedByTheater.values()) {
+    const found = finished.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
   return null;
 }
-const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjective, () => findObjective(objectiveId), () => findObjective(objectiveId));
+const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
 
 // ── 「확인 필요」 행 ──
 
@@ -146,14 +156,71 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
 // ── 홈 「끝남」 ──
 
 /**
- * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 의 끝난 목표, 최근에 끝난 것부터. 누르면 그 목표로 간다
- * (지휘관 Operation 이 남아 있으면 그 대화의 「목표」 탭, 없으면 목표 화면 — `openObjectiveOnPhone`).
+ * 「끝남」의 원천 — 완료로 지휘관 Operation 이 보관된 목표들(`/finished`). 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다.
+ * 살아 있는 목록의 명단이 바뀔 때(완료로 보관돼 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. 보는 사람의 편의라 메모리에만 둔다.
+ */
+const finishedByTheater = new Map<string, readonly Objective[]>();
+const finishedListeners = new Set<() => void>();
+const finishedInflight = new Set<string>();
+let finishedRoster = "";
+
+function noteFinished(): void { for (const listener of finishedListeners) listener(); }
+
+function readFinished(theaterId: string): void {
+  const api = objectivesApi();
+  if (!api || finishedInflight.has(theaterId)) return;
+  finishedInflight.add(theaterId);
+  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
+    .then((result) => {
+      if (!Array.isArray(result?.objectives)) return;
+      finishedByTheater.set(theaterId, result.objectives);
+      noteFinished();
+    })
+    .catch(() => undefined)
+    .finally(() => { finishedInflight.delete(theaterId); });
+}
+
+/** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
+function followFinished(): void {
+  const theaterId = activeTheaterId();
+  if (!theaterId) return;
+  const state = readTheater(theaterId);
+  if (!state.loaded) return;
+  const roster = `${theaterId}|${state.objectives.map((objective) => objective.id).join(",")}`;
+  if (roster === finishedRoster) return;
+  finishedRoster = roster;
+  readFinished(theaterId);
+}
+
+/** 「끝남」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
+export function subscribeFinishedObjectives(listener: () => void): () => void {
+  finishedListeners.add(listener);
+  const off = subscribeObjective(() => { followFinished(); listener(); });
+  followFinished();
+  return () => { finishedListeners.delete(listener); off(); };
+}
+
+/** 목표 화면이 보관된 끝난 목표로 착지했는데(새로고침 등) 아직 읽지 않았으면 그 Theater 의 「끝남」을 읽는다. */
+function ensureFinished(theaterId: string | null): void {
+  if (theaterId && !finishedByTheater.has(theaterId)) readFinished(theaterId);
+}
+
+const subscribeObjectiveOrFinished = (listener: () => void): (() => void) => {
+  const off = subscribeObjective(listener);
+  finishedListeners.add(listener);
+  return () => { off(); finishedListeners.delete(listener); };
+};
+
+/**
+ * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 완료로 지휘관이 보관된 목표, 최근에 끝난 것부터. 복원돼 다시 살아 있는
+ * 목록에 선 목표는 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
  */
 export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
+  if (theaterId === null) return [];
   const t = getT(locale);
-  return readTheater(theaterId).objectives
-    .filter((objective) => isListedObjective(objective) && !!objective.done)
-    .sort((left, right) => (right.done?.at ?? 0) - (left.done?.at ?? 0))
+  const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
+  return (finishedByTheater.get(theaterId) ?? [])
+    .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
     .map((objective) => {
       // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
       const members = objective.members.length;
@@ -190,6 +257,9 @@ export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   useEffect(() => {
     if (ctx.params.objectiveId === undefined && ctx.params.operationId) panes.replaceParams({ objectiveId: ctx.params.operationId });
   }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
+  // 보관된 끝난 목표로 착지했다면(「끝남」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
+  const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
+  useEffect(() => { if (objectiveId && !known) ensureFinished(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
   // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
   const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
   const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);
@@ -227,7 +297,7 @@ interface ObjectiveActions {
    * 개시 카드 — null 이면 서지 않는다. 띠가 개시·재개를 고를 수 있으면 누를 수 있고, 아니면 reason 이 막힌 사정을 말한다.
    * review 는 개시가 라우팅으로 새로 띄울 구성원이다 — 라우팅 확인이 켜져 있을 때만 차고, 차 있으면 개시는 확인 시트를 거친다.
    */
-  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[] } | null;
+  readonly commence: { readonly kind: "start" | "resume"; readonly reason: string | null; readonly review: readonly ObjectiveMember[]; readonly primary: boolean } | null;
   /**
    * 완료 검토 — 검토 대기일 때만 선다. blocked 는 띠가 지금 「완료」를 세우지 못하는 사정(띠의 판정 순서와 같다), null 이면
    * 누를 수 있다. followups 는 완료가 후속 후보 고르기를 거쳐야 하는가(띠의 followupAvailable) — 그러면 완료는 고르기 시트를 연다.
@@ -257,11 +327,13 @@ function objectiveActions(objective: Objective, operations: OperationIndex, t: T
   const kind: "start" | "resume" = !has("start") && objective.commander.started ? "resume" : "start";
   // 데스크톱 띠의 routingTargets 와 같은 판정 — 아직 띄우지 않은 라우팅 구성원. 확인이 꺼져 있으면 서버가 개시 때 판단한다.
   const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route" && !memberLaunched(member, (id) => activityOf(operations, id))) : [];
+  // 띠의 주 동작이 개시·재개일 때만 개시 카드가 주 단추다 — 다른 할 일(답·인계)이 먼저면 보조 단추로 내려 다음 걸음이 둘로 갈리지 않게 한다.
+  const primary = choices.primary === "start" || choices.primary === "resume";
   const commence = done ? null
     : has("start") || has("resume")
-      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review }
-      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review }
-        : working ? { kind, reason: t("objectives.mobile.commence.working"), review } : null;
+      ? { kind, reason: !launchAvailable ? t("objectives.band.reason.unavailable") : null, review, primary }
+      : choices.gated ? { kind, reason: t("objectives.band.gated", { count: objective.criteriaProposals.length }), review, primary }
+        : working ? { kind, reason: t("objectives.mobile.commence.working"), review, primary } : null;
   const finish: ObjectiveActions["finish"] = done || !objective.awaitingReview ? null : {
     blocked: choices.primary === "complete" && !choices.gated ? null
       : commanderAwaiting ? "awaiting"
@@ -394,17 +466,56 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
     return items;
   }, [act, t]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}` : "";
+  // 목표 화면의 상태 한 낱말(막대 보조 줄) — 시작 전 목표는 홈 행의 「시작 전」에서 이어지고, 보관된 끝난 목표는 읽기 전용임을 말한다.
+  const fresh = !!objective && !objective.done && !objective.awaitingReview && !objective.commander.started && !operations.has(objective.id);
+  const stateWord = !objective ? null : fresh ? t("objectives.state.fresh") : objective.done ? t("objectives.mobile.state.done") : null;
+  // 시작 전 목표(Operation 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
+  const settingsHost = useMobileSettingsHost();
+  const tidy = !embedded && !!objective && !objective.hasOperation && !objective.done;
+  const rename = useCallback(() => {
+    const current = findObjective(latest.current.objectiveId);
+    if (!current || !settingsHost?.openInput) return;
+    const { t: translate, say: speak } = latest.current;
+    settingsHost.openInput({
+      title: translate("objectives.mobile.rename"),
+      value: current.title,
+      onSave: async (value) => {
+        const next = value.trim();
+        if (!next || next === current.title) return;
+        await post(api, "/objective/patch", { objectiveId: current.id, patch: { title: next } }).catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
+      },
+    });
+  }, [api, settingsHost]);
+  const { rail } = ctx;
+  const archive = useCallback(() => {
+    const { objectiveId: id, say: speak, t: translate } = latest.current;
+    void post<{ objective: Objective; deleted: boolean }>(api, "/objective/archive", { objectiveId: id, restorable: true })
+      .then((result) => {
+        if (result?.objective) upsertObjectiveLocally(result.objective);
+        // 이 화면의 목표가 보관함으로 갔다 — 빈 화면을 남기지 않고 홈으로 돌아간다(폰 목적지 화면의 `rail.close`).
+        rail.close("objectives");
+      })
+      .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
+  }, [api, rail]);
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
-    const items = personActions(latest.current.actions);
+    const items: MobileBarMenuItem[] = [
+      ...personActions(latest.current.actions),
+      ...(tidy && settingsHost?.openInput ? [{ id: "rename", label: t("objectives.mobile.rename"), icon: <PencilIcon />, run: rename }] : []),
+      ...(tidy ? [{ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive }] : []),
+    ];
+    // 누를 수 있는 항목이 하나도 없으면 ⋮ 를 세우지 않는다 — 흐린 「메시지」 하나만 여는 메뉴가 되지 않게.
+    const usable = items.some((item) => !item.disabled);
     // 목표 화면의 뿌리다 — ‹ 는 홈으로 간다.
-    mobileBar.set({ title, depth: 0, ...(items.length > 0 ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, menuKey, t, personActions]);
+    mobileBar.set({ title, ...(stateWord ? { subtitle: stateWord } : {}), depth: 0, ...(usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
+  }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, settingsHost, rename, archive]);
 
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
   if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
-  const rowActions = embedded ? personActions(actions) : [];
+  // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
+  const embeddedActions = embedded ? personActions(actions) : [];
+  const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
   return (
     <div ref={rootRef} className={rootClass}>
       <div className="objectives-m-pad">
@@ -656,9 +767,12 @@ function CommenceCard({ objective, commence, t, language, api, say, onReview }: 
     <section className="objectives-m-card" aria-label={t("objectives.commander.start")}>
       <h3 className="objectives-m-card-label">{t("objectives.commander.title")}</h3>
       <p className="objectives-m-prop-sub">{desc}</p>
-      <button type="button" data-press="r3" className="objectives-m-pbtn is-approve objectives-m-approve-all" disabled={busy || !!commence.reason} aria-busy={busy || undefined} onClick={start}>
-        {t("objectives.commander.start")}
-      </button>
+      {/* 막힌 동안은 단추 없이 사유만 — 누를 수 없는 넓은 막대가 다음 걸음처럼 서지 않게 한다. */}
+      {commence.reason ? null : (
+        <button type="button" data-press="r3" className={`objectives-m-pbtn${commence.primary ? " is-approve" : ""} objectives-m-approve-all`} disabled={busy} aria-busy={busy || undefined} onClick={start}>
+          {t("objectives.commander.start")}
+        </button>
+      )}
     </section>
   );
 }

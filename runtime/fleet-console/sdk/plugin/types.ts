@@ -462,7 +462,7 @@ export interface ClientConsoleEventsCapability {
 export interface ClientRailCapability {
   /** rail 패널을 펼친다. 공유 링크로 들어온 플러그인이 자기 패널을 세울 때 쓴다. */
   open(panelId: string, params?: Readonly<Record<string, string>>): void;
-  /** 지정한 패널이 현재 활성 상태일 때만 닫는다. */
+  /** 지정한 패널이 현재 활성 상태일 때만 닫는다. 폰에서 그 엔트리의 목적지 화면이 보이고 있으면 화면을 닫고 홈(대화 목록)으로 돌아간다. */
   close(panelId: string): void;
   /** 지정한 패널이 현재 레일 슬롯에 서 있는가. */
   isOpen(panelId: string): boolean;
