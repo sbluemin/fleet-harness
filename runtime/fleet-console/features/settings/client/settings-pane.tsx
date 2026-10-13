@@ -4,21 +4,11 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
-import { SettingsSlider } from "@fleet-console/sdk/settings/browser";
 
-import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
-import {
-  GLASS_OPACITY_MAX,
-  GLASS_OPACITY_MIN,
-  resetGlassOpacity,
-  setGlassOpacity,
-  useGlassOpacity,
-  type GlassGroup,
-} from "../../../core/client/src/integration/glass-opacity-store.js";
 import {
   buildCoreSettingsSections,
   collectPluginSettingsSections,
@@ -36,7 +26,7 @@ import {
  * 설정 표면 — 페이지의 후계자.
  *
  * 설정은 더 이상 가는 곳이 아니라 부르는 것이다. 옛 `/settings` 페이지는 콘솔 전체를 치우고
- * 섰기 때문에, 콘솔을 보면서 돌려야 하는 설정(테마·유리·서체)을 위해 콘솔의 축소
+ * 섰기 때문에, 콘솔을 보면서 돌려야 하는 설정(테마·서체)을 위해 콘솔의 축소
  * 모형까지 지어야 했다. 이 표면은 레일 페인으로 서서 뒤의 콘솔을 살려 둔다 — 콘솔 자체가
  * 미리보기다.
  *
@@ -271,110 +261,10 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
         /* 섹션 전환은 재마운트다 — 키가 없으면 한 플러그인 섹션의 렌더 실패(hasError)가
            경계 인스턴스 재사용을 타고 다음 섹션까지 전염된다(옛 페이지의 key 계약 계승). */
         <div key={activeId} id={`${tabId}-panel`} role="tabpanel" aria-labelledby={`${tabId}-${chips.findIndex((chip) => chip.id === activeId)}`} className="settings-pane-sections">
-          {/* 레일 없는 모바일과 공유하는 본문에는 데스크톱 재질 설정만 추가한다. */}
-          {renderSettingsSection(activeId, state, saving, pluginSections, t, {
-            themeCardExtras: <ChromeMaterialRows />,
-          })}
+          {renderSettingsSection(activeId, state, saving, pluginSections, t)}
         </div>
       )}
     </div>
   );
 }
 
-/**
- * 유리 효과 손잡이 묶음 — 네 묶음의 틴트 불투명도. 전부 서버 설정이 아니라
- * 브라우저-로컬 store지만, 터미널 렌더러가 그렇듯 브라우저-로컬도 설정 화면에 선다: 사람이 찾는
- * 기준은 저장 위치가 아니라 하는 일이다.
- *
- * "비포커스 패널 흐리기" 아래에 「유리 효과」 소제목으로 선다. 순서는 화면에서 큰 면부터다:
- * 작업 창 → 상단 바·작업 표시줄 → 좌측 사이드바 → 도구 패널. 이 묶음
- * 전체는 데스크톱 페인만 주입한다: 같은 헬퍼가 사이드바도 레일도 없는 모바일의 본문이라, 직접
- * 넣으면 폰에 죽은 슬라이더가 선다.
- */
-export function ChromeMaterialRows() {
-  const t = useT();
-  return (
-    <section className="global-settings-card" aria-label={t("settings.theme.glassTitle")}><h3 className="global-settings-card-title">{t("settings.theme.glassTitle")}</h3><div className="settings-group-surface">
-      <GlassOpacityRow group="window" titleKey="settings.theme.windowOpacity" helpKey="settings.theme.windowOpacityHelp" />
-      <GlassOpacityRow group="bar" titleKey="settings.theme.barOpacity" helpKey="settings.theme.barOpacityHelp" />
-      <GlassOpacityRow group="side-bar" titleKey="settings.theme.sideBarOpacity" helpKey="settings.theme.sideBarOpacityHelp" />
-      <GlassOpacityRow group="rail" titleKey="settings.theme.railOpacity" helpKey="settings.theme.railOpacityHelp" />
-    </div></section>
-  );
-}
-
-/**
- * 묶음 하나의 틴트 불투명도. 게이트가 닫힌 화면(라이트·투명도 줄이기)은 언제나
- * 불투명이라 손잡이가 화면에 닿지 않는다 — 비활성으로 두고 이유를 말한다. 저장값은 건드리지 않아
- * 유리가 돌아오면 고른 값이 그대로 다시 선다.
- */
-function GlassOpacityRow({ group, titleKey, helpKey }: {
-  readonly group: GlassGroup;
-  readonly titleKey: "settings.theme.windowOpacity" | "settings.theme.barOpacity" | "settings.theme.sideBarOpacity" | "settings.theme.railOpacity";
-  readonly helpKey: "settings.theme.windowOpacityHelp" | "settings.theme.barOpacityHelp" | "settings.theme.sideBarOpacityHelp" | "settings.theme.railOpacityHelp";
-}) {
-  const t = useT();
-  const { value, defaultValue } = useGlassOpacity(group);
-  const glassOff = useGlassGateClosed();
-  const title = t(titleKey);
-  const onChange = (next: number) => setGlassOpacity(group, next);
-  return (
-    <div className="global-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {title}
-          <SettingsHelp title={title}>{t(glassOff ? "settings.theme.glassOpaqueHelp" : helpKey)}</SettingsHelp>
-        </p>
-      </div>
-      <SettingsSlider
-        value={value}
-        min={GLASS_OPACITY_MIN}
-        max={GLASS_OPACITY_MAX}
-        step={1}
-        disabled={glassOff}
-        label={title}
-        formatValue={(next) => `${next}%`}
-        onPreview={onChange}
-        onCommit={onChange}
-        defaultValue={defaultValue}
-        onReset={() => resetGlassOpacity(group)}
-        resetLabel={t("settings.slider.reset")}
-        resetAriaLabel={t("settings.slider.resetAria", { title })}
-      />
-    </div>
-  );
-}
-
-/**
- * 유리 게이트가 지금 이 화면에서 닫혀 있는가 — 판정은 테마·설정 추론이 아니라 **채널의 계산값**을
- * 읽어서 한다. theme.css의 게이트는 투명도 축소 선호와
- * 라이트 테마이며, 투명도 축소 선호는 CSS가 진다.
- * 조건을 여기서 복제하면 반드시 원본보다 좁아진다(적대 리뷰 적발: OS 투명도 줄이기에서 손잡이가
- * 살아 남아 화면에 닿지 않는 값을 저장했다). 채널을 읽으면 게이트가 몇 개든 CSS 하나가 진실이다.
- *
- * 다시 읽어야 할 계기도 CSS를 여는 것들이다: 루트의 data-theme 속성 변화와 OS 투명도
- * 선호의 변화. 저장값 스토어가 아니라 루트 속성을 보는 이유는, 테마가 서버 하이드레이션·낙관
- * 적용·데스크톱 주입 어느 경로로 바뀌든 게이트를 실제로 여닫는 것은 이 속성이기 때문이다.
- */
-function useGlassGateClosed(): boolean {
-  const [closed, setClosed] = useState(readGlassGateClosed);
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const read = () => setClosed(readGlassGateClosed());
-    read();
-    const observer = new MutationObserver(read);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    const media = typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-transparency: reduce)") : null;
-    media?.addEventListener("change", read);
-    return () => {
-      observer.disconnect();
-      media?.removeEventListener("change", read);
-    };
-  }, []);
-  return closed;
-}
-
-function readGlassGateClosed(): boolean {
-  if (typeof document === "undefined") return false;
-  return getComputedStyle(document.documentElement).getPropertyValue("--glass-panel-face").trim() !== "transparent";
-}

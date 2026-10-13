@@ -45,7 +45,6 @@ import { installConsoleUseGestures } from "../../../../features/console-use/clie
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
-import { applyStoredGlassOpacity } from "../integration/glass-opacity-store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 
 interface FleetConsoleRuntime {
@@ -87,9 +86,6 @@ globalThis.__fleetConsoleRuntime__ = {
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
 setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "instrument");
 applyDesktopShellMarker();
-// 사이드바 유리 취향은 브라우저-로컬이라 서버 왕복을 기다릴 이유가 없다 — 테마와 같은 줄에서
-// 첫 페인트 앞에 실어 두면 기본 재질이 잠깐 스쳤다 바뀌는 일이 없다.
-applyStoredGlassOpacity();
 // 모바일 색상 모드·글자 배율은 기기 단위 선호다(앱이면 네이티브 소유, 브라우저면 로컬 저장) —
 // 부트 스크립트가 첫 페인트에 붙인 속성을 이어받아 시스템 외관·네이티브 확정을 실시간으로 따른다.
 installMobileAppearance();

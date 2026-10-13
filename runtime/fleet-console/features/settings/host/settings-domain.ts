@@ -68,9 +68,6 @@ export interface ConsoleGeneralSettings {
   readonly remoteAccess?: ConsoleRemoteAccessSettings;
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
-  /** 퇴역한 리퀴드 글래스 스위치 — 쓰지 않는다. 꺼 둔 사람을 불투명도 100%로 옮기는 기기별
-      일회 이관 판단(static-console 주입)만 읽는다. */
-  readonly liquidGlass?: boolean;
   /**
    * 포커스하지 않은 패널의 본문이 물러나는 세기(백분율). 0은 물러나지 않음, 클수록 더 흐리다.
    * 부재는 기본값이며, 상한은 곁을 훑는 일이 끊기지 않는 선에서 정한다.
@@ -330,7 +327,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
       : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const fonts = readFontSettings(value.fonts);
-  const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
@@ -345,7 +341,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(remoteAccess !== undefined ? { remoteAccess } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
-    ...(liquidGlass !== undefined ? { liquidGlass } : {}),
     ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),

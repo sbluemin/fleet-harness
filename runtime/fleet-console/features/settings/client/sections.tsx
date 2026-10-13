@@ -166,9 +166,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      // 도구 패널 불투명도는 데스크톱 페인이 테마 카드에 덧세우는 행이다 — 검색은 그
-      // 행 이름으로도 닿아야 한다. 모바일은 이 entries를 읽지 않으므로 여기 실어도 무해하다.
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.theme.glassTitle"), t("settings.theme.windowOpacity"), t("settings.theme.barOpacity"), t("settings.theme.sideBarOpacity"), t("settings.theme.railOpacity"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -237,10 +235,7 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
   return <>{render()}</>;
 }
 
-export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: ReadonlySet<GlobalSettingsField>, pluginSections: readonly PluginSettingsNavItem[], t: T, options?: {
-  /** 데스크톱 페인이 테마 카드에 덧세우는 행(도구 패널 불투명도) — 도구 패널 없는 모바일은 넘기지 않는다. */
-  readonly themeCardExtras?: ReactNode;
-}) {
+export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: ReadonlySet<GlobalSettingsField>, pluginSections: readonly PluginSettingsNavItem[], t: T) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
@@ -255,7 +250,6 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
         <>
           {state === null ? null : <LanguageCard state={state} saving={saving.has("language")} />}
           <ThemeCard state={state} saving={saving} />
-          {options?.themeCardExtras}
           <TypographyCard state={state} saving={saving.has("fonts")} />
         </>
       );
@@ -331,12 +325,9 @@ function formatPluginLabel(pluginId: string | null, t: T): string {
 export function ThemeCard({
   state,
   saving,
-  extras,
 }: {
   readonly state: GlobalSettingsState | null;
   readonly saving: ReadonlySet<GlobalSettingsField>;
-  /** 비포커스 패널 흐리기 아래에 서는 추가 행 — 데스크톱 전용 크롬 재질 취향(좌·우 사이드바)이 들어온다. */
-  readonly extras?: ReactNode;
 }) {
   const t = useT();
   const conversationLayout = useConversationLayout();
@@ -456,11 +447,6 @@ export function ThemeCard({
               resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.panelFade") })}
             />
           </div>
-
-          {/* 재가된 배치: 도구 패널 불투명도는 비포커스 패널 흐리기 바로 아래에 서고, 좌측
-              사이드바 손잡이 둘이 그 아래에 붙는다. 행 자체는 데스크톱 페인이 주입한다 — 사이드바도
-              레일도 없는 모바일에 죽은 슬라이더를 세우지 않기 위해. */}
-          {extras}
 
           <div className="global-settings-row">
             <div className="global-settings-row-text">

@@ -153,13 +153,6 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
-  // glass-opacity-store injects each glass group's alpha on the document root only once a person
-  // touches that group. theme.css reads it without a fallback inside --glass-on-opaque-* on purpose:
-  // an untouched or reset group must invalidate that formula so the surface keeps today's literal.
-  "--glass-window-alpha",
-  "--glass-bar-alpha",
-  "--glass-side-bar-alpha",
-  "--glass-rail-alpha",
   // Canvas injects each frame's identity accent through TSX inline styles.
   "--user-accent",
   // Sidebar TSX injects its measured width for the shell layout.
@@ -742,14 +735,10 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-pane-light: transparent;");
     expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
     // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
-    // pane-light는 22%만 얹고 terminal도 같은 반투명 tint(panel과 한 장)를 쓴다. 만지지 않은(초기화한) 묶음은
-    // 오늘의 리터럴 그대로이고, 사람이 알파를 올릴 때만 원색이 solid 끝점으로 옮겨 가 100%에서 불투명판이 된다.
-    // 이동식은 알파 변수를 폴백 없이 읽어야 한다 — 폴백을 달면 기본 화면도 color-mix 경로로 칠해져 픽셀이 갈린다.
-    for (const [raw, solid] of [["18.5% 0.028 245", "15.6% 0.021 245"], ["25% 0.05 248", "19.3% 0.034 248"], ["21% 0.013 252", "16.9% 0.009 252"]]) {
-      expect(theme).toContain(`--glass-on-tint-panel: var(--glass-on-opaque-panel, oklch(${raw} / var(--glass-window-alpha, 60%)));`);
-      expect(theme).toContain(`--glass-on-opaque-panel: color-mix(in oklch, color-mix(in oklch, oklch(${raw}) clamp(0%, calc((100% - var(--glass-window-alpha)) / 0.4), 100%), oklch(${solid})) var(--glass-window-alpha), transparent);`);
+    // pane-light는 22%만 얹고 terminal도 같은 반투명 tint(panel과 한 장)를 쓴다. 알파는 테마마다 고정이다.
+    for (const raw of ["18.5% 0.028 245", "25% 0.05 248", "21% 0.013 252"]) {
+      expect(theme).toContain(`--glass-on-tint-panel: oklch(${raw} / 60%);`);
     }
-    expect(theme).not.toMatch(/--glass-on-opaque-[a-z]+:[^;]*var\(--glass-[a-z-]+-alpha,/);
     expect(theme.match(/--glass-on-tint-terminal:/g)).toHaveLength(1);
     expect(theme).toContain("--glass-on-tint-terminal: var(--glass-on-tint-panel);");
     expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
@@ -1568,22 +1557,20 @@ describe("Instrument core design contract", () => {
     expect(rail).toMatch(/\.right-rail \{[^}]*border-radius: var\(--radius-md\);/);
     // Doctrine: the slot ::before composites its glass layers over the
     // --glass-underlay channel — its default is the old opaque var(--ink-deep), so with the
-    // liquid glass gate closed the slider's 100% endpoint stays fully opaque, and with the
-    // gate open the same channel turns transparent under backdrop blur.
+    // glass gate closed the slot stays fully opaque, and with the gate open the same channel
+    // turns transparent.
     expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // control communicates its filled range in either engine. The recipe is shared - the glass
-    // opacities, the Settings fade strength, and plugin sliders are one control grammar living in
-    // the settings pane; the rail keeps only its own layout.
+    // control communicates its filled range in either engine. The recipe is shared - the Settings
+    // fade strength and plugin sliders are one control grammar living in the settings sections;
+    // the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
     // 그 문법은 트랙·값·기본값이다: −/+ 스테퍼가 되살아나면 행마다 Tab 정지점이 서너 개로 는다.
-    expect(settingsPane).toContain("<SettingsSlider");
+    expect(source("../../../features/settings/client/sections.tsx")).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
     expect(source("styles/components.css")).not.toContain(".fc-settings-slider__stepper");
-    expect(settingsPane).toContain("setGlassOpacity");
-    // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드라
-    // 남는 취향은 카드 불투명도 하나다.
+    // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드다.
     expect(settingsPane).not.toContain("toggleRailPanelBehavior");
     // 독점 상주 계약: 카드에는 패널 하나만 상주한다 — 단일 activeId가 고정 목록을 대체하고
     // 섹션 접기는 퇴역했다(안 볼 패널은 접는 게 아니라 닫거나 교체한다).
@@ -1859,7 +1846,7 @@ describe("Instrument core design contract", () => {
     expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
-    // 불투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
+    // 투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     const sideBarBeforeBlock = components.match(/\.operations-side-bar::before \{[^}]*\}/)?.[0] ?? "";
     expect(sideBarBeforeBlock).toContain("linear-gradient(var(--glass-tint-chrome), var(--glass-tint-chrome)),");
