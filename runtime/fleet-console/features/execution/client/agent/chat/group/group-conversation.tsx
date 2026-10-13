@@ -75,6 +75,11 @@ export interface BoardActionRecordRequest {
   readonly at: number | null;
 }
 
+/** 사람의 스크롤 입력 뒤 그 scroll 사건을 사람의 뜻으로 읽는 창 — 입력과 그 scroll 사건 사이의 한두 프레임을 덮는다. */
+const USER_SCROLL_MS = 250;
+/** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
+const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
 export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
@@ -82,6 +87,9 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
   const programmaticTop = React.useRef<number | null>(null);
+  // 사람이 이 기록을 스크롤한 마지막 입력 시각 — 그 직후의 scroll 사건은 사람의 뜻으로 읽는다.
+  const userScrollAt = React.useRef(-Infinity);
+  const markUserScroll = React.useCallback(() => { userScrollAt.current = performance.now(); }, []);
   const last = entries[entries.length - 1];
   const first = entries[0]?.id;
   const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${snapshot.decision?.id ?? ""}`;
@@ -165,6 +173,10 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
         role="log"
         aria-label={t("group.aria.log")}
         aria-busy={snapshot.loading}
+        onWheel={markUserScroll}
+        onTouchMove={markUserScroll}
+        onPointerDown={markUserScroll}
+        onKeyDown={(event) => { if (SCROLL_KEYS.has(event.key)) markUserScroll(); }}
         onScroll={(event) => {
           const log = event.currentTarget;
           if (log.closest("[inert]") || log.clientHeight === 0) return;
@@ -174,10 +186,11 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
           // 따라가는 중이면 판정 높이는 지금 높이와 마지막 RO 높이 중 작은 쪽이다. 복귀·폭 전이로 줄면 브라우저가 먼저 scrollTop을
           // 제한하므로 지금 높이로 재고(RO 전의 cached 높이는 위로 읽기로 오인한다), 원장 재생처럼 clamp·anchoring 사건이 닿기 전에
           // 칼럼이 먼저 자라면 RO 전 높이로 잰다(그 성장을 사람이 위로 올린 것으로 오인하지 않는다 — 다음 RO 가 따라간다).
-          // 위로 올려 읽는 중이면 지금 높이로만 잰다 — 보이는 줄 위가 자라 anchoring 이 올린 scrollTop 을 짧은 cached 높이와 견주면
-          // 바닥에 닿은 것으로 오인해 읽던 사람을 바닥으로 끌어내린다.
+          // 위로 올려 읽는 중이거나 사람의 스크롤 입력 직후이면 지금 높이로만 잰다 — 보이는 줄 위가 자라 anchoring 이 올린 scrollTop 을
+          // 짧은 cached 높이와 견주면 바닥에 닿은 것으로 오인해, 읽거나 위로 올리던 사람을 바닥으로 끌어내린다.
           const cached = placed.current?.height;
-          const height = cached && nearBottomRef.current ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
+          const gesture = performance.now() - userScrollAt.current < USER_SCROLL_MS;
+          const height = cached && nearBottomRef.current && !gesture ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
           nearBottomRef.current = height - log.scrollTop - log.clientHeight < 60;
         }}
       >
