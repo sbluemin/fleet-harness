@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import { canonicalModelId } from "@fleet-console/sdk/models";
 
@@ -13,8 +14,12 @@ import {
   MAX_DIRECTIVE,
   MAX_INTEL_ITEMS,
   MAX_INTEL_TEXT,
+  MAX_KEPT_ASKS,
+  MAX_OPEN_ASKS,
+  MAX_ASK_REASON,
   MAX_SOURCES,
   MAX_TRANSCRIPT_PAGE,
+  type CommodoreAsk,
   type CommodoreCoordinates,
   type CommodoreEvent,
   type CommodorePatrolMinutes,
@@ -78,10 +83,50 @@ export interface CommodoreStore {
   transcriptClear(theaterId: string): CommodoreState;
   transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(theaterId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
+  /**
+   * 사람에게 묻는다 — 기록에 `ask` 줄을 남긴다. 같은 목표에 같은 질문이 이미 서 있으면 그 질문을 그대로 둔다(reused).
+   * 서 있는 질문이 상한(`MAX_OPEN_ASKS`)이면 `too_many_asks`.
+   */
+  askAdd(theaterId: string, input: { readonly questions: readonly AskQuestionInput[]; readonly reason: string; readonly objective: { readonly id: string; readonly title: string } | null }): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly reused: boolean };
+  /** 사령관이 질문을 거둔다. 이미 거둔 질문은 그대로(withdrawn false), 답한 질문은 `ask_already_answered`. */
+  askWithdraw(theaterId: string, askId: string): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly withdrawn: boolean };
+  /**
+   * 사람의 답 — 모든 질문에 한 번에. 기록에 `ask-answered` 줄을 남긴다. 같은 답의 재전송은 그 결과를 그대로(repeated),
+   * 다른 답은 `ask_already_answered`, 거둔 질문은 `ask_withdrawn`, 모르는 질문은 `unknown_ask`, 어긋난 답은 `invalid_answers`.
+   */
+  askAnswer(theaterId: string, askId: string, answers: readonly AskAnswerInput[]): { readonly state: CommodoreState; readonly ask: CommodoreAsk; readonly repeated: boolean };
+  /** 사령관이 답을 읽었다 — 답한 질문에 읽은 시각을 남긴다. */
+  askRead(theaterId: string, askIds: readonly string[]): CommodoreState;
   /** 저장된 상태가 자율 운영을 켠 Theater — 재시작 복원이 읽는다. 폴더를 읽을 수 없는 Theater 는 빠진다. */
   autonomousTheaters(): readonly string[];
   /** 서버 안 구독 — 감독자가 지시·정보 변경을 깨움 이유로 받는다. 브라우저 방송(`emit`)과 별개다. */
   subscribe(listener: (event: CommodoreEvent) => void): () => void;
+}
+
+export interface AskQuestionInput {
+  readonly text: string;
+  readonly options: readonly { readonly label: string; readonly description?: string | undefined }[];
+  readonly multiSelect?: boolean | undefined;
+}
+export interface AskAnswerInput {
+  readonly questionId: string;
+  readonly selectedOptionIds: readonly string[];
+  readonly text: string;
+}
+
+/** 서 있는 질문은 모두, 끝난 질문은 최근 것부터 남긴다 — 순서는 물은 순서 그대로. */
+function keptAsks(asks: readonly CommodoreAsk[]): CommodoreAsk[] {
+  const settled = asks.filter((ask) => ask.settled).sort((a, b) => b.settled!.at - a.settled!.at);
+  const dropped = new Set(settled.slice(Math.max(0, MAX_KEPT_ASKS - asks.filter((ask) => !ask.settled).length)).map((ask) => ask.id));
+  return asks.filter((ask) => !dropped.has(ask.id));
+}
+
+/** 기록에 싣는 답 — 질문 원문, 고른 선택지 이름, 직접 쓴 말. */
+export function askAnswerLines(ask: CommodoreAsk): { readonly question: string; readonly selected: readonly string[]; readonly text: string }[] {
+  return (ask.settled?.answers ?? []).map((answer) => {
+    const question = ask.questions.find((entry) => entry.id === answer.questionId);
+    return { question: question?.text ?? "", selected: answer.selectedOptionIds.flatMap((id) => question?.options.filter((option) => option.id === id).map((option) => option.label) ?? []), text: answer.text };
+  });
 }
 
 const STATE_FILE = "state.json";
@@ -138,6 +183,19 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     const seq = Math.max(load(theaterId).transcriptClearedThrough ?? 0, entries.length ? entries[entries.length - 1]!.seq : 0);
     lastSeq.set(theaterId, seq);
     return seq;
+  };
+
+  const append = (theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry => {
+    const entry = { ...input, seq: seqOf(theaterId) + 1, at: now() } as CommodoreTranscriptEntry;
+    const parsed = commodoreTranscriptEntrySchema.safeParse(entry);
+    if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
+    const file = transcriptFile(theaterId);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
+    lastSeq.set(theaterId, parsed.data.seq);
+    compactIfLarge(file);
+    broadcast({ op: "transcript", theaterId, entry: parsed.data });
+    return parsed.data;
   };
 
   return {
@@ -227,18 +285,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       fs.rmSync(transcriptFile(theaterId), { force: true });
       return state;
     },
-    transcriptAppend(theaterId, input) {
-      const entry = { ...input, seq: seqOf(theaterId) + 1, at: now() } as CommodoreTranscriptEntry;
-      const parsed = commodoreTranscriptEntrySchema.safeParse(entry);
-      if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
-      const file = transcriptFile(theaterId);
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
-      lastSeq.set(theaterId, parsed.data.seq);
-      compactIfLarge(file);
-      broadcast({ op: "transcript", theaterId, entry: parsed.data });
-      return parsed.data;
-    },
+    transcriptAppend: (theaterId, input) => append(theaterId, input),
     transcriptRead(theaterId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
       const clearedThrough = load(theaterId).transcriptClearedThrough ?? 0;
@@ -246,6 +293,69 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const before = pageOptions?.before;
       const scoped = before === undefined ? entries : entries.filter((entry) => entry.seq < before);
       return { entries: scoped.slice(Math.max(0, scoped.length - limit)), hasMore: scoped.length > limit, clearedThrough };
+    },
+    askAdd(theaterId, input) {
+      const reason = input.reason.trim();
+      if (!reason || reason.length > MAX_ASK_REASON) throw new ObjectiveStoreError("invalid_request");
+      const current = load(theaterId);
+      const asks = current.asks ?? [];
+      // 저장될 모양 그대로 비교한다 — 같은 목표에 같은 질문이 서 있으면 다시 묻지 않는다.
+      const shape = (questions: readonly { readonly text: string; readonly options: readonly { readonly label: string; readonly description?: string | undefined }[]; readonly multiSelect?: boolean | undefined }[]) =>
+        questions.map((question) => ({ text: question.text, options: question.options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })), multiSelect: question.options.length > 0 && question.multiSelect === true }));
+      const objectiveId = input.objective?.id ?? null;
+      const same = asks.find((ask) => !ask.settled && ask.objectiveId === objectiveId && isDeepStrictEqual(shape(ask.questions), shape(input.questions)));
+      if (same) return { state: current, ask: same, reused: true };
+      if (asks.filter((ask) => !ask.settled).length >= MAX_OPEN_ASKS) throw new ObjectiveStoreError("too_many_asks", undefined, { limit: MAX_OPEN_ASKS });
+      const ask: CommodoreAsk = {
+        id: `a_${randomUUID()}`, at: now(), reason, objectiveId,
+        questions: shape(input.questions).map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),
+      };
+      const state = commit(theaterId, { ...current, asks: keptAsks([...asks, ask]) }, "asks");
+      append(theaterId, { kind: "ask", askId: ask.id, reason, questions: ask.questions.map((question) => ({ text: question.text, options: question.options.map((option) => option.label), multiSelect: question.multiSelect })), ...(input.objective ? { objective: { id: input.objective.id, title: input.objective.title.slice(0, 200) } } : {}) });
+      return { state, ask, reused: false };
+    },
+    askWithdraw(theaterId, askId) {
+      const current = load(theaterId);
+      const ask = (current.asks ?? []).find((entry) => entry.id === askId);
+      if (!ask) throw new ObjectiveStoreError("unknown_ask");
+      if (ask.settled?.outcome === "answered") throw new ObjectiveStoreError("ask_already_answered");
+      if (ask.settled) return { state: current, ask, withdrawn: false };
+      const withdrawn: CommodoreAsk = { ...ask, settled: { at: now(), by: "commodore", outcome: "withdrawn" } };
+      const state = commit(theaterId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? withdrawn : entry))) }, "asks");
+      return { state, ask: withdrawn, withdrawn: true };
+    },
+    askAnswer(theaterId, askId, input) {
+      const current = load(theaterId);
+      const ask = (current.asks ?? []).find((entry) => entry.id === askId);
+      if (!ask) throw new ObjectiveStoreError("unknown_ask");
+      if (ask.settled?.outcome === "withdrawn") throw new ObjectiveStoreError("ask_withdrawn");
+      // 모든 질문에 정확히 한 번 — 고른 것은 그 질문의 선택지, 하나 고르기는 하나까지, 빈 답은 받지 않는다(결정 요청과 같은 규칙).
+      const byQuestion = new Map(input.map((answer) => [answer.questionId, answer]));
+      if (byQuestion.size !== input.length || input.length !== ask.questions.length) throw new ObjectiveStoreError("invalid_answers");
+      const answers = ask.questions.map((question) => {
+        const answer = byQuestion.get(question.id);
+        if (!answer) throw new ObjectiveStoreError("invalid_answers");
+        const picked = new Set(answer.selectedOptionIds);
+        if (picked.size !== answer.selectedOptionIds.length || [...picked].some((id) => !question.options.some((option) => option.id === id)) || (!question.multiSelect && picked.size > 1)) throw new ObjectiveStoreError("invalid_answers");
+        if (picked.size === 0 && !answer.text.trim()) throw new ObjectiveStoreError("invalid_answers");
+        return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
+      });
+      // 이미 답한 질문 — 같은 답의 재전송(응답을 잃은 재시도)은 그 결과를, 다른 답은 덮지 않고 거절한다.
+      if (ask.settled) {
+        if (!isDeepStrictEqual(ask.settled.answers, answers)) throw new ObjectiveStoreError("ask_already_answered");
+        return { state: current, ask, repeated: true };
+      }
+      const answered: CommodoreAsk = { ...ask, settled: { at: now(), by: "human", outcome: "answered", answers } };
+      const state = commit(theaterId, { ...current, asks: keptAsks((current.asks ?? []).map((entry) => (entry.id === askId ? answered : entry))) }, "asks");
+      append(theaterId, { kind: "ask-answered", askId, answers: askAnswerLines(answered) });
+      return { state, ask: answered, repeated: false };
+    },
+    askRead(theaterId, askIds) {
+      const current = load(theaterId);
+      const unread = new Set(askIds);
+      if (!(current.asks ?? []).some((ask) => unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined)) return current;
+      const at = now();
+      return commit(theaterId, { ...current, asks: (current.asks ?? []).map((ask) => (unread.has(ask.id) && ask.settled?.outcome === "answered" && ask.readAt === undefined ? { ...ask, readAt: at } : ask)) }, "asks");
     },
     autonomousTheaters() {
       const ids = new Set<string>([...states.keys(), ...(options.theaterIds?.() ?? [])]);

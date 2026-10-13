@@ -214,7 +214,7 @@ describe("commodore session", () => {
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"] });
     expect(options.tools!.consoleUse).toBeUndefined();
-    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
+    expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.$/);
     expect(stub.sent[0]).not.toContain("newest");
@@ -763,6 +763,24 @@ describe("commodore supervisor", () => {
       expect(tokens().at(-1)).toEqual(["intel:1", "rotated"]);
       expect(sessions[1]!.sent[0]).toContain("This is a replacement session. Summary of your recent actions");
       expect(h.store.read("t1")!.run!.session).toBe(2);
+
+      // 사람에게 묻기 — 사령관의 질문은 기록에 구조화된 줄로 남고, 사람의 답이 사령관을 「사람이 답함」으로 깨우며 답은 asks 도구로 읽힌다.
+      // 끝난 질문은 다른 답으로 덮이지 않고 거둘 수도 없다.
+      const commodoreTool = (name: string) => sessions[1]!.options.tools!.custom!.find((group) => group.name === "commodore")!.tools.find((tool) => tool.name === name)!;
+      const useTool = async (name: string, args: Record<string, unknown>) => ((await commodoreTool(name).execute(args, { cwd: theaterRoot })) as { structuredContent: Record<string, unknown> }).structuredContent;
+      const asked = await useTool("ask_person", { questions: [{ text: "Open these candidates as objectives?", options: [{ label: "Open both" }, { label: "Only the first" }] }], reason: "Product direction is the person's call" });
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "ask", askId: asked.askId, questions: [{ options: ["Open both", "Only the first"] }] });
+      const ask = h.store.read("t1")!.asks!.find((entry) => entry.id === asked.askId)!;
+      const answer = (optionIndex: number) => h.route("commodore/ask/answer", { theaterId: "t1", askId: ask.id, answers: [{ questionId: ask.questions[0]!.id, selectedOptionIds: [ask.questions[0]!.options[optionIndex]!.id], text: "" }] });
+      expect((await answer(1)).status).toBe(200);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["answered:1"]);
+      expect(sessions[1]!.sent.at(-1)).toContain('the person answered 1 item you handed or asked them: your question "Open these candidates as objectives?"');
+      expect(await useTool("asks", {})).toMatchObject({ open: 0, asks: [{ askId: ask.id, state: "answered", answers: [{ question: "Open these candidates as objectives?", selected: ["Only the first"] }] }] });
+      expect((await answer(0)).value).toMatchObject({ error: "ask_already_answered" });
+      expect((await answer(1)).value).toMatchObject({ repeated: true });
+      expect(await useTool("withdraw_ask", { askId: ask.id })).toMatchObject({ error: "ask_already_answered" });
+      expect(h.store.read("t1")!.asks!.find((entry) => entry.id === ask.id)!.settled).toMatchObject({ outcome: "answered", answers: [{ selectedOptionIds: [ask.questions[0]!.options[1]!.id] }] });
 
       // 끔 — 진행 중 턴에 실린 메시지와 다음 턴 대기 메시지를 모두 표시하고 다시 보내지 않는다.
       holdTurn = true;

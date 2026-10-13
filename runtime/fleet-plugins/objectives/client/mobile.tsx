@@ -11,7 +11,8 @@ import { livePersonHold } from "../server/board-state.js";
 import { ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
-import { commodoreBoardOf, decisionTurn, livePersonHolds, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
+import { commodoreBoardOf, decisionTurn, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
+import type { CommodoreAsk } from "../server/commodore/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasRoutingReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, routingReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
@@ -98,7 +99,7 @@ const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObje
 // ── 「확인 필요」 행 ──
 
 const NO_ITEMS: readonly RailEntryAttentionItem[] = [];
-const attentionMemo = new Map<string, { readonly source: readonly Objective[]; readonly locale: ConsoleLocale; readonly answering: boolean; readonly items: readonly RailEntryAttentionItem[] }>();
+const attentionMemo = new Map<string, { readonly source: readonly Objective[]; readonly asks: readonly CommodoreAsk[]; readonly locale: ConsoleLocale; readonly answering: boolean; readonly items: readonly RailEntryAttentionItem[] }>();
 
 /** 「확인 필요」 행의 갱신 신호 — 목표 상태와 사령관 상태(답하는 중 메모)가 모두 행을 바꾼다. */
 export function subscribeDecisionAttention(listener: () => void): () => void {
@@ -108,33 +109,37 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
 }
 
 /**
- * 레일 아이콘 배지의 수 — 「확인 필요」 행과 같은 판정(`personTurnAt`)이라 사람의 차례만 센다. 표면이 닫혀 있어도 활성 Theater 는
- * 미리 읽혀 있다(installObjectiveState).
+ * 레일 아이콘 배지의 수 — 「확인 필요」 행·사이드바 「내 결정」과 같은 판정이라 사람의 차례만 센다: 사람이 답할 목표(`personTurnAt`)와
+ * 사령관이 사람에게 직접 물은 질문(`openAsks`). 표면이 닫혀 있어도 활성 Theater 는 미리 읽혀 있다(installObjectiveState).
  */
 export function personTurnCount(theaterId: string | null): number {
   const active = theaterId !== null && commodoreBoardOf(theaterId).active;
-  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length;
+  return readTheater(theaterId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(theaterId).length;
 }
 
 /**
- * 사람의 차례마다 한 행 — 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
+ * 사람의 차례마다 한 행 — 사령관의 질문(누르면 사령관 화면의 질문 카드), 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
  * (데스크톱 「내 결정」 구역과 같은 판정 `personTurnAt`). 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다.
  */
 export function decisionAttentionItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
   const source = readTheater(theaterId).objectives;
   const key = theaterId ?? "";
   const answering = theaterId !== null && commodoreBoardOf(theaterId).active;
+  const asks = openAsks(theaterId);
   const hit = attentionMemo.get(key);
-  if (hit && hit.source === source && hit.locale === locale && hit.answering === answering) return hit.items;
+  if (hit && hit.source === source && hit.asks === asks && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale);
   const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
-  const items = pending.length === 0 ? NO_ITEMS : pending.map((objective) => ({
-    id: objective.id,
-    title: objective.title,
-    reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
-    open: () => revealObjective({ objectiveId: objective.id }),
-  }));
-  attentionMemo.set(key, { source, locale, answering, items });
+  const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
+    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log") })),
+    ...pending.map((objective) => ({
+      id: objective.id,
+      title: objective.title,
+      reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
+      open: () => revealObjective({ objectiveId: objective.id }),
+    })),
+  ];
+  attentionMemo.set(key, { source, asks, locale, answering, items });
   return items;
 }
 

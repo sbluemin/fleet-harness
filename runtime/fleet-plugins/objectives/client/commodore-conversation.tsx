@@ -8,6 +8,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
 
 import { commodoreConversationEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
@@ -86,6 +87,15 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
   return true;
 }
 
+/**
+ * 사령관 기록을 연다 — 대화 중심 화면이면 가운데 대화, 아니면 Theater Inbox 의 사령관 기록 칸(질문 카드가 그 위에 서 있다).
+ * 사이드바 「내 결정」의 질문 줄과 확인 필요 행이 부른다.
+ */
+export function openCommodoreLog(theaterId: string): void {
+  if (openCommodoreConversation(theaterId)) return;
+  inbox?.open({ theaterId, sectionId: COMMODORE_INBOX_SECTION_ID, pageId: "log" });
+}
+
 /* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
 
 let reveal: { readonly theaterId: string; readonly at: number; readonly nonce: number } | null = null;
@@ -146,6 +156,7 @@ function readParams(params: Readonly<Record<string, unknown>>): { readonly theat
 
 function failureWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
+  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
 }
 
@@ -173,7 +184,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
-  const items = useMemo(() => commodoreConversationEntries(t, theaterId, entries, live, board.objectives), [t, theaterId, entries, live, board.objectives]);
+  const items = useMemo(() => commodoreConversationEntries(t, theaterId, entries, live, board.objectives, view?.state.asks), [t, theaterId, entries, live, board.objectives, view?.state.asks]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
@@ -224,6 +235,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
+      {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
+      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} />}
       <div className="objectives-commodore-conversation-log">
         {Conversation ? (
           <Conversation

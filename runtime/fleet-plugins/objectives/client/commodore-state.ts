@@ -7,7 +7,7 @@ import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/s
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
-import type { CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { livePersonHold, reasonAwaits } from "../server/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
 import { post } from "./objectives-state.js";
@@ -403,6 +403,22 @@ export const setCommodoreStopAt = (theaterId: string, stopAt: number | null) => 
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
+/** 이미 끝났거나 사라진 질문의 거절 — 화면이 낡았다는 뜻이라 상태를 한 번 다시 읽는다. */
+const STALE_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "ask_already_answered", "unknown_ask"]);
+
+/**
+ * 사령관의 질문에 답한다 — 모든 질문의 답을 한 번에. 결과 상태로 화면을 바로 고치고(질문이 끝나 카드가 내려간다), 거절은 코드를 던진다.
+ * 질문이 이미 끝났다는 거절이면 그 보내기 한 번에 상태를 한 번 다시 읽어 카드·줄을 걷는다(다시 읽기는 거절을 되풀이하지 않는다).
+ */
+export async function answerCommodoreAsk(theaterId: string, askId: string, answers: readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[]): Promise<void> {
+  try {
+    await write(theaterId, "/commodore/ask/answer", { askId, answers });
+  } catch (error) {
+    if (error instanceof Error && STALE_ASK_CODES.has(error.message)) void loadCommodore(theaterId, true).catch(() => undefined);
+    throw error;
+  }
+}
+
 export function uploadCommodoreAttachment(file: Blob): Promise<{ readonly id: string }> {
   if (!installed) return Promise.reject(new Error("not_installed"));
   return uploadComposerAttachment(file, (path, init) => installed!.api.fetch(null, path, init));
@@ -430,6 +446,27 @@ export function isRunningObjective(objective: Objective): boolean {
   return !objective.removed && !objective.done && objective.commander.started && !objective.awaitingReview && !objective.awaitingHandoff;
 }
 
+const NO_ASKS: readonly CommodoreAsk[] = [];
+const openAskMemo = new Map<string, { readonly source: readonly CommodoreAsk[] | undefined; readonly open: readonly CommodoreAsk[] }>();
+/**
+ * 사령관이 사람에게 물어 아직 답을 기다리는 질문 — 물은 순서. 「내 결정」 줄·레일 배지·확인 필요·사령관 얼굴 배지·폰 칩 배지·질문 카드가
+ * 모두 이 하나를 읽는다. 읽지 않은 Theater 는 없다. 같은 상태면 같은 배열을 돌려준다(스냅샷).
+ */
+export function openAsks(theaterId: string | null): readonly CommodoreAsk[] {
+  if (!theaterId) return NO_ASKS;
+  const source = theaters.get(theaterId)?.view?.state.asks;
+  const hit = openAskMemo.get(theaterId);
+  if (hit && hit.source === source) return hit.open;
+  const open = source?.some((ask) => !ask.settled) ? source.filter((ask) => !ask.settled) : NO_ASKS;
+  openAskMemo.set(theaterId, { source, open });
+  return open;
+}
+
+/** 서 있는 질문이 있는 Theater — 사이드바가 Theater 마다 질문 줄을 세울 때 읽는다(읽은 Theater 만). */
+export function openAskTheaters(): readonly string[] {
+  return [...theaters.keys()].filter((theaterId) => openAsks(theaterId).length > 0);
+}
+
 /**
  * 결정 요청이 누구의 차례인가 — 보드의 차례 축(`reasonAwaits`) 위에 자율 운영을 얹는다. 자율 운영이 실제로 돌지 않으면 사령관
  * 몫도 사람에게 돌아오므로 사람이다. 요청이 없거나 끝난 목표는 null. 사이드바·전환 목록·폰·레일·결정 칸이 이 하나를 읽는다.
@@ -453,6 +490,16 @@ export function personTurnAt(objective: Objective, commodoreActive: boolean): nu
   if (decisionTurn(objective, commodoreActive) === "person") return objective.decisionRequest!.createdAt;
   const holds = livePersonHolds(objective);
   return holds.length ? Math.min(...holds.map((hold) => hold.at)) : null;
+}
+
+/**
+ * 질문이 가리킨 목표의 제목 — 살아 있는 보드(목표 상태)를 먼저 읽어 질문이 선 뒤의 새 목표·이름 변경·제거를 바로 따른다.
+ * 그 Theater 의 보드를 아직 읽지 않았으면 서버가 상태 뷰와 함께 준 제목으로 대신한다. 보드에서 사라졌으면 null.
+ */
+export function askObjectiveTitle(board: { readonly loaded: boolean; readonly objectives: readonly { readonly id: string; readonly title: string; readonly removed?: unknown }[] }, served: Readonly<Record<string, { readonly title: string } | null>> | undefined, objectiveId: string): string | null {
+  if (!board.loaded) return served?.[objectiveId]?.title ?? null;
+  const live = board.objectives.find((objective) => objective.id === objectiveId);
+  return live && !live.removed ? live.title : null;
 }
 
 /**

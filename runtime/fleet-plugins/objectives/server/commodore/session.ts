@@ -33,6 +33,8 @@ export interface CommodoreSessionOptions {
   /** 이 Theater 에 묶인 보드 도구 — objectives 서버가 행위자를 사령관으로 고정해 만든 목록·목표 화면 도구. action 선언(actionSchema)으로 쓰기를 가른다. */
   readonly boardTools: readonly PluginMcpTool[];
   readonly onNextWake: (at: number, reason: string) => void;
+  /** 이 Theater 의 목표 — 사람에게 묻는 질문이 가리킬 목표를 확인한다. */
+  readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
   readonly now?: () => number;
@@ -159,7 +161,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   };
 
   const open = async () => {
-    const tools = createCommodoreTools({ theaterId: options.theaterId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.execute ? { execute: options.execute } : {}) });
+    const tools = createCommodoreTools({ theaterId: options.theaterId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),

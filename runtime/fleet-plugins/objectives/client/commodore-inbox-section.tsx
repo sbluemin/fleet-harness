@@ -9,6 +9,7 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
+import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
@@ -180,6 +181,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
 
   const fail = (error: unknown) => {
     const code = error instanceof Error ? error.message : "failed";
+    if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
     setFailure(code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code }));
   };
   const openSystemPrompt = () => navigation.open({ ...links.systemPrompt, theaterId, focus: "editor-end" });
@@ -202,6 +204,8 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
           <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />
         </div>
       ) : null}
+      {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 남는다. */}
+      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} /> : null}
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>
@@ -434,7 +438,9 @@ const FOLLOW_SLACK_PX = 48;
  */
 export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
-  const blocks = useMemo(() => commodoreLogBlocks(t, entries, live), [t, entries, live]);
+  // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
+  const asks = useCommodore(theaterId).view?.state.asks;
+  const blocks = useMemo(() => commodoreLogBlocks(t, entries, live, asks), [t, entries, live, asks]);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
       const block = blocks[index];

@@ -1257,6 +1257,17 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 .objectives-decision-send:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 .objectives-decision-send:disabled { opacity: 0.5; cursor: default; }
 .objectives-decision-fault { margin: 0; font-size: var(--t-xs); color: var(--coral); }
+/* 사령관의 질문 — 결정 칸 문법을 빌린다. 여럿이면 쌓이고, 높이는 화면의 절반을 넘지 않게 칸 안에서 스크롤한다. */
+.objectives-asks { flex: none; display: flex; flex-direction: column; max-height: 45vh; padding: 4px 10px 0; overflow-y: auto; }
+.objectives-asks > .objectives-ask { width: 100%; max-width: 720px; box-sizing: border-box; margin-inline: auto; }
+.objectives-commodore-conversation > .objectives-asks > .objectives-ask { margin-block: 8px 4px; }
+.objectives-ask-glyph { width: 14px; height: 14px; }
+.objectives-ask-n { margin-right: 6px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
+.objectives-ask-about { margin: 0; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-ask-objective { padding: 0; border: 0; background: none; color: var(--text-secondary); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.objectives-ask-objective:hover:not(:disabled), .objectives-ask-objective:focus-visible { color: var(--text-primary); outline: none; }
+.objectives-ask-objective:disabled { text-decoration: none; cursor: default; }
+.objectives-ask .objectives-decision-q { gap: 6px; }
 .objectives-decision-trace { margin: 0 14px 6px; font-size: var(--t-xs); color: var(--text-tertiary); }
 /* 「결정」 — 질문(옅게)·답(원문)·시각과 관련 임무·구성원. 임무 줄의 결정 표식이 가리키면 잠시 비춘다. */
 .objectives-decisions { display: flex; flex-direction: column; padding: 0 12px 0 36px; }
@@ -1386,6 +1397,9 @@ button.objectives-decision-ref:focus-visible { outline: 1px solid var(--brass); 
 }
 .objectives-commodore-mark:disabled,
 .objectives-commodore-mark[aria-disabled="true"] { cursor: default; }
+/* 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 아이콘 배지와 같은 모양(테 + 깊은 면)이고, 사람을 기다린다는 상태라 대기 신호(aurora) 잉크다. */
+.objectives-commodore-mark { position: relative; }
+.objectives-commodore-mark-badge { position: absolute; top: -5px; right: -7px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border: 1px solid var(--aurora); border-radius: var(--radius-pill); background: var(--ink-abyss); color: var(--aurora-ink); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; line-height: 12px; text-align: center; pointer-events: none; }
 .objectives-commodore-mark-glyph {
   display: block;
   width: 18px;
@@ -1811,6 +1825,10 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-conversation .objectives-commodore-composer-input { min-height: 32px; max-height: 160px; padding: 6px 0; font: inherit; font-size: var(--font-body-size); line-height: 1.45; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
+/* 사령관의 질문 — 대화 위에 고정된다. 머리 pill 오버레이 아래에서 시작하고, 대화 칸과 같은 가로 여백·최대 폭을 쓴다. */
+.objectives-commodore-conversation > .objectives-asks { margin-top: var(--conversation-overlay-top, 0px); padding: 0 clamp(16px, 4cqi, 48px); }
+.objectives-commodore-conversation > .objectives-commodore-retry + .objectives-asks { margin-top: 0; }
+.objectives-commodore-conversation:has(> .objectives-asks) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
 .objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
 
 /* 대화 중심 화면의 시작 전 목표 — 첫 메시지가 없는 대화다. 시작 화면은 칸 가운데에, 꺼 둔 입력 캡슐은 사령관 대화와 같은 자리에 선다. */

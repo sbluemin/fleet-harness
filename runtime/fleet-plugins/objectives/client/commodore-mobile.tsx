@@ -9,6 +9,7 @@ import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreChatEntries, errorWord } from "./commodore-chat.js";
+import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
@@ -69,6 +70,7 @@ const SendIcon = () => <Icon size={20} strokeWidth={2.2}><path d="M12 19V5M6 11l
 
 function failWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
+  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
 }
 
@@ -251,7 +253,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
 }) {
   // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
   const Transcript = commodoreTranscriptRenderer();
-  const chat = useMemo(() => commodoreChatEntries(t, entries, live), [t, entries, live]);
+  const asks = view?.state.asks;
+  const chat = useMemo(() => commodoreChatEntries(t, entries, live, asks), [t, entries, live, asks]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -307,6 +310,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
 
   return (
     <div className="objectives-cm-fill">
+      {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 「사람이 답함」이 남는다. */}
+      <CommodoreAskCards theaterId={theaterId} t={t} phone onEnded={onFail} />
       <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>{body}</div>
       <CommodoreMobileComposer t={t} theaterId={theaterId} active={view ? view.active : false} online={online} failure={failure} onFail={onFail} onClear={onClear} onPending={setPending} />
     </div>

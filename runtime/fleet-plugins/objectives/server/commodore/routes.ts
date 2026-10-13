@@ -9,6 +9,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModel
 import { z } from "zod";
 
 import { ObjectiveStoreError } from "../store.js";
+import { decisionAnswersSchema } from "../types.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
@@ -39,6 +40,11 @@ export interface CommodoreStateView {
   readonly active: boolean;
   /** 감독자가 말하는 지금 — 감독자가 없는 호스트에서는 `off`/`idle` 과 저장된 누적 셈뿐이다. */
   readonly run: CommodoreRunStatus;
+  /**
+   * 사람에게 묻는 질문의 보조 — 서 있는 질문 수와, 질문이 가리키는 목표의 제목(보드에서 사라졌으면 null).
+   * 질문·답 본문은 `state.asks` 다(물은 순서, settled 가 없으면 서 있다).
+   */
+  readonly asks: { readonly open: number; readonly objectives: Readonly<Record<string, { readonly title: string } | null>> };
 }
 
 /** 감독자가 라우트에 꽂는 손 — 메시지는 실제 runner가 있을 때만 받는다. */
@@ -60,7 +66,12 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     const settings = experiments();
     const active = settings.commodore && state.autonomy;
     const run = hooks.run?.(theaterId) ?? { phase: active ? "idle" : "off" };
-    return { theaterId, state, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS } };
+    const asks = state.asks ?? [];
+    const objectives = Object.fromEntries([...new Set(asks.flatMap((ask) => (ask.objectiveId ? [ask.objectiveId] : [])))].map((id) => {
+      const found = hooks.objective?.(id);
+      return [id, found && found.theaterId === theaterId ? { title: found.title } : null];
+    }));
+    return { theaterId, state, enabled: settings.commodore, defaults: experimentAideSelection(settings, "commodore"), active, run: { ...run, totals: state.run ?? EMPTY_RUN_TOTALS }, asks: { open: asks.filter((ask) => !ask.settled).length, objectives } };
   };
   const json = <S extends z.ZodTypeAny>(schema: S, run: (body: z.output<S>) => Promise<unknown> | unknown): RouteHandler => async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -78,7 +89,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof ObjectiveStoreError) {
-      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" ? 404 : error.code === "invalid_request" || error.code.startsWith("attachment_") ? 400 : 409;
+      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" ? 404 : error.code === "invalid_request" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -143,6 +154,12 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       try {
         return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}) }) };
       } catch (error) { if (attachmentIds.length) ctx.host.attachments!.rollbackClaim(theaterId, messageId); throw error; }
+    }) },
+    // 사령관의 질문에 대한 사람의 답 — 자율 운영이 꺼져 있어도 받는다(답은 상태에 남고, 사령관은 다음에 돌 때 읽는다). 끝난 질문은 다시 답하지 못한다.
+    { name: "commodore/ask/answer", method: "POST", summary: "Answer one of the Commodore's open questions to the person: every question at once. The answer is kept with the question, logged, and wakes a running Commodore, which reads it with its asks tool. An answered or withdrawn question cannot be answered again.", handler: json(theaterRef.extend({ askId: ids, answers: decisionAnswersSchema.shape.answers }).strict(), ({ theaterId, askId, answers }) => {
+      read(theaterId);
+      const { state, ask, repeated } = store.askAnswer(theaterId, askId, answers);
+      return { ...view(theaterId, state), ask, ...(repeated ? { repeated: true } : {}) };
     }) },
     { name: "commodore/retry", method: "POST", summary: "Retry now instead of waiting for the next scheduled retry after a failed Commodore turn.", handler: json(theaterRef, async ({ theaterId }) => {
       read(theaterId);
