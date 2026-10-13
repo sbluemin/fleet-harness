@@ -676,8 +676,16 @@ function ConversationQuota() {
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     resize?.observe(stage);
     for (const child of box.children) resize?.observe(child);
-    // pill 이 바뀌거나(대상·이름) 사용량 값이 들어오면 다시 잰다. 이 캡슐이 다는 data-tier 는 관찰하지 않는다.
-    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver(schedule);
+    // 대상·이름·사용량 변경만 다시 잰다. 본문 글자 조각은 캡슐 자리와 무관하고 tier 측정의 강제 배치를 부르지 않는다.
+    // 머리 줄 자체가 교체되는 전환도 감지하되 이 캡슐이 다는 data-tier 는 관찰하지 않는다.
+    const mutation = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
+      if (records.some(({ target, addedNodes, removedNodes }) => {
+        const element = target instanceof Element ? target : target.parentElement;
+        if (element?.closest(".conversation-quota, .conversation-pill-row")) return true;
+        return [...addedNodes, ...removedNodes].some((node) => node instanceof Element
+          && (node.matches(".conversation-pill-row") || node.querySelector(".conversation-pill-row") !== null));
+      })) schedule();
+    });
     mutation?.observe(stage, { childList: true, subtree: true, characterData: true });
     return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
   }, [usage.length]);
