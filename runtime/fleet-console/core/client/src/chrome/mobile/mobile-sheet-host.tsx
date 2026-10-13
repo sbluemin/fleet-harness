@@ -239,6 +239,8 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
   const [value, setValue] = useState(theater?.alias ?? "");
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
+  // 다른 창의 잊기로 Theater가 사라지면 이 시트도 걷는다 — 그리지 않은 채 스택에 남으면 뒤로 가기가 빈 시트로 돌아간다.
+  useEffect(() => { if (!theater) popMobileSheet(); }, [theater]);
   if (!theater) return null;
   const save = () => {
     if (saving) return;
@@ -277,10 +279,14 @@ function TheaterAliasSheet({ state, theaterId }: { readonly state: ConsoleState;
 /** 새 그룹 이름 — 데스크톱 메뉴의 「새 그룹…」과 같은 기본 이름에서 시작한다. 폰 목록은 그룹을 그리지 않으므로 토스트가 결과를 말한다. */
 function TheaterGroupSheet({ state, theaterId }: { readonly state: ConsoleState; readonly theaterId: string }) {
   const t = useT();
+  const theaterExists = state.theaters.some((item) => item.id === theaterId);
   const groupCount = state.groups.filter((group) => group.theaterId === theaterId).length;
   const [value, setValue] = useState(() => t("sidebar.theater.defaultGroupName", { n: groupCount + 1 }));
   const [saving, setSaving] = useState(false);
   const composingRef = useRef(false);
+  // 다른 창의 잊기로 Theater가 사라지면 시트를 걷는다 — 서버는 Theater 존재를 따지지 않아 저장하면 고아 그룹이 남는다.
+  useEffect(() => { if (!theaterExists) popMobileSheet(); }, [theaterExists]);
+  if (!theaterExists) return null;
   const name = value.trim();
   const save = () => {
     if (name === "" || saving) return;
