@@ -9,6 +9,14 @@ export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS = 20;
 export const MAX_ATTACHMENT_NAME = 120;
 
+export interface BriefAttachmentInput {
+  readonly name: string;
+  readonly type: AttachmentType;
+  readonly data: Buffer;
+  readonly width?: number;
+  readonly height?: number;
+}
+
 export interface ImageInfo {
   readonly type: AttachmentType;
   readonly width?: number;

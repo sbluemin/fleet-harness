@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -1886,7 +1887,16 @@ describe("Objectives contract", () => {
       if (url.endsWith("/api/v1/ai-gateway/routing-assign")) { judged.push(String(init?.body ?? "")); return new Response("unavailable", { status: 503 }); }
       return Response.json(quota);
     });
-    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1") as [PluginMcpTool, PluginMcpTool];
+    // 이번 턴의 전달 권한은 감독자 계약에서 검증한다. 이 경계는 목표로 복사하는 저장·편집 트랜잭션을 검증한다.
+    const images = new Map<string, { id: string; mime: "image/png"; bytes: Buffer }>();
+    const image = (bytes = PNG) => { const id = randomUUID(); images.set(id, { id, mime: "image/png", bytes }); return id; };
+    const readAttachments = (ids: readonly string[]) => ids.map((id) => {
+      const found = images.get(id);
+      if (!found) throw new ObjectiveStoreError("attachment_not_available");
+      return found;
+    });
+    const firstImage = image();
+    const [commodoreList, commodore] = createCommodoreBoardTools(ctx, store, launch, "t1", readAttachments) as [PluginMcpTool, PluginMcpTool];
     // 사령관 묶음은 두 화면 — action 이 목록 화면의 것이면 목록 도구, 아니면 목표 화면 도구로 간다.
     const toolFor = (args: Record<string, unknown>) => (String(args.action) in commodoreList.actionSchema!.actions ? commodoreList : commodore);
     const board = async (args: Record<string, unknown>) => {
@@ -1908,13 +1918,46 @@ describe("Objectives contract", () => {
     ]);
     expect(loadout.quota).toEqual(quota.providers);
     const actor = { kind: "commodore", theaterId: "t1" };
-    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31" });
+    const created = await board({ action: "add", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage] });
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31" } });
     const id = created.objectiveId as string;
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor });
     expect((await board({ action: "list", filter: "agent" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor }));
     const reloadObjective = () => createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined }).find(id);
-    expect(reloadObjective()).toMatchObject({ addedBy: actor, dueDate: "2026-10-31" });
+    expect(reloadObjective()).toMatchObject({ addedBy: actor, dueDate: "2026-10-31", attachments: [expect.objectContaining({ n: 1, type: "image/png", bytes: PNG.length })] });
+    const secondImage = image(), thirdImage = image();
+    await board({ action: "edit_brief", objectiveId: id, brief: "With original images", attachmentIds: [secondImage, thirdImage] });
+    const attached = reloadObjective()!.attachments;
+    expect(attached.map(({ n }) => n)).toEqual([1, 2, 3]);
+    for (const attachment of attached) expect(fs.readFileSync(store.attachmentPath(store.find(id)!, attachment))).toEqual(PNG);
+    expect(store.find(id)!.edited).toMatchObject({ kinds: ["note"], actors: [actor] });
+    const attachmentRefusal = async (args: Record<string, unknown>, tool = commodore) => ((await tool.execute(args, { cwd: workspace })) as { structuredContent: { error: string } }).structuredContent.error;
+    const beforeAttachments = JSON.stringify(store.find(id));
+    const beforeFiles = fs.readdirSync(path.join(objectivesDir, id, "attachments"));
+    const edit = { action: "edit_brief", objectiveId: id, brief: "Must not replace the brief" };
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage, randomUUID()] })).toBe("attachment_not_available");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage, firstImage] })).toBe("duplicate_attachment");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: ["/etc/passwd"] })).toBe("invalid_arguments");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [image(Buffer.from("not an image"))] })).toBe("attachment_unsupported");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [image(Buffer.alloc(10 * 1024 * 1024 + 1))] })).toBe("attachment_too_large");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: Array.from({ length: 18 }, () => image()) })).toBe("too_many_attachments");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage] }, createCommodoreBoardTools(ctx, store, launch, "t2", readAttachments)[1]!)).toBe("other_theater");
+    expect(await attachmentRefusal({ ...edit, attachmentIds: [firstImage] }, consoleDetail)).toBe("operation_caller_required");
+    // 이진들이 쓰인 뒤 레코드 교체가 실패해도 옛 브리핑·첨부·귀속은 그대로이고 새 이진은 남지 않는다.
+    const rename = fs.renameSync;
+    const failedWrite = vi.spyOn(fs, "renameSync").mockImplementation((from, to) => {
+      if (path.basename(String(to)) === "objective.json") throw new Error("injected_record_failure");
+      return rename(from, to);
+    });
+    try {
+      expect(await attachmentRefusal({ ...edit, attachmentIds: [secondImage, thirdImage] })).toBe("objectives_failed");
+      const count = store.list("t1").length;
+      expect(await attachmentRefusal({ action: "add", title: "Must not exist", attachmentIds: [firstImage, secondImage] }, commodoreList)).toBe("objectives_failed");
+      expect(store.list("t1")).toHaveLength(count);
+    } finally { failedWrite.mockRestore(); }
+    expect(JSON.stringify(store.find(id))).toBe(beforeAttachments);
+    expect(fs.readdirSync(path.join(objectivesDir, id, "attachments"))).toEqual(beforeFiles);
+    expect(reloadObjective()!.note).toBe("With original images");
     // 도구로 정한 기한은 보드와 재읽기에 남고, null 편집은 실제 저장값을 비운다.
     expect(await board({ action: "edit_due", objectiveId: id, dueDate: "2026-11-01" })).toMatchObject({ stored: { dueDate: "2026-11-01" } });
     expect((await board({ action: "list" })).objectives).toContainEqual(expect.objectContaining({ id, dueDate: "2026-11-01" }));
@@ -1938,6 +1981,9 @@ describe("Objectives contract", () => {
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ action: "plan", objectiveId: id });
     expect(launches[0]).toMatchObject({ viewMode: "terminal" });
+    const commanderBoard = (await command("read", {}, id)).objective as { attachments: { path: string }[] };
+    expect(commanderBoard.attachments).toHaveLength(3);
+    for (const attachment of commanderBoard.attachments) expect(fs.readFileSync(attachment.path)).toEqual(PNG);
     // 지휘관이 편성과 기준을 제안한다 — 구성원 모델 제안은 카탈로그 안의 모델·강도만 받고, 거절되면 편성 전체가 남지 않는다.
     const lineup = { missions: [{ text: "verify", member: "worker" }], criteria: [{ text: "Output preserved" }, { text: "Decision applied" }] };
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");

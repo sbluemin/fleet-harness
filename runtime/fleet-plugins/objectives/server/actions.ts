@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { livePersonHold } from "./board-state.js";
+import type { BriefAttachmentInput } from "./attachments.js";
 import type { LaunchOptions, LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import type { DecisionAnswersInput, MemberLaunch, MemberPatchInput, MissionAddInput, MissionPatchInput, Objective, ObjectiveEditKind, ObjectivePersonHold, ObjectiveReviewer, PatchObjectiveInput, PersonHoldTarget } from "./types.js";
@@ -86,6 +87,8 @@ export function createObjectiveActions(ctx: FleetPluginServerContext, store: Obj
       if (!found) throw new ObjectiveStoreError("unknown_objective");
       return found;
     })), false),
+    editBrief: holding(() => ["decision"], steerable(() => true, ({ objectiveId, brief, attachments }: Ref & { brief: string; attachments: readonly BriefAttachmentInput[] }) =>
+      objective(store.briefEdit(objectiveId, brief, attachments, actor))), false),
     // 빈 선택 완료도 후속 선택을 끝낸다 — 완료된 목표에서는 더 이상 후속을 고르지 못하므로 넘긴 후속 선택을 함께 지키고,
     // 사람의 완료는 고르지 않은 후보가 남아도 그 선택을 「사람이 답함」으로 끝낸다.
     // 완료·확장·기준 승인은 서 있는 결정 요청을 거둔다 — 사람에게 넘긴 결정이 그렇게 지워지지 않게 함께 지킨다.
