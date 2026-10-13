@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { ConsoleOperationSummary } from "@fleet-console/sdk/plugin";
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
-import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
+import type { RailEntryAttentionItem, RailEntryFinishedItem } from "@fleet-console/sdk/rail";
 import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import { livePersonHold } from "../server/board-state.js";
@@ -143,6 +143,31 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   return items;
 }
 
+// ── 홈 「끝남」 ──
+
+/**
+ * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 의 끝난 목표, 최근에 끝난 것부터. 누르면 그 목표로 간다
+ * (지휘관 Operation 이 남아 있으면 그 대화의 「목표」 탭, 없으면 목표 화면 — `openObjectiveOnPhone`).
+ */
+export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
+  const t = getT(locale);
+  return readTheater(theaterId).objectives
+    .filter((objective) => isListedObjective(objective) && !!objective.done)
+    .sort((left, right) => (right.done?.at ?? 0) - (left.done?.at ?? 0))
+    .map((objective) => {
+      // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
+      const members = objective.members.length;
+      const total = objective.criteria.length;
+      return {
+        id: objective.id,
+        title: objective.title,
+        detail: total > 0 ? t("objectives.mobile.row.summary", { members, met: criteriaMet(objective), total }) : t("objectives.mobile.row.members", { members }),
+        avatarOperationId: objective.id,
+        open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
+      };
+    });
+}
+
 // ── 목표 화면 ──
 
 /**
@@ -157,6 +182,15 @@ export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
     const target = takeReveal();
     if (target) setObjectiveId(target.objectiveId);
   }, [reveal]);
+  // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
+  const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
+  const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);
+  useEffect(() => {
+    if (!objectiveId) return;
+    const previous = seen.current;
+    seen.current = { id: objectiveId, had: hasCommander };
+    if (previous?.id === objectiveId && !previous.had && hasCommander && ctx.visible) focusOperation(objectiveId);
+  }, [objectiveId, hasCommander, ctx.visible]);
   return <MobileObjectiveDetail ctx={ctx} objectiveId={objectiveId} />;
 }
 

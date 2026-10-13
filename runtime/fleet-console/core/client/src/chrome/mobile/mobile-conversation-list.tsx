@@ -15,13 +15,15 @@ import { TheaterAvatar } from "../../../../../features/workspace/client/theater-
 import { useRailEntries } from "../pane/pane-registry.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
+import { MobileHomeSections } from "./mobile-home-sections.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 
 const MAX_ATTENTION_ROWS = 3;
 
 /**
- * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 바로가기 칩 줄, 지금 Theater의 정체(대표 자리), 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행.
+ * 홈 — 대화 목록. 머리(프로필 · Theater 알약 · 검색 · +), 바로가기 칩 줄, 지금 Theater의 정체(대표 자리), 맨 위 「확인 필요」 묶음(최대 3건 + 전체 보기), 그 아래 대화 행,
+ * 맨 끝에 「시작 전 N」(펼침)·「끝남 N」(접힘) 접기(`MobileHomeSections`).
  * 행 하나는 지휘관 묶음 하나다. 행을 누르면 그 Operation 화면이 홈 자리에 서고, 뒤로가 이 목록으로 돌아온다.
  * 목록은 고른 Theater 범위이고(전환은 머리의 Theater 알약), 모든 Theater를 가로지르는 것은 검색뿐이다.
  */
@@ -105,6 +107,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         ) : rest.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : rest.map((conversation) => (
           <ConversationRow key={conversation.operation.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />
         ))}
+        <MobileHomeSections theaterId={state.activeTheaterId} />
       </div>
     </section>
   );

@@ -220,6 +220,11 @@ export interface RailEntryMobile {
    */
   readonly conversationPane?: RailEntryConversationPane;
   /**
+   * 폰 홈 「대화」 아래 기본 접힌 「끝남 N」 섹션에 올릴 이 엔트리의 끝난 일(예: 끝난 목표). 생략하면 올리지 않는다.
+   * 끝난 일은 대화 행·사이드바 줄로 서지 않으므로 묶음 줄(`OperationCluster.row`)이 아니라 여기서 말한다 — 데스크톱은 읽지 않는다.
+   */
+  readonly finished?: RailEntryMobileFinished;
+  /**
    * 홈의 바로가기 칩으로 올린다. 목적지는 도구 시트가 아니라 상단 막대 아래 **화면**으로 열리고,
    * 그 화면의 본문은 이 엔트리의 primary 페인이다 — 모바일 호스트가 페인 컨텍스트에 `mobileBar`를 싣는다.
    * 이름과 아이콘은 엔트리의 `title`·`icon`을 쓴다.
@@ -252,6 +257,26 @@ export interface RailEntryMobile {
      */
     readonly chip?: false;
   };
+}
+
+/** 폰 홈 「끝남」 섹션의 공급원 — `RailEntryMobile.finished`. */
+export interface RailEntryMobileFinished {
+  readonly subscribe: (listener: () => void) => () => void;
+  /** 지금 Theater(엔트리 `scope`가 `fleet`이면 null)의 끝난 일, 보일 순서대로. 호스트는 값(id·제목·둘째 줄)으로 비교하므로 매번 새 배열을 돌려줘도 된다. */
+  readonly items: (theaterId: string | null, locale: ConsoleLocale) => readonly RailEntryFinishedItem[];
+}
+
+/** 끝난 일 하나. 문자열은 모두 이미 현지화되어 있다. */
+export interface RailEntryFinishedItem {
+  /** 같은 엔트리 안에서 안정적인 키. */
+  readonly id: string;
+  readonly title: string;
+  /** 둘째 줄의 상태 낱말 뒤에 붙는 사실(예: 「구성원 2 · 기준 3/3」). */
+  readonly detail?: string;
+  /** 행 아바타의 키가 될 Operation id — `OperationCluster.avatarOperationId`와 같은 뜻으로, 같은 사람을 그리는 다른 표면과 같은 얼굴이 선다. 생략하면 엔트리 아이콘이다. */
+  readonly avatarOperationId?: string;
+  /** 행을 눌렀을 때 — 착지는 이 함수가 정한다(호스트는 먼저 이동하지 않는다). */
+  readonly open: () => void;
 }
 
 /** 폰 대화 정보 화면의 탭 본문 — `RailEntryMobile.conversationPane`. */
