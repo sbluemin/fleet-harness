@@ -204,8 +204,8 @@ interface Runner {
   lastInputTokens: number;
   /** 지금 세션의 모델 창. 마지막 입력 토큰과 짝이다. */
   contextWindow: number;
-  /** 지금 세션이 대화를 요약할 지점(토큰). */
-  compactAt: number;
+  /** 지금 세션이 대화를 요약할 지점(토큰). 실행 경로가 정하는데 호스트도 모르면 null 이다. */
+  compactAt: number | null;
   coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
   rotateNext: "replaced" | "restarted" | null;
@@ -254,7 +254,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, compactAt: runner.compactAt } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
@@ -501,6 +501,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const noteOutcome = (runner: Runner, outcome: CommodoreTurnOutcome) => {
     // 대화 크기는 마지막 호출의 입력이다 — 턴 합계는 도구를 쓴 만큼 부풀고 압축으로 줄어든 대화를 말하지 못한다.
     if (outcome.usage) runner.lastInputTokens = outcome.usage.contextTokens ?? outcome.usage.inputTokens;
+    // Gateway 모델 세션은 압축 지점을 Gateway 가 정한다 — 호스트가 그 지점과 창을 토큰과 같은 단위로 알려 주면 그것을 쓴다.
+    const context = outcome.usage?.context;
+    if (context) {
+      if (context.window !== null) runner.contextWindow = context.window;
+      runner.compactAt = context.compactAt;
+    }
     // 교대 요약의 재료 — 이 턴의 보드 행위 수와 결말만. 내용은 사령관이 도구로 다시 읽는다.
     const at = new Date(now()).toISOString();
     runner.recentActions.push(`${at}: ${outcome.outcome}${outcome.actions ? `, ${outcome.actions} board action${outcome.actions === 1 ? "" : "s"}` : ""}`);

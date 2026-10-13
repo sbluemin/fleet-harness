@@ -571,7 +571,10 @@ function rememberSheetDraft(theaterId: string, patch: Partial<SheetDraft>): void
 }
 
 
-/** 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 압축 기준선만 말한다. 기준선은 서버가 보낸 압축 지점이다. */
+/**
+ * 전송 왼쪽의 문맥 원호. 채팅과 같은 16px 글리프이고, 내역은 총량과 압축 기준선만 말한다. 기준선은 서버가 보낸 압축 지점이고,
+ * 서버도 그 지점을 모르면(호스트가 모르는 Gateway 모델) 기준선과 「압축 기준까지」 없이 사용량만 말한다.
+ */
 function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context: NonNullable<CommodoreRunStatus["context"]> }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement | null>(null);
@@ -594,7 +597,8 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
     };
   }, [open]);
   const occupied = context.inputTokens;
-  const limit = context.window > 0 ? Math.min(1, context.compactAt / context.window) : 1;
+  const compactAt = context.compactAt;
+  const limit = compactAt !== undefined && context.window > 0 ? Math.min(1, compactAt / context.window) : 1;
   const ratio = context.window > 0 ? occupied / context.window : 0;
   const tone = ratio >= limit * 0.97 ? " is-critical" : ratio >= limit * 0.75 ? " is-warn" : "";
   const percent = Math.round(ratio * 100);
@@ -602,7 +606,7 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
   const radius = 6;
   const circumference = 2 * Math.PI * radius;
   const filled = Math.max(0, Math.min(1, ratio)) * circumference;
-  const untilCompact = Math.max(0, context.compactAt - occupied);
+  const untilCompact = compactAt !== undefined ? Math.max(0, compactAt - occupied) : null;
   const free = Math.max(0, context.window - occupied);
   return (
     <span className={`objectives-commodore-ctx${tone}`} ref={wrapRef}>
@@ -627,14 +631,14 @@ function CommodoreContextMeter({ t, context }: { readonly t: T; readonly context
           </div>
           <div className="objectives-commodore-ctx-bar">
             <i style={{ width: `${Math.min(100, ratio * 100)}%` }} />
-            <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} />
+            {untilCompact !== null ? <span className="objectives-commodore-ctx-line" style={{ left: `${limit * 100}%` }} /> : null}
           </div>
           <ul className="objectives-commodore-ctx-rows">
             <li><span className="objectives-commodore-ctx-swatch" /><span>{t("objectives.commodore.context.used")}</span><span>{formatContextTokens(occupied)}</span><span>{(ratio * 100).toFixed(1)}%</span></li>
-            <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li>
+            {untilCompact !== null ? <li><span className="objectives-commodore-ctx-swatch is-line" /><span>{t("objectives.commodore.context.untilCompact")}</span><span>{formatContextTokens(untilCompact)}</span><span>{Math.round(limit * 100)}%</span></li> : null}
             <li><span className="objectives-commodore-ctx-swatch is-free" /><span>{t("objectives.commodore.context.free")}</span><span>{formatContextTokens(free)}</span><span>{((free / context.window) * 100).toFixed(1)}%</span></li>
           </ul>
-          <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot", { percent: Math.round(limit * 100) })}</p>
+          {untilCompact !== null ? <p className="objectives-commodore-ctx-foot">{t("objectives.commodore.context.foot", { percent: Math.round(limit * 100) })}</p> : null}
         </div>
       ) : null}
     </span>

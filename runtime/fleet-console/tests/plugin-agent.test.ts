@@ -48,6 +48,24 @@ describe("Console-owned plugin Agent", () => {
     expect((await fs.stat(root)).isDirectory()).toBe(true);
     expect(JSON.stringify(events)).not.toContain(root);
     expect(JSON.stringify(events)).not.toContain("private-child");
+
+    // Gateway 모델(272k)은 압축 지점을 Gateway 정책이 정한다 — 창을 덮지 않고, 자식이 말한 Claude 좌표(200k)의 토큰을
+    // 공급자 토큰으로 되돌려 실제 압축 지점(272k − 16k)과 같은 단위로 싣는다.
+    const gatewayEvents: AgentEvent[] = [];
+    const gatewayEngine = sdk(async () => run([
+      { type: "assistant", message: { content: [], usage: { input_tokens: 100_000 } } },
+      { type: "system", subtype: "compact_boundary", compact_metadata: { trigger: "auto", pre_tokens: 167_100, post_tokens: 3_000 } },
+      { type: "result", is_error: false, usage: { input_tokens: 100_000, output_tokens: 5 } },
+    ]));
+    let gatewayWindow: number | undefined = -1;
+    const gatewayHost = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: async (sdkOptions) => { roots.push(sdkOptions.tempRoot!); gatewayWindow = sdkOptions.autoCompactWindow; return gatewayEngine; } });
+    const gatewaySession = await gatewayHost.createSession({ ...options, model: "codex--gpt-6-luna", compactAt: 204_000, onEvent: event => gatewayEvents.push(event) });
+    await gatewaySession.send("one");
+    expect(gatewayWindow).toBeUndefined();
+    expect(gatewayEvents).toContainEqual({ kind: "compacted", trigger: "auto", preTokens: 254_629, postTokens: 4_571 });
+    expect(gatewayEvents).toContainEqual(expect.objectContaining({ kind: "result", usage: { inputTokens: 100_000, outputTokens: 5, contextTokens: 4_571, context: { window: 272_000, compactAt: 256_000 } } }));
+    await gatewayHost.dispose();
+
     await host.dispose(); await session.dispose();
     expect(connection.dispose).toHaveBeenCalledOnce();
     await expect(fs.stat(root)).rejects.toMatchObject({ code: "ENOENT" });

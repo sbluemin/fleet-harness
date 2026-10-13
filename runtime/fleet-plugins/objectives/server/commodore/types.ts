@@ -163,10 +163,10 @@ export interface CommodoreRunStatus {
   /** 감독자가 지금 정체로 보는 목표 id — 지휘관이 임무를 남긴 채 오래 쉰다. 목표가 다시 움직이면 빠진다. */
   readonly stalled?: readonly string[];
   /**
-   * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰). 한 턴도 끝나기 전에는 없다.
-   * Gateway 모델(비-Claude)은 Gateway 의 compact 정책이 실제 지점을 정하므로 `compactAt` 은 목표값이다.
+   * 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰), 그 세션의 창, 대화를 요약할 지점(토큰) — 셋은 같은 단위다. 한 턴도 끝나기 전에는 없다.
+   * Gateway 모델(비-Claude)은 호스트가 알려 준 실제 공급자 단위의 창과 Gateway 압축 지점이고, 호스트도 지점을 모르면 `compactAt` 이 없다.
    */
-  readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt: number };
+  readonly context?: { readonly window: number; readonly inputTokens: number; readonly compactAt?: number };
   readonly totals: CommodoreRunTotals;
 }
 

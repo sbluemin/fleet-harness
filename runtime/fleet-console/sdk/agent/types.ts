@@ -21,6 +21,12 @@ export interface AgentUsage {
   readonly costUsd?: number;
   /** 이 턴의 마지막 호출이 읽은 입력(캐시 포함) — 다음 턴이 이어받는 대화의 크기. 관찰하지 못했으면 없다. */
   readonly contextTokens?: number;
+  /**
+   * 압축 지점을 호출자가 아니라 실행 경로가 정하는 세션(Gateway 모델)에서, `contextTokens`와 같은 단위의 창과 실제 압축 지점.
+   * 호스트는 그 세션의 토큰을 공급자의 실제 토큰으로 되돌려 싣는다. `null`은 호스트도 모른다는 뜻이다(토큰은 실행기가 말한 그대로다).
+   * 없으면 세션이 요청한 `compactAt`이 압축 지점이다.
+   */
+  readonly context?: { readonly window: number | null; readonly compactAt: number | null };
 }
 
 /** 서버 내부 이벤트다. 플러그인은 브라우저 DTO로 변환할 때 도구 입력과 오류를 정제한다. */

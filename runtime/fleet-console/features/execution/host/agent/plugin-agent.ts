@@ -1,9 +1,9 @@
-import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
+import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
-import type { AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import type { AgentEvent, AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
@@ -17,6 +17,11 @@ export interface PluginAgentDeps {
   readonly createSdk?: typeof createClaudeGatewaySdk;
   /** 설치된 Claude Code 실행 파일. 없으면 SDK 동봉본이 떠서 새 모델을 모르는 옛 버전이 될 수 있다. */
   readonly resolveExecutablePath?: () => Promise<string>;
+  /**
+   * Gateway의 compact 정책(Settings › AI Gateway). Gateway 모델 세션의 문맥 토큰을 실제 공급자 창으로 되돌릴 때 읽는다 —
+   * Gateway가 사용량을 투영할 때 읽는 그 값이어야 두 쪽이 같은 자를 쓴다. 없으면 Auto(창 − 16k)다.
+   */
+  readonly compactCeiling?: () => CompactCeiling | null | undefined;
 }
 
 /** 플러그인 등록 단위로 생성한다. 시작 중인 세션도 이 소유자가 끝날 때 함께 회수한다. */
@@ -60,9 +65,11 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
       if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redact(item)]));
       return value;
     };
-    const emit = (event: Parameters<NonNullable<AgentSessionOptions["onEvent"]>>[0]) => {
+    const gateway = gatewayModelWindow(options.model);
+    const emit = (event: AgentEvent) => {
       if (closed || cancelled) return;
-      options.onEvent?.(redact(event) as typeof event);
+      const framed = gateway === undefined ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null);
+      options.onEvent?.(redact(framed) as typeof framed);
     };
     const loop = createClaudeExecutionLoop({
       createSdk: async () => {
@@ -234,6 +241,40 @@ function claudeAutoCompactWindow(model: string, compactAt: number): number | und
   catch { return undefined; }
   if (catalog) return undefined;
   return Math.min(CLAUDE_AUTO_COMPACT_WINDOW_MAX, Math.max(CLAUDE_AUTO_COMPACT_WINDOW_MIN, compactAt + CLAUDE_AUTO_COMPACT_RESERVE));
+}
+
+/**
+ * Gateway 카탈로그 모델(비-Claude)이면 그 실제 창(모르면 `null`), 아니면 `undefined`.
+ *
+ * 그런 세션의 자식은 Gateway가 공급자 창에서 Claude 좌표(200k, 1M 이상이면 1M)로 비례 투영한 사용량을 말하고, Gateway의 compact
+ * 정책 지점에서 압축한다(`compactAt`은 적용되지 않는다). 창은 Gateway가 투영할 때 읽는 그 카탈로그 조회다.
+ */
+function gatewayModelWindow(model: string): number | null | undefined {
+  try { if (claudeGatewayModelPolicy.resolve(model).discovery === undefined) return undefined; }
+  catch { return undefined; }
+  const window = findGatewayModel(model)?.contextWindow;
+  return typeof window === "number" && Number.isFinite(window) && window > 0 ? window : null;
+}
+
+/**
+ * Gateway 모델 세션의 사건을 호출자의 좌표로 옮긴다 — 문맥 토큰은 실제 공급자 토큰으로 되돌리고, 그 단위의 창과 실제 압축 지점을
+ * `usage.context`로 싣는다. 창을 모르면 되돌릴 자가 없으므로 토큰은 그대로 두고 지점은 모른다(`null`)고 말한다.
+ * 역투영은 Chat의 문맥 표시와 같은 함수·같은 정책 값이다.
+ */
+function inGatewayFrame(event: AgentEvent, window: number | null, ceiling: CompactCeiling | null): AgentEvent {
+  if (window === null) {
+    return event.kind === "result" && event.usage ? { ...event, usage: { ...event.usage, context: { window: null, compactAt: null } } } : event;
+  }
+  const coordinate = window >= CLAUDE_COMPAT_CONTEXT_WINDOW ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
+  const real = (tokens: number) => unprojectClaudeContextInputTokens(tokens, window, coordinate, ceiling);
+  if (event.kind === "compacted") {
+    return { ...event, preTokens: real(event.preTokens), ...(event.postTokens === undefined ? {} : { postTokens: real(event.postTokens) }) };
+  }
+  if (event.kind === "result" && event.usage) {
+    const { contextTokens } = event.usage;
+    return { ...event, usage: { ...event.usage, ...(contextTokens === undefined ? {} : { contextTokens: real(contextTokens) }), context: { window, compactAt: compactThresholdTokens(window, ceiling) } } };
+  }
+  return event;
 }
 
 function validateOptions(options: AgentSessionOptions): void {

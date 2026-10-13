@@ -611,6 +611,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 실행 기능이 서야 생긴다. 그 전의 별칭 고정은 받은 값을 돌려준다.
   let ensureClaudeNativeModels: (() => Promise<void>) | undefined;
   let resolveClaudeExecutable: (() => Promise<string | undefined>) | undefined;
+  let readGatewayCompactCeiling: Awaited<ReturnType<typeof startConsoleExecution>>["readGatewayCompactCeiling"] | undefined;
   let attachmentsForPlugin: Awaited<ReturnType<typeof startConsoleExecution>>["attachmentsForPlugin"] | undefined;
   const executionCleanupCallbacks = new Set<() => void | Promise<void>>();
   const pluginPayloadSanitizers = new Map<string, readonly string[]>();
@@ -1243,7 +1244,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");
         return executable;
-      } });
+      }, compactCeiling: () => readGatewayCompactCeiling?.() });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },
@@ -2777,6 +2778,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;
       resolveClaudeExecutable = execution.resolveClaudeExecutable;
+      readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
       sleepOperation = execution.actions.sleep;
       resumeArchivedOperation = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
