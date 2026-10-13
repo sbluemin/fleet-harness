@@ -2048,6 +2048,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         }
         // 저장될 모양 그대로 — 정규화하지 않는다. 같은 질문을 다시 물은 것이면 지금 요청을 그대로 둔다.
         const questions = input.questions.map((question) => ({
+          header: question.header,
           text: question.text,
           options: question.options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })),
           multiSelect: question.options.length > 0 && question.multiSelect === true,
@@ -2125,7 +2126,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         const answer = delivery.answers.find((entry) => entry.questionId === question.id)!;
         return {
           id: randomUUID(), requestId, questionId: question.id,
-          question: { text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
+          question: { ...(question.header ? { header: question.header } : {}), text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
           answer: { selectedOptionIds: [...answer.selectedOptionIds], text: answer.text },
           at: delivery.at, by: delivery.by ?? "human",
           ...(question.missionId ? { missionId: question.missionId } : {}),

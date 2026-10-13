@@ -176,13 +176,14 @@ export function createBoardViews(ctx: FleetPluginServerContext, store: Objective
       origin: objective.origin,
       // 지금의 결정 요청 — 철회에 쓰는 id 와 지휘관이 낸 질문. 선택지 id 는 사람의 화면이 쓰는 값이다.
       decisionRequest: objective.decisionRequest ? { id: objective.decisionRequest.id, questions: objective.decisionRequest.questions.map((question) => ({ text: question.text,
-        ...withoutEmpty({ options: question.options.map((option) => option.label), multiSelect: question.multiSelect, missionId: question.missionId, memberId: question.memberId }) })) } : null,
+        ...withoutEmpty({ header: question.header, options: question.options.map((option) => option.label), multiSelect: question.multiSelect, missionId: question.missionId, memberId: question.memberId }) })) } : null,
     }),
     decisionRequestRevision: objective.decisionRequestRevision,
     ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
     // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
     ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text, by: decision.by ?? "human",
       ...withoutEmpty({
+        header: decision.question.header,
         selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),
         text: decision.answer.text, own: ownAnswer(decision.question, decision.answer), missionId: decision.missionId, memberId: decision.memberId,
       }),

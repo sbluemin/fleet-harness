@@ -136,6 +136,8 @@
 .objectives-cm .objectives-cm-ask-objective { color: var(--m-text-muted); text-decoration: underline; text-underline-offset: 2px; }
 .objectives-cm-ask-q { display: flex; flex-direction: column; gap: 6px; }
 .objectives-cm-ask-q + .objectives-cm-ask-q { padding-top: 8px; border-top: 1px solid var(--m-hairline); }
+/* 질문 머리말 — 결정 카드의 머리말 칩과 같은 문법. */
+.objectives-cm-ask-header { align-self: flex-start; max-width: 100%; padding: 2px 10px; border-radius: 12px; background: var(--m-chip); color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-medium); line-height: 18px; overflow-wrap: anywhere; }
 .objectives-cm-ask-qtext { margin: 0; font-size: var(--m-fs-body); line-height: 22px; overflow-wrap: anywhere; }
 .objectives-cm-ask-opts { display: flex; flex-direction: column; gap: 2px; }
 .objectives-cm-ask-opt small { display: block; padding: 0 0 4px 34px; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }

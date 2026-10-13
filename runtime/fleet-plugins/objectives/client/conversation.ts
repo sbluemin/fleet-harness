@@ -2,7 +2,7 @@ import type { ConversationMember, ConversationMemberProfile, ConversationSpeaker
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import { livePersonHold } from "../server/board-state.js";
-import { MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
+import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
 import { decisionTurn } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { returnPersonHold } from "./objectives-state.js";
@@ -47,7 +47,8 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   } : undefined;
   return { operationId: objective.id, members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
-    questions: request.questions.map((question) => ({ id: question.id, text: question.text, multiSelect: question.multiSelect, options: question.options })), open,
+    questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
+    answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
     ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
     ...(handler ? { handler: localized((t) => t("objectives.commodore.note.answering")) } : {}),
     ...(handedHold ? { handed: {

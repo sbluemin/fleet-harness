@@ -697,6 +697,8 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-card-timer { flex: none; font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .group-card-timer.is-soon { color: var(--warn-ink); }
 .group-card-question { display: flex; flex-direction: column; gap: var(--space-1); }
+/* 질문 머리말 — 묻는 이가 붙인 짧은 이름표. 분류일 뿐이라 신호색 없이 옅은 면 위 무채색 잉크. */
+.group-card-header { align-self: flex-start; max-width: 100%; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .group-card-title { margin: 0 0 2px; font-size: var(--font-body-size); font-weight: var(--weight-bold); color: var(--text-primary); }
 .group-card-choice {
   display: flex;

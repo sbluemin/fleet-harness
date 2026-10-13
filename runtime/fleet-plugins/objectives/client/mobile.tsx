@@ -8,7 +8,7 @@ import type { RailEntryAttentionItem } from "@fleet-console/sdk/rail";
 import { SettingsCard, SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 
 import { livePersonHold } from "../server/board-state.js";
-import { ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
+import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
 import { bandChoices, bandFailure } from "./action-band.js";
 import { memberFailureNote } from "./clusters.js";
 import { commodoreBoardOf, decisionTurn, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
@@ -1053,6 +1053,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
               <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
               {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{handed.reason}</p> : null}
+              {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
               {hasOptions ? (
@@ -1075,7 +1076,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
               {!hasOptions || draft.own ? (
                 <textarea
                   className={`objectives-m-field${hasOptions ? " is-unfold" : ""}`}
-                  maxLength={50}
+                  maxLength={MAX_DECISION_ANSWER_INPUT}
                   disabled={sending}
                   value={draft.text}
                   aria-label={t("objectives.decision.writeAria", { n: index + 1 })}
