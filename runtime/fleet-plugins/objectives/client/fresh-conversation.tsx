@@ -1,15 +1,15 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
 import { operationAvatarKey } from "@fleet-console/sdk/avatars";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
 
 import type { Objective } from "../server/types.js";
-import { bandChoices, bandFailure } from "./action-band.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, focusOperation, objectivesApi, openObjectiveFromCluster, operationSummaries, post, readAllTheaters, subscribeObjective } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, focusOperation, listedOperationSummaries, readAllTheaters, subscribeObjective } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
+ * 완료해 지휘관이 보관된 목표도 같은 칸에 「완료」로 선다 — 입력창이 범위 넓히기로 고정되고, 보내면 서버가 지휘관을 복원한다.
  * 칸이 서 있는 동안 호스트는 활성 Operation 을 비우므로 가운데 칸·오른쪽 패널 머리·사이드바 하이라이트가 모두 이 목표를 가리킨다.
  * 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
@@ -50,57 +50,24 @@ export function subscribeFreshConversation(listener: () => void): () => void {
 const objectiveIdOf = (params: Readonly<Record<string, unknown>>): string | null => (typeof params.objectiveId === "string" ? params.objectiveId : null);
 const findObjective = (objectiveId: string | null): Objective | null =>
   objectiveId === null ? null : readAllTheaters().flatMap((state) => state.objectives).find((objective) => objective.id === objectiveId) ?? null;
-const launchAvailableFor = (objectiveId: string): boolean =>
-  readAllTheaters().find((state) => state.objectives.some((objective) => objective.id === objectiveId))?.launchAvailable ?? false;
-const commanderLive = (objectiveId: string): boolean => operationSummaries().some((summary) => summary.id === objectiveId);
+/** 지휘관 Operation 이 목록에 섰다 — 보관 describe 요약(완료로 보관된 지휘관)은 세지 않는다. */
+const commanderLive = (objectiveId: string): boolean => listedOperationSummaries().some((summary) => summary.id === objectiveId);
 
-function FreshObjectiveBody({ objectiveId, language, onClose }: { readonly objectiveId: string; readonly language: "en" | "ko"; readonly onClose: () => void }) {
+function FreshObjectiveBody({ objectiveId, language, onClose, composer }: { readonly objectiveId: string; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined }) {
   const t = getT(language);
   const objective = useSyncExternalStore(subscribeObjective, () => findObjective(objectiveId), () => findObjective(objectiveId));
   const live = useSyncExternalStore(subscribeObjective, () => commanderLive(objectiveId), () => commanderLive(objectiveId));
-  const launchAvailable = useSyncExternalStore(subscribeObjective, () => launchAvailableFor(objectiveId), () => launchAvailableFor(objectiveId));
-  const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  // 개시로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리·완료) 칸을 걷어 직전 대화로 돌아간다.
+  // 개시·범위 넓히기로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   useEffect(() => {
     if (live) focusOperation(objectiveId);
-    else if (objective === null || objective.removed || objective.done) onClose();
+    else if (objective === null || objective.removed) onClose();
   }, [live, objective, objectiveId, onClose]);
   if (!objective) return null;
-  const choices = bandChoices({ objective, working: false, commanderAwaiting: false, memberAwaiting: null, commanderExists: false, recipientCount: 0 });
-  const startable = choices.primary === "start" || choices.alts.includes("start");
-  // 데스크톱 띠·모바일 개시 카드와 같은 판정 — 라우팅 확인이 걸리면 확인 시트가 있는 오른쪽 패널의 띠로 보낸다.
-  const review = objective.routingConfirm ? objective.members.filter((member) => member.launch.mode === "route") : [];
-  const reason = choices.gated ? t("objectives.band.gated", { count: objective.criteriaProposals.length })
-    : !startable ? null
-      : !launchAvailable ? t("objectives.band.reason.unavailable") : null;
-  const members = objective.members.length;
-  const routed = review.length ? t("objectives.start.routeConfirm", { count: review.length }) : "";
-  const desc = reason ?? (members ? `${t("objectives.start.members", { count: members })}${routed}` : objective.missions.length ? t("objectives.start.direct") : t("objectives.band.start.bare"));
   const met = objective.criteria.filter((criterion) => !!criterion.met).length;
-  const start = () => {
-    if (busy || reason || !startable) return;
-    if (review.length > 0) {
-      openObjectiveFromCluster(objective.theaterId);
-      setFailure(t("objectives.fresh.review"));
-      return;
-    }
-    const api = objectivesApi();
-    if (!api) return;
-    setBusy(true);
-    setFailure(null);
-    void post<{ failed?: readonly { role: string }[] }>(api, "/commander/start", { objectiveId, language })
-      .then((result) => {
-        const failed = result?.failed ?? [];
-        if (failed.length) setFailure(t("objectives.start.failedMembers", { count: failed.length, roles: failed.map((entry) => entry.role).join(", ") }));
-      })
-      .catch((error: unknown) => setFailure(bandFailure(t, error, { message: false, talk: false })))
-      .finally(() => setBusy(false));
-  };
   return (
     <div className="objectives-fresh-conversation">
       <div className="objectives-fresh-start">
-        <span className="objectives-fresh-label"><span className="objectives-fresh-ring" aria-hidden="true" />{t("objectives.state.fresh")}</span>
+        <span className="objectives-fresh-label">{objective.done ? t("objectives.graph.state.done") : <><span className="objectives-fresh-ring" aria-hidden="true" />{t("objectives.state.fresh")}</>}</span>
         <h2 className="objectives-fresh-title">{objective.title}</h2>
         {objective.note.trim()
           ? <p className="objectives-fresh-brief">{objective.note}</p>
@@ -108,17 +75,13 @@ function FreshObjectiveBody({ objectiveId, language, onClose }: { readonly objec
         {objective.criteria.length > 0
           ? <p className="objectives-fresh-meta">{t("objectives.criteria.title")} · {t("objectives.criteria.count", { met, total: objective.criteria.length })}</p>
           : null}
-        {startable || choices.gated ? (
-          <div className="objectives-fresh-commence">
-            <button type="button" className="objectives-fresh-start-button" disabled={busy || !!reason} aria-busy={busy || undefined} onClick={start}>{t("objectives.commander.start")}</button>
-            <span className="objectives-fresh-desc">{desc}</span>
-          </div>
-        ) : null}
-        {failure ? <p className="objectives-fresh-failure" role="alert">{failure}</p> : null}
       </div>
-      <footer className="objectives-fresh-foot">
-        <div className="objectives-fresh-composer" aria-disabled="true">{t("objectives.fresh.composer")}</div>
-      </footer>
+      {/* 입력창은 호스트의 그룹 입력창이다 — 시작 전에는 구상·개시, 완료한 목표는 범위 넓히기만 받는다(보드 동작 계약). */}
+      {composer ? composer() : (
+        <footer className="objectives-fresh-foot">
+          <div className="objectives-fresh-composer" aria-disabled="true">{t("objectives.fresh.composer")}</div>
+        </footer>
+      )}
     </div>
   );
 }
@@ -127,18 +90,18 @@ function FreshObjectiveBody({ objectiveId, language, onClose }: { readonly objec
 export const freshConversationSurface: ConversationSurfaceDescriptor = {
   id: FRESH_SURFACE_ID,
   title: (ctx) => findObjective(objectiveIdOf(ctx.params))?.title ?? getT(ctx.language)("objectives.state.fresh"),
-  subtitle: (ctx) => getT(ctx.language)("objectives.state.fresh"),
+  subtitle: (ctx) => getT(ctx.language)(findObjective(objectiveIdOf(ctx.params))?.done ? "objectives.graph.state.done" : "objectives.state.fresh"),
   // 얼굴은 사이드바 줄의 표식과 같은 지휘관 아바타다(줄이 `avatarOperationId` 로 고르는 키).
   avatar: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
     const objective = findObjective(objectiveId);
-    return objectiveId && objective ? { key: operationAvatarKey(objectiveId), role: "commander", label: objective.title, state: "fresh" } : null;
+    return objectiveId && objective ? { key: operationAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
   },
   subscribe: (listener) => subscribeObjective(listener),
   // 개시하면 이 목표 id 로 지휘관 Operation 이 선다 — 오른쪽 패널은 진행 중 Operation 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
   standInOperationId: (ctx) => objectiveIdOf(ctx.params),
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
-    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} language={ctx.language} onClose={ctx.close} /> : null;
+    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;
   },
 };

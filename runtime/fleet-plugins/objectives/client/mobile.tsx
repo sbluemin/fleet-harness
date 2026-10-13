@@ -9,7 +9,7 @@ import { SettingsCard, SettingsRow, SettingsToggle, useMobileSettingsHost } from
 
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, ROUTING_PREVIEW_TTL_MS, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember, type RoutingPreview } from "../server/types.js";
-import { bandChoices, bandFailure } from "./action-band.js";
+import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./commodore-state.js";
 import type { CommodoreAsk } from "../server/commodore/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
@@ -31,7 +31,7 @@ import "./mobile.css";
  * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Operation 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
  * 지휘관 Operation 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
- * 노출 판정도 보드 하단 띠의 판정(`bandChoices`)을 그대로 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
+ * 노출 판정도 구성원 채팅 입력창의 보드 동작과 같은 판정(`bandChoices`)을 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
  */
 
@@ -781,7 +781,7 @@ const launchAvailableFor = (objectiveId: string): boolean =>
   readAllTheaters().find((state) => state.objectives.some((objective) => objective.id === objectiveId))?.launchAvailable ?? false;
 
 /**
- * 개시 카드 — 누름 한 번으로 데스크톱 띠의 「개시」와 같은 `/commander/start` 를 보낸다(덧붙일 말 없이). 막혔으면 단추를 흐리게 두고
+ * 개시 카드 — 누름 한 번으로 데스크톱 입력창의 「개시」와 같은 `/commander/start` 를 보낸다(덧붙일 말 없이). 막혔으면 단추를 흐리게 두고
  * 그 아래에 이유를 말한다. 보낸 요청이 돌아올 때까지 단추를 잠가 두 번 보내지 않는다. 실패 문구는 띠와 같은 `bandFailure` 다.
  * 라우팅 확인이 걸리면(review) 여기서는 보내지 않고 확인 시트를 연다 — 확인 없이 라우팅 구성원을 띄우는 길을 남기지 않는다.
  */

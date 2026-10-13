@@ -315,6 +315,12 @@ export interface ConversationSurfaceContext {
   readonly theme: ConsoleTheme;
   /** 이 대화를 걷는다 — 가운데 칸은 직전에 보던 Operation 대화로 돌아간다. */
   readonly close: () => void;
+  /**
+   * 이 대화가 대신하는 Operation(`standInOperationId`)의 그룹 입력창 — 호스트가 그 id 의 묶음 대화 계약(`OperationCluster.conversation`)
+   * 으로 그린다. 아직 서지 않은 Operation 이라 보드 동작(`GroupConversationActions.board`)이 입력창의 일이다. 대신하는 Operation 이
+   * 없거나 구버전 호스트면 없다.
+   */
+  readonly composer?: () => ReactNode;
 }
 
 /** 오른쪽 패널 앞 묶음의 탭 하나. 대화가 선 동안만 서고, 레일의 독점 슬롯·폭 기억을 그대로 받는다. id 는 레일 전체에서 고유해야 한다. */

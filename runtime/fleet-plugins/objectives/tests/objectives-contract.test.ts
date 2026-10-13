@@ -749,8 +749,8 @@ describe("Objectives contract", () => {
     await edge(true);
     expect((await route("edge/toggle", { objectiveId: objective.id, from: c!.id, to: a!.id, linked: true })).status).toBeGreaterThanOrEqual(400);
     expect(store.find(objective.id)!.missions.find(m => m.id === a!.id)!.prerequisites).toEqual([]);
-    expect((await launch.setPreset(objective.id, { viewMode: "chat" })).commander.viewMode).toBe("chat");
-    expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
+    // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트의 터미널 요청은 받되 쓰지 않는다.
+    expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("chat");
     await launch.rename(objective.id, "Release renamed");
     expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
@@ -776,11 +776,11 @@ describe("Objectives contract", () => {
       expect.objectContaining({ sessionName: `${head}-member-1`, dormant: undefined, disableSubagents: true, text: undefined }),
       expect.objectContaining({ sessionName: `${head}-member-2`, dormant: undefined, disableSubagents: true, text: undefined }),
     ]);
-    // 첫 세션이 잡힌 뒤에는 유휴 상태여도 모델·뷰를 바꾸지 못한다.
+    // 첫 세션이 잡힌 뒤에는 유휴 상태여도 모델을 바꾸지 못한다. 지휘관은 채팅으로 떴다.
     const node = operations.get(objective.id)!;
     node.payload.session = { ...(node.payload.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
-    await expect(launch.setPreset(objective.id, { viewMode: "chat" })).rejects.toThrow("objective_busy");
-    expect(store.find(objective.id)!.commander.viewMode).toBe("terminal");
+    await expect(launch.setPreset(objective.id, { model: "sonnet" })).rejects.toThrow("objective_busy");
+    expect(store.find(objective.id)!.commander.viewMode).toBe("chat");
     // 위임할 때마다 새 Operation 을 만들지 않는다 — 같은 구성원의 임무는 같은 Operation 이다.
     expect(store.find(objective.id)!.missions.map((mission) => mission.operationId)).toEqual([research, build, build]);
     // 임무 진행(blocked/done)은 그대로 두되, 실제 구성원 입력 대기를 별도 신호로 cluster 서술자에 전달한다.
@@ -1975,12 +1975,11 @@ describe("Objectives contract", () => {
     expect((await board({ action: "read", objectiveId: personal })).objective).toMatchObject({ operator: "commodore", actions: [expect.objectContaining({ kind: "edit", by: "human" })] });
     expect(createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined }).find(personal)?.commodoreOperated).toBe(true);
     expect(launches).toHaveLength(0);
-    // 사령관이 만든 목표의 지휘관은 채팅 뷰로 준비된다. 개시 전 사람이 터미널로 바꾸는 것은 막지 않는다.
+    // 사령관이 만든 목표의 지휘관도 채팅 뷰로 준비된다 — 보기 선택은 없다.
     expect(store.find(id)!.commander.viewMode).toBe("chat");
-    expect((await launch.setPreset(id, { viewMode: "terminal" })).commander.viewMode).toBe("terminal");
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ action: "plan", objectiveId: id });
-    expect(launches[0]).toMatchObject({ viewMode: "terminal" });
+    expect(launches[0]).toMatchObject({ viewMode: "chat" });
     const commanderBoard = (await command("read", {}, id)).objective as { attachments: { path: string }[] };
     expect(commanderBoard.attachments).toHaveLength(3);
     for (const attachment of commanderBoard.attachments) expect(fs.readFileSync(attachment.path)).toEqual(PNG);

@@ -267,142 +267,13 @@ button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-row > .objectives-launch > * { flex: none; }
 .objectives-row > .objectives-launch > :is(.objectives-launch-model, .fc-coord-trigger-model) { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .objectives-row.is-expanded .objectives-row-main { color: var(--text-primary); }
-/* 시작 — 세부 창의 마지막 행동. brass 워시 한 장, 낱말은 굵게, 부제는 dim, 오른쪽 끝에 화살. 일하는 동안 같은 자리가 「중단」. */
-/* 시작 버튼은 스크롤 영역 아래에 놓되 별도 배경 띠 없이 세부 표면과 이어진다. */
 /* 검토 대기 — 지휘관이 넘긴 가승인. aurora 로 「사람 차례」를 말하고, 완료 버튼 하나만 둔다. */
-.objectives-start-group { padding: 8px 14px 2px 16px; border: 0; }
-.objectives-start { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 11px 14px; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring); }
-.objectives-start:hover:not(:disabled, [aria-disabled="true"]) { border-color: var(--brass); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 24%, transparent), color-mix(in oklch, var(--brass) 10%, transparent)); }
-.objectives-start:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-start:is(:disabled, [aria-disabled="true"]) { opacity: 0.5; cursor: default; }
-.objectives-start-word { display: inline-flex; align-items: center; gap: 6px; font-weight: var(--weight-bold); font-size: var(--t-base); color: var(--brass-ink); letter-spacing: -0.01em; }
-.objectives-start-word svg { width: 12px; height: 12px; }
-.objectives-start-sub { display: flex; align-items: baseline; min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); overflow: hidden; white-space: nowrap; }
-.objectives-start-desc { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.objectives-start-arrow { color: var(--brass-ink); font-size: var(--t-base); }
-.objectives-start.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
-.objectives-start.is-stop:hover { border-color: var(--coral); }
-.objectives-start.is-stop .objectives-start-word { color: var(--coral); }
-/* 검토 대기 — 카드 고리와 같은 aurora. 「시작」과 같은 띠, 색만 「사람 차례」를 말한다. */
-.objectives-start.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
-.objectives-start.is-review:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
-.objectives-start.is-review .objectives-start-word, .objectives-start.is-review .objectives-start-arrow { color: var(--aurora); }
-/* 결정 대기 — 호스트의 awaiting 색(aurora)에 살아있는 맥동 점. 검토 대기와 같은 색이지만, 점이 「지금 부르는 중」을 가른다. */
-.objectives-start.is-awaiting { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
-.objectives-start.is-awaiting:hover { border-color: var(--aurora); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 24%, transparent), color-mix(in oklch, var(--aurora) 10%, transparent)); }
-.objectives-start.is-awaiting .objectives-start-word, .objectives-start.is-awaiting .objectives-start-arrow { color: var(--aurora); }
-/* 「허용 대기」의 표식은 기다리는 Operation 의 아바타다 — 글리프 svg(12px) 규칙보다 앞서 얼굴이 읽히는 크기로 선다. */
-.objectives-start-word .objectives-avatar { width: 16px; height: 16px; }
 
-/* A 분할 칸 — 띠의 틀(테두리·radius·그라디언트)이 이 래퍼로 옮고, 주행동과 이동 칸이 나란히 선다. */
-.objectives-split { display: grid; grid-template-columns: minmax(0, 1fr) 38px; overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(90deg, color-mix(in oklch, var(--brass) 16%, transparent), color-mix(in oklch, var(--brass) 6%, transparent)); transition: border-color var(--duration-fast) var(--ease-spring); }
-.objectives-split:hover { border-color: var(--brass); }
-.objectives-split.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--coral) 12%, transparent), color-mix(in oklch, var(--coral) 4%, transparent)); }
-.objectives-split.is-stop:hover { border-color: var(--coral); }
-.objectives-split.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent), color-mix(in oklch, var(--aurora) 6%, transparent)); }
-.objectives-split.is-review:hover { border-color: var(--aurora); }
-.objectives-split .objectives-start { border: 0; border-radius: 0; background: transparent; grid-template-columns: auto minmax(0, 1fr); padding: 11px 14px; }
-/* 분할 안 주행동의 초점 링은 overflow:hidden에 잘리므로 래퍼가 대신 그린다 — 기존 규칙과 같은 brass 1px. */
-.objectives-split .objectives-start:focus-visible { outline: none; }
-.objectives-split:has(> .objectives-start:focus-visible) { outline: 1px solid var(--brass); outline-offset: 2px; }
-.objectives-split .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--brass) 8%, transparent); }
-.objectives-split.is-stop .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--coral) 8%, transparent); }
-.objectives-split.is-review .objectives-start:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklch, var(--aurora) 8%, transparent); }
-.objectives-split-goto { display: grid; place-items: center; border: 0; border-left: 1px solid color-mix(in oklch, var(--brass) 26%, transparent); background: transparent; color: var(--text-tertiary); cursor: pointer; padding: 0; }
-.objectives-split-goto svg { width: 14px; height: 14px; }
-.objectives-split-goto:hover { color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 12%, transparent); }
-.objectives-split-goto:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.objectives-split.is-stop .objectives-split-goto { border-left-color: color-mix(in oklch, var(--coral) 26%, transparent); }
-.objectives-split.is-stop .objectives-split-goto:hover { color: var(--coral); background: color-mix(in oklch, var(--coral) 12%, transparent); }
-.objectives-split.is-review .objectives-split-goto { border-left-color: color-mix(in oklch, var(--aurora) 26%, transparent); }
-.objectives-split.is-review .objectives-split-goto:hover { color: var(--aurora); background: color-mix(in oklch, var(--aurora) 12%, transparent); }
-/* 압축 칸 — 이동 칸 왼쪽의 같은 38px 칸. 구분선은 쌍 앞에 하나, 두 칸 사이는 아주 옅은 경계만. */
-.objectives-split.has-compact { grid-template-columns: minmax(0, 1fr) 76px; }
-.objectives-split-tools { display: grid; grid-template-columns: 38px 38px; border-left: 1px solid color-mix(in oklch, var(--brass) 26%, transparent); }
-.objectives-split.is-stop .objectives-split-tools { border-left-color: color-mix(in oklch, var(--coral) 26%, transparent); }
-.objectives-split.is-review .objectives-split-tools { border-left-color: color-mix(in oklch, var(--aurora) 26%, transparent); }
-.objectives-split-tools > .objectives-split-goto { border-left: 0; }
-.objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--brass) 10%, transparent); }
-.objectives-split.is-stop .objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--coral) 10%, transparent); }
-.objectives-split.is-review .objectives-split-tools > .objectives-split-goto + .objectives-split-goto { box-shadow: inset 1px 0 0 color-mix(in oklch, var(--aurora) 10%, transparent); }
-.objectives-split-compact.is-armed, .objectives-split-compact.is-done { color: var(--brass-ink); }
-.objectives-split-compact.is-armed { background: color-mix(in oklch, var(--brass) 16%, transparent); }
-.objectives-split.is-stop .objectives-split-compact.is-armed, .objectives-split.is-stop .objectives-split-compact.is-done { color: var(--coral); }
-.objectives-split.is-stop .objectives-split-compact.is-armed { background: color-mix(in oklch, var(--coral) 16%, transparent); }
-.objectives-split.is-review .objectives-split-compact.is-armed, .objectives-split.is-review .objectives-split-compact.is-done { color: var(--aurora); }
-.objectives-split.is-review .objectives-split-compact.is-armed { background: color-mix(in oklch, var(--aurora) 16%, transparent); }
-.objectives-split-compact.is-locked, .objectives-comp-compact.is-locked { opacity: 0.38; cursor: default; }
-.objectives-split .objectives-split-compact.is-locked:hover { color: var(--text-tertiary); background: transparent; }
-.objectives-comp-compact { border-color: transparent; }
-.objectives-comp-compact svg { width: 14px; height: 14px; }
-.objectives-comp-compact.is-armed, .objectives-comp-compact.is-done { color: var(--brass-ink); }
-.objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--brass) 16%, transparent); }
-.objectives-comp.is-stop .objectives-comp-compact.is-armed, .objectives-comp.is-stop .objectives-comp-compact.is-done { color: var(--coral); }
-.objectives-comp.is-stop .objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--coral) 16%, transparent); }
-.objectives-comp.is-review .objectives-comp-compact.is-armed, .objectives-comp.is-review .objectives-comp-compact.is-done { color: var(--aurora); }
-.objectives-comp.is-review .objectives-comp-compact.is-armed { background: color-mix(in oklch, var(--aurora) 16%, transparent); }
-.objectives-comp-compact.is-locked:hover { background: transparent; color: inherit; }
 .is-armed > svg { transform-origin: center; animation: objectives-compact-pulse 1.1s var(--ease-spring) infinite; animation-name: var(--state-motion, objectives-compact-pulse); }
 @keyframes objectives-compact-pulse { 50% { transform: scaleY(0.82); } }
 @media (prefers-reduced-motion: reduce) { .is-armed > svg { animation: none; } }
-.objectives-compact-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-.objectives-compact-note b { color: var(--text-primary); font-weight: var(--weight-bold); }
-/* 결정 대기 띠 끝의 이동 글리프 — → 와 같은 자리, 띠 톤(aurora)을 따른다. */
-.objectives-start-arrow svg { width: 13px; height: 13px; }
-/* 펼친 comp 위 줄의 이동 — 접기 ✕ 바로 왼쪽, 같은 글리프 크기, 테두리 투명. */
-.objectives-comp-tools { display: inline-flex; align-items: center; gap: 2px; }
-.objectives-comp-goto { border-color: transparent; }
 /* 지휘관 행은 모델·강도·보기 설정만 맡는다 — 원래 hover 규칙을 버튼에만 좁히고, span은 손 모양만 거둔다. */
 span.objectives-row-main { cursor: default; }
-/* 하단 한 자리 — 같은 상태에 다른 선택이 하나 더 있으면 띠 뒤로 한 장이 비친다. 누르면 이 자리가 위로 펼쳐진다. */
-.objectives-band { position: relative; }
-.objectives-band.has-alt::before { content: ""; position: absolute; left: 12px; right: 12px; top: -5px; height: 6px; border: 1px solid color-mix(in oklch, var(--brass) 28%, transparent); border-bottom: 0; border-radius: var(--radius-md) var(--radius-md) 0 0; background: color-mix(in oklch, var(--brass) 5%, var(--surface-panel)); }
-.objectives-band.has-alt.is-stop::before { border-color: color-mix(in oklch, var(--coral) 26%, transparent); }
-/* 띠의 틀은 뒤로 비치는 한 장(::before) 위에 선다 — 틀이 분할 칸으로 옮아도 윗 테두리가 그 한 장에 덮이지 않게. */
-.objectives-band .objectives-start, .objectives-band .objectives-split { position: relative; }
-.objectives-band-draft { flex: none; margin-right: 6px; color: var(--text-primary); font-weight: var(--weight-medium); }
-.objectives-band-also { flex: none; white-space: pre; color: var(--text-tertiary); }
-.objectives-band-error { padding: 6px 4px 2px; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }
-/* 펼친 자리 — 띠가 위로 자라 한 장이 된다. 맨 아래 줄은 그대로 보내기 띠다. */
-.objectives-comp { overflow: hidden; border: 1px solid color-mix(in oklch, var(--brass) 42%, transparent); border-radius: var(--radius-md); background: linear-gradient(180deg, color-mix(in oklch, var(--brass) 4%, var(--surface-panel)), color-mix(in oklch, var(--brass) 10%, var(--surface-panel))); animation: objectives-unfold 240ms var(--ease-spring); }
-.objectives-comp.is-stop { border-color: color-mix(in oklch, var(--coral) 40%, transparent); }
-@keyframes objectives-unfold { from { clip-path: inset(60% 0 0 0 round var(--radius-md)); opacity: 0.4; } to { clip-path: inset(0 0 0 0 round var(--radius-md)); opacity: 1; } }
-.objectives-comp-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 0 14px; font-size: var(--t-xs); color: var(--text-tertiary); }
-.objectives-comp-fold { border-color: transparent; }
-.objectives-intents { display: grid; gap: 2px; padding: 4px 6px 2px; }
-.objectives-intent { display: grid; grid-template-columns: 6px 16px auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
-.objectives-intent:hover:not(:disabled) { background: var(--control-rest); }
-.objectives-intent[aria-checked="true"] { background: var(--control-wash); color: var(--text-primary); }
-.objectives-intent:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.objectives-intent-datum { width: 4px; height: 4px; border-radius: 50%; }
-.objectives-intent[aria-checked="true"] .objectives-intent-datum { background: var(--brass); }
-.objectives-intent-glyph { display: grid; place-items: center; color: var(--text-tertiary); }
-.objectives-intent-glyph svg { width: 14px; height: 14px; }
-.objectives-intent-glyph .objectives-avatar { width: 16px; height: 16px; }
-.objectives-intent-word { font-weight: var(--weight-bold); white-space: nowrap; }
-.objectives-intent.is-stop .objectives-intent-word { color: var(--coral); }
-.objectives-intent-desc { min-width: 0; font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 「메시지」 받는 이 — 의도 라디오 아래 한 줄. 표식은 명단의 것을 줄여 쓰고, 고른 칸은 의도와 같은 워시에 브라스 테두리(위치 채널)만 더한다. */
-.objectives-recips { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 14px 0; }
-.objectives-recip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 8px 3px 4px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; transition: background-color var(--duration-fast), border-color var(--duration-fast); }
-.objectives-recip:hover:not(:disabled) { background: var(--control-rest); }
-.objectives-recip[aria-checked="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: var(--control-wash); color: var(--text-primary); }
-.objectives-recip:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.objectives-recip .objectives-avatar { width: 16px; height: 16px; }
-.objectives-recip-role { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
-.objectives-recip-state { flex: none; color: var(--text-tertiary); }
-.objectives-recip-state.is-awaiting { color: var(--aurora); }
-.objectives-recip-state.is-failed { color: var(--coral); }
-.objectives-comp-edits { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 8px 14px 0; font-size: var(--t-xs); color: var(--text-tertiary); }
-.objectives-comp-chip { padding: 1px 7px; border: 1px solid transparent; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); }
-.objectives-comp-field { display: flex; gap: 8px; padding: 6px 14px 8px; }
-.objectives-comp-field textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 132px; resize: none; overflow: auto; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; }
-.objectives-comp-field textarea::placeholder { color: var(--text-tertiary); }
-.objectives-comp-field textarea:focus-visible { outline: none; }
-.objectives-comp-count { align-self: flex-end; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.objectives-comp .objectives-band-error { padding: 0 14px 8px; }
-.objectives-comp .objectives-start { border: 0; border-top: 1px solid color-mix(in oklch, var(--brass) 22%, transparent); border-radius: 0; }
-.objectives-comp.is-stop .objectives-start { border-top-color: color-mix(in oklch, var(--coral) 22%, transparent); }
 .objectives-graph-wrap { padding: 2px 20px 8px 22px; }
 /* 그래프 도구 — 그래프 상자 안 오른쪽 위에 선다. 상자는 위쪽에 도구 줄만큼 자리를 비워 노드·제목과 겹치지 않는다. 확대본(포털)은 이 틀 밖이다. */
 .objectives-graph-frame { position: relative; }
@@ -593,11 +464,6 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
   .objectives-note-more { margin-left: 14px; }
   /* 기본 규칙이 이 블록 뒤에 서므로 한 단 높여야 좁은 폭의 14px 선이 이긴다 — 머리 글리프·본문과 같은 선. */
   .objectives-detail .objectives-att { padding-left: 14px; padding-right: 12px; }
-  .objectives-start { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 9px; }
-  .objectives-split .objectives-start { gap: 6px; padding: 9px 10px; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .objectives-comp { animation: none; }
 }
 
 /* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
@@ -792,32 +658,14 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 .objectives-proposal-chip { margin: 4px 0 0 24px; display: flex; gap: 6px; font-size: var(--t-xs); color: var(--text-secondary); overflow-wrap: anywhere; }
 .objectives-proposal-chip b { flex: none; margin-top: 1px; font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--brass-ink); }
 
-/* 제안이 남아 잠긴 개시·스티어링 — 누를 수 없는 점선 한 줄. 그 아래 「다시 구상」이 한 단 낮은 띠로 열려 있다. */
-.objectives-start-group.is-gated { gap: 6px; }
-.objectives-start.is-locked, .objectives-start.is-locked:hover { cursor: default; border-style: dashed; border-color: var(--hairline-strong); background: var(--control-rest); }
-.objectives-start.is-locked .objectives-start-word { color: var(--text-tertiary); }
-/* 누를 수 없는 띠에 화살표는 눌러질 것처럼 보인다 — 자리만 남긴다. */
-.objectives-start.is-locked .objectives-start-arrow { visibility: hidden; }
-.objectives-start.is-locked .objectives-start-sub { white-space: normal; }
-.objectives-start.is-secondary { padding-block: 8px; background: transparent; }
-/* 잠긴 띠 아래의 「다시 구상」 설명도 잠긴 띠처럼 감긴다 — 두 띠가 같은 폭 규칙을 따른다. */
-.objectives-start-group.is-gated .objectives-start.is-secondary .objectives-start-sub { white-space: normal; }
-/* 잠긴 상태의 분할 칸 — 틀의 채움을 없애 테두리만 남은 한 단 낮은 띠로 되돌린다. hover 테두리·주행동 8%는 그대로다. */
-.objectives-start-group.is-gated .objectives-split { background: transparent; }
-/* 레일에서 두 줄이 되는 부제는 띄어쓰기 단위로 고르게 나눈다. */
-.objectives-start-group.is-gated .objectives-split .objectives-start-sub { text-wrap: balance; word-break: keep-all; }
 
 /* 고대비(forced-colors) — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
    (Quiet Controls C′). 파일 끝자리에 둔다 — 같은 특정도라 순서가 이긴다. */
 @media (forced-colors: active) {
-  .objectives-btn,
-  .objectives-comp-chip { border-color: ButtonBorder; }
+  .objectives-btn { border-color: ButtonBorder; }
 }
 
-/* 후속 후보(A안) — 띠 comp 와 본문 구획이 같은 줄·상세를 쓴다. 색은 토큰만. */
-/* 펼친 comp 안 목록 — 330px 뒤로는 안에서 스크롤. */
-.objectives-followup-comp-list { max-height: 330px; overflow: auto; padding: 2px 0 6px; }
-.objectives-followup-comp-list .objectives-followup-list { padding: 0; }
+/* 후속 후보(A안) — 입력창 위 칸과 본문 구획이 같은 줄·상세를 쓴다. 색은 토큰만. */
 .objectives-followup-list { display: flex; flex-direction: column; padding: 0 6px; }
 .objectives-followup-item { border-radius: var(--radius-xs); }
 .objectives-followup-item.is-open { background: var(--control-rest); }
@@ -859,7 +707,6 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-discard.is-armed { border-color: var(--coral); color: var(--coral); background: transparent; }
 /* 폐기 흔적 — 목록 끝의 흐린 한 줄로 접혀 남는다. */
 .objectives-followup-trace { margin: 4px 14px 0; padding-top: 6px; border-top: 1px dashed var(--surface-rim); font-size: var(--t-xs); color: var(--text-tertiary); }
-.objectives-followup-comp-list .objectives-followup-trace { margin: 4px 14px 6px; }
 .objectives-followup-trace > button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 0; display: inline-flex; gap: 6px; align-items: center; font: inherit; }
 .objectives-followup-trace > button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 .objectives-followup-trace > button svg { transition: transform var(--duration-fast); }
@@ -893,10 +740,6 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-origin-goto { display: inline-grid; place-items: center; flex: none; margin-left: auto; color: var(--text-tertiary); }
 .objectives-origin-goto svg { width: 12px; height: 12px; }
 button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-ink); }
-/* 띠 위 탭과 펼친 comp 의 aurora 톤 — 「같은 상태의 다른 선택은 띠가 위로 펼쳐져 고른다」는 기존 문법. */
-.objectives-band.has-alt.is-review::before { border-color: color-mix(in oklch, var(--aurora) 30%, transparent); background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel)); }
-.objectives-comp.is-review { border-color: color-mix(in oklch, var(--aurora) 42%, transparent); background: linear-gradient(180deg, color-mix(in oklch, var(--aurora) 4%, var(--surface-panel)), color-mix(in oklch, var(--aurora) 10%, var(--surface-panel))); }
-.objectives-comp.is-review .objectives-start { border-top-color: color-mix(in oklch, var(--aurora) 22%, transparent); }
 
 /* 확장 회차는 상태 색을 쓰지 않는다 — 숫자 칩과 구분선, 이전 회고의 접힘으로 범위를 나눈다. */
 .objectives-extension-chip { display: inline-flex; align-items: center; align-self: flex-start; box-sizing: border-box; min-width: 0; width: max-content; max-width: 100%; padding: 1px 6px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font: var(--t-2xs)/1.5 var(--font-ui); white-space: normal; overflow-wrap: anywhere; }
@@ -1224,6 +1067,21 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-routing-foot { display: flex; align-items: flex-start; gap: 10px; padding: 4px 14px 8px; font-size: var(--t-2xs); line-height: 1.45; color: var(--text-tertiary); }
 .objectives-routing-foot > span { flex: 1; min-width: 0; }
 .objectives-routing-foot .objectives-btn { flex: none; }
+/* 입력창 위 칸 — 라우팅 확인·후속 후보. 면·테두리·그림자는 호스트 입력창의 칸이 진다. 안쪽은 머리 한 줄, 내용, 바닥 한 줄이다. */
+.objectives-composer-panel { display: flex; flex-direction: column; min-width: 0; font-size: var(--t-sm); }
+.objectives-composer-panel:focus { outline: none; }
+.objectives-composer-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 4px 2px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-composer-panel-head > span { min-width: 0; }
+.objectives-composer-panel-head .objectives-glyph { border-color: transparent; }
+.objectives-composer-panel .objectives-routing-switch,
+.objectives-composer-panel .objectives-routing-foot { padding-inline: 8px; }
+.objectives-composer-panel .objectives-routing-banner { margin-inline: 8px; }
+.objectives-composer-panel .objectives-followup-list { padding: 0; }
+.objectives-composer-panel .objectives-followup-trace { margin: 4px 8px 2px; }
+.objectives-composer-panel-error { margin: 0; padding: 4px 8px 0; font-size: var(--t-xs); line-height: 1.5; color: var(--coral); }
+.objectives-composer-panel-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; padding: 6px 4px 4px 8px; border-top: 1px solid var(--hairline); font-size: var(--t-xs); color: var(--text-tertiary); }
+.objectives-composer-panel-foot > span { flex: 1; min-width: 0; }
+.objectives-composer-panel-foot .objectives-btn { flex: none; }
 /* 좁은 패널 — 고른 모델이 역할 줄 아래로 내려가 역할·방식 낱말과 겹치지 않는다. */
 @container objectives-routing (width < 380px) {
   .objectives-routing-row { grid-template-columns: 20px minmax(0, 1fr); grid-template-areas: "mark who" ". pick" ". why"; }

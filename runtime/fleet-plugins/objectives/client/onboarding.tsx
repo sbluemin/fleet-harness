@@ -45,7 +45,8 @@ export const objectivesOnboarding: OnboardingContribution = {
         { anchor: `${DETAIL} [data-objectives-tour="brief"]`, title: T("objectives.onboarding.detail.step2Title"), body: T("objectives.onboarding.detail.step2Body") },
         { anchor: `${DETAIL} [data-objectives-tour="criteria"]`, title: T("objectives.onboarding.detail.step3Title"), body: T("objectives.onboarding.detail.step3Body") },
         { anchor: `${DETAIL} [data-objectives-tour="missions"]`, title: T("objectives.onboarding.detail.step4Title"), body: T("objectives.onboarding.detail.step4Body") },
-        { anchor: `${DETAIL} [data-objectives-tour="action"]`, title: T("objectives.onboarding.detail.step5Title"), body: T("objectives.onboarding.detail.step5Body") },
+        // 구상·개시는 구성원 채팅 입력창 위 제안 줄에 선다 — 다른 번들의 DOM 이라 짚지 않고 말로만 안내한다.
+        { anchor: null, title: T("objectives.onboarding.detail.step5Title"), body: T("objectives.onboarding.detail.step5Body") },
       ],
     },
   ],

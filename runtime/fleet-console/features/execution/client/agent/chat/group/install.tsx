@@ -11,6 +11,7 @@ import {
   registerConversationOperationTab,
   setConversationBodyRenderer,
   setConversationCaptionRenderer,
+  setConversationStandInComposer,
   subscribeConversationStandIn,
   subscribeConversationSubject,
   useConversationStandIn,
@@ -50,7 +51,8 @@ export function installGroupConversationSurface(): () => void {
   ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeCaption = setConversationCaptionRenderer(renderConversationCaption);
-  return () => { disposeCaption(); disposeBody(); };
+  const disposeComposer = setConversationStandInComposer((operationId, language) => <StandInComposer key={operationId} rootId={operationId} language={language} />);
+  return () => { disposeComposer(); disposeCaption(); disposeBody(); };
 }
 
 /**
@@ -199,6 +201,16 @@ function RootConversation({ root, language, phone = false }: { readonly root: Op
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );
+}
+
+/**
+ * 아직 서지 않은(시작 전) 또는 보관된(완료한) 지휘관 자리의 입력창 — 플러그인 대화가 자리를 고르고, 입력창은 그 id 의 묶음 대화 계약으로
+ * 같은 그룹 입력창이 선다. 일하는 참여자가 없으므로 정지는 서지 않는다.
+ */
+function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
+  const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
+  const actions = useGroupConversationActions(rootId);
+  return <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />;
 }
 
 /** 한 명 정지 — 기존 실행 중 중지 경로(채팅 턴만 닫는다. 백그라운드 작업은 그대로). */

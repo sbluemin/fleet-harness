@@ -20,6 +20,8 @@ export {
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
  * 4. 대화 머리 보기 스위치 — `setConversationCaptionRenderer`. 본문 렌더러가 세운 화면의 보기 스위치(그룹 대화의 「턴 접기」)가
  *    pill 바로 옆, 도구 단추 묶음 앞에 따로 선다. `null` 이면 아무것도 서지 않는다.
+ * 5. 대신하는 Operation 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Operation 을 대신하면
+ *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
  */
@@ -167,6 +169,33 @@ export function useConversationCaptionRenderer(): ConversationCaptionRenderer | 
   return useSyncExternalStore(
     (listener) => { captionListeners.add(listener); return () => { captionListeners.delete(listener); }; },
     () => captionRenderer,
+    () => null,
+  );
+}
+
+// ── 대신하는 Operation 의 입력창 ──────────────────────────────────────────
+
+/** 플러그인 대화가 대신하는 Operation(시작 전·완료한 목표)의 입력창 렌더러 — 그 id 의 묶음 대화 계약으로 그린다. */
+export type ConversationStandInComposerRenderer = (operationId: string, language: "en" | "ko") => ReactNode;
+
+let standInComposer: ConversationStandInComposerRenderer | null = null;
+const standInComposerListeners = new Set<() => void>();
+
+/** 대신하는 Operation 의 입력창 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
+export function setConversationStandInComposer(renderer: ConversationStandInComposerRenderer): () => void {
+  standInComposer = renderer;
+  for (const listener of standInComposerListeners) listener();
+  return () => {
+    if (standInComposer !== renderer) return;
+    standInComposer = null;
+    for (const listener of standInComposerListeners) listener();
+  };
+}
+
+export function useConversationStandInComposer(): ConversationStandInComposerRenderer | null {
+  return useSyncExternalStore(
+    (listener) => { standInComposerListeners.add(listener); return () => { standInComposerListeners.delete(listener); }; },
+    () => standInComposer,
     () => null,
   );
 }

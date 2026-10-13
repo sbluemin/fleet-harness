@@ -1,4 +1,4 @@
-import type { ConversationMemberProfile } from "@fleet-console/sdk/conversation";
+import type { ConversationMemberProfile, GroupBoardActions } from "@fleet-console/sdk/conversation";
 import type { LocalizedText } from "@fleet-console/sdk/i18n";
 import type { ModelRoster } from "@fleet-console/sdk/models";
 import type { ConsoleOperationSummary, OperationCluster, OperationClusterMember, OperationClusterProgress, OperationClusterRow, OperationClusterRowMark, OperationClusterRowNote, OperationClusterRowProvenance, OperationClusterSource } from "@fleet-console/sdk/plugin";
@@ -268,7 +268,7 @@ function moveObjective(objective: Objective, groupId: string | null): void {
   if (api && groupId !== objective.groupId) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { groupId } }).catch(() => undefined);
 }
 
-export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null): OperationCluster[] {
+export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null, showing: string | null = null): OperationCluster[] {
   const out: OperationCluster[] = [];
   const stalled = new Set(stalledObjectives(objectives, observe, now));
   const orderIn = new Map<string, number>();
@@ -296,6 +296,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarOperationId: commander }), members: [], conversation, open: openDetail, row });
+      // 완료한 목표(지휘관 보관)는 줄이 없다 — 가운데 칸의 완료 화면이 그 목표를 보는 동안만 입력창(범위 넓히기)이 읽을 대화로 선다.
+      else if (objective.done && showing === objective.id) out.push({ id: objective.id, theaterId: objective.theaterId, title: objective.title, avatarOperationId: commander, members: [], conversation });
       continue;
     }
     // 구성원 Operation → 대표 임무. 끝나지 않은 첫 임무가 이기고, 모두 끝났으면 마지막 임무.
@@ -389,7 +391,12 @@ const profileSignature = (profile: ConversationMemberProfile | undefined) => (pr
     profile.launch.via ? [resolveText(profile.launch.via.label), profile.launch.via.title ? resolveText(profile.launch.via.title) : "", profile.launch.via.tone ?? ""] : null] : null,
   profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null,
   profile.notes?.map((note) => [resolveText(note.text), note.title ?? "", note.tone ?? ""]) ?? []] : null);
-const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+// 보드 동작의 글도 함수다 — 칩·안내·자리표시를 영어로 풀어 비교한다(상태 사다리가 바뀌면 글이나 칩이 바뀐다).
+const boardSignature = (board: GroupBoardActions | undefined) => (board ? [
+  [...board.suggestions, ...(board.fixed ? [board.fixed] : [])].map((action) => [action.id, resolveText(action.label), action.detail ? resolveText(action.detail) : "", action.context ? resolveText(action.context.placeholder) : "", action.unavailable ? resolveText(action.unavailable) : ""]),
+  board.note ? [resolveText(board.note.text), board.note.reveal ? resolveText(board.note.reveal.label) : ""] : null, board.hint ? resolveText(board.hint) : "",
+] : null);
+const signature = (clusters: readonly OperationCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.operationId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Operation 은
@@ -438,7 +445,7 @@ export const objectivesClusterSource: OperationClusterSource = {
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.
     const observations = new Map(listedOperationSummaries().map((summary) => [summary.id, observationOf(summary)]));
-    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster);
+    const next = clustersOf(theaterStates.flatMap((state) => state.objectives), activity, (objective) => objective.theaterId === theaterId && selected === objective.id, commodoreBoardOf, runtimeReady ? (operationId) => observations.get(operationId) ?? null : () => null, now, roster, freshConversationObjectiveId());
     const nextSignature = signature(next);
     cachedInputs = inputs;
     if (nextSignature === cachedSignature) return cached;
