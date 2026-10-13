@@ -10,12 +10,12 @@ import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-me
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
-import { connectFreshConversation, freshConversationSurface, openDoneObjective } from "./fresh-conversation.js";
+import { connectFreshConversation, freshConversationSurface, openObjectiveConversation } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
-import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
+import { viewedTheaterId, handleMapOperationSelected, installObjectiveState, loadTheater, openObjectiveFromCluster, revealObjective, objectivesApi, subscribeObjective, toggleObjectivePanel } from "./objectives-state.js";
 import "./objectives.css";
 
 export const OBJECTIVE_SURFACE_ID = "objectives";
@@ -102,7 +102,13 @@ export const objectivesEntry: RailEntryDescriptor = {
     // 완료로 지휘관이 보관된 목표는 복원하지 않고 가운데 칸의 완료 화면으로 연다 — 범위 넓히기는 그 화면의 입력창이 받는다.
     return result.objectives.map((objective) => ({
       id: `objectives:${objective.id}`, title: objective.title, subtitle: objective.done ? `${subtitle} · ${t("objectives.graph.state.done")}` : subtitle,
-      activate: () => { if (!objective.done || !openDoneObjective(objective.id, theaterId)) revealObjective({ objectiveId: objective.id }); },
+      activate: () => {
+        if (objective.done && openObjectiveConversation(objective.id, theaterId)) return;
+        // 사이드바 줄과 같다 — 레일은 그 목표를, 가운데 칸은 그 지휘관 대화(없으면 시작 화면)를 세운다. 레일만 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다.
+        revealObjective({ objectiveId: objective.id });
+        openObjectiveFromCluster(theaterId, objective.id);
+        if (!objective.done) openObjectiveConversation(objective.id, theaterId);
+      },
     }));
   },
 };

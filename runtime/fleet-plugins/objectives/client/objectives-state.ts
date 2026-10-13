@@ -896,7 +896,7 @@ export function openNewOperation(): void {
 }
 
 /**
- * 사이드바 줄·캡션 칩·질문 카드의 「이 목표로」 — 레일의 목표 패널을 연다(이미 열려 있으면 그대로).
+ * 사이드바 줄·캡션 칩·질문 카드·팔레트의 「이 목표로」 — 레일의 목표 패널을 연다.
  * 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 연다. reveal 은 패널이 새 Theater 의 목록을 읽을 때 집힌다.
  * 대화 중심 화면에서는 그 목표의 대화(지휘관 Operation, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
  * 파생되고, 패널·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
@@ -916,9 +916,12 @@ export function openObjectiveFromCluster(theaterId?: string, objectiveId?: strin
   openObjectivePanel();
 }
 
+/**
+ * 이미 열려 있어도 다시 연다: 호스트의 열기는 여닫기가 아니라 드러내기이고, 폰에서는 레일 스토어가 열림으로 남아 있어도
+ * 목적지 화면으로 옮기는 것이 이 열기다.
+ */
 function openObjectivePanel(): void {
-  if (!installed || installed.rail.isOpen(OBJECTIVE_PANEL_ID)) return;
-  installed.rail.open(OBJECTIVE_PANEL_ID);
+  installed?.rail.open(OBJECTIVE_PANEL_ID);
 }
 
 /** 보이는 대화의 Theater 가 theaterId 가 되면 한 번 부른다 — 오지 않으면 VIEWING_WAIT_MS 뒤에 그대로 부른다. */

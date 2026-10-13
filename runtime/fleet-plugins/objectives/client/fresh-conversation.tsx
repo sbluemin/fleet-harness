@@ -37,10 +37,10 @@ export function openFreshConversation(objectiveId: string, theaterId?: string): 
 }
 
 /**
- * 끝난 목표를 연다 — 지휘관 Operation 이 목록에 있으면(복원됨) 그 대화로, 없으면(보관) 복원하지 않고 가운데 칸에 완료 화면을 세운다.
- * 범위 넓히기는 그 화면의 입력창이 받는다. 대화 중심 화면이 꺼져 있으면 false.
+ * 목표의 가운데 칸을 연다 — 지휘관 Operation 이 목록에 있으면 그 대화로, 없으면 복원하지 않고 가운데 칸에 시작 화면(시작 전 목표)이나
+ * 완료 화면(보관된 끝난 목표)을 세운다. 범위 넓히기는 완료 화면의 입력창이 받는다. 대화 중심 화면이 꺼져 있으면 false.
  */
-export function openDoneObjective(objectiveId: string, theaterId: string): boolean {
+export function openObjectiveConversation(objectiveId: string, theaterId: string): boolean {
   if (commanderLive(objectiveId)) { focusOperation(objectiveId); return true; }
   return openFreshConversation(objectiveId, theaterId);
 }
