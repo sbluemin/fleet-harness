@@ -9,7 +9,7 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreRunStatus, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
-import { CommodoreAskCards } from "./commodore-ask.js";
+import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
@@ -181,6 +181,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
 
   const fail = (error: unknown) => {
     const code = error instanceof Error ? error.message : "failed";
+    if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
     setFailure(code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code }));
   };
   const openSystemPrompt = () => navigation.open({ ...links.systemPrompt, theaterId, focus: "editor-end" });
@@ -204,7 +205,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         </div>
       ) : null}
       {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 남는다. */}
-      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} /> : null}
+      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} /> : null}
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>

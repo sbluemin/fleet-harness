@@ -21,14 +21,21 @@ type T = Translate<ObjectiveMessageKey>;
  * 보내거나 사령관이 거두면 질문이 끝나 카드가 조용히 내려가고, 기록에는 「사람에게 물음」·「사람이 답함」 줄이 남는다.
  * 데스크톱은 결정 칸의 클래스를, 폰(`phone`)은 사령관 화면의 모바일 문법을 쓴다.
  */
-export function CommodoreAskCards({ theaterId, t, phone = false }: { readonly theaterId: string; readonly t: T; readonly phone?: boolean }) {
+/**
+ * 질문이 이미 끝났다는 거절 — 상태를 다시 읽으면 카드가 곧 걷히므로 그 사유는 카드 밖(기록 칸의 실패 줄)이 말한다.
+ * 기록 칸의 실패 문구 함수가 이 코드를 그 사유 낱말(`errorWord`)로 옮긴다.
+ */
+export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "ask_already_answered"]);
+
+/** `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로. */
+export function CommodoreAskCards({ theaterId, t, phone = false, onEnded }: { readonly theaterId: string; readonly t: T; readonly phone?: boolean; readonly onEnded?: (error: unknown) => void }) {
   const { view } = useCommodore(theaterId);
   const asks = openAsks(theaterId);
   if (asks.length === 0) return null;
   const titles = view?.asks?.objectives ?? {};
   return (
     <div className={phone ? "objectives-cm-asks" : "objectives-asks"}>
-      {asks.map((ask) => <AskCard key={ask.id} ask={ask} theaterId={theaterId} objectiveTitle={ask.objectiveId ? titles[ask.objectiveId]?.title ?? null : null} t={t} phone={phone} />)}
+      {asks.map((ask) => <AskCard key={ask.id} ask={ask} theaterId={theaterId} objectiveTitle={ask.objectiveId ? titles[ask.objectiveId]?.title ?? null : null} t={t} phone={phone} onEnded={onEnded} />)}
     </div>
   );
 }
@@ -38,12 +45,13 @@ const EMPTY: Draft = { picked: [], text: "" };
 /** 답 초안 — 다른 화면을 보다 와도 남는다(질문 id 별, 이 탭의 메모리). 보내면 비운다. */
 const drafts = new Map<string, Readonly<Record<string, Draft>>>();
 
-function AskCard({ ask, theaterId, objectiveTitle, t, phone }: {
+function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
   readonly ask: CommodoreAsk;
   readonly theaterId: string;
   readonly objectiveTitle: string | null;
   readonly t: T;
   readonly phone: boolean;
+  readonly onEnded: ((error: unknown) => void) | undefined;
 }) {
   const [draft, setDraft] = useState<Readonly<Record<string, Draft>>>(() => drafts.get(ask.id) ?? {});
   const [sending, setSending] = useState(false);
@@ -73,6 +81,7 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone }: {
     } catch (error) {
       // 아는 거절(이미 답함·거둠·어긋난 답)은 그 사유로, 그 밖은 일반 실패로 — 고른 것과 쓴 답은 그대로 둔다.
       const code = error instanceof Error ? error.message : "";
+      if (onEnded && ENDED_ASK_CODES.has(code)) { onEnded(error); return; }
       const word = errorWord(t, code);
       setFault(code && word !== code ? word : t("objectives.decision.failed"));
     } finally { setSending(false); }

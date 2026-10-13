@@ -8,7 +8,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
 
 import { commodoreConversationEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
-import { CommodoreAskCards } from "./commodore-ask.js";
+import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
@@ -156,6 +156,7 @@ function readParams(params: Readonly<Record<string, unknown>>): { readonly theat
 
 function failureWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
+  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
   return code === "commodore_disabled" ? t("objectives.commodore.failed.disabled") : code === "commodore_inactive" ? t("objectives.commodore.failed.inactive") : t("objectives.commodore.failed", { code });
 }
 
@@ -235,7 +236,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
         </div>
       ) : null}
       {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
-      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} />}
+      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} />}
       <div className="objectives-commodore-conversation-log">
         {Conversation ? (
           <Conversation
