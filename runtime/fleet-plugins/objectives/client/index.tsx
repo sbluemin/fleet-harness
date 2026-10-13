@@ -10,7 +10,7 @@ import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-me
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
-import { connectFreshConversation, freshConversationSurface } from "./fresh-conversation.js";
+import { connectFreshConversation, freshConversationSurface, openDoneObjective } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
@@ -96,9 +96,14 @@ export const objectivesEntry: RailEntryDescriptor = {
     await loadTheater(api, theaterId);
     const response = await api.fetch("objectives", "/palette-search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, query, limit }) });
     if (!response.ok) return [];
-    const result = await response.json() as { objectives: { id: string; title: string }[] };
-    const subtitle = getT(language)("objectives.palette.subtitle");
-    return result.objectives.map((objective) => ({ id: `objectives:${objective.id}`, title: objective.title, subtitle, activate: () => { revealObjective({ objectiveId: objective.id }); } }));
+    const result = await response.json() as { objectives: { id: string; title: string; done?: boolean }[] };
+    const t = getT(language);
+    const subtitle = t("objectives.palette.subtitle");
+    // 완료로 지휘관이 보관된 목표는 복원하지 않고 가운데 칸의 완료 화면으로 연다 — 범위 넓히기는 그 화면의 입력창이 받는다.
+    return result.objectives.map((objective) => ({
+      id: `objectives:${objective.id}`, title: objective.title, subtitle: objective.done ? `${subtitle} · ${t("objectives.graph.state.done")}` : subtitle,
+      activate: () => { if (!objective.done || !openDoneObjective(objective.id, theaterId)) revealObjective({ objectiveId: objective.id }); },
+    }));
   },
 };
 

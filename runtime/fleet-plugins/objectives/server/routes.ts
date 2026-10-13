@@ -201,10 +201,14 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session, with the images the person attached (attachmentIds from the Console attachment upload) riding only that one session; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().min(1).max(MAX_CONTEXT), attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(4).optional() }), actions.message) },
     { name: "conversation/broadcast", method: "POST", summary: "Send the person's words to the live Commander and members concurrently, without waking dormant sessions.", handler: json(objectiveRef.extend({ text: z.string().trim().min(1).max(MAX_CONTEXT) }).strict(), ({ objectiveId, text }) => launch.broadcast(objectiveId, text)) },
     { name: "commander/steer", method: "POST", summary: "Tell the Commander (working or awaiting review) the person changed the board (one line, with the person's optional context quoted), clear the pending changes and the criteria it had judged met.", handler: json(objectiveRef.extend({ context }), actions.steer) },
-    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
+    { name: "palette-search", method: "POST", summary: "Search objectives by title for the command palette, then completed ones whose Commander Operation is archived.", handler: json(z.object({ theaterId: ids, language, query: z.string().trim().min(1).max(200), limit: z.number().int().min(1).max(50).optional() }), ({ theaterId, query, limit }) => {
       const needle = query.toLowerCase();
-      const hits = store.list(theaterId).filter((candidate) => !candidate.done && !candidate.removed && candidate.title.toLowerCase().includes(needle)).slice(0, limit ?? 20);
-      return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId })) };
+      const matches = (candidate: Objective) => !candidate.removed && candidate.title.toLowerCase().includes(needle);
+      // 끝나지 않은 목표가 먼저, 그다음 완료로 지휘관이 보관된 목표(`/finished` 와 같은 범위) — 보관을 유지한 채 완료 화면에서 범위를 넓힌다.
+      const open = store.list(theaterId).filter((candidate) => !candidate.done && matches(candidate));
+      const done = store.all().filter((candidate) => candidate.theaterId === theaterId && candidate.archived === true && !!candidate.done && candidate.recorded !== false && matches(candidate)).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0));
+      const hits = [...open, ...done].slice(0, limit ?? 20);
+      return { objectives: hits.map((candidate) => ({ id: candidate.id, title: candidate.title, groupId: candidate.groupId, ...(candidate.done ? { done: true } : {}) })) };
     }) },
     // 달성 기준 — 브리핑처럼 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「달성 기준」 편집으로 쌓여 스티어링이 알린다.
     { name: "criterion/add", method: "POST", summary: "Add a success criterion below the missions.", handler: json(objectiveRef.extend({ criterion: criterionAddSchema }), actions.criterionAdd) },

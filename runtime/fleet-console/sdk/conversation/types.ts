@@ -188,6 +188,11 @@ export interface GroupBoardAction {
 export interface GroupBoardRunResult {
   readonly outcome: "done" | "held" | "failed";
   readonly notice?: { readonly text: LocalizedText; readonly tone: "info" | "warn" };
+  /**
+   * 패널이 끝낸 동작의 id(`settle` 전용) — 입력창은 그 동작을 제출할 때 덧붙일 말로 넘긴 초안만 걷고, 그 뒤에 새로 쓴 말은 남긴다.
+   * 없으면 초안을 건드리지 않는다. 덧붙일 말을 받지 않는 동작(완료·압축 등)은 초안과 무관하다.
+   */
+  readonly actionId?: string;
 }
 
 /** 플러그인 패널이 받는 문맥 — 패널이 이어받은 동작을 끝내면 `settle` 로 입력창에 알린다. */
@@ -203,6 +208,8 @@ export interface GroupBoardPanelContext {
 export interface GroupBoardActions {
   /** 제안 줄의 칩 — 지금 할 일이 첫 칩, 함께 성립하는 보조가 둘째 칩이다. 비면 칩이 서지 않는다. */
   readonly suggestions: readonly GroupBoardAction[];
+  /** 제안 줄(칩 1~2개)에 싣지 못한 같은 상태의 나머지 동작 — ＋ 메뉴의 보드 행으로 선다. 칩과 같은 규칙으로 앉거나 실행된다. */
+  readonly more?: readonly GroupBoardAction[];
   /** 입력창이 이 동작으로 고정된다(완료한 목표의 범위 넓히기) — 칩을 풀 수 없고 받는 이를 고를 수 없다. */
   readonly fixed?: GroupBoardAction;
   /** 평범한 메시지가 갈 곳이 없다(지휘관이 서기 전) — 동작 칩을 고른 말만 보낸다. */

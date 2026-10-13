@@ -32,6 +32,7 @@ import {
   readBatches,
   readHistory,
   readOrigin,
+  requestFollowupFocus,
   setFollowupOpen,
 } from "./followups.js";
 import { FollowupBatchResults, FollowupForkGlyph } from "./followups-view.js";
@@ -151,7 +152,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const pickObjective = useCallback((next: string | null) => {
     setSelected(next);
     const picked = next === null ? undefined : state.objectives.find((objective) => objective.id === next);
-    if (picked?.done && !listedOperationSummaries().some((summary) => summary.id === picked.id)) openFreshConversation(picked.id);
+    if (picked?.done && !listedOperationSummaries().some((summary) => summary.id === picked.id)) openFreshConversation(picked.id, picked.theaterId);
   }, [setSelected, state.objectives]);
   const toggleSection = (key: string, defaultOpen: boolean) => patchObjectiveView(theaterId, (current) => ({ collapsed: { ...current.collapsed, [key]: key in current.collapsed ? !current.collapsed[key] : defaultOpen } }));
   const isOpen = (key: string, defaultOpen: boolean) => (key in collapsed ? !collapsed[key] : defaultOpen);
@@ -237,12 +238,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
     const n = target.done ? 0 : openFollowups(target).length;
     setSelected(target.id);
     if (n > 0 && isFollowupSelectable(target)) {
+      // 후보 칸은 그 목표의 구성원 채팅 입력창 위에 선다 — 가운데 칸이 다른 대화면 그 지휘관 대화부터 연다. 초점은 칸이 서며 스스로 잡는다.
+      requestFollowupFocus(target.id);
       setFollowupOpen(target.id, true);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>(`[data-followup-comp="${CSS.escape(target.id)}"] [data-followup-sel]`)?.focus();
-        });
-      });
+      if (listedOperationSummaries().some((summary) => summary.id === target.id)) focusOperation(target.id);
     } else if (n > 0 && followupGate(target) === "criteria") {
       // 후보 목록은 탭에 두지 않는다 — 기준 제안이 고르기를 막고 있으면 그 제안이 선 목표 탭을 연다.
       patchObjectiveView(theaterId, () => ({ detailTab: "goal" }));

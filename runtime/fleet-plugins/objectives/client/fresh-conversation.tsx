@@ -5,7 +5,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 
 import type { Objective } from "../server/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, focusOperation, listedOperationSummaries, readAllTheaters, subscribeObjective } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, finishedObjectivesLoaded, focusOperation, listedOperationSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -27,11 +27,22 @@ export function connectFreshConversation(next: ClientConversationCapability | un
 /**
  * 가운데 칸에 그 목표의 시작 화면을 세운다. 대화 중심 화면이 꺼져 있으면 false — 부르는 쪽이 지금까지의 표면을 연다.
  * 목표의 Theater 를 함께 싣는다 — 호스트는 가운데 대화의 Theater 를 `params.theaterId` 로 읽어 머리 도구모음·오른쪽 패널을 그 Theater 로 연다.
+ * `theaterId` 를 주면 보관된 완료 목표를 아직 읽지 않았을 때 어느 Theater 의 끝난 목표를 읽을지도 말한다.
  */
-export function openFreshConversation(objectiveId: string): boolean {
+export function openFreshConversation(objectiveId: string, theaterId?: string): boolean {
   if (!port || !port.isActive()) return false;
-  const theaterId = findObjective(objectiveId)?.theaterId;
-  return port.open(FRESH_SURFACE_ID, theaterId ? { objectiveId, theaterId } : { objectiveId });
+  if (theaterId) ensureFinishedObjectives(theaterId);
+  const target = theaterId ?? findObjective(objectiveId)?.theaterId;
+  return port.open(FRESH_SURFACE_ID, { objectiveId, ...(target ? { theaterId: target } : {}) });
+}
+
+/**
+ * 끝난 목표를 연다 — 지휘관 Operation 이 목록에 있으면(복원됨) 그 대화로, 없으면(보관) 복원하지 않고 가운데 칸에 완료 화면을 세운다.
+ * 범위 넓히기는 그 화면의 입력창이 받는다. 대화 중심 화면이 꺼져 있으면 false.
+ */
+export function openDoneObjective(objectiveId: string, theaterId: string): boolean {
+  if (commanderLive(objectiveId)) { focusOperation(objectiveId); return true; }
+  return openFreshConversation(objectiveId, theaterId);
 }
 
 /** 지금 가운데 칸에 시작 화면이 선 목표. 없으면 null. */
@@ -48,20 +59,24 @@ export function subscribeFreshConversation(listener: () => void): () => void {
 }
 
 const objectiveIdOf = (params: Readonly<Record<string, unknown>>): string | null => (typeof params.objectiveId === "string" ? params.objectiveId : null);
-const findObjective = (objectiveId: string | null): Objective | null =>
-  objectiveId === null ? null : readAllTheaters().flatMap((state) => state.objectives).find((objective) => objective.id === objectiveId) ?? null;
+/** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표(보관)에서 — 완료 화면과 그 입력창의 보드 동작이 같은 레코드를 읽는다. */
+const findObjective = (objectiveId: string | null): Objective | null => (objectiveId === null ? null : findAnyObjective(objectiveId));
+const theaterIdOf = (params: Readonly<Record<string, unknown>>): string | null => (typeof params.theaterId === "string" ? params.theaterId : null);
 /** 지휘관 Operation 이 목록에 섰다 — 보관 describe 요약(완료로 보관된 지휘관)은 세지 않는다. */
 const commanderLive = (objectiveId: string): boolean => listedOperationSummaries().some((summary) => summary.id === objectiveId);
 
-function FreshObjectiveBody({ objectiveId, language, onClose, composer }: { readonly objectiveId: string; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined }) {
+function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, composer }: { readonly objectiveId: string; readonly theaterId: string | null; readonly language: "en" | "ko"; readonly onClose: () => void; readonly composer: (() => ReactNode) | undefined }) {
   const t = getT(language);
-  const objective = useSyncExternalStore(subscribeObjective, () => findObjective(objectiveId), () => findObjective(objectiveId));
+  const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
   const live = useSyncExternalStore(subscribeObjective, () => commanderLive(objectiveId), () => commanderLive(objectiveId));
+  // 보관된 완료 목표는 그 Theater 의 끝난 목표를 읽은 뒤에야 찾는다 — 읽기 전에는 칸을 걷지 않는다.
+  const pending = useSyncExternalStore(subscribeObjectiveOrFinished, () => theaterId !== null && !finishedObjectivesLoaded(theaterId), () => false);
+  useEffect(() => { ensureFinishedObjectives(theaterId); }, [theaterId]);
   // 개시·범위 넓히기로 지휘관 Operation 이 서면 그 대화로 넘긴다. 목표가 사라지면(정리) 칸을 걷어 직전 대화로 돌아간다.
   useEffect(() => {
     if (live) focusOperation(objectiveId);
-    else if (objective === null || objective.removed) onClose();
-  }, [live, objective, objectiveId, onClose]);
+    else if ((objective === null && !pending) || objective?.removed) onClose();
+  }, [live, objective, objectiveId, onClose, pending]);
   if (!objective) return null;
   const met = objective.criteria.filter((criterion) => !!criterion.met).length;
   return (
@@ -97,11 +112,11 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
     const objective = findObjective(objectiveId);
     return objectiveId && objective ? { key: operationAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
   },
-  subscribe: (listener) => subscribeObjective(listener),
+  subscribe: (listener) => subscribeObjectiveOrFinished(listener),
   // 개시하면 이 목표 id 로 지휘관 Operation 이 선다 — 오른쪽 패널은 진행 중 Operation 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
   standInOperationId: (ctx) => objectiveIdOf(ctx.params),
   render: (ctx) => {
     const objectiveId = objectiveIdOf(ctx.params);
-    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;
+    return objectiveId ? <FreshObjectiveBody objectiveId={objectiveId} theaterId={theaterIdOf(ctx.params)} language={ctx.language} onClose={ctx.close} composer={ctx.composer} /> : null;
   },
 };

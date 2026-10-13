@@ -81,12 +81,20 @@ interface GroupComposerDraft {
   readonly notice: Notice | null;
   /** 입력창에 앉은 보드 동작의 id — 보드의 제안에서 사라지면 걷힌다. */
   readonly mode: string | null;
+  /** 플러그인 칸이 이어받은 동작과, 그 동작이 덧붙일 말로 가져간 초안의 판 — 칸이 끝내면 그 초안만 걷는다. */
+  readonly held: BoardConsumed | null;
+}
+
+/** 보드 동작이 덧붙일 말로 가져간 초안 — 그 판(textRevision)이 그대로일 때만 보낸 뒤 걷는다. */
+interface BoardConsumed {
+  readonly mode: string;
+  readonly revision: number;
 }
 
 /** 실행 기능이 소유하는 페이지 메모리 — 대화 본문이 내려가도 초안·업로드·전송은 같은 루트에 남는다. */
 const groupDrafts = new Map<string, ReturnType<typeof createGroupDraft>>();
 function createGroupDraft() {
-  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null, mode: null };
+  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null, mode: null, held: null };
   const listeners = new Set<() => void>();
   return {
     read: () => current,
@@ -128,10 +136,11 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
 
   // 보드 동작 — 고정된 동작(완료한 목표)이 있으면 늘 그 동작이 앉는다. 앉힌 동작이 제안에서 사라지면(상태가 바뀜) 걷는다.
   const board = actions?.board ?? null;
-  const seated: GroupBoardAction | null = board?.fixed ?? (mode !== null ? board?.suggestions.find((action) => action.id === mode && action.context) ?? null : null);
+  const offered = React.useMemo(() => (board ? [...board.suggestions, ...(board.more ?? [])] : []), [board]);
+  const seated: GroupBoardAction | null = board?.fixed ?? (mode !== null ? offered.find((action) => action.id === mode && action.context) ?? null : null);
   React.useEffect(() => {
-    if (mode !== null && !board?.fixed && !board?.suggestions.some((action) => action.id === mode && action.context)) draft.update({ mode: null });
-  }, [board, mode, draft]);
+    if (mode !== null && !board?.fixed && !offered.some((action) => action.id === mode && action.context)) draft.update({ mode: null });
+  }, [board, offered, mode, draft]);
   // 두 번 누름 — 칩 id 또는 압축 행. 다른 일을 하면 풀린다.
   const [armed, setArmed] = React.useState<string | null>(null);
   const armTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -266,24 +275,35 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     });
   };
 
-  /** 보드 동작의 결과를 입력창에 옮긴다 — 보냈으면 그때 쓴 말과 동작 칩을 걷고, 그새 새로 쓴 말은 남긴다. */
-  const settle = (result: GroupBoardRunResult, sentRevision: number | null) => {
+  /**
+   * 보드 동작의 결과를 입력창에 옮긴다. 초안은 그 동작이 덧붙일 말로 가져간 경우(`consumed`)에만, 그때의 판 그대로일 때만 걷는다 —
+   * 말을 받지 않는 동작(완료·인계·압축)은 쓰던 초안을 건드리지 않고, 보내는 사이(또는 칸이 열린 사이) 새로 쓴 말은 남는다.
+   * 칸이 이어받으면(held) 가져간 판을 기억해 두었다가, 칸이 같은 동작으로 끝낼 때 그 판만 걷는다.
+   */
+  const settle = (result: GroupBoardRunResult, consumed: BoardConsumed | null) => {
     const current = draft.read();
-    const done = result.outcome === "done";
+    const done = result.outcome === "done" && consumed !== null;
     draft.update({
-      ...(done && (sentRevision === null || current.textRevision === sentRevision) ? { text: "" } : {}),
-      ...(done ? { mode: null } : {}),
+      ...(done && current.textRevision === consumed.revision ? { text: "" } : {}),
+      ...(done && current.mode === consumed.mode ? { mode: null } : {}),
+      held: result.outcome === "held" ? consumed ?? current.held : consumed !== null && current.held?.mode === consumed.mode ? null : current.held,
       notice: result.notice ? { tone: result.notice.tone, text: local(result.notice.text) } : null,
     });
   };
 
-  const runBoard = async (action: GroupBoardAction, context: string) => {
+  /** 칸이 끝낸 동작 — 그 동작을 제출할 때 기억한 판이 있으면 그 초안만 걷는다. */
+  const settlePanel = (result: GroupBoardRunResult) => {
+    const held = draft.read().held;
+    settle(result, result.actionId !== undefined && held?.mode === result.actionId ? held : null);
+  };
+
+  const runBoard = async (action: GroupBoardAction, context: string, consumes: boolean) => {
     if (!board || draft.read().busy) return;
-    const sentRevision = draft.read().textRevision;
+    const consumed: BoardConsumed | null = consumes ? { mode: action.id, revision: draft.read().textRevision } : null;
     setBusy(true);
     setNotice(null);
     try {
-      settle(await board.run(action.id, context), sentRevision);
+      settle(await board.run(action.id, context), consumed);
     } catch {
       setNotice({ tone: "warn", text: t("group.board.failed") });
     } finally {
@@ -295,7 +315,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     if (attachments.length > 0) { setNotice({ tone: "warn", text: t("group.board.noImages") }); return; }
     if (action.unavailable) { setNotice({ tone: "warn", text: local(action.unavailable) }); return; }
     if (action.context?.required && empty) { setNotice({ tone: "warn", text: t("group.board.required", { label: local(action.label) }) }); inputRef.current?.focus(); return; }
-    void runBoard(action, text.trim());
+    void runBoard(action, text.trim(), true);
   };
 
   /** 제안 칩 — 덧붙일 말을 받으면 입력창에 앉히고, 아니면 곧 실행한다(확인이 걸리면 두 번 눌러). */
@@ -316,8 +336,10 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     }
     if (action.confirm && armed !== action.id) { arm(action.id); return; }
     arm(null);
-    void runBoard(action, "");
+    void runBoard(action, "", false);
   };
+  /** 누르고 있는 키의 반복은 누름으로 세지 않는다 — 두 번 눌러야 하는 칩이 길게 누른 한 번으로 실행되지 않게. */
+  const ignoreRepeat = (event: React.KeyboardEvent<HTMLElement>) => { if ((event.key === "Enter" || event.key === " ") && event.repeat) event.preventDefault(); };
 
   const pressCompact = async () => {
     const compact = board?.compact;
@@ -443,7 +465,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const showHint = !!board?.hint && (chips.length > 0 || !!board.fixed);
   const suggest = note !== null || chips.length > 0 || showHint;
   const chipClass = (action: GroupBoardAction) => `group-composer-action${action.emphasis === "primary" ? " is-primary" : action.emphasis === "review" ? " is-review" : ""}${armed === action.id ? " is-armed" : ""}`;
-  const panel = board?.renderPanel ? board.renderPanel({ language: language === "ko" ? "ko" : "en", settle: (result) => settle(result, null) }) : null;
+  const panel = board?.renderPanel ? board.renderPanel({ language: language === "ko" ? "ko" : "en", settle: settlePanel }) : null;
+  const more = board && !board.fixed ? board.more ?? [] : [];
 
   return (
     <div ref={wrapRef} className="group-composer-wrap">
@@ -506,6 +529,28 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
               <span className="group-composer-pop-name">{t("group.composer.pickTarget")}</span>
             </button>
           ) : null}
+          {more.length > 0 ? (
+            <>
+              <div className="group-composer-pop-sep" role="separator" />
+              <div className="group-composer-pop-heading" role="presentation">{t("group.board.more")}</div>
+              {more.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  className={`group-composer-pop-row${armed === action.id ? " is-armed" : ""}`}
+                  aria-disabled={busy || !!action.unavailable || undefined}
+                  title={action.unavailable ? local(action.unavailable) : undefined}
+                  onClick={() => { const arming = !action.context && action.confirm && armed !== action.id; pressChip(action); if (!arming) setMenuOpen(false); }}
+                  onKeyDown={ignoreRepeat}
+                >
+                  <span className="group-composer-pop-glyph" aria-hidden="true">{BOARD_GLYPHS[action.glyph]}</span>
+                  <span className="group-composer-pop-name">{armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}</span>
+                  {action.detail ? <span className="group-composer-pop-sub">{local(action.detail)}</span> : null}
+                </button>
+              ))}
+            </>
+          ) : null}
           {board?.compact ? (
             <>
               <div className="group-composer-pop-sep" role="separator" />
@@ -515,7 +560,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
                 className={`group-composer-pop-row${armed === "compact" ? " is-armed" : ""}`}
                 aria-disabled={board.compact.sessions === 0 || busy || undefined}
                 onClick={() => { void pressCompact(); }}
-                onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && event.repeat) event.preventDefault(); }}
+                onKeyDown={ignoreRepeat}
               >
                 <span className="group-composer-pop-glyph" aria-hidden="true"><CompactGlyph /></span>
                 <span className="group-composer-pop-name">{board.compact.sessions === 0 ? t("group.board.compactNone") : armed === "compact" ? t("group.board.compactArmed", { count: String(board.compact.sessions) }) : t("group.board.compact")}</span>
@@ -545,6 +590,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
               aria-disabled={busy || !!action.unavailable || undefined}
               title={action.unavailable ? local(action.unavailable) : undefined}
               onClick={() => pressChip(action)}
+              onKeyDown={ignoreRepeat}
               onBlur={() => { if (armed === action.id) arm(null); }}
             >
               {BOARD_GLYPHS[action.glyph]}

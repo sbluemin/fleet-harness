@@ -23,7 +23,7 @@ import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.
 import { ObjectiveResults } from "./results.js";
 import { DatePicker } from "./date-picker.js";
 import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
-import { viewedTheaterId, focusOperation, hasDecisionRequest, objectivesApi, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeObjective, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
+import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, objectivesApi, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
@@ -95,17 +95,7 @@ const isListedObjective = (objective: Objective) => !objective.removed && object
  * 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 살아 있는 목록에 없으면 「끝남」(보관된 완료 목표)에서 찾는다.
  * 같은 상태면 같은 참조.
  */
-function findObjective(objectiveId: string): Objective | null {
-  for (const state of readAllTheaters()) {
-    const found = state.objectives.find((objective) => objective.id === objectiveId);
-    if (found) return found;
-  }
-  for (const finished of finishedByTheater.values()) {
-    const found = finished.find((objective) => objective.id === objectiveId);
-    if (found) return found;
-  }
-  return null;
-}
+const findObjective = findAnyObjective;
 const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
 
 // ── 「확인 필요」 행 ──
@@ -157,30 +147,8 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
 
 // ── 홈 「끝남」 ──
 
-/**
- * 「끝남」의 원천 — 완료로 지휘관 Operation 이 보관된 목표들(`/finished`). 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다.
- * 살아 있는 목록의 명단이 바뀔 때(완료로 보관돼 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. 보는 사람의 편의라 메모리에만 둔다.
- */
-const finishedByTheater = new Map<string, readonly Objective[]>();
-const finishedListeners = new Set<() => void>();
-const finishedInflight = new Set<string>();
+/** 「끝남」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(완료로 보관돼 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
 let finishedRoster = "";
-
-function noteFinished(): void { for (const listener of finishedListeners) listener(); }
-
-function readFinished(theaterId: string): void {
-  const api = objectivesApi();
-  if (!api || finishedInflight.has(theaterId)) return;
-  finishedInflight.add(theaterId);
-  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
-    .then((result) => {
-      if (!Array.isArray(result?.objectives)) return;
-      finishedByTheater.set(theaterId, result.objectives);
-      noteFinished();
-    })
-    .catch(() => undefined)
-    .finally(() => { finishedInflight.delete(theaterId); });
-}
 
 /** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
 function followFinished(): void {
@@ -191,27 +159,16 @@ function followFinished(): void {
   const roster = `${theaterId}|${state.objectives.map((objective) => objective.id).join(",")}`;
   if (roster === finishedRoster) return;
   finishedRoster = roster;
-  readFinished(theaterId);
+  loadFinishedObjectives(theaterId);
 }
 
 /** 「끝남」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
 export function subscribeFinishedObjectives(listener: () => void): () => void {
-  finishedListeners.add(listener);
+  const offFinished = subscribeFinishedObjectivesStore(listener);
   const off = subscribeObjective(() => { followFinished(); listener(); });
   followFinished();
-  return () => { finishedListeners.delete(listener); off(); };
+  return () => { offFinished(); off(); };
 }
-
-/** 목표 화면이 보관된 끝난 목표로 착지했는데(새로고침 등) 아직 읽지 않았으면 그 Theater 의 「끝남」을 읽는다. */
-function ensureFinished(theaterId: string | null): void {
-  if (theaterId && !finishedByTheater.has(theaterId)) readFinished(theaterId);
-}
-
-const subscribeObjectiveOrFinished = (listener: () => void): (() => void) => {
-  const off = subscribeObjective(listener);
-  finishedListeners.add(listener);
-  return () => { off(); finishedListeners.delete(listener); };
-};
 
 /**
  * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 완료로 지휘관이 보관된 목표, 최근에 끝난 것부터. 복원돼 다시 살아 있는
@@ -221,7 +178,7 @@ export function finishedObjectiveItems(theaterId: string | null, locale: Console
   if (theaterId === null) return [];
   const t = getT(locale);
   const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
-  return (finishedByTheater.get(theaterId) ?? [])
+  return finishedObjectives(theaterId)
     .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
     .map((objective) => {
       // 구성원 수는 명단(roster) 그대로다 — 지휘관은 구성원이 아니다(보드·데이터와 같은 셈).
@@ -261,7 +218,7 @@ export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
   // 보관된 끝난 목표로 착지했다면(「끝남」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
   const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
-  useEffect(() => { if (objectiveId && !known) ensureFinished(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
+  useEffect(() => { if (objectiveId && !known) ensureFinishedObjectives(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
   // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
   const hasCommander = useOperationSummaries().some((operation) => operation.id === objectiveId);
   const seen = useRef<{ readonly id: string; readonly had: boolean } | null>(null);

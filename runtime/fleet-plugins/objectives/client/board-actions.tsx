@@ -15,6 +15,7 @@ import {
   pruneSelection,
   readSelectionRevs,
   setFollowupOpen,
+  takeFollowupFocus,
   toggleFollowupSelection,
   useFollowupOpen,
   useFollowupSelection,
@@ -24,7 +25,7 @@ import { SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LaunchControl, LaunchedText, launchedWords, localized, routingReason, useLaunchRows } from "./launch-control.js";
 import { memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
-import { listedOperationSummaries, objectivesApi, openObjectiveFromCluster, post, readAllTheaters, revealObjective, subscribeObjective } from "./objectives-state.js";
+import { findAnyObjective, listedOperationSummaries, objectivesApi, openObjectiveFromCluster, post, readTheater, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -165,11 +166,13 @@ function liveOf(objective: Objective): BoardLive {
   return {
     commander: shown(commander ? commander.ownActivity ?? commander.activity : undefined),
     member: (operationId) => shown(byId.get(operationId)?.activity),
-    launchAvailable: readAllTheaters().find((state) => state.objectives.some((candidate) => candidate.id === objective.id))?.launchAvailable ?? false,
+    // 보관된 완료 목표는 살아 있는 목록에 없다 — 목록이 아니라 그 Theater 의 기동 가능 여부를 읽는다.
+    launchAvailable: readTheater(objective.theaterId).launchAvailable,
   };
 }
 
-const findObjective = (objectiveId: string): Objective | null => readAllTheaters().flatMap((state) => state.objectives).find((objective) => objective.id === objectiveId) ?? null;
+/** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표(보관)에서 — 완료 화면의 범위 넓히기도 같은 레코드로 보낸다. */
+const findObjective = (objectiveId: string): Objective | null => findAnyObjective(objectiveId);
 const memberLaunchedIn = (live: BoardLive) => (member: ObjectiveMember): boolean => member.sessionName !== null && live.member(member.id) !== "closed";
 const routingTargetsOf = (objective: Objective, live: BoardLive): readonly ObjectiveMember[] => objective.members.filter((member) => member.launch.mode === "route" && !memberLaunchedIn(live)(member));
 
@@ -273,12 +276,16 @@ export function objectiveBoardActions(objective: Objective): GroupBoardActions {
   const choices = choicesOf(objective, live);
   const keys = choices.primary && CHIP.has(choices.primary) ? [choices.primary, ...choices.alts.filter((key) => CHIP.has(key))] : choices.alts.filter((key) => CHIP.has(key));
   const done = objective.done;
-  const suggestions = done ? [] : keys.slice(0, 2).map((key, index) => actionOf(objective, key, index === 0 && key === choices.primary, live));
+  // 제안 줄은 칩 1~2개 — 같은 상태에서 함께 성립하는 셋째부터는 ＋ 메뉴의 보드 행으로 선다(사다리의 결과를 버리지 않는다).
+  const offered = done ? [] : keys.map((key, index) => actionOf(objective, key, index === 0 && key === choices.primary, live));
+  const suggestions = offered.slice(0, 2);
+  const more = offered.slice(2);
   const hintKey = choices.primary ? HINTS[choices.primary] : undefined;
   const compactSessions = new Set([objectiveId, ...objective.members.filter((member) => member.sessionName !== null).map((member) => member.id)]).size;
   const note = noteOf(objective, choices, live);
   return {
     suggestions,
+    ...(more.length ? { more } : {}),
     ...(done ? { fixed: actionOf(objective, "extend", true, live), hint: localized((t) => t("objectives.extend.doneDesc")) } : hintKey && suggestions.length ? { hint: localized((t) => t(hintKey)) } : {}),
     // 지휘관이 서기 전에는 평범한 메시지가 갈 곳이 없다 — 구상·개시에 덧붙일 말만 받는다.
     ...(!done && !objective.commander.started && live.commander === "closed" ? { actionsOnly: true } : {}),
@@ -341,7 +348,7 @@ const Spinner = () => <span className="objectives-routing-spinner" aria-hidden="
 /** 대상 전원에 걸친 사유 — 항목별 사유가 아니라 판단 자체가 돌지 못했다. 칸 위에 띠로 선다. */
 const SET_WIDE_REASONS = new Set(["routing_disabled", "routing_timeout", "routing_unavailable", "routing_failed"]);
 
-const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjective, () => findObjective(objectiveId), () => findObjective(objectiveId));
+const useObjective = (objectiveId: string) => useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId), () => findObjective(objectiveId));
 const useSheet = (objectiveId: string) => useSyncExternalStore(subscribeSheets, () => sheets.get(objectiveId) ?? null, () => null);
 
 /** 입력창 바로 위 칸 — 라우팅 확인이 먼저, 그다음 후속 후보 고르기. 띄울 것이 없으면 아무것도 그리지 않는다. */
@@ -381,6 +388,11 @@ function FollowupPanel({ objective, t, settle }: { readonly objective: Objective
   }, [objectiveId, idsKey]);
   const picked = candidates.filter((candidate) => selection.has(candidate.id)).length;
   const close = () => setFollowupOpen(objectiveId, false);
+  // 다른 곳(사이드바 검토 글리프·보드)에서 고르러 왔으면 칸이 선 뒤 첫 체크상자로 초점을 준다 — 이 칸의 DOM 만 본다.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (takeFollowupFocus(objectiveId)) rootRef.current?.querySelector<HTMLElement>("[data-followup-sel]")?.focus();
+  }, [objectiveId]);
   /** 선택 순간의 rev 로 한 번만 보낸다. 바뀌었으면 서버가 followup_changed 로 거절한다. 고른 게 없으면 지금 완료 그대로다. */
   const complete = async () => {
     if (sending) return;
@@ -394,7 +406,7 @@ function FollowupPanel({ objective, t, settle }: { readonly objective: Objective
       else await request("/objective/complete", { objectiveId, batchId: newBatchId(), followups: chosen.map(([id, rev]) => ({ id, rev })) });
       clearSelection(objectiveId);
       close();
-      settle({ outcome: "done" });
+      settle({ outcome: "done", actionId: "complete" });
     } catch (failure) {
       setError(t("objectives.band.failedAction", { reason: reasonText(t, codeOf(failure)) }));
     } finally {
@@ -405,7 +417,7 @@ function FollowupPanel({ objective, t, settle }: { readonly objective: Objective
     void request("/followup/discard", { objectiveId, candidateId }).catch((failure: unknown) => setError(t("objectives.band.failedAction", { reason: reasonText(t, codeOf(failure)) })));
   };
   return (
-    <div className="objectives-composer-panel" role="dialog" aria-label={t("objectives.followup.pick")} data-followup-comp={objectiveId} onKeyDown={onPanelKey(close)}>
+    <div ref={rootRef} className="objectives-composer-panel" role="dialog" aria-label={t("objectives.followup.pick")} onKeyDown={onPanelKey(close)}>
       <div className="objectives-composer-panel-head">
         <span>{t("objectives.followup.pick")} · <span aria-live="polite">{t("objectives.followup.count", { k: picked, n: candidates.length })}</span></span>
         <button type="button" className="objectives-glyph" aria-label={t("objectives.routing.close")} title={t("objectives.routing.close")} onClick={close}><CloseGlyph /></button>
@@ -471,7 +483,7 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
   };
   useEffect(() => { load(false); return () => { token.current += 1; }; }, [objectiveId]); // eslint-disable-line react-hooks/exhaustive-deps
   const close = () => {
-    if (state.preview) settle({ outcome: "held", notice: { tone: "info", text: localized((tt) => tt("objectives.routing.kept", { minutes: ttlMinutes })) } });
+    if (state.preview) settle({ outcome: "held", actionId: intent, notice: { tone: "info", text: localized((tt) => tt("objectives.routing.kept", { minutes: ttlMinutes })) } });
     setSheet(objectiveId, null);
   };
   /** 직접 지정 — 구성원 선택을 바꾸고(라우팅으로 되돌리기 포함) 결과를 다시 읽는다. */
@@ -498,7 +510,8 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
       const result = await request("/commander/start", { objectiveId, routing: "preview", ...(context ? { context } : {}) });
       token.current += 1;
       setSheet(objectiveId, null);
-      settle(started(result));
+      // 칸은 개시를 누를 때 넘겨받은 말을 보낸다 — 칸이 열린 사이 입력창에 새로 쓴 말은 입력창이 남긴다(actionId 의 판 비교).
+      settle({ ...started(result), actionId: intent });
     } catch (failure) {
       const code = codeOf(failure);
       if (code === "routing_preview_stale") load(false);

@@ -332,6 +332,15 @@ function subscribeComp(listener: () => void): () => void {
   return () => { compListeners.delete(listener); };
 }
 
+/** 후보 칸을 열면서 첫 체크상자로 초점을 줄 목표 — 칸이 마운트될 때 한 번 가져간다(입력창이 다른 대화에 있으면 그 대화가 서야 칸이 선다). */
+const focusRequests = new Set<string>();
+export function requestFollowupFocus(objectiveId: string): void {
+  focusRequests.add(objectiveId);
+}
+export function takeFollowupFocus(objectiveId: string): boolean {
+  return focusRequests.delete(objectiveId);
+}
+
 export function useFollowupOpen(objectiveId: string): boolean {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독
   return useSyncExternalStore(subscribeComp, () => isFollowupOpen(objectiveId), () => isFollowupOpen(objectiveId));

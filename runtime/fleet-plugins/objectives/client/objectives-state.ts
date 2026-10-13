@@ -566,6 +566,82 @@ export function readAllTheaters(): readonly TheaterState[] {
   return [...theaters.values()];
 }
 
+// ── 끝난 목표(보관) ──
+
+/**
+ * 완료로 지휘관 Operation 이 보관된 목표들(`/finished`) — 보관된 목표는 `/state` 에서 빠지므로 Theater 마다 따로 읽어 둔다. 폰 홈 「끝남」과
+ * 가운데 칸의 완료 화면(범위 넓히기 입력창)이 같은 레코드를 읽는다. 보는 사람의 편의라 메모리에만 둔다.
+ */
+const finishedByTheater = new Map<string, readonly Objective[]>();
+const finishedListeners = new Set<() => void>();
+const finishedInflight = new Set<string>();
+let finishedRevision = 0;
+
+/** 그 Theater 의 끝난 목표를 (다시) 읽는다. 같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다. */
+export function loadFinishedObjectives(theaterId: string): void {
+  const api = objectivesApi();
+  if (!api || finishedInflight.has(theaterId)) return;
+  finishedInflight.add(theaterId);
+  void post<{ objectives: Objective[] }>(api, "/finished", { theaterId })
+    .then((result) => {
+      if (!Array.isArray(result?.objectives)) return;
+      finishedByTheater.set(theaterId, result.objectives);
+      finishedRevision += 1;
+      for (const listener of finishedListeners) listener();
+    })
+    .catch(() => undefined)
+    .finally(() => { finishedInflight.delete(theaterId); });
+}
+
+/** 아직 읽지 않은 Theater 면 읽는다. */
+export function ensureFinishedObjectives(theaterId: string | null): void {
+  if (theaterId && !finishedByTheater.has(theaterId)) loadFinishedObjectives(theaterId);
+}
+
+/** 그 Theater 의 끝난 목표를 한 번이라도 읽었다. */
+export function finishedObjectivesLoaded(theaterId: string): boolean {
+  return finishedByTheater.has(theaterId);
+}
+
+export function finishedObjectives(theaterId: string): readonly Objective[] {
+  return finishedByTheater.get(theaterId) ?? [];
+}
+
+/** 읽어 둔 끝난 목표 하나 — 어느 Theater 든. 없으면 null. */
+export function findFinishedObjective(objectiveId: string): Objective | null {
+  for (const list of finishedByTheater.values()) {
+    const found = list.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 끝난 목표를 다시 읽을 때마다 오르는 판 — 묶음 캐시의 입력이다. */
+export function finishedObjectivesRevision(): number {
+  return finishedRevision;
+}
+
+export function subscribeFinishedObjectivesStore(listener: () => void): () => void {
+  finishedListeners.add(listener);
+  return () => { finishedListeners.delete(listener); };
+}
+
+/** 살아 있는 목록에서, 없으면 읽어 둔 끝난 목표에서 찾는다. */
+export function findAnyObjective(objectiveId: string): Objective | null {
+  for (const state of theaters.values()) {
+    const found = state.objectives.find((objective) => objective.id === objectiveId);
+    if (found) return found;
+  }
+  return findFinishedObjective(objectiveId);
+}
+
+/** 목표 상태나 끝난 목표가 바뀌면 깨운다. */
+export function subscribeObjectiveOrFinished(listener: () => void): () => void {
+  const off = subscribeObjective(listener);
+  finishedListeners.add(listener);
+  return () => { off(); finishedListeners.delete(listener); };
+}
+
 export function readTheater(theaterId: string | null): TheaterState {
   return theaterId ? theaters.get(theaterId) ?? EMPTY : EMPTY;
 }
