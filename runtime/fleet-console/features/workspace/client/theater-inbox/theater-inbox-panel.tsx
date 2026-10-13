@@ -164,6 +164,16 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     if (subjectId !== null && subjectId !== previous) navigation.close();
   }, [navigation, subjectId]);
 
+  // 가운데 칸에 이 Theater 섹션을 대신하지 않는 플러그인 대화(시작 전 목표 등)가 새로 서도 Theater 를 걷는다 — 그 대화는 Operation 이
+  // 아니라 대상이 비므로 위의 길로는 걷히지 않는다. 사령관처럼 이 Theater 의 섹션을 대신하는 대화는 Theater 를 연 채 둔다.
+  const selection = useConversationSurface();
+  const previousSelection = useRef(selection);
+  useEffect(() => {
+    const previous = previousSelection.current;
+    previousSelection.current = selection;
+    if (selection !== null && selection !== previous && center === null) navigation.close();
+  }, [center, navigation, selection]);
+
   // 걷힐 때 이 Theater 의 칸 탭이 연 패널을 닫는다(대화의 탭은 대화가 걷는다).
   useEffect(() => () => {
     const active = getRailStoreSnapshot().activePanelId;
