@@ -102,7 +102,7 @@ The toolbar opens tools that follow the active Theater:
 Beside any single Operation you can also open these companions:
 
 - **Session Analyst** (<kbd>Alt</kbd><kbd>A</kbd>) reads a session without disturbing it and answers what happened, what needs review, or how to hand it off.
-- **Operation Browser** (<kbd>Alt</kbd><kbd>B</kbd>, Desktop only) is a browser the agent drives on the same tabs you see, and you can annotate a page for it.
+- **Session Browser** (<kbd>Alt</kbd><kbd>B</kbd>, Desktop only) is a browser the agent drives on the same tabs you see, and you can annotate a page for it.
 
 With **Console Use**, agents can operate the Console itself. **Computer Use** extends that to Mac apps. Both are granted per Operation, and each request is approved inside the panel.
 

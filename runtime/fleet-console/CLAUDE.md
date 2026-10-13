@@ -39,11 +39,11 @@
 - Shared markdown and Mermaid output must remain sanitized before DOM insertion; Mermaid stays strict with HTML labels disabled, and renderer-supplied bind functions are never executed.
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored Operations are dormant until explicitly relaunched.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
-- The Operation Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
+- The Session Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
 
 ## Design invariants
 
-- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or agent identity uses the `--id-*` tones only as the caption and rail-chip title ink, the minimap dot, and the pastel body of a mongle avatar — borders stay state-owned and identity never repaints signal surfaces or the caption fill.
+- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or agent identity uses the `--id-*` tones only as the caption and rail-chip title ink and the pastel body of a mongle avatar — borders stay state-owned and identity never repaints signal surfaces or the caption fill.
 - Core and built-in plugin CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so all three themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
 - `tests/instrument-design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
 
