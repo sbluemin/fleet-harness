@@ -13,7 +13,7 @@ import {
   useUseRequestClock,
 } from "../../use-request-card.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark } from "./speaker-mark.js";
+import { SpeakerMark, SpeakerName } from "./speaker-mark.js";
 
 /**
  * 대화 안 카드 — 지휘관의 결정 요청과 Console·컴퓨터 사용 허용 요청.
@@ -22,11 +22,10 @@ import { SpeakerMark } from "./speaker-mark.js";
  * 닿고, 누르고 있는 Enter·Space 의 반복으로는 확정되지 않는다.
  */
 
-/** 답한 결정 한 줄 — 보드에서 요청이 걷혀도 대화에는 무엇을 골랐는지 남는다(이 화면을 보는 동안). */
+/** 답한 결정 — 보드에서 요청이 걷혀도 대화에는 질문마다 무엇을 골랐는지 남는다(이 화면을 보는 동안). */
 export interface SettledDecision {
   readonly id: string;
-  readonly title: string;
-  readonly answer: string;
+  readonly answers: readonly { readonly question: string; readonly answer: string }[];
 }
 
 /**
@@ -82,12 +81,12 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
     setFailed(false);
     try {
       await submitPath(answers);
-      const summary = decision.questions.map((question) => {
+      const settledAnswers = decision.questions.map((question) => {
         const labels = question.options.filter((option) => (picks[question.id] ?? []).includes(option.id)).map((option) => option.label);
         const own = (texts[question.id] ?? "").trim();
-        return [...labels, ...(own ? [own] : [])].join(", ");
-      }).join(" · ");
-      onSettled({ id: decision.id, title: decision.title, answer: summary });
+        return { question: question.text, answer: [...labels, ...(own ? [own] : [])].join(", ") };
+      });
+      onSettled({ id: decision.id, answers: settledAnswers });
     } catch {
       setFailed(true);
     } finally {
@@ -163,14 +162,36 @@ export function DecisionCard({ decision, actions, asker, language, onSettled }: 
   );
 }
 
-export function SettledDecisionLine({ settled, language }: { readonly settled: SettledDecision; readonly language: ConsoleLocale | undefined }) {
+/**
+ * 답한 결정 — 사람이 보낸 말과 같은 오른쪽 말풍선으로 선다(같은 면·반경·여백, 머리의 「→ 받는 이 · 행위」 줄).
+ * 질문마다 질문은 작은 보조 글자, 답은 본문 글자로 쌓이고, 아무리 길어도 말풍선 폭 안에서 줄을 바꾼다.
+ */
+export function SettledDecisionLine({ settled, asker, language }: {
+  readonly settled: SettledDecision;
+  readonly asker: ConversationSpeaker | null;
+  readonly language: ConsoleLocale | undefined;
+}) {
   const t = getGroupT(language);
   return (
-    <div className="group-chat-line group-card-settled">
-      <span className="group-card-settled-mark" aria-hidden="true">✓</span>
-      <span className="group-chat-line-who">{t("group.decision.answered")}</span>
-      <span className="group-chat-line-sep" aria-hidden="true">·</span>
-      <span className="group-chat-line-excerpt">{settled.title} → {settled.answer}</span>
+    <div className="group-chat-human">
+      <span className="group-chat-human-to">
+        {asker ? <>
+          <span aria-hidden="true">→</span>
+          <SpeakerMark speaker={asker} size="sm" />
+          <SpeakerName speaker={asker} />
+          <span className="group-chat-line-sep" aria-hidden="true">·</span>
+        </> : null}
+        <span className="group-chat-via">{t("group.decision.answered")}</span>
+        <span className="group-card-settled-mark" aria-hidden="true">✓</span>
+      </span>
+      <div className="group-chat-bubble is-human group-card-settled-body">
+        {settled.answers.map((entry, at) => (
+          <div key={at} className="group-card-settled-item">
+            <span className="group-card-settled-q">{entry.question}</span>
+            <span>{entry.answer}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -765,6 +765,11 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-card-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .group-card-send:disabled { opacity: 0.45; cursor: default; }
 .group-card-error { margin: 0; color: var(--coral-ink); }
+/* 답한 결정 — 사람 말풍선(.group-chat-human · .group-chat-bubble.is-human)을 그대로 입는다. 질문마다 질문은 보조 글자, 답은 본문
+   글자로 쌓이고, 말풍선의 overflow-wrap:anywhere 가 공백 없는 답·URL 도 말풍선 폭 안에서 꺾는다. */
+.group-card-settled-body { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.group-card-settled-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.group-card-settled-q { font-size: var(--t-xs); color: var(--text-secondary); }
 .group-card-settled-mark { flex: none; color: var(--positive-ink); }
 
 /* 턴 접기(「턴 접기」 스위치) — 시안 B. 짧은 진행 말은 발화자 표식 줄의 칩 하나로, 긴 말풍선은 높이 상한으로, 구성원 보고 줄은

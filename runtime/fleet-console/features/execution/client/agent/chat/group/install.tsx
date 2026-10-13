@@ -173,7 +173,7 @@ function RootConversation({ root, language }: { readonly root: OperationNode; re
   const decision = snapshot.decision && !settled.some((entry) => entry.id === snapshot.decision!.id) ? snapshot.decision : null;
   const cards = (
     <>
-      {settled.map((entry) => <SettledDecisionLine key={entry.id} settled={entry} language={language} />)}
+      {settled.map((entry) => <SettledDecisionLine key={entry.id} settled={entry} asker={commander} language={language} />)}
       {decision ? (
         <DecisionCard
           decision={decision}
