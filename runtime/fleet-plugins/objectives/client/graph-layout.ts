@@ -285,6 +285,8 @@ const TRACK = 8;
  * 거리로, 둥근 꺾임 반지름(6)의 두 배이자 선 굵기의 8배다. 확대 최소 배율(0.45)에서도 5px 남짓 떨어진다.
  */
 const FORK_CLEAR = 12;
+/** 틈을 처음부터 넓히는 기준 — 그 열로 드는 서로 다른 부모 수가 이보다 많으면 붐비는 틈이다. */
+const CROWDED = 2;
 const FORK_NEAR = FORK_CLEAR + 1;
 /** 뿌리 레인 위로 도는 우회 레인의 덧비용 — 첫 줄 위에 빈 띠가 생긴다. 교차(CROSS)보다는 가볍다. */
 const ABOVE = 1;
@@ -358,10 +360,9 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   const cols = missions.length ? Math.max(...missions.map(m => depth.get(m.id) ?? 0)) + 1 : 1;
   const shape = order.map(m => `${m.id}:${parentsOf(m).join(",")}`).join(";");
   const rootX = g.pad + g.rootR;
-  // 열 간격 — 한 레인을 건너는 45° 가지가 이름 칸 끝과 다음 열 노드 사이에 들어가는 최소에, 세로 줄 두 개(2·TRACK)를 더한다 — 줄 간격 하한(TRACK)으로
-  // 줄이 성겨진 만큼 틈의 줄 수를 되찾는다. 뿌리 앞은 지휘관 이름 칸을 지나서다.
-  const colGap = (labelW: number) => labelW + g.laneH + 2 * CLEAR + 6 + 2 * TRACK;
-  const rootGap = ROOT_LABEL_W + g.laneH - g.rootR + 2 * TRACK;
+  // 열 간격 — 한 레인을 건너는 45° 가지가 이름 칸 끝과 다음 열 노드 사이에 들어가는 최소. 뿌리 앞은 지휘관 이름 칸을 지나서다.
+  const colGap = (labelW: number) => labelW + g.laneH + 2 * CLEAR + 6;
+  const rootGap = ROOT_LABEL_W + g.laneH - g.rootR;
   // 넓은 칸은 이름 칸을 늘려 채운다(상한까지). 폭이 매 프레임 바뀌는 동안 다시 배정하지 않도록 8px 단위로 끊는다.
   const natural = rootX + rootGap + (cols - 1) * colGap(g.label) + g.label - g.r + g.pad;
   const labelW = Math.min(g.labelMax, g.label + Math.max(0, Math.floor((width - natural) / cols / 8) * 8));
@@ -495,7 +496,7 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       const room = (last ? end : ge(k)) - gs(k);
       if (span * g.laneH <= room + .01) yield { points: [{ x: gs(k), y: y0 }, { x: gs(k) + span * g.laneH, y: y1 }, { x: end, y: y1 }], cost: .5 };
       // 큰 꺾임은 틈 가운데쯤에서 내려가되 세로 줄은 틈의 줄(gs+CHAMFER+i·TRACK) 위에 둔다 — 줄 사이에 서면 양옆 줄을 TRACK 하한으로 함께 막는다.
-      const big = CHAMFER + Math.floor((g.laneH / 2 + TRACK - CHAMFER) / TRACK) * TRACK, chamfered = (v: number, c: number) => [{ x: gs(k), y: y0 }, { x: v - c, y: y0 }, { x: v, y: y0 + dir * c }, { x: v, y: y1 - dir * c }, { x: v + c, y: y1 }, { x: end, y: y1 }];
+      const big = CHAMFER + Math.floor((Math.min(g.laneH / 2 + TRACK, (ge(k) - gs(k)) / 2) - CHAMFER) / TRACK) * TRACK, chamfered = (v: number, c: number) => [{ x: gs(k), y: y0 }, { x: v - c, y: y0 }, { x: v, y: y0 + dir * c }, { x: v, y: y1 - dir * c }, { x: v + c, y: y1 }, { x: end, y: y1 }];
       if (span > 1 && 2 * big <= ge(k) - gs(k) + .01) yield { points: chamfered(gs(k) + big, big), cost: .6 };
       for (let v = gs(k) + CHAMFER, i = 0; v <= ge(k) - CHAMFER + .01; v += TRACK, i++) yield { points: chamfered(v, CHAMFER), cost: .8 + i * .02 };
     }
@@ -617,11 +618,16 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       };
       // 이동 레인 하나로 먼저 찾고, 못 찾으면 틈마다 레인을 바꾸는 길까지 넓혀 본다.
       const best = place(sources.map(from => reach(from, m.id, d, lo, hi + 1, true))) ?? (budget < 0 ? null : place(sources.map(from => reach(from, m.id, d, lo, hi + 1, false))));
-      // 맞는 자리가 없으면 그 열 앞이 좁은 것이다 — 아래 바깥 레인에 곧은 선으로 두고, 바깥 루프가 그 간격을 넓혀 다시 배정한다.
-      const l = best?.l ?? Math.max(floor, hi + 1);
-      if (!best) { failed.add(d); stranded.push(m.id); }
+      // 맞는 자리가 없으면(그 열 앞이 좁거나 예산이 다했다) 그은 모든 레인 바로 아래에 두고 드는 선은 부분 버스(partial)가 그린다. 그 드는 줄(틈 시작부터
+      // 노드까지 제 레인)은 뒤의 선이 겹쳐 가지 못하게 잡아 둔다. 예산이 남았으면 바깥 루프가 그 열 앞을 넓혀 다시 배정한다.
+      const l = best?.l ?? Math.max(floor, Math.max(...used) + 1);
       lane.set(m.id, l); last.set(d, l);
-      for (const e of best?.edges ?? sources.map(from => ({ from, to: m.id, points: [at(from), at(m.id)], lines: [], lo: Math.min(l, from ? lane.get(from)! : 0), hi: l }))) { placed.push(e); remember(e); }
+      if (best) for (const e of best.edges) { placed.push(e); remember(e); }
+      else {
+        failed.add(d); stranded.push(m.id);
+        const line: Line = { dir: 0, at: laneY(l), lo: gs(d) - 2, hi: colX(d) }, key = lineKey(0, slot(0, line.at)), entry = { from: "\u0002", to: m.id, line };
+        const bucket = lineIndex.get(key); if (bucket) bucket.push(entry); else lineIndex.set(key, [entry]);
+      }
       const c = at(m.id);
       addNode({ id: m.id, at: c, r: g.r });
       addLabel(labelOf(c));
@@ -792,7 +798,11 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   let run: HAssigned | undefined = hAssigned.get(cacheKey);
   if (run) { hAssigned.delete(cacheKey); hAssigned.set(cacheKey, run); }
   else {
-    const gaps = Array.from({ length: cols }, (_, d) => d ? colGap(labelW) : rootGap);
+    // 붐비는 틈은 처음부터 세로 줄 두 개(2·TRACK)를 더 둔다 — 그 열로 드는 부모가 CROWDED 넘게 서로 다르면, 줄 간격 하한(TRACK)으로 틈의 줄이 모자라
+    // 길을 못 찾고(실패 한 번이 예산을 크게 쓴다) 다시 배정하기 쉽다. 부모가 적은 틈은 좁은 폭에서 다음 열이 첫 화면에 들도록 그대로 둔다.
+    const feeding = Array.from({ length: cols }, () => new Set<string>());
+    for (const m of order) for (const from of parentsOf(m)) feeding[depth.get(m.id) ?? 0]!.add(from);
+    const gaps = Array.from({ length: cols }, (_, d) => (d ? colGap(labelW) : rootGap) + (feeding[d]!.size > CROWDED ? 2 * TRACK : 0));
     let tried = assign(gaps);
     for (let k = 0; k < WIDEN_LIMIT && tried.failed.size && !tried.spent; k++) {
       for (const d of tried.failed) gaps[d]! += g.laneH;
