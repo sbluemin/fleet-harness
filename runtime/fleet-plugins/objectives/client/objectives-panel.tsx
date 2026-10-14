@@ -15,7 +15,7 @@ import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
-import { CoordinationGraph, MissionNodeIcon, graphMissionStates, type MissionDetailActions, type MissionState } from "./graph.js";
+import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrientation, useGraphOrientation, type MissionDetailActions, type MissionState } from "./graph.js";
 import { actorDid, criterionApproval } from "./actors.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
@@ -1302,6 +1302,14 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const [zoomOpen, setZoomOpen] = useState(false);
   // 확대 카드 폭 — 확대 그래프가 스크롤 없이 들어가는 폭을 알려 준다.
   const [zoomWidth, setZoomWidth] = useState<number | null>(null);
+  // 그래프 형상(가로 기본 · 세로) — 확대는 가로에만 있다. 다른 창에서 세로로 바뀌면 열린 확대를 닫고 초점을 스위치로 돌린다.
+  const orientation = useGraphOrientation(), verticalGraph = orientation === "vertical";
+  const orientationRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!verticalGraph || !zoomOpen) return;
+    setZoomOpen(false); setZoomWidth(null);
+    if (!document.activeElement || document.activeElement === document.body) orientationRef.current?.focus();
+  }, [verticalGraph, zoomOpen]);
   // 펼친 임무 기록 — 임무 id → 펼친 순간 이미 읽은 기록 id(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
   const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
   useEffect(() => { setOpenRecords({}); }, [objective.id]);
@@ -1581,17 +1589,21 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     const member = objective.members.find((candidate) => candidate.id === memberId);
     return member ? <MemberMark objective={objective} member={member} operationState={operationState} /> : null;
   };
-  const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal };
+  const graphProps = { objective, t, states: missionStates, ownerMark, canEdit: canEditMission, renderDetail: renderMissionDetail, onShowing: closePopupRecords, onEdge: (from: string, to: string, linked: boolean) => void onToggleEdge(from, to, linked), reveal: missionReveal, orientation };
   const missionAdd = touchable ? <div className="objectives-row objectives-mission-add"><span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span><input maxLength={200} aria-label={t("objectives.missions.add")} placeholder={t("objectives.missions.add")} onKeyDown={event => {
     if (submitKey(event) && event.currentTarget.value.trim()) { const target = event.currentTarget, value = target.value; void call("/mission/add", { objectiveId: objective.id, mission: { text: value.trim() } }).then(result => { if (result && target.value === value) target.value = ""; }); }
   }} /></div> : null;
-  const graphTools = <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>;
-  // 임무 탭 — 머리 한 줄(상태 셈 · 크게 보기), 허용 대기 줄, 그래프, 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡는다.
+  // 형상 스위치(켜면 세로) 옆의 크게 보기는 가로에서만 선다 — 세로는 높이가 자라 상세가 스크롤하므로 확대할 것이 없다.
+  const graphTools = <>
+    <button ref={orientationRef} type="button" role="switch" aria-checked={verticalGraph} className="objectives-graph-orient" aria-label={t("objectives.graph.verticalAria")} title={t("objectives.graph.verticalAria")} onClick={() => setGraphOrientation(verticalGraph ? "horizontal" : "vertical")}><span className="objectives-graph-orient-track" aria-hidden="true" /><span className="objectives-graph-orient-label" aria-hidden="true">{t("objectives.graph.vertical")}</span></button>
+    {verticalGraph ? null : <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>}
+  </>;
+  // 임무 탭 — 머리 한 줄(상태 셈 · 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프, 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡는다.
   const sMissions = <div className="objectives-group objectives-missions-group">
     {objective.missions.length ? <div className="objectives-row is-static objectives-tab-meta">{renderCounts()}<span className="objectives-row-tools">{graphTools}</span></div> : null}
     {missionAttention}
-    <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen} /> : null}{missionAdd}</div>
-    {zoomOpen && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
+    <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen && !verticalGraph} /> : null}{missionAdd}</div>
+    {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
   </div>;
   // 결정사항 탭 — 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 탭에는 점만 선다.
   const sDecisions = (<>
