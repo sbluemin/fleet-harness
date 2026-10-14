@@ -18,9 +18,21 @@ interface Vertical { x: number; y1: number; y2: number }
 interface Placed { from: string | null; to: string; points: Point[]; verticals: Vertical[]; lane: number }
 /** 가지를 치기 전에 제 레인을 따라 내려가는(합친 뒤 내려오는) 길이 후보 — 반 줄 단위. 옆 레인 노드를 스치지 않을 때까지 늦춘다. */
 const OFFSETS = [0, .5, 1, 1.5, 2, 2.5, 3];
-/** 레인 배정 캐시 — 배정은 선행 모양·폭 단계·레인 간격에만 달려, 레일을 끄는 동안 바뀌는 폭은 담아 둔 배정을 다시 쓴다. */
-const assigned = new Map<string, { lane: Map<string, number>; placed: Placed[]; lanes: number }>();
+/** 늦춤 쌍(부모 쪽, 자식 쪽)을 덜 늦춘 것부터 — 합이 같으면 부모 쪽을 덜 늦춘 것부터다. [부모 레인이 이동 레인인가][자식 레인이 이동 레인인가] — 그쪽은 늦추지 않는다. */
+const DELAYS = [false, true].map(fixA => [false, true].map(fixB =>
+  (fixA ? [0] : OFFSETS).flatMap(a => (fixB ? [0] : OFFSETS).map(b => [a, b] as const)).sort((x, y) => x[0] + x[1] - y[0] - y[1])));
+/** 레인 배정 캐시 — 배정은 선행 모양·폭 단계·레인 간격에만 달려, 레일을 끄는 동안 바뀌는 폭은 담아 둔 배정을 다시 쓴다. routed 가 거짓이면 탐색 대신 버스 배치다. */
+const assigned = new Map<string, { lane: Map<string, number>; placed: Placed[]; lanes: number; routed: boolean }>();
 const ASSIGNED_LIMIT = 32;
+/**
+ * 세로 길 찾기 예산 — 배정 한 번이 견준 노드·선분 쌍과 세로 구간 쌍의 수, 후보 길마다의 고정 몫(TRY_COST)의 합의 상한. 다 쓰면 탐색을 멈추고 버스 배치로 간다.
+ * 작업량으로 세어 같은 모양은 늘 같은 배치가 된다. 일반 크기(희소 30개 안팎, 완전 DAG 16개까지)는 안에 들고(희소 25개가 약 500만),
+ * 완전 DAG 40개는 예산을 다 쓰고 버스로 그려도 한 배치가 수십 ms 에 끝나게 잰 값이다. 좁혀 다시 배정하면 그 배정도 따로 예산을 받는다.
+ */
+const ROUTE_BUDGET = 20_000_000;
+const TRY_COST = 20;
+/** 세로 버스 배치의 꺾임(45°) 크기. */
+const BUS_K = 8;
 
 const round = (n: number) => Math.round(n * 10) / 10;
 function distance(p: Point, s: Segment) {
@@ -60,13 +72,15 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
   const rowY = (row: number) => g.rowH / 2 + row * g.rowH;
   const row = new Map(order.map((m, i) => [m.id, i + 1]));
   const shape = order.map(m => `${m.id}:${parentsOf(m).join(",")}`).join(";");
-  const assign = (step: number) => {
-    const lx = (l: number) => g.pad + g.r + l * step;
-    const key = `${wide}\u0003${step}\u0003${shape}`, hit = assigned.get(key);
-    if (hit) { assigned.delete(key); assigned.set(key, hit); return { ...hit, lx }; }
+  type Assigned = { lane: Map<string, number>; placed: Placed[]; lanes: number; routed: boolean };
+  /** 줄기-가지 길 찾기 — ROUTE_BUDGET 을 다 쓰면 null 이다. */
+  const search = (lx: (l: number) => number): Assigned | null => {
+    let budget = ROUTE_BUDGET;
     const lane = new Map<string, number>();
     const nodes: { id: string | null; at: Point; r: number }[] = [{ id: null, at: { x: lx(0), y: rowY(0) }, r: g.rootR }];
     const placed: Placed[] = [];
+    // 그은 선의 세로 구간을 레인 x 별로 묶는다 — 레인 x 는 늘 정수라 같은 레인은 같은 키다.
+    const columns = new Map<number, { from: string | null; to: string; y1: number; y2: number }[]>();
     const at = (id: string | null) => id ? { x: lx(lane.get(id)!), y: rowY(row.get(id)!) } : { x: lx(0), y: rowY(0) };
     // 부모 → (제 레인을 s만큼 내려가) 45° 가지 → 이동 레인 t → 45° 가지 → (자식 레인을 e만큼 내려와) 자식. 줄 사이에 안 들어가면 null.
     const route = (p: Point, c: Point, t: number, s: number, e: number) => {
@@ -79,13 +93,28 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
       return points;
     };
     const verticalsOf = (points: readonly Point[]) => segments(points).filter(q => Math.abs(q.a.x - q.b.x) < .01 && q.b.y - q.a.y > .5).map(q => ({ x: q.a.x, y1: q.a.y, y2: q.b.y }));
+    // 노드는 줄 순서대로 쌓여 nodes[k] 가 k 줄에 선다 — 길의 y 범위에서 (반지름 + 여유)보다 먼 줄의 노드는 견주지 않아도 비킨다.
+    const reach = Math.max(g.r, g.rootR) + CLEAR;
     const clear = (points: readonly Point[], ends: readonly (string | null)[]) => {
-      const segs = segments(points);
-      return nodes.every(n => ends.includes(n.id) || segs.every(s => distance(n.at, s) >= n.r + CLEAR));
+      // 선분마다 둘레 상자를 한 번 잰다 — 상자를 노드 여유만큼 넓혀도 밖이면 거리는 여유 이상이라 거리 계산을 건너뛴다.
+      const boxes = segments(points).map(s => ({ s, x0: Math.min(s.a.x, s.b.x), x1: Math.max(s.a.x, s.b.x), y0: Math.min(s.a.y, s.b.y), y1: Math.max(s.a.y, s.b.y) }));
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const q of points) { x0 = Math.min(x0, q.x); x1 = Math.max(x1, q.x); y0 = Math.min(y0, q.y); y1 = Math.max(y1, q.y); }
+      const last = Math.min(nodes.length - 1, Math.ceil((y1 + reach - g.rowH / 2) / g.rowH));
+      for (let k = Math.max(0, Math.floor((y0 - reach - g.rowH / 2) / g.rowH)); k <= last; k++) {
+        const n = nodes[k]!, need = n.r + CLEAR, { x, y } = n.at;
+        budget -= boxes.length;
+        if (x <= x0 - need || x >= x1 + need || ends.includes(n.id)) continue;
+        for (const q of boxes) if (x > q.x0 - need && x < q.x1 + need && y > q.y0 - need && y < q.y1 + need && distance(n.at, q.s) < need) return false;
+      }
+      return true;
     };
-    // 같은 레인을 따라 겹쳐 내려가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다.
-    const free = (verticals: readonly Vertical[], from: string | null, to: string, extra: readonly Placed[]) =>
-      [...placed, ...extra].every(e => e.from === from || e.to === to || e.verticals.every(o => verticals.every(v => Math.abs(o.x - v.x) > .01 || o.y2 <= v.y1 + 1 || o.y1 >= v.y2 - 1)));
+    // 같은 레인을 따라 겹쳐 내려가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다(한 노드로 드는 다른 부모의 선끼리는 늘 같은 자식이다).
+    const free = (verticals: readonly Vertical[], from: string | null, to: string) => verticals.every(v => {
+      const column = columns.get(v.x) ?? [];
+      budget -= column.length;
+      return column.every(o => o.from === from || o.to === to || o.y2 <= v.y1 + 1 || o.y1 >= v.y2 - 1);
+    });
     for (const m of order) {
       const i = row.get(m.id)!, parents = parentsOf(m), sources: (string | null)[] = parents.length ? parents : [null];
       const limit = Math.max(0, ...lane.values()) + sources.length + 2;
@@ -98,24 +127,27 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
         for (const from of sources) {
           const p = at(from), lp = from ? lane.get(from)! : 0, base = Math.max(lp, l);
           let chosen: { cost: number; edge: Placed } | null = null;
+          const attempt = (points: Point[], delay: number, t: number) => {
+            if (!clear(points, [from, m.id])) return null;
+            const verticals = verticalsOf(points);
+            if (!free(verticals, from, m.id)) return null;
+            const bow = !merge && t !== l ? 2 : 0;
+            return { cost: (t - lp) + (t - l) + (points.length - 2) * .5 + delay * .25 + bow, edge: { from, to: m.id, points, verticals, lane: t } };
+          };
           for (let t = base; t <= limit + 1 && !chosen; t++) {
+            if (budget < 0) return null;
             // 같은 이동 레인에서는 가지를 덜 늦춘 길부터 본다 — 늦춤은 바깥 레인으로 도는 것보다 가볍다.
-            const tries: { points: Point[]; delay: number }[] = [];
-            for (const a of t === lp ? [0] : OFFSETS) for (const b of t === l ? [0] : OFFSETS) {
+            // 후보 길은 싼 것부터 하나씩 만든다 — 앞의 후보로 정해지면 뒤의 길은 만들지 않는다.
+            let routable = false;
+            for (const [a, b] of DELAYS[+(t === lp)]![+(t === l)]!) {
+              if ((budget -= TRY_COST) < 0) return null;
               const points = route(p, c, t, a * g.rowH, b * g.rowH);
-              if (points) tries.push({ points, delay: a + b });
+              if (!points) continue;
+              routable = true;
+              if ((chosen = attempt(points, a + b, t))) break;
             }
             // 바로 아래 줄로 두 레인까지 건너는데 두 가지가 줄 사이에 안 들어갈 때만 곧은 사선 하나로 잇는다.
-            if (!tries.length && t === base && Math.abs(lp - l) <= 2) tries.push({ points: [p, c], delay: 2 });
-            tries.sort((x, y) => x.delay - y.delay);
-            for (const { points, delay } of tries) {
-              if (!clear(points, [from, m.id])) continue;
-              const verticals = verticalsOf(points);
-              if (!free(verticals, from, m.id, edges)) continue;
-              const bow = !merge && t !== l ? 2 : 0;
-              chosen = { cost: (t - lp) + (t - l) + (points.length - 2) * .5 + delay * .25 + bow, edge: { from, to: m.id, points, verticals, lane: t } };
-              break;
-            }
+            if (!routable && t === base && Math.abs(lp - l) <= 2) chosen = attempt([p, c], 2, t);
           }
           if (!chosen) { cost = Infinity; break; }
           cost += chosen.cost; edges.push(chosen.edge);
@@ -126,18 +158,68 @@ export function graphLayout(missions: readonly ObjectiveMission[], width: number
       const l = best?.l ?? limit + 1;
       lane.set(m.id, l);
       nodes.push({ id: m.id, at: at(m.id), r: g.r });
-      placed.push(...(best?.edges ?? sources.map(from => ({ from, to: m.id, points: [at(from), at(m.id)], verticals: [], lane: l }))));
+      for (const e of best?.edges ?? sources.map(from => ({ from, to: m.id, points: [at(from), at(m.id)], verticals: [], lane: l }))) {
+        placed.push(e);
+        for (const v of e.verticals) { const column = columns.get(v.x); if (column) column.push({ from: e.from, to: e.to, y1: v.y1, y2: v.y2 }); else columns.set(v.x, [{ from: e.from, to: e.to, y1: v.y1, y2: v.y2 }]); }
+      }
     }
     // 이름 칸은 노드뿐 아니라 바깥으로 돈 선이 쓴 레인보다도 오른쪽에 선다.
-    const result = { lane, placed, lanes: Math.max(0, ...lane.values(), ...placed.map(e => e.lane)) };
+    return { lane, placed, lanes: Math.max(0, ...lane.values(), ...placed.map(e => e.lane)), routed: true };
+  };
+  /**
+   * 보장된 버스 배치 — 길 찾기가 예산을 다 쓰면 쓴다. 겹침을 검사하지 않고 구조로 비킨다. 노드는 모두 0레인에 편성 순서대로 선다.
+   * - 곧은 선: 바로 아랫줄 자식에게는 0레인을 따라 곧게 내려간다(사이에 노드가 없다).
+   * - 버스: 나머지는 부모 가운데 높이에서 오른쪽으로 나가 45°로 꺾여 바깥 레인을 내려가고, 자식 위의 드는 줄에서 45°로 꺾여 왼쪽으로 온 뒤
+   *   45°로 0레인에 들어 자식에 닿는다. 나가는 줄은 노드마다 제 가운데 높이, 드는 줄은 제 위라서 남의 줄과 겹치지 않는다 — 같은 부모·같은 자식끼리만 함께 쓴다.
+   * - 바깥 레인은 부모마다 또는 자식마다 하나(같은 부모·같은 자식끼리는 줄기를 함께 쓴다) 중 레인이 적게 드는 쪽으로 묶고, y 구간이 안 겹치면 나눠 쓴다.
+   *   안쪽 레인은 늦게 나가는 부모(자식마다면 일찍 드는 자식)가 써서, 완전 DAG 에서는 나가는 줄·드는 줄이 남의 버스와 엇갈리지 않는다.
+   */
+  const bus = (lx: (l: number) => number): Assigned => {
+    // 드는 줄은 윗줄 노드의 담당 표식(r+10 아래)과 이 노드의 기록 표식(r+6 위) 사이 가운데, 꺾임은 BUS_K 다.
+    const into = g.rowH / 2 - 1, k = BUS_K, x0 = lx(0);
+    const rowOf = (id: string | null) => id ? row.get(id)! : 0;
+    const links = order.flatMap(m => { const parents = parentsOf(m); return (parents.length ? parents : [null]).map(from => ({ from, to: m.id })); });
+    const buses = new Set(links.filter(e => rowOf(e.to) - rowOf(e.from) !== 1));
+    const spanOf = (e: { from: string | null; to: string }) => { const a = rowY(rowOf(e.from)), b = rowY(rowOf(e.to)) - into; return { lo: Math.min(a, b), hi: Math.max(a, b) }; };
+    const pack = (keyOf: (e: { from: string | null; to: string }) => string, inner: (a: { lo: number; hi: number }, b: { lo: number; hi: number }) => number) => {
+      const spans = new Map<string, { lo: number; hi: number }>();
+      for (const e of buses) { const key = keyOf(e), span = spanOf(e), old = spans.get(key); spans.set(key, old ? { lo: Math.min(old.lo, span.lo), hi: Math.max(old.hi, span.hi) } : span); }
+      const used: { lo: number; hi: number }[][] = [], lanes = new Map<string, number>();
+      for (const [key, span] of [...spans].sort((a, b) => inner(a[1], b[1]))) {
+        let l = used.findIndex(list => list.every(o => o.hi < span.lo - TRACK || o.lo > span.hi + TRACK));
+        if (l < 0) { l = used.length; used.push([]); }
+        used[l]!.push(span); lanes.set(key, l + 1);
+      }
+      return { lanes, count: used.length, keyOf };
+    };
+    const byParent = pack(e => `\u0001${e.from ?? ""}`, (a, b) => b.lo - a.lo), byChild = pack(e => e.to, (a, b) => a.hi - b.hi);
+    const packed = byChild.count < byParent.count ? byChild : byParent;
+    const placed = links.map((e): Placed => {
+      const p = { x: x0, y: rowY(rowOf(e.from)) }, c = { x: x0, y: rowY(rowOf(e.to)) };
+      if (!buses.has(e)) return { from: e.from, to: e.to, points: [p, c], verticals: [], lane: 0 };
+      const l = packed.lanes.get(packed.keyOf(e))!, xb = lx(l), yi = c.y - into, dir = Math.sign(yi - p.y);
+      const points = [p, { x: xb - k, y: p.y }, { x: xb, y: p.y + dir * k }, { x: xb, y: yi - dir * k }, { x: xb - k, y: yi }, { x: x0 + k, y: yi }, { x: x0, y: yi + k }, c];
+      return { from: e.from, to: e.to, points: points.filter((q, i) => !i || Math.abs(q.x - points[i - 1]!.x) > .01 || Math.abs(q.y - points[i - 1]!.y) > .01), verticals: [], lane: l };
+    });
+    return { lane: new Map(order.map(m => [m.id, 0])), placed, lanes: packed.count, routed: false };
+  };
+  const assign = (step: number, route: boolean) => {
+    const lx = (l: number) => g.pad + g.r + l * step;
+    const key = `${wide}\u0003${step}\u0003${route ? "" : "bus"}\u0003${shape}`, hit = assigned.get(key);
+    if (hit) { assigned.delete(key); assigned.set(key, hit); return { ...hit, lx }; }
+    const result = (route ? search(lx) : null) ?? bus(lx);
     if (assigned.size >= ASSIGNED_LIMIT) assigned.delete(assigned.keys().next().value!);
     assigned.set(key, result);
     return { ...result, lx };
   };
   // 레인이 많아 이름 칸이 MIN_LABEL 보다 좁아지면 간격을 줄여 다시 배정한다 — 가지는 45°를 지키고 겹침 판정도 줄인 간격으로 다시 한다.
-  let run = assign(g.lane), step = g.lane;
+  // 넓은 간격에서 이미 버스로 갔으면 좁힌 간격도 버스로 그린다 — 같은 모양은 같은 간격에서 늘 같은 배치가 된다.
   const room = width - 2 * g.pad - 2 * g.r - 14 - MIN_LABEL;
-  if (run.lanes && room / run.lanes < g.lane) { step = Math.max(MIN_LANE, Math.floor(room / run.lanes)); run = assign(step); }
+  const narrowed = (lanes: number) => lanes && room / lanes < g.lane ? Math.max(MIN_LANE, Math.floor(room / lanes)) : g.lane;
+  let run = assign(g.lane, true), step = g.lane;
+  if (narrowed(run.lanes) !== step) { step = narrowed(run.lanes); run = assign(step, run.routed); }
+  // 좁힌 간격에서 처음 버스로 갔으면 버스의 레인 수로 간격을 다시 정한다 — 버스의 레인 수는 간격과 무관해 한 번이면 된다.
+  if (!run.routed && narrowed(run.lanes) !== step) { step = narrowed(run.lanes); run = assign(step, false); }
   const pos = new Map<string, Point>([...run.lane].map(([id, l]) => [id, { x: run.lx(l), y: rowY(row.get(id)!) }]));
   const edges: GraphEdge[] = run.placed.map(e => ({ from: e.from, to: e.to, d: roundedPath(e.points, 6) }));
   const labelX = Math.round(run.lx(run.lanes) + g.r + 14);
