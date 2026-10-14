@@ -16,7 +16,7 @@ export function getViewedTheaterId(): string | null {
     const operation = state.operations.find((candidate) => candidate.id === operationId);
     if (operation) return operation.theaterId;
     const destination = getMobileDestination();
-    const requested = destination.kind === "plugin" ? destination.params?.theaterId : getMobileListTheaterId();
+    const requested = (destination.kind === "plugin" ? destination.params?.theaterId : undefined) ?? getMobileListTheaterId();
     return state.theaters.find((theater) => theater.id === requested)?.id ?? state.theaters[0]?.id ?? null;
   }
   const surface = getConversationSurface();
