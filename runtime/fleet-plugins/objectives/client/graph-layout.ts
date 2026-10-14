@@ -159,8 +159,11 @@ function crosses(s: Segment, r: Rect, pad: number) {
   };
   return clip(-dx, s.a.x - x0) && clip(dx, x1 - s.a.x) && clip(-dy, s.a.y - y0) && clip(dy, y1 - s.a.y);
 }
-/** 곧은 조각 — 가로(flat)면 at 은 y, 세로면 x. */
-interface Line { flat: boolean; at: number; lo: number; hi: number }
+/**
+ * 곧은 조각 — dir 0 가로(at 은 y), 1 세로(at 은 x), 2 오른쪽 아래로 가는 45°(at 은 y-x), 3 오른쪽 위로 가는 45°(at 은 y+x).
+ * lo·hi 는 세로면 y, 나머지는 x 구간이다.
+ */
+interface Line { dir: 0 | 1 | 2 | 3; at: number; lo: number; hi: number }
 /** 그은 선 — lo·hi 는 선이 지난 가장 위·아래 레인이다(캔버스 높이와 다음 배정의 바깥 레인을 정한다). */
 interface HPlaced { from: string | null; to: string; points: Point[]; lines: Line[]; lo: number; hi: number }
 /** 레인 배정 — 열의 x, 노드 레인, 그은 선. routed 가 거짓이면 탐색 대신 보장된 버스 배치다. */
@@ -172,7 +175,7 @@ const hAssigned = new Map<string, HAssigned>();
  * 전체가 나눠 쓴다. 다 쓰면 탐색을 멈추고 보장된 버스 배치로 간다. 조밀한 그래프(앞선 임무를 모두 선행으로 갖거나 두 층이 모두 이어진 40개)에서도
  * 한 배치가 수십 ms(가장 무거운 두 층 40개가 약 80ms)에 끝나게 잰 값이다.
  */
-const SEARCH_BUDGET = 7_000_000;
+const SEARCH_BUDGET = 6_500_000;
 /** 검사 한 번의 고정 몫 — 후보 길을 만들고 줄 세우는 일도 예산에 들도록 한다. */
 const OK_COST = 300;
 /** 지휘관(뿌리) 이름 칸의 폭 — 뿌리 위에 한 줄로 선다. */
@@ -193,8 +196,9 @@ const CELL = 64;
 class Grid<T> {
   private cells = new Map<number, { item: T; mark: number }[]>();
   private round = 0;
-  private span(x0: number, y0: number, x1: number, y1: number, fn: (key: number) => void) {
-    for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) for (let cy = Math.floor(y0 / CELL); cy <= Math.floor(y1 / CELL); cy++) fn((cx + 32768) * 65536 + cy + 32768);
+  /** fn 이 false 를 돌려주면 남은 칸을 돌지 않는다. */
+  private span(x0: number, y0: number, x1: number, y1: number, fn: (key: number) => boolean | void) {
+    for (let cx = Math.floor(x0 / CELL); cx <= Math.floor(x1 / CELL); cx++) for (let cy = Math.floor(y0 / CELL); cy <= Math.floor(y1 / CELL); cy++) if (fn((cx + 32768) * 65536 + cy + 32768) === false) return;
   }
   add(x0: number, y0: number, x1: number, y1: number, item: T) {
     const entry = { item, mark: 0 };
@@ -206,26 +210,29 @@ class Grid<T> {
     let work = 0, going = true;
     this.span(x0, y0, x1, y1, key => {
       work++;
-      if (!going) return;
       const cell = this.cells.get(key);
-      if (!cell) return;
+      if (!cell) return true;
       work += cell.length;
       for (const entry of cell) {
         if (entry.mark === round) continue;
         entry.mark = round;
-        if (!fn(entry.item)) { going = false; return; }
+        if (!fn(entry.item)) { going = false; return false; }
       }
+      return true;
     });
     return { work, going };
   }
 }
 
-/** 두 선분이 서로의 안쪽에서 엇갈리는가 — 끝점에서 닿거나 한 줄로 겹치는 것은 세지 않는다(겹침은 free 가 막는다). */
+/**
+ * 두 선분이 만나는가 — 반열린 구간으로 본다: 각 선분의 시작점은 넣고 끝점은 뺀다. 꺾은선의 꺾임점은 그 뒤 선분에만 속하므로, 꺾임점에서 남의 선을
+ * 지나가는 교차도 한 번만 센다. 한 줄로 겹치는 것은 세지 않는다(겹침은 free 가 막는다).
+ */
 function cut(s: Segment, t: Segment) {
   const rx = s.b.x - s.a.x, ry = s.b.y - s.a.y, qx = t.b.x - t.a.x, qy = t.b.y - t.a.y, den = rx * qy - ry * qx;
   if (Math.abs(den) < 1e-9) return false;
   const ux = t.a.x - s.a.x, uy = t.a.y - s.a.y, k = (ux * qy - uy * qx) / den, m = (ux * ry - uy * rx) / den;
-  return k > 1e-6 && k < 1 - 1e-6 && m > 1e-6 && m < 1 - 1e-6;
+  return k > -1e-6 && k < 1 - 1e-6 && m > -1e-6 && m < 1 - 1e-6;
 }
 
 /**
@@ -269,9 +276,12 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
     // gs(k)는 k열 앞 틈의 시작(뿌리 틈은 뿌리 가운데), ge(k)는 그 끝이다.
     const gs = (k: number) => k ? colX(k - 1) - g.r + labelW + CLEAR : rootX;
     const ge = (k: number) => colX(k) - g.r - CLEAR - 4;
-    const linesOf = (points: readonly Point[]) => segments(points).flatMap(q => {
-      const flat = Math.abs(q.a.y - q.b.y) < .01, upright = Math.abs(q.a.x - q.b.x) < .01;
-      return flat || upright ? [{ flat, at: flat ? q.a.y : q.a.x, lo: Math.min(flat ? q.a.x : q.a.y, flat ? q.b.x : q.b.y), hi: Math.max(flat ? q.a.x : q.a.y, flat ? q.b.x : q.b.y) }] : [];
+    const linesOf = (points: readonly Point[]): Line[] => segments(points).flatMap((q): Line[] => {
+      const dx = q.b.x - q.a.x, dy = q.b.y - q.a.y, x0 = Math.min(q.a.x, q.b.x), x1 = Math.max(q.a.x, q.b.x);
+      if (Math.abs(dy) < .01) return [{ dir: 0, at: q.a.y, lo: x0, hi: x1 }];
+      if (Math.abs(dx) < .01) return [{ dir: 1, at: q.a.x, lo: Math.min(q.a.y, q.b.y), hi: Math.max(q.a.y, q.b.y) }];
+      if (Math.abs(Math.abs(dx) - Math.abs(dy)) < .01) return dx * dy > 0 ? [{ dir: 2, at: q.a.y - q.a.x, lo: x0, hi: x1 }] : [{ dir: 3, at: q.a.y + q.a.x, lo: x0, hi: x1 }];
+      return [];
     }).filter(q => q.hi - q.lo > .5);
     // 노드·이름은 칸 묶음에 담아, 선분마다 제 둘레 칸의 것만 견준다 — 틈의 선분 둘레에는 대개 아무것도 없다.
     type Obstacle = { node: { id: string | null; at: Point; r: number } } | { label: Rect };
@@ -286,10 +296,10 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       budget -= work;
       return going;
     });
-    // 같은 레인(또는 틈 안의 같은 세로 줄)을 따라 겹쳐 가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다.
+    // 같은 레인·틈 안의 같은 세로 줄·같은 45° 사선을 따라 겹쳐 가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다.
     // 그은 곧은 조각은 방향·자리(반올림)별로 묶어 둔다 — 세로 줄은 2px 안이면 같은 줄로 본다.
     const lineIndex = new Map<string, { from: string | null; to: string; line: Line }[]>();
-    const lineKey = (flat: boolean, at: number) => `${flat ? 1 : 0}:${at}`;
+    const lineKey = (dir: number, at: number) => `${dir}:${at}`;
     // 교차 셈 — 그은 선분을 칸 묶음에 담아, 새 길의 선분과 같은 칸의 것만 견준다. 같은 노드에 닿는 선끼리(줄기·합류)는 세지 않는다.
     const drawn = new Grid<{ from: string | null; to: string; s: Segment }>();
     const crossings = (points: readonly Point[], from: string | null, to: string) => {
@@ -304,10 +314,11 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
     };
     const remember = (e: HPlaced) => {
       for (const s of segments(e.points)) drawn.add(Math.min(s.a.x, s.b.x), Math.min(s.a.y, s.b.y), Math.max(s.a.x, s.b.x), Math.max(s.a.y, s.b.y), { from: e.from, to: e.to, s });
-      for (const line of e.lines) { const key = lineKey(line.flat, Math.round(line.at)), bucket = lineIndex.get(key); if (bucket) bucket.push({ from: e.from, to: e.to, line }); else lineIndex.set(key, [{ from: e.from, to: e.to, line }]); } };
+      for (const line of e.lines) { const key = lineKey(line.dir, Math.round(line.at)), bucket = lineIndex.get(key); if (bucket) bucket.push({ from: e.from, to: e.to, line }); else lineIndex.set(key, [{ from: e.from, to: e.to, line }]); } };
+    // 가로는 같은 y, 세로는 2px, 45°는 절편 2(약 1.4px) 안이면 한 줄로 본다 — 무관한 선이 45°로 겹쳐 가는 것도 막는다.
     const free = (points: readonly Point[], from: string | null, to: string) => linesOf(points).every(h => {
-      for (let at = Math.round(h.at) - (h.flat ? 0 : 2); at <= Math.round(h.at) + (h.flat ? 0 : 2); at++) {
-        const bucket = lineIndex.get(lineKey(h.flat, at)) ?? [];
+      for (let at = Math.round(h.at) - (h.dir ? 2 : 0); at <= Math.round(h.at) + (h.dir ? 2 : 0); at++) {
+        const bucket = lineIndex.get(lineKey(h.dir, at)) ?? [];
         budget -= bucket.length;
         for (const o of bucket) if (o.from !== from && o.to !== to && Math.abs(o.line.at - h.at) <= 2 && o.line.hi > h.lo + 1 && o.line.lo < h.hi - 1) return false;
       }
