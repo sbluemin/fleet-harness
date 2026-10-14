@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.234.0] - 2026-10-14
+
+### fleet-console
+
+#### Changed
+- The mission graph is horizontal again by default, with missions of the same depth lined up in one column and links drawn as straight branches; a switch beside the graph turns on the top-to-bottom layout, and Enlarge is available in the horizontal layout.
+- Objective details in the right sidebar now use three tabs, Objective, Members, and Results, with Today and due date on their own row above them; decisions sit at the bottom of the Objective tab and the mission graph at the bottom of the Members tab.
+- On phones, a decision request waiting for your answer now stays at the top of the objective whichever tab is open.
+
+#### Fixed
+- On a phone, the Commodore and other plugin screens now stay on the Theater you picked when you open them or refresh the page, instead of switching to the first Theater.
+- The top-to-bottom mission graph no longer freezes the Console for objectives with many closely linked missions; such graphs now appear right away with their links routed along the side.
+
 ## [1.233.0] - 2026-10-13
 
 ### fleet-console
