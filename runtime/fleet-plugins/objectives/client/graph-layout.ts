@@ -248,8 +248,11 @@ function crosses(s: Segment, r: Rect, pad: number) {
 interface Line { dir: 0 | 1 | 2 | 3; at: number; lo: number; hi: number }
 /** 그은 선 — lo·hi 는 선이 지난 가장 위·아래 레인이다(캔버스 높이와 다음 배정의 바깥 레인을 정한다). */
 interface HPlaced { from: string | null; to: string; points: Point[]; lines: Line[]; lo: number; hi: number }
-/** 레인 배정 — 열의 x, 노드 레인, 그은 선. routed 가 거짓이면 탐색 대신 보장된 버스 배치다. */
-interface HAssigned { lane: Map<string, number>; placed: HPlaced[]; xs: number[]; routed: boolean }
+/**
+ * 레인 배정 — 열의 x, 노드 레인, 그은 선. routed 가 거짓이면 탐색 대신 보장된 버스 배치다. detoured 는 탐색이 찾지 못해 버스(또는 새 레인의 곧은 선)로
+ * 그린 선의 수다 — 전체 버스 배치면 모든 선, 부분 버스 배치면 그 일부, 탐색이 다 찾았으면 0.
+ */
+interface HAssigned { lane: Map<string, number>; placed: HPlaced[]; xs: number[]; routed: boolean; detoured: number }
 /** 가로 배치의 레인 배정 캐시 — 배정은 선행 모양·폭 단계(이름 칸 폭)에만 달린다. */
 const hAssigned = new Map<string, HAssigned>();
 /**
@@ -322,7 +325,8 @@ function cut(s: Segment, t: Segment) {
  * 간선은 세로 배치와 같은 줄기-가지다: 제 레인을 따라 곧게 오른쪽으로 가다 갈라지고 합칠 때만 45° 가지를 친다. 가지는 열 사이 틈에서만 치고,
  * 한 번의 45°로 틈에 못 들어가는 먼 레인은 45°로 갈라져 틈 안을 곧게 내려간(올라간) 뒤 45°로 든다.
  * 이름은 노드 아래(담당 표식 밑)에서 오른쪽으로 열 안에 서고, 선은 노드·이름·다른 선의 곧은 조각을 비켜 간다 — 비킬 자리가 없으면 그 열 앞을 넓혀 다시 배정하고,
- * 길 찾기 예산을 다 쓰거나 끝내 못 찾으면 겹침이 구조적으로 없는 버스 배치(bus)로 그린다.
+ * 길 찾기 예산을 다 쓰거나 끝내 못 찾으면 찾은 선은 두고 못 찾은 임무로 드는 선만 버스로 그리며(partial), 그것도 못 하면 겹침이 구조적으로 없는
+ * 버스 배치(bus)로 그린다.
  */
 export function horizontalLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean) {
   // 이름 칸은 노드 아래 담당 표식(r+10) 밑에서 시작하고, 레인 간격은 그 이름 칸 아래와 아랫레인 노드 위의 기록 표식(r+6)이 닿지 않는 최소에 맞춘다.
@@ -348,7 +352,7 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   /** keep 이 있으면 차수 upto 앞의 열은 그 배정을 그대로 옮겨 놓고 그 열부터 다시 찾는다 — 그 앞 열의 x 와 그리로 가는 선은 넓힌 간격과 무관하다. */
   const assign = (gaps: readonly number[], keep?: { lane: ReadonlyMap<string, number>; placed: readonly HPlaced[] }, upto = 0) => {
     const xs = gaps.map((_, d) => rootX + gaps.slice(0, d + 1).reduce((a, b) => a + b, 0)), colX = (d: number) => xs[d]!;
-    const lane = new Map<string, number>(), failed = new Set<number>(), last = new Map<number, number>();
+    const lane = new Map<string, number>(), failed = new Set<number>(), last = new Map<number, number>(), stranded: string[] = [];
     const nodes: { id: string | null; at: Point; r: number }[] = [{ id: null, at: { x: rootX, y: 0 }, r: g.rootR }];
     const labels: Rect[] = [{ x: rootX - g.rootR, y: -g.rootR - 18, w: ROOT_LABEL_W, h: 14 }];
     const placed: HPlaced[] = [];
@@ -525,14 +529,103 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       const best = place(sources.map(from => reach(from, m.id, d, lo, hi + 1, true))) ?? (budget < 0 ? null : place(sources.map(from => reach(from, m.id, d, lo, hi + 1, false))));
       // 맞는 자리가 없으면 그 열 앞이 좁은 것이다 — 아래 바깥 레인에 곧은 선으로 두고, 바깥 루프가 그 간격을 넓혀 다시 배정한다.
       const l = best?.l ?? Math.max(floor, hi + 1);
-      if (!best) failed.add(d);
+      if (!best) { failed.add(d); stranded.push(m.id); }
       lane.set(m.id, l); last.set(d, l);
       for (const e of best?.edges ?? sources.map(from => ({ from, to: m.id, points: [at(from), at(m.id)], lines: [], lo: Math.min(l, from ? lane.get(from)! : 0), hi: l }))) { placed.push(e); remember(e); }
       const c = at(m.id);
       addNode({ id: m.id, at: c, r: g.r });
       addLabel(labelOf(c));
     }
-    return { lane, placed, xs, routed: true, failed, spent: budget < 0 };
+    return { lane, placed, xs, routed: true, detoured: 0, failed, spent: budget < 0, stranded };
+  };
+  type Searched = ReturnType<typeof assign>;
+  /**
+   * 버스 선을 바깥 레인(below 부터)에 묶는다 — 묶음(부모 또는 자식)마다 [가장 이른 나가는 줄, 가장 늦은 드는 줄] 구간을 차지하고, 구간이 안 겹치는
+   * 묶음끼리는 한 레인을 나눠 쓴다. 부모마다·자식마다 묶은 것 중 레인이 적게 드는 쪽을 쓴다(같은 부모·같은 자식끼리는 줄기를 함께 쓴다).
+   */
+  const packBuses = <L extends { from: string | null; to: string }>(buses: readonly L[], departure: (e: L) => number, arrival: (e: L) => number, below: number) => {
+    const pack = (keyOf: (e: L) => string) => {
+      const spans = new Map<string, { lo: number; hi: number }>();
+      for (const e of buses) { const key = keyOf(e), span = spans.get(key) ?? { lo: Infinity, hi: -Infinity }; span.lo = Math.min(span.lo, departure(e)); span.hi = Math.max(span.hi, arrival(e)); spans.set(key, span); }
+      const ends: number[] = [], lanes = new Map<string, number>();
+      for (const [key, span] of [...spans].sort((a, b) => a[1].lo - b[1].lo)) {
+        let k = ends.findIndex(end => end < span.lo - TRACK);
+        if (k < 0) { k = ends.length; ends.push(0); }
+        ends[k] = span.hi; lanes.set(key, below + k);
+      }
+      return { lanes, count: ends.length, keyOf };
+    };
+    const byChild = pack(e => e.to), byParent = pack(e => `\u0001${e.from ?? ""}`), packed = byParent.count < byChild.count ? byParent : byChild;
+    return (e: L) => packed.lanes.get(packed.keyOf(e))!;
+  };
+  /** 버스 선의 꼴 — 부모 레인을 따라 나가는 줄 v 로 가 45°로 내려가 바깥 레인 yb 를 지나, 드는 줄 w 에서 올라 45°로 자식 레인에 든다. */
+  const busPoints = (p: Point, c: Point, v: number, w: number, yb: number) => {
+    const k = CHAMFER;
+    return [p, { x: v - k, y: p.y }, { x: v, y: p.y + k }, { x: v, y: yb - k }, { x: v + k, y: yb }, { x: w - k, y: yb }, { x: w, y: yb - k }, { x: w, y: c.y + k }, { x: w + k, y: c.y }, c];
+  };
+  /**
+   * 부분 버스 배치 — 예산을 다 썼거나 넓혀도 길을 못 찾았을 때, 찾은 선은 그대로 두고 못 찾은 임무와 예산이 다해 못 놓은 임무로 드는 선만 버스로 그린다.
+   * - 못 놓은 임무는 제 열에서 앞 임무보다 아래, 그은 모든 레인과 선보다 아래의 새 레인에 선다. 새 레인의 같은 레인 부모·자식은 사이 열에 노드가 없으면 곧게 잇는다.
+   * - 나머지는 버스 선이다. 나가는 줄·드는 줄은 틈의 시작(gs)에 새로 낸 띠에 서고, 띠 폭만큼 그 오른쪽의 열과 선을 민다. 찾은 선은 gs 를 가로로만
+   *   지나므로(열 안은 제 레인을 따라 곧게, 틈의 가지는 gs 에서 시작한다) 민 뒤에도 45°와 비킴이 그대로다. 띠 안에는 노드·이름과 다른 선의 세로·사선
+   *   조각이 없어 세로 줄은 가로선과 엇갈리기만 하고, 띠 안의 줄 순서는 버스 배치와 같다([나가는 줄 | 드는 줄]).
+   * - 버스 선의 가로 끝(부모에서 나가는 줄까지, 드는 줄에서 자식까지)을 다른 선이 같은 줄로 겹쳐 가면 null — 전체 버스 배치로 간다. 뿌리에서 드는(0열) 선도
+   *   null 이다 — 뿌리 틈의 가지는 뿌리 가운데서 시작해 띠를 낼 자리가 없다.
+   */
+  const partial = (run: Searched): HAssigned | null => {
+    const lane = new Map(run.lane), fresh = new Set<string>(), stranded = new Set(run.stranded);
+    const routed = run.placed.filter(e => !stranded.has(e.to));
+    const base = Math.max(0, ...lane.values(), ...routed.map(e => e.hi)) + 1, last = new Map<number, number>();
+    for (const m of order) {
+      const d = depth.get(m.id) ?? 0;
+      if (!lane.has(m.id)) { lane.set(m.id, Math.max(base, (last.get(d) ?? -1) + 1)); fresh.add(m.id); stranded.add(m.id); }
+      last.set(d, lane.get(m.id)!);
+    }
+    const colOf = (id: string | null) => id ? depth.get(id) ?? 0 : -1, laneOf = (id: string | null) => id ? lane.get(id)! : 0;
+    const links = order.filter(m => stranded.has(m.id)).flatMap(m => { const parents = parentsOf(m); return (parents.length ? parents : [null]).map(from => ({ from, to: m.id, straight: false })); });
+    if (links.some(e => e.from === null || colOf(e.from) >= colOf(e.to))) return null;
+    const occupied = new Set([...lane].map(([id, l]) => `${depth.get(id) ?? 0}\u0001${l}`));
+    for (const e of links) {
+      if (!e.from || !fresh.has(e.from) || !fresh.has(e.to) || laneOf(e.from) !== laneOf(e.to)) continue;
+      let open = true;
+      for (let k = colOf(e.from) + 1; k < colOf(e.to) && open; k++) open = !occupied.has(`${k}\u0001${laneOf(e.to)}`);
+      e.straight = open;
+    }
+    const buses = links.filter(e => !e.straight);
+    const gsOld = (k: number) => run.xs[k - 1]! - g.r + labelW + CLEAR;
+    // 버스 선의 가로 끝이 찾은 선과 같은 줄로 겹치는지 — 찾은 선 가운데 같은 부모·같은 자식이 아닌 것의 가로 조각만 본다.
+    const flats = routed.flatMap(e => segments(e.points).filter(s => Math.abs(s.a.y - s.b.y) < .01).map(s => ({ from: e.from, to: e.to, y: s.a.y, lo: Math.min(s.a.x, s.b.x), hi: Math.max(s.a.x, s.b.x) })));
+    const taken = (from: string | null, to: string, y: number, lo: number, hi: number) => flats.some(f => f.from !== from && f.to !== to && Math.abs(f.y - y) < 2 && f.hi > lo + 1 && f.lo < hi - 1);
+    for (const e of buses) {
+      const p = { x: run.xs[colOf(e.from)]!, y: laneY(laneOf(e.from)) }, c = { x: run.xs[colOf(e.to)]!, y: laneY(laneOf(e.to)) };
+      if (taken(e.from, e.to, p.y, p.x, gsOld(colOf(e.from) + 1) + 2) || taken(e.from, e.to, c.y, gsOld(colOf(e.to)) - 2, c.x)) return null;
+    }
+    // 띠 — 틈 k 마다 [나가는 줄(아래 레인 부모가 왼쪽) | 드는 줄(위 레인 자식이 왼쪽)]. add[k] 는 k열(과 그 앞 틈의 gs 오른쪽)이 밀리는 거리다.
+    const outs = Array.from({ length: cols }, () => new Set<string>()), ins = Array.from({ length: cols }, () => new Set<string>());
+    for (const e of buses) { outs[colOf(e.from) + 1]!.add(e.from!); ins[colOf(e.to)]!.add(e.to); }
+    const out = new Map<string, number>(), into = new Map<string, number>(), add: number[] = [0];
+    for (let k = 1; k < cols; k++) {
+      const start = gsOld(k) + add[k - 1]!;
+      let x = start;
+      const o = [...outs[k]!].sort((a, b) => laneOf(b) - laneOf(a)), i = [...ins[k]!].sort((a, b) => laneOf(a) - laneOf(b));
+      o.forEach((from, j) => out.set(from, x + CHAMFER + j * TRACK));
+      if (o.length) x += CHAMFER + (o.length - 1) * TRACK + CHAMFER + TRACK;
+      i.forEach((id, j) => into.set(id, x + CHAMFER + j * TRACK));
+      if (i.length) x += CHAMFER + (i.length - 1) * TRACK + CHAMFER + TRACK;
+      add.push(add[k - 1]! + x - start);
+    }
+    const xs = run.xs.map((x, k) => x + add[k]!);
+    const move = (p: Point) => { let k = 0; while (k + 1 < cols && gsOld(k + 1) <= p.x + 1e-6) k++; return { x: p.x + add[k]!, y: p.y }; };
+    const at = (id: string | null) => id ? { x: xs[colOf(id)]!, y: laneY(laneOf(id)) } : { x: rootX, y: 0 };
+    const below = Math.max(...lane.values(), ...routed.map(e => e.hi)) + 1;
+    const busLane = packBuses(buses, e => out.get(e.from!)!, e => into.get(e.to)!, below);
+    const placed: HPlaced[] = [
+      ...routed.map(e => ({ ...e, points: e.points.map(move), lines: [] })),
+      ...links.map((e): HPlaced => e.straight
+        ? { from: e.from, to: e.to, points: [at(e.from), at(e.to)], lines: [], lo: laneOf(e.to), hi: laneOf(e.to) }
+        : { from: e.from, to: e.to, points: busPoints(at(e.from), at(e.to), out.get(e.from!)!, into.get(e.to)!, laneY(busLane(e))), lines: [], lo: Math.min(laneOf(e.from), laneOf(e.to)), hi: busLane(e) }),
+    ];
+    return { lane, placed, xs, routed: true, detoured: links.length };
   };
   /**
    * 보장된 버스 배치 — 탐색이 예산을 다 썼거나 넓혀도 길을 못 찾을 때 쓴다. 겹침을 검사하지 않고 구조로 비킨다. 열마다 임무를 편성 순서대로 0레인부터 쌓는다.
@@ -589,36 +682,22 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       xs.push(Math.max(x + g.r + CLEAR + 4, k ? xs[k - 1]! + colGap(labelW) : rootX + rootGap));
     }
     const departure = (from: string | null) => out.get(`${gapOf(from)}\u0001${from ?? ""}`)!;
-    // 바깥 레인 — 묶음(부모 또는 자식)마다 [가장 이른 나가는 줄, 가장 늦은 드는 줄] 구간을 차지한다. 구간이 안 겹치는 묶음끼리는 한 레인을 나눠 쓴다.
-    const below = Math.max(0, ...lane.values()) + 1;
-    const pack = (keyOf: (e: Link) => string) => {
-      const spans = new Map<string, { lo: number; hi: number }>();
-      for (const e of buses) { const key = keyOf(e), span = spans.get(key) ?? { lo: Infinity, hi: -Infinity }; span.lo = Math.min(span.lo, departure(e.from)); span.hi = Math.max(span.hi, into.get(e.to)!); spans.set(key, span); }
-      const ends: number[] = [], lanes = new Map<string, number>();
-      for (const [key, span] of [...spans].sort((a, b) => a[1].lo - b[1].lo)) {
-        let k = ends.findIndex(end => end < span.lo - TRACK);
-        if (k < 0) { k = ends.length; ends.push(0); }
-        ends[k] = span.hi; lanes.set(key, below + k);
-      }
-      return { lanes, count: ends.length, keyOf };
-    };
-    const byChild = pack(e => e.to), byParent = pack(e => `\u0001${e.from ?? ""}`), packed = byParent.count < byChild.count ? byParent : byChild;
+    const busLane = packBuses(buses, e => departure(e.from), e => into.get(e.to)!, Math.max(0, ...lane.values()) + 1);
     const at = (id: string | null) => id ? { x: xs[depth.get(id)!]!, y: laneY(laneOf(id)) } : { x: rootX, y: 0 };
     const placed = links.map((e): HPlaced => {
-      const p = at(e.from), c = at(e.to), k = CHAMFER;
+      const p = at(e.from), c = at(e.to);
       if (e.kind === "straight") return { from: e.from, to: e.to, points: [p, c], lines: [], lo: laneOf(e.to), hi: laneOf(e.to) };
       if (e.kind === "direct") {
         const u = mid.get(e)!, dir = Math.sign(c.y - p.y);
         const points = [p, { x: u - half, y: p.y }, { x: u, y: p.y + dir * half }, { x: u, y: c.y - dir * half }, { x: u + half, y: c.y }, c];
         return { from: e.from, to: e.to, points: points.filter((q, i) => !i || Math.abs(q.x - points[i - 1]!.x) > .01 || Math.abs(q.y - points[i - 1]!.y) > .01), lines: [], lo: Math.min(laneOf(e.from), laneOf(e.to)), hi: Math.max(laneOf(e.from), laneOf(e.to)) };
       }
-      const v = departure(e.from), w = into.get(e.to)!, yb = laneY(packed.lanes.get(packed.keyOf(e))!);
-      const points = [p, { x: v - k, y: p.y }, { x: v, y: p.y + k }, { x: v, y: yb - k }, { x: v + k, y: yb }, { x: w - k, y: yb }, { x: w, y: yb - k }, { x: w, y: c.y + k }, { x: w + k, y: c.y }, c];
-      return { from: e.from, to: e.to, points, lines: [], lo: Math.min(laneOf(e.from), laneOf(e.to)), hi: packed.lanes.get(packed.keyOf(e))! };
+      return { from: e.from, to: e.to, points: busPoints(p, c, departure(e.from), into.get(e.to)!, laneY(busLane(e))), lines: [], lo: Math.min(laneOf(e.from), laneOf(e.to)), hi: busLane(e) };
     });
-    return { lane, placed, xs, routed: false };
+    return { lane, placed, xs, routed: false, detoured: links.length };
   };
-  // 비킬 자리가 없으면 그 열 앞의 간격을 한 레인씩 넓혀 다시 배정한다 — 예산 안에서만. 예산을 다 쓰거나 끝내 못 찾으면 버스 배치다.
+  // 비킬 자리가 없으면 그 열 앞의 간격을 한 레인씩 넓혀 다시 배정한다 — 예산 안에서만. 예산을 다 쓰거나 끝내 못 찾으면 찾은 선은 두고 나머지만 버스로
+  // 그리고(partial), 그것도 못 하면 전체를 버스 배치로 그린다.
   const cacheKey = `${wide}\u0003${labelW}\u0003${shape}`;
   let run: HAssigned | undefined = hAssigned.get(cacheKey);
   if (run) { hAssigned.delete(cacheKey); hAssigned.set(cacheKey, run); }
@@ -629,7 +708,7 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       for (const d of tried.failed) gaps[d]! += g.laneH;
       tried = assign(gaps, tried, Math.min(...tried.failed));
     }
-    run = tried.failed.size || tried.spent ? bus() : tried;
+    run = tried.failed.size || tried.spent ? partial(tried) ?? bus() : tried;
     if (hAssigned.size >= ASSIGNED_LIMIT) hAssigned.delete(hAssigned.keys().next().value!);
     hAssigned.set(cacheKey, run);
   }
@@ -646,7 +725,7 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   const rootLabel: Rect = { x: root.x - g.rootR, y: root.y - g.rootR - 18, w: ROOT_LABEL_W, h: 14 };
   const right = Math.max(rootX - g.rootR + ROOT_LABEL_W, ...[...labels.values()].map(l => l.x + l.w));
   const height = laneY(maxLane) + top + labelDy + labelH + 8;
-  return { g, pos, root, rootLabel, edges, labels, routed: final.routed, width: Math.max(width, Math.ceil(right + g.pad)), height: Math.ceil(height) };
+  return { g, pos, root, rootLabel, edges, labels, routed: final.routed, detoured: final.detoured, width: Math.max(width, Math.ceil(right + g.pad)), height: Math.ceil(height) };
 }
 
 export type HorizontalLayout = ReturnType<typeof horizontalLayout>;
