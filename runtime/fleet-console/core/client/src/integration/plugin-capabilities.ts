@@ -56,7 +56,7 @@ export interface HostCapabilityDependencies {
 function revealRailPanel(entryId: string): void {
   openRailPanel(entryId);
   if (getViewModeSnapshot().effective === "mobile") {
-    setMobileTool({ kind: "rail", id: entryId });
+    setMobileTool({ kind: "rail", id: entryId }, getViewedTheaterId());
     navigateConsoleRoute("/operations");
   }
 }

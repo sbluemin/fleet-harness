@@ -13,7 +13,7 @@ import { useHostCapabilities } from "../../integration/use-host-capabilities.js"
 import { useRailEntries } from "../pane/pane-registry.js";
 import { RailSurface } from "../pane/rail-surface.js";
 import { closeRailPanel, useRailActivePanelId } from "../rail/rail-store.js";
-import { useRailPanes } from "../pane/pane-store.js";
+import { getPaneStoreSnapshot, useRailPanes } from "../pane/pane-store.js";
 import { getMobileDestination, setMobileDestination } from "./mobile-store.js";
 import { MobileBarContext, useClaimMobileBar, useMobilePluginBar } from "./mobile-bar-context.js";
 import "../../styles/rail.css";
@@ -49,10 +49,18 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const primaryId = binding?.panes.find((pane) => pane.role === "primary")?.id;
   const primaryParams = useRailPanes().find((instance) => instance.paneId === primaryId)?.params;
   useEffect(() => {
-    if (primaryParams === undefined || activeRail !== entryId) return;
-    const kept = Object.fromEntries(Object.entries(primaryParams).filter(([key]) => key !== "requestId"));
+    const current = getMobileDestination();
+    if (activeRail !== entryId || current.kind !== "plugin" || current.entryId !== entryId) return;
+    // 앞의 열기 효과가 복원한 params를 읽는다 — 이전 Theater의 같은 primary를 렌더가 포착했을 수 있다.
+    const params = getPaneStoreSnapshot().rail.find((instance) => instance.paneId === primaryId)?.params;
+    if (params === undefined) return;
+    // 페인의 주소 교체는 전체 params를 바꾸므로, Theater를 생략한 교체에서도 목적지의 문맥은 지킨다.
+    const kept = {
+      ...(current.params?.theaterId ? { theaterId: current.params.theaterId } : {}),
+      ...Object.fromEntries(Object.entries(params).filter(([key]) => key !== "requestId")),
+    };
     setMobileDestination(Object.keys(kept).length > 0 ? { kind: "plugin", entryId, params: kept } : { kind: "plugin", entryId });
-  }, [activeRail, entryId, primaryParams]);
+  }, [activeRail, entryId, primaryId, primaryParams]);
 
   if (binding && binding.panes.length === 0 && binding.entry.surfaceId) {
     return <MobileSurfaceScreen surfaceId={binding.entry.surfaceId} title={title} theme={theme} language={language} />;

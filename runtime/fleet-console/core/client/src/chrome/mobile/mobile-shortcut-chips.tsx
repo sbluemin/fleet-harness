@@ -9,7 +9,7 @@ import { useRailEntries } from "../pane/pane-registry.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { featuredDestinationBinding, isChipDestination, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
-import { setMobileDestination } from "./mobile-store.js";
+import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
 
 interface ShortcutChip {
   readonly key: string;
@@ -42,7 +42,7 @@ export function MobileShortcutChips({ state }: { readonly state: ConsoleState })
     label: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale),
     trailing: trailing.get(binding.entry.id) ?? null,
     count: attention.filter((row) => row.kind === "plugin" && row.entryId === binding.entry.id).length,
-    run: () => setMobileDestination({ kind: "plugin", entryId: binding.entry.id }),
+    run: () => openMobilePluginDestination(binding.entry.id, getViewedTheaterId()),
   }));
   chips.push({ key: "archive", icon: { name: "archive" }, label: t("mobile.home.archive"), count: 0, run: () => setMobileDestination({ kind: "archive" }) });
   if (mobilePluginRows(bindings).length > 0) {

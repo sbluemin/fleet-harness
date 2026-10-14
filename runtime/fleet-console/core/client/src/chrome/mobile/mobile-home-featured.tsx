@@ -6,7 +6,7 @@ import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { featuredDestinationBinding, useMobileAttention, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
-import { setMobileDestination } from "./mobile-store.js";
+import { openMobilePluginDestination } from "./mobile-store.js";
 
 /**
  * 홈의 대표 자리 — 머리·바로가기 칩과 확인 필요 묶음 사이. 지금 Theater의 상태를 말하는 목적지(`destination.trailing`을 선언하고 shown인 것, 사령관)가
@@ -40,7 +40,7 @@ export function MobileHomeFeatured({ state, conversationCount }: { readonly stat
   const count = pluginCounts.get(featured.entry.id) ?? 0;
   const countText = count > 0 ? featured.entry.attention?.label(count, locale) ?? String(count) : null;
   return (
-    <button type="button" data-press="r1" className="mobile-conv-hero is-featured" onClick={() => setMobileDestination({ kind: "plugin", entryId: featured.entry.id })}>
+    <button type="button" data-press="r1" className="mobile-conv-hero is-featured" onClick={() => openMobilePluginDestination(featured.entry.id, getViewedTheaterId())}>
       <TheaterAvatar theaterId={theater.id} size={88} label={name} decorative />
       <strong>{name}</strong>
       <small className={status?.tone ? `is-${status.tone}` : undefined}>
