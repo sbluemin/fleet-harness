@@ -94,6 +94,8 @@ function writeDestinationToUrl(next: MobileDestination): void {
 }
 
 let destination: MobileDestination = readDestinationFromUrl();
+// 목적지의 Theater는 홈으로 돌아가도 이어진다. 영속 저장소 대신 복원한 주소에서 목록 필터를 시작한다.
+if (destination.kind === "plugin" && destination.params?.theaterId) mobileListTheaterId = destination.params.theaterId;
 
 export function useMobileDestination(): MobileDestination {
   return useSyncExternalStore(subscribe, () => destination);
@@ -106,8 +108,14 @@ export function setMobileDestination(next: MobileDestination): void {
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) return;
   destination = next;
+  if (next.kind === "plugin" && next.params?.theaterId) mobileListTheaterId = next.params.theaterId;
   writeDestinationToUrl(next);
   emit();
+}
+
+/** 진입점이 보던 Theater를 목적지 주소에 함께 싣는다. null이면 Theater 없는 목적지다. */
+export function openMobilePluginDestination(entryId: string, theaterId: string | null): void {
+  setMobileDestination({ kind: "plugin", entryId, ...(theaterId === null ? {} : { params: { theaterId } }) });
 }
 
 /** 대화 정보 화면에서 엔트리(`mobile.conversationPane`)가 세우는 탭의 id — 착지 요청과 탭 목록이 같은 id를 쓴다. */
@@ -144,11 +152,11 @@ export function useMobileTool(): MobileTool | null {
 }
 
 /** 도구 시트의 선택만 보관한다. 목적지로 선언된 엔트리는 시트 대신 목적지 화면이 된다. */
-export function setMobileTool(next: MobileTool | null): void {
+export function setMobileTool(next: MobileTool | null, theaterId: string | null = null): void {
   if (next?.kind === "rail" && destinationEntryIds.has(next.id)) {
     activeTool = null;
     // 이미 그 목적지 화면이면 주소(params)를 지킨다 — 화면이 마운트하며 다시 여는 길이 복원한 params를 지우지 않게.
-    if (!(destination.kind === "plugin" && destination.entryId === next.id)) setMobileDestination({ kind: "plugin", entryId: next.id });
+    if (!(destination.kind === "plugin" && destination.entryId === next.id)) openMobilePluginDestination(next.id, theaterId);
     emit();
     return;
   }

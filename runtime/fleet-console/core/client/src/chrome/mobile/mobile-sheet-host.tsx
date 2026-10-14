@@ -25,7 +25,7 @@ import { showMobileToast } from "./mobile-toast.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "./mobile-overlay-history.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { closeMobileSheets, popMobileSheet, pushMobileSheet, setMobileDestination, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
+import { closeMobileSheets, openMobilePluginDestination, popMobileSheet, pushMobileSheet, setMobileListTheaterId, useMobileSheetStack } from "./mobile-store.js";
 
 /**
  * 하단 시트의 호스트. 쌓인 시트 가운데 맨 위 하나만 그리고, 닫으면 앞 시트로 돌아간다.
@@ -415,7 +415,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>
       {shell ? (
-        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => setMobileDestination({ kind: "plugin", entryId: shell.entry.id }))}>
+        <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(() => openMobilePluginDestination(shell.entry.id, getViewedTheaterId()))}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="term" /></span>
           <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.terminal")}</strong><small>{t("mobile.create.terminalSub")}</small></span>
         </button>
