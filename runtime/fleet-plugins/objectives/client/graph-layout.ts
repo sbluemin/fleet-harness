@@ -247,7 +247,12 @@ function crosses(s: Segment, r: Rect, pad: number) {
  */
 interface Line { dir: 0 | 1 | 2 | 3; at: number; lo: number; hi: number }
 /** 그은 선 — lo·hi 는 선이 지난 가장 위·아래 레인이다(캔버스 높이와 다음 배정의 바깥 레인을 정한다). */
-interface HPlaced { from: string | null; to: string; points: Point[]; lines: Line[]; lo: number; hi: number }
+interface HPlaced { from: string | null; to: string; points: Point[]; lines: Line[]; lo: number; hi: number; marks?: Marks }
+/** 탐색이 찾은 선이 남긴 점 — cuts 는 출발 노드가 다른 앞선 선과의 교차점, forks 는 같은 출발 노드의 앞선 선들에서 갈라지는 점이다. */
+interface Marks { cuts: Point[]; forks: Point[] }
+/** 이어 붙이기만 하는 점 목록 — 길을 늘일 때 앞 길의 교차점을 베끼지 않는다. */
+interface Chain { at: Point; next: Chain | null }
+const chained = (chain: Chain | null) => { const out: Point[] = []; for (let c = chain; c; c = c.next) out.push(c.at); return out; };
 /**
  * 레인 배정 — 열의 x, 노드 레인, 그은 선. routed 가 거짓이면 탐색 대신 보장된 버스 배치다. detoured 는 탐색이 찾지 못해 버스(또는 새 레인의 곧은 선)로
  * 그린 선의 수다 — 전체 버스 배치면 모든 선, 부분 버스 배치면 그 일부, 탐색이 다 찾았으면 0.
@@ -267,13 +272,26 @@ const OK_COST = 300;
 const ROOT_LABEL_W = 80;
 /** 비킬 자리가 없어 열 사이를 넓혀 다시 배정하는 횟수의 상한. */
 const WIDEN_LIMIT = 12;
-/** 틈 안 줄기의 꺾임(45°) 크기와, 다른 선이 쓰는 줄을 비킬 때의 간격. */
+/** 틈 안 줄기의 꺾임(45°) 크기. */
 const CHAMFER = 12;
-const TRACK = 6;
+/**
+ * 나란한 세로선의 최소 간격 — 틈 안의 세로 줄·버스 띠의 줄 간격이자, 서로 다른 선의 세로 조각이 이보다 가까이(같은 x 의 공유 줄기는 빼고) 나란히 가지
+ * 못하게 하는 하한이다. 선 굵기(1.5, 강조 2)의 4배 이상 비워 확대 최소 배율(0.45)에서도 3.6px 로 두 줄이 갈리고, 틈의 줄 칸(레인 간격+2 에서
+ * 양쪽 꺾임을 뺀 42~48px)에 줄이 예닐곱 개 들어간다.
+ */
+const TRACK = 8;
+/**
+ * 갈림점과 교차점 사이의 최소 거리 — 같은 출발 노드의 선이 갈라지는 점 곁에서 다른 선이 엇갈리면 어느 가지를 지나는지 읽히지 않는다. 꺾임 한 번(CHAMFER)의
+ * 거리로, 둥근 꺾임 반지름(6)의 두 배이자 선 굵기의 8배다. 확대 최소 배율(0.45)에서도 5px 남짓 떨어진다.
+ */
+const FORK_CLEAR = 12;
+const FORK_NEAR = FORK_CLEAR + 1;
 /** 뿌리 레인 위로 도는 우회 레인의 덧비용 — 첫 줄 위에 빈 띠가 생긴다. 교차(CROSS)보다는 가볍다. */
 const ABOVE = 1;
 /** 무관한 선과 한 번 엇갈릴 때의 덧비용 — 레인 몇 칸을 더 돌거나 빈 띠를 두는 편이 선끼리 엇갈리는 것보다 읽기 쉽다. */
 const CROSS = 3;
+/** 갈림점 곁(FORK_NEAR 안)의 교차 한 번의 덧비용 — 교차 둘보다 무겁다. 하한을 못 지킬 때도 길은 그대로 찾도록 막지는 않고 값으로 민다. */
+const NEAR = 2 * CROSS;
 /** 장애물·그은 선분을 묶는 칸의 한 변. */
 const CELL = 64;
 
@@ -310,16 +328,15 @@ class Grid<T> {
 }
 
 /**
- * 두 선분이 만나는가 — 반열린 구간으로 본다: 각 선분의 시작점은 넣고 끝점은 뺀다. 꺾은선의 꺾임점은 그 뒤 선분에만 속하므로, 꺾임점에서 남의 선을
- * 지나가는 교차도 한 번만 센다. 한 줄로 겹치는 것은 세지 않는다(겹침은 free 가 막는다).
+ * 두 선분이 만나는 점 — 반열린 구간으로 본다: 각 선분의 시작점은 넣고 끝점은 뺀다. 꺾은선의 꺾임점은 그 뒤 선분에만 속하므로, 꺾임점에서 남의 선을
+ * 지나가는 교차도 한 번만 센다. 한 줄로 겹치는 것은 세지 않는다(겹침은 free 가 막는다). 안 만나면 null.
  */
-function cut(s: Segment, t: Segment) {
+function cut(s: Segment, t: Segment): Point | null {
   const rx = s.b.x - s.a.x, ry = s.b.y - s.a.y, qx = t.b.x - t.a.x, qy = t.b.y - t.a.y, den = rx * qy - ry * qx;
-  if (Math.abs(den) < 1e-9) return false;
+  if (Math.abs(den) < 1e-9) return null;
   const ux = t.a.x - s.a.x, uy = t.a.y - s.a.y, k = (ux * qy - uy * qx) / den, m = (ux * ry - uy * rx) / den;
-  return k > -1e-6 && k < 1 - 1e-6 && m > -1e-6 && m < 1 - 1e-6;
+  return k > -1e-6 && k < 1 - 1e-6 && m > -1e-6 && m < 1 - 1e-6 ? { x: s.a.x + k * rx, y: s.a.y + k * ry } : null;
 }
-
 /**
  * 가로 배치 — 차수(선행 깊이)마다 한 열을 두어 같은 차수의 임무는 같은 x에 선다. 한 열 안의 임무는 편성 순서대로 위에서 아래 레인(줄)에 서고,
  * 간선은 세로 배치와 같은 줄기-가지다: 제 레인을 따라 곧게 오른쪽으로 가다 갈라지고 합칠 때만 45° 가지를 친다. 가지는 열 사이 틈에서만 치고,
@@ -341,9 +358,10 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   const cols = missions.length ? Math.max(...missions.map(m => depth.get(m.id) ?? 0)) + 1 : 1;
   const shape = order.map(m => `${m.id}:${parentsOf(m).join(",")}`).join(";");
   const rootX = g.pad + g.rootR;
-  // 열 간격 — 한 레인을 건너는 45° 가지가 이름 칸 끝과 다음 열 노드 사이에 들어가는 최소. 뿌리 앞은 지휘관 이름 칸을 지나서다.
-  const colGap = (labelW: number) => labelW + g.laneH + 2 * CLEAR + 6;
-  const rootGap = ROOT_LABEL_W + g.laneH - g.rootR;
+  // 열 간격 — 한 레인을 건너는 45° 가지가 이름 칸 끝과 다음 열 노드 사이에 들어가는 최소에, 세로 줄 두 개(2·TRACK)를 더한다 — 줄 간격 하한(TRACK)으로
+  // 줄이 성겨진 만큼 틈의 줄 수를 되찾는다. 뿌리 앞은 지휘관 이름 칸을 지나서다.
+  const colGap = (labelW: number) => labelW + g.laneH + 2 * CLEAR + 6 + 2 * TRACK;
+  const rootGap = ROOT_LABEL_W + g.laneH - g.rootR + 2 * TRACK;
   // 넓은 칸은 이름 칸을 늘려 채운다(상한까지). 폭이 매 프레임 바뀌는 동안 다시 배정하지 않도록 8px 단위로 끊는다.
   const natural = rootX + rootGap + (cols - 1) * colGap(g.label) + g.label - g.r + g.pad;
   const labelW = Math.min(g.labelMax, g.label + Math.max(0, Math.floor((width - natural) / cols / 8) * 8));
@@ -383,30 +401,76 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       return going;
     });
     // 같은 레인·틈 안의 같은 세로 줄·같은 45° 사선을 따라 겹쳐 가는 선은 같은 부모의 줄기이거나 같은 자식으로 합치는 가지일 때만 허용한다.
-    // 그은 곧은 조각은 방향·자리(반올림)별로 묶어 둔다 — 세로 줄은 2px 안이면 같은 줄로 본다.
+    // 그은 곧은 조각은 방향·자리(반올림, 세로는 TRACK 폭 칸)별로 묶어 둔다 — 세로 줄은 2px 안이면 같은 줄로 본다.
     const lineIndex = new Map<string, { from: string | null; to: string; line: Line }[]>();
+    const slot = (dir: number, at: number) => dir === 1 ? Math.floor(at / TRACK) : Math.round(at);
     const lineKey = (dir: number, at: number) => `${dir}:${at}`;
     // 교차 셈 — 그은 선분을 칸 묶음에 담아, 새 길의 선분과 같은 칸의 것만 견준다. 같은 노드에 닿는 선끼리(줄기·합류)는 세지 않는다.
     const drawn = new Grid<{ from: string | null; to: string; s: Segment }>();
-    const crossings = (points: readonly Point[], from: string | null, to: string) => {
-      let n = 0;
+    // 갈림점·교차점 — 찾은 선이 남긴 점을 칸 묶음에 담아, 갈림점 곁(FORK_NEAR 안)의 교차를 값으로 민다.
+    const forkGrid = new Grid<Point>(), cutGrid = new Grid<Point>();
+    const near = (grid: Grid<Point>, p: Point, also: Chain | null = null) => {
+      const { work, going } = grid.visit(p.x - FORK_NEAR, p.y - FORK_NEAR, p.x + FORK_NEAR, p.y + FORK_NEAR, q => Math.hypot(q.x - p.x, q.y - p.y) >= FORK_NEAR);
+      budget -= work;
+      if (!going) return true;
+      for (let c = also; c; c = c.next) { budget--; if (Math.hypot(c.at.x - p.x, c.at.y - p.y) < FORK_NEAR) return true; }
+      return false;
+    };
+    /** 엇갈림 값 — 무관한 선과 엇갈릴 때마다 CROSS. 출발 노드가 다른 선과의 교차점은 cuts 에 모은다(갈림점 규칙은 extend 가 본다). */
+    const crossings = (points: readonly Point[], from: string | null, to: string, cuts: Point[]) => {
+      let cost = 0;
       for (const s of segments(points)) {
         budget -= drawn.visit(Math.min(s.a.x, s.b.x), Math.min(s.a.y, s.b.y), Math.max(s.a.x, s.b.x), Math.max(s.a.y, s.b.y), o => {
-          if (o.from !== from && o.to !== to && o.from !== to && o.to !== from && cut(s, o.s)) n++;
+          if (o.from === from) return true;
+          const at = cut(s, o.s);
+          if (!at) return true;
+          if (o.to !== to && o.from !== to && o.to !== from) cost += CROSS;
+          cuts.push(at);
           return true;
         }).work;
       }
-      return n;
+      return cost;
     };
     const remember = (e: HPlaced) => {
       for (const s of segments(e.points)) drawn.add(Math.min(s.a.x, s.b.x), Math.min(s.a.y, s.b.y), Math.max(s.a.x, s.b.x), Math.max(s.a.y, s.b.y), { from: e.from, to: e.to, s });
-      for (const line of e.lines) { const key = lineKey(line.dir, Math.round(line.at)), bucket = lineIndex.get(key); if (bucket) bucket.push({ from: e.from, to: e.to, line }); else lineIndex.set(key, [{ from: e.from, to: e.to, line }]); } };
+      for (const line of e.lines) { const key = lineKey(line.dir, slot(line.dir, line.at)), bucket = lineIndex.get(key); if (bucket) bucket.push({ from: e.from, to: e.to, line }); else lineIndex.set(key, [{ from: e.from, to: e.to, line }]); }
+      if (!e.marks) return;
+      for (const p of e.marks.cuts) cutGrid.add(p.x, p.y, p.x, p.y, p);
+      for (const p of e.marks.forks) forkGrid.add(p.x, p.y, p.x, p.y, p);
+    };
+    /**
+     * 선분 s 가 a 에서부터 같은 출발 노드의 그은 선 위를 같은 방향으로 얼마나 함께 가는지(0~1) — 그 선들의 줄기를 따라가다 어디서 갈라지는지 찾는다.
+     */
+    const shared = (s: Segment, from: string | null) => {
+      const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y, len = Math.hypot(dx, dy);
+      let most = 0;
+      // 그은 선이 여러 조각으로 덮으면 덮인 끝에서 다시 찾는다.
+      for (let reached = -1; most > reached && most < 1 - 1e-9;) {
+        reached = most;
+        const q = { x: s.a.x + dx * most, y: s.a.y + dy * most };
+        budget -= drawn.visit(q.x - .5, q.y - .5, q.x + .5, q.y + .5, o => {
+          if (o.from !== from) return true;
+          const ox = o.s.b.x - o.s.a.x, oy = o.s.b.y - o.s.a.y, ol = Math.hypot(ox, oy);
+          if (!ol || Math.abs(dx * oy - dy * ox) / (len * ol) > 1e-6 || dx * ox + dy * oy <= 0 || distance(q, o.s) > .01) return true;
+          most = Math.max(most, Math.min(1, ((o.s.b.x - s.a.x) * dx + (o.s.b.y - s.a.y) * dy) / (len * len)));
+          return true;
+        }).work;
+      }
+      return most;
+    };
     // 가로는 같은 y, 세로는 2px, 45°는 절편 2(약 1.4px) 안이면 한 줄로 본다 — 무관한 선이 45°로 겹쳐 가는 것도 막는다.
+    // 세로 조각은 어느 선과도(같은 x 의 공유 줄기는 빼고) TRACK 보다 가까이 나란히 가지 못한다.
     const free = (points: readonly Point[], from: string | null, to: string) => linesOf(points).every(h => {
-      for (let at = Math.round(h.at) - (h.dir ? 2 : 0); at <= Math.round(h.at) + (h.dir ? 2 : 0); at++) {
+      const reach = h.dir === 1 ? 1 : h.dir ? 2 : 0, at0 = slot(h.dir, h.at);
+      for (let at = at0 - reach; at <= at0 + reach; at++) {
         const bucket = lineIndex.get(lineKey(h.dir, at)) ?? [];
         budget -= bucket.length;
-        for (const o of bucket) if (o.from !== from && o.to !== to && Math.abs(o.line.at - h.at) <= 2 && o.line.hi > h.lo + 1 && o.line.lo < h.hi - 1) return false;
+        for (const o of bucket) {
+          if (o.line.hi <= h.lo + 1 || o.line.lo >= h.hi - 1) continue;
+          const gap = Math.abs(o.line.at - h.at);
+          if (o.from !== from && o.to !== to && gap <= 2) return false;
+          if (h.dir === 1 && gap > .01 && gap < TRACK - .01) return false;
+        }
       }
       return true;
     });
@@ -430,34 +494,60 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       if (!span) { yield { points: [{ x: gs(k), y: y0 }, { x: end, y: y0 }], cost: 0 }; return; }
       const room = (last ? end : ge(k)) - gs(k);
       if (span * g.laneH <= room + .01) yield { points: [{ x: gs(k), y: y0 }, { x: gs(k) + span * g.laneH, y: y1 }, { x: end, y: y1 }], cost: .5 };
-      const half = g.laneH / 2, chamfered = (v: number, c: number) => [{ x: gs(k), y: y0 }, { x: v - c, y: y0 }, { x: v, y: y0 + dir * c }, { x: v, y: y1 - dir * c }, { x: v + c, y: y1 }, { x: end, y: y1 }];
-      if (span > 1 && 2 * half <= ge(k) - gs(k) + .01) yield { points: chamfered(gs(k) + half, half), cost: .6 };
+      // 큰 꺾임은 틈 가운데쯤에서 내려가되 세로 줄은 틈의 줄(gs+CHAMFER+i·TRACK) 위에 둔다 — 줄 사이에 서면 양옆 줄을 TRACK 하한으로 함께 막는다.
+      const big = CHAMFER + Math.floor((g.laneH / 2 + TRACK - CHAMFER) / TRACK) * TRACK, chamfered = (v: number, c: number) => [{ x: gs(k), y: y0 }, { x: v - c, y: y0 }, { x: v, y: y0 + dir * c }, { x: v, y: y1 - dir * c }, { x: v + c, y: y1 }, { x: end, y: y1 }];
+      if (span > 1 && 2 * big <= ge(k) - gs(k) + .01) yield { points: chamfered(gs(k) + big, big), cost: .6 };
       for (let v = gs(k) + CHAMFER, i = 0; v <= ge(k) - CHAMFER + .01; v += TRACK, i++) yield { points: chamfered(v, CHAMFER), cost: .8 + i * .02 };
     }
-    interface Way { cost: number; points: Point[] }
+    /**
+     * 길 — cuts 는 출발 노드가 다른 선과의 교차점, trunk 는 아직 같은 출발 노드의 그은 선(줄기)을 따라가는 중인지, fork 는 거기서 갈라진 점이다.
+     * 그린 선은 꺾임을 둥글리므로(반지름 6, 짧은 조각은 그 반) 갈림점은 함께 온 마지막 조각을 따라 그만큼 되돌린 곳으로 본다.
+     */
+    interface Way { cost: number; points: Point[]; cuts: Chain | null; trunk: boolean; fork: Point | null }
+    /**
+     * 길을 한 걸음(step) 늘인다 — 값에 엇갈림(CROSS)과 갈림점 규칙(NEAR)을 더한다: 새 교차점이 앞선 선들의 갈림점 곁(FORK_NEAR 안)이거나,
+     * 이 걸음에서 줄기를 벗어난 갈림점 곁에 교차점(앞선 선들의 것과 이 길의 것)이 있으면 그때마다 NEAR.
+     */
+    const extend = (way: Way, step: readonly Point[], add: number, from: string | null, to: string): Way => {
+      const fresh: Point[] = [], cross = crossings(step, from, to, fresh), points = dedupe([...way.points, ...step.slice(1)]);
+      let cuts = way.cuts;
+      for (const q of fresh) cuts = { at: q, next: cuts };
+      let near_ = 0, trunk = way.trunk, fork = way.fork, prev = way.points.at(-2) ?? step[0]!;
+      for (const q of fresh) if (near(forkGrid, q)) near_++;
+      for (const s of trunk ? segments(step) : []) {
+        const k = shared(s, from);
+        if (k > 1 - 1e-9) { prev = s.a; continue; }
+        const at = { x: s.a.x + (s.b.x - s.a.x) * k, y: s.a.y + (s.b.y - s.a.y) * k }, back = k ? s.a : prev, len = Math.hypot(at.x - back.x, at.y - back.y), r = len ? Math.min(6, len / 2) / len : 0;
+        trunk = false; fork = { x: at.x - (at.x - back.x) * r, y: at.y - (at.y - back.y) * r };
+        if (near(cutGrid, fork, cuts)) near_++;
+        break;
+      }
+      return { cost: way.cost + add + cross + near_ * NEAR, points, cuts, trunk, fork };
+    };
     /**
      * 부모에서 자식 열 앞 틈(gs(d))까지 레인별로 가장 싼 길 — 지나는 틈마다 레인을 한 번 바꿀 수 있고, 열은 제 레인을 따라 곧게 지난다.
      * 자식 레인과 무관하므로 자식 레인 후보마다 다시 찾지 않는다. once 면 부모 바로 다음 틈에서만 레인을 바꾼다(이동 레인 하나 — 싸서 먼저 본다).
+     * 같은 출발 노드의 선은 대개 부모 다음 틈에서 갈라지므로 갈림점 규칙은 주로 여기서 지켜진다.
      */
     const reach = (from: string | null, to: string, d: number, lo: number, hi: number, once: boolean) => {
       const p = at(from), a = from ? depth.get(from)! : -1, lp = from ? lane.get(from)! : 0;
       let ways = new Map<number, Way>();
       const start = dedupe([p, { x: gs(a + 1), y: p.y }]);
-      if (ok(start, from, to)) ways.set(lp, { cost: crossings(start, from, to) * CROSS, points: start });
+      if (ok(start, from, to)) ways.set(lp, extend({ cost: 0, points: [p], cuts: null, trunk: true, fork: null }, start, 0, from, to));
       for (let k = a + 1; k < d; k++) {
         if (budget < 0) return new Map<number, Way>();
         const next = new Map<number, Way>();
         for (const [x, way] of ways) for (let y = lo; y <= hi && budget >= 0; y++) {
           if (once && k > a + 1 && y !== x) continue;
-          const base = way.cost + Math.abs(x - y) + (x !== y ? (k - a) * .01 : 0) + (y < 0 ? ABOVE : 0);
-          if ((next.get(y)?.cost ?? Infinity) <= base) continue;
+          const add = Math.abs(x - y) + (x !== y ? (k - a) * .01 : 0) + (y < 0 ? ABOVE : 0);
+          if ((next.get(y)?.cost ?? Infinity) <= way.cost + add) continue;
           // 틈 안의 길 후보는 싼 것부터 — 엇갈림까지 더한 값이 가장 작은 것을 고른다. 후보 자체 값이 이미 나으면 더 보지 않는다.
           for (const shift of shifts(k, x, y, gs(k + 1), false)) {
-            if (budget < 0 || (next.get(y)?.cost ?? Infinity) <= base + shift.cost) break;
+            if (budget < 0 || (next.get(y)?.cost ?? Infinity) <= way.cost + add + shift.cost) break;
             const step = dedupe(shift.points);
             if (!ok(step, from, to)) continue;
-            const cost = base + shift.cost + crossings(step, from, to) * CROSS;
-            if ((next.get(y)?.cost ?? Infinity) > cost) next.set(y, { cost, points: dedupe([...way.points, ...step.slice(1)]) });
+            const longer = extend(way, step, add + shift.cost, from, to);
+            if ((next.get(y)?.cost ?? Infinity) > longer.cost) next.set(y, longer);
           }
         }
         ways = next;
@@ -469,14 +559,14 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       let best: Way | null = null;
       for (const [x, way] of ways) {
         if (budget < 0) break;
-        const base = way.cost + Math.abs(x - l);
-        if (best && best.cost <= base) continue;
+        const add = Math.abs(x - l);
+        if (best && best.cost <= way.cost + add) continue;
         for (const shift of shifts(d, x, l, c.x, true)) {
-          if (budget < 0 || (best && best.cost <= base + shift.cost)) break;
+          if (budget < 0 || (best && best.cost <= way.cost + add + shift.cost)) break;
           const step = dedupe(shift.points);
           if (!ok(step, from, to)) continue;
-          const cost = base + shift.cost + crossings(step, from, to) * CROSS;
-          if (!best || best.cost > cost) best = { cost, points: dedupe([...way.points, ...step.slice(1)]) };
+          const done = extend(way, step, add + shift.cost, from, to);
+          if (!best || best.cost > done.cost) best = done;
         }
       }
       return best;
@@ -519,7 +609,7 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
             if (!way) { cost = Infinity; break; }
             cost += way.cost;
             const ls = way.points.map(q => Math.round(q.y / g.laneH));
-            edges.push({ from, to: m.id, points: way.points, lines: linesOf(way.points), lo: Math.min(...ls), hi: Math.max(...ls) });
+            edges.push({ from, to: m.id, points: way.points, lines: linesOf(way.points), lo: Math.min(...ls), hi: Math.max(...ls), marks: { cuts: chained(way.cuts), forks: way.fork ? [way.fork] : [] } });
           }
           if (cost < (best?.cost ?? Infinity)) best = { cost, l, edges };
         }
