@@ -1,4 +1,4 @@
-/* 목표 표면 — 목표 하나의 상세(고른 탭 한 열). 오늘·기한과 다섯 탭은 Console 오른쪽 패널 머리에 선다. 목록은 Console 사이드바 그룹 트리에 선다. 색은 토큰만. */
+/* 목표 표면 — 목표 하나의 상세(고른 탭 한 열). 오늘·기한과 세 탭은 Console 오른쪽 패널 머리에 두 줄로 선다. 목록은 Console 사이드바 그룹 트리에 선다. 색은 토큰만. */
 
 .objectives-container { container: objectives-panel / inline-size; width: 100%; height: 100%; min-height: 0; }
 .objectives-root {
@@ -22,11 +22,14 @@
     var(--float-underlay);
 }
 
-/* 오늘·기한 글리프 — 탭과 함께 Console 오른쪽 패널 머리의 글자 탭 줄 앞에 선다(head-tabs.tsx). 켜면 brass, 기한이 지나면 coral(상태). */
-.objectives-tab-glyph { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 26px; min-width: 26px; padding: 0 5px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; cursor: pointer; }
-.objectives-tab-glyph svg { width: 15px; height: 15px; flex: none; }
-.objectives-tab-glyph:hover:not(:disabled) { color: var(--brass-ink); background: var(--control-rest); }
-.objectives-tab-glyph:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+/* 오늘·기한 — Console 오른쪽 패널 머리의 탭 줄 위 한 줄(사령관 패널의 섹션 줄 자리)에 글리프와 낱말로 선다(head-tabs.tsx).
+   치수·글자·hover 는 섹션 줄(.conversation-panel-section)과 같다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만, 기한이 지나면 coral(상태). */
+.objectives-head-tools { display: inline-flex; align-items: center; gap: 2px; }
+.objectives-tab-glyph { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border: 0; border-radius: var(--radius-pill); background: none; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer; transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring); }
+.objectives-tab-glyph svg { width: 13px; height: 13px; flex: none; }
+.objectives-tab-glyph:hover:not(:disabled) { background: var(--control-rest-hover); }
+.objectives-tab-glyph:not(.is-on):not(.is-overdue):hover:not(:disabled) { color: var(--text-primary); }
+.objectives-tab-glyph:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .objectives-tab-glyph:disabled { opacity: 0.6; cursor: default; }
 .objectives-tab-glyph.is-on { color: var(--brass-ink); }
 .objectives-tab-glyph.is-overdue { color: var(--coral); }
@@ -34,10 +37,8 @@
 .objectives-tab-body { padding-top: 4px; }
 .objectives-tab-body > .objectives-extension-current { margin-top: 6px; }
 .objectives-tab-meta { min-height: 36px; }
-.objectives-tab-meta .objectives-graph-counts { margin-left: 0; }
 /* 한 구획짜리 탭의 메타 줄 — 탭이 이름을 말하므로 수만 흐리게 선다. */
 .objectives-tab-count { font: var(--t-2xs)/1 var(--font-ui); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.objectives-tab-empty { margin: 0; padding: 14px 20px 10px 22px; color: var(--text-tertiary); font-size: var(--t-sm); line-height: 1.5; }
 .objectives-crew-group > .objectives-members { border-top: 0; padding-top: 0; }
 /* 지휘관 이름은 입력칸이 아니라 글자다 — 숨은 복제(::after)가 첫 칸을 차지하면 글자가 둘째 줄로 밀려 표식과 어긋난다. */
 .objectives-member.is-commander .objectives-member-role-fit { color: var(--text-primary); }
@@ -218,6 +219,8 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-acc-hd .objectives-section-chev { margin-left: -6px; }
 .objectives-acc-hd[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
+/* 임무 섹션 머리의 안 읽은 기록 — 기록 개수 칩의 안 읽음 점과 같은 표식. */
+.objectives-sec-unseen { width: 5px; height: 5px; border-radius: 50%; background: var(--brass); }
 /* 접힌 임무에 안 읽은 기록 — 기록 개수 칩의 안 읽음 점과 같은 표식. */
 .objectives-row.is-static { cursor: default; }
 .objectives-mode { font-size: var(--t-xs); color: var(--brass-ink); font-weight: var(--weight-medium); }

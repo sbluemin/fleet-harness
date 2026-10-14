@@ -66,7 +66,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   keepsOperationActive: true,
   // 대화 중심 화면의 Operation 대화에서 도구 줄이 걷혀도 목표 입구는 「구성원」 곁 글자 단추 「목표」로 남는다.
   conversationTab: true,
-  // 그 글자 단추는 목표가 있는 대화에서 상세의 오늘·기한과 다섯 탭(목표·구성원·임무·결정사항·결과물)으로 펼쳐진다. 구성원은 대상의 구성원 탭을 대신한다.
+  // 그 글자 단추는 목표가 있는 대화에서 상세의 오늘·기한(위 줄)과 세 탭(목표·구성원·결과물)으로 펼쳐진다. 구성원은 대상의 구성원 탭을 대신한다.
   conversationTabs: objectiveConversationTabs,
   // 사람의 차례 수(사람이 답할 결정 요청과 사령관이 넘긴 항목) — 표면을 닫아 두어도 아이콘 배지로 선다.
   // 대화 중심 화면에서는 레일 목표 상세가 결정 요청을 세우지 않으므로(가운데 대화의 카드가 받는다) 배지도 세우지 않는다.

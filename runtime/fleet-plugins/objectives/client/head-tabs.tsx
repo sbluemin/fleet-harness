@@ -11,16 +11,14 @@ import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, today
 import { findAnyObjective, followedOperationId, isObjectiveSurfaceOpen, objectiveDisplayTheaterId, objectivesApi, operationSummaries, patchObjectiveView, post, readObjectiveView, readTheater, subscribeObjective, subscribeObjectiveView } from "./objectives-state.js";
 
 /**
- * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래 글자 탭 줄)에 선다 — 상세는 고른 탭의 본문만 그린다.
- * 「구성원」은 대상의 구성원 탭을 대신한다(한 머리에 둘 서지 않는다).
+ * 목표 상세의 탭과 오늘·기한은 Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다 — 첫 줄은 오늘·기한(사령관 패널의 섹션 줄 자리),
+ * 둘째 줄은 목표·구성원·결과물 글자 탭이다. 상세는 고른 탭의 본문만 그린다. 「구성원」은 대상의 구성원 탭을 대신한다(한 머리에 둘 서지 않는다).
  */
 
 const T = (key: ObjectiveMessageKey): LocalizedText => (locale: ConsoleLocale) => getT(locale)(key);
 const TAB_TITLES: Record<DetailTab, LocalizedText> = {
   goal: T("objectives.tabs.goal"),
   crew: T("objectives.tabs.crew"),
-  missions: T("objectives.tabs.missions"),
-  decisions: T("objectives.tabs.decisions"),
   results: T("objectives.tabs.results"),
 };
 const DECISION_DOT = { tone: "attention", label: T("objectives.tabs.decisionDot") } as const;
@@ -53,7 +51,7 @@ function subscribeHead(listener: () => void): () => void {
 // 같은 상태에는 같은 객체를 돌려준다 — 호스트가 useSyncExternalStore 로 읽는다.
 const tabsCache = new Map<string, { readonly key: string; readonly state: RailEntryConversationTabsState }>();
 function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTabsState {
-  // 대화가 곧 목표다 — 목표를 아직 읽지 못한 순간에도 다섯 탭은 그대로 서고, 점만 비어 있다.
+  // 대화가 곧 목표다 — 목표를 아직 읽지 못한 순간에도 세 탭은 그대로 서고, 점만 비어 있다.
   const { theaterId, objective } = headObjective(contextTheaterId);
   const selected = detailTabOf(readObjectiveView(theaterId).detailTab);
   const decision = !!objective?.decisionRequest && !objective.done;
@@ -65,7 +63,8 @@ function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTab
   const tabs = DETAIL_TABS.map((id): RailEntryConversationTab => ({
     id,
     title: TAB_TITLES[id],
-    ...(id === "decisions" && decision ? { dot: DECISION_DOT } : id === "missions" && unseen ? { dot: UNSEEN_DOT } : {}),
+    // 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 산다 — 점도 그 탭에 선다.
+    ...(id === "goal" && decision ? { dot: DECISION_DOT } : id === "crew" && unseen ? { dot: UNSEEN_DOT } : {}),
     ...(id === "crew" ? { replacesMembers: true } : {}),
   }));
   const state = { tabs, selected };
@@ -73,7 +72,10 @@ function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTab
   return state;
 }
 
-/** 탭 앞의 오늘·기한 글리프 — 켜면 brass, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」이 맡는다. */
+/**
+ * 탭 줄 위 한 줄의 오늘·기한 — 글리프와 짧은 낱말이 섹션 줄 문법(작은 pill)으로 선다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만
+ * 말하고, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」이 맡는다.
+ */
 function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonly theaterId: string | null; readonly language: ConsoleLocale }) {
   const read = () => headObjective(contextTheaterId).objective;
   const objective = useSyncExternalStore(subscribeHead, read, read);
@@ -93,13 +95,13 @@ function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonl
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, lang) }) : t("objectives.schedule.setDue");
   return (
-    <>
-      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /></button>
+    <span className="objectives-head-tools" role="group" aria-label={t("objectives.schedule.title")}>
+      <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /><span aria-hidden="true">{t("objectives.tabs.today")}</span></button>
       <button type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph />{objective.dueDate ? <span className="objectives-tab-due" aria-hidden="true">{dueShort(objective.dueDate, lang)}</span> : null}
+        <CalGlyph /><span aria-hidden="true">{t("objectives.schedule.due")}{objective.dueDate ? <span> · {dueShort(objective.dueDate, lang)}</span> : null}</span>
       </button>
       {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
-    </>
+    </span>
   );
 }
 

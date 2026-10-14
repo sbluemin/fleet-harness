@@ -309,6 +309,11 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           ))}
         </div>
       ) : null}
+      {/* 하위 탭을 내는 도구(목표)의 도구 줄 — 오늘·기한이 섹션 줄 자리(탭 줄 위)에 선다. 섹션 줄은 Theater 를 연 동안에만, 이 줄은
+          Operation 대화에서만 서므로 둘이 겹치지 않는다. 도구가 아무것도 그리지 않으면 줄도 남지 않는다(:empty). */}
+      {tabsEntry?.conversationTabs?.renderTools && tabsState !== null ? (
+        <div className="conversation-panel-sections is-tools">{tabsEntry.conversationTabs.renderTools({ theaterId: tabsTheaterId, language: context.language })}</div>
+      ) : null}
       {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)이 Grok 세그먼트처럼 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       <div className="conversation-panel-segments">

@@ -9,7 +9,7 @@ import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyp
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
-import { DecisionList, PersonHoldNote } from "./decisions.js";
+import { DecisionGlyph, DecisionList, PersonHoldNote } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
@@ -56,14 +56,16 @@ const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentCol
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
 
 /**
- * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래 글자 탭 줄)에 오늘·기한 글리프와 「목표 · 구성원 · 임무 · 결정사항 · 결과물」 다섯 낱말이
- * 선다(head-tabs.tsx). 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
+ * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래)에 두 줄로 선다: 첫 줄은 오늘·기한, 둘째 줄은 「목표 · 구성원 · 결과물」 세 낱말이다
+ * (head-tabs.tsx). 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 섹션 머리로 이어 붙는다. 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
  * 목표 전체의 상태는 머리에, 지금 할 일은 하단 띠에 둔다. 고른 탭은 Theater 별 보기 상태에 하나로 남는다(목표를 바꿔도 그 탭으로 연다).
  * 목록 칸은 없다 — 목표는 Console 사이드바 그룹 트리의 줄로 서고, 사이드바가 접힌 자리에서는 제목 ⌄ 전환 목록이 대신한다.
  */
-export const DETAIL_TABS = ["goal", "crew", "missions", "decisions", "results"] as const;
+export const DETAIL_TABS = ["goal", "crew", "results"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
-export const detailTabOf = (value: string | undefined): DetailTab => (DETAIL_TABS as readonly string[]).includes(value ?? "") ? value as DetailTab : "goal";
+/** 합쳐진 옛 탭 — 임무는 구성원 탭 아래로, 결정사항은 목표 탭 아래로 갔다. 같은 세션의 옛 값과 옛 id 의 select 를 그 자리로 보낸다. */
+const MERGED_TABS: Readonly<Record<string, DetailTab>> = { missions: "crew", decisions: "goal" };
+export const detailTabOf = (value: string | undefined): DetailTab => (DETAIL_TABS as readonly string[]).includes(value ?? "") ? value as DetailTab : MERGED_TABS[value ?? ""] ?? "goal";
 /** 목록 칸 시절의 폭 기억 — 읽는 곳이 없으니 거둔다. */
 const RETIRED_WIDTH_KEYS = ["fleet.objectives.three-pane-width", "fleet.objectives.detail-width", "fleet.objectives.rail-detail-width"] as const;
 export function todayIso(): string { return new Date().toISOString().slice(0, 10); }
@@ -629,7 +631,7 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
   ) : null;
 
   return <div className="objectives-members">
-    {/* 탭이 이름을 말하므로 머리는 임무 탭과 같은 메타 한 줄 — 왼쪽은 수, 오른쪽은 일괄 설정. */}
+    {/* 탭이 이름을 말하므로 머리는 결과물 탭과 같은 메타 한 줄 — 왼쪽은 수, 오른쪽은 일괄 설정. */}
     <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.members.title")} {objective.members.length}</span>{actions ? <span className="objectives-row-tools">{actions}</span> : null}</div>
     <div id="objectives-sec-members">
     {lead}
@@ -746,7 +748,7 @@ function NewMemberAssign({ t, onCreate }: { t: T; onCreate: (role: string) => Pr
   }} /><span>{t("objectives.members.newHint")}</span></div>;
 }
 
-type DetailSection = "detail:retro" | "detail:followupResults" | "detail:extensions";
+type DetailSection = "detail:decisions" | "detail:retro" | "detail:followupResults" | "detail:extensions";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -1358,10 +1360,10 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     const timer = setTimeout(() => setDecisionFlash(null), 1600);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [decisionFlash, detailRef]);
-  // 결정·임무·결과물로 가는 길 — 섹션을 펴던 자리가 이제 그 탭으로 바꾼다.
-  const showDecision = (decisionId: string) => { onTab("decisions"); setDecisionFlash(decisionId); };
+  // 결정·임무·결과물로 가는 길 — 그 섹션이 사는 탭으로 바꾼다. 결정은 목표 탭 맨 아래의 접히는 섹션이라 함께 편다.
+  const showDecision = (decisionId: string) => { onTab("goal"); onOpenGroup("detail:decisions"); setDecisionFlash(decisionId); };
   const showMission = (missionId: string) => {
-    onTab("missions");
+    onTab("crew");
     setMissionReveal({ id: missionId, at: Date.now() });
   };
   const showResults = (missionId: string) => {
@@ -1395,12 +1397,12 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     const timer = setTimeout(() => setResultReveal(null), 1600);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [resultReveal, resultsOpen, zoomOpen, detailRef]);
-  // 「이 임무로」 — 임무 탭으로 바꾸고 그래프가 그 노드를 드러낸다. onTab 은 렌더마다 새로 만들어지므로 ref 로 읽는다(의존성에 넣으면 무한 렌더).
+  // 「이 임무로」 — 구성원 탭(맨 아래 임무 그래프)으로 바꾸고 그래프가 그 노드를 드러낸다. onTab 은 렌더마다 새로 만들어지므로 ref 로 읽는다(의존성에 넣으면 무한 렌더).
   const onTabRef = useRef(onTab);
   onTabRef.current = onTab;
   useEffect(() => {
     if (!highlightMission) return;
-    onTabRef.current("missions");
+    onTabRef.current("crew");
     setMissionReveal({ id: highlightMission, at: Date.now() });
   }, [highlightMission]);
   // 후속 후보 — 고르기·폐기는 하단 띠가 맡고, 상세에는 완료 뒤 결과만 결과물 탭의 접힌 묶음으로 선다.
@@ -1598,22 +1600,33 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     <button ref={orientationRef} type="button" role="switch" aria-checked={verticalGraph} className="objectives-graph-orient" aria-label={t("objectives.graph.verticalAria")} title={t("objectives.graph.verticalAria")} onClick={() => setGraphOrientation(verticalGraph ? "horizontal" : "vertical")}><span className="objectives-graph-orient-track" aria-hidden="true" /><span className="objectives-graph-orient-label" aria-hidden="true">{t("objectives.graph.vertical")}</span></button>
     {verticalGraph ? null : <button ref={zoomTriggerRef} type="button" className="objectives-glyph" aria-haspopup="dialog" aria-expanded={zoomOpen} aria-label={t("objectives.graph.zoom")} title={t("objectives.graph.zoom")} onClick={() => setZoomOpen(true)}><ZoomGlyph /></button>}
   </>;
-  // 임무 탭 — 머리 한 줄(상태 셈 · 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프, 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡는다.
-  const sMissions = <div className="objectives-group objectives-missions-group">
-    {objective.missions.length ? <div className="objectives-row is-static objectives-tab-meta">{renderCounts()}<span className="objectives-row-tools">{graphTools}</span></div> : null}
+  // 임무 섹션 — 구성원 탭 맨 아래. 섹션 머리(글리프 · 「임무」 · 안 읽은 점 · 상태 셈 | 형상 스위치 · 크게 보기), 허용 대기 줄, 그래프,
+  // 그 아래 「+ 임무 추가」. 임무 목록은 없다 — 조작은 그래프 팝업이 맡으므로 머리는 접히지 않는다.
+  const unseenAny = objective.missions.some((mission) => unseenRecords(mission) > 0);
+  const sMissions = <div className="objectives-group objectives-missions-group" data-objectives-tour="missions">
+    <SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<>{unseenAny ? <i className="objectives-sec-unseen" title={t("objectives.tabs.unseenDot")} /> : null}{renderCounts()}</>}
+      {...(objective.missions.length ? { actions: graphTools } : {})} />
     {missionAttention}
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} suspended={zoomOpen && !verticalGraph} /> : null}{missionAdd}</div>
     {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}><SectionHead glyph={<GraphGlyph />} label={t("objectives.missions.title")} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} />{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} />{missionAdd}</LineupZoom>, document.body) : null}
   </div>;
-  // 결정사항 탭 — 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 탭에는 점만 선다.
-  const sDecisions = (<>
+  // 결정 섹션 — 목표 탭 맨 아래, 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 목표 탭에는 점만 선다.
+  // 답이 없으면 서지 않는다(목표 탭 맨 아래의 빈 문구는 소음이다).
+  const sDecisions = objective.decisions.length > 0 ? (
       <div className="objectives-group">
-        {objective.decisions.length > 0 ? <>
-          <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.decisions.title")} {objective.decisions.length}</span></div>
+        <SectionHead
+          glyph={<DecisionGlyph />}
+          label={t("objectives.decisions.title")}
+          tools={<span className="objectives-criteria-count">{objective.decisions.length}</span>}
+          controls="objectives-sec-decisions"
+          expanded={sectionOpen("detail:decisions")}
+          onToggle={() => onToggleSection("detail:decisions")}
+        />
+        <div id="objectives-sec-decisions" hidden={!sectionOpen("detail:decisions")}>
           <DecisionList objective={objective} t={t} language={language} flash={decisionFlash} memberMark={memberMarkOf} />
-        </> : <p className="objectives-tab-empty">{t("objectives.tabs.decisionsEmpty")}</p>}
+        </div>
       </div>
-  </>);
+  ) : null;
   // 결과물 탭 아래 접힌 묶음 — 회고 · 후속 목표 · 이전 회차. 있는 것만 선다.
   const showFollowupResults = followupBatches.length > 0 || !!followupHistory || (objective.done && followupOpenList.length > 0);
   const sResultFolds = objective.handoff || showFollowupResults || objective.extensions.length ? (
@@ -1662,10 +1675,8 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   );
   // 상세 aside > 탭 바 · 탭 칸(스크롤) · 하단. 탭을 바꿔도 탭 바·하단 띠는 다시 마운트되지 않는다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
-  const panel = tab === "goal" ? <>{sBrief}{sCriteria}</>
-    : tab === "crew" ? sCrew
-    : tab === "missions" ? sMissions
-    : tab === "decisions" ? sDecisions
+  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}</>
+    : tab === "crew" ? <>{sCrew}{sMissions}</>
     : <>{sResults}{sResultFolds}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
