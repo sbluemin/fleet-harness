@@ -4,6 +4,9 @@
 .objectives-graph-canvas { position: relative; user-select: none; }
 /* 가로 그래프는 옆으로 넘치기 쉽다 — 넘치면 빈 곳을 끌어 옮긴다. 확대에서 줄인 그래프가 카드보다 좁으면 가운데 선다. */
 .objectives-graph-scroll.is-pannable { cursor: grab; }
+/* 가로 그래프는 끌기·휠로 옮기므로 스크롤바를 숨긴다 — 스크롤 자체는 남긴다. 세로 그래프는 그대로 얇은 막대를 보인다. */
+.objectives-branch-graph.is-horizontal .objectives-graph-scroll { scrollbar-width: none; }
+.objectives-branch-graph.is-horizontal .objectives-graph-scroll::-webkit-scrollbar { display: none; }
 .objectives-graph-scroll.is-panning, .objectives-graph-scroll.is-panning * { cursor: grabbing; user-select: none; }
 .objectives-branch-graph.is-zoom .objectives-graph-fit { margin: 0 auto; }
 .objectives-graph-edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
