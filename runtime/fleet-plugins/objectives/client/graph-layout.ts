@@ -162,9 +162,15 @@ function crosses(s: Segment, r: Rect, pad: number) {
 interface Line { flat: boolean; at: number; lo: number; hi: number }
 /** 그은 선 — lo·hi 는 선이 지난 가장 위·아래 레인이다(캔버스 높이와 다음 배정의 바깥 레인을 정한다). */
 interface HPlaced { from: string | null; to: string; points: Point[]; lines: Line[]; lo: number; hi: number }
-interface HAssigned { lane: Map<string, number>; placed: HPlaced[]; failed: Set<number> }
-/** 가로 배치의 레인 배정 캐시 — 배정은 선행 모양·폭 단계·열 간격에만 달린다. */
+/** 레인 배정 — 열의 x, 노드 레인, 그은 선. routed 가 거짓이면 탐색 대신 보장된 버스 배치다. */
+interface HAssigned { lane: Map<string, number>; placed: HPlaced[]; xs: number[]; routed: boolean }
+/** 가로 배치의 레인 배정 캐시 — 배정은 선행 모양·폭 단계(이름 칸 폭)에만 달린다. */
 const hAssigned = new Map<string, HAssigned>();
+/**
+ * 길 찾기 예산 — 겹침 검사가 견준 노드·이름·곧은 조각 수의 합의 상한. 넓혀 다시 배정하는 것까지 한 배치 전체가 나눠 쓴다. 다 쓰면 탐색을 멈추고
+ * 보장된 버스 배치로 간다. 앞선 임무를 모두 선행으로 갖는 조밀한 그래프처럼 탐색이 폭증하는 입력에서도 한 배치가 약 60ms 안에 끝나게 잰 값이다.
+ */
+const SEARCH_BUDGET = 5_000_000;
 /** 지휘관(뿌리) 이름 칸의 폭 — 뿌리 위에 한 줄로 선다. */
 const ROOT_LABEL_W = 80;
 /** 비킬 자리가 없어 열 사이를 넓혀 다시 배정하는 횟수의 상한. */
@@ -172,12 +178,15 @@ const WIDEN_LIMIT = 12;
 /** 틈 안 줄기의 꺾임(45°) 크기와, 다른 선이 쓰는 줄을 비킬 때의 간격. */
 const CHAMFER = 12;
 const TRACK = 6;
+/** 뿌리 레인 위로 도는 우회 레인의 덧비용 — 레인 몇 칸을 더 건너는 편이 첫 줄 위의 빈 띠보다 낫다. */
+const ABOVE = 4;
 
 /**
  * 가로 배치 — 차수(선행 깊이)마다 한 열을 두어 같은 차수의 임무는 같은 x에 선다. 한 열 안의 임무는 편성 순서대로 위에서 아래 레인(줄)에 서고,
  * 간선은 세로 배치와 같은 줄기-가지다: 제 레인을 따라 곧게 오른쪽으로 가다 갈라지고 합칠 때만 45° 가지를 친다. 가지는 열 사이 틈에서만 치고,
  * 한 번의 45°로 틈에 못 들어가는 먼 레인은 45°로 갈라져 틈 안을 곧게 내려간(올라간) 뒤 45°로 든다.
- * 이름은 노드 아래(담당 표식 밑)에서 오른쪽으로 열 안에 서고, 선은 노드·이름·다른 선의 곧은 조각을 비켜 간다 — 비킬 자리가 없으면 그 열 앞을 넓혀 다시 배정한다.
+ * 이름은 노드 아래(담당 표식 밑)에서 오른쪽으로 열 안에 서고, 선은 노드·이름·다른 선의 곧은 조각을 비켜 간다 — 비킬 자리가 없으면 그 열 앞을 넓혀 다시 배정하고,
+ * 길 찾기 예산을 다 쓰거나 끝내 못 찾으면 겹침이 구조적으로 없는 버스 배치(bus)로 그린다.
  */
 export function horizontalLayout(missions: readonly ObjectiveMission[], width: number, wide: boolean) {
   // 이름 칸은 노드 아래 담당 표식(r+10) 밑에서 시작하고, 레인 간격은 그 이름 칸 아래와 아랫레인 노드 위의 기록 표식(r+6)이 닿지 않는 최소에 맞춘다.
@@ -199,10 +208,9 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
   const natural = rootX + rootGap + (cols - 1) * colGap(g.label) + g.label - g.r + g.pad;
   const labelW = Math.min(g.labelMax, g.label + Math.max(0, Math.floor((width - natural) / cols / 8) * 8));
   const laneY = (l: number) => l * g.laneH;
-  const assign = (gaps: readonly number[]): HAssigned => {
+  let budget = SEARCH_BUDGET;
+  const assign = (gaps: readonly number[]) => {
     const xs = gaps.map((_, d) => rootX + gaps.slice(0, d + 1).reduce((a, b) => a + b, 0)), colX = (d: number) => xs[d]!;
-    const key = `${wide}\u0003${labelW}\u0003${gaps.join(",")}\u0003${shape}`, hit = hAssigned.get(key);
-    if (hit) { hAssigned.delete(key); hAssigned.set(key, hit); return hit; }
     const lane = new Map<string, number>(), failed = new Set<number>(), last = new Map<number, number>();
     const nodes: { id: string | null; at: Point; r: number }[] = [{ id: null, at: { x: rootX, y: 0 }, r: g.rootR }];
     const labels: Rect[] = [{ x: rootX - g.rootR, y: -g.rootR - 18, w: ROOT_LABEL_W, h: 14 }];
@@ -227,17 +235,21 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
     // 그은 곧은 조각은 방향·자리(반올림)별로 묶어 둔다 — 세로 줄은 2px 안이면 같은 줄로 본다.
     const lineIndex = new Map<string, { from: string | null; to: string; line: Line }[]>();
     const lineKey = (flat: boolean, at: number) => `${flat ? 1 : 0}:${at}`;
-    const remember = (e: HPlaced) => { for (const line of e.lines) { const key = lineKey(line.flat, Math.round(line.at)); lineIndex.set(key, [...(lineIndex.get(key) ?? []), { from: e.from, to: e.to, line }]); } };
+    const remember = (e: HPlaced) => { for (const line of e.lines) { const key = lineKey(line.flat, Math.round(line.at)), bucket = lineIndex.get(key); if (bucket) bucket.push({ from: e.from, to: e.to, line }); else lineIndex.set(key, [{ from: e.from, to: e.to, line }]); } };
     const free = (points: readonly Point[], from: string | null, to: string) => linesOf(points).every(h => {
       for (let at = Math.round(h.at) - (h.flat ? 0 : 2); at <= Math.round(h.at) + (h.flat ? 0 : 2); at++) {
-        for (const o of lineIndex.get(lineKey(h.flat, at)) ?? []) if (o.from !== from && o.to !== to && Math.abs(o.line.at - h.at) <= 2 && o.line.hi > h.lo + 1 && o.line.lo < h.hi - 1) return false;
+        const bucket = lineIndex.get(lineKey(h.flat, at)) ?? [];
+        budget -= bucket.length;
+        for (const o of bucket) if (o.from !== from && o.to !== to && Math.abs(o.line.at - h.at) <= 2 && o.line.hi > h.lo + 1 && o.line.lo < h.hi - 1) return false;
       }
       return true;
     });
-    const ok = (points: readonly Point[], from: string | null, to: string) => clear(points, [from, to]) && free(points, from, to);
+    // 예산은 검사한 횟수가 아니라 비교량으로 깎는다 — 그래프가 클수록 한 번의 검사가 무거워진다.
+    const ok = (points: readonly Point[], from: string | null, to: string) => (budget -= points.length * (nodes.length + labels.length + 4)) >= 0 && clear(points, [from, to]) && free(points, from, to);
     // 새 노드와 그 이름 칸은 이미 그은 선을 덮지 않는다 — 지나가는 선이 있는 레인 자리에는 노드를 두지 않는다.
     const roomFor = (c: Point) => {
       const label = labelOf(c);
+      budget -= placed.length * 4;
       return placed.every(e => segments(e.points).every(s => distance(c, s) >= g.r + CLEAR && !crosses(s, label, CLEAR)));
     };
     const dedupe = (points: readonly Point[]) => points.filter((q, i) => !i || Math.abs(q.x - points[i - 1]!.x) > .01 || Math.abs(q.y - points[i - 1]!.y) > .01);
@@ -260,17 +272,19 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
     interface Way { cost: number; points: Point[] }
     /**
      * 부모에서 자식 열 앞 틈(gs(d))까지 레인별로 가장 싼 길 — 지나는 틈마다 레인을 한 번 바꿀 수 있고, 열은 제 레인을 따라 곧게 지난다.
-     * 자식 레인과 무관하므로 자식 레인 후보마다 다시 찾지 않는다.
+     * 자식 레인과 무관하므로 자식 레인 후보마다 다시 찾지 않는다. once 면 부모 바로 다음 틈에서만 레인을 바꾼다(이동 레인 하나 — 싸서 먼저 본다).
      */
-    const reach = (from: string | null, to: string, d: number, lo: number, hi: number) => {
+    const reach = (from: string | null, to: string, d: number, lo: number, hi: number, once: boolean) => {
       const p = at(from), a = from ? depth.get(from)! : -1, lp = from ? lane.get(from)! : 0;
       let ways = new Map<number, Way>();
       const start = dedupe([p, { x: gs(a + 1), y: p.y }]);
       if (ok(start, from, to)) ways.set(lp, { cost: 0, points: start });
       for (let k = a + 1; k < d; k++) {
+        if (budget < 0) return new Map<number, Way>();
         const next = new Map<number, Way>();
         for (const [x, way] of ways) for (let y = lo; y <= hi; y++) {
-          const base = way.cost + Math.abs(x - y) + (x !== y ? (k - a) * .01 : 0);
+          if (once && k > a + 1 && y !== x) continue;
+          const base = way.cost + Math.abs(x - y) + (x !== y ? (k - a) * .01 : 0) + (y < 0 ? ABOVE : 0);
           if ((next.get(y)?.cost ?? Infinity) <= base) continue;
           for (const shift of shifts(k, x, y, gs(k + 1), false)) {
             const cost = base + shift.cost;
@@ -303,34 +317,40 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       return best;
     };
     for (const m of order) {
+      if (budget < 0) break;
       const d = depth.get(m.id) ?? 0, parents = parentsOf(m), sources: (string | null)[] = parents.length ? parents : [null];
       const sourceLanes = sources.map(from => from ? lane.get(from)! : 0);
       const anchor = Math.min(...sourceLanes);
+      // 우회 레인은 뿌리 레인(0) 위로 하나까지 열어 두되(ABOVE 만큼 무겁게) 노드 줄 사이나 아래를 먼저 쓴다 — 위로 돌면 첫 줄 위에 빈 띠가 생긴다.
       const used = [...lane.values(), ...placed.flatMap(e => [e.lo, e.hi]), 0];
-      const lo = Math.min(...used) - 1, hi = Math.max(...used) + sources.length + 2;
+      const lo = -1, hi = Math.max(...used) + sources.length + 2;
       // 한 열 안에서는 편성 순서대로 위에서 아래로 선다 — 앞 임무보다 아래 레인만 본다. 노드는 뿌리 레인(0)보다 위로 가지 않는다.
       const floor = (last.get(d) ?? -1) + 1;
       // 노드 레인 비용 — 부모 레인에 가까울수록(합류는 가장 위 부모 쪽) 싸다.
       const nodeCost = (l: number) => Math.abs(l - anchor) * 1.5;
       const candidates = Array.from({ length: Math.max(0, hi - floor + 1) }, (_, i) => floor + i).sort((a, b) => nodeCost(a) - nodeCost(b) || a - b);
-      const reaches = sources.map(from => reach(from, m.id, d, lo, hi + 1));
-      let best: { cost: number; l: number; edges: HPlaced[] } | null = null;
-      for (const l of candidates) {
-        if (best && nodeCost(l) >= best.cost) break;
-        const c = { x: colX(d), y: laneY(l) }, label = labelOf(c);
-        if (!roomFor(c) || labels.some(r => intersects(r, label, 2) || crosses({ a: c, b: c }, r, g.r + CLEAR))) continue;
-        const edges: HPlaced[] = [];
-        let cost = nodeCost(l);
-        for (const [k, from] of sources.entries()) {
-          if (best && cost >= best.cost) break;
-          const way = arrive(reaches[k]!, from, m.id, c, l, d);
-          if (!way) { cost = Infinity; break; }
-          cost += way.cost;
-          const ls = way.points.map(q => Math.round(q.y / g.laneH));
-          edges.push({ from, to: m.id, points: way.points, lines: linesOf(way.points), lo: Math.min(...ls), hi: Math.max(...ls) });
+      const place = (reaches: readonly ReadonlyMap<number, Way>[]) => {
+        let best: { cost: number; l: number; edges: HPlaced[] } | null = null;
+        for (const l of candidates) {
+          if (budget < 0 || (best && nodeCost(l) >= best.cost)) break;
+          const c = { x: colX(d), y: laneY(l) }, label = labelOf(c);
+          if (!roomFor(c) || labels.some(r => intersects(r, label, 2) || crosses({ a: c, b: c }, r, g.r + CLEAR))) continue;
+          const edges: HPlaced[] = [];
+          let cost = nodeCost(l);
+          for (const [k, from] of sources.entries()) {
+            if (best && cost >= best.cost) break;
+            const way = arrive(reaches[k]!, from, m.id, c, l, d);
+            if (!way) { cost = Infinity; break; }
+            cost += way.cost;
+            const ls = way.points.map(q => Math.round(q.y / g.laneH));
+            edges.push({ from, to: m.id, points: way.points, lines: linesOf(way.points), lo: Math.min(...ls), hi: Math.max(...ls) });
+          }
+          if (cost < (best?.cost ?? Infinity)) best = { cost, l, edges };
         }
-        if (cost < (best?.cost ?? Infinity)) best = { cost, l, edges };
-      }
+        return best;
+      };
+      // 이동 레인 하나로 먼저 찾고, 못 찾으면 틈마다 레인을 바꾸는 길까지 넓혀 본다.
+      const best = place(sources.map(from => reach(from, m.id, d, lo, hi + 1, true))) ?? (budget < 0 ? null : place(sources.map(from => reach(from, m.id, d, lo, hi + 1, false))));
       // 맞는 자리가 없으면 그 열 앞이 좁은 것이다 — 아래 바깥 레인에 곧은 선으로 두고, 바깥 루프가 그 간격을 넓혀 다시 배정한다.
       const l = best?.l ?? Math.max(floor, hi + 1);
       if (!best) failed.add(d);
@@ -340,32 +360,78 @@ export function horizontalLayout(missions: readonly ObjectiveMission[], width: n
       nodes.push({ id: m.id, at: c, r: g.r });
       labels.push(labelOf(c));
     }
-    const result = { lane, placed, failed };
-    if (hAssigned.size >= ASSIGNED_LIMIT) hAssigned.delete(hAssigned.keys().next().value!);
-    hAssigned.set(key, result);
-    return result;
+    return { lane, placed, xs, routed: true, failed, spent: budget < 0 };
   };
-  // 비킬 자리가 없으면 그 열 앞의 간격을 한 레인씩 넓혀 다시 배정한다 — 45° 가지가 들어갈 만큼 넓어지면 아래 바깥 레인은 늘 빈다.
-  const gaps = Array.from({ length: cols }, (_, d) => d ? colGap(labelW) : rootGap);
-  let run = assign(gaps);
-  for (let k = 0; k < WIDEN_LIMIT && run.failed.size; k++) {
-    for (const d of run.failed) gaps[d]! += g.laneH;
-    run = assign(gaps);
+  /**
+   * 보장된 버스 배치 — 탐색이 예산을 다 썼거나 넓혀도 길을 못 찾을 때 쓴다. 겹침을 검사하지 않고 구조로 비킨다.
+   * 열마다 임무를 편성 순서대로 0레인부터 쌓는다. 모든 선은 노드 아래 바깥 레인(자식마다 하나, 같은 자식으로 가는 선만 함께 쓰고 x 구간이 겹치지 않는
+   * 자식끼리는 나눠 쓴다)을 따라간다 — 부모 다음 틈의 제 세로 줄로 45°·곧게·45° 내려가고, 자식 앞 틈의 자식 세로 줄로 올라 든다.
+   * 틈에는 노드·이름이 없고, 세로 줄은 틈마다 부모·자식마다 따로이며(나가는 줄이 드는 줄보다 왼쪽), 바깥 레인은 노드 레인보다 아래라 이름 칸 밑을 지난다.
+   * 나가는 줄은 아래 레인 부모가, 드는 줄은 위 레인 자식이 왼쪽에 서서 제 레인의 짧은 곧은 선이 남의 세로 줄을 건너지 않는다.
+   */
+  const bus = (): HAssigned => {
+    const lane = new Map<string, number>(), stack = new Map<number, number>();
+    for (const m of order) { const d = depth.get(m.id) ?? 0, l = stack.get(d) ?? 0; lane.set(m.id, l); stack.set(d, l + 1); }
+    const links = order.flatMap(m => { const parents = parentsOf(m); return (parents.length ? parents : [null]).map(from => ({ from, to: m.id })); });
+    const gapOf = (from: string | null) => from ? depth.get(from)! + 1 : 0;
+    const laneOf = (id: string | null) => id ? lane.get(id)! : 0;
+    const outs = Array.from({ length: cols }, (_, k) => [...new Set(links.filter(e => gapOf(e.from) === k).map(e => e.from))].sort((a, b) => laneOf(b) - laneOf(a)));
+    const ins = Array.from({ length: cols }, (_, k) => order.filter(m => (depth.get(m.id) ?? 0) === k).map(m => m.id).sort((a, b) => laneOf(a) - laneOf(b)));
+    const xs: number[] = [], out = new Map<string, number>(), into = new Map<string, number>();
+    for (let k = 0; k < cols; k++) {
+      const start = k ? xs[k - 1]! - g.r + labelW + CLEAR : rootX + g.rootR + CLEAR;
+      outs[k]!.forEach((from, i) => out.set(`${k}\u0001${from ?? ""}`, start + CHAMFER + i * TRACK));
+      const first = outs[k]!.length ? start + CHAMFER + (outs[k]!.length - 1) * TRACK + 2 * CHAMFER + TRACK : start + CHAMFER;
+      ins[k]!.forEach((id, i) => into.set(id, first + i * TRACK));
+      const last = first + Math.max(0, ins[k]!.length - 1) * TRACK;
+      xs.push(Math.max(last + CHAMFER + g.r + CLEAR + 4, k ? xs[k - 1]! + colGap(labelW) : rootX + rootGap));
+    }
+    const departure = (from: string | null) => out.get(`${gapOf(from)}\u0001${from ?? ""}`)!;
+    // 바깥 레인 — 자식마다 [가장 이른 부모의 나가는 줄, 자식의 드는 줄] 구간을 차지한다. 구간이 겹치지 않는 자식끼리는 한 레인을 나눠 쓴다.
+    const below = Math.max(0, ...lane.values()) + 1, ends: number[] = [], bus = new Map<string, number>();
+    const spans = order.map(m => ({ id: m.id, lo: Math.min(...links.filter(e => e.to === m.id).map(e => departure(e.from))), hi: into.get(m.id)! })).sort((a, b) => a.lo - b.lo);
+    for (const span of spans) {
+      let k = ends.findIndex(end => end < span.lo - TRACK);
+      if (k < 0) { k = ends.length; ends.push(0); }
+      ends[k] = span.hi; bus.set(span.id, below + k);
+    }
+    const placed = links.map(({ from, to }) => {
+      const p = from ? { x: xs[depth.get(from)!]!, y: laneY(laneOf(from)) } : { x: rootX, y: 0 }, c = { x: xs[depth.get(to)!]!, y: laneY(laneOf(to)) };
+      const v = departure(from), w = into.get(to)!, yb = laneY(bus.get(to)!), k = CHAMFER;
+      const points = [p, { x: v - k, y: p.y }, { x: v, y: p.y + k }, { x: v, y: yb - k }, { x: v + k, y: yb }, { x: w - k, y: yb }, { x: w, y: yb - k }, { x: w, y: c.y + k }, { x: w + k, y: c.y }, c];
+      return { from, to, points, lines: [], lo: Math.min(laneOf(from), laneOf(to)), hi: bus.get(to)! };
+    });
+    return { lane, placed, xs, routed: false };
+  };
+  // 비킬 자리가 없으면 그 열 앞의 간격을 한 레인씩 넓혀 다시 배정한다 — 예산 안에서만. 예산을 다 쓰거나 끝내 못 찾으면 버스 배치다.
+  const cacheKey = `${wide}\u0003${labelW}\u0003${shape}`;
+  let run: HAssigned | undefined = hAssigned.get(cacheKey);
+  if (run) { hAssigned.delete(cacheKey); hAssigned.set(cacheKey, run); }
+  else {
+    const gaps = Array.from({ length: cols }, (_, d) => d ? colGap(labelW) : rootGap);
+    let tried = assign(gaps);
+    for (let k = 0; k < WIDEN_LIMIT && tried.failed.size && !tried.spent; k++) {
+      for (const d of tried.failed) gaps[d]! += g.laneH;
+      tried = assign(gaps);
+    }
+    run = tried.failed.size || tried.spent ? bus() : tried;
+    if (hAssigned.size >= ASSIGNED_LIMIT) hAssigned.delete(hAssigned.keys().next().value!);
+    hAssigned.set(cacheKey, run);
   }
-  const colX = (d: number) => rootX + gaps.slice(0, d + 1).reduce((a, b) => a + b, 0);
-  const laneSet = [0, ...run.lane.values(), ...run.placed.flatMap(e => [e.lo, e.hi])];
+  const final: HAssigned = run, colX = (d: number) => final.xs[d]!;
+  const laneSet = [0, ...final.lane.values(), ...final.placed.flatMap(e => [e.lo, e.hi])];
   const minLane = Math.min(...laneSet), maxLane = Math.max(...laneSet);
   // 맨 윗레인 위로는 노드 표식(r+7)과, 뿌리가 맨 위면 그 위의 지휘관 이름 칸이 들어갈 여백을 둔다.
   const top = Math.max(g.r + 10, minLane === 0 ? g.rootR + 22 : 0) - laneY(minLane);
   const shift = (p: Point) => ({ x: p.x, y: p.y + top });
-  const pos = new Map<string, Point>([...run.lane].map(([id, l]) => [id, shift({ x: colX(depth.get(id) ?? 0), y: laneY(l) })]));
+  const pos = new Map<string, Point>([...final.lane].map(([id, l]) => [id, shift({ x: colX(depth.get(id) ?? 0), y: laneY(l) })]));
   const root = shift({ x: rootX, y: 0 });
-  const edges: GraphEdge[] = run.placed.map(e => ({ from: e.from, to: e.to, d: roundedPath(e.points.map(shift), 6) }));
+  const edges: GraphEdge[] = final.placed.map(e => ({ from: e.from, to: e.to, d: roundedPath(e.points.map(shift), 6) }));
   const labels = new Map<string, Rect>([...pos].map(([id, p]) => [id, { x: p.x - g.r, y: p.y + labelDy, w: labelW, h: labelH }]));
   const rootLabel: Rect = { x: root.x - g.rootR, y: root.y - g.rootR - 18, w: ROOT_LABEL_W, h: 14 };
   const right = Math.max(rootX - g.rootR + ROOT_LABEL_W, ...[...labels.values()].map(l => l.x + l.w));
   const height = laneY(maxLane) + top + labelDy + labelH + 8;
-  return { g, pos, root, rootLabel, edges, labels, width: Math.max(width, Math.ceil(right + g.pad)), height: Math.ceil(height) };
+  return { g, pos, root, rootLabel, edges, labels, routed: final.routed, width: Math.max(width, Math.ceil(right + g.pad)), height: Math.ceil(height) };
 }
 
 export type HorizontalLayout = ReturnType<typeof horizontalLayout>;
