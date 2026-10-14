@@ -355,7 +355,10 @@ export interface RailEntryConversationTabs {
   readonly subscribe: (listener: () => void) => () => void;
   readonly read: (theaterId: string | null) => RailEntryConversationTabsState;
   readonly select: (tabId: string, theaterId: string | null) => void;
-  /** 탭 앞에 설 도구(예: 목표의 오늘·기한) — 하위 탭이 설 때만 그린다. 모양은 플러그인이 진다. */
+  /**
+   * 하위 탭 줄 위 한 줄(Theater 섹션 줄 자리)에 설 도구(예: 목표의 오늘·기한) — 하위 탭이 설 때만 그린다.
+   * 모양과 접근성 묶음(role·aria-label)은 플러그인이 진다. 아무것도 그리지 않으면 줄도 남지 않는다.
+   */
   readonly renderTools?: (ctx: { readonly theaterId: string | null; readonly language: ConsoleLocale }) => ReactNode;
 }
 

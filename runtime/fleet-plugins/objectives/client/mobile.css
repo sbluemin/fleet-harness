@@ -9,7 +9,7 @@
 /* 대화 정보 화면 「목표」 탭에 심긴 상세 — 스크롤은 정보 화면이 맡고 좌우 여백은 그 화면의 탭 칸이 준다. */
 .objectives-m.is-embedded { height: auto; overflow: visible; background: transparent; }
 .objectives-m.is-embedded .objectives-m-pad { padding: 0 0 8px; }
-/* 머리 줄 — 오늘·기한 글리프 | 다섯 탭. 탭은 폰 정보 화면의 탭(44 높이·보조 글자, 고르면 굵은 본문 잉크와 2px 밑줄)과 같은 문법이다.
+/* 머리 줄 — 오늘·기한 글리프 | 세 탭. 탭은 폰 정보 화면의 탭(44 높이·보조 글자, 고르면 굵은 본문 잉크와 2px 밑줄)과 같은 문법이다.
    글리프는 켜면 본문 잉크, 기한이 지나면 위험 색(날짜 글자는 폰에서 싣지 않는다). 넘치면 줄바꿈 없이 가로로 넘기고,
    그 폭(360 미만)에서는 오른쪽 24px 이 흐려져 더 있다는 것을 말한다 — 그래프 팬의 가장자리 페이드와 같은 문법. */
 .objectives-m-tabbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--m-hairline); background: var(--m-bg); overflow-x: auto; scrollbar-width: none; }
@@ -33,7 +33,6 @@
 .objectives-m-retro .objectives-retro-table td { color: var(--m-text); font-size: var(--m-fs-secondary); }
 .objectives-m-retro .objectives-retro-table td + td { color: var(--m-text-muted); }
 .objectives-m-retro .objectives-retro-table tbody tr + tr td { border-top-color: var(--m-hairline); }
-.objectives-m-empty { margin: 0; padding: 6px 4px; font-size: var(--m-fs-secondary); line-height: 1.5; color: var(--m-text-muted); }
 
 /* 동작 줄 — 목표 화면 막대 ⋮ 와 같은 사람 동작(메시지·완료·검토로 넘기기·중단)을 알약 줄로. 넘치면 다음 줄로 접는다.
    누를 자리 44 는 .objectives-m-b2 와 같이 투명 ::before 를 위아래 2씩 내민다. */

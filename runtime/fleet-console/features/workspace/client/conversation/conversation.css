@@ -858,6 +858,9 @@
 .conversation-panel-section.is-active { color: var(--brass-ink); background: var(--brass-glow); }
 .conversation-panel-section:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 
+/* 하위 탭을 내는 도구(목표)의 도구 줄 — 섹션 줄과 같은 자리·간격이고 단추 모양은 플러그인이 진다. 그릴 것이 없으면 줄을 남기지 않는다. */
+.conversation-panel-sections.is-tools:empty { display: none; }
+
 /* 몽글 아바타 편집 — 아바타 단추 자체는 껍데기가 없고, 머무르면 오른쪽 아래에 연필이 선다. 편집기는 패널 머리 아래로 펼쳐진다. */
 .avatar-editor {
   display: grid;
@@ -1010,17 +1013,6 @@
 .conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-badge {
   top: -2px;
   right: -4px;
-}
-
-/* 하위 탭을 내는 도구(목표)의 탭 앞 도구(오늘·기한) — 플러그인이 그리고, 머리는 자리와 뒤의 가는 구분선만 진다. */
-.conversation-panel-tabs .right-rail-tab-tools {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 2px;
-  margin-right: 6px;
-  padding-right: 8px;
-  border-right: 1px solid var(--hairline-strong);
 }
 
 /* 하위 탭 낱말 곁 점 — 사람이 답할 일(aurora), 안 읽은 기록(brass). */

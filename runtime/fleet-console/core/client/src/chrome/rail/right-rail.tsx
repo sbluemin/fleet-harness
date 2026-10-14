@@ -697,8 +697,8 @@ export function openConversationTab(entry: RailEntryDescriptor, context: RailToo
 }
 
 /**
- * 하위 탭을 내는 도구의 글자 탭 줄 — 도구(오늘·기한 등)가 앞에, 하위 탭이 대상의 글자 탭과 같은 문법으로 선다. 탭의 켜짐은 엔트리의
- * 패널이 열려 있을 때만이다. 탭 단추의 문서 id 는
+ * 하위 탭을 내는 도구의 글자 탭 줄 — 하위 탭이 대상의 글자 탭과 같은 문법으로 선다. 도구(오늘·기한 등, `renderTools`)는 이 줄이 아니라
+ * 패널 머리가 탭 줄 위 한 줄에 세운다. 탭의 켜짐은 엔트리의 패널이 열려 있을 때만이다. 탭 단추의 문서 id 는
  * `rail-tab-<엔트리 id>-<탭 id>` 이다(온보딩 앵커가 가리킨다).
  */
 function RailConversationTabs({ entry, tabs, context, language, isActive }: {
@@ -713,7 +713,6 @@ function RailConversationTabs({ entry, tabs, context, language, isActive }: {
   if (state === null) return null;
   return (
     <>
-      {tabs.renderTools ? <span className="right-rail-tab-tools">{tabs.renderTools({ theaterId, language })}</span> : null}
       {state.tabs.map((tab) => {
         const title = resolveLocalizedText(tab.title, language);
         const named = tab.dot ? `${title} · ${resolveLocalizedText(tab.dot.label, language)}` : title;
