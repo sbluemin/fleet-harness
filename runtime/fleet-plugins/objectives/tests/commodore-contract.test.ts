@@ -677,6 +677,10 @@ describe("commodore supervisor", () => {
       const first = h.store.addIntel("t1", { text: "a" }).item; h.store.addIntel("t1", { text: "b" });
       // 수정은 새 정보가 아니라 수정으로 깨운다 — 같은 항목을 거듭 고쳐도 한 항목이다.
       h.store.editIntel("t1", first.id, "a2"); h.store.editIntel("t1", first.id, "a3");
+      // 턴 전에 지운 새 정보는 추가·수정 이유 모두에서 빠져 기존 수와 문장을 바꾸지 않는다.
+      const cancelled = h.store.addIntel("t1", { text: "cancelled" }).item;
+      h.store.editIntel("t1", cancelled.id, "cancelled edit");
+      h.store.removeIntel("t1", cancelled.id);
       h.store.transcriptAppend("t1", { kind: "message", text: "Keep objectives small." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["directive", "intel:2", "intel-edited:1", "message"]);
@@ -685,6 +689,15 @@ describe("commodore supervisor", () => {
       expect(note).toContain("> Keep objectives small.");
       expect(note).not.toContain("Ship remote first.");
 
+      // 남은 이유가 없는 취소는 모델 턴과 빈 깨움 기록을 만들지 않는다.
+      const wakesBeforeCancel = tokens().length;
+      const turnsBeforeCancel = sessions[0]!.sent.length;
+      const transient = h.store.addIntel("t1", { text: "transient" }).item;
+      h.store.editIntel("t1", transient.id, "transient edit");
+      h.store.removeIntel("t1", transient.id);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens()).toHaveLength(wakesBeforeCancel);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeCancel);
       // 보드 — 사령관이 운영하는 목표의 상태가 한 단계 옮겨 갈 때마다(새 목표 포함) 깨우고, 대기 상태는 지금 그 상태인 목표 수로 함께 싣는다.
       objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
@@ -775,6 +788,14 @@ describe("commodore supervisor", () => {
       // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
       await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["patrol"]);
+
+      // 이미 전달한 항목의 삭제는 수정 이유를 걷고 별도 이유와 본문 발췌로 한 턴 깨운다.
+      h.store.editIntel("t1", first.id, "x".repeat(70));
+      h.store.removeIntel("t1", first.id);
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(tokens().at(-1)).toEqual(["intel-removed:1"]);
+      expect(sessions[0]!.sent.at(-1)).toContain(`the person removed 1 intel item: ${first.id} "${"x".repeat(59)}…"`);
+      expect(h.store.read("t1")!.intel.some((item) => item.id === first.id)).toBe(false);
 
       // 오류 — 1·5·15분 뒤 재시도, 자율 운영은 그대로. 사람의 「지금 다시 시도」는 곧바로 한 턴.
       fail = "rate limit exceeded";

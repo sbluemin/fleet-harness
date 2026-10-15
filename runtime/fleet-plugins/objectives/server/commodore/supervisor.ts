@@ -90,9 +90,9 @@ type Phase = CommodoreRunStatus["phase"];
 
 /**
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
- * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다. intel-edited 는 고친 항목 수(같은 항목을 거듭 고쳐도 하나)다.
+ * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 은 아직 전달하지 않은 새 항목 수다. intel-edited·intel-removed 는 서로 다른 수정·삭제 항목 수다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "intel-edited" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
+export type WakeCode = "patrol" | "directive" | "intel" | "intel-edited" | "intel-removed" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
 
 /** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
 const SELF_WRITE_GRACE_MS = 5_000;
@@ -142,6 +142,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "directive": return `directive changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
     case "intel-edited": return `the person edited ${plural("intel item")}${tail}`;
+    case "intel-removed": return `the person removed ${plural("intel item")}${tail}`;
     case "message": return "the person sent you a message (quoted below)";
     case "status": {
       const shown = reason.details.slice(-STATUS_DETAILS);
@@ -613,7 +614,27 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (!runner) return;
       if (event.change === "stopAt") { scheduleStop(runner); return; }
       if (event.change === "directive") wake(runner, "directive", { detail: `rev ${event.state.directive.rev}` });
-      else if (event.change === "intel") wake(runner, "intel", { bump: true });
+      else if (event.change === "intel") wake(runner, "intel", { bump: true, detail: event.intelId });
+      else if (event.change === "intel-removed" && event.removedIntel) {
+        const { id, text } = event.removedIntel;
+        const wasNew = runner.pending.get("intel")?.details.includes(id) ?? false;
+        // 아직 전하지 않은 추가·수정은 삭제와 함께 걷는다. 새 항목의 취소는 별도로 깨우지 않는다.
+        for (const code of ["intel", "intel-edited"] as const) {
+          const reason = runner.pending.get(code);
+          const at = reason?.details.indexOf(id) ?? -1;
+          if (!reason || at < 0) continue;
+          reason.details.splice(at, 1);
+          reason.count = reason.details.length;
+          if (!reason.count) runner.pending.delete(code);
+        }
+        if (!runner.pending.size) clearTimer(runner, "coalesce");
+        if (!wasNew) {
+          // 지운 본문은 도구로 다시 읽을 수 없으므로 짧은 발췌를 싣는다.
+          const detail = `${id} "${text.length > 60 ? `${text.slice(0, 59)}…` : text}"`;
+          const removed = new Set(runner.pending.get("intel-removed")?.details).add(detail);
+          wake(runner, "intel-removed", { count: removed.size, detail });
+        }
+      }
       else if (event.change === "intel-edited" && event.intelId) {
         // 고친 항목 id 를 상세로 모은다 — 수는 서로 다른 항목 수다. 본문은 싣지 않는다(사령관이 intel 도구로 읽는다).
         const edited = new Set(runner.pending.get("intel-edited")?.details).add(event.intelId);

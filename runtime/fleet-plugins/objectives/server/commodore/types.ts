@@ -276,11 +276,11 @@ export type CommodoreLiveEvent =
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `objectives:commodore` 채널. */
 export type CommodoreEvent =
   | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
-  | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** `intel-edited` 가 고친 항목. */ readonly intelId?: string }
+  | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {

@@ -168,14 +168,14 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   };
 
   /** 상태 한 건을 검증해 쓰고, 성공한 뒤에만 캐시를 갈고 방송한다. */
-  const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string): CommodoreState => {
+  const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string, removedIntel?: Pick<CommodoreIntel, "id" | "text">): CommodoreState => {
     const parsed = commodoreStateSchema.safeParse(next);
     if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
     const file = stateFile(theaterId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(parsed.data));
     states.set(theaterId, parsed.data);
-    broadcast({ op: "state", theaterId, state: parsed.data, change, ...(intelId ? { intelId } : {}) });
+    broadcast({ op: "state", theaterId, state: parsed.data, change, ...(intelId ? { intelId } : {}), ...(removedIntel ? { removedIntel } : {}) });
     return parsed.data;
   };
 
@@ -238,7 +238,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const item: CommodoreIntel = { id: `i_${randomUUID().slice(0, 8)}`, at: now(), source: input.source?.trim() || "person", text };
       // 최신이 앞이다 — 사령관 도구가 "지난번 이후" 를 앞에서부터 읽는다. 상한을 넘으면 가장 오래된 것이 떨어진다.
       const intel = [item, ...current.intel].slice(0, MAX_INTEL_ITEMS);
-      return { state: commit(theaterId, { ...current, intel }, "intel"), item };
+      return { state: commit(theaterId, { ...current, intel }, "intel", item.id), item };
     },
     editIntel(theaterId, intelId, input) {
       const text = input.trim();
@@ -254,9 +254,10 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     },
     removeIntel(theaterId, intelId) {
       const current = load(theaterId);
+      const item = current.intel.find((entry) => entry.id === intelId);
+      if (!item) throw new ObjectiveStoreError("unknown_intel");
       const intel = current.intel.filter((entry) => entry.id !== intelId);
-      if (intel.length === current.intel.length) throw new ObjectiveStoreError("unknown_intel");
-      return commit(theaterId, { ...current, intel }, "intel");
+      return commit(theaterId, { ...current, intel }, "intel-removed", intelId, { id: item.id, text: item.text });
     },
     setSources(theaterId, sources) {
       if (sources.length > MAX_SOURCES) throw new ObjectiveStoreError("invalid_request");
