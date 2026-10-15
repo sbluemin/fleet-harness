@@ -408,9 +408,9 @@ export function useCommodoreMobileTab(): CommodoreMobileTab {
 }
 
 /** 폰 사령관 화면을 고른 구역으로 연다 — 모바일 호스트는 목적지로 선언된 엔트리의 `rail.open`을 화면으로 연다. */
-export function openCommodoreMobile(tab: CommodoreMobileTab): void {
+export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string | null): void {
   setCommodoreMobileTab(tab);
-  installed?.rail.open(COMMODORE_ENTRY_ID);
+  installed?.rail.open(COMMODORE_ENTRY_ID, theaterId ? { theaterId } : undefined);
 }
 
 /* ── 사람의 행위 ─────────────────────────────────────────────────────── */
