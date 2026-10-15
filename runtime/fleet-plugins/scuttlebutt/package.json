@@ -1,6 +1,6 @@
 {
   "name": "@fleet-plugins/scuttlebutt",
-  "version": "1.234.0",
+  "version": "1.234.1",
   "private": true,
   "type": "module",
   "scripts": {
