@@ -92,6 +92,8 @@ type StillFrame = Box & { readonly tabId: string; readonly url: string; readonly
 /** 칸 끌기 예고 동안 미리 찍는 정지 화면 — 이 간격으로 새로 찍고, 이보다 오래된 장은 끌기에 쓰지 않는다. */
 const RESIZE_STILL_REFRESH_MS = 1000;
 const RESIZE_STILL_MAX_AGE_MS = 1500;
+/** 칸 끌기가 시작됐는데 정지 화면이 아직 없을 때 뷰를 물리지 않고 기다리는 한도 — 넘으면 무채색 자리로라도 물러난다(Session 브라우저의 캡처 예산과 같다). */
+const RESIZE_STILL_WAIT_MS = 800;
 
 /**
  * 찍힌 장이 지금 자리와 맞는가. 물러난 뷰는 마지막으로 놓였던 크기를 지키므로, 그 뒤 자리가 바뀌었으면 맞지 않는다.
@@ -177,6 +179,11 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const placeKeyRef = React.useRef("");
   // 뷰가 마지막으로 놓인 CSS 크기 — 물러난 뷰는 이 크기를 지키므로 정지 화면이 찍히는 크기이기도 하다.
   const placedBoxRef = React.useRef<Box | null>(null);
+  // 칸 끌기 예고 동안 미리 찍어 둔 장과, 그 장을 지금 찍게 하는 손잡이(아래 예고 effect가 심는다).
+  const resizeStillRef = React.useRef<{ readonly still: StillFrame; readonly at: number } | null>(null);
+  const requestResizeStillRef = React.useRef<(() => void) | null>(null);
+  // 정지 화면을 기다리며 뷰를 세워 둔 끌기가 시작된 시각 — 끌기가 아니면 null.
+  const resizeHoldStartRef = React.useRef<number | null>(null);
   const activeTabRef = React.useRef(activeTab);
   activeTabRef.current = activeTab;
 
@@ -256,7 +263,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       // (data-resizing)도 정착 전이다 — 뷰는 놓을 때까지 물러나 있다가 놓은 자리에 한 번 선다.
       const settling = seat?.dataset.resizing === "true" || [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)))
         || (sheetRef.current?.getAnimations?.() ?? []).some((animation) => animation.playState === "running");
-      return { ...seated, settling, split: true };
+      return { ...seated, settling, split: true, resizing: seat?.dataset.resizing === "true" };
     }
     setSplit(false);
     setSplitResizing(false);
@@ -332,7 +339,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const settling = sidebar?.dataset.resizing === "true" || rail?.classList.contains("is-dragging") === true
       || ([[sidebar, cardMotion], [rail, cardMotion], [band, lineMotion]] as const).some(([element, properties]) =>
         (element?.getAnimations?.() ?? []).some((animation) => properties.includes((animation as CSSTransition).transitionProperty)));
-    return { ...measured, settling, split: false };
+    return { ...measured, settling, split: false, resizing: false };
   }, []);
 
   // ---- 크롬 기하 변화: 사이드바 펼침·접힘, 레일 열기·닫기, 끌기 리사이즈 ----
@@ -357,6 +364,21 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     let frame = 0;
     let last: Measured | null = null;
     let parkedForMotion = false;
+    // 칸 끌기가 시작됐는데 정지 화면이 아직 없으면 뷰를 물리지 않고 기다린다 — 물러난 뒤 장이 오기까지 끄는 칸이 빈 면이 되지
+    // 않게(Session 브라우저와 같은 규칙: 정지 화면을 먼저 깔고 물러난다). 그동안 뷰는 제자리에 남아 있다. 끄는 동안은 settling 이라
+    // follow 가 매 프레임 다시 묻고, 장이 오는 프레임에 물러난다.
+    const awaitingResizeStill = (measured: Measured): boolean => {
+      if (!measured.split || !measured.resizing) { resizeHoldStartRef.current = null; return false; }
+      const now = performance.now();
+      if (resizeHoldStartRef.current === null) resizeHoldStartRef.current = now;
+      const tab = activeTabRef.current;
+      if (tab === null || !placeKeyRef.current.startsWith("1:")) return false;
+      const early = resizeStillRef.current;
+      if (early !== null && early.still.tabId === tab.id && early.still.url === tab.url && Date.now() - early.at <= RESIZE_STILL_MAX_AGE_MS) return false;
+      if (now - resizeHoldStartRef.current >= RESIZE_STILL_WAIT_MS) return false;
+      requestResizeStillRef.current?.();
+      return true;
+    };
     // 한 번 재고, 시트가 줄어들면(또는 방향을 아직 모르면) 같은 커밋에서 뷰를 물린다 — 줄어든 자리로
     // 먼저 setBounds했다가 다시 물리는 왕복을 만들지 않는다. rAF·관찰자 콜백의 갱신은 기본 우선순위로
     // 미뤄져 페인트보다 늦을 수 있으니 같은 프레임에 동기로 커밋한다.
@@ -372,6 +394,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         };
         const unknown = parkUnlessMoved && measured.settling && before !== null && same(before, measured);
         // 분할 자리는 펼쳐지고 접히는 내내 움직인다 — 방향과 무관하게 정착할 때까지 뷰를 물린다.
+        // 칸 끌기는 정지 화면이 준비된 뒤에 물러난다 — 미리 찍기가 아직이면 그 장(없으면 한도까지)을 기다린다.
+        if (awaitingResizeStill(measured)) return;
         if ((measured.split && measured.settling) || unknown || shrank(before, shown)) {
           parkedForMotion = true;
           setChromeParked(true);
@@ -529,9 +553,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       }
     })();
   }, []);
-  // ---- 칸 끌기 예고: 손잡이를 가리키거나 포커스하는 동안 보이는 뷰를 미리 찍어 둔다 ----
+  // ---- 칸 끌기 예고: 손잡이를 가리키는 동안 보이는 뷰를 미리 찍어 둔다 ----
   // park 뒤에 찍으면 첫 장이 오기까지(대략 150–330ms) 끄는 칸이 빈 면이다. 예고 동안 찍어 둔 장은 끌기가 시작되는 회차의 첫 장이 된다.
-  const resizeStillRef = React.useRef<{ readonly still: StillFrame; readonly at: number } | null>(null);
+  // 예고 없이 곧바로 눌렀으면 끌기가 이 손잡이(requestResizeStillRef)로 지금 찍게 하고, 그 장이 올 때까지 뷰를 물리지 않는다.
   React.useEffect(() => {
     if (!open || !available) { resizeStillRef.current = null; return; }
     let controller: AbortController | null = null;
@@ -575,10 +599,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       prefetch();
       refresh = setInterval(prefetch, RESIZE_STILL_REFRESH_MS);
     };
+    requestResizeStillRef.current = prefetch;
     const unsubscribe = subscribeNativeViewResize(onIntent);
     onIntent();
     return () => {
       unsubscribe();
+      if (requestResizeStillRef.current === prefetch) requestResizeStillRef.current = null;
       if (refresh !== null) clearInterval(refresh);
       controller?.abort();
     };

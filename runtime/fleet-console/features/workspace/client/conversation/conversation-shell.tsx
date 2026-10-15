@@ -1463,8 +1463,16 @@ function SplitResizeHandle({ seat, splitRef, resizing, onResizingChange }: {
     onResizingChange(true);
     const onMove = (move: PointerEvent) => {
       if (move.pointerId !== pointerId) return;
+      // 놓는 순간을 듣지 못했으면(네이티브 뷰 위에서 놓는 등) 버튼이 떨어진 첫 움직임에서 끝낸다.
+      if ((move.buttons & 1) === 0) { finish(move); return; }
       width = clamp(startWidth + startX - move.clientX);
       setConversationSplitWidth(width);
+    };
+    // 끌기의 끝은 버튼을 놓을 때(pointerup)와 취소(pointercancel)뿐이다. 버튼을 누른 채 포인터 붙들기만 풀리면(뷰 층 순서가 바뀌는
+    // 순간 등) 다시 붙들고 끌기를 잇는다 — 붙들기가 풀린 것을 끝으로 보면 끄는 도중 data-resizing 이 걷혀 물러났던 뷰가 다시 선다.
+    const onLostCapture = (lost: PointerEvent) => {
+      if (done || lost.pointerId !== pointerId) return;
+      try { handle.setPointerCapture(pointerId); } catch { /* 포인터가 이미 끝났다 — 창 전체의 움직임·놓음으로 끝난다. */ }
     };
     const finish = (end: PointerEvent) => {
       if (done || end.pointerId !== pointerId) return;
@@ -1472,7 +1480,7 @@ function SplitResizeHandle({ seat, splitRef, resizing, onResizingChange }: {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
-      handle.removeEventListener("lostpointercapture", finish);
+      handle.removeEventListener("lostpointercapture", onLostCapture);
       try { if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId); } catch { /* 이미 풀렸다. */ }
       // 움직이지 않은 누름(두 번 누르기의 반쪽 포함)은 고른 폭을 만들지 않는다 — 반씩 나누는 기본을 지키게.
       if (width !== startWidth) setConversationSplitWidth(width, { persist: true });
@@ -1484,7 +1492,7 @@ function SplitResizeHandle({ seat, splitRef, resizing, onResizingChange }: {
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
-    handle.addEventListener("lostpointercapture", finish);
+    handle.addEventListener("lostpointercapture", onLostCapture);
   };
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? SPLIT_RESIZE_STEP_LARGE : SPLIT_RESIZE_STEP;
