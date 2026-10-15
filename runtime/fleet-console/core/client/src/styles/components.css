@@ -7694,7 +7694,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 캔버스 메뉴의 모든 그룹 머리글이 이 한 규칙을 쓴다 — 공급자 밴드, 실행 종류 이름, 최하단 Etc가
-   각자 머리글 문법을 가지면 같은 목록 안에서 머리글과 첫 항목 사이 간격이 그룹마다 달라진다. */
+   각자 머리글 문법을 가지면 같은 목록 안에서 머리글과 첫 항목 사이 간격이 그룹마다 달라진다.
+   대화 입력창의 모델 메뉴(.agent-chat-coord-pop-caption)와 설정의 모델 선택기(.fc-coord-menu-caption)도
+   같은 머리글이라 크기·말투는 여기 한 곳이 정한다 — 대화 중심 화면의 다른 소제목처럼 문장형이고 대문자·자간을 쓰지 않는다. */
 .operation-launch-variant-caption {
   display: flex;
   align-items: center;
@@ -7703,10 +7705,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   padding: var(--space-1) var(--space-2);
   color: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary));
   font-family: var(--font-ui);
-  font-size: var(--t-2xs);
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .operation-launch-variant-caption.is-antigravity,
@@ -13440,7 +13440,8 @@ body[data-expanded-surface-resizing="true"] {
 .fc-coord-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 6px var(--space-2) 8px; border-bottom: 1px solid var(--hairline); font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); }
 .fc-coord-menu-head b { color: var(--text-primary); font-weight: var(--weight-medium); }
 .fc-coord-menu-group { display: flex; flex-direction: column; }
-.fc-coord-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.1em; text-transform: uppercase; }
+/* 공유 머리글(.operation-launch-variant-caption)과 같은 문장형 크기·굵기 — 그 클래스 없이 이것만 다는 플러그인 머리글도 같은 말투로 선다. */
+.fc-coord-menu-caption { display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .fc-coord-menu-caption.is-off { color: var(--warn-ink); }
 .fc-coord-menu-caption.fc-coord-menu-note { padding: 2px var(--space-2) 4px 14px; font-family: inherit; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); }
 .fc-coord-menu-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: 7px var(--space-2); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); letter-spacing: 0.04em; text-align: left; cursor: pointer; transition: color var(--duration-fast), background var(--duration-fast); }

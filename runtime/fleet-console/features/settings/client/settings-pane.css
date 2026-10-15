@@ -53,9 +53,12 @@
 /* 글자형 범위 선택은 평평하게 — 텍스트와 선택 단의 밑줄로만 말한다. */
 .settings-pane :is(.segmented, .backend-api-facets) { display: flex; flex-wrap: wrap; gap: 4px 14px; min-width: 0; max-width: 100%; padding: 0; border: 0; background: none; box-shadow: none; overflow: visible; }
 .settings-pane .segmented > .segmented-thumb { display: none; }
-.settings-pane :is(.segmented > .segmented-option, .backend-api-facet) { min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-family: var(--font-ui); font-size: var(--t-md); letter-spacing: 0; }
+/* 고르지 않은 선택지는 보통 굵기다 — 코어 세그먼트의 bold가 남으면 고른 선택지(medium)보다 굵어져 위계가 뒤집힌다. */
+.settings-pane :is(.segmented > .segmented-option, .backend-api-facet) { min-width: 0; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-regular); letter-spacing: 0; }
 .settings-pane :is(.segmented > .segmented-option, .backend-api-facet):is(.is-active, [aria-pressed="true"]) { background: none; box-shadow: none; color: var(--text-primary); font-weight: var(--weight-medium); text-decoration: underline 2px var(--brass); text-underline-offset: 6px; }
 .settings-pane .fc-select { min-width: 0; max-width: 100%; }
+/* 설정 안의 모델 선택기는 강도를 소문자로 읽힌다 — 로스터 칩 라벨(LOW·MED…)은 실행 메뉴와 플러그인이 함께 쓰는 낱말이라 표시만 내린다. */
+.settings-pane .fc-coord-trigger-effort { text-transform: lowercase; }
 .settings-pane .fc-select__trigger { min-width: 0; max-width: 100%; }
 .settings-pane .fc-select__value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
 .settings-pane .fc-settings-slider { flex: 1 1 160px; width: auto; max-width: 300px; flex-wrap: wrap; gap: 6px; margin-left: auto; }

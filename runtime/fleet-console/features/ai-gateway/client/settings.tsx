@@ -1,12 +1,12 @@
 import { launchProviderGlyph, serviceGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
-import { SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { getModelAuthStoreState, loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
-import { ModelCoordinatePicker, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
+import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRows } from "@fleet-console/sdk/models";
 import { useModelRoster } from "./model-roster-store.js";
 
@@ -259,8 +259,9 @@ function AiGatewayCompactTimingCard() {
           />
         </SettingsItem>
       ) : null}
+      {/* 트랙·수치·안내는 행 하나로 묶어 같은 면에 잇는다 — 카드 형제로 두면 면 밖에 떠 따로 읽힌다. */}
       {mobile ? null : (
-        <>
+        <div className="global-settings-row is-stack compact-timing-body">
       <div className="compact-timing-track-wrap">
         {/* 보이는 range 하나가 트랙이다 — 숨긴 range와 따로 그린 손잡이를 겹치면 포커스 링이 트랙 래퍼
             전체에 서서 카드 가장자리에서 잘린다. 손잡이와 포커스 링은 공유 `.fleet-slider`가 그리고, 막대와
@@ -319,7 +320,7 @@ function AiGatewayCompactTimingCard() {
             })}
         </p>
       ) : null}
-        </>
+        </div>
       )}
     </SettingsGroup>
   );
@@ -334,6 +335,9 @@ function AiGatewayRoutingCard() {
   const settings = useSystemPromptSettingsStore();
   const auth = useModelAuthStore();
   const routingRoster = useModelRoster("agent");
+  const mobileHost = useMobileSettingsHost();
+  const [testOpen, setTestOpen] = React.useState(false);
+  const testPanelId = React.useId();
   const state = settings.state;
   const saving = settings.savingFields;
 
@@ -354,12 +358,31 @@ function AiGatewayRoutingCard() {
   const jevActive = jevStored && typesafeSignedIn;
   const jevFallback = jevStored && !typesafeSignedIn;
   // 위임 후보 — 켠 모델 중 호스트 전용이 아닌 것. 0개면 라우팅은 배정하지 않고 위임 실행은 세션 모델로 돈다(Claude만 켜고
-  // 모두 호스트 전용으로 둔 설치가 처음 겪을 수 있다). 그 사실을 카드에 말하고 테스트를 막는다.
-  const delegable = (state.aiGateway?.models ?? []).filter((entry) => entry.hostOnly !== true).length;
+  // 모두 호스트 전용으로 둔 설치가 처음 겪을 수 있다). 그 사실을 후보 행이 말하고 테스트를 막는다.
+  const catalogNames = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, model.name] as const)));
+  const candidates = (state.aiGateway?.models ?? []).filter((entry) => entry.hostOnly !== true).map((entry) => catalogNames.get(entry.id) ?? entry.id);
+  const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
+  // 폰의 선택기 행은 「모델 · 강도」를 한 문자열로 그려 CSS가 강도만 내릴 수 없다 — 설정의 데스크톱
+  // 트리거(settings-pane.css)처럼 강도를 소문자로 읽히게 문구를 여기서 넘긴다.
+  const routingPickerText = (() => {
+    if (!mobileHost) return undefined;
+    const display = modelCoordinateDisplay(routingRoster, state.delegationRoutingModel ? { model: state.delegationRoutingModel } : {}, { model: ROSTER_FALLBACK_MODEL }, routingPickerLabels);
+    const effort = display.words.effort && display.words.effort !== routingPickerLabels.auto ? display.words.effort.toLowerCase() : display.words.effort;
+    return [display.words.model, effort, display.badge].filter(Boolean).join(" · ");
+  })();
   const saveMode = (next: DelegationRoutingMode): void => {
     if (next === "jev" && !typesafeSignedIn) return;
     void setSystemPromptSettingsField("delegationRoutingMode", next);
   };
+  // 안내는 행 사이의 문단이 아니라 그 행의 보조 줄이다 — 문단이 끼면 한 묶음의 면이 조각난다.
+  const lines = (key: TerminalMessageKey): string => t(key).split("\n").join(" ");
+  const modeHint = jevActive
+    ? lines("terminal.settings.aiGatewayDelegationRoutingJevNotice")
+    : jevFallback
+      ? `${t("terminal.settings.aiGatewayDelegationRoutingJevFallback")} ${t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}`
+      : !typesafeSignedIn
+        ? t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")
+        : undefined;
   return (
     <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayRouting")}>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
@@ -375,6 +398,7 @@ function AiGatewayRoutingCard() {
           <SettingsItem
             label={t("terminal.settings.aiGatewayDelegationRoutingMode")}
             labelId="delegation-routing-mode-label"
+            hint={modeHint}
             helpTip={(
               <SettingsHelp title={t("terminal.settings.aiGatewayDelegationRoutingMode")}>
                 <p>{t("terminal.settings.aiGatewayDelegationRoutingModeHelp")}</p>
@@ -392,15 +416,8 @@ function AiGatewayRoutingCard() {
               onChange={saveMode}
             />
           </SettingsItem>
-          {jevActive ? (
-            <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p>
-          ) : null}
-          {jevFallback ? (
-            <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevFallback")}</p>
-          ) : null}
-          {!typesafeSignedIn ? <p className="global-settings-help">{t("terminal.settings.aiGatewayDelegationRoutingJevSignIn")}</p> : null}
           {mode === "model" ? (
-            <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label">
+            <SettingsItem label={t("terminal.settings.aiGatewayRoutingModel")} labelId="routing-model-label" hint={lines("terminal.settings.aiGatewayRoutingModelNotice")}>
               {/* 라우팅 판정기는 모델만 고른다 — 강도는 실행이 빠른 단(low)으로 정한다. 선택지는 모델 로스터 하나다. */}
               <ModelCoordinatePicker
                 roster={routingRoster}
@@ -409,23 +426,79 @@ function AiGatewayRoutingCard() {
                 effort="none"
                 disabled={saving.has("delegationRoutingModel")}
                 onChange={(next) => { if (next.model) void setSystemPromptSettingsField("delegationRoutingModel", next.model); }}
-                labels={rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"))}
-                trigger={{ variant: "field" }}
+                labels={routingPickerLabels}
+                trigger={{ variant: "field", ...(routingPickerText ? { text: routingPickerText } : {}) }}
               />
             </SettingsItem>
           ) : null}
-          {mode === "model" ? <p className="global-settings-help">{t("terminal.settings.aiGatewayRoutingModelNotice").split("\n").map((line, i) => <React.Fragment key={i}>{i > 0 ? <br /> : null}{line}</React.Fragment>)}</p> : null}
-          {delegable === 0 ? <p className="global-settings-help" role="status">{t("terminal.settings.aiGatewayRoutingNoCandidates")}</p> : null}
-          <RoutingTest key={`${mode}:${state.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL}`} mode={mode} disabled={modeSaving || delegable === 0 || (mode === "jev" && !typesafeSignedIn)} />
+          {/* 폰의 행은 컨트롤 칸이 좁아 이름 목록이 보조 줄을 짓누른다 — 폰에서는 이름 목록이 곧 보조 줄이다. */}
+          <SettingsItem
+            label={t("terminal.settings.aiGatewayRoutingCandidates")}
+            hint={candidates.length === 0
+              ? t("terminal.settings.aiGatewayRoutingNoCandidates")
+              : mobileHost ? candidates.join(" · ") : t("terminal.settings.aiGatewayRoutingCandidatesHint")}
+          >
+            {mobileHost ? null : (
+              <span className={`ai-gateway-routing-candidates${candidates.length === 0 ? " is-empty" : ""}`} role={candidates.length === 0 ? "status" : undefined}>
+                {candidates.length === 0 ? t("terminal.settings.aiGatewayRoutingCandidatesNone") : candidates.join(" · ")}
+              </span>
+            )}
+          </SettingsItem>
+          {/* 테스트는 사용량이 드는 실제 요청이라 펼쳐야 보낸다. 폰은 하위 화면으로 연다. */}
+          {mobileHost ? (
+            <SettingsSubScreenRow
+              label={t("terminal.settings.routingTest")}
+              summary={t("terminal.settings.routingTestUsage")}
+              render={() => <RoutingTestPanel />}
+            />
+          ) : (
+            <div className={`global-settings-row is-stack ai-gateway-routing-test-row${testOpen ? " is-open" : ""}`}>
+              <button
+                type="button"
+                className="ai-gateway-routing-test-toggle"
+                aria-expanded={testOpen}
+                aria-controls={testOpen ? testPanelId : undefined}
+                onClick={() => setTestOpen((open) => !open)}
+              >
+                <span className="global-settings-row-text">
+                  <span className="global-settings-resp-title">{t("terminal.settings.routingTest")}</span>
+                  <span className="global-settings-help">{t("terminal.settings.routingTestHint")}</span>
+                </span>
+                <AiGatewayChevronGlyph className="ai-gateway-glyph ai-gateway-model-chevron" />
+              </button>
+              {testOpen ? <div id={testPanelId}><RoutingTestPanel /></div> : null}
+            </div>
+          )}
         </>
       ) : null}
     </SettingsGroup>
   );
 }
 
+/** 라우팅 테스트의 자리 — 데스크톱 펼침 행과 폰 하위 화면이 같은 패널을 쓴다. 스토어에서 지금 방식과 후보를 다시 읽는다. */
+function RoutingTestPanel() {
+  const settings = useSystemPromptSettingsStore();
+  const auth = useModelAuthStore();
+  const state = settings.state;
+  if (!state) return null;
+  const typesafeSignedIn = auth.state?.providers.some(entry => entry.provider === "typesafe" && entry.signedIn) === true;
+  const mode = state.delegationRoutingMode;
+  const delegable = (state.aiGateway?.models ?? []).filter((entry) => entry.hostOnly !== true).length;
+  return (
+    <RoutingTest
+      key={`${mode}:${state.delegationRoutingModel ?? ROSTER_FALLBACK_MODEL}`}
+      mode={mode}
+      disabled={settings.savingFields.has("delegationRoutingMode") || delegable === 0 || (mode === "jev" && !typesafeSignedIn)}
+    />
+  );
+}
+
+type RoutingTestPreset = "Light" | "Medium" | "Heavy";
+
 function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode; readonly disabled: boolean }) {
   const t = getT(useTerminalLocale());
   const [prompt, setPrompt] = React.useState("");
+  const [preset, setPreset] = React.useState<RoutingTestPreset | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [result, setResult] = React.useState<{ model?: string; label?: string; effort?: string; elapsedMs: number; fallback: boolean; because: string } | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -450,30 +523,37 @@ function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode;
       if (active.current === controller) active.current = null;
     }
   };
-  return <section className="ai-gateway-routing-test" aria-label={t("terminal.settings.routingTest")}>
-    <p className="global-settings-resp-title">{t("terminal.settings.routingTest")} · {mode === "jev" ? "Jev" : t("terminal.settings.aiGatewayRoutingModel")}</p>
-    <p className="global-settings-help">{t("terminal.settings.routingTestHelp")}</p>
+  return <section className="ai-gateway-routing-test" aria-label={`${t("terminal.settings.routingTest")} · ${mode === "jev" ? "Jev" : t("terminal.settings.aiGatewayRoutingModel")}`}>
     <div className="ai-gateway-routing-presets" role="group" aria-label={t("terminal.settings.routingTestPresets")}>
+      <span className="ai-gateway-routing-presets-label" aria-hidden="true">{t("terminal.settings.routingTestPresets")}</span>
       {(["Light", "Medium", "Heavy"] as const).map(level => (
-        <button key={level} type="button" className="ai-gateway-add-button" disabled={busy}
-          onClick={() => { setPrompt(t(`terminal.settings.routingTest${level}Prompt`)); setResult(null); setError(null); }}>
+        <button key={level} type="button" className="ai-gateway-chip-button" aria-pressed={preset === level} disabled={busy}
+          onClick={() => { setPrompt(t(`terminal.settings.routingTest${level}Prompt`)); setPreset(level); setResult(null); setError(null); }}>
           {t(`terminal.settings.routingTest${level}`)}
         </button>
       ))}
     </div>
     <SyncedTextarea className="ai-gateway-routing-task" aria-label={t("terminal.settings.routingTestTask")} rows={3} maxLength={65536}
       value={prompt} disabled={busy}
-      placeholder={t("terminal.settings.routingTestTask")} onChange={event => { setPrompt(event.target.value); setResult(null); }} />
-    <button type="button" className="ai-gateway-add-button" disabled={disabled || busy || !prompt.trim()} onClick={() => void run()}>
-      {busy ? t("terminal.settings.routingTestRunning") : t("terminal.settings.routingTestRun")}
-    </button>
+      placeholder={t("terminal.settings.routingTestTask")} onChange={event => { setPrompt(event.target.value); setPreset(null); setResult(null); }} />
+    {/* 사용량이 드는 요청은 이 버튼 하나뿐이다 — 예시 칩과 같은 모양이면 무엇이 요청을 보내는지 가려지지 않는다. */}
+    <div className="ai-gateway-routing-foot">
+      <p className="ai-gateway-routing-cost">{t("terminal.settings.routingTestHelp")}</p>
+      <button type="button" className="ai-gateway-run-button" disabled={disabled || busy || !prompt.trim()} onClick={() => void run()}>
+        {busy ? t("terminal.settings.routingTestRunning") : t("terminal.settings.routingTestRun")}
+      </button>
+    </div>
     {error ? <p className="global-settings-error" role="alert">{error}</p> : null}
-    {result ? <div role="status" className="global-settings-help">
-      <p>{result.fallback ? t("terminal.settings.routingTestFallback") : t("terminal.settings.routingTestSuccess")}</p>
-      <p>{t("terminal.settings.routingTestAssignedModel")}: {result.label ?? t("terminal.settings.routingTestNoAssignment")}</p>
-      {result.effort ? <p>{t("terminal.settings.routingTestAssignedEffort")}: {result.effort}</p> : null}
-      <p>{t("terminal.settings.routingTestDuration")}: {result.elapsedMs} ms</p>
-      {result.fallback ? <p>{result.because}</p> : null}
+    {result ? <div role="status" className="ai-gateway-routing-result">
+      <p className="ai-gateway-routing-result-head">{result.fallback ? t("terminal.settings.routingTestFallback") : t("terminal.settings.routingTestSuccess")}</p>
+      <dl>
+        <dt>{t("terminal.settings.routingTestAssignedModel")}</dt>
+        <dd>{result.label ?? t("terminal.settings.routingTestNoAssignment")}</dd>
+        {result.effort ? <><dt>{t("terminal.settings.routingTestAssignedEffort")}</dt><dd>{result.effort}</dd></> : null}
+        <dt>{t("terminal.settings.routingTestDuration")}</dt>
+        <dd>{result.elapsedMs} ms</dd>
+      </dl>
+      {result.fallback ? <p className="ai-gateway-routing-because">{result.because}</p> : null}
     </div> : null}
   </section>;
 }
@@ -607,44 +687,21 @@ function AiGatewayModelsEntry() {
   );
 }
 
-function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?: boolean } = {}) {
-  const t = getT(useTerminalLocale());
+/**
+ * 모델 카드와 폰 세부 화면이 함께 쓰는 저장 동작. 화면마다 따로 들고 있으면 순위 정리·마지막 강도 잠금 같은
+ * 규칙이 한쪽에서만 지켜진다 — 저장 규칙은 여기 한 곳이 진다.
+ */
+function useAiGatewayModelActions() {
   const settings = useSystemPromptSettingsStore();
-  const auth = useModelAuthStore();
   const state = settings.state;
   const saving = settings.savingFields.has("aiGateway");
-  const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const addButtonRef = React.useRef<HTMLButtonElement | null>(null);
-  // 닫힐 때 포커스는 연 버튼으로 돌아온다 — 팔레트 안에 있던 포커스가 문서 바닥으로 떨어지면
-  // 키보드 사용자는 다음 Tab이 어디서 시작할지 알 수 없다.
-  const closePalette = React.useCallback(() => {
-    setPaletteOpen(false);
-    addButtonRef.current?.focus();
-  }, []);
-
-  React.useEffect(() => {
-    const controller = new AbortController();
-    void loadModelAuth(controller.signal);
-    return () => controller.abort();
-  }, []);
-
   // 팔레트가 계열 묶기를 이 배열의 정체성으로 메모하므로 렌더마다 새 배열을 만들지 않는다.
   const catalogProviders = state?.aiGatewayCatalog.providers;
   const providers = React.useMemo(
     () => (catalogProviders ? orderAiGatewayProviders(catalogProviders) : []),
     [catalogProviders],
   );
-
-  if (!state) {
-    return (
-      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
-        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayModels")}</p>
-        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
-      </section>
-    );
-  }
-
-  const selection = state.aiGateway ?? {};
+  const selection: AiGatewaySettings = state?.aiGateway ?? {};
   const enabled = selection.models ?? [];
   // 순위는 켠 공급자에 대한 선호다 — 로드아웃이 켠 모델 없는 공급자를 거르고 다시 번호를 매기므로,
   // 화면도 같은 순위를 읽는다. 예전 저장값에 남은 빈 공급자는 다음 순위 저장에서 함께 정리된다.
@@ -713,6 +770,61 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     });
   };
 
+  return { settings, state, saving, providers, selection, priority, savePriority, addModel, removeModel, setModelEfforts, setModelHostOnly };
+}
+
+/** 모델 행의 보조 줄 — 등급·창·Fast·설명·강도·호스트 전용을 한 줄로. 칩 대신 글자로 말해 다른 설정 행과 같은 결로 선다. */
+function describeAiGatewayRosterEntry(t: ReturnType<typeof getT>, entry: AiGatewayRosterEntry): string {
+  const { model, efforts, hostOnly } = entry;
+  const ladder = model.effort?.levels ?? [];
+  const exposed = resolveExposedEfforts(ladder, efforts);
+  const levels = ladder.length === 0
+    ? null
+    : exposed.length === ladder.length
+      ? t("terminal.settings.aiGatewayLevelsAll", { count: ladder.length })
+      : t("terminal.settings.aiGatewayLevelsSome", { levels: exposed.join("·") });
+  return [
+    aiGatewayClassLabel(model.capabilityClass),
+    formatAiGatewayContextWindow(model.contextWindow),
+    model.fast ? t("terminal.settings.aiGatewayFast") : null,
+    model.description || null,
+    levels,
+    hostOnly ? t("terminal.settings.aiGatewayHostOnly") : null,
+  ].filter((part): part is string => Boolean(part)).join(" · ");
+}
+
+function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?: boolean } = {}) {
+  const t = getT(useTerminalLocale());
+  const auth = useModelAuthStore();
+  const actions = useAiGatewayModelActions();
+  const { settings, state, saving, providers, selection, priority } = actions;
+  const mobileHost = useMobileSettingsHost();
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
+  /** 세부가 펼쳐진 모델 — 한 번에 하나만 펼친다. 여러 줄이 펼쳐지면 카드가 다시 조작 벽이 된다. */
+  const [openModelId, setOpenModelId] = React.useState<string | null>(null);
+  const addButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  // 닫힐 때 포커스는 연 버튼으로 돌아온다 — 팔레트 안에 있던 포커스가 문서 바닥으로 떨어지면
+  // 키보드 사용자는 다음 Tab이 어디서 시작할지 알 수 없다.
+  const closePalette = React.useCallback(() => {
+    setPaletteOpen(false);
+    addButtonRef.current?.focus();
+  }, []);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadModelAuth(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayModels")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
   const roster = buildAiGatewayRoster(providers, selection, priority);
   const groups = groupAiGatewayRoster(roster);
   const providerCount = groups.length;
@@ -721,6 +833,10 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   // 카탈로그 밖 서비스 자격증명. 팔레트는 전부(로그인 자리로), 로스터는 로그인된 것만 세운다.
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   const signedInServices = services.filter((entry) => entry.signedIn);
+  const authLabelOf = (providerId: string): string =>
+    authOf(providerId) !== undefined || AI_GATEWAY_KEY_PROVIDER_IDS.has(providerId)
+      ? t("terminal.settings.aiGatewayAuthApiKey")
+      : t("terminal.settings.aiGatewayAuthSubscription");
 
   // 선택지는 켠 공급자 수까지만이다. 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가
   // 늘지 않는다 — 한 칸 더 주면 placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
@@ -735,28 +851,54 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     ];
   };
   const rankProvider = (providerId: AiGatewayProviderId, rank: number | null): void => {
-    savePriority(placeAiGatewayPriority(priority, providerId, rank));
+    actions.savePriority(placeAiGatewayPriority(priority, providerId, rank));
   };
+  const palette = paletteOpen ? (
+    <AiGatewayModelPalette
+      providers={providers}
+      services={services}
+      selection={selection}
+      authOf={authOf}
+      authBusy={auth.busyProvider}
+      saving={saving}
+      onAdd={actions.addModel}
+      onClose={closePalette}
+    />
+  ) : null;
+  const addButton = (
+    <button
+      ref={addButtonRef}
+      type="button"
+      className="ai-gateway-add-button"
+      aria-haspopup="dialog"
+      aria-expanded={paletteOpen}
+      // 저장 중에도 잠그지 않는다 — 팔레트를 여는 것뿐이고, 추가가 저장을 시작하며 닫힐 때
+      // 포커스가 이 버튼으로 돌아와야 하는데 잠긴 버튼은 포커스를 받지 못한다.
+      onClick={() => setPaletteOpen((open) => !open)}
+    >
+      <AiGatewayPlusGlyph />
+      {t("terminal.settings.aiGatewayAddModel")}
+    </button>
+  );
 
   if (mobileDetail) {
     const keyedProviders = auth.state?.providers.filter((entry) => entry.kind === "model-provider") ?? [];
+    const openSubScreen = mobileHost?.openSubScreen;
     return (
       <>
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
         <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayModels")} note={t("terminal.settings.aiGatewayModelsHelp")}>
-          <SettingsItem label={t("terminal.settings.aiGatewayAddModel")}>
-            <div className="ai-gateway-palette-anchor">
-              <button ref={addButtonRef} type="button" className="ai-gateway-add-button" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={() => setPaletteOpen((open) => !open)}>
-                {`+ ${t("terminal.settings.aiGatewayAddModel")}`}
-              </button>
-              {paletteOpen ? (
-                <AiGatewayModelPalette providers={providers} services={services} selection={selection} authOf={authOf} authBusy={auth.busyProvider} saving={saving} onAdd={addModel} onClose={closePalette} />
-              ) : null}
-            </div>
-          </SettingsItem>
+          {/* 폰의 행은 <label>이라 그 안에 선 팔레트를 누르면 행이 추가 버튼을 다시 누른다 — 팔레트는 행 밖에 둔다. */}
+          <SettingsItem label={t("terminal.settings.aiGatewayAddModel")}>{addButton}</SettingsItem>
           {roster.length === 0 && signedInServices.length === 0 ? <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p> : null}
         </SettingsGroup>
+        {paletteOpen ? (
+          <div className="ai-gateway-palette-anchor is-sheet">
+            <div className="ai-gateway-palette-scrim" aria-hidden="true" onClick={closePalette} />
+            {palette}
+          </div>
+        ) : null}
         {signedInServices.map((service) => (
           <SettingsGroup key={service.provider} ariaLabel={service.displayName} title={service.displayName}>
             <SettingsItem label={t("terminal.settings.aiGatewayServiceBadge")} hint={t("terminal.settings.aiGatewayServiceTip")}>{null}</SettingsItem>
@@ -766,7 +908,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
           const providerId = group.provider.id as AiGatewayProviderId;
           const name = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId]);
           return (
-            <SettingsGroup key={group.provider.id} ariaLabel={name} title={`${name} · ${t("terminal.settings.aiGatewayModelCount", { count: group.entries.length })}`}>
+            <SettingsGroup key={group.provider.id} ariaLabel={name} title={`${name} · ${authLabelOf(group.provider.id)}`}>
               <SettingsItem label={t("terminal.settings.aiGatewayPriority")} helpTip={<SettingsHelp title={t("terminal.settings.aiGatewayPriority")}>{t("terminal.settings.aiGatewayPriorityTip")}</SettingsHelp>}>
                 <Select
                   label={t("terminal.settings.aiGatewayPriorityAria", { provider: name })}
@@ -789,26 +931,20 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
                   />
                 </SettingsItem>
               ) : null}
-              {group.entries.map((entry) => {
-                const { model, efforts, hostOnly } = entry;
-                const ladder = model.effort?.levels ?? [];
-                const chips = [formatAiGatewayContextWindow(model.contextWindow), model.fast ? t("terminal.settings.aiGatewayFast") : null, model.description || null].filter(Boolean).join(" · ");
-                return (
-                  <React.Fragment key={model.id}>
-                    <SettingsItem label={model.name} hint={chips || undefined}>
-                      <button type="button" className="ai-gateway-remove" aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })} disabled={saving} onClick={() => removeModel(model.id)}>✕</button>
-                    </SettingsItem>
-                    {ladder.length > 0 ? (
-                      <SettingsItem label={`${model.name} · ${t("terminal.settings.aiGatewayLevels")}`}>
-                        <AiGatewayEffortBadge model={model} exposed={resolveExposedEfforts(ladder, efforts)} hostOnly={hostOnly} saving={saving} onSetEfforts={(next) => setModelEfforts(model, next)} />
-                      </SettingsItem>
-                    ) : null}
-                    <SettingsItem label={`${model.name} · ${t("terminal.settings.aiGatewayHostOnly")}`} hint={t("terminal.settings.aiGatewayHostOnlyTip")}>
-                      <SettingsToggle checked={hostOnly} disabled={saving} ariaLabel={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })} onChange={() => setModelHostOnly(model, !hostOnly)} />
-                    </SettingsItem>
-                  </React.Fragment>
-                );
-              })}
+              {/* 모델 하나가 행 하나다 — 강도·호스트 전용·제거는 그 모델의 하위 화면이 진다. */}
+              {group.entries.map((entry) => (
+                <SettingsItem key={entry.model.id} label={entry.model.name} hint={describeAiGatewayRosterEntry(t, entry)}>
+                  <button
+                    type="button"
+                    className="ai-gateway-model-open"
+                    aria-label={t("terminal.settings.aiGatewayModelDetailAria", { name: entry.model.name })}
+                    aria-haspopup="dialog"
+                    onClick={() => openSubScreen?.({ title: entry.model.name, render: () => <AiGatewayModelDetailScreen modelId={entry.model.id} /> })}
+                  >
+                    <AiGatewayChevronGlyph />
+                  </button>
+                </SettingsItem>
+              ))}
             </SettingsGroup>
           );
         })}
@@ -837,109 +973,178 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   }
 
   return (
-    <>
-      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayModels")}>
-        <div className="agent-cli-head">
-          <p className="global-settings-resp-title">
-            {t("terminal.settings.aiGatewayModels")}
-            <SettingsHelp title={t("terminal.settings.aiGatewayModels")}>
-              <p>{t("terminal.settings.aiGatewayModelsHelp")}</p>
-            </SettingsHelp>
-          </p>
+    <section className="global-settings-card ai-gateway-models" aria-label={t("terminal.settings.aiGatewayModels")}>
+      {/* 머리 줄 — 묶음 제목(설정 모달의 소제목 문법), 개수, 추가. 팔레트의 기준 상자이기도 하다. */}
+      <div className="ai-gateway-roster-head">
+        <h3 className="global-settings-card-title ai-gateway-roster-title">
+          {t("terminal.settings.aiGatewayModels")}
+          <SettingsHelp title={t("terminal.settings.aiGatewayModels")}>
+            <p>{t("terminal.settings.aiGatewayModelsHelp")}</p>
+          </SettingsHelp>
+        </h3>
+        {roster.length > 0 ? (
+          <span className="ai-gateway-roster-count">
+            {t("terminal.settings.aiGatewayRosterCount", { models: roster.length, providers: providerCount })}
+          </span>
+        ) : null}
+        <div className="ai-gateway-palette-anchor">
+          {addButton}
+          {palette}
         </div>
-        {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-        {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
-        <div className="ai-gateway-stack">
-        <div className="ai-gateway-roster-head">
-          <div className="ai-gateway-palette-anchor">
-            <button
-              ref={addButtonRef}
-              type="button"
-              className="ai-gateway-add-button"
-              aria-haspopup="dialog"
-              aria-expanded={paletteOpen}
-              // 저장 중에도 잠그지 않는다 — 팔레트를 여는 것뿐이고, 추가가 저장을 시작하며 닫힐 때
-              // 포커스가 이 버튼으로 돌아와야 하는데 잠긴 버튼은 포커스를 받지 못한다.
-              onClick={() => setPaletteOpen((open) => !open)}
-            >
-              {`+ ${t("terminal.settings.aiGatewayAddModel")}`}
-            </button>
-            {paletteOpen ? (
-              <AiGatewayModelPalette
-                providers={providers}
-                services={services}
-                selection={selection}
-                authOf={authOf}
-                authBusy={auth.busyProvider}
-                saving={saving}
-                onAdd={addModel}
-                onClose={closePalette}
-              />
-            ) : null}
-          </div>
-          {roster.length > 0 ? (
-            <span className="ai-gateway-roster-count">
-              {t("terminal.settings.aiGatewayRosterCount", { models: roster.length, providers: providerCount })}
-            </span>
-          ) : null}
-        </div>
-        {roster.length === 0 && signedInServices.length === 0 ? (
-          <p className="global-settings-help">{t("terminal.settings.aiGatewayAllExposed")}</p>
-        ) : (
-          <div className="ai-gateway-groups">
-            {signedInServices.map((service) => (
-              <AiGatewayServiceGroup key={service.provider} service={service} />
-            ))}
-            {groups.map((group) => {
-              const providerId = group.provider.id as AiGatewayProviderId;
-              return (
-                <section
-                  key={group.provider.id}
-                  className={`ai-gateway-provider-group ai-gateway-provider is-${group.provider.id}${group.rank >= 0 ? " is-ranked" : ""}`}
-                  aria-label={t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId])}
-                >
-                  <div className="ai-gateway-group-head">
-                    <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(providerId)}</span>
-                    <span className="ai-gateway-provider-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId])}</span>
-                    <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayModelCount", { count: group.entries.length })}</span>
-                    <span className="ai-gateway-group-controls">
-                      {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={settings.savingFields.has("xaiEndpoint")} /> : null}
-                      {/* 순위 셀렉트는 라벨과 함께 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
-                      <span className="ai-gateway-priority-wrap">
-                        <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayPriority")}</span>
-                        <Select
-                          compact
-                          className={group.rank >= 0 ? "ai-gateway-priority-select is-ranked" : "ai-gateway-priority-select"}
-                          label={t("terminal.settings.aiGatewayPriorityAria", { provider: t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId]) })}
-                          value={group.rank >= 0 ? String(group.rank) : ""}
-                          disabled={saving}
-                          options={rankOptionsFor(group.provider.id)}
-                          onChange={(value) => rankProvider(providerId, value === "" ? null : Number(value))}
-                        />
-                        <span className="ai-gateway-priority-tip" role="tooltip">{t("terminal.settings.aiGatewayPriorityTip")}</span>
-                      </span>
-                    </span>
-                  </div>
-                  <div className="ai-gateway-rows">
-                    {group.entries.map((entry) => (
-                      <AiGatewayModelRow
-                        key={entry.model.id}
-                        entry={entry}
-                        saving={saving}
-                        onRemove={() => removeModel(entry.model.id)}
-                        onSetEfforts={(next) => setModelEfforts(entry.model, next)}
-                        onToggleHostOnly={() => setModelHostOnly(entry.model, !entry.hostOnly)}
+      </div>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
+      {roster.length === 0 && signedInServices.length === 0 ? (
+        <p className="global-settings-help ai-gateway-empty">{t("terminal.settings.aiGatewayAllExposed")}</p>
+      ) : (
+        <div className="ai-gateway-groups">
+          {signedInServices.map((service) => (
+            <AiGatewayServiceGroup key={service.provider} service={service} />
+          ))}
+          {groups.map((group) => {
+            const providerId = group.provider.id as AiGatewayProviderId;
+            const name = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId]);
+            return (
+              <section
+                key={group.provider.id}
+                className={`settings-group-surface ai-gateway-provider-group ai-gateway-provider is-${group.provider.id}${group.rank >= 0 ? " is-ranked" : ""}`}
+                aria-label={name}
+              >
+                <div className="ai-gateway-group-head">
+                  <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(providerId)}</span>
+                  <span className="ai-gateway-provider-name">{name}</span>
+                  <span className="ai-gateway-provider-sub">{authLabelOf(group.provider.id)}</span>
+                  <span className="ai-gateway-group-controls">
+                    {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={settings.savingFields.has("xaiEndpoint")} /> : null}
+                    {/* 순위 셀렉트는 라벨과 함께 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
+                    <span className="ai-gateway-priority-wrap">
+                      <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayPriority")}</span>
+                      <Select
+                        compact
+                        className={group.rank >= 0 ? "ai-gateway-priority-select is-ranked" : "ai-gateway-priority-select"}
+                        label={t("terminal.settings.aiGatewayPriorityAria", { provider: name })}
+                        value={group.rank >= 0 ? String(group.rank) : ""}
+                        disabled={saving}
+                        options={rankOptionsFor(group.provider.id)}
+                        onChange={(value) => rankProvider(providerId, value === "" ? null : Number(value))}
                       />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
-          </div>
-        )}
+                      <span className="ai-gateway-priority-tip" role="tooltip">{t("terminal.settings.aiGatewayPriorityTip")}</span>
+                    </span>
+                  </span>
+                </div>
+                <div className="ai-gateway-rows">
+                  {group.entries.map((entry) => (
+                    <AiGatewayModelRow
+                      key={entry.model.id}
+                      entry={entry}
+                      saving={saving}
+                      open={openModelId === entry.model.id}
+                      onToggleOpen={() => setOpenModelId((current) => current === entry.model.id ? null : entry.model.id)}
+                      onRemove={() => actions.removeModel(entry.model.id)}
+                      onSetEfforts={(next) => actions.setModelEfforts(entry.model, next)}
+                      onToggleHostOnly={() => actions.setModelHostOnly(entry.model, !entry.hostOnly)}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
-      </section>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 폰에서 모델 하나의 하위 화면 — 추론 강도(목록에서 고르기라 체크박스), 호스트 전용(설정 하나라 스위치), 제거.
+ * 호스트가 열려 있는 동안 다시 그리므로 스토어에서 매번 그 모델을 다시 찾는다.
+ */
+function AiGatewayModelDetailScreen({ modelId }: { readonly modelId: string }) {
+  const t = getT(useTerminalLocale());
+  const actions = useAiGatewayModelActions();
+  const entry = buildAiGatewayRoster(actions.providers, actions.selection, actions.priority).find((candidate) => candidate.model.id === modelId);
+  if (!entry) {
+    return (
+      <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayModels")}>
+        <p className="global-settings-help">{t("terminal.settings.aiGatewayModelGone")}</p>
+      </SettingsGroup>
+    );
+  }
+  const { model, hostOnly } = entry;
+  const ladder = model.effort?.levels ?? [];
+  const exposed = resolveExposedEfforts(ladder, entry.efforts);
+  return (
+    <>
+      {ladder.length > 0 ? (
+        <SettingsGroup
+          ariaLabel={t("terminal.settings.aiGatewayLevelsAria", { name: model.name })}
+          title={t("terminal.settings.aiGatewayLevels")}
+          // 호스트 전용 모델의 정체성 수는 0이라, 켜진 단계를 세어 보여 주면 그 문장이 거짓이 된다.
+          note={hostOnly ? t("terminal.settings.aiGatewayHostOnlyNote") : t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
+        >
+          {ladder.map((level) => {
+            const isOn = exposed.includes(level);
+            return (
+              <SettingsCheckbox
+                key={level}
+                label={level}
+                checked={isOn}
+                // 마지막 한 단계는 끌 수 없다 — 정체성이 0개인 모델은 켜 둔 채로 쓸 수 없다.
+                disabled={actions.saving || (isOn && exposed.length === 1)}
+                onChange={(next) => actions.setModelEfforts(model, next ? [...exposed, level] : exposed.filter((current) => current !== level))}
+              />
+            );
+          })}
+        </SettingsGroup>
+      ) : null}
+      <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayHostOnly")}>
+        <SettingsItem label={t("terminal.settings.aiGatewayHostOnly")} hint={t("terminal.settings.aiGatewayHostOnlyTip")}>
+          <SettingsToggle
+            checked={hostOnly}
+            disabled={actions.saving}
+            ariaLabel={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
+            onChange={() => actions.setModelHostOnly(model, !hostOnly)}
+          />
+        </SettingsItem>
+      </SettingsGroup>
+      {/* 제거는 설정 행이 아니라 동작 하나다 — 제목과 버튼에 같은 글자를 두 번 세우지 않고 행 전체를 버튼으로 둔다. */}
+      <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayRemove")}>
+        <button
+          type="button"
+          className="ai-gateway-remove is-row"
+          aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
+          disabled={actions.saving}
+          onClick={() => actions.removeModel(model.id)}
+        >
+          {t("terminal.settings.aiGatewayRemove")}
+        </button>
+      </SettingsGroup>
     </>
+  );
+}
+
+function AiGatewayPlusGlyph() {
+  return (
+    <svg className="ai-gateway-glyph" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+function AiGatewayChevronGlyph({ className = "ai-gateway-glyph" }: { readonly className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3.5 10.5 8 6 12.5" />
+    </svg>
+  );
+}
+
+function AiGatewaySearchGlyph() {
+  return (
+    <svg className="ai-gateway-glyph" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="m10.5 10.5 3 3" />
+    </svg>
   );
 }
 
@@ -961,7 +1166,7 @@ function AiGatewayServiceGroup({ service }: {
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{serviceGlyph("typesafe")}</span>
         <span className="ai-gateway-provider-name">{service.displayName}</span>
         <span className="ai-gateway-service-wrap">
-          <span className="ai-gateway-chip is-strong">{t("terminal.settings.aiGatewayServiceBadge")}</span>
+          <span className="ai-gateway-provider-sub is-strong" tabIndex={0}>{t("terminal.settings.aiGatewayServiceBadge")}</span>
           <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
         </span>
       </div>
@@ -1384,7 +1589,7 @@ function AiGatewayModelPalette({
       style={{ "--ai-gateway-palette-width": `${size.width}px`, "--ai-gateway-palette-list-height": `${size.listHeight}px` } as React.CSSProperties}
     >
       <div className="ai-gateway-palette-search">
-        <span className="ai-gateway-palette-search-glyph" aria-hidden="true">⌕</span>
+        <span className="ai-gateway-palette-search-glyph" aria-hidden="true"><AiGatewaySearchGlyph /></span>
         <input
           ref={searchRef}
           type="search"
@@ -1438,10 +1643,11 @@ function AiGatewayModelPalette({
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => pick(hit)}
                   >
-                    <AiGatewayCapabilityBadge capabilityClass={hit.family.capabilityClass} />
                     <span className="ai-gateway-palette-hit-name" title={hit.family.name}>{hit.family.name}</span>
-                    <span className="ai-gateway-palette-hit-hint">
-                      {allEnabled ? t("terminal.settings.aiGatewayAllEnabled") : describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))}
+                    <span className="ai-gateway-palette-hit-hint" title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[hit.family.capabilityClass ?? "unclassed"])}>
+                      {allEnabled
+                        ? t("terminal.settings.aiGatewayAllEnabled")
+                        : [aiGatewayClassLabel(hit.family.capabilityClass), describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                 );
@@ -1466,12 +1672,12 @@ function AiGatewayModelPalette({
       </div>
       <div className="ai-gateway-palette-foot">
         {pickedHit === undefined ? (
-          <span className="ai-gateway-field-label">
+          <span className="ai-gateway-palette-foot-label">
             {activeHit ? t("terminal.settings.aiGatewayVariantEnterHint") : t("terminal.settings.aiGatewayVariantPickHint")}
           </span>
         ) : (
           <>
-            <span className="ai-gateway-field-label">{t("terminal.settings.aiGatewayVariant")}</span>
+            <span className="ai-gateway-palette-foot-label">{t("terminal.settings.aiGatewayVariant")}</span>
             <div className="ai-gateway-variant-row" role="radiogroup" aria-label={t("terminal.settings.aiGatewayVariant")}>
               {pickedHit.family.variants.map((candidate, index) => {
                 const isPicked = candidate.model.id === variantId;
@@ -1600,7 +1806,7 @@ function AiGatewayPaletteServiceGroup({ service, busy, keyLineOpen, onToggleKeyL
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{serviceGlyph("typesafe")}</span>
         <span className="ai-gateway-palette-group-name">{service.displayName}</span>
         <span className="ai-gateway-service-wrap">
-          <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayServiceBadge")}</span>
+          <span className="ai-gateway-provider-sub" tabIndex={0}>{t("terminal.settings.aiGatewayServiceBadge")}</span>
           <span className="ai-gateway-service-tip" role="tooltip">{t("terminal.settings.aiGatewayServiceTip")}</span>
         </span>
         <span className="ai-gateway-palette-group-controls">
@@ -1667,7 +1873,7 @@ function AiGatewayPaletteGroupHead({
       <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
         <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
         <span className="ai-gateway-palette-group-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
-        <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayModelCount", { count: provider.models.length })}</span>
+        <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayModelCount", { count: provider.models.length })}</span>
         <span className="ai-gateway-palette-group-controls">
           {/* 인증 셀: 구독은 글자, API key는 글자 자체가 로그인 버튼, 로그인된 뒤에는 로그아웃만. */}
           {!keyed ? (
@@ -1706,82 +1912,95 @@ function AiGatewayPaletteGroupHead({
 interface AiGatewayModelRowProps {
   readonly entry: AiGatewayRosterEntry;
   readonly saving: boolean;
+  readonly open: boolean;
+  readonly onToggleOpen: () => void;
   readonly onRemove: () => void;
   readonly onSetEfforts: (efforts: readonly string[]) => void;
   readonly onToggleHostOnly: () => void;
 }
 
 /**
- * 들여쓴 레코드: 등급 → 모델·속성 → 조작. 공급자는 묶음 머리글이 말하므로 줄에는 없다. 같은
- * 자리에 같은 것이 오므로 스무 줄이 되어도 스캔이 되고, 등급 열이 먼저라 이름 시작점이 맞는다.
- * 게이트웨이 id는 이름과 묶음이 이미 말하는 정보라 적지 않는다.
+ * 모델 하나가 설정 행 하나다 — 이름과 보조 줄(등급·창·강도·호스트 전용)이 한 줄로 서고, 누르면 같은 자리에서
+ * 세부(추론 강도·호스트 전용·제거)가 펼쳐진다. 조작을 늘 펼쳐 두면 스무 줄의 로스터가 조작 벽이 되고 다른
+ * 설정 행과 높이·결이 갈린다. 공급자는 묶음 머리글이 말하므로 줄에는 없다.
  */
 export function AiGatewayModelRow({
   entry,
   saving,
+  open,
+  onToggleOpen,
   onRemove,
   onSetEfforts,
   onToggleHostOnly,
 }: AiGatewayModelRowProps) {
   const t = getT(useTerminalLocale());
+  const detailId = React.useId();
   const { model, efforts, hostOnly } = entry;
-  const contextLabel = formatAiGatewayContextWindow(model.contextWindow);
   const ladder = model.effort?.levels ?? [];
 
   return (
-    <div className="ai-gateway-model-row">
-      <AiGatewayCapabilityBadge capabilityClass={model.capabilityClass} />
-      <span className="ai-gateway-model-text">
-        <span className="ai-gateway-model-name" title={model.name}>{model.name}</span>
-        {contextLabel ? <span className="ai-gateway-chip">{contextLabel}</span> : null}
-        {model.fast ? <span className="ai-gateway-chip">{t("terminal.settings.aiGatewayFast")}</span> : null}
-        {model.description ? <span className="ai-gateway-chip">{model.description}</span> : null}
-      </span>
-      <span className="ai-gateway-model-controls">
-        {ladder.length > 0 ? (
-          <AiGatewayEffortBadge
-            model={model}
-            exposed={resolveExposedEfforts(ladder, efforts)}
-            hostOnly={hostOnly}
-            saving={saving}
-            onSetEfforts={onSetEfforts}
-          />
-        ) : null}
-        <span className="ai-gateway-host-only-wrap">
-          <button
-            type="button"
-            className={`ai-gateway-host-only ${hostOnly ? "is-on" : ""}`}
-            aria-pressed={hostOnly}
-            aria-label={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
-            disabled={saving}
-            onClick={onToggleHostOnly}
-          >
-            {t("terminal.settings.aiGatewayHostOnly")}
-          </button>
-          <span className="ai-gateway-host-only-tip" role="tooltip">
-            {t("terminal.settings.aiGatewayHostOnlyTip")}
+    <div className={`ai-gateway-model-row${open ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="ai-gateway-model-summary"
+        aria-expanded={open}
+        aria-controls={open ? detailId : undefined}
+        onClick={onToggleOpen}
+      >
+        <span className="ai-gateway-model-text">
+          <span className="ai-gateway-model-name" title={model.name}>{model.name}</span>
+          <span className="ai-gateway-model-meta" title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[model.capabilityClass ?? "unclassed"])}>
+            {describeAiGatewayRosterEntry(t, entry)}
           </span>
         </span>
-        <button
-          type="button"
-          className="ai-gateway-remove"
-          aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
-          disabled={saving}
-          onClick={onRemove}
-        >
-          ✕
-        </button>
-      </span>
+        <AiGatewayChevronGlyph className="ai-gateway-glyph ai-gateway-model-chevron" />
+      </button>
+      {open ? (
+        <div className="ai-gateway-model-detail" id={detailId}>
+          {ladder.length > 0 ? (
+            <div className="ai-gateway-detail-row">
+              <span className="ai-gateway-detail-label">{t("terminal.settings.aiGatewayLevels")}</span>
+              <AiGatewayEffortLadder
+                model={model}
+                exposed={resolveExposedEfforts(ladder, efforts)}
+                hostOnly={hostOnly}
+                saving={saving}
+                onSetEfforts={onSetEfforts}
+              />
+            </div>
+          ) : null}
+          <div className="ai-gateway-detail-row">
+            <span className="ai-gateway-detail-label">{t("terminal.settings.aiGatewayHostOnly")}</span>
+            <span className="ai-gateway-detail-hint">{t("terminal.settings.aiGatewayHostOnlyTip")}</span>
+            <SettingsToggle
+              checked={hostOnly}
+              disabled={saving}
+              ariaLabel={t("terminal.settings.aiGatewayHostOnlyAria", { name: model.name })}
+              onChange={onToggleHostOnly}
+            />
+          </div>
+          <div className="ai-gateway-detail-row is-end">
+            <button
+              type="button"
+              className="ai-gateway-remove"
+              aria-label={t("terminal.settings.aiGatewayRemoveAria", { name: model.name })}
+              disabled={saving}
+              onClick={onRemove}
+            >
+              {t("terminal.settings.aiGatewayRemove")}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /**
- * 강도 배지를 펼친 형태. 배지 하나가 노출 사다리 전체를 보여주고 그 자리에서 고르게 한다 —
- * 접기 뒤에 두면 어떤 단계가 살아 있는지가 한 번 더 펼쳐야 보이는 사실이 되고, 요약 숫자는
- * 어느 단계를 껐는지 말하지 못한다. 켜진 세그먼트는 위치 채널(brass)로만 말한다.
+ * 추론 강도 사다리 — 설정 모달의 범위 선택과 같은 평평한 글자 줄이다. 켜진 단계는 진한 잉크와 brass 밑줄로
+ * 말하고(밑줄은 위치 채널), 여럿을 켤 수 있다. 마지막 한 단계는 끌 수 없다.
  */
-function AiGatewayEffortBadge({
+function AiGatewayEffortLadder({
   model,
   exposed,
   hostOnly,
@@ -1806,7 +2025,6 @@ function AiGatewayEffortBadge({
         ? t("terminal.settings.aiGatewayHostOnlyNote")
         : t("terminal.settings.aiGatewayIdentityCount", { count: exposed.length })}
     >
-      <span className="ai-gateway-effort-label" aria-hidden="true">effort</span>
       {ladder.map((level) => {
         const isOn = exposed.includes(level);
         return (
@@ -1852,18 +2070,13 @@ const AI_GATEWAY_CLASS_TOOLTIP_KEYS = {
 } as const;
 
 /**
- * 등급은 로스터에서 유일한 품질 신호라서 속성 칩과 섞지 않고 모델 이름에 붙인다. 서열은
- * 신호색이 아니라 잉크 강도로만 말한다 — 등급은 상태가 아니라 프로바이더가 주장하는 속성이다.
+ * 등급은 보조 줄의 첫 낱말이다 — 카탈로그 리터럴(flagship·standard·light)의 첫 글자만 올려 문장형으로 쓴다.
+ * 배지로 두면 이름보다 먼저 읽히는 대문자 상자가 되어 다른 설정 행과 결이 갈린다. 서열의 뜻은 행의 title이 말한다.
  */
-function AiGatewayCapabilityBadge({ capabilityClass }: { readonly capabilityClass: AiGatewayCapabilityClass | null }) {
-  const t = getT(useTerminalLocale());
+function aiGatewayClassLabel(capabilityClass: AiGatewayCapabilityClass | null): string {
   // 카탈로그 검증이 라우팅 별칭에 등급을 금지하므로, 부재는 결측이 아니라 그 자체가 사실이다.
   const grade = capabilityClass ?? "unclassed";
-  return (
-    <span className={`ai-gateway-class-badge is-${grade}`} title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[grade])}>
-      {grade}
-    </span>
-  );
+  return grade.charAt(0).toUpperCase() + grade.slice(1);
 }
 
 /**

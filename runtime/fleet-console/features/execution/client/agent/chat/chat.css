@@ -2873,6 +2873,7 @@
 
 .agent-chat-coord-pop-group { display: flex; flex-direction: column; }
 
+/* 크기·말투는 공유 머리글(components.css .operation-launch-variant-caption)이 정한다 — 여기서는 자리만 맞춘다. */
 .agent-chat-coord-pop-caption {
   display: flex;
   align-items: center;
@@ -2880,9 +2881,6 @@
   margin: 0;
   padding: 6px var(--space-2) 4px;
   font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
 }
 
 .agent-chat-coord-pop-item {
