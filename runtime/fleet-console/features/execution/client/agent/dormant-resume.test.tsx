@@ -209,7 +209,7 @@ function createContext(
     notifications,
     active: true,
     zoom: 1,
-    theme: "instrument",
+    theme: "dark",
     onRequestCompanions: vi.fn(),
   } as unknown as OperationRenderContext;
 }

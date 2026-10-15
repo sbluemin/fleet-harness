@@ -382,7 +382,7 @@
 /* ── 본문이 반투명 밴드 뒤로 지나가게 한다 ──────────────────────────────
    라우트 컨테이너에 음수 마진을 주어 overflow:hidden 밖에서 밴드 뒤로 본문을 올린다.
    isolation은 ::before 재질을 본문 위에 두면서 앵커 메뉴의 containing block은 바꾸지 않는다.
-   투명도 축소·Whites에서는 공간 예약 레이아웃으로 돌아간다. 제외 목록은 theme.css와 같아야 한다.
+   투명도 축소·라이트에서는 공간 예약 레이아웃으로 돌아간다. 제외 목록은 theme.css와 같아야 한다.
    고정 프레임인 Operations 캔버스에는 적용하지 않는다. */
 @supports selector(:has(*)) {
   /* 셸은 밴드와 라우트 사이에 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)를
@@ -397,14 +397,14 @@
      사이에 있어 영영 매칭되지 않는다.
      --band-underflow는 그 자리에서만 켜지고 자손이 상속한다 — 조건이 깨지면 0px 기본값으로
      떨어져 페이지 패딩과 sticky 오프셋이 함께 원래 레이아웃으로 돌아간다. */
-  :root:not([data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
+  :root:not([data-theme="light"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
     --band-underflow: var(--chrome-band-height);
     margin-top: calc(-1 * var(--band-underflow));
   }
 
   /* 밴드는 라우트 본문(위치 없음, z:auto)만 이기면 된다. 값을 키우면 What's new(35) 같은
      낮은 오버레이 위로 밴드가 올라서므로(기존 is-docked 주석의 실측 회귀) 사다리의 맨 아래에 둔다. */
-  :root:not([data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
+  :root:not([data-theme="light"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
     --z-band-underflow: 2;
     isolation: isolate;
     z-index: var(--z-band-underflow);
@@ -413,12 +413,12 @@
   /* 유리 게이트의 셋째 조건. 투명도 축소를 선호하면 밴드는 불투명 실색으로 돌아가므로,
      본문을 그 뒤로 보내면 굴절 대신 가려지기만 한다 — 공간 예약 레이아웃으로 되돌린다. */
   @media (prefers-reduced-transparency: reduce) {
-    :root:not([data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
+    :root:not([data-theme="light"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
       --band-underflow: 0px;
       margin-top: 0;
     }
 
-    :root:not([data-theme="whites"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
+    :root:not([data-theme="light"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .command-band {
       isolation: auto;
       z-index: auto;
     }

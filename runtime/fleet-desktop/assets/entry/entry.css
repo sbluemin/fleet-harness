@@ -1,6 +1,6 @@
 /* Passive entry surface — self-contained by contract (no Console CSS import; the only url()s are the
    bundled font files next to this sheet, allowed by CSP font-src 'self'). The mini palette mirrors
-   the current Instrument charter in theme.css and is the default surface until the Console's theme
+   the current dark theme charter in theme.css and is the default surface until the Console's theme
    snapshot supplies the user's palette (desktop-contract.ts); when the charter moves, re-sync values here by hand.
    Channel rules apply as in the Console: signal tokens carry state only (positive=done, coral=danger,
    brass=progress), identity/environment badges stay on neutral ink. Korean glyphs fall back to
@@ -53,7 +53,7 @@
   --ink-muted: oklch(64% 0.012 245);
   --ink-spectral: oklch(70% 0.012 245);
   --ink-pearl: oklch(94% 0.008 90);
-  /* 개발 빌드 워드마크 전용 잉크와 DEV가 물러서는 3차 잉크 — Console theme.css의 --ink-brand-dev·--text-tertiary(Instrument). */
+  /* 개발 빌드 워드마크 전용 잉크와 DEV가 물러서는 3차 잉크 — Console theme.css의 --ink-brand-dev·--text-tertiary(다크). */
   --ink-brand-dev: oklch(84% 0.045 255);
   --text-tertiary: var(--ink-muted);
   --brass: oklch(80% 0.085 78);
@@ -86,7 +86,7 @@
 :root[data-platform="darwin"] { --brand-glyph-left: 93px; }
 /* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
 :root[data-scheme="light"] { color-scheme: light; }
-/* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console Whites의 값으로 바꿔 판독성을 지킨다. */
+/* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console 라이트 테마의 값으로 바꿔 판독성을 지킨다. */
 :root[data-scheme="light"] { --ink-brand-dev: oklch(42% 0.075 255); --text-tertiary: var(--ink-fog); }
 
 * { box-sizing: border-box; }

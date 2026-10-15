@@ -134,7 +134,7 @@ With **Console Use**, agents can operate the Console itself. **Computer Use** ex
 
 ## Make it yours
 
-Choose a theme: **Instrument**, **Maritime**, or **Carbon** (dark), or **Whites** (light). You can pick interface and terminal fonts from those installed on your machine, reduce motion or keep avatars calm, and rebind every shortcut. The Console speaks English and Korean and switches between them without a reload.
+Choose a **Dark** or **Light** theme. You can pick interface and terminal fonts from those installed on your machine, reduce motion or keep avatars calm, and rebind every shortcut. The Console speaks English and Korean and switches between them without a reload.
 
 ## Go deeper
 

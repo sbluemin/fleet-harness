@@ -2211,10 +2211,7 @@
   opacity: var(--control-disabled-opacity);
 }
 
-/* 테마 선택 — 네 테마가 같은 카드 문법 하나를 쓴다.
-   예전에는 Light가 모드 버튼이고 Dark가 카드여서, 라이트를 쓰는 사람에게는 다크 세 종이
-   inert 트레이 뒤로 사라졌다. 무엇이 있는지 보려면 콘솔 전체를 한 번 뒤집어야 했다.
-   이제 목록은 언제나 넷을 전부 보여 주고, 카드가 자기 ground/brass/aurora를 미리 비춘다. */
+/* 테마 선택 — 다크와 라이트 두 테마가 같은 카드 문법 하나를 쓰고, 카드가 자기 ground/brass/aurora를 미리 비춘다. */
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4773,7 +4770,7 @@ button.status-glyph.is-actionable:focus-visible {
 /* 활성 Theater의 이니셜 배지는 1px brass 링으로 현재 위치를 말한다. 배지는 좌측 정렬선 위에 있어
    목록을 훑는 눈이 가장 먼저 닿는 자리이고, 스파인과 달리 헤더 행 안에서 읽히므로 둘이 같은 사실을
    서로 다른 거리에서 말한다. 배지 면은 Theater 정체성이라 brass로 칠하지 않는다(다크 lights-out) —
-   라이트(Whites)는 슬롯이 지금의 brass 채움과 채움 위 글자 티어를 그대로 잇고 링은 비운다(같은 색 링도
+   라이트는 슬롯이 지금의 brass 채움과 채움 위 글자 티어를 그대로 잇고 링은 비운다(같은 색 링도
    둥근 모서리의 안티앨리어싱을 진하게 바꾼다). 대기 tick은 배지 바깥 모서리에 떠 있어 가려지지 않는다. */
 .side-bar-theater-header.is-active .side-bar-theater-anchor {
   background: var(--quiet-anchor-active-fill);
@@ -5278,7 +5275,7 @@ button.status-glyph.is-actionable:focus-visible {
 /* 사이드바 칩의 사용자 accent(정체성)는 캡션 제목과 같은 문법으로 이름 글자의 잉크만 소유한다 —
    3px 좌측 스파인은 폐기됐다. 언포커스는 캡션과 같은 3티어 글자색 쪽 30% 믹스(네 테마 5.1:1 이상).
    hover·active는 한 단계 올라간 2티어 글자색 쪽 25% 믹스다 — 13px 이름을 accent 원색으로 두면
-   Whites의 --id-*(L50~56)가 chrome 면의 hover/active 워시 위에서 AA(4.5:1)를 잃는다(amber 3.8~3.9:1);
+   라이트의 --id-*(L50~56)가 chrome 면의 hover/active 워시 위에서 AA(4.5:1)를 잃는다(amber 3.8~3.9:1);
    25% 믹스는 여덟 톤 모두 4.5:1 이상(최소 amber active 4.59:1)을 지키면서 다크 3종에서는 원색과 같은 채도로 읽힌다.
    brass 포커스·aurora/warn 상태는 각자의 채널을 그대로 갖는다. */
 .side-bar-cluster-row[style*="--user-accent"] .side-bar-cluster-row-title,
@@ -6314,7 +6311,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   padding: 4px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — 반투명
      glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
@@ -10807,7 +10804,7 @@ body[data-codex-side="true"] .command-card {
 
 /* canonical 팝업 판독성 계약: 부유 모달·팝업·플로팅 메뉴는 틴트(--glass-tint-*)와
    최하단 언더레이(--glass-underlay)를 theme.css의 채널로 소비한다. 다크에서는 반투명 틴트만으로
-   뒤를 통과시키고, 투명도 축소 선호·Whites에서는 불투명 언더레이와 기존 표면 별칭으로 복원한다.
+   뒤를 통과시키고, 투명도 축소 선호·라이트에서는 불투명 언더레이와 기존 표면 별칭으로 복원한다.
    원료 표면 토큰을 팝업이 직접 칠하면 이 게이트를 벗어나므로 채널을 그대로 사용한다. */
 .whatsnew-card {
   position: relative;
@@ -11189,7 +11186,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 /* 섹션 의미색은 doctrine 토큰만 사용한다(aurora/warn 금지): 추가/수정=positive, 변경=brass, 제거/파괴=coral.
-   bg/border도 같은 토큰의 color-mix라 maritime/carbon 양쪽을 그대로 추종한다. */
+   bg/border도 같은 토큰의 color-mix라 다크·라이트 양쪽을 그대로 추종한다. */
 .whatsnew-section--added {
   --whatsnew-section-bg: color-mix(in oklch, var(--positive) 11%, transparent);
   --whatsnew-section-border: color-mix(in oklch, var(--positive) 34%, transparent);
@@ -11690,9 +11687,9 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
   overflow: hidden;
-  /* Reading 오버레이는 우현 rail 카드와 동일한 carbon glass 표면을 쓴다(별도 블루
-     그라디언트는 콘솔의 carbon dark 톤과 어긋났음): surface-glass-strong + ink-deep
-     + 우상단 brass 코너. 코너는 상시 장식이라 lights-out 배수(--quiet-halo-gain)를 따른다 — 다크 0, Whites 1.
+  /* Reading 오버레이는 우현 rail 카드와 동일한 glass 표면을 쓴다(별도 블루
+     그라디언트는 콘솔의 다크 톤과 어긋났음): surface-glass-strong + ink-deep
+     + 우상단 brass 코너. 코너는 상시 장식이라 lights-out 배수(--quiet-halo-gain)를 따른다 — 다크 0, 라이트 1.
      팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 7%), transparent), transparent 56%),

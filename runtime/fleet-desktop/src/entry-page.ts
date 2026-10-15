@@ -16,7 +16,7 @@ export type EntryFarewellOrigin = "band" | "tray";
 
 /**
  * 사용자가 Console에서 고른 테마의 색. Console이 테마 스냅샷에 실어 보내고(desktop-theme-sync),
- * 진입 화면과 종료 인사는 이 값으로 기본 판(entry.css의 Instrument)을 덮는다. 모르면 기본 판 그대로다.
+ * 진입 화면과 종료 인사는 이 값으로 기본 판(entry.css의 다크)을 덮는다. 모르면 기본 판 그대로다.
  */
 export interface EntryPalette {
   readonly scheme: "dark" | "light";

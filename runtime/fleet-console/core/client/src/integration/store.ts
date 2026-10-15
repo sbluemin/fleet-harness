@@ -37,7 +37,8 @@ import type {
 type Listener = () => void;
 
 const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
-const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
+// 다크 테마가 여럿이던 시절 모드 전환이 돌아갈 다크를 기억하던 키다. 다크가 하나뿐이라 지우기만 한다.
+const RETIRED_LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 // "화면 안내 다시 보기"가 온보딩 전체를 초기화할 때 함께 지우는 최초 설정 가이드 시청 키.
@@ -45,7 +46,7 @@ export const COMMISSIONING_SEEN_KEY = "commissioning";
 
 const NOTIFICATION_PREFERENCES_STORAGE_KEY = "fleet-console.notificationPreferences";
 const NOTIFICATION_PREFERENCES_VERSION = 1;
-const DEFAULT_THEME: ThemeId = "instrument";
+const DEFAULT_THEME: ThemeId = "dark";
 const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   globalMute: false,
   dnd: false,
@@ -348,53 +349,41 @@ function applyThemeToDocument(theme: ThemeId): void {
   }
   try {
     globalThis.localStorage?.setItem(THEME_HINT_STORAGE_KEY, theme);
-    // 마지막 다크 테마 기억은 공용 적용 경로에서 갱신한다 — Settings 카드가 마운트돼 있지 않은
-    // 팔레트 커맨드 등 어떤 전환 경로든 Dark 스위치 재진입 시 같은 테마로 복원돼야 한다.
-    if (theme === "instrument" || theme === "maritime" || theme === "carbon") {
-      globalThis.localStorage?.setItem(LAST_DARK_THEME_STORAGE_KEY, theme);
-    }
+    globalThis.localStorage?.removeItem(RETIRED_LAST_DARK_THEME_STORAGE_KEY);
   } catch {
     // localStorage 접근 불가 환경에서는 DOM 테마만 적용한다.
   }
 }
 
-// Dark 모드 진입 시 적용할 다크 테마의 브라우저 로컬 기억 — 저장 필드는 theme: ThemeId 단일을
-// 유지하고(모드는 파생 상태), 모드 전환이 "테마 없음" 상태에 착지하지 않게 한다.
-export function readLastDarkTheme(): ThemeId {
-  try {
-    const stored = globalThis.localStorage?.getItem(LAST_DARK_THEME_STORAGE_KEY);
-    return stored === "instrument" || stored === "maritime" || stored === "carbon" ? stored : "instrument";
-  } catch {
-    return "instrument";
-  }
+/**
+ * 테마 힌트·서버 주입값을 읽는 규칙. 퇴역 다크 팔레트(instrument/maritime/carbon)는 dark로, 퇴역 라이트
+ * (whites와 그 전의 daywatch/drydock)는 light로 옮긴다 — 서버 정규화(settings-domain)·theme-boot.js와
+ * 극성이 일치해야 첫 페인트가 튀지 않는다.
+ */
+function readThemeId(value: string | null | undefined): ThemeId | null {
+  if (value === "dark" || value === "instrument" || value === "maritime" || value === "carbon") return "dark";
+  if (value === "light" || value === "whites" || value === "daywatch" || value === "drydock") return "light";
+  return null;
 }
 
 export function readStoredThemeHint(): ThemeId | null {
   try {
-    const theme = globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY);
-    if (theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites") {
-      return theme;
-    }
-    // 퇴역 라이트 테마 힌트는 whites로 폴백한다 — 서버 폴백과 극성이 일치해야 첫 페인트가 튀지 않는다.
-    return theme === "daywatch" || theme === "drydock" ? "whites" : null;
+    return readThemeId(globalThis.localStorage?.getItem(THEME_HINT_STORAGE_KEY));
   } catch {
     return null;
   }
 }
 
-// 테마 극성(라이트/다크) 판별은 이 한 곳이 소유한다 — Settings의 모드 스위치와 App의 극성 전환
-// 안내 토스트가 같은 규칙을 봐야 한쪽만 다른 판정을 내리는 일이 없다.
+// 테마 극성(라이트/다크) 판별은 이 한 곳이 소유한다 — App의 극성 전환 안내 토스트와 브라우저 표면이
+// 같은 규칙을 봐야 한쪽만 다른 판정을 내리는 일이 없다.
 export function themePolarity(theme: ThemeId): "light" | "dark" {
-  return theme === "whites" ? "light" : "dark";
+  return theme;
 }
 
 export function readServerInjectedTheme(): ThemeId | null {
   if (typeof document === "undefined") return null;
   if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
-  const theme = document.documentElement.getAttribute("data-theme");
-  return theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites"
-    ? theme
-    : null;
+  return readThemeId(document.documentElement.getAttribute("data-theme"));
 }
 
 // Electron 데스크톱 셸에서만 `data-desktop-shell` 마커를 심는다 — 브라우저에는 마커가 없어

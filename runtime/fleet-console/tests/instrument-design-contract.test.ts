@@ -524,10 +524,9 @@ describe("Instrument core design contract", () => {
     expect(root).toContain("--control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);");
     expect(root).toContain("--control-tint-fill: color-mix(in oklab, var(--brass) 9%, transparent);");
     expect(root).toContain("--control-open-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));");
-    // 워시는 잉크 사다리의 한 칸이 아니라 테마별 리터럴이다 — 네 테마가 각자 재조율한다
+    // 워시는 잉크 사다리의 한 칸이 아니라 테마별 리터럴이다 — 라이트가 자기 값으로 재조율한다
     // (다크는 화이트 워시, 라이트는 잉크 워시로 극이 뒤집힌다).
-    // carbon 셀렉터는 공유 legacy 블록에도 서므로, 개별 블록 중 하나가 재조율을 실으면 된다.
-    for (const name of ["maritime", "carbon", "whites"]) {
+    for (const name of ["light"]) {
       const blocks = theme.match(new RegExp(`^:root\\[data-theme="${name}"\\] \\{[\\s\\S]*?\\n\\}`, "gm")) ?? [];
       expect(blocks.some((block) => block.includes("--control-wash:") && block.includes("--control-wash-hover:"))).toBe(true);
       // rest·field도 같은 극성 재조율 대상이다 — 라이트의 field는 잉크 워시가 아니라 종이보다 밝은 실색.
@@ -711,7 +710,7 @@ describe("Instrument core design contract", () => {
     const theme = source("styles/theme.css");
     // 라이트 블록에는 유리 재료 선언이 한 줄도 없다. 주석은 그 부재를 설명해야 하므로
     // 토큰 이름을 그대로 적는다 — 계약은 산문이 아니라 선언에만 걸린다.
-    const whites = theme.match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const whites = theme.match(/:root\[data-theme="light"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(whites).not.toBe("");
     const whitesDeclarations = whites.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(whitesDeclarations).not.toMatch(/--(?:glass|canvas)-on-/);
@@ -734,17 +733,17 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
     expect(theme).toContain("--glass-pane-light: transparent;");
     expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
-    // 다크 3종은 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
+    // 다크는 Ghostty 계열 smoked pane처럼 60% tint로 뒤의 캔버스·겹친 창 윤곽을 통과시킨다.
     // pane-light는 22%만 얹고 terminal도 같은 반투명 tint(panel과 한 장)를 쓴다. 알파는 테마마다 고정이다.
-    for (const raw of ["18.5% 0.028 245", "25% 0.05 248", "21% 0.013 252"]) {
+    for (const raw of ["18.5% 0.028 245"]) {
       expect(theme).toContain(`--glass-on-tint-panel: oklch(${raw} / 60%);`);
     }
     expect(theme.match(/--glass-on-tint-terminal:/g)).toHaveLength(1);
     expect(theme).toContain("--glass-on-tint-terminal: var(--glass-on-tint-panel);");
-    expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(3);
-    // 유리를 받는 테마는 다크 3종뿐이고, 그 셋은 전부 필드를 루트 유리에 넘긴다.
+    expect((theme.match(/--glass-on-pane-light: oklch\([^)]+\/ 22%\);/g) ?? []).length).toBe(1);
+    // 유리를 받는 테마는 다크뿐이고, 필드를 루트 유리에 넘긴다.
     // 라이트는 게이트 밖이라 재료 자체가 없다(별칭 한 줄도 남기지 않는다).
-    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
+    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(1);
     expect(theme).not.toMatch(/--glass-on-tint-field: var\(/);
   });
 
@@ -760,8 +759,6 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);");
     // Operation 패널용 floor는 60% panel tint를 캔버스 대기광 위에 sRGB alpha 합성한 불투명 근사다.
     expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);");
-    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(22.3% 0.043 245);");
-    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(19.8% 0.013 251);");
 
     // Operation은 floor, 독립 Shell은 terminal tint 계산값을 읽어 알파만 0으로 눕힌다.
     expect(surface).toContain('surface === "shell" ? "--glass-tint-terminal" : "--glass-tint-terminal-floor"');
@@ -1526,7 +1523,7 @@ describe("Instrument core design contract", () => {
     expect(activeAnchor).toContain("background: var(--quiet-anchor-active-fill);");
     expect(activeAnchor).toContain("color: var(--quiet-anchor-active-ink);");
     expect(activeAnchor).toContain("box-shadow: inset 0 0 0 1px var(--quiet-anchor-ring);");
-    const whitesTheme = source("styles/theme.css").match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const whitesTheme = source("styles/theme.css").match(/:root\[data-theme="light"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
     expect(whitesTheme).toContain("--quiet-anchor-active-fill: var(--brass);");
     expect(whitesTheme).toContain("--quiet-anchor-active-ink: var(--text-on-brass);");
 
@@ -1627,7 +1624,7 @@ describe("Instrument core design contract", () => {
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
     const theme = desktopThemeSource();
     expect(theme).toContain("--float-underlay: var(--ink-deep);");
-    const gates = theme.slice(theme.indexOf(':root:not([data-theme="whites"]) {'));
+    const gates = theme.slice(theme.indexOf(':root:not([data-theme="light"]) {'));
     expect(gates).not.toContain("--float-underlay:");
     const componentsPopupSelectors = [
       ".whatsnew-card",
@@ -2001,7 +1998,7 @@ describe("Instrument core design contract", () => {
     for (const block of blocksFor(/^:root\[data-theme="[a-z]+"\](?:,\n:root\[data-theme="[a-z]+"\])* \{\n([\s\S]*?)\n\}/gm)) {
       for (const token of declared(block)) themeTuned.add(token);
     }
-    for (const block of blocksFor(/^\s*:root:not\(\[data-theme="whites"\]\) \{\n([\s\S]*?)\n\s*\}/gm)) {
+    for (const block of blocksFor(/^\s*:root:not\(\[data-theme="light"\]\) \{\n([\s\S]*?)\n\s*\}/gm)) {
       for (const token of declared(block)) themeTuned.add(token);
     }
     // [doctrine] 유리 재료(--glass-on-*·--canvas-on-ambience)는 게이트를 거쳐서만 화면에 닿고, 모바일은
@@ -2017,10 +2014,10 @@ describe("Instrument core design contract", () => {
     expect(panelFace).not.toBe("transparent");
   });
 
-  it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
+  it("keeps the dark base tokens and selector while blocking palette escapes", () => {
     const theme = desktopThemeSource();
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
-    expect(theme).toContain(':root[data-theme="instrument"]');
+    expect(theme).toContain(':root[data-theme="dark"]');
     expect(base).toContain("--ink-abyss: oklch(13% 0.014 245);");
     expect(base).toContain("--brass: oklch(80% 0.085 78);");
     expect(base).toContain("--ink-muted: oklch(64% 0.012 245);");
@@ -2031,36 +2028,22 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--canvas-sea-core: oklch(13% 0.018 245);");
     expect(base).toContain("color-mix(in oklch, var(--brass) 16%, transparent)");
     expect(base).not.toMatch(/--brass(?:-[a-z-]+)?:\s*oklch\([^;]*\b0\.13\b/);
-    expect(theme).toContain(':root[data-theme="maritime"]');
-    expect(theme).toContain(':root[data-theme="carbon"]');
-    expect(theme).toContain(':root[data-theme="whites"]');
-    expect(theme).toContain("--brass: oklch(79% 0.098 76);");
-    expect(theme).toContain("--ink-muted: oklch(75% 0.02 248);");
-    expect(theme).toContain("--ink-muted: oklch(72% 0.005 250);");
-    // 라이트 단일종(Whites)의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
+    expect(theme).toContain(':root[data-theme="light"]');
+    // 테마는 다크·라이트 둘뿐이다 — 퇴역 팔레트 셀렉터가 되살아나면 저장값 정규화와 어긋난 색이 선다.
+    expect(new Set(theme.match(/data-theme="[a-z]+"/g))).toEqual(new Set(['data-theme="dark"', 'data-theme="light"']));
+    // 라이트의 대기는 오트밀 웜 뉴트럴(hue 95~100)이다 — 청색(hue 250대) 대기 회귀를 차단한다.
     expect(theme).toContain("--ink-abyss: oklch(97% 0.003 100);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
-    // Legacy dark 테마는 팔레트 토큰만 — 광학·color-scheme과 형상·타이포 오버라이드는 진입 불가.
-    const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
-    expect(darkVariantBlocks).toHaveLength(3);
-    for (const block of darkVariantBlocks) {
-      // 주석은 선언이 아니다 — 콜론을 담은 설명 한 줄이 팔레트 이탈로 오독되면 안 된다.
-      const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
-      expect(declarations.length).toBeGreaterThan(0);
-      for (const declaration of declarations) {
-        // control-wash는 형상이 아니라 팔레트다 — 워시의 명도·알파를 테마 잉크 위에서 재조율한다.
-        // provider는 정체성 축이라 테마의 채도 봉투를 따라 재조율된다(고정하면 Carbon·Instrument 외피의
-        // 2.5배로 튄다). quiet는 lights-out 슬롯 — 테마가 슬롯의 틴트 세기만 재조율한다. Console Use 배지 면도
-        // 같은 이유로 테마 채도 봉투를 따른다.
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass|control|provider|quiet|console-use-badge)[a-z-]*:$/);
-      }
-    }
+    // 다크 셀렉터는 첫 페인트 계약만 진다 — 팔레트는 base가 이미 다크라 이 블록은 color-scheme 하나뿐이다.
+    const darkBlocks = theme.match(/^:root\[data-theme="dark"\][^{]*\{[^}]*\}/gm) ?? [];
+    expect(darkBlocks).toHaveLength(1);
+    expect(stripComments(darkBlocks[0]!).match(/^\s{2}[^\n:]+:/gm)).toEqual(["  color-scheme:"]);
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
     // 허용한다. --weight-regular 단일 예외: 밝은 배경의 얇은 스템 광학 보정 — medium/bold 티어 오버라이드는 계속 차단.
     // [doctrine] --gauge-* 는 형상이 아니라 **무게**를 정한다. 종이 위에서 명도는 무게의 반대이므로,
     // 다크의 명도 순서를 그대로 상속하면 채워진 계기의 사다리가 뒤집힌다(실측: 평상 L44.9가 위험 L52.0보다 무거움).
     // 그래서 이 채널만은 라이트가 자기 값으로 분화해야 하며, 형상·타이포 오버라이드 차단은 그대로 유지된다.
-    const lightVariantBlocks = theme.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/gm) ?? [];
+    const lightVariantBlocks = theme.match(/^:root\[data-theme="light"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(lightVariantBlocks).toHaveLength(1);
     // [doctrine] --live-sweep-* 는 형상이 아니라 **진폭**을 정한다. 물결의 세기는 두 끝의 명도
     // 간격이고, 명도 스케일은 어두운 끝에서 L*가 압축된다 — 다크의 사다리를 그대로 반전만 하면
@@ -2096,21 +2079,19 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
     expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
-    // Operation 패널 면 티어 — 네 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
+    // Operation 패널 면 티어 — 두 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
     // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
     // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
     // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
     expect(base).toContain("--surface-panel: var(--ink-deep);");
     expect(theme).not.toContain("--surface-window");
-    // 다섯째 정의는 대화 중심 화면의 「대화 다크」(세 다크를 한 벌로 묶는 테마 스코프) — 무채 작업면 21.8%(Grok 선택 면 실측).
-    expect(theme.match(/--surface-panel:/g)).toHaveLength(5);
+    // 셋째 정의는 대화 중심 화면의 「대화 다크」(데스크톱 다크의 테마 스코프) — 무채 작업면 21.8%(Grok 선택 면 실측).
+    expect(theme.match(/--surface-panel:/g)).toHaveLength(3);
     expect(theme).toContain("--surface-panel: oklch(21.8% 0 0);");
-    expect(theme).toContain("--surface-panel: oklch(23% 0.03 248);");
-    expect(theme).toContain("--surface-panel: oklch(19% 0.008 252);");
     expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");
     expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(1);
     // 라이트 종이는 크롬보다 밝다 — 이 부등호가 뒤집히면 시선이 크롬으로 끌리는 극성 역전이다.
-    const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+    const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="light"]'));
     expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0.004 100);");
     // 얹히는 면은 패널 면에서 한 칸 물러난다 — 다크는 위(ink-mid), 라이트는 아래(ink-deep).
     expect(base).toContain("--surface-panel-raised: var(--ink-mid);");
@@ -2159,10 +2140,8 @@ describe("Instrument core design contract", () => {
     };
     const baseTheme = theme.slice(0, theme.indexOf(':root[data-theme="'));
     const inkDeepOf = (block: string) => block.match(/--ink-deep: (oklch\([^)]*\));/)?.[1] ?? "";
-    expect(fallbackOf("INSTRUMENT_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
-    expect(fallbackOf("MARITIME_TERMINAL_THEME")).toBe("oklch(23% 0.03 248)");
-    expect(fallbackOf("CARBON_TERMINAL_THEME")).toBe("oklch(19% 0.008 252)");
-    expect(fallbackOf("WHITES_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
+    expect(fallbackOf("DARK_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
+    expect(fallbackOf("LIGHT_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
@@ -2357,7 +2336,7 @@ describe("Instrument core design contract", () => {
     // raised(라이트에서 --ink-deep) 위 L93.68%에 앉아 패널보다 어둡다. 패널 기준으로 고른 L55는
     // 그 행에서 4.03:1로 본문 AA 아래였다. L52가 라이브 행 4.58:1 / 패널 5.23:1로 경계(L52.39)
     // 안쪽이다. 트러프는 물결의 3분의 2를 차지하는 휴지 잉크라 판독이 진폭보다 먼저다.
-    const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
+    const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="light"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
     expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
     // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 두 면이 같은 레시피를 쓰는 것이
     // 그 계산의 근거이므로 함께 못박는다.
@@ -3031,7 +3010,7 @@ describe("Effort track interaction grammar", () => {
     expect(maxRule).toContain("var(--crest)");
 
     const themeBlocks = [theme.slice(0, theme.indexOf(':root[data-theme="'))];
-    for (const name of ["maritime", "carbon", "whites"]) {
+    for (const name of ["light"]) {
       const start = theme.lastIndexOf(`:root[data-theme="${name}"] {`);
       themeBlocks.push(theme.slice(start, theme.indexOf("\n}", start)));
     }
@@ -3075,7 +3054,7 @@ describe("Effort track interaction grammar", () => {
     const quota = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
     const theme = desktopThemeSource();
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
-    const whites = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+    const whites = theme.slice(theme.indexOf(':root[data-theme="light"]'));
 
     // 계기 무게는 테마마다 갈리는 값이다 — base가 채널을 열고 라이트가 전부 분화한다.
     // 한 토큰이라도 라이트에서 빠지면 그 자리만 다크의 명도 순서를 상속해 사다리가 부분적으로 뒤집힌다.

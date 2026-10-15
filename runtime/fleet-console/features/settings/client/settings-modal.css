@@ -15,7 +15,7 @@
   background: oklch(0% 0 0 / 48%);
   animation: settings-modal-scrim-in var(--duration-fast) ease-out;
 }
-:root[data-theme="whites"] .settings-modal-scrim { background: oklch(18% 0 0 / 24%); }
+:root[data-theme="light"] .settings-modal-scrim { background: oklch(18% 0 0 / 24%); }
 
 .settings-modal {
   display: grid;

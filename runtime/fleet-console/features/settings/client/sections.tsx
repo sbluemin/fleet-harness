@@ -37,7 +37,7 @@ interface LanguageOption {
 interface ThemeOption {
   readonly id: ThemeId;
   readonly label: string;
-  readonly polarity: string;
+  readonly polarity?: string;
   readonly swatch: readonly [string, string, string];
 }
 
@@ -114,28 +114,14 @@ export const SETTINGS_GROUP_LABEL_KEYS: Readonly<Record<SettingsSectionGroup, Co
 
 type T = Translate<CoreMessageKey>;
 
-// 테마 카드의 3톤 스와치는 각 테마의 ground/brass/aurora 시그니처를 미리 보여 준다(콘텐츠 색이라
-// 역할색 규칙과 무관). 라이트도 같은 카드 문법을 쓴다 — 모드 버튼 뒤에 다크 셋을 숨겨 두면
-// 라이트를 쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 했다.
-function buildThemeOptions(t: T): readonly ThemeOption[] {
+// 테마는 다크와 라이트 둘뿐이다. 카드의 3톤 스와치는 그 테마의 ground/brass/aurora 시그니처를 미리 보여 준다
+// (콘텐츠 색이라 역할색 규칙과 무관). 데스크톱 대화 중심 화면의 다크는 「대화 다크」 한 벌(theme.css)이라
+// 그 화면에서는 다크 스와치도 그 값을 보여 주고, 아래 줄에 화면 이름을 단다.
+function buildThemeOptions(t: T, desktop: boolean): readonly ThemeOption[] {
+  const polarity = desktop ? t("settings.theme.conversationLayout") : undefined;
   return [
-    { id: "instrument", label: t("settings.theme.instrument"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-    { id: "maritime", label: t("settings.theme.maritime"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
-    { id: "carbon", label: t("settings.theme.carbon"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
-    { id: "whites", label: t("settings.theme.whites"), polarity: t("settings.theme.group.light"), swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
-  ];
-}
-
-/**
- * 대화 중심 화면의 테마 — 라이트(Whites 그대로)와 다크(고른 다크 테마가 무엇이든 「대화 다크」 한 벌, theme.css) 둘뿐이다.
- * 다크 카드는 지금 다크면 그 값을 그대로 가리키고, 라이트에서 다크로 갈 때만 Instrument 를 저장한다 — 이 화면이 저장된 다크 선택을
- * 덮어쓰지 않는다. 모바일 설정은 저장된 테마의 네 가지 선택지를 그대로 쓴다.
- */
-function buildConversationThemeOptions(t: T, activeTheme: ThemeId): readonly ThemeOption[] {
-  const dark: ThemeId = activeTheme === "whites" ? "instrument" : activeTheme;
-  return [
-    { id: "whites", label: t("settings.theme.group.light"), polarity: t("settings.theme.conversationLayout"), swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
-    { id: dark, label: t("settings.theme.group.dark"), polarity: t("settings.theme.conversationLayout"), swatch: ["oklch(12.9% 0 0)", "oklch(26.9% 0 0)", "oklch(77% 0.085 64)"] },
+    { id: "dark", label: t("settings.theme.group.dark"), polarity, swatch: desktop ? ["oklch(12.9% 0 0)", "oklch(26.9% 0 0)", "oklch(77% 0.085 64)"] : ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+    { id: "light", label: t("settings.theme.group.light"), polarity, swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
   ];
 }
 
@@ -331,8 +317,8 @@ export function ThemeCard({
 }) {
   const t = useT();
   const desktop = useViewMode().effective === "desktop";
-  const activeTheme = state?.theme ?? "instrument";
-  const themes = desktop ? buildConversationThemeOptions(t, activeTheme) : buildThemeOptions(t);
+  const activeTheme = state?.theme ?? "dark";
+  const themes = buildThemeOptions(t, desktop);
   const selectTheme = (theme: ThemeId) => {
     if (isSavingGlobalSettingsField("theme")) return;
     const previousTheme = activeTheme;
@@ -393,11 +379,9 @@ export function ThemeCard({
                 <SettingsHelp title={t("settings.theme.label")}>{t("settings.theme.help")}</SettingsHelp>
               </p>
             </div>
-            {/* 라이트와 다크가 같은 카드 문법을 쓴다. 모드 버튼 뒤에 다크 셋을 감추면 라이트를
-                쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 한다. */}
             <div className="theme-grid" role="group" aria-label={t("settings.theme.aria")}>
               {themes.map((theme) => {
-                const isActive = desktop ? (theme.id === "whites") === (activeTheme === "whites") : theme.id === activeTheme;
+                const isActive = theme.id === activeTheme;
                 return (
                   <button
                     key={theme.id}
@@ -405,7 +389,7 @@ export function ThemeCard({
                     aria-pressed={isActive}
                     className={`theme-card ${isActive ? "is-active" : ""}`}
                     disabled={saving.has("theme") || state === null}
-                    onClick={() => { if (desktop && isActive) return; selectTheme(theme.id); }}
+                    onClick={() => { if (isActive) return; selectTheme(theme.id); }}
                   >
                     <span className="theme-card-swatch" aria-hidden="true">
                       {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
@@ -414,7 +398,7 @@ export function ThemeCard({
                       <span className="theme-card-label">{theme.label}</span>
                       <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
                     </span>
-                    <span className="theme-card-polarity">{theme.polarity}</span>
+                    {theme.polarity ? <span className="theme-card-polarity">{theme.polarity}</span> : null}
                   </button>
                 );
               })}

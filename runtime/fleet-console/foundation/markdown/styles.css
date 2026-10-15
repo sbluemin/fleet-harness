@@ -3,7 +3,7 @@
    in markdown.tsx). Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
-/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 세 다크 테마 모두에서 같은 채도(C≈.12~.18)로 튀었다. 라이트(Whites) 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 파일 탐색기 하이라이터(.syn-*)와 같다 — 같은 코드가 뷰어와 마크다운에서 다른 색으로 읽히지 않게. */
+/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 파일 탐색기 하이라이터(.syn-*)와 같다 — 같은 코드가 뷰어와 마크다운에서 다른 색으로 읽히지 않게. */
 pre code.hljs {
   display: block;
   overflow-x: auto;
@@ -300,7 +300,7 @@ code.hljs {
 }
 
 .markdown-body ul li::marker {
-  /* 글머리 점은 장식이다 — 다크는 3티어 잉크, 라이트(Whites)는 슬롯이 지금의 brass-ink를 잇는다. */
+  /* 글머리 점은 장식이다 — 다크는 3티어 잉크, 라이트는 슬롯이 지금의 brass-ink를 잇는다. */
   color: var(--quiet-decor-ink);
 }
 
@@ -320,7 +320,7 @@ code.hljs {
   margin: var(--space-6) 0;
   padding: var(--space-4) var(--space-5);
   /* 인용의 띠는 표준 문법이라 남기되, 상시 서 있는 장식이므로 다크는 quiet brass로 가라앉힌다.
-     라이트(Whites)는 light-dark()의 라이트 쪽이 지금의 brass 띠·틴트를 그대로 잇는다. */
+     라이트는 light-dark()의 라이트 쪽이 지금의 brass 띠·틴트를 그대로 잇는다. */
   border-left: 3px solid light-dark(var(--brass), var(--brass-quiet));
   border-radius: 0 var(--radius-md) var(--radius-md) 0;
   background: light-dark(color-mix(in oklch, var(--brass) 8%, transparent), color-mix(in oklch, var(--brass-quiet) 6%, transparent));
@@ -337,7 +337,7 @@ code.hljs {
    rendered as a key/value manifest instead of a mangled setext heading. Keys
    are mono uppercase eyebrows, values body ink, on a glass surface
    consistent with the Maritime "MANIFEST" language. The eyebrow is a standing
-   label, so dark themes use the tertiary ink; Whites keeps its brass through
+   label, so the dark theme uses the tertiary ink; the light theme keeps its brass through
    the light side of light-dark(). */
 .markdown-body .frontmatter {
   display: grid;
@@ -511,7 +511,7 @@ code.hljs {
 }
 
 /* 창 버튼을 흉내 낸 세 점은 장식이지 상태가 아니다 — 다크는 신호색을 빌리지 않고 무채 잉크 세 점으로
-   선다. 라이트(Whites)만 light-dark()의 라이트 쪽이 지금의 세 색을 그대로 잇는다(다크 보정 범위 밖). */
+   선다. 라이트만 light-dark()의 라이트 쪽이 지금의 세 색을 그대로 잇는다(다크 보정 범위 밖). */
 .code-block-dots span:nth-child(1) {
   background: light-dark(var(--coral), var(--ink-rim));
 }

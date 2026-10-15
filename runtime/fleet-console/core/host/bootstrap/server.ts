@@ -551,7 +551,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const agentOptions = createAgentOptionsService({ store: consoleSettingsStore, legacyDirs: [fleetDataDir] });
   const theaterSystemPrompts = createTheaterSystemPromptService(agentOptions, (id) => theaters.get(id) !== null);
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
-    getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+    getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "dark",
   });
   const routeRegistry = new RouteRegistry();
   const upgradeRegistry = new UpgradeRegistry();
@@ -1298,7 +1298,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onThemeChanged: broadcastDesktopThemeChanged,
     onExperimentsChanged: async (next) => {
       // 「대화 중심 화면」은 Desktop 의 신호등·캡션 띠 자리를 바꾼다 — 테마 이벤트로 셸에 알린다.
-      broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "instrument");
+      broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "dark");
       await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
@@ -1309,7 +1309,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
   const desktopThemeRouter = createDesktopThemeRouter({
-    getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+    getTheme: () => consoleSettingsStore.load().general?.theme ?? "dark",
     getFonts: () => resolveConsoleFonts(consoleSettingsStore.load()),
     getLayout: desktopThemeLayout,
     isAuthorized: isExactConsoleOrigin,

@@ -21,7 +21,7 @@ vi.mock("./analysis-store.js", () => ({
 
 import { AnalystArtifactsPanel, ArtifactClearGlyph, ArtifactPicker } from "./analysis-artifacts-panel.js";
 
-const THEMES = ["instrument", "maritime", "carbon", "whites"] as const satisfies readonly ConsoleTheme[];
+const THEMES = ["dark", "light"] as const satisfies readonly ConsoleTheme[];
 
 function operationContext(theme: ConsoleTheme, fetch = vi.fn(async () => new Response(null, { status: 200 })), language?: "en" | "ko"): OperationRenderContext {
   return { theme, operationId: "op/id", api: { fetch }, language } as never;
@@ -56,7 +56,7 @@ describe("artifact frame", () => {
     document.body.appendChild(container);
     const root = createRoot(container);
     const fetch = vi.fn(async () => new Response(JSON.stringify({ cleared: true }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    act(() => root.render(createElement(ArtifactsHarness, { context: operationContext("instrument", fetch) })));
+    act(() => root.render(createElement(ArtifactsHarness, { context: operationContext("dark", fetch) })));
 
     const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__artifact-count")!;
     expect(trigger.textContent).toContain("Later artifact");
@@ -83,7 +83,7 @@ describe("artifact frame", () => {
     const url = artifactUrl(iframe);
     expect(url.pathname).toBe("/api/v1/analysis/artifacts/artifact-early");
     expect(Object.fromEntries(url.searchParams)).toEqual({
-      theme: "instrument",
+      theme: "dark",
       ground: "rgb(11, 12, 13)",
       foreground: "rgb(241, 242, 243)",
     });

@@ -6,7 +6,7 @@ import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWind
 export interface SecureWindowOptions {
   readonly iconPath: string;
   readonly platform?: NodeJS.Platform;
-  /** 지난 실행에 기억해 둔 사용자 테마. 없으면 Instrument 기본값으로 뜬다. */
+  /** 지난 실행에 기억해 둔 사용자 테마. 없으면 다크 기본값으로 뜬다. */
   readonly backgroundColor?: string;
   readonly titleBarOverlay?: { readonly color: string; readonly symbolColor: string; readonly height: number };
   /** 지난 실행에 기억해 둔 맨 위 줄 높이(chrome.band). 없으면 Command Band 36px 이다. */
@@ -63,7 +63,7 @@ export function localFontsConsentDialog(origin: string): { type: "question"; tit
 
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
-/** Instrument의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
+/** 다크 테마의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
 export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 /**
  * Windows 캡션 버튼 스트립도 Command Band와의 합의다 — 높이 35px + 밴드 하단 divider 1px가

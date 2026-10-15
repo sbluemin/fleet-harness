@@ -12,7 +12,7 @@ async function serve(pathname: string): Promise<CapturedResponse> {
   const root = await mkdtemp(join(tmpdir(), "static-console-font-cors-"));
   const clientRoot = join(root, "dist", "client");
   await mkdir(join(clientRoot, "assets"), { recursive: true });
-  await writeFile(join(clientRoot, "index.html"), "<!doctype html><html data-theme=\"instrument\"><body></body></html>");
+  await writeFile(join(clientRoot, "index.html"), "<!doctype html><html data-theme=\"dark\"><body></body></html>");
   await writeFile(join(clientRoot, "assets", "manrope-latin.woff2"), Buffer.from([0x77, 0x4f, 0x46, 0x32]));
   await writeFile(join(clientRoot, "assets", "index.js"), "export {}");
   const handler = createStaticConsoleHandler(root);

@@ -70,7 +70,7 @@ export function ExpandedSurfaceLayer() {
   const stowed = useExpandedSurfacesStowed();
   const t = useT();
   const theaterId = useViewedTheaterId();
-  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "dark" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const capabilities = useHostCapabilities();

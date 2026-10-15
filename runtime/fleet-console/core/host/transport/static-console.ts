@@ -99,10 +99,10 @@ function serveFallbackIndex(
 function injectActiveTheme(html: string, getActiveTheme?: () => ConsoleThemeId): string {
   if (!getActiveTheme) return html;
   const theme = getActiveTheme();
-  if (theme !== "instrument" && theme !== "maritime" && theme !== "carbon" && theme !== "whites") {
+  if (theme !== "dark" && theme !== "light") {
     return html;
   }
-  return html.replace('data-theme="instrument"', `data-theme="${theme}" data-theme-source="server"`);
+  return html.replace('data-theme="dark"', `data-theme="${theme}" data-theme-source="server"`);
 }
 
 function resolveConsolePath(pathname: string): string | null {

@@ -84,7 +84,7 @@ globalThis.__fleetConsoleRuntime__ = {
 };
 
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
-setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "instrument");
+setActiveTheme(readServerInjectedTheme() ?? readStoredThemeHint() ?? "dark");
 applyDesktopShellMarker();
 // 모바일 색상 모드·글자 배율은 기기 단위 선호다(앱이면 네이티브 소유, 브라우저면 로컬 저장) —
 // 부트 스크립트가 첫 페인트에 붙인 속성을 이어받아 시스템 외관·네이티브 확정을 실시간으로 따른다.

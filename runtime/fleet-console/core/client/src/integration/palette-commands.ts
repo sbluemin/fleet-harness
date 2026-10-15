@@ -107,10 +107,8 @@ type T = Translate<CoreMessageKey>;
 
 function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; readonly label: string }[] {
   return [
-    { id: "instrument", label: t("palette.theme.instrument") },
-    { id: "maritime", label: t("palette.theme.maritime") },
-    { id: "carbon", label: t("palette.theme.carbon") },
-    { id: "whites", label: t("palette.theme.whites") },
+    { id: "dark", label: t("palette.theme.dark") },
+    { id: "light", label: t("palette.theme.light") },
   ];
 }
 

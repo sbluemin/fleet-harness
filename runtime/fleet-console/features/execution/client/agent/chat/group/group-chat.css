@@ -101,7 +101,7 @@
   border-radius: 22px;
 }
 /* 대화 다크의 봇 말풍선은 바탕에서 한 단만 떠오른다(레퍼런스 #1b1b1b ≈ --surface-panel). 라이트는 위의 얹힌 면 그대로다. */
-:root[data-view-mode="desktop"]:not([data-theme="whites"]) .group-chat-bubble.is-agent { background: var(--surface-panel); }
+:root[data-view-mode="desktop"]:not([data-theme="light"]) .group-chat-bubble.is-agent { background: var(--surface-panel); }
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
 
@@ -923,7 +923,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
    넘치는 말풍선만 가려진 가장자리를 바탕으로 흐리고 「전체 보기」를 단다. 흐림은 틀에 고정되어 본문을 굴려도 제자리다.
    흐림은 말풍선 면과 같은 토큰이다(대화 다크의 봇 말풍선은 한 단 낮은 면이라 그 면을 함께 받는다). */
 .group-chat-bubble.is-capped { position: relative; padding: 0; overflow: hidden; --group-chat-bubble-face: var(--surface-panel-raised); }
-:root[data-view-mode="desktop"]:not([data-theme="whites"]) .group-chat-bubble.is-capped { --group-chat-bubble-face: var(--surface-panel); }
+:root[data-view-mode="desktop"]:not([data-theme="light"]) .group-chat-bubble.is-capped { --group-chat-bubble-face: var(--surface-panel); }
 .group-chat-bubble.is-capped > .group-chat-bubble-body { max-height: 320px; padding: 10px 14px; overflow: hidden; }
 /* 마우스 환경에서만 본문 칸을 그 자리에서 굴린다 — 터치 화면에서는 화면을 덮는 말풍선이 스와이프를 가두므로 지금처럼 「전체 보기」로 편다.
    overscroll-behavior 는 막지 않는다 — 위·아래 끝에 닿은 휠은 바깥 대화로 이어진다. 스크롤바는 전역의 얇은 스크롤바 그대로이고,

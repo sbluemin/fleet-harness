@@ -295,10 +295,8 @@ export const DESKTOP_THEME_EVENTS_PATH = "/api/v1/desktop/theme/events";
 export const DESKTOP_THEME_EVENT = "desktop:theme";
 
 const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
-  instrument: { color: "#03080e", symbolColor: "#989fa6", height: 35 },
-  maritime: { color: "#041729", symbolColor: "#c8c4b7", height: 35 },
-  carbon: { color: "#101215", symbolColor: "#bfc1c3", height: 35 },
-  whites: { color: "#f1f0ec", symbolColor: "#424038", height: 35 },
+  dark: { color: "#03080e", symbolColor: "#989fa6", height: 35 },
+  light: { color: "#f1f0ec", symbolColor: "#424038", height: 35 },
 };
 
 /** 대화 중심 화면의 맨 위 줄 높이 — 클라이언트 `--conversation-top-row: 52px`(conversation.css)와 같다. */
@@ -307,19 +305,16 @@ const COMMAND_BAND_HEIGHT = 36;
 
 /**
  * 대화 중심 화면의 캡션 버튼 띠 — 오른쪽 위 열(세부 정보 또는 대화)의 바탕과 같은 색으로, 맨 위 줄 높이만큼 선다. 두 열은 같은
- * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 이 화면의 다크는 고른 다크 테마와 무관하게 「대화 다크」
- * 한 벌이므로(theme.css) 세 다크가 같은 #121212(L 18.2%)·보조 글자 회색(#a7a7a7, `--ink-muted` L 72.8%) 기호를 쓴다.
- * Whites 는 그 테마의 `--canvas-abyss` sRGB 다.
+ * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 이 화면의 다크는 「대화 다크」 한 벌이므로(theme.css)
+ * #121212(L 18.2%)·보조 글자 회색(#a7a7a7, `--ink-muted` L 72.8%) 기호를 쓴다. 라이트는 그 테마의 `--canvas-abyss` sRGB 다.
  */
 const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
-  instrument: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },
-  maritime: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },
-  carbon: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },
-  whites: { color: "#f8f8f5", symbolColor: "#424038", height: CONVERSATION_TOP_ROW },
+  dark: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },
+  light: { color: "#f8f8f5", symbolColor: "#424038", height: CONVERSATION_TOP_ROW },
 };
 
 const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalette>> = {
-  instrument: {
+  dark: {
     scheme: "dark",
     canvas: "#010204",
     tokens: {
@@ -330,29 +325,7 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
       hairline: "oklch(29% 0.018 245)", "hairline-strong": "oklch(37% 0.02 245)",
     },
   },
-  maritime: {
-    scheme: "dark",
-    canvas: "#000102",
-    tokens: {
-      "ink-abyss": "oklch(15% 0.04 250)", "ink-deep": "oklch(20% 0.045 248)", "ink-veil": "oklch(36% 0.035 248)",
-      "ink-rim": "oklch(48% 0.03 248)", "ink-fog": "oklch(70% 0.02 248)", "ink-muted": "oklch(75% 0.02 248)",
-      "ink-spectral": "oklch(82% 0.018 90)", "ink-pearl": "oklch(96% 0.012 88)", brass: "oklch(78% 0.13 75)",
-      aurora: "oklch(82% 0.13 195)", positive: "oklch(80% 0.15 152)", coral: "oklch(72% 0.17 25)",
-      hairline: "oklch(36% 0.035 248)", "hairline-strong": "oklch(48% 0.03 248)",
-    },
-  },
-  carbon: {
-    scheme: "dark",
-    canvas: "#010101",
-    tokens: {
-      "ink-abyss": "oklch(14% 0.006 255)", "ink-deep": "oklch(18% 0.007 255)", "ink-veil": "oklch(33% 0.006 252)",
-      "ink-rim": "oklch(45% 0.005 252)", "ink-fog": "oklch(67% 0.005 250)", "ink-muted": "oklch(72% 0.005 250)",
-      "ink-spectral": "oklch(81% 0.004 250)", "ink-pearl": "oklch(95% 0.003 250)", brass: "oklch(76% 0.115 62)",
-      aurora: "oklch(80% 0.105 205)", positive: "oklch(78% 0.13 158)", coral: "oklch(70% 0.16 25)",
-      hairline: "oklch(33% 0.006 252)", "hairline-strong": "oklch(45% 0.005 252)",
-    },
-  },
-  whites: {
+  light: {
     scheme: "light",
     canvas: "#f7f7f5",
     tokens: {

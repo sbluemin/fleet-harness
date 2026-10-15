@@ -6,8 +6,8 @@
 }
 
 /* On-screen terminal keys.
-   Every colour here is a theme token, so the bar retunes with instrument, maritime, carbon, and
-   whites rather than carrying a palette of its own — it sits directly against the terminal, which
+   Every colour here is a theme token, so the bar retunes with the dark and
+   light themes rather than carrying a palette of its own — it sits directly against the terminal, which
    is the one surface where a fixed colour would read as a foreign panel in three of four themes. */
 
 .terminal-key-bar {

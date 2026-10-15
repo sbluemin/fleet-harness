@@ -146,7 +146,7 @@ function createContext(
     api,
     active: true,
     zoom: 1,
-    theme: "instrument",
+    theme: "dark",
     companionsOpen,
     hiddenCompanionPanelIds,
     onRequestCompanions,

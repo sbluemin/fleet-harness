@@ -37,7 +37,7 @@ import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
 import { useTerminalWebglGrant } from "./terminal-webgl-budget.js";
 import "./terminal-key-bar.css";
 
-type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
+type TerminalThemeId = "dark" | "light";
 /* 모바일 배치에서는 Console 테마 id가 아니라 모바일 색상 모드가 터미널 팔레트를 정한다 — 루트 토큰이
    모바일 팔레트로 바뀌었는데 ANSI·대비 하한만 데스크톱 id를 따르면 밝은 바탕에 다크용 색이 깔린다. */
 type TerminalPaletteId = TerminalThemeId | "mobile-dark" | "mobile-light";
@@ -130,10 +130,10 @@ const MAX_BUFFERED_OUTPUT_BYTES = 1024 * 1024;
 const ZOOM_SETTLE_MS = 120;
 
 // 다크 테마의 brightBlack(SGR 90 — tsc 오류 코드, zsh 자동 제안, git 해시·날짜)은 대비 보정(mCR=1)을
-// 받지 않으므로 팔레트 자체가 배경 대비 4.5:1 안팎을 보장한다(실측 배경 기준 Instrument 4.7~4.9,
-// Maritime 4.6, Carbon 4.8). 명도는 전경색보다 충분히 낮게 둬 일반 출력과의 위계(회색)를 유지한다.
+// 받지 않으므로 팔레트 자체가 배경 대비 4.5:1 안팎을 보장한다(실측 배경 기준 4.7~4.9).
+// 명도는 전경색보다 충분히 낮게 둬 일반 출력과의 위계(회색)를 유지한다.
 // 이 값을 UI 헤어라인 토큰(--ink-rim)에 다시 묶으면 1.3:1로 퇴행한다.
-const INSTRUMENT_TERMINAL_THEME: ITheme = {
+const DARK_TERMINAL_THEME: ITheme = {
   background: "oklch(16.5% 0.016 245)",
   foreground: "oklch(94% 0.008 90)",
   cursor: "oklch(77% 0.085 200)",
@@ -156,61 +156,15 @@ const INSTRUMENT_TERMINAL_THEME: ITheme = {
   brightWhite: "oklch(94% 0.008 90)",
 };
 
-const MARITIME_TERMINAL_THEME: ITheme = {
-  background: "oklch(23% 0.03 248)",
-  foreground: "oklch(86% 0.018 90)",
-  cursor: "oklch(82% 0.13 195)",
-  selectionBackground: "oklch(78% 0.13 75 / 28%)",
-  black: "oklch(18% 0.045 248)",
-  brightBlack: "oklch(62% 0.03 248)",
-  red: "oklch(72% 0.17 25)",
-  green: "oklch(82% 0.13 195)",
-  yellow: "oklch(86% 0.16 78)",
-  blue: "oklch(70% 0.08 248)",
-  magenta: "oklch(75% 0.11 320)",
-  cyan: "oklch(82% 0.13 195)",
-  white: "oklch(82% 0.018 90)",
-  brightRed: "oklch(78% 0.18 25)",
-  brightGreen: "oklch(88% 0.14 195)",
-  brightYellow: "oklch(90% 0.16 78)",
-  brightBlue: "oklch(78% 0.09 248)",
-  brightMagenta: "oklch(82% 0.12 320)",
-  brightCyan: "oklch(88% 0.14 195)",
-  brightWhite: "oklch(96% 0.012 88)",
-};
-
-const CARBON_TERMINAL_THEME: ITheme = {
-  background: "oklch(19% 0.008 252)",
-  foreground: "oklch(85% 0.005 250)",
-  cursor: "oklch(80% 0.105 205)",
-  selectionBackground: "oklch(76% 0.115 62 / 28%)",
-  black: "oklch(16% 0.008 252)",
-  brightBlack: "oklch(62% 0.006 250)",
-  red: "oklch(72% 0.17 25)",
-  green: "oklch(80% 0.11 205)",
-  yellow: "oklch(84% 0.14 64)",
-  blue: "oklch(68% 0.05 250)",
-  magenta: "oklch(75% 0.11 320)",
-  cyan: "oklch(80% 0.11 205)",
-  white: "oklch(81% 0.005 250)",
-  brightRed: "oklch(78% 0.18 25)",
-  brightGreen: "oklch(86% 0.13 205)",
-  brightYellow: "oklch(88% 0.15 66)",
-  brightBlue: "oklch(74% 0.06 250)",
-  brightMagenta: "oklch(82% 0.12 320)",
-  brightCyan: "oklch(86% 0.13 205)",
-  brightWhite: "oklch(95% 0.003 250)",
-};
-
 // 라이트 터미널의 bright 계열은 밝히지 않고 더 진하게(L −5%p, C +0.02) 간다 — 밝은 배경에서 '밝은' ANSI는 판독 불능이기 때문.
 // 단 brightWhite는 예외로 배경보다 밝게 유지한다(SGR 107 블록이 종이보다 희어야 극성이 산다).
 // 라이트 배경은 화면 최명면이어야 한다: 테마의 --canvas-abyss(L 97.8%)보다 밝게 고정 —
 // 작업면이 크롬보다 어두워지면 시선이 크롬으로 끌리는 극성 역전이 재발한다(다크는 반대 방향으로 동일 원칙).
 // 동시에 chroma는 테마 대기(캔버스~밴드 패밀리)를 따른다 — 최명면 + 최저채도가 겹치면
 // 터미널이 테마 밖 백지로 읽힌다(실사용 피드백으로 확인된 과중화 회귀).
-// 종이·잉크·흑백 rung은 whites의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
+// 종이·잉크·흑백 rung은 라이트 테마의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
 // 의미색이므로 대기 이동과 무관하게 유지한다(cursor=aurora·selection=brass 채널 역할도 불변).
-const WHITES_TERMINAL_THEME: ITheme = {
+const LIGHT_TERMINAL_THEME: ITheme = {
   background: "oklch(98.2% 0.004 100)",
   foreground: "oklch(24% 0.012 95)",
   cursor: "oklch(50% 0.1 210)",
@@ -260,7 +214,7 @@ const MOBILE_DARK_TERMINAL_THEME: ITheme = {
   brightWhite: "#f9f9f7",
 };
 
-/* 라이트는 Whites와 같은 이유로 bright 칸을 더 진하게 잡고 white를 회색으로 둔다(밝은 바탕의 흰
+/* 모바일 라이트도 데스크톱 라이트와 같은 이유로 bright 칸을 더 진하게 잡고 white를 회색으로 둔다(밝은 바탕의 흰
    글자 소멸 방지). 모든 칸이 4.5:1을 넘지만 agent CLI가 찍는 다크용 truecolor 때문에 대비 하한은
    켠다(LIGHT_TERMINAL_THEMES). */
 const MOBILE_LIGHT_TERMINAL_THEME: ITheme = {
@@ -291,7 +245,7 @@ const MOBILE_LIGHT_TERMINAL_THEME: ITheme = {
    truecolor를 포함한 전경색을 hue를 보존하며 바닥 대비까지 어둡게 보정하고 box-drawing 글리프는
    제외한다. 한계: dim(SGR 2) 셀은 dim 적용 "전" 색으로 floor/2를 판정한 뒤 알파 0.5를 곱하므로
    색상 dim은 보정을 받지 못한다 — dim 개선은 별도 트랙. 다크 테마는 1(off) 유지. */
-const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalPaletteId> = new Set(["whites", "mobile-light"]);
+const LIGHT_TERMINAL_THEMES: ReadonlySet<TerminalPaletteId> = new Set(["light", "mobile-light"]);
 const LIGHT_MINIMUM_CONTRAST_RATIO = 4.5;
 
 function terminalContrastFloorFor(theme: TerminalPaletteId): number {
@@ -320,7 +274,7 @@ export interface TerminalCarryOver {
   readonly cols?: number;
 }
 
-export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "instrument", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
+export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath, surface = "panel", theme = "dark", mobile = false, awaitingConfirm = false, mobileDockTop, onExit, carryOver, active, visible = true, keyboardFocusRequestId, zoom = 1, onStatusDetail, onOpenLink, onOpenLinkDirect, knownLinks, locale, onCellWidth, fileLinks }: TerminalSurfaceProps) {
   // 티켓 필드는 발급 순간에만 읽힌다 — 값이 바뀌었다고 살아 있는 PTY를 다시 붙이면
   // 사용자가 치던 셸이 끊긴다. 그래서 effect 의존성이 아니라 ref로 나른다.
   const ticketFieldsRef = useRef(ticketFields);
@@ -1169,10 +1123,8 @@ export function TerminalSurface({ operationId, ticketPath, ticketFields, wsPath,
 
 function baseTerminalThemeFor(theme: TerminalPaletteId): ITheme {
   switch (theme) {
-    case "instrument": return INSTRUMENT_TERMINAL_THEME;
-    case "maritime": return MARITIME_TERMINAL_THEME;
-    case "carbon": return CARBON_TERMINAL_THEME;
-    case "whites": return WHITES_TERMINAL_THEME;
+    case "dark": return DARK_TERMINAL_THEME;
+    case "light": return LIGHT_TERMINAL_THEME;
     case "mobile-dark": return MOBILE_DARK_TERMINAL_THEME;
     case "mobile-light": return MOBILE_LIGHT_TERMINAL_THEME;
   }
@@ -1186,7 +1138,7 @@ function baseTerminalThemeFor(theme: TerminalPaletteId): ITheme {
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을
      그대로 받는다 — 컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
-     라이트(Whites)는 언제나 이쪽이다. theme.css가 라이트의
+     라이트는 언제나 이쪽이다. theme.css가 라이트의
      --glass-panel-face를 설정과 무관하게 불투명으로 유지하므로
      readLiquidGlassPaneActive()는 false다. 아래 LIGHT_TERMINAL_THEMES 조건은 그래서
      제품 경로에서는 이미 참인 조건을 한 번 더 세우는 둘째 자물쇠다 — 남겨 둔다. 이 한 곳이

@@ -73,8 +73,11 @@ export const ANALYSIS_ARTIFACT_CSP = `${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.join(";
  * 심층 방어까지가 몫이다.
  */
 const ANALYSIS_ARTIFACT_META_CSP = `<meta http-equiv="Content-Security-Policy" content="${ANALYSIS_ARTIFACT_CSP_DIRECTIVES.filter((directive) => !directive.startsWith("sandbox")).join("; ")}">`;
-const ANALYSIS_ARTIFACT_THEMES = new Set(["instrument", "maritime", "carbon", "whites"]);
-const ANALYSIS_ARTIFACT_LIGHT_THEMES = new Set(["whites"]);
+// 퇴역 테마 id(instrument/maritime/carbon → dark, whites → light)를 보내는 낡은 화면도 같은 극성으로 받는다.
+const ANALYSIS_ARTIFACT_THEMES: ReadonlyMap<string, "dark" | "light"> = new Map([
+  ["dark", "dark"], ["light", "light"],
+  ["instrument", "dark"], ["maritime", "dark"], ["carbon", "dark"], ["whites", "light"],
+]);
 const SAFE_ARTIFACT_COLOR = /^(?:#[\da-f]{3,8}|(?:rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch)\([\d.e%+\-/, ]{1,96}\)|Canvas|CanvasText)$/i;
 const ARTIFACT_CANVAS_STYLE_PROPERTIES = new Set(["background-color", "background-image", "color", "min-height", "color-scheme"]);
 const ARTIFACT_BODY_CANVAS_STYLE_PROPERTIES = new Set([...ARTIFACT_CANVAS_STYLE_PROPERTIES, "margin"]);
@@ -342,7 +345,7 @@ function artifactDocument(html: string, requestUrl: string | undefined): string 
   const monoFont = safeArtifactFontPath(query.get("monoFont"));
   const sansCjkSheets = safeArtifactSheetPaths(query.getAll("sansCjkSheet"));
   const monoCjkSheets = safeArtifactSheetPaths(query.getAll("monoCjkSheet"));
-  const canvasStyle = `background-color:${ground}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${ANALYSIS_ARTIFACT_LIGHT_THEMES.has(theme) ? "light" : "dark"}!important;`;
+  const canvasStyle = `background-color:${ground}!important;background-image:none!important;color:${foreground}!important;min-height:100%!important;color-scheme:${theme === "light" ? "light" : "dark"}!important;`;
   const baseHead = `${ANALYSIS_ARTIFACT_META_CSP}${artifactBaseStylesheet({ ground, card, inset, foreground, muted, faint, hairline, hairlineStrong, accent, positive, warn, critical, focus, sansFont, monoFont, sansFamily, monoFamily, sansSize, monoSize, sansCjkSheets, monoCjkSheets })}`;
   const documentTags = findArtifactDocumentTags(html);
   if (documentTags) {
@@ -714,8 +717,8 @@ function readHtmlEncodedQuote(value: string, index: number): { readonly quote: s
   return apostropheMatch ? { quote: "'", length: apostropheMatch[0].length } : null;
 }
 
-function safeArtifactTheme(value: string | null): string {
-  return value !== null && ANALYSIS_ARTIFACT_THEMES.has(value) ? value : "instrument";
+function safeArtifactTheme(value: string | null): "dark" | "light" {
+  return (value !== null ? ANALYSIS_ARTIFACT_THEMES.get(value) : undefined) ?? "dark";
 }
 
 function safeArtifactColor(value: string | null, fallback: string): string {

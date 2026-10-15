@@ -646,7 +646,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   React.useEffect(() => cancelCapture, [cancelCapture]);
 
   // 페이지의 prefers-color-scheme은 Console 테마 극성을 따른다(Operation과 같은 계약).
-  const polarity = themePolarity(theme ?? "instrument");
+  const polarity = themePolarity(theme ?? "dark");
   React.useEffect(() => {
     if (!available || !state) return;
     if (state.viewport.colorScheme === polarity) return;

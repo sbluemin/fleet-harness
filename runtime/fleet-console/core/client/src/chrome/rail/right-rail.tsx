@@ -375,7 +375,7 @@ export function useRailPanelContext(
     () => getState().theaters.find((theater) => theater.id === theaterId)?.label ?? theaterFallback,
     () => theaterFallback,
   );
-  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "dark" as const);
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   return useMemo(() => ({

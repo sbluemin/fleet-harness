@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createGlobalSettingsRouter, createPluginSettingsRouter } from "../features/settings/host/settings-domain.js";
+import { createGlobalSettingsRouter, createPluginSettingsRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
 
 const DEFAULT_REMOTE_ACCESS = {
@@ -29,7 +29,7 @@ interface RouterHarnessOptions {
   readonly general?: ConsoleGeneralSettings;
   readonly plugins?: ConsoleSettingsData["plugins"];
   readonly execution?: ConsoleSettingsData["execution"];
-  readonly onThemeChanged?: (theme: "instrument" | "maritime" | "carbon" | "whites") => void;
+  readonly onThemeChanged?: (theme: "dark" | "light") => void;
   readonly onRemoteAccessChanged?: (change: { readonly previous: ConsoleGeneralSettings["remoteAccess"] & {}; readonly next: ConsoleGeneralSettings["remoteAccess"] & {} }) => void;
 }
 
@@ -177,8 +177,23 @@ describe("global settings routes", () => {
     expect(missing.updateCalls).toBe(0);
   });
 
+  it("migrates retired theme ids to dark/light on stored reads and PUT bodies", async () => {
+    // 테마가 다크·라이트 둘로 줄었다. 퇴역 id는 거부하지 않고 극성대로 옮겨야 업그레이드 직후 저장값과 낡은 화면이 모두 산다.
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { theme: "maritime" } }).general?.theme).toBe("dark");
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { theme: "whites" } }).general?.theme).toBe("light");
+    const changed: string[] = [];
+    const harness = createRouterHarness({ body: { theme: "carbon" }, onThemeChanged: (theme) => { changed.push(theme); } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[0]?.body).toMatchObject({ state: { theme: "dark" } });
+    expect(harness.currentGeneral()?.theme).toBe("dark");
+    expect(changed).toEqual(["dark"]);
+    harness.setBody({ theme: "sepia" });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.writes[1]).toMatchObject({ status: 400, body: { error: "invalid_theme" } });
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
-    const harness = createRouterHarness({ authorized: false, body: { theme: "instrument" } });
+    const harness = createRouterHarness({ authorized: false, body: { theme: "dark" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(harness.writes[0]?.status).toBe(401);
     expect(harness.updateCalls).toBe(0);

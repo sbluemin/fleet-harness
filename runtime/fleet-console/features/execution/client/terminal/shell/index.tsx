@@ -251,7 +251,7 @@ export function PersistentShellHost({ language, theme }: PersistentComponentCont
         surface="shell"
         mobile={mobileShell}
         onCellWidth={(width) => context.reportMinPaneWidth?.(Math.ceil(width * 80 + 20))}
-        theme={theme ?? context.theme ?? "instrument"}
+        theme={theme ?? context.theme ?? "dark"}
         active={mount.target !== null && context.focused}
         visible={mount.target !== null}
         zoom={1}

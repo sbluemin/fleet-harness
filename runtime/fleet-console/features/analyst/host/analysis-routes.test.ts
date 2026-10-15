@@ -139,10 +139,10 @@ describe("Session Analyst server contract", () => {
     const hostileHtml = `<!doctype html><html lang="en" class='artifact-root' data-note="quoted > value" data-theme="artifact" style='scrollbar-gutter:stable;background-color:white!important'><head><style>html,body{background:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important}</style></head><body class="artifact-body" aria-label='Artifact > body' data-layout="report" style='display:grid;padding:24px;font-family:"Artifact Serif";--artifact-label:"alpha;beta";letter-spacing:.1em;margin:40px;background-color:hotpink!important;background-image:linear-gradient(white,white)!important;color:white!important;min-height:1px!important;color-scheme:light!important'><script>globalThis.__artifactRan=true</script><main>Artifact</main></body></html>`;
     emit?.({ type: "artifact", artifact: { id: "hostile", title: "Hostile", html: hostileHtml, createdAt: new Date(0).toISOString() } });
 
-    for (const theme of ["instrument", "maritime", "carbon", "whites"] as const) {
+    for (const theme of ["dark", "light"] as const) {
       const path = `/api/v1/analysis/artifacts/hostile?theme=${theme}&canvas=${encodeURIComponent("#123456")}&foreground=${encodeURIComponent("#f0f0f0")}&surface=${encodeURIComponent("#18202b")}&hairline=${encodeURIComponent("#35404d")}&accent=${encodeURIComponent("#65d1ff")}&muted=${encodeURIComponent("#96a0ad")}`;
       const response = await router.call("GET", path);
-      const expectedColorScheme = theme === "whites" ? "light" : "dark";
+      const expectedColorScheme = theme;
       expect(response.status).toBe(200);
       const document = new DOMParser().parseFromString(response.body, "text/html");
       const headStyles = document.head.querySelectorAll("style");
@@ -183,7 +183,7 @@ describe("Session Analyst server contract", () => {
       expect(document.body.style.getPropertyValue("color")).toBe("rgb(240, 240, 240)");
       expect(document.body.style.getPropertyValue("min-height")).toBe("100%");
       expect(document.body.style.getPropertyValue("color-scheme")).toBe(expectedColorScheme);
-      if (theme === "whites") expect(response.body).toContain("color-scheme:light!important");
+      if (theme === "light") expect(response.body).toContain("color-scheme:light!important");
       expect(document.body.style.getPropertyValue("margin")).toBe("0px");
       for (const property of ["background-color", "background-image", "color", "min-height", "color-scheme", "margin"]) {
         expect(document.body.style.getPropertyPriority(property)).toBe("important");
@@ -211,7 +211,7 @@ describe("Session Analyst server contract", () => {
     emit?.({ type: "artifact", artifact: { id: "safe", title: "Safe", html: "<p>safe</p>", createdAt: new Date(0).toISOString() } });
     const hostile = 'red!important;"><script>globalThis.injected=true</script>';
     const query = new URLSearchParams({
-      theme: 'carbon" onload="alert(1)',
+      theme: 'dark" onload="alert(1)',
       canvas: hostile,
       foreground: "x".repeat(101),
       surface: '#fff";--injected-surface:red',
@@ -225,7 +225,7 @@ describe("Session Analyst server contract", () => {
 
     expect(response.status).toBe(200);
     const document = new DOMParser().parseFromString(response.body, "text/html");
-    expect(document.documentElement.getAttribute("data-theme")).toBe("instrument");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(document.documentElement.style.getPropertyValue("background-color")).toBe("canvas");
     expect(document.documentElement.style.getPropertyValue("color")).toBe("canvastext");
     expect(document.head.querySelector("style")?.textContent).toContain(artifactTokens({
