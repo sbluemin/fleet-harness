@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -1200,10 +1200,15 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
                   {question.options.map((option) => {
                     const on = !draft.own && draft.picked.includes(option.id);
                     const subId = `${idBase}-${question.id}-${option.id}`;
-                    // 설명은 단추 밖에 선다 — 그 안의 링크가 단추 속 앵커가 되어 고르기로 번지지 않는다.
+                    // 설명은 단추 밖에 선다 — 그 안의 링크가 단추 속 앵커가 되지 않는다. 고르는 자리와 누름 면은 줄 전체다: 단추(이름)의
+                    // 탭·Enter·Space 도 줄로 올라와 한 번 고르고, 설명의 링크 탭은 고르지 않고 링크만 연다.
+                    const onRow = (event: ReactMouseEvent<HTMLDivElement>) => {
+                      if (sending || (event.target as Element).closest("a")) return;
+                      pick(question, option.id);
+                    };
                     return (
-                      <div key={option.id} className="objectives-m-opt-row">
-                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} aria-describedby={option.description ? subId : undefined} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pick(question, option.id)}>
+                      <div key={option.id} className="objectives-m-opt-row" data-press={sending ? undefined : "r1"} onClick={onRow}>
+                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} aria-describedby={option.description ? subId : undefined} disabled={sending} className="objectives-m-opt">
                           <span className={`${indicator}${on ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && on ? <CheckIcon size={14} /> : null}</span>
                           <span className="objectives-m-opt-tx">{option.label}</span>
                         </button>
