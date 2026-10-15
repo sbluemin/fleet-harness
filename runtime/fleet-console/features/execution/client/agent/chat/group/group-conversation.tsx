@@ -91,7 +91,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const markUserScroll = React.useCallback(() => { userScrollAt.current = performance.now(); }, []);
   const last = entries[entries.length - 1];
   const first = entries[0]?.id;
-  const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${snapshot.decision?.id ?? ""}`;
+  const growth = `${entries.length}:${first ?? ""}:${last?.id ?? ""}:${snapshot.decision?.id ?? ""}:${snapshot.holds.map((hold) => hold.id).join(",")}`;
   const placed = React.useRef<{ readonly first: string | undefined; readonly height: number } | null>(null);
 
   // 이전 쪽이 앞에 붙는 경우에만 커밋에서 높이를 읽어 보던 줄을 지킨다. 글자 조각은 이 경로를 돌리지 않는다.

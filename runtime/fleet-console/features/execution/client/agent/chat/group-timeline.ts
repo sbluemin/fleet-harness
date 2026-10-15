@@ -185,5 +185,5 @@ export function composeGroupTimeline(input: {
     : last?.kind === "message" ? { kind: "message", text: oneLine(last.text), at: last.at, speaker: last.speaker } : null;
   return { rootOperationId: input.rootOperationId, entries: ordered, participants: input.participants,
     working: input.participants.filter((participant) => participant.activity === "running").map((participant) => participant.speaker),
-    decision, preview, loading: input.loading ?? false, truncated, unavailableOperationIds: input.unavailableOperationIds ?? [] };
+    decision, holds: input.board?.holds ?? [], preview, loading: input.loading ?? false, truncated, unavailableOperationIds: input.unavailableOperationIds ?? [] };
 }

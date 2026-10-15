@@ -28,7 +28,7 @@ import { useOperationLinks } from "../../operation-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
-import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
+import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
@@ -237,6 +237,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speaker={speakerOf(request.operationId)} language={language} />)}
+      {!phone ? snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
@@ -260,7 +261,10 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
 function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
-  return <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />;
+  return <>
+    {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
+    <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />
+  </>;
 }
 
 /** 한 명 정지 — 기존 실행 중 중지 경로(채팅 턴만 닫는다. 백그라운드 작업은 그대로). */

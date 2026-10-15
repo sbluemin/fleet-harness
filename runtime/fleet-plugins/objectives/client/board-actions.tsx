@@ -186,6 +186,11 @@ function choicesOf(objective: Objective, live: BoardLive) {
   return { ...bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: live.commander !== "closed", recipientCount }), memberAwaiting, working };
 }
 
+/** 넘김 카드와 완료 칩이 같은 보드·실행 상태로 후보 고르기를 연다. */
+export function followupPickable(objective: Objective): boolean {
+  return choicesOf(objective, liveOf(objective)).followupAvailable;
+}
+
 // ── 이어받는 칸(라우팅 확인) ───────────────────────────────────────────────
 
 /** 라우팅 확인을 기다리는 개시 — 목표 id → 덧붙일 말. 플러그인 번들 안의 보기 상태다. */

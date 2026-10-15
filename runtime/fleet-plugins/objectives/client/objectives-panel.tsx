@@ -9,7 +9,7 @@ import type { StatusGlyphState } from "@fleet-console/sdk/components/status-glyp
 
 import { DISPLAY_QUIET_MS, describeQuietMission, objectiveUnderway, quietElapsed, quietSince } from "../server/signals.js";
 import { commanderMode, extensionOf, missionReady, unseenRecords, type CommanderMode, type ObjectiveCriterion, type ObjectiveCriterionProposal, type ObjectiveMember, type MissionRecord, type Objective, type ObjectiveMission } from "../server/types.js";
-import { DecisionGlyph, DecisionList, PersonHoldNote } from "./decisions.js";
+import { DecisionGlyph, DecisionList } from "./decisions.js";
 import { RetroGlyph, Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
 import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
@@ -1490,8 +1490,6 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
           {approveAll ? <button type="button" className="objectives-btn is-small objectives-approve-all" onClick={() => void call("/criterion/approve-all", { objectiveId: objective.id })}>{t("objectives.criteria.approveAll")}</button> : null}
         </div>
         <div id="objectives-sec-criteria">
-          {/* 사령관이 넘긴 기준 제안 — 승인·거절은 사람의 차례다. 넘긴 이유와 돌려주기를 제안 줄 위에 둔다. */}
-          {proposals.length > 0 ? <PersonHoldNote objective={objective} target="criteria" t={t} /> : null}
           {objective.criteria.map((criterion, index) => {
             const proposal = proposals.find((candidate) => candidate.target === criterion.id);
             const round = criterionExtension(criterion.id);
@@ -1666,14 +1664,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
         </> : null}
       </div>
   ) : null;
-  const bottom = (
-      <div className="objectives-detail-bottom">
-        {/* 완료 검토·후속 후보 고르기는 구성원 채팅 입력창에서 한다 — 사령관이 넘긴 것이면 그 이유와 돌려주기를 여기 둔다. */}
-        <PersonHoldNote objective={objective} target="review" t={t} label={t("objectives.objectives.review")} />
-        <PersonHoldNote objective={objective} target="followup" t={t} label={t("objectives.followup.title")} />
-      </div>
-  );
-  // 상세 aside > 탭 바 · 탭 칸(스크롤) · 하단. 탭을 바꿔도 탭 바·하단 띠는 다시 마운트되지 않는다.
+  // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
   const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}</>
     : tab === "crew" ? <>{sCrew}{sMissions}</>
@@ -1683,7 +1674,6 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       <div className="objectives-detail-scroll">
         <div className={`objectives-tab-body is-${tab}`}>{sExtension}{panel}</div>
       </div>
-      {bottom}
     </aside>
   );
 }

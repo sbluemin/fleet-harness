@@ -21,6 +21,24 @@ export interface ConversationPreview {
   readonly speaker?: ConversationSpeaker;
 }
 
+/** 맡은 이가 사람에게 넘긴 사실 — 이유는 번역하지 않고, 돌려주기 실패는 reject 한다. */
+export interface ConversationHanded {
+  readonly label: LocalizedText;
+  readonly reason: string;
+  readonly giveBack?: { readonly label: LocalizedText; readonly run: () => Promise<void> };
+}
+
+/** 결정 요청 밖의 넘김. 답은 원래 보드·입력창에서 하고, 카드는 이유·돌려주기와 그 자리로 가는 길을 보인다. */
+export interface ConversationHold {
+  /** 같은 대상에 새 넘김이 서면 바뀌는 열쇠. */
+  readonly id: string;
+  readonly title: LocalizedText;
+  readonly createdAt: number;
+  readonly handed: ConversationHanded;
+  readonly route?: LocalizedText;
+  readonly reveal?: { readonly label: LocalizedText; readonly run: () => void };
+}
+
 export interface ConversationDecision {
   readonly id: string;
   readonly title: string;
@@ -45,7 +63,7 @@ export interface ConversationDecision {
    * 맡은 이가 이 요청을 사람에게 넘겼다 — `label` 은 머리말, `reason` 은 맡은 이가 쓴 넘긴 이유(번역하지 않는다). `giveBack` 이 있으면
    * 사람이 요청을 맡은 이에게 돌려주는 단추가 선다. 실패는 reject 한다.
    */
-  readonly handed?: { readonly label: LocalizedText; readonly reason: string; readonly giveBack?: { readonly label: LocalizedText; readonly run: () => Promise<void> } };
+  readonly handed?: ConversationHanded;
   /** 보낸 답이 갈 곳 한 줄 — 보내기 단추 곁에 선다. */
   readonly route?: LocalizedText;
 }
@@ -130,6 +148,8 @@ export interface OperationClusterConversation {
   readonly events: readonly GroupTimelineEntry[];
   readonly truncated?: boolean;
   readonly decision: ConversationDecision | null;
+  /** 결정 요청 밖의 넘김 — 넘긴 순서대로. 없으면 카드가 서지 않는다. */
+  readonly holds?: readonly ConversationHold[];
   /**
    * 보드 사건(`board-action`) 줄에서 그 행위의 기록을 연다 — 사령관 행위면 읽기 전용 사령관 기록을 그 턴 위치로. 쓰기는 없다.
    * 플러그인이 줄 id 로 자기 기록을 찾는다. 없으면 그 줄은 펼침만 있다.
@@ -241,6 +261,7 @@ export interface GroupTimelineSnapshot {
   readonly participants: readonly ConversationParticipant[];
   readonly working: readonly ConversationSpeaker[];
   readonly decision: ConversationDecision | null;
+  readonly holds: readonly ConversationHold[];
   readonly preview: ConversationPreview | null;
   readonly loading: boolean;
   readonly truncated: boolean;

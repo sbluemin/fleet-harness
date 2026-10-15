@@ -18,6 +18,7 @@ export function AgentConversation({ entries, participants, working, language, th
     participants,
     working,
     decision: null,
+    holds: [],
     preview: null,
     loading,
     truncated: false,
