@@ -165,6 +165,16 @@ function dropExtraTokens(root: HTMLElement): boolean {
   return dropped;
 }
 
+/** 놓은 점의 커서 자리 — Chromium·WebKit 은 `caretRangeFromPoint`, Firefox 는 `caretPositionFromPoint` 만 안다. */
+function dropRange(x: number, y: number): Range | null {
+  if (typeof document.caretRangeFromPoint === "function") return document.caretRangeFromPoint(x, y);
+  const position = (document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null }).caretPositionFromPoint?.(x, y);
+  if (!position) return null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  return range;
+}
+
 /** 값 → DOM. 짝이 없는 표식은 버린다. 끝이 줄바꿈이면 그 빈 줄에 커서가 서도록 자리표 `<br>` 하나를 더 둔다. */
 function build(root: HTMLElement, t: T, value: CommodoreReferenceValue): void {
   root.replaceChildren();
@@ -318,7 +328,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     // 조합 중에도 질의는 자란다 — 조합 중인 글자로 목록을 좁힌다(Enter 는 조합이 끝난 뒤 고른다).
     const root = rootRef.current;
     const token = root && document.activeElement === root ? caretToken(root) : null;
-    if (token && dismissed.current && (dismissed.current.node !== token.node || dismissed.current.at !== token.at)) dismissed.current = null;
+    // 닫은 '@' 가 사라졌거나(지웠거나 커서가 떠났다) 다른 자리의 '@' 면 닫음을 잊는다 — 지운 뒤 같은 자리에 다시 친 '@' 도 목록을 연다.
+    if (dismissed.current && (!token || dismissed.current.node !== token.node || dismissed.current.at !== token.at)) dismissed.current = null;
     const open = !!token && !dismissed.current;
     setList((current) => {
       if (!open) return current.open ? CLOSED : current;
@@ -575,7 +586,21 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
           event.preventDefault();
           const { onFiles, isFile } = latest.current;
           const files = Array.from(event.dataTransfer.files).filter((file) => (isFile ? isFile(file) : false));
-          if (files.length) onFiles?.(files);
+          if (files.length) { onFiles?.(files); return; }
+          // 끌어다 놓은 글은 평문으로 놓은 자리에 넣는다 — 서식은 받지 않고(기본 동작을 막은 까닭), 토큰 안이면 토큰 뒤에 둔다.
+          const text = event.dataTransfer.getData("text/plain");
+          const root = rootRef.current;
+          if (!text || !root || latest.current.disabled) return;
+          const range = dropRange(event.clientX, event.clientY);
+          if (!range || !root.contains(range.startContainer)) return;
+          const inToken = range.startContainer instanceof Element ? range.startContainer.closest(`.${TOKEN_CLASS}`) : range.startContainer.parentElement?.closest(`.${TOKEN_CLASS}`);
+          if (inToken && root.contains(inToken)) range.setStartAfter(inToken);
+          range.collapse(true);
+          root.focus({ preventScroll: true });
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          insertText(text);
         }}
         onCompositionStart={() => { composing.current = true; latest.current.onCompositionStart?.(); }}
         onCompositionEnd={onCompositionEnd}
