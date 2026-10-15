@@ -33,6 +33,7 @@ import {
   readCommodore,
   readCommodoreExperiment,
   removeCommodoreIntel,
+  INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   retryCommodore,
   saveCommodoreDirective,
@@ -967,7 +968,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
-  const editing = useCommodoreIntelEdits(theaterId, intel, { onFail, onClear });
+  const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
   useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
   const [adding, setAdding] = useState(false);
@@ -997,10 +998,11 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
           <button type="button" className="objectives-btn" disabled={adding || !draft.trim()} onClick={add}>{t("objectives.commodore.intel.add")}</button>
         </div>
         {intel.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.empty")}</p> : (
-          <ul className="objectives-commodore-intel-list">
+          <ul ref={editing.listRef} className="objectives-commodore-intel-list">
             {intel.map((item) => {
               const edit = editing.edits[item.id];
-              const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}> · {t("objectives.commodore.intel.edited")}</span> : null}</span>;
+              // 출처와 「수정됨」은 한 덩어리로 줄을 넘긴다 — 사이 공백은 끊기지 않는 공백이다.
+              const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}>{"\u00a0·\u00a0"}{t("objectives.commodore.intel.edited")}</span> : null}</span>;
               if (edit) {
                 const unchanged = edit.draft.trim() === item.text;
                 return (
@@ -1022,6 +1024,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
                           if (event.key === "Enter" && !event.shiftKey && !event.altKey) { event.preventDefault(); editing.save(item.id); }
                         }}
                       />
+                      {edit.error ? <p className="objectives-commodore-intel-error" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
                       <div className="objectives-commodore-intel-edit-foot">
                         {meta}
                         <span className="objectives-commodore-hint">{t("objectives.commodore.intel.editHint")}</span>
@@ -1038,7 +1041,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
                   {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
                   <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
                   <span className="objectives-commodore-intel-actions">
-                    <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
+                    <button type="button" className="objectives-commodore-text-button" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
                     <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
                   </span>
                 </li>

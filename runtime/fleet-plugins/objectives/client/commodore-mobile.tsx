@@ -36,6 +36,7 @@ import {
   useCommodore,
   useCommodoreEnabled,
   useCommodoreExperimentKnown,
+  INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   useCommodoreMobileTab,
   useCommodoreOnline,
@@ -427,7 +428,7 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
   const { intel, sources } = view.state;
   const [draft, setDraft] = useState("");
   const [adding, setAdding] = useState(false);
-  const editing = useCommodoreIntelEdits(theaterId, intel, { onFail, onClear });
+  const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
   const sourceLabel = (source: string) => source === "person" ? t("objectives.commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
   const add = () => {
@@ -448,10 +449,11 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
           <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={adding || !draft.trim() || !online} onClick={add}>{t("objectives.commodore.intel.add")}</button>
         </div>
         {intel.length === 0 ? <p className="objectives-cm-secnote">{t("objectives.commodore.intel.empty")}</p> : (
-          <div className="objectives-cm-grp">
+          <div ref={editing.listRef} className="objectives-cm-grp">
             {intel.map((item) => {
               const edit = editing.edits[item.id];
-              const meta = `${day(item.at)} · ${sourceLabel(item.source)}${item.editedAt !== undefined ? ` · ${t("objectives.commodore.intel.edited")}` : ""}`;
+              // 출처와 「수정됨」 사이는 끊기지 않는 공백 — 표시가 줄 끝에서 홀로 떨어지지 않는다.
+              const meta = `${day(item.at)} · ${sourceLabel(item.source)}${item.editedAt !== undefined ? `\u00a0·\u00a0${t("objectives.commodore.intel.edited")}` : ""}`;
               // 폰 자판의 Enter 는 줄바꿈이다 — 저장·취소는 단추로 한다.
               if (edit) return (
                 <div key={item.id} className="objectives-cm-gr is-editing">
@@ -465,8 +467,9 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
                     onChange={(event) => editing.change(item.id, event.target.value)}
                     onKeyDown={(event) => { if (event.key === "Escape" && !edit.saving) { event.preventDefault(); event.stopPropagation(); editing.cancel(item.id); } }}
                   />
+                  {edit.error ? <p className="objectives-cm-note" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
                   <div className="objectives-cm-crow">
-                    <span className="objectives-cm-secnote is-grow">{meta}</span>
+                    <span className="objectives-cm-secnote is-grow objectives-cm-intel-meta">{meta}</span>
                     <button type="button" data-press="r3" className="objectives-cm-pill" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
                     <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={edit.saving || !online || !edit.draft.trim() || edit.draft.trim() === item.text} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
                   </div>
@@ -474,9 +477,12 @@ function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onC
               );
               return (
                 <div key={item.id} className="objectives-cm-gr">
-                  <span className="objectives-cm-gr-tx objectives-cm-intel-tx" onClick={() => { if (online && !window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}<small>{meta}</small></span>
-                  <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.editAria")} disabled={!online} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
-                  <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                  <span className="objectives-cm-gr-tx objectives-cm-intel-tx" onClick={() => { if (online && !window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}<small className="objectives-cm-intel-meta">{meta}</small></span>
+                  {/* 단추 둘은 세로로 쌓아 본문 칸을 넓게 둔다. */}
+                  <span className="objectives-cm-intel-actions">
+                    <button type="button" data-press="r1" className="objectives-cm-tbtn" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} disabled={!online} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
+                    <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                  </span>
                 </div>
               );
             })}

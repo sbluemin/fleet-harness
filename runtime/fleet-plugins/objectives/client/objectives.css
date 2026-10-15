@@ -1326,11 +1326,19 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; }
 .objectives-commodore-intel-when { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-intel-text { overflow-wrap: anywhere; white-space: pre-wrap; }
-.objectives-commodore-intel-source { margin-left: 8px; color: var(--text-tertiary); font-size: var(--t-2xs); }
+/* 출처 표시는 낱말 중간에서 끊지 않는다 — 한국어도 낱말 단위(keep-all)로만 넘긴다. */
+.objectives-commodore-intel-source { margin-left: 8px; color: var(--text-tertiary); font-size: var(--t-2xs); word-break: keep-all; overflow-wrap: break-word; }
 /* 본문을 누르면 그 자리에서 고친다 — 고칠 수 있다는 기색은 hover 의 위치 잉크(brass)로만 낸다. */
 .objectives-commodore-intel-text.is-editable { cursor: text; border-radius: var(--radius-xs); }
 .objectives-commodore-intel-text.is-editable:hover { background: color-mix(in srgb, var(--brass) 12%, transparent); }
 .objectives-commodore-intel-actions { display: inline-flex; gap: 2px; }
+.objectives-commodore-intel-list { container: objectives-commodore-intel / inline-size; }
+/* 좁은 칸에서는 단추 둘을 본문 아래로 내려 본문이 칸 너비를 다 쓴다. */
+@container objectives-commodore-intel (width < 400px) {
+  .objectives-commodore-intel-list li { grid-template-columns: auto minmax(0, 1fr); row-gap: 0; }
+  .objectives-commodore-intel-actions { grid-column: 2; justify-self: start; margin-left: -4px; }
+}
+.objectives-commodore-intel-error { margin: 0; color: var(--coral); font-size: var(--t-xs); }
 .objectives-commodore-intel-list li.is-editing { align-items: start; }
 .objectives-commodore-intel-list li.is-editing .objectives-commodore-intel-when { padding-top: 9px; }
 .objectives-commodore-intel-edit { grid-column: 2 / -1; display: grid; gap: 6px; min-width: 0; }
