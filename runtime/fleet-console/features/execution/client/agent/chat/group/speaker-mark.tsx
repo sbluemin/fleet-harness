@@ -1,6 +1,7 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { MONGLE_SPECIAL_PRESETS, mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
@@ -113,12 +114,25 @@ export function SpeakerName({ speaker, className = "" }: { readonly speaker: Con
 }
 
 /**
- * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 「사령관」으로 부른다.
+ * 이 대화의 사령관 이름 — 화면 언어의 「사령관」이고, 그 Theater 의 사령관이 스페셜(토리·보리·도리)을 쓰면 그 새 이름을 붙인다
+ * (「사령관(보리)」). Theater 는 사령관 표식과 같은 규칙으로 고른다(`SpeakerMark`).
+ */
+export function useCommodoreName(language: ConsoleLocale | undefined): string {
+  const subject = useConversationSubject();
+  const theater = React.useContext(ConversationTheaterContext);
+  const { special } = useMongleLook(theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown"));
+  const t = getGroupT(language);
+  const preset = special ? MONGLE_SPECIAL_PRESETS.find((candidate) => candidate.id === special) : undefined;
+  return preset ? t("group.commodoreWithSpecial", { name: preset.name[language ?? "en"] }) : t("group.commodore");
+}
+
+/**
+ * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 사령관 이름(`useCommodoreName`)으로 부른다.
  * 스냅숏 하나를 한 번 고쳐 대화·진행 줄·구성원 탭이 같은 이름을 쓰게 한다.
  */
 export function useLocalizedSnapshot(snapshot: GroupTimelineSnapshot, language: ConsoleLocale | undefined): GroupTimelineSnapshot {
+  const commodore = useCommodoreName(language);
   return React.useMemo(() => {
-    const commodore = getGroupT(language)("group.commodore");
     const fix = (speaker: ConversationSpeaker): ConversationSpeaker => (speaker.kind === "commodore" && speaker.name !== commodore ? { ...speaker, name: commodore } : speaker);
     const entries = snapshot.entries.map((entry): GroupTimelineEntry => {
       switch (entry.kind) {
@@ -135,5 +149,5 @@ export function useLocalizedSnapshot(snapshot: GroupTimelineSnapshot, language: 
       participants: snapshot.participants.map((participant) => (participant.speaker.kind === "commodore" ? { ...participant, speaker: fix(participant.speaker) } : participant)),
       working: snapshot.working.map(fix),
     };
-  }, [snapshot, language]);
+  }, [snapshot, commodore]);
 }

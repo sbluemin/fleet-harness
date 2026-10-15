@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { theaterAvatarKey, type MongleSpecial } from "@fleet-console/sdk/avatars";
+import { subscribeAvatarBook } from "@fleet-console/sdk/avatars/browser";
 import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -12,6 +13,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
+import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreMongleActivity, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
@@ -199,11 +201,12 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks), [t, theaterId, entries, board.objectives, view?.state.asks]);
-  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed), [t, entries, live, confirmed]);
+  const name = useCommodoreName(t, theaterId);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, name), [t, theaterId, entries, board.objectives, view?.state.asks, name]);
+  const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name), [t, entries, live, confirmed, name]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
-  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
+  const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   // 사령관은 Operation 이 없어 진행 줄이 활동을 스스로 읽지 못한다 — 감독자가 알린 활동을 참여자에 실어 준다.
   const step = turning ? commodoreMongleActivity(view) : null;
   const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle", ...(step ? { step } : {}) }], [speaker, turning, step]);
@@ -334,7 +337,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   title: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId ?? "";
     const label = commodoreTheaterLabel(theaterId);
-    const name = getT(ctx.language)("objectives.commodore.name");
+    const name = commodoreName(getT(ctx.language), theaterId);
     return label ? `${name} · ${label}` : name;
   },
   subtitle: (ctx) => (readParams(ctx.params)?.readOnly ? getT(ctx.language)("objectives.commodore.conversation.readOnly") : null),
@@ -343,12 +346,14 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
     if (!theaterId) return null;
     const view = readCommodore(theaterId).view;
-    return { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name"), state: commodoreMongleState(view, readTheater(theaterId).objectives), activity: commodoreMongleActivity(view) };
+    return { key: theaterAvatarKey(theaterId), role: "commodore", label: commodoreName(getT(ctx.language), theaterId), state: commodoreMongleState(view, readTheater(theaterId).objectives), activity: commodoreMongleActivity(view) };
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);
     const offBoard = subscribeObjective(listener);
-    return () => { offCommodore(); offBoard(); };
+    // 스페셜을 고르거나 떼면 제목의 이름(「사령관(보리)」)이 바뀐다.
+    const offAvatars = subscribeAvatarBook(listener);
+    return () => { offCommodore(); offBoard(); offAvatars(); };
   },
   // 사령관 세션은 이 scope 로 Session 브라우저를 얻는다(server/commodore/session.ts 의 tools.browser). 호스트가 지구본·카드·칸을 그린다.
   sessionBrowser: (ctx) => {

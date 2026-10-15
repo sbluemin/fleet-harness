@@ -13,6 +13,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
+import { useCommodoreName } from "./commodore-name.js";
 import { CommodoreReferenceInput, EMPTY_REFERENCE_VALUE, useCommodoreReferenceHost, type CommodoreReferenceInputHandle, type CommodoreReferenceValue } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { focusAtEnd } from "./commodore-inbox-section.js";
@@ -109,7 +110,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
   const theaterId = ctx.theaterId ?? "";
   const { mobileBar, visible } = ctx;
   if (ctx.language) noteCommodoreLanguage(ctx.language);
-  const title = t("objectives.commodore.name");
+  const title = useCommodoreName(t, theaterId);
   const theaterLabel = useCommodoreTheaterLabel(theaterId);
 
   // 목적지 화면이라 막대 왼쪽은 ☰, 보조 줄은 지금 Theater 이름. ⋮ 은 없다 — 시트의 모든 기능이 탭과 띠에 있다.

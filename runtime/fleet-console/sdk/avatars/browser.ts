@@ -95,6 +95,17 @@ export function useAvatarBook(): AvatarBook | null {
   return current;
 }
 
+/** React 밖에서 읽는 지금 아는 책. 아직 못 읽었으면 null 이다 — 읽기는 `subscribeAvatarBook`·`useAvatarBook` 이 시작한다. */
+export function readAvatarBook(): AvatarBook | null {
+  return book;
+}
+
+/** React 밖 구독 — 책이 바뀌면(이 사본의 응답이든 다른 사본의 알림이든) 알린다. 아직 못 읽었으면 읽기를 시작한다. */
+export function subscribeAvatarBook(listener: () => void): () => void {
+  void load();
+  return subscribe(listener);
+}
+
 /** 그릴 모습. 저장값이 없으면 키에서 정한 베이스와 원래 색이다(저장하지 않는다). */
 export interface ResolvedMongleLook {
   readonly base: number;
