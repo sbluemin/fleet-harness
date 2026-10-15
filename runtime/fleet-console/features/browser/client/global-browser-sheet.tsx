@@ -483,6 +483,10 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         return;
       }
     }
+    // 칸 끌기가 정지 화면을 기다리는 동안(resizeHoldStartRef, 아직 물러나기 전)에는 뷰를 누르기 직전 자리에 고정한다. 새 폭으로
+    // 다시 놓으면 서버 캡처가 pane 기하가 두 번 연속 같기를 기다리다(browser_capture_not_ready / _changed) 끝나지 않아 장이 오지
+    // 않고, 미리 찍은 장의 크기(box)도 지금 뷰와 어긋난다. 알린 자리(publishBrowserViewRect)도 실제 뷰가 있는 옛 자리 그대로 둔다.
+    if (!parked && resizeHoldStartRef.current !== null && placeKeyRef.current.startsWith("1:")) return;
     // 판정용 자리는 「놓으려는 자리」다 — 물러나 있을 때도 유지해야 토스트 교차가 풀린다.
     // 닫을 때만 null로 거둔다.
     const rect = element.getBoundingClientRect();
