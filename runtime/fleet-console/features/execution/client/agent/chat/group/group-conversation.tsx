@@ -527,12 +527,18 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
     case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} label={boardActionLabel} />;
+    case "decision-answer": return <DecisionAnswerLine entry={entry} asker={participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null} language={language} />;
     case "plugin-notice": return <PluginNoticeLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "note": return <NoteLine entry={entry} language={language} />;
   }
 }, (before, after) => {
   if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel) return false;
   if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report) return false;
+  // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
+  if (after.entry.kind === "decision-answer") {
+    const commander = (participants: readonly ConversationParticipant[]) => participants.find((participant) => participant.speaker.kind === "commander")?.speaker;
+    return commander(before.participants) === commander(after.participants);
+  }
   if (after.entry.kind !== "message") return true;
   const speaker = after.entry.speaker;
   if (sameSpeaker(before.previous, speaker) !== sameSpeaker(after.previous, speaker)) return false;
@@ -833,6 +839,41 @@ function MembershipLine({ entry, language }: {
       <SpeakerMark speaker={entry.speaker} size="sm" />
       <span>{t(entry.kind === "member-joined" ? "group.joined" : "group.left", { name: entry.speaker.name })}</span>
       {time ? <span className="group-chat-line-time">{time}</span> : null}
+    </div>
+  );
+}
+
+/**
+ * 사람이 답한 결정 — 답한 시각의 자리에 사람이 보낸 말과 같은 오른쪽 말풍선으로 선다(같은 면·반경·여백, 머리의 「→ 받는 이 · 행위」 줄).
+ * 질문마다 머리말 칩(있으면, 결정 카드와 같은 칩)·질문(작은 보조 글자)·답(본문 글자)이 쌓이고, 아무리 길어도 말풍선 폭 안에서 줄을 바꾼다.
+ */
+function DecisionAnswerLine({ entry, asker, language }: {
+  readonly entry: Extract<GroupTimelineEntry, { kind: "decision-answer" }>;
+  readonly asker: ConversationSpeaker | null;
+  readonly language: ConsoleLocale | undefined;
+}) {
+  const t = getGroupT(language);
+  return (
+    <div className="group-chat-human" data-entry-id={entry.id}>
+      <span className="group-chat-human-to">
+        {asker ? <>
+          <span aria-hidden="true">→</span>
+          <SpeakerMark speaker={asker} size="sm" />
+          <SpeakerName speaker={asker} />
+          <span className="group-chat-line-sep" aria-hidden="true">·</span>
+        </> : null}
+        <span className="group-chat-via">{t("group.decision.answered")}</span>
+        <span className="group-card-settled-mark" aria-hidden="true">✓</span>
+      </span>
+      <div className="group-chat-bubble is-human group-card-settled-body">
+        {entry.answers.map((answer, at) => (
+          <div key={at} className="group-card-settled-item">
+            {answer.header ? <span className="group-card-header">{answer.header}</span> : null}
+            <span className="group-card-settled-q">{answer.question}</span>
+            <span>{answer.answer}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

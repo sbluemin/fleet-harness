@@ -31,10 +31,22 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   for (const action of objective.actions ?? []) if (typeof action.by === "object" && action.by.kind === "commodore") events.push({
     kind: "board-action", id: `board:${objective.id}:${action.id}`, at: action.at, objectiveId: objective.id, speaker, action: action.kind, text: action.by.why ?? action.kind,
   });
-  for (const decision of objective.decisions) if (typeof decision.by === "object" && decision.by.kind === "commodore") events.push({
-    kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: "answer",
-    text: [decision.question.text, ...decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label), decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
-  });
+  // 사람이 답한 결정 — 요청 하나가 한 줄로, 답한 시각의 자리에 선다(질문 순서 그대로). 대화가 하단 카드 대신 이 줄을 기록으로 읽는다.
+  const answered = new Map<string, Extract<GroupTimelineEntry, { kind: "decision-answer" }>>();
+  for (const decision of objective.decisions) {
+    const labels = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
+    if (typeof decision.by === "object" && decision.by.kind === "commodore") {
+      events.push({
+        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: "answer",
+        text: [decision.question.text, ...labels, decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
+      });
+      continue;
+    }
+    const answer = { ...(decision.question.header ? { header: decision.question.header } : {}), question: decision.question.text, answer: [...labels, ...(decision.answer.text ? [decision.answer.text] : [])].join(", ") };
+    const entry = answered.get(decision.requestId);
+    answered.set(decision.requestId, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${decision.requestId}`, at: decision.at, answers: [answer] });
+  }
+  events.push(...answered.values());
   const request = !objective.done ? objective.decisionRequest : null;
   // 결정 카드의 차례 — 사령관이 넘긴 요청이면 넘긴 이유와 돌려주기, 사령관이 맡은 요청이면 「답하는 중」. 답이 갈 곳은 늘 한 줄.
   const handedHold = request ? livePersonHold(objective, "decision") : null;
