@@ -787,23 +787,45 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 /* 질문 머리말 — 묻는 이가 붙인 짧은 이름표. 분류일 뿐이라 신호색 없이 옅은 면 위 무채색 잉크. */
 .group-card-header { align-self: flex-start; max-width: 100%; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; }
 .group-card-title { margin: 0 0 2px; font-size: var(--font-body-size); font-weight: var(--weight-bold); color: var(--text-primary); }
+/* 카드 안 글(질문·넘긴 이유·선택지 설명) — 말풍선과 같은 마크다운 렌더라 링크 잉크·사이트 아이콘은 그대로 받고, 글꼴·크기·잉크·간격은
+   카드 자리를 따른다(문서 본문의 읽기 폭·행간을 들이지 않는다). */
+.group-card .group-card-md { inline-size: auto; max-inline-size: none; margin: 0; font: inherit; line-height: inherit; letter-spacing: inherit; color: inherit; }
+.group-card .group-card-md :is(p, li, strong) { color: inherit; }
+.group-card .group-card-md strong { font-weight: var(--weight-bold); }
+.group-card .group-card-md > * { margin-block: 0; }
+.group-card .group-card-md > * + * { margin-top: var(--space-1); }
+/* 번호·머리말 뒤에 잇는 글 — 첫 단락이 앞 글자와 한 줄에 흐른다. */
+.group-card .group-card-md.is-lead { display: contents; }
+.group-card .group-card-md.is-lead > p:first-child { display: inline; }
+/* 선택지 한 줄 — 줄 전체가 고르는 자리다. 이름은 단추 안, 설명(링크가 설 수 있다)은 단추 밖 같은 줄에 이름과 맞춰 선다. */
 .group-card-choice {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 1px;
   padding: 7px var(--space-2);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: none;
-  font: inherit;
   font-size: var(--t-sm);
   color: var(--text-primary);
-  text-align: left;
   cursor: pointer;
 }
-.group-card-choice:hover:not(:disabled) { background: var(--control-wash-hover); }
+.group-card-choice:hover:not(.is-disabled) { background: var(--control-wash-hover); }
+.group-card-choice.is-disabled { cursor: default; }
 .group-card-choice.is-on { border-color: var(--brass); background: var(--control-wash); }
-.group-card-choice:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.group-card-choice:has(> .group-card-choice-pick:focus-visible) { outline: 2px solid var(--brass); outline-offset: 1px; }
+.group-card-choice-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+.group-card-choice-pick:focus-visible { outline: none; }
 .group-card-key {
   flex: none;
   display: inline-grid;
@@ -816,8 +838,8 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   font-size: var(--t-2xs);
   color: var(--text-secondary);
 }
-.group-card-choice-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.group-card-choice-sub { font-size: var(--t-xs); color: var(--text-tertiary); }
+.group-card-choice-text { min-width: 0; }
+.group-card-choice-sub { padding-left: calc(18px + var(--space-2)); font-size: var(--t-xs); color: var(--text-tertiary); }
 .group-card-own {
   padding: 7px var(--space-2);
   border: 1px solid var(--hairline);

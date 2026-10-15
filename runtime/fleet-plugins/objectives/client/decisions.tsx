@@ -55,7 +55,7 @@ export function PersonHoldNote({ objective, target, t, phone = false, label, ans
   if (phone) {
     const body = (
       <>
-        <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{hold.reason}</p>
+        <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={hold.reason} /></p>
         {children}
         {failed ? <p className="objectives-m-fault" role="status">{t("objectives.decision.giveBackFailed")}</p> : null}
         <div className="objectives-m-ucard-ft">

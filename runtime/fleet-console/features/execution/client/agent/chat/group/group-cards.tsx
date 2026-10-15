@@ -5,6 +5,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import type { OperationUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
 import { getT } from "../../i18n/index.js";
+import { StreamedMarkdown } from "../../streamed-markdown.js";
 import {
   formatUseRequestTime,
   UseRequestGlyph,
@@ -20,6 +21,10 @@ import { SpeakerMark } from "./speaker-mark.js";
  *
  * 어느 카드도 초점을 가져가지 않는다: 사람이 입력창에 치던 Enter 가 답이나 허용을 누르면 안 된다. 단추는 클릭이나 Tab 으로만
  * 닿고, 누르고 있는 Enter·Space 의 반복으로는 확정되지 않는다.
+ *
+ * 결정 카드의 글(질문·넘긴 이유·선택지 설명)은 대화 말풍선과 같은 마크다운 렌더(사이트 링크)로 그린다. 링크를 여는 길은 따로 두지
+ * 않는다 — 말풍선의 앵커와 같은 자리에 서므로 그 표면의 링크 길(데스크톱 가운데 칸은 문서 링크 라우터, 폰 Operation 본문은 채팅 링크
+ * 경계)이 그대로 연다. 앵커는 단추 안에 두지 않는다: 선택지 이름은 단추 안 평문이고, 설명은 단추 밖 같은 줄 안에 선다.
  */
 
 /**
@@ -87,6 +92,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
   };
 
   const many = decision.questions.length > 1;
+  const idBase = React.useId();
   return (
     <section className="group-card is-decision" aria-label={t("group.decision.badge")} onKeyDown={ignoreRepeat}>
       <div className="group-card-head">
@@ -96,29 +102,35 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
         <button type="button" className="group-chat-link" onClick={decision.open}>{t(phone ? "group.decision.openPhone" : "group.decision.open")}</button>
       </div>
       {handed ? (
-        <p className="group-card-handed"><span className="group-card-handed-label">{text(handed.label)}</span>{handed.reason}</p>
+        <div className="group-card-handed"><span className="group-card-handed-label">{text(handed.label)}</span><CardMarkdown text={handed.reason} language={locale} lead /></div>
       ) : null}
       {decision.questions.map((question, at) => (
         <div key={question.id} className="group-card-question">
           {question.header ? <span className="group-card-header">{question.header}</span> : null}
-          <p className="group-card-title">{many ? `${at + 1}. ` : ""}{question.text}</p>
+          <div className="group-card-title">{many ? `${at + 1}. ` : ""}<CardMarkdown text={question.text} language={locale} lead /></div>
           {question.options.map((option, optionAt) => {
             const on = (picks[question.id] ?? []).includes(option.id);
+            const subId = `${idBase}-${question.id}-${option.id}`;
+            // 줄 전체가 선택지다 — 단추(이름)의 클릭·Enter·Space 도 여기로 올라와 한 번 고른다. 설명 속 링크의 클릭은 고르지 않고
+            // 그대로 위로 흘려 링크 길이 연다.
+            const onRow = (event: React.MouseEvent<HTMLDivElement>) => {
+              if (sending || (event.target as Element).closest("a")) return;
+              toggle(question.id, option.id, question.multiSelect);
+            };
             return (
-              <button
-                key={option.id}
-                type="button"
-                className={`group-card-choice${on ? " is-on" : ""}`}
-                aria-pressed={on}
-                disabled={sending}
-                onClick={() => toggle(question.id, option.id, question.multiSelect)}
-              >
-                <span className="group-card-key" aria-hidden="true">{String.fromCharCode(65 + optionAt)}</span>
-                <span className="group-card-choice-text">
-                  <span>{option.label}</span>
-                  {option.description ? <span className="group-card-choice-sub">{option.description}</span> : null}
-                </span>
-              </button>
+              <div key={option.id} className={`group-card-choice${on ? " is-on" : ""}${sending ? " is-disabled" : ""}`} onClick={onRow}>
+                <button
+                  type="button"
+                  className="group-card-choice-pick"
+                  aria-pressed={on}
+                  aria-describedby={option.description ? subId : undefined}
+                  disabled={sending}
+                >
+                  <span className="group-card-key" aria-hidden="true">{String.fromCharCode(65 + optionAt)}</span>
+                  <span className="group-card-choice-text">{option.label}</span>
+                </button>
+                {option.description ? <div id={subId} className="group-card-choice-sub"><CardMarkdown text={option.description} language={locale} /></div> : null}
+              </div>
             );
           })}
           <input
@@ -190,6 +202,11 @@ export function UseRequestGroupCard({ request, speaker, language }: {
       {failed ? <p className="group-card-error" role="alert">{tt("terminal.useRequest.failed")}</p> : null}
     </div>
   );
+}
+
+/** 카드 안 글 — 말풍선의 마크다운 렌더(사이트 링크 포함)를 쓰고 글꼴·잉크는 카드 자리를 따른다. `lead` 는 앞 글자(번호·머리말)와 한 줄로 잇는다. */
+function CardMarkdown({ text, language, lead = false }: { readonly text: string; readonly language: ConsoleLocale; readonly lead?: boolean }) {
+  return <StreamedMarkdown text={text} streaming={false} className={`markdown-body group-card-md${lead ? " is-lead" : ""}`} language={language} siteLinks />;
 }
 
 /** 누르고 있는 Enter·Space 의 반복은 카드 안에서 멈춘다 — 두 번째 확정이 나가지 않는다. */

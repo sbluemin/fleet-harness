@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
@@ -1107,6 +1107,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
   const answering = decisionTurn(objective, commodore.active) === "commodore";
   const handed = request ? livePersonHold(objective, "decision") : null;
   const [givingBack, setGivingBack] = useState(false);
+  const idBase = useId();
   useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
 
   if (!request) {
@@ -1190,7 +1191,7 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
               <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} operations={operations} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{t("objectives.commodore.note.answering")}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.commodore.decisionHint")}</p> : null}
-              {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b>{handed.reason}</p> : null}
+              {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
               {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
@@ -1198,11 +1199,16 @@ function DecisionSection({ objective, operations, t, language, api, say }: { rea
                 <div role={question.multiSelect ? "group" : "radiogroup"} aria-label={t("objectives.decision.optionsAria", { n: index + 1 })}>
                   {question.options.map((option) => {
                     const on = !draft.own && draft.picked.includes(option.id);
+                    const subId = `${idBase}-${question.id}-${option.id}`;
+                    // 설명은 단추 밖에 선다 — 그 안의 링크가 단추 속 앵커가 되어 고르기로 번지지 않는다.
                     return (
-                      <button key={option.id} type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pick(question, option.id)}>
-                        <span className={`${indicator}${on ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && on ? <CheckIcon size={14} /> : null}</span>
-                        <span className="objectives-m-opt-tx">{option.label}{option.description ? <small>{option.description}</small> : null}</span>
-                      </button>
+                      <div key={option.id} className="objectives-m-opt-row">
+                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} aria-describedby={option.description ? subId : undefined} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pick(question, option.id)}>
+                          <span className={`${indicator}${on ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && on ? <CheckIcon size={14} /> : null}</span>
+                          <span className="objectives-m-opt-tx">{option.label}</span>
+                        </button>
+                        {option.description ? <small id={subId} className="objectives-m-opt-sub"><LinkText text={option.description} /></small> : null}
+                      </div>
                     );
                   })}
                   <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={draft.own} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pickOwn(question)}>
