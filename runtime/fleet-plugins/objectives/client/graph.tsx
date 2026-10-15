@@ -221,22 +221,26 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
   };
   const hover = (event: ReactPointerEvent) => {
     if (suspended || event.pointerType === "touch" || dragRef.current || panning.current) return;
-    const p = { x: event.clientX, y: event.clientY }, id = nodeId(event.target);
-    if (!(event.target as Element).closest("[data-graph-popup]")) setHot(id);
+    const target = event.target as Element, inPopup = !!target.closest("[data-graph-popup]");
+    const p = { x: event.clientX, y: event.clientY }, id = nodeId(target);
+    if (!inPopup) setHot(id);
     if (popupRef.current?.pinned || link) return;
-    if ((event.target as Element).closest("[data-graph-popup]")) { keep(); cancelOpen(); }
-    else if (id) {
+    // 팝업은 도형(동그라미, 결정 대기 마름모) 위에서만 연다. 이름·노드 여백은 이미 열린 제 팝업을 붙들 뿐 새로 열지 않고, 다른 임무의 것은 빈 곳과 같다.
+    const shape = id && target.closest(".objectives-graph-shape") ? id : null;
+    if (inPopup) { keep(); cancelOpen(); }
+    else if (shape) {
       keep();
-      if (popupRef.current?.id === id && !popupRef.current.closing) cancelOpen();
+      if (popupRef.current?.id === shape && !popupRef.current.closing) cancelOpen();
       else if (popupRef.current && !popupRef.current.closing && safeTriangle(p)) {
         // 팝업으로 이동할 때 지나는 노드로 바뀌지 않도록 통로를 보호한다.
-        cancelOpen(); timers.current.open = setTimeout(() => show(id), 90);
-      } else if (popupRef.current && !popupRef.current.closing) show(id);
-      else if (timers.current.pending !== id) {
-        cancelOpen(); timers.current.pending = id;
-        timers.current.open = setTimeout(() => show(id), 200);
+        cancelOpen(); timers.current.open = setTimeout(() => show(shape), 90);
+      } else if (popupRef.current && !popupRef.current.closing) show(shape);
+      else if (timers.current.pending !== shape) {
+        cancelOpen(); timers.current.pending = shape;
+        timers.current.open = setTimeout(() => show(shape), 200);
       }
-    } else if (popupRef.current && !popupRef.current.closing && safeTriangle(p)) leave(320);
+    } else if (id && popupRef.current?.id === id && !popupRef.current.closing) { keep(); cancelOpen(); }
+    else if (popupRef.current && !popupRef.current.closing && safeTriangle(p)) leave(320);
     else if (!timers.current.close) leave();
     timers.current.last = p;
   };
