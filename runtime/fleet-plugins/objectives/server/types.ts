@@ -207,7 +207,7 @@ export interface StoredMember {
   readonly role: string;
   readonly brief?: string;
   readonly launch?: MemberLaunch;
-  /** 기동 선택의 주체 — launch가 없어도 사람이 고른 라우팅 복귀는 보호한다. 옛 저장분의 불명확한 출처는 human으로 본다. */
+  /** 기동 선택의 편집 권한 — launch 없이 새로 추가하면 commander, 명시한 사람 선택은 human. 출처 없는 옛 저장분은 human으로 보호한다. */
   readonly launchBy?: "human" | "commander";
   /** 옛 저장값의 참고 모델 — launch로 승격하지 않고 기존 라우팅 판단에만 싣는다. 새 편성은 launch를 쓴다. */
   readonly proposal?: MemberProposal;

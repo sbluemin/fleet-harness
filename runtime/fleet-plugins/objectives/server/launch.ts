@@ -480,7 +480,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (!preset.effort) delete session.effort;
     return { ...next, session };
   };
-  const samePreset = (a: MemberPreset, b: MemberPreset) => (a.model ?? "") === (b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
+  const samePreset = (a: MemberPreset, b: MemberPreset) => canonicalModelId(a.model ?? "") === canonicalModelId(b.model ?? "") && (a.effort ?? "") === (b.effort ?? "");
+  const sameLaunch = (a: MemberLaunch | null | undefined, b: MemberLaunch | null | undefined) => {
+    if (!a || !b) return !a && !b;
+    if (a.mode === "same" || b.mode === "same") return a.mode === b.mode;
+    return samePreset(a, b);
+  };
   const presetOf = (value: MemberPreset): MemberPreset => ({ ...(value.model ? { model: value.model } : {}), ...(value.effort ? { effort: value.effort } : {}) });
   /** 호스트의 거절 코드 — 형식에 맞지 않으면 launch_failed. */
   const failureCode = (error: unknown): string => { const code = error instanceof Error ? error.message : ""; return /^[a-z_]{1,64}$/.test(code) ? code : "launch_failed"; };
@@ -704,6 +709,25 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const observation = ctx.host.consoleControl?.observe(operationId);
     if (!ctx.host.consoleControl?.setCoordinates || observation?.lifecycle !== "live" || observation.surface !== "chat") return null;
     return ctx.host.consoleControl.coordinates?.(operationId) ?? null;
+  };
+  /** 미기동은 저장 선택, 기동 뒤에는 실행값·유효 예약을 기준으로 같은 확정을 가른다. 외부에서 달라진 실행값을 저장값으로 덮어 보지 않는다. */
+  const matchingSelection = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }): false | { readonly preserveNext: boolean; readonly appliedNext?: boolean; readonly syncNext?: MemberNext } => {
+    const node = referenceNode(memberId);
+    if (!node) return sameLaunch(before.launch, selection) ? { preserveNext: true } : false;
+    const host = hostCoordinates(memberId);
+    const pending = host ? host.pending : before.next?.held && !before.next.failed ? before.next : null;
+    const target = selection === null ? null : presetOf(selection.mode === "same" ? current.commander : selection);
+    if (!target?.model) return !pending && sameLaunch(before.launch, selection) ? { preserveNext: false } : false;
+    if (pending) {
+      if (!samePreset(target, { model: pending.model, effort: pending.effort ?? undefined })) return false;
+      if (!host || before.next?.held === "host" && !before.next.failed && samePreset(target, before.next)) return { preserveNext: true };
+      // 이미 적용 중일 수 있는 호스트 예약은 다시 요청하지 않는다. 저장 기록과 감시자만 호스트에 맞춘다.
+      const was = before.next ? before.next.was : before.launch;
+      return { preserveNext: true, syncNext: { model: canonicalModelId(pending.model), ...(pending.effort ? { effort: pending.effort } : {}),
+        from: { model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, ...(was ? { was } : {}), held: "host" } };
+    }
+    const running = host ? { model: host.model, effort: host.effort ?? undefined } : readOperationLaunch(node.payload);
+    return samePreset(target, running) ? { preserveNext: false, appliedNext: !!before.next && samePreset(before.next, running) } : false;
   };
   /** 호스트가 거절한 좌표 변경 — 자식이 던진 원 예외가 있으면 자르지 않고 응답의 cause 로 싣는다. */
   const coordinatesError = (result: Extract<ConsoleCoordinatesResult, { ok: false }>) =>
@@ -1496,15 +1520,26 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 카탈로그를 기다리는 동안 사람이 고를 수도 있다 — 같은 직렬화 경계에서 출처를 다시 확인하고, 거절할 세션은 깨우지 않는다.
       const before = store.storedMember(objectiveId, memberId)!;
       if (by === "commander" && patch.launch !== undefined && before.launchBy !== "commander") {
-        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person chose this member's launch setting; the Commander cannot replace it. Legacy settings without ownership are protected too." });
+        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person's launch selection, including routing, and legacy members without ownership are protected. Newly added members without a launch selection can be changed. Do not enlist a replacement to bypass this protection; use request_decision to ask the person to change this member's model chip on the board." });
       }
-      if ((patch.subagents !== undefined || patch.launch !== undefined) && referenceNode(member.id)) await accessOperation(member.id);
+      // 같은 실행값·예약을 확정한 사람은 세션을 깨우거나 예약을 다시 걸지 않는다. 미기동 구성원은 저장 선택만 비교한다.
+      const reaffirmed = by === "human" && patch.launch !== undefined && matchingSelection(current, memberId, patch.launch, before);
+      if ((patch.subagents !== undefined || (patch.launch !== undefined && !reaffirmed)) && referenceNode(member.id)) await accessOperation(member.id);
       const latest = editableObjective(objectiveId);
-      let next = store.memberPatch(objectiveId, memberId, patch, by);
+      const keepSelection = reaffirmed && sameLaunch(before.launch, patch.launch);
+      let next = store.memberPatch(objectiveId, memberId, keepSelection ? { ...patch, launch: before.launch ?? null } : patch, by);
+      if (reaffirmed && reaffirmed.syncNext) {
+        store.memberLaunchState(objectiveId, memberId, { next: reaffirmed.syncNext });
+        watch(objectiveId, memberId);
+        next = objective(objectiveId);
+      } else if (reaffirmed && !reaffirmed.preserveNext) {
+        store.memberLaunchState(objectiveId, memberId, { next: null, ...(!keepSelection || reaffirmed.appliedNext ? { routed: null } : {}) });
+        next = objective(objectiveId);
+      }
       if (patch.subagents !== undefined) {
         if (ctx.host.operations.get(memberId)) rememberSubagentSpawn(memberId, patch.subagents === true);
       }
-      if (patch.launch !== undefined && ctx.host.operations.get(memberId)) {
+      if (patch.launch !== undefined && !reaffirmed && ctx.host.operations.get(memberId)) {
         // 호스트가 바꾸지 못한 선택은 남기지 않는다 — 고른 값과 실행값이 갈린 채 행이 서면 사람은 바뀐 줄 안다.
         // 저장값과 같은 정준 좌표로 세션을 바꾼다 — bare 별칭이 그대로 세션에 실리면 200k 좌표로 실행된다.
         const selection = patch.launch && patch.launch.mode === "model" ? { ...patch.launch, model: canonicalModelId(patch.launch.model) } : patch.launch;

@@ -79,6 +79,11 @@ export interface ModelCoordinatePickerProps {
   readonly startAt?: "list" | "focused";
   readonly locked?: boolean;
   readonly disabled?: boolean;
+  /**
+   * 지금 값과 같은 좌표를 다시 확정해도 `onChange`로 알린다 — 같은 값의 재확정 자체가 결정인 호출부(예: 누가 고른 값인지를
+   * 기록하는 칸)만 켠다. 기본은 같은 값을 버린다(저장·세션 전환 없음). 고르지 않고 닫기·Esc는 어느 쪽이든 알리지 않는다.
+   */
+  readonly reconfirm?: boolean;
   readonly labels: ModelCoordinatePickerLabels;
   readonly trigger?: {
     /** `inline`: 글자 한 줄. `field`: 설정 행의 선택 상자. `glyph`: `node` 하나. */
@@ -241,7 +246,7 @@ function DesktopCoordinatePicker(props: ModelCoordinatePickerProps): React.React
   // 나가면 고른 모델로 한 번 확정하고, Esc는 아무것도 저장하지 않는다. 그래서 한 번의 선택은 늘 저장(세션 전환) 한 번이다.
   const staged = React.useRef<{ readonly model: string; readonly effort?: string } | null>(null);
   const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
-    if (!next || locked || (next.model === value.model && (next.effort ?? "") === (value.effort ?? ""))) return;
+    if (!next || locked || (!props.reconfirm && next.model === value.model && (next.effort ?? "") === (value.effort ?? ""))) return;
     onChange(next);
   };
   const closeMenu = (mode: "commit" | "cancel", refocus = false) => {
@@ -488,7 +493,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
   const [draft, setDraft] = React.useState<{ readonly model: string; readonly effort?: string } | null>(null);
   const keepDraft = (next: { readonly model: string; readonly effort?: string } | null) => { draftRef.current = next; setDraft(next); };
   const notify = (next: { readonly model: string; readonly effort?: string } | null) => {
-    if (next && (next.model !== value.model || (next.effort ?? "") !== (value.effort ?? ""))) onChange(next);
+    if (next && (props.reconfirm || next.model !== value.model || (next.effort ?? "") !== (value.effort ?? ""))) onChange(next);
   };
   const closeSheet = () => {
     setOpen(false);

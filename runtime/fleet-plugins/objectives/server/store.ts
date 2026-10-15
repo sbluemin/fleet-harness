@@ -1599,7 +1599,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberAdd: (objectiveId, input, by) => update(objectiveId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_MISSIONS) throw new ObjectiveStoreError("too_many_members");
       const launch = canonicalStoredLaunch(input.launch);
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), launchBy: by === "commander" ? "commander" : "human", ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), launchBy: by === "commander" || input.launch === undefined ? "commander" : "human", ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
     memberPatch: (objectiveId, memberId, patch, by = "human") => update(objectiveId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");

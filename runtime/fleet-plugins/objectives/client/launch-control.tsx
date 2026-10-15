@@ -184,6 +184,8 @@ interface LaunchControlProps {
    * 지휘관 메뉴에는 넘기지 않는다.
    */
   readonly subagents?: { readonly allowed: boolean; readonly onToggle: () => void };
+  /** 지금 값과 같은 좌표를 다시 골라도 알린다 — 구성원 칩은 그 재확정으로 사람의 선택(소유)을 굳힌다. 지휘관 메뉴에는 넘기지 않는다. */
+  readonly reconfirm?: boolean;
 }
 
 /** 선택기의 로스터 — 아직 읽기 전이면 null(메뉴가 「읽는 중」을 보인다). */
@@ -191,7 +193,7 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, reconfirm = false }: LaunchControlProps) {
   const roster = useLaunchRoster();
   const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
   const footer = (viewMode && onViewChange) || subagents ? (
@@ -222,6 +224,7 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, on
       onChange={onChange}
       startAt={startAtList ? "list" : "focused"}
       locked={locked}
+      {...(reconfirm ? { reconfirm } : {})}
       labels={{
         menu: triggerLabel ?? t("objectives.launch.menuAria"),
         effort: t("objectives.commander.effortAria"),
@@ -422,7 +425,7 @@ export function MemberLaunchControl({ t, objective, member, state, rows, touchab
     const reserved = member.next && !member.next.failed ? member.next : null;
     const commanderWords = launchedWords(rows, objective.commander.model, objective.commander.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
     return (
-      <LaunchControl t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList triggerLabel={triggerLabel}
+      <LaunchControl t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList reconfirm triggerLabel={triggerLabel}
         triggerText={display.text} triggerTitle={display.title}
         head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
         extras={[{ id: "same", label: t("objectives.memberSelection.inherit"), hint: `${commanderWords.words.model} · ${commanderWords.words.effort}`, active: member.launch.mode === "same", onPick: () => onPickLaunched({ mode: "same" }) }]}
@@ -432,7 +435,7 @@ export function MemberLaunchControl({ t, objective, member, state, rows, touchab
     );
   }
   return (
-    <LaunchControl t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} triggerLabel={triggerLabel}
+    <LaunchControl t={t} model={member.launch.mode === "model" ? member.launch.model : undefined} effort={member.launch.mode === "model" ? member.launch.effort : undefined} locked={!touchable} startAtList={member.launch.mode !== "model"} reconfirm triggerLabel={triggerLabel}
       triggerText={display.text} triggerTitle={display.title}
       extras={[{ id: "route", label: t("objectives.memberSelection.route"), hint: t("objectives.members.routeHint"), active: member.launch.mode === "route", onPick: () => onPatchLaunch(null) }, { id: "same", label: t("objectives.memberSelection.inherit"), active: member.launch.mode === "same", onPick: () => onPatchLaunch({ mode: "same" }) }]}
       {...(subagents ? { subagents } : {})}
