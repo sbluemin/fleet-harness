@@ -582,6 +582,12 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
         onKeyUp={(event) => latest.current.onKeyUp?.(event)}
         onMouseDown={onMouseDown}
         onPaste={onPaste}
+        // 토큰(`contenteditable=false`) 위에서는 브라우저가 놓기를 받지 않는다 — 글·파일을 끌고 오면 입력창 어디서든 받겠다고 알린다.
+        onDragOver={(event) => {
+          if (latest.current.disabled) return;
+          const types = event.dataTransfer.types;
+          if (types.includes("text/plain") || types.includes("Files")) event.preventDefault();
+        }}
         onDrop={(event) => {
           event.preventDefault();
           const { onFiles, isFile } = latest.current;
