@@ -33,6 +33,7 @@ import {
   readCommodore,
   readCommodoreExperiment,
   removeCommodoreIntel,
+  useCommodoreIntelEdits,
   retryCommodore,
   saveCommodoreDirective,
   setCommodoreAutonomy,
@@ -951,14 +952,22 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
 
 /* ── 정보 ─────────────────────────────────────────────────────────────── */
 
+/** 자리 편집 입력이 열리면 커서를 글 끝에 둔다 — 고치기는 대개 덧붙이기다. 모듈 함수라 ref 는 붙을 때 한 번만 불린다. */
+export function focusAtEnd(element: HTMLTextAreaElement | null): void {
+  if (!element) return;
+  element.focus();
+  element.setSelectionRange(element.value.length, element.value.length);
+}
+
 export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
-  readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string }[];
+  readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string; readonly editedAt?: number | undefined }[];
   readonly sources: readonly { readonly id: string; readonly kind: string; readonly label: string; readonly locator: string }[];
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
+  const editing = useCommodoreIntelEdits(theaterId, intel, { onFail, onClear });
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
   useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
   const [adding, setAdding] = useState(false);
@@ -989,13 +998,52 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
         </div>
         {intel.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.empty")}</p> : (
           <ul className="objectives-commodore-intel-list">
-            {intel.map((item) => (
-              <li key={item.id}>
-                <span className="objectives-commodore-intel-when">{day(item.at)}</span>
-                <span className="objectives-commodore-intel-text">{item.text}<span className="objectives-commodore-intel-source">{sourceLabel(item.source)}</span></span>
-                <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
-              </li>
-            ))}
+            {intel.map((item) => {
+              const edit = editing.edits[item.id];
+              const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}> · {t("objectives.commodore.intel.edited")}</span> : null}</span>;
+              if (edit) {
+                const unchanged = edit.draft.trim() === item.text;
+                return (
+                  <li key={item.id} className="is-editing">
+                    <span className="objectives-commodore-intel-when">{day(item.at)}</span>
+                    <div className="objectives-commodore-intel-edit">
+                      <textarea
+                        ref={focusAtEnd}
+                        className="objectives-commodore-input objectives-commodore-intel-field"
+                        value={edit.draft}
+                        maxLength={4_000}
+                        readOnly={edit.saving}
+                        aria-label={t("objectives.commodore.intel.editField")}
+                        onChange={(event) => editing.change(item.id, event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!edit.saving) editing.cancel(item.id); return; }
+                          // Enter 는 저장, Shift+Enter 는 줄바꿈 — 사령관 메시지 입력과 같은 손버릇이다.
+                          if (event.key === "Enter" && !event.shiftKey && !event.altKey) { event.preventDefault(); editing.save(item.id); }
+                        }}
+                      />
+                      <div className="objectives-commodore-intel-edit-foot">
+                        {meta}
+                        <span className="objectives-commodore-hint">{t("objectives.commodore.intel.editHint")}</span>
+                        <button type="button" className="objectives-commodore-text-button" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
+                        <button type="button" className="objectives-btn" disabled={edit.saving || !edit.draft.trim() || unchanged} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
+                      </div>
+                    </div>
+                  </li>
+                );
+              }
+              return (
+                <li key={item.id}>
+                  <span className="objectives-commodore-intel-when">{day(item.at)}</span>
+                  {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
+                  <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
+                  <span className="objectives-commodore-intel-actions">
+                    <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
+                    <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

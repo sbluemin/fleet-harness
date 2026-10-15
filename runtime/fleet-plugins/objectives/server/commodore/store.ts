@@ -68,6 +68,8 @@ export interface CommodoreStore {
   /** 본문이 그대로면 rev 도 그대로다 — 같은 지시를 다시 저장해 사령관을 깨우지 않는다. */
   setDirective(theaterId: string, text: string): CommodoreState;
   addIntel(theaterId: string, input: { readonly text: string; readonly source?: string }): { readonly state: CommodoreState; readonly item: CommodoreIntel };
+  /** 사람이 항목 본문을 고친다 — id·출처·자리는 그대로, `editedAt` 이 남는다. 본문이 그대로면 사건도 없다(사령관을 헛되이 깨우지 않는다). */
+  editIntel(theaterId: string, intelId: string, text: string): { readonly state: CommodoreState; readonly item: CommodoreIntel };
   removeIntel(theaterId: string, intelId: string): CommodoreState;
   setSources(theaterId: string, sources: readonly Omit<CommodoreSource, "id">[]): CommodoreState;
   setCoordinates(theaterId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
@@ -166,14 +168,14 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
   };
 
   /** 상태 한 건을 검증해 쓰고, 성공한 뒤에만 캐시를 갈고 방송한다. */
-  const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange): CommodoreState => {
+  const commit = (theaterId: string, next: CommodoreState, change: CommodoreStateChange, intelId?: string): CommodoreState => {
     const parsed = commodoreStateSchema.safeParse(next);
     if (!parsed.success) throw new ObjectiveStoreError("invalid_request");
     const file = stateFile(theaterId);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     writeFileAtomic(file, JSON.stringify(parsed.data));
     states.set(theaterId, parsed.data);
-    broadcast({ op: "state", theaterId, state: parsed.data, change });
+    broadcast({ op: "state", theaterId, state: parsed.data, change, ...(intelId ? { intelId } : {}) });
     return parsed.data;
   };
 
@@ -237,6 +239,18 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       // 최신이 앞이다 — 사령관 도구가 "지난번 이후" 를 앞에서부터 읽는다. 상한을 넘으면 가장 오래된 것이 떨어진다.
       const intel = [item, ...current.intel].slice(0, MAX_INTEL_ITEMS);
       return { state: commit(theaterId, { ...current, intel }, "intel"), item };
+    },
+    editIntel(theaterId, intelId, input) {
+      const text = input.trim();
+      if (!text || text.length > MAX_INTEL_TEXT) throw new ObjectiveStoreError("invalid_request");
+      const current = load(theaterId);
+      const index = current.intel.findIndex((entry) => entry.id === intelId);
+      if (index < 0) throw new ObjectiveStoreError("unknown_intel");
+      const existing = current.intel[index]!;
+      if (existing.text === text) return { state: current, item: existing };
+      const item: CommodoreIntel = { ...existing, text, editedAt: now() };
+      const intel = current.intel.map((entry, at) => (at === index ? item : entry));
+      return { state: commit(theaterId, { ...current, intel }, "intel-edited", intelId), item };
     },
     removeIntel(theaterId, intelId) {
       const current = load(theaterId);

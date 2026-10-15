@@ -1327,6 +1327,18 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-when { color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-intel-text { overflow-wrap: anywhere; white-space: pre-wrap; }
 .objectives-commodore-intel-source { margin-left: 8px; color: var(--text-tertiary); font-size: var(--t-2xs); }
+/* 본문을 누르면 그 자리에서 고친다 — 고칠 수 있다는 기색은 hover 의 위치 잉크(brass)로만 낸다. */
+.objectives-commodore-intel-text.is-editable { cursor: text; border-radius: var(--radius-xs); }
+.objectives-commodore-intel-text.is-editable:hover { background: color-mix(in srgb, var(--brass) 12%, transparent); }
+.objectives-commodore-intel-actions { display: inline-flex; gap: 2px; }
+.objectives-commodore-intel-list li.is-editing { align-items: start; }
+.objectives-commodore-intel-list li.is-editing .objectives-commodore-intel-when { padding-top: 9px; }
+.objectives-commodore-intel-edit { grid-column: 2 / -1; display: grid; gap: 6px; min-width: 0; }
+.objectives-commodore-intel-field { min-height: 64px; max-height: 240px; field-sizing: content; }
+.objectives-commodore-intel-field[readonly] { opacity: 0.6; }
+.objectives-commodore-intel-edit-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.objectives-commodore-intel-edit-foot .objectives-commodore-intel-source { margin-left: 0; }
+.objectives-commodore-intel-edit-foot .objectives-commodore-hint { flex: 1; min-width: 0; text-align: right; }
 .objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
 .objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 

@@ -91,11 +91,14 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly P
       const { directive } = state();
       return { text: directive.text, rev: directive.rev, updatedAt: stamp(directive.updatedAt) };
     }),
-    tool("intel", "Intel items — information from the person and from sources, newest first, each dated and attributed — plus the list of intel sources. Pass since (an item id you already saw) to get only newer items. Intel informs judgment; it does not command.", z.object({ since: z.string().min(1).max(128).optional(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ since, limit }) => {
+    // since 는 「이미 본 가장 최신 항목」이다 — 그 뒤에 들어온 항목과, 그 항목이 들어온 뒤 사람이 고친 항목(더 오래된 것·since 자신 포함)을 함께 돌려준다.
+    // 고친 항목은 id·출처·자리가 그대로라 앞에서부터 자르면 놓친다. 이미 읽은 고침이 같은 editedAt 으로 다시 올 수 있다.
+    tool("intel", "Intel items — information from the person and from sources, newest first, each dated and attributed — plus the list of intel sources. The person can edit an item in place: it keeps its id, source and position and carries editedAt. Pass since (the newest item id you already saw) to get only items added after it plus items edited after it was added; an edit you already read can come back with the same editedAt. Intel informs judgment; it does not command.", z.object({ since: z.string().min(1).max(128).optional(), limit: z.number().int().min(1).max(200).optional() }).strict(), ({ since, limit }) => {
       const { intel, sources } = state();
       const end = since ? intel.findIndex((item) => item.id === since) : -1;
-      const scoped = end >= 0 ? intel.slice(0, end) : intel;
-      const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), source: item.source, text: item.text }));
+      const seenAt = end >= 0 ? intel[end]!.at : 0;
+      const scoped = end >= 0 ? intel.filter((item, index) => index < end || (item.editedAt ?? 0) > seenAt) : intel;
+      const items = scoped.slice(0, limit ?? 50).map((item) => ({ id: item.id, at: stamp(item.at), ...(item.editedAt !== undefined ? { editedAt: stamp(item.editedAt) } : {}), source: item.source, text: item.text }));
       return { items, truncated: items.length < scoped.length, ...(since && end < 0 ? { sinceUnknown: true } : {}), sources: sources.map(sourceView) };
     }),
     tool("next_wake", "Schedule your next patrol: when (minutes from now) and a one-line reason. The person sets the patrol interval: you can patrol sooner but not later, and a later time is shortened to the interval (the result gives the time actually set and the interval). Without a schedule you are woken one interval after your turn ends. Board events, the directive, intel and the person's message wake you earlier regardless.", z.object({ inMinutes: z.number().min(1).max(MAX_WAKE_MINUTES), reason: z.string().trim().min(1).max(200) }).strict(), ({ inMinutes, reason }) => {

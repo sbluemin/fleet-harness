@@ -58,6 +58,8 @@ export const commodoreIntelSchema = z.object({
   /** 누가 넣었는가 — 사람이 추가하면 `person`, 사령관이 출처에서 읽어 오면 그 출처 id. */
   source: z.string().min(1).max(128),
   text: z.string().min(1).max(MAX_INTEL_TEXT),
+  /** 사람이 본문을 마지막으로 고친 시각 — 고친 적이 없으면 없다. id·출처·자리(`at`)는 고쳐도 그대로다. */
+  editedAt: z.number().int().nonnegative().optional(),
 }).strict();
 
 export const commodoreDirectiveSchema = z.object({
@@ -274,11 +276,11 @@ export type CommodoreLiveEvent =
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `objectives:commodore` 채널. */
 export type CommodoreEvent =
   | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
-  | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange }
+  | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** `intel-edited` 가 고친 항목. */ readonly intelId?: string }
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
   | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
 
-export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
+export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 
 /** Theater 의 순찰 간격(ms) — 저장값, 없으면 기본. */
 export function patrolIntervalMs(state: Pick<CommodoreState, "patrolMinutes"> | null | undefined): number {

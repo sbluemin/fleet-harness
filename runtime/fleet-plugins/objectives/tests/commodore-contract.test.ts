@@ -86,6 +86,15 @@ describe("commodore theater state", () => {
     const added = await h.route("commodore/intel/add", { theaterId: "t1", text: "Pairing fails after sleep." });
     expect(added.value.state!.intel).toMatchObject([{ source: "person", text: "Pairing fails after sleep." }, { source: "person", text: "Users report dropped remote sessions." }]);
     expect((await h.route("commodore/intel/remove", { theaterId: "t1", intelId: "nope" })).status).toBe(404);
+    // 수정 — 그 자리에서 본문만 바뀌고 id·출처·자리·추가 시각은 그대로, editedAt 이 남는다. 같은 본문은 사건을 내지 않는다.
+    const older = (added.value.state!.intel as { id: string; at: number }[])[1]!;
+    const edited = await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "  Users report dropped remote sessions on Wi-Fi.  " });
+    expect(edited.value.state!.intel).toMatchObject([{ text: "Pairing fails after sleep." }, { id: older.id, at: older.at, source: "person", text: "Users report dropped remote sessions on Wi-Fi.", editedAt: expect.any(Number) }]);
+    const eventsBeforeSame = h.events.length;
+    await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "Users report dropped remote sessions on Wi-Fi." });
+    expect(h.events.length).toBe(eventsBeforeSame);
+    expect((await h.route("commodore/intel/edit", { theaterId: "t1", intelId: "nope", text: "x" })).status).toBe(404);
+    expect((await h.route("commodore/intel/edit", { theaterId: "t1", intelId: older.id, text: "   " })).status).toBe(400);
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "sonnet", effort: null })).status).toBe(400);
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
     expect((await h.route("commodore/coordinates", { theaterId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
@@ -98,7 +107,7 @@ describe("commodore theater state", () => {
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), theaterIds: () => ["t1", "gone"], emit: () => undefined }).autonomousTheaters()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["autonomy", "language", "directive", "intel", "intel", "intel-edited", "coordinates"]);
 
     // 같은 origin 의 Console 만 지난다.
     h.setAuthorized(false);
@@ -240,6 +249,10 @@ describe("commodore session", () => {
     expect(intel.items.map((item) => item.text)).toEqual(["newest", "older"]);
     expect(intel.sources.map((source) => source.kind)).toEqual(["github-issues", "url"]);
     expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([]);
+    // 이미 본 항목이 그 뒤에 고쳐지면 since 로도 보인다 — id 와 자리는 그대로, editedAt 이 붙는다.
+    const olderId = h.store.read("t1")!.intel[1]!.id;
+    h.store.editIntel("t1", olderId, "older, corrected");
+    expect(((await call("intel", { since: newest.id })).structuredContent as { items: unknown[] }).items).toEqual([{ id: olderId, at: expect.any(String), editedAt: expect.any(String), source: "person", text: "older, corrected" }]);
     expect((await call("next_wake", { inMinutes: 30, reason: "patrol after the merge" })).isError).toBe(false);
     expect(wakes).toEqual([{ at: 10_000 + 30 * 60_000, reason: "patrol after the merge" }]);
     // 사람이 고른 순찰 간격(기본 60분)을 넘는 예약은 거절하지 않고 간격으로 줄인다.
@@ -661,12 +674,14 @@ describe("commodore supervisor", () => {
 
       // 지시·정보·메시지 — 몇 초 안의 이유는 한 턴으로, 정보는 누적 수로, 메시지는 본문째.
       h.store.setDirective("t1", "Ship remote first.");
-      h.store.addIntel("t1", { text: "a" }); h.store.addIntel("t1", { text: "b" });
+      const first = h.store.addIntel("t1", { text: "a" }).item; h.store.addIntel("t1", { text: "b" });
+      // 수정은 새 정보가 아니라 수정으로 깨운다 — 같은 항목을 거듭 고쳐도 한 항목이다.
+      h.store.editIntel("t1", first.id, "a2"); h.store.editIntel("t1", first.id, "a3");
       h.store.transcriptAppend("t1", { kind: "message", text: "Keep objectives small." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["directive", "intel:2", "message"]);
+      expect(tokens().at(-1)).toEqual(["directive", "intel:2", "intel-edited:1", "message"]);
       const note = sessions[0]!.sent.at(-1)!;
-      expect(note).toContain("directive changed: rev 1; 2 new intel items; the person sent you a message");
+      expect(note).toContain(`directive changed: rev 1; 2 new intel items; the person edited 1 intel item: ${first.id}; the person sent you a message`);
       expect(note).toContain("> Keep objectives small.");
       expect(note).not.toContain("Ship remote first.");
 

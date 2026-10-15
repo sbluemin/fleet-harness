@@ -90,9 +90,9 @@ type Phase = CommodoreRunStatus["phase"];
 
 /**
  * 깨움 이유 코드 — 기록에는 `code` 또는 `code:N` 토큰으로 남고(화면이 로케일로 옮긴다), 모델에게는 영어 문장으로 간다.
- * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다.
+ * 수가 붙는 코드는 절대값(지금 그 상태인 목표 수)이고, intel 만 누적이다. intel-edited 는 고친 항목 수(같은 항목을 거듭 고쳐도 하나)다.
  */
-export type WakeCode = "patrol" | "directive" | "intel" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
+export type WakeCode = "patrol" | "directive" | "intel" | "intel-edited" | "message" | "status" | "decision" | "review" | "criteria" | "pending" | "planned" | "followup" | "followup-failed" | "member-failed" | "stalled" | "empty" | "restart" | "autonomy" | "retry" | "rotated" | "answered" | "returned";
 
 /** 사령관 자신의 보드 쓰기가 끝난 뒤에도 그 목표의 상태 변화를 제 것으로 보는 시간 — 기동처럼 쓰기 뒤에 이어지는 사건까지. */
 const SELF_WRITE_GRACE_MS = 5_000;
@@ -141,6 +141,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "patrol": return `patrol${tail}`;
     case "directive": return `directive changed${tail}`;
     case "intel": return `${plural("new intel item")}`;
+    case "intel-edited": return `the person edited ${plural("intel item")}${tail}`;
     case "message": return "the person sent you a message (quoted below)";
     case "status": {
       const shown = reason.details.slice(-STATUS_DETAILS);
@@ -613,6 +614,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (event.change === "stopAt") { scheduleStop(runner); return; }
       if (event.change === "directive") wake(runner, "directive", { detail: `rev ${event.state.directive.rev}` });
       else if (event.change === "intel") wake(runner, "intel", { bump: true });
+      else if (event.change === "intel-edited" && event.intelId) {
+        // 고친 항목 id 를 상세로 모은다 — 수는 서로 다른 항목 수다. 본문은 싣지 않는다(사령관이 intel 도구로 읽는다).
+        const edited = new Set(runner.pending.get("intel-edited")?.details).add(event.intelId);
+        wake(runner, "intel-edited", { count: edited.size, detail: event.intelId });
+      }
       else if (event.change === "coordinates") { runner.rotateNext ??= "replaced"; }
       else if (event.change === "patrol" && runner.patrol) {
         // 잡혀 있는 순찰을 새 간격에 다시 맞춘다 — 사령관이 고른 시각은 그대로 두되 새 간격을 넘지 않게, 기본 순찰은 마지막 턴에서 한 간격 뒤로.
