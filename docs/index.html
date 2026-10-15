@@ -262,13 +262,7 @@ figcaption { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 
 @media (max-width: 520px) { .steps { grid-template-columns: 1fr; } }
 .wide-shot { margin-top: 52px; }
 
-/* Canvas modes */
-.modes { margin-top: 48px; border-top: 1px solid var(--line); }
-.mode { display: grid; grid-template-columns: 180px minmax(0, 1fr) auto; gap: 24px; align-items: baseline; padding: 20px 0; border-bottom: 1px solid var(--line); }
-.mode h3 { font-size: 17px; }
-.mode p { font-size: 15px; }
-.mode .keys { display: inline-flex; gap: 4px; white-space: nowrap; }
-@media (max-width: 720px) { .mode { grid-template-columns: 1fr auto; gap: 6px 16px; } .mode p { grid-column: 1 / -1; grid-row: 2; } }
+/* Shortcuts */
 .quick { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px 26px; font-size: 14px; color: var(--muted); }
 .quick span { display: inline-flex; align-items: center; gap: 8px; }
 
@@ -344,6 +338,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     <nav class="nav" aria-label="Sections">
       <a href="#models"><span lang="en">Models</span><span lang="ko">모델</span></a>
       <a href="#objectives"><span lang="en">Objectives</span><span lang="ko">목표</span></a>
+      <a href="#commodore"><span lang="en">Commodore</span><span lang="ko">사령관</span></a>
       <a href="#conversation"><span lang="en">Conversation</span><span lang="ko">대화</span></a>
       <a href="#tools"><span lang="en">Tools</span><span lang="ko">도구</span></a>
       <a href="#anywhere"><span lang="en">Anywhere</span><span lang="ko">어디서든</span></a>
@@ -378,6 +373,8 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
           </div>
           <p class="req" lang="en">Needs Node.js 20.19+ and Claude Code, installed and signed in.</p>
           <p class="req" lang="ko">Node.js 20.19 이상, 그리고 설치와 로그인을 마친 Claude Code가 필요합니다.</p>
+          <p class="req" lang="en">Running <code>fleet</code> on its own opens Claude Code in your terminal, routed through the same AI Gateway.</p>
+          <p class="req" lang="ko">인자 없이 <code>fleet</code>만 실행하면 같은 AI Gateway를 거치는 Claude Code가 터미널에서 바로 열립니다.</p>
           <p class="req" lang="en">Update from the Console or with <code>fleet update</code>. <code>npm update -g</code> rolls Fleet back to the old version left on npm.</p>
           <p class="req" lang="ko">업데이트는 Console 화면이나 <code>fleet update</code>로 하세요. <code>npm update -g</code>는 npm에 남은 옛 버전으로 되돌립니다.</p>
 
@@ -389,12 +386,12 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
 
         <!-- Signature: the status view, in miniature -->
         <div class="watch rv" aria-label="Example status view" role="img">
-          <div class="watch-head"><span class="th">FH</span>fleet-harness<span class="n" id="watch-count">5 Operations</span></div>
+          <div class="watch-head"><span class="th">FH</span>fleet-harness<span class="n" id="watch-count">5 conversations</span></div>
           <div class="watch-list" id="watch">
-            <div class="op" data-id="a" data-s="wait"><span class="dot"></span><span class="t"><b>AI Gateway request path</b><small>Claude Fable · terminal</small></span><span class="s"></span></div>
-            <div class="op" data-id="b" data-s="work"><span class="dot"></span><span class="t"><b>Release note draft</b><small>Codex GPT-6-Sol · terminal</small></span><span class="s"></span></div>
-            <div class="op" data-id="c" data-s="work"><span class="dot"></span><span class="t"><b>Docs audit</b><small>Commander · Claude Opus · chat</small></span><span class="s"></span></div>
-            <div class="op" data-id="d" data-s="idle"><span class="dot"></span><span class="t"><b>Lint sweep</b><small>Gemini 3.8 Flash · terminal</small></span><span class="s"></span></div>
+            <div class="op" data-id="a" data-s="wait"><span class="dot"></span><span class="t"><b>AI Gateway request path</b><small>Claude Fable · chat</small></span><span class="s"></span></div>
+            <div class="op" data-id="b" data-s="work"><span class="dot"></span><span class="t"><b>Release notes</b><small>Codex GPT-6.1 Sol · chat</small></span><span class="s"></span></div>
+            <div class="op" data-id="c" data-s="work"><span class="dot"></span><span class="t"><b>Docs audit</b><small>Claude Opus · 2 members</small></span><span class="s"></span></div>
+            <div class="op" data-id="d" data-s="idle"><span class="dot"></span><span class="t"><b>Lint sweep</b><small>Grok 4.7 · terminal</small></span><span class="s"></span></div>
             <div class="op" data-id="e" data-s="idle"><span class="dot"></span><span class="t"><b>Repository tour</b><small>Claude Opus · chat</small></span><span class="s"></span></div>
           </div>
           <div class="watch-foot"><span class="kbd">Alt</span><span class="kbd">S</span><span lang="en">Sort the sidebar by status: waiting first.</span><span lang="ko">사이드바를 상태별로 정렬합니다. 기다리는 세션이 맨 위에.</span></div>
@@ -416,18 +413,18 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <dl class="terms rv">
         <div class="term">
           <dt>Theater</dt>
-          <dd lang="en"><b>A project folder you add.</b> Every panel, tool, and session follows the active one.</dd>
-          <dd lang="ko"><b>등록한 프로젝트 폴더.</b> 모든 패널과 도구, 세션이 활성 Theater를 따라갑니다.</dd>
+          <dd lang="en"><b>A project folder you add.</b> Its conversations live under it, and tools open for the Theater of the conversation you're in.</dd>
+          <dd lang="ko"><b>등록한 프로젝트 폴더.</b> 대화가 그 아래에 모이고, 도구는 지금 보고 있는 대화의 Theater에 맞춰 열립니다.</dd>
         </div>
         <div class="term">
-          <dt>Operation</dt>
-          <dd lang="en"><b>A Claude Code session the server owns.</b> Close the tab and it keeps running. Show it as a terminal or a chat.</dd>
-          <dd lang="ko"><b>서버가 소유하는 Claude Code 세션.</b> 탭을 닫아도 계속 돌고, 터미널로도 채팅으로도 볼 수 있습니다.</dd>
+          <dt><span lang="en">Conversation</span><span lang="ko">대화</span></dt>
+          <dd lang="en"><b>A Claude Code session the server owns.</b> Close the tab, reload, or switch devices, and it keeps running. It reads as chat and reopens as a full terminal.</dd>
+          <dd lang="ko"><b>서버가 소유하는 Claude Code 세션.</b> 탭을 닫든 기기를 바꾸든 계속 돕니다. 기본은 채팅으로 보이고, 전체 터미널로 다시 열 수도 있습니다.</dd>
         </div>
         <div class="term">
           <dt>Objective</dt>
-          <dd lang="en"><b>Work you hand off whole.</b> A Commander plans it, works it with member sessions, and hands it back for review.</dd>
-          <dd lang="ko"><b>통째로 맡기는 일.</b> 지휘관이 계획하고 구성원과 함께 수행한 뒤, 검토받으러 돌려줍니다.</dd>
+          <dd lang="en"><b>Work you hand off whole.</b> The Commander leading the conversation plans it, works it with member sessions, and hands it back for review.</dd>
+          <dd lang="ko"><b>통째로 맡기는 일.</b> 대화를 이끄는 지휘관이 계획하고 구성원과 함께 수행한 뒤, 검토받으러 돌려줍니다.</dd>
         </div>
       </dl>
     </div>
@@ -450,19 +447,20 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
             <div class="prov"><h3>Codex<span class="how"><span lang="en">ChatGPT subscription</span><span lang="ko">ChatGPT 구독</span></span></h3><p lang="en">GPT-6.1 Sol, GPT-6 Astra · Sol · Luna, and GPT-5.6 Terra, each at 272K, 524K, or 1M context, with a Fast twin.</p><p lang="ko">GPT-6.1 Sol, GPT-6 Astra · Sol · Luna와 GPT-5.6 Terra. 각각 272K·524K·1M 컨텍스트와 Fast 쌍둥이가 있습니다.</p></div>
             <div class="prov"><h3>Antigravity<span class="how"><span lang="en">Google subscription</span><span lang="ko">Google 구독</span></span></h3><p>Gemini 3.8 Flash · Gemini 3.1 Pro</p></div>
             <div class="prov"><h3>xAI<span class="how"><span lang="en">Grok subscription</span><span lang="ko">Grok 구독</span></span></h3><p>Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast</p></div>
+            <div class="prov"><h3>Cursor<span class="how"><span lang="en">Cursor subscription</span><span lang="ko">Cursor 구독</span></span></h3><p lang="en">Grok 4.7 · Grok 4.7 Fast, each at 256K or 500K context · Muse Spark 1.3 at 300K or 1M</p><p lang="ko">Grok 4.7 · Grok 4.7 Fast. 각각 256K·500K 컨텍스트 · Muse Spark 1.3. 300K·1M 컨텍스트</p></div>
             <div class="prov"><h3>Muse Code<span class="how"><span lang="en">Muse Code subscription</span><span lang="ko">Muse Code 구독</span></span></h3><p>Muse Spark 1.3 · Muse Spark 1.3 Contributor</p></div>
-            <div class="prov"><h3>OpenCode Go<span class="how"><span lang="en">API key</span><span lang="ko">API 키</span></span></h3><p>GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Pro · V4.1 Flash · V4 Flash Vision</p></div>
+            <div class="prov"><h3>OpenCode Go<span class="how"><span lang="en">API key</span><span lang="ko">API 키</span></span></h3><p>GLM-5.3 · GLM-5.3 Flash · DeepSeek V4 Pro · V4.1 Flash · V4 Flash Vision · Muse Spark 1.3 Contributor</p></div>
           </div>
           <div class="notes">
             <div class="note">
               <h3><span class="tag">ULTRACODE</span><span lang="en">One more rung on every model</span><span lang="ko">모든 모델에 한 칸 더</span></h3>
-              <p lang="en">Each model carries its own reasoning ladder. ULTRACODE, at the top of every launch row, starts Claude Code at xhigh effort with standing multi-agent orchestration.</p>
-              <p lang="ko">모델마다 추론 강도 단계가 따로 있습니다. 모든 런치 행의 맨 끝에 있는 ULTRACODE는 Claude Code를 xhigh 강도에 상시 멀티 에이전트 오케스트레이션까지 켠 채로 띄웁니다.</p>
+              <p lang="en">Each model carries its own reasoning ladder. Every row also offers ULTRACODE, which launches Claude Code at xhigh effort with standing multi-agent orchestration.</p>
+              <p lang="ko">모델마다 추론 강도 단계가 따로 있습니다. 모든 행에는 ULTRACODE도 있어서, Claude Code를 xhigh 강도에 상시 멀티 에이전트 오케스트레이션까지 켠 채로 띄웁니다.</p>
             </div>
             <div class="note">
               <h3><span lang="en">Routing and usage limits</span><span lang="ko">라우팅과 사용 한도</span></h3>
-              <p lang="en">With AI Gateway routing on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The Usage limits meters use the same measure, so a window running hot shows up before it stops a run.</p>
-              <p lang="ko">AI Gateway routing을 켜면 서브에이전트와 워크플로 단계마다 게이트웨이 모델이 배정되고, 한도를 거의 다 쓴 공급자는 건너뜁니다. 사용 한도 미터도 같은 기준을 쓰므로 실행이 멈추기 전에 한도가 빠르게 차는 것이 보입니다.</p>
+              <p lang="en">With AI Gateway routing on, subagents and workflow stages are assigned to gateway models, and providers whose usage window is nearly spent are skipped. The usage meters at the top right use the same measure, so you see a window running hot before it stops a run.</p>
+              <p lang="ko">AI Gateway routing을 켜면 서브에이전트와 워크플로 단계마다 게이트웨이 모델이 배정되고, 한도를 거의 다 쓴 공급자는 건너뜁니다. 오른쪽 위의 사용량 미터도 같은 기준으로 판단하므로, 실행이 멈추기 전에 한도가 빠르게 차는 것을 알아챌 수 있습니다.</p>
             </div>
           </div>
         </div>
@@ -487,15 +485,17 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <div class="sec-head rv">
         <span class="kicker"><span lang="en">Objectives</span><span lang="ko">목표</span></span>
         <h2 class="h2"><span lang="en">Hand off work that takes <em>more than one turn.</em></span><span lang="ko">한 턴으로 끝나지 않는 일은 <em>목표로.</em></span></h2>
-        <p lang="en">Write what you want and how you'll know it's done. A Commander session plans the work, carries it out with member sessions, and hands it back with a retrospective.</p>
-        <p lang="ko">원하는 결과와 완료를 판단할 기준을 적으세요. 지휘관 세션이 일을 계획하고, 구성원 세션과 함께 수행한 뒤, 회고와 함께 돌려줍니다.</p>
+        <p lang="en">Every conversation is led by a Commander. You can simply talk to it, or turn the request into an objective: work you hand off whole. The Commander and its members share one group conversation, where you can @mention a member, stop the work, or answer the decisions they ask you to make.</p>
+        <p lang="ko">모든 대화는 지휘관이 이끕니다. 그냥 말을 걸어도 되고, 요청을 통째로 맡기는 일인 목표로 바꿀 수도 있습니다. 지휘관과 구성원은 그룹 대화 하나를 함께 쓰며, 여기서 구성원을 @로 부르거나 일을 멈추거나 그들이 묻는 결정에 답합니다.</p>
       </div>
       <ol class="steps rv">
-        <li class="step"><h3><span lang="en">Brief</span><span lang="ko">브리핑</span></h3><p lang="en">Describe the work and add success criteria.</p><p lang="ko">할 일을 적고 달성 기준을 붙입니다.</p></li>
-        <li class="step"><h3><span lang="en">Plan</span><span lang="ko">계획</span></h3><p lang="en">The Commander lays out missions, prerequisites, and member sessions. Nothing runs yet.</p><p lang="ko">지휘관이 미션과 선행 조건, 구성원 세션을 짭니다. 아직 아무것도 실행되지 않습니다.</p></li>
-        <li class="step"><h3><span lang="en">Commence</span><span lang="ko">개시</span></h3><p lang="en">Missions run on the Commander or on members, each with its own role, model, and effort.</p><p lang="ko">미션은 지휘관이 직접 하거나 구성원이 맡습니다. 구성원은 저마다 역할과 모델, 강도가 다릅니다.</p></li>
-        <li class="step"><h3><span lang="en">Hand-off</span><span lang="ko">인계</span></h3><p lang="en">You review and complete it. Follow-up candidates can become new objectives.</p><p lang="ko">검토하고 완료합니다. 후속 후보는 새 목표로 이어 갈 수 있습니다.</p></li>
+        <li class="step"><h3><span lang="en">Plan</span><span lang="ko">계획</span></h3><p lang="en">Write what you want and press Plan. The Commander lays out missions, prerequisites, and member sessions, and proposes success criteria. Nothing runs yet.</p><p lang="ko">원하는 일을 적고 구상을 누릅니다. 지휘관이 미션과 선행 조건, 구성원 세션을 짜고 달성 기준을 제안합니다. 아직 아무것도 실행되지 않습니다.</p></li>
+        <li class="step"><h3><span lang="en">Approve</span><span lang="ko">승인</span></h3><p lang="en">Approve, reject, or annotate each proposed criterion, and add your own.</p><p lang="ko">제안된 기준을 하나씩 승인하거나 거절하거나 주석을 달고, 내 기준을 더할 수도 있습니다.</p></li>
+        <li class="step"><h3><span lang="en">Commence</span><span lang="ko">개시</span></h3><p lang="en">The Commander works the missions itself or passes them to members, each with its own role, model, and effort.</p><p lang="ko">지휘관이 미션을 직접 수행하거나 구성원에게 넘깁니다. 구성원은 저마다 역할과 모델, 강도가 다릅니다.</p></li>
+        <li class="step"><h3><span lang="en">Hand-off</span><span lang="ko">인계</span></h3><p lang="en">The objective comes back with a retrospective. Review and complete it; follow-up candidates can become new objectives.</p><p lang="ko">목표가 회고와 함께 돌아옵니다. 검토해서 완료하고, 후속 후보는 새 목표로 이어 갈 수 있습니다.</p></li>
       </ol>
+      <p class="fine rv" lang="en">An objective's brief, criteria, members, mission graph, and results sit in the details column beside its conversation. You can also answer decisions, commence, and complete objectives from your phone.</p>
+      <p class="fine rv" lang="ko">목표의 브리프와 기준, 구성원, 미션 그래프, 결과는 대화 옆 세부 열에 있습니다. 결정에 답하고 개시하고 완료하는 일은 폰에서도 할 수 있습니다.</p>
       <figure class="wide-shot rv" style="margin-left:0;margin-right:0">
         <div class="frame">
           <img src="assets/console-objectives.webp" width="2400" height="1500" loading="lazy"
@@ -510,19 +510,42 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     </div>
   </section>
 
+  <!-- Commodore -->
+  <section class="sec" id="commodore">
+    <div class="shell">
+      <div class="sec-head rv">
+        <span class="kicker"><span lang="en">Commodore</span><span lang="ko">사령관</span></span>
+        <h2 class="h2"><span lang="en">Let the Commodore <em>run a Theater.</em></span><span lang="ko">Theater는 <em>사령관에게.</em></span></h2>
+        <p lang="en">Each Theater has a Commodore: a coordinator that can run the Theater's objectives on its own. Turn on autonomous operation with the Commodore glyph on the Theater's header.</p>
+        <p lang="ko">Theater마다 사령관이 있습니다. Theater의 목표를 스스로 굴리는 조정자입니다. Theater 머리의 사령관 표시를 눌러 자율 운영을 켭니다.</p>
+      </div>
+      <div class="principles rv">
+        <div class="principle"><h3><span lang="en">Runs the objectives</span><span lang="ko">목표를 굴립니다</span></h3><p lang="en">It creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions.</p><p lang="ko">제목과 브리프로 목표를 만들고, 계획은 각 지휘관에게 맡기고, 목표를 개시하고 검토하며, 지휘관의 질문에 답합니다.</p></div>
+        <div class="principle"><h3><span lang="en">Your decisions stay yours</span><span lang="ko">내 결정은 나에게</span></h3><p lang="en">Decisions it should not make wait for you under Your decisions, and it can ask you directly.</p><p lang="ko">사령관이 정하지 말아야 할 결정은 내 결정 아래에서 나를 기다리고, 사령관이 나에게 직접 묻기도 합니다.</p></div>
+        <div class="principle"><h3>Theater Inbox</h3><p lang="en">Click the Theater's header to see the Commodore's log, directive, and settings beside the Theater's system prompt.</p><p lang="ko">Theater 머리를 누르면 사령관의 로그와 지시, 설정을 Theater 시스템 프롬프트와 함께 볼 수 있습니다.</p></div>
+      </div>
+      <p class="fine rv" lang="en">You can hand a single objective to the Commodore from its sidebar row, and while it runs the Theater you can message it from Quick Launch with <code>@</code>.</p>
+      <p class="fine rv" lang="ko">목표 하나만 사이드바 행에서 사령관에게 넘길 수 있고, 사령관이 Theater를 굴리는 동안에는 Quick Launch에서 <code>@</code>로 말을 걸 수 있습니다.</p>
+    </div>
+  </section>
+
   <!-- Conversation -->
   <section class="sec" id="conversation">
     <div class="shell">
       <div class="sec-head rv">
         <span class="kicker"><span lang="en">Conversation</span><span lang="ko">대화</span></span>
         <h2 class="h2"><span lang="en">One conversation <em>at a time.</em></span><span lang="ko">한 번에 <em>대화 하나.</em></span></h2>
-        <p lang="en">The sidebar lists Operations, the middle holds the one you're in, and the right column keeps the Theater's tools. <span class="kbd">Alt</span><span class="kbd">←</span> and <span class="kbd">Alt</span><span class="kbd">→</span> move between Operations in the active Theater.</p>
-        <p lang="ko">사이드바에 Operation이 늘어서고, 가운데는 지금 보고 있는 대화이며, 오른쪽 열은 Theater의 도구를 둡니다. <span class="kbd">Alt</span><span class="kbd">←</span>와 <span class="kbd">Alt</span><span class="kbd">→</span>로 활성 Theater의 Operation을 오갑니다.</p>
+        <p lang="en">The desktop screen is a conversation. The sidebar lists each Theater's conversations, the middle holds the one you're in, and the details column on the right shows that conversation's objective or the tool you opened. <span class="kbd">Alt</span><span class="kbd">←</span> and <span class="kbd">Alt</span><span class="kbd">→</span> move between conversations in the active Theater.</p>
+        <p lang="ko">데스크톱 화면은 대화입니다. 사이드바에 Theater마다 대화가 늘어서고, 가운데는 지금 보고 있는 대화이며, 오른쪽 세부 열은 그 대화의 목표나 내가 연 도구를 보여 줍니다. <span class="kbd">Alt</span><span class="kbd">←</span>와 <span class="kbd">Alt</span><span class="kbd">→</span>로 활성 Theater의 대화를 오갑니다.</p>
+        <p lang="en">A session that has ended, for example after the Console restarts, comes back with Resume. Every session has an avatar that acts out what it is doing, and you can pick another character or color for it.</p>
+        <p lang="ko">Console이 다시 시작된 뒤처럼 끝난 세션은 재개로 되살립니다. 세션마다 하는 일을 몸짓으로 보여 주는 아바타가 있고, 캐릭터와 색을 바꿀 수 있습니다.</p>
       </div>
       <div class="quick rv">
-        <span><span class="kbd">⌘</span><span class="kbd">K</span><span lang="en">Go to any Operation, file, or wiki page</span><span lang="ko">Operation·파일·위키 문서로 이동</span></span>
+        <span><span class="kbd">⌘</span><span class="kbd">K</span><span lang="en">Go to any conversation, file, or wiki page</span><span lang="ko">대화·파일·위키 문서로 이동</span></span>
         <span><span class="kbd">⌘</span><span class="kbd">P</span><span lang="en">Command palette</span><span lang="ko">명령 팔레트</span></span>
         <span><span class="kbd">⌘</span><span class="kbd">J</span>Quick Launch</span>
+        <span><span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">Y</span><span lang="en">Toggle Objectives</span><span lang="ko">목표 여닫기</span></span>
+        <span><span class="kbd">Alt</span><span class="kbd">S</span><span lang="en">Sort the sidebar by status</span><span lang="ko">사이드바를 상태별로 묶기</span></span>
         <span><span class="kbd">⌘</span><span class="kbd">Z</span><span lang="en">Reopen a closed panel</span><span lang="ko">닫은 패널 되살리기</span></span>
       </div>
       <p class="fine rv" lang="en">Every shortcut can be rebound. On Windows and Linux, ⌘ is Ctrl.</p>
@@ -535,9 +558,9 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     <div class="shell">
       <div class="sec-head rv">
         <span class="kicker"><span lang="en">Tools</span><span lang="ko">도구</span></span>
-        <h2 class="h2"><span lang="en">The project, <em>beside the session.</em></span><span lang="ko">세션 옆에 <em>펼쳐지는 프로젝트.</em></span></h2>
-        <p lang="en">The toolbar opens tools that follow the active Theater, so you never leave the Operation you're watching.</p>
-        <p lang="ko">도구 막대에서 여는 도구들은 활성 Theater를 따라갑니다. 지켜보던 Operation을 떠날 필요가 없습니다.</p>
+        <h2 class="h2"><span lang="en">The project, <em>beside the conversation.</em></span><span lang="ko">대화 옆에 <em>펼쳐지는 프로젝트.</em></span></h2>
+        <p lang="en">A tool bar above every conversation opens tools for that conversation's Theater.</p>
+        <p lang="ko">대화마다 위에 놓인 도구 막대가 그 대화의 Theater에 맞는 도구를 엽니다.</p>
       </div>
       <figure class="wide-shot rv" style="margin-left:0;margin-right:0">
         <div class="frame">
@@ -551,16 +574,17 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
         <div class="tools rv">
           <div class="tool"><h3><span lang="en">Repository</span><span lang="ko">저장소</span></h3><p lang="en">History, changes, compare, worktrees, branches, tags, stashes.</p><p lang="ko">히스토리, 변경 사항, 비교, 워크트리, 브랜치, 태그, 스태시.</p></div>
           <div class="tool"><h3><span lang="en">Files</span><span lang="ko">파일</span></h3><p lang="en">A tree with quick peek, pinned folders, and git tints.</p><p lang="ko">빠른 미리보기, 고정 폴더, git 상태 색을 갖춘 트리.</p></div>
-          <div class="tool"><h3>Shell</h3><p lang="en">One terminal for the whole Console, a keystroke away.</p><p lang="ko">콘솔 전체가 함께 쓰는 터미널 하나, 키 한 번이면 열립니다.</p></div>
-          <div class="tool"><h3>Codex</h3><p lang="en">The project wiki. Experimental Cowork drafts edits you apply.</p><p lang="ko">프로젝트 위키. 실험 기능 Cowork가 수정안을 쓰고, 적용은 내가 합니다.</p></div>
+          <div class="tool"><h3>Shell <span class="kbd">Ctrl</span><span class="kbd">`</span></h3><p lang="en">One terminal for the whole Console, a keystroke away.</p><p lang="ko">콘솔 전체가 함께 쓰는 터미널 하나, 키 한 번이면 열립니다.</p></div>
+          <div class="tool"><h3>Codex</h3><p lang="en">The project wiki. Experimental Cowork drafts edits, and nothing changes until you apply them.</p><p lang="ko">프로젝트 위키. 실험 기능 Cowork가 수정안을 쓰고, 내가 적용하기 전까지는 아무것도 바뀌지 않습니다.</p></div>
           <div class="tool"><h3><span lang="en">Skills</span><span lang="ko">스킬</span></h3><p lang="en">Browse and install skills.</p><p lang="ko">스킬을 둘러보고 설치합니다.</p></div>
-          <div class="tool"><h3><span lang="en">Usage limits</span><span lang="ko">사용 한도</span></h3><p lang="en">Provider quotas.</p><p lang="ko">공급자별 한도.</p></div>
+          <div class="tool"><h3><span lang="en">Usage meters</span><span lang="ko">사용량 미터</span></h3><p lang="en">Provider quotas stay in view at the top right; click them for the details.</p><p lang="ko">공급자 한도는 오른쪽 위에 늘 보이고, 누르면 자세히 볼 수 있습니다.</p></div>
         </div>
         <div class="rv">
           <div class="companions">
-            <div class="companion"><h3><span lang="en">Session Analyst</span><span lang="ko">세션 분석가</span> <span class="kbd">Alt</span><span class="kbd">A</span></h3><p lang="en">Reads one Operation without disturbing it, and answers what happened, what needs review, or how to hand it off.</p><p lang="ko">Operation 하나를 방해하지 않고 읽어서 무슨 일이 있었는지, 무엇을 검토해야 하는지, 어떻게 인계할지 답합니다.</p></div>
-            <div class="companion"><h3>Session Browser <span class="kbd">Alt</span><span class="kbd">B</span> <span class="only"><span lang="en">DESKTOP</span><span lang="ko">데스크톱</span></span></h3><p lang="en">A browser the agent drives on the same tabs you see. Annotate a page and send it back.</p><p lang="ko">내가 보는 탭을 에이전트가 그대로 조작하는 브라우저. 페이지에 주석을 달아 넘길 수 있습니다.</p></div>
-            <div class="companion"><h3>Console Use · Computer Use</h3><p lang="en">Agents can operate the Console itself, and on a Mac, other apps. Both are granted per Operation, and each request is approved inside the panel.</p><p lang="ko">에이전트가 콘솔 자체를, Mac에서는 다른 앱까지 다룰 수 있습니다. 둘 다 Operation마다 따로 허용하고, 요청은 패널 안에서 하나씩 승인합니다.</p></div>
+            <div class="companion"><h3><span lang="en">Session Analyst</span><span lang="ko">세션 분석가</span> <span class="kbd">Alt</span><span class="kbd">A</span></h3><p lang="en">Reads a session without disturbing it, and answers what happened, what needs review, or how to hand it off.</p><p lang="ko">세션을 방해하지 않고 읽어서 무슨 일이 있었는지, 무엇을 검토해야 하는지, 어떻게 인계할지 답합니다.</p></div>
+            <div class="companion"><h3>Session Browser <span class="kbd">Alt</span><span class="kbd">B</span> <span class="only"><span lang="en">DESKTOP</span><span lang="ko">데스크톱</span></span></h3><p lang="en">A browser the agent drives on the same tabs you see. Annotate a page for it.</p><p lang="ko">내가 보는 탭을 에이전트가 그대로 조작하는 브라우저. 페이지에 주석을 달아 넘길 수 있습니다.</p></div>
+            <div class="companion"><h3>Fleet Browser <span class="kbd">⌘</span><span class="kbd">⇧</span><span class="kbd">B</span> <span class="only"><span lang="en">DESKTOP</span><span lang="ko">데스크톱</span></span></h3><p lang="en">Your own browser beside the conversation. Drag the edge between them to resize it.</p><p lang="ko">대화 옆에 여는 내 브라우저. 대화와의 경계를 끌어 폭을 바꿉니다.</p></div>
+            <div class="companion"><h3>Console Use · Computer Use</h3><p lang="en">With Console Use, agents can operate the Console itself. Computer Use extends that to Mac apps. Both are granted per session, and each request is approved inside the panel.</p><p lang="ko">Console Use를 쓰면 에이전트가 콘솔 자체를 다룰 수 있고, Computer Use는 그 범위를 Mac 앱까지 넓힙니다. 둘 다 세션마다 따로 허용하며, 요청은 패널 안에서 하나씩 승인합니다.</p></div>
           </div>
         </div>
       </div>
@@ -582,26 +606,28 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
           <ul><li><a href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Latest release</span><span lang="ko">최신 릴리스</span></a></li></ul>
         </div>
         <div>
-          <h3><span lang="en">Remote access</span><span lang="ko">원격 접속</span> <span class="tag"><span lang="en">EXPERIMENTAL</span><span lang="ko">실험</span></span></h3>
-          <p lang="en">Off by default. Once on, the Console opens only to devices you pair.</p>
-          <p lang="ko">기본으로 꺼져 있고, 켜더라도 페어링한 기기에만 열립니다.</p>
+          <h3><span lang="en">Remote access</span><span lang="ko">원격 접속</span></h3>
+          <p lang="en">Off until you set it up on the Remote access page in Settings. Once on, the Console opens only to devices you pair.</p>
+          <p lang="ko">설정의 원격 접속 페이지에서 직접 설정하기 전까지 꺼져 있고, 켜더라도 페어링한 기기에만 열립니다.</p>
           <ul lang="en">
-            <li>Access links work once and expire in 15 minutes.</li>
+            <li>Access links work once and expire after 15 minutes.</li>
             <li>Every link is pinned to the Console's certificate.</li>
-            <li>One device controls at a time; others watch.</li>
+            <li>One device controls at a time; the others watch behind a clear curtain.</li>
+            <li>Monitoring-only links let a screen watch without typing.</li>
             <li>Public reach is a separate opt-in.</li>
           </ul>
           <ul lang="ko">
-            <li>접속 링크는 한 번만, 15분 안에만 쓸 수 있습니다.</li>
+            <li>접속 링크는 한 번만 쓸 수 있고 15분이 지나면 만료됩니다.</li>
             <li>모든 링크는 콘솔의 인증서에 고정됩니다.</li>
-            <li>한 번에 한 기기만 조작하고, 나머지는 지켜봅니다.</li>
+            <li>한 번에 한 기기만 조작하고, 나머지는 분명히 표시된 커튼 뒤에서 지켜봅니다.</li>
+            <li>입력 없이 지켜보기만 하는 모니터링 전용 링크도 만들 수 있습니다.</li>
             <li>공인 인터넷 접속은 따로 한 번 더 켭니다.</li>
           </ul>
         </div>
         <div>
           <h3><span lang="en">Mobile</span><span lang="ko">모바일</span> <span class="tag"><span lang="en">TESTERS</span><span lang="ko">테스터</span></span></h3>
-          <p lang="en">The Operations you left on your desk, on your phone, with full scrollback. Android and iOS apps are in tester distribution.</p>
-          <p lang="ko">책상에 두고 온 Operation을 지나간 출력까지 그대로 폰에서. Android와 iOS 앱은 테스터 배포 중입니다.</p>
+          <p lang="en">The conversations you left on your desk are on your phone too, under the Theater's Commodore. Open an objective's board from its conversation to approve criteria, answer decisions, and commence or complete work. Android and iOS apps are in tester distribution.</p>
+          <p lang="ko">책상에 두고 온 대화가 폰에도 그대로 있고, 맨 위에는 Theater의 사령관이 있습니다. 대화에서 목표 보드를 열어 기준을 승인하고 결정에 답하고 일을 개시하거나 완료합니다. Android와 iOS 앱은 테스터 배포 중입니다.</p>
           <ul><li><a href="https://github.com/sbluemin/fleet-harness/tree/canary/runtime/fleet-mobile"><span lang="en">Source in runtime/fleet-mobile</span><span lang="ko">소스: runtime/fleet-mobile</span></a></li></ul>
         </div>
       </div>
@@ -626,7 +652,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
       <div class="principles rv">
         <div class="principle"><h3><span lang="en">Loopback first</span><span lang="ko">루프백이 먼저</span></h3><p lang="en">The server binds to loopback. Nothing is reachable from other machines until you turn on remote access.</p><p lang="ko">서버는 루프백에만 바인딩됩니다. 원격 접속을 켜기 전에는 다른 기기에서 닿지 않습니다.</p></div>
         <div class="principle"><h3><span lang="en">Credentials stay put</span><span lang="ko">자격증명은 제자리에</span></h3><p lang="en">Provider credentials stay in the Console. The browser only ever receives one-use terminal tickets.</p><p lang="ko">공급자 자격증명은 콘솔 안에 머뭅니다. 브라우저가 받는 것은 한 번 쓰고 버리는 터미널 티켓뿐입니다.</p></div>
-        <div class="principle"><h3><span lang="en">Your data, your disk</span><span lang="ko">내 데이터는 내 디스크에</span></h3><p lang="en">Sessions, settings, and history live under <code>~/.fleet</code>. Pick a theme, fonts, and shortcuts; English and Korean switch instantly.</p><p lang="ko">세션과 설정, 기록은 <code>~/.fleet</code> 아래에 저장됩니다. 테마와 글꼴, 단축키를 고르고, 한국어와 영어는 즉시 전환됩니다.</p></div>
+        <div class="principle"><h3><span lang="en">Your data, your disk</span><span lang="ko">내 데이터는 내 디스크에</span></h3><p lang="en">Sessions, settings, and history live on your machine under <code>~/.fleet</code>. Pick Instrument, Maritime, Carbon, or Whites, your own fonts and shortcuts; English and Korean switch without a reload.</p><p lang="ko">세션과 설정, 기록은 내 머신의 <code>~/.fleet</code> 아래에 저장됩니다. Instrument·Maritime·Carbon·Whites 테마와 글꼴, 단축키를 고르고, 한국어와 영어는 새로고침 없이 바로 전환됩니다.</p></div>
       </div>
     </div>
   </section>
@@ -634,18 +660,22 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
   <!-- Closer -->
   <section class="closer" id="start">
     <div class="shell">
-      <h2 class="h2 rv"><span lang="en">Start the console. <em>Launch your first Operation.</em></span><span lang="ko">콘솔을 켜고, <em>첫 Operation을 띄우세요.</em></span></h2>
-      <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Add a project folder as a Theater, then right-click the sidebar.</p>
-      <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. 프로젝트 폴더를 Theater로 추가하고 사이드바를 우클릭하세요.</p>
+      <h2 class="h2 rv"><span lang="en">Start the console. <em>Open your first conversation.</em></span><span lang="ko">콘솔을 켜고, <em>첫 대화를 시작하세요.</em></span></h2>
+      <p class="sub rv" lang="en"><code>fleet console</code> prints a local address. Add a project folder as a Theater with the + at the top of the sidebar, then start your first conversation with the + on the Theater's header or <span class="kbd">⌘</span><span class="kbd">J</span>.</p>
+      <p class="sub rv" lang="ko"><code>fleet console</code>이 로컬 주소를 출력합니다. 사이드바 맨 위의 +로 프로젝트 폴더를 Theater로 추가하고, Theater 머리의 +나 <span class="kbd">⌘</span><span class="kbd">J</span>로 첫 대화를 시작하세요.</p>
       <div class="install rv" role="group" aria-label="Install">
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz</code><button class="copy" type="button" data-copy="npm i -g https://github.com/sbluemin/fleet-harness/releases/latest/download/fleet-console.tgz"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
         <div class="install-row"><span class="p" aria-hidden="true">$</span><code>fleet console</code><button class="copy" type="button" data-copy="fleet console"><span lang="en">Copy</span><span lang="ko">복사</span></button></div>
       </div>
       <div class="links rv">
-        <a href="https://github.com/sbluemin/fleet-harness#readme">README</a>
+        <a href="https://github.com/sbluemin/fleet-harness#readme" lang="en">README</a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/README.ko.md" lang="ko">README</a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/fleet-development-reference.md">Development reference</a>
         <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/console-agent-sdk.md">Console Agent SDK</a>
-        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.md"><span lang="en">Changelog</span><span lang="ko">변경 이력</span></a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/docs/admiral-workflow-reference.md">Admiral Workflow Reference</a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/runtime/fleet-desktop/README.md"><span lang="en">Desktop guide</span><span lang="ko">Desktop 가이드</span></a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.md" lang="en">Changelog</a>
+        <a href="https://github.com/sbluemin/fleet-harness/blob/canary/CHANGELOG.ko.md" lang="ko">변경 이력</a>
         <a href="https://github.com/sbluemin/fleet-harness/releases/latest"><span lang="en">Releases</span><span lang="ko">릴리스</span></a>
       </div>
     </div>
@@ -674,7 +704,10 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     en: "Fleet — a quiet console for a fleet of coding agents",
     ko: "Fleet — 여러 코딩 에이전트를, 하나의 조용한 콘솔에서"
   };
-  var COUNT = { en: " Operations", ko: "개 Operation" };
+  var COUNT = {
+    en: function (n) { return n + " conversations"; },
+    ko: function (n) { return "대화 " + n + "개"; }
+  };
   function apply(next) {
     lang = next;
     root.setAttribute("data-lang", lang);
@@ -733,7 +766,7 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
   var rows = Array.prototype.slice.call(list.children);
   function renderStates() {
     rows.forEach(function (r) { r.querySelector(".s").textContent = LABEL[lang][r.dataset.s]; });
-    document.getElementById("watch-count").textContent = rows.length + COUNT[lang];
+    document.getElementById("watch-count").textContent = COUNT[lang](rows.length);
   }
   function sortRows() {
     var first = new Map(rows.map(function (r) { return [r, r.getBoundingClientRect().top]; }));
