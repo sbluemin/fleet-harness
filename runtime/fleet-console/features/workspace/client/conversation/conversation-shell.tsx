@@ -13,7 +13,7 @@ import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
-import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
+import { conversationSurfaceInboxSectionId, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
@@ -176,28 +176,6 @@ export function ConversationSideBarActions() {
   );
 }
 
-/** 맨 위 줄 아래 — 출근한 부관(고정 표식)이 있을 때만 선다. */
-export function ConversationSideBarTop() {
-  const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
-  const pinned = commandBandEntries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID);
-  if (pinned.length === 0) return null;
-  return (
-    <div className="conversation-side-top">
-      <div className="conversation-side-pinned" role="group" aria-label={t("conversation.side.pinnedAria")}>
-        {pinned.map((entry) => (
-          <PluginErrorBoundary key={entry.id} fallback={null}>
-            <PluginEntry render={entry.render} />
-          </PluginErrorBoundary>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PluginEntry({ render }: { readonly render: () => ReactNode }) {
-  return <>{render()}</>;
-}
 
 /**
  * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
@@ -703,8 +681,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
  */
 function ConversationQuota() {
   const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
-  const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
+  const { commandBandEntries: usage } = usePluginRegistry();
   const boxRef = useRef<HTMLDivElement | null>(null);
   // 단계는 칸 폭이 아니라 실제로 남는 자리로 정한다 — pill 묶음(이름·다음·단추)의 원래 폭을 뺀 반쪽에 세 단계(두 줄 값 → 표식만
   // → 첫 칸)의 실제 폭을 차례로 대어 들어가는 가장 큰 단계를 고른다. pill 줄은 고른 폭만큼 양쪽을 비워 pill 을 가운데에 둔다.
@@ -759,6 +736,10 @@ function ConversationQuota() {
       ))}
     </div>
   );
+}
+
+function PluginEntry({ render }: { readonly render: () => ReactNode }) {
+  return <>{render()}</>;
 }
 
 type QuotaTier = "full" | "marks" | "single";

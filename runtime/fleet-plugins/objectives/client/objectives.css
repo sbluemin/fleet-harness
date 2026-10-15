@@ -531,7 +531,7 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 .objectives-att-add:disabled { cursor: default; opacity: 0.6; }
 .objectives-att-tip {
   position: fixed;
-  /* 문서 끝으로 포털된 잠깐의 설명 — 부유 패널 위에도 서야 해서 overlay 단을 쓴다(Scuttlebutt 머리 말풍선과 같은 계약). */
+  /* 문서 끝으로 포털된 잠깐의 설명 — 부유 패널 위에도 서야 해서 overlay 단을 쓴다. */
   z-index: calc(var(--z-overlay) + 1);
   pointer-events: none;
   display: grid;

@@ -12,7 +12,6 @@ import type { ClientAgentChatCapability } from "../components/agent-chat-transcr
 
 import type { PaneDescriptor } from "../pane/types.js";
 import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
-import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
@@ -83,17 +82,6 @@ export interface PluginMentionTargetAddress {
   readonly targetId: string;
 }
 
-/** 호스트 입력 위에 서는 대화 슬롯. 마운트 수명은 세션 수명이 아니다. */
-export interface QuickLaunchConversationDescriptor {
-  /** 기존 테마 정체색 토큰 이름(--로 시작). 호스트가 선택 밑줄에만 쓴다. */
-  readonly identityColorToken?: string;
-  /** 대화 레인의 입력 안내문. 생략하면 호스트의 행선지 안내문을 쓴다. */
-  readonly placeholder?: string;
-  readonly renderConversation: () => ReactNode;
-  /** 실행 좌표 대신 표시할 권한 표면. */
-  readonly renderCapabilities?: () => ReactNode;
-}
-
 export interface MentionTargetDescriptor {
   /** 플러그인 안에서 고유한 id. 호스트는 `${pluginId}:${id}`로 이름공간을 나눠 쓴다. */
   readonly id: string;
@@ -113,15 +101,11 @@ export interface MentionTargetDescriptor {
   readonly keywords?: readonly string[];
   /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
   readonly renderMark?: () => ReactNode;
-  /** 선언한 대상만 퀵런치 레인에 서며, 전송 뒤 컴포저를 열어 둔다. */
-  readonly quickLaunch?: QuickLaunchConversationDescriptor;
 }
 
 /**
  * 커맨드 밴드 우측 클러스터 앞에 서는 플러그인 항목. 밴드의 24×24 버튼 문법을 따르는 것은
- * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다. 항목을 더 큰 자리에 세우는
- * 호스트 슬롯(대화 배치의 사이드바 고정 줄)은 그 크기를 `--command-band-entry-size` 로 알린다 —
- * 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 두 자리에 모두 맞는다.
+ * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;
@@ -150,7 +134,6 @@ export interface ClientExecutionProvider {
    * 어느 페인이 언제 서는지는 등록이 아니라 `panes.open` 호출이 정한다.
    */
   readonly panes?: readonly PaneDescriptor[];
-  readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   /**
    * 도구모음의 Bridge 칸(접어도 남는 끝 칸)에 서는 24px 항목. 플러그인이 자기 상태를 도구모음에
    * 상주시키는 자리다 — 호스트는 슬롯의 자리와 순서만 소유하고 본문은 플러그인이 그린다. 비어 있는
@@ -251,10 +234,8 @@ export interface ClientExecutionProvider {
    * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
    * forwarded — the host refuses that combination before calling. Rejects with an Error
    * whose `message` is the server rejection code when one is available.
-   * `options.surface`는 선언한 대화 슬롯에서 답을 보여 주겠다는 호스트의 표시다. 세션은 계속
-   * 플러그인이 소유하며, 컴포저 마운트나 이 전달 promise의 수명에 매이지 않는다.
    */
-  readonly messageMentionTarget?: (targetId: string, text: string, options?: { readonly surface: "quick-launch" }) => Promise<void>;
+  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
   /**
    * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the

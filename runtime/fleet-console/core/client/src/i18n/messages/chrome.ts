@@ -73,10 +73,7 @@ export const chromeEn = {
   "chrome.quickLaunch.promptLabel": "Prompt",
   "chrome.quickLaunch.mentionDeck": "Mention a destination",
   "chrome.quickLaunch.mentionCategoryOperations": "Operations",
-  "chrome.quickLaunch.launchLane": "Start Operation",
   "chrome.quickLaunch.sendWithKey": "Send (Enter)",
-  "chrome.quickLaunch.lanes": "Destination lanes",
-  "chrome.quickLaunch.laneHint": "Cycle destinations",
   "chrome.quickLaunch.attachmentNotSupported": "This conversation does not take images. Send your question as text.",
   "chrome.quickLaunch.clearMention": "Remove destination, keep draft",
   "chrome.quickLaunch.mentionErrorTargetGone": "That destination is unavailable. Choose another lane or remove the destination to continue.",
@@ -543,7 +540,6 @@ export const chromeEn = {
   "conversation.split.resetWidth": "Double-click to reset width",
   "conversation.quota.aria": "Usage",
   "conversation.side.newTheater": "New Theater",
-  "conversation.side.pinnedAria": "Pinned",
   "conversation.side.systemAria": "Host, usage and settings",
 } as const;
 
@@ -619,17 +615,14 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.quickLaunch.promptLabel": "프롬프트",
   "chrome.quickLaunch.mentionDeck": "행선지 멘션",
   "chrome.quickLaunch.mentionCategoryOperations": "Operations",
-  "chrome.quickLaunch.launchLane": "Operation 시작",
   "chrome.quickLaunch.sendWithKey": "보내기 (Enter)",
-  "chrome.quickLaunch.lanes": "행선지 레인",
-  "chrome.quickLaunch.laneHint": "행선지 순환",
   "chrome.quickLaunch.attachmentNotSupported": "이 대화에서는 이미지를 받지 않습니다. 텍스트로 물어보세요.",
   "chrome.quickLaunch.clearMention": "초안을 남기고 행선지 해제",
   "chrome.quickLaunch.mentionErrorTargetGone": "그 행선지를 사용할 수 없습니다. 다른 레인을 고르거나 행선지를 해제해 주세요.",
   "chrome.quickLaunch.mentionErrorCapacity": "대화 세션이 모두 답하는 중입니다. 답이 끝나면 다시 보내세요.",
   "chrome.quickLaunch.mentionNoMatch": "일치하는 행선지가 없습니다.",
   "chrome.quickLaunch.mentionPlaceholder": "{name}에 보내기…",
-  // 사람(부관)에게는 '에'가 아니라 '에게'다 — Operation은 사물이라 같은 문구를 나눠 쓸 수 없다.
+  // 사람(사령관 등)에게는 '에'가 아니라 '에게'다 — Operation은 사물이라 같은 문구를 나눠 쓸 수 없다.
   "chrome.quickLaunch.mentionPlaceholderOther": "{name}에게 보내기…",
   "chrome.quickLaunch.mentionTarget": "Operation · {theater}",
   "chrome.quickLaunch.mentionTargetOther": "{category} · {name}",
@@ -1077,6 +1070,5 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.split.resetWidth": "두 번 눌러 폭 초기화",
   "conversation.quota.aria": "사용량",
   "conversation.side.newTheater": "새 Theater",
-  "conversation.side.pinnedAria": "고정",
   "conversation.side.systemAria": "호스트 · 사용량 · 설정",
 };

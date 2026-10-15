@@ -1,7 +1,6 @@
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type CSSProperties } from "react";
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -11,7 +10,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchRecentPluginTarget, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
 import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
@@ -79,10 +78,6 @@ interface ComposerAttachment {
   readonly name: string;
   readonly previewUrl: string;
   readonly uploading: boolean;
-}
-
-function PluginSlot({ render }: { readonly render: () => ReactNode }) {
-  return <>{render()}</>;
 }
 
 export function QuickLaunch() {
@@ -243,22 +238,10 @@ export function QuickLaunch() {
   }, [mentionPick, allPluginMentionRows]);
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
-  const laneRows = useMemo(() => allPluginMentionRows.filter((row) => row.quickLaunch), [allPluginMentionRows]);
-  const laneRowsRef = useRef(laneRows);
-  laneRowsRef.current = laneRows;
   const pluginMentionCategories = useMemo(
     () => (mentionToken === null ? [] : buildPluginMentionCategories(registry.providers, mentionToken.query)),
     [mentionToken, registry.providers, mentionRosterEpoch],
   );
-  const conversationRow = mentionTarget?.kind === "plugin"
-    ? laneRows.find((row) => row.optionId === mentionTarget.row.optionId) ?? null : null;
-  useEffect(() => {
-    if (mentionTarget?.kind === "plugin" && mentionTarget.row.quickLaunch && conversationRow === null) {
-      // 사라진 행선지를 새 Operation 발사로 조용히 바꾸지 않는다. 사용자가 주소를 다시 고른다.
-      setPluginAddressUnavailable(true);
-      setMentionErrorKey("chrome.quickLaunch.mentionErrorTargetGone");
-    }
-  }, [mentionTarget, conversationRow]);
   const pluginMentionRows = useMemo(
     () => pluginMentionCategories.flatMap((category) => category.rows),
     [pluginMentionCategories],
@@ -333,13 +316,8 @@ export function QuickLaunch() {
         return null;
       }
       if (typeof seed !== "string") {
-        const rows = laneRowsRef.current;
-        const current = mentionTargetRef.current;
-        const currentIndex = current?.kind === "plugin" ? rows.findIndex((row) => row.optionId === current.row.optionId) : -1;
-        const address = seed.target ?? readQuickLaunchSelection().recentPluginTarget;
-        const row = seed.cycle && currentIndex >= 0 && !collapsed
-          ? rows[(currentIndex + 1) % rows.length]
-          : (seed.target ? allPluginMentionRowsRef.current : rows).find((row) => row.pluginId === address?.pluginId && row.targetId === address?.targetId) ?? (seed.target === null ? rows[0] : undefined);
+        const address = seed.target;
+        const row = allPluginMentionRowsRef.current.find((candidate) => candidate.pluginId === address.pluginId && candidate.targetId === address.targetId);
         const draft = consumeQuickLaunchMentionDraft();
         if (draft !== null) { promptRef.current = draft; setPrompt(draft); }
         setPluginAddressUnavailable(!row);
@@ -347,7 +325,6 @@ export function QuickLaunch() {
           setMentionErrorKey("chrome.quickLaunch.mentionErrorTargetGone");
           return null;
         }
-        if (row.pluginId !== null) writeQuickLaunchRecentPluginTarget({ pluginId: row.pluginId, targetId: row.targetId });
         return { kind: "plugin", row };
       }
       setPluginAddressUnavailable(false);
@@ -368,7 +345,7 @@ export function QuickLaunch() {
       return entry ? { kind: "operation", entry } : null;
     }
     return null;
-  }, [collapsed, discardComposerContents]);
+  }, [discardComposerContents]);
 
   // ── `ultracode` 인식 ────────────────────────────────────────────────────────
   // 무장은 문면에서 파생한다. 멘션 행선지가 있어도 그대로 성립한다 — 이 단어는 실행 좌표가 아니라
@@ -714,9 +691,6 @@ export function QuickLaunch() {
     }
     setMentionPick(target);
     setPluginAddressUnavailable(false);
-    if (target.kind === "plugin" && target.row.pluginId !== null) {
-      writeQuickLaunchRecentPluginTarget({ pluginId: target.row.pluginId, targetId: target.row.targetId });
-    }
     setMentionErrorKey(null);
     setAttachmentErrorKey(null);
     setPopover(null);
@@ -1201,23 +1175,10 @@ export function QuickLaunch() {
       setSubmitting(true);
       setMentionErrorKey(null);
       const epoch = composerEpochRef.current;
-      void plugin.messageMentionTarget(row.targetId, text, row.quickLaunch ? { surface: "quick-launch" } : undefined)
+      void plugin.messageMentionTarget(row.targetId, text)
         .then(() => {
           if (composerEpochRef.current !== epoch) return;
-          if (row.quickLaunch) {
-            setSubmitting(false);
-            setAttachmentErrorKey(null);
-            // 플러그인이 질문을 맡은 순간만 초안을 소비한다. 전송 중 편집·전환한 초안은 남긴다.
-            const current = mentionTargetRef.current;
-            if (current?.kind === "plugin" && current.row.optionId === row.optionId && promptRef.current.trim() === text) {
-              setPrompt("");
-              promptRef.current = "";
-              consumeQuickLaunchDraft();
-            }
-            setMentionToken(null);
-            setCommandInput(null);
-            inputRef.current?.focus();
-          } else finishSubmission(text);
+          finishSubmission(text);
         })
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;
@@ -1651,7 +1612,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}$`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1694,33 +1655,6 @@ export function QuickLaunch() {
           </ComposerRestStrip>
         ) : null}
 
-        {laneRows.length > 0 ? (
-          <div className="quick-launch-lanes" role="group" aria-label={t("chrome.quickLaunch.lanes")} hidden={showStrip}>
-            <button type="button" className={`quick-launch-lane${mentionTarget?.kind !== "plugin" ? " is-selected" : ""}`} aria-pressed={mentionTarget?.kind !== "plugin"} onClick={clearMention}>
-              {t("chrome.quickLaunch.launchLane")}
-            </button>
-            <span className="quick-launch-lane-divider" aria-hidden="true" />
-            {laneRows.map((row) => {
-              const selected = mentionTarget?.kind === "plugin" && mentionTarget.row.optionId === row.optionId;
-              const token = row.quickLaunch?.identityColorToken;
-              const style = token && /^--[a-zA-Z0-9-]+$/.test(token) ? { "--quick-launch-lane-identity": `var(${token})` } as CSSProperties : undefined;
-              return <button key={row.optionId} type="button" className={`quick-launch-lane${selected ? " is-selected" : ""}`} style={style} aria-pressed={selected} onClick={() => pickMention({ kind: "plugin", row })}>
-                {row.renderMark ? <span className="quick-launch-lane-mark" aria-hidden="true"><PluginErrorBoundary fallback={null}><PluginSlot render={row.renderMark} /></PluginErrorBoundary></span> : null}
-                {row.label}
-              </button>;
-            })}
-            <span className="quick-launch-lane-hint" title={t("chrome.quickLaunch.laneHint")}>
-              {resolveShortcutChords("console.plugin-quick-launch").map((chord) => <kbd key={chord}>{chordLabel(chord)}</kbd>)}
-            </span>
-          </div>
-        ) : null}
-        {conversationRow?.quickLaunch && !showStrip ? (
-          <div className="quick-launch-conversation">
-            <PluginErrorBoundary key={conversationRow.optionId}>
-              <PluginSlot render={conversationRow.quickLaunch.renderConversation} />
-            </PluginErrorBoundary>
-          </div>
-        ) : null}
         {mentionDeckOpen ? (
           <div className="quick-launch-mention-deck theater-menu" role="listbox" id="quick-launch-mention-deck" aria-label={t("chrome.quickLaunch.mentionDeck")}>
             {/* Operations 밴드는 행이 있을 때만, 그리고 아무 카테고리도 없을 때만 선다 — 두 번째
@@ -1918,7 +1852,7 @@ export function QuickLaunch() {
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <ComposerField className="quick-launch-field" inert={showStrip || undefined}>
-          {mentionTarget && !conversationRow ? (
+          {mentionTarget ? (
             <span className="quick-launch-mention" title={mentionTargetName(mentionTarget)}>
               {/* Operation은 선택 뒤에도 공급자 출처를 되살리지 않는다 — 이름과 하단 행선지 태그가
                   대상을 말한다. 플러그인 대상의 mark는 공급자가 아니라 그 대상 자체의 정체성이다. */}
@@ -1945,14 +1879,14 @@ export function QuickLaunch() {
             onKeyDown={handleInputKeyDown}
             onPaste={handlePaste}
             onScroll={syncUltracodeHighlight}
-            placeholder={conversationRow?.quickLaunch?.placeholder ?? (mentionTarget
+            placeholder={(mentionTarget
               ? t(mentionTarget.kind === "operation"
                 ? "chrome.quickLaunch.mentionPlaceholder"
                 : "chrome.quickLaunch.mentionPlaceholderOther", { name: mentionTargetName(mentionTarget) })
               : chatStart
                 ? t("chrome.quickLaunch.startViewChatPlaceholder")
                 : t("chrome.quickLaunch.placeholder"))}
-            aria-label={conversationRow ? t("chrome.quickLaunch.mentionPlaceholderOther", { name: conversationRow.label }) : t("chrome.quickLaunch.promptLabel")}
+            aria-label={t("chrome.quickLaunch.promptLabel")}
             aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : commandDeckOpen ? "quick-launch-command-deck" : undefined}
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
@@ -2017,13 +1951,7 @@ export function QuickLaunch() {
         {mentionErrorKey === "chrome.quickLaunch.mentionErrorTrustRequired" && !showStrip ? (
           <p className="quick-launch-trust-guidance" role="alert">{t("chrome.quickLaunch.mentionErrorTrustRequired")}</p>
         ) : null}
-        {conversationRow && !showStrip && (overLimit || attachmentErrorKey || (mentionErrorKey && mentionErrorKey !== "chrome.quickLaunch.mentionErrorTrustRequired") || rejectionKey) ? (
-          <p className="quick-launch-feedback" role={attachmentErrorKey === "chrome.quickLaunch.attachmentNotSupported" ? "status" : "alert"}>
-            {overLimit ? t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })
-              : t((attachmentErrorKey ?? mentionErrorKey ?? rejectionKey) as Parameters<typeof t>[0], state.quickLaunchErrorShortenBy === null ? undefined : { over: String(state.quickLaunchErrorShortenBy) })}
-          </p>
-        ) : null}
-        <ComposerBar className={`quick-launch-bar${conversationRow ? " is-conversation" : ""}`} ref={barRef} inert={showStrip || undefined}>
+        <ComposerBar className="quick-launch-bar" ref={barRef} inert={showStrip || undefined}>
           {/* 멘션이 확정되면 런치 3종(theater/model/effort)은 접히고 행선지 태그가 그 자리를 잇는다 —
               한 입력의 행선지는 하나라는 사실을 바가 배타적으로 말한다. */}
           {/* inert는 접힘 전환(360ms) 동안에도 하위 컨트롤을 포커스 대상에서 즉시 제외한다 —
@@ -2081,11 +2009,7 @@ export function QuickLaunch() {
           ) : null}
           </span>
 
-          {conversationRow?.quickLaunch?.renderCapabilities ? (
-            <span className="quick-launch-capabilities">
-              <PluginErrorBoundary fallback={null}><PluginSlot render={conversationRow.quickLaunch.renderCapabilities} /></PluginErrorBoundary>
-            </span>
-          ) : conversationRow ? null : mentionTarget ? (
+          {mentionTarget ? (
             <span className="quick-launch-target-tag">
               <span className="quick-launch-target-dot" aria-hidden="true" />
               <button type="button" className="quick-launch-clear-target" aria-label={t("chrome.quickLaunch.clearMention")} onClick={clearMention}>×</button>
@@ -2101,7 +2025,7 @@ export function QuickLaunch() {
           ) : null}
 
           <span className="quick-launch-spacer" />
-          {conversationRow ? null : overLimit ? (
+          {overLimit ? (
             <span className="quick-launch-overflow" role="status">
               {t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })}
             </span>
@@ -2133,7 +2057,7 @@ export function QuickLaunch() {
           {dockSuppressed || showStrip ? null : (
             // 두 옵트인 토글은 한 무리다 — 전송과는 다른 종류(설정)라 간격으로 묶어 전송과 떨어뜨린다.
             <span className="quick-launch-bar-toggles">
-              {conversationRow ? null : <button
+              <button
                 type="button"
                 className="quick-launch-mention-focus"
                 aria-pressed={mentionFocused}
@@ -2142,7 +2066,7 @@ export function QuickLaunch() {
                 title={t(mentionFocused ? "chrome.quickLaunch.mentionFocusOff" : "chrome.quickLaunch.mentionFocusOn")}
               >
                 <MentionFocusIcon />
-              </button>}
+              </button>
               <button
                 type="button"
                 className="quick-launch-pin"

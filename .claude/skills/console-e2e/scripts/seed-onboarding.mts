@@ -1,5 +1,5 @@
 // Mark first-load onboarding as seen in an owned isolated Console before the first navigation, and optionally
-// lay down the deputy and Wiki fixtures a scenario needs.
+// lay down the Wiki fixture a scenario needs.
 //
 // Keys come from the current source, not a copied list: the core contributions, each built-in plugin's client
 // entry (read the way the Console's plugin registry reads it), the seen-store key rules, and the seen keys that
@@ -8,10 +8,9 @@
 //   pnpm --dir <worktree>/runtime/fleet-console exec tsx \
 //     <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts \
 //     --console-dir "$E2E_DIR/console" [--keep <key> ...] \
-//     [--deputy <id> ...] [--wiki <entry-id> --theater <theater-id> --theater-dir <path>] [--dry-run]
+//     [--wiki <entry-id> --theater <theater-id> --theater-dir <path>] [--dry-run]
 //
 // --keep leaves a key (or every key with that prefix, e.g. `objectives.`) unseeded, removing it if already stored, when that layer is under test.
-// --deputy turns on a scuttlebutt deputy and marks the deputy introduction as shown, through the plugin's settings route.
 // --wiki stages one Wiki entry through the product's wiki_ingest tool and approves it for the Theater registered from --theater-dir.
 // Only loopback writes go to the owned Console named by its lock; no token is read or printed.
 import { readdirSync, existsSync, readFileSync } from "node:fs";
@@ -33,7 +32,6 @@ const option = (name: string): string | undefined => {
 };
 const repeated = (name: string) => args.flatMap((arg, index) => (args[index - 1] === name ? [arg] : []));
 const keep = repeated("--keep");
-const deputies = repeated("--deputy");
 const consoleDir = option("--console-dir");
 const wikiId = option("--wiki");
 const theaterId = option("--theater");
@@ -77,12 +75,6 @@ for (const contribution of contributions) {
 const kept = (key: string) => keep.some((entry) => key === entry || (entry.endsWith(".") && key.startsWith(entry)));
 const keys = [...new Set(derived)].filter((key) => !kept(key));
 
-// Deputy ids come from the plugin's own settings shape, so a renamed or added deputy is refused or accepted as the product does.
-const { getScuttlebuttSettings } = await load(join(pluginsDir, "scuttlebutt/client/settings-store.ts"));
-const deputyIds = Object.keys(getScuttlebuttSettings().docked);
-const unknownDeputies = deputies.filter((id) => !deputyIds.includes(id));
-if (unknownDeputies.length > 0) throw new Error(`Unknown deputy: ${unknownDeputies.join(", ")} (known: ${deputyIds.join(", ")}).`);
-
 // A wrong --theater-dir would let the Wiki resolver migrate that folder's .fleet/knowledge and label it, so the folder
 // must hash to the registered Theater id (the id rule in features/workspace/host/theaters/theater-domain.ts) before
 // anything is written.
@@ -96,7 +88,6 @@ if (wikiId) {
 if (dryRun) {
   console.log(JSON.stringify({
     keys, kept: derived.filter(kept),
-    deputies: { requested: deputies, known: deputyIds },
     wiki: wikiId ? { entry: wikiId, theater: theaterId } : null,
   }, null, 2));
   process.exit(0);
@@ -127,18 +118,6 @@ const missing = keys.filter((key) => !stored.includes(key));
 if (missing.length > 0) throw new Error(`Settings did not keep: ${missing.join(", ")} (the field is bounded; check its limit).`);
 const lingering = stored.filter(kept);
 if (lingering.length > 0) throw new Error(`Settings still mark kept keys as seen: ${lingering.join(", ")}.`);
-
-// The deputy document is written whole, as the plugin's own settings store writes it; unrelated fields survive.
-let deputy: Record<string, unknown> | null = null;
-if (deputies.length > 0) {
-  const settingsPath = "/api/v1/settings/plugins/scuttlebutt";
-  const { value } = await getJson<{ value: Record<string, unknown> | null }>(settingsPath);
-  const patch = Object.fromEntries(deputies.map((id) => [id, true]));
-  await send("PUT", settingsPath, { ...value, ...patch, introduced: true });
-  deputy = (await getJson<{ value: Record<string, unknown> | null }>(settingsPath)).value;
-  const off = [...deputies, "introduced"].filter((field) => deputy?.[field] !== true);
-  if (off.length > 0) throw new Error(`Deputy settings did not keep: ${off.join(", ")}.`);
-}
 
 // Wiki entries are written only through the approval queue. The fixture stages one with the product's wiki_ingest
 // tool and approves it programmatically, as Cowork's final Apply does, in the knowledge root that Codex resolves
@@ -188,6 +167,5 @@ if (wikiId) {
 
 console.log(JSON.stringify({
   origin, seeded: keys, kept: derived.filter(kept),
-  deputy: deputy ? Object.fromEntries([...deputies, "introduced"].map((field) => [field, deputy![field]])) : null,
   wiki,
 }, null, 2));

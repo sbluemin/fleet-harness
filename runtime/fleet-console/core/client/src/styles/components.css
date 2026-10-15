@@ -11272,8 +11272,8 @@ body[data-codex-side="true"] .command-card {
   text-align: right;
 }
 
-/* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px, 부관 크기가
-   24px 버튼을 따로 가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 슬라이더 입력과 같은 28px 높이. */
+/* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px 버튼을 따로
+   가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 슬라이더 입력과 같은 28px 높이. */
 .fc-settings-reset {
   flex: none;
   height: 28px;
@@ -13395,54 +13395,6 @@ body[data-expanded-surface-resizing="true"] {
   pointer-events: none;
 }
 
-/* 플러그인 레인: 정체색은 선택 밑줄만 맡고, 초점·호버는 brass 계약을 유지한다.
-   [doctrine] 플러그인 인물의 정체색 밑줄은 이 행선지 표면의 의도된 예외다. */
-.quick-launch-lanes {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3) 0;
-  border-bottom: 1px solid var(--surface-rim);
-  flex-wrap: wrap;
-}
-.quick-launch-lanes[hidden], .quick-launch-conversation[hidden] { display: none; }
-.quick-launch-lane {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 36px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--t-sm);
-  cursor: pointer;
-}
-.quick-launch-lane.is-selected {
-  border-bottom-color: var(--quick-launch-lane-identity, var(--brass));
-  color: var(--text-primary);
-}
-.quick-launch-lane:hover { background: var(--brass-glow); }
-.quick-launch-lane:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.quick-launch-lane-mark { display: grid; width: 20px; height: 20px; place-items: center; }
-.quick-launch-lane-mark svg { width: 100%; height: 100%; }
-.quick-launch-lane-divider { height: 16px; border-inline-start: 1px solid var(--surface-rim-strong); }
-.quick-launch-lane-hint { margin-inline-start: auto; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.quick-launch-lane-hint kbd { font-family: var(--font-ui); }
-.quick-launch-feedback { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.55; overflow-wrap: anywhere; flex-shrink: 0; }
-.quick-launch-capabilities { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
-:root[data-view-mode="mobile"] .quick-launch-lane-hint { display: none; }
-@media (max-width: 767px), (pointer: coarse) {
-  .quick-launch-lane-hint { display: none; }
-}
-.quick-launch-conversation { min-height: 0; border-bottom: 1px solid var(--surface-rim); }
-.quick-launch-conversation:has([aria-live="polite"][hidden]) { border-bottom: 0; }
-.quick-launch-card.has-conversation { display: flex; flex-direction: column; max-height: calc(100dvh - var(--space-5) * 2); }
-.quick-launch-card.has-conversation > .quick-launch-field,
-.quick-launch-card.has-conversation > .quick-launch-bar,
-.quick-launch-card.has-conversation > .quick-launch-lanes { flex-shrink: 0; }
 .quick-launch-clear-target { border: 0; padding: 0 var(--space-1); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
 .quick-launch-clear-target:focus-visible { outline: 2px solid var(--brass); }
 
@@ -14525,14 +14477,7 @@ body[data-expanded-surface-resizing="true"] {
   border-top: 1px solid var(--surface-rim);
 }
 
-/* 대화 레인의 바는 권한과 전송만 담는다. 한 줄 예산과 불투명 언더레이를 독립적으로 지켜,
-   긴 대화·안내가 있어도 배경 문구나 오류 텍스트가 컨트롤 사이로 비치지 않는다. */
-.quick-launch-bar.is-conversation {
-  flex-wrap: nowrap;
-  background: var(--popover-face);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-}
-.quick-launch-bar.is-conversation .quick-launch-spacer { display: none; }
+.quick-launch-spacer { display: none; }
 .quick-launch-bar.is-conversation .quick-launch-bar-toggles { margin-inline-start: auto; }
 .quick-launch-bar.is-conversation .quick-launch-submit { margin-inline-start: auto; }
 .quick-launch-bar.is-conversation .quick-launch-bar-toggles + .quick-launch-submit { margin-inline-start: 0; }
@@ -14778,7 +14723,6 @@ body[data-expanded-surface-resizing="true"] {
   /* 한 줄 계약을 푼다 — 이 폭에서는 말줄임으로도 예산이 안 나와, 선택 줄이 한 줄을 통째로 갖고
      전송이 아래 줄로 내려가는 것이 설계다. */
   .quick-launch-bar,
-  .quick-launch-bar.is-conversation,
   .quick-launch-launch-sel {
     flex-wrap: wrap;
   }
@@ -15204,7 +15148,7 @@ body[data-expanded-surface-resizing="true"] {
   overflow-wrap: anywhere;
 }
 
-/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과·부관 크기)과 AI Gateway 압축
+/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과)과 AI Gateway 압축
    시점이 같은 손잡이를 쓴다. 채움 끝 위치는 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가
    따로 소유한다. 두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다.
    Doctrine: 손잡이는 추론 강도 트랙(.effort-track-knob)과 같은 계기 면이다 — --gauge-face 20px 원형에
@@ -15335,7 +15279,7 @@ body[data-expanded-surface-resizing="true"] {
 
 /* ── Live line · History band (sdk/components) ───────────────────────────────
    도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
-   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크·부관이 같은 줄을 쓴다.
+   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크가 같은 줄을 쓴다.
    링은 진행(신호), 물결은 명도(--live-sweep-*), 잉크는 3티어 텍스트 — 어느 채널도 겹치지 않는다. */
 .fc-live-line {
   display: flex;

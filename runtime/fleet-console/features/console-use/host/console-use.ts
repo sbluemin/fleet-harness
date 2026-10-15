@@ -262,16 +262,15 @@ async function holdConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx, tool: str
   return denyConsoleUse(deps, ctx);
 }
 
-function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null, allowControl: boolean, pluginId: string | undefined, budget: (ctx: AgentToolCtx, key: string, max: number) => boolean, readActions: () => Readonly<ConsoleUseActions>): ConsoleUseToolEntry[] {
+function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot | null, allowControl: boolean, budget: (ctx: AgentToolCtx, key: string, max: number) => boolean, readActions: () => Readonly<ConsoleUseActions>): ConsoleUseToolEntry[] {
   if (!deps.theaters || !deps.operations) return [];
   const theaters = deps.theaters;
   const operations = deps.operations;
   const resolveOperation = (id: string) => deps.resolveOperation?.(id) ?? operations().find((op) => op.id === id) ?? null;
   const control = deps.control;
   const caller = (ctx: AgentToolCtx): ConsoleCaller | null => {
-    // 플러그인 소유자는 호스트가 바인딩한다. 모델 인자·브라우저 초점·토큰 라벨로 가장하지 않는다.
+    // 호출자는 세션 라벨이 묶은 Operation 이다. 모델 인자·브라우저 초점으로 가장하지 않는다.
     if (!allowControl) return null;
-    if (pluginId) return { kind: "plugin", pluginId };
     const label = ctx.sessionLabel ?? "";
     const id = label.startsWith("chat:") ? label.slice(5) : label;
     return resolveOperation(id) ? { kind: "operation", operationId: id } : null;
@@ -625,7 +624,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
 }
 
 /** 각 연결은 자체 MCP endpoint·토큰·도구 바인딩을 소유한다. 플러그인 도구는 등록하지 않는다. */
-export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost & { forPlugin(pluginId: string): ConsoleUseMcpHost; activate(actions: Readonly<ConsoleUseActions>): void; dispose(): Promise<void> } {
+export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost & { forPlugin(pluginId: string): { contribute(tools: readonly PluginMcpTool[]): () => void }; activate(actions: Readonly<ConsoleUseActions>): void; dispose(): Promise<void> } {
   let activated = false;
   let actions = Object.freeze({ ...deps.surface });
   const connections = new Set<ConsoleUseMcpConnection>();
@@ -634,17 +633,16 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
   // 플러그인이 실은 도구. 연결마다 호스트 기본 도구와 같은 래퍼(게이트·세션·중단)로 등록된다.
   const contributed = new Map<string, { readonly pluginId: string; readonly tool: PluginMcpTool }>();
   const registrars = new Set<(entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => void>();
-  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }, callerPluginId: string | undefined): ConsoleUseToolEntry => ({
+  const contributedSpec = ({ pluginId, tool }: { readonly pluginId: string; readonly tool: PluginMcpTool }): ConsoleUseToolEntry => ({
     // 등록 검사가 actionSchema 를 요구하므로 여기서는 늘 있다.
     id: tool.name, schema: tool.actionSchema!,
     execute: async (args, ctx) => {
       // 등록이 해제된 기여는 이미 실린 레지스트리에서도 답하지 않는다 — 플러그인 등록 롤백 뒤 도구가 살아남지 않게.
       if (contributed.get(tool.name)?.tool !== tool) return { ...text({ error: "plugin_tool_unavailable", plugin: pluginId, retryable: false }), isError: true };
-      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 플러그인 소유 연결(부관)은 연결이 묶은
-      // 플러그인이 호출자이고, Operation 연결은 세션 라벨로 푼다 — 핵심 도구의 caller() 와 같은 규칙.
+      // 기여 도구도 제스처를 낸다 — 그 플러그인의 레일 패널이 자리다. 호출자는 세션 라벨로 푼다 — 핵심 도구의 caller() 와 같은 규칙.
       const label = ctx.sessionLabel ?? "";
       const labelId = label.startsWith("chat:") ? label.slice(5) : label;
-      const callerId: ConsoleCaller | null = callerPluginId ? { kind: "plugin", pluginId: callerPluginId } : deps.operations?.().some((op) => op.id === labelId) ? { kind: "operation", operationId: labelId } : null;
+      const callerId: ConsoleCaller | null = deps.operations?.().some((op) => op.id === labelId) ? { kind: "operation", operationId: labelId } : null;
       const described = tool.surface ? tool.surface.describe(args as Record<string, unknown>) : null;
       // 기본은 레일 패널을 감싸는 시선. 자기 제품 상태를 쓰는 도구는 describe 로 제스처·자리를 대신 말한다.
       // 자리를 대신 말해도 레일 아이콘 표식은 남는다 — panelId 가 함께 실린다. 묶음 줄 id 는 클라이언트 묶음 목록처럼 `<pluginId>:` 로 맞추고,
@@ -665,11 +663,11 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       }
     },
   });
-  const connect = (options: Parameters<ConsoleUseMcpHost["connect"]>[0], pluginId?: string): ConsoleUseMcpConnection => {
+  const connect = (options: Parameters<ConsoleUseMcpHost["connect"]>[0]): ConsoleUseMcpConnection => {
       if (disposed) throw new Error("Console MCP host is disposed");
       const requested = new Set<string>(options.tools ?? CONSOLE_USE_TOOLS);
       // 읽기 전용은 도구 목록이 아니라 action 필터다 — 연결의 권한과 호출자 종류로 광고·검증할 action 을 함께 거른다.
-      const filter: ConsoleToolFilter = { control: options.allowControl === true, caller: pluginId ? "plugin" : "operation" };
+      const filter: ConsoleToolFilter = { control: options.allowControl === true, caller: "operation" };
       // 세션 단위 예산 — reveal 은 1회. 세션이 닫히면(턴 종료·유휴·권한 철회) 함께 비워진다.
       const budgets = new Map<string, Map<string, number>>();
       const budget = (ctx: AgentToolCtx, key: string, max: number) => {
@@ -681,7 +679,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
         counts.set(key, used + 1);
         return true;
       };
-      const entries = consoleSpecs(deps, options.snapshot ?? (() => null), options.allowControl === true, pluginId, budget, () => actions).filter((entry) => requested.has(entry.id));
+      const entries = consoleSpecs(deps, options.snapshot ?? (() => null), options.allowControl === true, budget, () => actions).filter((entry) => requested.has(entry.id));
       if (!entries.length || entries.length !== requested.size) throw new Error("Unavailable Console MCP tools");
       const registry = createMcpToolRegistry();
       const snapshotStore = createMcpToolSnapshotStore();
@@ -777,7 +775,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       if (!parsers.size) throw new Error("Unavailable Console MCP tools");
       const registerContributed = (entry: { readonly pluginId: string; readonly tool: PluginMcpTool }) => {
         if (closed || parsers.has(entry.tool.name)) return;
-        registerEntry(contributedSpec(entry, pluginId));
+        registerEntry(contributedSpec(entry));
       };
       for (const entry of contributed.values()) registerContributed(entry);
       registrars.add(registerContributed);
@@ -857,7 +855,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       activated = true;
     },
     connect: (options) => connect(options),
-    forPlugin: (pluginId) => ({ connect: (options) => connect(options, pluginId), contribute: (tools) => contribute(pluginId, tools) }),
+    forPlugin: (pluginId) => ({ contribute: (tools) => contribute(pluginId, tools) }),
     // 턴이 끝난 호출자의 세션을 모든 연결에서 닫는다 — 하위 Operation 은 그대로, 표식만 턴과 함께.
     endOperationUse: (operationId) => { for (const end of operationEnders) end(operationId); },
     async dispose() {

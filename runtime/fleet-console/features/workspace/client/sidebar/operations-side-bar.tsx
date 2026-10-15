@@ -78,7 +78,6 @@ interface OperationsSideBarProps {
    * 중심 화면에는 「더블클릭으로 열기」 선호가 없다(누르면 그 대화로 간다).
    */
   readonly topStripVariant?: "compact";
-  readonly topAccessory?: ReactNode;
   /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
   readonly bottomAccessory?: ReactNode;
   readonly archiveInBottomAccessory?: boolean;
@@ -373,7 +372,6 @@ export function OperationsSideBar({
   widthCap,
   topStripTrailing,
   topStripVariant,
-  topAccessory,
   bottomAccessory,
   archiveInBottomAccessory = false,
 }: OperationsSideBarProps) {
@@ -1146,7 +1144,6 @@ export function OperationsSideBar({
         <SideBarCollapseControl />
       </div>
       )}
-      {topAccessory}
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>

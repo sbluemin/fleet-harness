@@ -105,9 +105,8 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 - When the claim concerns onboarding, a tour, or a hint, do not seed or dismiss the layer under test: pass `--keep <key>` (or a prefix ending in `.`, such as `objectives.`) for it, which also clears that key on a reused slot, and install diagnostics before the first navigation so its appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded onboarding layer before acting.
 
-The same run can lay down two common fixtures, each opt-in and read back before the script reports success:
+The same run can lay down a Wiki fixture, opt-in and read back before the script reports success:
 
-- `--deputy <tori|bori|dori>` (repeatable) turns that scuttlebutt deputy on and marks its introduction as shown through `PUT /api/v1/settings/plugins/scuttlebutt`, so the deputy appears without the intro bubble. The script takes the deputy ids from the plugin's settings store. Deputy conversations are not seeded: the plugin keeps no conversation history, so a scenario that needs one needs a live gateway turn.
 - `--wiki <entry-id> --theater <theater-id> --theater-dir <folder>` stages one entry with the product's `wiki_ingest` tool and approves it in the knowledge root that Codex resolves for that Theater. Entry writes otherwise go only through the approval queue. The script then reads the entry back through the Theater's `/console/codex/w/<theater-id>/api/entry/<entry-id>` route. Register the Theater first from a [throwaway Theater folder](#isolate-the-console), and pass that folder. The script refuses before any write when the folder does not hash to the Theater id, because the Wiki resolver would otherwise migrate and label another folder's `.fleet/knowledge`. An id that starts with a Wiki template prefix (such as `prd-`) must satisfy that template, so use a neutral id such as `e2e-fixture`. A rerun on the same slot keeps the existing entry.
 
 ### No-cost fake Claude

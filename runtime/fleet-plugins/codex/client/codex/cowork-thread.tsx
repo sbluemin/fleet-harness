@@ -209,7 +209,7 @@ function TurnView({ turn, last, state }: { readonly turn: CoworkTurn; readonly l
           <span className="cowork-dispatch-text">{turn.instruction}</span>
         </div>
         {/* 도는 동안은 Live line 한 줄뿐이다 — 지금 도는 도구와 스텝 수·경과가 제자리에서 갱신되고,
-            과정 전체는 끝난 뒤 접힘을 펼쳐야 나온다(채팅뷰·부관과 같은 문법). */}
+            과정 전체는 끝난 뒤 접힘을 펼쳐야 나온다(채팅뷰와 같은 문법). */}
         {working ? (
           <LiveLine
             label={liveLabel}

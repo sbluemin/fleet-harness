@@ -6,7 +6,6 @@ import type { AgentEvent } from "@fleet-console/sdk/agent";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true }); });
-const consoleUse = { connect: () => { throw new Error("unexpected Console read access"); } };
 
 function sdk(startTurn: (turn: ClaudeGatewayTurn) => Promise<unknown>) { return { startTurn: vi.fn(startTurn), dispose: vi.fn(async () => undefined) } as unknown as ClaudeGatewaySdk; }
 function run(messages: readonly ClaudeGatewayMessage[]) { return { close() {}, getContextUsage: async () => null, async *[Symbol.asyncIterator]() { yield* messages; } }; }
@@ -24,18 +23,15 @@ describe("Console-owned plugin Agent", () => {
       { type: "assistant", message: { content: [], usage: { input_tokens: 4_000 } } },
       { type: "result", is_error: false, usage: { input_tokens: 94_010, output_tokens: 5 } },
     ]); });
-    const connection = { embeddedServer: { type: "sdk", name: "fleet-console-use", instance: {} }, dispose: vi.fn(async () => undefined) };
-    const connect = vi.fn(() => connection as never);
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", consoleUse: { connect }, resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { root = sdkOptions.tempRoot!; executable = sdkOptions.executablePath; autoCompactWindow = sdkOptions.autoCompactWindow; roots.push(root); return engine; } });
-    const session = await host.createSession({ ...options, compactAt: 150_000, tools: { consoleUse: { tools: ["console_launcher"], allowControl: true }, builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1/api/v1/ai-gateway", resolveExecutablePath: async () => "/installed/claude", createSdk: async (sdkOptions) => { root = sdkOptions.tempRoot!; executable = sdkOptions.executablePath; autoCompactWindow = sdkOptions.autoCompactWindow; roots.push(root); return engine; } });
+    const session = await host.createSession({ ...options, compactAt: 150_000, tools: { builtins: ["WebFetch"], custom: [{ name: "draft", tools: [{ name: "read", description: "Read only this draft", inputSchema: { type: "object", properties: {}, additionalProperties: false }, execute: async () => ({ content: [{ type: "text", text: "draft" }] }) }] }] }, onEvent: event => events.push(event) });
     await session.send("one");
     const imageInput = [{ type: "text" as const, text: "two" }, { type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data: "iVBORw0KGgo=" } }];
     await session.send(imageInput);
     expect(turns[1]!.prompt).toEqual(imageInput);
     await expect(session.send([{ type: "image", source: { type: "url", url: "file:///private" } }] as never)).rejects.toThrow("Message required");
-    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read", "mcp__fleet-console-use__console_launcher"], permissionMode: "dontAsk" });
-    expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft", "fleet-console-use"]);
-    expect(connect).toHaveBeenCalledWith({ tools: ["console_launcher"], allowControl: true, enabled: expect.any(Function) });
+    expect(turns[0]).toMatchObject({ tools: ["WebFetch"], allowedTools: ["WebFetch", "mcp__draft__read"], permissionMode: "dontAsk" });
+    expect(Object.keys(turns[0]!.mcpServers!)).toEqual(["draft"]);
     expect(turns[1]!.resume).toBe("private-child");
     expect(turns[0]!.cwd).toBe(root);
     expect(turns[1]!.cwd).toBe(root);
@@ -58,7 +54,7 @@ describe("Console-owned plugin Agent", () => {
       { type: "result", is_error: false, usage: { input_tokens: 100_000, output_tokens: 5 } },
     ]));
     let gatewayWindow: number | undefined = -1;
-    const gatewayHost = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: async (sdkOptions) => { roots.push(sdkOptions.tempRoot!); gatewayWindow = sdkOptions.autoCompactWindow; return gatewayEngine; } });
+    const gatewayHost = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", createSdk: async (sdkOptions) => { roots.push(sdkOptions.tempRoot!); gatewayWindow = sdkOptions.autoCompactWindow; return gatewayEngine; } });
     const gatewaySession = await gatewayHost.createSession({ ...options, model: "codex--gpt-6-luna", compactAt: 204_000, onEvent: event => gatewayEvents.push(event) });
     await gatewaySession.send("one");
     expect(gatewayWindow).toBeUndefined();
@@ -67,7 +63,6 @@ describe("Console-owned plugin Agent", () => {
     await gatewayHost.dispose();
 
     await host.dispose(); await session.dispose();
-    expect(connection.dispose).toHaveBeenCalledOnce();
     await expect(fs.stat(root)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(host.createSession(options)).rejects.toThrow("agent_host_disposed");
   });
@@ -77,7 +72,7 @@ describe("Console-owned plugin Agent", () => {
     const entered = new Promise<void>(r => { started = r; }); let release!: () => void;
     const held = new Promise<void>(r => { release = r; }); let calls = 0;
     const engine = sdk(async () => ++calls === 1 ? { close: release, getContextUsage: async () => null, async *[Symbol.asyncIterator]() { started(); await held; yield { type: "result", is_error: false }; } } : run([{ type: "result", is_error: false }]));
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: async ({ tempRoot }) => { root = tempRoot!; roots.push(root); return engine; } });
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", createSdk: async ({ tempRoot }) => { root = tempRoot!; roots.push(root); return engine; } });
     const session = await host.createSession({ ...options, onEvent: event => events.push(event) });
     const first = session.send("one"); await entered; session.cancel(); await first;
     expect(events).toEqual([{ kind: "cancelled" }]);
@@ -86,12 +81,12 @@ describe("Console-owned plugin Agent", () => {
   });
 
   it("rejects unavailable gateways and rolls back SDK creation racing host disposal", async () => {
-    let root!: string; const unavailable = createPluginAgentHost({ baseUrl: () => null, consoleUse });
+    let root!: string; const unavailable = createPluginAgentHost({ baseUrl: () => null });
     await expect(unavailable.createSession(options)).rejects.toThrow("agent_gateway_unavailable");
     let release!: (value: ClaudeGatewaySdk) => void; let entered!: () => void;
     const started = new Promise<void>(r => { entered = r; }); const gate = new Promise<ClaudeGatewaySdk>(r => { release = r; });
     const engine = sdk(async () => run([]));
-    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, createSdk: ({ tempRoot }) => { root = tempRoot!; roots.push(root); entered(); return gate; } });
+    const host = createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", createSdk: ({ tempRoot }) => { root = tempRoot!; roots.push(root); entered(); return gate; } });
     const creating = host.createSession(options); const rejected = expect(creating).rejects.toThrow("disposed");
     await started; const disposing = host.dispose(); release(engine); await rejected; await disposing;
     expect(engine.dispose).toHaveBeenCalledOnce(); await expect(fs.stat(root)).rejects.toMatchObject({ code: "ENOENT" });
