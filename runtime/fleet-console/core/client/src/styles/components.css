@@ -14835,11 +14835,6 @@ body[data-expanded-surface-resizing="true"] {
   border-top: 1px solid var(--surface-rim);
 }
 
-.quick-launch-spacer { display: none; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-submit { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles + .quick-launch-submit { margin-inline-start: 0; }
-
 .quick-launch-spacer {
   flex: 1;
   min-width: var(--space-2);
