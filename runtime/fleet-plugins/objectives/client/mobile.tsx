@@ -134,7 +134,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   const t = getT(locale);
   const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
   const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
-    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log") })),
+    ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", theaterId) })),
     ...pending.map((objective) => ({
       id: objective.id,
       title: objective.title,

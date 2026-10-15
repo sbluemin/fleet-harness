@@ -110,7 +110,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   subscribe: subscribeCommodore,
   render: (context) => <CommodoreInboxSection context={context} />,
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
-  onLeaveDesktop: ({ pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log"),
+  onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
   // 사령관에게는 목표가 없다 — 이 섹션을 열 때 열려 있던 목표 패널을 남기지 않는다. 도구 줄은 가운데 대화 머리의 공통 도구모음이
