@@ -527,10 +527,11 @@ export function discardCommodoreAttachment(id: string): Promise<void> {
   return discardComposerAttachment(id, (path, init) => installed!.api.fetch(null, path, init));
 }
 
-export async function messageCommodore(theaterId: string, text: string, attachmentIds?: readonly string[]): Promise<void> {
+/** `references` — 본문 속 지휘관 참조의 목표 id(본문의 표식 글자 순서). 서버가 짝·Theater·실재를 검증한다. */
+export async function messageCommodore(theaterId: string, text: string, attachmentIds?: readonly string[], references?: readonly string[]): Promise<void> {
   const client = api();
   if (!client) throw new Error("not_installed");
-  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text, ...(attachmentIds?.length ? { attachmentIds } : {}) }));
+  const result = await post<{ readonly entry?: CommodoreTranscriptEntry }>(client, "/commodore/message", withLanguage({ theaterId, text, ...(attachmentIds?.length ? { attachmentIds } : {}), ...(references?.length ? { references } : {}) }));
   const entry = result?.entry;
   const current = theaters.get(theaterId);
   if (entry && current?.transcriptLoaded && !current.entries.some((candidate) => candidate.seq === entry.seq)) {

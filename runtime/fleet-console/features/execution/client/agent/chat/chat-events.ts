@@ -6,6 +6,7 @@
  * tests/agent-chat-events.test.ts가 못 박는다.
  */
 
+import type { ConversationReference } from "@fleet-console/sdk/conversation";
 import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
 
 /** 쓰기 계열 도구가 남긴 파일 변경 — 서버가 도구 입력에서 접어 보낸다. */
@@ -132,9 +133,10 @@ export type AgentChatStreamEvent =
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   /** `undelivered`는 플러그인 기록(SDK 채팅 기록)만 싣는다 — 세션에 닿지 못한 사람의 말. 서버 스트림은 싣지 않는다. */
-  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true }
+  /** `references`도 플러그인 기록만 싣는다 — 사람이 문면 속에 둔 참조(SDK `ConversationReference`). */
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true }
   /** 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 그 턴 안에 선다. */
-  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin }
   /**
    * 다른 세션이 이 세션에 보낸 메시지. 서버가 보낸 쪽의 성공한 도구 호출을 관측해 확정한다 —
    * `from`은 서버가 확정한 보낸 세션 이름, `text`는 서버가 가리고 자른 본문이다. `id`는 중복 없는 좌표다.
@@ -707,6 +709,8 @@ export interface AgentChatTurnItem {
   readonly format?: "markdown";
   /** type="inject"가 함께 나른 이미지의 미리보기 좌표. */
   readonly attachments?: readonly AgentChatAttachment[];
+  /** type="inject" 문면 속 참조 — 평문 본문의 그 자리에 토큰이 선다. */
+  readonly references?: readonly ConversationReference[];
   /** type="inject"를 보낸 저자 — 사람이 아니면 실린다. */
   readonly by?: AgentChatOrigin;
   /** type="received"를 보낸 세션 이름 — 서버가 확정한 값이다. */
@@ -724,7 +728,7 @@ export interface AgentChatCompact {
 }
 
 export interface AgentChatTurn {
-  readonly dispatch: { readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true } | null;
+  readonly dispatch: { readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly AgentChatAttachment[]; readonly at?: number; readonly by?: AgentChatOrigin; readonly undelivered?: true } | null;
   readonly items: readonly AgentChatTurnItem[];
   /**
    * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
@@ -1077,7 +1081,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
     }
     case "dispatch": {
       const turn: AgentChatTurn = {
-        dispatch: { text: event.text, ...(event.format ? { format: event.format } : {}), ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}), ...(event.undelivered ? { undelivered: true as const } : {}) },
+        dispatch: { text: event.text, ...(event.format ? { format: event.format } : {}), ...(event.references?.length ? { references: event.references } : {}), ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}), ...(event.at !== undefined ? { at: event.at } : {}), ...(event.by ? { by: event.by } : {}), ...(event.undelivered ? { undelivered: true as const } : {}) },
         items: [],
         // synthetic replay에서는 저널의 live dispatch 뒤에 같은 턴의 turn-start가 따라온다. 여기서
         // 미리 done으로 닫으면 그 start가 별도 턴을 만들므로, replay-end나 다음 dispatch가 닫게 둔다.
@@ -1094,6 +1098,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         type: "inject",
         text: event.text,
         ...(event.format ? { format: event.format } : {}),
+        ...(event.references?.length ? { references: event.references } : {}),
         ...(event.attachments && event.attachments.length > 0 ? { attachments: event.attachments } : {}),
         ...(event.by ? { by: event.by } : {}),
         ...(event.at !== undefined ? { at: event.at } : {}),

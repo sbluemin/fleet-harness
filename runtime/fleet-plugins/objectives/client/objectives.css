@@ -1421,6 +1421,47 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer-idle { max-width: 880px; margin-top: 6px; }
 .objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
+/*
+ * 지휘관 참조('@') — 본문 속 원자 토큰과 그 목록(목표 8d9a400b 시안 A). 입력은 contenteditable 이라 textarea 의 자리표·자동 높이를
+ * 직접 세운다: 자리표는 ::before(높이 0으로 띄워 커서를 밀지 않는다), 높이는 내용만큼 자라고 각 입력의 max-height 에서 스크롤한다.
+ * 토큰은 문장 안의 낮은 면이다 — 테두리는 헤어라인, 색은 중립. 목록은 그룹 대화 '@' 목록(.group-composer-pop)과 같은 문법이고,
+ * 고른 행은 배경 워시로만 말한다(왼쪽 띠를 두지 않는다). 결정 요청·검토 대기만 신호 잉크다.
+ */
+.objectives-commodore-composer { position: relative; }
+.objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
+.objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
+.objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
+.objectives-commodore-ref {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+  margin: 0 1px; padding: 0 6px 0 3px; border-radius: 5px;
+  background: var(--control-wash); box-shadow: inset 0 0 0 1px var(--hairline-strong);
+  color: var(--text-primary); font-size: 0.93em; line-height: 1.5; vertical-align: baseline; white-space: nowrap;
+  user-select: all; cursor: default;
+}
+.objectives-commodore-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.objectives-commodore-ref-mark { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; }
+.objectives-commodore-ref-mark .objectives-avatar { width: 14px; height: 14px; }
+.objectives-commodore-composer-menu-at { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--text-secondary); font-weight: var(--weight-bold); }
+.objectives-commodore-composer-menu-key { margin-left: auto; padding: 0 5px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: 16px; }
+.objectives-commodore-ref-list {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 5;
+  display: flex; flex-direction: column; gap: 1px; max-height: 300px; overflow-y: auto;
+  padding: var(--space-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md);
+  background: var(--surface-panel); box-shadow: var(--shadow-floating); cursor: default;
+}
+.objectives-commodore-ref-heading { margin: 0; padding: var(--space-2) var(--space-2) 2px; font-size: var(--t-2xs); font-weight: var(--weight-bold); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.objectives-commodore-ref-row { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: 7px var(--space-2); border-radius: var(--radius-xs); color: var(--text-primary); font-size: var(--t-sm); cursor: pointer; }
+.objectives-commodore-ref-row[aria-selected="true"] { background: var(--control-wash-hover); }
+.objectives-commodore-ref-row[aria-disabled="true"] { cursor: default; }
+.objectives-commodore-ref-row[aria-disabled="true"] .objectives-commodore-ref-name { color: var(--text-tertiary); }
+.objectives-commodore-ref-row .objectives-avatar { flex: none; }
+.objectives-commodore-ref-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.objectives-commodore-ref-sub { flex: none; display: inline-flex; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.objectives-commodore-ref-sub .is-decision { color: var(--warn-ink); }
+.objectives-commodore-ref-sub .is-review { color: var(--aurora-ink); }
+.objectives-commodore-ref-note { margin: 0; padding: 6px var(--space-2); color: var(--warn-ink); font-size: var(--t-xs); }
+.objectives-commodore-ref-empty { margin: 0; padding: 10px var(--space-2); color: var(--text-tertiary); font-size: var(--t-xs); }
+
 /* 문맥 원호 — 채팅 컴포저의 16px 글리프. 채움은 상태 잉크, 호버는 brass. */
 .objectives-commodore-ctx { position: relative; display: inline-flex; flex: none; --commodore-ctx-ink: var(--ink-fog); }
 .objectives-commodore-ctx.is-warn { --commodore-ctx-ink: var(--warn); }

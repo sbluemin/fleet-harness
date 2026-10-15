@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from "react-dom";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
-import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerSubmitButton, SyncedTextarea } from "@fleet-console/sdk/composer";
+import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerSubmitButton } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
@@ -12,6 +12,7 @@ import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextToke
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
+import { CommodoreReferenceInput, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-header.js";
@@ -48,6 +49,7 @@ import {
 } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";
+import { revealObjective } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -443,6 +445,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
   const blocks = useMemo(() => commodoreLogBlocks(t, entries, live, asks), [t, entries, live, asks]);
+  const references = useCommodoreReferenceHost(t, theaterId, openReferencedObjective);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
       const block = blocks[index];
@@ -520,13 +523,16 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
         return (
           <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
             {line}
-            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} />
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} />
           </div>
         );
       }) : null}
     </div>
   );
 }
+
+/** 기록 토큰이 여는 목표 — 보드 행위 줄·곁 칸의 목표 이름과 같은 착지(목표 패널의 그 목표)다. */
+export const openReferencedObjective = (objectiveId: string) => revealObjective({ objectiveId });
 
 /** 접힌 턴 한 줄. 채팅 작업 접힘과 같이 줄 끝의 ⌄가 열림을 말하고, 줄 자체가 버튼이다. */
 function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonly turn: CommodoreLogTurn; readonly open: boolean; readonly onToggle: () => void }) {
@@ -721,7 +727,10 @@ interface CommodoreDraftAttachment {
   readonly uploading: boolean;
 }
 interface CommodoreComposerDraft {
+  /** 본문 — 지휘관 참조 토큰 자리마다 표식 글자 하나(`commodore-reference-input.tsx`). */
   readonly text: string;
+  /** 본문 속 지휘관 참조 — 표식 글자가 나온 순서. */
+  readonly references: readonly CommodoreReference[];
   readonly textRevision: number;
   readonly attachments: readonly CommodoreDraftAttachment[];
   readonly sending: boolean;
@@ -731,7 +740,7 @@ interface CommodoreComposerDraft {
 /** 플러그인 내부 페이지 메모리 — Inbox 시트와 대화 화면은 Theater별 사령관 초안 하나를 읽는다. */
 const commodoreDrafts = new Map<string, ReturnType<typeof createCommodoreDraft>>();
 function createCommodoreDraft() {
-  let current: CommodoreComposerDraft = { text: "", textRevision: 0, attachments: [], sending: false, attachmentNotice: null };
+  let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, attachments: [], sending: false, attachmentNotice: null };
   const listeners = new Set<() => void>();
   return {
     read: () => current,
@@ -762,12 +771,13 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
 }
 function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear }: CommodoreComposerProps) {
   const draft = commodoreDraft(theaterId);
-  const { text, attachments, sending, attachmentNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
-  const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
+  const { text, references, attachments, sending, attachmentNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const value = useMemo(() => ({ text, references }), [text, references]);
+  const setValue = (next: { readonly text: string; readonly references: readonly CommodoreReference[] }) => draft.update({ text: next.text, references: next.references, textRevision: draft.read().textRevision + 1 });
   const setSending = (value: boolean) => draft.update({ sending: value });
   const setAttachmentNotice = (value: string | null) => draft.update({ attachmentNotice: value });
   const composing = useRef(false);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<CommodoreReferenceInputHandle | null>(null);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const clearKey = useReleasedKey();
   const mounted = useRef(false);
@@ -788,7 +798,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
       if (discard && item.id) void discardCommodoreAttachment(item.id).catch(() => {});
     }
     draft.update({
-      ...(current.textRevision === sent.textRevision ? { text: "" } : {}),
+      ...(current.textRevision === sent.textRevision ? { text: "", references: [] } : {}),
       attachments: current.attachments.filter((item) => !keys.has(item.key)),
     });
   };
@@ -799,7 +809,13 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); setMenuOpen(false); plusRef.current?.focus(); }
       else if (event.key === "Tab") setMenuOpen(false);
-      else if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") { event.preventDefault(); menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus(); }
+      else if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+        const at = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : at < 0 ? 0 : (at + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length;
+        items[next]?.focus();
+      }
     };
     document.addEventListener("pointerdown", pointer); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); };
@@ -835,7 +851,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
   const isClear = text.trim() === "/clear";
   const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
   const send = () => {
-    const value = text.trim();
+    const message = text.trim();
     if (draft.read().sending || uploading || clear.busy) return;
     const sent = draft.read();
     if (isClear) {
@@ -843,11 +859,11 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
       void clear.request().then((cleared) => { if (cleared) finishSentDraft(sent, true); }).finally(() => setSending(false));
       return;
     }
-    if (!active || !value) return;
+    if (!active || !message) return;
     onClear(); setAttachmentNotice(null); setMenuOpen(false);
     setSending(true);
     const ids = sent.attachments.flatMap((item) => item.id ? [item.id] : []);
-    void messageCommodore(theaterId, value, ids).then(() => finishSentDraft(sent, false)).catch((error) => {
+    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sent, false)).catch((error) => {
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(t("objectives.commodore.composer.attachBudget"));
       else if (mounted.current) onFail(error);
     }).finally(() => { setSending(false); if (mounted.current) inputRef.current?.focus({ preventScroll: true }); });
@@ -864,26 +880,28 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
         {menuOpen ? <div ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" role="menu" aria-label={t("objectives.commodore.composer.more")}>
           <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}><AttachImageIcon />{t("objectives.commodore.composer.attachImage")}</button>
+          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); inputRef.current?.openReferences(); }}><span className="objectives-commodore-composer-menu-at" aria-hidden="true">@</span>{t("objectives.commodore.reference.menu")}<kbd className="objectives-commodore-composer-menu-key" aria-hidden="true">@</kbd></button>
         </div> : null}
         <button ref={plusRef} type="button" className="objectives-commodore-composer-plus" aria-label={t("objectives.commodore.composer.more")} title={t("objectives.commodore.composer.more")} aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!active || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
         </button>
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; inputRef.current?.focus(); }} />
       </div>
-      {/* 지휘관 대화 입력(그룹 대화 캡슐)과 같은 평범한 textarea 다 — 높이는 CSS(field-sizing)가 자라게 하고, 조합 중 글자마다
-          높이를 다시 쓰는 JS 자동 높이를 두지 않는다. 맞춤법 밑줄은 채팅·Quick Launch 입력처럼 끈다. */}
-      <SyncedTextarea
+      {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·Quick Launch
+          입력처럼 끈다. 한글 조합 중 Enter 는 보내지 않는다(조합 상태는 이 컴포저도 따로 센다). */}
+      <CommodoreReferenceInput
         ref={inputRef}
+        t={t}
+        theaterId={theaterId}
         className="objectives-commodore-composer-input"
-        spellCheck={false}
-        value={text}
+        value={value}
         disabled={clear.busy || sending}
-        onPaste={(event) => { const images = Array.from(event.clipboardData.files).filter(isComposerAttachmentCandidate); if (!images.length) return; event.preventDefault(); addFiles(images); }}
-        aria-describedby={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        rows={1}
+        onFiles={addFiles}
+        isFile={isComposerAttachmentCandidate}
+        ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         placeholder={t("objectives.commodore.composer.placeholder")}
-        aria-label={t("objectives.commodore.composer.aria")}
-        onChange={(event) => { setText(event.target.value); clear.disarm(); }}
+        ariaLabel={t("objectives.commodore.composer.aria")}
+        onChange={(next) => { setValue(next); clear.disarm(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
         onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}

@@ -6,6 +6,8 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
+import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
+
 export const COMMODORE_PROMPT_VERSION = 16;
 
 export type CommodoreLanguage = "en" | "ko";
@@ -140,4 +142,22 @@ export function replacementNote(summary: readonly string[]): string {
 /** 사람의 메시지 — 사령관 도구에 없는 유일한 입력이라 깨움 문장 뒤에 그대로 선다. 지시가 아니라 말이다. */
 export function messageNote(messages: readonly string[]): string {
   return ["The person's message to you (not a directive; the directive is in the tools):", ...messages.map((message) => `> ${message.replaceAll("\n", "\n> ")}`)].join("\n");
+}
+
+/**
+ * 사람의 메시지 한 건을 턴에 싣는 문면 — 그룹 대화의 '@사령관'이 가리킨 목표(`objective`)는 맥락 줄, 본문 속 지휘관 참조는 본문의 그
+ * 자리를 `[@n]` 으로 바꾸고 앞에 n·id·제목 블록을 세운다. 상태·임무 같은 나머지는 사령관이 보드 도구로 읽는다. 제목은 사람이·사령관이
+ * 쓴 글이라 JSON 문자열로 감싸 본문과 섞이지 않게 한다.
+ */
+export function messagePromptText(entry: { readonly text: string; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly { readonly id: string; readonly title: string }[] }): string {
+  const lines: string[] = [];
+  if (entry.objective) lines.push(`Objective context: ${JSON.stringify(entry.objective)}`);
+  const references = entry.references ?? [];
+  let body = entry.text;
+  if (references.length) {
+    lines.push("Objectives the person referenced inline as [@n] (read them with your board tools):", ...references.map((reference, index) => `[@${index + 1}] ${JSON.stringify({ id: reference.id, title: reference.title })}`));
+    let index = 0;
+    body = body.replaceAll(CONVERSATION_REFERENCE_MARK, () => (index < references.length ? `[@${++index}]` : ""));
+  } else body = body.replaceAll(CONVERSATION_REFERENCE_MARK, "");
+  return [...lines, body].join("\n");
 }

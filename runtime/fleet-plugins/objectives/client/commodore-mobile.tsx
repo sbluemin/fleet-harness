@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { ComposerInput } from "@fleet-console/sdk/composer";
+import { referencePlainText } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
@@ -13,6 +13,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
+import { CommodoreReferenceInput, EMPTY_REFERENCE_VALUE, useCommodoreReferenceHost, type CommodoreReferenceInputHandle, type CommodoreReferenceValue } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { focusAtEnd } from "./commodore-inbox-section.js";
 import {
@@ -258,6 +259,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const Transcript = commodoreTranscriptRenderer();
   const asks = view?.state.asks;
   const chat = useMemo(() => commodoreChatEntries(t, entries, live, asks), [t, entries, live, asks]);
+  const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
+  const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -300,7 +303,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
     body = (
       <>
         {hasMore ? <button type="button" data-press="r1" className="objectives-cm-tbtn is-center" disabled={loadingOlder} onClick={older}>{t("objectives.commodore.log.older")}</button> : null}
-        {Transcript ? <Transcript entries={chat} language={language} mobile /> : null}
+        {Transcript ? <Transcript entries={chat} language={language} mobile references={references} /> : null}
         {pending ? (
           <div className="objectives-cm-msg">
             <p className="objectives-cm-head"><b>{t("objectives.commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(pending.at)}</span><span>{t("objectives.commodore.mobile.sending")}</span></p>
@@ -334,38 +337,43 @@ function CommodoreMobileComposer({ t, theaterId, active, online, failure, onFail
   readonly onClear: () => void;
   readonly onPending: (pending: Pending | null) => void;
 }) {
-  const [text, setText] = useState("");
+  const [value, setValue] = useState<CommodoreReferenceValue>(EMPTY_REFERENCE_VALUE);
   const [sending, setSending] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const inputRef = useRef<CommodoreReferenceInputHandle | null>(null);
   const usable = active && online;
   const send = () => {
-    const value = text.trim();
+    const text = value.text.trim();
     // 빈 입력에서 원을 누르면 입력칸에 포커스만 간다(FD-19).
-    if (!value) { inputRef.current?.focus(); return; }
+    if (!text) { inputRef.current?.focus(); return; }
     if (!usable || sending) return;
     onClear();
     setSending(true);
-    onPending({ key: Date.now(), text: value, at: Date.now() });
+    // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
+    onPending({ key: Date.now(), text: referencePlainText(text, value.references.map(({ id, title }) => ({ id, label: title }))), at: Date.now() });
     // 실패하면 초안은 남는다 — 입력창 위 알림 줄이 이유를 말한다.
-    void messageCommodore(theaterId, value).then(() => setText("")).catch(onFail).finally(() => { setSending(false); onPending(null); });
+    void messageCommodore(theaterId, text, undefined, value.references.map((reference) => reference.id)).then(() => setValue(EMPTY_REFERENCE_VALUE)).catch(onFail).finally(() => { setSending(false); onPending(null); });
   };
   return (
     <div className="objectives-cm-dock">
       {failure ? <p className="objectives-cm-note objectives-cm-dock-note" role="alert">{failure}</p> : null}
       <div className={`objectives-cm-comp${usable ? "" : " is-off"}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
-        <ComposerInput
+        <CommodoreReferenceInput
           ref={inputRef}
+          t={t}
+          theaterId={theaterId}
+          phone
           className="objectives-cm-comp-input"
-          value={text}
+          value={value}
           disabled={!usable}
-          rows={1}
           placeholder={t("objectives.commodore.composer.placeholder")}
-          aria-label={t("objectives.commodore.composer.aria")}
-          aria-describedby={active ? undefined : `objectives-cm-idle-${theaterId}`}
-          onChange={(event) => setText(event.target.value)}
+          ariaLabel={t("objectives.commodore.composer.aria")}
+          ariaDescribedBy={active ? undefined : `objectives-cm-idle-${theaterId}`}
+          onChange={setValue}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !touchFirst()) { event.preventDefault(); send(); } }}
         />
         <div className="objectives-cm-comp-bar">
+          {/* '@' 원 — 기호 키보드로 바꾸지 않고 지휘관 목록을 연다. 입력 바의 보조 원이라 보내기 원보다 물러선 면이다. */}
+          <button type="button" data-press="r3" className="objectives-cm-circ is-at" aria-label={t("objectives.commodore.reference.menu")} title={t("objectives.commodore.reference.menu")} disabled={!usable || sending} onMouseDown={(event) => event.preventDefault()} onClick={() => inputRef.current?.openReferences()}>@</button>
           <button type="button" data-press="r3" className="objectives-cm-circ" aria-label={t("objectives.commodore.composer.send")} disabled={!usable || sending} onClick={send}><SendIcon /></button>
         </div>
       </div>

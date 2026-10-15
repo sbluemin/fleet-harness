@@ -1,6 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
+import { ChatReferenceText } from "./chat-reference.js";
 import { useCodeBlockCopy } from "./code-block-copy.js";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
@@ -1381,7 +1382,7 @@ export const ChatTurn = React.memo(function ChatTurn({
             {turn.dispatch.text
               ? turn.dispatch.format === "markdown"
                 ? <StreamedMarkdown text={turn.dispatch.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
-                : <span className="agent-chat-dispatch-text">{turn.dispatch.text}</span>
+                : <span className="agent-chat-dispatch-text"><ChatReferenceText text={turn.dispatch.text} references={turn.dispatch.references} /></span>
               : null}
           </div>
         </div>
@@ -1960,7 +1961,7 @@ function InjectLine({
       {item.attachments?.length ? <ChatDispatchAttachments attachments={item.attachments} language={language} /> : null}
       {item.format === "markdown"
         ? <StreamedMarkdown text={item.text ?? ""} streaming={false} className="agent-chat-turn-inject-body agent-chat-dispatch-md" language={language} />
-        : <div className="agent-chat-turn-inject-body">{item.text ?? ""}</div>}
+        : <div className="agent-chat-turn-inject-body"><ChatReferenceText text={item.text ?? ""} references={item.references} /></div>}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type http from "node:http";
 import { randomUUID } from "node:crypto";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "./attachment-budget.js";
 
+import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
@@ -11,7 +12,7 @@ import { z } from "zod";
 import { ObjectiveStoreError } from "../store.js";
 import { decisionAnswersSchema } from "../types.js";
 import type { CommodoreStore } from "./store.js";
-import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
+import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 전부 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
@@ -53,7 +54,7 @@ export interface CommodoreRouteHooks {
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (theaterId: string) => Promise<void> | void;
   readonly clear?: (theaterId: string) => Promise<void>;
-  readonly objective?: (objectiveId: string) => { readonly id: string; readonly theaterId: string; readonly title: string } | null;
+  readonly objective?: (objectiveId: string) => { readonly id: string; readonly theaterId: string; readonly title: string; readonly removed?: unknown } | null;
 }
 
 const ids = z.string().min(1).max(128);
@@ -133,7 +134,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if (!hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
       return view(theaterId, store.setStopAt(theaterId, stopAt));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text, objectiveId, attachmentIds = [] }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
@@ -143,6 +144,15 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
       if (objectiveId && !objective) throw new ObjectiveStoreError("unknown_objective");
       if (objective && objective.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
+      // 본문 속 참조 — 표식 글자 수와 참조 수가 같아야 하고(사람이 표식 글자를 직접 쳐도 검증하지 않은 참조가 서지 않는다), 한 목표는
+      // 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다. 하나라도 어긋나면 기록에 남기지 않는다.
+      if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds).size !== referenceIds.length) throw new ObjectiveStoreError("invalid_request");
+      const references = referenceIds.map((id) => {
+        const found = hooks.objective?.(id);
+        if (!found || found.removed) throw new ObjectiveStoreError("unknown_objective");
+        if (found.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
+        return { id: found.id, title: found.title };
+      });
       const messageId = randomUUID();
       if (attachmentIds.length && !ctx.host.attachments) throw new ObjectiveStoreError("attachments_unavailable");
       let imageBytes = 0;
@@ -153,7 +163,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
         throw error;
       }
       try {
-        return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}) }) };
+        return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}), ...(references.length ? { references } : {}) }) };
       } catch (error) { if (attachmentIds.length) ctx.host.attachments!.rollbackClaim(theaterId, messageId); throw error; }
     }) },
     // 사령관의 질문에 대한 사람의 답 — 자율 운영이 꺼져 있어도 받는다(답은 상태에 남고, 사령관은 다음에 돌 때 읽는다). 끝난 질문은 다시 답하지 못한다.

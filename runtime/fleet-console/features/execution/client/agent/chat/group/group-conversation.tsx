@@ -5,6 +5,7 @@ import { AgentGlyph } from "../../agent-glyphs.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
+import { ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
 import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
@@ -595,7 +596,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
           {entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
-            : entry.text}
+            : <ChatReferenceText text={entry.text} references={entry.references} />}
         </div>
         {entry.undelivered ? <span className="agent-chat-undelivered" title={t("group.undelivered")}>{t("group.undelivered")}</span> : null}
       </div>

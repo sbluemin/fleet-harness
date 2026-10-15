@@ -7,6 +7,7 @@ const hostAttachmentFixture = new URL("../../../fleet-console/features/execution
 const { createLaunchAttachmentStore } = await import(hostAttachmentFixture);
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../server/commodore/attachment-budget.js";
 import type { AgentEvent, AgentHost, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
 import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
@@ -126,13 +127,26 @@ describe("commodore theater state", () => {
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: "Small scope" } };
+    const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: id === "o1" ? "Small scope" : `Scope ${id}`, ...(id === "gone" ? { removed: { at: 1 } } : {}) } };
     expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
     expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
+    // 본문 속 지휘관 참조 — 같은 Theater 의 지운 적 없는 목표만, 셋까지, 본문의 표식 글자 수와 짝이 맞을 때만 기록한다. 사람이 표식 글자를
+    // 직접 쳐도(참조 없이) 검증하지 않은 참조가 서지 않는다.
+    for (const [body, error] of [
+      [{ text: `${MARK} vs ${MARK}`, references: ["o2", "foreign"] }, "objective_theater_mismatch"],
+      [{ text: `${MARK} ${MARK}`, references: ["o2", "missing"] }, "unknown_objective"],
+      [{ text: MARK, references: ["gone"] }, "unknown_objective"],
+      [{ text: MARK.repeat(4), references: ["o2", "o3", "o4", "o5"] }, "invalid_request"],
+      [{ text: `typed ${MARK} by hand` }, "invalid_request"],
+      [{ text: MARK, references: ["o2", "o3"] }, "invalid_request"],
+      [{ text: `${MARK}${MARK}`, references: ["o2", "o2"] }, "invalid_request"],
+    ] as const) expect((await h.route("commodore/message", { theaterId: "t1", ...body }, hooks)).value).toMatchObject({ error });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text: "Prefer small objectives." }, hooks);
-    expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives.", objective: { id: "o1", title: "Small scope" } });
-    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" } });
+    const text = `Compare ${MARK} with ${MARK}${MARK}; prefer small objectives.`;
+    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text, references: ["o2", "o3", "o4"] }, hooks);
+    const references = [{ id: "o2", title: "Scope o2" }, { id: "o3", title: "Scope o3" }, { id: "o4", title: "Scope o4" }];
+    expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text, objective: { id: "o1", title: "Small scope" }, references });
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" }, references });
     expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
     h.store.setAutonomy("t1", false);
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
