@@ -334,7 +334,9 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   .group-chat-working-hit { transition: none; }
 }
 /* 여럿이 일하면 이름마다 단추라 낱말 상자가 조각 줄이 된다. 좁아지면 지금처럼 끝(남은 글자)부터 접히고, 그다음에 이름이 저마다 줄어든다. */
-.group-chat-working-text.is-parts { display: flex; }
+/* 말줄임 때문에 조각 상자가 넘침을 자르므로, 이름 단추의 포커스 링(선 2px + 간격 1px)이 들어갈 3px 를 사방 padding 으로 클립
+   영역에 넣고 같은 음수 margin 으로 되돌린다 — 줄 높이와 낱말 자리는 그대로다. */
+.group-chat-working-text.is-parts { display: flex; padding: 3px; margin: -3px; }
 .group-chat-working-part { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
 .group-chat-working-part.is-sep { flex: none; }
 .group-chat-working-part.is-rest { flex-shrink: 1000; }
