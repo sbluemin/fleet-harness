@@ -3405,7 +3405,7 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(
       /\.quick-launch-command-row\[data-effort-level\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*color: var\(--effort-tone\);/,
     );
-    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \{ background: var\(--wash-selected\); \}/);
+    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \{\s*background: var\(--wash-selected\);/);
 
     // 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 공유한다.
     expect(components).toMatch(

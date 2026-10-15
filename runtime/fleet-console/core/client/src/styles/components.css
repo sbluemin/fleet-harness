@@ -9143,10 +9143,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 정보 토스트는 상태가 아니다 — 중립 림으로 둔다(신호 보더는 error/warn만). */
-.app-toast--info {
-  border-color: var(--surface-rim-strong);
-}
-
 
 .app-toast-dot {
   margin-top: 5px;
@@ -9416,6 +9412,14 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .operation-search-result.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
+}
+
+/* 포커스는 입력칸에 남고 aria-activedescendant가 활성 행을 가리킨다. 키보드로 옮긴 활성 행(동작 칩 포함)은
+   메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)을 더한다 — 마우스가 옮긴 행은 워시뿐이다(data-nav). */
+.operation-search-results[data-nav="keyboard"] .operation-search-result.is-active,
+.operation-search-results[data-nav="keyboard"] .operation-search-action.is-active {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
 }
 
 .operation-search-result.is-active::before {
@@ -13105,6 +13109,10 @@ body[data-expanded-surface-resizing="true"] {
 .fc-select__option[aria-selected="true"]::after { content: "✓"; font-size: var(--t-sm); color: var(--text-primary); }
 .fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: not-allowed; font-style: italic; opacity: var(--control-disabled-opacity); }
 .fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; color: var(--text-tertiary); }
+/* 키보드로 옮긴 활성 행은 메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)이 말한다 — 실제 포커스는 트리거에 남고
+   aria-activedescendant가 이 행을 가리킨다. 고른 행 위에서도 링이 서므로 「지금 짚은 행」과 「고른 행」이 갈린다.
+   포인터가 옮긴 활성 행은 hover 워시뿐이다(data-nav, useSelect). */
+.fc-select__popup[data-nav="keyboard"] .fc-select__option[data-active="true"]:not([aria-disabled="true"]) { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
 .fc-select--compact { min-width: 0; }
 /* compact 트리거는 칩 문법의 모노 티어를 쓴다 — 콘솔 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
@@ -14150,9 +14158,13 @@ body[data-expanded-surface-resizing="true"] {
 
 .quick-launch-mention-row:hover:not(.is-dim) { background: var(--wash-hover); }
 
-/* 키보드 활성 행(aria-activedescendant)은 고른 행과 같은 중립 워시가 말한다 — 입력 포커스는 컴포저에
-   남아 있으므로 링 대신 면이 자리를 보인다. */
-.quick-launch-mention-row.is-active { background: var(--wash-selected); }
+/* 키보드 활성 행(aria-activedescendant)은 고른 행 워시 위에 메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)을 더한다 —
+   입력 포커스는 컴포저에 남아 있고, 이 덱의 활성 행은 키보드로만 옮겨진다(마우스 hover는 워시뿐). */
+.quick-launch-mention-row.is-active {
+  background: var(--wash-selected);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
 
 /* AWAITING은 dim + 선택 불가 + 방향키 스킵(제품 결정) — CLI가 응답 입력을 기다리는 중이라
    임의 텍스트가 프롬프트 응답을 오염시킨다. 숨기면 "내 op가 왜 없지"가 된다. */
@@ -14753,6 +14765,9 @@ body[data-expanded-surface-resizing="true"] {
 
 .quick-launch-variant-name:hover,
 .quick-launch-variant-name[aria-expanded="true"] { background: var(--wash-hover); }
+/* 고른 행 — Theater·모델 팝업 모두 고른 행 워시 9% + 본문색 체크다. */
+.quick-launch-pop-item[aria-checked="true"],
+.quick-launch-variant-name[aria-checked="true"] { background: var(--wash-selected); }
 .quick-launch-variant-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
 /* 모바일 셸과 같은 경계(view-mode-store의 narrow 질의)다. 이 폭에서 선택 줄은 전송 버튼과 한 줄을
@@ -15883,9 +15898,10 @@ body[data-expanded-surface-resizing="true"] {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  min-height: var(--popover-row-dense);
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-md);
   min-width: 0;
 }
 
@@ -15995,7 +16011,7 @@ body[data-expanded-surface-resizing="true"] {
   outline-offset: 2px;
 }
 
-/* 보관함은 카드가 아닌 날짜별 줄 목록이다. brass는 고르기·초점만, coral은 삭제 무장만 말한다. */
+/* 보관함은 카드가 아닌 날짜별 줄 목록이다. 고르기는 중립 워시, brass는 초점만, coral은 삭제 무장만 말한다. */
 .archive-sheet-head,
 .archive-sheet-tools,
 .archive-sheet-selection { flex-shrink: 0; }
@@ -16049,30 +16065,28 @@ body[data-expanded-surface-resizing="true"] {
 .archive-sheet-scope button[aria-pressed="true"] {
   color: var(--text-primary);
   font-weight: var(--weight-bold);
-  border-bottom-color: var(--brass-ink);
+  border-bottom-color: var(--text-primary);
 }
 .archive-sheet-item + .archive-sheet-item::before {
   content: "";
   position: absolute;
   top: -3px;
-  left: 8px;
-  right: 8px;
+  left: 12px;
+  right: 12px;
   height: 1px;
-  background: var(--surface-rim);
+  background: var(--popover-divider);
 }
+/* 행 상태는 공통 팝업의 중립 워시다 — hover·안쪽 포커스 7%, 고른 행 9%. 키보드 포커스는 아래 금색 링이 진다. */
 .archive-sheet-item:hover,
-.archive-sheet-item:focus-within { background: color-mix(in oklch, var(--brass-ink) 8%, transparent); }
-.archive-sheet-item.is-selected {
-  border-color: color-mix(in oklch, var(--brass-ink) 50%, transparent);
-  background: color-mix(in oklch, var(--brass-ink) 12%, transparent);
-}
+.archive-sheet-item:focus-within { background: var(--wash-hover); }
+.archive-sheet-item.is-selected { background: var(--wash-selected); }
 .archive-sheet-item:is(:hover, :focus-within, .is-selected)::before,
 .archive-sheet-item:is(:hover, :focus-within, .is-selected) + .archive-sheet-item::before { background: transparent; }
 .archive-sheet-item.is-pending { opacity: 0.75; }
 .archive-sheet-item.is-restored .archive-sheet-item-title { color: var(--text-tertiary); }
 .archive-sheet-item mark {
-  background: color-mix(in oklch, var(--brass-ink) 28%, transparent);
-  color: inherit;
+  background: color-mix(in oklch, var(--text-primary) 14%, transparent);
+  color: var(--text-primary);
 }
 .archive-sheet-actions { color: var(--text-tertiary); font-size: var(--t-xs); }
 .archive-sheet-open,

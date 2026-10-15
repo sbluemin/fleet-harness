@@ -200,6 +200,8 @@ export interface UseSelectResult {
     readonly style: React.CSSProperties;
     readonly "data-open": "true" | "false";
     readonly "data-placement": "up" | "down";
+    /** 활성 행을 마지막으로 옮긴 입력. 키보드일 때만 활성 행이 포커스 링을 그린다(마우스는 hover 워시뿐). */
+    readonly "data-nav": "keyboard" | "pointer";
   };
   readonly getOptionProps: (index: number) => React.LiHTMLAttributes<HTMLLIElement> & {
     readonly id: string;
@@ -290,6 +292,7 @@ export function useSelect({
 
   const [isOpen, setIsOpen] = React.useState(false);
   const [activeIndex, setActiveIndex] = React.useState(-1);
+  const [navigation, setNavigation] = React.useState<"keyboard" | "pointer">("pointer");
   const [placement, setPlacement] = React.useState<"up" | "down">("down");
   const [popupStyle, setPopupStyle] = React.useState<React.CSSProperties>({});
   const typeaheadRef = React.useRef("");
@@ -388,22 +391,26 @@ export function useSelect({
       }
       if (event.key === "ArrowDown") {
         event.preventDefault();
+        setNavigation("keyboard");
         move(1);
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
+        setNavigation("keyboard");
         move(-1);
         return;
       }
       if (event.key === "Home") {
         event.preventDefault();
+        setNavigation("keyboard");
         const first = enabled[0];
         if (first !== undefined) setActiveIndex(first);
         return;
       }
       if (event.key === "End") {
         event.preventDefault();
+        setNavigation("keyboard");
         const last = enabled.at(-1);
         if (last !== undefined) setActiveIndex(last);
         return;
@@ -427,7 +434,10 @@ export function useSelect({
           .find((option) => option?.label.toLowerCase().startsWith(prefix));
         if (hit) {
           const index = options.indexOf(hit);
-          if (index >= 0) setActiveIndex(index);
+          if (index >= 0) {
+            setNavigation("keyboard");
+            setActiveIndex(index);
+          }
         }
       }
     };
@@ -457,6 +467,7 @@ export function useSelect({
       if (isOpen) return;
       if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) return;
       event.preventDefault();
+      setNavigation("keyboard");
       open(event.key !== "ArrowDown");
       if (event.key === "ArrowDown") move(1);
     },
@@ -466,7 +477,10 @@ export function useSelect({
   const onTriggerClick = React.useCallback(() => {
     if (disabled) return;
     if (isOpen) close();
-    else open(true);
+    else {
+      setNavigation("pointer");
+      open(true);
+    }
   }, [close, disabled, isOpen, open]);
 
   const getOptionProps = React.useCallback(
@@ -479,7 +493,10 @@ export function useSelect({
         "data-active": (activeIndex === index ? "true" : "false") as "true" | "false",
         "aria-selected": option?.value === value,
         "aria-disabled": option?.disabled ? true : undefined,
-        onPointerEnter: () => setActiveIndex(index),
+        onPointerEnter: () => {
+          setNavigation("pointer");
+          setActiveIndex(index);
+        },
         onClick: () => {
           if (option && !option.disabled) commit(option.value);
         },
@@ -520,6 +537,7 @@ export function useSelect({
       className: compact ? "fc-select__popup fc-select__popup--compact" : "fc-select__popup",
       "data-open": isOpen ? "true" : "false",
       "data-placement": placement,
+      "data-nav": navigation,
       style: popupStyle,
     },
     getOptionProps,
