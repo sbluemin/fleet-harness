@@ -711,16 +711,20 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return ctx.host.consoleControl.coordinates?.(operationId) ?? null;
   };
   /** 미기동은 저장 선택, 기동 뒤에는 실행값·유효 예약을 기준으로 같은 확정을 가른다. 외부에서 달라진 실행값을 저장값으로 덮어 보지 않는다. */
-  const matchingSelection = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }) => {
+  const matchingSelection = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }): false | { readonly preserveNext: boolean; readonly appliedNext?: boolean } => {
     const node = referenceNode(memberId);
     if (!node) return sameLaunch(before.launch, selection) ? { preserveNext: true } : false;
     const host = hostCoordinates(memberId);
     const pending = host ? host.pending : before.next?.held && !before.next.failed ? before.next : null;
     const target = selection === null ? null : presetOf(selection.mode === "same" ? current.commander : selection);
     if (!target?.model) return !pending && sameLaunch(before.launch, selection) ? { preserveNext: false } : false;
-    if (pending) return samePreset(target, { model: pending.model, effort: pending.effort ?? undefined }) ? { preserveNext: true } : false;
+    if (pending) {
+      // 호스트에서 바뀐 예약은 정상 reserve가 저장 next와 감시자를 다시 맞춘다. 이미 같은 유효 예약만 그대로 둔다.
+      const recorded = !host || before.next?.held === "host" && !before.next.failed && samePreset(target, before.next);
+      return recorded && samePreset(target, { model: pending.model, effort: pending.effort ?? undefined }) ? { preserveNext: true } : false;
+    }
     const running = host ? { model: host.model, effort: host.effort ?? undefined } : readOperationLaunch(node.payload);
-    return samePreset(target, running) ? { preserveNext: false } : false;
+    return samePreset(target, running) ? { preserveNext: false, appliedNext: !!before.next && samePreset(before.next, running) } : false;
   };
   /** 호스트가 거절한 좌표 변경 — 자식이 던진 원 예외가 있으면 자르지 않고 응답의 cause 로 싣는다. */
   const coordinatesError = (result: Extract<ConsoleCoordinatesResult, { ok: false }>) =>
@@ -1522,7 +1526,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const keepSelection = reaffirmed && sameLaunch(before.launch, patch.launch);
       let next = store.memberPatch(objectiveId, memberId, keepSelection ? { ...patch, launch: before.launch ?? null } : patch, by);
       if (reaffirmed && !reaffirmed.preserveNext) {
-        store.memberLaunchState(objectiveId, memberId, { next: null, ...(!keepSelection ? { routed: null } : {}) });
+        store.memberLaunchState(objectiveId, memberId, { next: null, ...(!keepSelection || reaffirmed.appliedNext ? { routed: null } : {}) });
         next = objective(objectiveId);
       }
       if (patch.subagents !== undefined) {

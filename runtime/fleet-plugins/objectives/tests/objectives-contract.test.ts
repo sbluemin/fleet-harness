@@ -657,6 +657,20 @@ describe("Objectives contract", () => {
       launch.operationChanged(reviewer.id);
       expect(shown()).toMatchObject({ model: "sonnet[1m]", next: null });
       expect(store.storedMember(objective.id, reviewer.id)?.next).toBeUndefined();
+      // routing에서 명시 모델로 건 예약이 적용된 직후, 감시자보다 먼저 재확정해도 옛 routing 사유는 되살아나지 않는다.
+      const routedSession = operations.get(routed.id)!.payload.session as { model?: string; effort?: string };
+      Object.assign(routedSession, { model: "sonnet[1m]", effort: "low" });
+      hostChat.set(routed.id, { model: "sonnet[1m]", effort: "low", pending: null });
+      activity.set(routed.id, "running");
+      expect((await route("member/patch", { objectiveId: objective.id, memberId: routed.id, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).status).toBe(200);
+      expect(store.storedMember(objective.id, routed.id)?.routed).toMatchObject({ via: "fallback" });
+      expect(store.storedMember(objective.id, routed.id)?.next).toMatchObject({ model: "opus[1m]", held: "host" });
+      Object.assign(hostChat.get(routed.id)!, { model: "opus[1m]", effort: "high", pending: null });
+      Object.assign(routedSession, { model: "opus[1m]", effort: "high" });
+      expect((await route("member/patch", { objectiveId: objective.id, memberId: routed.id, patch: { launch: { mode: "model", model: "opus", effort: "high" } } })).status).toBe(200);
+      expect(store.storedMember(objective.id, routed.id)?.next).toBeUndefined();
+      expect(store.storedMember(objective.id, routed.id)?.routed).toBeUndefined();
+      expect(store.find(objective.id)!.members.find((member) => member.id === routed.id)).toMatchObject({ model: "opus[1m]", next: null, routed: null });
     } finally { vi.useRealTimers(); }
     // 유휴 채팅은 곧바로 바뀐다 — 실행값은 호스트가 고친 세션 좌표에만 있어도, 방송된 행이 새 실행값을 말한다.
     activity.set(reviewer.id, "idle");
@@ -2175,6 +2189,15 @@ describe("Objectives contract", () => {
       expect(hostChat.get(workerId)).toEqual(hostBeforeReconfirm);
       expect(coordinates).not.toHaveBeenCalled();
     } finally { coordinates.mockRestore(); }
+    // 채팅에서 예약을 바꾼 뒤 보드에서도 확정하면, 옛 예약 대신 새 target이 저장되고 취소할 수 있어야 한다.
+    hostChat.get(workerId)!.pending = { model: "sonnet[1m]", effort: null };
+    expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "sonnet" } } })).status).toBe(200);
+    expect(store.storedMember(id, workerId)?.next).toMatchObject({ model: "sonnet[1m]", held: "host", from: { model: "sonnet[1m]", effort: "low" } });
+    expect(store.find(id)!.members.find((member) => member.id === workerId)?.next).toEqual({ model: "sonnet[1m]", failed: null });
+    expect((await route("member/next-cancel", { objectiveId: id, memberId: workerId })).status).toBe(200);
+    expect(hostChat.get(workerId)?.pending).toBeNull();
+    expect(store.storedMember(id, workerId)).toMatchObject({ launchBy: "human" });
+    expect(store.storedMember(id, workerId)?.launch).toBeUndefined();
     expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "route" }, id)).structuredContent.error).toBe("member_launch_person_chosen");
     activity.set(workerId, "idle");
     hostChat.delete(workerId);
