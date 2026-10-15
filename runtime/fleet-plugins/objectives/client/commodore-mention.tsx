@@ -17,7 +17,8 @@ const TARGET_PREFIX = "commodore:";
  * 서버 거절로 실패하고, Quick Launch 는 초안과 행선지를 그대로 둔 채 전달 실패를 말한다.
  *
  * 밴드가 이미 「사령관」을 말하므로 행 이름은 사이드바 Theater 머리와 같은 이름이다 — 별칭이 있으면 별칭, 없으면 Theater 이름이라
- * 행선지 태그가 「사령관 · fleet-harness」로 읽힌다. 별칭이 있으면 설명문이 원래 Theater 이름을 함께 말한다.
+ * 행선지 태그가 「사령관 · fleet-harness」로 읽힌다. 별칭이 있으면 설명문이 원래 Theater 이름을 함께 말하고, 검색어(keywords)에도
+ * 실어 별칭을 모르는 사람이 원래 이름으로도 찾게 한다.
  * 표식은 사이드바 머리와 같은 사령관 아바타다.
  */
 export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
@@ -30,6 +31,7 @@ export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
       label: alias ?? theater,
       categoryLabel: t("objectives.commodore.name"),
       description: alias ? t("objectives.commodore.mention.descriptionAlias", { alias, theater }) : t("objectives.commodore.mention.description", { theater }),
+      ...(alias ? { keywords: [theater] } : {}),
       renderMark: () => <CommodoreMentionMark theaterId={theaterId} />,
     };
   });

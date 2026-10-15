@@ -366,7 +366,8 @@ export function buildPluginMentionCategories(
       const optionId = `${plugin.id}:${descriptor.id}`;
       if (seen.has(optionId)) continue;
       seen.add(optionId);
-      const haystack = [descriptor.label, descriptor.categoryLabel, plugin.id ?? ""].join(" ").toLocaleLowerCase();
+      // description 은 번역 문장이라 넣지 않는다 — 조사·일반어가 엉뚱한 행을 맞춘다. 숨은 이름은 keywords 로 온다.
+      const haystack = [descriptor.label, descriptor.categoryLabel, plugin.id ?? "", ...(descriptor.keywords ?? [])].join(" ").toLocaleLowerCase();
       if (!tokens.every((token) => haystack.includes(token))) continue;
       const row: QuickLaunchPluginMentionRow = {
         pluginId: plugin.id,

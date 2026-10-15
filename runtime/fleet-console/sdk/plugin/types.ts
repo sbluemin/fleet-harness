@@ -103,8 +103,14 @@ export interface MentionTargetDescriptor {
   readonly categoryLabel: string;
   /** 카테고리 머리와 행 배지에 함께 서는 짧은 능력 문구(예: "웹 전용"). */
   readonly capabilityLabel?: string;
-  /** 보조 기술에 읽히는 긴 설명. 능력 한계를 여기서 완전한 문장으로 말한다. */
+  /** 보조 기술에 읽히는 긴 설명. 능력 한계를 여기서 완전한 문장으로 말한다. 검색은 이 문장을 읽지 않는다. */
   readonly description?: string;
+  /**
+   * 행에 보이지 않지만 '@' 검색이 이 행을 찾는 데 쓰는 말 — 표시 이름이 사용자가 아는 다른 이름을 가릴 때
+   * (별칭에 가려진 원래 이름 등) 그 이름을 싣는다. 번역 문장이 아니라 이름 낱말이어야 엉뚱한 일치가 없다.
+   * 구버전 호스트는 이 필드를 읽지 않는다(apiVersion 은 같다) — 없으면 `label` 로만 찾힌다.
+   */
+  readonly keywords?: readonly string[];
   /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
   readonly renderMark?: () => ReactNode;
   /** 선언한 대상만 퀵런치 레인에 서며, 전송 뒤 컴포저를 열어 둔다. */
