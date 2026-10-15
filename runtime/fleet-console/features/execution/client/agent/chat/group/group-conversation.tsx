@@ -923,7 +923,8 @@ const WORKING_NAME_SLOT = "\u0000";
  * 진행 줄 — 지금 일하는 참여자(activity=running)를 모두 쌓아 보인다. 받은 전언으로 일한다고 짐작하지 않는다(계약).
  * 표식과 이름은 말풍선 머리와 같은 규칙(`ledgerTarget`)으로 그 참여자의 원장을 연다 — 지휘관이면 루트 id 라 여는 쪽이
  * 지휘관 원장으로 연다. 원장이 없는 참여자와 콜백이 없는 대화에서는 눌리는 척하지 않는다. 진행 줄은 아무도 멈추지 않는다
- * (정지는 입력창과 「구성원」 탭의 몫이다). 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
+ * (정지는 입력창과 「구성원」 탭의 몫이다). 표식은 32px 로 서서 사이드바처럼 지금 하는 일(생각·읽기·편집…)을 연기한다.
+ * 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
  */
 export function GroupWorkingLine({ working, participants, language, onOpenLedger }: {
   readonly working: readonly ConversationSpeaker[];
@@ -940,9 +941,9 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
     const target = targets[index];
     return target ? (
       <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
-        <SpeakerMark speaker={speaker} size="sm" state="running" />
+        <SpeakerMark speaker={speaker} size="lg" state="running" acting />
       </button>
-    ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="sm" state="running" />;
+    ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="lg" state="running" acting />;
   });
   return (
     <div className="group-chat-working" role="status">

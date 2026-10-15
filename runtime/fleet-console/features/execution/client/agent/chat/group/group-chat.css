@@ -58,6 +58,8 @@
 /* 발화자 표식 — 노드 줄 글리프를 대화 크기로 키운다. */
 .group-chat-mark { width: 22px; height: 22px; border-radius: 7px; font-size: var(--t-xs); }
 .group-chat-mark.is-sm { width: 16px; height: 16px; border-radius: var(--radius-xs); font-size: var(--t-2xs); }
+/* 진행 줄 표식 — 행동별 연기(손·소품)가 읽히는 크기. */
+.group-chat-mark.is-lg { width: 32px; height: 32px; border-radius: var(--radius-md); font-size: var(--t-md); }
 .group-chat-mark svg { width: 13px; height: 13px; }
 .group-chat-mark.is-sm svg { width: 10px; height: 10px; }
 /* 대화 속 아바타는 말한 사람을 가리킬 뿐이다 — 말풍선마다 눈을 깜빡이면 기록이 산만해지므로 대기 얼굴의 깜빡임만 거둔다. */
@@ -289,21 +291,22 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
 /* 진행 줄 — 입력창 바로 위 왼쪽. 입력 캡슐과 같은 좌우 여백을 써서 칸 폭이 어떻든 왼쪽 끝이 캡슐 왼쪽에 맞는다.
-   일하는 이가 없어도 높이를 지켜 입력창이 뛰지 않게 한다. */
+   일하는 이가 없어도 32px 표식 줄의 높이를 지켜 입력창이 뛰지 않게 한다. */
 .group-chat-working {
   flex: none;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 26px;
+  min-height: 36px;
   min-width: 0;
   padding: 2px clamp(var(--space-4), 4cqi, 48px);
   box-sizing: border-box;
   font-family: var(--font-ui);
-  font-size: var(--t-sm);
+  font-size: var(--t-md);
 }
 .group-chat-working-stack { display: flex; flex: none; }
-.group-chat-working-stack > * + * { margin-left: -4px; }
+/* 여럿이면 표식 폭의 4분의 1씩 겹친다. */
+.group-chat-working-stack > * + * { margin-left: -8px; }
 .group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /*
  * 진행 줄 → 원장. 표식과 이름은 말풍선 머리의 발화자 → 원장(.group-chat-speaker-hit)과 같은 대상을 연다. 낱말은 물결
@@ -320,15 +323,15 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
   border-radius: var(--radius-xs);
   transition: box-shadow var(--duration-fast) var(--ease-glide);
 }
-.group-chat-working-hit.is-mark { position: relative; display: inline-flex; }
+.group-chat-working-hit.is-mark { position: relative; display: inline-flex; border-radius: var(--radius-md); }
 .group-chat-working-hit.is-mark:hover { box-shadow: 0 0 0 2px var(--control-wash-hover); }
 .group-chat-working-hit.is-text { text-align: start; }
 /* 밑줄은 hover 에만 긋는다 — 물결 클립은 글자 장식도 마스크에 넣으므로 투명 밑줄을 늘 두면 물결 색으로 비친다. */
 .group-chat-working-hit.is-text:hover { text-decoration: underline var(--brass); text-underline-offset: 2px; }
 .group-chat-working-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
-/* 16px 표식은 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
+/* 32px 표식도 손가락에는 조금 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 44px 로 넓힌다. */
 @media (pointer: coarse) {
-  .group-chat-working-hit.is-mark::before { content: ""; position: absolute; inset: -5px; }
+  .group-chat-working-hit.is-mark::before { content: ""; position: absolute; inset: -6px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .group-chat-working-hit { transition: none; }
