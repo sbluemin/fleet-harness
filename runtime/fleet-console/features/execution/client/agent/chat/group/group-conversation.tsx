@@ -42,8 +42,6 @@ export interface GroupConversationProps {
   readonly language: ConsoleLocale | undefined;
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (operationId: string) => void;
-  /** 진행 줄 표식을 눌러 그 참여자만 멈춘다(임무 16에서 연결). */
-  readonly onStopParticipant?: (speaker: ConversationSpeaker) => void;
   /**
    * 사령관 행위 줄에서 그 행위의 기록을 연다 — 임무 14 계약(`useOpenBoardActionRecord()` 가 돌려주는 함수)과 같은 모양이다.
    * 기록이 없는 줄이면 여는 쪽이 아무 일도 하지 않으므로 단추는 늘 둔다.
@@ -80,7 +78,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onStopParticipant, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
@@ -240,7 +238,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onStopPart
           {cards}
         </div>
       </div>
-      <GroupWorkingLine working={snapshot.working} language={language} onStop={onStopParticipant} />
+      <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} />
       {composer}
     </div>
   );
@@ -918,32 +916,81 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
   );
 }
 
+/** 진행 줄 낱말을 이름 자리에서 가르는 표 — 번역 문형의 앞뒤 글자를 그대로 두고 이름만 단추로 세우려고 쓴다. */
+const WORKING_NAME_SLOT = "\u0000";
+
 /**
  * 진행 줄 — 지금 일하는 참여자(activity=running)를 모두 쌓아 보인다. 받은 전언으로 일한다고 짐작하지 않는다(계약).
- * 정지 콜백이 있으면 표식이 그 참여자만 멈추는 단추가 된다. 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
+ * 표식과 이름은 말풍선 머리와 같은 규칙(`ledgerTarget`)으로 그 참여자의 원장을 연다 — 지휘관이면 루트 id 라 여는 쪽이
+ * 지휘관 원장으로 연다. 원장이 없는 참여자와 콜백이 없는 대화에서는 눌리는 척하지 않는다. 진행 줄은 아무도 멈추지 않는다
+ * (정지는 입력창과 「구성원」 탭의 몫이다). 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
  */
-export function GroupWorkingLine({ working, language, onStop }: {
+export function GroupWorkingLine({ working, participants, language, onOpenLedger }: {
   readonly working: readonly ConversationSpeaker[];
+  readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
-  readonly onStop?: (speaker: ConversationSpeaker) => void;
+  readonly onOpenLedger?: (operationId: string) => void;
 }) {
   const t = getGroupT(language);
   if (working.length === 0) return <div className="group-chat-working is-empty" aria-hidden="true" />;
-  const label = working.length === 1
-    ? t("group.working.one", { name: working[0]!.name })
-    : t("group.working.many", { names: working.map((speaker) => speaker.name).join(" · ") });
+  const targets = working.map((speaker) => (onOpenLedger ? ledgerTarget(speaker, participants) : null));
+  const openLabel = (speaker: ConversationSpeaker) => t("group.speaker.openLedger", { name: speaker.name });
+  // 표식은 마우스·터치용 복제 히트 영역이다 — 탭 정지는 이름(낱말) 하나가 진다(말풍선 머리와 같은 관례).
+  const marks = working.map((speaker, index) => {
+    const target = targets[index];
+    return target ? (
+      <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
+        <SpeakerMark speaker={speaker} size="sm" state="running" />
+      </button>
+    ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="sm" state="running" />;
+  });
   return (
     <div className="group-chat-working" role="status">
-      <span className="group-chat-working-stack">
-        {working.map((speaker) => onStop ? (
-          <button key={speakerKey(speaker)} type="button" className="group-chat-working-stop" aria-label={t("group.working.stop", { name: speaker.name })} title={t("group.working.stop", { name: speaker.name })} onClick={() => onStop(speaker)}>
-            <SpeakerMark speaker={speaker} size="sm" state="running" />
-          </button>
-        ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="sm" state="running" />)}
-      </span>
-      <span className="group-chat-working-text agent-chat-live-text">{label}</span>
-      {onStop ? <span className="group-chat-working-hint">{t("group.working.stopHint")}</span> : null}
+      <span className="group-chat-working-stack">{marks}</span>
+      <WorkingText working={working} targets={targets} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />
     </div>
+  );
+}
+
+/**
+ * 진행 줄 낱말. 한 명이면 낱말 전체가 그 원장을 여는 단추다. 여럿이면 이름마다 제 원장을 여는 단추가 되고 나머지 글자는 그대로
+ * 선다. 물결(`agent-chat-live-text`)은 낱말 상자 하나에 걸어 이름 단추를 지나도 한 물결로 흐른다.
+ */
+function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
+  readonly working: readonly ConversationSpeaker[];
+  readonly targets: readonly (string | null)[];
+  readonly t: ReturnType<typeof getGroupT>;
+  readonly openLabel: (speaker: ConversationSpeaker) => string;
+  readonly onOpenLedger: ((operationId: string) => void) | undefined;
+}) {
+  if (working.length === 1) {
+    const speaker = working[0]!;
+    const target = targets[0];
+    const label = t("group.working.one", { name: speaker.name });
+    return target
+      ? <button type="button" className="group-chat-working-text agent-chat-live-text group-chat-working-hit is-text" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{label}</button>
+      : <span className="group-chat-working-text agent-chat-live-text">{label}</span>;
+  }
+  if (!targets.some(Boolean)) {
+    return <span className="group-chat-working-text agent-chat-live-text">{t("group.working.many", { names: working.map((speaker) => speaker.name).join(" · ") })}</span>;
+  }
+  const [before = "", after = ""] = t("group.working.many", { names: WORKING_NAME_SLOT }).split(WORKING_NAME_SLOT);
+  return (
+    <span className="group-chat-working-text agent-chat-live-text is-parts">
+      {before ? <span className="group-chat-working-part is-rest">{before}</span> : null}
+      {working.map((speaker, index) => {
+        const target = targets[index];
+        return (
+          <React.Fragment key={speakerKey(speaker)}>
+            {index > 0 ? <span className="group-chat-working-part is-sep">{" · "}</span> : null}
+            {target
+              ? <button type="button" className="group-chat-working-part group-chat-working-hit is-text" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{speaker.name}</button>
+              : <span className="group-chat-working-part">{speaker.name}</span>}
+          </React.Fragment>
+        );
+      })}
+      {after ? <span className="group-chat-working-part is-rest">{after}</span> : null}
+    </span>
   );
 }
 

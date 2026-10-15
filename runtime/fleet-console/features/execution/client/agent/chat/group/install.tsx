@@ -206,7 +206,6 @@ function RootConversation({ root, language, phone = false }: { readonly root: Op
       language={language}
       onOpenLedger={openMemberLedger}
       onOpenCommodoreRecord={openRecord}
-      onStopParticipant={(speaker) => { void stopOne(speaker).catch(() => undefined); }}
       cards={cards}
       fold={fold}
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}

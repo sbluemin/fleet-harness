@@ -304,20 +304,41 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
 }
 .group-chat-working-stack { display: flex; flex: none; }
 .group-chat-working-stack > * + * { margin-left: -4px; }
-.group-chat-working-stop {
-  display: inline-flex;
+.group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/*
+ * 진행 줄 → 원장. 표식과 이름은 말풍선 머리의 발화자 → 원장(.group-chat-speaker-hit)과 같은 대상을 연다. 낱말은 물결
+ * (배경을 글자 모양으로 클립)이라 이름 단추에 면(배경)을 깔면 그 면이 글자를 덮는다 — 낱말은 원장 링크(.group-chat-link)처럼
+ * 밑줄로, 표식은 말풍선 표식과 같은 고리로 밝힌다. 한 명일 때는 단추가 곧 물결 낱말이라 배경 그림·잉크를 덮지 않게 바탕색만
+ * 지우고, 잉크는 조각 단추만 물결 상자에서 물려받는다.
+ */
+.group-chat-working-hit {
   padding: 0;
   border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
+  background-color: transparent;
+  font: inherit;
   cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: box-shadow var(--duration-fast) var(--ease-glide);
 }
-.group-chat-working-stop:hover .cluster-member-glyph,
-.group-chat-working-stop:focus-visible .cluster-member-glyph { outline: 2px solid var(--brass); outline-offset: 1px; }
-.group-chat-working-stop:focus-visible { outline: none; }
-.group-chat-working-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 안내는 낱말이 쓰고 남은 자리만 쓴다(기준 폭 0) — 좁아지면 안내가 먼저 다 접히고 그다음에야 낱말이 줄어든다. */
-.group-chat-working-hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.group-chat-working-hit.is-mark { position: relative; display: inline-flex; }
+.group-chat-working-hit.is-mark:hover { box-shadow: 0 0 0 2px var(--control-wash-hover); }
+.group-chat-working-hit.is-text { text-align: start; }
+/* 밑줄은 hover 에만 긋는다 — 물결 클립은 글자 장식도 마스크에 넣으므로 투명 밑줄을 늘 두면 물결 색으로 비친다. */
+.group-chat-working-hit.is-text:hover { text-decoration: underline var(--brass); text-underline-offset: 2px; }
+.group-chat-working-hit:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+/* 16px 표식은 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
+@media (pointer: coarse) {
+  .group-chat-working-hit.is-mark::before { content: ""; position: absolute; inset: -5px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .group-chat-working-hit { transition: none; }
+}
+/* 여럿이 일하면 이름마다 단추라 낱말 상자가 조각 줄이 된다. 좁아지면 지금처럼 끝(남은 글자)부터 접히고, 그다음에 이름이 저마다 줄어든다. */
+.group-chat-working-text.is-parts { display: flex; }
+.group-chat-working-part { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.group-chat-working-part.is-sep { flex: none; }
+.group-chat-working-part.is-rest { flex-shrink: 1000; }
+.group-chat-working-part.group-chat-working-hit { color: inherit; }
 
 /* 오른쪽 「구성원」 탭 */
 .group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
