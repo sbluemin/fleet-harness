@@ -138,7 +138,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     const group = dot ? groupOf(objective) : null;
     return (
       <li key={objective.id}>
-        <button type="button" className="objectives-pop-row" aria-current={selected === objective.id ? "true" : undefined}
+        <button type="button" className={`objectives-pop-row${meta.length ? " has-meta" : ""}`} aria-current={selected === objective.id ? "true" : undefined}
           aria-label={[objective.title, glyph.label, ...meta.map((part) => part.text), group?.name ?? ""].filter(Boolean).join(", ")}
           onClick={() => pick(objective.id)}>
           <ObjectiveAvatar operationId={objective.id} role="commander" state={commanderMongleState(objective, activityOfGlyph(glyph.state))} />
