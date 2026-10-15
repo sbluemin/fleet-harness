@@ -149,8 +149,14 @@
 .objectives-m-qchip { align-self: flex-start; max-width: 100%; padding: 2px 10px; border-radius: 12px; background: var(--m-chip); color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-medium); line-height: 18px; overflow-wrap: anywhere; }
 .objectives-m .objectives-m-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; font-size: var(--m-fs-secondary); }
 .objectives-m .objectives-m-opt:disabled { cursor: default; }
+/* 선택지 줄 — 이름 단추와 단추 밖 설명을 한 누름 면(R1)으로 묶는다. 단추의 키보드 포커스 고리는 줄 면 모양으로 그리고,
+   설명 속 링크를 누르는 동안에는 줄 면을 띄우지 않는다(링크만 연다). */
+.objectives-m .objectives-m-opt:focus-visible { outline: none; }
+:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(> .objectives-m-opt:focus-visible)::before { background: transparent; box-shadow: inset 0 0 0 2px var(--m-text); opacity: 1; transition: none; }
+:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(a:active)::before { opacity: 0; }
 .objectives-m-opt-tx { min-width: 0; overflow-wrap: anywhere; }
-.objectives-m-opt-tx small { display: block; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+/* 선택지 설명 — 단추 밖, 표시(20)와 틈(12)만큼 들여 이름 아래에 선다. 링크가 설 수 있어 단추 안에 두지 않는다. */
+.objectives-m-opt-sub { display: block; margin: -6px 0 6px; padding-left: 32px; font-size: var(--m-fs-caption); line-height: 18px; color: var(--m-text-muted); overflow-wrap: anywhere; }
 .objectives-m-ind { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
 .objectives-m-ind.is-on { border-color: var(--m-text); }
 .objectives-m-ind.is-on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--m-text); }
@@ -198,7 +204,7 @@
 .objectives-m-sheet-layer .objectives-m-sheet-x { position: absolute; top: -8px; right: 12px; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 20px; color: var(--m-text-muted); }
 /* 누름 모양(S-52 PR-2): 시트 ×는 원, 선택지 줄은 좌우 −8, 「더 보기」 글자 단추는 알약. */
 .objectives-m-sheet-layer .objectives-m-sheet-x { --pr-r: 50%; }
-.objectives-m .objectives-m-opt { --pr-inset: 0 -8px; }
+.objectives-m :is(.objectives-m-opt-row, .objectives-m-opt[data-press]) { --pr-inset: 0 -8px; }
 .objectives-m .objectives-m-more { --pr-inset: 0 -6px 14px; --pr-r: 16px; }
 .objectives-m-sheet-body { display: flex; flex-direction: column; gap: 10px; min-height: 0; padding: 0 16px; overflow-y: auto; scrollbar-width: none; }
 .objectives-m-sheet-body::-webkit-scrollbar { display: none; }
