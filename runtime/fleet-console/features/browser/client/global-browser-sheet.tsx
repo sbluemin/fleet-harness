@@ -32,6 +32,7 @@ import {
 } from "./global-browser-store.js";
 import { useGlobalBrowserShortcutsSync } from "./global-shortcuts-sync.js";
 import { BrowserChooserHost } from "./browser-chooser.js";
+import { getNativeViewResize, subscribeNativeViewResize } from "./browser-panel-store.js";
 import "./browser-panel.css";
 import "./global-browser-sheet.css";
 
@@ -82,8 +83,15 @@ function hostOf(url: string): string {
 }
 
 type Box = { readonly width: number; readonly height: number };
-/** 한 park 회차에 물러난 뷰를 찍은 장. width·height는 디코드된 원본 크기다. */
-type StillFrame = Box & { readonly tabId: string; readonly url: string; readonly src: string };
+/**
+ * 한 park 회차에 물러난 뷰를 찍은 장. width·height는 디코드된 원본 크기다. box는 찍을 때 뷰가 놓여 있던 CSS 크기다 —
+ * 칸 경계를 끄는 동안 자리 폭이 바뀌어도 장을 늘이지 않고 그 크기 그대로 왼쪽 위에 깔기 위해 둔다.
+ */
+type StillFrame = Box & { readonly tabId: string; readonly url: string; readonly src: string; readonly box: Box | null };
+
+/** 칸 끌기 예고 동안 미리 찍는 정지 화면 — 이 간격으로 새로 찍고, 이보다 오래된 장은 끌기에 쓰지 않는다. */
+const RESIZE_STILL_REFRESH_MS = 1000;
+const RESIZE_STILL_MAX_AGE_MS = 1500;
 
 /**
  * 찍힌 장이 지금 자리와 맞는가. 물러난 뷰는 마지막으로 놓였던 크기를 지키므로, 그 뒤 자리가 바뀌었으면 맞지 않는다.
@@ -138,6 +146,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [scrimGeometry, setScrimGeometry] = React.useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   // 대화 중심 화면의 오른쪽 분할 자리에 앉아 있는가 — 앉아 있으면 scrim 이 없고(대화는 그대로 조작된다) 면은 오른쪽 열의 평면 문법을 쓴다.
   const [split, setSplit] = React.useState(false);
+  // 사람이 분할 칸의 경계를 끌고 있는가(칸의 data-resizing) — 그동안은 정지 화면을 늘이지 않고 찍힌 크기 그대로 깐다.
+  const [splitResizing, setSplitResizing] = React.useState(false);
   // 대화 중심 화면인데 분할 자리가 모자라면 시트가 가운데 대화 칸 자리 전체를 이어받는다(같은 평면 문법) — 기존 떠 있는 시트로 돌아가지 않는다.
   const [takeover, setTakeover] = React.useState(false);
   // 분할 칸에서 닫으면 칸이 접히는 동안 시트(크롬)도 그 칸을 따라 줄어든다 — 한 번에 사라지지 않는다. 뷰는 닫는 순간 내려가고,
@@ -165,6 +175,8 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
   const [pendingProfile, setPendingProfile] = React.useState<string | null>(null);
 
   const placeKeyRef = React.useRef("");
+  // 뷰가 마지막으로 놓인 CSS 크기 — 물러난 뷰는 이 크기를 지키므로 정지 화면이 찍히는 크기이기도 하다.
+  const placedBoxRef = React.useRef<Box | null>(null);
   const activeTabRef = React.useRef(activeTab);
   activeTabRef.current = activeTab;
 
@@ -205,6 +217,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       : "0";
     if (placeKeyRef.current === key) return;
     placeKeyRef.current = key;
+    if (visible && bounds) placedBoxRef.current = { width: bounds.width, height: bounds.height };
     void placeGlobal(visible, bounds);
   }, []);
 
@@ -235,6 +248,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       const rect = target.getBoundingClientRect();
       const seated = { left: Math.round(rect.left), top: Math.round(rect.top), right: Math.round(vw - rect.right), bottom: Math.round(vh - rect.bottom) };
       setSplit(true);
+      setSplitResizing(seat?.dataset.resizing === "true");
       setTakeover(seat === null);
       setScrimGeometry(null);
       setGeometry((current) => current && current.left === seated.left && current.top === seated.top && current.right === seated.right && current.bottom === seated.bottom ? current : seated);
@@ -245,6 +259,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       return { ...seated, settling, split: true };
     }
     setSplit(false);
+    setSplitResizing(false);
     setTakeover(false);
     const sidebar = document.querySelector(".operations-side-bar") as HTMLElement | null;
     const rail = document.querySelector(".right-rail") as HTMLElement | null;
@@ -487,6 +502,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     if (!parkedRef.current || !tab) return;
     const epoch = parkEpochRef.current;
     const { id: tabId, url } = tab;
+    const box = placedBoxRef.current;
     const task = { controller: new AbortController(), again: false };
     captureRef.current = task;
     const current = () => !task.controller.signal.aborted && parkedRef.current && parkEpochRef.current === epoch
@@ -502,7 +518,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
         img.src = src;
         await img.decode();
         if (!current()) return;
-        setStill({ tabId, url, src, width: img.naturalWidth, height: img.naturalHeight });
+        setStill({ tabId, url, src, width: img.naturalWidth, height: img.naturalHeight, box });
       } catch {
         // 거둔 요청·실패한 캡처는 버린다.
       } finally {
@@ -513,8 +529,64 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       }
     })();
   }, []);
+  // ---- 칸 끌기 예고: 손잡이를 가리키거나 포커스하는 동안 보이는 뷰를 미리 찍어 둔다 ----
+  // park 뒤에 찍으면 첫 장이 오기까지(대략 150–330ms) 끄는 칸이 빈 면이다. 예고 동안 찍어 둔 장은 끌기가 시작되는 회차의 첫 장이 된다.
+  const resizeStillRef = React.useRef<{ readonly still: StillFrame; readonly at: number } | null>(null);
+  React.useEffect(() => {
+    if (!open || !available) { resizeStillRef.current = null; return; }
+    let controller: AbortController | null = null;
+    let refresh: ReturnType<typeof setInterval> | null = null;
+    const prefetch = () => {
+      const tab = activeTabRef.current;
+      const box = placedBoxRef.current;
+      // 보이는 뷰만 찍는다 — 이미 물러나 있으면 그 회차가 스스로 찍는다.
+      if (controller !== null || tab === null || box === null || parkedRef.current || !placeKeyRef.current.startsWith("1:")) return;
+      const task = new AbortController();
+      controller = task;
+      const { id: tabId, url } = tab;
+      void (async () => {
+        try {
+          const response = await fetch("/api/v1/browser/global/screenshot?resolution=device", { signal: task.signal });
+          if (!response.ok) return;
+          const shot = await response.json() as { data?: string; mimeType?: string; mime?: string };
+          if (!shot || typeof shot.data !== "string") return;
+          const src = `data:${shot.mimeType ?? shot.mime ?? "image/png"};base64,${shot.data}`;
+          const img = new Image();
+          img.src = src;
+          await img.decode();
+          if (task.signal.aborted || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) return;
+          const still = { tabId, url, src, width: img.naturalWidth, height: img.naturalHeight, box };
+          resizeStillRef.current = { still, at: Date.now() };
+          // 찍는 사이 끌기가 시작돼 회차가 빈 자리로 서 있으면 이 장을 깐다 — 회차 캡처가 오면 그 장이 덮는다.
+          if (parkedRef.current) setStill((current) => current ?? still);
+        } catch {
+          // 미리 찍지 못하면 회차 캡처가 자리를 채운다.
+        } finally {
+          if (controller === task) controller = null;
+        }
+      })();
+    };
+    const onIntent = () => {
+      const intent = getNativeViewResize();
+      const seat = document.querySelector(SPLIT_SEAT_SELECTOR);
+      const mine = intent !== null && !intent.held && seat !== null && intent.container === seat;
+      if (refresh !== null) { clearInterval(refresh); refresh = null; }
+      if (!mine) return;
+      prefetch();
+      refresh = setInterval(prefetch, RESIZE_STILL_REFRESH_MS);
+    };
+    const unsubscribe = subscribeNativeViewResize(onIntent);
+    onIntent();
+    return () => {
+      unsubscribe();
+      if (refresh !== null) clearInterval(refresh);
+      controller?.abort();
+    };
+  }, [open, available]);
+
   // park 진입마다 회차를 올리고 한 장. 풀리거나 닫히면 진행 중 캡처를 거두고 지난 장을 버린다 —
-  // 다음 회차는 빈(무채색) 자리에서 시작한다. 물러난 채 탭이 바뀌면 같은 회차에서 새 탭을 찍는다.
+  // 다음 회차는 빈(무채색) 자리에서 시작한다. 단 칸 끌기 예고 동안 미리 찍어 둔 같은 탭의 새 장이 있으면 그 장에서 시작한다.
+  // 물러난 채 탭이 바뀌면 같은 회차에서 새 탭을 찍는다.
   const capturable = open && available && activeTab !== null && parked;
   React.useEffect(() => {
     if (!capturable) {
@@ -525,7 +597,11 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     }
     if (!wasParkedRef.current) { wasParkedRef.current = true; parkEpochRef.current += 1; }
     cancelCapture();
-    setStill(null);
+    const early = resizeStillRef.current;
+    const tab = activeTabRef.current;
+    setStill(early !== null && tab !== null && early.still.tabId === tab.id && early.still.url === tab.url && Date.now() - early.at <= RESIZE_STILL_MAX_AGE_MS
+      ? early.still
+      : null);
     captureStill();
   }, [capturable, activeTab?.id, activeTab?.url, cancelCapture, captureStill]);
   // 물러난 채 자리 크기가 바뀌어도 다시 찍지 않는다 — 셸은 물러난 뷰를 마지막으로 놓였던 크기로 두므로
@@ -588,8 +664,12 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
 
   const closedTabs = state?.closedTabs ?? [];
   // 이번 회차에 찍혔고(풀릴 때 비운다) 지금 자리와 크기가 맞는 장만 보인다. 그 밖은 무채색 자리다.
+  // 칸 경계를 끄는 동안은 자리 폭이 매 프레임 바뀐다 — 장이 찍힌 크기(box)에 맞고 높이가 그대로면 늘이지 않고 그 크기 그대로
+  // 왼쪽 위에 깐다(좁아지면 오른쪽이 잘리고, 넓어지면 남는 자리는 무채색 바탕이다).
+  const resizeStill = splitResizing && still !== null && still.box !== null && viewportBox !== null
+    && stillFits(still, still.box) && Math.abs(still.box.height - viewportBox.height) <= 2;
   const shownStill = parked && still && activeTab && viewportBox && still.tabId === activeTab.id && still.url === activeTab.url
-    && stillFits(still, viewportBox) ? still : null;
+    && (stillFits(still, viewportBox) || resizeStill) ? still : null;
   const profile = available ? state?.profile ?? null : null;
   const defaultProfile = state?.defaultProfile ?? null;
   const persistent = profile !== null;
@@ -880,7 +960,14 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
             </div>
           ) : null}
           {shownStill ? (
-            <img className="fleet-browser-sheet__still" src={shownStill.src} alt="" aria-hidden="true" data-still-frame="true" />
+            <img
+              className="fleet-browser-sheet__still"
+              src={shownStill.src}
+              alt=""
+              aria-hidden="true"
+              data-still-frame="true"
+              style={resizeStill && shownStill.box !== null ? { right: "auto", bottom: "auto", width: shownStill.box.width, height: shownStill.box.height } : undefined}
+            />
           ) : null}
           {parked && activeTab && !shownStill && !closedDoor && !empty ? <div className="fleet-browser-sheet__placeholder" aria-hidden="true" /> : null}
         </div>

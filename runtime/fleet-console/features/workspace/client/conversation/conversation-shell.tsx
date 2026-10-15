@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
+import { flushSync } from "react-dom";
+
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
@@ -30,7 +32,7 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/cha
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { closeGlobalBrowser, globalBrowserUnseenLabel, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
-import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
@@ -1384,7 +1386,7 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
   }, [open]);
   return (
     <>
-    {open && settled ? <SplitResizeHandle seat={seat} resizing={resizing} onResizingChange={onResizingChange} /> : null}
+    {open && settled ? <SplitResizeHandle seat={seat} splitRef={ref} resizing={resizing} onResizingChange={onResizingChange} /> : null}
     <div
       ref={ref}
       className={`conversation-split${open ? " is-open" : ""}${seat?.overRail ? " is-over-rail" : ""}${open && resizing ? " is-resizing" : ""}`}
@@ -1414,17 +1416,37 @@ const SPLIT_RESIZE_STEP_LARGE = 64;
  * 대화 열과 브라우저 칸 사이 경계 — 끌면 칸 폭이 바뀐다(왼쪽으로 끌면 브라우저가 넓어진다). 손잡이는 경계의 대화 열 쪽에 선다:
  * 칸 쪽은 Desktop 에서 네이티브 뷰가 페이지 위를 덮어 포인터를 가져간다. 끄는 동안은 포인터를 손잡이에 붙들고(setPointerCapture)
  * 칸에 data-resizing 을 달아 브라우저가 네이티브 뷰를 정지 화면 뒤로 물리게 한다 — 커서가 뷰 자리 위를 지나도 끌기가 끊기지 않고,
- * 놓으면 정착한 자리에 뷰가 한 번 다시 놓인다. 키보드(←/→, Shift 로 크게, Home/End)로도 조절하고, 두 번 누르면 고른 폭을 지워
- * 반씩 나누는 폭으로 돌아간다. 폭은 언제나 SPLIT_MIN_WIDTH ~ seat.maxWidth(대화 열의 최소폭을 남기는 끝) 안이다.
+ * 놓으면 정착한 자리에 뷰가 한 번 다시 놓인다. 손잡이를 가리키면 끌기를 예고(announceNativeViewResize)해 브라우저가 보이는 뷰를
+ * 미리 찍어 두게 하고, 누르는 순간(렌더 전에) 끌기 시작을 알려 그 장을 깔고 곧바로 물러나게 한다. 키보드(←/→, Shift 로 크게,
+ * Home/End)로도 조절하고, 두 번 누르면 고른 폭을 지워 반씩 나누는 폭으로 돌아간다. 폭은 언제나 SPLIT_MIN_WIDTH ~ seat.maxWidth(대화 열의 최소폭을 남기는 끝) 안이다.
  */
-function SplitResizeHandle({ seat, resizing, onResizingChange }: {
+function SplitResizeHandle({ seat, splitRef, resizing, onResizingChange }: {
   readonly seat: SplitSeat;
+  /** 브라우저를 실은 칸 — 끌기 예고·시작을 이 칸 안의 브라우저에 알린다. */
+  readonly splitRef: { readonly current: HTMLDivElement | null };
   readonly resizing: boolean;
   readonly onResizingChange: (resizing: boolean) => void;
 }) {
   const t = useT();
   const seatRef = useRef(seat);
   seatRef.current = seat;
+  const draggingRef = useRef(false);
+  const announce = (phase: "armed" | "held" | null) => {
+    const container = splitRef.current;
+    if (phase === null || container === null) {
+      if (getNativeViewResize()?.container === container) announceNativeViewResize(null);
+      return;
+    }
+    announceNativeViewResize({ container, held: phase === "held" });
+  };
+  // 예고는 포인터가 손잡이 위에 있는 동안뿐이다 — 키보드 조절은 전이로 따라가며 뷰를 끌기처럼 물리지 않는다.
+  const arm = () => { if (!draggingRef.current) announce("armed"); };
+  const disarm = () => { if (!draggingRef.current) announce(null); };
+  // 손잡이가 걷히면(칸이 닫힘) 예고도 걷는다.
+  useEffect(() => () => {
+    const container = splitRef.current;
+    if (container !== null && getNativeViewResize()?.container === container) announceNativeViewResize(null);
+  }, [splitRef]);
   const clamp = (value: number) => Math.max(SPLIT_MIN_WIDTH, Math.min(seatRef.current.maxWidth, Math.round(value)));
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -1435,6 +1457,9 @@ function SplitResizeHandle({ seat, resizing, onResizingChange }: {
     let width = startWidth;
     let done = false;
     try { handle.setPointerCapture(pointerId); } catch { /* 붙들지 못해도 창 전체의 움직임으로 따라간다. */ }
+    draggingRef.current = true;
+    // 렌더(data-resizing)보다 먼저 칸 안의 브라우저에 알린다 — 미리 찍어 둔 장으로 곧바로 물러나게.
+    announce("held");
     onResizingChange(true);
     const onMove = (move: PointerEvent) => {
       if (move.pointerId !== pointerId) return;
@@ -1451,7 +1476,10 @@ function SplitResizeHandle({ seat, resizing, onResizingChange }: {
       try { if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId); } catch { /* 이미 풀렸다. */ }
       // 움직이지 않은 누름(두 번 누르기의 반쪽 포함)은 고른 폭을 만들지 않는다 — 반씩 나누는 기본을 지키게.
       if (width !== startWidth) setConversationSplitWidth(width, { persist: true });
-      onResizingChange(false);
+      draggingRef.current = false;
+      // data-resizing 을 먼저 걷어 커밋한 뒤 알린다 — 칸 안의 브라우저가 알림을 받는 그 자리에서 뷰를 다시 놓게.
+      flushSync(() => onResizingChange(false));
+      announce(handle.matches(":hover") ? "armed" : null);
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", finish);
@@ -1485,6 +1513,9 @@ function SplitResizeHandle({ seat, resizing, onResizingChange }: {
       aria-valuemin={SPLIT_MIN_WIDTH}
       aria-valuemax={seat.maxWidth}
       onPointerDown={onPointerDown}
+      onPointerEnter={arm}
+      onPointerMove={arm}
+      onPointerLeave={disarm}
       onKeyDown={onKeyDown}
       onDoubleClick={() => setConversationSplitWidth(null, { persist: true })}
     />

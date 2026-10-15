@@ -121,6 +121,35 @@ export function useBrowserCaptionOverlay(operationId: string): boolean {
   return React.useSyncExternalStore(subscribe, () => captionOverlays.get(operationId) ?? false, () => false);
 }
 
+// ---------- 네이티브 뷰를 실은 칸의 끌기 ----------
+
+/**
+ * 네이티브 뷰를 실은 칸(container)의 경계를 사람이 끌려 한다(held=false: 손잡이를 가리킨다) 또는 끌고 있다(held=true).
+ * 네이티브 뷰는 페이지 위에 그려져 끄는 포인터를 가져가므로, 칸 안의 브라우저는 끄는 동안 정지 화면을 깔고 뷰를 물린다. 정지 화면을
+ * 누른 뒤에 찍으면 그 왕복(수백 ms) 동안 뷰가 Console 위에 남거나 빈 면이 보이므로, 예고(held=false) 동안 보이는 뷰를 미리 찍어
+ * 두고 끌기가 시작되면 기다리지 않고 그 장으로 물러난다. 끄는 동안의 표식은 칸의 `data-resizing` 이 DOM 으로도 말한다 — 이 신호는
+ * 그보다 앞서(누르는 그 순간, 렌더 전에) 닿는 길이다.
+ */
+export type NativeViewResize = { readonly container: Element; readonly held: boolean } | null;
+
+let nativeViewResize: NativeViewResize = null;
+const nativeViewResizeListeners = new Set<() => void>();
+
+export function announceNativeViewResize(next: NativeViewResize): void {
+  if (next === nativeViewResize || (next !== null && nativeViewResize !== null && next.container === nativeViewResize.container && next.held === nativeViewResize.held)) return;
+  nativeViewResize = next;
+  for (const listener of nativeViewResizeListeners) listener();
+}
+
+export function getNativeViewResize(): NativeViewResize {
+  return nativeViewResize;
+}
+
+export function subscribeNativeViewResize(listener: () => void): () => void {
+  nativeViewResizeListeners.add(listener);
+  return () => { nativeViewResizeListeners.delete(listener); };
+}
+
 // ---------- 브라우저를 열 수 있는가 ----------
 
 /**
