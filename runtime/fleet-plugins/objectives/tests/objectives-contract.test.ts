@@ -1196,7 +1196,7 @@ describe("Objectives contract", () => {
   });
 
   it("keeps merge sources only in the receiving record and archives existing Operations while deleting unlaunched objectives through Console Use", async () => {
-    const { store, launch, add, workspace, consoleTool, consoleDetail, operations, route, savedIds, launches } = harness();
+    const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, operations, archivedOperations, route, savedIds, launches, objectiveFile } = harness();
     const caller = add("tidy-caller", { title: "Tidy caller" });
     const use = async (args: Record<string, unknown>, tool = consoleTool) => (await tool.execute(args, { cwd: workspace, caller: { kind: "operation" as const, operationId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
     const waiting = await launch.create({ theaterId: "t1", title: "Waiting", groupId: null, note: "long brief ".repeat(100), criteria: ["one", "two"] });
@@ -1279,6 +1279,61 @@ describe("Objectives contract", () => {
     const discarded = await launch.create({ theaterId: "t1", title: "Delete before starting", groupId: null });
     expect((await route("objective/archive", { objectiveId: discarded.id })).value).toMatchObject({ deleted: true });
     expect(store.find(discarded.id)).toBeNull();
+
+    // 보관함을 읽고 영구 삭제를 예약하는 같은 정리 경계 — Core의 타이머·파일 삭제 알고리즘은 재현하지 않는다.
+    await launch.archive(shelved.id);
+    const archivedAt = new Map([[started.id, 100], [shelved.id, 200]]);
+    let revision = 1;
+    const purge = vi.fn(async (confirmation: import("@fleet-console/sdk/operations").OperationPurgeConfirmation) => {
+      if (confirmation.revision !== revision) throw new Error("archive_revision_conflict");
+      revision += 1;
+      return { operationIds: confirmation.operationIds, revision, purgeId: `purge-${confirmation.targetId}`, purgeAt: 10_500 };
+    });
+    Object.assign(ctx.host.operations, {
+      listArchived: (theaterId?: string) => ({ revision, total: archivedOperations.size, entries: [...archivedOperations.values()]
+        .filter((operation) => !theaterId || operation.theaterId === theaterId)
+        .map((operation) => ({ operation, location: "archived", rootOperationId: operation.id, archivedAt: archivedAt.get(operation.id) ?? 300 })) }),
+      previewPurge: (id: string) => ({ targetId: id, operationIds: [id], revision }),
+      purge,
+    });
+    const commodore = createCommodoreBoardTools(ctx, store, launch, "t1")[0]!;
+    const board = async (args: Record<string, unknown>, tool = commodore) => {
+      const parsed = tool.actionSchema!.parse(args);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) throw new Error("action gate rejected archive input");
+      return (await tool.execute(parsed.call, { cwd: workspace }) as { structuredContent: Record<string, unknown> }).structuredContent;
+    };
+    // 다른 플러그인의 보관 Operation은 목표가 아니므로 나열하지 않는다.
+    add("archived-plugin", { pluginId: "codex", type: "codex-wiki" });
+    await ctx.host.operations.archive!("archived-plugin");
+    const archivedPage = await board({ action: "archived", archivedBefore: 200, limit: 1 });
+    expect(archivedPage).toMatchObject({ total: 1, nextOffset: null, objectives: [{ id: started.id, objectiveId: started.id, title: "Started", archivedAt: 100 }] });
+    expect(await board({ action: "archived", limit: 1 })).toMatchObject({ total: 2, nextOffset: 1, objectives: [{ objectiveId: shelved.id, archivedAt: 200 }] });
+    expect(await board({ action: "archived", offset: 1, limit: 1 })).toMatchObject({ nextOffset: null, objectives: [{ objectiveId: started.id, archivedAt: 100 }] });
+    expect(await board({ action: "purge", objectiveIds: [started.id, live.id, waiting.id, "missing"] })).toMatchObject({ error: "tidy_refused", refusals: [
+      { objectiveId: live.id, reason: "not_archived" }, { objectiveId: waiting.id, reason: "not_archived" }, { objectiveId: "missing", reason: "unknown_objective" },
+    ] });
+    expect(await board({ action: "purge", objectiveIds: [started.id] }, createCommodoreBoardTools(ctx, store, launch, "t2")[0]!)).toMatchObject({ error: "tidy_refused", refusals: [{ objectiveId: started.id, reason: "other_theater" }] });
+    expect((await use({ action: "purge", objectiveIds: [caller.id] })).structuredContent).toMatchObject({ error: "tidy_refused", refusals: [{ objectiveId: caller.id, reason: "own_objective" }] });
+    expect(purge).not.toHaveBeenCalled();
+    const pendingPreview = vi.spyOn(ctx.host.operations, "previewPurge").mockImplementation((id) => {
+      if (id === shelved.id) throw new Error("pending_deletion");
+      return { targetId: id, operationIds: [id], revision };
+    });
+    expect(await board({ action: "purge", objectiveIds: [started.id, shelved.id] })).toMatchObject({ error: "tidy_refused", refusals: [{ objectiveId: shelved.id, reason: "pending_deletion" }] });
+    expect(purge).not.toHaveBeenCalled();
+    pendingPreview.mockRestore();
+    const scheduled = await board({ action: "purge", objectiveIds: [started.id, shelved.id] });
+    expect(scheduled).toMatchObject({ ok: true, scheduled: [{ objectiveId: started.id, purgeAt: 10_500 }, { objectiveId: shelved.id, purgeAt: 10_500 }] });
+    expect(purge).toHaveBeenCalledTimes(2);
+    for (const id of [started.id, shelved.id]) {
+      // 유예 응답만으로 목표 파일을 지우지 않는다. 호스트의 확정 사건 뒤에만 같은 회수 경로가 파일을 지운다.
+      expect(fs.existsSync(objectiveFile(id))).toBe(true);
+      archivedOperations.delete(id);
+      launch.operationPurged(id);
+      expect(fs.existsSync(objectiveFile(id))).toBe(false);
+      expect(store.find(id)).toBeNull();
+    }
   });
 
   it("shows every agent Operation created elsewhere as an objective, including records saved as not enlisted, but not member or plugin Operations", async () => {

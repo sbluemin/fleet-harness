@@ -59,22 +59,24 @@ const HINTS: Readonly<Record<string, string>> = {
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
 const scope = { theaterId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe("Follow nextOffset with the same action and filter until null; an 8000-byte budget can return fewer rows than limit."), limit: z.number().int().min(1).max(100).optional() };
-const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Existing Operations are archived; objectives with no Operation are permanently deleted. No expiry.");
+const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("archive/remove: archive Operations, delete unlaunched objectives. restore/purge: archived objective IDs.");
 const listTool = defineConsoleTool({
   name: "console_objectives",
-  description: "A Theater's Objectives list: groups, objectives, what waits on the person (inbox), running ones (fleet), history, member models; add and tidy objectives.",
+  description: "A Theater's Objectives: groups, list, inbox, fleet, history, archived, models; add/tidy. purge: archived only; irreversible after 10-second undo grace. Console restart cancels pending purges.",
   actions: {
     groups: { kind: "read", input: z.object(scope) },
-    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; archived Operations are in the Console archive.") }) },
+    list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all", "agent"]).optional().describe("all adds completed objectives in the active location; use archived for the archive.") }) },
     inbox: { kind: "read", input: z.object(rows) },
     fleet: { kind: "read", input: z.object(rows) },
     history: { kind: "read", input: z.object(rows) },
+    archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (Unix epoch ms). Newest first; follow nextOffset with the same filter.") }) },
     models: { kind: "read", input: z.object(scope) },
     add: { kind: "write", input: z.object({ ...scope, title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, note: z.string().max(20_000).optional().describe("The brief: the person's request and its purpose. Missions, method and evidence come from the Commander's plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Receives the sources' brief and criteria."), from: tidyIds.describe("Incomplete objectives with no Operation. Sources stay only in the target record; no independent restore."), reason }) },
     restore: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs. Restore dormant, retaining completion and records.") }) },
+    purge: { kind: "write", input: z.object({ objectiveIds: tidyIds.describe("Archived objective IDs only. Irreversible after a 10-second undo grace period; Console restart cancels pending purges.") }) },
   },
 });
 
@@ -192,6 +194,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
         const theaterOf = (id: string | undefined) => bound?.theaterId ?? argTheater ?? (id ? store.find(id)?.theaterId : undefined) ?? "";
         if (action === "add") return { theaterId, summary: `목표 추가 「${short(typeof args.title === "string" ? args.title : "")}」`, view: "objectives", gesture: "create", ...listAt(theaterId, args.groupId) };
         if (action === "remove" || action === "archive") { const removeIds = stringIds(args.objectiveIds); const removeTheaterId = theaterOf(removeIds[0]); return { theaterId: removeTheaterId, summary: removeIds.length === 1 ? `목표 보관·정리 「${titleOf(removeIds[0]!)}」` : `목표 ${removeIds.length}개 보관·정리`, view: "objectives", gesture: "press", ...listAt(removeTheaterId, undefined) }; }
+        if (action === "purge") { const purgeIds = stringIds(args.objectiveIds); const purgeTheaterId = theaterOf(purgeIds[0]); return { theaterId: purgeTheaterId, summary: purgeIds.length === 1 ? `보관 목표 영구 삭제 예약 「${titleOf(purgeIds[0]!)}」` : `보관 목표 ${purgeIds.length}개 영구 삭제 예약`, view: "objectives", gesture: "press", ...listAt(purgeTheaterId, undefined) }; }
         if (action === "merge") { const into = typeof args.into === "string" ? args.into : ""; const mergeTheaterId = theaterOf(into); return { theaterId: mergeTheaterId, summary: `목표 ${stringIds(args.from).length}개를 「${titleOf(into)}」에 합침`, view: "objective", path: into, gesture: "press", ...rowAt(into || undefined, mergeTheaterId) }; }
         if (action === "restore") { const restoreIds = stringIds(args.objectiveIds); const restoreTheaterId = theaterOf(restoreIds[0]); return { theaterId: restoreTheaterId, summary: restoreIds.length === 1 ? `목표 되돌림 「${titleOf(restoreIds[0]!)}」` : `목표 ${restoreIds.length}개 되돌림`, view: "objectives", gesture: "press", ...(restoreIds.length === 1 ? rowAt(restoreIds[0], restoreTheaterId) : listAt(restoreTheaterId, undefined)) }; }
         // 읽기 — 목표 목록류(목록·그룹·확인 필요·진행 중·이력)면 묶음 머리. 모델 목록은 목표와 무관해 레일에만 선다.
@@ -204,11 +207,12 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
       if (!parsed.ok) return refusal(parsed);
       const call = parsed.call as ListCall;
       try {
-        if (call.action === "remove" || call.action === "archive" || call.action === "merge" || call.action === "restore") {
+        if (call.action === "remove" || call.action === "archive" || call.action === "merge" || call.action === "restore" || call.action === "purge") {
           // 정리는 에이전트 Operation 이나 사령관이 한다 — 누가 지웠는지가 사람의 보드에 남아야 한다. 사령관은 자기 Theater 목표만 정리한다.
           if (caller?.kind !== "operation" && caller?.kind !== "commodore") return refuse("operation_caller_required");
-          if (bound) for (const id of call.action === "merge" ? [call.into, ...call.from] : call.objectiveIds) scoped(id);
+          if (bound && call.action !== "purge") for (const id of call.action === "merge" ? [call.into, ...call.from] : call.objectiveIds) scoped(id);
           if (!spend(tidyBudget, callerKey(caller), MAX_TIDY_PER_TURN)) return refuse("budget_exceeded", { limit: MAX_TIDY_PER_TURN, hint: HINTS.budget_exceeded });
+          if (call.action === "purge") return await purgeObjectives(call.objectiveIds, caller);
           const actor = (why?: string) => ({ ...(caller.kind === "commodore" ? { operationId: `${COMMODORE_TIDY_PREFIX}${caller.theaterId}`, title: null } : { operationId: caller.operationId, title: ctx.host.operations.get(caller.operationId)?.title ?? null }), ...(why ? { reason: why } : {}) });
           // 후속으로 태어난 목표면 원본의 배치 표시(생성됨·삭제됨)가 이 목표의 지운 표시에서 나온다 — 바뀐 목표마다 원본을 다시 방송한다.
           const touched = (changed: readonly string[]) => { for (const id of changed) launch.followupTargetChanged(id); };
@@ -363,6 +367,47 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   }, boundFilter);
 
 
+  /** 목표·Theater·보관 위치를 전부 확인한 뒤에만 호스트의 유예를 시작한다. 기록 회수는 operation:purged가 맡는다. */
+  async function purgeObjectives(objectiveIds: readonly string[], caller: BoardCaller) {
+    const host = ctx.host.operations;
+    if (!host.describe || !host.previewPurge || !host.purge) return refuse("operation_lifecycle_unavailable");
+    const targets = [...new Set(objectiveIds)];
+    const refusals: { objectiveId: string; reason: string }[] = [];
+    const archiveReason = (error: unknown) => {
+      const code = error instanceof Error ? error.message : "";
+      return /^[a-z_]{1,64}$/.test(code) ? code : "operation_archive_failed";
+    };
+    for (const id of targets) {
+      const found = store.find(id);
+      const reason = !found ? "unknown_objective"
+        : found.theaterId !== theaterOfCaller(caller) ? "other_theater"
+        : caller.kind === "operation" && roleIn(found, caller) ? "own_objective"
+        : null;
+      if (reason) { refusals.push({ objectiveId: id, reason }); continue; }
+      const description = host.describe(id);
+      if (description?.location !== "archived" || description.rootOperationId !== id) {
+        refusals.push({ objectiveId: id, reason: "not_archived" }); continue;
+      }
+      // 이미 삭제 유예 중이거나 호스트가 회복을 기다리는 대상도 쓰기 전에 전부 거절한다.
+      try { host.previewPurge(id); }
+      catch (error) { refusals.push({ objectiveId: id, reason: archiveReason(error) }); }
+    }
+    if (refusals.length) return refuse("tidy_refused", { refusals });
+    const scheduled: { objectiveId: string; purgeId?: string; purgeAt?: number }[] = [];
+    const warning = "Deletion is irreversible after the 10-second grace period. Restarting the Console cancels pending purges.";
+    for (const id of targets) {
+      try {
+        // 한 건을 예약할 때마다 revision이 바뀐다 — 앞서 확인한 revision을 다음 건에 재사용하지 않는다.
+        const receipt = await host.purge(host.previewPurge(id));
+        scheduled.push({ objectiveId: id, purgeId: receipt.purgeId, purgeAt: receipt.purgeAt });
+      } catch (error) {
+        // 확인 뒤 다른 호출이 위치를 바꾼 경우, 이미 시작한 유예를 숨기거나 성공한 것처럼 답하지 않는다.
+        return refuse("purge_failed", { scheduled, refusals: [{ objectiveId: id, reason: archiveReason(error) }], warning });
+      }
+    }
+    return text({ ok: true, scheduled, warning });
+  }
+
   async function models(theaterId: string | null, signal: AbortSignal | undefined) {
     const [catalog, quota] = await Promise.all([modelCatalog.load(signal), modelCatalog.quota(signal)]);
     if (!catalog) throw new ObjectiveStoreError("catalog_unavailable");
@@ -405,7 +450,18 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     return { objectiveId: objective.id, session, source: page.source, latest: !args.cursor, entries: page.entries, nextCursor: page.nextCursor, truncated: page.truncated };
   }
 
-  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" }>, theaterId: string, caller: BoardCaller | undefined) {
+  function read(args: Extract<ListCall, { action: "groups" | "list" | "inbox" | "fleet" | "history" | "archived" }>, theaterId: string, caller: BoardCaller | undefined) {
+    if (args.action === "archived") {
+      if (!ctx.host.operations.listArchived) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+      const snapshot = ctx.host.operations.listArchived(theaterId);
+      const objectives = snapshot.entries.flatMap(({ operation, location, archivedAt }) => {
+        if (location !== "archived" || archivedAt === null || (args.archivedBefore !== undefined && archivedAt >= args.archivedBefore)) return [];
+        const found = store.find(operation.id);
+        if (!found || found.theaterId !== theaterId || (args.groupId && found.groupId !== args.groupId)) return [];
+        return [{ id: found.id, objectiveId: found.id, title: found.title, archivedAt }];
+      }).sort((a, b) => b.archivedAt - a.archivedAt || a.id.localeCompare(b.id));
+      return consoleObjectivePage(objectives, { theaterId, offset: args.offset, limit: args.limit });
+    }
     if (args.action === "groups") { const objectives = store.list(theaterId); return { theaterId, groups: (ctx.host.operations.groups?.list(theaterId) ?? []).map((group) => ({ id: group.id, name: group.name, color: group.color, open: objectives.filter((objective) => !objective.done && !objective.removed && objective.groupId === group.id).length })) }; }
     const page = (rows: readonly ReturnType<typeof rowView>[], today?: string) => consoleObjectivePage(rows, { theaterId, offset: args.offset, limit: args.limit, today });
     const supply = args.action === "history" ? store.all().filter((objective) => objective.theaterId === theaterId) : store.list(theaterId);
