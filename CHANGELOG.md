@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.235.1] - 2026-10-15
+
+### fleet-console
+
+#### Changed
+- In an objective's mission graph, a mission's details pop up only while the pointer is over its circle (or the diamond of a mission awaiting an answer), not over its name or the space around it; clicking the name still opens and pins them.
+
+#### Fixed
+- Quick Launch `@` search finds a Commodore you gave an alias by its project name again, not only by the alias.
+- On a phone, a long conversation title is shortened with an ellipsis in the conversation list instead of stretching the screen sideways, and long titles in Archive stay within their row.
+
 ## [1.235.0] - 2026-10-15
 
 ### fleet-console
