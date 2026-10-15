@@ -1,20 +1,17 @@
 /* ── 사용 한도 팝업 ─────────────────────────────
    도구모음 요약 바로 아래에 뜨는 부유 면(document.body로 포털). 자리·폭·최대 높이는 버튼 좌표로
-   스크립트가 정하고, 여기서는 면의 문법만 정한다. 면은 canonical 팝업 판독성 계약(theme.css의
-   --glass-tint-*·--glass-underlay 채널)을 그대로 소비한다. 넘치는 높이는 카드 목록만 스크롤한다. */
+   스크립트가 정하고, 여기서는 면의 문법만 정한다. 면은 공통 팝업 표면(theme.css --popover-*) 한 장이고,
+   안쪽은 카드를 겹치지 않고 구분선과 제목으로만 나눈다. 넘치는 높이는 본문만 스크롤한다. */
 .quota-popover {
   position: fixed;
   z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
   min-height: 0;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   outline: none;
   animation: quota-popover-in var(--duration-fast) var(--ease-glide) both;
@@ -49,8 +46,8 @@
   flex: none;
   align-items: center;
   gap: 8px;
-  padding: 11px 12px 9px 14px;
-  border-bottom: 1px solid var(--hairline);
+  padding: 11px 12px 9px 16px;
+  border-bottom: 1px solid var(--popover-divider);
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
@@ -76,9 +73,8 @@
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 10px;
   min-height: 0;
-  padding: 10px 12px 12px;
+  padding: 0 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -124,10 +120,10 @@
   max-width: 268px;
   margin-left: auto;
   padding: 11px 13px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: var(--ink-mid);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-md);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   opacity: 0;
   visibility: hidden;
   transition: opacity 120ms ease;
@@ -209,11 +205,14 @@
   );
 }
 
-.quota-provider {
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-  padding: 14px;
+/* 공급자 구역은 카드가 아니라 팝업 면 위의 한 구역이다 — 구역 사이는 구분선 하나, 이름은 제목이 말한다. */
+.quota-provider,
+.quota-connect-card {
+  padding: 14px 0;
+}
+
+.quota-body > * + :is(.quota-provider, .quota-connect-card) {
+  border-top: 1px solid var(--popover-divider);
 }
 
 .quota-provider__header {
@@ -223,11 +222,9 @@
   min-height: 22px;
 }
 
-/* 로딩 상태 카드. */
+/* 로딩 상태 — 카드 없이 본문 가운데 한 덩이. */
 .quota-state {
-  padding: 20px 16px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-md);
+  padding: 24px 0;
   text-align: center;
 }
 
@@ -493,13 +490,6 @@
   white-space: nowrap;
 }
 
-.quota-connect-card {
-  padding: 18px 16px;
-  border: 1px dashed var(--hairline-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-glass);
-}
-
 .quota-connect-card p {
   margin: 7px 0 12px;
   color: var(--text-tertiary);
@@ -513,12 +503,13 @@
   font-size: var(--t-xs);
 }
 
+/* 팝업 안 단추는 중립 면 위의 글자다 — 1차 동작만 금색 글자를 얻고, 테두리는 두지 않는다. */
 .quota-button {
   padding: 6px 12px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
+  border: 0;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
-  background: var(--ink-veil);
+  background: var(--control-rest);
   font: inherit;
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -526,14 +517,23 @@
 }
 
 .quota-button--primary {
-  border-color: var(--brass);
+  color: var(--brass-ink);
+  font-weight: var(--weight-medium);
 }
 
-.quota-button:hover,
+.quota-button:hover {
+  background: var(--control-rest-hover);
+}
+
+.quota-refresh:hover {
+  color: var(--text-primary);
+  background: var(--wash-hover);
+}
+
 .quota-button:focus-visible,
-.quota-refresh:hover,
 .quota-refresh:focus-visible {
-  color: var(--brass-ink);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
 }
 
 .quota-strip {
@@ -573,10 +573,8 @@
 
 .quota-footer {
   flex: none;
-  border-top: 1px solid var(--hairline);
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
-  padding: 7px 10px 7px 14px;
-  background: var(--surface-glass);
+  border-top: 1px solid var(--popover-divider);
+  padding: 7px 10px 7px 16px;
 }
 
 .quota-footer__row {
@@ -619,7 +617,7 @@
   margin-left: auto;
 }
 
-/* 꺼진 글리프는 무채색으로 물러나고, 켜진 글리프는 제 색과 어두운 면·rim을 얻는다. */
+/* 꺼진 글리프는 무채색으로 물러나고, 켜진 글리프는 제 색과 고른 행의 중립 워시를 얻는다. */
 .quota-toolbar-pick {
   display: grid;
   place-items: center;
@@ -645,7 +643,7 @@
 
 .quota-toolbar-pick:hover,
 .quota-toolbar-pick:focus-visible {
-  background: var(--surface-glass);
+  background: var(--wash-hover);
   outline: none;
 }
 
@@ -659,8 +657,7 @@
 }
 
 .quota-toolbar-pick[aria-pressed="true"] {
-  border-color: var(--surface-rim-strong);
-  background: var(--ink-deep);
+  background: var(--wash-selected);
 }
 
 .quota-toolbar-pick[aria-pressed="true"] svg {

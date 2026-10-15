@@ -1642,20 +1642,17 @@ describe("Instrument core design contract", () => {
     paintsPopoverFace(layout, ".command-band-environment-popover");
     // 아직 옮기지 않은 시트는 옛 바탕층 별칭 위에 선다 — 별칭이 불투명 면을 가리키므로 계약은 같다.
     expect(components).toMatch(/\.codex-reading-sheet \{[^}]*\),\s*var\(--float-underlay\);/);
-    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--float-underlay\);/);
-    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--float-underlay\);/);
-    // Quaker aides float over the Map — the same glass token that is opaque on Instrument
-    // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
+    // 내장 플러그인 팝업도 같은 면을 칠한다 — 스킬 읽기는 대화상자 면, 신호 토스트·소식은 신호색을 불투명 면에 섞는다.
+    paintsPopoverFace(skillsCss, ".skills-overlay-dialog", "--dialog-face");
+    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*background: color-mix\(in srgb, var\(--aurora\) 15%, var\(--popover-face\)\);/);
+    // Quaker aides float over the Map and other busy surfaces, so every speech surface stays on the opaque popover face.
     for (const selector of [
       ".scuttlebutt-bird-tag",
       ".scuttlebutt-bird-say",
-      ".scuttlebutt-notice-bubble",
       ".scuttlebutt-answer-bubble",
       ".scuttlebutt-chat-card",
-    ]) {
-      const scoped = selector.replace(/\./g, "\\.");
-      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--float-underlay\\);`));
-    }
+    ]) paintsPopoverFace(scuttlebuttCss, selector);
+    expect(scuttlebuttCss).toMatch(/\.scuttlebutt-notice-bubble \{[^}]*background: var\(--scuttlebutt-notice-wash, var\(--popover-face\)\);/);
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
