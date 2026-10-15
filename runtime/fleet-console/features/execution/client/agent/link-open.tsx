@@ -10,7 +10,6 @@ import {
 } from "../../../browser/client/link-open-card.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { httpLinkHref } from "../terminal/shared/terminal-options.js";
-import { openBrowserCompanion } from "./browser-companion.js";
 import { gestureFromEvent, openInDefaultOsBrowser, type OpenLinkGesture } from "@fleet-console/link/core";
 
 /**
@@ -36,7 +35,14 @@ export interface LinkOpenChoice {
   readonly card: React.ReactNode;
 }
 
-export function useLinkOpenChoice(context: OperationRenderContext): LinkOpenChoice {
+/** 카드의 「Operation 브라우저」 행이 갈 곳 — 그 Operation 과, 그 브라우저를 여는 손잡이. */
+export interface LinkOpenChoiceTarget {
+  readonly language: OperationRenderContext["language"];
+  readonly operationId: string;
+  readonly openCompanion: () => void;
+}
+
+export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice {
   const [pending, setPending] = React.useState<{ readonly url: string; readonly at: LinkOpenAt } | null>(null);
   // 묻는 것은 고를 것이 둘일 때만이다. Fleet 브라우저가 이 화면에 설 수 없으면(브라우저 탭·휴대폰,
   // 또는 다른 화면이 붙어 멈춘 동안) 링크는 예전처럼 곧장 열린다 — 답이 하나인 물음은 묻지 않는다.
@@ -53,15 +59,15 @@ export function useLinkOpenChoice(context: OperationRenderContext): LinkOpenChoi
   const close = React.useCallback(() => setPending(null), []);
   const card = pending === null ? null : (
     <LinkOpenCard
-      language={context.language}
+      language={target.language}
       url={pending.url}
       at={pending.at}
       onClose={close}
       companion={{
         // 주소를 먼저 놓고 문을 연다 — 패널은 마운트하는 순간 그 요청을 집어 든다.
         open: () => {
-          requestBrowserOpen(context.operationId, pending.url);
-          openBrowserCompanion(context);
+          requestBrowserOpen(target.operationId, pending.url);
+          target.openCompanion();
         },
       }}
     />

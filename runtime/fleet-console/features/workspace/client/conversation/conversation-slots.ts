@@ -1,5 +1,6 @@
 import { useSyncExternalStore, type ReactNode } from "react";
 
+import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
 
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
@@ -119,6 +120,10 @@ export interface ConversationBodyContext {
   readonly language: "en" | "ko";
   /** 셸이 그릴 기본 본문 — 렌더러가 감싸 쓰거나 무시한다. 같은 렌더에서 두 번 그리지 않는다. */
   readonly defaultBody: ReactNode;
+  /** 기본 본문 대신 세운 글의 파일 링크 열기 — 기본 본문(Operation 본문)이 받는 것과 같은 창구. */
+  readonly navigate: ClientNavigateCapability;
+  /** 이 대화의 Operation 브라우저 칸을 연다(여는 일만) — 기본 본문의 링크 카드 「Operation 브라우저」 행과 같은 자리. 본문 Operation 이 브라우저를 내주지 않으면 없다. */
+  readonly openOperationBrowser?: () => void;
 }
 
 export type ConversationBodyRenderer = (context: ConversationBodyContext) => ReactNode | null;
@@ -148,7 +153,7 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
 // ── 대화 머리 보기 스위치 ──────────────────────────────────────────────────
 
 /** 머리 보기 스위치 렌더러의 맥락 — 본문 렌더러와 같은 사실이다(기본 본문은 없다). */
-export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody">;
+export type ConversationCaptionContext = Omit<ConversationBodyContext, "defaultBody" | "navigate" | "openOperationBrowser">;
 export type ConversationCaptionRenderer = (context: ConversationCaptionContext) => ReactNode | null;
 
 let captionRenderer: ConversationCaptionRenderer | null = null;

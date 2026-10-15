@@ -1,8 +1,6 @@
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
-import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
-import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import "@fleet-console/font-picker/styles.css";
 import {
 CaptionActionButton,
@@ -23,7 +21,7 @@ import { isDesktopShell } from "../../../../core/client/src/integration/desktop-
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { globalBrowserUnseenLabel, notifySharedFallback, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
+import { globalBrowserUnseenLabel, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -33,7 +31,7 @@ import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "
 import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
-import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice } from "./link-open.js";
+import { useOperationLinks } from "./operation-links.js";
 import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
 import { MobileGlyph, MobileSurfaceProvider, mobileOperationOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileOperationLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
@@ -716,30 +714,15 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
-  const linkOpen = useLinkOpenChoice(context);
-  const linkEngine = useBrowserEngine();
-  const linkAvailability = React.useMemo(() => ({
-    canOffer: linkEngine === null || linkEngine.available,
-    isShared: linkEngine !== null && !linkEngine.available && linkEngine.reason === "shared",
-  }), [linkEngine]);
-  const openChatLinkDirect = React.useCallback((url: string, event: { readonly button: number; readonly metaKey: boolean; readonly ctrlKey: boolean; readonly shiftKey: boolean; readonly altKey: boolean }) => openOperationLink(
-    url,
-    gestureFromEvent(event),
-    { operationId: context.operationId, openCompanion: () => openBrowserCompanion(context) },
-    linkAvailability,
-  ), [context, linkAvailability]);
-  // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통).
-  const chooseLinkWithSharedFallback = React.useCallback((url: string, at: { readonly x: number; readonly y: number }) => {
-    if (linkAvailability.isShared) {
-      notifySharedFallback();
-      openInDefaultOsBrowser(url);
-      return true;
-    }
-    return linkOpen.choose(url, at);
-  }, [linkAvailability, linkOpen.choose]);
-  const onChatLinkClick = React.useMemo(() => createChatLinkInterceptor(chooseLinkWithSharedFallback, openChatLinkDirect), [chooseLinkWithSharedFallback, openChatLinkDirect]);
-  const [fileLinkFailure, setFileLinkFailure] = React.useState<"unsupported" | "failed" | null>(null);
-  const fileLinks = React.useMemo(() => createChatFileLinkPorts(context.operation.theaterId, context.navigate, setFileLinkFailure), [context.operation.theaterId, context.navigate]);
+  // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(operation-links).
+  const links = useOperationLinks({
+    operationId: context.operationId,
+    theaterId: context.operation.theaterId,
+    language: context.language,
+    navigate: context.navigate,
+    openCompanion: () => openBrowserCompanion(context),
+  });
+  const fileLinkFailure = links.fileLinkFailure;
   const terminalFileLinks = useAgentTerminalFileLinks(context.operationId, context.operation.theaterId, context.navigate);
   // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
   const groupConversation = useHasGroupConversation(context.operationId);
@@ -761,12 +744,12 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} />
     );
     return (
-      <MarkdownLinkBoundary className="agent-stream-host" onClick={onChatLinkClick} onAuxClick={onChatLinkClick} fleetLink="self" {...fileLinks}>
+      <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" {...links.fileLinks}>
         {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
           ? <MobileGroupConversation root={context.operation} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
           : chatView}
         <ComputerScreenShare operationId={context.operationId} />
-        {linkOpen.card}
+        {links.card}
       </MarkdownLinkBoundary>
     );
   }
@@ -801,13 +784,8 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         {...(mobileSurface ? { mobileDockTop: <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
-        onOpenLink={chooseLinkWithSharedFallback}
-        onOpenLinkDirect={(url, event) => openOperationLink(
-          url,
-          gestureFromEvent(event),
-          { operationId: context.operationId, openCompanion: () => openBrowserCompanion(context) },
-          linkAvailability,
-        )}
+        onOpenLink={links.choose}
+        onOpenLinkDirect={links.openDirect}
         knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
         fileLinks={terminalFileLinks}
         onExit={() => removeExitedSession(session.sessionId, session.generation)}
@@ -815,7 +793,7 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
       <ComputerScreenShare operationId={context.operationId} />
       {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
       {mobileSurface ? null : <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
-      {linkOpen.card}
+      {links.card}
     </div>
   );
 }

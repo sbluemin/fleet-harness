@@ -104,6 +104,8 @@
 }
 /* 대화 다크의 봇 말풍선은 바탕에서 한 단만 떠오른다(레퍼런스 #1b1b1b ≈ --surface-panel). 라이트는 위의 얹힌 면 그대로다. */
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .group-chat-bubble.is-agent { background: var(--surface-panel); }
+/* 데스크톱 가운데 칸 그룹 대화의 링크 경계 — 상자 없이 이벤트만 받는다(대화 배치는 그대로). */
+.group-chat-link-boundary { display: contents; }
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
 
