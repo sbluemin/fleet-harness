@@ -87,9 +87,11 @@
    메타가 붙은 두 줄이면 글리프와 점이 제목 줄의 세로 가운데에 선다. */
 .objectives-pop-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) 6px; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
 .objectives-pop-row > :first-child { justify-self: center; }
-.objectives-pop-row:has(.objectives-pop-meta) { align-items: start; }
-.objectives-pop-row:has(.objectives-pop-meta) > :first-child { margin-top: calc((var(--t-md) * 1.3 - 20px) / 2); }
-.objectives-pop-row:has(.objectives-pop-meta) .objectives-pop-dot { margin-top: calc((var(--t-md) * 1.3 - 6px) / 2); }
+/* 부가 줄이 있는 행 — 조건은 :has() 대신 렌더러가 붙인 클래스다. `:has(...) > :first-child` 는 문서 어디서든 자식이 바뀔 때마다
+   (컴포저 입력 한 글자마다) 화면 전체 스타일을 다시 계산하게 해, 긴 대화에서 입력을 수백 ms 늦췄다. */
+.objectives-pop-row.has-meta { align-items: start; }
+.objectives-pop-row.has-meta > :first-child { margin-top: calc((var(--t-md) * 1.3 - 20px) / 2); }
+.objectives-pop-row.has-meta .objectives-pop-dot { margin-top: calc((var(--t-md) * 1.3 - 6px) / 2); }
 .objectives-pop-row:hover { background: var(--control-rest); }
 .objectives-pop-row:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 /* 선택은 사이드바 줄과 같은 문법 — 테두리 전체와 brass 워시(왼쪽 띠 없음). */
