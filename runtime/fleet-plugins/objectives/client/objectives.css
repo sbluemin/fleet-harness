@@ -1346,7 +1346,11 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-field[readonly] { opacity: 0.6; }
 .objectives-commodore-intel-edit-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .objectives-commodore-intel-edit-foot .objectives-commodore-intel-source { margin-left: 0; }
-.objectives-commodore-intel-edit-foot .objectives-commodore-hint { flex: 1; min-width: 0; text-align: right; }
+.objectives-commodore-intel-edit-foot .objectives-commodore-hint { flex: 1 1 12em; text-align: right; word-break: keep-all; }
+/* 좁은 칸에서는 단축키 안내를 단추 아래 제 줄로 내린다 — 단추 사이에 끼면 낱말 중간에서 끊긴다. */
+@container objectives-commodore-intel (width < 400px) {
+  .objectives-commodore-intel-edit-foot .objectives-commodore-hint { flex-basis: 100%; order: 1; text-align: left; }
+}
 .objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
 .objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 
