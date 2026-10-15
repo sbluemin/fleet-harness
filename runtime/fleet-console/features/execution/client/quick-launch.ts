@@ -310,6 +310,7 @@ export interface QuickLaunchPluginMentionRow {
   readonly capabilityLabel: string | null;
   readonly description: string | null;
   readonly renderMark: (() => ReactNode) | null;
+  readonly quickLaunch?: MentionTargetDescriptor["quickLaunch"];
 }
 
 /** 덱에서 한 카테고리 밴드 아래 서는 행 묶음. */
@@ -377,6 +378,7 @@ export function buildPluginMentionCategories(
         capabilityLabel: descriptor.capabilityLabel ?? null,
         description: descriptor.description ?? null,
         renderMark: descriptor.renderMark ?? null,
+        quickLaunch: descriptor.quickLaunch,
       };
       // 카테고리는 플러그인 안에서만 묶는다 — 두 플러그인이 우연히 같은 문구를 써도 한 밴드로
       // 뭉치면 그 밴드의 주인이 사라진다.

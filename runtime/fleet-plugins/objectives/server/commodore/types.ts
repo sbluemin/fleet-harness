@@ -1,4 +1,3 @@
-import { MONGLE_SPECIALS, type MongleActivity, type MongleSpecial } from "@fleet-console/sdk/avatars";
 import { AGENT_EFFORTS, type AgentEffort } from "@fleet-console/sdk/models";
 import { isExperimentModelId } from "@fleet-console/sdk/settings";
 import { z } from "zod";
@@ -16,13 +15,6 @@ import { MAX_DECISION_ANSWER, MAX_DECISION_DESCRIPTION, MAX_DECISION_LABEL, MAX_
 export const COMMODORE_CHANNEL = "objectives:commodore";
 
 /** 지시 원문 상한. 사령관 도구가 통째로 돌려주므로 한 턴에 읽히는 크기여야 한다. */
-/**
- * 사령관의 소울 — 사람이 아바타 편집기에서 사령관 모습으로 고른 스페셜 퀘이커(`MongleLook.special`)다. 따로 저장하지 않고, 감독자가 세션을
- * 열 때 호스트의 아바타 책에서 읽어 그 새의 말투(Voice 절)를 싣는다. 말투는 판단·권한·도구를 바꾸지 않는다.
- */
-export const COMMODORE_SOULS = MONGLE_SPECIALS;
-export type CommodoreSoul = MongleSpecial;
-
 export const MAX_DIRECTIVE = 8_000;
 /** 정보 항목 하나의 본문 상한. */
 export const MAX_INTEL_TEXT = 4_000;
@@ -173,8 +165,6 @@ export function commodoreCompactAt(contextWindow: number): number {
 
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
-  /** 턴 중 지금 하는 일 — 사령관 아바타가 연기하는 활동. 턴이 아니거나 아직 모르면 없다(기본 리듬). */
-  readonly step?: MongleActivity;
   readonly reason?: string;
   /** 다음 깨움(순찰 또는 재시도)의 예정 시각(ms). */
   readonly nextWakeAt?: number;
@@ -217,8 +207,7 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
-  /** `soul` 은 이 세션이 앞 세션과 다른 말투로 열렸을 때만 실린다 — `none` 은 소울을 끈 것이다. */
-  | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string; readonly soul?: CommodoreSoul | "none" }
+  | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
   | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
   | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly { readonly id: string; readonly title: string }[] }
@@ -266,7 +255,7 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   // 거절은 코드 한 낱말만(`error`) — 도구 결과의 나머지(입력·힌트)는 싣지 않는다.
   z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional(), soul: z.enum([...COMMODORE_SOULS, "none"]).optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
   // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),

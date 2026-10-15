@@ -937,16 +937,14 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
   if (working.length === 0) return <div className="group-chat-working is-empty" aria-hidden="true" />;
   const targets = working.map((speaker) => (onOpenLedger ? ledgerTarget(speaker, participants) : null));
   const openLabel = (speaker: ConversationSpeaker) => t("group.speaker.openLedger", { name: speaker.name });
-  // Operation 이 없는 참여자(사령관)는 대화가 실어 준 활동으로 연기한다.
-  const stepOf = (speaker: ConversationSpeaker) => participants.find((participant) => speakerKey(participant.speaker) === speakerKey(speaker))?.step ?? null;
   // 표식은 마우스·터치용 복제 히트 영역이다 — 탭 정지는 이름(낱말) 하나가 진다(말풍선 머리와 같은 관례).
   const marks = working.map((speaker, index) => {
     const target = targets[index];
     return target ? (
       <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
-        <SpeakerMark speaker={speaker} size="lg" state="running" acting activity={stepOf(speaker)} />
+        <SpeakerMark speaker={speaker} size="lg" state="running" acting />
       </button>
-    ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="lg" state="running" acting activity={stepOf(speaker)} />;
+    ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="lg" state="running" acting />;
   });
   return (
     <div className="group-chat-working" role="status">

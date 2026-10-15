@@ -4,7 +4,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { createClaudeExecutionLoop, createClaudeGatewaySdk, createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
-import { FLEET_CONSOLE_USE_MCP_SERVER } from "@fleet-console/sdk/mcp";
+import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
 import { FLEET_BROWSER_MCP_SERVER, type BrowserPluginConnection, type BrowserPluginOptions } from "../../../browser/host/mcp.js";
@@ -12,6 +12,7 @@ import { FLEET_COMPUTER_USE_MCP_SERVER, type ComputerUsePluginConnection, type C
 
 export interface PluginAgentDeps {
   readonly baseUrl: () => string | null;
+  readonly consoleUse: ConsoleUseMcpHost;
   /** 컴퓨터 사용 서버. 없는 호스트(테스트·실험 없는 구성)나 실험이 꺼진 동안에는 `tools.computerUse` 요청이 조용히 빠진다. */
   readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
   readonly browserMcp?: { connectPlugin(options: Omit<BrowserPluginOptions, "pluginId">): BrowserPluginConnection };
@@ -55,6 +56,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     let cancelled = false;
     let closing: Promise<void> | null = null;
 
+    let consoleConnection: ReturnType<ConsoleUseMcpHost["connect"]> | undefined;
     let computerConnection: ComputerUsePluginConnection | undefined;
     let browserConnection: BrowserPluginConnection | undefined;
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
@@ -151,7 +153,7 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
         closing = (async () => {
           try { await loop.dispose(); await tail; }
           finally {
-            try { await Promise.all([computerConnection?.dispose(), browserConnection?.dispose()]); }
+            try { await Promise.all([consoleConnection?.dispose(), computerConnection?.dispose(), browserConnection?.dispose()]); }
             finally { sessions.delete(session); await fs.rm(cwd, { recursive: true, force: true }); }
           }
         })();
@@ -176,6 +178,13 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           });
         });
         servers[group.name] = createEmbeddedMcpServer({ name: group.name, tools });
+      }
+      if (options.tools?.consoleUse) {
+        const consoleOptions = options.tools.consoleUse;
+        consoleConnection = deps.consoleUse.connect({ ...consoleOptions, enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && consoleOptions.enabled?.() !== false });
+        servers[FLEET_CONSOLE_USE_MCP_SERVER] = consoleConnection.embeddedServer as ClaudeGatewayMcpServer;
+        // 요청한 호스트 도구뿐 아니라 플러그인이 기여한 도구도 허용한다 — 실려 있는데 allowlist 에 없으면 dontAsk 가 거절한다.
+        allowed.push(...(consoleConnection.toolNames?.() ?? consoleOptions.tools ?? CONSOLE_USE_TOOLS).map((name) => `mcp__${FLEET_CONSOLE_USE_MCP_SERVER}__${name}`));
       }
       if (options.tools?.computerUse && deps.computerUseMcp) {
         const computerOptions = options.tools.computerUse;

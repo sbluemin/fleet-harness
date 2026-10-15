@@ -983,7 +983,7 @@ export function openQuickLaunchForOperation(operationId: string, draft: string |
 }
 
 /**
- * 초안을 들고 컴포저를 연다 — 플러그인이 자기 텍스트를 Operation 지시로 넘기는
+ * 초안을 들고 컴포저를 연다 — 플러그인이 자기 텍스트(부관의 답)를 Operation 지시로 넘기는
  * 진입점. 남은 초안은 교체된다: 이 호출은 "이 문장으로 시작하라"는 뜻이지 이어 쓰기가 아니다.
  * launch 시드를 통해 모달·도킹뿐 아니라 이미 열린 플러그인 대화에서도 런치로 전환한다.
  */
@@ -998,10 +998,10 @@ export function openQuickLaunchWithDraft(draft: string): void {
   });
 }
 
-/** 플러그인 행선지를 고른 채 컴포저를 연다. */
-export function openQuickLaunchForPluginTarget(target: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress, draft: string | null = null): void {
+/** 플러그인 레인을 연다. null 좌표는 최근 레인, 열린 컴포저에서는 다음 레인을 뜻한다. */
+export function openQuickLaunchForPluginTarget(target: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress | null = null, draft: string | null = null): void {
   setState({
-    quickLaunchMentionSeed: { kind: "plugin", target },
+    quickLaunchMentionSeed: { kind: "plugin", target, cycle: target === null && (state.quickLaunchOpen || isQuickLaunchDocked()) },
     quickLaunchMentionDraft: draft,
     ...(isQuickLaunchDocked() ? { quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1 } : { quickLaunchOpen: true }),
     quickLaunchError: null,

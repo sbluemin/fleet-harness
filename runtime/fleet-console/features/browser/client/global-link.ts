@@ -10,7 +10,7 @@ import { notifySharedFallback } from "./global-browser-store.js";
 import { openInFleetBrowserBackground, openInFleetBrowserSheet, type LinkOpenAt } from "./link-open-card.js";
 
 /**
- * 기타 표면(목표·Wiki·파일·Skills·도움말·Settings 등)의 링크 열기.
+ * 기타 표면(목표·Wiki·부관·파일·Skills·도움말·Settings 등)의 링크 열기.
  *
  * 손짓은 전역 Shell의 2행 카드와 한 벌이다: 클릭·Alt=카드(Fleet 브라우저 / 내 브라우저 —
  * Operation 행 없음), ⌘·가운데=뒤 탭(시트 안 띄움, 칸에 수), Shift=내 브라우저.

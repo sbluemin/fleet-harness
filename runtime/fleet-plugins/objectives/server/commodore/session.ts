@@ -1,12 +1,10 @@
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
-import type { MongleActivity } from "@fleet-console/sdk/avatars";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
-import { commodoreStepOfTool, createCommodoreStepReporter } from "./step.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreSoul, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
 
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
@@ -30,8 +28,6 @@ export interface CommodoreSessionOptions {
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
-  /** 소울 — 베이스 프롬프트 끝에 붙는 말투 절. 없으면 기본 말투다. */
-  readonly soul?: CommodoreSoul | null;
   readonly theaterRoot: string;
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
@@ -43,8 +39,6 @@ export interface CommodoreSessionOptions {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
-  /** 턴 중 지금 하는 일(아바타가 연기하는 활동) — 바뀔 때만, 최소 간격을 두고 온다. 턴이 닫히면 null. */
-  readonly onStep?: (step: MongleActivity | null) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
 }
@@ -105,7 +99,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   let turnActions = 0;
   let turnResult: CommodoreTurnOutcome | null = null;
   let compactionFailed = false;
-  const steps = createCommodoreStepReporter((step) => options.onStep?.(step), now);
 
   const record = (entry: CommodoreTranscriptInput) => {
     try { options.store.transcriptAppend(options.theaterId, entry); }
@@ -142,22 +135,16 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const onEvent = (event: AgentEvent) => {
     if (disposed) return;
     switch (event.kind) {
-      case "text": textBuffer += event.text; if (event.text) { options.onLive?.({ kind: "text-delta", text: event.text }); steps.text(); } return;
-      case "thinking": thinkingBuffer += event.text; steps.thinking(); return;
-      case "tool-start": {
+      case "text": textBuffer += event.text; if (event.text) options.onLive?.({ kind: "text-delta", text: event.text }); return;
+      case "thinking": thinkingBuffer += event.text; return;
+      case "tool-start":
         flushText();
         if (event.id) pendingTools.set(event.id, { name: event.name, input: event.input });
         else recordTool(event.name, event.input, undefined);
-        const toolName = event.name.replace(MCP_PREFIX, "");
-        options.onLive?.({ kind: "tool-start", name: toolName });
-        const action = event.input && typeof event.input === "object" && typeof (event.input as { action?: unknown }).action === "string" ? (event.input as { action: string }).action : undefined;
-        // 접두사가 붙었는데 사령관·보드 도구가 아니면 바깥 도구(브라우저 등)다.
-        steps.toolStarted(event.id, commodoreStepOfTool(toolName, action, boardWrites) ?? (toolName !== event.name ? "fetch" : null));
+        options.onLive?.({ kind: "tool-start", name: event.name.replace(MCP_PREFIX, "") });
         return;
-      }
       case "tool-end": {
         flushText();
-        steps.toolEnded(event.id);
         const pending = event.id ? pendingTools.get(event.id) : undefined;
         if (event.id) pendingTools.delete(event.id);
         recordTool(pending?.name ?? event.name ?? "tool", pending?.input, !event.isError, event.id);
@@ -173,7 +160,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       case "compact-failed": compactionFailed = true; return;
       case "compacted":
         compactionFailed = false;
-        steps.compacted();
         flushText();
         record({ kind: "compacted", trigger: event.trigger, preTokens: Math.round(event.preTokens), ...(event.postTokens !== undefined ? { postTokens: Math.round(event.postTokens) } : {}) });
         return;
@@ -190,7 +176,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, options.soul ?? null),
+      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
@@ -236,13 +222,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
       turnActive = true;
-      steps.turnOpened();
       try { await session.send(prompt); }
       catch (error) {
         flushText(); flushTools();
         const code = failureCode(error);
         if (!turnResult) { turnResult = { outcome: "error", error: code, actions: turnActions }; record({ kind: "result", outcome: "error", error: code }); }
-      } finally { turnActive = false; steps.turnClosed(); }
+      } finally { turnActive = false; }
       const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
       try { options.store.addRunTotals(options.theaterId, { ...(result.usage?.costUsd ? { costUsd: result.usage.costUsd } : {}), ...(result.actions ? { actions: result.actions } : {}) }); }
@@ -252,7 +237,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     cancel() { if (turnActive) session?.cancel(); },
     async dispose() {
       disposed = true;
-      steps.dispose();
       await starting?.catch(() => undefined);
       await session?.dispose();
       session = null;

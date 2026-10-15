@@ -56,36 +56,6 @@ export function isMongleBaseId(value: unknown): value is number {
 /** 역할 — 사령관(Theater 운영자), 지휘관(목표의 뿌리와 일반 Operation), 구성원(목표 안의 Operation). */
 export type MongleRole = "commodore" | "commander" | "member";
 
-/**
- * 스페셜 — 사령관만 고를 수 있는 옛 퀘이커 셋. 몽글 베이스가 아니라 따로 그리는 피규어이고, 색을 고르지 않는다(정체 색은 새마다
- * 고정이다). 사령관이 스페셜을 쓰면 그 새의 말투도 함께 빌린다(Objectives 사령관 프롬프트의 Voice 절). 저장되는 낱말이라 바꾸지 않는다.
- * 무작위 배정·임시 베이스는 몽글 베이스만 쓰므로 스페셜이 끼지 않는다.
- */
-export const MONGLE_SPECIALS = ["tori", "bori", "dori"] as const;
-export type MongleSpecial = (typeof MONGLE_SPECIALS)[number];
-
-export interface MongleSpecialPreset {
-  readonly id: MongleSpecial;
-  readonly name: { readonly ko: string; readonly en: string };
-  /** 새의 고정 정체 색. */
-  readonly tone: IdentityTone;
-}
-
-export const MONGLE_SPECIAL_PRESETS: readonly MongleSpecialPreset[] = [
-  { id: "tori", name: { ko: "토리", en: "Tori" }, tone: "moss" },
-  { id: "bori", name: { ko: "보리", en: "Bori" }, tone: "crimson" },
-  { id: "dori", name: { ko: "도리", en: "Dori" }, tone: "cerulean" },
-];
-
-export function isMongleSpecial(value: unknown): value is MongleSpecial {
-  return typeof value === "string" && (MONGLE_SPECIALS as readonly string[]).includes(value);
-}
-
-/** 스페셜을 고를 수 있는 역할 — 사령관뿐이다. 다른 역할의 저장값에 스페셜이 있으면 읽을 때 버린다. */
-export function canUseMongleSpecial(role: MongleRole): boolean {
-  return role === "commodore";
-}
-
 /** 얼굴·몸짓이 말하는 상태. Console 표시 어휘(running·awaiting·unseen·idle·ended)와 목표 줄 글리프에 결정 요청·오류를 더했다. */
 export type MongleState = "fresh" | "running" | "awaiting" | "decision" | "unseen" | "idle" | "ended" | "review" | "done" | "error";
 
@@ -136,17 +106,12 @@ export function mongleStateOf(facts: MongleFacts): MongleState {
   return "idle";
 }
 
-/**
- * 저장된 모습. `tone` 이 null 이면 베이스의 원래 색이다. `special` 이 있으면 베이스 대신 그 스페셜 피규어로 그리고 `tone` 은 쓰지 않는다
- * — 베이스·색은 스페셜을 떼면 돌아갈 자리이자, 스페셜을 모르는 옛 판이 그리는 모습으로 남는다.
- */
+/** 저장된 모습. `tone` 이 null 이면 베이스의 원래 색이다. */
 export interface MongleLook {
   readonly base: number;
   readonly tone: IdentityTone | null;
   /** 처음 뽑힌 베이스 — 「처음 값으로」가 돌아갈 자리. */
   readonly origin: number;
-  /** 스페셜(사령관 전용). 없으면 몽글 베이스다. */
-  readonly special?: MongleSpecial;
 }
 
 export type AvatarBook = Readonly<Record<string, MongleLook>>;
@@ -168,16 +133,13 @@ export function isAvatarKey(value: unknown): value is string {
 }
 
 /** 모르는 값은 null — 손상된 항목은 없는 것으로 읽고, 다음 읽기에서 새로 뽑는다. */
-export function sanitizeMongleLook(value: unknown, key?: string): MongleLook | null {
+export function sanitizeMongleLook(value: unknown): MongleLook | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   if (!isMongleBaseId(record.base)) return null;
   const tone = isIdentityTone(record.tone) ? record.tone : null;
   const origin = isMongleBaseId(record.origin) ? record.origin : record.base;
-  // 스페셜은 사령관 키(`theater:`)에만 남는다 — 손으로 고친 파일의 다른 키 값은 몽글 베이스로 읽는다.
-  return isMongleSpecial(record.special) && key?.startsWith("theater:") !== false
-    ? { base: record.base, tone, origin, special: record.special }
-    : { base: record.base, tone, origin };
+  return { base: record.base, tone, origin };
 }
 
 export function sanitizeAvatarBook(value: unknown): Record<string, MongleLook> {
@@ -187,7 +149,7 @@ export function sanitizeAvatarBook(value: unknown): Record<string, MongleLook> {
   for (const [key, entry] of Object.entries(value)) {
     if (count >= MAX_AVATAR_ENTRIES) break;
     if (!isAvatarKey(key)) continue;
-    const look = sanitizeMongleLook(entry, key);
+    const look = sanitizeMongleLook(entry);
     if (!look) continue;
     book[key] = look;
     count += 1;
@@ -218,13 +180,10 @@ export function pickMongleBase(taken: ReadonlySet<number>, random: () => number 
 
 export const AVATARS_API_PATH = "/api/v1/avatars";
 
-/**
- * 쓰기 요청. `claim` 은 비어 있을 때만 저장하고(처음 배정 — 스페셜은 실리지 않는다), `set` 은 덮어쓴다(편집기). 응답은 언제나 저장된 책 전체다.
- * `set` 의 `special` 은 사령관 키에만 받는다. 생략하거나 null 이면 스페셜을 뗀다.
- */
+/** 쓰기 요청. `claim` 은 비어 있을 때만 저장하고(처음 배정), `set` 은 덮어쓴다(편집기). 응답은 언제나 저장된 책 전체다. */
 export type AvatarWrite =
   | { readonly mode: "claim"; readonly entries: readonly { readonly key: string; readonly base: number }[] }
-  | { readonly mode: "set"; readonly key: string; readonly base: number; readonly tone: IdentityTone | null; readonly special?: MongleSpecial | null };
+  | { readonly mode: "set"; readonly key: string; readonly base: number; readonly tone: IdentityTone | null };
 
 export const MAX_AVATAR_CLAIMS = 200;
 
@@ -245,9 +204,7 @@ export function sanitizeAvatarWrite(value: unknown): AvatarWrite | null {
   if (record.mode === "set") {
     if (!isAvatarKey(record.key) || !isMongleBaseId(record.base)) return null;
     if (record.tone !== null && !isIdentityTone(record.tone)) return null;
-    const special = record.special ?? null;
-    if (special !== null && (!isMongleSpecial(special) || !record.key.startsWith("theater:"))) return null;
-    return { mode: "set", key: record.key, base: record.base, tone: record.tone as IdentityTone | null, ...(special ? { special } : {}) };
+    return { mode: "set", key: record.key, base: record.base, tone: record.tone as IdentityTone | null };
   }
   return null;
 }
@@ -266,8 +223,7 @@ export function applyAvatarWrite(book: AvatarBook, write: AvatarWrite): Record<s
   }
   const current = book[write.key];
   const origin = current?.origin ?? write.base;
-  const special = write.special ?? undefined;
-  if (current && current.base === write.base && current.tone === write.tone && current.special === special) return null;
+  if (current && current.base === write.base && current.tone === write.tone) return null;
   if (!current && Object.keys(book).length >= MAX_AVATAR_ENTRIES) return null;
-  return { ...book, [write.key]: { base: write.base, tone: write.tone, origin, ...(special ? { special } : {}) } };
+  return { ...book, [write.key]: { base: write.base, tone: write.tone, origin } };
 }

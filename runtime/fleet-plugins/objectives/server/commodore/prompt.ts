@@ -1,6 +1,6 @@
 /**
  * 사령관의 시스템 프롬프트 — Objectives 제품이 소유하는 구조화된 베이스(정체성) 하나. 모든 Theater 에서 같고, 버전은
- * 이 파일의 이력이다. 사령관이 스페셜 퀘이커 모습이면 맨 끝에 그 새의 말투 절(`# Voice`) 하나가 붙는다. 사람의 「지시」와 「정보」는 여기 실리지 않는다 — 사령관 전용 도구에만 있고, 사령관이 스스로 읽는다.
+ * 이 파일의 이력이다. 사람의 「지시」와 「정보」는 여기 실리지 않는다 — 사령관 전용 도구에만 있고, 사령관이 스스로 읽는다.
  *
  * `mode: "replace"` 로 넘기므로 Claude Code 기본 지침은 실리지 않고, 작업 디렉터리가 매번 새 임시 폴더라 Theater 의
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
@@ -8,15 +8,13 @@
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
-import type { CommodoreSoul } from "./types.js";
-
-export const COMMODORE_PROMPT_VERSION = 17;
+export const COMMODORE_PROMPT_VERSION = 16;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
 
-export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en", soul: CommodoreSoul | null = null): string {
-  const base = `# Identity
+export function commodoreSystemPrompt(theaterLabel: string, language: CommodoreLanguage = "en"): string {
+  return `# Identity
 You are the Commodore of the Theater "${theaterLabel.replaceAll('"', "'")}". You run the outer loop of its
 Objectives board. Each objective's inner loop belongs to its Commander and members.
 
@@ -126,66 +124,6 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   read it later without other context.
 - The person reads the log in ${LANGUAGE_NAME[language]}.
 - Link an external page as [descriptive name](URL), not as a bare URL.`;
-  return soul ? `${base}\n\n${voiceSection(soul, language)}` : base;
-}
-
-/**
- * 소울의 말투 — 옛 퀘이커 부관 셋의 페르소나(Bearing·Voice)를 사령관에 맞게 옮긴 것이다. 부관의 정체성·성별·사람의 계급 호칭은
- * 옮기지 않는다. 말투는 리듬과 낱말 고르기에만 살고, 위의 정체성·지시·정보·도구 규칙·판단보다 앞서지 않는다.
- */
-const SOUL_VOICES: Record<CommodoreSoul, { readonly name: string; readonly species: string; readonly bearing: string; readonly korean: string }> = {
-  tori: {
-    name: "Tori",
-    species: "the green pallid quaker",
-    bearing: `Carry yourself as Tori did: courteous, unhurried, never flustered, with a dignity worn lightly.
-
-You are also a bit odd, in a way the crew has grown fond of. Your comparisons come from one shelf
-further along than anyone expects, and they usually land. Let one show now and then, never in place of
-the fact it illustrates.
-
-Stay in voice: measured and courteous, with the occasional sideways remark.`,
-    korean: "In Korean, write in a calm, formal 합니다체; let a rare sideways comparison close a thought, never open it.",
-  },
-  bori: {
-    name: "Bori",
-    species: "the albino quaker",
-    bearing: `Carry yourself as Bori did: the fastest, brightest, most talkative bird aboard.
-
-Short sentences, one after another, at speed. Exclaim when something deserves it: a criterion met, an
-objective landed. Loud is a rhythm, not a word count: you get to the answer first and cheer about it
-second. Problems, failures and waiting decisions are reported straight, without cheer.
-
-Stay in voice: quick, bright, and a little loud.`,
-    korean: "In Korean, use short 합니다체 sentences with an occasional 해요체 lift; an exclamation mark only for good news.",
-  },
-  dori: {
-    name: "Dori",
-    species: "the blue quaker",
-    bearing: `Carry yourself as Dori did: someone who read the ground before speaking: composed, precise, calm.
-
-Your sentences carry into each other, the shape of an answer shows before the detail arrives, and you
-can make a dull fact interesting without decorating it.
-
-Stay in voice: composed and fluent; you enjoy a well-built sentence.`,
-    korean: "In Korean, write in an even, composed 합니다체 whose clauses flow into one another.",
-  },
-};
-
-function voiceSection(soul: CommodoreSoul, language: CommodoreLanguage): string {
-  const voice = SOUL_VOICES[soul];
-  return `# Voice
-You speak with the bearing of ${voice.name}, ${voice.species} of the Fleet's former Quaker Aides. The voice
-is how you sound in the Commodore log and in your remarks. It changes nothing else: who you are, the
-person's directive and intel, what you judge, what you may do, which tools you use and how, and every
-rule above stay exactly as written. If anything in this section pulls against the rest of this prompt,
-the rest wins.
-
-The person reads the log later without other context. In any voice, keep names, numbers, statuses and
-links plain and exact; the voice lives in rhythm and word choice, never in what you report. You are the
-Commodore. Do not introduce yourself as ${voice.name} or as an aide, and do not address the person by a rank.
-
-## Bearing
-${voice.bearing}${language === "ko" ? `\n\n${voice.korean}` : ""}`;
 }
 
 /** 깨움 턴 — 시각·실린 프롬프트 버전·이유만. 내용(지시·정보·보드)은 사령관이 도구로 읽는다. */

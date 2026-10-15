@@ -86,8 +86,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (bandLeft) for (const child of bandLeft.children) observer.observe(child);
     const bandRight = bandRightRef.current;
     if (bandRight) for (const child of bandRight.children) observer.observe(child);
-    // 도구모음은 deps 밖에서 옮겨 들어오고 그 안의 항목도 나타나고 사라진다(플러그인 항목이
-    // null → 글리프로). 자식 목록의 변화를 직접 보고 다시 재며, 새 자식도 관찰 대상에 넣는다.
+    // 도구모음은 deps 밖에서 옮겨 들어오고 그 안의 항목도 나타나고 사라진다(부관을 두면
+    // null → 글리프). 자식 목록의 변화를 직접 보고 다시 재며, 새 자식도 관찰 대상에 넣는다.
     const mutations = typeof MutationObserver === "undefined" ? null : new MutationObserver((records) => {
       for (const record of records) {
         for (const node of record.addedNodes) if (node instanceof HTMLElement) observer.observe(node);

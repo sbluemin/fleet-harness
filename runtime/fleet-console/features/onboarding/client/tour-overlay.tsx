@@ -200,8 +200,6 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
   if (!resolved || !currentStep) return null;
   const lastStep = currentIndex >= resolved.steps.length - 1;
   const cardStyle = position.centered ? undefined : { left: position.left, top: position.top } as CSSProperties;
-  // 기능으로 가는 동작은 마지막 카드에서만, 그리고 지금 닿을 수 있을 때만 선다 — 아니면 보통의 끝내기 단추가 선다.
-  const action = lastStep && currentStep.action && (currentStep.action.available?.() ?? true) ? currentStep.action : null;
 
   return (
     <div
@@ -211,7 +209,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
       data-feature-tour-phase={resolved.phase}
     >
       <section aria-labelledby="feature-tour-title" className="feature-tour-card" ref={cardRef} role="dialog" style={cardStyle}>
-        {resolved.phase === "walkthrough" && resolved.steps.length > 1
+        {resolved.phase === "walkthrough"
           ? <span className="feature-tour-progress">{t("tour.progress", { current: currentIndex + 1, total: resolved.steps.length })}</span>
           : null}
         <h2 id="feature-tour-title">{resolveLocalizedText(currentStep.title, language)}</h2>
@@ -224,19 +222,7 @@ export function TourOverlay({ tours, language, blocked, suspended = false }: {
         ) : null}
         <div className="feature-tour-actions">
           <button className="feature-tour-skip" onClick={() => void finish()} type="button">{t("tour.skip")}</button>
-          {action ? (
-            <button
-              className="feature-tour-primary"
-              onClick={() => {
-                // 본 기록 저장을 시작한 뒤 바로 이동한다 — 저장을 기다리면 이동이 늦고, 이동이 먼저면 카드가 새 화면에 한 번 더 걸린다.
-                void finish();
-                action.run();
-              }}
-              type="button"
-            >
-              {resolveLocalizedText(action.label, language)}
-            </button>
-          ) : resolved.phase === "spotlight"
+          {resolved.phase === "spotlight"
             ? <button className="feature-tour-primary" onClick={() => void finish()} type="button">{t("tour.gotIt")}</button>
             : (
                 <button

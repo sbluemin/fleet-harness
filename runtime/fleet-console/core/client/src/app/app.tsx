@@ -24,6 +24,7 @@ import { subscribeClosingByAgent, type ClosingByAgent } from "../../../../featur
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
 import { OnboardingHost } from "../../../../features/onboarding/client/onboarding-host.js";
 import { CORE_ONBOARDING } from "../integration/onboarding.js";
+import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
@@ -44,7 +45,7 @@ import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from 
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
@@ -435,6 +436,15 @@ function ConnectedApp() {
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,
       toggleQuickLaunch,
+      openPluginQuickLaunch: () => {
+        const available = registry.providers.some((plugin) => {
+          try { return !!plugin.messageMentionTarget && plugin.mentionTargets?.().some((target) => target.quickLaunch); }
+          catch { return false; }
+        });
+        if (!available) return false;
+        openQuickLaunchForPluginTarget();
+        return true;
+      },
       toggleRailSurface: (entryId) => {
         const outcome = resolvePanelShortcut();
         const entry = railBindings.find((binding) => binding.entry.id === entryId)?.entry;
@@ -563,6 +573,7 @@ function ConnectedApp() {
         {mobileLayout || operationsViewVisible ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         {/* 도구모음은 설정 화면의 밴드에만 선다. 모바일 셸은 자기 탭 막대를 쓴다. */}
         {mobileLayout || operationsViewVisible ? null : <ConsoleToolbar />}
+        <FloatingWidgetLayer />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
             바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나간다(연결·저하 배너와 제어 반납

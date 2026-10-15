@@ -20,7 +20,6 @@ import {
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { isCommodoreConversationActive } from "./commodore-conversation.js";
-import { COMMODORE_SPECIAL_ANCHOR_ATTRIBUTE, useCommodoreSpecialAnchor } from "./commodore-special-welcome.js";
 import { getT } from "./i18n/index.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 import type { Objective } from "../server/types.js";
@@ -118,8 +117,6 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
   const glyph = <CommodoreAvatar theaterId={theater.id} state={state} size={18} label={t("objectives.commodore.name")} decorative off={!on} className="objectives-commodore-mark-glyph" />;
   // 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 배지·「내 결정」과 같은 판정(`openAsks`)이다. 자율 운영이 꺼져 있어도 선다(답은 받는다).
   const asks = openAsks(theater.id).length;
-  // 스페셜 퀘이커 웰컴 카드가 짚는 덮개 — 카드가 열 Theater 의 표식에만, 데스크톱에서만 선다.
-  const welcomeAnchor = useCommodoreSpecialAnchor(theater.id);
   const asksWord = asks > 0 ? t("objectives.ask.badge", { count: asks }) : null;
   const toggleAutonomy = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -145,7 +142,6 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
     >
       {glyph}
       {asks > 0 ? <span className="objectives-commodore-mark-badge" aria-hidden="true">{asks}</span> : null}
-      {welcomeAnchor ? <span className="objectives-commodore-mark-anchor" {...{ [COMMODORE_SPECIAL_ANCHOR_ATTRIBUTE]: "" }} aria-hidden="true" /> : null}
     </button>
   );
 }

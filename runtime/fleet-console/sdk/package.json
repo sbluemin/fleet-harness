@@ -71,6 +71,11 @@
       "import": "./theater-inbox/types.ts",
       "default": "./theater-inbox/types.ts"
     },
+    "./floating": {
+      "types": "./floating/types.ts",
+      "import": "./floating/types.ts",
+      "default": "./floating/types.ts"
+    },
     "./plugin": {
       "types": "./plugin/types.ts",
       "import": "./plugin/types.ts",
@@ -224,12 +229,6 @@
       "browser": "./components/mongle-avatar.tsx",
       "import": "./components/mongle-avatar.tsx",
       "default": "./components/mongle-avatar.tsx"
-    },
-    "./components/quaker-figure": {
-      "types": "./components/quaker-figure.tsx",
-      "browser": "./components/quaker-figure.tsx",
-      "import": "./components/quaker-figure.tsx",
-      "default": "./components/quaker-figure.tsx"
     },
     "./components/mongle-avatar-picker": {
       "types": "./components/mongle-avatar-picker.tsx",

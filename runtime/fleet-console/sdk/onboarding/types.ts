@@ -47,17 +47,4 @@ export interface OnboardingTourStep {
   readonly body: LocalizedText;
   /** 사용법을 한 문장으로 보이는 예시(프롬프트 등). */
   readonly example?: LocalizedText;
-  /**
-   * 카드에서 바로 그 기능으로 가는 동작 — 마지막 카드(스포트라이트 또는 워크스루의 마지막 스텝)에서만 선다. 누르면 그 투어를 본
-   * 것으로 남기고 run 을 부른다. available 이 false 인 동안(그 기능에 닿을 수 없는 배치)은 단추를 세우지 않고 보통의 끝내기 단추만
-   * 선다 — 눌러도 아무 데도 가지 않는 단추를 띄우지 않는다.
-   */
-  readonly action?: OnboardingStepAction;
-}
-
-export interface OnboardingStepAction {
-  readonly label: LocalizedText;
-  readonly run: () => void;
-  /** 생략하면 늘 쓸 수 있다. 카드를 그릴 때마다 다시 묻는다. */
-  readonly available?: () => boolean;
 }

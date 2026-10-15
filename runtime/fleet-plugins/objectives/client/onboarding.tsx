@@ -1,7 +1,6 @@
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import type { OnboardingContribution } from "@fleet-console/sdk/onboarding";
 
-import { commodoreSpecialTour } from "./commodore-special-welcome.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 
 function T(key: ObjectiveMessageKey): LocalizedText {
@@ -51,7 +50,5 @@ export const objectivesOnboarding: OnboardingContribution = {
         { anchor: null, title: T("objectives.onboarding.detail.step5Title"), body: T("objectives.onboarding.detail.step5Body") },
       ],
     },
-    // 퀘이커 부관단 종료와 사령관 「스페셜」 안내 — 사이드바 사령관 표식을 짚고, 카드에서 아바타 편집기로 바로 간다.
-    commodoreSpecialTour,
   ],
 };

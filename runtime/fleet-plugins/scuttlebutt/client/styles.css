@@ -1,0 +1,1768 @@
+/* 설정 카드의 컨트롤은 SDK·코어 공용 문법(.segmented · .fc-settings-slider · .fc-select)을 입는다 —
+   이 파일은 부관 크기 행의 배치만 소유한다. */
+.scuttlebutt-settings-sizes {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: end;
+}
+
+.scuttlebutt-settings-size {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-settings-size-name {
+  min-width: 3.5em;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  text-align: right;
+}
+
+@media (max-width: 560px) {
+  .scuttlebutt-settings-sizes {
+    justify-items: stretch;
+  }
+
+  .scuttlebutt-settings-size {
+    justify-content: space-between;
+  }
+}
+
+/* 설정 페인(좁은 컨테이너, 데스크톱 뷰포트)에서도 같은 스택이 서야 한다 — 뷰포트
+   미디어는 페인 폭을 보지 못한다. */
+@container (max-width: 560px) {
+  .scuttlebutt-settings-sizes {
+    justify-items: stretch;
+  }
+
+  .scuttlebutt-settings-size {
+    justify-content: space-between;
+  }
+}
+
+.scuttlebutt-bird {
+  position: fixed;
+  left: 0;
+  top: 0;
+  /* 폭은 flock.tsx 가 부관별 설정값을 인라인으로 싣는다 — 엔진이 그 크기로 화면 경계·갑판
+     바닥·편대 반발력을 계산하므로, 여기 상수를 두면 물리와 그림이 두 곳에서 갈린다.
+     이 값은 인라인 폭이 붙기 전 한 프레임을 위한 기본값일 뿐이다. */
+  width: var(--scuttlebutt-bird-width, 84px);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+/* 새는 포커스 링을 두르지 않는다 — 마스코트를 상자로 감싸면 UI 컨트롤로 읽힌다. 키보드 포커스는
+   이름표(.scuttlebutt-bird-tag)가 뜨는 것으로 보인다. */
+.scuttlebutt-bird:focus-visible {
+  outline: none;
+}
+
+.scuttlebutt-bird-tag {
+  position: absolute;
+  left: 50%;
+  top: calc(100% - 8px);
+  transform: translateX(-50%);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  padding: 1px var(--space-2);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-bird:hover .scuttlebutt-bird-tag,
+.scuttlebutt-bird:focus-visible .scuttlebutt-bird-tag,
+.scuttlebutt-bird.is-grab .scuttlebutt-bird-tag {
+  opacity: 1;
+}
+
+.scuttlebutt-bird-say {
+  position: absolute;
+  left: 50%;
+  bottom: 96%;
+  transform: translate(-50%, -4px);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity var(--duration-fast) var(--ease-glide),
+    transform var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-bird.is-saying .scuttlebutt-bird-say {
+  opacity: 1;
+  transform: translate(-50%, -12px);
+}
+
+.scuttlebutt-bird.is-grab {
+  cursor: grabbing;
+}
+
+.scuttlebutt-bird > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  pointer-events: none;
+}
+
+.scuttlebutt-qk {
+  --qk-tone: var(--scuttlebutt-qk-id-moss);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 58%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 74%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 30%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 66%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib: color-mix(in oklch, var(--qk-tone) 12%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 40%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-ring: color-mix(in oklch, var(--qk-tone) 6%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-eye: var(--scuttlebutt-qk-ink-abyss);
+  --qk-blush: color-mix(in oklch, var(--scuttlebutt-qk-id-rose) 52%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-line: color-mix(in oklch, var(--qk-tone) 88%, var(--scuttlebutt-qk-ink-rim));
+  --qk-beak: color-mix(in oklch, var(--scuttlebutt-qk-id-amber) 46%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-beak-shade: color-mix(in oklch, var(--scuttlebutt-qk-id-amber) 78%, var(--scuttlebutt-qk-ink-rim));
+  --qk-feet: color-mix(in oklch, var(--scuttlebutt-qk-id-rose) 38%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-cap-top: var(--scuttlebutt-qk-ink-pearl);
+  --qk-cap-band: var(--scuttlebutt-qk-ink-veil);
+  --qk-cap-line: var(--scuttlebutt-qk-ink-abyss);
+  --qk-visor: var(--scuttlebutt-qk-ink-deep);
+  --qk-brass: var(--scuttlebutt-qk-brass);
+  --qk-brass-deep: var(--scuttlebutt-qk-brass-deep);
+  --qk-eye-gloss: var(--scuttlebutt-qk-ink-pearl);
+  --qk-zzz: var(--scuttlebutt-qk-ink-spectral);
+  --qk-mark-edge: var(--scuttlebutt-qk-ink-abyss);
+  overflow: visible;
+}
+
+/* 머리 창(QUAKER_HEAD_VIEW_BOX)으로 그린 마크. 창 밖의 날개·꼬리를 잘라 내야 슬롯 크기 그대로 선다. */
+.scuttlebutt-qk.is-cropped {
+  overflow: hidden;
+}
+
+.scuttlebutt-qk[data-morph="dori"] {
+  --qk-tone: var(--scuttlebutt-qk-id-cerulean);
+}
+
+/* 알비노는 몸통만 반 톤 내려 가슴판과 얼굴 윤곽이 소실되지 않게 한다. */
+.scuttlebutt-qk[data-morph="bori"] {
+  --qk-tone: var(--scuttlebutt-qk-id-crimson);
+  --qk-body: color-mix(in oklch, var(--qk-tone) 10%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-wing: color-mix(in oklch, var(--qk-tone) 16%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-flight: color-mix(in oklch, var(--qk-tone) 6%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-tail: color-mix(in oklch, var(--qk-tone) 13%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-bib: var(--scuttlebutt-qk-ink-pearl);
+  --qk-bib-line: color-mix(in oklch, var(--qk-tone) 24%, var(--scuttlebutt-qk-ink-pearl));
+  --qk-ring: var(--scuttlebutt-qk-ink-pearl);
+  --qk-eye: var(--scuttlebutt-qk-id-crimson);
+  --qk-line: color-mix(in oklch, var(--qk-tone) 34%, var(--scuttlebutt-qk-ink-rim));
+  --qk-blush: transparent;
+}
+
+.scuttlebutt-qk * {
+  transform-box: fill-box;
+}
+
+.scuttlebutt-qk-ln {
+  stroke: var(--qk-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.scuttlebutt-qk-cap-ln {
+  stroke: var(--qk-cap-line);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.scuttlebutt-qk-wing-l {
+  transform-origin: 92% 27%;
+  animation: scuttlebutt-qk-flap-l 0.82s ease-in-out infinite alternate; animation-name: var(--state-motion, scuttlebutt-qk-flap-l);
+}
+
+.scuttlebutt-qk-wing-r {
+  transform-origin: 8% 27%;
+  animation: scuttlebutt-qk-flap-r 0.82s ease-in-out infinite alternate; animation-name: var(--state-motion, scuttlebutt-qk-flap-r);
+}
+
+.scuttlebutt-bird.is-cruise .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-cruise .scuttlebutt-qk-wing-r {
+  animation-duration: 0.4s;
+}
+
+.scuttlebutt-bird.is-grab .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-grab .scuttlebutt-qk-wing-r {
+  animation-duration: 0.24s;
+}
+
+.scuttlebutt-qk-tail {
+  transform-origin: 50% 6%;
+  animation: scuttlebutt-qk-sway 2.2s ease-in-out infinite alternate; animation-name: var(--state-motion, scuttlebutt-qk-sway);
+}
+
+.scuttlebutt-qk-feet {
+  transform-origin: 50% 0%;
+  animation: scuttlebutt-qk-dangle 1.7s ease-in-out infinite alternate; animation-name: var(--state-motion, scuttlebutt-qk-dangle);
+}
+
+.scuttlebutt-qk-eyes {
+  transform-origin: 50% 50%;
+  animation: scuttlebutt-qk-blink 5.4s linear infinite; animation-name: var(--state-motion, scuttlebutt-qk-blink);
+}
+
+.scuttlebutt-qk[data-morph="tori"] .scuttlebutt-qk-eyes {
+  animation-delay: -0.4s;
+}
+
+.scuttlebutt-qk[data-morph="bori"] .scuttlebutt-qk-eyes {
+  animation-delay: -2.3s;
+}
+
+.scuttlebutt-qk[data-morph="dori"] .scuttlebutt-qk-eyes {
+  animation-delay: -3.7s;
+}
+
+.scuttlebutt-qk-head {
+  transform-origin: 50% 78%;
+  transition: transform 0.3s ease;
+}
+
+.scuttlebutt-qk-foot-l,
+.scuttlebutt-qk-foot-r {
+  transform-origin: 50% 6%;
+}
+
+.scuttlebutt-qk-wing-l,
+.scuttlebutt-qk-wing-r {
+  transition: transform 0.25s ease;
+}
+
+.scuttlebutt-qk-zzz,
+.scuttlebutt-qk-mark,
+.scuttlebutt-qk-happy,
+.scuttlebutt-qk-spark {
+  opacity: 0;
+}
+
+.scuttlebutt-qk-spark {
+  transform-origin: 50% 50%;
+}
+
+/* 보행에서는 날개를 접고 두 발의 위상을 반 주기 어긋나게 한다. */
+.scuttlebutt-bird.is-walk .scuttlebutt-qk {
+  animation: scuttlebutt-qk-waddle 0.52s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-waddle);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-wing-l {
+  animation: none;
+  transform: rotate(58deg);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-wing-r {
+  animation: none;
+  transform: rotate(-58deg);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-feet {
+  animation: none;
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-foot-l {
+  animation: scuttlebutt-qk-step 0.52s linear infinite; animation-name: var(--state-motion, scuttlebutt-qk-step);
+}
+
+.scuttlebutt-bird.is-walk .scuttlebutt-qk-foot-r {
+  animation: scuttlebutt-qk-step 0.52s linear infinite; animation-name: var(--state-motion, scuttlebutt-qk-step);
+  animation-delay: -0.26s;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk {
+  animation: scuttlebutt-qk-breathe 2.8s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-breathe);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-wing-l {
+  animation: none;
+  transform: rotate(58deg);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-wing-r {
+  animation: none;
+  transform: rotate(-58deg);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-eyes {
+  animation: none;
+  transform: scaleY(0.09);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-head {
+  transform: rotate(-8deg) translateY(5px);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+  opacity: 1;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text {
+  animation: scuttlebutt-qk-zfloat 2.6s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-zfloat);
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz text:nth-child(3) {
+  animation-delay: 1s;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-tilt 2s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-tilt);
+  transition: none;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-tail {
+  animation-duration: 0.9s;
+}
+
+.scuttlebutt-bird.is-think .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-glance 2.6s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-glance);
+}
+
+.scuttlebutt-bird.is-salute .scuttlebutt-qk-wing-r {
+  animation: scuttlebutt-qk-salute 1.7s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-salute);
+}
+
+/* 보리는 경보 담당이라 도약·급한 퍼덕임이 상시 소음이 된다. 느낌표만 켜고 유휴 날갯짓은 남긴다. */
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) {
+  animation: scuttlebutt-qk-hop 0.58s cubic-bezier(0.3, 0.7, 0.3, 1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-hop);
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-r {
+  animation-duration: var(--duration-base);
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+  opacity: 1;
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-mark {
+  animation: scuttlebutt-qk-markpop 0.58s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-markpop);
+}
+
+/* 만세 주기의 후반을 휴지로 남겨 상시 신호처럼 보이지 않게 한다. */
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk {
+  animation: scuttlebutt-qk-cheerhop 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-cheerhop);
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-wing-l {
+  animation: scuttlebutt-qk-cheer-l 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-cheer-l);
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-wing-r {
+  animation: scuttlebutt-qk-cheer-r 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-cheer-r);
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-hide-eyes 2.4s steps(1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-hide-eyes);
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+  animation: scuttlebutt-qk-show-eyes 2.4s steps(1) infinite; animation-name: var(--state-motion, scuttlebutt-qk-show-eyes);
+}
+
+.scuttlebutt-bird.is-cheer .scuttlebutt-qk-spark {
+  animation: scuttlebutt-qk-sparkle 2.4s ease-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-sparkle);
+}
+
+.scuttlebutt-bird.is-preen .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-preen 2s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-preen);
+  transition: none;
+}
+
+.scuttlebutt-bird.is-preen .scuttlebutt-qk-eyes {
+  animation: none;
+  transform: scaleY(0.5);
+}
+
+/* ── Operation 소식 말풍선 ──────────────────────────────────────────────────
+   완료·시작·입력 대기·첫 소개가 한 봉투를 입는다. 색은 신호 채널을 따른다: 완료는 positive,
+   시작·대기는 warn(amber), 소개는 brass(새가 말하고 있다). */
+.scuttlebutt-notice-bubble {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+  /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
+  visibility: hidden;
+  display: grid;
+  max-width: min(360px, calc(100vw - var(--space-6)));
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면 — 신호 소식만 그 신호색 12%를 불투명 면에 섞어 칠한다. */
+  background: var(--scuttlebutt-notice-wash, var(--popover-face));
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1.35;
+  text-align: left;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-notice-bubble.is-arrival {
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--popover-face));
+  --scuttlebutt-notice-ink: var(--positive);
+  border-color: light-dark(color-mix(in oklch, var(--positive) 50%, var(--hairline)), color-mix(in oklab, var(--positive) 50%, var(--hairline)));
+}
+
+/* hairline과 50% 믹스하면 oklch hue 보간이 그린(hue≈160)에 착륙해 positive 채널과 충돌한다 —
+   alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
+.scuttlebutt-notice-bubble.is-departure,
+.scuttlebutt-notice-bubble.is-awaiting {
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--popover-face));
+  --scuttlebutt-notice-ink: var(--warn-ink);
+  border-color: color-mix(in oklch, var(--warn) 55%, transparent);
+}
+
+.scuttlebutt-notice-bubble.is-awaiting {
+  border-color: color-mix(in oklch, var(--aurora) 55%, transparent);
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--popover-face));
+  --scuttlebutt-notice-ink: color-mix(in oklch, var(--aurora) 80%, var(--text-primary));
+}
+
+.scuttlebutt-notice-bubble.is-intro {
+  --scuttlebutt-notice-ink: var(--brass-ink);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-notice-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+
+/* 본문 액션은 카드 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 호버만 veil로 알린다. */
+.scuttlebutt-notice-open {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.scuttlebutt-notice-open:hover {
+  background: var(--ink-veil);
+}
+
+.scuttlebutt-notice-dismiss {
+  align-self: start;
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-notice-dismiss:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-notice-more {
+  color: var(--text-tertiary);
+}
+
+.scuttlebutt-notice-label {
+  color: var(--scuttlebutt-notice-ink, var(--text-secondary));
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.1em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-notice-detail {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.scuttlebutt-notice-open:focus-visible,
+.scuttlebutt-notice-dismiss:focus-visible,
+.scuttlebutt-intro-ok:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-intro-text {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.scuttlebutt-intro-ok {
+  justify-self: start;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-3);
+  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--brass-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-intro-ok:hover {
+  background: var(--ink-veil);
+}
+
+/* ── Quick Launch 답변 말풍선 ────────────────────────────────────────────────
+   봉투는 도착 알림의 것을 그대로 입는다(최대 360px·줄바꿈·닫기 버튼·좌표 추적). 지저귐
+   말풍선은 nowrap 한 줄이라 문단을 담지 못해 재사용할 수 없다.
+   색만 다르다: 도착의 positive는 "끝났다"는 상태를 말하는 신호 채널이고, 답변은 상태가 아니다.
+   그래서 지저귐과 같은 brass 테두리를 쓴다 — "새가 말하고 있다"는 어휘 그대로다. */
+.scuttlebutt-answer-bubble {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+  /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
+  visibility: hidden;
+  display: grid;
+  /* 말풍선과 카드는 한 봉투다(420px·본문 13px) — 「이어 묻기」로 넘어갈 때 답이 다른 상자에
+     다시 서지 않는다. 종전 360/380의 어긋남이 그 전이를 점프로 만들었다. */
+  width: min(420px, calc(100vw - var(--space-6)));
+  /* 본문은 봉투 폭을 다 쓴다 — 닫기 버튼을 열로 세우면 그 열이 본문 오른쪽을 끝까지 비워 둔다.
+     닫기는 머리 행 오른쪽에 띄우고 머리 행만 그만큼 비운다. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  line-height: 1.5;
+  text-align: left;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+  transition:
+    border-color var(--duration-fast) var(--ease-glide),
+    box-shadow var(--duration-fast) var(--ease-glide);
+}
+
+/* 포커스가 말풍선 안에 있는 동안 은은하게 밝아진다 — 답이 정착해 포커스가 여기로 왔음을 상자 링 없이
+   알린다(brass = 지금 서 있는 자리). 벗어나면 평소의 테두리로 가라앉는다. */
+.scuttlebutt-answer-bubble:focus-within {
+  border-color: color-mix(in oklab, var(--control-focus-ring) 70%, var(--popover-rim));
+  box-shadow: var(--popover-shadow), 0 0 0 4px var(--brass-glow);
+}
+
+/* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
+.scuttlebutt-answer-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.scuttlebutt-answer-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.scuttlebutt-answer-who {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding-right: 28px;
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* 권한 칩 줄의 자리 — 문구가 아니라 칩이 선다(아래 .scuttlebutt-grants). */
+.scuttlebutt-answer-capability {
+  margin-left: auto;
+  min-width: 0;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* 말풍선은 읽기 표면이다 — 답은 카드와 같은 마크다운 조판으로 여기서 끝까지 읽힌다.
+   높이 상한은 배치 루프가 새 위아래 가용 공간(최대 60vh)으로 인라인에 쓴다. 그 안에서 넘칠 때만
+   스크롤하고, 잘리지 않는다 — 잘린 답은 읽는 사람이 무엇을 잃었는지 모른다. */
+.scuttlebutt-answer-text {
+  margin: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  /* 첫 프레임: 배치 루프가 실제 가용 높이를 재기 전의 안전값. */
+  max-height: 60vh;
+}
+
+.scuttlebutt-answer-text.is-error {
+  white-space: pre-wrap;
+}
+
+/* 아직 아래가 남았을 때만 가장자리를 흐린다 — 끝까지 굴리면 흐림도 걷힌다. */
+.scuttlebutt-answer-text.is-clipped {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent);
+}
+
+/* 답이 오면 본문이 포커스를 받는다 — 말풍선 자체가 새로 선 표면이라 링을 두르지 않는다(마스코트와
+   같은 규약). 키보드 스크롤은 그대로 된다. */
+.scuttlebutt-answer-text:focus-visible {
+  outline: none;
+}
+
+.scuttlebutt-answer-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+/* 본문 액션은 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 밑줄로만 누를 곳임을 알린다
+   (도착 알림의 열기 행과 같은 계약). */
+.scuttlebutt-answer-expand {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brass-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.scuttlebutt-answer-expand:hover {
+  color: var(--brass-bright);
+}
+
+.scuttlebutt-answer-dismiss {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-2);
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-answer-dismiss:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+/* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
+.scuttlebutt-chat-card {
+  position: absolute;
+  z-index: 1;
+  pointer-events: auto;
+  display: flex;
+  width: min(420px, calc(100vw - var(--space-6)));
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
+}
+
+/* 퀵런치가 봉투·배치·입력을 소유한다. 기존 카드의 로그·출처·Live line만 같은 면에서 이어진다. */
+.scuttlebutt-chat-card.is-embedded {
+  position: relative;
+  width: 100%;
+  max-height: min(42dvh, 380px);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  animation: none;
+  overflow: visible;
+}
+/* 카드 자신은 사라진 조작의 포커스를 받아 두는 자리라 Tab 정지점이 아니다. 마우스로 지운 뒤의 프로그램
+   포커스에는 고리를 그리지 않고, 키보드로 지웠을 때는 :focus-visible 휴리스틱대로 위치 표시를 남긴다. */
+.scuttlebutt-chat-card.is-embedded:focus:not(:focus-visible) { outline: none; }
+.scuttlebutt-chat-card.is-embedded .scuttlebutt-chat-log { overflow-wrap: anywhere; }
+.scuttlebutt-chat-card.is-embedded .scuttlebutt-menu { position: absolute; }
+
+.scuttlebutt-chat-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.scuttlebutt-chat-sigil {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--brass-glow);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+}
+
+.scuttlebutt-chat-sigil.is-persona { border: 0; background: none; }
+.scuttlebutt-chat-sigil.is-persona svg { width: 100%; height: 100%; }
+.scuttlebutt-chat-who.is-quiet { color: var(--text-tertiary); font-size: var(--t-sm); font-weight: var(--weight-regular); }
+
+.scuttlebutt-chat-who {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+/* 헤더 조작은 글자 없는 24px 아이콘이다 — 제자리(닻)·상단 바(막대 위 화살표)·지우기·닫기.
+   라벨은 aria로, 눈에는 hover·focus 때 한 줄 말풍선만 선다(설정 도움말 말풍선과 같은 계약).
+   토글은 aria-pressed로 말하고 켜진 동안 brass로 선다 — 위치·포커스 채널이지 상태 신호가 아니다. */
+.scuttlebutt-head-slot {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.scuttlebutt-head-action {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.scuttlebutt-head-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.scuttlebutt-head-action:hover:not(:disabled) {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-head-action:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-head-action:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.scuttlebutt-head-action.is-on {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: var(--brass-glow);
+  color: var(--brass-ink);
+}
+
+.scuttlebutt-head-tip {
+  position: fixed;
+  /* 부유 레이어(--z-floating) 위에 서야 한다 — 문서 끝으로 포털된 잠깐의 설명이라 overlay 단을 쓴다.
+     같은 단의 ··· 메뉴(나중에 포털됨) 위에도 서야 하므로 한 단 더 올린다 — 메뉴 행의 설명이 메뉴에 가리면 안 된다. */
+  z-index: calc(var(--z-overlay) + 1);
+  pointer-events: none;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--popover-rim);
+  /* 툴팁은 팝업 체계 밖의 작은 표면이라 도구모음 툴팁(.console-toolbar-tip)과 같은 컨트롤 라운드(xs)를 쓴다. */
+  border-radius: var(--radius-xs);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: normal;
+  line-height: 1.6;
+  text-align: left;
+  white-space: normal;
+}
+
+.scuttlebutt-head-tip[hidden] { display: none; }
+/* 포털은 부유 레이어 바깥이다. 떠 있는 카드의 메뉴·설명만 숨기고, 모달 안 권한 조작은 그대로 둔다. */
+:root[data-modal-open] .scuttlebutt-head-tip[data-scuttlebutt-surface="floating"],
+:root[data-modal-open] .scuttlebutt-menu[data-scuttlebutt-surface="floating"] { visibility: hidden; pointer-events: none; }
+
+.scuttlebutt-head-tip b {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+/* 대화 전체를 보여 주므로 카드가 끝없이 자란다 — 여기서 높이를 잡아야 카드가 부관 위·아래에
+   서고, 옆으로 밀려 부관을 덮는 일이 없다. 넘치는 문답은 안에서 스크롤한다. */
+.scuttlebutt-chat-log {
+  display: flex;
+  min-height: 0;
+  /* 말풍선 본문과 같은 상한 — 이어 물으려 열었더니 덜 보이는 일이 없다. 실제 높이는 카드의
+     배치 maxHeight(새 위아래 남은 공간)가 먼저 자른다. */
+  max-height: 60vh;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow-y: auto;
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+}
+
+.scuttlebutt-message-user {
+  max-width: 85%;
+  align-self: flex-end;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-message-sam {
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-status-row {
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-status-row.is-error {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
+  color: light-dark(color-mix(in oklch, var(--coral) 72%, var(--text-secondary)), color-mix(in oklab, var(--coral) 72%, var(--text-secondary)));
+}
+
+/* 한 줄 컴포저 — 카드 아래 한 면 안에 입력과 동작(보내기/중지)이 앉는다. 테두리는 textarea가 아니라
+   면이 지고, 입력이 여러 줄로 자라도 동작은 아래 변에 남는다(align-items: flex-end). */
+.scuttlebutt-composer {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) var(--space-4);
+  min-height: 44px;
+  padding: 6px 6px 6px var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  /* 카드는 유리(glass) 위에 뜬다 — 가장 어두운 abyss를 깔면 다크 테마에서 구멍처럼 읽힌다. raised 면을 쓴다. */
+  background: var(--surface-panel-raised);
+  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.scuttlebutt-composer:focus-within {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+
+.scuttlebutt-composer.is-working {
+  border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline));
+}
+
+.scuttlebutt-composer textarea {
+  min-width: 0;
+  min-height: 30px;
+  max-height: 9.5em;
+  flex: 1 1 auto;
+  padding: 5px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-md);
+  font-weight: var(--weight-regular);
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+}
+
+/* 빈 입력의 placeholder가 한 줄을 넘쳐도 스크롤바를 세우지 않는다 — 자동 높이는 문면(scrollHeight)만 재므로
+   placeholder의 줄바꿈은 높이에 잡히지 않고 overflow로만 남는다. */
+/* 입력박스에는 스크롤바를 세우지 않는다 — 여섯 줄을 넘으면 caret·휠로 안에서 스크롤되지만 막대는 그리지 않는다.
+   소수점 줄높이(19.5px)로 내용이 꼭 맞을 때도 막대가 깜빡이던 자리다. */
+.scuttlebutt-composer textarea {
+  scrollbar-width: none;
+}
+
+.scuttlebutt-composer textarea::-webkit-scrollbar {
+  display: none;
+}
+
+.scuttlebutt-composer textarea:placeholder-shown {
+  overflow-y: hidden;
+}
+
+.scuttlebutt-composer textarea:focus {
+  outline: none;
+}
+
+.scuttlebutt-composer textarea:disabled {
+  opacity: 0.6;
+}
+
+/* 보내기 — 원형 brass(Quick Launch·Cowork와 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
+.scuttlebutt-send {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--ink-mid);
+  color: var(--text-tertiary);
+  cursor: default;
+  transition: background var(--duration-fast), color var(--duration-fast), transform var(--duration-fast);
+}
+
+.scuttlebutt-send.is-armed {
+  border-color: var(--brass);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  cursor: pointer;
+}
+
+.scuttlebutt-send.is-armed:hover {
+  transform: translateY(-1px);
+}
+
+.scuttlebutt-send:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-send:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.scuttlebutt-stop {
+  border-color: var(--hairline-strong);
+  background: var(--ink-mid);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.scuttlebutt-stop span {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.scuttlebutt-stop:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-status-row.is-notice {
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+}
+
+.scuttlebutt-answer-actions {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--t-xs);
+}
+
+.scuttlebutt-sources-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-source {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scuttlebutt-source:hover {
+  border-color: var(--brass);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-source:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-answer-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scuttlebutt-answer-action {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.scuttlebutt-answer-action:hover {
+  border-color: var(--brass);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-answer-action:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.scuttlebutt-usage {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.scuttlebutt-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@keyframes scuttlebutt-qk-flap-l {
+  from { transform: rotate(-24deg); }
+  to { transform: rotate(15deg); }
+}
+
+@keyframes scuttlebutt-qk-flap-r {
+  from { transform: rotate(24deg); }
+  to { transform: rotate(-15deg); }
+}
+
+@keyframes scuttlebutt-qk-sway {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+@keyframes scuttlebutt-qk-dangle {
+  from { transform: rotate(-2.5deg); }
+  to { transform: rotate(2.5deg); }
+}
+
+@keyframes scuttlebutt-qk-blink {
+  0%,
+  93%,
+  100% { transform: scaleY(1); }
+  95.5%,
+  97.5% { transform: scaleY(0.1); }
+}
+
+@keyframes scuttlebutt-qk-waddle {
+  0%,
+  100% { transform: rotate(-2.4deg) translateY(0); }
+  50% { transform: rotate(2.4deg) translateY(-3px); }
+}
+
+@keyframes scuttlebutt-qk-step {
+  0%,
+  55%,
+  100% { transform: translateY(0) rotate(4deg); }
+  25% { transform: translateY(-9px) rotate(-14deg); }
+}
+
+@keyframes scuttlebutt-qk-breathe {
+  0%,
+  100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(3px) scale(1.012, 0.988); }
+}
+
+@keyframes scuttlebutt-qk-zfloat {
+  0% {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  30% { opacity: 1; }
+  70% { opacity: 0.7; }
+  100% {
+    opacity: 0;
+    transform: translateY(-9px);
+  }
+}
+
+@keyframes scuttlebutt-qk-tilt {
+  0%,
+  100% { transform: rotate(-4.5deg); }
+  50% { transform: rotate(4.5deg); }
+}
+
+@keyframes scuttlebutt-qk-glance {
+  0%,
+  100% { transform: translate(3px, -3px); }
+  50% { transform: translate(-3px, -1px); }
+}
+
+@keyframes scuttlebutt-qk-salute {
+  0%,
+  10% { transform: rotate(18deg); }
+  26%,
+  74% { transform: rotate(-66deg); }
+  90%,
+  100% { transform: rotate(18deg); }
+}
+
+@keyframes scuttlebutt-qk-hop {
+  0%,
+  100% { transform: translateY(0); }
+  38% { transform: translateY(-15px); }
+  58% { transform: translateY(-10px); }
+}
+
+@keyframes scuttlebutt-qk-markpop {
+  0%,
+  100% { transform: translateY(0); }
+  38% { transform: translateY(-9px); }
+}
+
+@keyframes scuttlebutt-qk-cheerhop {
+  0% { transform: translateY(0); }
+  6% { transform: translateY(3px) scale(1.05, 0.93); }
+  16% { transform: translateY(-17px) scale(0.97, 1.05); }
+  30% { transform: translateY(-19px); }
+  44% { transform: translateY(0) scale(1.05, 0.94); }
+  52% { transform: translateY(-5px); }
+  60%,
+  100% { transform: translateY(0) scale(1, 1); }
+}
+
+@keyframes scuttlebutt-qk-cheer-l {
+  0%,
+  6% { transform: rotate(-6deg); }
+  16%,
+  46% { transform: rotate(74deg); }
+  60%,
+  100% { transform: rotate(-6deg); }
+}
+
+@keyframes scuttlebutt-qk-cheer-r {
+  0%,
+  6% { transform: rotate(6deg); }
+  16%,
+  46% { transform: rotate(-74deg); }
+  60%,
+  100% { transform: rotate(6deg); }
+}
+
+@keyframes scuttlebutt-qk-hide-eyes {
+  0%,
+  8% { opacity: 1; }
+  9%,
+  56% { opacity: 0; }
+  57%,
+  100% { opacity: 1; }
+}
+
+@keyframes scuttlebutt-qk-show-eyes {
+  0%,
+  8% { opacity: 0; }
+  9%,
+  56% { opacity: 1; }
+  57%,
+  100% { opacity: 0; }
+}
+
+@keyframes scuttlebutt-qk-sparkle {
+  0%,
+  10% {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  42% { opacity: 0.85; }
+  56%,
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+@keyframes scuttlebutt-qk-preen {
+  0%,
+  12%,
+  100% { transform: rotate(0) translate(0, 0); }
+  32% { transform: rotate(30deg) translate(7px, 10px); }
+  42% { transform: rotate(25deg) translate(6px, 9px); }
+  50% { transform: rotate(31deg) translate(7px, 10px); }
+  58% { transform: rotate(26deg) translate(6px, 9px); }
+  78% { transform: rotate(30deg) translate(7px, 10px); }
+}
+
+@keyframes scuttlebutt-arrival-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scuttlebutt-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 상단 바에 둔 부관의 시트 — 닻이 새가 아니라 밴드의 글리프라 항상 같은 자리(우측 정렬)에
+   선다. 새 옆 카드보다 넓고(480px) 높이는 화면의 80%까지 쓴다: 읽으려고 고정한 자리다. */
+.scuttlebutt-chat-card.is-docked {
+  width: min(480px, calc(100vw - var(--space-6)));
+}
+
+.scuttlebutt-chat-card.is-docked .scuttlebutt-chat-log {
+  max-height: none;
+}
+
+/* ── 상단 바 글리프 ────────────────────────────────────────────────────────
+   커맨드 밴드 우측, 시스템 클러스터 앞. 밴드 버튼 문법(24×24·hover 림·눌림 워시)을 토큰으로
+   다시 그린다 — 호스트 클래스명은 플러그인 계약이 아니다. 더 큰 자리(대화 배치의 사이드바 고정 줄)는
+   호스트가 --command-band-entry-size 로 알리고, 머리는 버튼 안쪽 4px 여백을 지킨 채 함께 커진다. */
+.scuttlebutt-dock {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.scuttlebutt-dock-glyph {
+  position: relative;
+  display: grid;
+  width: var(--command-band-entry-size, 24px);
+  height: var(--command-band-entry-size, 24px);
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+/* 밴드의 다른 글리프(16px)와 같은 크기다. 잘라 내기는 머리 창 마크의 공통 규칙이 진다. */
+.scuttlebutt-dock-glyph svg {
+  width: calc(var(--command-band-entry-size, 24px) - 8px);
+  height: calc(var(--command-band-entry-size, 24px) - 8px);
+  /* 마스코트 색은 테마와 무관하게 고정이라(theme.css --scuttlebutt-qk-*) 라이트 밴드에서는 파스텔 얼굴이
+     바탕과 같은 밝기가 되고, 16px에서는 그림 자체의 윤곽선도 0.3px 아래로 사라진다. 색은 그대로 두고
+     이웃 밴드 아이콘의 잉크(--text-tertiary)로 실루엣 가장자리만 세운다 — 다크에서는 밝은 얼굴에 묻혀
+     거의 보이지 않는다. 0.5px 세 겹은 번진 후광이 아니라 선 아이콘 한 획만 한 가장자리를 만든다. */
+  filter:
+    drop-shadow(0 0 0.5px var(--text-tertiary))
+    drop-shadow(0 0 0.5px var(--text-tertiary))
+    drop-shadow(0 0 0.5px var(--text-tertiary));
+}
+
+.scuttlebutt-dock-glyph:hover,
+.scuttlebutt-dock-glyph:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  outline: none;
+}
+
+
+.scuttlebutt-dock-glyph[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--control-wash);
+}
+
+/* 답하는 동안 새가 고개를 갸웃한다 — 캔버스의 is-think와 같은 몸짓이다(깜빡임이 아니라).
+   무한 애니메이션이 허용되는 자리(응답이 실제로 도는 동안). */
+.scuttlebutt-dock-glyph.is-busy .scuttlebutt-qk-head {
+  animation: scuttlebutt-qk-tilt 2s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-tilt);
+  transition: none;
+}
+
+.scuttlebutt-dock-glyph.is-busy .scuttlebutt-qk-eyes {
+  animation: scuttlebutt-qk-glance 2.6s ease-in-out infinite; animation-name: var(--state-motion, scuttlebutt-qk-glance);
+}
+
+/* 읽지 않은 답의 점. 위치·주의 채널인 brass — 상태 신호가 아니라 "여기 새 것이 있다"다. */
+.scuttlebutt-dock-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  box-shadow: 0 0 0 2px var(--ink-deep);
+}
+
+/* 새를 밴드까지 끌어올린 동안 보이는 내려놓을 자리. */
+.scuttlebutt-dock-drop {
+  display: inline-flex;
+  height: var(--command-band-entry-size, 24px);
+  align-items: center;
+  padding: 0 var(--space-2);
+  border: 1px dashed color-mix(in oklch, var(--brass) 60%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .scuttlebutt-chat-card,
+  .scuttlebutt-chat-card.is-docked {
+    width: calc(100vw - var(--space-4));
+  }
+}
+
+/* OS의 prefers-reduced-motion 이 걸리면 편대는 정지 편대로 강등되고,
+   상태는 포즈 한 장으로만 남는다. */
+@media (prefers-reduced-motion: reduce) {
+  .scuttlebutt-bird-tag,
+  .scuttlebutt-bird-say {
+    transition: none;
+  }
+
+  .scuttlebutt-qk,
+  .scuttlebutt-qk *,
+  .scuttlebutt-notice-bubble,
+  .scuttlebutt-answer-bubble,
+  .scuttlebutt-dock-glyph .scuttlebutt-qk-head,
+  .scuttlebutt-dock-glyph .scuttlebutt-qk-eyes,
+  .scuttlebutt-chat-card {
+    animation: none !important;
+  }
+
+  .scuttlebutt-bird.is-cheer .scuttlebutt-qk-eyes {
+    opacity: 0;
+  }
+
+  .scuttlebutt-bird.is-cheer .scuttlebutt-qk-happy {
+    opacity: 1;
+  }
+
+  .scuttlebutt-bird.is-sleep .scuttlebutt-qk-zzz {
+    opacity: 1;
+  }
+
+  .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
+    opacity: 1;
+  }
+}
+
+/* ── 마크다운 조판 — core 공유 .markdown-body 를 카드 밀도로 ─────────────────
+   렌더러는 이미 core 공유였다. 조판도 공유 규칙(제목 위계·표·인용·코드 툴바·brass 인라인 코드)을
+   들이고, 읽기 스케일(17px·78ch 중앙)만 봉투 밀도로 되돌린다 — 채팅뷰가 하는 오버라이드와 같다.
+   말풍선과 카드가 같은 클래스를 쓰므로 「이어 묻기」 전이에서 조판이 바뀌지 않는다. */
+.scuttlebutt-chat-log .markdown-body,
+.scuttlebutt-answer-text.markdown-body {
+  --font-size-body: var(--t-md);
+  max-inline-size: 100%;
+  margin-inline: 0;
+  font-family: var(--font-content);
+  font-size: calc(var(--font-content-size) * 0.928571);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.scuttlebutt-chat-log .markdown-body > * + *,
+.scuttlebutt-answer-text.markdown-body > * + * {
+  margin-top: var(--space-2);
+}
+
+.scuttlebutt-chat-log .markdown-body h1,
+.scuttlebutt-chat-log .markdown-body h2,
+.scuttlebutt-chat-log .markdown-body h3,
+.scuttlebutt-answer-text.markdown-body h1,
+.scuttlebutt-answer-text.markdown-body h2,
+.scuttlebutt-answer-text.markdown-body h3 {
+  font-size: var(--t-md);
+  margin-top: var(--space-3);
+}
+
+/* 흐르는 글의 표식 — 채팅뷰의 스트림 캐럿과 같은 문법(secondary 잉크, 어느 채널의 색도 아니다). */
+.scuttlebutt-chat-log .markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+.scuttlebutt-chat-log .markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+.scuttlebutt-answer-text.markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+.scuttlebutt-answer-text.markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--text-secondary);
+  animation: scuttlebutt-caret 1.1s steps(2, jump-none) infinite; animation-name: var(--state-motion, scuttlebutt-caret);
+}
+
+@keyframes scuttlebutt-caret {
+  to { opacity: 0; }
+}
+
+/* ── 문답·역사 ────────────────────────────────────────────────────────────── */
+.scuttlebutt-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* 접힌 역사는 표시만 거둔다 — 펼치면 로그의 세로 리듬을 그대로 잇는다. */
+.scuttlebutt-history:not([hidden]) {
+  display: contents;
+}
+
+.scuttlebutt-greeting {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ── 권한 칩 ──────────────────────────────────────────────────────────────
+   기능 이름 대신 권한. 항상 서는 「웹 읽기」·「파일·셸 없음」 사이에 허용된 확장이 brass 림으로 선다 —
+   brass는 이 부관이 지금 쥔 것(위치)이지 상태 신호가 아니다. */
+.scuttlebutt-grants {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+/* 컴포저에는 권한을 한 번만 둔다. 좁은 폭·터치에서는 이름 대신 같은 글리프·툴팁·접근 이름을 쓴다. */
+.scuttlebutt-grants.is-responsive { flex-wrap: nowrap; }
+.scuttlebutt-grants.is-responsive .scuttlebutt-grants-label { display: none; }
+:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
+:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
+@media (max-width: 767px), (pointer: coarse) {
+  .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
+  .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
+}
+
+.scuttlebutt-grants.is-compact {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.scuttlebutt-grants-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.scuttlebutt-grant {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 1px var(--space-2) 1px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.scuttlebutt-grant.is-granted {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  color: var(--text-primary);
+}
+
+.scuttlebutt-grant.is-console-use {
+  color: var(--console-use-badge);
+  border-color: color-mix(in oklch, var(--console-use-badge) 35%, transparent);
+}
+
+.scuttlebutt-grant:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.scuttlebutt-grant-glyph {
+  display: inline-flex;
+  flex: none;
+}
+
+.scuttlebutt-grant-glyph svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* 헤더 이름 옆 12px 글리프 pill — Operation 사이드바 칩의 표식과 같은 문법. */
+.scuttlebutt-grant-marks {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-mid);
+  color: var(--text-tertiary);
+  vertical-align: middle;
+}
+
+.scuttlebutt-grant-mark {
+  display: inline-flex;
+}
+
+.scuttlebutt-grant-mark svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* ── ··· 메뉴 — AI 확장 ────────────────────────────────────────────────────
+   공통 팝업 표면의 메뉴 문법(40px 행 · 본문 글자 · 중립 워시)을 쓰는 체크 행. 카드 헤더 아래 오른쪽에 선다. */
+.scuttlebutt-menu {
+  position: fixed;
+  /* 문서 끝으로 포털된 잠깐의 메뉴 — 헤더 도움말 말풍선과 같은 overlay 단. 행은 한 줄이고,
+     상태 문구는 행에 머무를 때 말풍선으로만 선다. */
+  z-index: var(--z-overlay);
+  min-width: 200px;
+  max-width: min(320px, calc(100vw - var(--space-4)));
+  padding: 6px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+}
+
+/* 구역 머리는 문장형 보조색 글자다 — 대문자·자간을 벌리지 않는다. */
+.scuttlebutt-menu-label {
+  padding: var(--space-2) 12px 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-menu-row {
+  display: flex;
+  width: 100%;
+  min-height: var(--popover-row);
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-regular);
+  text-align: left;
+}
+
+.scuttlebutt-menu-row:hover {
+  background: var(--wash-hover);
+}
+
+.scuttlebutt-menu-row:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
+
+.scuttlebutt-menu-glyph {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.scuttlebutt-menu-glyph svg {
+  width: 14px;
+  height: 14px;
+}
+
+.scuttlebutt-menu-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.scuttlebutt-menu-check {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: var(--text-primary);
+  opacity: 0;
+}
+
+.scuttlebutt-menu-row.is-on .scuttlebutt-menu-check {
+  opacity: 1;
+}
+
+/* 실험이 하나도 켜져 있지 않을 때 설정으로 가는 길 한 줄. */
+.scuttlebutt-menu-hint {
+  padding: 2px 12px 8px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scuttlebutt-chat-log .markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+  .scuttlebutt-chat-log .markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after,
+  .scuttlebutt-answer-text.markdown-body.is-streaming > :last-child:not(ol, ul, pre)::after,
+  .scuttlebutt-answer-text.markdown-body.is-streaming > :is(ol, ul):last-child > li:last-child::after {
+    animation: none;
+  }
+}
+
+/* 레인 정체성은 탭이 말한다. 빈 로그는 높이도 경계도 남기지 않는다. */
+.scuttlebutt-chat-log[hidden] { display: none; }
+.scuttlebutt-quick-launch-grants { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.scuttlebutt-quick-launch-grants .scuttlebutt-menu.is-upward { position: absolute; top: auto; bottom: calc(100% + var(--space-2)); right: 0; }
+.scuttlebutt-grant.is-off { border-style: dashed; background: transparent; color: var(--text-tertiary); cursor: pointer; font-family: inherit; }
+.scuttlebutt-grant.is-off:hover { color: var(--text-primary); }

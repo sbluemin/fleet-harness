@@ -9,7 +9,6 @@ import {
   sanitizeAvatarBook,
   type AvatarBook,
   type MongleLook,
-  type MongleSpecial,
 } from "./index.js";
 
 /**
@@ -101,17 +100,15 @@ export interface ResolvedMongleLook {
   readonly tone: IdentityTone | null;
   /** 처음 뽑힌 베이스. 저장값이 없으면 지금 베이스다. */
   readonly origin: number;
-  /** 스페셜(사령관 전용). 있으면 베이스 대신 그 피규어로 그리고 `tone` 은 쓰지 않는다. */
-  readonly special: MongleSpecial | null;
   /** 저장소에 있는 값인가. */
   readonly stored: boolean;
 }
 
 export function resolveMongleLook(current: AvatarBook | null, key: string): ResolvedMongleLook {
   const look: MongleLook | undefined = current?.[key];
-  if (look) return { base: look.base, tone: look.tone, origin: look.origin, special: look.special ?? null, stored: true };
+  if (look) return { ...look, stored: true };
   const base = fallbackMongleBase(key);
-  return { base, tone: null, origin: base, special: null, stored: false };
+  return { base, tone: null, origin: base, stored: false };
 }
 
 export function useMongleLook(key: string): ResolvedMongleLook {
@@ -171,14 +168,12 @@ export function claimMongleLooks(groups: readonly (readonly string[])[]): Promis
   });
 }
 
-/**
- * 편집기의 「적용」 — 베이스와 색(과 사령관의 스페셜)을 덮어쓴다. 처음 뽑힌 베이스(origin)는 서버가 지킨다. `special` 을 주지 않으면 스페셜을 뗀다.
- */
-export function setMongleLook(key: string, base: number, tone: IdentityTone | null, special: MongleSpecial | null = null): Promise<boolean> {
+/** 편집기의 「적용」 — 베이스와 색을 덮어쓴다. 처음 뽑힌 베이스(origin)는 서버가 지킨다. */
+export function setMongleLook(key: string, base: number, tone: IdentityTone | null): Promise<boolean> {
   return enqueue(async () => {
     try {
-      const next = await write({ mode: "set", key, base, tone, ...(special ? { special } : {}) });
-      return next !== null && next[key]?.base === base && (next[key]?.tone ?? null) === tone && (next[key]?.special ?? null) === special;
+      const next = await write({ mode: "set", key, base, tone });
+      return next !== null && next[key]?.base === base && (next[key]?.tone ?? null) === tone;
     } catch {
       return false;
     }

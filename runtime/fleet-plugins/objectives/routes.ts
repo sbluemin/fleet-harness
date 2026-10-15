@@ -1,6 +1,5 @@
 import path from "node:path";
 
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
 import { OPERATION_GROUP_REMOVED_EVENT_CHANNEL, OPERATION_GROUPED_EVENT_CHANNEL, OPERATION_LAUNCH_CHANGED_EVENT_CHANNEL, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
@@ -158,8 +157,6 @@ export default definePlugin({
         const latest = ctx.host.operations.list().filter((node) => node.theaterId === theaterId && (node.payload.objectiveLanguage === "ko" || node.payload.objectiveLanguage === "en")).sort((a, b) => b.ts.updatedAt - a.ts.updatedAt)[0];
         return latest?.payload.objectiveLanguage === "ko" ? "ko" : "en";
       },
-      // 소울 — 사람이 사령관 모습으로 고른 스페셜 퀘이커. 아바타 책은 호스트가 지고, 사령관은 읽기만 한다(없는 호스트에서는 기본 말투).
-      ...(ctx.host.avatars ? { soul: (theaterId: string) => ctx.host.avatars!.look(theaterAvatarKey(theaterId))?.special ?? null } : {}),
       subscribeObjectives: (listener) => ctx.host.events.subscribe(OBJECTIVE_CHANNEL, (payload) => listener(payload as ObjectiveEvent)),
       boardTools: (theaterId, readAttachments) => createCommodoreBoardTools(ctx, store, launch, theaterId, readAttachments),
       ...(ctx.host.consoleControl ? { observe: (operationId) => ctx.host.consoleControl!.observe(operationId) } : {}),

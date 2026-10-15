@@ -963,8 +963,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,
-    // 플러그인은 아바타를 읽기만 한다 — 사령관이 사람이 고른 스페셜(말투)을 다음 턴에 싣는다. 쓰기는 편집기 경로뿐이다.
-    avatars: { look: (key) => avatarStore.load().avatars[key] ?? null },
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),
@@ -1169,7 +1167,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     upgrades: upgradeRegistry,
     host: pluginHostCapabilities,
     registerAdmiralMcp: (pluginId, tools) => pluginMcp.register(pluginId, tools),
-    contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute(tools),
+    contributeConsoleUse: (pluginId, tools) => consoleUse.forPlugin(pluginId).contribute!(tools),
     // A plugin's child leads a group this Console owns and ends however the Console ends; spawn is all a plugin gets.
     spawnOwnedProcess: (pluginId, request) => {
       const child = ownedProcesses.spawn({
@@ -1232,7 +1230,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }),
     createAttachmentHost: (pluginId) => attachmentsForPlugin?.(pluginId),
     createAgentHost: (pluginId) => {
-      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
+      const agent = createPluginAgentHost({ baseUrl: () => { const origin = pluginHostCapabilities.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; }, consoleUse: consoleUse.forPlugin(pluginId), computerUseMcp, browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId }) }, resolveExecutablePath: async () => {
         // 채팅과 같은 정책이다 — 설치된 Claude Code를 못 풀면 SDK 동봉본으로 폴백하지 않고 실패한다.
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");

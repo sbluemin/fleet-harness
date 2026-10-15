@@ -1,0 +1,26 @@
+{
+  "name": "@fleet-plugins/scuttlebutt",
+  "version": "1.236.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit --incremental -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fleet-plugins/codex": "workspace:*",
+    "@fleet-console/markdown": "workspace:*",
+    "@fleet-console/sdk": "workspace:*",
+    "react": "^19.2.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
+  }
+}

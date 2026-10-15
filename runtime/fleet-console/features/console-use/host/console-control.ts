@@ -168,8 +168,9 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
    *
    * 이 판정이 여기에도 서야 하는 이유는 자동 운영이다: 정책은 소유자를 대신해 **나중에** 실행되므로,
    * 도구 호출 경로에만 게이트를 두면 이미 예약된 정책이 그 게이트를 우회해 돌아 버린다.
-   * 플러그인 소유자는 Operation 토글이 없고 존재는 `pluginAvailable`이 지킨다. `console_automation`은
-   * 화면 자리에서 빠져 새 정책이 살아 있는 도구로 서지 않으므로, 여기서 플러그인 허용을 따로 묻지 않는다.
+   * 플러그인 소유자는 Operation 토글이 없다. 살아 있는 도구 호출은 연결의 `enabled`(부관 grant)가
+   * 막고 존재는 `pluginAvailable`이 지킨다. `console_automation`은 화면 자리에서 빠져 새 정책이
+   * 살아 있는 도구로 서지 않으므로, 여기서 플러그인 grant를 다시 묻지 않는다.
    */
   function callerAuthorized(caller: ConsoleCaller) {
     if (caller.kind !== "operation") return true;

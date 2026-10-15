@@ -201,31 +201,53 @@ describe("fleet-console-use host", () => {
       vi.useRealTimers();
     }
   });
-  it("advertises only read actions on a read-only connection and refuses control without a bound caller", async () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "console-readonly-"));
-    let executions = 0;
-    const deps = { directory, now: () => Date.now(), operations: () => [], theaters: () => [{ id: "theater-a", name: "Project" }] };
+  it("binds aide execution to the host plugin owner without an Operation and revokes it on unload", async () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "console-aide-"));
+    let granted = true; let available = true; let time = Date.now(); let executions = 0;
+    const deps = { directory, now: () => time, operations: () => [], theaters: () => [{ id: "theater-a", name: "Project" }], pluginAvailable: (id: string) => available && id === "scuttlebutt" };
     const control = createConsoleControl(deps);
     control.attach({ observe: () => null, execute: async (_input, assertCurrent, settled) => { assertCurrent(); executions++; settled("succeeded"); return { operationId: "new-op", delivery: "confirmed" }; } });
     const host = createConsoleUseMcpHost({ ...deps, control });
-    const readOnly = host.connect({});
+    const aide = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
+    const readOnly = host.forPlugin("scuttlebutt").connect({});
     const unbound = host.connect({ allowControl: true });
     const rpc = async (connection: ConsoleUseMcpConnection, method: string, params: unknown) => {
       const endpoint = (await connection.getEndpoint()).servers[0]!;
-      const token = connection.issueSessionToken({ label: "not-an-operation", cwd: directory })[0]!;
+      const token = connection.issueSessionToken({ label: "scuttlebutt", cwd: directory })[0]!;
       const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token.token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
       return (await response.json()).result;
     };
     const call = async (connection: ConsoleUseMcpConnection, name: string, args: unknown = {}) => JSON.parse((await rpc(connection, "tools/call", { name, arguments: args })).content[0].text);
     try {
+      expect(await call(aide, "console_context")).toMatchObject({ caller: { kind: "plugin", pluginId: "scuttlebutt" }, capabilities: { control: true } });
+      const args = { theaterId: "theater-a", text: "Run the requested check" };
       // 읽기 전용은 action 필터다 — 쓰기만 있는 도구는 싣지 않고, 남은 도구에는 read action 만 광고하며, 서버도 쓰기를 거절한다.
       const listed = (await rpc(readOnly, "tools/list", {})).tools as { name: string; inputSchema: { properties: { action?: { enum: string[] } } } }[];
       expect(listed.map((tool) => tool.name)).toEqual(["console_context", "console_sidebar", "console_operation"]);
       expect(listed.find((tool) => tool.name === "console_operation")!.inputSchema.properties.action!.enum).toEqual(["summary", "transcript", "jobs", "catalog"]);
       expect((await call(readOnly, "console_operation", { action: "send", operationId: "op-x", text: "hi" })).error).toBe("permission_required");
-      // 제어를 연 연결이라도 세션이 Operation 에 묶이지 않으면 실행하지 않는다.
-      expect((await call(unbound, "console_launcher", { theaterId: "theater-a", text: "Run the requested check" })).error).toBe("permission_required");
-      expect(executions).toBe(0);
+      expect((await call(unbound, "console_launcher", args)).error).toBe("permission_required");
+      expect((await call(aide, "console_launcher", { ...args, caller: { kind: "operation", operationId: "forged" } })).error).toBe("invalid_arguments");
+      expect(await call(aide, "console_launcher", args)).toEqual({ action: "launch", operationId: "new-op", delivery: "confirmed" });
+      expect(executions).toBe(1);
+      // 자동화는 Console 에 자리가 없어 도구에서 빠졌다 — 남아 있는 정책은 제어층이 그대로 돌리되 연결이 닫혀도 산다.
+      const policy = control.automation({ kind: "plugin", pluginId: "scuttlebutt" }, { name: "Briefing", theaterId: "theater-a", trigger: { kind: "interval", minutes: 5 }, action: { kind: "briefing" }, expiresAt: new Date(time + 3600_000).toISOString(), maxRuns: 2 });
+      await aide.dispose();
+      time += 300_001; await control.tick();
+      expect(control.state().automations[0]).toMatchObject({ id: policy.id, runs: 1 });
+      const nextChat = host.forPlugin("scuttlebutt").connect({ allowControl: true, enabled: () => granted });
+      expect((await call(nextChat, "console_context")).caller).toMatchObject({ kind: "plugin", pluginId: "scuttlebutt" });
+      granted = false;
+      expect((await call(nextChat, "console_launcher", args)).error).toBe("console_read_disabled");
+      expect(executions).toBe(1);
+      granted = true; available = false;
+      expect((await call(nextChat, "console_launcher", args)).error).toBe("caller_unavailable");
+      time += 300_001; await control.tick();
+      expect(control.state().automations[0]).toMatchObject({ status: "paused", runs: 1, lastError: "scope_unavailable" });
+      control.dispose();
+      const restarted = createConsoleControl(deps);
+      try { expect(restarted.state().automations[0]?.caller).toEqual({ kind: "plugin", pluginId: "scuttlebutt" }); }
+      finally { restarted.dispose(); }
     } finally { await host.dispose(); control.dispose(); rmSync(directory, { recursive: true, force: true }); }
   });
   it("scopes Console reads per connection and revokes access without exposing server paths", async () => {
