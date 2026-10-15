@@ -180,7 +180,7 @@ export function AnswerBubble({
   }, [positionRevision, updatePlacement]);
 
   // 코드 펜스 중 `mermaid`는 렌더러가 빈 자리표시자로 바꿔 둔다 — 하이드레이터가 없으면 도식은 물론
-  // 원문까지 사라진다(Analyst 채팅과 같은 설치 계약).
+  // 원문까지 사라진다.
   React.useEffect(() => {
     const bubble = bubbleRef.current;
     if (bubble) installDiagramHydrator(bubble, diagramHydratorLabels(locale));

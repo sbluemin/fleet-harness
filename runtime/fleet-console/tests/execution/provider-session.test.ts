@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { readAnalysisProviderSession, readProviderSession } from "../../features/execution/host/agent/provider-session.js";
+import { readCapturedProviderSession, readProviderSession } from "../../features/execution/host/agent/provider-session.js";
 
 describe("readProviderSession", () => {
   it("omits an empty transcriptPath instead of passing it through", () => {
@@ -22,7 +22,7 @@ describe("readProviderSession", () => {
     expect(readProviderSession({ session: [] })).toBeUndefined();
   });
 
-  it("keeps Codex captures available to analysis but not Claude resume", () => {
+  it("preserves Codex capture metadata without allowing Claude resume", () => {
     const session = {
       harness: "codex",
       id: "codex-session",
@@ -31,6 +31,6 @@ describe("readProviderSession", () => {
     };
 
     expect(readProviderSession({ session })).toBeUndefined();
-    expect(readAnalysisProviderSession(session)).toEqual(session);
+    expect(readCapturedProviderSession(session)).toEqual(session);
   });
 });

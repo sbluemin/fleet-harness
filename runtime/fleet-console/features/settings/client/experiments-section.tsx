@@ -63,10 +63,9 @@ interface AideRow {
   readonly helpKey: CoreMessageKey;
 }
 
-/** 항상 켜져 있는 보조 AI — 스위치 없이 모델과 강도만 고른다. 두 컴포저에는 이 좌표를 고르는 자리가 없다. */
+/** 항상 켜져 있는 보조 AI — 스위치 없이 모델과 강도만 고른다. 컴포저에는 이 좌표를 고르는 자리가 없다. */
 const AIDE_ROWS: readonly AideRow[] = [
   { id: "cowork", titleKey: "settings.experiments.cowork.title", helpKey: "settings.experiments.cowork.help" },
-  { id: "analyst", titleKey: "settings.experiments.analyst.title", helpKey: "settings.experiments.analyst.help" },
 ];
 
 export function ExperimentsSection({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
@@ -109,7 +108,7 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
 
 const saveExperiments = (next: ConsoleExperimentSettings) => void setGlobalSettingsField("experiments", next);
 
-const AIDE_ICONS: Partial<Record<ExperimentAideId, MobileIconName>> = { cowork: "wiki", analyst: "chart" };
+const AIDE_ICONS: Partial<Record<ExperimentAideId, MobileIconName>> = { cowork: "wiki" };
 
 /**
  * The phone's experiments (S-48′). Built from the SDK settings parts, which the mobile settings host

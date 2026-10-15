@@ -74,7 +74,7 @@ import type { WorkspaceHookBinding } from "./workspace-hooks.js";
  *
  * PTY가 없다 — 같은 Claude 세션을 core-agent SDK가 **사용자의 실제 Claude 홈에서** 이어받아
  * 돌린다. 트랜스크립트는 터미널이 쓰던 그 파일 하나이고, 이 세션은 그것을 옮기지 않고 그대로
- * 키운다 — Console 재시작·터미널 복귀(--resume)·Session Analyst가 전부 같은 경로 하나를
+ * 키운다 — Console 재시작·터미널 복귀(--resume)가 전부 같은 경로 하나를
  * 권위로 삼게 하기 위해서다. 매 턴이 끝나면 좌표만 다시 확정한다.
  */
 
@@ -3532,8 +3532,8 @@ class AgentChatSession {
     const sessionId = this.latestSessionId;
     if (!sessionId || sessionId === this.reportedSessionId) return;
     const transcriptPath = await this.locateTranscript(sessionId);
-    // 좌표를 못 찾으면 심지 않는다 — 없는 파일을 durable 권위로 가리키면 터미널 복귀·재시작·
-    // Analyst가 조용히 세션을 잃는다. 다음 턴이 다시 시도한다.
+    // 좌표를 못 찾으면 심지 않는다 — 없는 파일을 durable 권위로 가리키면 터미널 복귀·
+    // 재시작이 조용히 세션을 잃는다. 다음 턴이 다시 시도한다.
     if (!transcriptPath) return;
     this.reportedSessionId = sessionId;
     this.seed.onProviderSessionUpdate({

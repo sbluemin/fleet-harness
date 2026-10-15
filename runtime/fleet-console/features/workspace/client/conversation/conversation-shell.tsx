@@ -1202,7 +1202,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
     onActivate: activate,
     onClose: bodyOwner === operation ? () => onClose(operation.id) : () => selectNestedBody(operation.id, null),
     onGeometryChange: setGeometry,
-    // companion 은 브라우저만 — 오른쪽 분할 칸에 선다. 세션 분석가 등 다른 companion 은 이 화면에서 열지 않는다(onBodyCompanion 이 거른다).
+    // companion 은 브라우저만 — 오른쪽 분할 칸에 선다. 다른 companion 은 이 화면에서 열지 않는다(onBodyCompanion 이 거른다).
     ...(offersBrowser ? {
       onRequestCompanions: noop,
       companionsOpen: browserSplitOpen,
@@ -1278,7 +1278,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
 }
 
 const NO_HIDDEN_COMPANIONS: readonly string[] = [];
-/** 대화 중심 화면이 캡션 단추로 내주는 companion — 브라우저뿐이다. 세션 분석가는 이 화면에서 지원하지 않는다. */
+/** 대화 중심 화면이 캡션 단추로 내주는 companion — 브라우저뿐이다. */
 const CONVERSATION_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_ID];
 
 function noop(): void {}

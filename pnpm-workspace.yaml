@@ -3,7 +3,6 @@ packages:
   - "runtime/fleet-console/foundation/process"
   - "runtime/fleet-console/foundation/infra"
   - "runtime/fleet-console/features/ai-gateway/runtime"
-  - "runtime/fleet-console/features/analyst/runtime"
   - "runtime/fleet-console"
   - "runtime/fleet-console/features/updates"
   - "runtime/fleet-desktop"

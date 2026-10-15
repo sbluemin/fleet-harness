@@ -13992,7 +13992,7 @@ body[data-expanded-surface-resizing="true"] {
   display: block;
   width: 100%;
   min-height: 46px;
-  /* 6줄까지 자라고 그 뒤로는 스크롤한다 — Analyst 컴포저와 같은 clamp 정책. */
+  /* 6줄까지 자라고 그 뒤로는 스크롤한다. */
   max-height: calc(1.55em * 6 + var(--space-2));
   padding: 0;
   border: 0;
@@ -15524,7 +15524,7 @@ body[data-expanded-surface-resizing="true"] {
 
 /* ── Live line · History band (sdk/components) ───────────────────────────────
    도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
-   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 세션 분석가·코워크·부관이 같은 줄을 쓴다.
+   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크·부관이 같은 줄을 쓴다.
    링은 진행(신호), 물결은 명도(--live-sweep-*), 잉크는 3티어 텍스트 — 어느 채널도 겹치지 않는다. */
 .fc-live-line {
   display: flex;

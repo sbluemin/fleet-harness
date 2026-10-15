@@ -8,7 +8,6 @@ import { registerWsHandler } from "../../../features/execution/host/context.js";
 
 import { AI_GATEWAY_ROUTE_SEGMENT } from "../../../features/ai-gateway/host/routes.js";
 import { createModelRosterHost, registerModelRosterRoutes } from "../../../features/ai-gateway/host/model-roster.js";
-import { registerAnalysisRoutes } from "../../../features/analyst/host/analysis-routes.js";
 import { registerExperimentRoutes } from "../../../features/execution/host/agent/experiments-routes.js";
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
@@ -70,10 +69,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
   registerShellRoutes(ctx, runtime);
   registerTerminalCwdRoute(ctx);
-  const analysis = registerAnalysisRoutes(ctx, {
-    // 분석가는 게이트웨이 위에서 돈다. 고를 수 있는 모델은 모델 로스터(사용자가 켠 선별)다.
-    models,
-  });
   registerExperimentRoutes(ctx);
   const agent = await registerAgentRoutes(ctx, runtime, {
     organize,
@@ -103,12 +98,11 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     /** 첨부 보관소의 지난 실행 잔재 회수. 부트스트랩이 runtime lock을 쓴 직후에만 부른다. */
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
-    actions: { ...agent.actions, analystAsk: analysis.ask, analystArtifacts: analysis.artifacts, analystState: analysis.state },
+    actions: agent.actions,
     stopForArchive: async (operation: import("@fleet-console/sdk/operations").OperationNode) => {
       runtime.invalidateTicketsForSession(operation.id);
       if (operation.pluginId === null && operation.type === "agent") {
         await agent.stopForArchive(operation.id);
-        await analysis.stopForArchive(operation.id);
       } else if (!await runtime.terminateAndWait(operation.id, 10_000)) throw new Error("archive_stop_failed");
       await ctx.host.browserMcp?.revokeOperation(operation.id);
       ctx.host.computerUseMcp?.revokeOperation(operation.id);
@@ -118,7 +112,6 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     purgeOperation: (operation: import("@fleet-console/sdk/operations").OperationNode) => {
       if (operation.pluginId !== null || operation.type !== "agent") return;
       agent.purgeOperation(operation.id);
-      analysis.purgeOperation(operation.id);
     },
   };
 }

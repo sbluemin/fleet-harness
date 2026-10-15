@@ -2023,3 +2023,16 @@
   background: var(--m-chip);
   color: var(--m-text);
 }
+
+.agent-stream-host .terminal-stage { z-index: 0; }
+
+/* ── 캡션 말풍선 — console_reveal 사유와 Console Use 시선 ─────────────────────
+   캡션 이름표(.fleet-caption-tip)와 같은 문법의 부유면이되, 겨눔이 아니라 도착으로 뜨고 누름·입력으로
+   진다. 클래스 이름의 `session-watch`는 예전 이름이 그대로 남은 것이다. */
+
+/* 캡션 선반 끝의 폭 없는 앵커에 걸되, 오른쪽 변과 꼬리는 그 옆 ··· 버튼(6px 간격 + 24px)에 맞춘다: 스위치가 있는 곳을 가리켜야 한다. */
+.session-watch-host { position: relative; display: inline-flex; }
+.session-watch-bubble { position: absolute; top: calc(100% + 6px); right: -30px; z-index: 13; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 220px; max-width: min(420px, 70vw); padding: 6px 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-secondary); box-shadow: var(--shadow-soft); font-family: var(--font-ui); font-size: var(--t-2xs); letter-spacing: 0.04em; line-height: 1.4; }
+.session-watch-bubble::before { content: ""; position: absolute; top: -5px; right: 8px; width: 8px; height: 8px; border-left: 1px solid var(--hairline-strong); border-top: 1px solid var(--hairline-strong); background: var(--surface-panel-raised); transform: rotate(45deg); }
+.session-watch-bubble__text { min-width: 0; }
+.session-watch-bubble.is-reveal { border-color: color-mix(in oklch, var(--console-use-badge) 55%, transparent); color: var(--text-primary); }

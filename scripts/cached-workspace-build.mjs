@@ -30,7 +30,6 @@ const OUTPUT_MARKERS = {
   "@fleet-console/process": ["dist/index.js", "dist/index.d.ts"],
   "@fleet-console/infra": ["dist/index.js", "dist/index.d.ts"],
   "@fleet-console/ai-gateway": ["dist/index.js", "dist/index.d.ts"],
-  "@fleet-console/analyst": ["dist/index.js", "dist/index.d.ts"],
   "@dotobokuri/fleet-mobile": ["dist/bundle/metadata.json"],
 };
 

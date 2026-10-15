@@ -105,7 +105,6 @@ Provider quotas stay in view as usage meters at the top right; click them for th
 
 Beside a conversation you can also open:
 
-- **Session Analyst** (<kbd>Alt</kbd><kbd>A</kbd>) reads a session without disturbing it and answers what happened, what needs review, or how to hand it off.
 - **Session Browser** (<kbd>Alt</kbd><kbd>B</kbd>, Desktop only) is a browser the agent drives on the same tabs you see, and you can annotate a page for it. The **Fleet Browser** (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>B</kbd>, Desktop only) is your own browser beside the conversation. Drag the edge between them to resize it.
 
 With **Console Use**, agents can operate the Console itself. **Computer Use** extends that to Mac apps. Both are granted per session, and each request is approved inside the panel.

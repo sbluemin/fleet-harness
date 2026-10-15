@@ -3173,7 +3173,7 @@ button.chip:focus-visible {
 .cowork-thread-scroll:empty,
 .cowork-thread-scroll.is-folded { display: none; }
 
-/* 빈 상태 — Analyst hero와 같은 짜임. */
+/* 빈 상태 — 제목과 안내를 가운데 세운다. */
 
 /* ── 스레드 — 단일 열 턴. 스파인·노드는 agent-chat과 함께 퇴역했다: 상태는 접힘 줄·결말 문구가 말한다. ── */
 .cowork-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }

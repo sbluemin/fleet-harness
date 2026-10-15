@@ -73,17 +73,6 @@ export function CaptionBrowserUseGlyph() {
   );
 }
 
-/** Session Analyst — 제품이 이미 쓰는 ✳ 표식을 선으로 옮겨 그린 것. */
-export function CaptionAnalystGlyph() {
-  return (
-    <CaptionGlyph>
-      <path d="M8 3.3v9.4" {...STROKE} />
-      <path d="M4.03 5.65 11.97 10.35" {...STROKE} />
-      <path d="M11.97 5.65 4.03 10.35" {...STROKE} />
-    </CaptionGlyph>
-  );
-}
-
 /** 채팅 뷰 — 오가는 말의 줄. 마지막 줄이 짧아 목록이 아니라 글로 읽힌다. */
 export function CaptionChatGlyph() {
   return (

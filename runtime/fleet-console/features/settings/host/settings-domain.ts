@@ -786,10 +786,10 @@ function isExperimentSettingsInput(value: unknown): boolean {
   for (const key of ["computerUse", "commodore"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
-  for (const key of ["coworkModel", "analystModel", "commodoreModel"]) {
+  for (const key of ["coworkModel", "commodoreModel"]) {
     if (key in value && !isExperimentModelId(value[key])) return false;
   }
-  for (const key of ["coworkEffort", "analystEffort", "commodoreEffort"]) {
+  for (const key of ["coworkEffort", "commodoreEffort"]) {
     if (key in value && !isExperimentEffort(value[key])) return false;
   }
   return true;

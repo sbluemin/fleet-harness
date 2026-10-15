@@ -900,8 +900,7 @@ export function AgentChatView({
         : null}
         </div>
 
-        {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
-            다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
+        {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
             떠 있는 컨트롤은 전부 대화 면 안에 산다 — 패널 전체에 걸어 두면 작업 면이 열린
             순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */}
         {/* Ctrl+C 한 번이 세우는 안내. 모달이 아니다 — 초점을 가져가면 두 번째 누름이 이 패널
@@ -1028,7 +1027,7 @@ function SessionCoordinate({
       {...(coordinates.title ? { title: coordinates.title } : {})}
     >
       {/* 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다 — 공급자 글리프가
-          그 축을 진다(런치 메뉴·분석가 칩과 같은 표식). 공급자를 읽지 못한 세션은 중립 마름모로
+          그 축을 진다(런치 메뉴과 같은 표식). 공급자를 읽지 못한 세션은 중립 마름모로
           돌아가고, ultracode는 그 자리에 자기 별을 세운다. */}
       <CoordinateFace coordinates={coordinates} model={model} effort={effort} />
     </span>

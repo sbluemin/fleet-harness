@@ -13,8 +13,7 @@ import { IDENTITY_TONES } from "@fleet-console/sdk/operations/identity-tones";
 
 /**
  * Console 화면이 사람에게 여는 나머지 동사들의 호스트 어댑터. 각 묶음은 그것을 소유한 층이 채운다 —
- * Operation 저장소·삭제 유예·사용 목록·화면 사건은 서버가, 재개·뷰·대화·질문 답은 에이전트 라우트가,
- * 분석가는 분석 라우트가. 비어 있는 묶음의 도구는 `capability_unavailable`로 답한다.
+ * Operation 저장소·삭제 유예·사용 목록·화면 사건은 서버가, 재개·뷰·대화·질문 답은 에이전트 라우트가 채운다. 비어 있는 묶음의 도구는 `capability_unavailable`로 답한다.
  * 쓰기(커밋·파일 변경)는 여기에 없다: 그것은 그 Theater의 Operation에 시키는 일이다.
  */
 export type SidebarPosition = "first" | "last" | { readonly before: string } | { readonly after: string };
@@ -48,10 +47,6 @@ export interface ConsoleUseActions {
   catalog?(operationId: string): Promise<{ readonly commands: readonly unknown[]; readonly skills: readonly unknown[]; readonly agents: readonly unknown[] } | { readonly error: string }>;
   pendingAsks?(operationId: string): readonly { readonly id: string; readonly form: "question" | "plan"; readonly questions: readonly unknown[] }[];
   answer?(operationId: string, askId: string, input: { readonly answers?: readonly string[]; readonly message?: string }, by: ConsoleCaller): { readonly ok: true; readonly outcome: string } | { readonly ok: false; readonly error: string };
-  analystAsk?(operationId: string, question: string, by: ConsoleCaller, signal?: AbortSignal): Promise<{ readonly ok: true; readonly answer: string; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly ok: false; readonly error: string }>;
-  analystArtifacts?(operationId: string, artifactId?: string): { readonly artifacts: readonly { readonly id: string; readonly title: string }[]; readonly html?: string } | { readonly error: string };
-  /** 그 Operation 의 분석가 패널 상태 — 사람이 보는 것과 같은 원장. */
-  analystState?(operationId: string): { readonly started: boolean; readonly model?: string; readonly journal: readonly Record<string, unknown>[]; readonly artifacts: readonly { readonly id: string; readonly title: string }[] } | { readonly error: string };
 }
 
 export interface ConsoleUseDeps {
@@ -128,6 +123,8 @@ const RESERVED_TOOL_NAMES = new Set<string>([
   // 재개편 전 이름 — 플러그인이 다시 차지하지 못하게 잠근다.
   "console_operations", "console_organize", "console_send", "console_panel", "console_analyst", "console_launch",
   "console_end", "console_theaters", "console_events", "console_interrupt", "console_action", "console_automation", "console_using", "console_transcript", "console_jobs", "console_catalog", "console_watch_last", "console_resume", "console_close", "console_rename", "console_view", "console_group", "console_accent", "console_reveal", "console_answer",
+  // 퇴역한 세션 분석가 도구 — 옛 지침을 가진 에이전트가 플러그인 도구로 잘못 닿지 않게 잠근다.
+  "console_operation_analyst",
 ]);
 const NEXT_ACTION: Record<string, string> = {
   nothing_to_interrupt: "No foreground turn is running. Stop does not close or delete the Operation; console_operation close does.",
@@ -207,16 +204,6 @@ const OPERATION_TOOL = defineConsoleTool({
     close: { kind: "write", input: z.object(target) },
     switch: { kind: "write", input: z.object({ ...target, mode: z.enum(["chat", "terminal"]).describe("Switching interrupts the in-flight turn.") }) },
     reveal: { kind: "write", input: z.object({ ...target, reason: z.string().trim().min(1).max(200).describe("Shown to the person as it comes to the front; once per session.") }) },
-  },
-});
-
-const ANALYST_TOOL = defineConsoleTool({
-  name: "console_operation_analyst",
-  description: "An Operation's Session Analyst panel, as the person sees it.",
-  actions: {
-    status: { kind: "read", input: z.object(target) },
-    artifact: { kind: "read", input: z.object({ ...target, artifactId: ids }) },
-    ask: { kind: "write", input: z.object({ ...target, question: z.string().trim().min(1).max(4000).describe("A billable model call on its analyst seat, 5 per session; shown in the person's panel with your name.") }) },
   },
 });
 
@@ -625,29 +612,6 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
       }
     }
   }));
-  // 분석가 패널은 읽기도 호출자가 풀린 control 연결에서만 연다(예전 경계 그대로).
-  entries.push(define(ANALYST_TOOL, async (call, ctx) => {
-    const me = requireCaller(ctx);
-    const op = node(call.operationId);
-    if (call.action === "artifact") {
-      const result = need("analystArtifacts")(op.id, call.artifactId);
-      if ("error" in result) throw new ConsoleControlError(result.error);
-      gesture(ctx, "console_operation_analyst", `${op.title} 분석가 아티팩트 읽음`, "gaze", opTarget(op.id));
-      return { operationId: op.id, artifacts: result.artifacts, html: result.html };
-    }
-    if (call.action === "ask") {
-      if (!budget(ctx, "analyst", 5)) throw new ConsoleControlError("analyst_budget_exhausted");
-      gesture(ctx, "console_operation_analyst", `${op.title} 분석가에게 물음`, "input", opTarget(op.id));
-      const result = await need("analystAsk")(op.id, call.question, me, ctx.signal);
-      if (!result.ok) throw new ConsoleControlError(result.error);
-      return { operationId: op.id, answer: result.answer, artifacts: result.artifacts };
-    }
-    gesture(ctx, "console_operation_analyst", `${op.title} 분석가 패널 봄`, "gaze", opTarget(op.id));
-    const state = need("analystState")(op.id);
-    if ("error" in state) throw new ConsoleControlError(state.error);
-    return { operationId: op.id, ...state };
-  }, { controlOnly: true }));
-
   // ---------------------------------------------------------------------------------------------
   // Quick Launch
   // ---------------------------------------------------------------------------------------------
@@ -706,7 +670,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       const requested = new Set<string>(options.tools ?? CONSOLE_USE_TOOLS);
       // 읽기 전용은 도구 목록이 아니라 action 필터다 — 연결의 권한과 호출자 종류로 광고·검증할 action 을 함께 거른다.
       const filter: ConsoleToolFilter = { control: options.allowControl === true, caller: pluginId ? "plugin" : "operation" };
-      // 세션 단위 예산 — reveal 은 1회, 분석가 질문은 5회. 세션이 닫히면(턴 종료·유휴·권한 철회) 함께 비워진다.
+      // 세션 단위 예산 — reveal 은 1회. 세션이 닫히면(턴 종료·유휴·권한 철회) 함께 비워진다.
       const budgets = new Map<string, Map<string, number>>();
       const budget = (ctx: AgentToolCtx, key: string, max: number) => {
         const label = ctx.sessionLabel ?? "embedded";

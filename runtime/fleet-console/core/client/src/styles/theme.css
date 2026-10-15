@@ -25,7 +25,7 @@
      페이지 배경 조정이 버튼 대비를 함께 끌어내리는 결합이 재발한다). */
   --text-on-brass: var(--ink-abyss);
 
-  /* 라이브 명도 물결의 두 끝 — 채팅 원장(.agent-chat-live-text)과 분석가(.session-analyst__live-text)가
+  /* 라이브 명도 물결의 두 끝 — 채팅 원장(.agent-chat-live-text)과 공용 상태줄이
      한 벌로 쓴다. 물결은 색 채널을 하나도 빌리지 않는 순수 명도 스윕이므로 두 끝은 잉크 티어다.
      [왜 --text-* 를 직접 안 쓰나] 물결의 세기는 두 끝의 명도 간격이고, 그 간격은 텍스트 사다리가
      테마마다 얼마나 벌어져 있는지에 딸려 간다. 다크는 tertiary(L64)->primary(L94)로 30단이 벌어져
@@ -578,7 +578,7 @@
      마루(--ink-pearl L22.5)와의 간격이 22.5단뿐이고, 어두운 끝의 L* 압축까지 겹쳐 실측 진폭이
      13.9 L*(다크 25.7 L*의 54%)로 죽는다 — 물결이 도는데도 정지한 줄로 읽힌다.
      [기준 면] 값을 가르는 것은 평평한 패널(--surface-panel L98.2%)이 아니라 **라이브 행**이다.
-     "Thinking" 줄(.agent-chat-step.is-running)과 분석가 펄스(.session-analyst__pulse)는
+     "Thinking" 줄(.agent-chat-step.is-running)은
      `color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised))` = L93.68% 위에 앉고,
      라이트에서 raised는 --ink-deep(L95.5)이라 패널보다 어둡다. 물결이 실제로 도는 자리가 여기이므로
      대비의 최악 조건도 여기다 — 패널 기준으로 고르면 L55(패널 4.60:1)가 이 행에서 4.03:1로
@@ -956,7 +956,7 @@
 
 /* ── 모바일 팔레트 (data-view-mode="mobile" × data-mobile-scheme) ─────────────────
    모바일 배치는 Console 테마(general.theme)를 따르지 않고 자기 다크/라이트를 쓴다. 루트에 얹는
-   이유는 포털 시트·메뉴와 루트 계산값을 읽는 JS 소비자(터미널 배경·Mermaid·Analyst)가 모두 같은
+   이유는 포털 시트·메뉴와 루트 계산값을 읽는 JS 소비자(터미널 배경·Mermaid)가 모두 같은
    답을 읽어야 하기 때문이다 — 서브트리 스코프로는 그들이 데스크톱 색을 쓴다.
    - 모바일 고유 값은 --m-* 한 벌(다크·라이트)뿐이고, 기존 토큰은 아래에서 그것을 가리킨다. 코어·
      플러그인 CSS는 고치지 않고도 모바일 색을 받는다. 모바일 셸 CSS는 --m-*를 직접 쓴다.

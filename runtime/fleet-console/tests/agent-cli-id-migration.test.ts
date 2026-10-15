@@ -53,7 +53,7 @@ describe("Agent session durable migration", () => {
     });
   });
 
-  it("keeps legacy Codex captures analysis-only instead of making them resumable by Claude Code", () => {
+  it("preserves legacy Codex captures without making them resumable by Claude Code", () => {
     const state = sanitizeDurableConsoleState({
       version: 3,
       theaters: [],

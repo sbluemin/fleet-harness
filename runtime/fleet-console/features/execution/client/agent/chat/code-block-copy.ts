@@ -6,7 +6,7 @@ const CODE_COPY_FAILED_MS = 3_000;
 
 /**
  * 코드 블록 복사 버튼 위임 — 마크다운이 심은 `[data-action="copy-code"]`를 각 대화 표면의 바깥 한 곳에서 받는다.
- * StreamedMarkdown 안에 두지 않는 까닭은 analyst가 같은 컴포넌트를 쓰면서 바깥에서 이미 처리하기 때문이다.
+ * 각 표면에서 위임하므로 일반 대화와 그룹 대화가 같은 복사 피드백을 쓴다.
  *
  * 성공 글자는 writeText가 이행된 뒤에만 나온다. 클립보드가 없거나 동기로 던지거나 거절되면 모두 실패이고,
  * 실패는 성공 글자 없이 「복사 실패」로 알린다. 원래 글자는 클릭 때의 textContent가 아니라 키에서 얻는다 —
@@ -37,7 +37,7 @@ export function useCodeBlockCopy(t: ReturnType<typeof getT>) {
     const settle = (state: "copied" | "failed") => {
       // 스트리밍 재렌더가 버튼을 갈아끼웠거나 그 사이 다시 눌렸다면 이 결과는 낡았다.
       if (entry.seq !== seq || !button.isConnected) return;
-      const message = t(state === "copied" ? "terminal.analyst.copied" : "terminal.markdown.copyFailed");
+      const message = t(state === "copied" ? "terminal.markdown.copied" : "terminal.markdown.copyFailed");
       button.textContent = message;
       button.dataset.copyState = state;
       setAnnouncement("");

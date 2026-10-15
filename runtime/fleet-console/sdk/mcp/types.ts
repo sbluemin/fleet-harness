@@ -37,11 +37,11 @@ export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleHuman
 
 /**
  * Console Use 호스트 코어 도구. 이름은 `console_<화면>[_<하위 화면>]` — 사이드바, Quick Launch(launcher),
- * Operation 패널과 그 분석가. 화면 하나의 여러 동사는 도구 하나의 `action` 이다(`./actions` 의 `defineConsoleTool`).
+ * Operation 패널. 화면 하나의 여러 동사는 도구 하나의 `action` 이다(`./actions` 의 `defineConsoleTool`).
  * 읽기 전용 연결은 도구 목록이 아니라 action 필터다 — `allowControl` 이 없는 연결에는 read action 만 실린다.
  * 호출 하나는 사용자 화면 위의 제스처 하나이며, 호스트가 `console-use:call` 사건으로 알린다.
  */
-export const CONSOLE_USE_TOOLS = ["console_context", "console_sidebar", "console_launcher", "console_operation", "console_operation_analyst"] as const;
+export const CONSOLE_USE_TOOLS = ["console_context", "console_sidebar", "console_launcher", "console_operation"] as const;
 export type ConsoleUseToolId = (typeof CONSOLE_USE_TOOLS)[number];
 
 /** 어느 화면 자리에 제스처가 닿는가. 내용(전사·diff·파일 본문)은 싣지 않는다 — 원격 세션도 받는 채널이다. */

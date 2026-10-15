@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-// Shared provider marks for launch menus and Session Analyst. Host chrome and
+// Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
 export type LaunchProviderGlyphId = "claude" | "codex" | "cursor" | "opencode" | "xai" | "antigravity" | "muse-code";
@@ -184,7 +184,7 @@ export function launchProviderFromGroupId(groupId: string): LaunchProviderGlyphI
 /**
  * Resolve the provider glyph for a model id.
  *
- * Launch rows use `fable` or `xai--grok-4`. Analyst catalog ids prefix the
+ * Launch rows use `fable` or `xai--grok-4`. Legacy model coordinates prefix the
  * same payload with `claude-gateway--`, so that wrapper is stripped first.
  */
 export function launchProviderFromModelId(modelId: string | null | undefined): LaunchProviderGlyphId | null {
