@@ -36,7 +36,7 @@ const rosterMember = z.object({
   model: z.string().trim().min(1).max(128).optional(),
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
-const MODEL_FACT = "A member may select a model and effort from models (gateway_models); the selection becomes that member's launch setting and appears on the board. Without a model, AI Gateway routing chooses it.";
+const MODEL_FACT = "A member may select a model and effort from models (gateway_models); the selection becomes that member's launch setting and appears on the board. Without a model, AI Gateway routing chooses it. Change an existing member with set_member_launch; the person's launch selection, including routing, is protected.";
 const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const pin = pinSchema.optional().describe(PIN_FACT);
@@ -299,6 +299,16 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         let current = objective;
         for (const member of roster) current = store.memberAdd(objective.id, member, "commander");
         return text({ ok: true, members: current.members.filter((member) => !existing.has(member.id)).map((member) => ({ id: member.id, role: member.role, launch: member.launch })) });
+      }),
+    commanderTool("set_member_launch", "Change an existing member's launch setting, named by id or role. mode model takes a model and optional effort from models (gateway_models); mode route returns to AI Gateway routing and takes neither. Available while planning too. A model selection switches a session immediately when idle or dormant, or after its running turn. Returning to routing cancels a pending switch; routing judges at a later launch, not for the current session. Host refusals retain the previous selection and return the host error code. The person's selection, including a cleared launch or routing return, cannot be overwritten (member_launch_person_chosen); legacy settings with unknown ownership are protected too.",
+      z.object({ objectiveId: ids, member: memberReference, mode: z.enum(["model", "route"]), model: rosterMember.shape.model, effort: rosterMember.shape.effort }).strict(),
+      async ({ member, mode, model, effort }, before, _caller, context) => {
+        if (mode === "route" && (model !== undefined || effort !== undefined)) return refuse("invalid_arguments");
+        if (mode === "model" && model === undefined) return refuse("model_required");
+        const memberId = resolveMember(find(before.id), member);
+        const [proposal] = mode === "model" ? await rosterOf([{ role: "member", model, effort }], context.signal) : [];
+        const updated = await launch.memberPatched(before.id, memberId, { launch: proposal && "launch" in proposal ? proposal.launch : null }, "commander");
+        return text({ ok: true, memberId, launch: updated.members.find((entry) => entry.id === memberId)!.launch });
       }),
     commanderTool("models", "gateway_models: the candidate models, efforts, quota pools, preferences and recent assignments AI Gateway routing judges with.",
       z.object({ objectiveId: ids }).strict(),
