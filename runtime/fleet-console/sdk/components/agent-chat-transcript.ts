@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from "react";
 
+import type { ConversationReference } from "../conversation/references.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../conversation/types.js";
 
 /**
@@ -20,11 +21,27 @@ export interface AgentChatTranscriptOrigin {
 /** Reference-only attachments never open the Operation preview route. */
 export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string };
 
+/**
+ * References the person placed inside their words. The text carries `CONVERSATION_REFERENCE_MARK` (`@fleet-console/sdk/conversation`)
+ * once per reference, in order; a plain-text bubble shows a token in each place. The author verifies the pairing before sending.
+ */
+export type AgentChatTranscriptReference = ConversationReference;
+
+/**
+ * What a reference token does and wears — the plugin owns its targets. Without `open` a token is not a button; without `mark` it shows
+ * only its label. `describe` is the token's accessible name (defaults to the label).
+ */
+export interface AgentChatReferenceHost {
+  readonly open?: (id: string) => void;
+  readonly mark?: (id: string) => ReactNode;
+  readonly describe?: (reference: AgentChatTranscriptReference) => string;
+}
+
 export type AgentChatTranscriptEvent =
   /** Opens a turn. With `by` it is a plugin's line (origin row); without it the person's bubble. */
-  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
+  | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin; readonly undelivered?: true }
   /** A message a running turn picked up — stays inside that turn. */
-  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
+  | { readonly kind: "turn-inject"; readonly text: string; readonly format?: "markdown"; readonly references?: readonly AgentChatTranscriptReference[]; readonly attachments?: readonly AgentChatTranscriptAttachment[]; readonly at?: number; readonly by?: AgentChatTranscriptOrigin }
   | { readonly kind: "turn-start"; readonly at?: number }
   /** A completed text block — markdown. The last one before `turn-end` becomes the answer. */
   | { readonly kind: "text"; readonly text: string }
@@ -55,6 +72,8 @@ export interface AgentChatTranscriptProps {
    * same time.
    */
   readonly reveal?: { readonly at: number; readonly nonce: number } | null;
+  /** How the person's inline references open and look. */
+  readonly references?: AgentChatReferenceHost;
 }
 
 /**
@@ -88,6 +107,8 @@ export interface AgentConversationProps {
   readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
   /** Below the working line — the plugin's own composer or a way back. */
   readonly composer?: ReactNode;
+  /** How the person's inline references (a message's `references`) open and look. */
+  readonly references?: AgentChatReferenceHost;
 }
 
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */

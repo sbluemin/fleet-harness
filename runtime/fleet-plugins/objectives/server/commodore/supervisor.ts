@@ -12,6 +12,7 @@ import { ObjectiveStoreError } from "../store.js";
 import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
+import { messagePromptText } from "./prompt.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
 import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
 
@@ -652,7 +653,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (event.op === "transcript" && event.entry.kind === "ask-answered" && runner) { wake(runner, "answered", { bump: true, detail: askDetail(event.entry.answers[0]?.question ?? event.entry.askId) }); return; }
     if (event.op === "transcript" && event.entry.kind === "message" && runner) {
       const { entry } = event;
-      const text = entry.objective ? `Objective context: ${JSON.stringify(entry.objective)}\n${entry.text}` : entry.text;
+      const text = messagePromptText(entry);
       runner.messages.push({ seq: entry.seq, text, ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) }); wake(runner, "message");
     }
   }));

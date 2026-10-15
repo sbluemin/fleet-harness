@@ -7,6 +7,7 @@ const hostAttachmentFixture = new URL("../../../fleet-console/features/execution
 const { createLaunchAttachmentStore } = await import(hostAttachmentFixture);
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../server/commodore/attachment-budget.js";
 import type { AgentEvent, AgentHost, AgentInput, AgentSessionOptions } from "@fleet-console/sdk/agent";
+import { CONVERSATION_REFERENCE_MARK as MARK } from "@fleet-console/sdk/conversation";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { resolveRosterCoordinate, type ModelCoordinate } from "@fleet-console/sdk/models";
 import { defineConsoleTool } from "@fleet-console/sdk/mcp/actions";
@@ -126,27 +127,43 @@ describe("commodore theater state", () => {
     // 설정은 켜졌지만 감독자 알림이 아직 오지 않은 경계 — 받을 runner가 없으면 기록도 남기지 않는다.
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Before the runner." }, { run: () => null })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: "Small scope" } };
+    const hooks: CommodoreRouteHooks = { run: () => ({ phase: "idle" }), objective: (id) => id === "missing" ? null : { id, theaterId: id === "foreign" ? "t2" : "t1", title: id === "o1" ? "Small scope" : `Scope ${id}`, ...(id === "gone" ? { removed: { at: 1 } } : {}) } };
     expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "foreign", text: "wrong scope" }, hooks)).value).toMatchObject({ error: "objective_theater_mismatch" });
     expect((await h.route("commodore/message", { theaterId: "t1", objectiveId: "missing", text: "missing scope" }, hooks)).value).toMatchObject({ error: "unknown_objective" });
+    // 본문 속 지휘관 참조 — 같은 Theater 의 지운 적 없는 목표만, 셋까지, 본문의 표식 글자 수와 짝이 맞을 때만 기록한다. 참조와 짝이 맞지
+    // 않는 표식 글자는 거절한다(검증하지 않은 참조가 서지 않는다).
+    for (const [body, error] of [
+      [{ text: `${MARK} vs ${MARK}`, references: ["o2", "foreign"] }, "objective_theater_mismatch"],
+      [{ text: `${MARK} ${MARK}`, references: ["o2", "missing"] }, "unknown_objective"],
+      [{ text: MARK, references: ["gone"] }, "unknown_objective"],
+      [{ text: MARK.repeat(4), references: ["o2", "o3", "o4", "o5"] }, "invalid_request"],
+      [{ text: `typed ${MARK} by hand ${MARK}`, references: ["o2"] }, "invalid_request"],
+      [{ text: MARK, references: ["o2", "o3"] }, "invalid_request"],
+      [{ text: `${MARK}${MARK}`, references: ["o2", "o2"] }, "invalid_request"],
+    ] as const) expect((await h.route("commodore/message", { theaterId: "t1", ...body }, hooks)).value).toMatchObject({ error });
     expect(h.store.transcriptRead("t1").entries).toHaveLength(3);
-    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text: "Prefer small objectives." }, hooks);
-    expect(sent.value.entry).toMatchObject({ seq: 4, kind: "message", text: "Prefer small objectives.", objective: { id: "o1", title: "Small scope" } });
-    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" } });
-    expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(4);
+    // 참조 없는 본문의 표식 글자(이미지 섞인 서식 글을 붙여 넣으면 브라우저가 만든다)는 지우고 받는다 — 참조는 서지 않는다.
+    expect((await h.route("commodore/message", { theaterId: "t1", text: `pasted ${MARK} note` }, hooks)).value.entry).toEqual(expect.objectContaining({ seq: 4, text: "pasted  note" }));
+    expect(h.store.transcriptRead("t1").entries.at(-1)).not.toHaveProperty("references");
+    const text = `Compare ${MARK} with ${MARK}${MARK}; prefer small objectives.`;
+    const sent = await h.route("commodore/message", { theaterId: "t1", objectiveId: "o1", text, references: ["o2", "o3", "o4"] }, hooks);
+    const references = [{ id: "o2", title: "Scope o2" }, { id: "o3", title: "Scope o3" }, { id: "o4", title: "Scope o4" }];
+    expect(sent.value.entry).toMatchObject({ seq: 5, kind: "message", text, objective: { id: "o1", title: "Small scope" }, references });
+    expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).transcriptRead("t1").entries.at(-1)).toMatchObject({ objective: { id: "o1", title: "Small scope" }, references });
+    expect(h.events.filter((event) => event.op === "transcript")).toHaveLength(5);
     h.store.setAutonomy("t1", false);
     expect(await h.route("commodore/message", { theaterId: "t1", text: "Lost?" })).toMatchObject({ status: 409, value: { error: "commodore_inactive" } });
 
     const page = (await h.route("commodore/transcript", { theaterId: "t1", limit: 2 })).value as { entries: { seq: number; kind: string }[]; hasMore: boolean };
-    expect(page.entries.map((entry) => entry.seq)).toEqual([3, 4]);
+    expect(page.entries.map((entry) => entry.seq)).toEqual([4, 5]);
     expect(page.hasMore).toBe(true);
-    const older = (await h.route("commodore/transcript", { theaterId: "t1", limit: 2, before: 3 })).value as { entries: { seq: number }[]; hasMore: boolean };
-    expect(older.entries.map((entry) => entry.seq)).toEqual([1, 2]);
+    const older = (await h.route("commodore/transcript", { theaterId: "t1", limit: 3, before: 4 })).value as { entries: { seq: number }[]; hasMore: boolean };
+    expect(older.entries.map((entry) => entry.seq)).toEqual([1, 2, 3]);
     expect(older.hasMore).toBe(false);
 
     // 재기동 뒤에도 seq 는 이어진다 — 기록 파일이 커서의 진실이다.
     const reopened = createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined });
-    expect(reopened.transcriptAppend("t1", { kind: "result", outcome: "ok", costUsd: 0.2 }).seq).toBe(5);
+    expect(reopened.transcriptAppend("t1", { kind: "result", outcome: "ok", costUsd: 0.2 }).seq).toBe(6);
     expect((await h.route("commodore/retry", { theaterId: "t1" }))).toMatchObject({ status: 409, value: { error: "commodore_not_retrying" } });
   });
 });

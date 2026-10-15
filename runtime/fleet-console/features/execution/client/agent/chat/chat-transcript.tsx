@@ -3,6 +3,7 @@ import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentChatTrans
 
 import { MobileSurfaceProvider } from "../mobile-surface.js";
 import { initialAgentChatLogState, reduceAgentChatLog, type AgentChatClockedEvent, type AgentChatJob, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
+import { ChatReferenceContext } from "./chat-reference.js";
 import { ChatTurn } from "./chat-view.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -61,7 +62,7 @@ function turnStartedAt(turn: AgentChatTurn): number | undefined {
   return turn.dispatch?.at ?? turn.startedAt;
 }
 
-export function AgentChatTranscript({ entries, language, mobile = false, reveal = null }: AgentChatTranscriptProps) {
+export function AgentChatTranscript({ entries, language, mobile = false, reveal = null, references }: AgentChatTranscriptProps) {
   const segments = React.useMemo(() => segmentTranscript(entries), [entries]);
   const [openedTools, setOpenedTools] = React.useState<ReadonlySet<string>>(() => new Set());
   const toggleTool = React.useCallback((id: string) => setOpenedTools((current) => {
@@ -95,6 +96,7 @@ export function AgentChatTranscript({ entries, language, mobile = false, reveal 
 
   return (
     <MobileSurfaceProvider mobile={mobile}>
+      <ChatReferenceContext.Provider value={references ?? null}>
       <div ref={rootRef} className="agent-chat agent-chat-transcript" {...(mobile ? { "data-mobile-surface": "" } : {})}>
         {segments.map((segment, segmentIndex) => {
           if (segment.kind === "note") {
@@ -129,6 +131,7 @@ export function AgentChatTranscript({ entries, language, mobile = false, reveal 
           });
         })}
       </div>
+      </ChatReferenceContext.Provider>
     </MobileSurfaceProvider>
   );
 }

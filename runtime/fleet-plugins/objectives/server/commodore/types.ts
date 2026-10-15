@@ -27,6 +27,11 @@ export const MAX_SOURCE_LOCATOR = 512;
 export const MAX_TRANSCRIPT_PAGE = 500;
 /** 기록 본문 조각 상한 — 한 항목의 text 는 이 길이로 잘린다. */
 export const MAX_TRANSCRIPT_TEXT = 16_000;
+/**
+ * 사람의 메시지 한 건이 본문 속에 둘 수 있는 지휘관(목표) 참조 수. 본문은 참조마다 표식 글자(SDK `CONVERSATION_REFERENCE_MARK`)를
+ * 그 자리에 하나씩 싣고, `references` 는 그 순서다 — 라우트가 둘의 짝과 각 목표(같은 Theater·실재)를 검증한 뒤에만 기록에 남긴다.
+ */
+export const MAX_COMMODORE_REFERENCES = 3;
 
 /**
  * 순찰 간격(분) — 사람이 서랍에서 고르는 사다리. 사령관은 `next_wake` 로 이보다 일찍 깨어날 수 있지만 넘기지 못하고,
@@ -205,7 +210,7 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
   | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
-  | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string } }
+  | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly { readonly id: string; readonly title: string }[] }
   /** 자율 운영이 꺼질 때 아직 턴에 싣지 못한 사람의 메시지 — 기록의 그 `message` 줄 seq. 서랍이 그 메시지에 「전달되지 않음」을 단다. */
   | CommodoreTranscriptBase & { readonly kind: "undelivered"; readonly seqs: readonly number[] }
   | CommodoreTranscriptBase & { readonly kind: "error"; readonly code: string; readonly retryAt?: number }
@@ -253,7 +258,9 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
   // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
+    // 본문 속 참조 — 이 낱말을 모르는 옛 판은 이 줄을 깨진 줄처럼 건너뛴다.
+    references: z.array(z.object({ id: ids, title: z.string().max(200) }).strict()).min(1).max(MAX_COMMODORE_REFERENCES).optional() }).strict(),
   // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("undelivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("error"), code: z.string().max(64), retryAt: z.number().int().nonnegative().optional() }).strict(),

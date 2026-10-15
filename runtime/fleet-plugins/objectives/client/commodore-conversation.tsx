@@ -10,6 +10,7 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 import { commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
+import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
@@ -211,6 +212,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   }, [reveal, hasMore, entries, loadingOlder]); // eslint-disable-line react-hooks/exhaustive-deps -- readOlder 는 위 값만 읽는다.
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
   const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
+  const references = useCommodoreReferenceHost(t, theaterId);
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("objectives.commodore.trail.open"),
     open: (entry) => { if (entry.objectiveId) revealObjective({ objectiveId: entry.objectiveId }); },
@@ -251,6 +253,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
             reveal={revealEntry}
             openBoardAction={openBoardAction}
+            references={references}
             composer={composer}
           />
         ) : composer}

@@ -1,5 +1,5 @@
 import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
-import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
+import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
@@ -45,12 +45,12 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         turnAt = entry.at;
         break;
       case "message": {
-        const text = entry.objective ? `[${entry.objective.title} · ${entry.objective.id}]\n${entry.text}` : entry.text;
+        const { text, references } = messageWords(entry);
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
-        if (turnAt !== null) push({ kind: "turn-inject", text, ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
+        if (turnAt !== null) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
         else {
           // 쉬는 동안 받은 말은 말풍선 하나다 — 그 말이 깨운 턴은 뒤따르는 깨움 줄이 연다. 열린 채 두면 빈 턴이 「작업 중」으로 선다.
-          push({ kind: "dispatch", text, ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
+          push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
           push({ kind: "turn-end", ok: true }, entry.at);
         }
         break;
@@ -115,6 +115,17 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
 }
 
 /**
+ * 사람의 말 한 줄의 문면과 참조 — 본문 속 지휘관 참조(`references`)는 그 자리의 토큰이다. 그룹 대화의 '@사령관'이 가리킨 목표
+ * (`objective`)도 같은 토큰으로 본문 맨 앞에 선다(예전의 `[제목 · id]` 원문 접두). 서버는 본문의 표식 수와 참조 수가 같을 때만 기록하므로
+ * 맨 앞 표식 하나를 더해도 짝이 맞는다.
+ */
+function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>): { readonly text: string; readonly references?: readonly ConversationReference[] } {
+  const references = [...(entry.objective ? [entry.objective] : []), ...(entry.references ?? [])].map(({ id, title }) => ({ id, label: title }));
+  const text = entry.objective ? `${CONVERSATION_REFERENCE_MARK}\n${entry.text}` : entry.text;
+  return references.length ? { text, references } : { text };
+}
+
+/**
  * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Operation 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
  * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 세션 교대·실패는
  * 노트 줄이다. 보드를 읽기만 한 도구는 Operation 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 사람의 말이 깨운 턴은 그
@@ -134,9 +145,9 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "message": {
-        const text = entry.objective ? `[${entry.objective.title} · ${entry.objective.id}]\n${entry.text}` : entry.text;
+        const { text, references } = messageWords(entry);
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
-        out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false,
+        out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) });
         break;
       }
@@ -318,7 +329,7 @@ function describeTurn(t: T, bucket: readonly AgentChatTranscriptEntry[], ordinal
   const seen = ordinal.get(at) ?? 0;
   ordinal.set(at, seen + 1);
   const message = dispatch?.event.kind === "dispatch" && dispatch.event.by === undefined;
-  const dispatchText = dispatch?.event.kind === "dispatch" ? dispatch.event.text : "";
+  const dispatchText = dispatch?.event.kind === "dispatch" ? referencePlainText(dispatch.event.text, dispatch.event.references) : "";
   const answer = [...bucket].reverse().find((entry) => entry.event.kind === "text");
   const answerText = answer?.event.kind === "text" ? answer.event.text : "";
   const tool = bucket.find((entry) => entry.event.kind === "tool" && entry.event.detail.trim().length > 0);

@@ -81,6 +81,24 @@
 /* 보내는 중에만 원이 물러난다(FD-19). 자율 운영이 꺼져 입력창 전체가 .55로 흐릴 때는 한 번만 흐린다 — 겹쳐 곱하지 않는다. */
 .objectives-cm .objectives-cm-comp:not(.is-off) .objectives-cm-circ:disabled { opacity: .45; }
 .objectives-cm-circ svg { width: 20px; height: 20px; }
+/* 지휘관 참조 — 입력 바의 '@' 원은 보내기 원보다 물러선 칩 면이다. 목록은 입력 위 시트이고 행은 엄지 높이(46px)다. 고른 행은 면으로만
+   말한다(왼쪽 띠 없음). 결정 요청·검토 대기는 「사람을 기다림」 신호 하나로 말한다. */
+.objectives-cm-comp { position: relative; }
+.objectives-cm .objectives-cm-circ.is-at { background: var(--m-chip); color: var(--m-text-nav); font-size: var(--m-fs-list); font-weight: var(--weight-bold); line-height: 1; }
+.objectives-cm .objectives-commodore-ref { background: var(--m-chip); box-shadow: inset 0 0 0 1px var(--m-hairline-strong); color: var(--m-text); }
+.objectives-cm .objectives-commodore-ref-input.is-empty::before { color: var(--m-text-muted); }
+.objectives-cm .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--m-text-muted); }
+.objectives-commodore-ref-list.is-phone { left: -1px; right: -1px; max-height: 290px; padding: 6px; border-color: var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); box-shadow: var(--m-shadow); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-heading { color: var(--m-text-muted); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row { min-height: 46px; padding: 0 10px; border-radius: 10px; color: var(--m-text); font-size: var(--m-fs-list); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row[aria-selected="true"] { background: var(--m-selected); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row[aria-disabled="true"] .objectives-commodore-ref-name { color: var(--m-text-muted); }
+.objectives-commodore-ref-list.is-phone .objectives-avatar { width: 24px; height: 24px; }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub { flex-direction: column; align-items: flex-end; gap: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 1.35; }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub .is-decision,
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub .is-review { color: var(--m-awaiting); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-note { color: var(--m-awaiting); font-size: var(--m-fs-caption); }
+.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-empty { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 
 /* 상태 화면 — 불러오는 중 · 빈 기록 · 실험 기능 꺼짐. */
 .objectives-cm-center { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 36px; text-align: center; }
