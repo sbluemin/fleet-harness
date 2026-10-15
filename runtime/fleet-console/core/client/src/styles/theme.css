@@ -196,6 +196,21 @@
   --mongle-bulb: oklch(95% 0.07 95);
   --mongle-tooth: oklch(98% 0 0);
 
+  /* 퀘이커 피규어(스페셜 아바타 토리·보리·도리) — 옛 부관 퀘이커의 마스코트 색 그대로다(daylight 이전 Instrument 팔레트).
+     몽글처럼 캐릭터 색이라 테마마다 다시 정하지 않고, 아바타의 톤 바꾸기도 받지 않는다. */
+  --quaker-ink-abyss: oklch(13% 0.014 245);
+  --quaker-ink-deep: oklch(16.5% 0.016 245);
+  --quaker-ink-veil: oklch(23.5% 0.02 245);
+  --quaker-ink-rim: oklch(29% 0.018 245);
+  --quaker-ink-spectral: oklch(70% 0.012 245);
+  --quaker-ink-pearl: oklch(94% 0.008 90);
+  --quaker-brass: oklch(80% 0.085 78);
+  --quaker-crimson: oklch(72% 0.065 25);
+  --quaker-amber: oklch(76% 0.062 70);
+  --quaker-moss: oklch(74% 0.06 140);
+  --quaker-cerulean: oklch(73% 0.062 235);
+  --quaker-rose: oklch(73% 0.06 350);
+
   /* An access-link QR is read by a camera, not by a person, and the spec assumes dark modules on a
      light field. An inverted symbol is outside that spec — many scanners read it, none promise to.
      A single-use credential must not depend on which theme the owner happens to run, so these two

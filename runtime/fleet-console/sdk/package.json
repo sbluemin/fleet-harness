@@ -225,6 +225,12 @@
       "import": "./components/mongle-avatar.tsx",
       "default": "./components/mongle-avatar.tsx"
     },
+    "./components/quaker-figure": {
+      "types": "./components/quaker-figure.tsx",
+      "browser": "./components/quaker-figure.tsx",
+      "import": "./components/quaker-figure.tsx",
+      "default": "./components/quaker-figure.tsx"
+    },
     "./components/mongle-avatar-picker": {
       "types": "./components/mongle-avatar-picker.tsx",
       "browser": "./components/mongle-avatar-picker.tsx",
