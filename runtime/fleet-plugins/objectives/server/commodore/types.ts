@@ -1,4 +1,4 @@
-import { MONGLE_SPECIALS, type MongleSpecial } from "@fleet-console/sdk/avatars";
+import { MONGLE_SPECIALS, type MongleActivity, type MongleSpecial } from "@fleet-console/sdk/avatars";
 import { AGENT_EFFORTS, type AgentEffort } from "@fleet-console/sdk/models";
 import { isExperimentModelId } from "@fleet-console/sdk/settings";
 import { z } from "zod";
@@ -173,6 +173,8 @@ export function commodoreCompactAt(contextWindow: number): number {
 
 export interface CommodoreRunStatus {
   readonly phase: "off" | "idle" | "turn" | "retrying" | "error";
+  /** 턴 중 지금 하는 일 — 사령관 아바타가 연기하는 활동. 턴이 아니거나 아직 모르면 없다(기본 리듬). */
+  readonly step?: MongleActivity;
   readonly reason?: string;
   /** 다음 깨움(순찰 또는 재시도)의 예정 시각(ms). */
   readonly nextWakeAt?: number;

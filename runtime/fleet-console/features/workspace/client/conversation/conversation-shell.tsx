@@ -25,7 +25,7 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleState } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
@@ -406,16 +406,16 @@ function ConversationPanelIdentity() {
     const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
-    let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
+    let owner: { readonly title: string; readonly label: string; readonly state: MongleState; readonly activity: MongleActivity | null } | null = null;
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
         const avatar = centerSurface.avatar?.(context) ?? null;
-        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle" };
+        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle", activity: avatar?.activity ?? null };
       }
     } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} activity={owner?.activity ?? null} size={64} label={owner?.label ?? theaterLabel} />
         <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );
@@ -1065,7 +1065,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       <div className="conversation-pill-row">
         <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
           {avatar
-            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
+            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} activity={avatar.activity ?? null} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
             : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}

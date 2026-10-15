@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import type { MongleActivity } from "../avatars/index.js";
 import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
 import type { LocalizedText } from "../i18n/types.js";
 import type { ConversationReference } from "./references.js";
@@ -106,6 +107,11 @@ export type ConversationMember = ConversationSpeaker & { readonly profile?: Conv
 export interface ConversationParticipant {
   readonly speaker: ConversationSpeaker;
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
+  /**
+   * 작업 중일 때 지금 하는 일 — 진행 줄의 아바타가 연기한다. Operation 이 없는 참여자(사령관)만 싣는다. Operation 이 있는 참여자는
+   * 호스트가 그 Operation 의 활동을 직접 읽으므로 이 값을 보지 않는다.
+   */
+  readonly step?: MongleActivity;
   readonly profile?: ConversationMemberProfile;
   /** 그 참여자 원장에서 지금 열린 턴의 좌표(메시지의 `turn` 과 같은 값). 아직 말이 없는 턴도 열린 순간부터 선다. 모르면 없다. */
   readonly turn?: string;

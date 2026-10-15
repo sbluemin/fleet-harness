@@ -1,6 +1,6 @@
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
@@ -50,15 +50,18 @@ export const ConversationTheaterContext = React.createContext<string | null>(nul
  * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
  *
  * `acting` 이면 작업 중인 Operation 표식이 사이드바와 같은 축(`useOperationMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
- * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Operation 이 없어 기본 리듬이다.
+ * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Operation 이 없으므로 대화가 참여자로
+ * 실어 준 활동(`ConversationParticipant.step`)을 `activity` 로 받아 연기하고, 없으면 기본 리듬이다.
  */
 const MARK_PX = { sm: 16, md: 22, lg: 32 } as const;
 
-export function SpeakerMark({ speaker, size = "md", state = "idle", acting = false }: {
+export function SpeakerMark({ speaker, size = "md", state = "idle", acting = false, activity = null }: {
   readonly speaker: ConversationSpeaker;
   readonly size?: keyof typeof MARK_PX;
   readonly state?: MongleState;
   readonly acting?: boolean;
+  /** Operation 이 없는 발화자(사령관)가 지금 하는 일 — `acting` 일 때만 연기한다. */
+  readonly activity?: MongleActivity | null;
 }) {
   const subject = useConversationSubject();
   const theater = React.useContext(ConversationTheaterContext);
@@ -67,7 +70,8 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
     const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
     const activityOperationId = acting && speaker.kind !== "commodore" ? speaker.operationId : null;
-    return <KeyedAvatar avatarKey={key} role={role} state={state} activityOperationId={activityOperationId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
+    const given = acting && speaker.kind === "commodore" ? activity : null;
+    return <KeyedAvatar avatarKey={key} role={role} state={state} activityOperationId={activityOperationId} activity={given} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
   const letter = Array.from(speaker.name.trim())[0] ?? "?";
   const tone = speakerTone(speaker);

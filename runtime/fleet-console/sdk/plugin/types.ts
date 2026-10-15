@@ -333,8 +333,9 @@ export interface ConversationSurfaceDescriptor {
    * 이 대화의 주인(예: 사령관 대화면 그 Theater)의 몽글 아바타 키와 역할. 있으면 호스트가 머리 pill 에 20px, 오른쪽 패널 머리에 64px
    * 아바타를 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 두 자리에 선다.
    * `state` 는 그 주인의 지금 얼굴(`mongleStateOf` 로 고른 값)이다 — 생략하면 쉼(idle)이다. 값이 바뀌면 `subscribe` 로 알린다.
+   * `activity` 는 작업 중일 때 그 주인이 지금 하는 일이다 — Operation 이 없는 주인(사령관)이 연기하려면 넘긴다. 없으면 기본 리듬이다.
    */
-  readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState } | null;
+  readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState; readonly activity?: import("../avatars/index.js").MongleActivity | null } | null;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;

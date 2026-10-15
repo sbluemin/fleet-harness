@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { canUseMongleSpecial, mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleSpecial, type MongleState } from "@fleet-console/sdk/avatars";
+import { canUseMongleSpecial, mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleFacts, type MongleRole, type MongleSpecial, type MongleState } from "@fleet-console/sdk/avatars";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
@@ -147,12 +147,14 @@ export function OperationAvatar({ operation, state, size, label, role, decorativ
   return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size, label, decorative, off, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityOperationId, activity: given = null, size, label, decorative, off, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다. */
   readonly activityOperationId?: string | null;
+  /** Operation 이 없는 주인(사령관)이 지금 하는 일 — 플러그인이 넘긴 값이다. 있으면 Operation 의 활동보다 앞선다. */
+  readonly activity?: MongleActivity | null;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
@@ -160,7 +162,8 @@ export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size,
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  const activity = useOperationMongleActivity(state === "running" ? activityOperationId : null);
+  const observed = useOperationMongleActivity(state === "running" && given === null ? activityOperationId : null);
+  const activity = given ?? observed;
   return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} special={canUseMongleSpecial(role) ? look.special : null} className={className} />;
 }
 
@@ -202,12 +205,14 @@ interface Draft {
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, activityOperationId, size, label, layout = "stack", children }: {
+export function AvatarEditor({ avatarKey, role, state, activityOperationId, activity: given = null, size, label, layout = "stack", children }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다(편집 미리보기 중에는 연기하지 않는다). */
   readonly activityOperationId?: string | null;
+  /** Operation 이 없는 주인(사령관)이 지금 하는 일 — 있으면 Operation 의 활동보다 앞선다(편집 미리보기 중에는 연기하지 않는다). */
+  readonly activity?: MongleActivity | null;
   readonly size: number;
   readonly label: string;
   /** stack: 아바타 아래에 편집기가 뜬다(패널 머리). inline: 줄 아래로 펼친다(구성원 탭). */
@@ -222,7 +227,8 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   const book = useAvatarBook();
   const look = resolveMongleLook(book, avatarKey);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const activity = useOperationMongleActivity(state === "running" && draft === null ? activityOperationId : null);
+  const observed = useOperationMongleActivity(state === "running" && draft === null && given === null ? activityOperationId : null);
+  const activity = draft === null ? given ?? observed : null;
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null; readonly special: MongleSpecial | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

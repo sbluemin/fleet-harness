@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import type { AgentHost, AgentInputBlock, PluginAttachmentHost } from "@fleet-console/sdk/agent";
+import type { MongleActivity } from "@fleet-console/sdk/avatars";
 import type { ConsoleOperationObservation, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
@@ -184,6 +185,8 @@ interface Runner {
   readonly theaterId: string;
   session: CommodoreSession | null;
   phase: Phase;
+  /** 턴 중 지금 하는 일 — 세션이 바뀔 때만 알린다. 턴이 아니면 싣지 않는다. */
+  step: MongleActivity | null;
   reason?: string;
   nextWakeAt?: number;
   /** 다음 턴에 실을 이유 — 코드마다 하나, 순서 보존. */
@@ -286,7 +289,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.phase === "turn" && runner.step ? { step: runner.step } : {}), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
@@ -363,6 +366,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
+      // 활동은 run 사건에 싣는다 — 라이브 사건과 달리 기록을 열지 않은 표면(사이드바 머리)도 받는다. 턴 밖의 값은 싣지 않는다.
+      onStep: (step) => { if (runner.session !== null && runner.session !== session) return; runner.step = step; if (runner.phase === "turn") publish(runner); },
       ...(deps.execute ? { execute: deps.execute } : {}),
     });
     await session.start();
@@ -565,7 +570,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", soul: undefined, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", step: null, pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", soul: undefined, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
