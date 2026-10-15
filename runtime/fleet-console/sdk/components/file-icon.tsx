@@ -33,7 +33,7 @@ interface FolderIconProps {
   readonly open: boolean;
 }
 
-// ── 색 토큰 ── 값은 CSS 색 표현(테마 identity 토큰). Instrument 테마가 역할별 색을 소유한다.
+// ── 색 토큰 ── 값은 CSS 색 표현(테마 identity 토큰). 테마(theme.css)가 역할별 색을 소유한다.
 const TONE = {
   ts: "var(--identity-file-code)",
   js: "var(--identity-file-code)",

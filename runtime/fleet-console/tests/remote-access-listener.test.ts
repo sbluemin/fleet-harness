@@ -222,8 +222,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       await localStream.waitFor("operation:changed", (data) => data.operation.title === "after-idle");
       // 만료는 위 전송에서 이미 판정됐다. 테마 스트림은 자기 방송을 기다리지 않고 같은 종료 신호로 닫혀 있어야 한다.
       await idleTheme.waitForClose();
-      await writeLocal("settings/global", "PUT", { theme: "carbon" });
-      await localTheme.waitFor("desktop:theme", (data) => data.theme === "carbon");
+      await writeLocal("settings/global", "PUT", { theme: "light" });
+      await localTheme.waitFor("desktop:theme", (data) => data.theme === "light");
       expect(idleTheme.seen("desktop:theme")).toBe(1);
       const expired = await remoteRequest(restarted, "GET", "/api/v1/theaters", undefined, reopenedCookie);
       expect(expired.status).toBe(401);

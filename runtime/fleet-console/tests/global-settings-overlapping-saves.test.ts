@@ -21,7 +21,7 @@ const BASE: GlobalSettingsState = {
   consolePortMode: "dynamic",
   consoleStaticPort: null,
   seenFeatureTours: [],
-  theme: "instrument",
+  theme: "dark",
   unfocusedPanelFade: 50,
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
@@ -48,7 +48,7 @@ describe("overlapping global settings saves", () => {
     const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
-    const failing = store.setGlobalSettingsField("theme", "carbon");
+    const failing = store.setGlobalSettingsField("theme", "light");
     const succeeding = store.setGlobalSettingsField("language", "ko");
 
     deferred.get("theme")!.reject(new Error("theme write refused"));
@@ -60,7 +60,7 @@ describe("overlapping global settings saves", () => {
 
     // 성공한 language 저장이 theme 실패를 지우면, 되돌아간 theme은 아무 말 없이 사라진다.
     expect(store.getGlobalSettingsStoreState().error).toBe("theme write refused");
-    expect(store.getGlobalSettingsStoreState().state?.theme).toBe("instrument");
+    expect(store.getGlobalSettingsStoreState().state?.theme).toBe("dark");
     expect(store.getGlobalSettingsStoreState().state?.language).toBe("ko");
   });
 
@@ -68,15 +68,15 @@ describe("overlapping global settings saves", () => {
     const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
-    const first = store.setGlobalSettingsField("theme", "carbon");
+    const first = store.setGlobalSettingsField("theme", "light");
     deferred.get("theme")!.reject(new Error("theme write refused"));
     await first;
     expect(store.getGlobalSettingsStoreState().error).toBe("theme write refused");
 
-    const retry = store.setGlobalSettingsField("theme", "carbon");
+    const retry = store.setGlobalSettingsField("theme", "light");
     // 재시도를 시작하는 순간 그 필드의 지난 실패는 더 이상 유효한 사실이 아니다.
     expect(store.getGlobalSettingsStoreState().error).toBeNull();
-    deferred.get("theme")!.resolve({ state: { ...BASE, theme: "carbon" } });
+    deferred.get("theme")!.resolve({ state: { ...BASE, theme: "light" } });
     await expect(retry).resolves.toBe(true);
     expect(store.getGlobalSettingsStoreState().error).toBeNull();
   });
@@ -85,7 +85,7 @@ describe("overlapping global settings saves", () => {
     const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
-    const failing = store.setGlobalSettingsField("theme", "carbon");
+    const failing = store.setGlobalSettingsField("theme", "light");
     deferred.get("theme")!.reject(new Error("theme write refused"));
     await failing;
     expect(store.getGlobalSettingsStoreState().error).toBe("theme write refused");
@@ -124,9 +124,9 @@ describe("overlapping global settings saves", () => {
     const store = await import("../features/settings/client/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
 
-    const first = store.setGlobalSettingsField("theme", "carbon");
-    await expect(store.setGlobalSettingsField("theme", "maritime")).resolves.toBe(false);
-    deferred.get("theme")!.resolve({ state: { ...BASE, theme: "carbon" } });
+    const first = store.setGlobalSettingsField("theme", "light");
+    await expect(store.setGlobalSettingsField("theme", "dark")).resolves.toBe(false);
+    deferred.get("theme")!.resolve({ state: { ...BASE, theme: "light" } });
     await expect(first).resolves.toBe(true);
   });
 });

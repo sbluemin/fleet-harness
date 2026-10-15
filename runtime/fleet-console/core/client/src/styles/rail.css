@@ -62,7 +62,7 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  /* 게이트가 닫히면 --surface-glass-strong(maritime/carbon은 78~80% 알파)만으로는 Map이 비쳐
+  /* 게이트가 닫히면 반투명 --surface-glass-strong만으로는 Map이 비쳐
      보인다 — 최하단 불투명 --ink-deep 언더레이가 불투명 폴백을 보장한다. 게이트가 열리면 rail
      채널의 알파가 92:8 믹스의 결과 알파에서 역산된 테마별 고정값이다(theme.css --glass-on-tint-rail). */
   background:

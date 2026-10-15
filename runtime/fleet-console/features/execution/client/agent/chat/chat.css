@@ -916,7 +916,7 @@
 
 /* 진행 중인 스텝 하나만 aurora를 진다 — 상태 채널이므로 완료된 줄은 중립으로 돌아간다.
    섞는 공간은 oklab이다. oklch로 섞으면 두 색의 **색상 호**를 걸어 중간에 없던 색이 선다 —
-   whites에서 aurora(hue 210)와 hairline(hue 100)의 30% 혼합이 hue 133(녹회색)으로 떨어졌고
+   라이트에서 aurora(hue 210)와 hairline(hue 100)의 30% 혼합이 hue 133(녹회색)으로 떨어졌고
    (실측 oklch(0.752 0.037 133)), coral(hue 25)도 같은 함정에 있었다. oklab은 두 색 사이를
    직선으로 지나 신호색이 옅어질 뿐 다른 색이 되지 않는다. */
 .agent-chat-step.is-running {
@@ -2175,8 +2175,8 @@
   cursor: pointer;
 }
 
-/* 선택 행은 중립 채움 하나와 이름 굵기로 말한다. `--brass-glow`는 테마마다 알파가 달라(13~28%)
-   carbon·maritime에서 짙은 갈색 판이 되었으므로, 글자색을 고정 비율로 섞어 네 테마가 같은
+/* 선택 행은 중립 채움 하나와 이름 굵기로 말한다. `--brass-glow`는 테마마다 알파가 달라
+   짙은 갈색 판이 되던 테마가 있었으므로, 글자색을 고정 비율로 섞어 두 테마가 같은
    세기로 선다. 채움만으로는 배경 대비가 3:1에 못 미치므로 굵기 변화가 보조 단서를 진다. */
 .agent-chat-deck-row:hover:not(.is-active) {
   background: color-mix(in oklch, var(--text-primary) 4%, transparent);

@@ -29,7 +29,7 @@ interface CodexHostCapabilities {
 }
 
 let capabilities: CodexHostCapabilities | null = null;
-let theme: ConsoleTheme = "instrument";
+let theme: ConsoleTheme = "dark";
 
 /**
  * 바인딩을 기다리는 쪽. 상주 기여는 App의 install effect보다 **먼저** 마운트된다(자식

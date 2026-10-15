@@ -17,7 +17,18 @@ import { DEFAULT_EXPERIMENT_SETTINGS, isComputerUseBackendId, isExperimentEffort
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../../../core/host/transport/console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../../../core/host/bootstrap/paths.js";
 
-export type ConsoleThemeId = "instrument" | "maritime" | "carbon" | "whites";
+export type ConsoleThemeId = "dark" | "light";
+
+/**
+ * 테마 id 정규화 — 읽기 경로(저장값 로드·PUT 본문)가 같은 규칙을 쓴다. 퇴역 다크 팔레트
+ * (instrument/maritime/carbon)는 dark로, 퇴역 라이트(whites와 그 전의 daywatch/drydock)는 light로
+ * 무손실 이전한다 — 업그레이드 직후 극성이 뒤집히거나 저장이 거부되면 안 된다. 모르는 값은 undefined.
+ */
+export function normalizeConsoleThemeId(value: unknown): ConsoleThemeId | undefined {
+  if (value === "dark" || value === "instrument" || value === "maritime" || value === "carbon") return "dark";
+  if (value === "light" || value === "whites" || value === "daywatch" || value === "drydock") return "light";
+  return undefined;
+}
 export type ConsoleUiFontId = "manrope" | "jetbrains-mono" | "source-code-pro";
 export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
@@ -317,14 +328,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     : undefined;
   const remoteAccess = sanitizeRemoteAccessSettings(value.remoteAccess);
   const seenFeatureTours = sanitizeSeenFeatureTours(value.seenFeatureTours);
-  // 퇴역 라이트 테마(daywatch/drydock) 저장값은 whites로 무손실 폴백한다 — 라이트 사용자가
-  // 업그레이드 직후 다크 기본값으로 떨어지는 극성 반전을 막는다.
-  const theme = value.theme === "instrument" || value.theme === "maritime" || value.theme === "carbon"
-    || value.theme === "whites"
-    ? value.theme
-    : value.theme === "daywatch" || value.theme === "drydock"
-      ? "whites"
-      : undefined;
+  const theme = normalizeConsoleThemeId(value.theme);
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const fonts = readFontSettings(value.fonts);
   const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
@@ -541,7 +545,7 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
         const fonts = migrateFontSettings(current.general?.uiFont, migrateTerminalFont(serverFont) ? serverFont : body.terminal);
         return { ...current, general: { ...current.general, fonts } };
       });
-      deps.onThemeChanged?.(deps.consoleSettingsStore.load().general?.theme ?? "instrument");
+      deps.onThemeChanged?.(deps.consoleSettingsStore.load().general?.theme ?? "dark");
       deps.writeJson(res, 200, { migrated: true });
       return true;
     }
@@ -608,11 +612,8 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_seen_feature_tours" });
     return;
   }
-  if (
-    body.theme !== undefined
-    && body.theme !== "instrument" && body.theme !== "maritime" && body.theme !== "carbon"
-    && body.theme !== "whites"
-  ) {
+  // 퇴역 테마 id를 보내는 낡은 화면도 거부하지 않고 정규화한다.
+  if (body.theme !== undefined && normalizeConsoleThemeId(body.theme) === undefined) {
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
@@ -667,10 +668,7 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_shortcuts" });
     return;
   }
-  const theme = body.theme === "instrument" || body.theme === "maritime" || body.theme === "carbon"
-    || body.theme === "whites"
-    ? body.theme
-    : undefined;
+  const theme = normalizeConsoleThemeId(body.theme);
   const beforeUpdate = deps.consoleSettingsStore.load();
   const previousRemoteAccess = beforeUpdate.general?.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt);
   const nextRemoteAccess = body.remoteAccess !== undefined ? normalizeRemoteAccessInput(body.remoteAccess) : previousRemoteAccess;
@@ -697,7 +695,7 @@ async function mutateGlobalSettings(
     },
     plugins: current.plugins,
   }));
-  if (theme !== undefined || body.fonts !== undefined) deps.onThemeChanged?.(updated.general?.theme ?? "instrument");
+  if (theme !== undefined || body.fonts !== undefined) deps.onThemeChanged?.(updated.general?.theme ?? "dark");
   if (body.experiments !== undefined) await deps.onExperimentsChanged?.(updated.general?.experiments ?? DEFAULT_EXPERIMENT_SETTINGS);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
   /**
@@ -758,7 +756,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     language: general.language ?? "auto",
     remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
-    theme: general.theme ?? "instrument",
+    theme: general.theme ?? "dark",
     unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,

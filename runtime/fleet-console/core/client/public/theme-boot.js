@@ -1,6 +1,6 @@
 // 첫 페인트 전에 저장된 테마 힌트를 적용하는 파싱 블로킹 부트 스크립트.
 // CSP(script-src 'self')가 인라인 스크립트를 금지하므로 public 자산으로 제공한다.
-// 유효 id 목록은 client types.ts의 ThemeId와 수동 동기화한다(플레인 JS라 import 불가).
+// 유효 id와 퇴역 id 이전 규칙은 store.ts의 readThemeId와 수동 동기화한다(플레인 JS라 import 불가).
 (() => {
   retireGlassOpacityKeys();
   stampMobileAppearance();
@@ -12,15 +12,16 @@
   if (document.documentElement.getAttribute("data-theme-source") === "server") return;
   try {
     const theme = localStorage.getItem("fleet-console.theme-hint");
-    if (theme === "instrument" || theme === "maritime" || theme === "carbon" || theme === "whites") {
-      document.documentElement.setAttribute("data-theme", theme);
-    } else if (theme === "daywatch" || theme === "drydock") {
-      // 퇴역 라이트 힌트는 whites로 폴백 — store.readStoredThemeHint와 극성이 일치해야
-      // 미주입 서빙 경로에서 다크 base 첫 페인트 플래시가 생기지 않는다.
-      document.documentElement.setAttribute("data-theme", "whites");
+    // 퇴역 힌트도 같은 극성으로 옮긴다 — 다크 팔레트(instrument/maritime/carbon)는 dark, 라이트(whites와
+    // 그 전의 daywatch/drydock)는 light. store.readStoredThemeHint와 극성이 일치해야 미주입 서빙 경로에서
+    // 첫 페인트 플래시가 생기지 않는다.
+    if (theme === "dark" || theme === "instrument" || theme === "maritime" || theme === "carbon") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else if (theme === "light" || theme === "whites" || theme === "daywatch" || theme === "drydock") {
+      document.documentElement.setAttribute("data-theme", "light");
     }
   } catch {
-    // localStorage 접근 불가 환경(사파리 프라이빗 등)에서는 기본 instrument 유지.
+    // localStorage 접근 불가 환경(사파리 프라이빗 등)에서는 기본 dark 유지.
   }
 })();
 

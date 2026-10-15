@@ -30,7 +30,7 @@ export interface LaunchContext {
   readonly variant?: Readonly<Record<string, string>>;
 }
 
-export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "whites";
+export type ConsoleTheme = "dark" | "light";
 
 /**
  * Operation 런타임은 두 축이다 — 축을 섞으면 한쪽이 다른 쪽을 삼킨다.

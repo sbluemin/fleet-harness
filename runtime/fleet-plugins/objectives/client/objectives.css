@@ -15,7 +15,7 @@
   --objectives-detail-face: color-mix(in oklch, var(--glass-panel-face) 88%, var(--surface-panel-raised));
   /* 레일 자리는 목표 상세를 읽는 시트다 — 반투명 슬롯 유리만 깔리면 다크에서 뒤 캔버스 글자가 상세 글자와 겹쳐 읽히지 않는다.
      설정·분할 detail 창과 같은 재질을 불투명 --float-underlay 위에 깔고, 기존 면(--glass-panel-face)은 맨 위에 둔다 — 게이트가 닫힌
-     Whites·투명도 축소에서는 그 면이 불투명이라 그대로다. 스크롤러의 조상에 까므로 세로 스크롤바 거터도 함께 덮는다. */
+     라이트·투명도 축소에서는 그 면이 불투명이라 그대로다. 스크롤러의 조상에 까므로 세로 스크롤바 거터도 함께 덮는다. */
   background:
     linear-gradient(var(--glass-panel-face), var(--glass-panel-face)),
     linear-gradient(var(--glass-tint-expanded), var(--glass-tint-expanded)),

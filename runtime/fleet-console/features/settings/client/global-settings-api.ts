@@ -167,8 +167,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     || (payload.consolePortMode !== "dynamic" && payload.consolePortMode !== "static")
     || (payload.consoleStaticPort !== null && !isValidConsoleStaticPort(payload.consoleStaticPort))
     || !isSeenFeatureTours(payload.seenFeatureTours)
-    || (payload.theme !== "instrument" && payload.theme !== "maritime" && payload.theme !== "carbon"
-      && payload.theme !== "whites")
+    || (payload.theme !== "dark" && payload.theme !== "light")
     || !isConsoleLanguagePreference(payload.language)
     || (payload.remoteAccess !== undefined && !isValidRemoteAccessState(payload.remoteAccess))
   ) {

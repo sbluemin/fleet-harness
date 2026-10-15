@@ -25,7 +25,7 @@ export function PersistentPluginComponents() {
   // 값은 쓰지 않는다 — 주소 변화로 이 층을 다시 그리게 하는 것이 목적이다.
   useLocation();
   const language = useConsoleLocale();
-  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "instrument" as const);
+  const theme = useSyncExternalStore(subscribe, () => getState().activeTheme, () => "dark" as const);
   const layout = useViewMode().effective === "mobile" ? "mobile" : "desktop";
   const context = useMemo<PersistentComponentContext>(() => ({ language, theme, layout }), [language, theme, layout]);
 

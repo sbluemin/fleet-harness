@@ -6,7 +6,7 @@ import type { ConsoleExperimentSettings, ShortcutBindings } from "@fleet-console
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
+export type ThemeId = "dark" | "light";
 
 /**
  * Quick Launch 컴포저가 확정한 실행 의도.

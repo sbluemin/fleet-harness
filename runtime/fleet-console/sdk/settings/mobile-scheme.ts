@@ -43,7 +43,5 @@ export function subscribeMobileScheme(listener: (scheme: MobileScheme | null) =>
  * 읽어야 한다 — 이 id는 극성(color-scheme·대비 하한)만 맞추는 용도다.
  */
 export function mobilePolarityTheme(theme: ConsoleTheme, scheme: MobileScheme | null = readMobileScheme()): ConsoleTheme {
-  if (scheme === null) return theme;
-  if (scheme === "light") return "whites";
-  return theme === "whites" ? "carbon" : theme;
+  return scheme ?? theme;
 }
