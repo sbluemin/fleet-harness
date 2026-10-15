@@ -5,7 +5,7 @@ import { CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-ac
 
 import { getT } from "./i18n.js";
 import { ChromeImportDialog, chromeImportUnavailable, EphemeralGlyph, GlobeGlyph, ImportGlyph, loadChromeImportSources, ProfileGlyph, type ChromeImportSources } from "./chrome-import.js";
-import { dropBrowserOpenRequest, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
+import { dropBrowserOpenRequest, getNativeViewResize, publishBrowserCaptionOverlay, publishBrowserEngine, publishBrowserPanel, subscribeNativeViewResize, takeBrowserOpenRequest, useBrowserCaptionOverlay, useBrowserOpenRequest, useBrowserPanel } from "./browser-panel-store.js";
 import "./browser-panel.css";
 
 export interface BrowserClientServices {
@@ -123,6 +123,9 @@ function useBrowserStream(operationId: string, enabled: boolean, subscribeConsol
 
 /** 네이티브 뷰 자리를 다시 재는 간격 — 패널 드래그·리사이즈는 이벤트로도 오지만 캔버스 이동·덮개의 등장은 오지 않는다. */
 const NATIVE_PLACE_POLL_MS = 200;
+/** 칸 끌기 예고 동안 미리 찍는 정지 화면 — 이 간격으로 새로 찍고, 이보다 오래된 장은 끌기에 쓰지 않는다. */
+const RESIZE_FRAME_REFRESH_MS = 1000;
+const RESIZE_FRAME_MAX_AGE_MS = 1500;
 /** 가림을 재는 표본 격자와 경계 탐색 횟수. 6×4 로 덮개를 찾고, 그 변의 경계는 이분으로 1px 까지 좁힌다. */
 const OCCLUSION_COLUMNS = 6;
 const OCCLUSION_ROWS = 4;
@@ -538,6 +541,12 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     let captureTaskId = 0;
     let captureFailed = false;
     let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+    let heldParkBounds: Record<string, unknown> | null = null;
+    // 칸 끌기 예고(손잡이 가리킴·포커스) 동안 보이는 뷰를 미리 찍어 둔 장 — 끌기가 시작되면 캡처를 기다리지 않고 이 장으로 물러난다.
+    let resizeFrame: { readonly frame: Frame; readonly url: string; readonly at: number } | null = null;
+    let resizePrefetch: AbortController | null = null;
+    let resizeRefresh: ReturnType<typeof setInterval> | null = null;
+    let resizeMine = false;
 
     const abortActiveCapture = () => {
       if (!captureTask) return;
@@ -608,15 +617,63 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
       })();
     };
 
+    const prefetchResizeFrame = () => {
+      const tab = activeTabRef.current;
+      // 보이는 뷰만 찍는다 — 이미 물러나 있으면 이 장은 필요 없다.
+      if (disposed || resizePrefetch !== null || tab === null || wantsHideRef.current) return;
+      const controller = new AbortController();
+      resizePrefetch = controller;
+      const timeout = setTimeout(() => controller.abort(), 800);
+      const { id: tabId, url } = tab;
+      void (async () => {
+        try {
+          const response = await fetch(`${base(operationId)}/screenshot`, { signal: controller.signal });
+          if (!response.ok) return;
+          const shot = await response.json() as { data: string; mimeType: "image/png" | "image/jpeg"; width: number; height: number };
+          const img = new Image();
+          img.src = `data:${shot.mimeType};base64,${shot.data}`;
+          await img.decode();
+          if (disposed || controller.signal.aborted || activeTabRef.current?.id !== tabId || activeTabRef.current?.url !== url) return;
+          resizeFrame = { frame: { tabId, data: shot.data, mime: shot.mimeType, width: shot.width, height: shot.height }, url, at: Date.now() };
+        } catch {
+          // 미리 찍지 못하면 끌기는 기존 경로(누른 뒤 캡처)로 물러난다.
+        } finally {
+          clearTimeout(timeout);
+          if (resizePrefetch === controller) resizePrefetch = null;
+          // 찍는 사이 끌기가 시작됐으면 이제 그 장으로 물러난다.
+          if (!disposed && wantsHideRef.current) measure();
+        }
+      })();
+    };
+
+    const onResizeIntent = () => {
+      const intent = getNativeViewResize();
+      const mine = intent !== null && intent.container.contains(element);
+      if (resizeRefresh !== null) { clearInterval(resizeRefresh); resizeRefresh = null; }
+      if (mine && !intent.held) {
+        prefetchResizeFrame();
+        resizeRefresh = setInterval(prefetchResizeFrame, RESIZE_FRAME_REFRESH_MS);
+      }
+      // 누르는 그 순간(칸의 data-resizing 이 칠해지기 전) 곧바로 다시 재어 물러나고, 놓으면 그 자리에서 다시 놓는다.
+      const relevant = mine || resizeMine;
+      resizeMine = mine;
+      if (relevant) measure();
+    };
+
     const measure = () => {
       const rect = element.getBoundingClientRect();
-      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay;
+      // 이 패널을 실은 칸의 폭을 사람이 끄는 동안(조상의 data-resizing)도 가려진 것과 같다 — 뷰를 정지 화면 뒤로 물려
+      // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
+      const intent = getNativeViewResize();
+      const held = (intent !== null && intent.held && intent.container.contains(element)) || element.closest('[data-resizing="true"]') !== null;
+      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
 
       if (visible) {
         wantsHideRef.current = false;
+        heldParkBounds = null;
         captureFailed = false;
         pendingParkBoundsRef.current = null;
         abortActiveCapture();
@@ -639,7 +696,11 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         restoreTimer = null;
       }
 
-      const parkBounds = { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
+      // 끄는 동안 물러난 뷰는 처음 물러난 자리에 그대로 둔다 — 매 프레임 바뀌는 폭을 서버·셸로 보내 숨은 페이지를 거듭 리사이즈하지 않게.
+      if (!held) heldParkBounds = null;
+      const parkBounds = (held ? heldParkBounds : null)
+        ?? { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
+      if (held) heldParkBounds = parkBounds;
 
       if (!live || !activeTab) {
         wantsHideRef.current = false;
@@ -661,6 +722,18 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         return;
       }
 
+      // 1'. 칸 끌기 — 예고 동안 미리 찍어 둔 장이 있으면 캡처를 기다리지 않고 그 장을 깔고 물러난다(깔린 뒤 한 프레임에 주차).
+      //     미리 찍는 중이면 그 장을 기다린다 — 처음부터 찍는 것보다 짧다.
+      if (held) {
+        if (resizeFrame !== null && resizeFrame.frame.tabId === activeTab.id && resizeFrame.url === activeTab.url && Date.now() - resizeFrame.at <= RESIZE_FRAME_MAX_AGE_MS) {
+          abortActiveCapture();
+          backdropFrameRef.current = resizeFrame.frame;
+          setBackdropFrame(resizeFrame.frame);
+          return;
+        }
+        if (resizePrefetch !== null) return;
+      }
+
       // 2. 캡처/디코드가 실패했던 세션이면 재시도하지 않고 안전하게 주차 폴백
       if (captureFailed) {
         post_(parkBounds);
@@ -677,6 +750,8 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     };
 
     measure();
+    const unsubscribeResizeIntent = subscribeNativeViewResize(onResizeIntent);
+    onResizeIntent();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     window.addEventListener("resize", measure);
@@ -686,6 +761,9 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     return () => {
       disposed = true;
       abortActiveCapture();
+      unsubscribeResizeIntent();
+      resizePrefetch?.abort();
+      if (resizeRefresh !== null) clearInterval(resizeRefresh);
       if (restoreTimer) {
         clearTimeout(restoreTimer);
         restoreTimer = null;
