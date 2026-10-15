@@ -132,8 +132,8 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
  * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
-export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], name = t("objectives.commodore.name")): readonly AgentConversationEntry[] {
-  const commodore: ConversationSpeaker = { kind: "commodore", name };
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[]): readonly AgentConversationEntry[] {
+  const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
   const out: AgentConversationEntry[] = [];
@@ -194,14 +194,14 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  return commodoreConversationLiveEntries(t, entries, live, out, name);
+  return commodoreConversationLiveEntries(t, entries, live, out);
 }
 
 /** 확정 투영은 그대로 두고 흐르는 말 하나만 붙인다 — 델타마다 지난 말풍선 객체를 다시 만들지 않는다. */
-export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[], name = t("objectives.commodore.name")): readonly AgentConversationEntry[] {
+export function commodoreConversationLiveEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], confirmed: readonly AgentConversationEntry[]): readonly AgentConversationEntry[] {
   const boundary = entries.findLast((entry) => entry.kind === "wake" || entry.kind === "result" || entry.kind === "session" || entry.kind === "error");
   const streamed = boundary?.kind === "wake" ? live.filter((event) => event.kind === "text-delta").map((event) => event.text).join("") : "";
-  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name }, text: streamed, format: "markdown", streaming: true }] : confirmed;
+  return streamed ? [...confirmed, { kind: "message", id: "live", at: null, operationId: "", speaker: { kind: "commodore", name: t("objectives.commodore.name") }, text: streamed, format: "markdown", streaming: true }] : confirmed;
 }
 
 /** 압축 구분선 — 같은 세션이 대화를 요약해 이어 갔다. 압축 전후의 문맥 크기를 함께 말한다. */
@@ -423,7 +423,10 @@ export function actionWord(t: T, action: string): string {
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
 }
 
-/** 세션 줄 — 열림·교대·재시작에 폴백 사유를 붙인다. 말투(스페셜)는 사령관 이름(「사령관(보리)」)이 이미 말하므로 적지 않는다. */
+/** 세션 줄 — 열림·교대·재시작에 폴백 사유와, 말투가 앞 세션과 달라졌으면 그 새를 붙인다(「새 세션 · 말투: 보리」). */
 function sessionNote(t: T, entry: Extract<CommodoreTranscriptEntry, { kind: "session" }>): string {
-  return [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ");
+  const soul = entry.soul === undefined ? null
+    : entry.soul === "none" ? t("objectives.commodore.log.session.soulOff")
+    : t("objectives.commodore.log.session.soul", { name: t(`objectives.commodore.soul.${entry.soul}`) });
+  return [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : []), ...(soul ? [soul] : [])].filter(Boolean).join(" · ");
 }

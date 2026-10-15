@@ -3731,7 +3731,7 @@ button.status-glyph.is-actionable:focus-visible {
    스페셜 아바타(토리·보리·도리). 옛 부관 퀘이커의 그림을 몽글과 같은 상태·활동 어휘와 크기 단계로 연기한다. 색은 고정 마스코트 색
    (--quaker-*)이고 몽글의 톤 바꾸기를 받지 않는다 — 몽글 몸과 같은 승인된 캐릭터 예외라 상태 채널을 칠하지 않는다. 상태는 눈·몸짓·
    발밑 빛·배지가 말하고, 그 빛과 배지만 신호색을 쓴다(몽글과 같은 배정).
-   쉴 때(대기 중)는 옛 부관처럼 날개를 느긋하게 펄럭이고, 일할 때는 활동마다 어깨를 축으로 한 정지 자세로 든다. 움직이는 층은 활동마다 한두 개뿐이고,
+   날개는 늘 퍼덕이지 않는다. 쉴 때는 몸에 붙이고, 활동마다 어깨를 축으로 한 정지 자세로 든다. 움직이는 층은 활동마다 한두 개뿐이고,
    0%=100%=그 활동의 정지 자세라 활동 교체 경계에서 튀지 않는다. 움직임은 --state-motion 으로 숨은 창·OS 모션 줄이기에서 멈추고,
    「차분」은 일하는 동안 정지 자세로 선다. 정지 자세(날개·고개·소품)만으로 무엇을 하는지 읽혀야 한다. */
 .quaker-figure {
@@ -3859,13 +3859,7 @@ button.status-glyph.is-actionable:focus-visible {
 .quaker-figure-wing,
 .quaker-figure-head { transition: transform var(--duration-fast) var(--ease-glide); }
 
-/* 쉼 — 숨쉬기와 깜빡임, 그리고 옛 부관처럼 느긋한 날갯짓. 0%=100%=몸에 붙인 날개라 움직임을 끄면 그 자세로 선다. */
-.quaker-figure.is-idle .quaker-figure-wing.is-left {
-  animation: quaker-flap-left calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-flap-left);
-}
-.quaker-figure.is-idle .quaker-figure-wing.is-right {
-  animation: quaker-flap-right calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-flap-right);
-}
+/* 쉼 — 숨쉬기와 깜빡임뿐이다. 날개는 몸에 붙인 채다. */
 .quaker-figure.is-idle .quaker-figure-body {
   animation: quaker-breathe calc(4.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-breathe);
 }
@@ -4014,8 +4008,6 @@ button.status-glyph.is-actionable:focus-visible {
   animation: none !important;
 }
 
-@keyframes quaker-flap-left { 0%, 100% { transform: rotate(-42deg); } 50% { transform: rotate(-10deg); } }
-@keyframes quaker-flap-right { 0%, 100% { transform: rotate(42deg); } 50% { transform: rotate(10deg); } }
 @keyframes quaker-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.015, 1.03); } }
 @keyframes quaker-blink { 0%, 92%, 100% { transform: scale(1, 1); } 95% { transform: scale(1, 0.1); } }
 /* 기본 리듬 한 주기 — 1.4초 출렁임 다섯 번, 마지막 번에 폴짝. 1.4초마다 휴식 자세다. */
