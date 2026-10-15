@@ -585,9 +585,6 @@ describe("Instrument core design contract", () => {
       expect(terminalSettings).toContain(token);
       expect(fontPicker).toContain(token);
     }
-    // 독립 ON 칩(EFFORT 사다리)은 잉크 문법을 소비한다 — 자리(thumb)를 세우면 줄이 키보드가 된다.
-    expect(terminalSettings).toContain("var(--control-tint-fill)");
-    expect(terminalSettings).toContain("var(--control-tint-ink)");
     expect(fontPicker).toContain('.fc-font-browser__row:hover:not(:disabled):not(.is-active):not([aria-selected="true"])');
     expect(fontPicker).toContain('@media (forced-colors: active)');
     expect(components).toContain('.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible)');
@@ -1083,36 +1080,20 @@ describe("Instrument core design contract", () => {
     expect(nameMark).not.toContain("ShellKindMark");
   });
 
-  it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {
+  it("pins the AI Gateway capability-class grammar — a word in the row's meta line, never a badge or a signal colour", () => {
     // 등급은 Operation 상태가 아니라 프로바이더가 자기 라인업에 대해 주장하는 속성이다.
-    // 신호색을 빌리면 같은 행에서 등급이 상태처럼 읽혀 활동 축과 서로를 부정한다.
+    // 대문자 테두리 배지로 세우면 이름보다 먼저 읽히고, 신호색을 빌리면 같은 행에서 등급이 상태처럼 읽힌다 —
+    // 그래서 등급은 모델 행과 팔레트 항목의 보조 줄 첫 낱말로만 선다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
-    const badgeRules = [...css.matchAll(/([^{}]*\.ai-gateway-class-badge[^{}]*)\{([^}]*)\}/g)];
-    expect(badgeRules.length).toBeGreaterThan(0);
-    for (const [, , body] of badgeRules) {
-      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
+    expect(css).not.toContain(".ai-gateway-class-badge");
+    for (const selector of [".ai-gateway-model-meta", ".ai-gateway-palette-hit-hint"]) {
+      const rules = [...css.matchAll(new RegExp(`([^{}]*\\${selector}[^{}]*)\\{([^}]*)\\}`, "g"))];
+      expect(rules.length).toBeGreaterThan(0);
+      for (const [, , body] of rules) {
+        expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
+        expect(body).not.toContain("text-transform: uppercase");
+      }
     }
-
-    // 서열은 테두리·글자의 잉크 농도로만 말하고, standard가 그 기준선이라 자기 규칙을 갖지
-    // 않는다. 가운데 등급에 규칙이 생기는 순간 세 등급이 서로 독립이 되어 서열이 사라진다.
-    const base = css.match(/^\.ai-gateway-class-badge \{[^}]*\}/m)?.[0] ?? "";
-    expect(base).toContain("border: 1px solid var(--surface-rim);");
-    expect(base).toContain("color: var(--text-secondary);");
-    expect(css).not.toContain(".ai-gateway-class-badge.is-standard");
-
-    const flagship = css.match(/\.ai-gateway-class-badge\.is-flagship \{[^}]*\}/)?.[0] ?? "";
-    expect(flagship).toContain("border-color: var(--surface-rim-strong);");
-    expect(flagship).toContain("color: var(--text-primary);");
-
-    const light = css.match(/\.ai-gateway-class-badge\.is-light \{[^}]*\}/)?.[0] ?? "";
-    expect(light).toContain("color: var(--text-tertiary);");
-    expect(light).toMatch(/border-color: color-mix\(in oklch, var\(--surface-rim\) \d+%, transparent\);/);
-
-    // 등급 없는 라우팅 별칭은 서열의 한 칸이 아니라 서열 밖이다 — 농도를 한 단 더 내리는
-    // 대신 파선으로 가른다. 농도로 갈랐다면 light보다 약한 네 번째 등급으로 읽힌다.
-    const unclassed = css.match(/\.ai-gateway-class-badge\.is-unclassed \{[^}]*\}/)?.[0] ?? "";
-    expect(unclassed).toContain("border-style: dashed;");
-    expect(unclassed).not.toContain("border-color:");
   });
 
   it("pins the Operation list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
@@ -1187,27 +1168,26 @@ describe("Instrument core design contract", () => {
     expect(edge).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
   });
 
-  it("pins the AI Gateway effort badge grammar — chip shell, segmented selection, no disclosure", () => {
-    // 강도 배지는 속성 칩 줄에서 유일한 컨트롤이다. 껍데기는 칩 문법(알약·mono·9.5px)을
-    // 그대로 쓰고 선택만 세그먼트 문법으로 말해야, 같은 줄의 속성 칩들과 한 몸으로 읽힌다.
+  it("pins the AI Gateway effort ladder grammar — the settings segmented text line, multi-select, no disclosure", () => {
+    // 강도 사다리는 설정 모달의 범위 선택(평평한 글자 + 밑줄)과 같은 결로 선다. 칩 껍데기를 두르면
+    // 같은 화면의 다른 선택지와 말투가 갈린다.
     const css = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
     const shell = css.match(/^\.ai-gateway-effort \{[^}]*\}/m)?.[0] ?? "";
-    expect(shell).toContain("border-radius: var(--radius-pill);");
-    expect(shell).toMatch(/border: 1px solid color-mix\(in oklch, var\(--surface-rim\) \d+%, transparent\);/);
     // 다섯 칸 사다리는 좁은 설정 카드보다 넓어진다. 한 줄을 고집하거나 넘침을 잘라내면
     // 오른쪽 단계가 카드 밖에서 눌리지 않으므로, 접히기만 하고 감춰지지는 않아야 한다.
     expect(shell).toContain("flex-wrap: wrap;");
     expect(shell).not.toContain("overflow: hidden;");
+    expect(shell).not.toContain("border:");
 
-    // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
-    // 활동 축과 충돌한다. 독립 ON은 잉크 문법이다: 저채도 tint 워시+잉크 대비만 쓰고,
-    // 테두리 링·자리(thumb)는 두지 않는다(다중 on 칩 줄에 자리를 세우면 키보드가 된다).
+    // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 위치 채널(brass) 밑줄과 잉크 대비로만
+    // 말하고 신호색을 빌리지 않는다. 여럿을 켤 수 있으므로 자리(thumb)·테두리 링은 두지 않는다.
     const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
-    expect(on).toContain("background: var(--control-tint-fill);");
-    expect(on).toContain("color: var(--control-tint-ink);");
+    expect(on).toContain("color: var(--text-primary);");
+    expect(on).toContain("text-decoration-color: var(--brass);");
     expect(on).not.toContain("box-shadow");
     for (const [, , body] of css.matchAll(/([^{}]*\.ai-gateway-effort[^{}]*)\{([^}]*)\}/g)) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive)[a-z-]*\)/);
+      expect(body).not.toContain("text-transform: uppercase");
     }
 
     // 마지막 한 단계는 켜진 채로 잠긴다. 흐려지면 꺼진 것으로 읽히므로 opacity를 내리지 않는다.
@@ -1215,7 +1195,7 @@ describe("Instrument core design contract", () => {
     expect(lockedOn).toContain("cursor: not-allowed;");
     expect(lockedOn).not.toContain("opacity");
 
-    // 배지가 사다리 전체를 이미 보여주므로 접기 표면은 존재하지 않는다.
+    // 사다리는 모델 행을 펼친 세부에 한 번만 선다 — 사다리 자체를 다시 접는 표면은 없다.
     expect(css).not.toContain(".ai-gateway-levels");
     expect(css).not.toContain(".ai-gateway-model-entry");
     expect(externalSource(TERMINAL_AGENT_PATH)).not.toContain("ai-gateway-levels-toggle");

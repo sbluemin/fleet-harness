@@ -764,12 +764,29 @@
 .fc-settings-card.is-mobile .fc-settings-check__desc { color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 18px; }
 
 /* 모델별 추론 강도 칩(AI Gateway 하위 화면) — 제목 아래 한 줄로 전체 폭을 쓴다. */
-:root .fc-settings-row.is-mobile:has(.ai-gateway-effort) { flex-wrap: wrap; row-gap: 10px; }
-.fc-settings-row.is-mobile:has(.ai-gateway-effort) .fc-settings-row__copy { flex-basis: 100%; }
-.fc-settings-row.is-mobile:has(.ai-gateway-effort) .fc-settings-row__control { flex: 1 1 100%; }
-.fc-settings-row.is-mobile .ai-gateway-effort { display: flex; flex-wrap: wrap; gap: 8px; }
-.fc-settings-row.is-mobile .ai-gateway-effort-label { display: none; }
-.fc-settings-row.is-mobile .ai-gateway-effort-level { min-height: 36px; padding: 0 14px; }
+/* AI Gateway 모델 추가 — 폰에서는 팔레트가 대화의 모델 시트(.mobile-sheet)와 같은 바텀시트로 선다: 덮개 + 위가 둥근 면.
+   목록은 남은 높이를 다 쓰고, 터치에는 없는 방향키 힌트와 크기 손잡이는 서지 않는다. */
+:root[data-view-mode="mobile"] .ai-gateway-palette-scrim { position: fixed; inset: 0; z-index: 50; display: block; background: var(--m-scrim); animation: mobile-fade-in 200ms; }
+:root[data-view-mode="mobile"] .ai-gateway-palette { position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 51; width: auto; max-width: none; max-height: calc(100% - 56px); padding-bottom: max(18px, env(safe-area-inset-bottom)); border: 0; border-radius: 28px 28px 0 0; background: var(--m-surface); color: var(--m-text); box-shadow: none; animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-list { flex: 1 1 auto; height: auto; min-height: 0; padding: 0 8px 8px; }
+:root[data-view-mode="mobile"] :is(.ai-gateway-palette-resize, .ai-gateway-palette-kbd) { display: none; }
+:root[data-view-mode="mobile"] .ai-gateway-palette-search { min-height: 44px; margin: 16px 16px 8px; background: var(--m-chip); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-input { color: var(--m-text); font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-group { padding: 12px 12px 4px; background: var(--m-surface); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-group-name { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-hit { grid-template-columns: minmax(0, 1fr); gap: 1px; min-height: 56px; padding: 8px 12px; border-radius: 14px; }
+:root[data-view-mode="mobile"] .ai-gateway-palette-hit-name { color: var(--m-text); font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-hit-hint { color: var(--m-text-muted); font-size: var(--m-fs-caption); text-align: left; white-space: normal; }
+:root[data-view-mode="mobile"] .ai-gateway-palette-hit.is-active { background: var(--m-chip); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-foot { flex-wrap: wrap; padding: 12px 16px 0; border-top-color: var(--m-hairline); }
+:root[data-view-mode="mobile"] .ai-gateway-palette-add { min-height: 44px; padding: 0 20px; background: var(--m-inverse); color: var(--m-on-inverse); }
+:root[data-view-mode="mobile"] .ai-gateway-model-open { color: var(--m-text-faint); }
+/* 모델 하위 화면의 제거 — 행 전체가 버튼인 파괴 동작이라 위험 잉크로 가운데 선다. */
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .ai-gateway-remove.is-row { width: 100%; min-height: 56px; padding: 12px 16px; border-radius: 22px; background: var(--m-surface); color: var(--m-danger); font-size: var(--m-fs-body); text-align: center; }
+:root .fc-settings-card.is-mobile .fc-settings-card__body > .ai-gateway-remove.is-row:active { background: var(--m-selected); }
+/* 라우팅 테스트 하위 화면 — 사용량이 드는 요청 버튼은 대화 시트의 주 동작처럼 폭 전체 알약이고, 입력칸은 한 단 높다. */
+:root[data-view-mode="mobile"] .ai-gateway-routing-task { min-height: 132px; border-radius: 16px; font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .ai-gateway-run-button { width: 100%; min-height: 50px; font-size: var(--m-fs-list); }
 
 /* 입력 시트(P-4) — 설명 → 입력칸 → 오류 줄, 발 왼쪽에 「지우기」. */
 .mobile-input-desc { margin: 0 0 12px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); line-height: 21px; }
