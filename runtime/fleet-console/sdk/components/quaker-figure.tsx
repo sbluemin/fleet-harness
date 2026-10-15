@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import type { MongleActivity, MongleState } from "../avatars/index.js";
+import type { MongleActivity, MongleSpecial, MongleState } from "../avatars/index.js";
 import { avatarTier, useActivityMotion, type ActivityMotionConfig, type AvatarTier } from "./avatar-motion.js";
 
 /**
@@ -15,7 +15,8 @@ import { avatarTier, useActivityMotion, type ActivityMotionConfig, type AvatarTi
  * 라벨은 호출부가 자기 로케일로 넘긴다.
  */
 
-export type QuakerKind = "tori" | "bori" | "dori";
+/** 퀘이커 종류 — 저장되는 스페셜 낱말(`MongleSpecial`)과 같다. */
+export type QuakerKind = MongleSpecial;
 
 /** 전신·상반신·머리 창. 상반신은 쉬는 날개 끝까지 담아 들어 올린 날개가 창 밖으로 크게 새지 않는다. */
 const VIEW_BOX: Readonly<Record<AvatarTier, string>> = { full: "-20 0 300 300", mid: "14 30 232 232", sil: "14 30 232 232", mini: "56 34 148 148" };

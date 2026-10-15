@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleSpecial, type MongleState } from "../avatars/index.js";
 import type { IdentityTone } from "../operations/identity-tones.js";
 import { avatarTier, useActivityMotion, type ActivityMotionConfig } from "./avatar-motion.js";
+import { QuakerFigure } from "./quaker-figure.js";
 
 /**
  * 몽글 아바타 — 사령관·지휘관·구성원·Operation 을 한 조형으로 그린다.
@@ -237,8 +238,8 @@ interface MongleAvatarProps {
   /** 운영자가 꺼진 사령관 — 어느 표면에서든 같은 규칙(`.mongle-avatar.is-off`)으로 흐리고 채도를 뺀다. */
   readonly off?: boolean;
   /**
-   * 사령관의 스페셜 퀘이커(저장값 `MongleLook.special`). 있으면 베이스 대신 그 피규어로 그리고 `tone` 은 쓰지 않는다. 루트에 `is-special`·
-   * `is-special-<id>` 가 선다.
+   * 사령관의 스페셜 퀘이커(저장값 `MongleLook.special`). 있으면 베이스 대신 그 퀘이커 피규어(`QuakerFigure`)로 그리고 `tone` 은 쓰지 않는다.
+   * 상태·활동·크기는 같은 값을 받아 같은 단계로 연기한다. 피규어 루트에 `is-special`·`is-special-<id>` 가 선다.
    */
   readonly special?: MongleSpecial | null;
   readonly className?: string;
@@ -246,7 +247,16 @@ interface MongleAvatarProps {
 
 const CALLING_STATES: ReadonlySet<MongleState> = new Set(["awaiting", "decision", "review"]);
 
-export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, special = null, className }: MongleAvatarProps) {
+export function MongleAvatar({ special = null, ...props }: MongleAvatarProps) {
+  if (special) {
+    const { state, activity = null, size, label, decorative = false, off = false, className } = props;
+    return <QuakerFigure kind={special} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={["is-special", `is-special-${special}`, className].filter(Boolean).join(" ")} />;
+  }
+  return <MongleFigure {...props} />;
+}
+
+/** 몽글 베이스의 조형 — 스페셜이 아닐 때 `MongleAvatar` 가 그린다. 스페셜과 오가면 다른 컴포넌트라 활동 시계가 새로 선다. */
+function MongleFigure({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, className }: Omit<MongleAvatarProps, "special">) {
   const preset = mongleBase(base);
   const tier = avatarTier(size);
   const tempo = TEMPO[preset.id - 1] ?? 1;
@@ -259,7 +269,7 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
   const classes = [
     "mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, `is-tier-${tier}`,
     acting ? `is-act-${acting}` : null, acting && motion.leaving ? "is-leaving" : null, acting && motion.big ? "is-big" : null,
-    off ? "is-off" : null, special ? `is-special is-special-${special}` : null, className,
+    off ? "is-off" : null, className,
   ].filter(Boolean).join(" ");
   const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": label };
   return (

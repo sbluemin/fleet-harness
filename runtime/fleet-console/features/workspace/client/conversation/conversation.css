@@ -1178,7 +1178,8 @@
 }
 /* 플러그인 표식(사령관 글리프 단추)도 카드 크기로 선다 — 표식이 제 크기를 적어 두어도 카드 칸이 정한다. */
 .console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor > button,
-.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor .mongle-avatar {
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor .mongle-avatar,
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-anchor .quaker-figure {
   width: 32px;
   height: 32px;
 }
