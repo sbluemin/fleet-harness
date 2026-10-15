@@ -502,6 +502,15 @@ function withEffort(effort: string | undefined): { readonly effort?: string } {
 function RoutingTestPanel() {
   const settings = useSystemPromptSettingsStore();
   const auth = useModelAuthStore();
+  // 폰에서는 이 패널이 하위 화면으로 따로 마운트되고 라우팅 카드는 내려가며 자기 인증 요청을 끊는다 — 인증 상태가 아직
+  // 없으면 패널이 직접 불러온다. 카드가 이미 불러 둔 데스크톱 펼침에서는 요청하지 않는다.
+  const authLoaded = auth.state !== null;
+  React.useEffect(() => {
+    if (authLoaded) return undefined;
+    const controller = new AbortController();
+    void loadModelAuth(controller.signal);
+    return () => controller.abort();
+  }, [authLoaded]);
   const state = settings.state;
   if (!state) return null;
   const typesafeSignedIn = auth.state?.providers.some(entry => entry.provider === "typesafe" && entry.signedIn) === true;
