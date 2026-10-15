@@ -48,15 +48,26 @@ export const ConversationTheaterContext = React.createContext<string | null>(nul
 /**
  * 발화자의 몽글 아바타 — 지휘관·일반 Operation 은 안테나, 구성원은 베이스만, 사령관은 별 배지. 사람과 Operation 이 없는 발화자는
  * 중립 첫 글자다. 모습은 Console 아바타 책에서 읽는다(사령관은 지금 대화가 선 Theater 의 것).
+ *
+ * `acting` 이면 작업 중인 Operation 표식이 사이드바와 같은 축(`useOperationMongleActivity`)으로 지금 하는 일(생각·읽기·편집…)을
+ * 연기한다. 진행 줄만 켠다 — 지난 말풍선 표식은 그 말의 자리라 연기하지 않는다. 사령관은 Operation 이 없어 기본 리듬이다.
  */
-export function SpeakerMark({ speaker, size = "md", state = "idle" }: { readonly speaker: ConversationSpeaker; readonly size?: "sm" | "md"; readonly state?: MongleState }) {
+const MARK_PX = { sm: 16, md: 22, lg: 32 } as const;
+
+export function SpeakerMark({ speaker, size = "md", state = "idle", acting = false }: {
+  readonly speaker: ConversationSpeaker;
+  readonly size?: keyof typeof MARK_PX;
+  readonly state?: MongleState;
+  readonly acting?: boolean;
+}) {
   const subject = useConversationSubject();
   const theater = React.useContext(ConversationTheaterContext);
-  const sizeClass = size === "sm" ? " group-chat-mark is-sm" : " group-chat-mark";
+  const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
   if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.operationId)) {
     const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
-    return <KeyedAvatar avatarKey={key} role={role} state={state} size={size === "sm" ? 16 : 22} label={speaker.name} decorative className={sizeClass.trim()} />;
+    const activityOperationId = acting && speaker.kind !== "commodore" ? speaker.operationId : null;
+    return <KeyedAvatar avatarKey={key} role={role} state={state} activityOperationId={activityOperationId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
   const letter = Array.from(speaker.name.trim())[0] ?? "?";
   const tone = speakerTone(speaker);
