@@ -111,10 +111,12 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
           {question.options.map((option, optionAt) => {
             const on = (picks[question.id] ?? []).includes(option.id);
             const subId = `${idBase}-${question.id}-${option.id}`;
-            // 줄 전체가 선택지다 — 단추(이름)의 클릭·Enter·Space 도 여기로 올라와 한 번 고른다. 설명 속 링크의 클릭은 고르지 않고
-            // 그대로 위로 흘려 링크 길이 연다.
+            // 줄 전체가 선택지다 — 단추(이름)의 클릭·Enter·Space 도 여기로 올라와 한 번 고른다. 설명 속 조작 요소(링크·코드 복사
+            // 단추·펼침 머리 등)의 클릭은 고르지 않는다: 링크는 그대로 위로 흘려 링크 길이 열고, 나머지는 제 일만 한다.
             const onRow = (event: React.MouseEvent<HTMLDivElement>) => {
-              if (sending || (event.target as Element).closest("a")) return;
+              if (sending) return;
+              const control = (event.target as Element).closest(ROW_CONTROLS);
+              if (control && control !== event.currentTarget && event.currentTarget.contains(control) && !control.classList.contains("group-card-choice-pick")) return;
               toggle(question.id, option.id, question.multiSelect);
             };
             return (
@@ -203,6 +205,9 @@ export function UseRequestGroupCard({ request, speaker, language }: {
     </div>
   );
 }
+
+/** 선택지 줄 안에서 제 일을 하는 조작 요소 — 이 안을 누른 클릭은 선택지를 고르지 않는다(고르는 단추 자신은 예외). */
+const ROW_CONTROLS = "a, button, summary, input, select, textarea, label, [role=\"button\"], [role=\"link\"], [tabindex]";
 
 /** 카드 안 글 — 말풍선의 마크다운 렌더(사이트 링크 포함)를 쓰고 글꼴·잉크는 카드 자리를 따른다. `lead` 는 앞 글자(번호·머리말)와 한 줄로 잇는다. */
 function CardMarkdown({ text, language, lead = false }: { readonly text: string; readonly language: ConsoleLocale; readonly lead?: boolean }) {
