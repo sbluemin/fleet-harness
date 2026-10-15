@@ -28,6 +28,7 @@ import { getArenaInsets, subscribeArenaInsets } from "../../../../features/works
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
+import { requestAvatarEditor } from "../../../../features/workspace/client/avatars.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -336,6 +337,12 @@ export function createHostCapabilities(
         return opened;
       },
       close: (surfaceId) => closeConversationSurface(surfaceId),
+      // 편집기는 대화 중심 화면의 오른쪽 패널 머리에만 있다 — 꺼져 있으면(폰) 열 자리가 없다.
+      editAvatar: (avatarKey, request) => {
+        if (getViewModeSnapshot().effective !== "desktop") return false;
+        requestAvatarEditor(avatarKey, request);
+        return true;
+      },
       current: () => publicSurface(getConversationSurface()),
       // 대화 중심 화면의 셸과 모바일 셸이 같은 자리(conversation-slots)에 지금 선 대화의 주인을 싣는다.
       subjectOperationId: () => getConversationSubject()?.id ?? null,

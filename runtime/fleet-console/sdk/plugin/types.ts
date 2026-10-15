@@ -380,6 +380,12 @@ export interface ClientConversationCapability {
   open(surfaceId: string, params?: Readonly<Record<string, unknown>>): boolean;
   /** 지금 선 대화를 걷는다. surfaceId 를 주면 그 대화일 때만 걷는다. */
   close(surfaceId?: string): void;
+  /**
+   * 그 아바타 키의 편집기(오른쪽 패널 머리)를 연다 — 보통 `open` 바로 뒤에 불러, 막 세운 대화의 주인 아바타를 고치게 한다. 편집기가
+   * 아직 서지 않았으면 선 순간 열린다. `special` 은 미리 골라 둘 스페셜이고(초안일 뿐, 저장은 사람이 「적용」을 누른다),
+   * `section` 은 펼친 뒤 포커스를 둘 묶음이다. 대화 중심 화면이 꺼져 있으면 아무것도 하지 않고 false 다. 구버전 호스트에는 없다.
+   */
+  editAvatar?(avatarKey: string, request?: { readonly section?: "special"; readonly special?: import("../avatars/index.js").MongleSpecial | null }): boolean;
   /** 지금 가운데 칸에 선 플러그인 대화. 없으면 null — 같은 값이면 같은 참조를 돌려준다. */
   current(): { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> } | null;
   /**

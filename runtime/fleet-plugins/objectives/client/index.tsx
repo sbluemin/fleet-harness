@@ -6,6 +6,7 @@ import { objectivesClusterSource } from "./clusters.js";
 import { commodoreInboxSection } from "./commodore-inbox-section.js";
 import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, PennantIcon } from "./commodore-mobile.js";
 import { commodoreTheaterContribution } from "./commodore-header.js";
+import { installCommodoreSpecialWelcome } from "./commodore-special-welcome.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installLaunchRoster } from "./launch-control.js";
 import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, installCommodoreState, noteCommodoreLanguage, openAsks, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
@@ -151,7 +152,9 @@ const objectivesPlugin = definePlugin({
     const disposeFresh = connectFreshConversation(ctx.conversation);
     // 지휘관·구성원 메뉴는 Console 모델 로스터를 구독한다.
     const disposeRoster = installLaunchRoster(ctx.models);
-    return () => { disposeRoster(); disposeFresh(); disposeConversation(); disposeCommodore(); dispose(); };
+    // 스페셜 퀘이커 웰컴 카드 — 옛 부관 설정을 한 번 읽어 켜 두었던 새를 미리 고른다.
+    const disposeWelcome = installCommodoreSpecialWelcome(ctx);
+    return () => { disposeWelcome(); disposeRoster(); disposeFresh(); disposeConversation(); disposeCommodore(); dispose(); };
   },
   onMapOperationSelected: handleMapOperationSelected,
   railEntries: [objectivesEntry, commodoreEntry],

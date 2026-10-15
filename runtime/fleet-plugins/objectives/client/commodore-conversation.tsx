@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { theaterAvatarKey, type MongleSpecial } from "@fleet-console/sdk/avatars";
 import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -86,6 +86,20 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
   if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
   if (options.revealAt !== undefined) revealCommodoreTurn(theaterId, options.revealAt);
   return true;
+}
+
+/** 사령관 아바타 편집기를 열 수 있는가 — 대화 중심 화면이 서 있고 호스트가 편집기 열기(`editAvatar`)를 준다. 폰·구버전 호스트는 아니다. */
+export function canEditCommodoreAvatar(): boolean {
+  return port?.isActive() === true && typeof port.editAvatar === "function";
+}
+
+/**
+ * 그 Theater 의 사령관 대화를 세우고 오른쪽 패널 머리의 아바타 편집기를 「스페셜」 묶음으로 연다. special 은 미리 골라 둘 새다 —
+ * 초안일 뿐이고 저장은 사람이 「적용」을 누른다. 열 수 없으면 false.
+ */
+export function openCommodoreAvatarSpecial(theaterId: string, special: MongleSpecial | null): boolean {
+  if (!canEditCommodoreAvatar() || !openCommodoreConversation(theaterId)) return false;
+  return port?.editAvatar?.(theaterAvatarKey(theaterId), { section: "special", special }) === true;
 }
 
 /**

@@ -1082,6 +1082,8 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-commodore-mark[aria-disabled="true"] { cursor: default; }
 /* 사령관이 사람에게 물어 답을 기다리는 질문 수 — 레일 아이콘 배지와 같은 모양(테 + 깊은 면)이고, 사람을 기다린다는 상태라 대기 신호(aurora) 잉크다. */
 .objectives-commodore-mark { position: relative; }
+/* 웰컴 카드가 짚는 덮개 — 표식과 같은 자리·같은 모서리라 투어의 짚음 고리가 표식을 그대로 두른다. */
+.objectives-commodore-mark-anchor { position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
 .objectives-commodore-mark-badge { position: absolute; top: -5px; right: -7px; min-width: 14px; height: 14px; padding: 0 3px; box-sizing: border-box; border: 1px solid var(--aurora); border-radius: var(--radius-pill); background: var(--ink-abyss); color: var(--aurora-ink); font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; line-height: 12px; text-align: center; pointer-events: none; }
 .objectives-commodore-mark-glyph {
   display: block;
