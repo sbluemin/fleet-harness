@@ -618,7 +618,13 @@ export type ConsoleConnectionState = "connecting" | "live" | "offline";
 
 export interface ConsoleTheaterSummary {
   readonly id: string;
+  /** 원래 Theater 이름 — 별칭이 있어도 바뀌지 않는다. */
   readonly label: string;
+  /**
+   * 사람이 지정한 사령관 별칭. 지정하지 않았거나 지웠으면 없다. 사이드바처럼 사령관을 부르는 자리는 `alias ?? label` 로
+   * 이름을 정하고, 별칭이 있으면 원래 Theater 이름을 함께 둔다. 구버전 호스트는 싣지 않는다.
+   */
+  readonly alias?: string;
 }
 
 export interface ConsoleOperationSummary {

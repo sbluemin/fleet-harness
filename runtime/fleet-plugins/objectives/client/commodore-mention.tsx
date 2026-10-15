@@ -1,8 +1,10 @@
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
-import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore } from "./commodore-state.js";
+import { CommodoreAvatar } from "./commodore-avatar.js";
+import { commodoreMongleState } from "./commodore-header.js";
+import { commodoreAlias, commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore, useCommodore } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
+import { useObjectiveTheater } from "./objectives-state.js";
 
 const TARGET_PREFIX = "commodore:";
 
@@ -14,14 +16,33 @@ const TARGET_PREFIX = "commodore:";
  * 흐리게도 세우지 않는다(꺼진 실험 기능에서 머리의 사령관 글리프가 사라지는 것과 같은 관례). 덱을 연 뒤 꺼진 경합은 아래 선검사나
  * 서버 거절로 실패하고, Quick Launch 는 초안과 행선지를 그대로 둔 채 전달 실패를 말한다.
  *
- * 밴드가 이미 「사령관」을 말하므로 행 이름은 Theater 다 — 행선지 태그가 「사령관 · fleet-harness」로 읽힌다.
+ * 밴드가 이미 「사령관」을 말하므로 행 이름은 사이드바 Theater 머리와 같은 이름이다 — 별칭이 있으면 별칭, 없으면 Theater 이름이라
+ * 행선지 태그가 「사령관 · fleet-harness」로 읽힌다. 별칭이 있으면 설명문이 원래 Theater 이름을 함께 말한다.
+ * 표식은 사이드바 머리와 같은 사령관 아바타다.
  */
 export function commodoreMentionTargets(): readonly MentionTargetDescriptor[] {
   const t = getT(commodoreLanguage());
   return commodoreTheaterIds().filter((theaterId) => commodoreBoardOf(theaterId).active).map((theaterId) => {
     const theater = commodoreTheaterLabel(theaterId) || theaterId;
-    return { id: `${TARGET_PREFIX}${theaterId}`, label: theater, categoryLabel: t("objectives.commodore.name"), description: t("objectives.commodore.mention.description", { theater }), renderMark: () => <CommodoreMentionGlyph /> };
+    const alias = commodoreAlias(theaterId);
+    return {
+      id: `${TARGET_PREFIX}${theaterId}`,
+      label: alias ?? theater,
+      categoryLabel: t("objectives.commodore.name"),
+      description: alias ? t("objectives.commodore.mention.descriptionAlias", { alias, theater }) : t("objectives.commodore.mention.description", { theater }),
+      renderMark: () => <CommodoreMentionMark theaterId={theaterId} />,
+    };
   });
+}
+
+/**
+ * 덱 행·선택 칩·레인의 사령관 표식 — 사이드바 머리 표식과 같은 얼굴(상태)을 스스로 구독해 그린다. 덱에 서는 사령관은 자율 운영이
+ * 켜져 있으므로 흐리지 않는다. 호스트 표식 칸(17–20px)이 svg 를 칸에 맞추므로 크기는 그 상한으로 둔다.
+ */
+function CommodoreMentionMark({ theaterId }: { readonly theaterId: string }) {
+  const { view } = useCommodore(theaterId);
+  const { objectives } = useObjectiveTheater(theaterId);
+  return <CommodoreAvatar theaterId={theaterId} state={commodoreMongleState(view, objectives)} size={20} label="" decorative />;
 }
 
 /** 고른 사령관에게 보낸다 — 사령관 기록 서랍의 입력과 같은 경로(`commodore/message`)다. */

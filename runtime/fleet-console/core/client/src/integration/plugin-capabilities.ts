@@ -201,7 +201,7 @@ export function createHostCapabilities(
       clear: (operationId) => clearOperationStatusDetail(operationId),
     },
     consoleState: {
-      getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label })),
+      getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label, ...(theater.alias ? { alias: theater.alias } : {}) })),
       // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
       // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
       // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveOperationRuntimeActivity)을 원 런타임에 쓴다.
