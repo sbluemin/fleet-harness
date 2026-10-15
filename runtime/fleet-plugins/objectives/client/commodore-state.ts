@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
+import type { MongleActivity } from "@fleet-console/sdk/avatars";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
 
 import type { AgentChatTranscriptProps, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -338,6 +339,11 @@ const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
 
 export function readCommodore(theaterId: string): TheaterCommodore {
   return theaters.get(theaterId) ?? EMPTY_VIEW_SNAPSHOT;
+}
+
+/** 사령관이 턴 중에 지금 하는 일 — 감독자가 `run` 사건에 실어 보낸 값이다. 자율 운영이 꺼졌거나 턴이 아니거나 모르면 null(기본 리듬)이다. */
+export function commodoreMongleActivity(view: TheaterCommodore["view"]): MongleActivity | null {
+  return view?.state.autonomy === true && view.run.phase === "turn" ? view.run.step ?? null : null;
 }
 
 export function useCommodore(theaterId: string): TheaterCommodore {

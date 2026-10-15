@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
-import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../avatars/index.js";
+import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleSpecial, type MongleState } from "../avatars/index.js";
 import type { IdentityTone } from "../operations/identity-tones.js";
+import { avatarTier, useActivityMotion, type ActivityMotionConfig } from "./avatar-motion.js";
+import { QuakerFigure } from "./quaker-figure.js";
 
 /**
  * 몽글 아바타 — 사령관·지휘관·구성원·Operation 을 한 조형으로 그린다.
@@ -114,13 +116,6 @@ function Badge({ state }: { readonly state: MongleState }): ReactNode {
   }
 }
 
-/** 크기 단계 — 같은 연기를 크기에 맞게 덜어 낸다. 단계 경계는 Console 에 실제로 있는 크기들 사이에 둔다. */
-type MongleTier = "full" | "mid" | "sil" | "mini";
-
-function mongleTier(size: number): MongleTier {
-  return size >= 48 ? "full" : size >= 22 ? "mid" : size >= 13 ? "sil" : "mini";
-}
-
 const Hand = ({ cx, cy, side }: { readonly cx: number; readonly cy: number; readonly side?: "left" | "right" }) =>
   <circle className={side ? `mongle-avatar-hand is-${side}` : "mongle-avatar-hand"} cx={cx} cy={cy} r="2.1" />;
 
@@ -221,257 +216,7 @@ const PROP_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(PROP_ACTIVITY_LIST)
  * 활동 반복의 경계는 늘 큰 동작의 휴식 자세다.
  */
 const BIG_ACTIVITIES: ReadonlySet<MongleActivity> = new Set(["think", "run", "fetch", "delegate", "text", "compact"]);
-/** 한 활동에 머무는 최소 시간과 손·소품이 들어가는 시간(ms). */
-const HOLD_MS = 1200;
-const LEAVE_MS = 220;
-
-/**
- * 큰 동작 예산 — 여러 아바타가 함께 보이는 크기(48px 미만)에서 큰 동작 층을 동시에 켤 수 있는 아바타 수. 넘치면 그 아바타는 손·소품만
- * 연기하고 줄을 선다. 자리를 잡은 아바타는 큰 동작을 두 번 이상 한 뒤, 기다리는 아바타가 있으면 휴식 구간에서 자리를 넘긴다.
- *
- * 문서 하나의 표시 예산이라 모듈 상태로 둔다. 번들마다 따로 셀 수 있지만 활동을 넘기는 것은 Console 한 곳뿐이다.
- */
-const BIG_SLOTS = 4;
-const BIG_LEASE_PERIODS = 2;
-const bigHolders = new Set<object>();
-const bigWaiting: { readonly owner: object; readonly grant: () => void }[] = [];
-
-function requestBig(owner: object, grant: () => void): boolean {
-  if (bigHolders.has(owner)) return true;
-  if (bigHolders.size < BIG_SLOTS) {
-    bigHolders.add(owner);
-    return true;
-  }
-  if (!bigWaiting.some((entry) => entry.owner === owner)) bigWaiting.push({ owner, grant });
-  return false;
-}
-
-function releaseBig(owner: object): void {
-  const index = bigWaiting.findIndex((entry) => entry.owner === owner);
-  if (index >= 0) bigWaiting.splice(index, 1);
-  if (!bigHolders.delete(owner)) return;
-  const next = bigWaiting.shift();
-  if (!next) return;
-  bigHolders.add(next.owner);
-  next.grant();
-}
-
-interface ActivityMotion {
-  /** 지금 연기하는 활동. null 은 기본 리듬이다. */
-  readonly activity: MongleActivity | null;
-  /** 손과 소품을 집어넣는 중(교체 직전). */
-  readonly leaving: boolean;
-  /** 큰 동작 층이 켜졌다. */
-  readonly big: boolean;
-  /** 활동에 들어선 횟수 — 교체 경계의 기준 시각을 커밋 순간으로 옮길 때 짝을 맞춘다. */
-  readonly entry: number;
-}
-
-const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
-
-/**
- * 활동 전환 규칙 하나를 아바타마다 돈다.
- *
- * - 작업 중으로 들어설 때는 바로 그 활동이다. 작업 중을 떠날 때도 바로다(상태 전환은 기다리지 않는다).
- * - 작업 중 안에서 활동이 바뀌면 지금 활동에 최소 1.2초 머문 뒤, 손과 소품을 넣고(0.22초) 그 반복의 경계에서 새 활동으로 바꾼다.
- *   퇴장은 경계 0.22초 앞에서 시작한다 — 교체 순간 몸 층이 휴식 자세(0%=100%)에 있어야 몸이 튀지 않는다.
- *   기다리는 동안 들어온 값은 마지막 하나만 남는다. 이 규칙이 짧은 도구 연타를 깜빡임 대신 한 동작으로 이어 준다.
- * - 경계 시각은 새 활동의 클래스가 커밋된 순간을 반복의 시작으로 보고 계산한다. 반복 키프레임은 0%=100%=휴식 자세라 한 프레임 어긋나도 튀지 않는다.
- */
-class ActivityScheduler {
-  private running = false;
-  private target: MongleActivity | null = null;
-  private tempo = 1;
-  private budgeted = true;
-  private shown: MongleActivity | null = null;
-  private shownAt = 0;
-  private leaving = false;
-  private big = false;
-  private bigSince = 0;
-  private entry = 0;
-  private swapTimer: ReturnType<typeof setTimeout> | null = null;
-  private bigTimer: ReturnType<typeof setTimeout> | null = null;
-  private disposed = false;
-  private readonly owner = {};
-
-  constructor(private readonly publish: (motion: ActivityMotion) => void) {}
-
-  update(running: boolean, target: MongleActivity | null, tempo: number, budgeted: boolean): void {
-    if (this.disposed) return;
-    const wasRunning = this.running;
-    this.running = running;
-    this.target = target;
-    this.tempo = tempo;
-    this.budgeted = budgeted;
-    if (!running) {
-      this.reset(null);
-      return;
-    }
-    if (!wasRunning) {
-      this.reset(target);
-      return;
-    }
-    if (target === this.shown && !this.leaving) {
-      this.clearSwap();
-      return;
-    }
-    this.scheduleSwap();
-  }
-
-  /** 새 활동이 화면에 커밋된 순간 — CSS 반복이 실제로 시작한 시각에 가깝게 경계의 기준을 옮긴다. */
-  committed(entry: number): void {
-    if (entry === this.entry) this.shownAt = now();
-  }
-
-  dispose(): void {
-    this.disposed = true;
-    this.clearSwap();
-    this.dropBig();
-  }
-
-  private cycle(): number {
-    return ACTIVITY_CYCLE_MS[this.shown ?? "default"] * this.tempo;
-  }
-
-  /** 지금 활동 반복의 다음 경계(최소 `after` ms 뒤). */
-  private nextBoundary(after: number): number {
-    const cycle = this.cycle();
-    const elapsed = Math.max(after, now() - this.shownAt);
-    return this.shownAt + Math.ceil(elapsed / cycle) * cycle;
-  }
-
-  private reset(activity: MongleActivity | null): void {
-    this.clearSwap();
-    this.dropBig();
-    this.leaving = false;
-    if (activity !== this.shown) this.entry += 1;
-    this.shown = activity;
-    this.shownAt = now();
-    this.claimBig();
-    this.emit();
-  }
-
-  private scheduleSwap(): void {
-    if (this.swapTimer !== null) return;
-    const props = this.shown !== null && PROP_ACTIVITIES.has(this.shown);
-    // 교체는 경계에 떨어지고, 손·소품이 있으면 퇴장은 그보다 0.22초 앞에서 시작한다.
-    const at = this.nextBoundary(Math.max(HOLD_MS, now() - this.shownAt + (props ? LEAVE_MS : 0)));
-    const leaveAt = props ? at - LEAVE_MS : at;
-    this.swapTimer = setTimeout(() => this.beforeBoundary(at), Math.max(0, leaveAt - now()));
-  }
-
-  private beforeBoundary(at: number): void {
-    this.swapTimer = null;
-    if (this.target === this.shown) return;
-    if (this.shown !== null && PROP_ACTIVITIES.has(this.shown)) {
-      this.leaving = true;
-      this.emit();
-      this.swapTimer = setTimeout(() => this.swap(), Math.max(0, at - now()));
-      return;
-    }
-    this.swap();
-  }
-
-  private swap(): void {
-    this.swapTimer = null;
-    this.reset(this.target);
-  }
-
-  private clearSwap(): void {
-    if (this.swapTimer !== null) clearTimeout(this.swapTimer);
-    this.swapTimer = null;
-  }
-
-  /** 활동에 들어선 순간 큰 동작 자리를 청한다. 자리가 없으면 줄을 서고, 받으면 다음 반복 경계에서 켠다. */
-  private claimBig(): void {
-    if (this.shown === null || !BIG_ACTIVITIES.has(this.shown)) return;
-    if (!this.budgeted) {
-      this.big = true;
-      return;
-    }
-    if (requestBig(this.owner, () => this.granted())) this.startBig();
-  }
-
-  private startBig(): void {
-    this.big = true;
-    this.bigSince = now();
-    this.armLease();
-  }
-
-  private granted(): void {
-    if (this.disposed || this.shown === null || !BIG_ACTIVITIES.has(this.shown)) {
-      releaseBig(this.owner);
-      return;
-    }
-    this.clearBigTimer();
-    this.bigTimer = setTimeout(() => {
-      this.bigTimer = null;
-      // 교체가 걸려 있으면 켜지 않는다 — 곧 새 활동이 자리를 다시 청한다.
-      if (this.leaving || this.swapTimer !== null) return;
-      this.startBig();
-      this.emit();
-    }, Math.max(0, this.nextBoundary(0) - now()));
-  }
-
-  /** 큰 동작을 정해진 횟수만큼 한 뒤, 기다리는 아바타가 있으면 큰 동작 층의 휴식 구간 한가운데에서 자리를 넘긴다. */
-  private armLease(): void {
-    if (!this.budgeted) return;
-    this.clearBigTimer();
-    const cycle = this.cycle();
-    const period = cycle * 2;
-    const check = (index: number) => {
-      const at = this.bigSince + index * period + cycle * 1.5;
-      this.bigTimer = setTimeout(() => {
-        this.bigTimer = null;
-        if (bigWaiting.length === 0) {
-          check(index + 1);
-          return;
-        }
-        this.big = false;
-        releaseBig(this.owner);
-        this.emit();
-      }, Math.max(0, at - now()));
-    };
-    check(BIG_LEASE_PERIODS - 1);
-  }
-
-  private clearBigTimer(): void {
-    if (this.bigTimer !== null) clearTimeout(this.bigTimer);
-    this.bigTimer = null;
-  }
-
-  private dropBig(): void {
-    this.clearBigTimer();
-    this.big = false;
-    releaseBig(this.owner);
-  }
-
-  private emit(): void {
-    if (this.disposed) return;
-    this.publish({ activity: this.shown, leaving: this.leaving, big: this.big, entry: this.entry });
-  }
-}
-
-function useActivityMotion(running: boolean, target: MongleActivity | null, tempo: number, budgeted: boolean): ActivityMotion {
-  const [motion, setMotion] = useState<ActivityMotion>(() => ({ activity: running ? target : null, leaving: false, big: false, entry: running && target !== null ? 1 : 0 }));
-  const scheduler = useRef<ActivityScheduler | null>(null);
-  useEffect(() => {
-    const created = new ActivityScheduler((next) => setMotion((previous) =>
-      previous.activity === next.activity && previous.leaving === next.leaving && previous.big === next.big && previous.entry === next.entry ? previous : next));
-    scheduler.current = created;
-    return () => {
-      created.dispose();
-      scheduler.current = null;
-    };
-  }, []);
-  useEffect(() => {
-    scheduler.current?.update(running, target, tempo, budgeted);
-  }, [running, target, tempo, budgeted]);
-  useLayoutEffect(() => {
-    scheduler.current?.committed(motion.entry);
-  }, [motion.entry]);
-  return motion;
-}
+const MONGLE_MOTION: ActivityMotionConfig = { cycles: ACTIVITY_CYCLE_MS, props: PROP_ACTIVITIES, big: BIG_ACTIVITIES };
 
 interface MongleAvatarProps {
   /** 베이스 번호(1–15). 모르는 값은 1번으로 그린다. */
@@ -492,17 +237,31 @@ interface MongleAvatarProps {
   readonly decorative?: boolean;
   /** 운영자가 꺼진 사령관 — 어느 표면에서든 같은 규칙(`.mongle-avatar.is-off`)으로 흐리고 채도를 뺀다. */
   readonly off?: boolean;
+  /**
+   * 사령관의 스페셜 퀘이커(저장값 `MongleLook.special`). 있으면 베이스 대신 그 퀘이커 피규어(`QuakerFigure`)로 그리고 `tone` 은 쓰지 않는다.
+   * 상태·활동·크기는 같은 값을 받아 같은 단계로 연기한다. 피규어 루트에 `is-special`·`is-special-<id>` 가 선다.
+   */
+  readonly special?: MongleSpecial | null;
   readonly className?: string;
 }
 
 const CALLING_STATES: ReadonlySet<MongleState> = new Set(["awaiting", "decision", "review"]);
 
-export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, className }: MongleAvatarProps) {
+export function MongleAvatar({ special = null, ...props }: MongleAvatarProps) {
+  if (special) {
+    const { state, activity = null, size, label, decorative = false, off = false, className } = props;
+    return <QuakerFigure kind={special} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={["is-special", `is-special-${special}`, className].filter(Boolean).join(" ")} />;
+  }
+  return <MongleFigure {...props} />;
+}
+
+/** 몽글 베이스의 조형 — 스페셜이 아닐 때 `MongleAvatar` 가 그린다. 스페셜과 오가면 다른 컴포넌트라 활동 시계가 새로 선다. */
+function MongleFigure({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, className }: Omit<MongleAvatarProps, "special">) {
   const preset = mongleBase(base);
-  const tier = mongleTier(size);
+  const tier = avatarTier(size);
   const tempo = TEMPO[preset.id - 1] ?? 1;
   // 미니(12px 이하)는 출렁임 한 층만 남는다 — 활동을 넘기지 않으면 교체 시계도 돌지 않는다.
-  const motion = useActivityMotion(state === "running", tier === "mini" ? null : activity, tempo, tier !== "full");
+  const motion = useActivityMotion(MONGLE_MOTION, state === "running", tier === "mini" ? null : activity, tempo, tier !== "full");
   const acting = state === "running" ? motion.activity : null;
   // 작업 중인 아바타는 모든 활동의 손·소품과 분신을 미리 세워 두고, 지금 활동의 것만 클래스로 보인다. 활동이 바뀔 때 요소를
   // 넣고 빼면 앱 곳곳의 :has() 규칙이 그때마다 셸 전체의 스타일을 다시 맞춰, 목록에서 메인 스레드를 크게 잡아먹는다(실측).

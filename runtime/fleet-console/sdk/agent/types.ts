@@ -1,4 +1,4 @@
-import type { ConsoleUseMcpHost, PluginMcpTool } from "../mcp/types.js";
+import type { PluginMcpTool } from "../mcp/types.js";
 
 export type AgentInputBlock =
   | { readonly type: "text"; readonly text: string }
@@ -68,7 +68,6 @@ export interface AgentSessionOptions {
   readonly tools?: {
     readonly builtins?: readonly ("WebSearch" | "WebFetch")[];
     readonly custom?: readonly AgentToolGroup[];
-    readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
     /** Session 브라우저. 플러그인 안의 화면 좌표만 지정하며, 탭 소유자는 Console이 발급한다. */
     readonly browser?: { readonly scopeId: string };
     /**

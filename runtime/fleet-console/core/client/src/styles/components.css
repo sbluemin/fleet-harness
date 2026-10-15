@@ -3727,6 +3727,347 @@ button.status-glyph.is-actionable:focus-visible {
   }
 }
 
+/* ── 퀘이커 피규어 ─────────────────────────────────────────────────────────────
+   스페셜 아바타(토리·보리·도리). 옛 부관 퀘이커의 그림을 몽글과 같은 상태·활동 어휘와 크기 단계로 연기한다. 색은 고정 마스코트 색
+   (--quaker-*)이고 몽글의 톤 바꾸기를 받지 않는다 — 몽글 몸과 같은 승인된 캐릭터 예외라 상태 채널을 칠하지 않는다. 상태는 눈·몸짓·
+   발밑 빛·배지가 말하고, 그 빛과 배지만 신호색을 쓴다(몽글과 같은 배정).
+   날개는 늘 퍼덕이지 않는다. 쉴 때는 몸에 붙이고, 활동마다 어깨를 축으로 한 정지 자세로 든다. 움직이는 층은 활동마다 한두 개뿐이고,
+   0%=100%=그 활동의 정지 자세라 활동 교체 경계에서 튀지 않는다. 움직임은 --state-motion 으로 숨은 창·OS 모션 줄이기에서 멈추고,
+   「차분」은 일하는 동안 정지 자세로 선다. 정지 자세(날개·고개·소품)만으로 무엇을 하는지 읽혀야 한다. */
+.quaker-figure {
+  --qf-tone: var(--quaker-moss);
+  --qf-body: color-mix(in oklch, var(--qf-tone) 58%, var(--quaker-ink-pearl));
+  --qf-wing: color-mix(in oklch, var(--qf-tone) 74%, var(--quaker-ink-pearl));
+  --qf-flight: color-mix(in oklch, var(--qf-tone) 30%, var(--quaker-ink-pearl));
+  --qf-tail: color-mix(in oklch, var(--qf-tone) 66%, var(--quaker-ink-pearl));
+  --qf-bib: color-mix(in oklch, var(--qf-tone) 12%, var(--quaker-ink-pearl));
+  --qf-bib-line: color-mix(in oklch, var(--qf-tone) 40%, var(--quaker-ink-pearl));
+  --qf-ring: color-mix(in oklch, var(--qf-tone) 6%, var(--quaker-ink-pearl));
+  --qf-eye: var(--quaker-ink-abyss);
+  --qf-blush: color-mix(in oklch, var(--quaker-rose) 52%, var(--quaker-ink-pearl));
+  --qf-line: color-mix(in oklch, var(--qf-tone) 88%, var(--quaker-ink-rim));
+  --qf-beak: color-mix(in oklch, var(--quaker-amber) 46%, var(--quaker-ink-pearl));
+  --qf-beak-shade: color-mix(in oklch, var(--quaker-amber) 78%, var(--quaker-ink-rim));
+  --qf-feet: color-mix(in oklch, var(--quaker-rose) 38%, var(--quaker-ink-pearl));
+  --qf-paper: color-mix(in oklch, var(--quaker-amber) 18%, var(--quaker-ink-pearl));
+  --qf-outline: 2.5;
+  display: block;
+  flex: none;
+  overflow: visible;
+}
+.quaker-figure.is-kind-dori { --qf-tone: var(--quaker-cerulean); }
+.quaker-figure.is-kind-bori {
+  --qf-tone: var(--quaker-crimson);
+  --qf-body: color-mix(in oklch, var(--qf-tone) 10%, var(--quaker-ink-pearl));
+  --qf-wing: color-mix(in oklch, var(--qf-tone) 16%, var(--quaker-ink-pearl));
+  --qf-flight: color-mix(in oklch, var(--qf-tone) 6%, var(--quaker-ink-pearl));
+  --qf-tail: color-mix(in oklch, var(--qf-tone) 13%, var(--quaker-ink-pearl));
+  --qf-bib: var(--quaker-ink-pearl);
+  --qf-bib-line: color-mix(in oklch, var(--qf-tone) 24%, var(--quaker-ink-pearl));
+  --qf-ring: var(--quaker-ink-pearl);
+  --qf-eye: var(--quaker-crimson);
+  --qf-line: color-mix(in oklch, var(--qf-tone) 34%, var(--quaker-ink-rim));
+  --qf-blush: transparent;
+}
+/* 머리·상반신 창에서는 창 밖(들어 올린 날개 끝·소품)을 자른다 — 작은 칸에서 새면 칸보다 커 보인다. */
+.quaker-figure:not(.is-tier-full) { overflow: hidden; }
+.quaker-figure.is-off { opacity: 0.55; filter: grayscale(0.8); }
+
+.quaker-figure-fill { fill: var(--qf-body); }
+.quaker-figure-fill.is-lined,
+.quaker-figure-wing-fill { stroke: var(--qf-line); stroke-width: var(--qf-outline); stroke-linejoin: round; }
+.quaker-figure-wing-fill { fill: var(--qf-wing); }
+.quaker-figure-flight { fill: none; stroke: var(--qf-flight); stroke-width: 8; stroke-linecap: round; }
+.quaker-figure-tail { fill: none; stroke: var(--qf-tail); stroke-width: 14; stroke-linecap: round; }
+.quaker-figure-bib { fill: var(--qf-bib); }
+.quaker-figure-bib-line { fill: none; stroke: var(--qf-bib-line); stroke-width: 2; stroke-linecap: round; opacity: 0.9; }
+.quaker-figure-feet { fill: none; stroke: var(--qf-feet); stroke-width: 6; stroke-linecap: round; }
+.quaker-figure-brass { fill: var(--quaker-brass); }
+.quaker-figure-brass-deep { fill: var(--quaker-brass); }
+.quaker-figure-fringe { fill: none; stroke: var(--quaker-brass); stroke-width: 3.5; stroke-linecap: round; }
+.quaker-figure-blush { fill: var(--qf-blush); opacity: 0.5; }
+.quaker-figure-eye-ring { fill: var(--qf-ring); }
+.quaker-figure-eye { fill: var(--qf-eye); }
+.quaker-figure-gloss { fill: var(--quaker-ink-pearl); opacity: 0.95; }
+.quaker-figure-gloss.is-soft { opacity: 0.55; }
+.quaker-figure-eyes.is-happy path,
+.quaker-figure-eyes.is-shut path { fill: none; stroke: var(--qf-eye); stroke-width: 5; stroke-linecap: round; }
+.quaker-figure-beak { fill: var(--qf-beak); stroke: var(--qf-beak-shade); stroke-width: 1.5; stroke-linejoin: round; }
+.quaker-figure-beak-line { fill: none; stroke: var(--qf-beak-shade); stroke-width: 2; stroke-linecap: round; }
+.quaker-figure-cap { fill: var(--quaker-ink-pearl); stroke: var(--quaker-ink-abyss); stroke-width: var(--qf-outline); }
+.quaker-figure-cap-trim { fill: none; stroke: var(--quaker-brass); stroke-width: 2.5; }
+.quaker-figure-cap-band { fill: var(--quaker-ink-veil); stroke: var(--quaker-ink-abyss); stroke-width: var(--qf-outline); }
+.quaker-figure-visor { fill: var(--quaker-ink-deep); stroke: var(--quaker-ink-abyss); stroke-width: var(--qf-outline); }
+.quaker-figure-anchor { fill: none; stroke: var(--quaker-brass); stroke-width: 2.6; stroke-linecap: round; }
+/* 소품 — 퀘이커 자기 잉크만 쓴다. 신호색이 아니다. */
+.quaker-figure-paper { fill: var(--qf-paper); stroke: var(--qf-line); stroke-width: 3; stroke-linejoin: round; }
+.quaker-figure-roll { fill: color-mix(in oklch, var(--quaker-amber) 40%, var(--quaker-ink-pearl)); stroke: var(--qf-line); stroke-width: 3; }
+.quaker-figure-ink { fill: none; stroke: var(--qf-line); stroke-width: 3; stroke-linecap: round; opacity: 0.7; }
+.quaker-figure-ink.is-bold { stroke-width: 2; opacity: 0.9; }
+.quaker-figure-feather { fill: var(--quaker-ink-pearl); stroke: var(--qf-line); stroke-width: 3; stroke-linejoin: round; }
+.quaker-figure-speed { fill: none; stroke: var(--qf-line); stroke-width: 5; stroke-linecap: round; opacity: 0.6; }
+.quaker-figure-tube { fill: var(--qf-wing); stroke: var(--qf-line); stroke-width: 3; }
+.quaker-figure-lens { fill: var(--quaker-ink-pearl); stroke: var(--qf-line); stroke-width: 3; }
+.quaker-figure-pole { fill: none; stroke: var(--quaker-ink-rim); stroke-width: 6; stroke-linecap: round; }
+.quaker-figure-pennant { fill: color-mix(in oklch, var(--qf-tone) 70%, var(--quaker-ink-pearl)); stroke: var(--qf-line); stroke-width: 3; stroke-linejoin: round; }
+.quaker-figure-bubble-dots circle { fill: var(--qf-line); }
+/* 상태 배지·발밑 빛 — 몽글과 같은 신호 배정(부름 aurora · 안 본 답 positive · 오류 warn · 휴면 무채색). */
+.quaker-figure-floor { fill: var(--aurora); opacity: 0.85; }
+.quaker-figure-spark { fill: var(--positive); }
+.quaker-figure-drop { fill: var(--warn); }
+.quaker-figure-zz { fill: none; stroke: var(--text-tertiary); stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+/* 13–47px 상반신 창 — 외곽선을 굵혀 실루엣을 지킨다. */
+.quaker-figure.is-tier-mid { --qf-outline: 4; }
+.quaker-figure.is-tier-sil, .quaker-figure.is-tier-mini { --qf-outline: 6; }
+
+/* 소품은 지금 활동의 것 하나만 보인다 — 작업 중에는 모두 미리 세워 둔다(몽글과 같은 까닭). */
+.quaker-figure-act { display: none; transform-box: fill-box; transform-origin: center; }
+.quaker-figure.is-act-think .quaker-figure-act.is-for-think,
+.quaker-figure.is-act-read .quaker-figure-act.is-for-read,
+.quaker-figure.is-act-edit .quaker-figure-act.is-for-edit,
+.quaker-figure.is-act-run .quaker-figure-act.is-for-run,
+.quaker-figure.is-act-fetch .quaker-figure-act.is-for-fetch,
+.quaker-figure.is-act-delegate .quaker-figure-act.is-for-delegate,
+.quaker-figure.is-act-text .quaker-figure-act.is-for-text,
+.quaker-figure.is-act-compact .quaker-figure-act.is-for-compact { display: inline; }
+
+/* 층: svg(출렁임) > 큰 동작 > 몸 > 날개·머리·눈·소품. svg 는 transform 하나로 움직여 합성기가 돌린다. 안쪽 층은 한 층에
+   애니메이션 하나이고 transform 하나만 움직인다. 날개 축은 어깨, 머리 축은 목이다. */
+.quaker-figure.is-running,
+.quaker-figure.is-awaiting { transform-origin: 50% 92%; }
+.quaker-figure-big,
+.quaker-figure-body,
+.quaker-figure-head,
+.quaker-figure-wing,
+.quaker-figure-eyes,
+.quaker-figure-quill,
+.quaker-figure-flag,
+.quaker-figure-plume,
+.quaker-figure-dots,
+.quaker-figure-scroll,
+.quaker-figure-floor,
+.quaker-figure-spark { transform-box: fill-box; }
+.quaker-figure-big, .quaker-figure-body { transform-origin: 50% 100%; }
+.quaker-figure-head { transform-origin: 50% 78%; }
+.quaker-figure-eyes { transform-origin: 50% 50%; }
+.quaker-figure-wing.is-left { transform-origin: 92% 27%; transform: rotate(-42deg); }
+.quaker-figure-wing.is-right { transform-origin: 8% 27%; transform: rotate(42deg); }
+.quaker-figure-quill { transform-origin: 0% 100%; }
+.quaker-figure-flag { transform-origin: 30% 100%; }
+.quaker-figure-floor { transform-origin: 50% 50%; }
+.quaker-figure-spark { transform-origin: 50% 50%; }
+.quaker-figure-wing,
+.quaker-figure-head { transition: transform var(--duration-fast) var(--ease-glide); }
+
+/* 쉼 — 숨쉬기와 깜빡임뿐이다. 날개는 몸에 붙인 채다. */
+.quaker-figure.is-idle .quaker-figure-body {
+  animation: quaker-breathe calc(4.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-breathe);
+}
+.quaker-figure.is-idle .quaker-figure-eyes {
+  animation: quaker-blink calc(5.4s * var(--quaker-tempo, 1)) linear infinite; animation-name: var(--state-motion, quaker-blink);
+}
+
+/* 작업 중 · 기본 리듬 — 활동을 모를 때. 출렁이고 가끔 폴짝 뛰며 눈을 굴린다(몽글 기본 리듬과 같은 1.4초 휴식 경계). */
+.quaker-figure.is-running {
+  animation: quaker-bob calc(7s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-bob);
+}
+.quaker-figure.is-running .quaker-figure-eyes {
+  animation: quaker-look calc(5.9s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-look);
+}
+
+/* 작업 중 · 활동별 정지 자세 — 움직임을 꺼도 이 자세가 남는다. */
+.quaker-figure.is-act-think .quaker-figure-head { transform: rotate(-9deg); }
+.quaker-figure.is-act-read .quaker-figure-head { transform: translate(0, 6px) rotate(4deg); }
+.quaker-figure.is-act-read .quaker-figure-wing.is-left { transform: rotate(-12deg); }
+.quaker-figure.is-act-read .quaker-figure-wing.is-right { transform: rotate(12deg); }
+.quaker-figure.is-act-edit .quaker-figure-head { transform: translate(0, 4px) rotate(-3deg); }
+.quaker-figure.is-act-edit .quaker-figure-wing.is-left { transform: rotate(-18deg); }
+.quaker-figure.is-act-edit .quaker-figure-wing.is-right { transform: rotate(4deg); }
+.quaker-figure.is-act-run .quaker-figure-wing.is-left { transform: rotate(-28deg); }
+.quaker-figure.is-act-run .quaker-figure-wing.is-right { transform: rotate(28deg); }
+.quaker-figure.is-act-fetch .quaker-figure-head { transform: rotate(-5deg); }
+.quaker-figure.is-act-fetch .quaker-figure-wing.is-right { transform: rotate(-58deg); }
+.quaker-figure.is-act-delegate .quaker-figure-wing.is-right { transform: rotate(-100deg); }
+.quaker-figure.is-act-text .quaker-figure-wing.is-left { transform: rotate(-24deg); }
+.quaker-figure.is-act-compact .quaker-figure-head { transform: translate(8px, 2px) rotate(20deg); }
+.quaker-figure.is-act-compact .quaker-figure-wing.is-right { transform: rotate(-14deg); }
+.quaker-figure.is-act-background .quaker-figure-wing.is-left { transform: rotate(6deg); }
+.quaker-figure.is-act-background .quaker-figure-wing.is-right { transform: rotate(-6deg); }
+.quaker-figure.is-act-background .quaker-figure-eyes { transform: scale(1, 0.6); }
+
+/* 작업 중 · 활동별 움직임 — 층 하나에 애니메이션 하나. 주기는 컴포넌트의 활동 주기 표와 짝이다. */
+/* 몸 출렁임은 활동의 주기로 바꾼다 — 교체 경계(0%=100%)가 늘 휴식 자세다. 읽기·실행·남은 작업은 아래에서 따로 고른다. */
+.quaker-figure.is-running.is-act-think,
+.quaker-figure.is-running.is-act-fetch,
+.quaker-figure.is-running.is-act-delegate,
+.quaker-figure.is-running.is-act-compact { animation-name: var(--state-motion, quaker-act-bob); animation-duration: calc(1.6s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-running.is-act-edit { animation-name: var(--state-motion, quaker-act-bob); animation-duration: calc(1.2s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-running.is-act-text { animation-name: var(--state-motion, quaker-act-bob); animation-duration: calc(0.8s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-act-think .quaker-figure-head {
+  animation: quaker-ponder calc(1.6s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-ponder);
+}
+.quaker-figure.is-act-think .quaker-figure-dots {
+  animation: quaker-dots calc(1.6s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-dots);
+}
+.quaker-figure.is-running.is-act-read { animation-name: var(--state-motion, quaker-nod); animation-duration: calc(1.2s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-act-read .quaker-figure-eyes {
+  animation: quaker-scan calc(2.4s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-scan);
+}
+.quaker-figure.is-act-edit .quaker-figure-quill {
+  animation: quaker-scribe calc(1.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-scribe);
+}
+.quaker-figure.is-act-edit .quaker-figure-eyes { animation: none; transform: translate(0, 3px) scale(1, 0.8); }
+.quaker-figure.is-running.is-act-run { animation-name: var(--state-motion, quaker-waddle); animation-duration: calc(1.4s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-act-run .quaker-figure-wing.is-left {
+  animation: quaker-pump-l calc(1.4s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-pump-l);
+}
+.quaker-figure.is-act-run .quaker-figure-wing.is-right {
+  animation: quaker-pump-r calc(1.4s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-pump-r);
+}
+.quaker-figure.is-act-fetch .quaker-figure-eyes { animation: none; transform: translate(4px, -2px); }
+.quaker-figure.is-act-delegate .quaker-figure-flag {
+  animation: quaker-wave-flag calc(1.6s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-wave-flag);
+}
+.quaker-figure.is-act-text .quaker-figure-head {
+  animation: quaker-chatter calc(0.8s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-chatter);
+}
+.quaker-figure.is-act-text .quaker-figure-wing.is-left {
+  animation: quaker-gesture calc(1.6s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-gesture);
+}
+.quaker-figure.is-act-compact .quaker-figure-head {
+  animation: quaker-preen calc(1.6s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-preen);
+}
+.quaker-figure.is-act-compact .quaker-figure-plume {
+  animation: quaker-plume-fall calc(1.6s * var(--quaker-tempo, 1)) ease-in infinite; animation-name: var(--state-motion, quaker-plume-fall);
+}
+.quaker-figure.is-running.is-act-background { animation-name: var(--state-motion, quaker-float); animation-duration: calc(2.8s * var(--quaker-tempo, 1)); }
+.quaker-figure.is-running.is-act-background .quaker-figure-eyes { animation: none; }
+
+/* 소품의 진입·퇴장 — 몽글과 같은 0.26초·0.22초, 한 번만. */
+.quaker-figure-act {
+  animation: mongle-act-enter 0.26s cubic-bezier(0.3, 1.4, 0.6, 1) 1; animation-name: var(--state-motion, mongle-act-enter);
+}
+.quaker-figure.is-leaving .quaker-figure-act {
+  animation: mongle-act-leave 0.22s ease-in 1 both; animation-name: var(--state-motion, mongle-act-leave);
+}
+
+/* 큰 동작 — 활동 주기의 두 배이고 앞 절반 안에서 끝난다. 날갯짓은 여기서만, 한 번씩이다. 앱 감속에서는 이 층만 끈다. */
+.quaker-figure.is-running.is-big.is-act-think .quaker-figure-big { animation: quaker-big-tilt calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-tilt); }
+.quaker-figure.is-running.is-big.is-act-fetch .quaker-figure-big { animation: quaker-big-tiptoe calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-tiptoe); }
+.quaker-figure.is-running.is-big.is-act-delegate .quaker-figure-big { animation: quaker-big-pop calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-pop); }
+.quaker-figure.is-running.is-big.is-act-text .quaker-figure-big { animation: quaker-big-bounce calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-bounce); }
+.quaker-figure.is-running.is-big.is-act-compact .quaker-figure-big { animation: quaker-big-shake calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-shake); }
+/* 위임은 큰 동작 때 신호기를 든 날개를 한 번 휘두른다 — 날개가 움직이는 큰 동작은 이것 하나다. */
+.quaker-figure.is-running.is-big.is-act-delegate .quaker-figure-wing.is-right { animation: quaker-big-signal calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-big-signal); }
+:root[data-state-motion="stepped"] .quaker-figure.is-running.is-big .quaker-figure-big,
+:root[data-state-motion="stepped"] .quaker-figure.is-running.is-big .quaker-figure-wing { animation: none; }
+
+/* 부르는 상태 — 대기는 오른 날개를 들어 사람을 부르며 콩콩 뛰고, 결정은 날개로 턱을 괴고 갸웃하고, 검토는 가슴을 편다. 자세는 움직임을 꺼도 남는다. */
+.quaker-figure.is-awaiting .quaker-figure-wing.is-right { transform: rotate(-70deg); }
+.quaker-figure.is-awaiting .quaker-figure-body {
+  animation: quaker-call calc(2.4s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-call);
+}
+.quaker-figure.is-awaiting .quaker-figure-floor {
+  animation: quaker-floor-call calc(2.4s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-floor-call);
+}
+.quaker-figure.is-decision .quaker-figure-head { transform: rotate(-10deg); }
+.quaker-figure.is-decision .quaker-figure-wing.is-right { transform: rotate(-38deg); }
+.quaker-figure.is-decision .quaker-figure-body {
+  animation: quaker-ponder-body calc(3.2s * var(--quaker-tempo, 1)) ease-in-out infinite; animation-name: var(--state-motion, quaker-ponder-body);
+}
+.quaker-figure.is-review .quaker-figure-body { transform: scale(1.04, 1.04); }
+.quaker-figure.is-review .quaker-figure-wing.is-left { transform: rotate(-20deg); }
+.quaker-figure.is-review .quaker-figure-wing.is-right { transform: rotate(20deg); }
+.quaker-figure.is-review .quaker-figure-floor { transform: scale(1.15, 1); }
+/* 끝냄 — 날개를 한 번 펼쳐 만세한 뒤 접는다(한 번만). */
+.quaker-figure.is-done .quaker-figure-wing.is-left {
+  animation: quaker-cheer-l 1.3s ease-out 1 both; animation-name: var(--state-motion, quaker-cheer-l);
+}
+.quaker-figure.is-done .quaker-figure-wing.is-right {
+  animation: quaker-cheer-r 1.3s ease-out 1 both; animation-name: var(--state-motion, quaker-cheer-r);
+}
+.quaker-figure.is-unseen .quaker-figure-spark {
+  animation: quaker-twinkle 2.2s ease-in-out infinite; animation-name: var(--state-motion, quaker-twinkle);
+}
+.quaker-figure.is-ended .quaker-figure-head { transform: translate(0, 4px) rotate(6deg); }
+.quaker-figure.is-ended .quaker-figure-wing.is-left { transform: rotate(-50deg); }
+.quaker-figure.is-ended .quaker-figure-wing.is-right { transform: rotate(50deg); }
+.quaker-figure.is-error .quaker-figure-head { transform: rotate(5deg); }
+
+/* 머리 창(12px 이하) — 출렁임 한 층만 남는다. */
+.quaker-figure.is-tier-mini .quaker-figure-body,
+.quaker-figure.is-tier-mini .quaker-figure-eyes,
+.quaker-figure.is-tier-mini .quaker-figure-head,
+.quaker-figure.is-tier-mini .quaker-figure-wing { animation: none; }
+
+/* 「아바타 차분하게」 — 일하는 동안은 활동별 정지 자세로 서고(소품은 남는다), 사람을 부를 때만 움직인다. */
+:root[data-avatar-motion="calm"] .quaker-figure.is-running,
+:root[data-avatar-motion="calm"] .quaker-figure.is-running *,
+:root[data-avatar-motion="calm"] .quaker-figure.is-idle *,
+:root[data-avatar-motion="calm"] .quaker-figure.is-unseen .quaker-figure-spark {
+  animation: none !important;
+}
+
+@keyframes quaker-breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.015, 1.03); } }
+@keyframes quaker-blink { 0%, 92%, 100% { transform: scale(1, 1); } 95% { transform: scale(1, 0.1); } }
+/* 기본 리듬 한 주기 — 1.4초 출렁임 다섯 번, 마지막 번에 폴짝. 1.4초마다 휴식 자세다. */
+@keyframes quaker-bob {
+  0%, 20%, 40%, 60%, 80%, 100% { transform: translate(0, 0) scale(1, 1); }
+  9%, 29%, 49%, 69% { transform: translate(0, 0) scale(1.03, 0.96); }
+  14%, 34%, 54%, 74% { transform: translate(0, 0) scale(0.99, 1.02); }
+  84% { transform: translate(0, -5%) scale(0.98, 1.03); }
+  89% { transform: translate(0, 0) scale(1.03, 0.96); }
+  94% { transform: translate(0, -1.5%) scale(1, 1); }
+}
+@keyframes quaker-look {
+  0%, 60%, 85%, 91%, 100% { transform: translate(0, 0) scale(1, 1); }
+  18%, 30% { transform: translate(5px, 0) scale(1, 1); }
+  40%, 52% { transform: translate(-4px, 1px) scale(1, 1); }
+  88% { transform: translate(0, 0) scale(1, 0.12); }
+}
+@keyframes quaker-act-bob { 0%, 100% { transform: translate(0, 0) scale(1, 1); } 50% { transform: translate(0, 0.5%) scale(1.02, 0.98); } }
+@keyframes quaker-ponder { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(-4deg); } }
+@keyframes quaker-dots { 0%, 100% { transform: translate(0, 0); opacity: 1; } 50% { transform: translate(0, -6px); opacity: 0.7; } }
+@keyframes quaker-nod { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0, 1%); } }
+@keyframes quaker-scan { 0%, 100% { transform: translate(-4px, 3px); } 50% { transform: translate(4px, 3px); } }
+@keyframes quaker-scribe { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 25% { transform: translate(-5px, 3px) rotate(-3deg); } 50% { transform: translate(3px, -2px) rotate(2deg); } 75% { transform: translate(-3px, 4px) rotate(-2deg); } }
+@keyframes quaker-waddle { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 25% { transform: translate(0, -1.5%) rotate(-4deg); } 50% { transform: translate(0, 0) rotate(0deg); } 75% { transform: translate(0, -1.5%) rotate(4deg); } }
+@keyframes quaker-pump-l { 0%, 100% { transform: rotate(-28deg); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(-40deg); } }
+@keyframes quaker-pump-r { 0%, 100% { transform: rotate(28deg); } 25% { transform: rotate(40deg); } 75% { transform: rotate(8deg); } }
+@keyframes quaker-wave-flag { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-6deg); } 65% { transform: rotate(4deg); } }
+@keyframes quaker-chatter { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 50% { transform: translate(0, -3px) rotate(-2deg); } }
+@keyframes quaker-gesture { 0%, 45%, 100% { transform: rotate(-24deg); } 15% { transform: rotate(-2deg); } 30% { transform: rotate(-14deg); } }
+@keyframes quaker-preen { 0%, 100% { transform: translate(8px, 2px) rotate(20deg); } 50% { transform: translate(10px, 3px) rotate(26deg); } }
+@keyframes quaker-plume-fall { 0% { transform: translate(0, 0) rotate(0deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translate(-14px, 70px) rotate(-40deg); opacity: 0; } }
+@keyframes quaker-float { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(0, -3%); } }
+@keyframes quaker-big-tilt { 0%, 50%, 100% { transform: rotate(0deg); } 14%, 36% { transform: rotate(-6deg); } }
+@keyframes quaker-big-tiptoe { 0%, 50%, 100% { transform: translate(0, 0); } 18%, 34% { transform: translate(0, -12px); } }
+@keyframes quaker-big-pop { 0%, 50%, 100% { transform: translate(0, 0) scale(1, 1); } 14% { transform: translate(0, 0) scale(1.06, 0.92); } 28% { transform: translate(0, -10px) scale(0.97, 1.05); } 40% { transform: translate(0, 0) scale(1.02, 0.98); } }
+@keyframes quaker-big-bounce { 0%, 50%, 100% { transform: translate(0, 0); } 12% { transform: translate(0, -12px); } 24% { transform: translate(0, 0); } 36% { transform: translate(0, -6px); } }
+@keyframes quaker-big-shake { 0%, 50%, 100% { transform: rotate(0deg); } 16% { transform: rotate(-5deg); } 34% { transform: rotate(4deg); } }
+@keyframes quaker-big-signal { 0%, 50%, 100% { transform: rotate(-100deg); } 16% { transform: rotate(-125deg); } 32% { transform: rotate(-88deg); } }
+@keyframes quaker-call {
+  0%, 35%, 100% { transform: translate(0, 0) scale(1, 1); }
+  6% { transform: translate(0, 0) scale(1.04, 0.95); }
+  13% { transform: translate(0, -12px) scale(0.97, 1.04); }
+  19% { transform: translate(0, 0) scale(1.03, 0.96); }
+  24% { transform: translate(0, -6px) scale(0.99, 1.02); }
+  30% { transform: translate(0, 0) scale(1.01, 0.99); }
+}
+@keyframes quaker-floor-call { 0%, 35%, 100% { transform: scale(1, 1); opacity: 0.85; } 13% { transform: scale(0.8, 1); opacity: 0.6; } 24% { transform: scale(0.9, 1); opacity: 0.75; } }
+@keyframes quaker-ponder-body { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-3deg); } 65% { transform: rotate(2deg); } }
+@keyframes quaker-cheer-l { 0% { transform: rotate(-42deg); } 30%, 55% { transform: rotate(40deg); } 100% { transform: rotate(-42deg); } }
+@keyframes quaker-cheer-r { 0% { transform: rotate(42deg); } 30%, 55% { transform: rotate(-40deg); } 100% { transform: rotate(42deg); } }
+@keyframes quaker-twinkle { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.7); opacity: 0.6; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .quaker-figure,
+  .quaker-figure * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* ── 몽글 아바타 편집기 ── 베이스 15종(5×3) · 색 8톤 · 상태 미리보기(글자형) · 동작 */
 .mongle-picker {
   display: grid;
@@ -3819,6 +4160,23 @@ button.status-glyph.is-actionable:focus-visible {
 }
 .mongle-picker-state:hover { color: var(--text-secondary); }
 .mongle-picker-state[aria-checked="true"] { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+/* 스페셜 — 사령관만 고르는 퀘이커 셋. 모습 격자와 같은 칸·같은 고름 문법이고, 가는 선 하나로 모습과 나뉜다. */
+.mongle-picker-special {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+}
+.mongle-picker-section {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+}
+.mongle-picker-specials {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+}
 .mongle-picker-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -11272,8 +11630,8 @@ body[data-codex-side="true"] .command-card {
   text-align: right;
 }
 
-/* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px, 부관 크기가
-   24px 버튼을 따로 가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 슬라이더 입력과 같은 28px 높이. */
+/* 기본값으로 돌아가는 버튼 — Settings 전체의 한 모양. 예전에는 타이포그래피 카드가 34px 버튼을 따로
+   가졌고, 겉모습 슬라이더는 더블클릭이라는 숨은 제스처였다. 슬라이더 입력과 같은 28px 높이. */
 .fc-settings-reset {
   flex: none;
   height: 28px;
@@ -13395,54 +13753,6 @@ body[data-expanded-surface-resizing="true"] {
   pointer-events: none;
 }
 
-/* 플러그인 레인: 정체색은 선택 밑줄만 맡고, 초점·호버는 brass 계약을 유지한다.
-   [doctrine] 플러그인 인물의 정체색 밑줄은 이 행선지 표면의 의도된 예외다. */
-.quick-launch-lanes {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3) 0;
-  border-bottom: 1px solid var(--surface-rim);
-  flex-wrap: wrap;
-}
-.quick-launch-lanes[hidden], .quick-launch-conversation[hidden] { display: none; }
-.quick-launch-lane {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 36px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--t-sm);
-  cursor: pointer;
-}
-.quick-launch-lane.is-selected {
-  border-bottom-color: var(--quick-launch-lane-identity, var(--brass));
-  color: var(--text-primary);
-}
-.quick-launch-lane:hover { background: var(--brass-glow); }
-.quick-launch-lane:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.quick-launch-lane-mark { display: grid; width: 20px; height: 20px; place-items: center; }
-.quick-launch-lane-mark svg { width: 100%; height: 100%; }
-.quick-launch-lane-divider { height: 16px; border-inline-start: 1px solid var(--surface-rim-strong); }
-.quick-launch-lane-hint { margin-inline-start: auto; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.quick-launch-lane-hint kbd { font-family: var(--font-ui); }
-.quick-launch-feedback { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.55; overflow-wrap: anywhere; flex-shrink: 0; }
-.quick-launch-capabilities { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
-:root[data-view-mode="mobile"] .quick-launch-lane-hint { display: none; }
-@media (max-width: 767px), (pointer: coarse) {
-  .quick-launch-lane-hint { display: none; }
-}
-.quick-launch-conversation { min-height: 0; border-bottom: 1px solid var(--surface-rim); }
-.quick-launch-conversation:has([aria-live="polite"][hidden]) { border-bottom: 0; }
-.quick-launch-card.has-conversation { display: flex; flex-direction: column; max-height: calc(100dvh - var(--space-5) * 2); }
-.quick-launch-card.has-conversation > .quick-launch-field,
-.quick-launch-card.has-conversation > .quick-launch-bar,
-.quick-launch-card.has-conversation > .quick-launch-lanes { flex-shrink: 0; }
 .quick-launch-clear-target { border: 0; padding: 0 var(--space-1); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
 .quick-launch-clear-target:focus-visible { outline: 2px solid var(--brass); }
 
@@ -14525,18 +14835,6 @@ body[data-expanded-surface-resizing="true"] {
   border-top: 1px solid var(--surface-rim);
 }
 
-/* 대화 레인의 바는 권한과 전송만 담는다. 한 줄 예산과 불투명 언더레이를 독립적으로 지켜,
-   긴 대화·안내가 있어도 배경 문구나 오류 텍스트가 컨트롤 사이로 비치지 않는다. */
-.quick-launch-bar.is-conversation {
-  flex-wrap: nowrap;
-  background: var(--popover-face);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-}
-.quick-launch-bar.is-conversation .quick-launch-spacer { display: none; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-submit { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles + .quick-launch-submit { margin-inline-start: 0; }
-
 .quick-launch-spacer {
   flex: 1;
   min-width: var(--space-2);
@@ -14778,7 +15076,6 @@ body[data-expanded-surface-resizing="true"] {
   /* 한 줄 계약을 푼다 — 이 폭에서는 말줄임으로도 예산이 안 나와, 선택 줄이 한 줄을 통째로 갖고
      전송이 아래 줄로 내려가는 것이 설계다. */
   .quick-launch-bar,
-  .quick-launch-bar.is-conversation,
   .quick-launch-launch-sel {
     flex-wrap: wrap;
   }
@@ -15204,7 +15501,7 @@ body[data-expanded-surface-resizing="true"] {
   overflow-wrap: anywhere;
 }
 
-/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과·부관 크기)과 AI Gateway 압축
+/* 연속값을 고르는 하나의 문법 — 설정의 연속값 행(흐리기·유리 효과)과 AI Gateway 압축
    시점이 같은 손잡이를 쓴다. 채움 끝 위치는 소비처가 --slider-fill로 싣고, 폭·정렬 같은 배치는 소비처가
    따로 소유한다. 두 벌로 두면 같은 조작이 표면마다 다른 물건으로 보이고, 한쪽만 고쳐지는 날이 온다.
    Doctrine: 손잡이는 추론 강도 트랙(.effort-track-knob)과 같은 계기 면이다 — --gauge-face 20px 원형에
@@ -15335,7 +15632,7 @@ body[data-expanded-surface-resizing="true"] {
 
 /* ── Live line · History band (sdk/components) ───────────────────────────────
    도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
-   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크·부관이 같은 줄을 쓴다.
+   문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크가 같은 줄을 쓴다.
    링은 진행(신호), 물결은 명도(--live-sweep-*), 잉크는 3티어 텍스트 — 어느 채널도 겹치지 않는다. */
 .fc-live-line {
   display: flex;

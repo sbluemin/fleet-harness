@@ -77,7 +77,7 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         break;
       case "session":
         end(entry.at, "cancelled");
-        push({ kind: "note", text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · "), at: entry.at }, entry.at);
+        push({ kind: "note", text: sessionNote(t, entry), at: entry.at }, entry.at);
         break;
       case "error": {
         end(entry.at, "error");
@@ -169,7 +169,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: compactedText(t, entry) });
         break;
       case "session":
-        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : [])].filter(Boolean).join(" · ") });
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: sessionNote(t, entry) });
         break;
       case "error": {
         const code = errorWord(t, entry.code);
@@ -421,4 +421,12 @@ export function fallbackWord(t: T, reason: string): string {
 export function actionWord(t: T, action: string): string {
   const key = `objectives.commodore.action.${action}`;
   return key in objectivesEn ? t(key as ObjectiveMessageKey) : action;
+}
+
+/** 세션 줄 — 열림·교대·재시작에 폴백 사유와, 말투가 앞 세션과 달라졌으면 그 새를 붙인다(「새 세션 · 말투: 보리」). */
+function sessionNote(t: T, entry: Extract<CommodoreTranscriptEntry, { kind: "session" }>): string {
+  const soul = entry.soul === undefined ? null
+    : entry.soul === "none" ? t("objectives.commodore.log.session.soulOff")
+    : t("objectives.commodore.log.session.soul", { name: t(`objectives.commodore.soul.${entry.soul}`) });
+  return [t(`objectives.commodore.log.session.${entry.event}`), ...(entry.reason ? [fallbackWord(t, entry.reason)] : []), ...(soul ? [soul] : [])].filter(Boolean).join(" · ");
 }

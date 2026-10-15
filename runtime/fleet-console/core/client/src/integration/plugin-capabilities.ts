@@ -28,6 +28,7 @@ import { getArenaInsets, subscribeArenaInsets } from "../../../../features/works
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
+import { requestAvatarEditor } from "../../../../features/workspace/client/avatars.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
   openQuickLaunchWithDraft, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -209,7 +210,7 @@ export function createHostCapabilities(
     },
     consoleState: {
       getTheaters: () => getState().theaters.map((theater) => ({ id: theater.id, label: theater.label, ...(theater.alias ? { alias: theater.alias } : {}) })),
-      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 부관단처럼 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
+      // 기본은 사이드바와 같은 목록(구성원 제외)이다 — 목록을 읽는 플러그인이 따로 거르지 않아도 된다.
       // 구성원을 거느리는 플러그인(목표)만 nested 로 부모와 함께 읽는다.
       // nested 읽기의 부모 요약은 끌어올리기 전 자기 활동(ownActivity)도 싣는다 — 같은 규칙(resolveOperationRuntimeActivity)을 원 런타임에 쓴다.
       // 활동은 표시 어휘가 아니라 원시 값이다(background 를 접지 않는다) — 플러그인 계약이고, 접는 것은 각 표면의 표시 몫이다.
@@ -336,6 +337,12 @@ export function createHostCapabilities(
         return opened;
       },
       close: (surfaceId) => closeConversationSurface(surfaceId),
+      // 편집기는 대화 중심 화면의 오른쪽 패널 머리에만 있다 — 꺼져 있으면(폰) 열 자리가 없다.
+      editAvatar: (avatarKey, request) => {
+        if (getViewModeSnapshot().effective !== "desktop") return false;
+        requestAvatarEditor(avatarKey, request);
+        return true;
+      },
       current: () => publicSurface(getConversationSurface()),
       // 대화 중심 화면의 셸과 모바일 셸이 같은 자리(conversation-slots)에 지금 선 대화의 주인을 싣는다.
       subjectOperationId: () => getConversationSubject()?.id ?? null,

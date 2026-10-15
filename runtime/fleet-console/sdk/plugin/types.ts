@@ -3,7 +3,7 @@ import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
 import type { AgentHost, PluginAttachmentHost } from "../agent/types.js";
-import type { MongleState } from "../avatars/index.js";
+import type { MongleLook, MongleState } from "../avatars/index.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
@@ -12,7 +12,6 @@ import type { ClientAgentChatCapability } from "../components/agent-chat-transcr
 
 import type { PaneDescriptor } from "../pane/types.js";
 import type { ExpandedSurfaceDescriptor, ExpandedSurfaceOpenRequest } from "../expanded-surface/types.js";
-import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
 import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
@@ -83,17 +82,6 @@ export interface PluginMentionTargetAddress {
   readonly targetId: string;
 }
 
-/** 호스트 입력 위에 서는 대화 슬롯. 마운트 수명은 세션 수명이 아니다. */
-export interface QuickLaunchConversationDescriptor {
-  /** 기존 테마 정체색 토큰 이름(--로 시작). 호스트가 선택 밑줄에만 쓴다. */
-  readonly identityColorToken?: string;
-  /** 대화 레인의 입력 안내문. 생략하면 호스트의 행선지 안내문을 쓴다. */
-  readonly placeholder?: string;
-  readonly renderConversation: () => ReactNode;
-  /** 실행 좌표 대신 표시할 권한 표면. */
-  readonly renderCapabilities?: () => ReactNode;
-}
-
 export interface MentionTargetDescriptor {
   /** 플러그인 안에서 고유한 id. 호스트는 `${pluginId}:${id}`로 이름공간을 나눠 쓴다. */
   readonly id: string;
@@ -113,15 +101,11 @@ export interface MentionTargetDescriptor {
   readonly keywords?: readonly string[];
   /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
   readonly renderMark?: () => ReactNode;
-  /** 선언한 대상만 퀵런치 레인에 서며, 전송 뒤 컴포저를 열어 둔다. */
-  readonly quickLaunch?: QuickLaunchConversationDescriptor;
 }
 
 /**
  * 커맨드 밴드 우측 클러스터 앞에 서는 플러그인 항목. 밴드의 24×24 버튼 문법을 따르는 것은
- * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다. 항목을 더 큰 자리에 세우는
- * 호스트 슬롯(대화 배치의 사이드바 고정 줄)은 그 크기를 `--command-band-entry-size` 로 알린다 —
- * 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 두 자리에 모두 맞는다.
+ * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;
@@ -150,7 +134,6 @@ export interface ClientExecutionProvider {
    * 어느 페인이 언제 서는지는 등록이 아니라 `panes.open` 호출이 정한다.
    */
   readonly panes?: readonly PaneDescriptor[];
-  readonly floatingWidgets?: readonly FloatingWidgetDescriptor[];
   /**
    * 도구모음의 Bridge 칸(접어도 남는 끝 칸)에 서는 24px 항목. 플러그인이 자기 상태를 도구모음에
    * 상주시키는 자리다 — 호스트는 슬롯의 자리와 순서만 소유하고 본문은 플러그인이 그린다. 비어 있는
@@ -251,10 +234,8 @@ export interface ClientExecutionProvider {
    * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
    * forwarded — the host refuses that combination before calling. Rejects with an Error
    * whose `message` is the server rejection code when one is available.
-   * `options.surface`는 선언한 대화 슬롯에서 답을 보여 주겠다는 호스트의 표시다. 세션은 계속
-   * 플러그인이 소유하며, 컴포저 마운트나 이 전달 promise의 수명에 매이지 않는다.
    */
-  readonly messageMentionTarget?: (targetId: string, text: string, options?: { readonly surface: "quick-launch" }) => Promise<void>;
+  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
   /**
    * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the
@@ -352,8 +333,9 @@ export interface ConversationSurfaceDescriptor {
    * 이 대화의 주인(예: 사령관 대화면 그 Theater)의 몽글 아바타 키와 역할. 있으면 호스트가 머리 pill 에 20px, 오른쪽 패널 머리에 64px
    * 아바타를 세우고 대화 중심 화면에서 고칠 수 있게 한다. 없으면 `mark` 가 두 자리에 선다.
    * `state` 는 그 주인의 지금 얼굴(`mongleStateOf` 로 고른 값)이다 — 생략하면 쉼(idle)이다. 값이 바뀌면 `subscribe` 로 알린다.
+   * `activity` 는 작업 중일 때 그 주인이 지금 하는 일이다 — Operation 이 없는 주인(사령관)이 연기하려면 넘긴다. 없으면 기본 리듬이다.
    */
-  readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState } | null;
+  readonly avatar?: (ctx: ConversationSurfaceContext) => { readonly key: string; readonly role: import("../avatars/index.js").MongleRole; readonly label: string; readonly state?: import("../avatars/index.js").MongleState; readonly activity?: import("../avatars/index.js").MongleActivity | null } | null;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
@@ -398,6 +380,12 @@ export interface ClientConversationCapability {
   open(surfaceId: string, params?: Readonly<Record<string, unknown>>): boolean;
   /** 지금 선 대화를 걷는다. surfaceId 를 주면 그 대화일 때만 걷는다. */
   close(surfaceId?: string): void;
+  /**
+   * 그 아바타 키의 편집기(오른쪽 패널 머리)를 연다 — 보통 `open` 바로 뒤에 불러, 막 세운 대화의 주인 아바타를 고치게 한다. 편집기가
+   * 아직 서지 않았으면 선 순간 열린다. `special` 은 미리 골라 둘 스페셜이고(초안일 뿐, 저장은 사람이 「적용」을 누른다),
+   * `section` 은 펼친 뒤 포커스를 둘 묶음이다. 대화 중심 화면이 꺼져 있으면 아무것도 하지 않고 false 다. 구버전 호스트에는 없다.
+   */
+  editAvatar?(avatarKey: string, request?: { readonly section?: "special"; readonly special?: import("../avatars/index.js").MongleSpecial | null }): boolean;
   /** 지금 가운데 칸에 선 플러그인 대화. 없으면 null — 같은 값이면 같은 참조를 돌려준다. */
   current(): { readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> } | null;
   /**
@@ -1247,6 +1235,16 @@ export interface FleetPluginHostCapabilities {
    * itself as before.
    */
   readonly processes?: FleetPluginProcessesHost;
+  /**
+   * 몽글 아바타 책 읽기 — Theater·Operation 키(`theaterAvatarKey`·`operationAvatarKey`)의 저장된 모습이다. 쓰기는 없다(모습은 사람이
+   * 편집기에서 고른다). 없는 호스트(구버전·테스트 스텁)에서는 저장값이 없는 것으로 읽는다.
+   */
+  readonly avatars?: FleetPluginAvatarsHost;
+}
+
+/** 서버 쪽 몽글 아바타 책 읽기. 매번 저장소의 지금 값을 읽는다. */
+export interface FleetPluginAvatarsHost {
+  look(key: string): MongleLook | null;
 }
 
 /** 서버 쪽 모델 로스터 읽기. 저장값을 매번 읽으므로 Gateway를 저장한 직후의 요청부터 새 로스터를 본다. */

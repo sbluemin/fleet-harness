@@ -13,7 +13,7 @@ import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
-import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
+import { conversationSurfaceInboxSectionId, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
 export { ConversationSideBarBottom } from "./conversation-dock.js";
@@ -25,7 +25,7 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
+import { operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleState } from "@fleet-console/sdk/avatars";
 import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operationMongleState } from "../avatars.js";
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
@@ -176,28 +176,6 @@ export function ConversationSideBarActions() {
   );
 }
 
-/** 맨 위 줄 아래 — 출근한 부관(고정 표식)이 있을 때만 선다. */
-export function ConversationSideBarTop() {
-  const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
-  const pinned = commandBandEntries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID);
-  if (pinned.length === 0) return null;
-  return (
-    <div className="conversation-side-top">
-      <div className="conversation-side-pinned" role="group" aria-label={t("conversation.side.pinnedAria")}>
-        {pinned.map((entry) => (
-          <PluginErrorBoundary key={entry.id} fallback={null}>
-            <PluginEntry render={entry.render} />
-          </PluginErrorBoundary>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PluginEntry({ render }: { readonly render: () => ReactNode }) {
-  return <>{render()}</>;
-}
 
 /**
  * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
@@ -428,16 +406,16 @@ function ConversationPanelIdentity() {
     const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
-    let owner: { readonly title: string; readonly label: string; readonly state: MongleState } | null = null;
+    let owner: { readonly title: string; readonly label: string; readonly state: MongleState; readonly activity: MongleActivity | null } | null = null;
     try {
       if (centerSurface !== null && context !== null && centerSurface.theater?.(context)?.theaterId === inbox.theaterId) {
         const avatar = centerSurface.avatar?.(context) ?? null;
-        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle" };
+        owner = { title: centerSurface.title(context), label: avatar?.label ?? centerSurface.title(context), state: avatar?.state ?? "idle", activity: avatar?.activity ?? null };
       }
     } catch { owner = null; }
     return (
       <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} size={64} label={owner?.label ?? theaterLabel} />
+        <AvatarEditor avatarKey={theaterAvatarKey(inbox.theaterId)} role="commodore" state={owner?.state ?? "idle"} activity={owner?.activity ?? null} size={64} label={owner?.label ?? theaterLabel} />
         <strong className="conversation-panel-identity-name">{owner?.title ?? theaterLabel}</strong>
       </div>
     );
@@ -457,7 +435,7 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} activity={avatar.activity ?? null} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
         <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
       </div>
@@ -703,8 +681,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
  */
 function ConversationQuota() {
   const t = useT();
-  const { commandBandEntries } = usePluginRegistry();
-  const usage = commandBandEntries.filter((entry) => entry.id !== DEPUTY_COMMAND_BAND_ENTRY_ID);
+  const { commandBandEntries: usage } = usePluginRegistry();
   const boxRef = useRef<HTMLDivElement | null>(null);
   // 단계는 칸 폭이 아니라 실제로 남는 자리로 정한다 — pill 묶음(이름·다음·단추)의 원래 폭을 뺀 반쪽에 세 단계(두 줄 값 → 표식만
   // → 첫 칸)의 실제 폭을 차례로 대어 들어가는 가장 큰 단계를 고른다. pill 줄은 고른 폭만큼 양쪽을 비워 pill 을 가운데에 둔다.
@@ -759,6 +736,10 @@ function ConversationQuota() {
       ))}
     </div>
   );
+}
+
+function PluginEntry({ render }: { readonly render: () => ReactNode }) {
+  return <>{render()}</>;
 }
 
 type QuotaTier = "full" | "marks" | "single";
@@ -1084,7 +1065,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       <div className="conversation-pill-row">
         <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
           {avatar
-            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
+            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} activity={avatar.activity ?? null} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
             : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
           <span className="conversation-pill-title">{title}</span>
           {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}

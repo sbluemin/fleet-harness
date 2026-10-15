@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { canUseMongleSpecial, mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleFacts, type MongleRole, type MongleSpecial, type MongleState } from "@fleet-console/sdk/avatars";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
@@ -147,12 +147,14 @@ export function OperationAvatar({ operation, state, size, label, role, decorativ
   return <MongleAvatar base={look.base} tone={look.tone} role={role ?? operationAvatarRole(operation)} state={state} activity={activity} size={size} label={label} decorative={decorative} className={className} />;
 }
 
-export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size, label, decorative, off, className }: {
+export function KeyedAvatar({ avatarKey, role, state, activityOperationId, activity: given = null, size, label, decorative, off, className }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다. */
   readonly activityOperationId?: string | null;
+  /** Operation 이 없는 주인(사령관)이 지금 하는 일 — 플러그인이 넘긴 값이다. 있으면 Operation 의 활동보다 앞선다. */
+  readonly activity?: MongleActivity | null;
   readonly size: number;
   readonly label: string;
   readonly decorative?: boolean;
@@ -160,8 +162,9 @@ export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size,
   readonly className?: string;
 }) {
   const look = useMongleLook(avatarKey);
-  const activity = useOperationMongleActivity(state === "running" ? activityOperationId : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={className} />;
+  const observed = useOperationMongleActivity(state === "running" && given === null ? activityOperationId : null);
+  const activity = given ?? observed;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} special={canUseMongleSpecial(role) ? look.special : null} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
@@ -175,6 +178,7 @@ function usePickerLabels(): MongleAvatarPickerLabels {
     apply: t("avatar.editor.apply"),
     toneGroup: t("avatar.editor.toneGroup"),
     baseGroup: t("avatar.editor.baseGroup"),
+    specialGroup: t("avatar.editor.specialGroup"),
     states: {
       running: t("avatar.state.running"),
       awaiting: t("avatar.state.awaiting"),
@@ -186,9 +190,53 @@ function usePickerLabels(): MongleAvatarPickerLabels {
   };
 }
 
+/**
+ * 편집기 열기 요청 — 플러그인이 대화 능력(`conversation.editAvatar`)으로 「이 키의 편집기를 열어 달라」고 부탁한 것이다(웰컴 카드의
+ * 이동 단추). 대화를 막 연 순간에는 오른쪽 패널 머리의 편집기가 아직 서지 않았으므로, 요청은 그 키의 편집기가 설 때까지 잠깐
+ * 기다린다. 오래 아무도 받지 않은 요청은 버린다 — 한참 뒤 그 대화를 열었을 때 편집기가 저절로 펼쳐지지 않게.
+ */
+export interface AvatarEditorRequest {
+  /** 펼친 뒤 포커스를 둘 묶음. */
+  readonly section?: "special";
+  /** 미리 골라 둘 스페셜 — 초안일 뿐이고 저장은 사람이 「적용」을 눌러야 한다. 스페셜을 못 쓰는 역할이면 무시한다. */
+  readonly special?: MongleSpecial | null;
+}
+
+interface PendingEditorRequest extends AvatarEditorRequest {
+  readonly avatarKey: string;
+  readonly at: number;
+}
+
+const EDITOR_REQUEST_TTL_MS = 10_000;
+let pendingEditorRequest: PendingEditorRequest | null = null;
+const editorRequestListeners = new Set<() => void>();
+
+export function requestAvatarEditor(avatarKey: string, request: AvatarEditorRequest = {}): void {
+  pendingEditorRequest = { ...request, avatarKey, at: Date.now() };
+  for (const listener of editorRequestListeners) listener();
+}
+
+function subscribeEditorRequest(listener: () => void): () => void {
+  editorRequestListeners.add(listener);
+  return () => { editorRequestListeners.delete(listener); };
+}
+
+function takeEditorRequest(request: PendingEditorRequest): void {
+  if (pendingEditorRequest !== request) return;
+  pendingEditorRequest = null;
+  for (const listener of editorRequestListeners) listener();
+}
+
+function useEditorRequest(avatarKey: string): PendingEditorRequest | null {
+  const request = useSyncExternalStore(subscribeEditorRequest, () => pendingEditorRequest, () => null);
+  return request && request.avatarKey === avatarKey && Date.now() - request.at < EDITOR_REQUEST_TTL_MS ? request : null;
+}
+
 interface Draft {
   readonly base: number;
   readonly tone: IdentityTone | null;
+  /** 사령관의 스페셜 퀘이커. 고르면 색 줄이 걷히고, 베이스를 고르면 떨어진다. */
+  readonly special: MongleSpecial | null;
   readonly dirty: boolean;
   readonly previewState: MongleAvatarPreviewState;
 }
@@ -199,12 +247,14 @@ interface Draft {
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, activityOperationId, size, label, layout = "stack", children }: {
+export function AvatarEditor({ avatarKey, role, state, activityOperationId, activity: given = null, size, label, layout = "stack", children }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   /** 이 얼굴이 대표하는 Operation — 있으면 작업 중일 때 그 Operation 이 지금 하는 일을 연기한다(편집 미리보기 중에는 연기하지 않는다). */
   readonly activityOperationId?: string | null;
+  /** Operation 이 없는 주인(사령관)이 지금 하는 일 — 있으면 Operation 의 활동보다 앞선다(편집 미리보기 중에는 연기하지 않는다). */
+  readonly activity?: MongleActivity | null;
   readonly size: number;
   readonly label: string;
   /** stack: 아바타 아래에 편집기가 뜬다(패널 머리). inline: 줄 아래로 펼친다(구성원 탭). */
@@ -219,9 +269,10 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   const book = useAvatarBook();
   const look = resolveMongleLook(book, avatarKey);
   const [draft, setDraft] = useState<Draft | null>(null);
-  const activity = useOperationMongleActivity(state === "running" && draft === null ? activityOperationId : null);
+  const observed = useOperationMongleActivity(state === "running" && draft === null && given === null ? activityOperationId : null);
+  const activity = draft === null ? given ?? observed : null;
   const [busy, setBusy] = useState(false);
-  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
+  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null; readonly special: MongleSpecial | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
@@ -229,14 +280,39 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   useEffect(() => { setDraft(null); setUndo(null); }, [avatarKey]);
 
   const open = draft !== null;
-  const shown = draft ?? { base: look.base, tone: look.tone };
-  const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" });
+  // 스페셜은 사령관만 쓴다 — 다른 역할의 저장값에 남아 있어도 그리지도 고르지도 않는다.
+  const specials = canUseMongleSpecial(role);
+  const lookSpecial = specials ? look.special : null;
+  const shown = draft ?? { base: look.base, tone: look.tone, special: lookSpecial };
+  const previewState: MongleAvatarPreviewState = state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle";
+  const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, special: lookSpecial, dirty: false, previewState });
   const close = () => { setDraft(null); triggerRef.current?.focus(); };
+
+  // 대화 능력으로 들어온 열기 요청 — 이 키의 편집기가 서면 받아서 펼치고, 요청한 묶음으로 포커스를 옮긴다.
+  const request = useEditorRequest(avatarKey);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [focusSection, setFocusSection] = useState<"special" | null>(null);
+  useEffect(() => {
+    if (!request) return;
+    takeEditorRequest(request);
+    const special = specials && request.special ? request.special : lookSpecial;
+    setDraft({ base: look.base, tone: look.tone, special, dirty: special !== lookSpecial, previewState });
+    setFocusSection(specials && request.section === "special" ? "special" : null);
+    // 요청 하나에 한 번만 펼친다 — 저장된 모습이 바뀌었다고 다시 펼치지 않는다.
+  }, [request]);
+  useEffect(() => {
+    if (!open || focusSection === null) return;
+    setFocusSection(null);
+    const group = rootRef.current?.querySelector<HTMLElement>(".mongle-picker-special");
+    const target = group?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]') ?? group?.querySelector<HTMLElement>('[role="radio"]');
+    group?.scrollIntoView?.({ block: "nearest" });
+    target?.focus({ preventScroll: true });
+  }, [open, focusSection]);
   const apply = async () => {
     if (!draft) return;
-    const previous = { base: look.base, tone: look.tone };
+    const previous = { base: look.base, tone: look.tone, special: lookSpecial };
     setBusy(true);
-    const ok = await setMongleLook(avatarKey, draft.base, draft.tone);
+    const ok = await setMongleLook(avatarKey, draft.base, draft.tone, draft.special);
     setBusy(false);
     if (!ok) return;
     setDraft(null);
@@ -249,7 +325,7 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
     if (!undo) return;
     const target = undo;
     setUndo(null);
-    await setMongleLook(avatarKey, target.base, target.tone);
+    await setMongleLook(avatarKey, target.base, target.tone, target.special);
   };
 
   const avatarButton = (
@@ -264,14 +340,14 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
       onClick={toggle}
     >
       {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
-      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} special={shown.special} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
       <span className="avatar-editor-pen" aria-hidden="true">
         <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
       </span>
     </button>
   );
   return (
-    <div className={`avatar-editor is-${layout}${open ? " is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); close(); } }}>
+    <div ref={rootRef} className={`avatar-editor is-${layout}${open ? " is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); close(); } }}>
       {layout === "inline" ? <div className="avatar-editor-row">{avatarButton}{children}</div> : avatarButton}
       {undo && !open ? (
         <div className="avatar-editor-undo" role="status">
@@ -285,16 +361,18 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
           role={role}
           base={draft.base}
           tone={draft.tone}
+          special={draft.special}
           previewState={draft.previewState}
           locale={locale}
           labels={labels}
-          dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
+          dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone || draft.special !== lookSpecial)}
           busy={busy}
-          onBase={(base) => setDraft({ ...draft, base, dirty: true })}
+          onBase={(base) => setDraft({ ...draft, base, special: null, dirty: true })}
           onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
+          {...(specials ? { onSpecial: (special: MongleSpecial) => setDraft({ ...draft, special, dirty: true }) } : {})}
           onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
-          onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}
-          onReset={() => setDraft({ ...draft, base: look.origin, tone: null, dirty: true })}
+          onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, special: null, dirty: true })}
+          onReset={() => setDraft({ ...draft, base: look.origin, tone: null, special: null, dirty: true })}
           onCancel={close}
           onApply={() => { void apply(); }}
         />

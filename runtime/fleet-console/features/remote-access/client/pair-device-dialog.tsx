@@ -273,8 +273,8 @@ const URGENT_THRESHOLD_MS = 3 * 60 * 1_000;
  *
  * 색은 테마를 따르지 않는다. QR은 밝은 바탕에 어두운 모듈이라는 전제로 읽히고, 반전 심볼은
  * 규격 밖이라 읽히는 스캐너가 많을 뿐 보장이 없다. 자격을 옮기는 한 번의 시도가 테마 설정에
- * 따라 실패하면 안 되므로 --qr-* 토큰은 테마 오버라이드 밖에 고정한다(Scuttlebutt QK와 같은
- * 불변색 예외이며, instrument-design-contract가 그 고정을 지킨다).
+ * 따라 실패하면 안 되므로 --qr-* 토큰은 테마 오버라이드 밖에 고정한다(불변색 예외이며,
+ * instrument-design-contract가 그 고정을 지킨다).
  */
 export function QrCode({ value, size, label }: {
   readonly value: string;

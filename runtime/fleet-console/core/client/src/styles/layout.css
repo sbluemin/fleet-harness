@@ -1,32 +1,9 @@
 .console-shell {
-  --z-floating: 60;
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-}
-
-.floating-widget-layer {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-floating);
-  pointer-events: none;
-}
-
-/* 레이어도 위젯 상자도 클릭을 먹지 않는다 — 위젯이 실제로 그린 표면만 스스로 auto로 되살린다.
-   전면 오버레이가 그 아래 콘솔 조작을 가로채면 안 된다. */
-.floating-widget {
-  pointer-events: none;
-}
-
-/* 차단형 오버레이가 열린 동안에는 부유 위젯이 스스로 되살린 표면까지 입력을 놓는다 —
-   모달의 입력 독점이 위젯의 상주보다 우선한다. 모달 여부는 `body:has(...)`로 묻지 않는다 — 그 앵커는
-   문서의 모든 노드·글자 변경마다 body 서브트리 전체를 다시 계산하게 만든다(modal-open-marker.ts). */
-/* 모달이 캔버스의 로컬 스택 안에 있어도 부유 위젯은 스크림 아래로 물러난다. */
-:root[data-modal-open] .floating-widget-layer { z-index: 0; }
-:root[data-modal-open] .floating-widget-layer * {
-  pointer-events: none;
 }
 
 /* 흐름 바 자리. 상자를 만들지 않으므로 자식이 그대로 .console-shell의 플렉스 아이템이 되고
@@ -393,8 +370,6 @@
      .console-shell-bars 한 자리에 모으므로, 여기서는 그 자리가 비었는지만 묻는다.
      :has()는 중첩할 수 없어 :has(... :not(:has(*)))는 셀렉터째 무효가 된다(실측) — 자식
      결합자를 :has() 안에 두고 바깥에서 부정한다.
-     인접 형제 셀렉터는 쓸 수 없다: 항상 렌더되는 .floating-widget-layer(fixed, 흐름 밖)가
-     사이에 있어 영영 매칭되지 않는다.
      --band-underflow는 그 자리에서만 켜지고 자손이 상속한다 — 조건이 깨지면 0px 기본값으로
      떨어져 페이지 패딩과 sticky 오프셋이 함께 원래 레이아웃으로 돌아간다. */
   :root:not([data-theme="light"]) .console-shell:has(.command-band):has(.global-settings-page):not(:has(.console-shell-bars > *)) .console-route-content {
@@ -464,13 +439,13 @@
   margin: 0 var(--space-1);
   background: var(--surface-rim-strong);
 }
-/* Bridge — 사용 한도 요약과 부관이 서는 칸. 접기 서랍 밖이라 늘 남고, 시스템 칸과는 가는 선 하나로 나뉜다. */
+/* Bridge — 사용 한도 요약이 서는 칸. 접기 서랍 밖이라 늘 남고, 시스템 칸과는 가는 선 하나로 나뉜다. */
 .console-toolbar-bridge {
   margin-inline-start: var(--space-1);
   padding-inline-start: var(--space-1);
   border-inline-start: 1px solid var(--surface-rim-strong);
 }
-/* 플러그인이 항목을 그리지 않는 동안(사용 한도 요약 꺼짐, 부관을 도구모음에 두지 않음) 칸째 걷는다 — 남겨 두면
+/* 플러그인이 항목을 그리지 않는 동안(사용 한도 요약 꺼짐) 칸째 걷는다 — 남겨 두면
    여백과 구분선만 선 빈자리가 설정 뒤에 벌어진다. */
 .console-toolbar-bridge:empty { display: none; }
 
@@ -497,7 +472,7 @@
 
 /* 서랍 — 플러그인(레일 도구)·시스템 도구. 접으면 열 폭이 0으로 말려 Bridge 쪽으로 빨려 들며 흐려진다.
    Bridge는 서랍 밖이라 남는다. */
-/* flex: none — 펼친 서랍은 자기 내용 폭 아래로 눌리지 않는다. 눌리면 도움말이 뒤따르는 부관 칸 밑으로
+/* flex: none — 펼친 서랍은 자기 내용 폭 아래로 눌리지 않는다. 눌리면 도움말이 뒤따르는 Bridge 칸 밑으로
    파고들고, 밴드는 눌린 폭을 자연 폭으로 재어 가운데 정렬을 포기하지 않는다(command-band.tsx 실측).
    접힘은 0fr 트랙이 내용 폭 자체를 0으로 줄이므로 수축 없이도 말려 들어간다. */
 .console-toolbar-drawer {

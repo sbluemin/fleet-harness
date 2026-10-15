@@ -279,7 +279,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
         return defineTool(spec.id, spec.description, schema.shape, async (args) => {
           if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
-          // 허용은 도구 호출마다 다시 읽는다 — 부관의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
+          // 허용은 도구 호출마다 다시 읽는다 — 세션의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
           if (!options.enabled()) return refuse("plugin_not_authorized", null, language());
           const parsed = schema.safeParse(args);

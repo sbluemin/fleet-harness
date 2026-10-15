@@ -13,7 +13,7 @@ import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "../
  * 로스터를 소비하는 실행 대상.
  *
  * - `launch`: Agent CLI Operation(지휘관·구성원·Quick Launch). 사다리 끝에 하네스 능력 `ultra`가 선다.
- * - `agent`: Agent SDK 세션(Cowork·Scuttlebutt·Commodore). Agent SDK는 `ultra`를 받지 않으므로
+ * - `agent`: Agent SDK 세션(Cowork·Commodore). Agent SDK는 `ultra`를 받지 않으므로
  *   사다리는 모델이 내놓는 low…max까지이고, 게이트 없이 전부 열린다.
  */
 export type ModelRosterTarget = "launch" | "agent";

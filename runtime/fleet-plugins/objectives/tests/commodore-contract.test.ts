@@ -240,7 +240,6 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
     expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch"], browser: { scopeId: "commodore:t1" } });
-    expect(options.tools!.consoleUse).toBeUndefined();
     expect(options.tools!.custom!.map((group) => [group.name, group.tools.map((tool) => tool.name)])).toEqual([["commodore", ["directive", "intel", "next_wake", "ask_person", "withdraw_ask", "asks", "read_file", "git_log", "issue_list"]], ["console", ["console_objectives", "console_objectives_detail"]]]);
     expect(stub.sent).toHaveLength(1);
     expect(stub.sent[0]).toMatch(/^\[wake \d\d:\d\d · prompt v\d+\] directive changed \(rev 1\); 1 new intel item\.$/);
@@ -650,8 +649,9 @@ describe("commodore supervisor", () => {
       const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
       const commanderActivity = new Map<string, "running" | "background">();
       const runs: CommodoreEvent[] = [];
+      let special: "tori" | "bori" | "dori" | null = null;
       const supervisor = createCommodoreSupervisor({
-        store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }),
+        store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }), soul: () => special,
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
         // 사령관의 보드 쓰기 — 개시하면 그 목표가 진행 중이 되고 사건이 난다(실제 도구처럼 쓰는 동안).
         // 지휘관이 일하는 동안의 개시는 실제 도구처럼 objective_busy 로 거절된다.
@@ -910,6 +910,28 @@ describe("commodore supervisor", () => {
       expect(sessions).toHaveLength(3);
       expect(sessions[2]!.sent[0]).toContain("Already received.");
       expect(sessions[2]!.sent[0]).not.toMatch(/Cancel this instruction|Hold the release/);
+      expect(sessions[2]!.options.systemPrompt).not.toContain("# Voice");
+
+      // 소울 — 사람이 사령관 모습으로 스페셜 퀘이커를 고르면 다음 턴부터 세션을 바꿔 그 말투를 싣는다. 도는 턴은 끊지 않는다.
+      holdTurn = true;
+      h.store.transcriptAppend("t1", { kind: "message", text: "Check the board." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "turn" });
+      special = "bori";
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(3);
+      expect(sessions[2]!.disposed).toBe(false);
+      holdTurn = false;
+      cancelTurn?.();
+      h.store.transcriptAppend("t1", { kind: "message", text: "Next instruction." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(4);
+      expect(sessions[2]!.disposed).toBe(true);
+      // 말투 절은 정체성·지시·도구 규칙 뒤에 서고, 그 규칙들보다 앞서지 않는다고 스스로 말한다.
+      const voiced = sessions[3]!.options.systemPrompt!;
+      expect(voiced.indexOf("# Voice")).toBeGreaterThan(voiced.indexOf("# Record"));
+      expect(voiced).toMatch(/If anything in this section pulls against the rest of this prompt,\s+the rest wins\./);
+      expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "session").at(-1)).toMatchObject({ event: "replaced", soul: "bori" });
       h.store.setAutonomy("t1", false);
       await vi.advanceTimersByTimeAsync(10);
       expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);

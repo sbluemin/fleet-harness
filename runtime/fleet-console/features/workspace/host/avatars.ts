@@ -19,7 +19,7 @@ interface AvatarStoreData {
 
 export const AVATARS_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: AVATARS_API_PATH, summary: "Read the stored mongle avatar of each Theater and Operation.", category: "Workspace", gate: "loopback", transport: "http" },
-  { method: "PUT", path: AVATARS_API_PATH, summary: "Claim avatars for keys that have none, or set one avatar's base and tone.", category: "Workspace", gate: "origin-write", transport: "http" },
+  { method: "PUT", path: AVATARS_API_PATH, summary: "Claim avatars for keys that have none, or set one avatar's base and tone, and a Commodore's special quaker.", category: "Workspace", gate: "origin-write", transport: "http" },
 ];
 
 function sanitizeAvatarStoreData(value: unknown): AvatarStoreData {

@@ -24,7 +24,6 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
-  readonly openPluginQuickLaunch?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   /** Fleet 브라우저 시트를 바로 여닫는다(카드 없이). 그릴 셸이 없는 문서에서는 false — 키를 소비하지 않는다. */
   readonly toggleFleetBrowser?: () => boolean;
@@ -58,14 +57,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleQuickLaunch();
-      return;
-    }
-    if (matches("console.plugin-quick-launch")) {
-      if (event.isComposing || isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
-      if (event.repeat || dependencies.openPluginQuickLaunch?.()) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
       return;
     }
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면

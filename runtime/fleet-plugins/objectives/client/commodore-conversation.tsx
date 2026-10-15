@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { theaterAvatarKey } from "@fleet-console/sdk/avatars";
+import { theaterAvatarKey, type MongleSpecial } from "@fleet-console/sdk/avatars";
 import type { AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -13,7 +13,7 @@ import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreI
 import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreMongleActivity, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
@@ -86,6 +86,20 @@ export function openCommodoreConversation(theaterId: string, options: CommodoreC
   if (!readCommodore(theaterId).transcriptLoaded) void loadTranscript(theaterId);
   if (options.revealAt !== undefined) revealCommodoreTurn(theaterId, options.revealAt);
   return true;
+}
+
+/** 사령관 아바타 편집기를 열 수 있는가 — 대화 중심 화면이 서 있고 호스트가 편집기 열기(`editAvatar`)를 준다. 폰·구버전 호스트는 아니다. */
+export function canEditCommodoreAvatar(): boolean {
+  return port?.isActive() === true && typeof port.editAvatar === "function";
+}
+
+/**
+ * 그 Theater 의 사령관 대화를 세우고 오른쪽 패널 머리의 아바타 편집기를 「스페셜」 묶음으로 연다. special 은 미리 골라 둘 새다 —
+ * 초안일 뿐이고 저장은 사람이 「적용」을 누른다. 열 수 없으면 false.
+ */
+export function openCommodoreAvatarSpecial(theaterId: string, special: MongleSpecial | null): boolean {
+  if (!canEditCommodoreAvatar() || !openCommodoreConversation(theaterId)) return false;
+  return port?.editAvatar?.(theaterAvatarKey(theaterId), { section: "special", special }) === true;
 }
 
 /**
@@ -190,7 +204,9 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
   const speaker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name: t("objectives.commodore.name") }), [t]);
-  const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle" }], [speaker, turning]);
+  // 사령관은 Operation 이 없어 진행 줄이 활동을 스스로 읽지 못한다 — 감독자가 알린 활동을 참여자에 실어 준다.
+  const step = turning ? commodoreMongleActivity(view) : null;
+  const participants = useMemo<readonly ConversationParticipant[]>(() => [{ speaker, activity: turning ? "running" : "idle", ...(step ? { step } : {}) }], [speaker, turning, step]);
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
 
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -325,7 +341,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   avatar: (ctx) => {
     const theaterId = readParams(ctx.params)?.theaterId;
     // 얼굴은 사이드바 머리 표식과 같은 사실이다 — 사령관이 턴을 도는 동안 pill 과 오른쪽 패널 머리도 작업 중이다.
-    return theaterId ? { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name"), state: commodoreMongleState(readCommodore(theaterId).view, readTheater(theaterId).objectives) } : null;
+    if (!theaterId) return null;
+    const view = readCommodore(theaterId).view;
+    return { key: theaterAvatarKey(theaterId), role: "commodore", label: getT(ctx.language)("objectives.commodore.name"), state: commodoreMongleState(view, readTheater(theaterId).objectives), activity: commodoreMongleActivity(view) };
   },
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);

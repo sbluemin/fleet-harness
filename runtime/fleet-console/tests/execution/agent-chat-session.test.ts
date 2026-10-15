@@ -1307,7 +1307,7 @@ describe("AgentChatRegistry — stopping a turn", () => {
    * 압축 경계는 라이브에서도, 재접속에서도, 세션을 다시 열어 트랜스크립트를 재생할 때도 한 번씩 선다.
    * 라이브에서는 명령 턴이 없다는 이유로 버려졌고, 재접속한 화면은 모든 턴을 닫힌 것으로 다시 세우므로
    * 경계를 둘 턴을 상태로 추측하면 엉뚱한 줄에 붙는다. 재생은 system 줄을 통째로 버렸다. 재생된 경계는
-   * 턴을 열거나 턴의 시간을 늘리지 않고, 부관의 압축은 메인 대화가 아니므로 서지 않는다.
+   * 턴을 열거나 턴의 시간을 늘리지 않고, 메인 대화가 아닌 세션의 압축은 서지 않는다.
    */
   it("draws each compaction boundary once — live, after resubscribe, and replayed from the transcript", async () => {
     const stamp = (second: number) => new Date(Date.UTC(2026, 9, 6, 0, 0, second)).toISOString();

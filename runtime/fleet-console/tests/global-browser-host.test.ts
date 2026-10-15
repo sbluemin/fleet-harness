@@ -211,7 +211,6 @@ describe("global fleet browser host contract", () => {
       let browserTurn: (turn: ClaudeGatewayTurn) => Promise<void>;
       const agent = createPluginAgentHost({
         baseUrl: () => "http://127.0.0.1:1",
-        consoleUse: { connect: () => { throw new Error("unexpected console access"); } },
         browserMcp: { connectPlugin: (options) => browser.connectPlugin({ ...options, pluginId: "objectives" }) },
         createSdk: async () => ({
           startTurn: async (turn: ClaudeGatewayTurn) => {
