@@ -12825,24 +12825,25 @@ body[data-expanded-surface-resizing="true"] {
 
 .command-band-update-bubble-link:hover { color: var(--text-primary); }
 
-/* 권하는 한 가지 일. 문장을 다 읽은 자리에서 폭 전체로 이어진다. */
+/* 권하는 한 가지 일. 문장을 다 읽은 자리에서 폭 전체로 이어진다.
+   1차 버튼 — 중립 컨트롤 면 + 금색 글자, 13px/600, 라운드 10px, 테두리 없음(휴면 재개 버튼 슬롯과 같은 문장). */
 .command-band-update-bubble-action {
   width: 100%;
+  min-height: 34px;
   margin-top: 4px;
-  padding: 8px 12px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklab, var(--text-primary) 7%, transparent);
-  color: var(--text-primary);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--brass-ink);
   font-family: var(--font-ui);
-  font-size: var(--t-xs);
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
   text-align: center;
 }
 
-.command-band-update-bubble-action:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--text-primary) 12%, transparent);
-}
+.command-band-update-bubble-action:hover:not(:disabled) { background: var(--control-rest-hover); }
+.command-band-update-bubble-action:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 
 .command-band-update-bubble-action:disabled {
   color: var(--text-secondary);

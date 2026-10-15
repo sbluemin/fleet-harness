@@ -856,7 +856,8 @@
   max-width: min(260px, calc(100vw - 32px));
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-md);
+  /* 툴팁은 팝업 체계 밖의 작은 표면이라 도구모음 툴팁(.console-toolbar-tip)과 같은 컨트롤 라운드(xs)를 쓴다. */
+  border-radius: var(--radius-xs);
   /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
   background: var(--popover-face);
   box-shadow: var(--popover-shadow);
