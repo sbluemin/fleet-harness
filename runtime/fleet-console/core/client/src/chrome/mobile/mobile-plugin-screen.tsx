@@ -32,17 +32,30 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
   const title = binding ? resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, language) : "";
   const bar = useMobilePluginBar({ title });
 
+  // 주소의 Theater가 아직 상태에 없으면(첫 로드에서 Theater 목록이 오기 전) 아래 열기를 미룬다. 그때 열면 착지가 Theater를
+  // 찾지 못해(not_found) 아무것도 열지 않고 효과도 다시 돌지 않아, 새로고침·딥링크가 실어 온 params가 버려진다.
+  // 한 번 서면 그대로 둔다 — 재연결로 목록이 잠시 비어도 화면을 닫았다 다시 열지 않는다.
+  const addressTheaterKnown = useSyncExternalStore(subscribe, () => {
+    const current = getMobileDestination();
+    const addressed = current.kind === "plugin" && current.entryId === entryId ? current.params?.theaterId : undefined;
+    return addressed === undefined || getState().theaters.some((theater) => theater.id === addressed);
+  });
+  const [theaterReady, setTheaterReady] = useState(addressTheaterKnown);
+  if (addressTheaterKnown && !theaterReady) setTheaterReady(true);
+
   // 페인이 서려면 레일 스토어가 이 엔트리를 열어 둔 상태여야 한다. 화면을 떠나면 닫는다.
   // 주소에 primary 페인의 params가 남아 있으면(새로고침·딥링크) 그 params로 연다.
-  useEffect(() => {
-    if (!binding || (binding.panes.length === 0)) return;
+  // 레이아웃 효과다: 같은 커밋에 마운트하는 페인 본문의 효과보다 먼저 돌아야 한다. 본문이 마운트에서 params를 고쳐 적으면
+  // (`panes.replaceParams` — 목표 화면이 착지한 목표를 적는 자리) 뒤늦은 이 열기가 그것을 주소의 문맥(theaterId)만으로 통째로 덮는다.
+  useLayoutEffect(() => {
+    if (!binding || (binding.panes.length === 0) || !theaterReady) return;
     const current = getMobileDestination();
     const params = current.kind === "plugin" && current.entryId === entryId ? current.params : undefined;
     if (params) capabilities.rail.open(entryId, params);
     else capabilities.rail.open(entryId);
     return () => { closeRailPanel(entryId); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entryId, binding === undefined]);
+  }, [entryId, binding === undefined, theaterReady]);
 
   // primary 페인이 `panes.replaceParams`로 대상을 바꾸면 그 params를 목적지 주소에 옮겨 적는다(SDK: 「주소도 함께 바뀐다」).
   // 호스트가 열 때 붙이는 일회성 `requestId`는 주소가 아니다. 페인 인스턴스가 아직 없으면(여는 중) 쓰지 않는다 — 복원할 params를 지우지 않게.
