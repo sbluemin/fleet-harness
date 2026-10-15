@@ -7,7 +7,7 @@ const STDERR_TAIL_BYTES = 2_048;
 const EXPECTED_STOP_SIGNALS = new Set<NodeJS.Signals>(["SIGTERM", "SIGKILL", "SIGINT"]);
 
 /**
- * The spawn port every Console SDK user gets (agent chat, Analyst, the gateway's routing model). Each agent CLI starts as
+ * The spawn port every Console SDK user gets (agent chat, the gateway's routing model). Each agent CLI starts as
  * the leader of a registered process group, so the Console's deadline and its watcher can end it with everything it
  * started. Because the SDK no longer reads the CLI's stderr itself, the tail of a CLI that fails goes to the failure log.
  */

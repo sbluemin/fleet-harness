@@ -6,7 +6,6 @@ import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/co
 import "@fleet-console/font-picker/styles.css";
 import {
 CaptionActionButton,
-CaptionAnalystGlyph,
 CaptionBrowserUseGlyph,
 CaptionChatGlyph,
 CaptionComputerUseGlyph,
@@ -23,16 +22,6 @@ import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, Setting
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
-import { fetchAnalysisReady } from "../../../analyst/client/analysis-api.js";
-import { AnalystChatPanel } from "../../../analyst/client/analysis-chat-panel.js";
-import { disposeAnalysisStore, useAnalysisStore } from "../../../analyst/client/analysis-store.js";
-import {
-ANALYST_CHAT_COMPANION_ID,
-ANALYST_COMPANION_IDS,
-closeAnalystCompanionPanels,
-isCompanionPanelVisible,
-} from "../../../analyst/client/analysis-visibility.js";
-import "../../../analyst/client/analysis.css";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { globalBrowserUnseenLabel, notifySharedFallback, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
@@ -84,8 +73,6 @@ const INACTIVE_FLUSH_IDS = ["saving", "balanced", "instant"] as const satisfies 
 const AGENT_TICKET_PATH = "/api/v1/agent/ticket";
 const TERMINAL_WS_PATH = "/api/v1/terminal/ws";
 const PIN_SLACK_PX = 56;
-const ANALYSIS_READY_POLL_MS = 5_000;
-type AnalysisReadiness = "unknown" | "ready" | "not-ready";
 
 const TRACK_PHASE_COPY_KEYS = {
   live: "terminal.streams.status.live",
@@ -102,7 +89,7 @@ export const agentOperationKind = defineOperationKind({
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: () => "Claude Code",
   render: (context) => <AgentOperationView context={context} />,
-  // 분석가·뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
+  // 뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
   captionActions: (context) => <AgentCaptionActions context={context} />,
   // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
@@ -117,10 +104,6 @@ export const agentOperationKind = defineOperationKind({
   previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
-    // 아티팩트는 Analyst 드로어 안의 모드다 — 컴패니언은 하나만 등록한다.
-    // 캡션 밴드는 호스트가 이미 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 위 모서리도 각진다.
-    { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, // 캡션 없는 companion — 정체·상태·모드 컨트롤은 본문의 발판 줄(컴포저 위)이 진다. 호스트는 캡션 높이를 본문에 돌려준다.
-      hideCaption: true, render: (context) => <AnalystChatPanel context={context} /> },
     // Operation Browser — 실험을 켠 Console에서만 선다. 허용은 패널 안에서 켤 수 있다.
     { id: BROWSER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.browser"), defaultHidden: true, shortcut: { code: "KeyB", label: "B" }, caption: (context) => <BrowserCaption context={context} services={browserServices} />, render: (context) => <BrowserPanel context={context} services={browserServices} /> },
   ],
@@ -199,7 +182,6 @@ export const agentExecution: ClientExecutionProvider = {
     try {
       await terminateAgentSession(operationId);
     } finally {
-      disposeAnalysisStore(operationId);
       disposeViewSwitch(operationId);
       disposeOperationViewState(operationId);
       removeSession(operationId);
@@ -291,7 +273,6 @@ function installAgentExecution(ctx: PluginInstallContext): () => void {
     const ids = (payload as { removedIds?: unknown } | null)?.removedIds;
     if (!Array.isArray(ids)) return;
     for (const id of ids) if (typeof id === "string") {
-      disposeAnalysisStore(id, { stopServer: false });
       disposeViewSwitch(id);
       disposeOperationViewState(id);
       removeSession(id);
@@ -393,51 +374,8 @@ function useElapsed(startedAt: number | undefined, finishedAt: number | undefine
   return formatElapsedDuration((finishedAt ?? now) - startedAt);
 }
 
-function useAnalysisReady(context: OperationRenderContext): AnalysisReadiness {
-  const [result, setResult] = React.useState<{
-    readonly operationId: string;
-    readonly readiness: AnalysisReadiness;
-  }>({ operationId: context.operationId, readiness: "unknown" });
-  const readiness = result.operationId === context.operationId ? result.readiness : "unknown";
-
-  React.useEffect(() => {
-    let disposed = false;
-    let requestPending = false;
-    let interval: number | undefined;
-    setResult({ operationId: context.operationId, readiness: "unknown" });
-    const poll = async () => {
-      if (requestPending) return;
-      requestPending = true;
-      const nextReady = await fetchAnalysisReady(context.api, context.operationId);
-      requestPending = false;
-      if (disposed) return;
-      setResult({
-        operationId: context.operationId,
-        readiness: nextReady ? "ready" : "not-ready",
-      });
-      if (nextReady && interval !== undefined) window.clearInterval(interval);
-    };
-    void poll();
-    interval = window.setInterval(() => { void poll(); }, ANALYSIS_READY_POLL_MS);
-    return () => {
-      disposed = true;
-      if (interval !== undefined) window.clearInterval(interval);
-    };
-  }, [context.api, context.operationId]);
-
-  return readiness;
-}
-
-// 리본은 상태 표면이지 토글이 아니다 — 접근성 이름이 "열기"인 컨트롤이 닫으면 안 된다.
-// 여닫는 것은 우측 STREAMS 핸들의 역할이고, 리본은 멱등하게 열기만 한다.
-function openCompanionPanel(context: OperationRenderContext, companionId: string): void {
-  if (!context.onSetCompanionPanelVisible) {
-    context.onRequestCompanions?.(true);
-    return;
-  }
-  if (isCompanionPanelVisible(context, companionId)) return;
-  if (!context.companionsOpen) context.onRequestCompanions?.(true);
-  context.onSetCompanionPanelVisible(companionId, true);
+function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
+  return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);
 }
 
 function toggleCompanionPanel(
@@ -461,23 +399,11 @@ function toggleCompanionPanel(
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
 }
 
-/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 분석가를 내주지 않는다. */
+/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 브라우저만 내준다. */
 function offersCompanion(context: OperationRenderContext, companionId: string): boolean {
   return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
 }
 
-/** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
-    드로어를 여닫는다. 세로 ANALYZE/EXIT 핸들의 후계다. */
-/**
- * 캡션 밴드의 동작 선반 — 분석가 · 뷰 전환 · 읽기 폭.
- *
- * 본문 위에 떠 있던 칩 줄이 하던 일을 그대로 진다. 자리를 옮기면서 이름표는 말풍선으로 물러나고
- * 마크만 남는다: 32px 밴드에서 세 개의 라벨은 이름이 설 자리를 먹는다.
- *
- * 이 컴포넌트는 본문과 다른 React 트리에 마운트된다(호스트가 캡션에 그린다). 그래서 상태는 전부
- * 모듈 저장소에서 읽는다 — 세션·분석가·읽기 폭 선호는 이미 그렇고, 전환의 진행/실패만 이번에
- * 저장소를 하나 얻었다(`view-switch-store`).
- */
 /**
  * 모바일 Operation 화면에서는 셸이 막대를 그리고 보기 전환은 ⋮ 항목이 진다(AgentMobileMenu) — 캡션 선반을
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
@@ -492,30 +418,8 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   const t = getT(context.language ?? "en");
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
-  const analysisReadiness = useAnalysisReady(context);
-  const { state: analysisState } = useAnalysisStore(context);
   const { terminalPending } = useViewSwitchState(context.operationId);
   const chatMode = context.operation.payload.chatMode === true;
-  const analystOpen = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
-  const analystReady = analysisReadiness === "ready";
-
-  React.useEffect(() => {
-    if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
-    // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
-    // 다만 브라우저 companion이 열려 있으면 레이어는 그 패널의 것이다 — 분석가 패널만 접고 레이어는 둔다.
-    if (isCompanionPanelVisible(context, BROWSER_COMPANION_ID)) {
-      for (const id of ANALYST_COMPANION_IDS) if (isCompanionPanelVisible(context, id)) context.onSetCompanionPanelVisible(id, false);
-      return;
-    }
-    closeAnalystCompanionPanels(context);
-  }, [
-    analysisReadiness,
-    context.companionsOpen,
-    context.hiddenCompanionPanelIds,
-    context.onRequestCompanions,
-    context.onSetCompanionPanelVisible,
-  ]);
-
   // 투어 앵커는 사용자가 이 마운트에서 직접 채팅 뷰로 넘어온 뒤에만 선다 — 본문의 판정과 같다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
@@ -530,21 +434,6 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
       setTerminalHandoff(context.operationId, { pending: false });
     }
   }, [context]);
-
-  // 컴패니언을 열 수 없는 호스트에는 분석가 문을 세우지 않는다 — 모바일 레이아웃은 화면 전부를
-  // 세션에 주고 이 콜백을 빼며, 그 부재가 곧 "여기엔 드로어가 없다"는 말이다.
-  const analyst = context.onRequestCompanions === undefined || !offersCompanion(context, ANALYST_CHAT_COMPANION_ID) ? null : (
-    <CaptionActionButton
-      actionId="analyst"
-      label={analystReady ? t(analystOpen ? "terminal.analyst.exit" : "terminal.analyst.open") : t("terminal.analyst.sendMessageFirst")}
-      pressed={analystOpen}
-      disabled={!analystReady}
-      busy={analysisState.busy}
-      onClick={() => { if (analystReady) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
-    >
-      <CaptionAnalystGlyph />
-    </CaptionActionButton>
-  );
 
   // 브라우저 문 — 대화 중심 화면에서는 「Fleet 브라우저 / Session 브라우저」 카드를 여는 통합 지구본이다. 허용은 패널 안에서 켠다.
   const using = useOperationUse(context.operationId);
@@ -616,7 +505,6 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
         <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
         <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
-      {analyst}
       {browser}
       {viewSwitch}
       {bubble}

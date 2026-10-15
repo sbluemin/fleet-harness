@@ -30,15 +30,6 @@ async function serve(pathname: string): Promise<CapturedResponse> {
 }
 
 describe("static console font CORS", () => {
-  it("opens CORS only on woff2 font assets for the sandboxed artifact document", async () => {
-    // 분석가 아티팩트 문서는 응답 헤더 sandbox로 opaque origin에서 렌더되고, @font-face
-    // fetch는 CORS 모드로 Origin: null을 싣는다 — 서체 자산만 ACAO를 연다.
-    const font = await serve("/console/assets/manrope-latin.woff2");
-    expect(font.status).toBe(200);
-    expect(font.headers["Content-Type"]).toBe("font/woff2");
-    expect(font.headers["Access-Control-Allow-Origin"]).toBe("*");
-  });
-
   it("keeps every non-font asset closed to cross-origin reads", async () => {
     const script = await serve("/console/assets/index.js");
     expect(script.status).toBe(200);

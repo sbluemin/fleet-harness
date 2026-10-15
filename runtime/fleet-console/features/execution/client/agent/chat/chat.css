@@ -3046,7 +3046,6 @@
   .agent-chat-composer-width { display: none; }
 }
 
-/* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
 /* 전환 확인 — 패널 내부 오버레이. */
 .agent-chat-interstitial {
   position: absolute;

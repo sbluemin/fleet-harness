@@ -702,7 +702,7 @@ export function chatEventsFromSdkMessage(message: {
     return [];
   }
   if (message.type === "stream_event") {
-    // 모양은 fleet-analyst가 실측으로 고정한 것과 동일하다. text_delta와 tool_use 블록의
+    // stream_event에서는 text_delta와 tool_use 블록의
     // 시작만 취한다 — thinking_delta는 공개 출력 금지 불변식에 따라 버리고, input_json_delta는
     // 부분 인자라 좌표로 쓸 수 없다(완성 tool 이벤트가 그 자리를 채운다).
     const inner = (message as { readonly event?: unknown }).event;

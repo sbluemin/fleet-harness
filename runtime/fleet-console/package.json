@@ -63,7 +63,6 @@
     "@fleet-console/ai-gateway": "workspace:*",
     "@fleet-console/infra": "workspace:*",
     "@fleet-console/process": "workspace:*",
-    "@fleet-console/analyst": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/markdown": "workspace:*",
     "@fleet-console/link": "workspace:*",

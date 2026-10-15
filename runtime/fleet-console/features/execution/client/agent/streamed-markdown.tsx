@@ -58,7 +58,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   readonly transformHtml?: (html: string) => string;
   /* AI 응답 본문만 켠다 — 외부 링크를 사이트 아이콘 + 이름으로 그린다(사람이 쓴 말풍선은 그대로). */
   readonly siteLinks?: boolean;
-  /** 대화의 흐르는 말풍선만 선택한다. 확정 글·Analyst·원장 등 다른 소비자는 기존 렌더를 유지한다. */
+  /** 대화의 흐르는 말풍선만 선택한다. 확정 글·원장 등 다른 소비자는 기존 렌더를 유지한다. */
   readonly preserveStreamingDom?: boolean;
 }) {
   const resolveLink = useMarkdownLinkResolver();

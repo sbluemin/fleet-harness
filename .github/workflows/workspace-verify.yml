@@ -58,7 +58,6 @@ jobs:
             runtime/fleet-console/foundation/process/dist
             runtime/fleet-console/foundation/infra/dist
             runtime/fleet-console/features/ai-gateway/runtime/dist
-            runtime/fleet-console/features/analyst/runtime/dist
             runtime/fleet-mobile/dist
           key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
           restore-keys: |
@@ -76,7 +75,6 @@ jobs:
             runtime/fleet-console/foundation/process/dist
             runtime/fleet-console/foundation/infra/dist
             runtime/fleet-console/features/ai-gateway/runtime/dist
-            runtime/fleet-console/features/analyst/runtime/dist
             runtime/fleet-mobile/dist
           key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
       # 게이트는 검증 안에서 돌아야 게이트다 — 정의만 해 두면 새 위반이 그대로 통과한다.
@@ -128,7 +126,6 @@ jobs:
             runtime/fleet-console/foundation/process/dist
             runtime/fleet-console/foundation/infra/dist
             runtime/fleet-console/features/ai-gateway/runtime/dist
-            runtime/fleet-console/features/analyst/runtime/dist
             runtime/fleet-mobile/dist
           key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
           restore-keys: |
@@ -146,7 +143,6 @@ jobs:
             runtime/fleet-console/foundation/process/dist
             runtime/fleet-console/foundation/infra/dist
             runtime/fleet-console/features/ai-gateway/runtime/dist
-            runtime/fleet-console/features/analyst/runtime/dist
             runtime/fleet-mobile/dist
           key: workspace-dist-${{ runner.os }}-node22-${{ inputs.ref || github.sha }}
       # POSIX 신호 계약은 Windows job에서 돌 수 없다. 파일 안의 케이스는 한 러너에서 직렬이다 —

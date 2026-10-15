@@ -928,7 +928,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   };
   /**
    * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
-   * 화면 사건(보이기). 재개·뷰·대화·분석가는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
+   * 화면 사건(보이기). 재개·뷰·대화는 실행층이 같은 객체에 채운다(`ctx.consoleActions`).
    */
   const consoleActions = createWorkspaceActions({ operations, deletionCoordinator, archive: operationArchive.archive, listOperationUse, patchOperation: (id, input) => pluginHostCapabilities.operations.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastOperationChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.

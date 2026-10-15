@@ -32,14 +32,14 @@ import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, Launch
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
-import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./provider-session.js";
+import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSession, readProviderSession, type CapturedProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { createMessageRecipientResolver } from "./message-recipient.js";
 import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
-import { resolveAnalysisGatewayBaseUrl } from "../../../analyst/host/analysis-types.js";
+import { resolveConsoleAiGatewayBaseUrl } from "../../../ai-gateway/host/gateway-url.js";
 import { createTranscriptLinkReader, MAX_LINK_TEXT_CHARS, selectLinksIn } from "./transcript-links.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
@@ -306,7 +306,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const operation = ctx.host.operations.get(payload.operationId);
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
-        const providerSession = readAnalysisProviderSession(operation.payload.session);
+        const providerSession = readCapturedProviderSession(operation.payload.session);
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
         // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
@@ -1354,7 +1354,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
         // providerSession까지 지우고, payload에 구 세션이 남으면 성공 patch가 그것을 다시
         // 심는다. attach 실패 시에는 catch에서 payload providerSession을 원복해
-        // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
+        // 일반 resume 재시도와 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
         payloadWithoutProvider.session = {
@@ -1407,7 +1407,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
-        // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
+        // 복원한다 — payload의 providerSession이 resume과 transcript의 단일 권위다.
         const livePayload = ctx.host.operations.get(sessionId)?.payload;
         const rollbackPayload = retainSubagentSpawn({ ...(livePayload ?? {}) }, livePayload);
         rollbackPayload.session = providerSession;
@@ -2168,7 +2168,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트도 PTY와 같은 Theater 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
-    const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
+    const gatewayBaseUrl = resolveConsoleAiGatewayBaseUrl(origin);
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
     // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
     try {
@@ -2804,7 +2804,7 @@ function isOperationRestoredEvent(value: unknown): value is { readonly operation
 }
 
 
-function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, runtimeSession: AgentTerminalSessionInfo, capturedSession?: CapturedAgentSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, runtimeSession: AgentTerminalSessionInfo, capturedSession?: CapturedAgentSession | CapturedProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
   for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession", "labelSource", "providerTitle", "restoredDormant"]) {
     delete payload[key];

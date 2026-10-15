@@ -20,7 +20,6 @@ vi.mock("../terminal/shared/index.js", () => ({
   },
 }));
 
-import { disposeAnalysisStore } from "../../../analyst/client/analysis-store.js";
 import { agentOperationKind, agentExecution } from "./index.js";
 import { applySessionUpdate, getAgentState, removeSession } from "./store.js";
 
@@ -32,7 +31,6 @@ let root: Root | null = null;
 
 afterEach(() => {
   act(() => root?.unmount());
-  disposeAnalysisStore(OPERATION_ID);
   removeSession(OPERATION_ID);
   container?.remove();
   root = null;

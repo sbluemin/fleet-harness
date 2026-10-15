@@ -50,7 +50,6 @@ const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
 const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../features/execution/client/agent/index.tsx", import.meta.url);
-const TERMINAL_ANALYSIS_CSS_PATH = new URL("../features/analyst/client/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../features/execution/client/agent/agent-cli.css", import.meta.url);
 const TERMINAL_SURFACE_PATH = new URL("../features/execution/client/terminal/shared/terminal-surface.tsx", import.meta.url);
 const TERMINAL_CHAT_VIEW_PATH = new URL("../features/execution/client/agent/chat/chat-view.tsx", import.meta.url);
@@ -144,8 +143,6 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
   ".history-commit-avatar",
-  ".session-analyst__receipt-chev",
-  ".session-analyst__ev",
   ".agent-chat-fold-chev",
 ] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
@@ -1618,7 +1615,6 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const layout = source("styles/layout.css");
     const skillsCss = externalSource(SKILLS_CSS_PATH);
-    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // 팝업은 유리 틴트 위에 팝업 전용 바탕층을 깐다. 이 채널은 다크 유리 게이트와 투명도 축소
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
@@ -1665,9 +1661,6 @@ describe("Instrument core design contract", () => {
     expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--float-underlay\);/);
     expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--float-underlay\);/);
     expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--float-underlay\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--float-underlay\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--float-underlay\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--float-underlay\);/);
     // Quaker aides float over the Map — the same glass token that is opaque on Instrument
     // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
     for (const selector of [
@@ -2332,13 +2325,13 @@ describe("Instrument core design contract", () => {
     expect(themeCssForSweep).toContain("--live-sweep-trough: var(--text-tertiary);");
     expect(themeCssForSweep).toContain("--live-sweep-crest: var(--text-primary);");
     // 라이트만 트러프를 텍스트 사다리에서 한 단 떼어 낸다. 대비의 기준 면은 평평한 패널이 아니라
-    // 물결이 실제로 도는 **라이브 행**이다 — "Thinking" 줄과 분석가 펄스는 aurora 4%를 섞은
+    // 물결이 실제로 도는 **라이브 행**이다 — "Thinking" 줄은 aurora 4%를 섞은
     // raised(라이트에서 --ink-deep) 위 L93.68%에 앉아 패널보다 어둡다. 패널 기준으로 고른 L55는
     // 그 행에서 4.03:1로 본문 AA 아래였다. L52가 라이브 행 4.58:1 / 패널 5.23:1로 경계(L52.39)
     // 안쪽이다. 트러프는 물결의 3분의 2를 차지하는 휴지 잉크라 판독이 진폭보다 먼저다.
     const whitesSweepBlock = themeCssForSweep.match(/^:root\[data-theme="light"\][^{]*\{[^}]*\}/m)?.[0] ?? "";
     expect(whitesSweepBlock).toContain("--live-sweep-trough: oklch(52% 0.012 95);");
-    // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 두 면이 같은 레시피를 쓰는 것이
+    // 라이브 행의 바탕이 바뀌면 위 대비 계산의 전제가 무너진다 — 채팅 행이 같은 레시피를 쓰는 것이
     // 그 계산의 근거이므로 함께 못박는다.
     // 섞는 공간은 oklab이다 — oklch는 두 색의 색상 호를 걸어 whites에서 aurora 30% 테두리가
     // hue 133(녹회색)으로 떨어졌다(실측). 4% 바탕의 명도(L93.68%)는 두 공간에서 같으므로
@@ -2347,7 +2340,6 @@ describe("Instrument core design contract", () => {
     expect(chat).not.toContain("color-mix(in oklch, var(--aurora) 30%, var(--hairline))");
     expect(chat).toContain("border-color: color-mix(in oklab, var(--aurora) 30%, var(--hairline));");
     expect(chat).toContain(liveRowSurface);
-    expect(externalSource(TERMINAL_ANALYSIS_CSS_PATH)).toContain(liveRowSurface);
     // 라이트가 마루를 따로 잡으면 극성 계약이 조용히 갈린다 — 마루는 기본값을 그대로 받는다.
     expect(whitesSweepBlock).not.toContain("--live-sweep-crest:");
     // 진행 중 턴 헤드의 시계는 물결을 지지 않는다 — "이 턴이 아직 살아 있다"는 원장의 라이브
@@ -2471,7 +2463,7 @@ describe("Instrument core design contract", () => {
     const agentGlyphs = fs.readFileSync(fileURLToPath(new URL("../features/execution/client/agent/agent-glyphs.tsx", import.meta.url)), "utf8");
     expect(agentGlyphs).toContain('stroke="currentColor"');
     expect(agentGlyphs).not.toMatch(/var\(--(aurora|positive|warn|coral|brass|id-)/);
-    for (const family of ["delegate", "run", "workflow", "think", "artifact"]) {
+    for (const family of ["delegate", "run", "workflow", "think"]) {
       expect(agentGlyphs, family).toContain(`${family}: [`);
     }
     const chatView0Glyphs = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
@@ -2480,12 +2472,6 @@ describe("Instrument core design contract", () => {
     // 원장의 위임 절과 작업 면의 위임 카드가 이미 쓰는 그 글자다.
     expect(chatView0Glyphs).toContain('<span className="agent-chat-tally-glyph" aria-hidden="true">');
     expect(chatView0Glyphs).toContain('<AgentGlyph name={group.family === AGENT_CHAT_JOB_FAMILY ? "delegate" : group.family} />');
-    // 분석가 시길도 같은 알파벳을 쓴다 — 같은 뜻을 두 면이 다른 기호로 부르지 않는다.
-    for (const panel of ["analysis-chat-panel.tsx", "analysis-artifacts-panel.tsx"]) {
-      const source0 = fs.readFileSync(fileURLToPath(new URL(`../features/analyst/client/${panel}`, import.meta.url)), "utf8");
-      expect(source0, panel).not.toContain('aria-hidden="true">◆</span>');
-      expect(source0, panel).toContain("<AgentGlyph name=");
-    }
     // 표식과 그 문구는 한 덩어리다 — 절 사이 간격을 그대로 쓰면 표식이 앞 절 끝에 붙어 읽힌다.
     const chatTallyClauseBlock = chat.match(/^\.agent-chat-tally-clause \{[^}]*\}/m)?.[0] ?? "";
     expect(chatTallyClauseBlock).toContain("gap: var(--space-1);");
@@ -2695,97 +2681,13 @@ describe("Instrument core design contract", () => {
     expect(skillsCss).not.toMatch(/color-mix\([^)]*\b(?:black|white)\b/);
   });
 
-  it("pins the Session Analyst chat-grammar surfaces", () => {
-    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
-    // 드로어 바닥은 오퍼레이션 패널과 같은 --surface-panel 한 장이다. pillar로 되돌아가면 안 되고,
-    // 포커스 워시(--surface-window)는 캡션 전용이므로 본문이 따라가서도 안 된다.
-    expect(terminalAnalysisCss).toContain("background: var(--glass-tint-panel-face);");
-    expect(terminalAnalysisCss).not.toContain("surface-pillar");
-    expect(terminalAnalysisCss).not.toContain("surface-window");
-    // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
-    expect(terminalAnalysisCss).toContain("var(--surface-panel-raised)");
-    // 정체·상태·모드는 컴포저 위 발판 줄이 진다 — 캡션 띠도, 본문 위에 뜨는 줄도 아니다.
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__footing \{/);
-    expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__footing \{[^}]*position: absolute/);
-    expect(terminalAnalysisCss).not.toContain(".session-analyst__chips");
-    expect(terminalAnalysisCss).not.toContain(".session-analyst__panel-head--artifacts");
-    expect(terminalAnalysisCss).not.toContain(".session-analyst__turn-node");
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
-    // 끝난 턴의 접힘은 채팅 원장의 `.agent-chat-fold`와 같은 문법이다 — 문장이지 카드가 아니다.
-    // 알약(면·테두리)으로 되돌아가면 이 줄이 결말을 말하는 문장이 아니라 물건으로 읽힌다.
-    const analystReceiptSummary = terminalAnalysisCss.match(/\.session-analyst__receipt > summary \{[^}]*\}/)?.[0] ?? "";
-    expect(analystReceiptSummary).not.toContain("border:");
-    expect(analystReceiptSummary).not.toContain("background:");
-    expect(analystReceiptSummary).not.toContain("radius-pill");
-    // 결말의 성패는 접힘 줄 아래 결말 문구가 진다 — 접힘 줄이 ✓를 또 들면 두 곳이 같은 말을 한다.
-    expect(terminalAnalysisCss).not.toContain(".session-analyst__receipt-mark");
-    // 물결은 채팅 원장의 것과 한 벌이다. 값이 갈라지면 같은 사실을 두 면이 다른 속도로 말한다.
-    // 줄머리에 못을 박는다 — 앵커 없는 `.session-analyst__live-text {`는 합성 규칙의
-    // `strong.session-analyst__live-text {` 꼬리에도 물린다.
-    const analystWave = terminalAnalysisCss.match(/^\.session-analyst__live-text \{[^}]*\}/m)?.[0] ?? "";
-    expect(analystWave).toContain("background-size: 200% 100%;");
-    expect(analystWave).toContain("background-clip: text;");
-    expect(analystWave).toContain("color: transparent;");
-    expect(analystWave).toContain("animation: analyst-live-sweep 2.4s linear infinite;");
-    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--apex", "--id-"]) {
-      expect(analystWave, signal).not.toContain(signal);
-    }
-    // 한 벌이라는 말은 두 면이 같은 두 끝을 문다는 뜻이다 — 원장만 물결 토큰으로 옮기면
-    // 라이트에서 이 면만 진폭이 죽어 같은 사실을 두 면이 다른 세기로 말하게 된다.
-    expect(analystWave).toContain("var(--live-sweep-trough) 0%,");
-    expect(analystWave).toContain("var(--live-sweep-crest) 50%,");
-    expect(analystWave).toContain("var(--live-sweep-trough) 100%");
-    expect(analystWave).not.toContain("var(--text-tertiary)");
-    expect(analystWave).not.toContain("var(--text-primary)");
-    // 되풀이는 이음매가 없어야 한다 — 이동량이 타일 한 폭의 정수배여야 마지막 프레임이 첫
-    // 프레임과 같다(200% 이미지에 ΔP 200 = 2W = 타일 한 폭).
-    expect(terminalAnalysisCss).toMatch(
-      /@keyframes analyst-live-sweep \{\s*from \{ background-position: 200% 0; \}\s*to \{ background-position: 0% 0; \}/,
-    );
-    // 펄스 문구는 애니메이션을 둘 진다(도착 + 물결). 합성하지 않으면 도착 애니메이션이 같은
-    // 속성을 더 높은 특정성으로 쥐고 있어 물결이 조용히 죽고 정지된 그라데이션만 남는다.
-    expect(terminalAnalysisCss).toMatch(
-      /\.session-analyst__pulse-copy strong\.session-analyst__live-text \{[\s\S]*?analyst-stage-enter[\s\S]*?analyst-live-sweep 2\.4s linear infinite;/,
-    );
-    // 봉인은 모션만 죽인다 — `color: transparent`가 남으면 글자가 통째로 사라진다.
-    const analystSeal = terminalAnalysisCss.match(
-      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-analyst__live-text \{[^}]*\}/,
-    )?.[0] ?? "";
-    expect(analystSeal).toContain("animation: none;");
-    expect(analystSeal).toContain("background-image: none;");
-    expect(analystSeal).toContain("color: var(--text-secondary);");
-    // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
-    expect(terminalAnalysisCss).toContain("color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised))");
-    // 아티팩트는 드로어 안의 모드다 — 발판 줄의 글리프가 가르고, 세로 핸들과 두 번째 컴패니언은 되살아나면 안 된다.
-    const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
-    const terminalAgentEntry = externalSource(TERMINAL_AGENT_PATH);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__glyph \{/);
-    expect(terminalAnalysisCss).not.toContain(".session-analyst__modechip");
-    expect(terminalAnalysisCss).not.toContain(".session-analyst-handle");
-    // Analyst 진입은 캡션 동작 선반의 첫 버튼이다 — 전환·읽기 폭과 같은 줄·같은 문법.
-    expect(terminalChatCss).not.toContain(".agent-view-chip-row");
-    expect(terminalChatCss).not.toContain(".agent-analyst-chip");
-    expect(terminalAgentEntry).toContain('actionId="analyst"');
-    expect(terminalAgentEntry).toContain("<CaptionAnalystGlyph />");
-    expect(terminalAgentEntry).toContain("captionActions: (context) => <AgentCaptionActions context={context} />");
-    // 분석가는 캡션 없는 companion이다 — 정체·상태·모드 컨트롤은 본문의 발판 줄이 지고, 호스트는
-    // 캡션 높이를 본문에 돌려준다(canvas reclaimCaptionOutset). 캡션 슬롯을 다시 채우면 두 머리가 선다.
-    expect(terminalAgentEntry).toContain("hideCaption: true");
-    expect(terminalAgentEntry).not.toContain("AnalystCaption");
-    expect(terminalAgentEntry).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
-  });
-
   it("keeps the retired carrier identity grammar out of the product", () => {
-    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
     const theme = source("styles/theme.css");
 
     // 캐리어 스트림과 함장 정체성 토큰은 함께 퇴역했다 — 어느 한쪽만 되살아나도 잡는다.
     expect(theme).not.toContain("--captain-");
     expect(theme).not.toContain("--carrier-");
-    expect(terminalAnalysisCss).not.toContain("carrier-stream-column");
-    expect(terminalAnalysisCss).not.toContain("carrier-sortie-ribbon");
-    expect(terminalAnalysisCss).not.toContain("data-captain");
     expect(terminalAgent).not.toContain("data-captain");
   });
 

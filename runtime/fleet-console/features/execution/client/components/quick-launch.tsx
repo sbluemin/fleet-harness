@@ -1431,7 +1431,7 @@ export function QuickLaunch() {
       clearMention();
       return;
     }
-    // Enter 제출 · Shift+Enter 개행 · IME 조합 중 Enter는 확정이지 제출이 아니다(Analyst 컴포저와 같은 계약).
+    // Enter 제출 · Shift+Enter 개행 · IME 조합 중 Enter는 확정이지 제출이 아니다.
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     submit();
@@ -2342,7 +2342,7 @@ function PinIcon() {
 }
 
 function autoGrow(element: HTMLTextAreaElement): void {
-  // 6줄까지 자라고 그 뒤로는 스크롤한다(Analyst 컴포저와 같은 clamp 정책). max-height는 CSS가 소유하므로
+  // 6줄까지 자라고 그 뒤로는 스크롤한다. max-height는 CSS가 소유하므로
   // 여기서는 scrollHeight만 반영하고 상한은 CSS가 자른다.
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;

@@ -52,10 +52,7 @@ function tryServeStaticConsole(
   try {
     const data = fs.readFileSync(absolutePath);
     const contentType = MIME_TYPES[path.extname(absolutePath)] ?? "application/octet-stream";
-    // 분석가 아티팩트 문서는 응답 헤더 sandbox로 opaque origin에서 렌더되고, @font-face
-    // fetch는 CORS 모드라 Origin: null로 도착한다 — 공개 정적 서체 자산에만 ACAO를 연다.
-    const fontCors = contentType === MIME_TYPES[".woff2"] ? { "Access-Control-Allow-Origin": "*" } : {};
-    res.writeHead(200, withSecurityHeaders({ "Content-Type": contentType, ...fontCors }));
+    res.writeHead(200, withSecurityHeaders({ "Content-Type": contentType }));
     if (req.method === "HEAD") {
       res.end();
       return true;

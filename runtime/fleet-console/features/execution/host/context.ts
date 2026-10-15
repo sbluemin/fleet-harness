@@ -45,7 +45,7 @@ export interface ConsoleRuntimeContext {
   /** launch 프롬프트 파일의 자리. 이 Console의 runtime lock 도메인에 묶여 있고, 회수는 부트스트랩이 lock 뒤에 부른다. */
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   /**
-   * Spawns every agent CLI this Console's SDK users start (chat, Analyst, the routing model) into a process group this
+   * Spawns every agent CLI this Console's SDK users start (chat, the routing model) into a process group this
    * Console owns. Required: an SDK user without it would spawn children the Console's deadline never ends.
    */
   readonly spawnAgentProcess: ClaudeProcessSpawner;

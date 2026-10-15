@@ -1,6 +1,6 @@
 import type { AgentSession, CapturedAgentSession } from "./types.js";
 
-export type AnalysisProviderSession = CapturedAgentSession | {
+export type CapturedProviderSession = CapturedAgentSession | {
   readonly harness: "codex";
   readonly id: string;
   readonly transcriptPath?: string;
@@ -32,7 +32,7 @@ export function readProviderSession(payload: Record<string, unknown> | undefined
   return { ...session, id: session.id, capturedAt: session.capturedAt };
 }
 
-export function readAnalysisProviderSession(value: unknown): AnalysisProviderSession | undefined {
+export function readCapturedProviderSession(value: unknown): CapturedProviderSession | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const candidate = value as Record<string, unknown>;
   if (candidate.harness === "claude-code") return readProviderSession({ session: value });

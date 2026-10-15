@@ -16,7 +16,7 @@ export interface MigrateLegacyCapturesDeps {
 type CaptureFileOutcome = {
   /** live store payload에 실제로 이관했음 */
   readonly migrated: boolean;
-  /** tombstone Operation이 Analyst용 capture를 아직 필요로 해 파일을 남겨야 함 */
+  /** tombstone Operation 복원 시 세션 매핑을 되찾도록 capture 파일을 남겨야 함 */
   readonly retained: boolean;
 };
 
@@ -113,7 +113,7 @@ function processCaptureFile(
   }
 
   // live store에 없으면 삭제 유예 tombstone을 본다 — tombstone payload는 수정하지 않고,
-  // Analyst transcript용 capture만 다음 부팅까지 보존한다.
+  // 세션 매핑이 없는 Operation의 capture만 다음 부팅까지 보존한다.
   const tombstoned = deps.tombstonedOperations?.find((candidate) => candidate.id === operationId);
   if (tombstoned && !hasSession(tombstoned.payload)) {
     return { migrated: false, retained: true };
