@@ -112,6 +112,11 @@ export type GroupTimelineEntry = EntryCoordinate & (
   | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: string; readonly text: string }
+  /**
+   * 사람이 결정 요청에 보낸 답 — 요청 하나에 한 줄, 답한 시각(`at`)의 자리에 선다. 질문마다 머리말(있으면)·질문·답(고른 선택지와 쓴 말).
+   * 보드가 결정으로 남긴 답만 싣는다. 사람의 말과 같은 오른쪽 말풍선으로, 받는 이는 대화의 지휘관이다.
+   */
+  | { readonly kind: "decision-answer"; readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string }[] }
 );
 
 /** Objectives 등 플러그인이 기존 OperationCluster 포트로 보내는 보드 사실. */

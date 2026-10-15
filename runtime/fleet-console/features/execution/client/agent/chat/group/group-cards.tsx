@@ -13,7 +13,7 @@ import {
   useUseRequestClock,
 } from "../../use-request-card.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark, SpeakerName } from "./speaker-mark.js";
+import { SpeakerMark } from "./speaker-mark.js";
 
 /**
  * 대화 안 카드 — 지휘관의 결정 요청과 Console·컴퓨터 사용 허용 요청.
@@ -22,24 +22,19 @@ import { SpeakerMark, SpeakerName } from "./speaker-mark.js";
  * 닿고, 누르고 있는 Enter·Space 의 반복으로는 확정되지 않는다.
  */
 
-/** 답한 결정 — 보드에서 요청이 걷혀도 대화에는 질문마다 무엇을 골랐는지 남는다(이 화면을 보는 동안). */
-export interface SettledDecision {
-  readonly id: string;
-  readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string }[];
-}
-
 /**
  * 결정 요청 카드 — 질문마다 선택지와 직접 답하기. 모든 질문에 답해야 보낸다. 보내는 길은 하나다: 계약의 `decision.answer`
  * 가 있으면 그것만, 없으면 `actions.answerDecision` 만 부른다. 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
  */
-export function DecisionCard({ decision, actions, asker, language, phone = false, onSettled }: {
+export function DecisionCard({ decision, actions, asker, language, phone = false, onAnswered }: {
   readonly decision: ConversationDecision;
   readonly actions: GroupConversationActions | null;
   readonly asker: ConversationSpeaker | null;
   readonly language: ConsoleLocale | undefined;
   /** 폰 그룹 대화 — 폰에는 보드가 없고 링크는 그 대화의 목표 탭으로 가므로 링크 이름을 바꾼다. */
   readonly phone?: boolean;
-  readonly onSettled: (settled: SettledDecision) => void;
+  /** 답이 받아들여졌다 — 답 자체는 보드가 결정으로 남긴 대화 줄(`decision-answer`)로 그 시각 자리에 선다. */
+  readonly onAnswered: (decisionId: string) => void;
 }) {
   const t = getGroupT(language);
   const [picks, setPicks] = React.useState<Readonly<Record<string, readonly string[]>>>({});
@@ -83,12 +78,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
     setFailed(false);
     try {
       await submitPath(answers);
-      const settledAnswers = decision.questions.map((question) => {
-        const labels = question.options.filter((option) => (picks[question.id] ?? []).includes(option.id)).map((option) => option.label);
-        const own = (texts[question.id] ?? "").trim();
-        return { ...(question.header ? { header: question.header } : {}), question: question.text, answer: [...labels, ...(own ? [own] : [])].join(", ") };
-      });
-      onSettled({ id: decision.id, answers: settledAnswers });
+      onAnswered(decision.id);
     } catch {
       setFailed(true);
     } finally {
@@ -161,41 +151,6 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
         </button>
       </div>
     </section>
-  );
-}
-
-/**
- * 답한 결정 — 사람이 보낸 말과 같은 오른쪽 말풍선으로 선다(같은 면·반경·여백, 머리의 「→ 받는 이 · 행위」 줄).
- * 질문마다 머리말 칩(있으면, 결정 카드와 같은 칩)·질문(작은 보조 글자)·답(본문 글자)이 쌓이고, 아무리 길어도 말풍선 폭 안에서 줄을 바꾼다.
- */
-export function SettledDecisionLine({ settled, asker, language }: {
-  readonly settled: SettledDecision;
-  readonly asker: ConversationSpeaker | null;
-  readonly language: ConsoleLocale | undefined;
-}) {
-  const t = getGroupT(language);
-  return (
-    <div className="group-chat-human">
-      <span className="group-chat-human-to">
-        {asker ? <>
-          <span aria-hidden="true">→</span>
-          <SpeakerMark speaker={asker} size="sm" />
-          <SpeakerName speaker={asker} />
-          <span className="group-chat-line-sep" aria-hidden="true">·</span>
-        </> : null}
-        <span className="group-chat-via">{t("group.decision.answered")}</span>
-        <span className="group-card-settled-mark" aria-hidden="true">✓</span>
-      </span>
-      <div className="group-chat-bubble is-human group-card-settled-body">
-        {settled.answers.map((entry, at) => (
-          <div key={at} className="group-card-settled-item">
-            {entry.header ? <span className="group-card-header">{entry.header}</span> : null}
-            <span className="group-card-settled-q">{entry.question}</span>
-            <span>{entry.answer}</span>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

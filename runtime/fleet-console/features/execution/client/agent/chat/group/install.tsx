@@ -25,7 +25,7 @@ import { stopAgentChatTurn } from "../../api.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
-import { DecisionCard, SettledDecisionLine, UseRequestGroupCard, type SettledDecision } from "./group-cards.js";
+import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
@@ -179,15 +179,14 @@ function RootConversation({ root, language, phone = false }: { readonly root: Op
   const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
   const openRecord = useOpenBoardActionRecord(useGroupClusters());
-  // 답한 결정은 보드에서 요청이 걷혀도 이 화면을 보는 동안 한 줄로 남는다.
-  const [settled, setSettled] = React.useState<readonly SettledDecision[]>([]);
-  React.useEffect(() => setSettled([]), [root.id]);
+  // 답이 받아들여진 요청은 보드가 요청을 걷기 전에도 카드를 내린다. 답은 보드가 결정으로 남긴 대화 줄로 그 시각 자리에 선다.
+  const [answered, setAnswered] = React.useState<readonly string[]>([]);
+  React.useEffect(() => setAnswered([]), [root.id]);
   const speakerOf = (operationId: string) => snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
-  const decision = snapshot.decision && !settled.some((entry) => entry.id === snapshot.decision!.id) ? snapshot.decision : null;
+  const decision = snapshot.decision && !answered.includes(snapshot.decision.id) ? snapshot.decision : null;
   const cards = (
     <>
-      {settled.map((entry) => <SettledDecisionLine key={entry.id} settled={entry} asker={commander} language={language} />)}
       {decision ? (
         <DecisionCard
           decision={decision}
@@ -195,7 +194,7 @@ function RootConversation({ root, language, phone = false }: { readonly root: Op
           asker={commander}
           language={language}
           phone={phone}
-          onSettled={(entry) => setSettled((current) => [...current.filter((item) => item.id !== entry.id), entry])}
+          onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speaker={speakerOf(request.operationId)} language={language} />)}
