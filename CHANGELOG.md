@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.236.0] - 2026-10-15
+
+### fleet-console
+
+#### Added
+- Edit intel you already gave the Commodore right where it sits in the Intel tab, on desktop and on your phone; the item keeps its place, shows that it was edited, and the Commodore is told about the change.
+
+#### Changed
+- Console themes are now just Dark and Light. If you used Instrument, Maritime, or Carbon you move to Dark, and Whites moves to Light, with no action needed.
+
+#### Fixed
+- In group chat, a decision you answered now stays where you answered it instead of sticking to the bottom below newer messages, and it is still there after a reload.
+
 ## [1.235.1] - 2026-10-15
 
 ### fleet-console

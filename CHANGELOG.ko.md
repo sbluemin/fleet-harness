@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.236.0] - 2026-10-15
+
+### fleet-console
+
+#### Added
+- 사령관 '정보' 탭에서 이미 넣은 정보를 데스크톱과 휴대폰 모두 그 자리에서 고칠 수 있습니다. 항목은 원래 자리를 지키며 수정됨으로 표시되고, 사령관도 수정 사실을 전달받습니다.
+
+#### Changed
+- Console 테마가 다크와 라이트 두 가지로 정리되었습니다. Instrument·Maritime·Carbon을 쓰던 경우 다크로, Whites를 쓰던 경우 라이트로 자동으로 옮겨지며 따로 할 일은 없습니다.
+
+#### Fixed
+- 그룹 대화에서 답한 결정이 이후 메시지 아래 맨 밑에 붙어 있지 않고 답한 자리에 남으며, 새로고침한 뒤에도 그대로 보입니다.
+
 ## [1.235.1] - 2026-10-15
 
 ### fleet-console
