@@ -238,8 +238,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       setTakeover(seat === null);
       setScrimGeometry(null);
       setGeometry((current) => current && current.left === seated.left && current.top === seated.top && current.right === seated.right && current.bottom === seated.bottom ? current : seated);
-      // 칸·대화 칸의 폭 전이, 그리고 시트 자신의 등장 애니메이션(대화 칸 이어받기)이 끝나야 정착이다.
-      const settling = [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)))
+      // 칸·대화 칸의 폭 전이, 그리고 시트 자신의 등장 애니메이션(대화 칸 이어받기)이 끝나야 정착이다. 사람이 칸 경계를 끄는 동안
+      // (data-resizing)도 정착 전이다 — 뷰는 놓을 때까지 물러나 있다가 놓은 자리에 한 번 선다.
+      const settling = seat?.dataset.resizing === "true" || [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)))
         || (sheetRef.current?.getAnimations?.() ?? []).some((animation) => animation.playState === "running");
       return { ...seated, settling, split: true };
     }

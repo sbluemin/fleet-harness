@@ -538,6 +538,7 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
     let captureTaskId = 0;
     let captureFailed = false;
     let restoreTimer: ReturnType<typeof setTimeout> | null = null;
+    let heldParkBounds: Record<string, unknown> | null = null;
 
     const abortActiveCapture = () => {
       if (!captureTask) return;
@@ -610,13 +611,17 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
 
     const measure = () => {
       const rect = element.getBoundingClientRect();
-      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay;
+      // 이 패널을 실은 칸의 폭을 사람이 끄는 동안(조상의 data-resizing)도 가려진 것과 같다 — 뷰를 정지 화면 뒤로 물려
+      // 끄는 포인터를 뷰가 가져가지 않게 하고, 놓은 뒤 정착한 자리에 한 번 다시 놓는다.
+      const held = element.closest('[data-resizing="true"]') !== null;
+      const covered = document.querySelector('[aria-modal="true"]') !== null || captionOverlay || held;
       const live = activeTab !== null && mode === "none" && document.visibilityState === "visible" && bodyLive !== false && rect.width >= 1 && rect.height >= 1;
       const shown = live && !covered;
       const visible = shown ? visibleRect(host, rect) : null;
 
       if (visible) {
         wantsHideRef.current = false;
+        heldParkBounds = null;
         captureFailed = false;
         pendingParkBoundsRef.current = null;
         abortActiveCapture();
@@ -639,7 +644,11 @@ export function SessionBrowserPanel({ ownerId: operationId, language, theme, bod
         restoreTimer = null;
       }
 
-      const parkBounds = { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
+      // 끄는 동안 물러난 뷰는 처음 물러난 자리에 그대로 둔다 — 매 프레임 바뀌는 폭을 서버·셸로 보내 숨은 페이지를 거듭 리사이즈하지 않게.
+      if (!held) heldParkBounds = null;
+      const parkBounds = (held ? heldParkBounds : null)
+        ?? { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height), visible: false };
+      if (held) heldParkBounds = parkBounds;
 
       if (!live || !activeTab) {
         wantsHideRef.current = false;

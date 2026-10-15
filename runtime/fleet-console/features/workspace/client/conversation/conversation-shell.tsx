@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -35,7 +35,7 @@ import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
+import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, setConversationSplitWidth, useConversationSplitWidth, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -621,7 +621,10 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     if (sessionSplit !== null && sessionSplit.subjectKey !== sessionSubjectKey) closeSessionBrowserSplit();
   }, [sessionSplit, sessionSubjectKey]);
   const viewportWidth = useViewportWidth();
-  const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets);
+  const preferredSplitWidth = useConversationSplitWidth();
+  // 경계를 끄는 동안 대화 칸과 브라우저 칸은 전이 없이 포인터를 바로 따라간다.
+  const [splitResizing, setSplitResizing] = useState(false);
+  const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets, preferredSplitWidth);
   const splitOperation = splitKind === "operation" && operationSplit !== null
     ? state.operations.find((candidate) => candidate.id === operationSplit.operationId)
       ?? state.nestedOperations.find((candidate) => candidate.id === operationSplit.operationId)
@@ -634,7 +637,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   return (
     <>
     <section
-      className="conversation-stage"
+      className={`conversation-stage${splitResizing ? " is-split-resizing" : ""}`}
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 브라우저 칸이 서면 그 폭만큼 더 비킨다.
       style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
       aria-label={t("conversation.stage.aria")}
@@ -684,6 +687,8 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       state={state}
       language={language}
       operationKinds={operationKinds}
+      resizing={splitResizing}
+      onResizingChange={setSplitResizing}
     />
     </>
   );
@@ -1286,6 +1291,8 @@ const SPLIT_MIN_WIDTH = 360;
 interface SplitSeat {
   /** 칸의 폭. */
   readonly width: number;
+  /** 경계를 끌어 넓힐 수 있는 끝 — 대화 열이 CONVERSATION_MIN_WIDTH 를 지키는 폭이다. 좁힐 수 있는 끝은 SPLIT_MIN_WIDTH. */
+  readonly maxWidth: number;
   /** 칸의 오른쪽 끝 — 레일 옆이면 레일 폭, 레일 위로 덮으면 0. */
   readonly right: number;
   /** 대화 칸(.conversation-stage)의 right — 레일과 칸을 합친 만큼 비킨다. */
@@ -1294,19 +1301,22 @@ interface SplitSeat {
 }
 
 /**
- * 칸의 자리 — 대화 열과 브라우저가 남은 폭을 반씩 나눈다. 대화 열은 CONVERSATION_MIN_WIDTH, 칸은 SPLIT_MIN_WIDTH 밑으로 줄지
- * 않는다. 레일(오른쪽 패널) 옆에 둘 자리가 모자라면 칸이 레일 위로 덮는다(레일은 그 아래 그대로 산다). 그것도 모자라면 칸을
+ * 칸의 자리 — 사람이 경계를 끌어 고른 폭(preferred)이 있으면 그 폭, 없으면 대화 열과 브라우저가 남은 폭을 반씩 나눈다. 어느 쪽이든
+ * 대화 열은 CONVERSATION_MIN_WIDTH, 칸은 SPLIT_MIN_WIDTH 밑으로 줄지 않게 지금 창 폭으로 clamp 한다(고른 값 자체는 바꾸지 않는다).
+ * 레일(오른쪽 패널) 옆에 둘 자리가 모자라면 칸이 레일 위로 덮는다(레일은 그 아래 그대로 산다). 그것도 모자라면 칸을
  * 세우지 않는다 — Fleet 브라우저는 기존 시트 기하로 뜨고, Operation 브라우저는 열지 않는다.
  */
-function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets): SplitSeat | null {
-  const fit = (available: number) => available - CONVERSATION_MIN_WIDTH >= SPLIT_MIN_WIDTH
-    ? Math.max(SPLIT_MIN_WIDTH, Math.min(Math.round(available / 2), available - CONVERSATION_MIN_WIDTH))
-    : null;
+function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets, preferred: number | null): SplitSeat | null {
+  const fit = (available: number) => {
+    const maxWidth = available - CONVERSATION_MIN_WIDTH;
+    if (maxWidth < SPLIT_MIN_WIDTH) return null;
+    return { width: Math.max(SPLIT_MIN_WIDTH, Math.min(preferred ?? Math.round(available / 2), maxWidth)), maxWidth };
+  };
   const beside = fit(viewportWidth - insets.left - insets.right);
-  if (beside !== null) return { width: beside, right: insets.right, stageRight: insets.right + beside, overRail: false };
+  if (beside !== null) return { ...beside, right: insets.right, stageRight: insets.right + beside.width, overRail: false };
   if (insets.right <= 0) return null;
   const over = fit(viewportWidth - insets.left);
-  return over === null ? null : { width: over, right: 0, stageRight: over, overRail: true };
+  return over === null ? null : { ...over, right: 0, stageRight: over.width, overRail: true };
 }
 
 function useViewportWidth(): number {
@@ -1324,7 +1334,7 @@ function useViewportWidth(): number {
  * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 내용이 선다: Fleet 브라우저는 이 칸 위에 시트가 앉아 네이티브 뷰를 한 번
  * 놓고, Session 브라우저(Operation 의 companion · 플러그인 세션의 것)는 이 칸 안에 그린다.
  */
-function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds }: {
+function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds, resizing, onResizingChange }: {
   readonly kind: SplitKind | null;
   readonly seat: SplitSeat | null;
   readonly fallbackRight: number;
@@ -1334,6 +1344,9 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
+  /** 경계를 끄는 중인가 — 칸이 전이 없이 따라가고, data-resizing 으로 브라우저가 네이티브 뷰를 물린다. */
+  readonly resizing: boolean;
+  readonly onResizingChange: (resizing: boolean) => void;
 }) {
   const [settled, setSettled] = useState(false);
   const open = kind !== null && seat !== null;
@@ -1356,7 +1369,8 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
     const fallback = window.setTimeout(() => setClosingKind(null), 600);
     return () => { element?.removeEventListener("transitionend", onEnd); window.clearTimeout(fallback); };
   }, [open, kind]);
-  // 정착 — 폭 전이가 끝나면(또는 전이가 없는 환경이면 곧바로) 내용을 세운다. 닫히면 내용부터 걷는다.
+  // 정착 — 펼치는 폭 전이가 끝나면(또는 전이가 없는 환경이면 곧바로) 내용을 세운다. 닫히면 내용부터 걷는다.
+  // 열린 채 폭만 바뀌면(경계 끌기·창 크기·레일 개폐) 내용은 선 채로 따라간다 — 다시 세우지 않는다.
   useEffect(() => {
     if (!open) { setSettled(false); return; }
     const element = ref.current;
@@ -1367,13 +1381,17 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
     element?.addEventListener("transitionend", onEnd);
     const fallback = window.setTimeout(() => setSettled(true), 600);
     return () => { element?.removeEventListener("transitionend", onEnd); window.clearTimeout(fallback); };
-  }, [open, width]);
+  }, [open]);
   return (
+    <>
+    {open && settled ? <SplitResizeHandle seat={seat} resizing={resizing} onResizingChange={onResizingChange} /> : null}
     <div
       ref={ref}
-      className={`conversation-split${open ? " is-open" : ""}${seat?.overRail ? " is-over-rail" : ""}`}
+      className={`conversation-split${open ? " is-open" : ""}${seat?.overRail ? " is-over-rail" : ""}${open && resizing ? " is-resizing" : ""}`}
       {...(open ? { "data-kind": kind } : closingKind !== null ? { "data-kind": closingKind, "data-closing": "true" } : {})}
       data-settled={open && settled ? "true" : undefined}
+      // 끄는 동안의 표식 — Fleet 브라우저 시트와 칸 안의 Session 브라우저가 이 값을 보고 네이티브 뷰를 정지 화면 뒤로 물린다.
+      data-resizing={open && resizing ? "true" : undefined}
       style={{ right: seat?.right ?? fallbackRight, width }}
       aria-hidden={open ? undefined : true}
     >
@@ -1384,6 +1402,92 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
         <OperationBrowserSplitPane operation={operation} state={state} language={language} operationKinds={operationKinds} />
       ) : null}
     </div>
+    </>
+  );
+}
+
+/** 키보드 한 걸음 — Shift 를 누르면 크게 간다. */
+const SPLIT_RESIZE_STEP = 16;
+const SPLIT_RESIZE_STEP_LARGE = 64;
+
+/**
+ * 대화 열과 브라우저 칸 사이 경계 — 끌면 칸 폭이 바뀐다(왼쪽으로 끌면 브라우저가 넓어진다). 손잡이는 경계의 대화 열 쪽에 선다:
+ * 칸 쪽은 Desktop 에서 네이티브 뷰가 페이지 위를 덮어 포인터를 가져간다. 끄는 동안은 포인터를 손잡이에 붙들고(setPointerCapture)
+ * 칸에 data-resizing 을 달아 브라우저가 네이티브 뷰를 정지 화면 뒤로 물리게 한다 — 커서가 뷰 자리 위를 지나도 끌기가 끊기지 않고,
+ * 놓으면 정착한 자리에 뷰가 한 번 다시 놓인다. 키보드(←/→, Shift 로 크게, Home/End)로도 조절하고, 두 번 누르면 고른 폭을 지워
+ * 반씩 나누는 폭으로 돌아간다. 폭은 언제나 SPLIT_MIN_WIDTH ~ seat.maxWidth(대화 열의 최소폭을 남기는 끝) 안이다.
+ */
+function SplitResizeHandle({ seat, resizing, onResizingChange }: {
+  readonly seat: SplitSeat;
+  readonly resizing: boolean;
+  readonly onResizingChange: (resizing: boolean) => void;
+}) {
+  const t = useT();
+  const seatRef = useRef(seat);
+  seatRef.current = seat;
+  const clamp = (value: number) => Math.max(SPLIT_MIN_WIDTH, Math.min(seatRef.current.maxWidth, Math.round(value)));
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const { pointerId, clientX: startX } = event;
+    const startWidth = seatRef.current.width;
+    let width = startWidth;
+    let done = false;
+    try { handle.setPointerCapture(pointerId); } catch { /* 붙들지 못해도 창 전체의 움직임으로 따라간다. */ }
+    onResizingChange(true);
+    const onMove = (move: PointerEvent) => {
+      if (move.pointerId !== pointerId) return;
+      width = clamp(startWidth + startX - move.clientX);
+      setConversationSplitWidth(width);
+    };
+    const finish = (end: PointerEvent) => {
+      if (done || end.pointerId !== pointerId) return;
+      done = true;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      handle.removeEventListener("lostpointercapture", finish);
+      try { if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId); } catch { /* 이미 풀렸다. */ }
+      // 움직이지 않은 누름(두 번 누르기의 반쪽 포함)은 고른 폭을 만들지 않는다 — 반씩 나누는 기본을 지키게.
+      if (width !== startWidth) setConversationSplitWidth(width, { persist: true });
+      onResizingChange(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? SPLIT_RESIZE_STEP_LARGE : SPLIT_RESIZE_STEP;
+    const current = seatRef.current.width;
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft": next = current + step; break;
+      case "ArrowRight": next = current - step; break;
+      case "Home": next = SPLIT_MIN_WIDTH; break;
+      case "End": next = seatRef.current.maxWidth; break;
+      default: return;
+    }
+    event.preventDefault();
+    setConversationSplitWidth(clamp(next), { persist: true });
+  };
+  return (
+    <div
+      className={`conversation-split-resize${seat.overRail ? " is-over-rail" : ""}${resizing ? " is-resizing" : ""}`}
+      style={{ right: seat.right + seat.width }}
+      role="separator"
+      aria-orientation="vertical"
+      tabIndex={0}
+      aria-label={t("conversation.split.resize")}
+      title={t("conversation.split.resetWidth")}
+      aria-valuenow={seat.width}
+      aria-valuemin={SPLIT_MIN_WIDTH}
+      aria-valuemax={seat.maxWidth}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      onDoubleClick={() => setConversationSplitWidth(null, { persist: true })}
+    />
   );
 }
 

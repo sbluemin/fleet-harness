@@ -159,8 +159,61 @@
   min-height: 0;
 }
 
+/* 대화 열과 칸 사이 경계 손잡이(conversation-shell.tsx SplitResizeHandle) — 경계의 대화 열 쪽 6px 이 끌 자리다(칸 쪽은 Desktop 의
+   네이티브 뷰가 포인터를 가져간다). 평상시에는 그리지 않고, 가리키거나 끌거나 포커스했을 때만 경계 바로 옆 띠가 선다
+   (오른쪽 레일 손잡이 .right-rail-resize-handle 과 같은 문법). 칸이 레일 옆에서 레일 위로 옮겨 가면 칸과 같은 전이로 따라간다. */
+.conversation-split-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  transition: right var(--duration-base) var(--ease-spring);
+}
+
+.conversation-split-resize.is-over-rail { z-index: calc(var(--z-rail, 10) + 2); }
+
+.conversation-split-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 140ms;
+  pointer-events: none;
+}
+
+.conversation-split-resize:hover::after {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+}
+
+.conversation-split-resize.is-resizing::after {
+  background: color-mix(in oklch, var(--brass) 70%, transparent);
+}
+
+.conversation-split-resize:focus-visible { outline: none; }
+
+.conversation-split-resize:focus-visible::after {
+  width: 3px;
+  background: var(--brass);
+}
+
+/* 끄는 동안에는 대화 칸·브라우저 칸·손잡이 모두 전이 없이 포인터를 바로 따라간다 — 전이를 살려 두면 폭이 커서를 늦게
+   쫓아(레일 손잡이의 실측 ~21px) 멈춰야 따라잡는다. 글자 선택도 막는다. */
+.conversation-stage.is-split-resizing,
+.conversation-split.is-resizing,
+.conversation-split-resize.is-resizing {
+  transition: none;
+  user-select: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .conversation-split { transition: none; }
+  .conversation-split,
+  .conversation-split-resize { transition: none; }
 }
 
 .conversation-column {
@@ -1442,6 +1495,11 @@ html[data-desktop-shell="true"] .console-body.is-conversation:has(.conversation-
 
 /* 칸 자체도 루트째 창 끌기에서 뺀다 — 자식(탭·주소·단추)에만 no-drag 를 달면 겹친 drag 사각형이 다시 덮는다(Fleet 시트와 같은 계약). */
 html[data-desktop-shell="true"] .conversation-split.is-open {
+  -webkit-app-region: no-drag;
+}
+
+/* 경계 손잡이도 맨 위 줄(창 끌기 띠) 높이에서 끌 수 있어야 한다 — 창 끌기 대신 칸 폭을 끈다. */
+html[data-desktop-shell="true"] .conversation-split-resize {
   -webkit-app-region: no-drag;
 }
 
