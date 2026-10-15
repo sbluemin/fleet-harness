@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.235.0] - 2026-10-15
+
+### fleet-console
+
+#### Added
+- 대화와 옆에 연 Fleet·Session 브라우저 사이 경계를 끌어 브라우저 폭을 조절할 수 있고, 고른 폭은 기억됩니다.
+
+#### Fixed
+- Quick Launch가 사령관을 아바타와 지정한 별칭으로 보여 주고, 별칭을 바꾸거나 지우면 이름이 바로 갱신됩니다.
+
 ## [1.234.1] - 2026-10-15
 
 Release v1.234.1

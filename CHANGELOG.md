@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.235.0] - 2026-10-15
+
+### fleet-console
+
+#### Added
+- Drag the edge between a conversation and the Fleet or Session browser beside it to resize the browser; the width you choose is remembered.
+
+#### Fixed
+- Quick Launch now shows each Commodore with its avatar and the alias you gave it, and updates the name as soon as you change or clear the alias.
+
 ## [1.234.1] - 2026-10-15
 
 Release v1.234.1
