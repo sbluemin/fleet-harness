@@ -513,6 +513,11 @@
   outline: none;
 }
 
+/* 팔레트 안의 인증 오류 — 검색 알약과 같은 안쪽 여백에 선다. */
+.ai-gateway-palette-error {
+  margin: 0 8px 8px;
+}
+
 .ai-gateway-palette-input::placeholder {
   color: var(--text-tertiary);
 }

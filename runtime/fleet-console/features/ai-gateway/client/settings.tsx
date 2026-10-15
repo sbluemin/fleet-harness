@@ -911,6 +911,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
       saving={saving}
       onAdd={actions.addModel}
       onClose={closePalette}
+      error={auth.error}
     />
   ) : null;
   const addButton = (
@@ -935,7 +936,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     return (
       <>
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-        {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
+        {auth.error && !paletteOpen ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
         <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayModels")} note={t("terminal.settings.aiGatewayModelsHelp")}>
           {/* 폰의 행은 <label>이라 그 안에 선 팔레트를 누르면 행이 추가 버튼을 다시 누른다 — 팔레트는 행 밖에 둔다. */}
           <SettingsItem label={t("terminal.settings.aiGatewayAddModel")}>{addButton}</SettingsItem>
@@ -1041,7 +1042,8 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
         </div>
       </div>
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-      {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
+      {/* 팔레트가 열려 있으면 인증 오류는 팔레트 안에서 말한다 — 카드 머리 아래 자리는 열린 팔레트가 덮는다. */}
+      {auth.error && !paletteOpen ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
       {roster.length === 0 && signedInServices.length === 0 ? (
         <p className="global-settings-help ai-gateway-empty">{t("terminal.settings.aiGatewayAllExposed")}</p>
       ) : (
@@ -1207,7 +1209,7 @@ function AiGatewayServiceGroup({ service }: {
   const t = getT(useTerminalLocale());
   return (
     <section
-      className="ai-gateway-provider-group ai-gateway-provider is-typesafe ai-gateway-service-group"
+      className="settings-group-surface ai-gateway-provider-group ai-gateway-provider is-typesafe ai-gateway-service-group"
       aria-label={service.displayName}
     >
       <div className="ai-gateway-group-head">
@@ -1378,6 +1380,8 @@ interface AiGatewayModelPaletteProps {
   readonly saving: boolean;
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
   readonly onClose: () => void;
+  /** 키 로그인 같은 인증 동작의 오류 — 팔레트가 카드 위를 덮으므로 팔레트 안 검색 줄 아래에서 말한다. */
+  readonly error: string | null;
 }
 
 /** 팔레트 크기 — 폭과 목록 높이. 브라우저별 기억이라 사이드바 폭과 같은 localStorage에 둔다. */
@@ -1507,6 +1511,7 @@ function AiGatewayModelPalette({
   saving,
   onAdd,
   onClose,
+  error,
 }: AiGatewayModelPaletteProps) {
   const t = getT(useTerminalLocale());
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -1662,6 +1667,7 @@ function AiGatewayModelPalette({
         <kbd className="ai-gateway-palette-kbd" aria-hidden="true">↑↓</kbd>
         <kbd className="ai-gateway-palette-kbd" aria-hidden="true">Enter</kbd>
       </div>
+      {error ? <p className="global-settings-error ai-gateway-palette-error" role="alert">{error}</p> : null}
       {/* 목록 전체가 listbox가 아니다 — 머리글에 로그인·순위·엔드포인트 컨트롤이 서므로, 옵션만 담는
           listbox는 프로바이더마다 하나씩이고 바깥은 구조 없는 스크롤 면이다. */}
       <div className="ai-gateway-palette-list">
