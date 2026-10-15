@@ -134,7 +134,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if (!hooks.run?.(theaterId)) throw new ObjectiveStoreError("commodore_inactive");
       return view(theaterId, store.setStopAt(theaterId, stopAt));
     }) },
-    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
+    { name: "commodore/message", method: "POST", summary: "Send the person's message to a running Theater Commodore; it is kept in the log and wakes the next turn. Up to three objectives of the same Theater may be referenced inline: the text carries U+FFFC once per reference id, in order. Without references, U+FFFC is dropped from the text. Refused while the experiment or the Theater's autonomous operation is off.", handler: json(theaterRef.extend({ text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT), objectiveId: ids.optional(), references: z.array(ids).min(1).max(MAX_COMMODORE_REFERENCES).optional(), attachmentIds: z.array(ids).max(4).optional() }).strict(), ({ theaterId, text: raw, objectiveId, references: referenceIds = [], attachmentIds = [] }) => {
       const state = read(theaterId);
       // 서버가 권위다 — 다른 창에서 막 끈 경합도 여기서 거절되고 기록에 남지 않는다. 실험 기능이 꺼졌으면 `commodore_disabled`
       // (자율 운영 켜기와 같은 낱말), 자율 운영이 꺼졌거나 설정 변경 알림 전에 runner가 아직 없으면 `commodore_inactive`.
@@ -144,8 +144,12 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       const objective = objectiveId ? hooks.objective?.(objectiveId) : null;
       if (objectiveId && !objective) throw new ObjectiveStoreError("unknown_objective");
       if (objective && objective.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
-      // 본문 속 참조 — 표식 글자 수와 참조 수가 같아야 하고(사람이 표식 글자를 직접 쳐도 검증하지 않은 참조가 서지 않는다), 한 목표는
-      // 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다. 하나라도 어긋나면 기록에 남기지 않는다.
+      // 본문 속 참조 — 참조가 있으면 표식 글자 수와 참조 수가 같아야 하고, 한 목표는 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다.
+      // 하나라도 어긋나면 기록에 남기지 않는다. 참조가 없으면 본문의 표식 글자는 지운다 — 브라우저가 이미지 섞인 서식 글을 복사할 때 만들어
+      // 내는 글자라(Quick Launch·그룹 대화에서 붙여 보낸 말) 거절하지 않고, 지운 뒤 비면 빈 메시지와 같이 거절한다. 어느 쪽이든 검증하지
+      // 않은 참조는 서지 않는다.
+      const text = referenceIds.length ? raw : raw.split(CONVERSATION_REFERENCE_MARK).join("").trim();
+      if (!text) throw new ObjectiveStoreError("invalid_request");
       if (text.split(CONVERSATION_REFERENCE_MARK).length - 1 !== referenceIds.length || new Set(referenceIds).size !== referenceIds.length) throw new ObjectiveStoreError("invalid_request");
       const references = referenceIds.map((id) => {
         const found = hooks.objective?.(id);
