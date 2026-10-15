@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type CompositionEvent, type KeyboardEvent } from "react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -8,7 +8,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { Objective } from "../server/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { useObjectiveTheater, useOperationSummaries } from "./objectives-state.js";
+import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, revealObjective, subscribeFinishedObjectivesStore, useObjectiveTheater, useOperationSummaries } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -22,7 +22,10 @@ type T = Translate<ObjectiveMessageKey>;
  *
  * 입력은 contenteditable 이다 — textarea 는 문장 속 토큰을 품지 못한다. 그래서 브라우저가 고르는 편집 모양을 좁힌다: 붙여넣기·끌어
  * 놓기는 평문만, 서식 명령은 받지 않고, 문단 나눔은 줄바꿈(`<br>`) 하나로 바꾼다. 토큰은 `contenteditable=false` 라 커서가 안에 들지
- * 않고, 토큰 바로 뒤(앞)의 Backspace(Delete)는 토큰을 통째로 지운다. DOM 이 값의 원본이고, 바깥 값이 우리가 낸 값과 다를 때만
+ * 않고(누르면 커서가 가까운 쪽 끝에 선다), 토큰 바로 뒤(앞)의 Backspace(Delete)는 토큰을 통째로 지운다. 토큰을 넣고 지우는 일은
+ * 편집 명령(`execCommand`)으로 해서 브라우저의 실행 취소 기록에 함께 든다 — 기록 밖에서 DOM 을 고치면 실행 취소가 지난 DOM 과 섞여 같은
+ * 토큰이 둘 서기도 한다. 그래도 어떤 경로로든 같은 지휘관이 두 번이거나 상한을 넘는 토큰이 서면 값을 내기 전에 뒤의 것을 걷어 낸다
+ * (서버가 거절할 값을 사람에게 보내게 두지 않는다). DOM 이 값의 원본이고, 바깥 값이 우리가 낸 값과 다를 때만
  * (보낸 뒤 비우기·초안 복원) DOM 을 다시 세운다 — 조합 중인 글자와 커서를 건드리지 않기 위해서다.
  *
  * '@' 는 채팅 컴포저 덱(`composer-deck.ts` readAgentToken)과 같은 규칙으로 깬다: 문두나 공백(토큰·줄바꿈 뒤 포함) 뒤의 '@' 이고, 커서까지
@@ -140,6 +143,27 @@ function tokenNode(t: T, reference: CommodoreReference): HTMLElement {
   return token;
 }
 
+const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]!);
+
+/** 편집 명령(insertHTML)으로 넣는 토큰 — `tokenNode` 와 같은 모양. 아바타 칸의 자리표 글자는 아바타가 서면서 비워진다(빈 칸은 명령이 버린다). */
+function tokenHtml(t: T, reference: CommodoreReference): string {
+  const label = t("objectives.commodore.reference.token", { title: reference.title });
+  return `<span class="${TOKEN_CLASS}" contenteditable="false" data-ref-id="${escapeHtml(reference.id)}" data-ref-title="${escapeHtml(reference.title)}" aria-label="${escapeHtml(label)}"><span class="${TOKEN_CLASS}-mark" aria-hidden="true">\u200b</span><span class="${TOKEN_CLASS}-label">${escapeHtml(reference.title)}</span></span>`;
+}
+
+/** 같은 지휘관의 두 번째 토큰과 상한을 넘는 토큰을 걷는다 — 앞의 것이 남는다. 걷었으면 참. */
+function dropExtraTokens(root: HTMLElement): boolean {
+  const seen = new Set<string>();
+  let dropped = false;
+  for (const node of Array.from(root.querySelectorAll<HTMLElement>("[data-ref-id]"))) {
+    const id = node.dataset.refId ?? "";
+    if (seen.has(id) || seen.size >= MAX_COMMODORE_REFERENCES) { node.remove(); dropped = true; continue; }
+    seen.add(id);
+  }
+  if (dropped) root.normalize();
+  return dropped;
+}
+
 /** 값 → DOM. 짝이 없는 표식은 버린다. 끝이 줄바꿈이면 그 빈 줄에 커서가 서도록 자리표 `<br>` 하나를 더 둔다. */
 function build(root: HTMLElement, t: T, value: CommodoreReferenceValue): void {
   root.replaceChildren();
@@ -225,6 +249,24 @@ function candidatesOf(objectives: readonly Objective[], query: string): readonly
   return [...rows.filter((row) => row.status !== "done"), ...rows.filter((row) => row.status === "done")].slice(0, MAX_ROWS);
 }
 
+const NO_OBJECTIVES: readonly Objective[] = [];
+/** 완료로 지휘관이 보관된 목표(`/finished`) — 보드 상태(`/state`)에서 빠지므로 따로 읽어 「완료됨」 묶음에 세운다. */
+function useFinishedObjectives(theaterId: string): readonly Objective[] {
+  const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_OBJECTIVES);
+  return useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
+}
+
+/** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). */
+function useTheaterObjectives(theaterId: string): readonly Objective[] {
+  const { objectives } = useObjectiveTheater(theaterId);
+  const finished = useFinishedObjectives(theaterId);
+  return useMemo(() => {
+    if (!finished.length) return objectives;
+    const known = new Set(objectives.map((objective) => objective.id));
+    return [...objectives, ...finished.filter((objective) => !known.has(objective.id))];
+  }, [objectives, finished]);
+}
+
 /* ── 입력 ─────────────────────────────────────────────────────────── */
 
 interface ListState {
@@ -248,7 +290,9 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const latest = useRef(props);
   latest.current = props;
 
-  const { objectives } = useObjectiveTheater(theaterId);
+  const objectives = useTheaterObjectives(theaterId);
+  // 목록을 열 때마다 보관된 완료 목표를 다시 읽는다 — 방금 완료로 보관된 목표도 서게(같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다).
+  useEffect(() => { if (list.open) loadFinishedObjectives(theaterId); }, [list.open, theaterId]);
   const candidates = useMemo(() => (list.open ? candidatesOf(objectives, list.query) : []), [list.open, list.query, objectives]);
   const taken = useMemo(() => new Set(value.references.map((reference) => reference.id)), [value.references]);
   const full = value.references.length >= MAX_COMMODORE_REFERENCES;
@@ -285,6 +329,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const emit = useCallback(() => {
     const root = rootRef.current;
     if (!root) return;
+    dropExtraTokens(root);
     const next = serialize(root);
     emitted.current = next;
     root.classList.toggle("is-empty", next.text.length === 0);
@@ -324,19 +369,35 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     const range = document.createRange();
     range.setStart(token.node, token.at);
     range.setEnd(token.node, token.end);
-    range.deleteContents();
-    // 토큰 뒤에 빈칸 하나 — 이어 쓰기 자리이고, 줄 끝 비편집 노드 뒤에서 커서가 사라지는 Chromium 버릇도 피한다.
-    const space = document.createTextNode(" ");
-    const node = tokenNode(latest.current.t, { id: objective.id, title: objective.title });
-    range.insertNode(space);
-    range.insertNode(node);
-    const after = document.createRange();
-    after.setStart(space, 1);
-    after.collapse(true);
     const selection = window.getSelection();
     selection?.removeAllRanges();
-    selection?.addRange(after);
-    root.normalize();
+    selection?.addRange(range);
+    const reference = { id: objective.id, title: objective.title };
+    // '@질의' 를 토큰으로 갈아 끼우고 뒤에 빈칸 하나 — 이어 쓰기 자리이고, 줄 끝 비편집 노드 뒤에서 커서가 사라지는 Chromium 버릇도 피한다.
+    // 편집 명령이라 실행 취소 기록에 든다. 명령을 받지 않는 브라우저에서만 DOM 을 직접 고친다.
+    if (document.execCommand("insertHTML", false, tokenHtml(latest.current.t, reference))) {
+      // 명령은 커서를 넣은 토큰의 글자 안(비편집 영역)에 남긴다 — 토큰 바로 뒤로 옮긴 뒤 빈칸을 친다.
+      const inserted = Array.from(root.querySelectorAll<HTMLElement>("[data-ref-id]")).find((node) => node.dataset.refId === reference.id);
+      if (inserted) {
+        const after = document.createRange();
+        after.setStartAfter(inserted);
+        after.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(after);
+      }
+      document.execCommand("insertText", false, " ");
+    } else {
+      range.deleteContents();
+      const space = document.createTextNode(" ");
+      range.insertNode(space);
+      range.insertNode(tokenNode(latest.current.t, reference));
+      const after = document.createRange();
+      after.setStart(space, 1);
+      after.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(after);
+      root.normalize();
+    }
     dismissed.current = null;
     setList(CLOSED);
     emit();
@@ -417,14 +478,19 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
       const token = tokenBesideCaret(root, event.key === "Delete");
       if (token) {
         event.preventDefault();
+        // 토큰을 골라 지우는 편집 명령 — 실행 취소가 토큰을 그 자리에 되살린다.
         const range = document.createRange();
-        range.setStartBefore(token);
-        range.collapse(true);
-        token.remove();
+        range.selectNode(token);
         const selection = window.getSelection();
         selection?.removeAllRanges();
         selection?.addRange(range);
-        root.normalize();
+        if (!document.execCommand("delete")) {
+          range.collapse(true);
+          token.remove();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          root.normalize();
+        }
         emit();
         return;
       }
@@ -452,6 +518,23 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     if (files.length) { onFiles?.(files); return; }
     const text = event.clipboardData.getData("text/plain");
     if (text) insertText(text);
+  };
+
+  /** 토큰을 누르면 토큰을 통째로 고르지 않고 커서를 가까운 쪽 끝에 둔다 — 고른 채 두면 다음 글자가 토큰을 지운다. */
+  const onMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    const root = rootRef.current;
+    const target = event.target instanceof Element ? event.target.closest(`.${TOKEN_CLASS}`) : null;
+    if (!root || !target || !root.contains(target) || latest.current.disabled || event.button !== 0) return;
+    event.preventDefault();
+    const rect = target.getBoundingClientRect();
+    const range = document.createRange();
+    if (event.clientX < rect.left + rect.width / 2) range.setStartBefore(target);
+    else range.setStartAfter(target);
+    range.collapse(true);
+    root.focus({ preventScroll: true });
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
   };
 
   const onCompositionEnd = (_event: CompositionEvent<HTMLDivElement>) => {
@@ -485,6 +568,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
         onInput={() => { emit(); refreshList(); }}
         onKeyDown={onKeyDown}
         onKeyUp={(event) => latest.current.onKeyUp?.(event)}
+        onMouseDown={onMouseDown}
         onPaste={onPaste}
         onDrop={(event) => {
           event.preventDefault();
@@ -543,7 +627,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
  * 활동은 지휘관 Operation 의 끌어올린 활동이고, 턴 뒤 백그라운드 작업은 진행 중으로 접는다(보드와 같은 셈).
  */
 export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
-  const { objectives } = useObjectiveTheater(theaterId);
+  const objectives = useTheaterObjectives(theaterId);
   const operations = useOperationSummaries();
   const objective = objectives.find((candidate) => candidate.id === objectiveId);
   if (!objective) return null;
@@ -551,14 +635,21 @@ export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theat
   return <ObjectiveAvatar operationId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
 }
 
+/** 데스크톱 기록 토큰이 여는 목표 — 질문 카드의 목표 이름과 같은 착지다(그 목표를 짚고 목표 패널·대화를 연다). */
+export function openReferencedObjective(theaterId: string, objectiveId: string): void {
+  revealObjective({ objectiveId });
+  openObjectiveFromCluster(theaterId, objectiveId);
+}
+
 /**
- * 기록 말풍선의 참조 토큰 — 표식은 지휘관 얼굴, 누르면 그 목표를 연다(데스크톱은 목표 패널의 그 목표, 폰은 폰 목표 착지).
- * 호스트 렌더러(`ctx.chat.Transcript`·`Conversation`)가 받는 모양이다.
+ * 기록 말풍선의 참조 토큰 — 표식은 지휘관 얼굴, 누르면 그 목표를 연다(기본은 데스크톱 착지, 폰은 폰 목표 착지를 넘긴다).
+ * 호스트 렌더러(`ctx.chat.Transcript`·`Conversation`)가 받는 모양이다. 보관된 완료 목표의 얼굴도 서도록 끝난 목표를 한 번 읽어 둔다.
  */
-export function useCommodoreReferenceHost(t: T, theaterId: string, open: (objectiveId: string) => void): AgentChatReferenceHost {
+export function useCommodoreReferenceHost(t: T, theaterId: string, openOnPhone?: (objectiveId: string) => void): AgentChatReferenceHost {
+  useEffect(() => { if (!finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   return useMemo(() => ({
-    open,
+    open: openOnPhone ?? ((objectiveId: string) => openReferencedObjective(theaterId, objectiveId)),
     mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={14} />,
     describe: (reference: { readonly label: string }) => t("objectives.commodore.reference.open", { title: reference.label }),
-  }), [t, theaterId, open]);
+  }), [t, theaterId, openOnPhone]);
 }

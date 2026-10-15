@@ -49,7 +49,6 @@ import {
 } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { DEFAULT_LAUNCH } from "./launch-control.js";
-import { revealObjective } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -445,7 +444,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
   const blocks = useMemo(() => commodoreLogBlocks(t, entries, live, asks), [t, entries, live, asks]);
-  const references = useCommodoreReferenceHost(t, theaterId, openReferencedObjective);
+  const references = useCommodoreReferenceHost(t, theaterId);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {
       const block = blocks[index];
@@ -530,9 +529,6 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
     </div>
   );
 }
-
-/** 기록 토큰이 여는 목표 — 보드 행위 줄·곁 칸의 목표 이름과 같은 착지(목표 패널의 그 목표)다. */
-export const openReferencedObjective = (objectiveId: string) => revealObjective({ objectiveId });
 
 /** 접힌 턴 한 줄. 채팅 작업 접힘과 같이 줄 끝의 ⌄가 열림을 말하고, 줄 자체가 버튼이다. */
 function CommodoreTurnLine({ t, turn, open, onToggle }: { readonly t: T; readonly turn: CommodoreLogTurn; readonly open: boolean; readonly onToggle: () => void }) {
