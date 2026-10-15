@@ -767,9 +767,6 @@ describe("Instrument core design contract", () => {
      거짓말하는 죽은 줄이 되고, 반대로 채널까지 지우면 소비처가 통째로 무너진다. */
   it("keeps the bevel, lift, wash and bloom channels neutral now that no theme feeds them", () => {
     const theme = source("styles/theme.css");
-    const components = source("styles/components.css");
-    const layout = source("styles/layout.css");
-    const rail = source("styles/rail.css");
 
     // 채널의 중립 기본값이 곧 이제 모든 테마가 보는 값이다.
     expect(theme).toContain("--glass-bevel: transparent;");
@@ -792,16 +789,6 @@ describe("Instrument core design contract", () => {
     ]) {
       expect(theme).not.toContain(material);
     }
-
-    // 소비처의 rim/bevel 짝은 그대로 둔다 — 지금은 bevel이 늘 transparent라 아무것도 그리지
-    // 않지만, 짝이 깨진 채로 두면 나중에 어느 테마가 베벨 재료를 갖는 순간 한쪽만 살아난다.
-    for (const css of [components, layout, rail]) {
-      const rims = (css.match(/inset 0 1px 0 var\(--glass-rim\)/g) ?? []).length;
-      const bevels = (css.match(/inset 0 -1px 0 var\(--glass-bevel\)/g) ?? []).length;
-      expect(bevels).toBeGreaterThanOrEqual(rims);
-    }
-    // 부양은 --shadow-floating을 그대로 두면 라이트에서 접촉면이 없다.
-    expect((components.match(/var\(--glass-lift\)/g) ?? []).length).toBeGreaterThanOrEqual(9);
   });
 
   // 밴드 유리 뒤로 본문을 흘리는 레이아웃은 라우트가 밴드에 붙어 있을 때만 성립한다. 그 조건을
@@ -955,19 +942,19 @@ describe("Instrument core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  // 라운드 어휘는 xs·md·pill 셋뿐이다. raw 999px가 살아 있으면 같은 캡슐을 두 이름으로 부르게 되고,
-  // 퇴역한 sm·lg·xl이 되살아나면 이름이 다시 값보다 많아진다.
-  it("keeps border radius on the three-name vocabulary", () => {
+  // 라운드 어휘는 컨트롤(xs)·면(md)·떠 있는 판(lg 팝업 · xl 대화상자 · sheet 모바일 시트)·pill 여섯뿐이다.
+  // raw 999px가 살아 있으면 같은 캡슐을 두 이름으로 부르게 되고, 퇴역한 sm이 되살아나면 이름이 다시 값보다 많아진다.
+  it("keeps border radius on the named vocabulary", () => {
     const violations: string[] = [];
     for (const file of listProductCssFiles()) {
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
       for (const declaration of cssDeclarations(masked, "border-radius")) {
-        if (!/999px|--radius-(?:sm|lg|xl)\b/.test(declaration.value)) continue;
+        if (!/999px|--radius-sm\b/.test(declaration.value)) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       }
-      for (const match of masked.matchAll(/var\(\s*--radius-(?:sm|lg|xl)\b/g)) {
+      for (const match of masked.matchAll(/var\(\s*--radius-sm\b/g)) {
         violations.push(`${consoleRelativePath(file)}:${lineAt(css, match.index)} retired radius token`);
       }
     }
@@ -1596,63 +1583,63 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
-    // 팝업은 유리 틴트 위에 팝업 전용 바탕층을 깐다. 이 채널은 다크 유리 게이트와 투명도 축소
+    // 팝업은 공통 팝업 면(--popover-face) 한 장을 칠한다. 이 채널은 다크 유리 게이트와 투명도 축소
     // 폴백 어느 쪽도 덮어쓰지 않으므로 모든 테마에서 불투명이다 — 상주 크롬·패널만 --glass-underlay로 비친다.
+    // 옛 바탕층 이름(--float-underlay)은 아직 옮기지 않은 소비처를 위한 별칭으로만 남는다.
     const theme = desktopThemeSource();
-    expect(theme).toContain("--float-underlay: var(--ink-deep);");
+    expect(theme).toContain("--popover-face: var(--ink-deep);");
+    expect(theme).toContain("--float-underlay: var(--popover-face);");
     const gates = theme.slice(theme.indexOf(':root:not([data-theme="light"]) {'));
     expect(gates).not.toContain("--float-underlay:");
-    const componentsPopupSelectors = [
+    expect(gates).not.toContain("--popover-face:");
+    // 옮긴 팝업은 공통 면을 칠하고, 그 선택자의 어느 규칙도 유리 재료(광택·틴트·원료 표면)를 겹치지 않는다.
+    const paintsPopoverFace = (sheet: string, selector: string, face = "--popover-face") => {
+      const scoped = selector.replace(/[.:]/g, "\\$&");
+      const rules = [...sheet.matchAll(new RegExp(`(?:^|\\n)${scoped} \\{[^}]*\\}`, "g"))].map((match) => match[0]);
+      expect(rules.some((rule) => rule.includes(`background: var(${face});`)), selector).toBe(true);
+      for (const rule of rules) expect(rule, selector).not.toMatch(/--glass-(?:sheen|tint-)|--surface-glass/);
+    };
+    for (const selector of [
+      ".command-band-system-menu",
+      ".group-context-menu-card",
+      ".theater-menu",
+      ".operation-search-card",
+      ".app-toast",
+      // Quick Launch의 재질은 전용 요소가 진다.
+      ".quick-launch-glass",
+    ]) paintsPopoverFace(components, selector);
+    for (const selector of [
       ".whatsnew-card",
       ".commissioning-card",
       ".control-curtain-card",
       ".control-reclaimed-card",
       ".directory-browser-card",
       ".add-host-card",
-      ".codex-reading-sheet",
-      ".app-toast",
-      ".command-band-system-menu",
-      ".group-context-menu-card",
-      ".theater-menu",
-      ".operation-search-card",
-      // Quick Launch의 재질은 전용 요소가 진다.
-      ".quick-launch-glass",
-    ];
+    ]) paintsPopoverFace(components, selector, "--dialog-face");
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
     // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.quick-launch-overlay \{\s*animation: none;\s*\}/);
-    for (const selector of componentsPopupSelectors) {
-      const scoped = selector.replace(/\./g, "\\.");
-      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
-    }
     // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
-    for (const [sheet, selector] of [[onboardingCss, ".onboarding-hint"], [onboardingCss, ".feature-tour-card"]] as const) {
-      const scoped = selector.replace(/\./g, "\\.");
-      expect(sheet).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--float-underlay\\);`));
-    }
+    for (const selector of [".onboarding-hint", ".feature-tour-card"]) paintsPopoverFace(onboardingCss, selector);
     // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
     // 환경 팝오버만 남는다.
     expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
-    // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
-    // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
-    expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--float-underlay\);/);
-    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--float-underlay\);/);
-    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--float-underlay\);/);
-    // Quaker aides float over the Map — the same glass token that is opaque on Instrument
-    // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
+    // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 다른 면으로 남던 누락의 재발 방지.
+    paintsPopoverFace(layout, ".command-band-environment-popover");
+    // 내장 플러그인 팝업도 같은 면을 칠한다 — 스킬 읽기는 대화상자 면, 신호 토스트·소식은 신호색을 불투명 면에 섞는다.
+    paintsPopoverFace(skillsCss, ".skills-overlay-dialog", "--dialog-face");
+    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*background: color-mix\(in srgb, var\(--aurora\) 15%, var\(--popover-face\)\);/);
+    // Quaker aides float over the Map and other busy surfaces, so every speech surface stays on the opaque popover face.
     for (const selector of [
       ".scuttlebutt-bird-tag",
       ".scuttlebutt-bird-say",
-      ".scuttlebutt-notice-bubble",
       ".scuttlebutt-answer-bubble",
       ".scuttlebutt-chat-card",
-    ]) {
-      const scoped = selector.replace(/\./g, "\\.");
-      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--float-underlay\\);`));
-    }
+    ]) paintsPopoverFace(scuttlebuttCss, selector);
+    expect(scuttlebuttCss).toMatch(/\.scuttlebutt-notice-bubble \{[^}]*background: var\(--scuttlebutt-notice-wash, var\(--popover-face\)\);/);
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
@@ -2031,7 +2018,7 @@ describe("Instrument core design contract", () => {
       for (const declaration of declarations) {
         // [doctrine] identity-file·quiet·두 배지 면은 다크 3종 보정(채도 봉투·lights-out)이 라이트로
         // 내려오지 않게 지금의 값을 잇는 자리다 — 사용자 범위가 다크 테마였다(목표 f90ef806).
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|quiet|agent-control-badge|console-use-badge)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|identity|provider|shadow|scrollbar|gauge|glass|live-sweep|control|dialog|quiet|agent-control-badge|console-use-badge)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -2856,7 +2843,9 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-ui);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
-    expect(selectBlock).toContain("background: var(--control-wash);");
+    // 팝업은 공통 팝업 표면이고, 고른 행은 중립 워시 + 본문색 체크다(금색은 포커스 링에만).
+    expect(selectBlock).toContain("background: var(--popover-face);");
+    expect(selectBlock).toContain(".fc-select__option[aria-selected=\"true\"] { background: var(--wash-selected); }");
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
@@ -3411,12 +3400,12 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain("data-effort-level={row.effortLevel}");
     expect(composer).toContain("data-apex={row.apex ? true : undefined}");
 
-    // 값 톤은 활성 행에 올라가지 않는다. brass는 위치·초점 채널이라, 값 톤이 그 자리를 침범하면
-    // "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다.
+    // 값 톤은 활성 행에 올라가지 않는다. 활성 행은 고른 행의 중립 워시가 말하므로, 값 톤이 그 자리에
+    // 남으면 "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다.
     expect(components).toMatch(
       /\.quick-launch-command-row\[data-effort-level\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*color: var\(--effort-tone\);/,
     );
-    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \.quick-launch-mention-name \{\s*color: var\(--brass-ink\);/);
+    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \{\s*background: var\(--wash-selected\);/);
 
     // 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 공유한다.
     expect(components).toMatch(
@@ -3495,13 +3484,13 @@ describe("Effort track interaction grammar", () => {
     // sticky를 잃으면 스크롤한 목록에서 모델 이름만 남고 공급자를 잃는다.
     const bandRule = components.match(/\.quick-launch-command-deck \.quick-launch-pop-band \{[^}]*\}/)?.[0] ?? "";
     expect(bandRule).toContain("position: sticky");
-    expect(bandRule).toContain("var(--glass-tint-deep)");
+    expect(bandRule).toContain("background: var(--popover-face);");
     expect(composer).not.toMatch(/id: `model-\$\{row\.id\}`,[\s\S]{0,200}?quick-launch-kind-icon/);
 
-    // 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에서 시작한다 — 항목이 자기 머리글보다
+    // 행은 밴드 라벨 자리(패딩 12px + 글리프 16px + 간격 8px)에서 시작한다 — 항목이 자기 머리글보다
     // 바깥에서 시작하면 소속이 역전돼 읽힌다.
     expect(components).toMatch(
-      /\.quick-launch-command-group\.is-banded \.quick-launch-command-row \{\s*padding-left: calc\(var\(--space-2\) \+ 22px\);/,
+      /\.quick-launch-command-group\.is-banded \.quick-launch-command-row \{\s*padding-left: calc\(12px \+ 24px\);/,
     );
 
     // '@' 멘션 덱은 실행 좌표가 아니라 기존 Operation 목록이다. 공급자 밴드가 없는 대신

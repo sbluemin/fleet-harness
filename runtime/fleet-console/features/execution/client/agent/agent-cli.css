@@ -165,7 +165,7 @@
   min-height: 56px;
   padding: 10px 14px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: none;
   color: inherit;
   font: inherit;
@@ -175,7 +175,7 @@
 }
 
 .ai-gateway-model-summary:hover {
-  background: var(--control-wash-hover);
+  background: var(--wash-hover);
 }
 
 .ai-gateway-model-summary:focus-visible {
@@ -309,28 +309,29 @@
   opacity: var(--control-disabled-opacity);
 }
 
-/* 조용한 글자 버튼 — 모델 추가·예시 작업·로그인 제출이 쓴다. 대화 화면의 버튼처럼 테두리 없이 중립 면만 진다. */
+/* 1차 버튼 — 모델 추가(머리 줄·팔레트 바닥)·로그인 제출이 쓴다. 다른 팝업·대화상자의 1차 동작과 같은 문장이다:
+   중립 컨트롤 면 + 금색 글자, 13px/600, 라운드 10px, 테두리 없음. */
 .ai-gateway-add-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 12px;
+  min-height: 34px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--brass-ink);
   font-family: var(--font-ui);
   font-size: var(--t-md);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+  transition: background var(--duration-fast) var(--ease-spring);
 }
 
 .ai-gateway-add-button:hover:not(:disabled),
 .ai-gateway-add-button[aria-expanded="true"] {
-  background: var(--control-wash);
-  color: var(--text-primary);
+  background: var(--control-rest-hover);
 }
 
 .ai-gateway-add-button:focus-visible,
@@ -393,10 +394,11 @@
   flex-direction: column;
   width: var(--ai-gateway-palette-width, 720px);
   max-width: 100%;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-floating);
+  /* 공통 팝업 표면(theme.css --popover-*) — 다른 팝업과 같은 불투명 면 한 장이다. */
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
 }
 
 .ai-gateway-palette.is-resizing {
@@ -561,7 +563,8 @@
   gap: var(--space-2);
   min-width: 0;
   padding: 10px 8px 4px;
-  background: var(--surface-panel);
+  /* 스크롤 중 붙는 머리는 팔레트 면을 다시 칠한다 — 면이 다르면 머리 줄이 띠로 떠 보인다. */
+  background: var(--popover-face);
 }
 
 .ai-gateway-palette-group .ai-gateway-provider-glyph {
@@ -575,11 +578,12 @@
   height: 10px;
 }
 
+/* 구역 머리는 공통 팝업의 머리 문법이다 — 공유 머리글(.operation-launch-variant-caption)과 같은 12px 보통 굵기 보조색. */
 .ai-gateway-palette-group-name {
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   white-space: nowrap;
 }
 
@@ -644,9 +648,9 @@
   width: max-content;
   max-width: 260px;
   padding: 6px 10px;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--popover-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-panel);
+  background: var(--popover-face);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -680,19 +684,20 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-3);
-  min-height: 34px;
+  min-height: var(--popover-row-dense);
   padding: 6px 10px 6px 34px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   cursor: pointer;
 }
 
+/* 행 상태는 공통 팝업의 중립 워시다 — hover 7%, 고른 행 9%. */
 .ai-gateway-palette-hit:hover {
-  background: var(--control-wash-hover);
+  background: var(--wash-hover);
 }
 
 .ai-gateway-palette-hit.is-active {
-  background: var(--control-wash);
+  background: var(--wash-selected);
 }
 
 .ai-gateway-palette-hit-name {
@@ -734,7 +739,7 @@
   gap: var(--space-2) var(--space-4);
   min-width: 0;
   padding: 10px 14px;
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--popover-divider);
 }
 
 .ai-gateway-palette-foot-label {
@@ -792,11 +797,9 @@
   text-decoration-color: var(--brass);
 }
 
-/* 추가 버튼은 바닥 줄의 마지막 칸이다 — 조용한 글자 버튼에 중립 면을 한 단 깔아 동작임을 말한다. */
+/* 추가 버튼은 바닥 줄의 마지막 칸이다 — 면·글자는 1차 버튼(.ai-gateway-add-button) 그대로다. */
 .ai-gateway-palette-add {
   margin-left: auto;
-  background: var(--control-wash);
-  color: var(--text-primary);
 }
 
 /* ── 프로바이더 설정 컨트롤(로스터 머리글) ─────────────────────── */
@@ -855,11 +858,6 @@
 .ai-gateway-key-input:disabled {
   cursor: not-allowed;
   opacity: var(--control-disabled-opacity);
-}
-
-.ai-gateway-key-form .ai-gateway-add-button {
-  background: var(--control-wash);
-  color: var(--text-primary);
 }
 
 /* 로그인 상태 점 — 상태라 aurora가 말한다. 글자는 다른 보조 줄과 같은 문장형이다. */
@@ -944,9 +942,9 @@
   width: max-content;
   max-width: 300px;
   padding: 6px 10px;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--popover-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-panel);
+  background: var(--popover-face);
   box-shadow: var(--shadow-soft);
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -1132,6 +1130,7 @@
   }
   /* 고대비 — 면이 걷히므로 쉬는 컨트롤의 테두리를 시스템색으로 되살린다(Quiet Controls C′). */
   .ai-gateway-add-button,
+  .ai-gateway-run-button,
   .ai-gateway-chip-button { border: 1px solid ButtonBorder; }
 }
 
@@ -1283,15 +1282,16 @@
   line-height: 1.45;
 }
 
-/* 사용량이 드는 요청을 보내는 유일한 버튼 — 중립 잉크를 뒤집은 알약 하나로 다른 칩과 갈린다(신호색·brass 없음). */
+/* 사용량이 드는 요청을 보내는 유일한 버튼 — 1차 버튼 문법(중립 컨트롤 면 + 금색 글자, 13px/600, 라운드 10px,
+   테두리 없음)으로 알약 모양의 예시 칩과 갈린다. */
 .ai-gateway-run-button {
   flex: none;
-  min-height: 32px;
-  padding: 0 16px;
+  min-height: 34px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--text-primary);
-  color: var(--canvas-abyss);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--brass-ink);
   font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-medium);
@@ -1300,7 +1300,7 @@
 }
 
 .ai-gateway-run-button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--text-primary) 88%, var(--canvas-abyss));
+  background: var(--control-rest-hover);
 }
 
 .ai-gateway-run-button:focus-visible {
@@ -1504,10 +1504,10 @@
   display: flex;
   flex-direction: column;
   border: 1px solid color-mix(in oklch, var(--aurora) 26%, var(--surface-rim));
-  border-radius: var(--radius-md);
-  /* 같은 색을 팝업 바탕층(불투명) 위에 얹는다 — --surface-glass가 테마마다 반투명이라 그대로는 뒤가 비친다. */
-  background: linear-gradient(color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent)), color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent))), var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 면 — aurora 테두리만 이 표면의 신호다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
 }
 .use-corner-panel.is-late { border-color: color-mix(in oklch, var(--aurora) 48%, var(--surface-rim)); }
 
@@ -1752,9 +1752,9 @@
   padding: 0 12px 0 6px;
   border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--surface-rim));
   border-radius: var(--radius-pill);
-  /* 같은 색을 팝업 바탕층(불투명) 위에 얹는다 — --surface-glass가 테마마다 반투명이라 그대로는 뒤가 비친다. */
-  background: linear-gradient(color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent)), color-mix(in oklch, var(--surface-glass) 60%, color-mix(in oklch, var(--ink-deep) 72%, transparent))), var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  /* 공통 팝업 면 — aurora 테두리만 이 표면의 신호다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-sm) var(--font-ui);
   white-space: nowrap;

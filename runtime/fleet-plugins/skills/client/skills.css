@@ -536,7 +536,7 @@
 
 .skills-overlay-backdrop {
   align-items: center;
-  background: color-mix(in srgb, var(--ink-abyss) 55%, transparent);
+  background: var(--dialog-scrim);
   display: flex;
   inset: 0;
   justify-content: center;
@@ -546,14 +546,11 @@
 }
 
 .skills-overlay-dialog {
-  /* 팝업 판독성 계약: 반투명 --surface-glass는 glass 층만으로는
-     backdrop 뒤가 비친다. 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을 보장한다. */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-soft), var(--glass-tint-soft)),
-    var(--float-underlay);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
+  /* 대화상자 문법(theme.css --dialog-*) — 대화 바탕 면 한 장이라 모든 테마에서 덮개 뒤가 비치지 않는다. */
+  background: var(--dialog-face);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--popover-shadow);
   display: flex;
   flex-direction: column;
   /* 확정 높이가 필수 — content-driven 높이에서는 body의 flex-grow가 분배할 공간이
@@ -567,15 +564,15 @@
 
 .skills-overlay-header {
   align-items: center;
-  border-bottom: 1px solid var(--surface-rim);
+  border-bottom: 1px solid var(--popover-divider);
   display: flex;
   flex-shrink: 0;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5);
 }
 
 .skills-overlay-title {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: var(--t-lg);
   font-weight: var(--weight-medium);
@@ -610,16 +607,16 @@
   /* flex 자식의 min-height:auto 기본값은 내용만큼 늘어나 스크롤을 깨뜨린다. */
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-5);
 }
 
 .skills-overlay-footer {
   align-items: center;
-  border-top: 1px solid var(--surface-rim);
+  border-top: 1px solid var(--popover-divider);
   display: flex;
   flex-shrink: 0;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-5);
 }
 
 .skills-overlay-footer .skills-permission-warning { flex: 1; }
@@ -668,15 +665,11 @@
 .skills-root { position: relative; }
 
 .skills-toast {
-  /* 팝업 판독성 계약: glass 믹스 + 불투명 --ink-deep 언더레이 */
-  background:
-    linear-gradient(
-      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft)),
-      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft))
-    ),
-    var(--float-underlay);
+  /* 공통 팝업 표면 — 신호(aurora) 15%를 불투명 팝업 면에 섞은 한 장이다. */
+  background: color-mix(in srgb, var(--aurora) 15%, var(--popover-face));
   border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--popover-shadow);
   bottom: var(--space-3);
   color: var(--aurora-ink);
   font-size: var(--t-md);

@@ -1276,32 +1276,6 @@ button.chip:focus-visible {
   max-inline-size: none;
 }
 
-.toast {
-  position: fixed;
-  right: var(--space-5);
-  bottom: var(--space-5);
-  z-index: 90;
-  transform: translateY(16px);
-  opacity: 0;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--surface-rim);
-  /* --surface-pillar는 반투명 리터럴이라 같은 색을 팝업 바탕층(불투명) 위에 얹는다. */
-  background: linear-gradient(var(--surface-pillar), var(--surface-pillar)), var(--float-underlay);
-  box-shadow: var(--shadow-floating);
-  color: var(--text-primary);
-  padding: 11px 16px;
-  font-size: var(--font-size-md);
-  letter-spacing: -0.005em;
-  transition:
-    opacity var(--duration-base) var(--ease-spring),
-    transform var(--duration-base) var(--ease-spring);
-}
-
-.toast.visible {
-  transform: translateY(0);
-  opacity: 1;
-}
-
 .icon-button,
 .mobile-close {
   display: inline-flex;
@@ -2692,17 +2666,12 @@ button.chip:focus-visible {
   max-height: calc(100vh - 24px);
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
-  padding: var(--space-3);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: 다크 유리 게이트와 무관한 불투명 팝업 바탕층 위에 틴트를 얹는다. */
-  background:
-    linear-gradient(
-      var(--glass-tint-expanded),
-      var(--glass-tint-expanded)
-    ),
-    var(--float-underlay);
-  box-shadow: var(--shadow-soft);
+  padding: var(--space-3) var(--space-4);
+  /* 공통 팝업 표면(theme.css --popover-*) — 다크 유리 게이트와 무관하게 모든 테마에서 불투명한 한 장의 면이다. */
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-secondary);
 }
 
@@ -2721,7 +2690,7 @@ button.chip:focus-visible {
 .codex-nav-health-popover p {
   margin: var(--space-2) 0 0;
   padding-top: var(--space-2);
-  border-top: 1px solid var(--surface-rim);
+  border-top: 1px solid var(--popover-divider);
   color: var(--text-tertiary);
   white-space: nowrap;
 }
@@ -2970,14 +2939,6 @@ button.chip:focus-visible {
 
 .codex-nav-error {
   color: var(--coral-ink);
-}
-
-/* ─── Reading Sheet scope overrides ─────────────────────────────────────────── */
-
-/* 시트 안에서 마크다운 본문 측정(72ch)으로 좁혀 읽기 편의 제공 */
-.codex-reading-sheet .markdown-body {
-  max-inline-size: 72ch;
-  margin-inline: auto;
 }
 
 /* ─── Cowork inline copilot ─────────────────────────────────────────────────

@@ -29,7 +29,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--surface-rim);
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   background: var(--canvas-abyss);
   color: var(--text-primary);
   box-shadow: var(--shadow-floating);
@@ -97,7 +97,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
   min-height: 40px;
   padding: 0 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: none;
   color: var(--text-secondary);
   font: var(--weight-regular) var(--t-base)/1.3 var(--font-ui);
@@ -167,7 +167,7 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 .settings-modal .settings-pane :is(.global-settings-card-title, .fc-settings-card__title) { padding: 0 2px; font-size: var(--t-sm); font-weight: var(--weight-regular); color: var(--text-secondary); }
 .settings-modal .settings-pane :is(.appearance-controls, .settings-group-surface, .fc-settings-card__body, .global-settings-shortcut-groups) {
   border-color: var(--hairline);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: color-mix(in oklch, var(--text-primary) 2.5%, transparent);
   padding: 6px 0;
 }
@@ -179,13 +179,13 @@ body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay);
 .settings-modal .settings-pane .global-settings-shortcut-group-title { padding: 0 20px 6px; }
 .settings-modal .settings-pane .global-settings-shortcut-group .global-settings-shortcut-row { min-height: 48px; padding: 8px 20px; border-top: 0; }
 /* 카드에 바로 선 행들(실험 기능 등)은 페인처럼 한 면으로 잇되, 이음매의 선은 걷는다. */
-.settings-modal .settings-pane .global-settings-card > .global-settings-row { border-radius: 16px; background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
+.settings-modal .settings-pane .global-settings-card > .global-settings-row { border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); }
 .settings-modal .settings-pane .global-settings-card > .global-settings-row:has(+ .global-settings-row) { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .settings-modal .settings-pane .global-settings-card > .global-settings-row + .global-settings-row { margin-top: -8px; border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .settings-modal .settings-pane :is(.appearance-controls, .fc-settings-card__body, .settings-group-surface) > :is(p, .global-settings-help, .global-settings-error) { padding: 10px 20px; }
 .settings-modal .settings-pane .theme-card { border-radius: 12px; }
 /* 원격 접속의 카드들도 모달의 둥근 면·여백을 입는다. */
-.settings-modal .settings-pane :is(.remote-card, .remote-notes) { border-color: var(--hairline); border-radius: 16px; background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); padding: 18px 20px; }
+.settings-modal .settings-pane :is(.remote-card, .remote-notes) { border-color: var(--hairline); border-radius: var(--radius-lg); background: color-mix(in oklch, var(--text-primary) 2.5%, transparent); padding: 18px 20px; }
 .settings-modal .settings-pane .global-settings-card.remote-section { gap: 28px; }
 .settings-modal .settings-pane .remote-card-title { font-size: var(--t-sm); font-weight: var(--weight-regular); }
 /* 카드 안의 켬/끔 행(공개 엔드포인트)은 소제목이 아니라 행 이름이다. */

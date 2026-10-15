@@ -71,12 +71,9 @@
   left: 50%;
   top: calc(100% - 8px);
   transform: translateX(-50%);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  border: 1px solid var(--hairline);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  border: 1px solid var(--popover-rim);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
   font-size: var(--t-xs);
@@ -99,13 +96,11 @@
   left: 50%;
   bottom: 96%;
   transform: translate(-50%, -4px);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
-  border-radius: var(--radius-md);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -426,13 +421,11 @@
   gap: 2px var(--space-2);
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: 신호 wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
-  background:
-    linear-gradient(var(--scuttlebutt-notice-wash, var(--glass-tint-strong)), var(--scuttlebutt-notice-wash, var(--glass-tint-strong))),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면 — 신호 소식만 그 신호색 12%를 불투명 면에 섞어 칠한다. */
+  background: var(--scuttlebutt-notice-wash, var(--popover-face));
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -442,7 +435,7 @@
 }
 
 .scuttlebutt-notice-bubble.is-arrival {
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--positive) 12%, var(--popover-face));
   --scuttlebutt-notice-ink: var(--positive);
   border-color: light-dark(color-mix(in oklch, var(--positive) 50%, var(--hairline)), color-mix(in oklab, var(--positive) 50%, var(--hairline)));
 }
@@ -451,14 +444,14 @@
    alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
 .scuttlebutt-notice-bubble.is-departure,
 .scuttlebutt-notice-bubble.is-awaiting {
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--warn) 12%, var(--popover-face));
   --scuttlebutt-notice-ink: var(--warn-ink);
   border-color: color-mix(in oklch, var(--warn) 55%, transparent);
 }
 
 .scuttlebutt-notice-bubble.is-awaiting {
   border-color: color-mix(in oklch, var(--aurora) 55%, transparent);
-  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--glass-tint-strong));
+  --scuttlebutt-notice-wash: color-mix(in oklch, var(--aurora) 12%, var(--popover-face));
   --scuttlebutt-notice-ink: color-mix(in oklch, var(--aurora) 80%, var(--text-primary));
 }
 
@@ -592,14 +585,11 @@
   gap: 2px;
   padding: var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 1px solid color-mix(in oklab, var(--brass) 45%, var(--hairline));
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font-size: var(--t-md);
   line-height: 1.5;
@@ -613,8 +603,8 @@
 /* 포커스가 말풍선 안에 있는 동안 은은하게 밝아진다 — 답이 정착해 포커스가 여기로 왔음을 상자 링 없이
    알린다(brass = 지금 서 있는 자리). 벗어나면 평소의 테두리로 가라앉는다. */
 .scuttlebutt-answer-bubble:focus-within {
-  border-color: color-mix(in oklab, var(--brass) 70%, var(--hairline));
-  box-shadow: var(--shadow-floating), 0 0 0 4px var(--brass-glow);
+  border-color: color-mix(in oklab, var(--control-focus-ring) 70%, var(--popover-rim));
+  box-shadow: var(--popover-shadow), 0 0 0 4px var(--brass-glow);
 }
 
 /* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
@@ -742,18 +732,15 @@
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
 
-/* 퀵런치가 유리 봉투·배치·입력을 소유한다. 기존 카드의 로그·출처·Live line만 같은 면에서 이어진다. */
+/* 퀵런치가 봉투·배치·입력을 소유한다. 기존 카드의 로그·출처·Live line만 같은 면에서 이어진다. */
 .scuttlebutt-chat-card.is-embedded {
   position: relative;
   width: 100%;
@@ -868,13 +855,12 @@
   width: max-content;
   max-width: min(260px, calc(100vw - 32px));
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  /* 툴팁은 팝업 체계 밖의 작은 표면이라 도구모음 툴팁(.console-toolbar-tip)과 같은 컨트롤 라운드(xs)를 쓴다. */
+  border-radius: var(--radius-xs);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
@@ -1676,7 +1662,7 @@
 }
 
 /* ── ··· 메뉴 — AI 확장 ────────────────────────────────────────────────────
-   Operation 메뉴의 「AI 확장」 섹션과 같은 28px 체크 행. 카드 헤더 아래 오른쪽에 선다. */
+   공통 팝업 표면의 메뉴 문법(40px 행 · 본문 글자 · 중립 워시)을 쓰는 체크 행. 카드 헤더 아래 오른쪽에 선다. */
 .scuttlebutt-menu {
   position: fixed;
   /* 문서 끝으로 포털된 잠깐의 메뉴 — 헤더 도움말 말풍선과 같은 overlay 단. 행은 한 줄이고,
@@ -1685,63 +1671,59 @@
   min-width: 200px;
   max-width: min(320px, calc(100vw - var(--space-4)));
   padding: 6px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  /* 공통 팝업 표면(theme.css --popover-*) — 모든 테마에서 불투명한 한 장의 면이다. */
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
 }
 
+/* 구역 머리는 문장형 보조색 글자다 — 대문자·자간을 벌리지 않는다. */
 .scuttlebutt-menu-label {
-  padding: 6px 10px 4px;
-  color: var(--text-tertiary);
+  padding: var(--space-2) 12px 6px;
+  color: var(--text-secondary);
   font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-regular);
 }
 
 .scuttlebutt-menu-row {
   display: flex;
   width: 100%;
-  height: 28px;
+  min-height: var(--popover-row);
   align-items: center;
-  gap: 10px;
-  padding: 0 10px;
+  gap: 12px;
+  padding: 0 12px;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   cursor: pointer;
   font: inherit;
-  font-size: var(--t-sm);
+  font-family: var(--font-ui);
+  font-size: var(--t-base);
+  font-weight: var(--weight-regular);
   text-align: left;
 }
 
 .scuttlebutt-menu-row:hover {
-  background: var(--ink-veil);
-  color: var(--text-primary);
+  background: var(--wash-hover);
 }
 
 .scuttlebutt-menu-row:focus-visible {
-  outline: 2px solid var(--brass);
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: -2px;
-}
-
-.scuttlebutt-menu-row.is-on {
-  color: var(--text-primary);
 }
 
 .scuttlebutt-menu-glyph {
   display: inline-flex;
   flex: none;
+  color: var(--text-secondary);
 }
 
 .scuttlebutt-menu-glyph svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .scuttlebutt-menu-name {
@@ -1753,7 +1735,7 @@
   width: 12px;
   height: 12px;
   flex: none;
-  color: var(--brass-ink);
+  color: var(--text-primary);
   opacity: 0;
 }
 
@@ -1763,9 +1745,9 @@
 
 /* 실험이 하나도 켜져 있지 않을 때 설정으로 가는 길 한 줄. */
 .scuttlebutt-menu-hint {
-  padding: 2px 10px 8px 10px;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
+  padding: 2px 12px 8px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
   line-height: 1.45;
 }
 

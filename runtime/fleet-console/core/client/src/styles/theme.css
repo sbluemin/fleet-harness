@@ -261,21 +261,17 @@
      게이트가 닫히면(@supports 미달·prefers-reduced-transparency·라이트 테마) 모든
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
   --glass-underlay: var(--ink-deep);
-  /* 팝업(메뉴·팝오버·다이얼로그·시트·토스트·말풍선) 전용 바탕층 — 게이트가 덮어쓰지 않아 다크에서도 불투명이고, 틴트·rim·sheen·lift만 유리 채널을 따른다. */
-  --float-underlay: var(--ink-deep);
-  /* 라이트에서 일부러 비치게 둔 부유 표면(Snap Assist)의 바탕층 — 다크 게이트에서만 --float-underlay로 채운다. */
-  --float-underlay-dark: transparent;
+  /* 옛 팝업 바탕층의 별칭 — 팝업 면은 아래 --popover-face 하나다. 팝업은 모두 떠났고, 상주 시트(확장 표면·레일·설정·목표
+     상세)와 이미지 위 확대 보기만 이 이름을 읽는다. 그 소비처가 떠나면 지운다. 게이트가 덮어쓰지 않아 늘 불투명이다. */
+  --float-underlay: var(--popover-face);
   --glass-tint-strong: var(--surface-glass-strong);
   --glass-tint-rail: var(--surface-glass-strong);
   --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
   /* 유리 표면(도구 패널 슬롯·확장 표면) 안에 사는 플러그인 본문의 바탕. 게이트가 닫히면 오늘의
      불투명 패널, 열리면 비워서 담는 표면의 재질(알파)이 그대로 비치게 한다. */
   --glass-panel-face: var(--surface-panel);
-  --glass-tint-soft: var(--surface-glass);
   --glass-tint-pillar: var(--surface-pillar);
-  --glass-tint-raised: var(--surface-panel-raised);
   --glass-tint-deep: var(--ink-deep);
-  --glass-tint-abyss: var(--ink-abyss);
   --glass-tint-chrome: var(--surface-chrome);
   /* 패널 채널 둘 — panel은 패널 루트가 유리 틴트로 쓰고, panel-face는 패널 안에서 같은
      면을 덧칠하던 자식(캡션·본문 팬)이 쓴다. 게이트가 열리면 face는 transparent가 되어
@@ -316,10 +312,9 @@
   --glass-bevel: transparent;
   /* 떠 있는 유리의 부양. 기본값이 곧 현행 계약이라 게이트가 닫히면 --shadow-floating 그대로다. */
   --glass-lift: var(--shadow-floating);
-  --glass-sheen: linear-gradient(transparent, transparent);
   /* 게이트가 켜질 때 채널에 실릴 테마별 유리 재료 — 여기(base)와 각 테마 블록에만
      리터럴을 둔다. 게이트 블록은 값 없이 이 재료를 채널로 옮기기만 한다.
-     틴트 사다리는 기존 표면 사다리(strong/soft/pillar/raised/deep)를 1:1로 비추되
+     틴트 사다리는 기존 표면 사다리(strong/pillar/deep)를 1:1로 비추되
      알파 44~62% 대역으로 눕는다. 틴트 알파를 더 낮추려면 겹친 콘텐츠 위 판독 대비를 재실측할 것. */
   --glass-on-underlay: transparent;
   --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
@@ -329,11 +324,8 @@
   /* 도구 패널 재질 — 슬롯이 이 틴트를 불투명 --ink-deep과 92:8로 섞으므로(rail.css) 알파를 역산해
      섞인 결과 알파가 54%가 되게 한다. calc를 그대로 두는 것은 옛 폴백과 계산값을 같게 두기 위해서다. */
   --glass-on-tint-rail: oklch(24% 0.02 245 / calc((54% - 8%) / 0.92));
-  --glass-on-tint-soft: oklch(19% 0.018 245 / 48%);
   --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 52%);
-  --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
-  --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
   --glass-on-tint-chrome: oklch(19% 0.018 245 / 50%);
   /* 다크 유리의 smoked-glass 문법 — 터미널·패널은 blur 없이 60% 틴트와
      22% pane-light만으로 캔버스·겹친 창 윤곽을 그대로 통과시킨다. 패널 수에 따라 재질을 바꾸지
@@ -349,9 +341,6 @@
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
   --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-rim: oklch(96% 0.01 90 / 16%);
-  /* 유리 광택(sheen) — 대각 하이라이트 한 겹. 무채색 리터럴만 쓰는 독트린 예외 채널이며,
-     평평한 배경 위에서도 유리가 재질로 읽히게 하는 최소 광학 신호다. */
-  --glass-on-sheen: linear-gradient(118deg, oklch(96% 0.01 90 / 10%) 0%, transparent 30%, transparent 74%, oklch(96% 0.01 90 / 5%) 100%);
 
   /* 파일 종류는 정체성이지 상태가 아니다 — 신호색(aurora·warn·positive·coral)을 빌리면 트리가
      신호등처럼 읽힌다. 테마별로 재조율되는 정체성 톤(--id-*)에서 빌리고, 폴더는 무채 잉크로 물러난다.
@@ -378,6 +367,29 @@
   --radius-md: 10px;
   /* 999px는 도트·비콘·상태 캡슐 전용 — 컨트롤(버튼/칩)에는 쓰지 않는다. */
   --radius-pill: 999px;
+  /* 떠 있는 판의 라운드 셋 — 팝업·메뉴·묶음 카드(lg)·대화상자(xl)·모바일 시트 윗변(sheet).
+     대화 독 메뉴·설정 모달이 이미 쓰던 값을 이름으로 올렸고, 모바일에서도 값이 같다(xs·md만 모바일이 키운다). */
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-sheet: 28px;
+
+  /* ── 공통 팝업 표면 (대화 독 메뉴 문법) ─────────────────────────────────
+     메뉴·팝오버·말풍선·토스트는 한 장의 불투명 면이다 — 광택·rim 하이라이트·반투명 틴트를 겹치지 않는다.
+     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 --shadow-floating 하나다.
+     행은 메뉴 40px · 목록 36px, 본문 크기·본문색이고, 행 상태는 중립 워시(hover 7% · 고른 행 9% + 체크)로만 말한다.
+     금색은 포커스 링과 1차 동작 글자에만 남는다. 워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다.
+     대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
+  --popover-face: var(--ink-deep);
+  --popover-rim: color-mix(in oklch, var(--text-primary) 14%, transparent);
+  --popover-shadow: var(--shadow-floating);
+  --popover-row: 40px;
+  --popover-row-dense: 36px;
+  --popover-divider: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --wash-hover: color-mix(in oklch, var(--text-primary) 7%, transparent);
+  --wash-selected: color-mix(in oklch, var(--text-primary) 9%, transparent);
+  --dialog-face: var(--canvas-abyss);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외) — 설정 모달 덮개와 같은 값. */
+  --dialog-scrim: oklch(0% 0 0 / 48%);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -713,6 +725,8 @@
      입력 필드에 깔면 라이트에서 필드가 "파인 우물"로 되돌아간다(다크 우물 퇴역과 같은 이유). */
   --control-rest: oklch(30% 0.015 95 / 4.5%);
   --control-rest-hover: oklch(30% 0.015 95 / 7.5%);
+  /* 대화상자 덮개 — 밝은 바탕에서는 48% 검정이 화면을 꺼뜨리므로 설정 모달의 라이트 덮개를 그대로 쓴다. */
+  --dialog-scrim: oklch(18% 0 0 / 24%);
   --control-field: oklch(99.3% 0.003 95);
   --control-wash: oklch(30% 0.015 95 / 6.5%);
   --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
@@ -822,11 +836,8 @@
   --glass-on-tint-strong: oklch(29% 0 0 / 46%);
 
   --glass-on-tint-rail: oklch(29% 0 0 / calc((50% - 8%) / 0.92));
-  --glass-on-tint-soft: oklch(25% 0 0 / 44%);
   --glass-on-tint-pillar: oklch(20% 0 0 / 48%);
-  --glass-on-tint-raised: oklch(25% 0 0 / 46%);
   --glass-on-tint-deep: oklch(18% 0 0 / 46%);
-  --glass-on-tint-abyss: oklch(14% 0 0 / 48%);
   --glass-on-tint-chrome: oklch(24% 0 0 / 45%);
   --glass-on-tint-panel: oklch(21% 0 0 / 60%);
   --canvas-on-ambience: oklch(18% 0 0);
@@ -872,16 +883,12 @@
    두 게이트 선택자는 같은 :not(...) 목록으로 특이도 (0,2,0)을 유지한다. */
 :root:not([data-theme="light"]) {
   --glass-underlay: var(--glass-on-underlay);
-  --float-underlay-dark: var(--float-underlay);
   --glass-tint-strong: var(--glass-on-tint-strong);
   --glass-tint-rail: var(--glass-on-tint-rail);
   --glass-tint-expanded: color-mix(in oklch, var(--glass-on-tint-expanded) 94%, var(--ink-deep));
   --glass-panel-face: transparent;
-  --glass-tint-soft: var(--glass-on-tint-soft);
   --glass-tint-pillar: var(--glass-on-tint-pillar);
-  --glass-tint-raised: var(--glass-on-tint-raised);
   --glass-tint-deep: var(--glass-on-tint-deep);
-  --glass-tint-abyss: var(--glass-on-tint-abyss);
   --glass-tint-chrome: var(--glass-on-tint-chrome);
   --glass-tint-panel: var(--glass-on-tint-panel);
   --glass-tint-panel-face: transparent;
@@ -897,7 +904,6 @@
      라이트가 게이트에서 빠지면서 재료가 사라졌다. 채널 자체는 base에 그대로 살아 있으니
      (--glass-bevel: transparent 외 6종), 나중에 어느 테마가 재료를 갖게 되면 그때
      테마 블록에 리터럴을 두고 이 자리에 한 줄을 되살리면 된다. */
-  --glass-sheen: var(--glass-on-sheen);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -907,11 +913,8 @@
     --glass-tint-rail: var(--surface-glass-strong);
     --glass-tint-expanded: color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep));
     --glass-panel-face: var(--surface-panel);
-    --glass-tint-soft: var(--surface-glass);
     --glass-tint-pillar: var(--surface-pillar);
-    --glass-tint-raised: var(--surface-panel-raised);
     --glass-tint-deep: var(--ink-deep);
-    --glass-tint-abyss: var(--ink-abyss);
     --glass-tint-chrome: var(--surface-chrome);
     --glass-tint-panel: var(--surface-panel);
     --glass-tint-panel-face: var(--surface-panel);
@@ -923,7 +926,6 @@
     --canvas-ambience: var(--canvas-sea-core);
     --glass-tint-band: var(--surface-band);
     --glass-rim: transparent;
-    --glass-sheen: linear-gradient(transparent, transparent);
   }
 }
 
@@ -1142,19 +1144,20 @@
   --surface-rim-strong: var(--m-hairline-strong);
   --surface-band: var(--m-bg);
 
+  /* 팝업 면은 모바일 표면 한 장, 구분선은 모바일 헤어라인, 대화상자 덮개는 시트 덮개다. */
+  --popover-face: var(--m-surface);
+  --popover-divider: var(--m-hairline);
+  --dialog-scrim: var(--m-scrim);
+
   /* 유리 닫기 — 게이트 블록보다 높은 특이도로 틴트 채널을 불투명 면에 직접 싣는다. */
   --glass-underlay: var(--m-surface);
   --float-underlay: var(--m-surface);
-  --float-underlay-dark: var(--m-surface);
   --glass-tint-strong: var(--m-surface);
   --glass-tint-rail: var(--m-surface);
   --glass-tint-expanded: var(--m-surface);
   --glass-panel-face: var(--m-bg);
-  --glass-tint-soft: var(--m-surface);
   --glass-tint-pillar: var(--m-surface);
-  --glass-tint-raised: var(--m-surface);
   --glass-tint-deep: var(--m-bg);
-  --glass-tint-abyss: var(--m-bg-deep);
   --glass-tint-chrome: var(--m-bg);
   --glass-tint-panel: var(--m-bg);
   --glass-tint-panel-face: var(--m-bg);
@@ -1172,7 +1175,6 @@
   --glass-rim: transparent;
   --glass-bevel: transparent;
   --glass-lift: var(--m-shadow);
-  --glass-sheen: linear-gradient(transparent, transparent);
 
   /* 컨트롤 — 쉬는 몸은 칩 면(침묵이 아니라 낮은 목소리), 누름·선택은 한 단 밝은 selected.
      rest < wash 순서를 지킨다. 포커스는 무채색 2px 링. */

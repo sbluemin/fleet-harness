@@ -110,6 +110,8 @@ export function OperationSearch({
   const [mode, setMode] = useState<PaletteMode>("operations");
   const [text, setText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  // 활성 행을 마지막으로 옮긴 입력 — 키보드일 때만 활성 행이 포커스 링을 그리고, 마우스가 옮긴 행은 hover 워시뿐이다.
+  const [navigation, setNavigation] = useState<"keyboard" | "pointer">("keyboard");
   const [providerSearchGroups, setRailSearchGroups] = useState<readonly RailSearchGroup[]>([]);
   const capabilities = useHostCapabilities();
   const [shellNotice, setShellNotice] = useState<string | null>(null);
@@ -539,6 +541,7 @@ export function OperationSearch({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    setNavigation("keyboard");
     if (event.key === "Escape") {
       event.preventDefault();
       if (actionsFor !== null) setActionsFor(null);
@@ -636,7 +639,7 @@ export function OperationSearch({
               className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
               role="option"
               aria-selected={active}
-              onMouseEnter={() => setSelectedIndex(index)}
+              onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
               onClick={() => { void selectRailResult(group.panelId, result); }}
             >
               <PaletteRailIcon icon={result.icon ?? panelIcon} />
@@ -707,7 +710,7 @@ export function OperationSearch({
             ))}
           </div>
         </div>
-        <div id={LISTBOX_ID} className="operation-search-results" role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
+        <div id={LISTBOX_ID} className="operation-search-results" data-nav={navigation} role="listbox" aria-label={commandMode ? t("chrome.operationSearch.commandResults") : t("chrome.operationSearch.operationResults")}>
           {!hasResults ? (
             <p className="operation-search-empty">
               {emptyMessage}
@@ -740,7 +743,7 @@ export function OperationSearch({
                           className={`operation-search-result${active ? " is-active" : ""}${command.danger ? " is-danger" : ""}`}
                           role="option"
                           aria-selected={active}
-                          onMouseEnter={() => setSelectedIndex(index)}
+                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
                           onClick={() => runCommand(command)}
                         >
                           <PaletteCommandGlyph command={command} />
@@ -789,7 +792,7 @@ export function OperationSearch({
                             className={`operation-search-result ${active ? "is-active" : ""}`}
                             role="option"
                             aria-selected={active}
-                            onMouseEnter={() => setSelectedIndex(index)}
+                            onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
                             onClick={() => selectEntry(entry.operationId)}
                           >
                             {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다(Shell만 종류 글리프).
@@ -821,7 +824,7 @@ export function OperationSearch({
                                   type="button"
                                   tabIndex={-1}
                                   className={`operation-search-action${i === actionIndex ? " is-active" : ""}${action.danger ? " is-danger" : ""}`}
-                                  onMouseEnter={() => setActionIndex(i)}
+                                  onMouseEnter={() => { setNavigation("pointer"); setActionIndex(i); }}
                                   onClick={action.run}
                                 >
                                   <PaletteActionGlyph glyph={action.glyph} />
