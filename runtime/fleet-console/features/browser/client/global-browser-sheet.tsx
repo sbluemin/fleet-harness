@@ -486,7 +486,9 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     // 칸 끌기가 정지 화면을 기다리는 동안(resizeHoldStartRef, 아직 물러나기 전)에는 뷰를 누르기 직전 자리에 고정한다. 새 폭으로
     // 다시 놓으면 서버 캡처가 pane 기하가 두 번 연속 같기를 기다리다(browser_capture_not_ready / _changed) 끝나지 않아 장이 오지
     // 않고, 미리 찍은 장의 크기(box)도 지금 뷰와 어긋난다. 알린 자리(publishBrowserViewRect)도 실제 뷰가 있는 옛 자리 그대로 둔다.
-    if (!parked && resizeHoldStartRef.current !== null && placeKeyRef.current.startsWith("1:")) return;
+    // 고정은 splitResizing(상태)으로도 건다 — 물러나기 전에 놓으면 geometry·parked 는 그대로라 이 콜백을 다시 부를 것이 그 값뿐이고,
+    // 놓는 그 프레임에 새 자리로 놓인다(폴링을 기다리지 않는다).
+    if (!parked && splitResizing && resizeHoldStartRef.current !== null && placeKeyRef.current.startsWith("1:")) return;
     // 판정용 자리는 「놓으려는 자리」다 — 물러나 있을 때도 유지해야 토스트 교차가 풀린다.
     // 닫을 때만 null로 거둔다.
     const rect = element.getBoundingClientRect();
@@ -498,7 +500,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       return;
     }
     place(true, { x: rect.left, y: rect.top, width: rect.width, height: rect.height });
-  }, [open, parked, geometry, measureGeometry, place]);
+  }, [open, parked, splitResizing, geometry, measureGeometry, place]);
   // 복귀용 기하 반영은 페인트 전에 끝낸다. 폴링도 같은 가드를 써 우회하지 못한다.
   React.useLayoutEffect(syncPlacement, [syncPlacement, activeTab?.id]);
   React.useEffect(() => {
