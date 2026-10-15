@@ -16,6 +16,10 @@
   animation: settings-modal-scrim-in var(--duration-fast) ease-out;
 }
 :root[data-theme="light"] .settings-modal-scrim { background: oklch(18% 0 0 / 24%); }
+/* 모달 안의 SDK Select 목록은 body로 포털되고 자기 층(--z-select-popover, 40)에 서서 모달 덮개(z 90) 아래로 깔린다 —
+   보이지 않는 목록을 누르면 클릭이 아래 행으로 떨어진다. 모달이 떠 있는 동안에는 body 포털 목록이 모델 선택기 메뉴
+   (.fc-coord-menu)와 같은 오버레이 층에 선다. 모달 밖의 셀렉트와 전역 층 값은 그대로다. */
+body:has(.settings-modal-scrim) > .fc-select__popup { z-index: var(--z-overlay); }
 
 .settings-modal {
   display: grid;

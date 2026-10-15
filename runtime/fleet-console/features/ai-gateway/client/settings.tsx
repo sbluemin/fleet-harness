@@ -7,7 +7,10 @@ import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemP
 import { getModelAuthStoreState, loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
-import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRows } from "@fleet-console/sdk/models";
+import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRowEfforts, rosterRows, type ModelRoster } from "@fleet-console/sdk/models";
+import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
+import { reportSheetChrome, reportShellChrome } from "../../../core/client/src/chrome/mobile/mobile-chrome.js";
+import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { useModelRoster } from "./model-roster-store.js";
 
 /** 이 화면의 모델 선택기 문구 — 접근 이름은 그 행의 제목이다. */
@@ -362,11 +365,17 @@ function AiGatewayRoutingCard() {
   const catalogNames = new Map(state.aiGatewayCatalog.providers.flatMap((provider) => provider.models.map((model) => [model.id, model.name] as const)));
   const candidates = (state.aiGateway?.models ?? []).filter((entry) => entry.hostOnly !== true).map((entry) => catalogNames.get(entry.id) ?? entry.id);
   const routingPickerLabels = rosterPickerLabels(t, t("terminal.settings.aiGatewayRoutingModel"));
+  // 판정기는 강도를 저장하지 않는다 — 실제로 도는 강도(routingJudgeEffort)를 표시에만 실어, 기본값과 고른 모델이
+  // 같은 규칙으로 읽히게 한다. 저장은 모델만이다(onChange).
+  const routingValue = state.delegationRoutingModel
+    ? { model: state.delegationRoutingModel, ...withEffort(routingJudgeEffort(routingRoster, state.delegationRoutingModel)) }
+    : {};
+  const routingFallback = { model: ROSTER_FALLBACK_MODEL, effort: "low" };
   // 폰의 선택기 행은 「모델 · 강도」를 한 문자열로 그려 CSS가 강도만 내릴 수 없다 — 설정의 데스크톱
   // 트리거(settings-pane.css)처럼 강도를 소문자로 읽히게 문구를 여기서 넘긴다.
   const routingPickerText = (() => {
     if (!mobileHost) return undefined;
-    const display = modelCoordinateDisplay(routingRoster, state.delegationRoutingModel ? { model: state.delegationRoutingModel } : {}, { model: ROSTER_FALLBACK_MODEL }, routingPickerLabels);
+    const display = modelCoordinateDisplay(routingRoster, routingValue, routingFallback, routingPickerLabels);
     const effort = display.words.effort && display.words.effort !== routingPickerLabels.auto ? display.words.effort.toLowerCase() : display.words.effort;
     return [display.words.model, effort, display.badge].filter(Boolean).join(" · ");
   })();
@@ -421,8 +430,8 @@ function AiGatewayRoutingCard() {
               {/* 라우팅 판정기는 모델만 고른다 — 강도는 실행이 빠른 단(low)으로 정한다. 선택지는 모델 로스터 하나다. */}
               <ModelCoordinatePicker
                 roster={routingRoster}
-                value={state.delegationRoutingModel ? { model: state.delegationRoutingModel } : {}}
-                fallback={{ model: ROSTER_FALLBACK_MODEL }}
+                value={routingValue}
+                fallback={routingFallback}
                 effort="none"
                 disabled={saving.has("delegationRoutingModel")}
                 onChange={(next) => { if (next.model) void setSystemPromptSettingsField("delegationRoutingModel", next.model); }}
@@ -473,6 +482,20 @@ function AiGatewayRoutingCard() {
       ) : null}
     </SettingsGroup>
   );
+}
+
+/**
+ * 판정기가 실제로 도는 강도 — host/routing-model.ts의 규칙(사다리에 low가 있으면 low, 없으면 첫 단, 사다리가 없으면 생략)과 같다.
+ * 트리거 표시에만 쓴다. 이것이 없으면 기본값은 해석 경로가 첫 단(low)을, 고른 모델은 저장값에 강도가 없어 「자동」을 보여 표기가 갈린다.
+ */
+function routingJudgeEffort(roster: ModelRoster | null, model: string): string | undefined {
+  const ladder = rosterRowEfforts(findRosterRow(roster, model));
+  if (ladder.length === 0) return undefined;
+  return ladder.includes("low") ? "low" : ladder[0];
+}
+
+function withEffort(effort: string | undefined): { readonly effort?: string } {
+  return effort ? { effort } : {};
 }
 
 /** 라우팅 테스트의 자리 — 데스크톱 펼침 행과 폰 하위 화면이 같은 패널을 쓴다. 스토어에서 지금 방식과 후보를 다시 읽는다. */
@@ -809,6 +832,22 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     setPaletteOpen(false);
     addButtonRef.current?.focus();
   }, []);
+
+  // 폰의 모델 추가 시트 — 하드웨어·브라우저 뒤로는 화면을 떠나지 않고 시트만 닫는다(대화 시트 mobile-quick-launch와 같은 계약).
+  // 시트 한 겹마다 history 항목 하나와 겹침 레지스트리 한 칸을 올리고, 어느 길로 닫히든 둘 다 걷는다.
+  const paletteSheetOpen = mobileDetail && paletteOpen;
+  React.useEffect(() => {
+    if (!paletteSheetOpen) return undefined;
+    let historyId: number | null = pushOverlayHistory(() => { historyId = null; closePalette(); });
+    const releaseLayer = pushBackLayer(closePalette);
+    reportSheetChrome();
+    return () => {
+      releaseLayer();
+      if (historyId !== null) releaseOverlayHistory(historyId);
+      historyId = null;
+      reportShellChrome();
+    };
+  }, [paletteSheetOpen, closePalette]);
 
   React.useEffect(() => {
     const controller = new AbortController();
