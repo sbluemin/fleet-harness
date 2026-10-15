@@ -121,8 +121,10 @@ const REFUSAL_MESSAGE: Record<ConsoleUseRefusal, Record<"en" | "ko", string>> = 
 const RESERVED_TOOL_NAMES = new Set<string>([
   ...CONSOLE_USE_TOOLS,
   // 재개편 전 이름 — 플러그인이 다시 차지하지 못하게 잠근다.
-  "console_operations", "console_organize", "console_send", "console_panel", "console_launch",
+  "console_operations", "console_organize", "console_send", "console_panel", "console_analyst", "console_launch",
   "console_end", "console_theaters", "console_events", "console_interrupt", "console_action", "console_automation", "console_using", "console_transcript", "console_jobs", "console_catalog", "console_watch_last", "console_resume", "console_close", "console_rename", "console_view", "console_group", "console_accent", "console_reveal", "console_answer",
+  // 퇴역한 세션 분석가 도구 — 옛 지침을 가진 에이전트가 플러그인 도구로 잘못 닿지 않게 잠근다.
+  "console_operation_analyst",
 ]);
 const NEXT_ACTION: Record<string, string> = {
   nothing_to_interrupt: "No foreground turn is running. Stop does not close or delete the Operation; console_operation close does.",
