@@ -8,7 +8,8 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { Objective } from "../server/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, revealObjective, subscribeFinishedObjectivesStore, useObjectiveTheater, useOperationSummaries } from "./objectives-state.js";
+import { goToObjective } from "./fresh-conversation.js";
+import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, readTheater, subscribeFinishedObjectivesStore, useObjectiveTheater, useOperationSummaries } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -635,10 +636,13 @@ export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theat
   return <ObjectiveAvatar operationId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
 }
 
-/** 데스크톱 기록 토큰이 여는 목표 — 질문 카드의 목표 이름과 같은 착지다(그 목표를 짚고 목표 패널·대화를 연다). */
+/**
+ * 데스크톱 기록 토큰이 여는 목표 — 팔레트의 목표 결과와 같은 착지(`goToObjective`)다. 완료로 보관된 목표는 살아 있는 목록에 없으므로
+ * 읽어 둔 끝난 목표에서 완료를 읽는다(그 목표의 완료 화면을 세우고 보드가 그 레코드를 고른다).
+ */
 export function openReferencedObjective(theaterId: string, objectiveId: string): void {
-  revealObjective({ objectiveId });
-  openObjectiveFromCluster(theaterId, objectiveId);
+  const live = readTheater(theaterId).objectives.find((objective) => objective.id === objectiveId);
+  goToObjective(objectiveId, theaterId, !!(live ?? findFinishedObjective(objectiveId))?.done);
 }
 
 /**

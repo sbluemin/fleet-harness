@@ -5,7 +5,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 
 import type { Objective } from "../server/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusOperation, listedOperationSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, ensureFinishedObjectives, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusOperation, listedOperationSummaries, openObjectiveFromCluster, patchObjectiveView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Operation 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
@@ -49,6 +49,20 @@ function refreshFinishedFor(objectiveId: string, theaterId: string): void {
 export function openObjectiveConversation(objectiveId: string, theaterId: string): boolean {
   if (commanderLive(objectiveId)) { focusOperation(objectiveId); return true; }
   return openFreshConversation(objectiveId, theaterId);
+}
+
+/**
+ * 데스크톱에서 한 목표로 간다 — 가운데 칸에 그 목표의 대화(지휘관 대화, 없으면 시작·완료 화면)를 세우고 레일의 목표 패널을 연다. 레일만
+ * 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다. 완료로 보관된 목표(`done`)는 살아 있는 목록에 없으므로, 보드가 reveal 대신 가운데 완료 화면이
+ * 읽은 끝난 목표 레코드를 고르게 한다. 대화를 세웠으면 Theater 를 따로 옮기지 않는다(옮기기는 가운데 대화를 걷는다). 팔레트의 목표 결과와
+ * 사령관 기록의 참조 토큰이 이 하나로 연다.
+ */
+export function goToObjective(objectiveId: string, theaterId: string, done: boolean): void {
+  const shown = openObjectiveConversation(objectiveId, theaterId);
+  if (done && shown) patchObjectiveView(theaterId, () => ({ selected: objectiveId, externalSelectionId: null }));
+  else revealObjective({ objectiveId });
+  if (shown) openObjectiveFromCluster();
+  else openObjectiveFromCluster(theaterId, objectiveId);
 }
 
 /** 지금 가운데 칸에 시작 화면이 선 목표. 없으면 null. */
