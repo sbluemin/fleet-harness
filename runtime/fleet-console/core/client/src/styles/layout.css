@@ -556,10 +556,10 @@
   left: 0;
   z-index: calc(var(--z-overlay) - 1);
   padding: 5px 9px;
-  border: 1px solid var(--surface-rim-strong);
+  border: 1px solid var(--popover-rim);
   border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  box-shadow: var(--glass-lift);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   font: var(--weight-medium) var(--t-xs) var(--font-ui);
   white-space: nowrap;
@@ -773,29 +773,23 @@
   top: calc(100% + 8px);
   left: 0;
   width: min(520px, calc(100vw - 24px));
-  padding: var(--space-3);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  /* 떠 있는 면이므로 형제인 .command-band-system-menu와 같은 strong 계열 유리를 쓴다.
-     유리 전환(PR #888)에서 이 규칙만 --surface-band 불투명으로 남아, 밴드에 앵커된
-     같은 종류의 메뉴 둘이 서로 다른 재질이었다. */
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  padding: var(--space-3) var(--space-4);
+  /* 떠 있는 면이므로 형제인 .command-band-system-menu와 같은 공통 팝업 표면(theme.css --popover-*)을 쓴다 —
+     밴드에 앵커된 같은 종류의 메뉴 둘이 서로 다른 재질이면 안 된다. */
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
 }
 
 .command-band-environment-title {
   margin-bottom: var(--space-2);
   color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
 }
 
 .command-band-environment-row {
@@ -803,17 +797,17 @@
   grid-template-columns: 92px minmax(0, 1fr) auto;
   gap: var(--space-2);
   align-items: start;
-  padding-block: 5px;
-  border-top: 1px solid var(--surface-rim);
+  padding-block: 6px;
+  border-top: 1px solid var(--popover-divider);
 }
 
 .command-band-environment-row span { color: var(--text-tertiary); }
 /* 경로 값은 진단 목적상 전문이 보여야 한다 — 말줄임 대신 줄바꿈으로 전체를 노출한다. */
 .command-band-environment-row code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); overflow-wrap: anywhere; word-break: break-all; }
-.command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--text-secondary); font-weight: var(--weight-regular); font-size: inherit; line-height: inherit; font-family: inherit; cursor: pointer; }
-.command-band-environment-row button:hover,
-.command-band-environment-row button:focus-visible { border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim)); outline: none; }
-.command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: var(--t-2xs); }
+.command-band-environment-row button { padding: 2px 8px; border: 0; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--text-secondary); font-weight: var(--weight-regular); font-size: inherit; line-height: inherit; font-family: inherit; cursor: pointer; }
+.command-band-environment-row button:hover { background: var(--control-rest-hover); color: var(--text-primary); }
+.command-band-environment-row button:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
+.command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: var(--t-sm); }
 
 /* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
    앵커 대신 viewport gutter에 고정해 전체 행이 항상 화면 안에 남게 한다. */

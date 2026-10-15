@@ -1,5 +1,5 @@
 /* 온보딩 엔진 — 엔트리 힌트·투어. 내용은 각 기여가 소유하고, 이 시트는 두 표면의 재질만 정한다.
-   두 표면 모두 팝업 판독성 계약(.whatsnew-card의 canonical 주석)을 따라 유리 채널 위에 불투명 언더레이를 깐다. */
+   두 표면 모두 공통 팝업 표면(theme.css --popover-*)의 불투명 면 한 장이고, 가리키는 대상이 위치라 테두리만 brass다. */
 
 /* ── 투어 ─────────────────────────────────────────────────────────────── */
 .feature-tour-layer {
@@ -9,20 +9,16 @@
   pointer-events: none;
 }
 
-/* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조).
-   안내 카드는 스크림 없이 캔버스·패널 바로 위에 떠서 가리키는 대상 옆에 서므로, 반투명 glass
-   토큰을 쓰는 테마에서는 카드 본문과 뒤 화면이 겹쳐 읽힌다. */
+/* 안내 카드는 스크림 없이 캔버스·패널 바로 위에 떠서 가리키는 대상 옆에 서므로, 면이 비치면
+   카드 본문과 뒤 화면이 겹쳐 읽힌다 — 불투명 팝업 면이어야 한다. */
 .feature-tour-card {
   position: fixed;
   width: min(340px, calc(100vw - 24px));
   padding: var(--space-4);
   border: 1px solid color-mix(in oklab, var(--brass) 34%, var(--hairline));
-  border-radius: var(--radius-md);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   color: var(--text-primary);
   pointer-events: auto;
   animation: feature-tour-enter var(--duration-slow) var(--ease-glide) both;
@@ -102,11 +98,14 @@
   color: var(--text-primary);
 }
 
+/* 1차 버튼 — 중립 컨트롤 면 + 금색 글자, 테두리 없음. */
 .feature-tour-actions .feature-tour-primary {
-  border-color: color-mix(in oklab, var(--brass) 34%, var(--hairline));
-  background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
-  color: var(--text-primary);
+  border-color: transparent;
+  background: var(--control-rest);
+  color: var(--brass-ink);
 }
+
+.feature-tour-actions .feature-tour-primary:hover { border-color: transparent; background: var(--control-rest-hover); }
 
 .is-feature-tour-anchor {
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--brass) 55%, transparent);
@@ -124,7 +123,7 @@
 }
 
 /* 엔트리 힌트 — 아직 열어 본 적 없는 레일 아이콘 왼쪽에 한 번 선다. 투어 카드와 달리 화면을 잠그지
-   않고, 꼬리가 아이콘을 가리켜 "이 문"이라는 것을 붙여 둔다. 도움말의 업데이트 말풍선과 같은 유리 채널을 입고,
+   않고, 꼬리가 아이콘을 가리켜 "이 문"이라는 것을 붙여 둔다. 도움말의 업데이트 말풍선과 같은 팝업 면을 입고,
    가리키는 대상이 위치이므로 테두리 강조는 brass다. */
 .onboarding-hint {
   position: fixed;
@@ -135,18 +134,15 @@
   width: min(280px, calc(100vw - 72px));
   padding: 12px 14px;
   border: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
-  border-radius: var(--radius-md);
-  background:
-    var(--glass-sheen),
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   transform: translateY(-50%);
   text-align: left;
   animation: onboarding-hint-in var(--duration-base) var(--ease-glide) both;
 }
 
-/* 꼬리 — 본체와 같은 유리를 칠한다.
+/* 꼬리 — 본체와 같은 면을 칠한다.
    말풍선이 뷰포트 끝에서 밀려나면 그만큼 거꾸로 옮겨 여전히 아이콘 가운데를 가리킨다. */
 .onboarding-hint::before {
   content: "";
@@ -157,9 +153,7 @@
   height: 10px;
   border-top: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
   border-right: 1px solid color-mix(in oklab, var(--brass) 34%, var(--surface-rim-strong));
-  background:
-    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
-    var(--float-underlay);
+  background: var(--popover-face);
   transform: rotate(45deg);
 }
 

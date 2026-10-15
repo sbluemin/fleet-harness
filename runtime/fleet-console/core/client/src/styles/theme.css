@@ -261,8 +261,9 @@
      게이트가 닫히면(@supports 미달·prefers-reduced-transparency·라이트 테마) 모든
      소비처가 자동으로 오늘의 불투명 계약으로 되돌아간다. */
   --glass-underlay: var(--ink-deep);
-  /* 팝업(메뉴·팝오버·다이얼로그·시트·토스트·말풍선) 전용 바탕층 — 게이트가 덮어쓰지 않아 다크에서도 불투명이고, 틴트·rim·sheen·lift만 유리 채널을 따른다. */
-  --float-underlay: var(--ink-deep);
+  /* 옛 팝업 바탕층의 이전 기간 별칭 — 팝업 면은 아래 --popover-face 하나다. 아직 유리 레시피를 쓰는
+     플러그인 팝업이 이 이름을 읽는 동안만 남기고, 소비처가 떠나면 지운다. 게이트가 덮어쓰지 않아 늘 불투명이다. */
+  --float-underlay: var(--popover-face);
   /* 라이트에서 일부러 비치게 둔 부유 표면(Snap Assist)의 바탕층 — 다크 게이트에서만 --float-underlay로 채운다. */
   --float-underlay-dark: transparent;
   --glass-tint-strong: var(--surface-glass-strong);
@@ -378,6 +379,29 @@
   --radius-md: 10px;
   /* 999px는 도트·비콘·상태 캡슐 전용 — 컨트롤(버튼/칩)에는 쓰지 않는다. */
   --radius-pill: 999px;
+  /* 떠 있는 판의 라운드 셋 — 팝업·메뉴·묶음 카드(lg)·대화상자(xl)·모바일 시트 윗변(sheet).
+     대화 독 메뉴·설정 모달이 이미 쓰던 값을 이름으로 올렸고, 모바일에서도 값이 같다(xs·md만 모바일이 키운다). */
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-sheet: 28px;
+
+  /* ── 공통 팝업 표면 (대화 독 메뉴 문법) ─────────────────────────────────
+     메뉴·팝오버·말풍선·토스트는 한 장의 불투명 면이다 — 광택·rim 하이라이트·반투명 틴트를 겹치지 않는다.
+     면은 앱 바탕 한 단(--ink-deep), 테두리는 글자색 14%, 그림자는 --shadow-floating 하나다.
+     행은 메뉴 40px · 목록 36px, 본문 크기·본문색이고, 행 상태는 중립 워시(hover 7% · 고른 행 9% + 체크)로만 말한다.
+     금색은 포커스 링과 1차 동작 글자에만 남는다. 워시는 팝업 밖 목록도 같은 이름으로 빌려 쓴다.
+     대화상자는 설정 모달 문법(대화 바탕 면 · 48% 검정 덮개 · --radius-xl)을 받는다. */
+  --popover-face: var(--ink-deep);
+  --popover-rim: color-mix(in oklch, var(--text-primary) 14%, transparent);
+  --popover-shadow: var(--shadow-floating);
+  --popover-row: 40px;
+  --popover-row-dense: 36px;
+  --popover-divider: color-mix(in oklch, var(--text-primary) 10%, transparent);
+  --wash-hover: color-mix(in oklch, var(--text-primary) 7%, transparent);
+  --wash-selected: color-mix(in oklch, var(--text-primary) 9%, transparent);
+  --dialog-face: var(--canvas-abyss);
+  /* Doctrine: 무채색 덮개 리터럴(깊이 예외) — 설정 모달 덮개와 같은 값. */
+  --dialog-scrim: oklch(0% 0 0 / 48%);
 
   --space-1: 4px;
   --space-2: 8px;
@@ -713,6 +737,8 @@
      입력 필드에 깔면 라이트에서 필드가 "파인 우물"로 되돌아간다(다크 우물 퇴역과 같은 이유). */
   --control-rest: oklch(30% 0.015 95 / 4.5%);
   --control-rest-hover: oklch(30% 0.015 95 / 7.5%);
+  /* 대화상자 덮개 — 밝은 바탕에서는 48% 검정이 화면을 꺼뜨리므로 설정 모달의 라이트 덮개를 그대로 쓴다. */
+  --dialog-scrim: oklch(18% 0 0 / 24%);
   --control-field: oklch(99.3% 0.003 95);
   --control-wash: oklch(30% 0.015 95 / 6.5%);
   --control-wash-hover: oklch(30% 0.015 95 / 3.5%);
@@ -1141,6 +1167,11 @@
   --surface-rim: var(--m-hairline);
   --surface-rim-strong: var(--m-hairline-strong);
   --surface-band: var(--m-bg);
+
+  /* 팝업 면은 모바일 표면 한 장, 구분선은 모바일 헤어라인, 대화상자 덮개는 시트 덮개다. */
+  --popover-face: var(--m-surface);
+  --popover-divider: var(--m-hairline);
+  --dialog-scrim: var(--m-scrim);
 
   /* 유리 닫기 — 게이트 블록보다 높은 특이도로 틴트 채널을 불투명 면에 직접 싣는다. */
   --glass-underlay: var(--m-surface);

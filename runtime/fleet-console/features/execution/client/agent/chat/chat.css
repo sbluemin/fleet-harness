@@ -2104,16 +2104,11 @@
   overscroll-behavior: contain;
   /* 좁은 폭 판정의 기준은 패널이 아니라 이 덱의 폭이다. */
   container-type: inline-size;
-  padding: var(--space-1);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
-      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
-    ),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  padding: 6px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
 }
 
 .agent-chat-deck.is-below {
@@ -2141,10 +2136,10 @@
   align-items: baseline;
   gap: 6px;
   margin: 0;
-  padding: 9px var(--space-2) 3px;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
+  padding: var(--space-2) 12px 6px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-regular);
 }
 
 .agent-chat-deck-group + .agent-chat-deck-group > .agent-chat-deck-section { margin-top: var(--space-1); }
@@ -2160,31 +2155,26 @@
   display: grid;
   grid-template-columns: subgrid;
   align-items: center;
-  min-height: 32px;
+  min-height: var(--popover-row-dense);
   /* 고정 머리글이 없으므로 가장자리만큼만 비켜 둔다. */
   scroll-margin-block: 6px;
-  padding: 6px var(--space-2);
+  padding: 4px 12px;
   border: 0;
-  /* 덱 안쪽(패딩 4px)에 떠 있는 둥근 채움이다 — 행 좌우에 4px 여백이 남는다. */
-  border-radius: 8px;
+  /* 덱 안쪽(패딩 6px)에 떠 있는 둥근 채움이다 — 공통 팝업 행 라운드(md). */
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: inherit;
-  font-size: var(--t-md);
+  font-size: var(--t-base);
   text-align: left;
   cursor: pointer;
 }
 
-/* 선택 행은 중립 채움 하나와 이름 굵기로 말한다. `--brass-glow`는 테마마다 알파가 달라
-   짙은 갈색 판이 되던 테마가 있었으므로, 글자색을 고정 비율로 섞어 두 테마가 같은
-   세기로 선다. 채움만으로는 배경 대비가 3:1에 못 미치므로 굵기 변화가 보조 단서를 진다. */
-.agent-chat-deck-row:hover:not(.is-active) {
-  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
-}
+/* 선택 행은 중립 채움 하나와 이름 굵기로 말한다 — 공통 팝업의 행 상태(hover 7% · 고른 행 9%)다.
+   채움만으로는 배경 대비가 3:1에 못 미치므로 굵기 변화가 보조 단서를 진다. */
+.agent-chat-deck-row:hover:not(.is-active) { background: var(--wash-hover); }
 
-.agent-chat-deck-row.is-active {
-  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
-}
+.agent-chat-deck-row.is-active { background: var(--wash-selected); }
 
 .agent-chat-deck-row.is-active .agent-chat-deck-name {
   font-weight: var(--weight-medium);
@@ -2859,13 +2849,11 @@
   max-height: min(520px, calc(100vh - 24px));
   overflow-y: auto;
   scrollbar-width: none;
-  padding: var(--space-1);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)), color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))),
-    var(--float-underlay);
-  box-shadow: var(--shadow-floating);
+  padding: 6px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2879,7 +2867,7 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
-  padding: 6px var(--space-2) 4px;
+  padding: var(--space-2) 12px 6px;
   font-family: var(--font-ui);
 }
 
@@ -2888,30 +2876,23 @@
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: 7px var(--space-2);
+  min-height: var(--popover-row-dense);
+  padding: 0 12px;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
+  font-size: var(--t-base);
   text-align: left;
   cursor: pointer;
-  transition: color var(--duration-fast), background var(--duration-fast);
+  transition: background var(--duration-fast);
 }
 
-.agent-chat-coord-pop-item:hover,
-.agent-chat-coord-pop-item:focus-visible {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  outline: none;
-}
+.agent-chat-coord-pop-item:hover { background: var(--wash-hover); }
+.agent-chat-coord-pop-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
-.agent-chat-coord-pop-item.is-active {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-}
+.agent-chat-coord-pop-item.is-active { background: var(--wash-selected); }
 
 .agent-chat-coord-pop-label {
   flex: 1;
@@ -2923,7 +2904,7 @@
 }
 
 .agent-chat-coord-pop-window {
-  font-size: var(--t-2xs);
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
@@ -2967,10 +2948,8 @@
 .agent-chat-coord-pop-effort-word {
   flex: none;
   font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--brass-ink);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
 }
 
 .agent-chat-coord-pop-track {
@@ -2985,15 +2964,15 @@
 
 .agent-chat-coord-pop-divider {
   height: 1px;
-  margin: var(--space-1);
-  background: var(--surface-rim);
+  margin: 5px 4px;
+  background: var(--popover-divider);
 }
 
 .agent-chat-coord-pop-empty {
   margin: 0;
-  padding: 6px var(--space-2);
+  padding: 8px 12px;
   font-family: var(--font-ui);
-  font-size: var(--t-xs);
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
@@ -3004,9 +2983,9 @@
 .agent-chat-coord-pop-row.is-blocked .agent-chat-coord-pop-label { color: var(--text-tertiary); }
 
 .agent-chat-coord-pop-why {
-  margin: 0 var(--space-2) var(--space-1) calc(var(--space-2) + 4px);
+  margin: 0 12px var(--space-1) 16px;
   font-family: var(--font-ui);
-  font-size: var(--t-2xs);
+  font-size: var(--t-sm);
   color: var(--warn-ink);
 }
 
@@ -3024,7 +3003,7 @@
 .agent-chat-coord-pop-note {
   margin: var(--space-1) var(--space-2) 2px;
   padding-top: var(--space-2);
-  border-top: 1px solid var(--surface-rim);
+  border-top: 1px solid var(--popover-divider);
   font-family: var(--font-content);
   font-size: calc(var(--font-content-size) * 0.714286);
   color: var(--text-secondary);
