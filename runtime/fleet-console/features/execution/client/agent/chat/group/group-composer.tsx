@@ -337,12 +337,15 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     void runBoard(action, text.trim(), true);
   };
 
-  /** 제안 칩 — 덧붙일 말을 받으면 입력창에 앉히고, 아니면 곧 실행한다(확인이 걸리면 두 번 눌러). */
+  /**
+   * 제안 칩 — 덧붙일 말을 받으면 입력창에 앉히고, 아니면 곧 실행한다(확인이 걸리면 두 번 눌러). 앉은 칩을 다시 누르면 Enter 와 같이
+   * 제출한다 — 해제는 입력창 칩의 × 와 빈 입력의 Backspace 가 맡는다.
+   */
   const pressChip = (action: GroupBoardAction) => {
     if (busy || action.unavailable) return;
     setNotice(null);
     if (action.context) {
-      if (seated?.id === action.id && !board?.fixed) { draft.update({ mode: null }); arm(null); inputRef.current?.focus(); return; }
+      if (seated?.id === action.id) { arm(null); submitBoard(action); return; }
       arm(null);
       draft.update({ mode: action.id, ...(draft.read().text.trim().length === 0 && action.context.prefill ? { text: action.context.prefill, textRevision: draft.read().textRevision + 1 } : {}) });
       window.requestAnimationFrame(() => {
@@ -560,7 +563,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
                   className={`group-composer-pop-row${armed === action.id ? " is-armed" : ""}`}
                   data-board-arm={action.id}
                   aria-disabled={busy || !!action.unavailable || undefined}
-                  title={action.unavailable ? local(action.unavailable) : undefined}
+                  title={action.unavailable ? local(action.unavailable) : seated?.id === action.id ? t("group.board.again", { label: local(action.label) }) : undefined}
                   onClick={() => { const arming = !action.context && action.confirm && armed !== action.id; pressChip(action); if (!arming) setMenuOpen(false); }}
                   onKeyDown={ignoreRepeat}
                 >
@@ -609,7 +612,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
               className={chipClass(action)}
               aria-pressed={action.context ? seated?.id === action.id : undefined}
               aria-disabled={busy || !!action.unavailable || undefined}
-              title={action.unavailable ? local(action.unavailable) : undefined}
+              title={action.unavailable ? local(action.unavailable) : seated?.id === action.id ? t("group.board.again", { label: local(action.label) }) : undefined}
               onClick={() => pressChip(action)}
               onKeyDown={ignoreRepeat}
               data-board-arm={action.id}
