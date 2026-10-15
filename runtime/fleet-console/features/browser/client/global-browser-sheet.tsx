@@ -263,7 +263,11 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
       // (data-resizing)도 정착 전이다 — 뷰는 놓을 때까지 물러나 있다가 놓은 자리에 한 번 선다.
       const settling = seat?.dataset.resizing === "true" || [seat, stage].some((element) => (element?.getAnimations?.() ?? []).some((animation) => ["width", "right", "left"].includes((animation as CSSTransition).transitionProperty)))
         || (sheetRef.current?.getAnimations?.() ?? []).some((animation) => animation.playState === "running");
-      return { ...seated, settling, split: true, resizing: seat?.dataset.resizing === "true" };
+      const resizing = seat?.dataset.resizing === "true";
+      // 끌기가 아닌 측정마다 대기 시작 시각을 걷는다 — park 중(parkedForMotion)인 step 은 대기 판정까지 가지 않으므로, 거기서 걷으면
+      // 앞선 끌기의 시각이 남아 다음 누름이 곧바로 「한도 초과」로 물러난다.
+      if (!resizing) resizeHoldStartRef.current = null;
+      return { ...seated, settling, split: true, resizing };
     }
     setSplit(false);
     setSplitResizing(false);
@@ -339,6 +343,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     const settling = sidebar?.dataset.resizing === "true" || rail?.classList.contains("is-dragging") === true
       || ([[sidebar, cardMotion], [rail, cardMotion], [band, lineMotion]] as const).some(([element, properties]) =>
         (element?.getAnimations?.() ?? []).some((animation) => properties.includes((animation as CSSTransition).transitionProperty)));
+    resizeHoldStartRef.current = null;
     return { ...measured, settling, split: false, resizing: false };
   }, []);
 
@@ -368,7 +373,7 @@ function GlobalBrowserSheetBody({ language, theme }: Services) {
     // 않게(Session 브라우저와 같은 규칙: 정지 화면을 먼저 깔고 물러난다). 그동안 뷰는 제자리에 남아 있다. 끄는 동안은 settling 이라
     // follow 가 매 프레임 다시 묻고, 장이 오는 프레임에 물러난다.
     const awaitingResizeStill = (measured: Measured): boolean => {
-      if (!measured.split || !measured.resizing) { resizeHoldStartRef.current = null; return false; }
+      if (!measured.split || !measured.resizing) return false;
       const now = performance.now();
       if (resizeHoldStartRef.current === null) resizeHoldStartRef.current = now;
       const tab = activeTabRef.current;
