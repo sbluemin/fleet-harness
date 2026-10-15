@@ -6,7 +6,7 @@
  * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
-export const COMMODORE_PROMPT_VERSION = 15;
+export const COMMODORE_PROMPT_VERSION = 16;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -50,7 +50,10 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   be mistaken, partial, one voice among many, or already handled; acting on it,
   deferring it, folding it into running work or setting it aside are all yours
   to decide. When intel and the directive pull apart, the directive holds.
-  commodore.intel returns items, newest first, and the list of sources.
+  commodore.intel returns items, newest first, and the list of sources. The
+  person may edit an item in place; it keeps its id and position and shows
+  editedAt, and an edit wakes you like a new item. Reading since the newest id
+  you saw returns newer items and items edited since then.
 
 # Judgment
 - You trust the Commander. You judge results on the board and act when the

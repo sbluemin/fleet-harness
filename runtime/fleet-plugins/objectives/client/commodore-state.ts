@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore, type ComponentType } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
 
@@ -420,6 +420,77 @@ export const setCommodoreAutonomy = (theaterId: string, autonomy: boolean) => wr
 export const saveCommodoreDirective = (theaterId: string, text: string) => write(theaterId, "/commodore/directive", { text });
 export const addCommodoreIntel = (theaterId: string, text: string) => write(theaterId, "/commodore/intel/add", { text });
 export const removeCommodoreIntel = (theaterId: string, intelId: string) => write(theaterId, "/commodore/intel/remove", { intelId });
+export const editCommodoreIntel = (theaterId: string, intelId: string, text: string) => write(theaterId, "/commodore/intel/edit", { intelId, text });
+
+/** 정보 항목 한 건의 자리 편집 — 고쳐 쓰는 글, 저장 중 여부, 마지막 저장 실패 코드(그 편집기 곁에 보인다). */
+export interface CommodoreIntelEdit {
+  readonly draft: string;
+  readonly saving: boolean;
+  readonly error?: string | undefined;
+}
+
+/** 정보 목록의 「수정」 단추 표지 — 편집을 닫으면 포커스가 이 단추로 돌아온다. */
+export const INTEL_EDIT_ATTRIBUTE = "data-intel-edit";
+
+/**
+ * 정보 목록의 자리 편집 — 데스크톱 패널·Theater Inbox·폰 화면이 같이 쓴다. 편집은 항목마다 따로라 한 항목을 저장하는 동안
+ * 다른 항목을 고쳐도 서로 덮지 않는다. 저장이 끝나면 그 편집만 닫히고, 실패하면 쓰던 글과 실패 코드를 그 편집에 둔 채 열려 있다.
+ * 다른 곳에서 지운 항목의 편집은 버린다. 본문이 그대로면 요청 없이 닫는다. 저장·취소로 닫히면 그 항목의 「수정」 단추로
+ * 포커스를 돌려준다 — 그새 사람이 다른 곳에 포커스를 두었으면 건드리지 않는다. `listRef` 는 목록 요소에 붙인다.
+ */
+export function useCommodoreIntelEdits(theaterId: string, intel: readonly { readonly id: string; readonly text: string }[], handlers: { readonly onClear: () => void }) {
+  const [edits, setEdits] = useState<Readonly<Record<string, CommodoreIntelEdit>>>({});
+  const latest = useRef({ edits, intel, handlers });
+  latest.current = { edits, intel, handlers };
+  const list = useRef<HTMLElement | null>(null);
+  const refocus = useRef<string | null>(null);
+  const [listRef] = useState(() => (element: HTMLElement | null) => { list.current = element; });
+  useEffect(() => { setEdits((current) => (Object.keys(current).length ? {} : current)); }, [theaterId]);
+  useLayoutEffect(() => {
+    const intelId = refocus.current;
+    if (!intelId || edits[intelId]) return;
+    refocus.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    list.current?.querySelector<HTMLElement>(`[${INTEL_EDIT_ATTRIBUTE}="${CSS.escape(intelId)}"]`)?.focus();
+  }, [edits]);
+  const known = new Set(intel.map((item) => item.id));
+  const live = Object.fromEntries(Object.entries(edits).filter(([id]) => known.has(id))) as Readonly<Record<string, CommodoreIntelEdit>>;
+  const close = (intelId: string) => {
+    if (!(intelId in latest.current.edits)) return;
+    refocus.current = intelId;
+    setEdits((current) => {
+      if (!(intelId in current)) return current;
+      const { [intelId]: _closed, ...rest } = current;
+      return rest;
+    });
+  };
+  const patch = (intelId: string, next: Partial<CommodoreIntelEdit>) => setEdits((current) => (current[intelId] ? { ...current, [intelId]: { ...current[intelId]!, ...next } } : current));
+  return {
+    edits: live,
+    listRef,
+    open(intelId: string) {
+      const item = latest.current.intel.find((entry) => entry.id === intelId);
+      if (!item) return;
+      setEdits((current) => (current[intelId] ? current : { ...current, [intelId]: { draft: item.text, saving: false } }));
+    },
+    change: (intelId: string, draft: string) => patch(intelId, { draft, error: undefined }),
+    cancel: close,
+    save(intelId: string) {
+      const edit = latest.current.edits[intelId];
+      const item = latest.current.intel.find((entry) => entry.id === intelId);
+      if (!edit || !item || edit.saving) return;
+      const text = edit.draft.trim();
+      if (!text) return;
+      if (text === item.text) { close(intelId); return; }
+      latest.current.handlers.onClear();
+      patch(intelId, { saving: true, error: undefined });
+      void editCommodoreIntel(theaterId, intelId, text)
+        .then(() => close(intelId))
+        .catch((error: unknown) => patch(intelId, { saving: false, error: error instanceof Error ? error.message : "failed" }));
+    },
+  };
+}
 export const setCommodoreCoordinates = (theaterId: string, coordinates: { readonly model: string; readonly effort: string } | null) =>
   write(theaterId, "/commodore/coordinates", coordinates ? { model: coordinates.model, effort: coordinates.effort } : { model: null, effort: null });
 /** 사령관이 만드는 목표의 지휘관 모델·강도 — null 은 보드 기본값으로 되돌린다. */
