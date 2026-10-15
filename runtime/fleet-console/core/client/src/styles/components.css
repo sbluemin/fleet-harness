@@ -3819,6 +3819,23 @@ button.status-glyph.is-actionable:focus-visible {
 }
 .mongle-picker-state:hover { color: var(--text-secondary); }
 .mongle-picker-state[aria-checked="true"] { color: var(--text-primary); border-bottom-color: var(--text-primary); }
+/* 스페셜 — 사령관만 고르는 퀘이커 셋. 모습 격자와 같은 칸·같은 고름 문법이고, 가는 선 하나로 모습과 나뉜다. */
+.mongle-picker-special {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+}
+.mongle-picker-section {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+}
+.mongle-picker-specials {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+}
 .mongle-picker-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

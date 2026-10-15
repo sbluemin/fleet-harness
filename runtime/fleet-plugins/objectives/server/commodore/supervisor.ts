@@ -14,7 +14,7 @@ import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
-import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreSoul } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
@@ -59,6 +59,8 @@ export interface CommodoreSupervisorDeps {
   readonly objectives: (theaterId: string) => readonly Objective[];
   /** 사람이 이 Theater 를 보는 언어 — 저장된 사령관 언어, 없으면 목표가 남긴 언어, 그것도 없으면 영어. */
   readonly language?: (theaterId: string) => "en" | "ko";
+  /** 그 Theater 사령관의 소울(사람이 고른 스페셜 퀘이커 모습). 없으면 기본 말투다. */
+  readonly soul?: (theaterId: string) => CommodoreSoul | null;
   readonly subscribeObjectives: (listener: (event: ObjectiveEvent) => void) => () => void;
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader) => readonly PluginMcpTool[];
@@ -215,6 +217,8 @@ interface Runner {
   compactAt: number | null;
   coordinates: CommodoreSessionCoordinates | null;
   language: "en" | "ko";
+  /** 지금 세션이 실은 소울. 한 번도 세션을 열지 않았으면 undefined 다 — 첫 세션은 기본 말투에서 바뀐 것으로 치지 않는다. */
+  soul: CommodoreSoul | null | undefined;
   rotateNext: "replaced" | "restarted" | null;
   recentActions: string[];
   /** 사령관이 이미 들은 대기 상태 — `code:objectiveId[:rev]`. 새 항목이 생길 때만 깨우고, 줄어드는 것은 조용히 잊는다. */
@@ -265,6 +269,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const settings = () => { try { return deps.experiments(); } catch { return DEFAULT_EXPERIMENT_SETTINGS; } };
   const shouldRun = (theaterId: string) => settings().commodore && deps.store.read(theaterId)?.autonomy === true && deps.theater(theaterId) !== null;
   const resolveLanguage = (theaterId: string): "en" | "ko" => deps.store.read(theaterId)?.language ?? deps.language?.(theaterId) ?? "en";
+  /** 소울 — 사람이 사령관 모습으로 고른 스페셜 퀘이커. 턴마다 다시 읽어, 바뀌었으면 다음 턴에 세션을 바꿔 그 말투를 싣는다. */
+  const resolveSoul = (theaterId: string): CommodoreSoul | null => { try { return deps.soul?.(theaterId) ?? null; } catch { return null; } };
   /** 실행 좌표 — Theater 좌표, 없으면 고정 기본값(Opus/High)을 로스터(`agent` 대상)에 대조한다. 턴마다 다시 푼다. */
   const resolveCoordinates = (theaterId: string): RunCoordinates => {
     const state = deps.store.read(theaterId);
@@ -345,13 +351,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!theater) throw new Error("theater_unavailable");
     const coordinates = resolveCoordinates(runner.theaterId);
     const language = resolveLanguage(runner.theaterId);
+    const soul = resolveSoul(runner.theaterId);
     // Agent SDK의 내장 CLI는 Claude 별칭을 자기 버전의 표로 푼다 — 설치된 Claude Code가 띄우는 지휘관과 다른 모델로
     // 서지 않게, 사령관은 설치 CLI가 푸는 정식 id로 연다. 회전 판정은 별칭 좌표로 한다(고정 id는 이 세션의 것이다).
     const model = await deps.models?.pinClaudeVersion?.(coordinates.model).catch(() => coordinates.model) ?? coordinates.model;
     // 문맥이 길어져도 세션을 바꾸지 않는다 — 같은 세션이 이 지점에서 대화를 요약해 이어 간다.
     const compactAt = commodoreCompactAt(coordinates.contextWindow);
     const session = createCommodoreSession({
-      theaterId: runner.theaterId, theaterLabel: theater.label, language, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
+      theaterId: runner.theaterId, theaterLabel: theater.label, language, soul, theaterRoot: theater.root, agent: deps.agent, store: deps.store, coordinates: { model, ...(coordinates.effort ? { effort: coordinates.effort } : {}), compactAt },
       boardTools: deps.boardTools(runner.theaterId, turnAttachments(runner)).map((tool) => selfAttributed(runner, tool)), now,
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
@@ -361,14 +368,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     await session.start();
     runner.session = session;
     runner.coordinates = coordinates;
+    // 기록에는 말투가 앞 세션과 달라졌을 때만 남긴다 — 교대 줄이 「소울: 토리」처럼 무엇이 바뀌었는지 말한다.
+    const soulChanged = (runner.soul === undefined ? soul !== null : runner.soul !== soul);
     runner.language = language;
+    runner.soul = soul;
     runner.contextWindow = coordinates.contextWindow;
     runner.compactAt = compactAt;
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
     deps.store.addRunTotals(runner.theaterId, { session: 1 });
-    record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
+    record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), ...(soulChanged ? { soul: soul ?? "none" } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
     return session;
   };
@@ -548,14 +558,14 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const coordinatesChanged = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.theaterId);
-    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId);
+    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.language !== resolveLanguage(runner.theaterId) || (runner.soul ?? null) !== resolveSoul(runner.theaterId);
   };
 
   const start = (theaterId: string, reason: WakeCode, wakeImmediately = true) => {
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", soul: undefined, rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);

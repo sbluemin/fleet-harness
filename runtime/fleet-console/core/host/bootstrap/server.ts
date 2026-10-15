@@ -963,6 +963,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginHostCapabilities: FleetPluginHostCapabilities = {
     agent: { createSession: () => Promise.reject(new Error("Agent execution requires a plugin context")) },
     consoleUse,
+    // 플러그인은 아바타를 읽기만 한다 — 사령관이 사람이 고른 스페셜(말투)을 다음 턴에 싣는다. 쓰기는 편집기 경로뿐이다.
+    avatars: { look: (key) => avatarStore.load().avatars[key] ?? null },
     mcpTransport: mcpHttp.transport,
     admiralMcp: {
       connect: () => pluginMcp.connect(),

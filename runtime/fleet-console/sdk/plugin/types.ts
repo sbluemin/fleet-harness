@@ -3,7 +3,7 @@ import type { OperationArchiveCapability } from "../operations/archive.js";
 import type { OnboardingContribution } from "../onboarding/types.js";
 import type { ClientTheaterInboxCapability, TheaterInboxAddress, TheaterInboxSectionDescriptor } from "../theater-inbox/types.js";
 import type { AgentHost, PluginAttachmentHost } from "../agent/types.js";
-import type { MongleState } from "../avatars/index.js";
+import type { MongleLook, MongleState } from "../avatars/index.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
@@ -1228,6 +1228,16 @@ export interface FleetPluginHostCapabilities {
    * itself as before.
    */
   readonly processes?: FleetPluginProcessesHost;
+  /**
+   * 몽글 아바타 책 읽기 — Theater·Operation 키(`theaterAvatarKey`·`operationAvatarKey`)의 저장된 모습이다. 쓰기는 없다(모습은 사람이
+   * 편집기에서 고른다). 없는 호스트(구버전·테스트 스텁)에서는 저장값이 없는 것으로 읽는다.
+   */
+  readonly avatars?: FleetPluginAvatarsHost;
+}
+
+/** 서버 쪽 몽글 아바타 책 읽기. 매번 저장소의 지금 값을 읽는다. */
+export interface FleetPluginAvatarsHost {
+  look(key: string): MongleLook | null;
 }
 
 /** 서버 쪽 모델 로스터 읽기. 저장값을 매번 읽으므로 Gateway를 저장한 직후의 요청부터 새 로스터를 본다. */

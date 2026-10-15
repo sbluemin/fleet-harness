@@ -19,5 +19,5 @@ export function CommodoreAvatar({ theaterId, state, size, label, decorative = fa
   readonly className?: string;
 }) {
   const look = useMongleLook(theaterAvatarKey(theaterId));
-  return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state={state} size={size} label={label} decorative={decorative} off={off} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role="commodore" state={state} size={size} label={label} decorative={decorative} off={off} special={look.special} className={className} />;
 }

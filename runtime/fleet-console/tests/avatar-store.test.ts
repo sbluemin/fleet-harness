@@ -10,7 +10,7 @@ import { createAvatarRouter, createAvatarStore } from "../features/workspace/hos
 /**
  * 몽글 아바타 책의 저장 무결성 — 공개 라우트 하나에서 본다.
  * 처음 배정(claim)은 비어 있는 키만 받아 이미 고른 모습을 덮지 않고, 편집(set)은 처음 뽑힌 베이스(origin)를 지키며,
- * 손상된 파일·항목과 잘못된 쓰기·권한 없는 쓰기는 책을 바꾸지 않는다.
+ * 손상된 파일·항목과 잘못된 쓰기·권한 없는 쓰기는 책을 바꾸지 않는다. 스페셜(퀘이커)은 사령관 키에 사람이 고를 때만 남는다.
  */
 
 const dirs: string[] = [];
@@ -52,6 +52,11 @@ describe("avatar store", () => {
     } });
     const edited = await call("PUT", { mode: "set", key: "operation:o1", base: 9, tone: "rose" });
     expect((edited.body as { avatars: Record<string, unknown> }).avatars["operation:o1"]).toEqual({ base: 9, tone: "rose", origin: 7 });
+    // 사령관의 스페셜은 베이스·색과 처음 뽑힌 베이스를 그대로 둔 채 얹히고, 생략한 쓰기가 다시 뗀다.
+    const special = await call("PUT", { mode: "set", key: "theater:t1", base: 3, tone: null, special: "bori" });
+    expect((special.body as { avatars: Record<string, unknown> }).avatars["theater:t1"]).toEqual({ base: 3, tone: null, origin: 3, special: "bori" });
+    const plain = await call("PUT", { mode: "set", key: "theater:t1", base: 3, tone: null });
+    expect((plain.body as { avatars: Record<string, unknown> }).avatars["theater:t1"]).toEqual({ base: 3, tone: null, origin: 3 });
   });
 
   it("refuses malformed and unauthorized writes and reads a damaged book as empty entries", async () => {
@@ -59,8 +64,11 @@ describe("avatar store", () => {
     expect((await call("PUT", { mode: "set", key: "operation:o1", base: 16, tone: null })).status).toBe(400);
     expect((await call("PUT", { mode: "set", key: "../escape", base: 1, tone: null })).status).toBe(400);
     expect((await call("PUT", { mode: "claim", entries: [] })).status).toBe(400);
-    fs.writeFileSync(path.join(dir, "avatars.json"), JSON.stringify({ version: 1, avatars: { "operation:ok": { base: 2, tone: "sepia", origin: 99 }, "bogus key": { base: 1 }, "operation:bad": { base: 0 } } }));
-    expect((await call("GET")).body).toEqual({ avatars: { "operation:ok": { base: 2, tone: null, origin: 2 } } });
+    // 스페셜은 사령관(Theater) 키에만, 아는 낱말로만 받는다.
+    expect((await call("PUT", { mode: "set", key: "operation:o1", base: 1, tone: null, special: "tori" })).status).toBe(400);
+    expect((await call("PUT", { mode: "set", key: "theater:t1", base: 1, tone: null, special: "owl" })).status).toBe(400);
+    fs.writeFileSync(path.join(dir, "avatars.json"), JSON.stringify({ version: 1, avatars: { "operation:ok": { base: 2, tone: "sepia", origin: 99, special: "tori" }, "theater:t1": { base: 4, tone: null, origin: 4, special: "dori" }, "bogus key": { base: 1 }, "operation:bad": { base: 0 } } }));
+    expect((await call("GET")).body).toEqual({ avatars: { "operation:ok": { base: 2, tone: null, origin: 2 }, "theater:t1": { base: 4, tone: null, origin: 4, special: "dori" } } });
 
     const readonly = harness({ authorized: false });
     expect((await readonly.call("PUT", { mode: "claim", entries: [{ key: "operation:o1", base: 1 }] })).status).toBe(401);

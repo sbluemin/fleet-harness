@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleState } from "../avatars/index.js";
+import { mongleBase, type MongleActivity, type MongleDetail, type MongleRole, type MongleShape, type MongleSpecial, type MongleState } from "../avatars/index.js";
 import type { IdentityTone } from "../operations/identity-tones.js";
 
 /**
@@ -492,12 +492,17 @@ interface MongleAvatarProps {
   readonly decorative?: boolean;
   /** 운영자가 꺼진 사령관 — 어느 표면에서든 같은 규칙(`.mongle-avatar.is-off`)으로 흐리고 채도를 뺀다. */
   readonly off?: boolean;
+  /**
+   * 사령관의 스페셜 퀘이커(저장값 `MongleLook.special`). 있으면 베이스 대신 그 피규어로 그리고 `tone` 은 쓰지 않는다. 루트에 `is-special`·
+   * `is-special-<id>` 가 선다.
+   */
+  readonly special?: MongleSpecial | null;
   readonly className?: string;
 }
 
 const CALLING_STATES: ReadonlySet<MongleState> = new Set(["awaiting", "decision", "review"]);
 
-export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, className }: MongleAvatarProps) {
+export function MongleAvatar({ base, tone = null, role, state, activity = null, size, label, decorative = false, off = false, special = null, className }: MongleAvatarProps) {
   const preset = mongleBase(base);
   const tier = mongleTier(size);
   const tempo = TEMPO[preset.id - 1] ?? 1;
@@ -510,7 +515,7 @@ export function MongleAvatar({ base, tone = null, role, state, activity = null, 
   const classes = [
     "mongle-avatar", `is-${state}`, `is-${role}`, `is-tone-${tone ?? preset.tone}`, `is-tier-${tier}`,
     acting ? `is-act-${acting}` : null, acting && motion.leaving ? "is-leaving" : null, acting && motion.big ? "is-big" : null,
-    off ? "is-off" : null, className,
+    off ? "is-off" : null, special ? `is-special is-special-${special}` : null, className,
   ].filter(Boolean).join(" ");
   const a11y = decorative ? { "aria-hidden": true as const } : { role: "img", "aria-label": label };
   return (

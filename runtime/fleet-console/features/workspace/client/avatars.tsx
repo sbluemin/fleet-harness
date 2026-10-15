@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleState } from "@fleet-console/sdk/avatars";
+import { canUseMongleSpecial, mongleStateOf, operationAvatarKey, theaterAvatarKey, type MongleFacts, type MongleRole, type MongleSpecial, type MongleState } from "@fleet-console/sdk/avatars";
 import { claimMongleLooks, drawMongleBase, resolveMongleLook, setMongleLook, useAvatarBook, useMongleLook } from "@fleet-console/sdk/avatars/browser";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
@@ -161,7 +161,7 @@ export function KeyedAvatar({ avatarKey, role, state, activityOperationId, size,
 }) {
   const look = useMongleLook(avatarKey);
   const activity = useOperationMongleActivity(state === "running" ? activityOperationId : null);
-  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} className={className} />;
+  return <MongleAvatar base={look.base} tone={look.tone} role={role} state={state} activity={activity} size={size} label={label} decorative={decorative} off={off} special={canUseMongleSpecial(role) ? look.special : null} className={className} />;
 }
 
 function usePickerLabels(): MongleAvatarPickerLabels {
@@ -175,6 +175,7 @@ function usePickerLabels(): MongleAvatarPickerLabels {
     apply: t("avatar.editor.apply"),
     toneGroup: t("avatar.editor.toneGroup"),
     baseGroup: t("avatar.editor.baseGroup"),
+    specialGroup: t("avatar.editor.specialGroup"),
     states: {
       running: t("avatar.state.running"),
       awaiting: t("avatar.state.awaiting"),
@@ -189,6 +190,8 @@ function usePickerLabels(): MongleAvatarPickerLabels {
 interface Draft {
   readonly base: number;
   readonly tone: IdentityTone | null;
+  /** 사령관의 스페셜 퀘이커. 고르면 색 줄이 걷히고, 베이스를 고르면 떨어진다. */
+  readonly special: MongleSpecial | null;
   readonly dirty: boolean;
   readonly previewState: MongleAvatarPreviewState;
 }
@@ -221,7 +224,7 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   const [draft, setDraft] = useState<Draft | null>(null);
   const activity = useOperationMongleActivity(state === "running" && draft === null ? activityOperationId : null);
   const [busy, setBusy] = useState(false);
-  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null } | null>(null);
+  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null; readonly special: MongleSpecial | null } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
@@ -229,14 +232,17 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
   useEffect(() => { setDraft(null); setUndo(null); }, [avatarKey]);
 
   const open = draft !== null;
-  const shown = draft ?? { base: look.base, tone: look.tone };
-  const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" });
+  // 스페셜은 사령관만 쓴다 — 다른 역할의 저장값에 남아 있어도 그리지도 고르지도 않는다.
+  const specials = canUseMongleSpecial(role);
+  const lookSpecial = specials ? look.special : null;
+  const shown = draft ?? { base: look.base, tone: look.tone, special: lookSpecial };
+  const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, special: lookSpecial, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" });
   const close = () => { setDraft(null); triggerRef.current?.focus(); };
   const apply = async () => {
     if (!draft) return;
-    const previous = { base: look.base, tone: look.tone };
+    const previous = { base: look.base, tone: look.tone, special: lookSpecial };
     setBusy(true);
-    const ok = await setMongleLook(avatarKey, draft.base, draft.tone);
+    const ok = await setMongleLook(avatarKey, draft.base, draft.tone, draft.special);
     setBusy(false);
     if (!ok) return;
     setDraft(null);
@@ -249,7 +255,7 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
     if (!undo) return;
     const target = undo;
     setUndo(null);
-    await setMongleLook(avatarKey, target.base, target.tone);
+    await setMongleLook(avatarKey, target.base, target.tone, target.special);
   };
 
   const avatarButton = (
@@ -264,7 +270,7 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
       onClick={toggle}
     >
       {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
-      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} special={shown.special} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative />
       <span className="avatar-editor-pen" aria-hidden="true">
         <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
       </span>
@@ -285,16 +291,18 @@ export function AvatarEditor({ avatarKey, role, state, activityOperationId, size
           role={role}
           base={draft.base}
           tone={draft.tone}
+          special={draft.special}
           previewState={draft.previewState}
           locale={locale}
           labels={labels}
-          dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
+          dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone || draft.special !== lookSpecial)}
           busy={busy}
-          onBase={(base) => setDraft({ ...draft, base, dirty: true })}
+          onBase={(base) => setDraft({ ...draft, base, special: null, dirty: true })}
           onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
+          {...(specials ? { onSpecial: (special: MongleSpecial) => setDraft({ ...draft, special, dirty: true }) } : {})}
           onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
-          onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}
-          onReset={() => setDraft({ ...draft, base: look.origin, tone: null, dirty: true })}
+          onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, special: null, dirty: true })}
+          onReset={() => setDraft({ ...draft, base: look.origin, tone: null, special: null, dirty: true })}
           onCancel={close}
           onApply={() => { void apply(); }}
         />

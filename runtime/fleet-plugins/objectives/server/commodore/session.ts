@@ -4,7 +4,7 @@ import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
-import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
+import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreSoul, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
 
 /**
  * 사령관 세션 — `ctx.host.agent.createSession` 으로 연 플러그인 소유 세션 하나. Operation 이 아니다.
@@ -28,6 +28,8 @@ export interface CommodoreSessionOptions {
   readonly theaterLabel: string;
   /** 사람이 기록을 읽는 언어 — 베이스 프롬프트의 사실 한 줄. */
   readonly language?: CommodoreLanguage;
+  /** 소울 — 베이스 프롬프트 끝에 붙는 말투 절. 없으면 기본 말투다. */
+  readonly soul?: CommodoreSoul | null;
   readonly theaterRoot: string;
   readonly agent: AgentHost;
   readonly store: CommodoreStore;
@@ -176,7 +178,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     const created = await options.agent.createSession({
       model: options.coordinates.model,
       ...(options.coordinates.effort ? { effort: options.coordinates.effort } : {}),
-      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
+      systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language, options.soul ?? null),
       continuation: "conversation",
       settlement: "result",
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
