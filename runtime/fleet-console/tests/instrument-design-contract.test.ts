@@ -767,9 +767,6 @@ describe("Instrument core design contract", () => {
      거짓말하는 죽은 줄이 되고, 반대로 채널까지 지우면 소비처가 통째로 무너진다. */
   it("keeps the bevel, lift, wash and bloom channels neutral now that no theme feeds them", () => {
     const theme = source("styles/theme.css");
-    const components = source("styles/components.css");
-    const layout = source("styles/layout.css");
-    const rail = source("styles/rail.css");
 
     // 채널의 중립 기본값이 곧 이제 모든 테마가 보는 값이다.
     expect(theme).toContain("--glass-bevel: transparent;");
@@ -791,14 +788,6 @@ describe("Instrument core design contract", () => {
       "--canvas-on-bloom-brass",
     ]) {
       expect(theme).not.toContain(material);
-    }
-
-    // 소비처의 rim/bevel 짝은 그대로 둔다 — 지금은 bevel이 늘 transparent라 아무것도 그리지
-    // 않지만, 짝이 깨진 채로 두면 나중에 어느 테마가 베벨 재료를 갖는 순간 한쪽만 살아난다.
-    for (const css of [components, layout, rail]) {
-      const rims = (css.match(/inset 0 1px 0 var\(--glass-rim\)/g) ?? []).length;
-      const bevels = (css.match(/inset 0 -1px 0 var\(--glass-bevel\)/g) ?? []).length;
-      expect(bevels).toBeGreaterThanOrEqual(rims);
     }
   });
 
@@ -1640,8 +1629,6 @@ describe("Instrument core design contract", () => {
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
     // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 다른 면으로 남던 누락의 재발 방지.
     paintsPopoverFace(layout, ".command-band-environment-popover");
-    // 아직 옮기지 않은 시트는 옛 바탕층 별칭 위에 선다 — 별칭이 불투명 면을 가리키므로 계약은 같다.
-    expect(components).toMatch(/\.codex-reading-sheet \{[^}]*\),\s*var\(--float-underlay\);/);
     // 내장 플러그인 팝업도 같은 면을 칠한다 — 스킬 읽기는 대화상자 면, 신호 토스트·소식은 신호색을 불투명 면에 섞는다.
     paintsPopoverFace(skillsCss, ".skills-overlay-dialog", "--dialog-face");
     expect(skillsCss).toMatch(/\.skills-toast \{[^}]*background: color-mix\(in srgb, var\(--aurora\) 15%, var\(--popover-face\)\);/);

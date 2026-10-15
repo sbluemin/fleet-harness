@@ -11499,12 +11499,6 @@ body[data-codex-side="true"] .command-card {
 
 /* ─── Codex Reading Sheet ────────────────────────────────────────────────────── */
 
-:root {
-  /* 읽기 시트는 다른 오버레이보다 위에 선다. Operation zIndex는 상호 승격으로 상한 없이 자라므로
-     정수 최대치 근방으로 항상 위를 보장한다. */
-  --z-codex-reading-sheet: 2147480000;
-}
-
 /* 리딩 덱 — 중앙 모달 시트의 후신. 캔버스 영역 전체를 문서 작업면으로 쓴다(캔버스
    안에 정박: 사이드바·레일 폭을 침범하지 않고, 리사이즈를 그대로 따라간다). */
 /* 슬롯 안에 서는 리더 본문. 자리와 유리 표면은 슬롯이 소유하므로 여기서는 채우기만 한다. */
@@ -11550,39 +11544,6 @@ body[data-codex-side="true"] .command-card {
   height: 40px;
   gap: var(--space-2);
   padding: 0 calc(var(--space-3) + var(--expanded-surface-float-inset, 0px)) 0 var(--space-3);
-}
-
-.codex-reading-sheet {
-  position: absolute;
-  z-index: var(--z-codex-reading-sheet);
-  inset: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  /* 캔버스가 끄는 텍스트 선택·터치 제스처를 문서 표면에서 복원한다. */
-  user-select: text;
-  touch-action: auto;
-  cursor: auto;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  /* Reading 오버레이는 우현 rail 카드와 동일한 glass 표면을 쓴다(별도 블루
-     그라디언트는 콘솔의 다크 톤과 어긋났음): surface-glass-strong + ink-deep
-     + 우상단 brass 코너. 코너는 상시 장식이라 lights-out 배수(--quiet-halo-gain)를 따른다 — 다크 0, 라이트 1.
-     팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
-  background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) calc(var(--quiet-halo-gain) * 7%), transparent), transparent 56%),
-    linear-gradient(
-      var(--glass-tint-expanded),
-      var(--glass-tint-expanded)
-    ),
-    var(--float-underlay);
-  box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .codex-reading-sheet {
-    animation-duration: 0.01ms;
-  }
 }
 
 .codex-reading-sheet-head {
@@ -12028,18 +11989,17 @@ body[data-codex-side="true"] .command-card {
    풀려, 같은 72ch가 헤더(UI 활자)와 본문(리딩 활자)에서 다른 픽셀 폭이 되어 중앙
    정렬 축이 갈라진다(실측 615px vs 747px). 본문 활자 토큰 한 기준으로 환산해 모든
    자식이 같은 캡을 받게 한다(0.611 = 본문 서체 "0"의 em 폭 ≈ 1ch). */
-.codex-reading-sheet,
 .codex-reading-body {
   --codex-reading-ch: calc(0.611 * var(--font-size-body) * var(--codex-reading-scale));
   --codex-reading-measure: calc(72 * var(--codex-reading-ch));
   --codex-reading-scale: 1;
 }
 
-.codex-reading-sheet[data-reading-size="wide"], .codex-reading-body[data-reading-size="wide"] {
+.codex-reading-body[data-reading-size="wide"] {
   --codex-reading-measure: calc(96 * var(--codex-reading-ch));
 }
 
-.codex-reading-sheet[data-reading-size="large"], .codex-reading-body[data-reading-size="large"] {
+.codex-reading-body[data-reading-size="large"] {
   --codex-reading-measure: calc(80 * var(--codex-reading-ch));
   --codex-reading-scale: 1.14;
 }
