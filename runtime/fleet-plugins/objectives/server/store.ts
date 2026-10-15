@@ -253,16 +253,16 @@ export interface ObjectiveStore {
   missionSeen(objectiveId: string, missionId: string): Objective;
   missionRemove(objectiveId: string, missionId: string): Objective;
   memberAdd(objectiveId: string, input: { readonly role: string; readonly brief?: string; readonly launch?: MemberLaunch; readonly subagents?: boolean }, by: ObjectiveActor): Objective;
-  memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }): Objective;
+  memberPatch(objectiveId: string, memberId: string, patch: { readonly role?: string; readonly brief?: string | null; readonly launch?: MemberLaunch | null; readonly subagents?: boolean }, by?: "human" | "commander"): Objective;
   /**
    * 띄운 구성원의 기동 기록 — 기동 근거(routed)·이번 턴 뒤 예약(next)·예약을 취소할 때 돌아갈 선택(launch). 사람의 편집이 아니라
    * 기동 경로의 사실이라 편집 기록을 쌓지 않는다. null 은 지운다.
    */
-  memberLaunchState(objectiveId: string, memberId: string, patch: { readonly routed?: MemberRouted | null; readonly next?: MemberNext | null; readonly launch?: MemberLaunch | null }): Objective;
+  memberLaunchState(objectiveId: string, memberId: string, patch: { readonly routed?: MemberRouted | null; readonly next?: MemberNext | null; readonly launch?: MemberLaunch | null; readonly launchBy?: "human" | "commander" }): Objective;
   /** 저장된 구성원 그대로 — 예약의 실행값·이전 선택처럼 화면 모양에 싣지 않는 값을 기동 경로가 읽는다. 없으면 null. */
   storedMember(objectiveId: string, memberId: string): StoredMember | null;
   storedAnswers(objectiveId: string, requestId: string): readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[] | null;
-  /** 직접 고른 모델(model)과 이미 그 선택인 구성원은 그대로 둔다. changed 는 실제로 바뀐 구성원 수다. */
+  /** 직접 고른 모델(model)은 보존한다. 대상의 선택 출처는 사람으로 남기며, changed는 값이나 출처가 바뀐 구성원 수다. */
   memberBatchLaunch(objectiveId: string, mode: "same" | "route", skip?: ReadonlySet<string>): { readonly objective: Objective; readonly changed: number };
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
@@ -586,8 +586,9 @@ function compact(objective: StoredObjective): StoredObjective {
   if (!objective.evidence?.length) delete out.evidence;
   if (!(objective.criteria?.length)) delete out.criteria;
   if (!(objective.criteriaProposals?.length)) delete out.criteriaProposals;
+  // 옛 구성원의 생성자(by)는 나중의 모델 칩 편집을 증명하지 못한다 — 출처 없는 선택은 사람의 것으로 보존한다.
   if (!objective.members?.length) delete out.members;
-  else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by,
+  else out.members = objective.members.map((member) => ({ id: member.id, role: member.role, by: member.by, launchBy: member.launchBy === "commander" ? "commander" : "human",
     ...(member.brief ? { brief: member.brief } : {}), ...(member.launch ? { launch: member.launch } : {}), ...(member.subagents === true ? { subagents: true } : {}),
     ...(member.routed ? { routed: member.routed } : {}), ...(member.next ? { next: member.next } : {}),
     // 구성원 수명 상태 — 재시작 뒤에도 실패·무보고 표시와 통지 중복 방지가 이어지도록 남긴다(메시지 본문은 싣지 않는다).
@@ -1598,14 +1599,14 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     memberAdd: (objectiveId, input, by) => update(objectiveId, (stored) => {
       if ((stored.members?.length ?? 0) >= MAX_MISSIONS) throw new ObjectiveStoreError("too_many_members");
       const launch = canonicalStoredLaunch(input.launch);
-      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
+      return { ...stored, members: [...(stored.members ?? []), { id: randomUUID(), role: input.role.trim(), ...(input.brief ? { brief: input.brief } : {}), ...(launch ? { launch } : {}), launchBy: by === "commander" ? "commander" : "human", ...(input.subagents === true ? { subagents: true as const } : {}), by }] };
     }),
-    memberPatch: (objectiveId, memberId, patch) => update(objectiveId, (stored) => {
+    memberPatch: (objectiveId, memberId, patch, by = "human") => update(objectiveId, (stored) => {
       if (!(stored.members ?? []).some((member) => member.id === memberId)) throw new ObjectiveStoreError("unknown_member");
       return { ...stored, members: stored.members!.map((member) => member.id === memberId ? {
         ...member, ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
         ...(patch.brief !== undefined ? { brief: patch.brief || undefined } : {}),
-        ...(patch.launch !== undefined ? { launch: canonicalStoredLaunch(patch.launch ?? undefined) } : {}),
+        ...(patch.launch !== undefined ? { launch: canonicalStoredLaunch(patch.launch ?? undefined), launchBy: by } : {}),
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
     }),
@@ -1615,7 +1616,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const { routed: _routed, next: _next, launch: _launch, ...rest } = target;
       const value = <K extends "launch" | "routed" | "next">(key: K) => (patch[key] !== undefined ? patch[key] : target[key]) ?? undefined;
       const launch = canonicalStoredLaunch(value("launch")), routed = value("routed"), next = canonicalStoredNext(value("next"));
-      const changed: StoredMember = { ...rest, ...(launch ? { launch } : {}), ...(routed ? { routed } : {}), ...(next ? { next } : {}) };
+      const changed: StoredMember = { ...rest, ...(launch ? { launch } : {}), ...(patch.launchBy ? { launchBy: patch.launchBy } : {}), ...(routed ? { routed } : {}), ...(next ? { next } : {}) };
       if (JSON.stringify(changed) === JSON.stringify(target)) return stored;
       return { ...stored, members: stored.members!.map((member) => (member.id === memberId ? changed : member)) };
     }),
@@ -1630,21 +1631,24 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     storedMember(objectiveId, memberId) {
       try {
         const member = (locate(objectiveId).stored.members ?? []).find((candidate) => candidate.id === memberId);
-        return member ? { ...member, ...(member.next ? { next: storedNext(member.next) ?? undefined } : {}) } : null;
+        return member ? { ...member, launchBy: member.launchBy === "commander" ? "commander" : "human", ...(member.next ? { next: storedNext(member.next) ?? undefined } : {}) } : null;
       } catch { return null; }
     },
     memberBatchLaunch(objectiveId, mode, skip) {
       let changed = 0;
       const objective = update(objectiveId, (stored) => {
         const members = (stored.members ?? []).map((member) => {
-          if (member.launch?.mode === "model" || skip?.has(member.id)) return member;
-          if ((member.launch?.mode ?? "route") === mode) return member;
+          if (member.launch?.mode === "model") return member;
+          const same = (member.launch?.mode ?? "route") === mode;
+          if (skip?.has(member.id) && !same) return member;
+          // 같은 값을 다시 고른 것도 사람의 선택이다 — 값이 그대로여도 지휘관의 선택을 사람의 것으로 넘긴다.
+          if (same && member.launchBy === "human") return member;
           changed += 1;
           if (mode === "route") {
             const { launch: _discarded, ...rest } = member;
-            return rest;
+            return { ...rest, launchBy: "human" as const };
           }
-          return { ...member, launch: { mode: "same" as const } };
+          return { ...member, launch: { mode: "same" as const }, launchBy: "human" as const };
         });
         // 바뀐 구성원이 없으면 보드도 그대로다 — 저장도, 편집 기록도 남기지 않는다.
         return changed > 0 ? { ...stored, members } : stored;
@@ -1687,7 +1691,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
       const members = input.members?.length ? input.members.map((member): StoredMember => {
         const launch = canonicalStoredLaunch(member.launch);
-        return { id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), ...(launch ? { launch } : {}), by: "commander" };
+        return { id: randomUUID(), role: member.role, ...(member.brief ? { brief: member.brief } : {}), ...(launch ? { launch } : {}), launchBy: "commander", by: "commander" };
       }) : stored.members ?? [];
       const resolve = (reference: string | undefined): string | undefined => {
         if (!reference) return undefined;

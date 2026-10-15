@@ -41,9 +41,15 @@ alike), the `fleet-ai-gateway` MCP server, the `assets/ai-gateway/` prose, and t
 gateway models; assignment is now decided in code per dispatch (section 2.1), so a
 served copy of that doctrine would only publish stale claims at runtime. The routing
 loadout itself remains readable to an Objectives Commander (fleet-objectives `models`),
-which may select a model and effort from it for a member it plans or enlists. That
+which may select a model and effort from it for a member it plans or enlists, or change
+an existing member through `set_member_launch` (including returning to routing). That
 selection becomes the member's launch setting, shown on the board and used at muster
 without a routing decision; a member planned without one is routed per dispatch.
+Existing sessions apply a model selection when idle or after their current turn;
+returning to routing cancels pending switches and takes effect at a later launch.
+The Commander cannot overwrite a person's launch selection, including routing;
+legacy selections without recorded ownership are conservatively protected as
+person-chosen.
 
 `claudeCodeSystemPrompt` (`on` | `append` | `off`, default `on`) controls the harness's
 own prompt, and `claudeCodeCustomSystemPrompt` carries the user's own instructions:

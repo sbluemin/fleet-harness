@@ -9,7 +9,7 @@ import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberU
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
-import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type StoredMember, type MissionAddInput, type MissionPatchInput } from "./types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, ROUTING_PREVIEW_TTL_MS, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type MemberRouted, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMemberUnreported, type PlanInput, type RoutingDecision, type RoutingPreview, type MissionAddInput, type MissionPatchInput } from "./types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -97,10 +97,10 @@ export interface LaunchService {
    */
   muster(objectiveId: string, reviewed?: ReadonlyMap<string, RoutingDecision>): Promise<readonly MusterMember[]>;
   /**
-   * 사람 경로의 구성원 수정. 서브에이전트 허용이 바뀌면 다음 기동 정책만 호스트에 알리고, 떠 있는 프로세스는 건드리지 않는다.
+   * 사람·지휘관 경로의 구성원 수정. 지휘관은 사람의 기동 선택을 바꾸지 못한다. 서브에이전트 허용 변경은 다음 기동 정책만 호스트에 알린다.
    * 이미 띄운 구성원의 모델 선택은 곧바로(휴면·유휴) 또는 이번 턴 뒤(작업 중) 그 세션의 모델이 된다.
    */
-  memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput): Promise<Objective>;
+  memberPatched(objectiveId: string, memberId: string, patch: MemberPatchInput, by?: "human" | "commander"): Promise<Objective>;
   /** 구성원 일괄 모델 설정 ('지휘관과 같게' 또는 '라우팅'). 개별 지정(model)은 보존. */
   /**
    * 띄운 구성원은 개별 선택과 같다 — 「지휘관과 같게」는 곧바로 또는 이번 턴 뒤 바뀌고, 「라우팅」은 새로 띄울 때만 뜻이 있어 건너뛴다.
@@ -1489,14 +1489,18 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     planApplied: (objectiveId, plan) => store.plan(objectiveId, plan),
 
     muster,
-    memberPatched: (objectiveId, memberId, patch) => orderedOperationRequest(objectiveId, async () => {
+    memberPatched: (objectiveId, memberId, patch, by = "human") => orderedOperationRequest(objectiveId, async () => {
       const current = editableObjective(objectiveId);
       const member = current.members.find((member) => member.id === memberId);
       if (!member) throw new ObjectiveStoreError("unknown_member");
+      // 카탈로그를 기다리는 동안 사람이 고를 수도 있다 — 같은 직렬화 경계에서 출처를 다시 확인하고, 거절할 세션은 깨우지 않는다.
+      const before = store.storedMember(objectiveId, memberId)!;
+      if (by === "commander" && patch.launch !== undefined && before.launchBy !== "commander") {
+        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person chose this member's launch setting; the Commander cannot replace it. Legacy settings without ownership are protected too." });
+      }
       if ((patch.subagents !== undefined || patch.launch !== undefined) && referenceNode(member.id)) await accessOperation(member.id);
       const latest = editableObjective(objectiveId);
-      const before: Pick<StoredMember, "launch" | "next"> = store.storedMember(objectiveId, memberId) ?? {};
-      let next = store.memberPatch(objectiveId, memberId, patch);
+      let next = store.memberPatch(objectiveId, memberId, patch, by);
       if (patch.subagents !== undefined) {
         if (ctx.host.operations.get(memberId)) rememberSubagentSpawn(memberId, patch.subagents === true);
       }
@@ -1505,7 +1509,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         // 저장값과 같은 정준 좌표로 세션을 바꾼다 — bare 별칭이 그대로 세션에 실리면 200k 좌표로 실행된다.
         const selection = patch.launch && patch.launch.mode === "model" ? { ...patch.launch, model: canonicalModelId(patch.launch.model) } : patch.launch;
         try { await reserve(latest, memberId, selection, before); }
-        catch (error) { store.memberLaunchState(objectiveId, memberId, { launch: before.launch ?? null }); throw error; }
+        catch (error) { store.memberLaunchState(objectiveId, memberId, { launch: before.launch ?? null, launchBy: before.launchBy ?? "human" }); throw error; }
         next = objective(objectiveId);
       }
       return next;
@@ -1523,11 +1527,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
         for (const member of eligible) {
           await accessOperation(member.id);
           const latest = editableObjective(objectiveId);
-          const before: Pick<StoredMember, "launch" | "next"> = store.storedMember(objectiveId, member.id) ?? {};
-          store.memberLaunchState(objectiveId, member.id, { launch: { mode: "same" } });
+          const before = store.storedMember(objectiveId, member.id)!;
+          store.memberLaunchState(objectiveId, member.id, { launch: { mode: "same" }, launchBy: "human" });
           // 한 구성원을 호스트가 거절해도 나머지는 이어 간다 — 그 구성원의 선택만 되돌린다.
           try { await reserve(latest, member.id, { mode: "same" }, before); reserved += 1; }
-          catch (error) { if (!(error instanceof ObjectiveStoreError)) throw error; store.memberLaunchState(objectiveId, member.id, { launch: before.launch ?? null }); }
+          catch (error) { if (!(error instanceof ObjectiveStoreError)) throw error; store.memberLaunchState(objectiveId, member.id, { launch: before.launch ?? null, launchBy: before.launchBy ?? "human" }); }
         }
       }
       const final = objective(objectiveId);

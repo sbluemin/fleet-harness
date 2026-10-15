@@ -704,10 +704,10 @@ describe("Objectives contract", () => {
   });
 
   it("batch-updates member launch mode to same or route while preserving custom models", async () => {
-    const { store, launch, route } = harness();
+    const { store, launch, route, call, savedObjective, objectiveFile, objectivesDir, operationsHost } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Batch Launch Test", groupId: null, note: "brief" });
-    const m1 = store.memberAdd(objective.id, { role: "architect" }, "human").members[0]!;
-    const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "human").members[1]!;
+    const m1 = store.memberAdd(objective.id, { role: "architect" }, "commander").members[0]!;
+    const m2 = store.memberAdd(objective.id, { role: "backend", launch: { mode: "same" } }, "commander").members[1]!;
     const m3 = store.memberAdd(objective.id, { role: "frontend", launch: { mode: "model", model: "sonnet[1m]", effort: "high" } }, "human").members[2]!;
 
     // 1. 일괄 "same" 적용: m1(route) -> same, m2(same) -> same, m3(model) -> preserved
@@ -718,6 +718,8 @@ describe("Objectives contract", () => {
     expect(updated1.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "same" });
     expect(updated1.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
     expect(updated1.edited?.kinds).toContain("members");
+    expect(store.storedMember(objective.id, m2.id)?.launchBy).toBe("human");
+    expect((await call("set_member_launch", { objectiveId: objective.id, member: m2.id, mode: "route" }, objective.id)).structuredContent.error).toBe("member_launch_person_chosen");
 
     // 2. 일괄 "route" 적용: m1, m2 -> route, m3(model) -> preserved
     const resRoute = await route("member/batch-launch", { objectiveId: objective.id, mode: "route" });
@@ -726,6 +728,14 @@ describe("Objectives contract", () => {
     expect(updated2.members.find((m) => m.id === m1.id)!.launch).toEqual({ mode: "route" });
     expect(updated2.members.find((m) => m.id === m2.id)!.launch).toEqual({ mode: "route" });
     expect(updated2.members.find((m) => m.id === m3.id)!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "high" });
+    expect(store.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
+    expect((await call("set_member_launch", { objectiveId: objective.id, member: m1.id, mode: "route" }, objective.id)).structuredContent.error).toBe("member_launch_person_chosen");
+    // 구성원 생성자가 지휘관이어도 출처 없는 옛 선택은 뒤이은 사람의 편집일 수 있다.
+    const legacy = savedObjective(objective.id) as unknown as { members: { launchBy?: string }[] };
+    delete legacy.members[0]!.launchBy;
+    fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(legacy));
+    const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(reloaded.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -1988,6 +1998,16 @@ describe("Objectives contract", () => {
     expect((await call("plan", { objectiveId: id, ...lineup, members: [{ role: "worker", model: "unlisted" }] }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
     expect(store.find(id)!.members).toEqual([]);
     await command("plan", { ...lineup, members: [{ role: "worker", model: "sonnet", effort: "low" }, { role: "reviewer" }] }, id);
+    // 개시 전에도 기존 구성원은 도구로 바뀐다 — 사람의 편집 흔적을 만들거나 지우지 않는다.
+    const beforeLaunchEdit = { edited: store.find(id)!.edited, actions: store.find(id)!.actions };
+    expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "unlisted" }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
+    expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "route" }, "outsider")).structuredContent.error).toBe("not_participant");
+    await command("set_member_launch", { member: "worker", mode: "route" }, id);
+    expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "route" });
+    await command("set_member_launch", { member: store.find(id)!.members[0]!.id, mode: "model", model: "sonnet", effort: "low" }, id);
+    expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
+    expect({ edited: store.find(id)!.edited, actions: store.find(id)!.actions }).toEqual(beforeLaunchEdit);
+    expect(reloadObjective()!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     expect(beforeStart.criteriaProposals).toHaveLength(2);
@@ -2058,13 +2078,36 @@ describe("Objectives contract", () => {
     const running = operations.get(workerId)!.payload.session as { model: string; effort?: string };
     hostChat.set(workerId, { model: running.model, effort: running.effort ?? null, pending: null });
     const cause = { message: `Provider refused the session: ${"원문 ".repeat(2_000)}END`, name: "Error", code: "seat_limit" };
+    const beforeHostRefusal = store.storedMember(id, workerId)!;
+    hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
+    expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "model", model: "sonnet", effort: "low" }, id)).structuredContent.error).toBe("coordinates_apply_failed");
+    expect(store.storedMember(id, workerId)).toMatchObject({ launch: beforeHostRefusal.launch, launchBy: "commander" });
     hostFault.coordinates = { ok: false, error: "coordinates_apply_failed", cause };
     expect(await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "opus[1m]", effort: "high" } } })).toMatchObject({ value: { error: "coordinates_apply_failed" } });
     expect(hostFault.coordinates).toBeNull();
     expect((await board({ action: "models" })).failedSwitches).toEqual([{ objectiveId: id, memberId: workerId, role: "worker", model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause }]);
     expect(((await route("objective/get", { objectiveId: id })).value as { objective: Objective }).objective.members.find((m) => m.id === workerId)?.next).toEqual({ model: "opus[1m]", effort: "high", failed: "coordinates_apply_failed", cause });
     await route("member/next-cancel", { objectiveId: id, memberId: workerId });
+    // 작업 중 도구 선택은 호스트의 턴 뒤 예약을 쓰며, 라우팅 복귀는 그 예약을 거둔다.
+    gatewayModels.models.push({ modelId: "opus[1m]", provider: "claude", quotaPool: "claude:shared", efforts: ["high"] });
+    activity.set(workerId, "running");
+    await command("set_member_launch", { member: workerId, mode: "model", model: "opus", effort: "high" }, id);
+    expect(store.find(id)!.members.find((member) => member.id === workerId)).toMatchObject({ launch: { mode: "model", model: "opus[1m]", effort: "high" }, next: { model: "opus[1m]", effort: "high" } });
+    expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    await command("set_member_launch", { member: workerId, mode: "route" }, id);
+    expect(hostChat.get(workerId)?.pending).toBeNull();
+    activity.set(workerId, "idle");
     hostChat.delete(workerId);
+    // 사람의 명시적 라우팅 복귀도 선택이다 — 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
+    expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: null } })).status).toBe(200);
+    await command("read", {}, id);
+    const personSelection = store.storedMember(id, workerId)!;
+    expect(personSelection.launchBy).toBe("human");
+    const protectedResult = await call("set_member_launch", { objectiveId: id, member: workerId, mode: "model", model: "sonnet", effort: "low" }, id);
+    expect(protectedResult.structuredContent).toMatchObject({ error: "member_launch_person_chosen", reason: expect.any(String) });
+    expect(store.storedMember(id, workerId)).toEqual(personSelection);
+    const reloadedStore = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(reloadedStore.storedMember(id, workerId)?.launchBy).toBe("human");
     const executing = (await board({ action: "read", objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
