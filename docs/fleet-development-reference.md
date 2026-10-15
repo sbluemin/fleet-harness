@@ -7,7 +7,7 @@ Fleet Console is the sole published owner of the CLI launcher and web product. P
 - `runtime/fleet-console/cli/` owns argv/process lifecycle and thin Claude Code passthrough.
 - `runtime/fleet-console/core/host/` owns bootstrap, transport, plugin adapters, and native-shell composition.
 - `runtime/fleet-console/core/client/src/` owns app composition, chrome, and integration.
-- `runtime/fleet-console/features/` owns Execution, AI Gateway, Analyst, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, and Updates.
+- `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, and Updates.
 - `runtime/fleet-console/foundation/` owns Agent runtime, process/infra primitives, Markdown, and Font Picker.
 - `runtime/fleet-console/sdk/` and `protocol/` own plugin and shell contracts.
 - Built-ins remain under `runtime/fleet-plugins/`; Wiki belongs to Codex, not CLI injection.

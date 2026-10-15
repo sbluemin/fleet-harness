@@ -81,7 +81,7 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 
 **Observe.** Screenshot to an absolute path outside the worktree: `adb -s "$SERIAL" exec-out screencap -p > <evidence>/shot.png`. App-side logs: `adb -s "$SERIAL" logcat -d | grep -i -e ReactNativeJS -e AndroidRuntime`. The shell logs nothing when it refuses a navigation; judge from the screenshot and `adb -s "$SERIAL" shell dumpsys activity activities | grep topResumedActivity` (an OS browser takes over there, a refusal leaves `MainActivity`). Console-side proof that the device paired: the owner's Settings → Remote access table, or the device count in `$E2E_DIR/console/remote/paired-devices.json` (count only; the file holds device names).
 
-**Desktop-only surfaces.** The mobile layout opens no companion panels (Analyst, Session Browser). To reach one, tap the view-mode toggle in the Operations header until it shows desktop (auto → mobile → desktop). At a phone's physical density the desktop view clips the bottom row of a companion panel; on your own emulator, `adb -s "$SERIAL" shell wm density 200` in landscape widens the viewport enough (undo with `wm density reset`). A density change recreates the activity and reloads the page.
+**Desktop-only surfaces.** The mobile layout opens no companion panel such as the Session Browser. To reach one, tap the view-mode toggle in the Operations header until it shows desktop (auto → mobile → desktop). At a phone's physical density the desktop view clips the bottom row of a companion panel; on your own emulator, `adb -s "$SERIAL" shell wm density 200` in landscape widens the viewport enough (undo with `wm density reset`). A density change recreates the activity and reloads the page.
 
 ## 4. iOS simulator
 
