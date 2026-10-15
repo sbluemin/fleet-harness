@@ -736,6 +736,10 @@ describe("Objectives contract", () => {
     fs.writeFileSync(objectiveFile(objective.id), JSON.stringify(legacy));
     const reloaded = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
     expect(reloaded.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
+    // launch가 없는 옛 구성원도 다른 필드 저장으로 소유를 추론해 풀지 않는다.
+    reloaded.patch(objective.id, { note: "Saved after loading legacy members" });
+    const savedAgain = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
+    expect(savedAgain.storedMember(objective.id, m1.id)?.launchBy).toBe("human");
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
@@ -2063,6 +2067,15 @@ describe("Objectives contract", () => {
     expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
     expect({ edited: store.find(id)!.edited, actions: store.find(id)!.actions }).toEqual(beforeLaunchEdit);
     expect(reloadObjective()!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });
+    // 사람이 역할만 더한 새 구성원은 모델 선택을 맡긴다 — 생성 귀속은 사람이고, 소유는 저장·재읽기 뒤에도 지휘관이다.
+    expect((await route("member/add", { objectiveId: id, member: { role: "observer" } })).status).toBe(200);
+    const observer = store.find(id)!.members.at(-1)!;
+    expect(store.storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
+    await command("set_member_launch", { member: observer.id, mode: "model", model: "sonnet" }, id);
+    expect(store.find(id)!.members.at(-1)!.launch).toEqual({ mode: "model", model: "sonnet[1m]" });
+    await command("set_member_launch", { member: observer.id, mode: "route" }, id);
+    expect(createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined }).storedMember(id, observer.id)).toMatchObject({ by: "human", launchBy: "commander" });
+    expect((await route("member/remove", { objectiveId: id, memberId: observer.id })).status).toBe(200);
     const beforeStart = (await board({ action: "read", objectiveId: id })).objective as { criteriaProposals: readonly { id: string }[] };
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["criteria"] }));
     expect(beforeStart.criteriaProposals).toHaveLength(2);
@@ -2151,6 +2164,18 @@ describe("Objectives contract", () => {
     expect(operations.get(workerId)!.payload.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     await command("set_member_launch", { member: workerId, mode: "route" }, id);
     expect(hostChat.get(workerId)?.pending).toBeNull();
+    // 사람의 같은 좌표 확정은 예약을 다시 걸지 않고 소유만 굳힌다 — 별칭도 같은 저장 선택이다.
+    await command("set_member_launch", { member: workerId, mode: "model", model: "opus", effort: "high" }, id);
+    const beforeReconfirm = store.storedMember(id, workerId)!;
+    const hostBeforeReconfirm = structuredClone(hostChat.get(workerId));
+    const coordinates = vi.spyOn(ctx.host.consoleControl!, "setCoordinates");
+    try {
+      expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "opus", effort: "high" } } })).status).toBe(200);
+      expect(store.storedMember(id, workerId)).toEqual({ ...beforeReconfirm, launchBy: "human" });
+      expect(hostChat.get(workerId)).toEqual(hostBeforeReconfirm);
+      expect(coordinates).not.toHaveBeenCalled();
+    } finally { coordinates.mockRestore(); }
+    expect((await call("set_member_launch", { objectiveId: id, member: workerId, mode: "route" }, id)).structuredContent.error).toBe("member_launch_person_chosen");
     activity.set(workerId, "idle");
     hostChat.delete(workerId);
     // 사람의 명시적 라우팅 복귀도 선택이다 — 지휘관이 읽어 편집 표시를 거둬도, 재시작해도 보호가 남는다.
@@ -2163,6 +2188,20 @@ describe("Objectives contract", () => {
     expect(store.storedMember(id, workerId)).toEqual(personSelection);
     const reloadedStore = createObjectiveStore({ dirOf: () => objectivesDir, theaterIds: () => ["t1"], operations: operationsHost, emit: () => undefined });
     expect(reloadedStore.storedMember(id, workerId)?.launchBy).toBe("human");
+    // 실행값을 same에서 명시 모델로 고정해도 같은 세션을 다시 전환하지 않는다. 빈 강도와 생략도 같은 좌표다.
+    const reviewerId = store.find(id)!.members[1]!.id;
+    expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "same" } } })).status).toBe(200);
+    hostChat.set(reviewerId, { model: "sonnet[1m]", effort: null, pending: null });
+    const fixedCoordinates = vi.spyOn(ctx.host.consoleControl!, "setCoordinates");
+    try {
+      expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "model", model: "sonnet", effort: "" } } })).status).toBe(200);
+      const fixed = store.storedMember(id, reviewerId)!;
+      expect(fixed).toMatchObject({ launch: { mode: "model", model: "sonnet[1m]", effort: "" }, launchBy: "human" });
+      expect((await route("member/patch", { objectiveId: id, memberId: reviewerId, patch: { launch: { mode: "model", model: "sonnet[1m]" } } })).status).toBe(200);
+      expect(store.storedMember(id, reviewerId)).toEqual(fixed);
+      expect(hostChat.get(reviewerId)).toEqual({ model: "sonnet[1m]", effort: null, pending: null });
+      expect(fixedCoordinates.mock.calls.filter(([operationId]) => operationId === reviewerId)).toEqual([]);
+    } finally { fixedCoordinates.mockRestore(); }
     const executing = (await board({ action: "read", objectiveId: id })).objective as { members: readonly { id: string }[]; graph: { missions: readonly { missionId: string }[] } };
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
