@@ -22,6 +22,9 @@ import {
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
+import { getT } from "../../i18n/index.js";
+import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
+import { useOperationLinks } from "../../operation-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
@@ -133,7 +136,10 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   if (context.bodyOperation.id !== context.operation.id) {
     return <MemberLedger root={context.operation} member={context.bodyOperation} language={context.language}>{context.defaultBody}</MemberLedger>;
   }
-  return <RootBody root={context.operation} language={context.language}>{context.defaultBody}</RootBody>;
+  // 데스크톱 가운데 칸의 그룹 대화는 루트(지휘관) Operation 본문 대신 선다 — 그 본문의 채팅 링크 경계를 잃지 않게 같은 길로 감싼다.
+  // 구성원·지휘관 원장(MemberLedger)은 기본 본문을 그대로 세우므로 그 본문의 경계가 이미 있다.
+  const links: GroupLinkPorts = { navigate: context.navigate, ...(context.openOperationBrowser ? { openOperationBrowser: context.openOperationBrowser } : {}) };
+  return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
 /** 대화 머리의 「턴 접기」 스위치 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
@@ -163,15 +169,48 @@ export function MobileGroupConversation({ root, language, children }: { readonly
   return <RootBody root={root} language={language} phone>{children}</RootBody>;
 }
 
-/** 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문). */
-function RootBody({ root, language, phone = false, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly children: React.ReactNode }) {
+/** 가운데 칸이 기본 본문 대신 그룹 대화를 세울 때 넘겨받는 링크 창구 — 기본 본문(루트 Operation 본문)이 받는 것과 같은 자리다. */
+interface GroupLinkPorts {
+  readonly navigate: ConversationBodyContext["navigate"];
+  readonly openOperationBrowser?: () => void;
+}
+
+/**
+ * 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문).
+ * `links` 는 데스크톱 가운데 칸만 준다. 폰은 루트 Operation 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
+ */
+function RootBody({ root, language, phone = false, links, children }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly children: React.ReactNode }) {
   const commanderLedger = useCommanderLedgerChosen(root.id);
-  return commanderLedger
-    ? <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>
+  if (commanderLedger) return <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>;
+  return links
+    ? <GroupLinkBoundary root={root} language={language} ports={links}>{(fileLinkError) => <RootConversation root={root} language={language} phone={phone} fileLinkError={fileLinkError} />}</GroupLinkBoundary>
     : <RootConversation root={root} language={language} phone={phone} />;
 }
 
-function RootConversation({ root, language, phone = false }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean }) {
+/**
+ * 그룹 대화의 링크 경계 — 루트(지휘관) Operation 의 1:1 채팅과 같은 길(useOperationLinks)이다: 파일·좌표 링크 분류와 열기, 왼클릭의 3행 카드
+ * (Operation 브라우저 행은 이 대화의 오른쪽 칸), 수정키·가운데 클릭의 직접 열기. 문서 링크 라우터는 이 영역을 건너뛴다(`self`).
+ */
+function GroupLinkBoundary({ root, language, ports, children }: {
+  readonly root: OperationNode;
+  readonly language: "en" | "ko";
+  readonly ports: GroupLinkPorts;
+  readonly children: (fileLinkError: string | null) => React.ReactNode;
+}) {
+  const { navigate, openOperationBrowser } = ports;
+  const openCompanion = React.useCallback(() => openOperationBrowser?.(), [openOperationBrowser]);
+  const links = useOperationLinks({ operationId: root.id, theaterId: root.theaterId, language, navigate, openCompanion });
+  const t = getT(language);
+  const fileLinkError = links.fileLinkFailure === null ? null : t(links.fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed");
+  return (
+    <MarkdownLinkBoundary className="group-chat-link-boundary" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" {...links.fileLinks}>
+      {children(fileLinkError)}
+      {links.card}
+    </MarkdownLinkBoundary>
+  );
+}
+
+function RootConversation({ root, language, phone = false, fileLinkError = null }: { readonly root: OperationNode; readonly language: "en" | "ko"; readonly phone?: boolean; readonly fileLinkError?: string | null }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const fold = useFoldTurns();
   const actions = useGroupConversationActions(root.id);
@@ -198,6 +237,7 @@ function RootConversation({ root, language, phone = false }: { readonly root: Op
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speaker={speakerOf(request.operationId)} language={language} />)}
+      {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
   return (
