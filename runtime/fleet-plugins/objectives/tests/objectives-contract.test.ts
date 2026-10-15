@@ -2191,7 +2191,12 @@ describe("Objectives contract", () => {
     } finally { coordinates.mockRestore(); }
     // 채팅에서 예약을 바꾼 뒤 보드에서도 확정하면, 옛 예약 대신 새 target이 저장되고 취소할 수 있어야 한다.
     hostChat.get(workerId)!.pending = { model: "sonnet[1m]", effort: null };
-    expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "sonnet" } } })).status).toBe(200);
+    // 이미 호스트에 있는 예약은 적용 중일 수 있다 — 저장 복구 때문에 동일 좌표를 재제출하지 않는다.
+    const pendingCoordinates = vi.spyOn(ctx.host.consoleControl!, "setCoordinates");
+    try {
+      expect((await route("member/patch", { objectiveId: id, memberId: workerId, patch: { launch: { mode: "model", model: "sonnet" } } })).status).toBe(200);
+      expect(pendingCoordinates).not.toHaveBeenCalled();
+    } finally { pendingCoordinates.mockRestore(); }
     expect(store.storedMember(id, workerId)?.next).toMatchObject({ model: "sonnet[1m]", held: "host", from: { model: "sonnet[1m]", effort: "low" } });
     expect(store.find(id)!.members.find((member) => member.id === workerId)?.next).toEqual({ model: "sonnet[1m]", failed: null });
     expect((await route("member/next-cancel", { objectiveId: id, memberId: workerId })).status).toBe(200);

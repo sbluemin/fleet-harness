@@ -711,7 +711,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     return ctx.host.consoleControl.coordinates?.(operationId) ?? null;
   };
   /** 미기동은 저장 선택, 기동 뒤에는 실행값·유효 예약을 기준으로 같은 확정을 가른다. 외부에서 달라진 실행값을 저장값으로 덮어 보지 않는다. */
-  const matchingSelection = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }): false | { readonly preserveNext: boolean; readonly appliedNext?: boolean } => {
+  const matchingSelection = (current: Objective, memberId: string, selection: MemberLaunch | null, before: { readonly launch?: MemberLaunch; readonly next?: MemberNext }): false | { readonly preserveNext: boolean; readonly appliedNext?: boolean; readonly syncNext?: MemberNext } => {
     const node = referenceNode(memberId);
     if (!node) return sameLaunch(before.launch, selection) ? { preserveNext: true } : false;
     const host = hostCoordinates(memberId);
@@ -719,9 +719,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     const target = selection === null ? null : presetOf(selection.mode === "same" ? current.commander : selection);
     if (!target?.model) return !pending && sameLaunch(before.launch, selection) ? { preserveNext: false } : false;
     if (pending) {
-      // 호스트에서 바뀐 예약은 정상 reserve가 저장 next와 감시자를 다시 맞춘다. 이미 같은 유효 예약만 그대로 둔다.
-      const recorded = !host || before.next?.held === "host" && !before.next.failed && samePreset(target, before.next);
-      return recorded && samePreset(target, { model: pending.model, effort: pending.effort ?? undefined }) ? { preserveNext: true } : false;
+      if (!samePreset(target, { model: pending.model, effort: pending.effort ?? undefined })) return false;
+      if (!host || before.next?.held === "host" && !before.next.failed && samePreset(target, before.next)) return { preserveNext: true };
+      // 이미 적용 중일 수 있는 호스트 예약은 다시 요청하지 않는다. 저장 기록과 감시자만 호스트에 맞춘다.
+      const was = before.next ? before.next.was : before.launch;
+      return { preserveNext: true, syncNext: { model: canonicalModelId(pending.model), ...(pending.effort ? { effort: pending.effort } : {}),
+        from: { model: host.model, ...(host.effort ? { effort: host.effort } : {}) }, ...(was ? { was } : {}), held: "host" } };
     }
     const running = host ? { model: host.model, effort: host.effort ?? undefined } : readOperationLaunch(node.payload);
     return samePreset(target, running) ? { preserveNext: false, appliedNext: !!before.next && samePreset(before.next, running) } : false;
@@ -1525,7 +1528,11 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       const latest = editableObjective(objectiveId);
       const keepSelection = reaffirmed && sameLaunch(before.launch, patch.launch);
       let next = store.memberPatch(objectiveId, memberId, keepSelection ? { ...patch, launch: before.launch ?? null } : patch, by);
-      if (reaffirmed && !reaffirmed.preserveNext) {
+      if (reaffirmed && reaffirmed.syncNext) {
+        store.memberLaunchState(objectiveId, memberId, { next: reaffirmed.syncNext });
+        watch(objectiveId, memberId);
+        next = objective(objectiveId);
+      } else if (reaffirmed && !reaffirmed.preserveNext) {
         store.memberLaunchState(objectiveId, memberId, { next: null, ...(!keepSelection || reaffirmed.appliedNext ? { routed: null } : {}) });
         next = objective(objectiveId);
       }
