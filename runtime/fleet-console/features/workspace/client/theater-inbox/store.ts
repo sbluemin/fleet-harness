@@ -26,6 +26,13 @@ function sameAddress(left: TheaterInboxAddress, right: TheaterInboxAddress): boo
   return left.sectionId === right.sectionId && left.pageId === right.pageId;
 }
 
+/** 다른 Theater의 도구로 착지할 때 문맥만 세운다 — Inbox 칸으로 포커스를 옮기지는 않는다. */
+export function setTheaterInboxContext(context: TheaterInboxSnapshot): void {
+  state = { ...context, opener: null, focusRequest: null };
+  snapshot = context;
+  emit();
+}
+
 export function openTheaterInbox(request: TheaterInboxOpenRequest): void {
   const address = { sectionId: request.sectionId, pageId: request.pageId };
   const focusRequest = { nonce: ++focusNonce, kind: request.focus ?? "default" } as const;

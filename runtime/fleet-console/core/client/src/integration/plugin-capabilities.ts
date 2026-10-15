@@ -1,4 +1,4 @@
-import { openTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
+import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { setMobileListTheaterId } from "../chrome/mobile/mobile-store.js";
 import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import type { PaneTarget } from "@fleet-console/sdk/pane";
@@ -102,7 +102,14 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     bindings,
     activateTheater: (theaterId) => {
       if (!getState().theaters.some((theater) => theater.id === theaterId)) return false;
-      viewTheaterInbox(theaterId);
+      if (getViewModeSnapshot().effective === "mobile") {
+        viewTheaterInbox(theaterId);
+      } else if (getViewedTheaterId() !== theaterId) {
+        // 페인 착지는 Theater 설정을 여는 요청이 아니다. 같은 Theater면 대화를 그대로 두고,
+        // 다른 Theater면 문맥만 바꿔 뒤따르는 Inbox 효과가 목표 페인을 덮지 않게 한다.
+        closeConversationSurface();
+        setTheaterInboxContext({ theaterId, address: { sectionId: "console:settings", pageId: "system-prompt" } });
+      }
       return true;
     },
     openRail: revealRailPanel,
