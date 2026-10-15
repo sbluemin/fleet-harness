@@ -25,7 +25,7 @@ const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString
 /**
  * 결정 요청 밖의 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
  * 「사령관에게 돌려주기」를 단다. 그 대상의 넘김(`livePersonHold`)이 서 있을 때만 그린다. 돌려주기가 실패하면 한 줄로 말한다.
- * `label` 은 어느 항목의 넘김인지 밝힌다 — 폰(`phone`)에서는 제 카드로 서고(그 대상의 표면이 폰에 따로 없을 때), 데스크톱에서는 이유 위 머리말이다.
+ * `label` 은 어느 항목의 넘김인지 밝힌다 — 폰(`phone`)에서는 제 카드로 선다(그 대상의 표면이 폰에 따로 없을 때). 데스크톱 넘김은 호스트 대화 카드가 그린다.
  * 폰 카드는 그 항목에 직접 답하는 단추(`answer`)를 돌려주기 옆에, 그 단추의 설명·사유(`children`)를 이유 아래에 받는다.
  * 답을 보내는 동안(`locked`)은 돌려주기를 잠근다 — 결정 카드가 보내는 중 돌려주기를 잠그는 것과 같다.
  */
@@ -67,16 +67,7 @@ export function PersonHoldNote({ objective, target, t, phone = false, label, ans
     );
     return label ? <section className="objectives-m-card" aria-label={label}><h3 className="objectives-m-card-label">{label}</h3>{body}</section> : body;
   }
-  return (
-    <div className="objectives-hold" {...(label ? { role: "group", "aria-label": label } : {})}>
-      {label ? <span className="objectives-hold-label">{label}</span> : null}
-      <p className="objectives-decision-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={hold.reason} /></p>
-      <div className="objectives-hold-acts">
-        {failed ? <span className="objectives-decision-fault" role="status">{t("objectives.decision.giveBackFailed")}</span> : null}
-        <button type="button" className="objectives-decision-giveback" disabled={busy} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 const SHOWN = 3;

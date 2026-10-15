@@ -1,4 +1,4 @@
-import type { ConversationDecision, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "@fleet-console/sdk/conversation";
+import type { ConversationDecision, ConversationHold, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "@fleet-console/sdk/conversation";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -163,6 +163,38 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
         <button type="button" className="group-card-send" disabled={!submitPath || !ready || sending || givingBack} onClick={() => { void submit(); }}>
           {sending ? t("group.decision.sending") : t("group.decision.send")}
         </button>
+      </div>
+    </section>
+  );
+}
+
+/** 결정 요청 밖의 넘김 — 답하는 길은 늘 원래 입력창·보드에 두고 이유와 돌려주기만 이 카드가 진다. */
+export function HoldCard({ hold, language }: { readonly hold: ConversationHold; readonly language: ConsoleLocale | undefined }) {
+  const t = getGroupT(language);
+  const locale = language ?? "en";
+  const text = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, locale);
+  const [givingBack, setGivingBack] = React.useState(false);
+  const [giveBackFailed, setGiveBackFailed] = React.useState(false);
+  React.useEffect(() => { setGiveBackFailed(false); }, [hold.id]);
+  const giveBack = hold.handed.giveBack;
+  const returnToHandler = async () => {
+    if (!giveBack || givingBack) return;
+    setGivingBack(true);
+    setGiveBackFailed(false);
+    try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
+  };
+  return (
+    <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
+      <div className="group-card-head">
+        <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />
+        <span className="group-card-who">{`${t("group.commodore")} · ${text(hold.title)}`}</span>
+        {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+      </div>
+      <div className="group-card-handed"><span className="group-card-handed-label">{text(hold.handed.label)}</span><CardMarkdown text={hold.handed.reason} language={locale} lead /></div>
+      <div className="group-card-foot">
+        {giveBackFailed ? <span className="group-card-error" role="alert">{t("group.hold.giveBackFailed")}</span>
+          : hold.route ? <span className="group-card-route">{text(hold.route)}</span> : <span />}
+        {giveBack ? <button type="button" className="group-card-send is-quiet" disabled={givingBack} onClick={() => { void returnToHandler(); }}>{text(giveBack.label)}</button> : null}
       </div>
     </section>
   );

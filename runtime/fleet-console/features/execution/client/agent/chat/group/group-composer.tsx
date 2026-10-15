@@ -382,7 +382,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
 
   /** 허용을 기다리는 참여자 — 대화의 요청 카드로 데려간다. */
   const toCards = () => {
-    const card = wrapRef.current?.parentElement?.querySelector<HTMLElement>(".group-card");
+    const card = wrapRef.current?.parentElement?.querySelector<HTMLElement>(".group-card:not(.is-hold)");
     card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     card?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
   };
