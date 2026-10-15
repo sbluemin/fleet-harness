@@ -131,7 +131,7 @@ export function QuickLaunch() {
   const [submitting, setSubmitting] = useState(false);
   // '@' 멘션: token은 덱이 열려 있는 동안의 조회 상태, target은 확정된 행선지(최대 1개).
   const [mentionToken, setMentionToken] = useState<QuickLaunchMentionToken | null>(null);
-  const [mentionTarget, setMentionTarget] = useState<QuickLaunchMentionTarget | null>(null);
+  const [mentionPick, setMentionPick] = useState<QuickLaunchMentionTarget | null>(null);
   const [mentionFocused, setMentionFocused] = useState(() => readQuickLaunchSelection().mentionFocused);
   // 시작 표면. 모델·강도와 같은 "고르면 기억" 계층에서 초기값을 읽는다 — 무장이 안내줄과
   // 카드 외곽선으로 상시 보이므로 기억이 숨은 모드를 만들지 않는다.
@@ -213,8 +213,6 @@ export function QuickLaunch() {
   messageableTypesByPluginRef.current = messageableTypesByPlugin;
   const mentionFocusedRef = useRef(mentionFocused);
   mentionFocusedRef.current = mentionFocused;
-  const mentionTargetRef = useRef(mentionTarget);
-  mentionTargetRef.current = mentionTarget;
   const mentionGroups = useMemo(
     () => (mentionToken === null ? [] : buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, mentionToken.query)),
     [mentionToken, state, messageableTypesByPlugin],
@@ -236,6 +234,15 @@ export function QuickLaunch() {
     .flatMap((category) => category.rows), [registry.providers, mentionRosterEpoch, open]);
   const allPluginMentionRowsRef = useRef(allPluginMentionRows);
   allPluginMentionRowsRef.current = allPluginMentionRows;
+  // 고른 플러그인 행선지는 지금 목록의 같은 행(optionId)으로 읽는다 — 고른 뒤 이름이 바뀌어도(사령관 별칭 등) 칩·안내문이 따라간다.
+  // 목록에서 사라졌으면 고른 그대로 둔다(보내면 플러그인이 거절한다).
+  const mentionTarget = useMemo<QuickLaunchMentionTarget | null>(() => {
+    if (mentionPick?.kind !== "plugin") return mentionPick;
+    const latest = allPluginMentionRows.find((row) => row.optionId === mentionPick.row.optionId);
+    return latest && latest !== mentionPick.row ? { kind: "plugin", row: latest } : mentionPick;
+  }, [mentionPick, allPluginMentionRows]);
+  const mentionTargetRef = useRef(mentionTarget);
+  mentionTargetRef.current = mentionTarget;
   const laneRows = useMemo(() => allPluginMentionRows.filter((row) => row.quickLaunch), [allPluginMentionRows]);
   const laneRowsRef = useRef(laneRows);
   laneRowsRef.current = laneRows;
@@ -458,7 +465,7 @@ export function QuickLaunch() {
       mentionAlreadySet: false,
       promptOccupied: false,
     });
-    setMentionTarget(openingMention);
+    setMentionPick(openingMention);
     // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
     // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
     setCommandInput(openingMention ? null : readCommand(restoredPrompt, restoredPrompt.length));
@@ -487,7 +494,7 @@ export function QuickLaunch() {
       mentionAlreadySet: false,
       promptOccupied: false,
     });
-    setMentionTarget(addressed);
+    setMentionPick(addressed);
     setMentionToken(null);
     if (addressed) setMentionErrorKey(null);
     setCommandInput(addressed ? null : readCommand(promptRef.current, promptRef.current.length));
@@ -559,12 +566,12 @@ export function QuickLaunch() {
       });
       if (addressed) {
         nextMention = addressed;
-        setMentionTarget(addressed);
+        setMentionPick(addressed);
         setMentionToken(null);
         setMentionErrorKey(null);
       } else if (seeded) {
         nextMention = null;
-        setMentionTarget(null);
+        setMentionPick(null);
       }
     }
     // 시드가 초안을 비운 뒤에는 빈 문면을 재파싱한다. 접힘/펼침 왕복은 유지된 문면에서
@@ -584,7 +591,7 @@ export function QuickLaunch() {
     if (!pinned) return;
     if (mentionTargetRef.current?.kind === "plugin") {
       setPluginAddressUnavailable(false);
-      setMentionTarget(null);
+      setMentionPick(null);
       expandAndFocus();
       return;
     }
@@ -705,7 +712,7 @@ export function QuickLaunch() {
       // 제어 컴포넌트라 값 반영 뒤에야 높이를 잴 수 있다 — 다음 프레임에 줄어든 값으로 다시 잰다.
       if (element) requestAnimationFrame(() => autoGrow(element));
     }
-    setMentionTarget(target);
+    setMentionPick(target);
     setPluginAddressUnavailable(false);
     if (target.kind === "plugin" && target.row.pluginId !== null) {
       writeQuickLaunchRecentPluginTarget({ pluginId: target.row.pluginId, targetId: target.row.targetId });
@@ -720,7 +727,7 @@ export function QuickLaunch() {
 
   const clearMention = useCallback(() => {
     setPluginAddressUnavailable(false);
-    setMentionTarget(null);
+    setMentionPick(null);
     setMentionErrorKey(null);
     inputRef.current?.focus();
   }, []);
@@ -1123,7 +1130,7 @@ export function QuickLaunch() {
       return;
     }
     setPrompt("");
-    setMentionTarget(null);
+    setMentionPick(null);
     // 열려 있던 덱도 함께 접는다 — 매치 없는 '@'·'/' 토큰은 제출을 막지 않으므로(프로즈 토큰),
     // 토큰을 남기면 비운 컴포저 위로 빈 덱만 떠 있는다.
     setMentionToken(null);

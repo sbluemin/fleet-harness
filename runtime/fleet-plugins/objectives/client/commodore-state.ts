@@ -175,7 +175,15 @@ export function subscribeCommodore(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** 모든 등록 Theater의 사령관이 같은 행선지 목록을 공유한다. */
+/** Theater 목록 중 사령관 행선지 이름이 기대는 몫(id·이름·별칭)의 서명 — 바뀐 때만 덱을 다시 읽게 한다. */
+function commodoreNamesKey(): string {
+  return (installed?.consoleState.getTheaters() ?? []).map((theater) => `${theater.id}\u0000${theater.label}\u0000${theater.alias ?? ""}`).join("\u0001");
+}
+
+/**
+ * 모든 등록 Theater의 사령관이 같은 행선지 목록을 공유한다. Theater 목록의 추가·제거·별칭 지정·해제는 설치가 콘솔 상태를 듣다가
+ * 사령관 구독자에게 알리므로(`installCommodoreState`), 호스트가 플러그인 설치보다 먼저 구독해도 놓치지 않는다.
+ */
 export function subscribeCommodoreMentions(listener: () => void): () => void { return subscribeCommodore(listener); }
 export function commodoreTheaterIds(): readonly string[] { return installed?.consoleState.getTheaters().map((theater) => theater.id) ?? []; }
 
@@ -185,12 +193,18 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
   experimentsKnown = readExperimentsKnown();
   const loadRegistered = () => { for (const theaterId of commodoreTheaterIds()) void loadCommodore(theaterId); };
   let registered = commodoreTheaterIds().join("\0");
+  // 이름(원래 이름·별칭)만 바뀌어도 사령관 행선지 이름이 따라가야 한다 — 읽기는 등록 목록이 바뀔 때만 새로 한다.
+  let names = commodoreNamesKey();
   loadRegistered();
   const offConsole = ctx.consoleState.subscribe(() => {
+    const nextNames = commodoreNamesKey();
+    if (nextNames === names) return;
+    names = nextNames;
     const next = commodoreTheaterIds().join("\0");
-    if (next === registered) return;
-    registered = next;
-    loadRegistered();
+    if (next !== registered) {
+      registered = next;
+      loadRegistered();
+    }
     notify();
   });
   const applyEvent = (event: CommodoreEvent) => {
@@ -354,9 +368,14 @@ export function subscribeCommodoreMapInsets(listener: () => void): () => void {
   return installed?.consoleState.subscribeMapInsets?.(listener) ?? (() => undefined);
 }
 
-/** Theater 의 표시 이름 — 코어가 사이드바에 보이는 그대로. */
+/** Theater 의 원래 이름 — 사령관 별칭이 있어도 바뀌지 않는다(사이드바는 별칭 아래 줄에 이 이름을 둔다). */
 export function commodoreTheaterLabel(theaterId: string): string {
   return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "";
+}
+
+/** 사람이 지정한 사령관 별칭 — 없거나 지웠으면 null 이다. 구버전 호스트는 싣지 않으므로 늘 null 이다. */
+export function commodoreAlias(theaterId: string): string | null {
+  return installed?.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.alias || null;
 }
 
 /* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */

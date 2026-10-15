@@ -1,11 +1,10 @@
 /**
- * Quick Launch '@' 덱에서 사령관 행의 정체성 마크 — 덱 행·선택 칩이 같은 이 하나를 그린다.
- *
- * 둥근 판에서 별을 뚫어 낸 모양(evenodd)이고, 색은 currentColor 로 받아 CSS 가 brass-ink 를 준다. 호스트가 17×17 칸에
- * svg 를 채워 넣으므로 viewBox 는 정사각으로 둔다. 사이드바 Theater 머리의 사령관 글리프(켜진 것은 끄는 스위치)도 같은 마크를 그리며, 그때는
- * className 으로 스위치 전용 색·크기 규칙을 받는다. 사령관의 목표 줄 끝 표식도 같은 마크이고, 색·크기는 호스트가 준다.
+ * 사령관을 가리키는 작은 기호 — 둥근 판에서 별을 뚫어 낸 모양(evenodd)이다. 사령관 자신의 얼굴은 `CommodoreAvatar` 가 그리고,
+ * 이 기호는 「자율 운영」 스위치(Theater 우클릭 메뉴)·사령관의 질문 카드·Theater Inbox 섹션·사령관의 목표 줄 끝 표식처럼
+ * 사령관에 관한 것을 표시하는 자리에 선다. 색은 currentColor 로 받고, 크기·색 규칙은 부르는 자리가 className 으로 준다.
+ * viewBox 는 정사각으로 둔다.
  */
-export function CommodoreMentionGlyph({ className = "objectives-commodore-mention-glyph" }: { readonly className?: string } = {}) {
+export function CommodoreMentionGlyph({ className }: { readonly className: string }) {
   return (
     <svg className={className} viewBox="0 0 16 16" aria-hidden="true">
       <path

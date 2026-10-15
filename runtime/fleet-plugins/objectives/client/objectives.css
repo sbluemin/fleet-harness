@@ -1106,8 +1106,6 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 .objectives-commodore-menu-glyph { color: var(--text-tertiary); }
 .objectives-commodore-menu-glyph.is-on { color: var(--brass-ink); }
 .objectives-commodore-menu-glyph-svg { display: block; width: 13px; height: 13px; }
-/* Quick Launch '@' 덱의 사령관 마크 — svg 는 currentColor 로 그린다. */
-.objectives-commodore-mention-glyph { color: var(--brass-ink); }
 
 
 .objectives-commodore-clear-wrap { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
