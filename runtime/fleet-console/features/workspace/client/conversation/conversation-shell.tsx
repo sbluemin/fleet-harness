@@ -435,7 +435,7 @@ function ConversationPanelIdentity() {
     return (
       <div className="conversation-panel-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} activity={avatar.activity ?? null} size={64} label={avatar.label} />
           : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
         <strong className="conversation-panel-identity-name">{descriptor.title(context)}</strong>
       </div>
