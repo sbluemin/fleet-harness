@@ -51,16 +51,9 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
     if (!binding || (binding.panes.length === 0) || !theaterReady) return;
     const current = getMobileDestination();
     const params = current.kind === "plugin" && current.entryId === entryId ? current.params : undefined;
-    // 첫 문서에서는 Theater 목록보다 목적지가 먼저 선다. 대상이 등록된 뒤 한 번만 열어 요청·초안을 다시 만들지 않는다.
-    const openWhenReady = () => {
-      if (params?.theaterId && !getState().theaters.some((theater) => theater.id === params.theaterId)) return;
-      unsubscribe();
-      if (params) capabilities.rail.open(entryId, params);
-      else capabilities.rail.open(entryId);
-    };
-    const unsubscribe = subscribe(openWhenReady);
-    openWhenReady();
-    return () => { unsubscribe(); closeRailPanel(entryId); };
+    if (params) capabilities.rail.open(entryId, params);
+    else capabilities.rail.open(entryId);
+    return () => { closeRailPanel(entryId); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entryId, binding === undefined, theaterReady]);
 
