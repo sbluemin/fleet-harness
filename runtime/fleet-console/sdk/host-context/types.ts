@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+import type { OperationClusterConversation } from "../conversation/types.js";
 import type { ClientApiCapability, ClientConsoleEventsCapability } from "../plugin/types.js";
 import type { ClientAgentChatCapability } from "../components/agent-chat-transcript.js";
 
@@ -136,6 +137,17 @@ export interface HostSurfaceOperations {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
+/** 실행 기능의 원장/결정/입력창을 host-bound 상태로 조립한다. 플러그인은 보드 사실과 동작만 준다. */
+export interface HostOperationConversationProps {
+  readonly context: HostSurfaceContext;
+  readonly title: string;
+  readonly readOnlyLabel: string;
+  readonly operationExists?: boolean;
+  readonly conversation?: OperationClusterConversation;
+  /** 옛 소비자의 안내 prop. 실제 첨부는 기존 composer 경로가 맡는다. */
+  readonly uploadUnsupported?: string;
+}
+
 export interface HostSurfaceContext {
   readonly selection: HostSelection;
   readonly transport: HostTransport;
@@ -143,6 +155,7 @@ export interface HostSurfaceContext {
   readonly readResource: (path: string, signal?: AbortSignal) => Promise<Response>;
   readonly events: ClientConsoleEventsCapability;
   readonly chat: ClientAgentChatCapability;
+  readonly OperationConversation: ComponentType<HostOperationConversationProps>;
   readonly state: HostSurfaceState;
   readonly language: "en" | "ko";
   readonly hostLabel: string;
