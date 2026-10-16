@@ -532,11 +532,12 @@ it("does not take control or permit writes when a paired device only observes", 
     const eventsPath = `/api/v1/hosts/${encodeURIComponent(hostId)}/events?${new URLSearchParams({ path: "/api/v1/operations/events", epoch: String(current.epoch), instanceId: current.instanceId })}`;
     const events = await loopbackCall(fixture, "GET", eventsPath, { accept: "text/event-stream", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" });
     expect(events.status).toBe(409);
-    expect(JSON.parse(events.body)).toEqual({ error: "host_inactive", epoch: current.epoch });
+    // 공개 오류 본문: epoch는 stale_epoch에만 싣는다(브라우저 validator가 그 밖의 형태를 거절한다).
+    expect(JSON.parse(events.body)).toEqual({ error: "host_inactive" });
     const resourcePath = `/api/v1/hosts/${encodeURIComponent(hostId)}/resources?${new URLSearchParams({ path: "/plugins/file-explorer/files/image?path=one.png", epoch: String(current.epoch), instanceId: current.instanceId })}`;
     const image = await loopbackCall(fixture, "GET", resourcePath, { "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" });
     expect(image.status).toBe(409);
-    expect(JSON.parse(image.body)).toEqual({ error: "host_inactive", epoch: current.epoch });
+    expect(JSON.parse(image.body)).toEqual({ error: "host_inactive" });
     expect(await loopbackCall(fixture, "GET", presencePath, {})).toMatchObject({ status: 400, body: "{\"error\":\"invalid_host_request\"}" });
     expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "https://evil.example" })).status).toBe(400);
     expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "null" })).status).toBe(400);
