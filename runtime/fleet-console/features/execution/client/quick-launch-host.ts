@@ -38,11 +38,29 @@ export interface QuickLaunchHostCreateInput {
   readonly attachments: readonly QuickLaunchHostAttachment[];
 }
 
+/**
+ * 이미지 하나를 올리지 못한 이유. "retry"(네트워크·일시 서버 오류)만 같은 키로 다시 보낼 가치가 있다.
+ * 나머지는 같은 시도를 다시 보내도 풀리지 않는다 — capacity(목표의 업로드 영수증 256개 소진),
+ * full(제품의 목표당 이미지 20장), conflict(같은 키에 다른 내용), rejected(크기·형식 등 거절), control(제어권 없음).
+ */
+export type QuickLaunchHostUploadFailure = "retry" | "capacity" | "full" | "conflict" | "rejected" | "control";
+
 export type QuickLaunchHostCreateResult =
   | { readonly kind: "created" }
   | { readonly kind: "stale" }
   /** 목표는 생겼고 표시한 순번의 이미지만 올리지 못했다. 회차는 남는다. */
-  | { readonly kind: "partial"; readonly failed: readonly number[] };
+  | { readonly kind: "partial"; readonly failed: readonly { readonly index: number; readonly reason: QuickLaunchHostUploadFailure }[] };
+
+/** 서버가 돌려준 업로드 거절을 재시도 가능 여부와 사람의 다음 행동으로 접는다. 원문 코드는 화면에 싣지 않는다. */
+export function quickLaunchHostUploadFailure(status: number | null, code: unknown): QuickLaunchHostUploadFailure {
+  if (code === "attachment_upload_capacity") return "capacity";
+  if (code === "attachment_upload_conflict") return "conflict";
+  if (code === "too_many_attachments") return "full";
+  if (code === "not_controller" || code === "read_only" || code === "observer_only" || code === "route_denied" || code === "unauthorized" || status === 401 || status === 403) return "control";
+  // 응답을 못 받았거나(네트워크·시간 초과) 서버가 일시적으로 실패했다 — 같은 키 재전송이 안전하다.
+  if (status === null || status >= 500 || status === 408 || status === 429) return "retry";
+  return "rejected";
+}
 
 export interface QuickLaunchHostPort {
   readonly getSnapshot: () => QuickLaunchHostSession | null;

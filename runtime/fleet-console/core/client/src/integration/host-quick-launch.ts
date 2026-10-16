@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { HostTransport } from "@fleet-console/sdk/host-context";
 import { readHostJson } from "@fleet-console/sdk/host-context/browser";
-import { objectiveTextFromPrompt, type QuickLaunchHostCreateResult, type QuickLaunchHostPort, type QuickLaunchHostSession, type QuickLaunchHostTheater } from "../../../../features/execution/client/quick-launch-host.js";
+import { objectiveTextFromPrompt, quickLaunchHostUploadFailure, type QuickLaunchHostCreateResult, type QuickLaunchHostUploadFailure, type QuickLaunchHostPort, type QuickLaunchHostSession, type QuickLaunchHostTheater } from "../../../../features/execution/client/quick-launch-host.js";
 import { isShortcutRecording, matchesShortcutCommand } from "./shortcut-bindings.js";
 import type { HostWorkspaceBinding } from "./use-host-workspace.js";
 
@@ -151,7 +151,7 @@ export function createHostQuickLaunch(binding: HostWorkspaceBinding): HostQuickL
           publish();
         }
         // 이미지는 방금 만든(또는 이 회차가 만든) 목표 하나에만 올린다. 같은 고정 transport·수명 밖으로 보내지 않는다.
-        const failed: number[] = [];
+        const failed: { index: number; reason: QuickLaunchHostUploadFailure }[] = [];
         for (const [index, attachment] of input.attachments.entries()) {
           if (!current(open)) return { kind: "stale" };
           // 응답을 잃은 시도를 다시 보내도 같은 키다. 서버는 같은 목표·키·바이트면 기존 첨부를 돌려준다.
@@ -169,10 +169,10 @@ export function createHostQuickLaunch(binding: HostWorkspaceBinding): HostQuickL
             });
             const body = await readHostJson<{ readonly error?: unknown }>(scope, response).catch(() => null);
             // 그사이 사람이 지운 첨부는 되살리지 않는다 — 다시 보낼 것이 없으므로 남은 칩으로 두지 않는다.
-            if (!response.ok && body?.error !== "attachment_upload_removed") failed.push(index);
+            if (!response.ok && body?.error !== "attachment_upload_removed") failed.push({ index, reason: quickLaunchHostUploadFailure(response.status, body?.error) });
           } catch {
             if (!current(open)) return { kind: "stale" };
-            failed.push(index);
+            failed.push({ index, reason: quickLaunchHostUploadFailure(null, null) });
           }
         }
         if (!current(open)) return { kind: "stale" };

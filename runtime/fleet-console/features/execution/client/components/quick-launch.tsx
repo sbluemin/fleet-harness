@@ -9,7 +9,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
-import type { QuickLaunchHostPort, QuickLaunchHostSession } from "../quick-launch-host.js";
+import type { QuickLaunchHostPort, QuickLaunchHostSession, QuickLaunchHostUploadFailure } from "../quick-launch-host.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchRecentPluginTarget, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -97,6 +97,18 @@ function hostErrorMessageKey(code: string | null): "chrome.quickLaunch.hostError
   return "chrome.quickLaunch.hostError";
 }
 
+/** 여러 이미지가 서로 다른 이유로 실패하면 사람이 먼저 알아야 할 것부터 말한다 — 풀리지 않는 거절이 재시도 안내에 묻히지 않는다. */
+const HOST_UPLOAD_MESSAGE_ORDER = [
+  ["control", "chrome.quickLaunch.hostErrorControl"],
+  ["capacity", "chrome.quickLaunch.hostAttachmentsCapacity"],
+  ["full", "chrome.quickLaunch.hostAttachmentsFull"],
+  ["conflict", "chrome.quickLaunch.hostAttachmentsConflict"],
+  ["rejected", "chrome.quickLaunch.hostAttachmentsRejected"],
+  ["retry", "chrome.quickLaunch.hostAttachmentsPartial"],
+] as const satisfies readonly (readonly [QuickLaunchHostUploadFailure, string])[];
+
+type HostMessageKey = ReturnType<typeof hostErrorMessageKey> | (typeof HOST_UPLOAD_MESSAGE_ORDER)[number][1];
+
 /**
  * `host`가 회차를 열면 같은 컴포저가 선택한 다른 컴퓨터의 새 목표를 만든다. 그 회차에서는 로컬 Operation 멘션·
  * 로컬 파일 첨부·로컬 실행 카탈로그·로컬 초안 슬롯을 쓰지 않는다 — 모델과 구성원은 그 목표의 계획 단계가 정한다.
@@ -113,7 +125,7 @@ export function QuickLaunch({ host = null, local = true }: {
   const hostMode = hostSession !== null;
   const hostModeRef = useRef(hostMode);
   hostModeRef.current = hostMode;
-  const [hostErrorKey, setHostErrorKey] = useState<ReturnType<typeof hostErrorMessageKey> | "chrome.quickLaunch.hostAttachmentsPartial" | null>(null);
+  const [hostErrorKey, setHostErrorKey] = useState<HostMessageKey | null>(null);
   // 원격 회차의 이미지 칩. 로컬 실행 첨부(서버 id가 있는 칩)와 섞지 않고, 생성 전에는 미리보기와 원본만 이 컴퓨터에 둔다.
   const [hostAttachments, setHostAttachments] = useState<readonly { readonly key: string; readonly name: string; readonly previewUrl: string; readonly file: Blob }[]>([]);
   const hostAttachmentsRef = useRef(hostAttachments);
@@ -1321,12 +1333,14 @@ export function QuickLaunch({ host = null, local = true }: {
           promptRef.current = "";
           setPrompt("");
         } else if (result.kind === "partial") {
-          // 목표는 생겼다. 올린 칩은 내려놓고 실패한 칩만 남겨 같은 목표에 다시 올린다.
-          const failed = new Set(result.failed);
-          for (const [index, attachment] of sent.entries()) if (!failed.has(index)) URL.revokeObjectURL(attachment.previewUrl);
-          const keep = new Set(sent.filter((_, index) => failed.has(index)).map((attachment) => attachment.key));
+          // 목표는 생겼다. 일시 실패한 칩만 남겨 같은 키로 다시 올린다. 영구 거절은 다시 눌러도 풀리지 않으므로
+          // 칩을 남기지 않고(재시도 고리처럼 보이지 않게) 사유만 말한다. 원문 코드는 싣지 않는다.
+          const retry = new Set(result.failed.filter((failure) => failure.reason === "retry").map((failure) => failure.index));
+          for (const [index, attachment] of sent.entries()) if (!retry.has(index)) URL.revokeObjectURL(attachment.previewUrl);
+          const keep = new Set(sent.filter((_, index) => retry.has(index)).map((attachment) => attachment.key));
           setHostAttachments((current) => current.filter((attachment) => keep.has(attachment.key) || !sent.some((item) => item.key === attachment.key)));
-          setHostErrorKey("chrome.quickLaunch.hostAttachmentsPartial");
+          const reasons = new Set(result.failed.map((failure) => failure.reason));
+          setHostErrorKey(HOST_UPLOAD_MESSAGE_ORDER.find(([reason]) => reasons.has(reason))?.[1] ?? "chrome.quickLaunch.hostAttachmentsPartial");
         }
       })
       .catch((error: unknown) => {
@@ -1342,6 +1356,8 @@ export function QuickLaunch({ host = null, local = true }: {
     // 사라지므로, 확실히 실패할 요청으로는 넘기지 않는다.
     if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || submitting || pluginAddressUnavailable) return;
     if (hostSession) {
+      // 이미 만든 목표에 다시 올릴 칩이 없으면 보낼 것이 없다 — Enter도 비활성 전송 버튼과 같이 멈춘다.
+      if (hostSession.created && hostAttachmentsRef.current.length === 0) return;
       submitToHost(text);
       return;
     }
@@ -1841,7 +1857,8 @@ export function QuickLaunch({ host = null, local = true }: {
         {hostSession ? (
           <p className="quick-launch-host-target" role="note">
             <strong>{hostSession.created ? t("chrome.quickLaunch.hostCreated", { title: hostSession.created.title }) : t("chrome.quickLaunch.hostTarget", { host: hostSession.hostLabel })}</strong>
-            <span>{t(hostSession.created ? "chrome.quickLaunch.hostCreatedHint" : "chrome.quickLaunch.hostHint")}</span>
+            {/* 다시 올릴 칩이 남았을 때만 재시도를 권한다. 영구 거절만 남았으면 닫아서 목표로 가라고만 말한다. */}
+            <span>{t(!hostSession.created ? "chrome.quickLaunch.hostHint" : hostAttachments.length > 0 ? "chrome.quickLaunch.hostCreatedHint" : "chrome.quickLaunch.hostCreatedCloseHint")}</span>
           </p>
         ) : null}
         {/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤이다. 초안 자취를 싣고, 누르면 펼쳐진다.
