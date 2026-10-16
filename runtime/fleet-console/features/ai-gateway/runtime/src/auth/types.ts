@@ -45,6 +45,15 @@ export interface AuthService {
   getApiKey(providerId: string): Promise<string | undefined>;
   getEntry(providerId: string): Promise<AuthStorageEntry | undefined>;
   setEntry(providerId: string, entry: AuthStorageEntry): Promise<void>;
+  /**
+   * 잠금 안에서 현재 항목을 읽어 다음 항목을 정한다. `undefined`를 돌려주면 쓰지 않는다.
+   * 갱신 토큰 회전처럼 "읽은 값이 그대로일 때만 쓴다"는 비교-교체가 필요한 쓰기에 쓴다.
+   * 썼으면 true다.
+   */
+  updateEntry(
+    providerId: string,
+    mutate: (current: AuthStorageEntry | undefined) => AuthStorageEntry | undefined,
+  ): Promise<boolean>;
   listProviderIds(): Promise<string[]>;
   setApiKey(providerId: string, key: string): Promise<void>;
 }

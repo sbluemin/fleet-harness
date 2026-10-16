@@ -9,7 +9,7 @@ export interface LoginStatus {
   readonly message?: string;
 }
 export type LoginStart = Omit<DeviceAuthorization, "deviceCode"> & { readonly loginId: string };
-interface LoginFlow {
+export interface LoginFlow {
   start(signal: AbortSignal): Promise<DeviceAuthorization>;
   pollOnce(authorization: DeviceAuthorization, signal: AbortSignal): Promise<DevicePollResult>;
   authorized(token: Extract<DevicePollResult, { state: "authorized" }>, signal: AbortSignal): Promise<LoginStatus>;

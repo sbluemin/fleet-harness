@@ -2,8 +2,8 @@ import type { AuthService } from "../auth/types.js";
 
 import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
 import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
-import { fetchCodexUsage } from "../upstream/codex/quota.js";
 import { fetchCursorUsage } from "../upstream/cursor/quota.js";
+import { createCodexOAuth, type CodexOAuth } from "../oauth/codex/login.js";
 import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
 import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
 import { fetchXaiUsage } from "../upstream/xai/quota.js";
@@ -76,6 +76,8 @@ export interface AiGatewayQuotaCollectorDeps {
   readonly authService: AuthService;
   readonly credentialDeps?: CredentialResolverDeps;
   readonly museCode?: Pick<MuseCodeOAuth, "fetchUsage">;
+  /** Console 로그인 자격을 소유한 인스턴스. 추론 라우터와 같은 것을 넘겨야 갱신이 한 번에 묶인다. */
+  readonly codex?: Pick<CodexOAuth, "fetchUsage">;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
 }
@@ -98,9 +100,10 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   };
   const museCode = deps.museCode ?? createMuseCodeOAuth(deps);
+  const codex = deps.codex ?? createCodexOAuth(deps);
   return {
     fetchClaude: () => fetchClaudeUsage(providerDeps),
-    fetchCodex: () => fetchCodexUsage(providerDeps),
+    fetchCodex: () => codex.fetchUsage(),
     fetchCursor: () => fetchCursorUsage(providerDeps),
     fetchOpencode: () => fetchOpencodeUsage(providerDeps),
     fetchXai: () => fetchXaiUsage(providerDeps),

@@ -10,7 +10,7 @@
  * This file holds only provider-unaware mechanics: bounded file I/O, platform
  * resolver deps, and the shared credential shapes. Each provider's login path,
  * auth-file parsing, and keychain handling lives in its own provider folder
- * (`src/upstream/cursor/credentials.ts`, `src/upstream/codex/credentials.ts`).
+ * (`src/upstream/cursor/credentials.ts`).
  */
 
 import { execFile as nodeExecFile } from "node:child_process";
@@ -29,7 +29,7 @@ export interface CredentialResolverDeps {
   readonly execFile: (file: string, args: readonly string[], options: { readonly timeout: number }) => Promise<string>;
 }
 
-// Provider credential *result* types (CursorCredentials, CodexCredentials) live in each
+// Provider credential *result* types (CursorCredentials) live in each
 // provider folder next to the resolver that returns them; transport stays provider-unaware.
 
 const execFileAsync = promisify(nodeExecFile);

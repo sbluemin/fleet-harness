@@ -100,8 +100,10 @@ export async function createProductProbeRuntime(gateway, options, trigger) {
   if (!target || target.provider !== "codex" || gateway.upstreamModelId(target) !== "gpt-6-luna") {
     throw new Error(`model is not the live Luna target: ${options.model}`);
   }
-  const auth = await gateway.readCodexSubscriptionAuth();
-  if (!auth) throw new Error("Codex subscription credential is unavailable");
+  // Console 로그인 항목만 읽는다. 벤더 CLI의 ~/.codex는 보지 않는다.
+  const codex = gateway.createCodexOAuth({ authService: gateway.createProviderAuthService({ authPath: options.authPath }) });
+  const auth = await codex.readSubscription().finally(() => codex.dispose());
+  if (!auth) throw new Error("Codex Console sign-in is unavailable");
   const stateDir = await mkdtemp(path.join(os.tmpdir(), "fleet-product-compact-"));
   const durable = gateway.createClaudeCodexCompactionStore({ directory: stateDir });
   const hookToken = randomUUID();

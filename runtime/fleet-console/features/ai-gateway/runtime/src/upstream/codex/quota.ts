@@ -1,4 +1,3 @@
-import { defaultCredentialDeps } from "../../transport/credentials.js";
 import type { ProviderResult, QuotaWindow, ResetCredits } from "../../quota/types.js";
 import {
   MAX_CREDIT_ENTRIES,
@@ -12,7 +11,12 @@ import {
   windowPeriod,
   type ProviderDeps,
 } from "../../quota/windows.js";
-import { resolveCodexCredentials } from "./credentials.js";
+
+/** Console 로그인이 저장한 ChatGPT 구독 토큰. 조달은 호출자(`src/oauth/codex/`)의 몫이다. */
+export interface CodexUsageCredentials {
+  readonly accessToken: string;
+  readonly accountId?: string;
+}
 
 function codexWindow(source: unknown, fallbackId: "session" | "weekly"): QuotaWindow | null {
   const row = object(source);
@@ -82,9 +86,7 @@ export function parseResetCredits(payload: unknown): ResetCredits | undefined {
   };
 }
 
-export async function fetchCodexUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
-  const credentials = await resolveCodexCredentials(deps.credentials ?? defaultCredentialDeps);
-  if (!credentials) return { status: "signed_out" };
+export async function fetchCodexUsage(credentials: CodexUsageCredentials, deps: ProviderDeps = {}): Promise<ProviderResult> {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${credentials.accessToken}`,
     "User-Agent": "codex-cli",

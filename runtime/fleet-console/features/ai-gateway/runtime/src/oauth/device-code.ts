@@ -17,7 +17,15 @@ export interface DeviceAuthorization {
 
 export type DevicePollResult =
   | { readonly state: "pending" | "slow_down" | "denied" | "expired" }
-  | { readonly state: "authorized"; readonly accessToken: string; readonly accessExpiresAt?: number };
+  | {
+    readonly state: "authorized";
+    readonly accessToken: string;
+    readonly accessExpiresAt?: number;
+    /** 갱신 가능한 흐름만 싣는다. 세션 밖으로는 `authorized` 콜백에만 넘어가고 공개 DTO에는 들어가지 않는다. */
+    readonly refreshToken?: string;
+    /** 공급자가 토큰과 함께 정한 계정(예: ChatGPT 워크스페이스). 저장 항목이 그대로 물려받는다. */
+    readonly accountId?: string;
+  };
 
 export class OAuthRequestError extends Error {
   constructor(readonly status?: number) {
@@ -135,10 +143,14 @@ export function createDeviceCodeClient(deps: {
   };
 }
 
-function jwtExpiresAt(token: string): number | undefined {
+/** 서명은 검증하지 않는다. 공급자가 방금 준 토큰에서 표시·만료용 claim만 읽는다. */
+export function jwtPayload(token: string): Record<string, unknown> | undefined {
   try {
-    const payload = oauthRecord(JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")));
-    const exp = payload?.exp;
-    return typeof exp === "number" && Number.isFinite(exp) && exp > 0 ? exp * 1000 : undefined;
+    return oauthRecord(JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")));
   } catch { return undefined; }
+}
+
+export function jwtExpiresAt(token: string): number | undefined {
+  const exp = jwtPayload(token)?.exp;
+  return typeof exp === "number" && Number.isFinite(exp) && exp > 0 ? exp * 1000 : undefined;
 }

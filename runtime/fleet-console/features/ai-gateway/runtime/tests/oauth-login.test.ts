@@ -3,7 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createProviderAuthService } from "../src/auth/index.js";
-import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../src/oauth/index.js";
+import {
+  CODEX_AUTH_PROVIDER_ID,
+  createCodexOAuth,
+  createMuseCodeOAuth,
+  MUSE_CODE_AUTH_PROVIDER_ID,
+} from "../src/oauth/index.js";
+
+function jwt(payload: Record<string, unknown>): string {
+  return `e30.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 describe("Fleet-owned Muse Code sign-in", () => {
   // 기존 CLI 자격 판독 테스트로는 로그인 수명·비밀 비노출·저장 전환을 실행할 수 없었다.
@@ -61,6 +76,90 @@ describe("Fleet-owned Muse Code sign-in", () => {
       expect(fetchImpl).toHaveBeenCalledTimes(5);
     } finally {
       oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Fleet-owned subscription sign-in", () => {
+  // Codex는 RFC 8628이 아니다. 승인 뒤 서버가 준 code·verifier로 교환하고, 계정 id는 토큰에서 꺼낸다.
+  it("signs in to Codex through device auth and stores only the Console entry", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-oauth-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const accessToken = jwt({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-1" } });
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      expect(init?.redirect).toBe("error");
+      if (String(url).endsWith("/deviceauth/usercode")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ client_id: "app_EMoamEEZ73f0CkXaXp7hrann" });
+        return Response.json({ device_auth_id: "device-secret", user_code: "ABCD-1234", interval: "0.01" });
+      }
+      if (String(url).endsWith("/deviceauth/token")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ device_auth_id: "device-secret", user_code: "ABCD-1234" });
+        return Response.json({ authorization_code: "code-secret", code_verifier: "verifier-secret" });
+      }
+      expect(String(url)).toBe("https://auth.openai.com/oauth/token");
+      const form = new URLSearchParams(String(init?.body));
+      expect(Object.fromEntries(form)).toEqual({
+        grant_type: "authorization_code", client_id: "app_EMoamEEZ73f0CkXaXp7hrann",
+        code: "code-secret", code_verifier: "verifier-secret", redirect_uri: "https://auth.openai.com/deviceauth/callback",
+      });
+      return Response.json({ access_token: accessToken, refresh_token: "refresh-secret", expires_in: 864_000 });
+    });
+    const oauth = createCodexOAuth({ authService, fetch: fetchImpl });
+    try {
+      const started = await oauth.start();
+      expect(started).toMatchObject({ userCode: "ABCD-1234", verificationUri: "https://auth.openai.com/codex/device" });
+      expect(JSON.stringify(started)).not.toContain("device-secret");
+      await vi.waitFor(() => expect(oauth.status(started.loginId)?.state).toBe("signed_in"), { timeout: 6000 });
+      expect(JSON.stringify(oauth.status(started.loginId))).not.toMatch(/secret|acct-1/);
+      expect(await authService.getEntry(CODEX_AUTH_PROVIDER_ID)).toEqual({
+        key: accessToken, type: "oauth", refreshToken: "refresh-secret",
+        accessExpiresAt: expect.any(Number), accountId: "acct-1", version: 1,
+      });
+      await expect(oauth.readSubscription()).resolves.toEqual({ accessToken, accountId: "acct-1" });
+      expect(fetchImpl).toHaveBeenCalledTimes(3);
+      await oauth.logout();
+      await expect(oauth.readSubscription()).resolves.toBeNull();
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }, 10_000);
+
+  // quota와 추론(또는 Console과 `fleet gateway serve`)이 같은 갱신 토큰으로 동시에 갱신해도
+  // 먼저 저장된 회전 쌍을 늦게 온 옛 응답이 덮으면 안 된다.
+  it("refreshes once per instance and never overwrites a refresh another writer already rotated", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-refresh-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const now = Date.parse("2026-10-16T00:00:00Z");
+    await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+      key: "access-old", type: "oauth", refreshToken: "refresh-old", accessExpiresAt: now + 60_000, accountId: "acct-1", version: 1,
+    });
+    const slow = deferred<Response>();
+    const fast = deferred<Response>();
+    const responses = [slow, fast];
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toMatchObject({ grant_type: "refresh_token", refresh_token: "refresh-old" });
+      return responses.shift()!.promise;
+    });
+    const quotaSide = createCodexOAuth({ authService, fetch: fetchImpl, now: () => now });
+    const inferenceSide = createCodexOAuth({ authService, fetch: fetchImpl, now: () => now });
+    try {
+      const first = quotaSide.readSubscription();
+      const joined = quotaSide.readSubscription();
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+      const other = inferenceSide.readSubscription();
+      await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+      fast.resolve(Response.json({ access_token: "access-fast", refresh_token: "refresh-fast", expires_in: 3600 }));
+      await expect(other).resolves.toEqual({ accessToken: "access-fast", accountId: "acct-1" });
+      slow.resolve(Response.json({ access_token: "access-slow", refresh_token: "refresh-slow", expires_in: 3600 }));
+      await expect(first).resolves.toEqual({ accessToken: "access-fast", accountId: "acct-1" });
+      await expect(joined).resolves.toEqual({ accessToken: "access-fast", accountId: "acct-1" });
+      expect(await authService.getEntry(CODEX_AUTH_PROVIDER_ID)).toMatchObject({ key: "access-fast", refreshToken: "refresh-fast", accountId: "acct-1" });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      quotaSide.dispose();
+      inferenceSide.dispose();
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });

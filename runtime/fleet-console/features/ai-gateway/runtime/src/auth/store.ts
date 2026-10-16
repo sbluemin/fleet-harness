@@ -116,6 +116,18 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): 
       update((data) => ({ ...data, [providerId]: snapshot }));
     },
 
+    async updateEntry(providerId, mutate): Promise<boolean> {
+      let written = false;
+      update((data) => {
+        const current = data[providerId];
+        const next = mutate(current === undefined ? undefined : structuredClone(current));
+        if (next === undefined) return undefined;
+        written = true;
+        return { ...data, [providerId]: structuredClone(next) };
+      });
+      return written;
+    },
+
     async listProviderIds(): Promise<string[]> {
       return Object.keys(load()).sort();
     },

@@ -117,6 +117,7 @@ describe("quota service", () => {
     const authService = {
       getEntry: async () => undefined,
       setEntry: async () => undefined,
+      updateEntry: async () => false,
       getApiKey: vi.fn(async () => "opencode-key"),
       setApiKey: async () => undefined,
       deleteApiKey: async () => false,
@@ -211,6 +212,7 @@ describe("quota service", () => {
     const authService = {
       getEntry: async () => entry,
       setEntry: async (_id: string, value: AuthStorageEntry) => { entry = value; },
+      updateEntry: async () => false,
       getApiKey: async () => entry.key, setApiKey: async () => undefined,
       deleteApiKey: async () => false, listProviderIds: async () => [MUSE_CODE_AUTH_PROVIDER_ID],
     };

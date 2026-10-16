@@ -26,6 +26,7 @@ Options:
   --model <id>             Exact Codex Luna gateway id (default: ${DEFAULT_MODEL})
   --timeout-ms <count>     Positive per-scenario timeout (default: ${DEFAULT_TIMEOUT_MS})
   --output <path>          Optional JSON result file; stdout always prints the result
+  --auth-path <path>       Console slot auth.json holding the Codex sign-in (required)
   --simulate-compact-failure  Inject a pre-send compact failure and verify Claude fallback
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading credentials, node-pty, or network code
@@ -58,6 +59,7 @@ function parseArguments(argv) {
     mode: DEFAULT_MODE,
     model: DEFAULT_MODEL,
     output: undefined,
+    authPath: undefined,
     simulateCompactFailure: false,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
@@ -75,7 +77,7 @@ function parseArguments(argv) {
       options.simulateCompactFailure = true;
       continue;
     }
-    if (!["--mode", "--model", "--timeout-ms", "--output"].includes(argument)) {
+    if (!["--mode", "--model", "--timeout-ms", "--output", "--auth-path"].includes(argument)) {
       throw new UsageError(`Unknown argument ${JSON.stringify(argument)}`);
     }
     if (seen.has(argument)) throw new UsageError(`${argument} may be provided only once`);
@@ -86,6 +88,7 @@ function parseArguments(argv) {
     if (argument === "--mode") options.mode = value;
     else if (argument === "--model") options.model = value;
     else if (argument === "--output") options.output = path.resolve(value);
+    else if (argument === "--auth-path") options.authPath = path.resolve(value);
     else options.timeoutMs = positiveInteger(value, argument);
   }
   if (!new Set(["auto", "manual", "both"]).has(options.mode)) {
@@ -95,6 +98,7 @@ function parseArguments(argv) {
     throw new UsageError("--model must be an exact Codex gpt-6-luna gateway id");
   }
   if (!confirmed) throw new UsageError(`missing required ${CONFIRM_LIVE_PROVIDER}`);
+  if (!options.authPath) throw new UsageError("--auth-path is required: Codex reads only the Console sign-in");
   return options;
 }
 

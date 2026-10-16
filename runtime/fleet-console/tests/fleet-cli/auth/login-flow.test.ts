@@ -68,6 +68,7 @@ function createDeps() {
       getApiKey: vi.fn(),
       getEntry: vi.fn(),
       setEntry: vi.fn(),
+      updateEntry: vi.fn(),
       listProviderIds: vi.fn(),
       setApiKey: mocks.setApiKey,
     },

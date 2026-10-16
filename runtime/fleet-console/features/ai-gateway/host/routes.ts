@@ -20,7 +20,6 @@ import {
   createRequestTimingJournal,
   createClaudeCodexCompactionStore,
   readAntigravitySubscriptionToken,
-  readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
 } from "@fleet-console/ai-gateway";
@@ -79,7 +78,8 @@ export function registerAiGatewayRoutes(
     failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     requestTiming: deps.requestTiming ?? ownedRequestTiming?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
-    readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
+    // Codex 자격은 Console 로그인(start.ts)이 주입한다. 주입이 없으면 자격도 없다 — 벤더 파일로 물러나지 않는다.
+    readAuth: deps.readAuth ?? (() => null),
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
     readXaiToken: deps.readXaiToken ?? (() => readXaiSubscriptionToken()),
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),

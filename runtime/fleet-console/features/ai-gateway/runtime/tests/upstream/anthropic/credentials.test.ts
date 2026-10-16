@@ -8,7 +8,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import { defaultCredentialDeps, readBoundedFile, type CredentialResolverDeps } from "../../../src/transport/credentials.js";
 import { resolveClaudeCredentials } from "../../../src/upstream/anthropic/credentials.js";
-import { resolveCodexCredentials } from "../../../src/upstream/codex/credentials.js";
 
 function deps(overrides: Partial<CredentialResolverDeps> = {}): CredentialResolverDeps {
   return {
@@ -73,18 +72,8 @@ describe("credential resolvers", () => {
     expect(readBounded).toHaveBeenCalledWith(path.join("C:\\Users\\operator", ".claude", ".credentials.json"), 65_536);
   });
 
-  it("reads Codex auth from CODEX_HOME and extracts only the required fields", async () => {
-    const readBounded = vi.fn(async () => JSON.stringify({
-      tokens: { access_token: "codex-token", account_id: "account" },
-    }));
-    const result = await resolveCodexCredentials(deps({ env: { CODEX_HOME: "/custom/codex" }, readBounded }));
-    expect(readBounded).toHaveBeenCalledWith(path.join("/custom/codex", "auth.json"), 65_536);
-    expect(result).toEqual({ accessToken: "codex-token", accountId: "account" });
-  });
-
   it("treats missing and malformed files as signed-out inputs", async () => {
     await expect(resolveClaudeCredentials(deps({ readBounded: vi.fn(async () => { throw new Error("missing"); }) }))).resolves.toBeNull();
-    await expect(resolveCodexCredentials(deps({ readBounded: vi.fn(async () => "{") }))).resolves.toBeNull();
   });
 
   it("treats a bounded reader's oversized-file result as signed out", async () => {
@@ -99,7 +88,6 @@ describe("credential resolvers", () => {
 
   it("bounds injected results and macOS keychain output", async () => {
     const oversized = "x".repeat(65_537);
-    await expect(resolveCodexCredentials(deps({ readBounded: vi.fn(async () => oversized) }))).resolves.toBeNull();
     const fileFallback = vi.fn(async () => JSON.stringify({ accessToken: "fallback" }));
     await expect(resolveClaudeCredentials(deps({
       platform: "darwin",

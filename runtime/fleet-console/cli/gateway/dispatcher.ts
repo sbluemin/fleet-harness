@@ -1,7 +1,7 @@
 import {
   createAiGatewaySettingsStore,
   createProviderAuthService,
-  readCodexSubscriptionAuth,
+  CODEX_AUTH_PROVIDER_ID,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
@@ -135,7 +135,8 @@ export async function dispatchGatewayCommand(
 
 async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly GatewayCredentialReport[]> {
   const readers = deps.readSubscriptions ?? {
-    codex: () => readCodexSubscriptionAuth(),
+    // Console 로그인 항목의 유무만 본다. 상태 조회가 토큰을 갱신하지 않는다.
+    codex: async () => (await resolveAuthService(deps).getEntry(CODEX_AUTH_PROVIDER_ID)) ?? null,
     cursor: () => readCursorSubscriptionToken(),
     xai: () => readXaiSubscriptionToken(),
   };

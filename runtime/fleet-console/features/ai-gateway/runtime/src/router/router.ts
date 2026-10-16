@@ -22,7 +22,6 @@ import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
-import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
 import {
   CursorAdapter,
   CursorRequestBudgetError,
@@ -116,7 +115,7 @@ class RequestBodyTooLargeError extends Error {
   }
 }
 
-/** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
+/** Console 로그인(`src/oauth/codex/`)이 저장한 ChatGPT 구독 토큰. 호스트가 reader를 주입한다. */
 export interface CodexSubscriptionAuth {
   readonly accessToken: string;
   readonly accountId: string;
@@ -173,12 +172,6 @@ export async function readAntigravitySubscriptionToken(
 export type MuseCodeInferenceAuth =
   | { readonly status: "ok"; readonly credentials: { readonly apiKey: string; readonly baseUrl?: string } }
   | { readonly status: "signed_out" | "expired" | "unavailable" };
-
-export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
-  const credentials = await resolveCodexCredentials(defaultCredentialDeps);
-  if (!credentials?.accountId) return null;
-  return { accessToken: credentials.accessToken, accountId: credentials.accountId };
-}
 
 export interface AiGatewayRouteDeps {
   readonly originator: string;
@@ -616,7 +609,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = await readAuth();
       if (!auth) {
-        writeAnthropicError(res, 401, "authentication_error", "No ChatGPT subscription token was found. Run `codex login` first.");
+        writeAnthropicError(res, 401, "authentication_error", "No Codex sign-in was found. Sign in to Codex in Console first.");
         clock?.finish("error", 401);
         return true;
       }
