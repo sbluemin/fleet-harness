@@ -58,7 +58,7 @@ interface GatewayStartContext {
 }
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
-import { registerMuseCodeOAuthRoutes } from "./oauth-routes.js";
+import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
 
 function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
   setWireLogTarget(stored === undefined
@@ -131,14 +131,17 @@ export function startAiGateway(ctx: GatewayStartContext) {
   };
   const museCode = createMuseCodeOAuth({ authService, onQuota: (value) => quota.record("muse-code", value) });
   ctx.host.lifecycle.registerCleanup(() => museCode.dispose());
-  registerMuseCodeOAuthRoutes(ctx, museCode);
+  registerConsoleOAuthRoutes(ctx, "muse-code", "Muse Code", museCode);
   // 추론과 quota가 같은 인스턴스를 써야 갱신이 한 번으로 묶인다.
   const codex = createCodexOAuth({ authService, onQuota: (value) => quota.record("codex", value) });
   ctx.host.lifecycle.registerCleanup(() => codex.dispose());
+  registerConsoleOAuthRoutes(ctx, "codex", "Codex", codex);
   const xai = createXaiOAuth({ authService, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
+  registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
   const cursor = createCursorOAuth({ authService, onQuota: (value) => quota.record("cursor", value) });
   ctx.host.lifecycle.registerCleanup(() => cursor.dispose());
+  registerConsoleOAuthRoutes(ctx, "cursor", "Cursor", cursor);
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai, cursor }),

@@ -6,9 +6,9 @@ import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { PROVIDER_ORDER_DEFAULT } from "../provider-order.js";
 import { getT } from "./i18n/index.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { EXPIRED_KEY, MUSE_LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, PROVIDER_NAME, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, meterSeverity, needsMuseLogin, useQuotaData, windowLabel } from "./quota-panel.js";
-import { cancelMuseLogin, getMuseLoginState, openExternal, resetMuseLogin, startMuseLogin, subscribeMuseLogin } from "./muse-login.js";
-import type { ProviderId } from "../provider-order.js";
+import { EXPIRED_KEY, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, PROVIDER_NAME, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
+import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
+import type { LoginProvider, ProviderId } from "../provider-order.js";
 import "./mobile.css";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { summaryLines } from "./toolbar-summary.js";
@@ -27,7 +27,7 @@ function UsageBody() {
 function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
   const t = getT(locale);
-  const { data, now, requestError, connect, logoutMuse } = useQuotaData(api);
+  const { data, now, requestError, connect, logout } = useQuotaData(api);
   if (requestError && data === null) return <p className="quota-m-note">{t("quota.error.summary")}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
   return (
@@ -36,7 +36,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
         const provider = data.providers[id] ?? UNREPORTED_PROVIDER;
         const name = PROVIDER_NAME[id];
         const readable = provider.status === "ok" || provider.status === "stale";
-        const museLogin = needsMuseLogin(id, provider.status);
+        const login = needsConsoleLogin(id, provider.status);
         const windows = readable ? provider.windows ?? [] : [];
         return (
           <section className="quota-m-provider" key={id} data-provider={id}>
@@ -44,10 +44,10 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
             <div className="quota-m-group">
               {isConnectable(id) && provider.status === "not_connected" ? (
                 <button type="button" className="quota-m-row quota-m-action" onClick={() => connect(id, true)}>
-                  <span className="quota-m-copy">{t("mobile.usage.connect")}<small>{t(id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor")}</small></span>
+                  <span className="quota-m-copy">{t("mobile.usage.connect")}<small>{t("quota.connect.body")}</small></span>
                 </button>
               ) : null}
-              {museLogin ? <MuseLoginRows api={api} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logoutMuse} /> : null}
+              {needsConsoleLogin(id, provider.status) ? <LoginRows api={api} provider={id} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logout} /> : null}
               {windows.map((window, index) => {
                 const severity = meterSeverity(window);
                 const label = mobileWindowLabel(window, t);
@@ -65,7 +65,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
                   </div>
                 );
               })}
-              {!readable && !museLogin && !(isConnectable(id) && provider.status === "not_connected") ? (
+              {!readable && !login && !(isConnectable(id) && provider.status === "not_connected") ? (
                 <div className="quota-m-row">
                   <span className="quota-m-copy">{statusLine(id, provider.status, t)}</span>
                 </div>
@@ -79,11 +79,12 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
 }
 
 /**
- * 폰의 Muse Code 로그인 — 팝업 카드와 같은 흐름을 묶음 카드의 행으로 그린다. 승인 페이지는 이 폰의 브라우저에서 열리고,
+ * 폰의 Console 로그인 — 팝업 카드와 같은 흐름을 묶음 카드의 행으로 그린다. 승인 페이지는 이 폰의 브라우저에서 열리고,
  * 승인 확인은 Console이 한다.
  */
-function MuseLoginRows({
+function LoginRows({
   api,
+  provider,
   expired,
   now,
   locale,
@@ -91,65 +92,67 @@ function MuseLoginRows({
   logout,
 }: {
   readonly api: ClientApiCapability;
+  readonly provider: LoginProvider;
   readonly expired: boolean;
   readonly now: number;
   readonly locale: ConsoleLocale;
   readonly t: ReturnType<typeof getT>;
-  readonly logout: () => void;
+  readonly logout: (provider: LoginProvider) => void;
 }) {
-  const login = useStoreSnapshot(subscribeMuseLogin, getMuseLoginState);
+  const login = useStoreSnapshot(subscribeLogins, getLoginStates)[provider];
+  const name = PROVIDER_NAME[provider];
   switch (login.phase) {
     case "idle":
       return (
         <>
-          <button type="button" className="quota-m-row quota-m-action" onClick={() => { void startMuseLogin(api); }}>
+          <button type="button" className="quota-m-row quota-m-action" onClick={() => { void startLogin(api, provider); }}>
             <span className="quota-m-copy">
-              {t(expired ? "quota.museLogin.action.again" : "quota.museLogin.action")}
-              <small>{t(expired ? "quota.museLogin.body.expired" : "quota.museLogin.body")}</small>
+              {t(expired ? "quota.login.action.again" : "quota.login.action")}
+              <small>{expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])}</small>
             </span>
           </button>
           {expired ? (
-            <button type="button" className="quota-m-row quota-m-action" onClick={logout}>
-              <span className="quota-m-copy">{t("quota.museLogin.logout")}</span>
+            <button type="button" className="quota-m-row quota-m-action" onClick={() => logout(provider)}>
+              <span className="quota-m-copy">{t("quota.login.logout")}</span>
             </button>
           ) : null}
         </>
       );
     case "starting":
-      return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.museLogin.starting")}</span></div>;
+      return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.login.starting")}</span></div>;
     case "pending":
       return (
         <>
           <div className="quota-m-row">
             <span className="quota-m-copy">
-              <span className="quota-m-code">{login.userCode}</span>
-              <small role="status">{t("quota.museLogin.pending.wait", { t: countdownText(login.expiresAt - now, locale) })}</small>
+              {login.userCode !== "" ? <span className="quota-m-code">{login.userCode}</span> : null}
+              <small role="status">{t("quota.login.pending.wait", { t: countdownText(login.expiresAt - now, locale) })}</small>
             </span>
           </div>
           <button type="button" className="quota-m-row quota-m-action" onClick={() => openExternal(login.url)}>
-            <span className="quota-m-copy">{t("quota.museLogin.open")}<small>{t("quota.museLogin.pending.body")}</small></span>
+            <span className="quota-m-copy">{t("quota.login.open")}<small>{t(loginPendingKey(login))}</small></span>
           </button>
-          <button type="button" className="quota-m-row quota-m-action" onClick={() => cancelMuseLogin(api)}>
-            <span className="quota-m-copy">{t("quota.museLogin.cancel")}</span>
+          <button type="button" className="quota-m-row quota-m-action" onClick={() => cancelLogin(api, provider)}>
+            <span className="quota-m-copy">{t("quota.login.cancel")}</span>
           </button>
         </>
       );
     case "failed":
       return (
         <>
-          <div className="quota-m-row" role="alert"><span className="quota-m-copy">{t(MUSE_LOGIN_FAILURE_KEY[login.reason])}</span></div>
+          <div className="quota-m-row" role="alert"><span className="quota-m-copy">{t(LOGIN_FAILURE_KEY[login.reason], { provider: name })}</span></div>
           {login.reason === "entitlement_required" && login.actionUrl !== undefined ? (
             <button type="button" className="quota-m-row quota-m-action" onClick={() => openExternal(login.actionUrl!)}>
-              <span className="quota-m-copy">{t("quota.museLogin.entitlement.action")}</span>
+              <span className="quota-m-copy">{t("quota.login.entitlement.action")}</span>
             </button>
           ) : null}
-          <button type="button" className="quota-m-row quota-m-action" onClick={() => { resetMuseLogin(); void startMuseLogin(api); }}>
-            <span className="quota-m-copy">{t("quota.museLogin.retry")}</span>
+          <button type="button" className="quota-m-row quota-m-action" onClick={() => { resetLogin(provider); void startLogin(api, provider); }}>
+            <span className="quota-m-copy">{t("quota.login.retry")}</span>
           </button>
         </>
       );
     case "signed_in":
-      return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.museLogin.signedIn")}</span></div>;
+      return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.login.signedIn")}</span></div>;
   }
 }
 

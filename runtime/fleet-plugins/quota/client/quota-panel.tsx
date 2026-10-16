@@ -5,24 +5,25 @@ import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
-import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../provider-order.js";
+import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
-  cancelMuseLogin,
-  getMuseLoginState,
+  cancelLogin,
+  getLoginStates,
   openExternal,
-  resetMuseLogin,
-  startMuseLogin,
-  subscribeMuseLogin,
-  type MuseLoginFailure,
-} from "./muse-login.js";
+  resetLogin,
+  startLogin,
+  subscribeLogins,
+  type LoginFailure,
+  type LoginState,
+} from "./provider-login.js";
 import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, toggleQuotaToolbarProvider } from "./toolbar-setting.js";
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
-type ConnectableProviderId = "claude" | "cursor";
+type ConnectableProviderId = "claude";
 
 export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
@@ -95,23 +96,37 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
 export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
 
 export function isConnectable(id: ProviderId): id is ConnectableProviderId {
-  return id === "claude" || id === "cursor";
+  return id === "claude";
 }
 
 /**
- * Muse Code는 Console이 로그인을 소유한다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
+ * Codex·xAI·Cursor·Muse Code는 Console이 로그인을 소유한다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
  * (`signed_out`은 옛 Gateway가 보내던 미로그인 상태라 같은 카드로 받는다.)
  */
-export function needsMuseLogin(id: ProviderId, status: ProviderStatus | undefined): boolean {
-  return id === "muse-code" && (status === "not_connected" || status === "signed_out" || status === "expired");
+export function needsConsoleLogin(id: ProviderId, status: ProviderStatus | undefined): id is LoginProvider {
+  return isLoginProvider(id) && (status === "not_connected" || status === "signed_out" || status === "expired");
 }
 
-export const MUSE_LOGIN_FAILURE_KEY: Readonly<Record<MuseLoginFailure, QuotaMessageKey>> = {
-  denied: "quota.museLogin.denied",
-  entitlement_required: "quota.museLogin.entitlement",
-  expired: "quota.museLogin.codeExpired",
-  failed: "quota.museLogin.failed",
+export const LOGIN_FAILURE_KEY: Readonly<Record<LoginFailure, QuotaMessageKey>> = {
+  denied: "quota.login.denied",
+  entitlement_required: "quota.login.entitlement",
+  expired: "quota.login.codeExpired",
+  failed: "quota.login.failed",
 };
+
+/** 로그인 카드의 설명. 어느 계정으로 로그인하는지는 공급자마다 다르다. */
+export const LOGIN_BODY_KEY: Readonly<Record<LoginProvider, QuotaMessageKey>> = {
+  codex: "quota.login.body.codex",
+  cursor: "quota.login.body.cursor",
+  "muse-code": "quota.login.body.museCode",
+  xai: "quota.login.body.xai",
+};
+
+/** 진행 중 안내: 링크에 코드가 실려 있으면 확인, 아니면 입력, 코드가 없으면 승인만. */
+export function loginPendingKey(login: Extract<LoginState, { phase: "pending" }>): QuotaMessageKey {
+  if (login.userCode === "") return "quota.login.pending.approve";
+  return login.codeInUrl ? "quota.login.pending.confirm" : "quota.login.pending.enter";
+}
 
 interface RequestGeneration {
   current: number;
@@ -483,71 +498,76 @@ function ResetGlyph() {
 }
 
 /**
- * Muse Code 로그인 카드 — 연결 카드와 같은 문법(머리 · 설명 · 1차 단추)으로 device code 로그인을 끝까지 안내한다.
+ * Console 로그인 카드 — 연결 카드와 같은 문법(머리 · 설명 · 1차 단추)으로 로그인을 끝까지 안내한다.
  * 코드와 승인 링크는 서버가 받아 온 것을 보여 줄 뿐이고, 승인 여부는 서버가 확인한다.
  */
-function MuseLoginCard({
+function LoginCard({
   api,
+  provider,
   expired,
   now,
   t,
   logout,
 }: {
   readonly api: ClientApiCapability;
+  readonly provider: LoginProvider;
   readonly expired: boolean;
   readonly now: number;
   readonly t: T;
-  readonly logout: () => void;
+  readonly logout: (provider: LoginProvider) => void;
 }) {
-  const login = useStoreSnapshot(subscribeMuseLogin, getMuseLoginState);
+  const login = useStoreSnapshot(subscribeLogins, getLoginStates)[provider];
+  const name = PROVIDER_NAME[provider];
   const retry = () => {
-    resetMuseLogin();
-    void startMuseLogin(api);
+    resetLogin(provider);
+    void startLogin(api, provider);
   };
   return (
-    <section className="quota-connect-card" data-provider="muse-code">
+    <section className="quota-connect-card" data-provider={provider}>
       <header className="quota-provider__header">
-        <span className="quota-provider__mark quota-provider__mark--muse-code">{providerGlyph("muse-code")}</span>
-        <h3>{t(expired ? "quota.museLogin.title.again" : "quota.museLogin.title")}</h3>
-        {expired && login.phase === "idle" ? <button type="button" className="quota-disconnect" onClick={logout}>{t("quota.museLogin.logout")}</button> : null}
+        <span className={`quota-provider__mark quota-provider__mark--${provider}`}>{providerGlyph(provider)}</span>
+        <h3>{t(expired ? "quota.login.title.again" : "quota.login.title", { provider: name })}</h3>
+        {expired && login.phase === "idle" ? <button type="button" className="quota-disconnect" onClick={() => logout(provider)}>{t("quota.login.logout")}</button> : null}
       </header>
       {login.phase === "idle" ? (
         <>
-          <p>{t(expired ? "quota.museLogin.body.expired" : "quota.museLogin.body")}</p>
-          <button type="button" className="quota-button quota-button--primary" onClick={() => { void startMuseLogin(api); }}>
-            {t(expired ? "quota.museLogin.action.again" : "quota.museLogin.action")}
+          <p>{expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])}</p>
+          <button type="button" className="quota-button quota-button--primary" onClick={() => { void startLogin(api, provider); }}>
+            {t(expired ? "quota.login.action.again" : "quota.login.action")}
           </button>
         </>
       ) : null}
-      {login.phase === "starting" ? <p role="status">{t("quota.museLogin.starting")}</p> : null}
+      {login.phase === "starting" ? <p role="status">{t("quota.login.starting")}</p> : null}
       {login.phase === "pending" ? (
         <>
-          <p>{t("quota.museLogin.pending.body")}</p>
-          <div className="quota-login-code">
-            <span className="quota-login-code__label">{t("quota.museLogin.code")}</span>
-            <strong className="quota-login-code__value">{login.userCode}</strong>
-          </div>
+          <p>{t(loginPendingKey(login))}</p>
+          {login.userCode !== "" ? (
+            <div className="quota-login-code">
+              <span className="quota-login-code__label">{t("quota.login.code")}</span>
+              <strong className="quota-login-code__value">{login.userCode}</strong>
+            </div>
+          ) : null}
           <p className="quota-connect-card__hint" role="status">
-            {t("quota.museLogin.pending.wait", { t: formatCountdown(login.expiresAt, now) })}
+            {t("quota.login.pending.wait", { t: formatCountdown(login.expiresAt, now) })}
           </p>
           <div className="quota-connect-card__actions">
-            <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.url)}>{t("quota.museLogin.open")}</button>
-            <button type="button" className="quota-button" onClick={() => cancelMuseLogin(api)}>{t("quota.museLogin.cancel")}</button>
+            <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.url)}>{t("quota.login.open")}</button>
+            <button type="button" className="quota-button" onClick={() => cancelLogin(api, provider)}>{t("quota.login.cancel")}</button>
           </div>
         </>
       ) : null}
       {login.phase === "failed" ? (
         <>
-          <p role="alert">{t(MUSE_LOGIN_FAILURE_KEY[login.reason])}</p>
+          <p role="alert">{t(LOGIN_FAILURE_KEY[login.reason], { provider: name })}</p>
           <div className="quota-connect-card__actions">
             {login.reason === "entitlement_required" && login.actionUrl !== undefined ? (
-              <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.actionUrl!)}>{t("quota.museLogin.entitlement.action")}</button>
+              <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.actionUrl!)}>{t("quota.login.entitlement.action")}</button>
             ) : null}
-            <button type="button" className={`quota-button${login.reason === "entitlement_required" && login.actionUrl !== undefined ? "" : " quota-button--primary"}`} onClick={retry}>{t("quota.museLogin.retry")}</button>
+            <button type="button" className={`quota-button${login.reason === "entitlement_required" && login.actionUrl !== undefined ? "" : " quota-button--primary"}`} onClick={retry}>{t("quota.login.retry")}</button>
           </div>
         </>
       ) : null}
-      {login.phase === "signed_in" ? <p role="status">{t("quota.museLogin.signedIn")}</p> : null}
+      {login.phase === "signed_in" ? <p role="status">{t("quota.login.signedIn")}</p> : null}
     </section>
   );
 }
@@ -560,7 +580,7 @@ function ProviderCard({
   t,
   api,
   connect,
-  logoutMuse,
+  logout,
 }: {
   readonly id: ProviderId;
   readonly provider: ProviderDto;
@@ -569,22 +589,22 @@ function ProviderCard({
   readonly t: T;
   readonly api: ClientApiCapability;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
-  readonly logoutMuse: () => void;
+  readonly logout: (provider: LoginProvider) => void;
 }) {
   const name = PROVIDER_NAME[id];
-  if (needsMuseLogin(id, provider.status)) {
-    return <MuseLoginCard api={api} expired={provider.status === "expired"} now={now} t={t} logout={logoutMuse} />;
+  if (needsConsoleLogin(id, provider.status)) {
+    return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
   }
   if (isConnectable(id) && provider.status === "not_connected") {
     return (
       <section className="quota-connect-card" data-provider={id}>
         <header className="quota-provider__header">
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          <h3>{t(id === "claude" ? "quota.connect.title" : "quota.connect.title.cursor")}</h3>
+          <h3>{t("quota.connect.title")}</h3>
         </header>
-        <p>{t(id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor")}</p>
+        <p>{t("quota.connect.body")}</p>
         {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor")}</button>
+        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
       </section>
     );
   }
@@ -594,7 +614,7 @@ function ProviderCard({
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
-        {id === "muse-code" ? <button type="button" className="quota-disconnect" onClick={logoutMuse}>{t("quota.museLogin.logout")}</button> : null}
+        {isLoginProvider(id) ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
         {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
       </header>
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
@@ -700,9 +720,9 @@ export function useQuotaData(api: ClientApiCapability) {
     postForSummary("connect", { provider, connected });
   }, [postForSummary]);
 
-  const logoutMuse = useCallback(() => {
-    resetMuseLogin();
-    postForSummary("muse-code/logout", {});
+  const logout = useCallback((provider: LoginProvider) => {
+    resetLogin(provider);
+    postForSummary(`${provider}/logout`, {});
   }, [postForSummary]);
 
   useEffect(() => {
@@ -758,16 +778,21 @@ export function useQuotaData(api: ClientApiCapability) {
   // 팝업이 서 있는 동안은 폴링이 패널 몫이다 — 도구모음 요약은 그동안 따로 묻지 않는다.
   useEffect(() => holdQuotaPanel(), []);
 
-  // Muse Code 로그인이 끝나면 그 공급자만 다시 읽는다. 로그인 직후의 캐시는 아직 미로그인일 수 있다.
-  const museLoginPhase = useStoreSnapshot(subscribeMuseLogin, getMuseLoginState).phase;
-  const museStatus = data?.providers["muse-code"]?.status;
+  // 로그인이 끝나면 그 공급자만 다시 읽는다. 로그인 직후의 캐시는 아직 미로그인일 수 있다.
+  const logins = useStoreSnapshot(subscribeLogins, getLoginStates);
+  const signedInKey = LOGIN_PROVIDERS.filter((provider) => logins[provider].phase === "signed_in").join(",");
   useEffect(() => {
-    if (museLoginPhase === "signed_in") refresh("muse-code");
-  }, [museLoginPhase, refresh]);
+    for (const provider of LOGIN_PROVIDERS) {
+      if (signedInKey.split(",").includes(provider)) refresh(provider);
+    }
+  }, [signedInKey, refresh]);
   // 새 요약이 로그인된 상태를 말하면 카드의 완료 표시를 걷는다.
   useEffect(() => {
-    if (museLoginPhase === "signed_in" && museStatus !== undefined && !needsMuseLogin("muse-code", museStatus)) resetMuseLogin();
-  }, [museLoginPhase, museStatus]);
+    for (const provider of LOGIN_PROVIDERS) {
+      const status = data?.providers[provider]?.status;
+      if (logins[provider].phase === "signed_in" && status !== undefined && !needsConsoleLogin(provider, status)) resetLogin(provider);
+    }
+  }, [logins, data]);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -780,7 +805,7 @@ export function useQuotaData(api: ClientApiCapability) {
     };
   }, [refresh]);
 
-  return { data, checkedAt, now, requestError, refresh, connect, logoutMuse };
+  return { data, checkedAt, now, requestError, refresh, connect, logout };
 }
 
 /**
@@ -793,7 +818,7 @@ export function QuotaPanel({ api, locale, labelId }: {
   readonly labelId: string;
 }) {
   const t = useMemo(() => getT(locale), [locale]);
-  const { data, checkedAt, now, requestError, refresh, connect, logoutMuse } = useQuotaData(api);
+  const { data, checkedAt, now, requestError, refresh, connect, logout } = useQuotaData(api);
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
@@ -830,7 +855,7 @@ export function QuotaPanel({ api, locale, labelId }: {
             t={t}
             api={api}
             connect={connect}
-            logoutMuse={logoutMuse}
+            logout={logout}
           />
         )) : null}
       </div>
