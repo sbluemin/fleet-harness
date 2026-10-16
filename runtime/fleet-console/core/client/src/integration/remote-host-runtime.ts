@@ -314,7 +314,14 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       void work.finally(() => { if (pairFlight === work) pairFlight = null; }).catch(() => undefined);
     }
     // 동시 클릭은 같은 작업을 기다린다. 오류를 capability 판정이나 자동 재시도로 바꾸지 않는다.
-    await pairFlight;
+    // 전송이 취소보다 늦게 실패하더라도 폐기된 runtime의 오류를 새 host 카드에 싣지 않는다.
+    try { await pairFlight; }
+    catch (cause) {
+      lifetime.signal.throwIfAborted();
+      outer.throwIfAborted();
+      throw cause;
+    }
+    lifetime.signal.throwIfAborted();
     outer.throwIfAborted();
   }
 

@@ -184,10 +184,15 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       const runtime = runtimes.get(hostKey)?.runtime;
       if (!runtime) throw new Error("remote_host_unknown");
       if (hostKey === "local" || !runtime.pair) throw new Error("host_unsupported");
+      const current = () => {
+        signal.throwIfAborted();
+        if (disposed || runtimes.get(hostKey)?.runtime !== runtime) throw new DOMException("host_pair_cancelled", "AbortError");
+      };
       // 연결 대상만 고정한다. begin/select/activate를 거치지 않아 현재 대화를 보존한다.
-      await runtime.pair(signal);
-      signal.throwIfAborted();
-      if (disposed || runtimes.get(hostKey)?.runtime !== runtime) throw new Error("remote_host_unknown");
+      // 같은 id로 교체된 대상에는 이전 성공뿐 아니라 이전 실패도 전달하지 않는다.
+      try { await runtime.pair(signal); }
+      catch (cause) { current(); throw cause; }
+      current();
     },
     activateConversation,
     activateObjective: (next) => activateConversation(next, true),

@@ -136,6 +136,35 @@ describe("host workspace isolation", () => {
       expect(cancelled.remote.getSnapshot().mode).toBe("off");
     } finally { cancelled.workspace.dispose(); }
 
+    const replaced = fixture();
+    try {
+      const result = replaced.workspace.pair("remote", new AbortController().signal);
+      const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+      await vi.waitFor(() => expect(replaced.calls.some((call) => call.path.endsWith("/pair"))).toBe(true));
+      replaced.workspace.remove("remote");
+      const next = runtime("remote"); next.update({ instanceId: INSTANCE_A });
+      replaced.workspace.add(next.port);
+      // 같은 id·instance의 주소 교체라도 이전 전송이 늦게 낸 실패는 새 카드의 오류가 아니다.
+      replaced.finish(Response.json({ error: "remote_host_unavailable" }, { status: 409 }));
+      await rejected;
+      expect(replaced.workspace.getSnapshot().hosts.find((host) => host.hostKey === "remote")).toMatchObject({ instanceId: INSTANCE_A, phase: "ready", error: null });
+      expect(replaced.calls.some((call) => call.body?.intent)).toBe(false);
+    } finally { replaced.workspace.dispose(); }
+
+    const lateSuccess = createHostWorkspace(runtime("local").port);
+    try {
+      let finish!: () => void;
+      const old = runtime("remote"); old.update({ instanceId: INSTANCE_A });
+      lateSuccess.add({ ...old.port, pair: () => new Promise<void>((resolve) => { finish = resolve; }) });
+      const result = lateSuccess.pair("remote", new AbortController().signal);
+      const rejected = expect(result).rejects.toMatchObject({ name: "AbortError" });
+      lateSuccess.remove("remote");
+      const next = runtime("remote"); next.update({ instanceId: INSTANCE_A });
+      lateSuccess.add(next.port);
+      finish(); await rejected;
+      expect(lateSuccess.getSnapshot().hosts.find((host) => host.hostKey === "remote")).toMatchObject({ instanceId: INSTANCE_A, phase: "ready", error: null });
+    } finally { lateSuccess.dispose(); }
+
     const stale = fixture();
     try {
       const result = stale.workspace.pair("remote", new AbortController().signal);
@@ -149,7 +178,7 @@ describe("host workspace isolation", () => {
     const unsupported = fixture();
     try {
       const result = unsupported.workspace.pair("remote", new AbortController().signal);
-      const rejected = expect(result).rejects.toThrow("host_unsupported");
+      const rejected = expect(result).rejects.toMatchObject({ name: "HostTransportFailure", message: "host_unsupported", status: 409 });
       await vi.waitFor(() => expect(unsupported.calls.some((call) => call.path.endsWith("/pair"))).toBe(true));
       unsupported.finish(Response.json({ error: "host_unsupported" }, { status: 409 })); await rejected;
       expect(unsupported.calls.some((call) => call.body?.intent)).toBe(false);
