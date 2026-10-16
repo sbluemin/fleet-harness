@@ -1,4 +1,5 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
@@ -885,12 +886,13 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
 }) {
   const t = getGroupT(language);
   const time = timeOf(entry.at, language);
+  const action = resolveLocalizedText(entry.action, language ?? "en");
   const summary = (
     <>
       <SpeakerMark speaker={entry.speaker} size="sm" />
       <span className="group-chat-line-who">{entry.speaker.name}</span>
       <span className="group-chat-line-sep" aria-hidden="true">·</span>
-      <span className="group-chat-line-excerpt">{entry.action}</span>
+      <span className="group-chat-line-excerpt">{action}</span>
       {time ? <span className="group-chat-line-time">{time}</span> : null}
     </>
   );

@@ -4,7 +4,7 @@ import type { ModelRoster } from "@fleet-console/sdk/models";
 import { livePersonHold } from "../server/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type Objective, type ObjectiveMember } from "../server/types.js";
 import { decisionTurn } from "./commodore-state.js";
-import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
+import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchObjectiveView, returnPersonHold, revealObjective } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
 import { followupGate, openFollowups, setFollowupOpen } from "./followups.js";
@@ -28,10 +28,10 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
   }));
   const speaker: ConversationSpeaker = { kind: "commodore", name: "Commodore" };
   if (objective.addedBy && "kind" in objective.addedBy && objective.addedBy.kind === "commodore") events.push({
-    kind: "board-action", id: `board:${objective.id}:added`, at: objective.createdAt, objectiveId: objective.id, speaker, action: "added", text: objective.addedBy.why ?? objective.title,
+    kind: "board-action", id: `board:${objective.id}:added`, at: objective.createdAt, objectiveId: objective.id, speaker, action: boardAct("added"), text: objective.addedBy.why ?? objective.title,
   });
   for (const action of objective.actions ?? []) if (typeof action.by === "object" && action.by.kind === "commodore") events.push({
-    kind: "board-action", id: `board:${objective.id}:${action.id}`, at: action.at, objectiveId: objective.id, speaker, action: action.kind, text: action.by.why ?? action.kind,
+    kind: "board-action", id: `board:${objective.id}:${action.id}`, at: action.at, objectiveId: objective.id, speaker, action: boardAct(action.kind), text: action.by.why ?? "",
   });
   // 사람이 답한 결정 — 요청 하나가 한 줄로, 답한 시각의 자리에 선다(질문 순서 그대로). 대화가 하단 카드 대신 이 줄을 기록으로 읽는다.
   const answered = new Map<string, Extract<GroupTimelineEntry, { kind: "decision-answer" }>>();
@@ -39,7 +39,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const labels = decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => option.label);
     if (typeof decision.by === "object" && decision.by.kind === "commodore") {
       events.push({
-        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: "answer",
+        kind: "board-action", id: `board:${objective.id}:${decision.id}`, at: decision.at, objectiveId: objective.id, speaker, action: boardAct("answer"),
         text: [decision.question.text, ...labels, decision.answer.text, decision.by.why].filter(Boolean).join("\n"),
       });
       continue;
@@ -71,6 +71,13 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     } } : {}),
     route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
   } : null };
+}
+
+function boardAct(kind: string) {
+  return localized((t) => {
+    const key = `objectives.prov.act.${kind}`;
+    return key in objectivesEn ? t(key as ObjectiveMessageKey) : kind;
+  });
 }
 
 /** 대화에 세울 넘김 대상은 이 한 곳에서 정한다. 결정 요청은 자체 카드의 handed 를 쓴다. */
