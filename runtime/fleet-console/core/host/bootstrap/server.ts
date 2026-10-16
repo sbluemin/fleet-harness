@@ -65,7 +65,7 @@ import { createRemoteHostStore, type RemoteHostRecord } from "../../../features/
 import { createRemoteIdentityStore, fingerprintsMatch } from "../../../features/remote-access/host/remote-identity.js";
 import { createRemoteJoinGuard } from "../../../features/remote-access/host/remote-join-guard.js";
 import { createAgentOptionsService, createTheaterSystemPromptService } from "../../../features/settings/host/agent-options.js";
-import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, acknowledgmentMatches, createConsoleSettingsStore, createGlobalSettingsRouter, createPluginSettingsRouter, effectiveRemoteAccessAdvertisedTuple, readArchiveRetentionDays, readExperimentSettings, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "../../../features/settings/host/settings-domain.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "../../../features/updates/host/release-notes/release-notes.js";
 import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "../../../features/updates/host/update-apply.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "../../../features/updates/host/update-check.js";
@@ -750,6 +750,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (!result?.ok) throw new OperationArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
       } else if (intent === "open" || intent === "activate") publishPluginEvent("operation:reveal", { operationId: id, reason: "", at: Date.now() });
     },
+    readRetentionDays: () => readArchiveRetentionDays(consoleSettingsStore.load().general?.archiveRetentionDays),
     publish: (event) => {
       for (const node of archiveSessionNodes(event.operation)) {
         if (event.channel === "operation:purged") {
@@ -2789,6 +2790,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 인증서·페어링·공표 endpoint를 쓰는 원격 활성화는 lock 소유자만 한다.
       await startRemoteAccessGuarded(result.actualPort);
       lifecycle.activated();
+      // 실패 가능한 준비가 성공한 뒤에만 자동 정리를 시작한다. 그 전 실패의 cleanup은 이미 한 commit을 되돌리지 못한다.
+      operationArchive.startRetention();
     } catch (error) {
       await cleanupAfterFailedStart();
       throw error;

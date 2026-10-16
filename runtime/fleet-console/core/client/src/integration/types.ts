@@ -224,7 +224,14 @@ export interface GlobalSettingsState {
   readonly experiments: ConsoleExperimentSettings;
   /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 구서버 응답에는 없을 수 있고, 그때는 빈 객체다. */
   readonly shortcuts: ShortcutBindings;
+  /**
+   * 보관한 지 이만큼(24시간 단위) 지난 보관 Operation 묶음을 서버가 영구 삭제한다. null은 꺼짐이며,
+   * 구서버 응답에서 빠졌거나 알 수 없는 값이어도 꺼짐으로 정규화한다.
+   */
+  readonly archiveRetentionDays: ArchiveRetentionDays;
 }
+
+export type ArchiveRetentionDays = 7 | 30 | 90 | null;
 
 export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;

@@ -17,7 +17,12 @@ interface OperationArchiveDeps {
   readonly now?: () => number;
   readonly setTimer?: typeof setTimeout;
   readonly clearTimer?: typeof clearTimeout;
+  /** 최신 보관 일수. null·부재·허용 밖은 꺼짐이다. 저장 요청 안에서는 지우지 않는다. */
+  readonly readRetentionDays?: () => 7 | 30 | 90 | null;
 }
+
+const RETENTION_INTERVAL_MS = 60_000;
+const RETENTION_DAY_MS = 86_400_000;
 
 /** 보관 단위는 최상위 Operation이다. 자식은 부모의 childSessions 안에서만 이동한다. */
 export function createOperationArchiveCoordinator(deps: OperationArchiveDeps) {
@@ -32,6 +37,8 @@ export function createOperationArchiveCoordinator(deps: OperationArchiveDeps) {
   // 브라우저 revision은 불투명한 비교 토큰이다. 메모리 보류가 사라진 재기동에서 옛 preview를 재사용하지 못하게 한다.
   const epoch = crypto.randomInt(1, 2 ** 48);
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let retentionTimer: ReturnType<typeof setTimeout> | null = null;
+  let retentionStarted = false;
   let disposed = false;
   const revision = () => epoch + deps.storage.revision() + volatileRevision;
   function enqueue<T>(run: () => Promise<T>): Promise<T> {
@@ -210,10 +217,65 @@ export function createOperationArchiveCoordinator(deps: OperationArchiveDeps) {
     deps.publishChanged();
     return { operationIds: batch.receipt.operationIds, revision: revision() };
   });
+  function retentionDays(): 7 | 30 | 90 | null {
+    const value = deps.readRetentionDays?.();
+    return value === 7 || value === 30 || value === 90 ? value : null;
+  }
+  function isExpired(entry: ArchivedOperation, currentNow: number, limit: number): boolean {
+    return Number.isSafeInteger(entry.archivedAt) && entry.archivedAt >= 0 && entry.archivedAt <= currentNow && currentNow - entry.archivedAt >= limit;
+  }
+  function isProtected(entry: ArchivedOperation): boolean {
+    return pendingFor(entry.operation.id) || deps.pendingDeletion(entry.operation.id);
+  }
+  const sweepRetention = () => enqueue(async () => {
+    if (disposed) return;
+    deps.storage.assertReady();
+    // 이 큐 턴에는 await가 없다. 설정과 현재 목록을 한 번만 읽고 archiveId로 가른다.
+    const days = retentionDays();
+    const currentNow = now();
+    if (days === null || !Number.isFinite(currentNow)) return;
+    const limit = days * RETENTION_DAY_MS;
+    const dueIds = new Set<string>();
+    for (const entry of deps.storage.entries()) {
+      if (isExpired(entry, currentNow, limit) && !isProtected(entry)) dueIds.add(entry.archiveId);
+    }
+    if (!dueIds.size) return;
+    // pendingDeletion이 동기 save로 목록 참조를 갈아끼울 수 있어, commit 기준은 그 다음 목록이다.
+    const entries = deps.storage.entries();
+    const confirmed = entries.filter((entry) => dueIds.has(entry.archiveId));
+    if (!confirmed.length) return;
+    commit(deps.operations.list(), entries.filter((entry) => !dueIds.has(entry.archiveId)), confirmed.map((entry) => archiveEvent("operation:purged", entry.operation)));
+  });
+  function runRetention(): Promise<void> {
+    return sweepRetention().catch(() => {
+      // 저장 실패·복구 필요는 원본과 blocked 를 그대로 둔다. 다음 확인이 재시도한다.
+    });
+  }
+  function armRetention(): void {
+    if (disposed || retentionTimer) return;
+    retentionTimer = setTimer(() => {
+      retentionTimer = null;
+      void runRetention().finally(() => { if (!disposed) armRetention(); });
+    }, RETENTION_INTERVAL_MS);
+    retentionTimer.unref?.();
+  }
+  function startRetention(): Promise<void> {
+    if (disposed || retentionStarted) return Promise.resolve();
+    retentionStarted = true;
+    // 다음 60초는 이번 sweep이 끝난 뒤에만 건다. 긴 stop 뒤에 틱이 큐에 쌓이지 않게 한다.
+    return runRetention().finally(() => { if (!disposed) armRetention(); });
+  }
   const capability: OperationArchiveCapability = { describe, listArchived, archive, access, restore, undoArchive, previewPurge, purge };
   return {
-    ...capability, purge, previewBatch, restoreBatch, undoPurge, sweepExpired, revision, flushEvents,
-    dispose: () => { disposed = true; if (timer) clearTimer(timer); timer = null; pending.clear(); },
+    ...capability, purge, previewBatch, restoreBatch, undoPurge, sweepExpired, sweepRetention, startRetention, revision, flushEvents,
+    dispose: () => {
+      disposed = true;
+      if (timer) clearTimer(timer);
+      timer = null;
+      if (retentionTimer) clearTimer(retentionTimer);
+      retentionTimer = null;
+      pending.clear();
+    },
     isTransitioning: (id: string) => locked.has(id) || pendingFor(id),
     assertMutable: (id: string) => { deps.storage.assertReady(); if (locked.has(id) || pendingFor(id)) throw new OperationArchiveError(409, "operation_busy"); },
   };

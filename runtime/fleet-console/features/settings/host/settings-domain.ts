@@ -107,6 +107,17 @@ export interface ConsoleGeneralSettings {
    * 문법과 정제기는 SDK가 소유한다 — 브라우저의 기록기와 서버의 검증이 같은 규칙을 읽는다.
    */
   readonly shortcuts?: ShortcutBindings;
+  /**
+   * 보관 Operation 자동 정리 일수. null·부재는 꺼짐이다. 7·30·90만 유효하다.
+   */
+  readonly archiveRetentionDays?: ArchiveRetentionDays;
+}
+
+/** 보관 자동 정리. null 은 꺼짐이고, 그 밖의 값은 저장·응답 모두에서 null 로 읽는다. */
+export type ArchiveRetentionDays = 7 | 30 | 90 | null;
+
+export function readArchiveRetentionDays(value: unknown): ArchiveRetentionDays {
+  return value === 7 || value === 30 || value === 90 ? value : null;
 }
 
 /** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
@@ -338,6 +349,9 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
   const shortcuts = sanitizeShortcutBindings(value.shortcuts);
+  const archiveRetentionDays = value.archiveRetentionDays === 7 || value.archiveRetentionDays === 30 || value.archiveRetentionDays === 90 || value.archiveRetentionDays === null
+    ? value.archiveRetentionDays
+    : undefined;
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -354,6 +368,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(fonts ? { fonts } : {}),
     ...(experiments !== undefined ? { experiments } : {}),
     ...(shortcuts !== undefined ? { shortcuts } : {}),
+    ...(archiveRetentionDays !== undefined ? { archiveRetentionDays } : {}),
   };
 }
 
@@ -500,6 +515,7 @@ interface GlobalSettingsBody {
   readonly fonts?: unknown;
   readonly experiments?: unknown;
   readonly shortcuts?: unknown;
+  readonly archiveRetentionDays?: unknown;
 }
 
 const GLOBAL_SETTINGS_MIN_STATIC_PORT = 1024;
@@ -668,6 +684,11 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_shortcuts" });
     return;
   }
+  // 허용 일수·null 외에는 저장하지 않는다. 잘못된 값을 꺼짐으로 접으면 화면이 저장됐다고 믿는다.
+  if (body.archiveRetentionDays !== undefined && body.archiveRetentionDays !== null && body.archiveRetentionDays !== 7 && body.archiveRetentionDays !== 30 && body.archiveRetentionDays !== 90) {
+    deps.writeJson(res, 400, { error: "invalid_archive_retention_days" });
+    return;
+  }
   const theme = normalizeConsoleThemeId(body.theme);
   const beforeUpdate = deps.consoleSettingsStore.load();
   const previousRemoteAccess = beforeUpdate.general?.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt);
@@ -692,6 +713,7 @@ async function mutateGlobalSettings(
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
       ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
+      ...(body.archiveRetentionDays === null || body.archiveRetentionDays === 7 || body.archiveRetentionDays === 30 || body.archiveRetentionDays === 90 ? { archiveRetentionDays: body.archiveRetentionDays } : {}),
     },
     plugins: current.plugins,
   }));
@@ -767,6 +789,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     fontsMigrationPending: !general.fonts,
     experiments: general.experiments ?? DEFAULT_EXPERIMENT_SETTINGS,
     shortcuts: general.shortcuts ?? {},
+    // 구저장·손상 값은 꺼짐이다. 응답에서 키를 빼면 클라이언트가 기본 일수를 채울 수 있다.
+    archiveRetentionDays: readArchiveRetentionDays(general.archiveRetentionDays),
   };
 }
 

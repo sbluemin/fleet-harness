@@ -32,6 +32,7 @@ const BASE: GlobalSettingsState = {
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
   experiments: DEFAULT_EXPERIMENT_SETTINGS,
+  archiveRetentionDays: null,
 };
 
 /**
