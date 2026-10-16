@@ -45,7 +45,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Synchronize only / range is docs-only | release-version-update; no main deployment push, no fake product change to trigger CI |
 | Record why an approved decision was made | wiki-history; the workspace PRD template's sections and an evidence-backed preview, no permanent registration before approval |
 | Capture recurring learning from this task | learning-harvest; recurrence/cost/generality, no encoding before candidate approval |
-| Implement an approved single CSS fix or edit docs only | Do not expand into unrelated proposal/sweep/PR/release workflows |
+| Implement an approved single CSS fix or edit docs only | Keep implementation scoped; pr-workflow follows root CLAUDE.md standing delivery authorization unless local-only or otherwise narrowed; no unrelated proposal/sweep/release |
 
 ## Limits
 
