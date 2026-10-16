@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { HostSelection, HostView } from "@fleet-console/sdk/host-context";
+import { createHostWorkspace, type HostRuntimePort } from "../core/client/src/integration/host-workspace.js";
+import { createRemoteHostTransport } from "../core/client/src/integration/remote-host-transport.js";
 
 import { encodeAccessLink, parseAccessLink, type ValidatedAccessLink } from "../features/remote-access/host/access-link.js";
 import { createRemoteHostStore, type RemoteHostStoreDeps } from "../features/remote-access/host/remote-hosts.js";
@@ -47,6 +50,93 @@ function createHarness(start = 10_000) {
     open: () => createRemoteHostStore("/console", deps),
   };
 }
+
+function runtime(hostKey: string, access: HostView["access"] = "full") {
+  let state: HostView = { hostKey, label: hostKey, epoch: 1, connection: "ready", trust: "verified", access, mode: "observer", phase: "ready", error: null, theaters: [{ id: "same-theater", label: hostKey }], operations: [{ id: "same-operation", theaterId: "same-theater", title: hostKey, type: "agent" }] };
+  const listeners = new Set<() => void>();
+  const update = (patch: Partial<HostView>) => { state = { ...state, ...patch }; for (const listener of listeners) listener(); };
+  const port: HostRuntimePort = {
+    getSnapshot: () => state,
+    subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    observe: vi.fn(async () => undefined),
+    activate: vi.fn(async () => { update({ mode: "controller" }); }),
+    dispose: vi.fn(),
+  };
+  return { port, update };
+}
+
+const selection = (hostKey: string): HostSelection => ({ hostKey, theaterId: "same-theater", role: "commander", operationId: "same-operation" });
+
+// 기존 저장 host 검증은 화면 전환을 거치지 않는다. 같은 id와 늦은 획득 결과의 교차 host 입력 방어를 이 경계에서 검사한다.
+describe("host workspace isolation", () => {
+  it("binds HTTP and resource requests to the expected host epoch without credential or local fallback", async () => {
+    const abort = new AbortController();
+    let responseEpoch = 7;
+    const request = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const input = JSON.parse(String(init?.body)) as { requestId: string };
+      return new Response(JSON.stringify({ requestId: input.requestId, epoch: responseEpoch, status: 403, contentType: "application/json", json: { error: "read_only" } }), { headers: { "Content-Type": "application/json" } });
+    });
+    const transport = createRemoteHostTransport({ hostKey: "remote", epoch: 7, signal: abort.signal }, {
+      fetch: request,
+      events: () => { throw new Error("unexpected_event_source"); },
+      socket: () => { throw new Error("unexpected_socket"); },
+      origin: "http://127.0.0.1:1234",
+    });
+    const response = await transport.request("/api/v1/operations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: "same-theater" }) });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "read_only" });
+    expect(request.mock.calls[0]?.[0]).toBe("/api/v1/hosts/remote/request");
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toMatchObject({ expectedEpoch: 7, method: "POST", path: "/api/v1/operations", json: { theaterId: "same-theater" } });
+    expect(transport.resourceUrl("/plugins/objectives/evidence/read?id=one")).toContain("epoch=7");
+    await expect(transport.request("https://other.example/api/v1/operations")).rejects.toThrow("invalid_host_request");
+    await expect(transport.request("/api/v1/operations", { headers: { Authorization: "secret" } })).rejects.toThrow("invalid_host_request");
+    expect(request).toHaveBeenCalledTimes(1);
+    responseEpoch = 8;
+    await expect(transport.request("/api/v1/operations")).rejects.toThrow("stale_epoch");
+    expect(request).toHaveBeenCalledTimes(2);
+    abort.abort();
+    await expect(transport.request("/api/v1/operations")).rejects.toThrow();
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not grant control during exploration or accept a late activation for another host", async () => {
+    const local = runtime("local");
+    const remote = runtime("remote");
+    const workspace = createHostWorkspace(local.port);
+    workspace.add(remote.port);
+    workspace.select(selection("remote"));
+    await Promise.resolve();
+    expect(remote.port.activate).not.toHaveBeenCalled();
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("remote"), canWrite: false });
+    let release: () => void = () => undefined;
+    vi.mocked(remote.port.activate).mockImplementation(() => new Promise<void>((resolve) => { release = () => { remote.update({ mode: "controller" }); resolve(); }; }));
+    const pending = workspace.activateConversation(selection("remote"));
+    await Promise.resolve();
+    await workspace.activateConversation(selection("local"));
+    release();
+    await pending;
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("local"), canWrite: true });
+    local.update({ epoch: 2 });
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: null, canWrite: false });
+    workspace.dispose();
+  });
+
+  it("allows monitoring snapshots without writing and preserves remote failure on local return", async () => {
+    const remote = runtime("remote", "monitoring");
+    const workspace = createHostWorkspace(runtime("local").port);
+    workspace.add(remote.port);
+    await workspace.activateConversation(selection("remote"));
+    expect(remote.port.activate).not.toHaveBeenCalled();
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("remote"), canWrite: false });
+    remote.update({ connection: "blocked", phase: "error", trust: "mismatch", error: "remote_host_fingerprint_mismatch" });
+    expect(workspace.getSnapshot().foreground).toBeNull();
+    workspace.returnLocal();
+    await Promise.resolve();
+    expect(workspace.getSnapshot().selection.hostKey).toBe("local");
+    expect(workspace.getSnapshot().hosts.find((host) => host.hostKey === "remote")).toMatchObject({ connection: "blocked", trust: "mismatch" });
+    workspace.dispose();
+  });
+});
 
 describe("remote host store", () => {
   it("remembers where to go and what to trust, and never the credential", () => {

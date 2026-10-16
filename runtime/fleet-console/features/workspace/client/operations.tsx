@@ -479,8 +479,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const handleClose = useCallback((operationId: string) => {
     if (!allowLocalWrite()) return;
     // 보관 영수증은 전환 뒤에도 보존한다. 복구 경로를 버리지 않으며 본문 선택은 이 callback이 바꾸지 않는다.
-    void archiveOperationFromUi(operationId).then((outcome) => { if (outcome) onArchived(outcome); });
-  }, [allowLocalWrite, onArchived]);
+    void archiveOperationFromUi(operationId, { isCurrent: captureLocalGeneration() }).then((outcome) => { if (outcome) onArchived(outcome); });
+  }, [allowLocalWrite, captureLocalGeneration, onArchived]);
 
   const poolCapabilities = useHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
@@ -504,12 +504,14 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }), [allowLocalWrite, handleClose, language, state.activeOperationId, state.activeTheme]);
 
   const handleAddTheater = useCallback(async (path: string) => {
-    await registerTheaterFromPath(path);
-  }, []);
+    if (!allowLocalWrite()) return;
+    await registerTheaterFromPath(path, { isCurrent: captureLocalGeneration() });
+  }, [allowLocalWrite, captureLocalGeneration]);
 
   const handleForgetTheater = useCallback(async (theaterId: string) => {
+    if (!allowLocalWrite()) return;
     onDeferredDeletion(await forgetTheaterCompletely(theaterId));
-  }, [onDeferredDeletion]);
+  }, [allowLocalWrite, onDeferredDeletion]);
 
   const sideBarChrome = (
     <OperationsSideBar

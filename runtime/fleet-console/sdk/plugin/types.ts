@@ -284,6 +284,9 @@ export interface FleetClientPlugin extends ClientExecutionProvider {
 }
 
 export interface PluginInstallContext {
+  /** 구버전 호스트에는 없다. 부재를 원격 지원으로 해석하지 않는다. */
+  readonly host?: import("../host-context/types.js").HostScope;
+  readonly transport?: import("../host-context/types.js").HostTransport;
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly api: ClientApiCapability;

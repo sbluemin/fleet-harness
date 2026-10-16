@@ -1,5 +1,5 @@
 import { getViewedTheaterId, useViewedTheaterId } from "../integration/viewed-theater.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
@@ -33,6 +33,8 @@ import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/u
 import { installConsoleGlobalShortcuts, resolvePanelShortcutOutcome } from "../integration/global-shortcuts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/plugin-capabilities.js";
+import { HostClientProvider, useHostClientBindings } from "../integration/host-client-context.js";
+import { useHostWorkspace } from "../integration/use-host-workspace.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
@@ -58,6 +60,7 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
+import { isDesktopShell, useDesktopShellHome } from "../integration/desktop-shell.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -65,6 +68,8 @@ import { observeStateMotion } from "../integration/state-motion.js";
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 const UNDO_WINDOW_MS = 8_000;
 const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
+const subscribeWithoutWorkspace = () => () => undefined;
+const snapshotWithoutWorkspace = () => null;
 
 // 온보딩 엔진이 코어 크롬에 닿는 창구 — 레일 진입점 버튼(RailIcon이 세우는 #rail-tab-<id>)과 단축키 표기.
 const ONBOARDING_PORTS = {
@@ -75,6 +80,7 @@ const ONBOARDING_PORTS = {
 } as const;
 
 export function App() {
+  const host = useHostClientBindings();
   const settings = useGlobalSettingsStore();
   const reduceMotion = settings.state?.reduceMotion === true;
   const lowerUnfocusedFrameRate = settings.state?.lowerUnfocusedFrameRate !== false;
@@ -88,15 +94,21 @@ export function App() {
   }, [calmAvatars]);
   const state = useConsoleState();
   // 종료 안내는 같은 문서에 남기되 활성 화면 전체를 내려 WS·플러그인·폴링과 단축키를 정리한다.
-  return state.controlReclaimed === null ? <ConnectedApp /> : <ControlReclaimedNotice />;
+  return state.controlReclaimed === null ? <HostClientProvider bindings={host}><ConnectedApp /></HostClientProvider> : <ControlReclaimedNotice />;
 }
 
 function ConnectedApp() {
+  const host = useHostClientBindings();
   useViewedTheaterId();
   const state = useConsoleState();
   const updateProgress = useUpdateProgress();
   const location = useLocation();
   const registry = usePluginRegistry();
+  const desktopHome = useDesktopShellHome();
+  // 기존 별도 원격 페이지를 로컬로 오인하지 않는다. 소유 셸의 local origin 문서에서만 조립한다.
+  const hostWorkspace = useHostWorkspace(registry, isDesktopShell() && desktopHome.origin === window.location.origin);
+  const hostSnapshot = useSyncExternalStore(hostWorkspace?.workspace.subscribe ?? subscribeWithoutWorkspace, hostWorkspace?.workspace.getSnapshot ?? snapshotWithoutWorkspace, snapshotWithoutWorkspace);
+  const remoteSelection = hostSnapshot !== null && hostSnapshot.selection.hostKey !== "local";
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
@@ -242,12 +254,12 @@ function ConnectedApp() {
   useEffect(() => {
     const capabilities = createHostCapabilities(() => {
       void fetchOperations().then(hydrateOperations).catch(() => {});
-    }, { railBindings: () => railBindingsRef.current });
+    }, { railBindings: () => railBindingsRef.current, host });
     const cleanups = registry.providers.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [registry.providers]);
+  }, [registry.providers, host]);
 
   useEffect(() => {
     setOperationsViewActive(operationsViewVisible);
@@ -419,6 +431,7 @@ function ConnectedApp() {
   }), []);
 
   useEffect(() => {
+    if (remoteSelection) return;
     return installConsoleGlobalShortcuts({
       getSideBarCollapsed: () => getSideBarState().collapsed,
       setSideBarCollapsed: (collapsed) => {
@@ -461,7 +474,7 @@ function ConnectedApp() {
         }
         if (outcome === "reveal") navigate("/operations");
         if (entry.activate) {
-          const capabilities = createHostCapabilities(undefined, { railBindings });
+          const capabilities = createHostCapabilities(undefined, { railBindings, host });
           entry.activate({
             theaterId: getViewedTheaterId(),
             pathContext: { kind: "root", relPath: null, label: getState().theaters.find((theater) => theater.id === getViewedTheaterId())?.label ?? "" },
@@ -482,7 +495,7 @@ function ConnectedApp() {
       canUndoLastClose,
       undoLastClose,
     });
-  }, [canUndoLastClose, consoleLocale, navigate, railBindings, registry.providers, resolvePanelShortcut, undoLastClose]);
+  }, [canUndoLastClose, consoleLocale, host, navigate, railBindings, registry.providers, remoteSelection, resolvePanelShortcut, undoLastClose]);
 
   const undoAuthor = activeUndo ? undoAuthors.get(activeUndo.key) : undefined;
   const undoTitle = activeUndo === null
@@ -573,21 +586,21 @@ function ConnectedApp() {
         {mobileLayout || operationsViewVisible ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         {/* 도구모음은 설정 화면의 밴드에만 선다. 모바일 셸은 자기 탭 막대를 쓴다. */}
         {mobileLayout || operationsViewVisible ? null : <ConsoleToolbar />}
-        <FloatingWidgetLayer />
+        <FloatingWidgetLayer enabled={!remoteSelection} />
         {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
             레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
             바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나간다(연결·저하 배너와 제어 반납
             바를 열거한 뒤 업데이트 결과 바가 남아 있었다). 이 자리를 한 곳으로 만들면 CSS가
             :has(*) 하나로 "지금 흐름 바가 서 있는가"를 직접 물을 수 있고, 앞으로 여기에 무엇을
             더 넣든 게이트가 저절로 닫힌다. 상자는 만들지 않는다(display: contents). */}
-        {mobileLayout ? null : shellBars}
+        {mobileLayout || remoteSelection ? null : shellBars}
         {(() => {
           const routeContent = (
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
-                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
+                <Route path="/operations" element={<Operations state={state} {...(hostWorkspace ? { hostWorkspace: hostWorkspace.workspace } : {})} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/settings" element={remoteSelection ? <Navigate to="/operations" replace /> : mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>
@@ -596,6 +609,7 @@ function ConnectedApp() {
           // so a frame that unmounted with the operations route would strand the way back.
           return mobileLayout ? <MobileFrame state={state} bands={shellBars} onDeferredDeletion={enqueueDeletion}>{routeContent}</MobileFrame> : routeContent;
         })()}
+        {remoteSelection ? null : <>
         <OperationSearch
           state={state}
           railPanels={paletteRailPanels}
@@ -643,6 +657,7 @@ function ConnectedApp() {
           <Toast open={promptForgottenNotice !== null} tone="warn" title={t("sidebar.theater.prompt.forgotten", { theater: promptForgottenNotice ?? "" })} onDismiss={() => setPromptForgottenNotice(null)} />
           {mobileLayout ? deletionToast : null}
         </ToastHost>
+        </>}
       </div>
     </ActiveCompanionShortcutsProvider>
     </ComputerScreenShareProvider>

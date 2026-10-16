@@ -1,5 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 
 import { TerminalTicketError, buildTerminalWsUrl } from "../../terminal/shared/terminal-connection.js";
 import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatLogState } from "./chat-events.js";
@@ -36,7 +37,7 @@ const COMMAND_WAIT_MS = 8_000;
  * 그때도 구독하면 화면 밖 패널마다 소켓을 하나씩 점유한다. 덱 타일은 본문이
  * 그려지므로 live로 남긴다.
  */
-export function useAgentChatStream(operationId: string, live = true): AgentChatViewState {
+export function useAgentChatStream(operationId: string, live = true, host?: { readonly transport: HostTransport; readonly canWrite: () => boolean }): AgentChatViewState {
   const [connection, setConnection] = React.useState<AgentChatConnection>(live ? "connecting" : "idle");
   const [log, setLog] = React.useState<AgentChatLogState>(initialAgentChatLogState);
   const sessionRef = React.useRef<ChatSocketSession | null>(null);
@@ -60,6 +61,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
     });
     const session = createChatSocketSession({
       operationId,
+      ...(host ? { transport: host.transport, canWrite: host.canWrite } : {}),
       onConnection: (next) => {
         // 서버는 접속마다 보유 저널을 처음부터 되쓴다. 채팅 출생은 replay-start를 남기지
         // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
@@ -87,7 +89,7 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
       session.dispose();
       if (sessionRef.current === session) sessionRef.current = null;
     };
-  }, [operationId, live]);
+  }, [operationId, live, host]);
 
   const stopTurn = React.useCallback(async () => {
     await sessionRef.current?.send({ type: "stop" });
@@ -117,6 +119,8 @@ type ChatOutboundCommand =
   | { readonly type: "answer"; readonly askId: string; readonly answers?: readonly string[]; readonly approve?: boolean; readonly message?: string };
 
 interface ChatSocketSessionOptions {
+  readonly transport?: HostTransport;
+  readonly canWrite?: () => boolean;
   readonly operationId: string;
   readonly onConnection: (connection: AgentChatConnection) => void;
   readonly onEvent: (raw: string) => void;
@@ -137,7 +141,8 @@ export interface ChatWebSocketLike {
 
 export function createChatSocketSession(options: ChatSocketSessionOptions): ChatSocketSession {
   const abort = new AbortController();
-  const fetchImpl = options.fetchImpl ?? fetch;
+  const fetchImpl = options.transport?.request ?? options.fetchImpl ?? fetch;
+  const remote = options.transport !== undefined && options.transport.scope.hostKey !== "local";
   let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
   let socket: ChatWebSocketLike | null = null;
   let commandSeq = 0;
@@ -151,17 +156,19 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
     pending.clear();
   };
 
-  const attach = async (url: string): Promise<void> => {
+  const attach = async (open: () => ChatWebSocketLike): Promise<void> => {
     await new Promise<void>((resolve, reject) => {
-      const ws = (options.webSocketFactory ?? defaultChatWebSocketFactory)(url);
+      if (abort.signal.aborted) { resolve(); return; }
+      const ws = open();
       socket = ws;
       let opened = false;
       ws.onopen = () => {
+        if (abort.signal.aborted || socket !== ws) return;
         opened = true;
         options.onConnection("open");
       };
       ws.onmessage = (event) => {
-        if (typeof event.data !== "string") return;
+        if (abort.signal.aborted || socket !== ws || typeof event.data !== "string") return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(event.data);
@@ -198,9 +205,14 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
     while (!abort.signal.aborted) {
       options.onConnection("connecting");
       try {
-        const ticket = await requestChatTicket(options.operationId, abort.signal, fetchImpl);
-        if (abort.signal.aborted) return;
-        await attach(buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH));
+        if (remote) {
+          await attach(() => options.transport!.socket(CHAT_WS_PATH, { operationId: options.operationId, channel: "chat" }) as unknown as ChatWebSocketLike);
+        } else {
+          const ticket = await requestChatTicket(options.operationId, abort.signal, fetchImpl);
+          if (abort.signal.aborted) return;
+          const url = buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH);
+          await attach(() => (options.webSocketFactory ?? defaultChatWebSocketFactory)(url));
+        }
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch {
         if (abort.signal.aborted) return;
@@ -212,11 +224,22 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
     }
   };
 
+  const dispose = () => {
+    abort.abort();
+    rejectPending(new Error("chat_socket_closed"));
+    socket?.close();
+    socket = null;
+    options.transport?.scope.signal.removeEventListener("abort", dispose);
+  };
+  if (options.transport?.scope.signal.aborted) dispose();
+  else options.transport?.scope.signal.addEventListener("abort", dispose, { once: true });
+
   return {
     start: () => {
       void connectLoop();
     },
     send: (command) => {
+      if (abort.signal.aborted || (remote && options.canWrite?.() !== true)) return Promise.reject(new Error("read_only"));
       const ws = socket;
       if (!ws || ws.readyState !== OPEN_READY_STATE) return Promise.reject(new Error("chat_not_connected"));
       const id = `c${++commandSeq}`;
@@ -229,16 +252,11 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
         ws.send(JSON.stringify({ id, ...command }));
       });
     },
-    dispose: () => {
-      abort.abort();
-      rejectPending(new Error("chat_socket_closed"));
-      socket?.close();
-      socket = null;
-    },
+    dispose,
   };
 }
 
-async function requestChatTicket(operationId: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<string> {
+async function requestChatTicket(operationId: string, signal: AbortSignal, fetchImpl: (path: string, init?: RequestInit) => Promise<Response>): Promise<string> {
   const response = await fetchImpl(CHAT_TICKET_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

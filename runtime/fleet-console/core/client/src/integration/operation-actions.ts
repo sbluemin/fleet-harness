@@ -27,8 +27,8 @@ export function isArchivingOperation(operationId: string): boolean {
 // plugin.closeOperation은 부르지 않는다 — 그 훅은 세션과 첨부를 지우는 파괴적 정리였고, 보관의 실행 종료는
 // 서버가 비파괴로 맡는다. 보관은 하위 Operation까지 함께 치우므로 receipt의 operationIds가 토스트의 개수다.
 // 이미 진행 중인 같은 요청은 null을 돌려준다(호출자는 아무것도 하지 않는다).
-export async function archiveOperationFromUi(operationId: string): Promise<ArchiveOutcome | null> {
-  if (archivingOperationIds.has(operationId)) return null;
+export async function archiveOperationFromUi(operationId: string, options?: { readonly isCurrent?: () => boolean }): Promise<ArchiveOutcome | null> {
+  if (options?.isCurrent?.() === false || archivingOperationIds.has(operationId)) return null;
   archivingOperationIds.add(operationId);
   let outcome: ArchiveOutcome;
   try {
@@ -38,7 +38,7 @@ export async function archiveOperationFromUi(operationId: string): Promise<Archi
   } finally {
     archivingOperationIds.delete(operationId);
   }
-  if (getState().activeOperationId !== null && outcome.ok && outcome.receipt.operationIds.includes(getState().activeOperationId!)) setActiveOperation(null);
+  if (options?.isCurrent?.() !== false && getState().activeOperationId !== null && outcome.ok && outcome.receipt.operationIds.includes(getState().activeOperationId!)) setActiveOperation(null);
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
   return outcome;
 }

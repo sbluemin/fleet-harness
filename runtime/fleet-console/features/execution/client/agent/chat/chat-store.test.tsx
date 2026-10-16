@@ -5,7 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { connectTerminalSettings } from "../../terminal/shared/terminal-preferences.js";
-import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
+import { createChatSocketSession, useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
+import type { HostSocket, HostTransport } from "@fleet-console/sdk/host-context";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
@@ -149,6 +150,39 @@ describe("Operation composer lifetime", () => {
 });
 
 describe("useAgentChatStream", () => {
+  it("uses the host socket without a renderer ticket and stops commands when its scope ends", async () => {
+    const abort = new AbortController();
+    const socket = new FakeWebSocket("host-bound");
+    const request = vi.fn(async () => { throw new Error("remote_ticket_forbidden"); });
+    const events = vi.fn();
+    const transport: HostTransport = {
+      scope: { hostKey: "remote", epoch: 3, signal: abort.signal },
+      request,
+      events: () => { throw new Error("unexpected_sse"); },
+      socket: vi.fn(() => socket as unknown as HostSocket),
+      resourceUrl: () => { throw new Error("unexpected_resource"); },
+    };
+    let writable = false;
+    const session = createChatSocketSession({ operationId: "same-operation", transport, canWrite: () => writable, onConnection: () => undefined, onEvent: events });
+    session.start();
+    socket.open();
+    expect(request).not.toHaveBeenCalled();
+    expect(ticketFetches).toHaveLength(0);
+    expect(transport.socket).toHaveBeenCalledWith("/api/v1/terminal/ws", { operationId: "same-operation", channel: "chat" });
+    await expect(session.send({ type: "stop" })).rejects.toThrow("read_only");
+    writable = true;
+    const sending = session.send({ type: "stop" });
+    const frame = JSON.parse(socket.sent[0]!) as { id: string };
+    socket.onmessage?.({ data: JSON.stringify({ type: "ok", id: frame.id }) });
+    await sending;
+    abort.abort();
+    expect(socket.closed).toBe(true);
+    socket.onmessage?.({ data: JSON.stringify({ type: "late-event" }) });
+    expect(events).not.toHaveBeenCalled();
+    await expect(session.send({ type: "stop" })).rejects.toThrow("read_only");
+    session.dispose();
+  });
+
   it("requests a chat ticket and opens one WebSocket while the body is live", async () => {
     mount("op-live", true);
     await act(async () => {

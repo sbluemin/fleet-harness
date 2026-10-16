@@ -12,6 +12,7 @@ import { SETTINGS_PANE_ID } from "../../../../features/settings/client/settings-
 import { openSettingsSurface } from "../../../../features/settings/client/settings-door.js";
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
+import type { HostClientBindings } from "./host-client-context.js";
 import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 
 import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOptions, subscribeModelRoster } from "../../../../features/ai-gateway/client/model-roster-store.js";
@@ -46,6 +47,7 @@ function viewTheaterInbox(theaterId: string): void {
 }
 
 export interface HostCapabilityDependencies {
+  readonly host?: HostClientBindings;
   /**
    * 레일 바인딩. 함수를 주면 부를 때마다 지금의 목록을 읽는다 — 설치한 능력이 레일 목록이 바뀔 때마다(대화 중심 화면의 탭이
    * 서고 걷힐 때마다) 다시 만들어지지 않게, 앱은 함수로 넘긴다. 배열을 주면 그 시점의 목록으로 고정된다.
@@ -167,7 +169,12 @@ export function createHostCapabilities(
   resync: () => void = () => undefined,
   dependencies: HostCapabilityDependencies = { railBindings: [] },
 ): PluginInstallContext {
-  const base = createClientCapabilities(resync);
+  const base = createClientCapabilities(resync, dependencies.host?.transport);
+  // 원격은 로컬 전역 상태를 절대 읽지 않는다. 미지원 능력은 SDK의 닫힌 기본값으로 남긴다.
+  if (dependencies.host && dependencies.host.transport.scope.hostKey !== "local") {
+    const { transport, capabilities: scoped } = dependencies.host;
+    return { ...base, ...scoped, host: transport.scope, transport, api: base.api, terminal: base.terminal, preferences: base.preferences, settings: base.settings };
+  }
   const source = dependencies.railBindings;
   const readBindings = (): readonly PaneTargetBinding[] => (typeof source === "function" ? source() : source);
   const land = (target: PaneTarget) => landPaneTarget(target, createHostPaneTargetPorts(readBindings()));

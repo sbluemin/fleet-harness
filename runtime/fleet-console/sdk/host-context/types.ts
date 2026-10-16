@@ -50,7 +50,7 @@ export interface HostView {
 export interface HostWorkspaceSnapshot {
   readonly hosts: readonly HostView[];
   readonly selection: HostSelection;
-  /** 제어 획득과 현재 snapshot 확인을 모두 마친 선택만 이곳에 실린다. */
+  /** 현재 snapshot 확인을 마친 본문이다. observer도 읽을 수 있으며 쓰기 허용은 canWrite로 구분한다. */
   readonly foreground: HostSelection | null;
   readonly selectionGeneration: number;
   readonly phase: HostSnapshotPhase;
