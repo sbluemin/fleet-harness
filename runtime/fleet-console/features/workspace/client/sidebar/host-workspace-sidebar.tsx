@@ -80,6 +80,10 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
   const pairAbort = useRef<AbortController | null>(null);
   // 화면이 내려가면 진행 중인 연결도 끝낸다 — 남은 응답이 사라진 화면을 칠하지 않는다.
   useEffect(() => () => { pairAbort.current?.abort(); }, []);
+  // 다른 경로(설정의 열기 등)로 그 컴퓨터가 준비되면 남은 실패 안내는 거둔다 — 다음에 다시 미페어링이 돼도 옛 실패가 먼저 서지 않는다.
+  const failedHostReady = pairing?.phase === "failed" && state.hosts.some((host) => host.hostKey === pairing.hostKey
+    && host.connection === "ready" && host.phase === "ready" && host.error === null);
+  useEffect(() => { if (failedHostReady) setPairing(null); }, [failedHostReady]);
   // 목록에서 사라진 컴퓨터의 연결은 끝낸다 — 옛 컴퓨터의 결과가 같은 자리의 다른 컴퓨터에 붙지 않는다.
   const pairingHostKey = pairing?.hostKey ?? null;
   const pairingHostListed = pairingHostKey === null || state.hosts.some((host) => host.hostKey === pairingHostKey);
@@ -132,7 +136,10 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
         setPairing(null);
       },
       (cause: unknown) => {
-        if (!current()) {
+        // 그 runtime의 수명이 끝나 생긴 취소(같은 id의 대상 교체·목록 제거로 dispose)는 사용자 연결 실패가 아니다.
+        // 시간 초과(TimeoutError)와 계약 오류만 실패로 말한다.
+        const superseded = (cause as { readonly name?: unknown } | null)?.name === "AbortError";
+        if (!current() || superseded) {
           // 옛 수명·취소된 시도의 실패는 새 카드에 칠하지 않는다. 진행 표시만 내려 둔다.
           if (pairAbort.current === controller) { pairAbort.current = null; setPairing(null); }
           return;
@@ -160,6 +167,11 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
         // 이 기기가 아직 페어링되지 않은 컴퓨터만 화면 안 연결을 내놓는다. 다른 차단(끊김·인증서 변경)은 기존 안내 그대로다.
         const unpaired = !local && host.trust !== "mismatch" && host.error === "remote_host_not_paired";
         const hostPairing = pairing?.hostKey === host.hostKey ? pairing : null;
+        // 진입(이 기기 연결)은 미페어링 기록이 남아 있고 아직 준비되지 않은 컴퓨터에서 연다 — 관찰은 수락됐지만 snapshot 전에
+        // 취소·실패한 ready/loading 상태도 다시 시도할 수 있어야 한다(runtime pair는 그때 snapshot만 다시 읽는다).
+        // 이미 시작한 시도의 진행·취소·실패는 HostView 상태와 무관하게 그 카드에 남는다 — 연결 판정과 시도 표시의 조건이 다르다.
+        const entry = unpaired && !(host.connection === "ready" && host.phase === "ready");
+        const showPair = !local && host.trust !== "mismatch" && (entry || hostPairing !== null);
         const usable = ready && host.connection === "ready" && (local || host.trust === "verified");
         const filter = selected ? validFilter : null;
         const operations = host.operations.filter((operation) => !operation.parentOperationId && (local || operation.type === "agent"));
@@ -176,7 +188,7 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
           <div id={bodyId} hidden={!open} className="host-workspace-computer-body" aria-busy={!ready && !blocked}>
             {selected ? <p className="host-workspace-connection">{hostStatus(host, t)}{host.access === "monitoring" ? ` · ${t("hosts.workspace.readOnly")}` : ""}</p> : null}
             {!local && host.mode === "controller" ? <p className="host-workspace-connection">{t("hosts.workspace.controlHeld")}</p> : null}
-            {!ready && !blocked ? <p className="host-workspace-note" role="status">{t("hosts.workspace.loading", { host: host.label })}</p> : null}
+            {!ready && !blocked && !hostPairing ? <p className="host-workspace-note" role="status">{t("hosts.workspace.loading", { host: host.label })}</p> : null}
             {(ready ? host.theaters : []).filter((theater) => !filter || theater.id === filter).map((theater) => {
               const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
               const waiting = theaterOperations.filter((operation) => operation.activity === "awaiting").length;
@@ -200,8 +212,8 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
               </div>;
             })}
             {ready && host.theaters.length === 0 ? <p className="host-workspace-note">{t("hosts.workspace.empty")}</p> : null}
-            {blocked && unpaired ? <div className="host-workspace-note host-workspace-pair">
-              <p>{t("hosts.workspace.pairNeeded", { host: host.label })}</p>
+            {showPair ? <div className="host-workspace-note host-workspace-pair">
+              {entry && blocked ? <p>{t("hosts.workspace.pairNeeded", { host: host.label })}</p> : null}
               {hostPairing?.phase === "confirm" ? <>
                 <p>{t("hosts.workspace.pairConfirm", { host: host.label })}</p>
                 <div className="host-workspace-pair-actions">
@@ -215,7 +227,7 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
                 {hostPairing?.phase === "failed" ? <p role="alert">{t(hostPairing.key, { host: host.label })}</p> : null}
                 <button type="button" className="host-workspace-back" disabled={pairing?.phase === "busy"} onClick={() => setPairing({ hostKey: host.hostKey, phase: "confirm" })}>{t("hosts.workspace.pairAction")}</button>
               </>}
-              <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button>
+              {blocked ? <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button> : null}
             </div> : blocked ? <div className="host-workspace-note"><p>{t(host.trust === "mismatch" ? "hosts.workspace.trustHelp" : "hosts.workspace.connectionHelp")}</p>
               {!local && host.trust !== "mismatch" ? <button type="button" className="host-workspace-back" onClick={() => hosts.select({ hostKey: host.hostKey, theaterId: null, role: "commodore", operationId: null })}>{t("hosts.workspace.retryObservation")}</button> : null}
               {!local ? <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button> : null}
