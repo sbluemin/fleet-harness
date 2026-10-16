@@ -2,7 +2,7 @@ import type { HostEventSource, HostScope, HostTransport } from "@fleet-console/s
 import { assertHostScope, readHostJson } from "@fleet-console/sdk/host-context/browser";
 import {
   HOST_JSON_CONTENT_TYPE, HOST_UPLOAD_MAX_BYTES, isHostUploadRequest, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
-  isHostInstanceId, isHostJsonRequest, isHostJsonResult, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
+  isHostInstanceId, isHostJsonRequest, isHostJsonResult, isHostPairRequest, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
   type HostJsonRequest, type HostPresence, type HostRelayMethod,
 } from "@fleet-console/protocol/remote/host-transport";
 import type { RemoteHostRuntimeDependencies } from "./remote-host-runtime.js";
@@ -121,6 +121,15 @@ export function createRemoteHostDependencies(hostKey: string, label: string, net
   }
   return {
     hostKey, label, readPresence,
+    pair: async (epoch, instanceId, signal) => {
+      const request = { expectedEpoch: epoch, expectedInstanceId: instanceId };
+      if (!isHostPairRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
+      signal.throwIfAborted();
+      const response = await network.fetch(requiredPath(hostTransportPath("pair", hostKey)), { method: "POST", headers: { "Content-Type": HOST_JSON_CONTENT_TYPE }, body: JSON.stringify(request), signal, redirect: "error" });
+      await assertRelayResponse(response);
+      signal.throwIfAborted();
+      if (response.status !== 204) throw new HostTransportFailure(502, "invalid_host_response");
+    },
     changePresence: async (intent, epoch, instanceId, signal) => {
       const request = { intent, expectedEpoch: epoch, expectedInstanceId: instanceId };
       if (!isHostPresenceRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");

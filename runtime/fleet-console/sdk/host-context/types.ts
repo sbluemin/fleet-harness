@@ -74,6 +74,8 @@ export interface HostWorkspacePort {
   readonly getSnapshot: () => HostWorkspaceSnapshot;
   readonly subscribe: (listener: () => void) => () => void;
   readonly select: (selection: HostSelection) => void;
+  /** 명시적 신뢰 연결과 관찰만 수행한다. 전경 선택이나 제어권을 바꾸지 않는다. */
+  readonly pair: (hostKey: HostKey, signal: AbortSignal) => Promise<void>;
   readonly activateConversation: (selection: HostSelection) => Promise<void>;
   /** 서버에서 확인한 목표만 선택한다. 미시작 목표를 실행 중 Operation으로 꾸미지 않는다. */
   readonly activateObjective: (selection: Extract<HostSelection, { role: "commander" }>) => Promise<void>;

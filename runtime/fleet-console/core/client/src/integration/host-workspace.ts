@@ -5,6 +5,7 @@ export interface HostRuntimePort {
   readonly getSnapshot: () => HostView;
   readonly subscribe: (listener: () => void) => () => void;
   readonly observe: (signal: AbortSignal) => Promise<void>;
+  readonly pair?: (signal: AbortSignal) => Promise<void>;
   readonly activate: (signal: AbortSignal) => Promise<void>;
   readonly resolveObjective?: (theaterId: string, objectiveId: string, signal: AbortSignal) => Promise<void>;
   readonly dispose: () => void;
@@ -177,6 +178,17 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
     getSelectionSignal: () => selectionAbort.signal,
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     select,
+    pair: async (hostKey, signal) => {
+      signal.throwIfAborted();
+      if (disposed) throw new Error("host_workspace_disposed");
+      const runtime = runtimes.get(hostKey)?.runtime;
+      if (!runtime) throw new Error("remote_host_unknown");
+      if (hostKey === "local" || !runtime.pair) throw new Error("host_unsupported");
+      // 연결 대상만 고정한다. begin/select/activate를 거치지 않아 현재 대화를 보존한다.
+      await runtime.pair(signal);
+      signal.throwIfAborted();
+      if (disposed || runtimes.get(hostKey)?.runtime !== runtime) throw new Error("remote_host_unknown");
+    },
     activateConversation,
     activateObjective: (next) => activateConversation(next, true),
     returnLocal: () => select(lastLocal),

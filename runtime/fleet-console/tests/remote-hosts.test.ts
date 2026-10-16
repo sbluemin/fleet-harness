@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HostSelection, HostView } from "@fleet-console/sdk/host-context";
 import { createHostWorkspace, type HostRuntimePort } from "../core/client/src/integration/host-workspace.js";
-import { createRemoteHostTransport } from "../core/client/src/integration/remote-host-transport.js";
+import { createRemoteHostDependencies, createRemoteHostTransport } from "../core/client/src/integration/remote-host-transport.js";
 import { createRemoteHostRuntime, type HostPresenceView } from "../core/client/src/integration/remote-host-runtime.js";
 import type { HostEventSource } from "@fleet-console/sdk/host-context";
 
@@ -74,6 +74,95 @@ const selection = (hostKey: string): HostSelection => ({ hostKey, theaterId: "sa
 
 // 기존 저장 host 검증은 화면 전환을 거치지 않는다. 같은 id와 늦은 획득 결과의 교차 host 입력 방어를 이 경계에서 검사한다.
 describe("host workspace isolation", () => {
+  // 기존 관찰/획득 검사는 신뢰 연결을 거치지 않는다. 공개 UI 포트부터 local gateway까지 비제어·단일 소비·취소 경계를 검사한다.
+  it("pairs once into observation without changing foreground or following cancelled and stale handoffs", async () => {
+    function fixture() {
+      let server: HostPresenceView & { capability: "supported" } = { hostKey: "remote", epoch: 1, instanceId: INSTANCE_A, mode: "off", access: null, connection: "closed", capability: "supported" };
+      let finish!: (response: Response) => void;
+      let observeError: string | null = null;
+      let paired = false;
+      const calls: Array<{ path: string; body: Record<string, unknown> | null; signal: AbortSignal | null | undefined }> = [];
+      const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = String(input);
+        const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null;
+        calls.push({ path, body, signal: init?.signal });
+        if (path === "/api/v1/hosts/remote/pair") {
+          expect(body).toEqual({ expectedEpoch: 1, expectedInstanceId: INSTANCE_A });
+          expect(init?.redirect).toBe("error");
+          return new Promise<Response>((resolve) => { finish = resolve; });
+        }
+        if (path === "/api/v1/hosts/remote/presence") {
+          if (body) {
+            expect(body).toEqual({ intent: "observe", expectedEpoch: 1, expectedInstanceId: INSTANCE_A });
+            if (body.expectedInstanceId !== server.instanceId) return Response.json({ error: "stale_instance" }, { status: 409 });
+            if (observeError || !paired) return Response.json({ error: observeError ?? "remote_host_not_paired" }, { status: 401 });
+            server = { ...server, epoch: 2, mode: "observer", access: "full", connection: "ready" };
+            return new Response(null, { status: 204 });
+          }
+          return Response.json(server);
+        }
+        if (path === "/api/v1/hosts/remote/request" && body) return Response.json({ requestId: body.requestId, epoch: server.epoch, instanceId: server.instanceId, status: 200, contentType: "application/json", json: body.path === "/api/v1/theaters" ? { theaters: [] } : body.path === "/api/v1/operations" ? { operations: [] } : { sessions: [] } });
+        throw new Error("unexpected_network_path");
+      });
+      const remote = createRemoteHostRuntime(createRemoteHostDependencies("remote", "Remote", { fetch, origin: "http://127.0.0.1:1234", events: () => { throw new Error("unexpected_events"); }, socket: () => { throw new Error("unexpected_socket"); } }));
+      const workspace = createHostWorkspace(runtime("local").port); workspace.add(remote);
+      return { remote, workspace, calls, finish: (response = new Response(null, { status: 204 })) => { if (response.status === 204) paired = true; finish(response); }, restart: () => { server = { ...server, instanceId: INSTANCE_B }; }, rejectObserve: () => { observeError = "remote_host_not_paired"; } };
+    }
+    const h = fixture();
+    try {
+      // 앱에 새 host가 등록됐을 때와 같은 초기 관찰이다. 오류를 snapshot에 미리 심지 않는다.
+      await expect(h.remote.observe(new AbortController().signal)).rejects.toThrow("remote_host_not_paired");
+      expect(h.remote.getSnapshot()).toMatchObject({ mode: "off", connection: "blocked", phase: "error", error: "remote_host_not_paired" });
+      h.calls.length = 0;
+      const before = h.workspace.getSnapshot();
+      const first = h.workspace.pair("remote", new AbortController().signal);
+      const second = h.workspace.pair("remote", new AbortController().signal);
+      await vi.waitFor(() => expect(h.calls.filter((call) => call.path.endsWith("/pair"))).toHaveLength(1));
+      h.finish(); await Promise.all([first, second]);
+      expect(h.remote.getSnapshot()).toMatchObject({ epoch: 2, instanceId: INSTANCE_A, mode: "observer", phase: "ready" });
+      expect(h.workspace.getSnapshot()).toMatchObject({ selection: before.selection, foreground: before.foreground, selectionGeneration: before.selectionGeneration, canWrite: before.canWrite });
+      expect(h.calls.filter((call) => call.body?.intent)).toHaveLength(1);
+    } finally { h.workspace.dispose(); }
+
+    const cancelled = fixture();
+    try {
+      const abort = new AbortController();
+      const result = cancelled.workspace.pair("remote", abort.signal);
+      const rejected = expect(result).rejects.toThrow();
+      await vi.waitFor(() => expect(cancelled.calls.some((call) => call.path.endsWith("/pair"))).toBe(true));
+      abort.abort(); cancelled.finish(); await rejected;
+      expect(cancelled.calls.find((call) => call.path.endsWith("/pair"))?.signal?.aborted).toBe(true);
+      expect(cancelled.calls.some((call) => call.body?.intent)).toBe(false);
+      expect(cancelled.remote.getSnapshot().mode).toBe("off");
+    } finally { cancelled.workspace.dispose(); }
+
+    const stale = fixture();
+    try {
+      const result = stale.workspace.pair("remote", new AbortController().signal);
+      const rejected = expect(result).rejects.toThrow("stale_instance");
+      await vi.waitFor(() => expect(stale.calls.some((call) => call.path.endsWith("/pair"))).toBe(true));
+      stale.restart(); stale.finish(); await rejected;
+      expect(stale.remote.getSnapshot()).toMatchObject({ instanceId: INSTANCE_A, mode: "off" });
+      expect(stale.calls.filter((call) => call.path.endsWith("/pair"))).toHaveLength(1);
+    } finally { stale.workspace.dispose(); }
+
+    const unsupported = fixture();
+    try {
+      const result = unsupported.workspace.pair("remote", new AbortController().signal);
+      const rejected = expect(result).rejects.toThrow("host_unsupported");
+      await vi.waitFor(() => expect(unsupported.calls.some((call) => call.path.endsWith("/pair"))).toBe(true));
+      unsupported.finish(Response.json({ error: "host_unsupported" }, { status: 409 })); await rejected;
+      expect(unsupported.calls.some((call) => call.body?.intent)).toBe(false);
+      expect(unsupported.remote.getSnapshot()).toMatchObject({ mode: "off", connection: "closed", error: null });
+      const retry = unsupported.workspace.pair("remote", new AbortController().signal);
+      const failedObserve = expect(retry).rejects.toThrow("remote_host_not_paired");
+      await vi.waitFor(() => expect(unsupported.calls.filter((call) => call.path.endsWith("/pair"))).toHaveLength(2));
+      unsupported.rejectObserve(); unsupported.finish(); await failedObserve;
+      expect(unsupported.calls.filter((call) => call.path.endsWith("/pair"))).toHaveLength(2);
+      expect(unsupported.calls.filter((call) => call.body?.intent)).toHaveLength(1);
+    } finally { unsupported.workspace.dispose(); }
+  });
+
   it("keeps background hosts stream-free and closes both viewer streams before parking", async () => {
     const sources: Array<{ close: ReturnType<typeof vi.fn>; listeners: Map<string, (event: { data: string }) => void> }> = [];
     const request = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/theaters" ? { theaters: [{ id: "same-theater", label: "remote" }] } : path === "/api/v1/operations" ? { operations: [{ id: "same-operation", theaterId: "same-theater", title: "remote", type: "agent" }] } : { sessions: [] })));

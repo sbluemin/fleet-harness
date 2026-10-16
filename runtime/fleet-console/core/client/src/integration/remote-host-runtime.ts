@@ -13,12 +13,14 @@ export interface RemoteHostRuntimeDependencies {
   readonly hostKey: string;
   readonly label: string;
   readonly readPresence: (signal: AbortSignal) => Promise<HostPresenceView>;
+  readonly pair?: (epoch: number, instanceId: string, signal: AbortSignal) => Promise<void>;
   readonly changePresence: (intent: "observe" | "activate", epoch: number, instanceId: string, signal: AbortSignal) => Promise<HostPresenceView>;
   readonly watchPresence: (receive: (presence: HostPresenceView) => void | Promise<void>, failed: (cause: Error) => void) => () => void;
   readonly createTransport: (scope: HostScope) => HostTransport;
 }
 
 export interface RemoteHostRuntime extends HostRuntimePort {
+  readonly pair: (signal: AbortSignal) => Promise<void>;
   readonly getTransport: () => HostTransport | null;
   readonly setVisible: (visible: boolean) => void;
   readonly subscribeChannel: (channel: string, receive: (payload: unknown) => void) => () => void;
@@ -48,6 +50,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   const reconnectListeners = new Set<() => void>();
   let snapshotFlight: Promise<void> | null = null;
   let observeFlight: Promise<void> | null = null;
+  let pairFlight: Promise<void> | null = null;
   let revision = 0;
   let refreshPending = false;
   let opened = false;
@@ -67,11 +70,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     const version = discoveryVersion;
     offPresence = deps.watchPresence(async () => {
       // 비고정 watch 사건은 wake-up 힌트다. 오래된 연결의 payload로 수명을 바꾸지 않는다.
-      if (version !== discoveryVersion || lifetime.signal.aborted) return;
+      if (version !== discoveryVersion || lifetime.signal.aborted || pairFlight) return;
       await discover(async (signal) => deps.readPresence(signal));
       if ((!visible || state.phase !== "ready") && state.connection === "ready" && state.mode !== "off") await refresh();
     }, (cause) => {
-      if (version !== discoveryVersion || lifetime.signal.aborted) return;
+      if (version !== discoveryVersion || lifetime.signal.aborted || pairFlight) return;
       fail(cause);
     });
   }
@@ -204,9 +207,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     };
   }
 
-  async function readSnapshot(bound: HostTransport, version: number): Promise<void> {
+  async function readSnapshot(bound: HostTransport, version: number, outer = lifetime.signal): Promise<void> {
     const sessionVersion = sessionRevision;
-    const signal = AbortSignal.any([bound.scope.signal, AbortSignal.timeout(10_000)]);
+    const signal = AbortSignal.any([outer, bound.scope.signal, AbortSignal.timeout(10_000)]);
     // 배경 관찰 한 건이 남은 HTTP 슬롯을 모두 잡지 않도록 snapshot의 세 조회도 직렬화한다.
     const theatersResponse = await bound.request("/api/v1/theaters", { signal });
     const operationsResponse = await bound.request("/api/v1/operations", { signal });
@@ -216,6 +219,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       readHostJson<{ theaters?: unknown }>(bound.scope, theatersResponse),
       readHostJson<{ operations?: unknown }>(bound.scope, operationsResponse),
     ]);
+    signal.throwIfAborted();
     if (version !== revision || bound !== transport) return;
     if (sessionVersion === sessionRevision) sessions.clear();
     for (const session of sessionSnapshot) if (sessionVersion === sessionRevision || !sessions.has(session.sessionId)) sessions.set(session.sessionId, session);
@@ -225,12 +229,12 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     openEvents(bound);
   }
 
-  function refresh(): Promise<void> {
+  function refresh(outer = lifetime.signal): Promise<void> {
     if (snapshotFlight) { refreshPending = true; return snapshotFlight; }
     const bound = transport;
     if (!bound) return Promise.reject(new Error("host_inactive"));
     const version = revision;
-    const flight = readSnapshot(bound, version).catch((cause: unknown) => {
+    const flight = readSnapshot(bound, version, outer).catch((cause: unknown) => {
       if (version !== revision || bound.scope.signal.aborted || bound !== transport) return;
       throw cause;
     }).finally(() => {
@@ -245,6 +249,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   async function observe(signal: AbortSignal): Promise<void> {
     signal.throwIfAborted();
     lifetime.signal.throwIfAborted();
+    if (pairFlight) {
+      await pairFlight;
+      signal.throwIfAborted();
+      return;
+    }
     if (!observeFlight) {
       const work = (async () => {
         await discover((readSignal) => deps.readPresence(readSignal));
@@ -262,12 +271,60 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     signal.throwIfAborted();
   }
 
+  async function pair(outer: AbortSignal): Promise<void> {
+    outer.throwIfAborted();
+    lifetime.signal.throwIfAborted();
+    if (!pairFlight) {
+      const pairHost = deps.pair;
+      if (!pairHost) throw new Error("host_unsupported");
+      const signal = AbortSignal.any([outer, lifetime.signal, AbortSignal.timeout(30_000)]);
+      const work = (async () => {
+        // 이미 진행 중인 관찰과 한 번의 handoff 소비가 경합하지 않게 한다.
+        if (observeFlight) await observeFlight.catch(() => undefined);
+        signal.throwIfAborted();
+        await discover((readSignal) => deps.readPresence(readSignal), signal);
+        signal.throwIfAborted();
+        const { epoch, instanceId } = state;
+        if (!instanceId) throw new Error("host_inactive");
+        if (state.mode !== "off" && state.connection === "ready") { await refresh(signal); return; }
+        const current = () => {
+          signal.throwIfAborted();
+          if (state.instanceId !== instanceId) throw new Error("stale_instance");
+          if (state.epoch !== epoch) throw new Error("stale_epoch");
+        };
+        await pairHost(epoch, instanceId, signal);
+        current();
+        // pair는 좌표를 바꾸지 않는다. 재탐색으로 새 수명에 붙지 않고 같은 좌표로 관찰만 연다.
+        await discover(async (readSignal) => {
+          current();
+          const presence = await deps.changePresence("observe", epoch, instanceId, readSignal);
+          current();
+          if (presence.instanceId !== instanceId) throw new Error("stale_instance");
+          if (presence.mode !== "observer") throw new Error("invalid_host_response");
+          return presence;
+        }, signal);
+        signal.throwIfAborted();
+        const observed = transport;
+        await refresh(signal);
+        signal.throwIfAborted();
+        if (state.instanceId !== instanceId) throw new Error("stale_instance");
+        if (!observed || observed !== transport || observed.scope.signal.aborted) throw new Error("stale_epoch");
+      })();
+      pairFlight = work;
+      void work.finally(() => { if (pairFlight === work) pairFlight = null; }).catch(() => undefined);
+    }
+    // 동시 클릭은 같은 작업을 기다린다. 오류를 capability 판정이나 자동 재시도로 바꾸지 않는다.
+    await pairFlight;
+    outer.throwIfAborted();
+  }
+
   restartDiscovery();
 
   return {
     getSnapshot: () => state,
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     observe,
+    pair,
     activate: async (signal) => {
       signal.throwIfAborted();
       const { epoch, instanceId } = state;
