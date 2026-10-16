@@ -3,7 +3,9 @@ import type http from "node:http";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
-import { isProviderId } from "../provider-order.js";
+import { isProviderId, type LoginProvider } from "../provider-order.js";
+
+export { LOGIN_PROVIDERS, type LoginProvider } from "../provider-order.js";
 
 export type SettingsSerializer = <T>(operation: () => Promise<T>) => Promise<T>;
 
@@ -20,7 +22,6 @@ export type GatewayQuotaSummary = QuotaSummaryDto & { readonly revalidating?: bo
 
 interface StoredSettings {
   readonly claudeConnected?: unknown;
-  readonly cursorConnected?: unknown;
 }
 
 async function readStoredSettings(ctx: FleetPluginServerContext): Promise<StoredSettings> {
@@ -30,13 +31,11 @@ async function readStoredSettings(ctx: FleetPluginServerContext): Promise<Stored
     : {};
 }
 
-// 저장 문서에 남길 키의 화이트리스트. 카드 순서·접힘이 없어진 뒤 남은 옛 키(providerOrder·foldedProviders)는
-// 다음 쓰기에서 함께 걷힌다. claudeConnected·cursorConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
+// 저장 문서에 남길 키의 화이트리스트. 카드 순서·접힘이 없어진 뒤 남은 옛 키(providerOrder·foldedProviders)와
+// Cursor가 Console 로그인으로 바뀐 뒤의 cursorConnected는 다음 쓰기에서 함께 걷힌다.
+// claudeConnected는 Gateway(ai-gateway host start.ts)도 직접 읽는다.
 function retainedSettings(settings: StoredSettings): Record<string, unknown> {
-  return {
-    ...(typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {}),
-    ...(typeof settings.cursorConnected === "boolean" ? { cursorConnected: settings.cursorConnected } : {}),
-  };
+  return typeof settings.claudeConnected === "boolean" ? { claudeConnected: settings.claudeConnected } : {};
 }
 
 function rejectUnlessJsonPost(
@@ -108,7 +107,7 @@ export async function handleConnect(
   if (
     !body
     || Object.keys(body).length !== 2
-    || (body.provider !== "claude" && body.provider !== "cursor")
+    || body.provider !== "claude"
     || typeof body.connected !== "boolean"
   ) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_connect_request" });
@@ -117,9 +116,7 @@ export async function handleConnect(
   await serializeSettings(async () => {
     const next = {
       ...retainedSettings(await readStoredSettings(ctx)),
-      ...(body.provider === "claude"
-        ? { claudeConnected: body.connected }
-        : { cursorConnected: body.connected }),
+      claudeConnected: body.connected,
     };
     await ctx.host.storage.writeJson("quota", "settings", next);
   });
@@ -127,15 +124,18 @@ export async function handleConnect(
   ctx.host.http.writeJson(res, 200, summary);
 }
 
-export type MuseLoginAction = "start" | "status" | "cancel" | "logout";
+export type LoginAction = "start" | "status" | "cancel" | "logout";
 
 /**
- * Console이 소유하는 Muse Code 로그인 라우트(`/api/v1/ai-gateway/oauth/muse-code/*`)로 가는 창구.
+ * Console이 소유하는 로그인 라우트(`/api/v1/ai-gateway/oauth/<provider>/*`)로 가는 창구.
  * 플러그인은 자격·device code·폴링을 갖지 않고 Gateway의 응답(상태 코드와 공개 DTO)을 그대로 옮긴다.
  */
-export interface MuseLoginGateway {
-  call(action: MuseLoginAction, request: { readonly loginId?: string; readonly body?: Record<string, unknown> }):
-    Promise<{ readonly status: number; readonly payload: unknown }>;
+export interface LoginGateway {
+  call(
+    provider: LoginProvider,
+    action: LoginAction,
+    request: { readonly loginId?: string; readonly body?: Record<string, unknown> },
+  ): Promise<{ readonly status: number; readonly payload: unknown }>;
 }
 
 const LOGIN_ID_MAX = 128;
@@ -145,15 +145,16 @@ function isLoginId(value: unknown): value is string {
 }
 
 /**
- * quota 패널의 Muse Code 로그인 카드가 부르는 라우트. status만 GET이고 나머지는 JSON POST다.
+ * quota 패널의 로그인 카드가 부르는 라우트. status만 GET이고 나머지는 JSON POST다.
  * 로그아웃은 Gateway가 기록한 미로그인 상태가 담긴 요약을 함께 돌려줘 카드가 곧바로 바뀐다.
  */
-export async function handleMuseLogin(
+export async function handleProviderLogin(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: FleetPluginServerContext,
-  action: MuseLoginAction,
-  gateway: MuseLoginGateway,
+  provider: LoginProvider,
+  action: LoginAction,
+  gateway: LoginGateway,
   service: QuotaSummarySource,
 ): Promise<void> {
   let request: { readonly loginId?: string; readonly body?: Record<string, unknown> };
@@ -201,7 +202,7 @@ export async function handleMuseLogin(
   }
   let result: { readonly status: number; readonly payload: unknown };
   try {
-    result = await gateway.call(action, request);
+    result = await gateway.call(provider, action, request);
   } catch {
     ctx.host.http.writeJson(res, 502, { error: "login_unavailable" });
     return;

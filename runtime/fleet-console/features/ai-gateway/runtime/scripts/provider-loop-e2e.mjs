@@ -24,14 +24,14 @@ Options:
   --operations <count>     Positive integer, default ${DEFAULT_OPERATIONS}, maximum ${MAX_OPERATIONS}
   --trials <count>         Positive integer, default ${DEFAULT_TRIALS}, maximum ${MAX_TRIALS}
   --timeout-ms <count>     Positive integer, default ${DEFAULT_TIMEOUT_MS}, maximum ${MAX_TIMER_MS}
-  --auth-path <path>       Console slot auth.json holding the OpenCode API key; required for opencode models
+  --auth-path <path>       Console slot auth.json holding the OpenCode API key or the Codex/xAI/Cursor sign-in; required for those models
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading build artifacts or credentials
 
 Example:
   pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4.1-flash[1m]' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
 
-Codex, xAI, and Antigravity read their vendor CLI credentials, so they need no --auth-path.
+Antigravity reads its vendor CLI credential, so it needs no --auth-path.
 
 FLEET_GATEWAY_WIRE_LOG records raw prompt and tool payloads. Use it only with an isolated
 scratch path after explicit opt-in; credentials are not recorded, but the payloads are sensitive.
@@ -376,8 +376,8 @@ function validateTarget(gateway, options) {
     }
   }
   // The auth store never guesses a data root, so an OpenCode run must name the slot's file.
-  if (target.provider === "opencode" && options.authPath === null) {
-    throw new UsageError("--auth-path is required for opencode models");
+  if (["opencode", "codex", "xai", "cursor"].includes(target.provider) && options.authPath === null) {
+    throw new UsageError(`--auth-path is required for ${target.provider} models`);
   }
   return target;
 }
@@ -432,11 +432,14 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
   const authService = options.authPath === null
     ? null
     : gateway.createProviderAuthService({ authPath: options.authPath });
+  const codex = authService === null ? null : gateway.createCodexOAuth({ authService });
+  const xai = authService === null ? null : gateway.createXaiOAuth({ authService });
+  const cursor = authService === null ? null : gateway.createCursorOAuth({ authService });
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
-    readAuth: gateway.readCodexSubscriptionAuth,
-    readCursorToken: gateway.readCursorSubscriptionToken,
-    readXaiToken: gateway.readXaiSubscriptionToken,
+    readAuth: async () => (await codex?.readSubscription()) ?? null,
+    readCursorToken: async () => (await cursor?.readSubscriptionToken()) ?? null,
+    readXaiToken: async () => (await xai?.readSubscriptionToken()) ?? null,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
     readOpencodeApiKey: async () => authService?.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
     cursorDiagnostics: diagnosticSink,
@@ -456,6 +459,9 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
     metrics.cleanup = { routerDisposed, loopbackServerClosed: true };
     return metrics;
   } finally {
+    codex?.dispose();
+    xai?.dispose();
+    cursor?.dispose();
     if (!serverClosed) {
       router.dispose();
       await closeServer(server);

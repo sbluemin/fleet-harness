@@ -23,7 +23,7 @@ import {
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../../../settings/index.js";
 import type { XaiEndpointPreference } from "../../../settings/index.js";
-import { XAI_CLI_FALLBACK_CLIENT_VERSION, xaiCliClientVersion } from "../cli-version.js";
+import { XAI_CLI_FALLBACK_CLIENT_VERSION, adoptXaiCliClientVersion, xaiCliClientVersion, xaiCliRequiredVersion } from "../cli-version.js";
 
 /**
  * xAI's own Responses endpoint, reached with the SuperGrok subscription token.
@@ -144,6 +144,8 @@ export interface XaiResponsesAdapterOptions {
   endpoint?: XaiEndpointPreference;
   /** Test seam for the installed Grok CLI version the proxy is told about. */
   clientVersion?: () => Promise<string>;
+  /** Test seam for remembering the version a 426 named once the proxy accepted it. */
+  adoptClientVersion?: (version: string) => void;
 }
 
 interface XaiEndpoint {
@@ -188,6 +190,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly semanticStallTimeoutMs: number;
   private readonly endpointPreference: XaiEndpointPreference;
   private readonly clientVersion: () => Promise<string>;
+  private readonly adoptClientVersion: (version: string) => void;
   private readonly extraHeaders: Readonly<Record<string, string>>;
 
   constructor(options: XaiResponsesAdapterOptions = {}) {
@@ -215,6 +218,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     );
     this.endpointPreference = options.endpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE;
     this.clientVersion = options.clientVersion ?? (() => xaiCliClientVersion());
+    this.adoptClientVersion = options.adoptClientVersion ?? adoptXaiCliClientVersion;
   }
 
   async stream(
@@ -255,9 +259,8 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
 
     // 엔드포인트는 설정이 정한 하나뿐이다. 턴 도중이든 턴 사이든 다른 쪽으로 넘어가지 않는다 —
     // 두 엔드포인트는 프롬프트 캐시를 공유하지 않아 한 번 건널 때마다 대화 전체를 다시 프리필한다.
-    const endpoint = this.endpointPreference === "cli-proxy"
-      ? await this.proxyEndpoint(payload.model)
-      : directXaiEndpoint();
+    const clientVersion = this.endpointPreference === "cli-proxy" ? await this.clientVersion() : undefined;
+    let endpoint = clientVersion === undefined ? directXaiEndpoint() : proxyXaiEndpoint(payload.model, clientVersion);
 
     try {
       response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
@@ -280,6 +283,29 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       } catch (retryError) {
         unlinkAbort();
         throw retryError;
+      }
+    }
+
+    // 프록시가 CLI 버전이 낮다고 426으로 거절하면, 본문이 알려 준 바닥 버전으로 한 번만 다시 보낸다.
+    // 스트림이 시작되기 전의 상태 응답이라 본문을 다시 보내도 중복이 없다.
+    if (!response.ok && response.status === 426 && clientVersion !== undefined) {
+      const required = xaiCliRequiredVersion(new TextDecoder().decode(response.body));
+      if (required !== undefined && required !== clientVersion) {
+        wireLog("xai-responses.retry.client_version", { from: clientVersion, to: required });
+        const upgraded = proxyXaiEndpoint(payload.model, required);
+        let retried: AdapterResponse;
+        try {
+          retried = await this.fetchResponse(options.apiKey, payload, controller, upgraded);
+        } catch (error) {
+          unlinkAbort();
+          throw error;
+        }
+        // 다시 426이면 원래 거절을 그대로 돌려준다. 버전 관문을 넘었으면 이후 요청도 그 버전을 쓴다.
+        if (retried.ok || retried.status !== 426) {
+          this.adoptClientVersion(required);
+          endpoint = upgraded;
+          response = retried;
+        }
       }
     }
 
@@ -321,11 +347,6 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         () => replayAvailable,
       ),
     };
-  }
-
-  /** The proxy endpoint, with the installed CLI's version resolved for its gate. */
-  private async proxyEndpoint(model: string): Promise<XaiEndpoint> {
-    return proxyXaiEndpoint(model, await this.clientVersion());
   }
 
   private async fetchResponse(

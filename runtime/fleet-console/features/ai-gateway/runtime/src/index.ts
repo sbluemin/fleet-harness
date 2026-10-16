@@ -36,7 +36,6 @@ export * from "./upstream/opencode-go/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./canonical/index.js";
-export * from "./upstream/cursor/credentials.js";
 export * from "./upstream/cursor/native/index.js";
 export * from "./upstream/cursor/diagnostic-log.js";
 export * from "./router/router.js";
@@ -84,7 +83,6 @@ export * from "./oauth/index.js";
 export * from "./settings/index.js";
 export * from "./settings/store.js";
 export * from "./upstream/opencode-go/index.js";
-export * from "./upstream/codex/credentials.js";
 export * from "./upstream/codex/responses/index.js";
 export * from "./transport/sse-keepalive.js";
 export {

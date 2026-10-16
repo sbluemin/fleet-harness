@@ -1,4 +1,3 @@
-import { defaultCredentialDeps } from "../../transport/credentials.js";
 import type { ProviderResult, QuotaWindow } from "../../quota/types.js";
 import {
   expired,
@@ -9,7 +8,13 @@ import {
   titleCase,
   type ProviderDeps,
 } from "../../quota/windows.js";
-import { resolveXaiCliAuth, type XaiCliCredentials } from "./credentials.js";
+
+/** Console 로그인이 저장한 xAI 토큰. 조달·갱신은 호출자(`src/oauth/xai/`)의 몫이다. */
+export interface XaiUsageCredentials {
+  readonly accessToken: string;
+  /** 있으면 `x-userid`로 보낸다. 없어도 요청은 나간다. */
+  readonly userId?: string;
+}
 
 export const XAI_CLI_CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
 export const XAI_CLI_SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings";
@@ -64,7 +69,7 @@ export function parseXaiPlan(payload: unknown): string | undefined {
   return titleCase(object(payload)?.subscription_tier_display);
 }
 
-function creditsHeaders(credentials: XaiCliCredentials): Record<string, string> {
+function creditsHeaders(credentials: XaiUsageCredentials): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     Authorization: `Bearer ${credentials.accessToken}`,
@@ -74,41 +79,15 @@ function creditsHeaders(credentials: XaiCliCredentials): Record<string, string> 
   return headers;
 }
 
-export async function fetchXaiUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
-  const credentialDeps = deps.credentials ?? defaultCredentialDeps;
+/**
+ * 401/403은 `{ status: "expired" }`로 돌려준다. 강제 갱신 뒤 다시 부르는 것은 자격을 소유한
+ * 호출자의 몫이다 — 이 조회는 자격을 읽거나 쓰지 않는다.
+ */
+export async function fetchXaiUsage(credentials: XaiUsageCredentials, deps: ProviderDeps = {}): Promise<ProviderResult> {
   const now = deps.now ?? Date.now;
   const fetchImpl = deps.fetch ?? fetch;
-  const auth = await resolveXaiCliAuth(credentialDeps, { now, fetch: fetchImpl });
-  if (auth.status !== "ok") return { status: auth.status };
-
-  const load = (credentials: XaiCliCredentials) => getJson(
-    fetchImpl,
-    XAI_CLI_CREDITS_URL,
-    creditsHeaders(credentials),
-  );
-
   try {
-    let credentials = auth.credentials;
-    let payload: unknown;
-    try {
-      payload = await load(credentials);
-    } catch (error) {
-      if (!expired(error)) throw error;
-      const retried = await resolveXaiCliAuth(credentialDeps, {
-        now,
-        fetch: fetchImpl,
-        forceRefresh: true,
-      });
-      if (retried.status !== "ok") return { status: "expired" };
-      credentials = retried.credentials;
-      try {
-        payload = await load(credentials);
-      } catch (retryError) {
-        const result = expired(retryError);
-        if (result) return result;
-        throw retryError;
-      }
-    }
+    const payload = await getJson(fetchImpl, XAI_CLI_CREDITS_URL, creditsHeaders(credentials));
     const parsed = parseXaiCredits(payload);
     if (!parsed) throw new Error("Grok returned an unsupported quota response");
     let plan: string | undefined;

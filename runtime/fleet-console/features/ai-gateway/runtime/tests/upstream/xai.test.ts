@@ -1,25 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  XAI_CLI_CREDITS_URL,
-  XAI_CLI_REFRESH_URL,
   XAI_CLI_CLIENT_VERSION,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
-  XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
   encodeAnthropicSse,
-  fetchXaiUsage,
-  parseXaiCredits,
-  parseXaiPlan,
-  resolveXaiCliAuth,
-  resolveXaiCliCredentials,
-  xaiCliAuthFilePath,
 } from "../../src/index.js";
 import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
-  CredentialResolverDeps,
 } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -167,74 +157,6 @@ function eventTypes(events: readonly CanonicalResponseEvent[]): string[] {
   return events.map((event) => event.type);
 }
 
-function deps(raw: string | null, env: NodeJS.ProcessEnv = {}): CredentialResolverDeps {
-  return {
-    platform: "linux",
-    homedir: () => "/home/test",
-    env,
-    readBounded: vi.fn(async () => raw),
-    execFile: vi.fn(async () => ""),
-  };
-}
-
-function jwtWithExp(expSeconds: number): string {
-  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(JSON.stringify({ exp: expSeconds })).toString("base64url");
-  return `${header}.${payload}.sig`;
-}
-
-const WEEKLY_PERIOD = {
-  type: "USAGE_PERIOD_TYPE_WEEKLY",
-  start: "2026-08-10T00:00:00Z",
-  end: "2026-08-17T00:00:00Z",
-};
-
-function creditsResponse(config: Record<string, unknown>, status = 200): Response {
-  return new Response(JSON.stringify({ config }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function settingsResponse(plan: string, status = 200): Response {
-  return new Response(JSON.stringify({ subscription_tier_display: plan }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function refreshResponse(accessToken: string, expiresIn = 3600): Response {
-  return new Response(JSON.stringify({ access_token: accessToken, expires_in: expiresIn }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-describe("Grok CLI credentials", () => {
-  it("honors GROK_HOME and reads a fresh auth.x.ai entry", async () => {
-    const credentialDeps = deps(JSON.stringify({
-      "https://auth.x.ai::profile": {
-        key: "access-token",
-        oidc_issuer: "https://auth.x.ai",
-        expires_at: "2026-08-14T01:00:00Z",
-        user_id: "user-1",
-      },
-    }), { GROK_HOME: "/custom/grok" });
-    expect(xaiCliAuthFilePath(credentialDeps)).toBe("/custom/grok/auth.json");
-    await expect(resolveXaiCliCredentials(credentialDeps, () => Date.parse("2026-08-14T00:00:00Z")))
-      .resolves.toEqual({ accessToken: "access-token", expiresAt: Date.parse("2026-08-14T01:00:00Z"), userId: "user-1" });
-  });
-
-  it("rejects expired, wrong-issuer, and malformed entries", async () => {
-    await expect(resolveXaiCliCredentials(deps(JSON.stringify({
-      "https://auth.x.ai::profile": { key: "token", oidc_issuer: "https://auth.x.ai", expires_at: "2026-08-13T00:00:00Z" },
-    })), () => Date.parse("2026-08-14T00:00:00Z"))).resolves.toBeNull();
-    await expect(resolveXaiCliCredentials(deps(JSON.stringify({
-      "https://auth.x.ai::profile": { key: "token", oidc_issuer: "https://evil.example" },
-    })))).resolves.toBeNull();
-  });
-});
-
 describe("Grok endpoint selection", () => {
   function refusal(status: number): Response {
     return new Response(JSON.stringify({ error: "nope" }), {
@@ -267,6 +189,25 @@ describe("Grok endpoint selection", () => {
     expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
     expect(headers.get("x-grok-client-version")).toBe("9.9.9");
     expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
+  });
+
+  // A machine without the Grok CLI sends the fallback version. When the proxy's floor has moved
+  // past it, the 426 names the floor; one retry with that version keeps the turn alive.
+  it("retries a version-gated 426 once with the floor it names and keeps that version", async () => {
+    const floor = new Response(JSON.stringify({
+      error: "Your Grok CLI version (1.0.5) is outdated. Please update to version 1.0.13 or later via `grok update`.",
+    }), { status: 426, headers: { "content-type": "application/json" } });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(floor).mockResolvedValueOnce(okStream());
+    const adoptClientVersion = vi.fn();
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, clientVersion: async () => "1.0.5", adoptClientVersion })
+      .stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    await collectXaiEvents(response.events);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-grok-client-version")).toBe("1.0.5");
+    expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("x-grok-client-version")).toBe("1.0.13");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(adoptClientVersion).toHaveBeenCalledWith("1.0.13");
   });
 
   // The two endpoints do not share a prompt cache, so a crossing re-prefills the whole

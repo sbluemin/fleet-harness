@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import process from "node:process";
 
 import {
   CURSOR_SUBSCRIPTION_MODELS,
   CursorAdapter,
+  createCursorOAuth,
+  createProviderAuthService,
 } from "../dist/index.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -23,6 +24,7 @@ Options:
   --all              Probe every Cursor catalog model (explicit quota-consuming opt-in)
   --effort <effort>  low, medium, high, xhigh, max, or ultra
   --timeout-ms <ms>  Positive per-probe timeout in milliseconds (default: 60000)
+  --auth-path <path> Console slot auth.json holding the Cursor sign-in (required)
   --help              Show this help without accessing credentials or the network
 `;
 
@@ -48,7 +50,7 @@ async function main() {
   }
 
   const selections = resolveSelections(options);
-  const accessToken = resolveCursorAccessToken();
+  const accessToken = await resolveCursorAccessToken(options.authPath);
   const observedAt = new Date().toISOString();
   const results = [];
 
@@ -79,6 +81,7 @@ function parseArguments(argv) {
     effort: null,
     help: false,
     models: [],
+    authPath: null,
     timeoutMs: DEFAULT_TIMEOUT_MS,
   };
   const seen = new Set();
@@ -124,6 +127,12 @@ function parseArguments(argv) {
         index += 1;
         break;
       }
+      case "--auth-path": {
+        rejectDuplicateOption(seen, argument);
+        options.authPath = readOptionValue(normalizedArgv, index, argument);
+        index += 1;
+        break;
+      }
       default:
         throw new UsageError(`Unknown argument ${JSON.stringify(argument)}`);
     }
@@ -133,6 +142,7 @@ function parseArguments(argv) {
   if (options.all === (options.models.length > 0)) {
     throw new UsageError("Select exactly one form: one or more --model values, or --all");
   }
+  if (options.authPath === null) throw new UsageError("--auth-path is required: Cursor reads only the Console sign-in");
   return options;
 }
 
@@ -181,36 +191,16 @@ function cursorBaseModelId(model) {
     : model.id;
 }
 
-function resolveCursorAccessToken() {
-  const environmentToken = process.env.CURSOR_ACCESS_TOKEN?.trim();
-  if (environmentToken) return environmentToken;
-
-  if (process.platform === "darwin") {
-    try {
-      const keychainToken = execFileSync(
-        "security",
-        [
-          "find-generic-password",
-          "-s",
-          "cursor-access-token",
-          "-a",
-          "cursor-user",
-          "-w",
-        ],
-        {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "ignore"],
-        },
-      ).trim();
-      if (keychainToken) return keychainToken;
-    } catch {
-      // Fall through to the credential-safe error below.
-    }
+/** Console 로그인 항목만 읽는다. 키체인·환경변수·`~/.cursor`는 보지 않는다. */
+async function resolveCursorAccessToken(authPath) {
+  const cursor = createCursorOAuth({ authService: createProviderAuthService({ authPath }) });
+  try {
+    const token = await cursor.readSubscriptionToken();
+    if (token) return token;
+  } finally {
+    cursor.dispose();
   }
-
-  throw new CredentialError(
-    "Cursor access token unavailable; set CURSOR_ACCESS_TOKEN or add the macOS Keychain item cursor-access-token/cursor-user",
-  );
+  throw new CredentialError("Cursor Console sign-in unavailable; sign in to Cursor in Console and pass its auth.json with --auth-path");
 }
 
 async function probeCursorContextWindow({

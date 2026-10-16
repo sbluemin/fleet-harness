@@ -1,6 +1,17 @@
 export const PROVIDER_ORDER_DEFAULT = ["claude", "codex", "xai", "cursor", "opencode", "antigravity", "muse-code"] as const;
 export type ProviderId = (typeof PROVIDER_ORDER_DEFAULT)[number];
 
+/**
+ * Console이 로그인을 소유하는 공급자 — 키가 없거나 만료되면 한도 대신 로그인 카드가 선다.
+ * 플러그인 경로와 Gateway 마운트(`ai-gateway/oauth/<id>`)의 조각이기도 하다.
+ */
+export const LOGIN_PROVIDERS = ["codex", "xai", "cursor", "muse-code"] as const satisfies readonly ProviderId[];
+export type LoginProvider = (typeof LOGIN_PROVIDERS)[number];
+
+export function isLoginProvider(value: unknown): value is LoginProvider {
+  return (LOGIN_PROVIDERS as readonly unknown[]).includes(value);
+}
+
 export function isProviderId(value: unknown): value is ProviderId {
   return (PROVIDER_ORDER_DEFAULT as readonly unknown[]).includes(value);
 }

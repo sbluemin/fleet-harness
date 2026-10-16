@@ -1,7 +1,7 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { quotaSettingsSection } from "./mobile-settings.js";
-import { disposeMuseLogin } from "./muse-login.js";
+import { disposeLogins } from "./provider-login.js";
 import { connectQuotaSummaryApi } from "./summary-store.js";
 import { connectQuotaToolbarSetting } from "./toolbar-setting.js";
 import { QuotaToolbarSummary } from "./toolbar-summary.js";
@@ -19,7 +19,7 @@ const quotaPlugin = definePlugin({
     return () => {
       offApi();
       offSetting();
-      disposeMuseLogin();
+      disposeLogins();
     };
   },
 });

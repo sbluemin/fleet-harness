@@ -8,6 +8,9 @@ import {
   createClaudeNativeModelSync,
   createQuotaService,
   createMuseCodeOAuth,
+  createCodexOAuth,
+  createXaiOAuth,
+  createCursorOAuth,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -55,7 +58,7 @@ interface GatewayStartContext {
 }
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
-import { registerMuseCodeOAuthRoutes } from "./oauth-routes.js";
+import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
 
 function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
   setWireLogTarget(stored === undefined
@@ -121,18 +124,27 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const providerLoad = new Map<string, number>();
   const distribution = new GatewayRoutingDistribution();
   // 저장된 연결 동의는 유지하되 공급자 조회와 캐시는 Gateway 한 인스턴스가 소유한다.
-  const isConnected = async (provider: "claude" | "cursor") => {
+  const isConnected = async (provider: "claude") => {
     const settings = await ctx.host.storage.readJson("quota", "settings");
     return settings !== null && typeof settings === "object"
       && (settings as Record<string, unknown>)[`${provider}Connected`] === true;
   };
   const museCode = createMuseCodeOAuth({ authService, onQuota: (value) => quota.record("muse-code", value) });
   ctx.host.lifecycle.registerCleanup(() => museCode.dispose());
-  registerMuseCodeOAuthRoutes(ctx, museCode);
+  registerConsoleOAuthRoutes(ctx, "muse-code", "Muse Code", museCode);
+  // 추론과 quota가 같은 인스턴스를 써야 갱신이 한 번으로 묶인다.
+  const codex = createCodexOAuth({ authService, onQuota: (value) => quota.record("codex", value) });
+  ctx.host.lifecycle.registerCleanup(() => codex.dispose());
+  registerConsoleOAuthRoutes(ctx, "codex", "Codex", codex);
+  const xai = createXaiOAuth({ authService, onQuota: (value) => quota.record("xai", value) });
+  ctx.host.lifecycle.registerCleanup(() => xai.dispose());
+  registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
+  const cursor = createCursorOAuth({ authService, onQuota: (value) => quota.record("cursor", value) });
+  ctx.host.lifecycle.registerCleanup(() => cursor.dispose());
+  registerConsoleOAuthRoutes(ctx, "cursor", "Cursor", cursor);
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
-    isCursorConnected: () => isConnected("cursor"),
-    ...createAiGatewayQuotaCollectors({ authService, museCode }),
+    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai, cursor }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -303,6 +315,9 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readAiGatewaySettings: aiGatewayStore.read,
     assignRouting: (request, options) => assign(request, options?.signal),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+    readAuth: codex.readSubscription,
+    readXaiToken: xai.readSubscriptionToken,
+    readCursorToken: cursor.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

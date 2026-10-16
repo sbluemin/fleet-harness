@@ -1,4 +1,4 @@
-import type { MuseCodeOAuth } from "@fleet-console/ai-gateway";
+import type { LoginStart, LoginStatus } from "@fleet-console/ai-gateway";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 
@@ -11,9 +11,25 @@ interface OAuthHostContext {
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 
+/** Console이 로그인을 소유하는 공급자. 마운트 경로 조각이자 플러그인 프록시의 경로 조각이다. */
+export type ConsoleOAuthProvider = "muse-code" | "codex" | "xai" | "cursor";
+
+/** 공급자 로그인 모듈이 라우트에 내주는 면. 자격·device code는 이 면을 넘지 않는다. */
+export interface ConsoleOAuthRoutesTarget {
+  start(): Promise<LoginStart>;
+  status(loginId: string): LoginStatus | undefined;
+  cancel(loginId: string): LoginStatus | undefined;
+  logout(): Promise<void>;
+}
+
 /** OAuth는 Console 기능이다. 플러그인은 이 라우트만 프록시하며 자격이나 폴링을 소유하지 않는다. */
-export function registerMuseCodeOAuthRoutes(ctx: OAuthHostContext, oauth: MuseCodeOAuth): void {
-  const mount = "ai-gateway/oauth/muse-code";
+export function registerConsoleOAuthRoutes(
+  ctx: OAuthHostContext,
+  provider: ConsoleOAuthProvider,
+  label: string,
+  oauth: ConsoleOAuthRoutesTarget,
+): void {
+  const mount = `ai-gateway/oauth/${provider}`;
   ctx.registerRouter(mount, async ({ req, res, pathname }) => {
     const route = pathname.slice(`${ctx.basePath}/${mount}`.length);
     if (!["/start", "/status", "/cancel", "/logout"].includes(route)) return false;
@@ -47,9 +63,9 @@ export function registerMuseCodeOAuthRoutes(ctx: OAuthHostContext, oauth: MuseCo
     }
     return true;
   }, [
-    { method: "POST", path: "/start", summary: "Start Muse Code device sign-in.", category: "AI Gateway", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/status", summary: "Read Muse Code sign-in progress.", category: "AI Gateway", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/cancel", summary: "Cancel Muse Code sign-in.", category: "AI Gateway", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/logout", summary: "Remove the local Muse Code sign-in.", category: "AI Gateway", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/start", summary: `Start ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/status", summary: `Read ${label} sign-in progress.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/cancel", summary: `Cancel ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/logout", summary: `Remove the local ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
   ]);
 }

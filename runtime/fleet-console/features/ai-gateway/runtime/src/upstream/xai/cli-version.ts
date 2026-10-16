@@ -32,9 +32,13 @@ import {
  *    step 3 already covers an npm install that has ever run.
  * 6. {@link XAI_CLI_FALLBACK_CLIENT_VERSION} — better a stale number than none: the proxy
  *    rejects an absent header outright, while a low-but-present one at least fails with a
- *    message naming the floor.
+ *    message naming the floor. The adapter reads that floor and retries once with it
+ *    ({@link xaiCliRequiredVersion}, {@link adoptXaiCliClientVersion}), so an aged constant
+ *    costs one refused request per process rather than every turn.
+ *
+ * The floor was 1.0.13 when measured on 2026-10-16 (`1.0.5` was refused with 426).
  */
-export const XAI_CLI_FALLBACK_CLIENT_VERSION = "1.0.5";
+export const XAI_CLI_FALLBACK_CLIENT_VERSION = "1.0.13";
 
 /** `grok 1.0.5 (5115b46bc909) [stable]`, and the bare `1.0.5` the marker file holds. */
 const VERSION_PATTERN = /\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/;
@@ -111,7 +115,20 @@ export async function resolveXaiCliClientVersion(
     ?? XAI_CLI_FALLBACK_CLIENT_VERSION;
 }
 
+/**
+ * The floor a 426 names: `… Please update to version 1.0.13 or later via \`grok update\` …`.
+ * Undefined when the body names none, so the caller keeps the original refusal.
+ */
+export function xaiCliRequiredVersion(body: string): string | undefined {
+  return /\bversion\s+(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\s+or\s+later\b/i.exec(body)?.[1];
+}
+
 let cached: Promise<string> | undefined;
+
+/** Make a version the proxy just accepted the one every later request in this process sends. */
+export function adoptXaiCliClientVersion(version: string): void {
+  cached = Promise.resolve(version);
+}
 
 /**
  * The resolved version, computed once per process.

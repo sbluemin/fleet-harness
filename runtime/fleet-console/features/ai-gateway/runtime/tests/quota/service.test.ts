@@ -25,22 +25,6 @@ describe("quota service", () => {
     expect(fetchClaude).not.toHaveBeenCalled();
   });
 
-  it("gates Cursor independently with the platform credential method", async () => {
-    const fetchCursor = vi.fn(async () => ok(1));
-    const service = createQuotaService({
-      platform: "darwin",
-      isClaudeConnected: async () => true,
-      isCursorConnected: async () => false,
-      fetchClaude: async () => ({ status: "signed_out" }),
-      fetchCodex: async () => ({ status: "signed_out" }),
-      fetchCursor,
-      fetchOpencode: async () => ({ status: "signed_out" }),
-    });
-    expect((await service.getSummary()).providers.cursor)
-      .toEqual({ status: "not_connected", method: "keychain" });
-    expect(fetchCursor).not.toHaveBeenCalled();
-  });
-
   it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {
     let now = 1_000;
     let resolveClaude: ((value: ProviderSuccess) => void) | undefined;
@@ -117,6 +101,7 @@ describe("quota service", () => {
     const authService = {
       getEntry: async () => undefined,
       setEntry: async () => undefined,
+      updateEntry: async () => false,
       getApiKey: vi.fn(async () => "opencode-key"),
       setApiKey: async () => undefined,
       deleteApiKey: async () => false,
@@ -211,6 +196,7 @@ describe("quota service", () => {
     const authService = {
       getEntry: async () => entry,
       setEntry: async (_id: string, value: AuthStorageEntry) => { entry = value; },
+      updateEntry: async () => false,
       getApiKey: async () => entry.key, setApiKey: async () => undefined,
       deleteApiKey: async () => false, listProviderIds: async () => [MUSE_CODE_AUTH_PROVIDER_ID],
     };

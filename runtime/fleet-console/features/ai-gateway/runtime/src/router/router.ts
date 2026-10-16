@@ -22,7 +22,6 @@ import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
-import { resolveCodexCredentials } from "../upstream/codex/credentials.js";
 import {
   CursorAdapter,
   CursorRequestBudgetError,
@@ -30,8 +29,6 @@ import {
   CursorUpstreamRefusalError,
 } from "../upstream/cursor/native/adapter.js";
 import type { CursorDiagnosticSink } from "../upstream/cursor/native/adapter.js";
-import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
-import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
@@ -116,37 +113,12 @@ class RequestBodyTooLargeError extends Error {
   }
 }
 
-/** Codex CLI가 ChatGPT 구독 로그인으로 저장해 둔 토큰. */
+/** Console 로그인(`src/oauth/codex/`)이 저장한 ChatGPT 구독 토큰. 호스트가 reader를 주입한다. */
 export interface CodexSubscriptionAuth {
   readonly accessToken: string;
   readonly accountId: string;
 }
 
-
-/**
- * Cursor CLI/IDE 로그인이 남긴 구독 토큰.
- *
- * 조달 경로는 core-ai-gateway가 단일 출처다. macOS는 keychain을 먼저 보고, Linux/Windows는
- * 각 플랫폼의 auth.json을 읽는다. 여기서 keychain만 보면 `security`가 없는 Linux/WSL에서
- * 항상 토큰 없음으로 떨어져 Cursor 모델 호출이 401이 된다.
- */
-export async function readCursorSubscriptionToken(): Promise<string | null> {
-  const credentials = await resolveCursorCredentials(defaultCredentialDeps);
-  return credentials?.accessToken ?? null;
-}
-
-/**
- * Codex CLI 로그인이 남긴 ChatGPT 구독 토큰.
- *
- * 조달 경로는 core-ai-gateway가 단일 출처다. 여기서 직접 `~/.codex/auth.json`을 읽으면
- * `CODEX_HOME`으로 Codex 홈을 옮긴 사용자의 파일을 놓친다 — quota 플러그인은 이미 그 변수를
- * 존중하고 있었다. 게이트웨이는 `chatgpt-account-id` 헤더가 필요하므로 account id가 없는
- * 자격증명은 여기서 사용 불가로 판정한다.
- */
-export async function readXaiSubscriptionToken(): Promise<string | null> {
-  const credentials = await resolveXaiCliCredentials(defaultCredentialDeps);
-  return credentials?.accessToken ?? null;
-}
 
 /**
  * The credential the Antigravity CLI (`agy`) left in the OS credential store or
@@ -173,12 +145,6 @@ export async function readAntigravitySubscriptionToken(
 export type MuseCodeInferenceAuth =
   | { readonly status: "ok"; readonly credentials: { readonly apiKey: string; readonly baseUrl?: string } }
   | { readonly status: "signed_out" | "expired" | "unavailable" };
-
-export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
-  const credentials = await resolveCodexCredentials(defaultCredentialDeps);
-  if (!credentials?.accountId) return null;
-  return { accessToken: credentials.accessToken, accountId: credentials.accountId };
-}
 
 export interface AiGatewayRouteDeps {
   readonly originator: string;
@@ -607,7 +573,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     if (target?.provider === "cursor") {
       const cursorToken = await deps.readCursorToken?.();
       if (!cursorToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
+        writeAnthropicError(res, 401, "authentication_error", "No Cursor sign-in was found. Sign in to Cursor in Console first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -616,7 +582,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = await readAuth();
       if (!auth) {
-        writeAnthropicError(res, 401, "authentication_error", "No ChatGPT subscription token was found. Run `codex login` first.");
+        writeAnthropicError(res, 401, "authentication_error", "No Codex sign-in was found. Sign in to Codex in Console first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -633,7 +599,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "xai") {
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No active Grok CLI sign-in was found. Run `grok login` first.");
+        writeAnthropicError(res, 401, "authentication_error", "No xAI sign-in was found. Sign in to xAI in Console first.");
         clock?.finish("error", 401);
         return true;
       }

@@ -1,4 +1,3 @@
-import { defaultCredentialDeps } from "../../transport/credentials.js";
 import type { ProviderResult, QuotaWindow, QuotaWindowPeriod } from "../../quota/types.js";
 import {
   expired,
@@ -10,7 +9,11 @@ import {
   windowPeriod,
   type ProviderDeps,
 } from "../../quota/windows.js";
-import { resolveCursorCredentials } from "./credentials.js";
+
+/** Console 로그인이 저장한 Cursor 토큰. 조달·갱신은 호출자(`src/oauth/cursor/`)의 몫이다. */
+export interface CursorUsageCredentials {
+  readonly accessToken: string;
+}
 
 export function parseCursorUsage(payload: unknown):
   | { readonly status: "ok"; readonly windows: readonly QuotaWindow[]; readonly cycleDays?: number }
@@ -69,9 +72,7 @@ export function parseCursorUsage(payload: unknown):
   };
 }
 
-export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
-  const credentials = await resolveCursorCredentials(deps.credentials ?? defaultCredentialDeps);
-  if (!credentials) return { status: "signed_out" };
+export async function fetchCursorUsage(credentials: CursorUsageCredentials, deps: ProviderDeps = {}): Promise<ProviderResult> {
   const headers = {
     Authorization: `Bearer ${credentials.accessToken}`,
     "Content-Type": "application/json",
@@ -84,7 +85,7 @@ export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<Provide
       "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage",
       headers,
     ));
-    if (usage.status === "no_subscription") return { status: "no_subscription", method: credentials.method };
+    if (usage.status === "no_subscription") return { status: "no_subscription" };
     let plan: string | undefined;
     try {
       const planRoot = object(await postJson(
@@ -100,7 +101,6 @@ export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<Provide
     }
     return {
       status: "ok",
-      method: credentials.method,
       ...(plan ? { plan } : {}),
       ...(usage.cycleDays !== undefined ? { cycleDays: usage.cycleDays } : {}),
       windows: usage.windows,
@@ -108,7 +108,7 @@ export async function fetchCursorUsage(deps: ProviderDeps = {}): Promise<Provide
     };
   } catch (error) {
     const result = expired(error);
-    if (result) return { ...result, method: credentials.method };
+    if (result) return result;
     throw error;
   }
 }
