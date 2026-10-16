@@ -12,6 +12,9 @@ export interface HostPartitionCookie {
   readonly path?: string;
   readonly secure?: boolean;
   readonly httpOnly?: boolean;
+  /** 초 단위 epoch. 없으면 session 쿠키다 — 서버가 만료를 준 쿠키에서 이 값을 버리면 영속 쿠키가 session 쿠키가 된다. */
+  readonly expirationDate?: number;
+  readonly sameSite?: "unspecified" | "no_restriction" | "lax" | "strict";
 }
 
 export interface HostPartition {
@@ -21,7 +24,79 @@ export interface HostPartition {
   /** 그 origin의 쿠키 이름 하나만 지운다. 파티션 전체를 비우지 않는다. */
   removeCookie?(url: string, name: string): Promise<void>;
   pin(hostname: string, fingerprint: string): void;
-  clear(): void;
+  /**
+   * 이 호스트 전용 파티션의 신뢰 대상을 버린다: 인증서 핀과 쿠키·세션 저장소까지. 핀만 지우면 같은 Session의 옛 자격이
+   * 새 신뢰 대상에 그대로 전송된다. 끝난 뒤에 돌아와야 하므로 비동기일 수 있다.
+   */
+  clear(): void | Promise<void>;
+}
+
+/**
+ * 읽어 온 Electron Cookie를 그대로 `set`에 되넘기지 않는다. 객체에는 `domain`·`hostOnly`가 있어, 그대로 되넘기면 호스트 한정
+ * 쿠키가 하위 도메인에도 유효한 domain 쿠키로 승격된다. 원격 Console이 발행하는 쿠키는 호스트 한정이 계약이므로, 허용한 속성만
+ * 명시해 옮긴다. 만료와 SameSite는 서버가 정한 값이라 그대로 보존한다.
+ */
+function cookieDetails(cookie: HostPartitionCookie, url: string): HostPartitionCookie & { readonly url: string } {
+  return {
+    name: cookie.name,
+    value: cookie.value,
+    url,
+    path: cookie.path ?? "/",
+    secure: cookie.secure ?? true,
+    httpOnly: cookie.httpOnly ?? true,
+    ...(typeof cookie.expirationDate === "number" ? { expirationDate: cookie.expirationDate } : {}),
+    ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
+  };
+}
+
+interface ParsedSetCookie {
+  readonly value: string;
+  readonly path: string;
+  readonly secure: boolean;
+  readonly httpOnly: boolean;
+  readonly sameSite?: "no_restriction" | "lax" | "strict";
+  /** 서버가 준 Max-Age(우선) 또는 Expires에서만 도출한다. 둘 다 없으면 session 쿠키다. 자체 TTL은 더하지 않는다. */
+  readonly expirationDate?: number;
+  /** Max-Age ≤ 0 이거나 이미 지난 Expires — 서버가 이 쿠키를 지우라고 한 것이다. */
+  readonly expired: boolean;
+}
+
+/** 원격 Console이 발행하는 형식(Max-Age·SameSite·Path·Secure·HttpOnly)과 Expires까지 읽는다. 그 밖의 속성은 무시한다. */
+function parseSetCookie(line: string, nowSeconds: number): ParsedSetCookie {
+  const [first = "", ...attributes] = line.split(";").map((part) => part.trim());
+  const equals = first.indexOf("=");
+  let maxAge: number | undefined;
+  let expires: number | undefined;
+  let sameSite: ParsedSetCookie["sameSite"];
+  let secure = false;
+  let httpOnly = false;
+  let path = "/";
+  for (const attribute of attributes) {
+    const split = attribute.indexOf("=");
+    const key = (split < 0 ? attribute : attribute.slice(0, split)).trim().toLowerCase();
+    const raw = split < 0 ? "" : attribute.slice(split + 1).trim();
+    if (key === "max-age" && /^-?\d+$/u.test(raw)) maxAge = Number(raw);
+    else if (key === "expires") { const time = Date.parse(raw); if (Number.isFinite(time)) expires = Math.floor(time / 1000); }
+    else if (key === "samesite") { const lowered = raw.toLowerCase(); sameSite = lowered === "strict" ? "strict" : lowered === "lax" ? "lax" : lowered === "none" ? "no_restriction" : undefined; }
+    else if (key === "secure") secure = true;
+    else if (key === "httponly") httpOnly = true;
+    else if (key === "path" && raw.startsWith("/")) path = raw;
+  }
+  let expirationDate: number | undefined;
+  let expired = false;
+  if (maxAge !== undefined) {
+    if (maxAge <= 0) expired = true;
+    else expirationDate = nowSeconds + maxAge;
+  } else if (expires !== undefined) {
+    if (expires <= nowSeconds) expired = true;
+    else expirationDate = expires;
+  }
+  return {
+    value: equals < 0 ? "" : first.slice(equals + 1),
+    path, secure, httpOnly, expired,
+    ...(sameSite !== undefined ? { sameSite } : {}),
+    ...(expirationDate !== undefined ? { expirationDate } : {}),
+  };
 }
 
 export interface HostTransportExecutorDeps {
@@ -44,6 +119,8 @@ const TICKET_PATH = "/api/v1/agent/ticket";
 const TERMINAL_SOCKET_PATH = "/api/v1/terminal/ws";
 const FRAME_CHARS = 32 * 1024;
 const RELAY_ATTEMPTS = 3;
+/** 대상 교체 때 옛 origin의 쿠키 순서를 기다리는 시간. 순서 밖 명령(일반 HTTP·스트림)만 기다린다. */
+const REPLACE_ORDER_WAIT_MS = 8_000;
 const RELAY_BACKOFF_MS = [200, 400];
 
 interface HostJob {
@@ -103,6 +180,48 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const isLaneCommand = (command: DesktopHostCommand): boolean => command.op === "pair"
     || (command.op === "presence" && (command.params.intent === "observe" || command.params.intent === "activate"));
 
+  const portOfOrigin = (origin: string): number => {
+    const parsed = new URL(origin);
+    return parsed.port === "" ? 443 : Number(parsed.port);
+  };
+
+  /**
+   * 같은 hostKey가 다른 지문(또는 origin)을 가리키게 되면 옛 신뢰 대상의 자격을 버린다: 이 호스트 전용 파티션의 핀·쿠키·세션 저장소와
+   * 옛 origin+포트의 창 jar 페어링·세션 쿠키만. 다른 host·포트의 쿠키는 건드리지 않는다.
+   *
+   * 옛 origin의 순서를 쥔 채로 한다 — 그 origin에서 진행 중인 쿠키 요청이 끝난 뒤에야 비우므로 늦은 응답이 지운 자격을 되살리지 못한다.
+   * 순서 보유자는 새 origin의 순서를 이미 쥐고 있다. 다른 origin이면 기다리지 않고(tryHold) 얻어 두 순서를 겹쳐 기다리지 않는다.
+   * 순서 밖 명령은 아무것도 쥐지 않았으므로 제한 시간과 취소 신호 안에서 기다린다. 얻지 못하면 false이고 파티션 기록을 남겨 다음에 다시 시도한다.
+   */
+  const replaceTarget = async (
+    command: DesktopHostCommand,
+    existing: { readonly origin: string; readonly fingerprint: string; readonly partition: HostPartition },
+    origin: string,
+    signal: AbortSignal | undefined,
+    laneOwner: boolean,
+  ): Promise<boolean> => {
+    const oldOrigin = existing.origin;
+    const oldPort = portOfOrigin(oldOrigin);
+    let release: (() => void) | null;
+    if (laneOwner && oldOrigin === origin) release = () => undefined;
+    else if (laneOwner) release = order.tryHold(oldOrigin);
+    else {
+      const wait = AbortSignal.timeout(REPLACE_ORDER_WAIT_MS);
+      release = await order.hold(oldOrigin, signal ? AbortSignal.any([signal, wait]) : wait);
+    }
+    if (release === null) return false;
+    try {
+      await withPairing(oldOrigin, oldPort, async () => {
+        await existing.partition.clear();
+        for (const kind of ["pairing", "session"] as const) await deps.removeWindowCookie?.(oldOrigin, cookieName(kind, oldPort));
+      });
+      partitions.delete(command.hostKey);
+      return true;
+    } finally {
+      release();
+    }
+  };
+
   const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal, laneOwner = false): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
     try {
       await deps.confirmIdentity(command.target.hostname, command.target.port, command.target.fingerprint);
@@ -113,9 +232,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const host = command.target.hostname.includes(":") ? `[${command.target.hostname}]` : command.target.hostname;
     const origin = new URL(`https://${host}:${command.target.port}`).origin;
     const existing = partitions.get(command.hostKey);
-    if (existing && (existing.origin !== origin || existing.fingerprint !== command.target.fingerprint)) {
-      existing.partition.clear();
-      partitions.delete(command.hostKey);
+    // 새로 등록된 지문의 확인이 위에서 끝난 뒤에만 도달한다(불일치는 위에서 종료되어 쿠키를 건드리지 않는다). 대상 교체이므로
+    // 옛 대상의 자격이 새 대상에 전송되지 않게 먼저 폐기하고, 폐기하지 못하면 아무것도 보내지 않는다.
+    if (existing && (existing.origin !== origin || existing.fingerprint !== normalizeFingerprint(command.target.fingerprint))) {
+      if (!await replaceTarget(command, existing, origin, signal, laneOwner)) return { id: command.id, error: "remote_host_unavailable", end: true };
     }
     const partition = partitions.get(command.hostKey)?.partition ?? deps.openPartition(command.hostKey);
     partition.pin(command.target.hostname, normalizeFingerprint(command.target.fingerprint));
@@ -196,7 +316,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
         const name = cookieName("pairing", port);
         const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
         if (!pairing || !claimLive(origin, port, claim, signal)) return;
-        await partition.writeCookie({ ...pairing, url: origin });
+        await partition.writeCookie(cookieDetails(pairing, origin));
       });
     } finally {
       release();
@@ -216,7 +336,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       const name = cookieName("pairing", port);
       const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
       if (!renewed || !claimLive(origin, port, claim, signal)) return;
-      await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+      await deps.writeWindowCookie({ ...cookieDetails(renewed, origin), path: "/", secure: true, httpOnly: true });
       publishClaim(origin, port, claim);
     });
   };
@@ -501,10 +621,26 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (lines.some((line) => line.startsWith(`${sessionName}=`) && !line.startsWith(`${sessionName}=;`))) return "rejected" as const;
       const header = lines.find((line) => line.startsWith(`${pairingName}=`));
       if (header) {
-        const value = header.slice(pairingName.length + 1).split(";")[0] ?? "";
-        if (value.length === 0 || !claimLive(origin, port, claim, signal)) return "rejected" as const;
-        await partition.writeCookie({ name: pairingName, value, url: origin, path: "/", secure: true, httpOnly: true });
+        const parsed = parseSetCookie(header, Math.floor(Date.now() / 1000));
+        // 서버가 지우라고 한 값(Max-Age ≤ 0)이나 빈 값은 확정하지 않는다.
+        if (parsed.value.length === 0 || parsed.expired || !claimLive(origin, port, claim, signal)) return "rejected" as const;
+        const current = (await partition.readCookies(origin)).find((cookie) => cookie.name === pairingName && cookie.value.length > 0);
         if (!claimLive(origin, port, claim, signal)) return "rejected" as const;
+        // 네이티브 fetch가 이미 같은 값을 서버 속성 그대로 적용했다면 건드리지 않는다: 같은 값이라는 이유만으로 명시 set을 하면
+        // 만료·SameSite가 사라져 영속 쿠키가 session 쿠키로 바뀐다. 값이 다르거나 서버가 준 속성이 반영돼 있지 않으면(미적용·옛 쿠키)
+        // 서버가 발행한 속성 그대로 쓴다.
+        const applied = current !== undefined
+          && current.value === parsed.value
+          && (parsed.expirationDate === undefined || typeof current.expirationDate === "number")
+          && (parsed.sameSite === undefined || current.sameSite === parsed.sameSite);
+        if (!applied) {
+          await partition.writeCookie({
+            name: pairingName, value: parsed.value, url: origin, path: parsed.path, secure: parsed.secure, httpOnly: parsed.httpOnly,
+            ...(parsed.expirationDate !== undefined ? { expirationDate: parsed.expirationDate } : {}),
+            ...(parsed.sameSite !== undefined ? { sameSite: parsed.sameSite } : {}),
+          });
+          if (!claimLive(origin, port, claim, signal)) return "rejected" as const;
+        }
       }
       const cookies = await partition.readCookies(origin);
       if (!claimLive(origin, port, claim, signal)) return "rejected" as const;

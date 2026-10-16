@@ -25,6 +25,7 @@ import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtoco
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
 import { createCookieOrder } from "./cookie-order.js";
+import { createHostPartitionAdapter } from "./host-partition-adapter.js";
 import { createDesktopHostTransport } from "./host-transport.js";
 import { confirmRemoteIdentity, installRemoteCertificatePins } from "./remote-access.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -179,15 +180,7 @@ async function boot(): Promise<void> {
     confirmIdentity: confirmRemoteIdentity,
     openPartition: (hostKey) => {
       const partition = session.fromPartition(`fleet-host-${hostKey}`);
-      const pins = installRemoteCertificatePins(partition);
-      return {
-        fetch: (url, init) => partition.fetch(url, init),
-        readCookies: async (url) => partition.cookies.get({ url }),
-        writeCookie: (cookie) => partition.cookies.set(cookie),
-        removeCookie: (url, name) => partition.cookies.remove(url, name),
-        pin: (hostname, fingerprint) => pins.pin(hostname, fingerprint),
-        clear: () => pins.clear(),
-      };
+      return createHostPartitionAdapter(partition, installRemoteCertificatePins(partition));
     },
     readWindowCookies: async (url) => consoleSession.cookies.get({ url }),
     writeWindowCookie: (cookie) => consoleSession.cookies.set(cookie),

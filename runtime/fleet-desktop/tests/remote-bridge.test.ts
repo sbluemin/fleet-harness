@@ -267,7 +267,8 @@ describe("remote bridge", () => {
     });
     const target = { hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT };
     const base = { hostKey: "host1", epoch: 1, target };
-    const pairCommand = (id: number, port = 6768) => ({ ...base, id, op: "pair" as const, routeId: "pair", target: { ...target, port }, params: {} });
+    // 다른 port는 다른 등록 호스트다(hostKey가 다르다). 같은 hostKey의 대상이 바뀌는 것은 교체이며 따로 다룬다.
+    const pairCommand = (id: number, port = 6768) => ({ ...base, id, hostKey: port === 6768 ? "host1" : "host2", op: "pair" as const, routeId: "pair", target: { ...target, port }, params: {} });
     const quiet = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
 
     // join이 응답을 쥐고 있다. 같은 origin의 inline pair는 요청을 보내지 않고, 일반 읽기와 다른 port는 진행한다.

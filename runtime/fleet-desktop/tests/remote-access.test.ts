@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
 import { openPinnedWebSocket } from "../src/host-socket.js";
 import { createCookieOrder } from "../src/cookie-order.js";
+import { createHostPartitionAdapter } from "../src/host-partition-adapter.js";
 import { createDesktopHostTransport, createHostTransportExecutor } from "../src/host-transport.js";
 import {
   CERTIFICATE_ACCEPTED,
@@ -701,6 +702,163 @@ describe("host partition transport", () => {
     expect(await nextLifetime).toMatchObject({ capability: "supported", mode: "off" });
     expect(jar.get(pairing)).toBe("NEW");
     expect(windowJar.get(pairing)).toBe("NEW");
+  });
+
+  /**
+   * 실제 어댑터(`createHostPartitionAdapter`)를 지나는 가짜 네이티브 Session으로 본다. Electron 문서의 의미를 흉내 낸 모델이며
+   * 실제 Electron 실행 증거가 아니다: `expirationDate`가 없으면 session 쿠키, `domain`을 되넘기면 호스트 한정이 domain 쿠키로 승격,
+   * `fetch`는 응답을 돌려주기 전에 Set-Cookie를 jar에 적용한다.
+   */
+  it("keeps the server-issued cookie lifetime and scope, and drops the old target's credentials on replacement", async () => {
+    interface FakeCookie { name: string; value: string; domain: string; hostOnly: boolean; path: string; secure: boolean; httpOnly: boolean; expirationDate?: number; sameSite: "unspecified" | "no_restriction" | "lax" | "strict"; session: boolean }
+    const host = "remote.example";
+    const origin = `https://${host}:8443`;
+    const pairing = "fleet_console_pairing_8443";
+    const sessionName = "fleet_console_session_8443";
+    const nativeSession = (applySetCookie: boolean) => {
+      const jar = new Map<string, FakeCookie>();
+      const sets: Record<string, unknown>[] = [];
+      const requests: { path: string; body: string; cookies: string[] }[] = [];
+      const state = { clears: 0 };
+      const store = (details: Record<string, unknown>): void => {
+        sets.push(details);
+        const domain = typeof details.domain === "string" ? details.domain : null;
+        jar.set(String(details.name), {
+          name: String(details.name), value: String(details.value), domain: domain === null ? host : `.${domain.replace(/^\./u, "")}`, hostOnly: domain === null,
+          path: typeof details.path === "string" ? details.path : "/", secure: details.secure === true, httpOnly: details.httpOnly === true,
+          ...(typeof details.expirationDate === "number" ? { expirationDate: details.expirationDate } : {}),
+          sameSite: details.sameSite === "strict" || details.sameSite === "lax" || details.sameSite === "no_restriction" ? details.sameSite : "unspecified", session: typeof details.expirationDate !== "number",
+        });
+      };
+      const applyHeader = (line: string): void => {
+        const [first = "", ...attrs] = line.split(";").map((part) => part.trim());
+        const eq = first.indexOf("=");
+        const lower = attrs.map((attr) => attr.toLowerCase());
+        const maxAge = lower.find((attr) => attr.startsWith("max-age="));
+        store({
+          name: first.slice(0, eq), value: first.slice(eq + 1), path: "/", secure: lower.includes("secure"), httpOnly: lower.includes("httponly"),
+          ...(maxAge ? { expirationDate: Math.floor(Date.now() / 1000) + Number(maxAge.slice(8)) } : {}),
+          ...(lower.includes("samesite=strict") ? { sameSite: "strict" } : {}),
+        });
+      };
+      const native = {
+        fetch: async (url: string, init?: RequestInit) => {
+          requests.push({ path: new URL(url).pathname, body: typeof init?.body === "string" ? init.body : "", cookies: [...jar.values()].map((cookie) => `${cookie.name}=${cookie.value}`) });
+          const response = await remote(url, init);
+          if (applySetCookie) for (const line of response.headers.getSetCookie()) applyHeader(line);
+          return response;
+        },
+        clearStorageData: async () => { state.clears += 1; jar.clear(); },
+        cookies: {
+          get: async () => [...jar.values()].map((cookie) => ({ ...cookie })),
+          set: async (details: Record<string, unknown>) => { store(details); },
+          remove: async (_url: string, name: string) => { jar.delete(name); },
+        },
+      };
+      return { native, jar, sets, requests, state };
+    };
+    let grantHeader = `${pairing}=fresh; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000; Secure`;
+    const sessionGate: { hold: boolean; release: (() => void) | null } = { hold: false, release: null };
+    const remote = async (url: string, init?: RequestInit): Promise<Response> => {
+      const path = new URL(url).pathname;
+      if (path === "/api/v1/sessions" && sessionGate.hold) {
+        sessionGate.hold = false;
+        return new Promise<Response>((resolve) => {
+          sessionGate.release = () => resolve(new Response(JSON.stringify({ capability: "host-session", mode: "observer", access: "full" }), { status: 200, headers: { "content-type": "application/json", "set-cookie": `${sessionName}=late; HttpOnly; Path=/; Secure` } }));
+        });
+      }
+      if (path === "/api/v1/pair") {
+        if (init?.body === "{}") return Response.json({ error: "invalid_join", capability: "pair" }, { status: 400 });
+        return new Response(null, { status: 204, headers: { "set-cookie": grantHeader } });
+      }
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const fingerprintOf = (letter: string): string => letter.repeat(64);
+    const build = (applySetCookie: boolean) => {
+      const partition = nativeSession(applySetCookie);
+      const windowJar = nativeSession(false);
+      const current = { fingerprint: fingerprintOf("A"), mismatch: null as string | null };
+      let handoffs = 0;
+      const executor = createHostTransportExecutor({
+        cookieOrder: createCookieOrder(),
+        confirmIdentity: async (_host, _port, fingerprint) => { if (current.mismatch === fingerprint) throw new Error("remote_link_fingerprint_mismatch"); },
+        openPartition: () => createHostPartitionAdapter(partition.native as never, { pin() { return undefined; }, clear() { return undefined; } }),
+        readWindowCookies: async () => windowJar.native.cookies.get(),
+        writeWindowCookie: async (cookie) => { await windowJar.native.cookies.set(cookie as never); },
+        removeWindowCookie: async (_url, name) => { await windowJar.native.cookies.remove(origin, name); },
+        localOrigin: () => "http://127.0.0.1:4010",
+        localFetch: async () => { handoffs += 1; return Response.json({ origin, hostname: host, port: 8443, fingerprint: current.fingerprint, token: `grant-${handoffs}` }); },
+      });
+      const command = (id: number, op: "pair" | "presence" | "http" = "pair") => ({
+        id, hostKey: "host1", epoch: 1, op, routeId: op, params: op === "presence" ? { intent: "observe" } : op === "http" ? { method: "GET", path: "/api/v1/theaters" } : {},
+        target: { hostname: host, port: 8443, fingerprint: current.fingerprint },
+      });
+      return { executor, partition, windowJar, current, command };
+    };
+    const expected = (): number => Math.floor(Date.now() / 1000) + 31536000;
+
+    // 네이티브가 응답을 적용한다: 같은 값이라는 이유로 명시 set을 하지 않아 서버가 준 만료·SameSite·host-only 범위가 두 jar에 남는다.
+    const applied = build(true);
+    expect(await applied.executor.execute(applied.command(1))).toMatchObject({ capability: "supported", mode: "off" });
+    for (const jar of [applied.partition.jar, applied.windowJar.jar]) {
+      const cookie = jar.get(pairing);
+      expect(cookie?.value).toBe("fresh");
+      expect(Math.abs((cookie?.expirationDate ?? 0) - expected())).toBeLessThan(10);
+      expect(cookie).toMatchObject({ sameSite: "strict", hostOnly: true, session: false });
+    }
+    for (const entry of [...applied.partition.sets, ...applied.windowJar.sets]) {
+      expect(entry).not.toHaveProperty("domain");
+      expect(entry).not.toHaveProperty("hostOnly");
+    }
+
+    // 네이티브가 적용하지 못한 경우(fallback): 서버의 Max-Age에서만 만료를 도출하고 자체 TTL을 더하지 않는다.
+    const fallback = build(false);
+    expect(await fallback.executor.execute(fallback.command(1))).toMatchObject({ capability: "supported", mode: "off" });
+    const written = fallback.windowJar.jar.get(pairing);
+    expect(Math.abs((written?.expirationDate ?? 0) - expected())).toBeLessThan(10);
+    expect(written).toMatchObject({ sameSite: "strict", hostOnly: true, session: false });
+    grantHeader = `${pairing}=fresh; HttpOnly; SameSite=Strict; Path=/; Max-Age=0; Secure`;
+    const expiredGrant = build(false);
+    expect(await expiredGrant.executor.execute(expiredGrant.command(1))).toMatchObject({ error: "remote_host_unavailable" });
+    expect(expiredGrant.windowJar.jar.has(pairing)).toBe(false);
+    grantHeader = `${pairing}=fresh; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000; Secure`;
+
+    // 새로 등록된 지문으로 대상이 바뀌면 옛 대상의 자격은 새 endpoint로 가지 않는다. 같은 Session을 다시 열기만 해서는 비워지지 않는다.
+    applied.partition.jar.set(sessionName, { name: sessionName, value: "old-session", domain: host, hostOnly: true, path: "/", secure: true, httpOnly: true, sameSite: "strict", session: true });
+    applied.windowJar.jar.set("fleet_console_pairing_9443", { name: "fleet_console_pairing_9443", value: "other-port", domain: host, hostOnly: true, path: "/", secure: true, httpOnly: true, sameSite: "strict", session: true });
+    // 신뢰 실패(지문 불일치)는 교체가 아니다: 아무것도 지우지 않는다.
+    applied.current.fingerprint = fingerprintOf("E");
+    applied.current.mismatch = fingerprintOf("E");
+    expect(await applied.executor.execute(applied.command(2))).toMatchObject({ error: "remote_host_fingerprint_mismatch" });
+    expect(applied.partition.state.clears).toBe(0);
+    expect(applied.partition.jar.get(pairing)?.value).toBe("fresh");
+    expect(applied.windowJar.jar.get(pairing)?.value).toBe("fresh");
+    applied.current.mismatch = null;
+    applied.current.fingerprint = fingerprintOf("C");
+    const requestsBefore = applied.partition.requests.length;
+    expect(await applied.executor.execute(applied.command(3))).toMatchObject({ capability: "supported", mode: "off" });
+    expect(applied.partition.state.clears).toBe(1);
+    // 교체 뒤 새 대상으로 나간 첫 요청에는 옛 페어링·세션이 실리지 않았다.
+    expect(applied.partition.requests[requestsBefore]?.cookies).toEqual([]);
+    expect(applied.windowJar.jar.get("fleet_console_pairing_9443")?.value).toBe("other-port");
+    expect(applied.windowJar.jar.get(pairing)?.value).toBe("fresh");
+
+    // 옛 origin에서 진행 중인 쿠키 요청이 끝나기 전에는 비우지 않고, 늦은 응답이 지운 자격을 되살리지 못한다.
+    applied.current.fingerprint = fingerprintOf("C");
+    sessionGate.hold = true;
+    const oldObserve = applied.executor.execute(applied.command(4, "presence"));
+    await waitFor(() => sessionGate.release !== null);
+    applied.current.fingerprint = fingerprintOf("D");
+    const clearsBefore = applied.partition.state.clears;
+    const replacing = applied.executor.execute(applied.command(5, "http"));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(applied.partition.state.clears).toBe(clearsBefore);
+    sessionGate.release?.();
+    await oldObserve;
+    expect(await replacing).toMatchObject({ status: 200 });
+    expect(applied.partition.state.clears).toBe(clearsBefore + 1);
+    expect(applied.partition.jar.has(sessionName)).toBe(false);
+    expect(applied.partition.requests.at(-1)?.cookies).toEqual([]);
   });
 });
 
