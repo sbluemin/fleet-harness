@@ -1,4 +1,6 @@
 import { useRef, useState, useSyncExternalStore } from "react";
+import type { HostWorkspacePort } from "@fleet-console/sdk/host-context";
+import { HostLocalTools, HostWorkspaceDockLabel } from "../sidebar/host-workspace-sidebar.js";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -18,7 +20,7 @@ import "./conversation-dock.css";
  * 그대로 품는다. 브랜드(환경 진단)는 맨 위 줄 왼쪽에 서므로 메뉴에 두지 않는다. 상태별 보기는 메뉴가 아니라 켜짐/꺼짐이
  * 바로 보이는 글리프다.
  */
-export function ConversationSideBarBottom({ connection }: { readonly connection: ConsoleState["connection"] }) {
+export function ConversationSideBarBottom({ connection, hostWorkspace }: { readonly connection: ConsoleState["connection"]; readonly hostWorkspace?: HostWorkspacePort }) {
   const t = useT();
   const state = useConsoleState();
   const [open, setOpen] = useState(false);
@@ -29,6 +31,15 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   const label = `${t("chrome.hosts.aria")}: ${name}`;
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen, true);
   const statusAxis = useSyncExternalStore(subscribeStatusAxis, getSideBarStatusAxis, getSideBarStatusAxis);
+  if (hostWorkspace) return <div className="conversation-dock is-host-workspace" role="group" aria-label={t("conversation.side.systemAria")}>
+    <HostWorkspaceDockLabel hosts={hostWorkspace} t={t} />
+    <HostLocalTools hosts={hostWorkspace} t={t}>
+      <div className="conversation-dock-local-actions" role="group" aria-label={t("hosts.workspace.local")}>
+        <ArchiveEntry compact />
+        <ToolbarSettingsButton operationsViewVisible />
+      </div>
+    </HostLocalTools>
+  </div>;
   return (
     <div className="conversation-dock" role="group" aria-label={t("conversation.side.systemAria")}>
       <div className="conversation-dock-host" ref={rootRef}>

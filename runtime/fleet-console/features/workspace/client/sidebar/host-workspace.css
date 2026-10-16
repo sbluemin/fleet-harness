@@ -1,0 +1,146 @@
+/* 컴퓨터는 위치, 연결·활동은 상태다. 기존 Console 토큰의 채널을 그대로 쓴다. */
+.host-workspace-sidebar {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.host-workspace-computers {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-1) var(--space-2);
+  overscroll-behavior: contain;
+}
+.host-workspace-computer { position: relative; margin-bottom: var(--space-1); }
+.host-workspace-computer[data-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-2));
+  top: var(--space-3);
+  width: 3px;
+  height: 22px;
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  background: var(--brass);
+}
+.host-workspace-computer-head {
+  display: grid;
+  grid-template-columns: 12px 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.host-workspace-computer-head:hover { background: var(--wash-hover); }
+.host-workspace-computer-names { display: grid; min-width: 0; }
+.host-workspace-computer-names > span,
+.host-workspace-summary,
+.host-workspace-reach,
+.host-workspace-row-copy > span,
+.host-workspace-connection,
+.host-workspace-local-tools { font-size: var(--t-xs); color: var(--text-tertiary); }
+.host-workspace-computer-names > strong { font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-workspace-chevron { transition: transform 150ms ease; }
+.host-workspace-computer-head[aria-expanded="true"] .host-workspace-chevron { transform: rotate(90deg); }
+.host-workspace-summary { grid-column: 3 / -1; }
+.host-workspace-reach { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-workspace-computer[data-selected="true"] .host-workspace-reach { color: var(--brass-bright); }
+.host-workspace-computer:not([data-selected="true"]) .host-workspace-reach[data-connection="ready"] { color: var(--positive); }
+.host-workspace-computer:not([data-selected="true"]) .host-workspace-reach[data-trust="mismatch"] { color: var(--coral); }
+.host-workspace-computer-body { padding: 0 0 var(--space-2) var(--space-3); }
+.host-workspace-computer-body[hidden] { display: none; }
+.host-workspace-connection { margin: 0; padding: var(--space-1) var(--space-2); }
+.host-workspace-theater { margin-top: var(--space-1); }
+.host-workspace-commodore,
+.host-workspace-commander {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.host-workspace-commander { padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4); font-size: var(--t-sm); }
+.host-workspace-commodore:hover:not(:disabled),
+.host-workspace-commander:hover:not(:disabled) { background: var(--wash-hover); }
+.host-workspace-commodore[aria-current="true"],
+.host-workspace-commander[aria-current="true"] {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  color: var(--text-primary);
+}
+.host-workspace-commodore:disabled,
+.host-workspace-commander:disabled { opacity: 0.5; cursor: not-allowed; }
+.host-workspace-theater-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-xs);
+  background: var(--wash-hover);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+.host-workspace-row-copy { display: grid; min-width: 0; gap: 2px; }
+.host-workspace-row-copy > strong { font-size: var(--t-sm); font-weight: var(--weight-medium); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-workspace-row-copy .host-workspace-waiting { color: var(--warn); }
+.host-workspace-operation-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-workspace-activity { flex: none; width: 7px; height: 7px; border: 1px solid var(--text-tertiary); border-radius: 50%; }
+.host-workspace-activity[data-activity="running"],
+.host-workspace-activity[data-activity="background"] { border-color: var(--aurora); background: var(--aurora); }
+.host-workspace-activity[data-activity="awaiting"] { border-color: var(--warn); background: var(--warn); }
+.host-workspace-note { margin: 0; padding: var(--space-2); color: var(--text-secondary); font-size: var(--t-sm); }
+.host-workspace-note > p { margin: 0 0 var(--space-2); }
+.host-workspace-tray { flex: none; max-height: 35%; overflow-y: auto; border-top: 1px solid var(--surface-rim); padding: var(--space-2) var(--space-3); }
+.host-workspace-tray-heading { display: flex; gap: var(--space-2); justify-content: space-between; min-width: 0; margin-bottom: var(--space-2); font-size: var(--t-xs); color: var(--text-tertiary); }
+.host-workspace-tray-heading > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brass-bright); font-weight: var(--weight-medium); }
+.host-workspace-filters { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.host-workspace-filters > button,
+.host-workspace-back {
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.host-workspace-filters > button:hover,
+.host-workspace-back:hover { background: var(--wash-hover); }
+.host-workspace-filters > button[aria-pressed="true"] { border-color: var(--brass); color: var(--brass-bright); }
+.host-workspace-local-tools { padding: var(--space-2); }
+.host-workspace-location { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; color: var(--text-secondary); font-size: var(--t-xs); }
+.host-workspace-location-host { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--brass-bright); overflow-wrap: anywhere; }
+.host-workspace-role { border: 1px solid var(--surface-rim); padding: 0 var(--space-1); border-radius: var(--radius-xs); }
+.host-workspace-mode { color: var(--text-secondary); }
+.host-workspace-content { position: absolute; inset-block: 0; display: flex; flex-direction: column; min-width: 0; padding: var(--space-3); }
+.host-workspace-state { display: grid; align-content: center; justify-items: center; gap: var(--space-3); margin: auto; padding: var(--space-4); max-width: 48ch; text-align: center; color: var(--text-secondary); font-size: var(--t-sm); }
+.host-workspace-state > strong { color: var(--text-primary); font-weight: var(--weight-medium); }
+.host-workspace-state > p { margin: 0; }
+.host-workspace-dock-label { display: grid; flex: 1; gap: var(--space-1); min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.host-workspace-dock-label > strong { color: var(--text-primary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-workspace-dock-label > button { justify-self: start; }
+.host-workspace-sidebar button:focus-visible,
+.host-workspace-state button:focus-visible,
+.host-workspace-dock-label button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .host-workspace-chevron { transition: none; } }
