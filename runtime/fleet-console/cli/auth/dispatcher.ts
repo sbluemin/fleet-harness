@@ -13,7 +13,7 @@ import {
 const AUTH_HELP_TEXT = `AI Gateway provider authentication
 
 Sign in or out from fleet gateway, then Providers.
-OpenCode Go and TypeSafe take an API key there.
+TypeSafe takes an API key there.
 
 Codex, Cursor, and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.

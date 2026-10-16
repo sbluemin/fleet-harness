@@ -10,7 +10,6 @@
  * credential dependencies explicitly.
  */
 
-import type { AuthService } from "../auth/types.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
 import type { CredentialResolverDeps } from "../transport/credentials.js";
 import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
@@ -41,13 +40,6 @@ export interface ProviderDeps {
   readonly credentials?: CredentialResolverDeps;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
-  /**
-   * OpenCode Go is reached with a key Fleet itself stores, not another
-   * CLI's credential file, so it reads through core-infra's auth surface — which
-   * owns the file's shape and its symlink-guarded read — instead of parsing the
-   * file here.
-   */
-  readonly authService?: AuthService;
 }
 
 export function windowPeriod(

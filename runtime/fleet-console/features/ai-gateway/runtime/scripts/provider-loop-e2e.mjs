@@ -24,12 +24,12 @@ Options:
   --operations <count>     Positive integer, default ${DEFAULT_OPERATIONS}, maximum ${MAX_OPERATIONS}
   --trials <count>         Positive integer, default ${DEFAULT_TRIALS}, maximum ${MAX_TRIALS}
   --timeout-ms <count>     Positive integer, default ${DEFAULT_TIMEOUT_MS}, maximum ${MAX_TIMER_MS}
-  --auth-path <path>       Console slot auth.json holding the OpenCode API key or the Codex/xAI/Cursor sign-in; required for those models
+  --auth-path <path>       Console slot auth.json holding the Codex/xAI/Cursor sign-in; required for those models
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading build artifacts or credentials
 
 Example:
-  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4.1-flash[1m]' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
+  pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6-sol' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
 
 Antigravity reads its vendor CLI credential, so it needs no --auth-path.
 
@@ -375,8 +375,8 @@ function validateTarget(gateway, options) {
       throw new UsageError(`--effort ${options.effort} is not supported by model ${options.model}`);
     }
   }
-  // The auth store never guesses a data root, so an OpenCode run must name the slot's file.
-  if (["opencode", "codex", "xai", "cursor"].includes(target.provider) && options.authPath === null) {
+  // The auth store never guesses a data root, so Console sign-ins require the slot's file.
+  if (["codex", "xai", "cursor"].includes(target.provider) && options.authPath === null) {
     throw new UsageError(`--auth-path is required for ${target.provider} models`);
   }
   return target;
@@ -441,7 +441,6 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
     readCursorToken: async () => (await cursor?.readSubscriptionToken()) ?? null,
     readXaiToken: async () => (await xai?.readSubscriptionToken()) ?? null,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
-    readOpencodeApiKey: async () => authService?.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
     cursorDiagnostics: diagnosticSink,
   });
   const server = createTrialServer(router);

@@ -7,7 +7,6 @@ import {
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
-import { OPENCODE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
 import { createConsoleDataPaths } from "../../core/host/bootstrap/paths.js";
@@ -140,25 +139,11 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
     cursor: async () => (await resolveAuthService(deps).getEntry(CURSOR_AUTH_PROVIDER_ID)) ?? null,
     xai: async () => (await resolveAuthService(deps).getEntry(XAI_AUTH_PROVIDER_ID)) ?? null,
   };
-  const signedIn = await listSignedInProviders(deps);
   return [
     { provider: "codex", source: "subscription", state: await probe(readers.codex) },
     { provider: "xai", source: "subscription", state: await probe(readers.xai) },
     { provider: "cursor", source: "subscription", state: await probe(readers.cursor) },
-    {
-      provider: "opencode",
-      source: "api-key",
-      state: signedIn.has(OPENCODE_AUTH_PROVIDER_ID) ? "present" : "absent",
-    },
   ];
-}
-
-async function listSignedInProviders(deps: GatewayCommandDeps): Promise<ReadonlySet<string>> {
-  try {
-    return new Set(await resolveAuthService(deps).listProviderIds());
-  } catch {
-    return new Set();
-  }
 }
 
 async function probe(read: () => Promise<unknown>): Promise<"present" | "absent"> {

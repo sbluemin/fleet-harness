@@ -32,7 +32,6 @@ export * from "./upstream/anthropic/quota.js";
 export * from "./upstream/anthropic/credentials.js";
 export * from "./upstream/codex/quota.js";
 export * from "./upstream/cursor/quota.js";
-export * from "./upstream/opencode-go/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./canonical/index.js";
@@ -53,7 +52,6 @@ export {
 export * from "./router/types.js";
 export * from "./router/http.js";
 export * from "./router/passthrough.js";
-export * from "./router/opencode-dispatch.js";
 export * from "./transport/credentials.js";
 // wireLog/logCanonicalEvents 는 진단 구현 세부사항이므로 런타임 제어 표면만 좁게 공개한다.
 export {
@@ -82,7 +80,6 @@ export * from "./auth/index.js";
 export * from "./oauth/index.js";
 export * from "./settings/index.js";
 export * from "./settings/store.js";
-export * from "./upstream/opencode-go/index.js";
 export * from "./upstream/codex/responses/index.js";
 export * from "./transport/sse-keepalive.js";
 export {
@@ -124,14 +121,10 @@ export {
 } from "./downstream/harness/claude-code/context.js";
 
 export {
-  OPENCODE_AUTH_PROVIDER_ID,
-  OPENCODE_GO_API_BASE_URL,
-  OPENCODE_GO_MODEL,
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
   TYPESAFE_DEFAULT_MODEL,
   TYPESAFE_MODELS,
-  validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";
 export type { AuthKeyValidationResult } from "./fleet/auth.js";

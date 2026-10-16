@@ -2942,7 +2942,6 @@
 .agent-chat-coord-pop-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .agent-chat-coord-pop-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
 .agent-chat-coord-pop-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.agent-chat-coord-pop-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .agent-chat-coord-pop-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 
 .agent-chat-coord-pop-effort-word {

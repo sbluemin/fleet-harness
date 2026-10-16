@@ -58,13 +58,13 @@ describe("fleet gateway set", () => {
 });
 
 describe("interactive spend priority defaults", () => {
-  const ALL = ["codex", "xai", "antigravity", "opencode"] as const;
+  const ALL = ["codex", "xai", "antigravity", "cursor"] as const;
 
   it("walks the stored order while it lasts, then terminates", () => {
     const stored = ["xai", "codex"] as const;
     expect(nextPriorityDefault(stored, [], ALL)).toBe("xai");
     expect(nextPriorityDefault(stored, ["xai"], ALL.filter((p) => p !== "xai"))).toBe("codex");
     // 저장된 둘을 다 지나면 기본은 Done이라, 부분 순위가 전체 랭킹으로 자라지 않는다.
-    expect(nextPriorityDefault(stored, ["xai", "codex"], ["antigravity", "opencode"])).toBe("");
+    expect(nextPriorityDefault(stored, ["xai", "codex"], ["antigravity", "cursor"])).toBe("");
   });
 });

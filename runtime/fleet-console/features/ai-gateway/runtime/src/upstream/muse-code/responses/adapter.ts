@@ -375,7 +375,7 @@ function museCodeWireTools(request: CanonicalResponseRequest): MuseCodeWireTool[
 /**
  * 읽지 못할 수 있는 `pattern`을 선제적으로 뺀다. 이 엔드포인트에서는 직접 검증하지 않았다.
  * 근거는 다른 경로의 관찰뿐이다: OpenCode Go 경유 `muse-spark-1.3-contributor`에서 역슬래시+숫자
- * (`\0`, `\1`)가 요청 전체를 400으로 실패시켰다(2026-09-19, OpenCode 어댑터 기록). 같은 모델이라
+ * (`\0`, `\1`)가 요청 전체를 400으로 실패시켰다(2026-09-19, 이후 제거된 OpenCode Go 어댑터 기록). 같은 모델이라
  * 재발할 수 있고, `pattern`은 권고일 뿐 강제되지 않아 빼도 관찰 가능한 손실이 없다. lookaround·Unicode
  * 속성 이스케이프는 다른 Responses 어댑터와 같은 규칙으로 뺀다.
  */

@@ -38,7 +38,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex cursor opencode xai routing delegation subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex cursor xai routing delegation subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 라우팅 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
@@ -67,26 +67,18 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
-  opencode: "terminal.settings.aiGatewayProviderOpencode",
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
 } as const;
 
 /**
- * API key로 연결하는 공급자. 어느 공급자가 키를 요구하는지는 서버(model-auth 상태)가 권위이고,
- * 이 목록은 그 응답이 오기 전 첫 렌더가 같은 답을 내게 하는 기본값이다.
- */
-const AI_GATEWAY_KEY_PROVIDER_IDS: ReadonlySet<string> = new Set(["opencode"]);
-
-/**
- * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서,
- * API key 공급자는 맨 뒤(OpenCode Go). 표시 순서는 소진 우선순위를 바꾸지 않는다.
+ * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.
+ * 표시 순서는 소진 우선순위를 바꾸지 않는다.
  */
 export function orderAiGatewayProviders<T extends { readonly id: string }>(providers: readonly T[]): T[] {
   const claude = providers.filter((provider) => provider.id === "claude");
-  const subscription = providers.filter((provider) => provider.id !== "claude" && !AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
-  const apiKey = providers.filter((provider) => AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id));
-  return [...claude, ...subscription, ...apiKey];
+  const subscription = providers.filter((provider) => provider.id !== "claude");
+  return [...claude, ...subscription];
 }
 
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
@@ -882,7 +874,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   const signedInServices = services.filter((entry) => entry.signedIn);
   const authLabelOf = (providerId: string): string =>
-    authOf(providerId) !== undefined || AI_GATEWAY_KEY_PROVIDER_IDS.has(providerId)
+    authOf(providerId) !== undefined
       ? t("terminal.settings.aiGatewayAuthApiKey")
       : t("terminal.settings.aiGatewayAuthSubscription");
 
@@ -1532,12 +1524,10 @@ function AiGatewayModelPalette({
   );
   const matched = filterAiGatewayPalette(entries, query, providerLabel);
   const enabledIds = new Set((selection.models ?? []).map((entry) => entry.id));
-  // 키 공급자는 인증 상태가 도착하기 전에도 잠긴 것으로 본다 — 로딩·실패 중에 풀어 두면
-  // 키 없는 경로를 저장할 수 있다. 서버 응답이 오면 그 답이 우선한다.
+  // 키 공급자는 서버(model-auth 상태)가 알려 준 로그인 여부로 잠근다.
   const isLocked = (providerId: string): boolean => {
     const providerAuth = authOf(providerId);
-    if (providerAuth === undefined) return AI_GATEWAY_KEY_PROVIDER_IDS.has(providerId);
-    return !providerAuth.signedIn;
+    return providerAuth !== undefined && !providerAuth.signedIn;
   };
   // 로그인되지 않은 공급자의 모델은 고를 수 없으므로 목록에서 감춘다 — 머리글만 남아 로그인 자리가 된다.
   const hits = matched.filter((hit) => !isLocked(hit.provider.id));
@@ -1920,7 +1910,7 @@ function AiGatewayPaletteGroupHead({
 }: AiGatewayPaletteGroupHeadProps) {
   const t = getT(useTerminalLocale());
   const id = provider.id as AiGatewayProviderId;
-  const keyed = auth !== undefined || AI_GATEWAY_KEY_PROVIDER_IDS.has(provider.id);
+  const keyed = auth !== undefined;
   const locked = auth !== undefined && !auth.signedIn;
   return (
     <>

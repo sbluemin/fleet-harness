@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "muse-code", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "antigravity", "muse-code", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -17,12 +17,10 @@ const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
 );
 
 /**
- * The upstream wire protocol a model is served over. Only the OpenCode Go
- * provider declares this today: its subscription exposes Anthropic, OpenAI
- * Responses, and Chat Completions endpoints side by side, and each model is
- * native to exactly one of them. Omission means `anthropic`.
+ * The upstream wire protocol a model is served over. xAI and Muse Code declare
+ * `responses` so routing never falls back to Anthropic. Omission means `anthropic`.
  */
-const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
+const GATEWAY_MODEL_WIRES = ["anthropic", "responses"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
 
 export const GATEWAY_REASONING_EFFORTS = [
@@ -112,7 +110,6 @@ const GatewayModelsRegistrySchema = z.object({
   providers: z.object({
     codex: GatewayProviderSchema,
     cursor: GatewayProviderSchema,
-    opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
@@ -361,7 +358,6 @@ function compareVersions(left: readonly number[], right: readonly number[]): num
 
 export const CODEX_SUBSCRIPTION_MODELS = providerModels("codex");
 export const CURSOR_SUBSCRIPTION_MODELS = providerModels("cursor");
-export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
  * A catalog entry by its canonical id or one of its declared aliases.
@@ -675,9 +671,8 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.quotaScope && provider !== "cursor") {
         throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
       }
-      // OpenCode Go는 모델마다 와이어를 고른다. xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만
-      // 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
-      if (model.wire && provider !== "opencode" && provider !== "xai" && provider !== "muse-code") {
+      // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
+      if (model.wire && provider !== "xai" && provider !== "muse-code") {
         throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
       }
       if (model.effort?.supported) {

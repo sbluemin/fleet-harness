@@ -26,7 +26,6 @@ const UPSTREAM_FOLDERS = [
   "antigravity",
   "codex",
   "cursor",
-  "opencode-go",
   "typesafe",
   "xai",
 ] as const;
@@ -36,7 +35,6 @@ const GATEWAY_PROVIDER_FOLDERS = [
   "antigravity",
   "codex",
   "cursor",
-  "opencode-go",
   "xai",
 ] as const;
 
@@ -375,9 +373,9 @@ describe("core-ai-gateway direction boundaries", () => {
   });
 
   it("lets an upstream provider borrow only the shared inbound wire modules", () => {
-    // OpenCode Go's Anthropic models relay the downstream wire without translating it, so they
-    // speak the same normalization. Nothing else downstream is shared: a harness dialect
-    // is never an upstream concern.
+    // A provider relaying the downstream Anthropic wire without translating it speaks the same
+    // normalization. Nothing else downstream is shared: a harness dialect is never an
+    // upstream concern.
     for (const file of listTsFiles(srcDir)) {
       const rel = path.relative(srcDir, file);
       if (providerOf(file) === undefined) continue;
@@ -446,16 +444,6 @@ describe("core-ai-gateway direction boundaries", () => {
     }
   });
 
-  it("owns all three OpenCode wire implementations under upstream/opencode-go", () => {
-    for (const rel of [
-      "upstream/opencode-go/anthropic/index.ts",
-      "upstream/opencode-go/responses/adapter.ts",
-      "upstream/opencode-go/chat-completions/adapter.ts",
-    ]) {
-      expect(existsSync(path.join(srcDir, rel)), rel).toBe(true);
-    }
-  });
-
   it("keeps every axis folder at its own root", () => {
     // Pins the direction split itself: the pre-split spellings must not come back, and
     // each axis root must exist. A provider folder re-appearing at `src/` would put an
@@ -466,13 +454,11 @@ describe("core-ai-gateway direction boundaries", () => {
       "antigravity",
       "codex",
       "cursor",
-      "opencode-go",
       "xai",
       "openai-chat-adapter.ts",
       "openai-responses-adapter.ts",
       "cursor-adapter.ts",
       "provider-credentials.ts",
-      "opencode-go.ts",
       "canonical.ts",
       "anthropic.ts",
       "gateway.ts",
@@ -549,12 +535,12 @@ describe("gateway module specifier extraction", () => {
     expect(moduleSpecifiers(`
       type T = import("../../codex/x.js").T;
       const r = require("../cursor/y.js");
-      const cr = createRequire(import.meta.url)("../../opencode-go/z.js");
+      const cr = createRequire(import.meta.url)("../../xai/z.js");
       import { E } from "./e.js";
     `)).toEqual([
       "../../codex/x.js",
       "../cursor/y.js",
-      "../../opencode-go/z.js",
+      "../../xai/z.js",
       "./e.js",
     ]);
   });
@@ -563,12 +549,12 @@ describe("gateway module specifier extraction", () => {
     expect(moduleSpecifiers(`
       const a = import(\`../../codex/x.js\`);
       const r = require(\`../cursor/y.js\`);
-      const cr = createRequire(import.meta.url)(\`../../opencode-go/z.js\`);
+      const cr = createRequire(import.meta.url)(\`../../xai/z.js\`);
       const dyn = import(\`../\${name}.js\`);
     `)).toEqual([
       "../../codex/x.js",
       "../cursor/y.js",
-      "../../opencode-go/z.js",
+      "../../xai/z.js",
     ]);
   });
 

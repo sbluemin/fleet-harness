@@ -29,7 +29,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MAX_GATEWAY_REQUEST_BODY_BYTES,
   MUSE_CODE_RESPONSES_URL,
-  OPENCODE_MESSAGES_URL,
   encodeReasoningSignature,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
@@ -993,44 +992,6 @@ describe("Astra asynchronous tools", () => {
       }
       expect(bodies[0]?.store).toBe(false);
       expect(bodies[2]?.parallel_tool_calls).toBe(false);
-    } finally {
-      router.dispose();
-    }
-  });
-});
-
-describe("OpenCode conversation routing", () => {
-  it("sends a stable, isolated session through each provider wire", async () => {
-    const sessions: string[] = [];
-    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
-      const session = new Headers(init?.headers).get("x-opencode-session");
-      expect(session).toBeTruthy();
-      expect(session).not.toContain("private-user");
-      sessions.push(session!);
-      const endpoint = String(url);
-      return new Response(endpoint.endsWith("/responses")
-        ? 'data: {"type":"response.completed","response":{"id":"r","model":"muse-spark-1.3-contributor","usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
-        : 'data: [DONE]\n\n', { headers: { "content-type": "text/event-stream" } });
-    });
-    const router = createAiGatewayRouter({ fetch: fetchMock, readOpencodeApiKey: async () => "test-key" });
-    try {
-      for (const model of ["muse-spark-1.3-contributor", "deepseek-v4.1-flash"]) {
-        for (const userId of ["private-user-session-a", "private-user-session-a", "private-user-session-b", null, null]) {
-          const res = response();
-          await router.handle(ctx({
-            res, token: ANTHROPIC_CRED, model: `claude-gateway--opencode--${model}`,
-            metadata: userId === null ? null : { user_id: userId },
-          }));
-          expect(res.status).toBe(200);
-        }
-      }
-      expect(sessions).toHaveLength(10);
-      for (let index = 0; index < sessions.length; index += 5) {
-        expect(sessions[index]).toBe(sessions[0]);
-        expect(sessions[index + 1]).toBe(sessions[index]);
-        expect(sessions[index + 2]).not.toBe(sessions[index]);
-        expect(sessions[index + 3]).not.toBe(sessions[index + 4]);
-      }
     } finally {
       router.dispose();
     }
