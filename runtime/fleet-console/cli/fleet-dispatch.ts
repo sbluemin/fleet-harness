@@ -1,34 +1,22 @@
-import { createProviderAuthService, type AuthService } from "@fleet-console/ai-gateway";
-import { getFleetDataDir } from "@fleet-console/infra";
+import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/bootstrap/console-lifecycle.js";
 
-import { createConsoleDataPaths } from "../core/host/bootstrap/paths.js";
-
-import { runApp } from "./app.js";
-import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
 import { dispatchGatewayCommand } from "./gateway/dispatcher.js";
-import { dispatchDoctorCommand } from "./doctor.js";
-import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/bootstrap/console-lifecycle.js";
 import { dispatchUpdateCommand } from "./update/dispatcher.js";
 import { resolveSiblingConsoleCliPath } from "./update/stop-console.js";
 
 export type FleetDispatch =
   | { readonly kind: "update"; readonly argv: readonly string[] }
   | { readonly kind: "gateway"; readonly gatewayArgv: readonly string[] }
-  | { readonly kind: "auth"; readonly argv: readonly string[] }
   | { readonly kind: "console"; readonly consoleArgv: readonly string[] }
-  | { readonly kind: "doctor"; readonly argv: readonly string[] }
-  | { readonly kind: "help"; readonly passthroughArgs: readonly string[] }
+  | { readonly kind: "help" }
   | { readonly kind: "version" }
-  | { readonly kind: "passthrough"; readonly passthroughArgs: readonly string[] };
+  | { readonly kind: "unknown"; readonly command: string };
 
 export interface FleetDispatchOptions {
   readonly stdout: { write(chunk: string): boolean; isTTY?: boolean };
   readonly stderr: { write(chunk: string): boolean };
   readonly env?: NodeJS.ProcessEnv;
-  readonly runApp?: typeof runApp;
-  readonly createAuthService?: () => AuthService;
-  readonly dispatchAuthCommand?: typeof dispatchAuthCommand;
   readonly dispatchUpdateCommand?: (
     argv: readonly string[],
     io: { readonly stdout: { write(chunk: string): boolean }; readonly stderr: { write(chunk: string): boolean } },
@@ -40,27 +28,18 @@ export interface FleetDispatchOptions {
 }
 
 /**
- * Exact fleet.mjs precedence: update > gateway > auth > console > doctor > status > cli > help >
- * version > Claude passthrough. `cli` is stripped before help/passthrough classification.
- * Reserved words after `cli` stay Claude passthrough so `fleet cli status` still asks Claude Code.
+ * fleet.mjs precedence: update > gateway > console > status > help > version > unknown.
+ * Bare `fleet` prints help. Anything else, including the retired `cli` spelling, stops here.
  */
 export function classifyFleetArgv(argv: readonly string[]): FleetDispatch {
   const command = argv[0];
+  if (command === undefined || command === "--help" || command === "-h") return { kind: "help" };
   if (command === "update") return { kind: "update", argv };
   if (command === "gateway") return { kind: "gateway", gatewayArgv: argv.slice(1) };
-  if (command === "auth") return { kind: "auth", argv };
   if (command === "console") return { kind: "console", consoleArgv: argv.slice(1) };
-  if (command === "doctor") return { kind: "doctor", argv };
   if (command === "status") return { kind: "console", consoleArgv: ["status", ...argv.slice(1)] };
-
-  const passthroughArgv = command === "cli" ? argv.slice(1) : argv;
-  if (passthroughArgv[0] === "--help" || passthroughArgv[0] === "-h") {
-    return { kind: "help", passthroughArgs: passthroughArgv.slice(1) };
-  }
-  if (command !== "cli" && isFleetVersionArg(passthroughArgv[0])) {
-    return { kind: "version" };
-  }
-  return { kind: "passthrough", passthroughArgs: [...passthroughArgv] };
+  if (isFleetVersionArg(command)) return { kind: "version" };
+  return { kind: "unknown", command };
 }
 
 export async function dispatchFleetArgv(
@@ -68,12 +47,6 @@ export async function dispatchFleetArgv(
   options: FleetDispatchOptions,
 ): Promise<number> {
   const env = options.env ?? process.env;
-  const runAppImpl = options.runApp ?? runApp;
-  const createAuth = options.createAuthService ?? (() => createProviderAuthService({
-    dataDir: createConsoleDataPaths().dir,
-    legacyDirs: [getFleetDataDir()],
-  }));
-  const auth = options.dispatchAuthCommand ?? dispatchAuthCommand;
   const update = options.dispatchUpdateCommand ?? dispatchUpdateCommand;
   const io = { stdout: options.stdout, stderr: options.stderr };
   const dispatch = classifyFleetArgv(argv);
@@ -87,17 +60,6 @@ export async function dispatchFleetArgv(
 
   if (dispatch.kind === "gateway") {
     return await (options.dispatchGatewayCommand ?? dispatchGatewayCommand)(dispatch.gatewayArgv, io);
-  }
-
-  if (dispatch.kind === "auth") {
-    // `fleet auth`는 `fleet gateway auth`로 옮겨 갔다. 손가락이 기억하는 문법을 곧장
-    // 깨뜨리지 않되, 어디로 갔는지는 매번 말한다.
-    io.stderr.write("`fleet auth` moved to `fleet gateway auth`. The old spelling still works for now.\n");
-    return await auth(dispatch.argv, io, { authService: createAuth() });
-  }
-
-  if (dispatch.kind === "doctor") {
-    return await dispatchDoctorCommand(dispatch.argv, io, { env, authService: createAuth() });
   }
 
   if (dispatch.kind === "console") {
@@ -121,6 +83,6 @@ export async function dispatchFleetArgv(
     return 0;
   }
 
-  await runAppImpl({ passthroughArgs: dispatch.passthroughArgs });
-  return 0;
+  io.stderr.write(`Unknown fleet command: ${dispatch.command}\nRun 'fleet --help' for usage.\n`);
+  return 1;
 }
