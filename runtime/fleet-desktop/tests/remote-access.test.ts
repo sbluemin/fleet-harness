@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
 import { openPinnedWebSocket } from "../src/host-socket.js";
+import { createCookieOrder } from "../src/cookie-order.js";
 import { createDesktopHostTransport, createHostTransportExecutor } from "../src/host-transport.js";
 import {
   CERTIFICATE_ACCEPTED,
@@ -161,6 +162,7 @@ describe("host partition transport", () => {
   it("treats a remote without the session capability as unsupported and does not join", async () => {
     const calls: string[] = [];
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => ({
         fetch: async (url) => {
@@ -190,6 +192,7 @@ describe("host partition transport", () => {
 
   it("does not promote a session response that omits the capability", async () => {
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => ({
         fetch: async () => new Response(JSON.stringify({ mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } }),
@@ -296,6 +299,7 @@ describe("host partition transport", () => {
       clear() { cookies.splice(0, cookies.length); },
     };
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: () => confirm(),
       openPartition: () => partition,
       readWindowCookies: async (url) => windowCookies.filter((cookie) => cookie.url === url).map(({ name, value }) => ({ name, value })),
@@ -357,6 +361,7 @@ describe("host partition transport", () => {
     expect(windowCookies.some((cookie) => cookie.name.startsWith("fleet_console_session_"))).toBe(false);
 
     const old = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => partition,
       readWindowCookies: async () => [],
@@ -533,6 +538,7 @@ describe("host partition transport", () => {
     const writing = new Promise<void>((resolve) => { entered = resolve; });
     const gate = new Promise<void>((resolve) => { letGo = resolve; });
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => ({
         fetch: async (url: string) => (url.endsWith("/pair") ? new Response(null, { status: 204 }) : Response.json({ capability: "host-session", mode: "observer", access: "full" })),
@@ -570,6 +576,7 @@ describe("host partition transport", () => {
     let handoffs = 0;
     const pairCount = (): number => requests.filter((entry) => entry.startsWith("pair:")).length;
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => ({
         fetch: (url: string, init?: RequestInit) => {
@@ -713,6 +720,7 @@ describe("host transport streams", () => {
   it("relays the current epoch's event stream and rejects an older command", async () => {
     const frames: { text?: string; error?: string; end?: boolean }[] = [];
     const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
       confirmIdentity: async () => undefined,
       openPartition: () => partition,
       readWindowCookies: async () => [],
@@ -825,6 +833,7 @@ describe("desktop host transport lifetime", () => {
       events?.enqueue(encoder.encode(`event: desktop:host-transport\ndata: ${JSON.stringify(value)}\n\n`));
     };
     const transport = createDesktopHostTransport({
+      cookieOrder: createCookieOrder(),
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
         if (path === "/api/v1/desktop/host-transport") return Response.json(snapshot(instanceA, 1, 9, "sse"));
@@ -908,6 +917,7 @@ describe("desktop host transport lifetime", () => {
     const relayStatuses: number[] = [];
     let rejectOperations = true;
     const transport = createDesktopHostTransport({
+      cookieOrder: createCookieOrder(),
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
         if (path === DESKTOP_HOST_TRANSPORT_PATH) return Response.json({ instanceId, generation, commands });
@@ -997,6 +1007,7 @@ describe("desktop host transport lifetime", () => {
     const sent: string[] = [];
     let ticketFetches = 0;
     const transport = createDesktopHostTransport({
+      cookieOrder: createCookieOrder(),
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
         if (path === DESKTOP_HOST_TRANSPORT_PATH) return Response.json({ instanceId, generation, commands });

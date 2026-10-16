@@ -2,6 +2,7 @@ import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOS
 import { ACCESS_PAIR_PATH, normalizeFingerprint } from "@fleet-console/protocol/remote";
 import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
+import type { CookieOrder } from "./cookie-order.js";
 import { createDesktopEventStream } from "./desktop-event-stream.js";
 import { openPinnedWebSocket, type PinnedSocket } from "./host-socket.js";
 
@@ -34,6 +35,8 @@ export interface HostTransportExecutorDeps {
   readonly localFetch?: typeof fetch;
   readonly deviceName?: string | null;
   readonly openSocket?: typeof openPinnedWebSocket;
+  /** main이 하나만 만들어 legacy join과 나눠 쓴다. 따로 만들면 직렬화가 갈라지므로 기본값을 두지 않는다. */
+  readonly cookieOrder: CookieOrder;
 }
 
 const SESSION_RESPONSE = "/api/v1/sessions";
@@ -67,15 +70,9 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   let nextClaim = 1;
   // 콘솔 수명이 바뀌면 이 값 아래의 번호는 죽은 수명의 것이다. 카운터를 되감지 않으므로 새 명령이 옛 번호와 겹치지 않는다.
   let claimFloor = 1;
-  /**
-   * 쿠키를 싣는 요청(pair, observe·activate)만 origin+port마다 하나씩 순서대로 보낸다. 네이티브 fetch는 응답을
-   * 돌려주기 전에 Set-Cookie를 jar에 적용하므로, 앞선 응답이 늦게 도착해 새 값을 덮는 순서를 만들지 않으려면
-   * 요청 시작부터 응답 적용·확정까지가 한 구간이어야 한다. 일반 HTTP·SSE·ws는 쿠키를 발행하지 않아 이 레인을 쓰지 않는다.
-   * 레인은 releaseConsole로 비우지 않는다. 취소 요청과 실제 fetch 종료는 다르므로, 옛 수명의 fetch가 settle된 뒤에야 풀린다.
-   */
-  const lanes = new Map<string, { held: boolean; readonly waiters: LaneWaiter[] }>();
-  // 보유자 하나가 15초 안에 끝난다는 bridge 계약 위에서, 같은 origin을 가리키는 호스트 몇 개와 폴링이 겹쳐도 넘지 않는 크기다.
-  const MAX_LANE_WAITERS = 8;
+  // 쿠키를 싣는 요청(pair, observe·activate)은 main이 주입한 순서(cookieOrder)를 지난다. legacy join과 같은 순서를 공유한다.
+  // 이 순서는 releaseConsole로 비우지 않는다. 취소 요청과 실제 fetch 종료는 다르므로, 옛 수명의 fetch가 settle된 뒤에야 풀린다.
+  const order = deps.cookieOrder;
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
@@ -105,60 +102,6 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
 
   const isLaneCommand = (command: DesktopHostCommand): boolean => command.op === "pair"
     || (command.op === "presence" && (command.params.intent === "observe" || command.params.intent === "activate"));
-
-  const onceRelease = (key: string, lane: { held: boolean; readonly waiters: LaneWaiter[] }): (() => void) => {
-    let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      releaseLane(key, lane);
-    };
-  };
-
-  const releaseLane = (key: string, lane: { held: boolean; readonly waiters: LaneWaiter[] }): void => {
-    lane.held = false;
-    for (;;) {
-      const next = lane.waiters.shift();
-      if (!next) break;
-      next.detach();
-      if (next.signal.aborted || next.claim < claimFloor) { next.resolve(null); continue; }
-      lane.held = true;
-      next.resolve(onceRelease(key, lane));
-      return;
-    }
-    if (lanes.get(key) === lane) lanes.delete(key);
-  };
-
-  /** 대기열은 상한이 있고 취소하면 즉시 빠진다. 얻지 못하면 null이며, 호출자는 요청을 보내지 않는다. */
-  const acquireLane = (key: string, claim: number, signal: AbortSignal): Promise<(() => void) | null> => {
-    if (signal.aborted || claim < claimFloor) return Promise.resolve(null);
-    let lane = lanes.get(key);
-    if (!lane) {
-      lane = { held: false, waiters: [] };
-      lanes.set(key, lane);
-    }
-    const mine = lane;
-    if (!mine.held) {
-      mine.held = true;
-      return Promise.resolve(onceRelease(key, mine));
-    }
-    if (mine.waiters.length >= MAX_LANE_WAITERS) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      const onAbort = (): void => {
-        const index = mine.waiters.indexOf(waiter);
-        if (index >= 0) mine.waiters.splice(index, 1);
-        resolve(null);
-      };
-      const waiter: LaneWaiter = {
-        claim,
-        signal,
-        detach: () => signal.removeEventListener("abort", onAbort),
-        resolve,
-      };
-      mine.waiters.push(waiter);
-      signal.addEventListener("abort", onAbort, { once: true });
-    });
-  };
 
   const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal, laneOwner = false): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
     try {
@@ -245,24 +188,29 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const claim = claimFor(command);
     await withPairing(origin, port, async () => {
       if (!claimLive(origin, port, claim, signal)) return;
-      // 레인이 열려 있는 동안 파티션 jar가 더 새롭다. 레인 밖 명령이 창 값을 덮어쓰면 응답 적용 위에 낡은 값이 놓인다.
-      // 이 판정은 withPairing 안에서 하므로 이미 줄 서 있던 copy·remember·forget 뒤에 현재 상태로 내려진다.
-      if (!laneOwner && lanes.get(claimKey(origin, port))?.held) return;
+      // 순서가 열려 있는 동안(join이든 inline 보유자든) 쿠키를 쥔 쪽의 jar가 더 새롭다. 순서 밖 명령이 값을 덮으면
+      // 응답 적용 위에 낡은 값이 놓인다. 판정은 withPairing 안에서 하므로 이미 줄 서 있던 copy·remember·forget 뒤의 현재 상태이고,
+      // 비동기 읽기 뒤에 다시 본다 — 읽는 사이 join이 순서를 얻어 응답을 적용했을 수 있다.
+      if (!laneOwner && order.held(origin)) return;
       const name = cookieName("pairing", port);
       const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
       if (!pairing || !claimLive(origin, port, claim, signal)) return;
+      if (!laneOwner && order.held(origin)) return;
       await partition.writeCookie({ ...pairing, url: origin });
     });
   };
 
-  const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<void> => {
+  const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, laneOwner = false): Promise<void> => {
     const port = command.target.port;
     const claim = claimFor(command);
     await withPairing(origin, port, async () => {
       if (!claimLive(origin, port, claim, signal)) return;
+      // 순서 밖 명령의 늦은 응답은 창 jar를 쓰지 않는다. join이 적용한 값을 옛 파티션 값이 덮으면 안 된다.
+      if (!laneOwner && order.held(origin)) return;
       const name = cookieName("pairing", port);
       const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
       if (!renewed || !claimLive(origin, port, claim, signal)) return;
+      if (!laneOwner && order.held(origin)) return;
       await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
       publishClaim(origin, port, claim);
     });
@@ -333,7 +281,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     let releaseCookieLane: (() => void) | null = null;
     try {
       if (isLaneCommand(command)) {
-        releaseCookieLane = await acquireLane(claimKey(originOf(command), command.target.port), claimFor(command), controller.signal);
+        const claim = claimFor(command);
+        releaseCookieLane = await order.hold(originOf(command), controller.signal, () => claim >= claimFloor);
         if (releaseCookieLane === null) return { id: command.id, error: "remote_host_unavailable", end: true };
       }
       const opened = await partitionFor(command, controller.signal, releaseCookieLane !== null);
@@ -409,7 +358,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       await forgetPresentedCookies(command, origin, command.target.port, partition, presented, signal);
       return { id: command.id, error: "remote_host_not_paired" };
     }
-    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal);
+    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal, intent !== "release");
     if (response.status === 404 || response.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     let body: unknown = null;
     try { body = await response.json(); } catch { body = null; }
@@ -430,7 +379,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (!claimLive(origin, port, claimFor(command), signal) || responseSetsSession(probe, port)) return { id: command.id, error: "remote_host_unavailable" };
       const still = await withPairing(origin, port, () => readPartitionCookies(partition, origin, port));
       if (!still.pairing || !claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable" };
-      await rememberPairing(command, origin, partition, signal);
+      await rememberPairing(command, origin, partition, signal, true);
       return { id: command.id, capability: "supported", mode: "off", access: null };
     }
     const marker = await readPairMarker(probe);
@@ -466,7 +415,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (await storePairingCookie(submitted, command, origin, partition, signal) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
     if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
-    await rememberPairing(command, origin, partition, signal);
+    await rememberPairing(command, origin, partition, signal, true);
     return { id: command.id, capability: "supported", mode: "off", access: null };
   }
 
@@ -871,13 +820,6 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
       stream.stop();
     },
   };
-}
-
-interface LaneWaiter {
-  readonly claim: number;
-  readonly signal: AbortSignal;
-  detach(): void;
-  resolve(release: (() => void) | null): void;
 }
 
 interface UploadAssembly {

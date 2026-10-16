@@ -24,6 +24,7 @@ import { createHostPickerView } from "./host-picker-view.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
+import { createCookieOrder } from "./cookie-order.js";
 import { createDesktopHostTransport } from "./host-transport.js";
 import { confirmRemoteIdentity, installRemoteCertificatePins } from "./remote-access.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -170,7 +171,10 @@ async function boot(): Promise<void> {
   });
   const remotePins = shellNetwork.pins;
   const consoleFetch = shellNetwork.fetch;
+  // 같은 origin의 쿠키를 싣는 요청(legacy join, inline pair·observe·activate)이 하나의 순서를 나눈다. 두 곳에 같은 인스턴스를 넘긴다.
+  const cookieOrder = createCookieOrder();
   const hostTransport = createDesktopHostTransport({
+    cookieOrder,
     fetch: consoleFetch,
     confirmIdentity: confirmRemoteIdentity,
     openPartition: (hostKey) => {
@@ -410,6 +414,7 @@ async function boot(): Promise<void> {
     }
   };
   const bridge: RemoteBridge = createRemoteBridge({
+    cookieOrder,
     pins: remotePins,
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
