@@ -9,6 +9,7 @@ import {
   createQuotaService,
   createMuseCodeOAuth,
   createCodexOAuth,
+  createXaiOAuth,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -133,10 +134,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
   // 추론과 quota가 같은 인스턴스를 써야 갱신이 한 번으로 묶인다.
   const codex = createCodexOAuth({ authService, onQuota: (value) => quota.record("codex", value) });
   ctx.host.lifecycle.registerCleanup(() => codex.dispose());
+  const xai = createXaiOAuth({ authService, onQuota: (value) => quota.record("xai", value) });
+  ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     isCursorConnected: () => isConnected("cursor"),
-    ...createAiGatewayQuotaCollectors({ authService, museCode, codex }),
+    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -308,6 +311,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     assignRouting: (request, options) => assign(request, options?.signal),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     readAuth: codex.readSubscription,
+    readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

@@ -30,7 +30,6 @@ import {
 } from "../upstream/cursor/native/adapter.js";
 import type { CursorDiagnosticSink } from "../upstream/cursor/native/adapter.js";
 import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
-import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
@@ -131,19 +130,6 @@ export interface CodexSubscriptionAuth {
  */
 export async function readCursorSubscriptionToken(): Promise<string | null> {
   const credentials = await resolveCursorCredentials(defaultCredentialDeps);
-  return credentials?.accessToken ?? null;
-}
-
-/**
- * Codex CLI 로그인이 남긴 ChatGPT 구독 토큰.
- *
- * 조달 경로는 core-ai-gateway가 단일 출처다. 여기서 직접 `~/.codex/auth.json`을 읽으면
- * `CODEX_HOME`으로 Codex 홈을 옮긴 사용자의 파일을 놓친다 — quota 플러그인은 이미 그 변수를
- * 존중하고 있었다. 게이트웨이는 `chatgpt-account-id` 헤더가 필요하므로 account id가 없는
- * 자격증명은 여기서 사용 불가로 판정한다.
- */
-export async function readXaiSubscriptionToken(): Promise<string | null> {
-  const credentials = await resolveXaiCliCredentials(defaultCredentialDeps);
   return credentials?.accessToken ?? null;
 }
 
@@ -626,7 +612,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "xai") {
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No active Grok CLI sign-in was found. Run `grok login` first.");
+        writeAnthropicError(res, 401, "authentication_error", "No xAI sign-in was found. Sign in to xAI in Console first.");
         clock?.finish("error", 401);
         return true;
       }

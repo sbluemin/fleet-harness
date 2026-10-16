@@ -7,7 +7,9 @@ import {
   CODEX_AUTH_PROVIDER_ID,
   createCodexOAuth,
   createMuseCodeOAuth,
+  createXaiOAuth,
   MUSE_CODE_AUTH_PROVIDER_ID,
+  XAI_AUTH_PROVIDER_ID,
 } from "../src/oauth/index.js";
 
 function jwt(payload: Record<string, unknown>): string {
@@ -125,6 +127,54 @@ describe("Fleet-owned subscription sign-in", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   }, 10_000);
+
+  // xAI는 RFC 8628에 scope를 더하고, 갱신이 토큰을 회전한다. quota가 401을 받으면 한 번 강제 갱신하고
+  // 회전된 쌍을 저장한 뒤 다시 조회한다.
+  it("signs in to xAI with its scope and keeps a rotated refresh after a refused quota read", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xai-oauth-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    let billingCalls = 0;
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      const target = String(url);
+      if (target === "https://auth.x.ai/oauth2/device/code") {
+        expect(Object.fromEntries(new URLSearchParams(String(init?.body)))).toEqual({
+          client_id: "b1a00492-073a-47ea-816f-4c329264a828",
+          scope: "openid profile email offline_access grok-cli:access api:access",
+        });
+        return Response.json({
+          device_code: "device-secret", user_code: "GROK-CODE", verification_uri: "https://accounts.x.ai/device",
+          verification_uri_complete: "https://accounts.x.ai/device?user_code=GROK-CODE", expires_in: 600, interval: 1,
+        });
+      }
+      if (target === "https://auth.x.ai/oauth2/token") {
+        const form = Object.fromEntries(new URLSearchParams(String(init?.body)));
+        if (form.grant_type === "refresh_token") {
+          expect(form).toEqual({ grant_type: "refresh_token", client_id: "b1a00492-073a-47ea-816f-4c329264a828", refresh_token: "refresh-1" });
+          return Response.json({ access_token: "access-2", refresh_token: "refresh-2", expires_in: 3600 });
+        }
+        expect(form).toMatchObject({ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code: "device-secret" });
+        return Response.json({ access_token: "access-1", refresh_token: "refresh-1", expires_in: 3600 });
+      }
+      expect(target).toBe("https://cli-chat-proxy.grok.com/v1/billing?format=credits");
+      billingCalls += 1;
+      if (new Headers(init?.headers).get("Authorization") === "Bearer access-1") return new Response("{}", { status: 401 });
+      return Response.json({ config: { currentPeriod: { type: "USAGE_PERIOD_TYPE_MONTHLY", start: "2026-10-01T00:00:00Z", end: "2026-11-01T00:00:00Z" } } });
+    });
+    const oauth = createXaiOAuth({ authService, fetch: fetchImpl });
+    try {
+      const started = await oauth.start();
+      expect(started.verificationUriComplete).toBe("https://accounts.x.ai/device?user_code=GROK-CODE");
+      await vi.waitFor(() => expect(oauth.status(started.loginId)?.state).toBe("signed_in"), { timeout: 4000 });
+      expect(await authService.getEntry(XAI_AUTH_PROVIDER_ID)).toMatchObject({ key: "access-1", type: "oauth", refreshToken: "refresh-1", version: 1 });
+      await expect(oauth.fetchUsage()).resolves.toMatchObject({ status: "ok", windows: [] });
+      expect(billingCalls).toBe(2);
+      expect(await authService.getEntry(XAI_AUTH_PROVIDER_ID)).toMatchObject({ key: "access-2", refreshToken: "refresh-2" });
+      await expect(oauth.readSubscriptionToken()).resolves.toBe("access-2");
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   // quota와 추론(또는 Console과 `fleet gateway serve`)이 같은 갱신 토큰으로 동시에 갱신해도
   // 먼저 저장된 회전 쌍을 늦게 온 옛 응답이 덮으면 안 된다.

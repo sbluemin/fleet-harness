@@ -1,25 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
-  XAI_CLI_CREDITS_URL,
-  XAI_CLI_REFRESH_URL,
   XAI_CLI_CLIENT_VERSION,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
-  XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
   encodeAnthropicSse,
-  fetchXaiUsage,
-  parseXaiCredits,
-  parseXaiPlan,
-  resolveXaiCliAuth,
-  resolveXaiCliCredentials,
-  xaiCliAuthFilePath,
 } from "../../src/index.js";
 import type {
   CanonicalResponseEvent,
   CanonicalResponseRequest,
-  CredentialResolverDeps,
 } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -166,74 +156,6 @@ function functionCallRequest(): CanonicalResponseRequest {
 function eventTypes(events: readonly CanonicalResponseEvent[]): string[] {
   return events.map((event) => event.type);
 }
-
-function deps(raw: string | null, env: NodeJS.ProcessEnv = {}): CredentialResolverDeps {
-  return {
-    platform: "linux",
-    homedir: () => "/home/test",
-    env,
-    readBounded: vi.fn(async () => raw),
-    execFile: vi.fn(async () => ""),
-  };
-}
-
-function jwtWithExp(expSeconds: number): string {
-  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(JSON.stringify({ exp: expSeconds })).toString("base64url");
-  return `${header}.${payload}.sig`;
-}
-
-const WEEKLY_PERIOD = {
-  type: "USAGE_PERIOD_TYPE_WEEKLY",
-  start: "2026-08-10T00:00:00Z",
-  end: "2026-08-17T00:00:00Z",
-};
-
-function creditsResponse(config: Record<string, unknown>, status = 200): Response {
-  return new Response(JSON.stringify({ config }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function settingsResponse(plan: string, status = 200): Response {
-  return new Response(JSON.stringify({ subscription_tier_display: plan }), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function refreshResponse(accessToken: string, expiresIn = 3600): Response {
-  return new Response(JSON.stringify({ access_token: accessToken, expires_in: expiresIn }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-describe("Grok CLI credentials", () => {
-  it("honors GROK_HOME and reads a fresh auth.x.ai entry", async () => {
-    const credentialDeps = deps(JSON.stringify({
-      "https://auth.x.ai::profile": {
-        key: "access-token",
-        oidc_issuer: "https://auth.x.ai",
-        expires_at: "2026-08-14T01:00:00Z",
-        user_id: "user-1",
-      },
-    }), { GROK_HOME: "/custom/grok" });
-    expect(xaiCliAuthFilePath(credentialDeps)).toBe("/custom/grok/auth.json");
-    await expect(resolveXaiCliCredentials(credentialDeps, () => Date.parse("2026-08-14T00:00:00Z")))
-      .resolves.toEqual({ accessToken: "access-token", expiresAt: Date.parse("2026-08-14T01:00:00Z"), userId: "user-1" });
-  });
-
-  it("rejects expired, wrong-issuer, and malformed entries", async () => {
-    await expect(resolveXaiCliCredentials(deps(JSON.stringify({
-      "https://auth.x.ai::profile": { key: "token", oidc_issuer: "https://auth.x.ai", expires_at: "2026-08-13T00:00:00Z" },
-    })), () => Date.parse("2026-08-14T00:00:00Z"))).resolves.toBeNull();
-    await expect(resolveXaiCliCredentials(deps(JSON.stringify({
-      "https://auth.x.ai::profile": { key: "token", oidc_issuer: "https://evil.example" },
-    })))).resolves.toBeNull();
-  });
-});
 
 describe("Grok endpoint selection", () => {
   function refusal(status: number): Response {

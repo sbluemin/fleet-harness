@@ -2,8 +2,8 @@ import {
   createAiGatewaySettingsStore,
   createProviderAuthService,
   CODEX_AUTH_PROVIDER_ID,
+  XAI_AUTH_PROVIDER_ID,
   readCursorSubscriptionToken,
-  readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
 } from "@fleet-console/ai-gateway";
@@ -138,7 +138,7 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
     // Console 로그인 항목의 유무만 본다. 상태 조회가 토큰을 갱신하지 않는다.
     codex: async () => (await resolveAuthService(deps).getEntry(CODEX_AUTH_PROVIDER_ID)) ?? null,
     cursor: () => readCursorSubscriptionToken(),
-    xai: () => readXaiSubscriptionToken(),
+    xai: async () => (await resolveAuthService(deps).getEntry(XAI_AUTH_PROVIDER_ID)) ?? null,
   };
   const signedIn = await listSignedInProviders(deps);
   return [

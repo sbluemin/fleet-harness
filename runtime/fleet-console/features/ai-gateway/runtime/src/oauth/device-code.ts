@@ -2,6 +2,8 @@ export interface DeviceCodeConfig {
   readonly authorizationUrl: string;
   readonly tokenUrl: string;
   readonly clientId: string;
+  /** 시작 요청에 함께 보낼 scope. 없으면 보내지 않는다. */
+  readonly scope?: string;
   readonly headers?: Readonly<Record<string, string>>;
 }
 
@@ -100,7 +102,8 @@ export function createDeviceCodeClient(deps: {
   return {
     async start(signal: AbortSignal): Promise<DeviceAuthorization> {
       const { status, body } = await requestOAuthJson(fetchImpl, config.authorizationUrl, {
-        method: "POST", headers, body: new URLSearchParams({ client_id: config.clientId }), signal,
+        method: "POST", headers, signal,
+        body: new URLSearchParams({ client_id: config.clientId, ...(config.scope ? { scope: config.scope } : {}) }),
       });
       const verificationUri = httpsUrl(body.verification_uri);
       const complete = body.verification_uri_complete === undefined ? undefined : httpsUrl(body.verification_uri_complete);
@@ -126,11 +129,16 @@ export function createDeviceCodeClient(deps: {
         }), signal,
       });
       if (status === 200 && typeof body.access_token === "string" && body.access_token.trim()) {
-        // 토큰의 명시한 수명, 또는 JWT exp만 읽는다. 저장·갱신은 이 클라이언트의 몫이 아니다.
+        // 토큰의 명시한 수명, 또는 JWT exp만 읽는다. 갱신 토큰은 그대로 넘기고, 저장·갱신은 이 클라이언트의 몫이 아니다.
         const jwtExpiry = jwtExpiresAt(body.access_token);
         const expiresAt = typeof body.expires_in === "number" && Number.isFinite(body.expires_in) && body.expires_in > 0
           ? now() + body.expires_in * 1000 : jwtExpiry;
-        return { state: "authorized", accessToken: body.access_token, ...(expiresAt === undefined ? {} : { accessExpiresAt: expiresAt }) };
+        const refreshToken = typeof body.refresh_token === "string" && body.refresh_token.trim() ? body.refresh_token : undefined;
+        return {
+          state: "authorized", accessToken: body.access_token,
+          ...(expiresAt === undefined ? {} : { accessExpiresAt: expiresAt }),
+          ...(refreshToken === undefined ? {} : { refreshToken }),
+        };
       }
       switch (body.error) {
         case "authorization_pending": return { state: "pending" };
