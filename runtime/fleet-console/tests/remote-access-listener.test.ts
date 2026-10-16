@@ -321,11 +321,17 @@ it("does not take control or permit writes when a paired device only observes", 
     const denied = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), observer);
     expect(denied.status).toBe(403);
     expect(JSON.parse(denied.body)).toEqual({ error: "read_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/models/roster?target=launch", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    const commodore = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/autonomy", JSON.stringify({ theaterId: "missing", autonomy: true }), observer);
+    expect(commodore.status).toBe(403);
+    expect(JSON.parse(commodore.body)).toEqual({ error: "read_only" });
     const status = await readRemoteStatus(fixture);
     expect(status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device).sort()).toEqual(["holder", "watcher"]);
     const activated = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "activate" }), observer);
     expect(activated.status).toBe(200);
     expect(JSON.parse(activated.body).mode).toBe("controller");
+    const managed = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/sources", JSON.stringify({ theaterId: "missing", sources: [] }), observer);
+    expect(managed.status).not.toBe(403);
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 401 });
   });
 
@@ -341,6 +347,10 @@ it("does not take control or permit writes when a paired device only observes", 
     const write = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), eye);
     expect(write.status).toBe(403);
     expect(JSON.parse(write.body)).toEqual({ error: "read_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/models/roster?target=agent", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const commodore = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/directive", JSON.stringify({ theaterId: "missing", text: "keep" }), eye);
+    expect(commodore.status).toBe(403);
+    expect(JSON.parse(commodore.body)).toEqual({ error: "read_only" });
   });
 
   it("admits a host session only for an existing pairing and replaces that pairing's previous observation", async () => {

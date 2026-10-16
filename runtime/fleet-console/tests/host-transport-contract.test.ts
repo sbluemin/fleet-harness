@@ -73,6 +73,14 @@ describe("host transport wire contract", () => {
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", mode: "observer" })).toEqual({ error: "read_only" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commodore/ask/answer", mode: "controller" })).toMatchObject({ id: "commodore-ask-answer" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commodore/ask/answer", mode: "observer" })).toEqual({ error: "read_only" });
+    expect(admitHostRoute({ kind: "json", method: "GET", path: "/api/v1/models/roster?target=launch", mode: "controller" })).toMatchObject({ id: "model-roster", path: "/api/v1/models/roster?target=launch" });
+    expect(admitHostRoute({ kind: "json", method: "GET", path: "/api/v1/models/roster?target=agent", mode: "observer" })).toMatchObject({ id: "model-roster" });
+    for (const path of ["/plugins/objectives/commodore/autonomy", "/plugins/objectives/commodore/directive", "/plugins/objectives/commodore/intel/add", "/plugins/objectives/commodore/intel/edit", "/plugins/objectives/commodore/intel/remove", "/plugins/objectives/commodore/clear", "/plugins/objectives/commodore/sources", "/plugins/objectives/commodore/retry", "/plugins/objectives/commodore/coordinates", "/plugins/objectives/commodore/commander", "/plugins/objectives/commodore/patrol", "/plugins/objectives/commodore/stop-at"]) {
+      expect(admitHostRoute({ kind: "json", method: "POST", path, mode: "controller" })).toMatchObject({ method: "POST", path });
+      expect(admitHostRoute({ kind: "json", method: "POST", path, mode: "observer" })).toEqual({ error: "read_only" });
+    }
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/api/v1/settings/global", mode: "controller" })).toEqual({ error: "route_denied" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commodore/autonomy/extra", mode: "controller" })).toEqual({ error: "route_denied" });
     expect(admitHostRoute({ kind: "upload", method: "POST", path: "/plugins/objectives/attachment/add?objectiveId=a&name=one.png", mode: "controller" })).toMatchObject({ id: "objective-attachment-add" });
     expect(admitHostRoute({ kind: "upload", method: "POST", path: "/api/v1/agent/attachments", mode: "observer" })).toEqual({ error: "read_only" });
     const upload = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: instanceId, path: "/api/v1/agent/attachments", dataBase64: "YQ==" };
