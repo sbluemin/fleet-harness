@@ -63,6 +63,7 @@ import {
   proxyToOpencode,
 } from "./opencode-dispatch.js";
 import {
+  applyDecisiveRefusalHeaders,
   drain,
   errorMessage,
   onClientDisconnect,
@@ -76,7 +77,7 @@ import type { GatewayHttpHandler } from "./types.js";
 /** 패스스루 한 번에 하네스가 얹는 것: 본문 재작성과 상태 승격, 진단 상관용 세션 id. */
 export type PassthroughRelay = Pick<
   AnthropicProxyOptions,
-  "projectResponseBody" | "retryableStatus" | "wireSessionId"
+  "projectResponseBody" | "retryableStatus" | "decisiveRefusalHeaders" | "wireSessionId"
 >;
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "../upstream/opencode-go/index.js";
@@ -373,6 +374,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
   const handle: GatewayHttpHandler = async ({ req, res, pathname }) => {
     const harness = harnessForPath(pathname);
+    // 401·403은 하네스가 재시도를 멈추라고 한 헤더를 얹어 나간다. 그 밖의 상태는 함수가
+    // 아무것도 돌려주지 않으므로 429·5xx의 기존 재시도는 바뀌지 않는다.
+    const writeClientError = (
+      target: Parameters<typeof writeAnthropicError>[0],
+      status: number,
+      type: string,
+      message: string,
+    ): void => {
+      writeAnthropicError(target, status, type, message, harness.decisiveRefusalHeaders);
+    };
     // 클라이언트는 base URL 뒤에 자기 경로를 붙인다. 어느 경로를 먼저 두드리는지는
     // 하네스가 선언한다 — Claude Code는 /api/hello, Grok Build는 아무것도 두드리지 않는다.
     // 프로브는 서빙하는 하네스 전체에 대해 본다: 응답이 빈 객체 하나라 어느 프로필이 그것을
@@ -388,12 +399,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 열려 있던 모든 세션이 훅을 다시 싣는다. 스냅숏은 정적으로 두고 답은 여기서 낸다.
     if (pathname.endsWith("/v1/fleet/routing/assign")) {
       if (req.method !== "POST") {
-        writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
+        writeClientError(res, 405, "invalid_request_error", "Method not allowed");
         return true;
       }
       const modToken = req.headers["x-fleet-mod-token"];
       if (!deps.assignRouting || !deps.modHookToken || modToken !== deps.modHookToken) {
-        writeAnthropicError(res, 401, "authentication_error", "Invalid mod credential");
+        writeClientError(res, 401, "authentication_error", "Invalid mod credential");
         return true;
       }
       const controller = new AbortController();
@@ -403,7 +414,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
         const request = await readJsonBody<Record<string, unknown>>(req, 1024 * 1024);
         if (!request) {
-          writeAnthropicError(res, 400, "invalid_request_error", "Invalid routing request");
+          writeClientError(res, 400, "invalid_request_error", "Invalid routing request");
           return true;
         }
         const decision = await deps.assignRouting(request, { signal: controller.signal });
@@ -413,7 +424,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         }
       } catch {
         if (!res.writableEnded) {
-          writeAnthropicError(res, 500, "api_error", "Could not assign a model to the delegated run");
+          writeClientError(res, 500, "api_error", "Could not assign a model to the delegated run");
         }
       } finally {
         stopWatching();
@@ -422,18 +433,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
     if (pathname.endsWith("/v1/compact-events")) {
       if (req.method !== "POST") {
-        writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
+        writeClientError(res, 405, "invalid_request_error", "Method not allowed");
         return true;
       }
       const hookToken = req.headers["x-fleet-compact-token"];
       if (!deps.compactionStore || !deps.compactionHookToken || hookToken !== deps.compactionHookToken) {
-        writeAnthropicError(res, 401, "authentication_error", "Invalid compact hook credential");
+        writeClientError(res, 401, "authentication_error", "Invalid compact hook credential");
         return true;
       }
       try {
         const event = await readJsonBody<Record<string, unknown>>(req, 4 * 1024 * 1024);
         if (!event || typeof event.session_id !== "string") {
-          writeAnthropicError(res, 400, "invalid_request_error", "Invalid compact event");
+          writeClientError(res, 400, "invalid_request_error", "Invalid compact event");
           return true;
         }
         if (event.hook_event_name === "PreCompact") {
@@ -448,20 +459,20 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             summary: typeof event.compact_summary === "string" ? event.compact_summary : "",
           });
         } else {
-          writeAnthropicError(res, 400, "invalid_request_error", "Unknown compact event");
+          writeClientError(res, 400, "invalid_request_error", "Unknown compact event");
           return true;
         }
         res.writeHead(200, { "content-type": "application/json" });
         res.end('{"ok":true}');
       } catch {
-        writeAnthropicError(res, 400, "invalid_request_error", "Invalid compact event");
+        writeClientError(res, 400, "invalid_request_error", "Invalid compact event");
       }
       return true;
     }
     // 하네스의 gateway model discovery. 이게 있어야 Claude Code의 /model picker에 GPT가 뜬다.
     if (pathname.endsWith("/v1/models")) {
       if (!acceptedCredential(req.headers, harness)) {
-        writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
+        writeClientError(res, 401, "authentication_error", "Missing Anthropic credential");
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
@@ -473,12 +484,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     }
     if (!pathname.endsWith("/v1/messages")) return false;
     if (req.method !== "POST") {
-      writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
+      writeClientError(res, 405, "invalid_request_error", "Method not allowed");
       return true;
     }
     const callerCredential = acceptedCredential(req.headers, harness);
     if (!callerCredential) {
-      writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
+      writeClientError(res, 401, "authentication_error", "Missing Anthropic credential");
       return true;
     }
 
@@ -494,22 +505,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       if (error instanceof RequestBodyTooLargeError) {
         // 413이되 "context window"는 담지 않는다 — 그 문구는 Claude Code의 반응형 압축을 무장시키는
         // 별도 계약(canonical/index.ts ContextWindowExceededError)이고, 큰 본문이 곧 창 초과는 아니다.
-        writeAnthropicError(res, 413, "invalid_request_error", `Request body exceeds the gateway limit of ${error.maxBytes} bytes.`);
+        writeClientError(res, 413, "invalid_request_error", `Request body exceeds the gateway limit of ${error.maxBytes} bytes.`);
         clock?.finish("error", 413);
         return true;
       }
-      writeAnthropicError(res, 400, "invalid_request_error", "Request body was not valid JSON");
+      writeClientError(res, 400, "invalid_request_error", "Request body was not valid JSON");
       clock?.finish("error", 400);
       return true;
     }
     clock?.markBodyRead();
     if (!body || typeof body !== "object") {
-      writeAnthropicError(res, 400, "invalid_request_error", "Request body must be a JSON object");
+      writeClientError(res, 400, "invalid_request_error", "Request body must be a JSON object");
       clock?.finish("error", 400);
       return true;
     }
     if (typeof body.model !== "string" || body.model.trim().length === 0) {
-      writeAnthropicError(res, 400, "invalid_request_error", "Request model must be a non-empty string");
+      writeClientError(res, 400, "invalid_request_error", "Request model must be a non-empty string");
       clock?.finish("error", 400);
       return true;
     }
@@ -517,7 +528,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // canonical 변환 모두 배열만 읽으므로, 문자열을 그대로 흘리면 목적지를 가리지 않고 500이 된다.
     const normalizedSystem = normalizeAnthropicSystem(body);
     if (!normalizedSystem) {
-      writeAnthropicError(res, 400, "invalid_request_error", "Request system must be a string or an array of text blocks");
+      writeClientError(res, 400, "invalid_request_error", "Request system must be a string or an array of text blocks");
       clock?.finish("error", 400);
       return true;
     }
@@ -533,7 +544,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       target = harness.findModel(requested, GATEWAY_MODELS);
     }
     if (!target && !harness.relaysUnmatchedModel(requested)) {
-      writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
+      writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
       clock?.finish("error", 400);
       return true;
     }
@@ -542,7 +553,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 여기서 함께 강제한다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고,
     // 선별 파일의 주인과 같은 사람이라 호출자 입력과 같은 신뢰 등급이 아니다.
     if (target && target.provider !== "claude" && modelOverride === undefined && !isModelExposed(target)) {
-      writeAnthropicError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
+      writeClientError(res, 403, "permission_error", `AI gateway model is not enabled: ${requested}`);
       clock?.finish("error", 403);
       return true;
     }
@@ -573,7 +584,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     if (target?.provider === "cursor") {
       const cursorToken = await deps.readCursorToken?.();
       if (!cursorToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No Cursor sign-in was found. Sign in to Cursor in Console first.");
+        writeClientError(res, 401, "authentication_error", "No Cursor sign-in was found. Sign in to Cursor in Console first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -582,7 +593,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = await readAuth();
       if (!auth) {
-        writeAnthropicError(res, 401, "authentication_error", "No Codex sign-in was found. Sign in to Codex in Console first.");
+        writeClientError(res, 401, "authentication_error", "No Codex sign-in was found. Sign in to Codex in Console first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -591,7 +602,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "opencode") {
       const opencodeApiKey = await deps.readOpencodeApiKey?.();
       if (!opencodeApiKey) {
-        writeAnthropicError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
+        writeClientError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -599,7 +610,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "xai") {
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No xAI sign-in was found. Sign in to xAI in Console first.");
+        writeClientError(res, 401, "authentication_error", "No xAI sign-in was found. Sign in to xAI in Console first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -607,7 +618,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "muse-code") {
       const auth = await deps.readMuseCodeAuth?.();
       if (auth?.status !== "ok" || !auth.credentials.apiKey) {
-        writeAnthropicError(res, 401, "authentication_error", "Sign in to Muse Code in the Console quota panel, then retry.");
+        writeClientError(res, 401, "authentication_error", "Sign in to Muse Code in the Console quota panel, then retry.");
         clock?.finish("error", 401);
         return true;
       }
@@ -615,7 +626,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "antigravity") {
       const antigravityToken = await deps.readAntigravityToken?.();
       if (!antigravityToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No active Antigravity sign-in was found. Run `agy` and sign in first.");
+        writeClientError(res, 401, "authentication_error", "No active Antigravity sign-in was found. Run `agy` and sign in first.");
         clock?.finish("error", 401);
         return true;
       }
@@ -636,14 +647,15 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // 네이티브 모델의 전송 ID는 설치된 Claude Code가 alias를 푼 값이다. 아직 못 물었으면
         // alias를 API로 흘리지 않고 여기서 멈춘다. 호출자 인증과 기존 beta는 보존한다.
         if (target && target.upstreamId === undefined) {
-          writeAnthropicError(res, 503, "api_error", `Claude Code has not reported which model "${requested}" resolves to yet.`);
+          writeClientError(res, 503, "api_error", `Claude Code has not reported which model "${requested}" resolves to yet.`);
           clock?.finish("error", 503);
           return true;
         }
         clock?.setRoute("passthrough");
         await proxyToAnthropic(req.headers, res,
           target ? { ...body, model: target.upstreamId ?? body.model } : body,
-          requestFetch, controller.signal, harness.retryableStatus, target?.contextWindow, sessionId);
+          requestFetch, controller.signal, harness.retryableStatus, target?.contextWindow, sessionId,
+          harness.decisiveRefusalHeaders);
         clock?.finish("ok");
         return true;
       }
@@ -660,6 +672,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const passthroughRelay: PassthroughRelay = {
         ...(passthroughProjection ? { projectResponseBody: passthroughProjection } : {}),
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
+        ...(harness.decisiveRefusalHeaders
+          ? { decisiveRefusalHeaders: harness.decisiveRefusalHeaders }
+          : {}),
         ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
       };
       if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
@@ -826,7 +841,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
       clock?.setRoute("translated");
       upstream ??= await gateway.stream(body, callOptions);
-      res.writeHead(upstream.status, headerEntries(upstream.headers));
+      res.writeHead(upstream.status, applyDecisiveRefusalHeaders(
+        upstream.status,
+        headerEntries(upstream.headers),
+        harness.decisiveRefusalHeaders,
+      ));
       for await (const chunk of upstream.body) {
         if (!res.write(chunk)) await drain(res, controller.signal);
       }
@@ -897,7 +916,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         writeSseErrorFrame(res, type, message);
         res.end();
       } else {
-        writeAnthropicError(res, status, type, message);
+        writeClientError(res, status, type, message);
       }
     } finally {
       stopWatching();
@@ -936,11 +955,13 @@ async function proxyToAnthropic(
   retryableStatus: ((status: number) => number) | undefined,
   contextWindow?: number,
   sessionId?: string,
+  decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined,
 ): Promise<void> {
   // 헤더·URL 정책은 core-ai-gateway가 소유한다. 여기는 요청을 실어 보낼 뿐이다.
   const headers = anthropicNativeHeaders(requestHeaders, contextWindow);
   await proxyAnthropicMessages(res, body, {
     ...(retryableStatus ? { retryableStatus } : {}),
+    ...(decisiveRefusalHeaders ? { decisiveRefusalHeaders } : {}),
     keepAlive: true,
     fetchImpl,
     headers,

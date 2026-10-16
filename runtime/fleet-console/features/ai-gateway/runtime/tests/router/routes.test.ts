@@ -1549,6 +1549,7 @@ describe("Muse Code routing", () => {
       const signedOutRes = response();
       await signedOut.handle(ctx({ res: signedOutRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
       expect(signedOutRes.status).toBe(401);
+      expect(signedOutRes.headers["x-should-retry"]).toBe("false");
       expect(signedOutRes.body).toContain("Console quota panel");
 
       await authService.setEntry(MUSE_CODE_AUTH_PROVIDER_ID, {
@@ -1569,6 +1570,7 @@ describe("Muse Code routing", () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe(`Bearer ${MUSE_KEY}`);
       expect(refusedRes.status).toBe(401);
+      expect(refusedRes.headers["x-should-retry"]).toBe("false");
       expect(refusedRes.body).toContain("Console quota panel");
       expect(refusedRes.body).not.toContain(MUSE_KEY);
       router.dispose();

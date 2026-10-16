@@ -4,7 +4,7 @@ import { logRawPassthroughBody } from "../transport/wire-log.js";
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { PassthroughBodyProjection } from "../downstream/harness/contract.js";
 
-import { drain, type GatewayProxyResponse } from "./http.js";
+import { applyDecisiveRefusalHeaders, drain, type GatewayProxyResponse } from "./http.js";
 
 // 도구 eager 정규화는 core-ai-gateway 소유로 이전됐다. 기존 런타임 소비자(ai-gateway-routes)를
 // 위해 이 모듈의 이름으로 재수출한다.
@@ -28,6 +28,11 @@ export interface AnthropicProxyOptions {
   readonly projectResponseBody?: PassthroughBodyProjection;
   /** Harness-owned status lift. Absent forwards the upstream status unchanged. */
   readonly retryableStatus?: (status: number) => number;
+  /**
+   * Harness-owned "do not retry" headers for a refusal. Absent leaves upstream
+   * headers untouched, including on `429` and `5xx`.
+   */
+  readonly decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined;
   /**
    * 클라이언트가 요청한 모델 id. 지정하면 upstream이 에코한 wire id를 이 값으로
    * 되돌려 본다 — Claude Code가 자기 요청 모델과 응답 모델을 대조할 수 있게 한다.
@@ -75,7 +80,9 @@ export async function proxyAnthropicMessages(
   });
   // Passthrough forwards the provider's own bytes, but a status the client refuses to retry
   // would strand a transient upstream failure that one attempt would have cleared.
-  res.writeHead(options.retryableStatus?.(upstream.status) ?? upstream.status, responseHeaders);
+  // A 401/403 is the opposite: Claude Code retries it unless told not to.
+  const status = options.retryableStatus?.(upstream.status) ?? upstream.status;
+  res.writeHead(status, applyDecisiveRefusalHeaders(status, responseHeaders, options.decisiveRefusalHeaders));
   if (!upstream.body) {
     res.end();
     return;

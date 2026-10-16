@@ -4,6 +4,7 @@ import type { CompactCeilingSetting, GatewayHarnessProfile } from "../contract.j
 
 import {
   GATEWAY_TRANSIENT_ERROR_STATUS,
+  claudeDecisiveRefusalHeaders,
   claudeRetryableUpstreamStatus,
   projectAnthropicResponseUsage,
   projectClaudeContextInputTokens,
@@ -62,6 +63,7 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
     })
   ),
   retryableStatus: claudeRetryableUpstreamStatus,
+  decisiveRefusalHeaders: claudeDecisiveRefusalHeaders,
   transientErrorStatus: GATEWAY_TRANSIENT_ERROR_STATUS,
   asyncToolNames: [],
   // 다른 세션(구성원·지휘관)에게 보고를 보내는 도구. 중복 전송이 사용자에게 보이는 부작용이다.
