@@ -276,8 +276,12 @@ function isSessionCapability(value: unknown): value is { capability: "host-sessi
 }
 
 function safeByteType(value: string): string {
-  const type = value.split(";")[0]?.trim().toLowerCase() ?? "";
-  return type === "image/png" || type === "image/jpeg" || type === "image/gif" || type === "image/webp" || type === "text/plain" || type === "application/pdf" ? type : "application/octet-stream";
+  const [rawType, ...params] = value.split(";").map((part) => part.trim().toLowerCase());
+  const type = rawType ?? "";
+  if (type === "image/png" || type === "image/jpeg" || type === "image/gif" || type === "image/webp") return type;
+  // 증거 텍스트는 charset까지 제품이 보낸 그대로다. 그 외 매개변수나 PDF는 닫힌 타입으로 접지 않는다.
+  if (type === "text/plain") return params.some((part) => part.replace(/\s+/gu, "") === "charset=utf-8") ? "text/plain; charset=utf-8" : "text/plain";
+  return "application/octet-stream";
 }
 
 export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { readonly fetch: typeof fetch; readonly log?: (message: string) => void }): { start(origin: string): Promise<void>; stop(): void } {

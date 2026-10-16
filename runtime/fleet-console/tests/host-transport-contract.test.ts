@@ -6,6 +6,7 @@ import {
   hostSocketUrl,
   hostTransportPath,
   isHostByteRequest,
+  isHostByteResult,
   isHostJsonRequest,
   isHostPresence,
   isHostPresenceRequest,
@@ -16,6 +17,7 @@ import {
 } from "@fleet-console/protocol/remote/host-transport";
 import type http from "node:http";
 import { createHostGateway } from "../features/remote-access/host/host-gateway.js";
+import { admitHostRoute } from "../features/remote-access/host/host-route-table.js";
 
 const hostKey = "6f1c9a20-1111-4222-8333-444455556666";
 
@@ -48,6 +50,17 @@ describe("host transport wire contract", () => {
   it("keeps byte requests free of a caller content type", () => {
     expect(isHostByteRequest({ requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/browser/global/favicon?tab=a" })).toBe(true);
     expect(isHostByteRequest({ requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/browser/global/favicon", contentType: "image/png" })).toBe(false);
+    const byte = { requestId: "req-1234", epoch: 2, status: 200, dataBase64: "aGk=" };
+    expect(isHostByteResult({ ...byte, contentType: "image/webp" })).toBe(true);
+    expect(isHostByteResult({ ...byte, contentType: "text/plain; charset=utf-8" })).toBe(true);
+    expect(isHostByteResult({ ...byte, contentType: "application/pdf" })).toBe(false);
+    expect(admitHostRoute({ kind: "resources", method: "GET", path: "/plugins/objectives/result/file?objectiveId=a&resultId=b&v=1", mode: "observer" })).toMatchObject({ id: "objective-evidence", path: "/plugins/objectives/result/file?objectiveId=a&resultId=b&v=1" });
+    expect(admitHostRoute({ kind: "resources", method: "GET", path: "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b", mode: "observer" })).toMatchObject({ id: "objective-attachment" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/objective/get", mode: "observer" })).toMatchObject({ id: "objectives-get" });
+    expect(admitHostRoute({ kind: "json", method: "GET", path: "/api/v1/agent/sessions/op/chat-history", mode: "observer" })).toMatchObject({ id: "agent-history" });
+    expect(admitHostRoute({ kind: "json", method: "GET", path: "/plugins/quota/summary?force=1", mode: "observer" })).toMatchObject({ path: "/plugins/quota/summary?force=1" });
+    expect(admitHostRoute({ kind: "events", method: "GET", path: "/plugins/file-explorer/files/watch?theaterId=t&directory=.", mode: "observer" })).toMatchObject({ id: "files-watch" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commander/message", mode: "observer" })).toEqual({ error: "not_controller" });
   });
 
   it("builds a socket url without ticket, role, or upgrade path and rejects those queries", () => {

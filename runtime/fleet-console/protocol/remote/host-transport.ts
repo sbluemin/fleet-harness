@@ -70,7 +70,7 @@ export const HOST_CAPABILITIES = ["supported", "unsupported"] as const;
 export type HostCapability = (typeof HOST_CAPABILITIES)[number];
 export const HOST_SOCKET_CHANNELS = ["chat", "terminal"] as const;
 export type HostSocketChannel = (typeof HOST_SOCKET_CHANNELS)[number];
-export const HOST_BYTE_CONTENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "application/octet-stream"] as const;
+export const HOST_BYTE_CONTENT_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp", "text/plain", "text/plain; charset=utf-8", "application/octet-stream"] as const;
 export type HostByteContentType = (typeof HOST_BYTE_CONTENT_TYPES)[number];
 
 export interface HostPresenceRequest {
