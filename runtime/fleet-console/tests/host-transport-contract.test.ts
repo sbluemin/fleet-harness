@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
 import {
+  DESKTOP_HOST_TRANSPORT_EVENT,
   DESKTOP_HOST_TRANSPORT_EVENTS_PATH,
   DESKTOP_HOST_TRANSPORT_PATH,
   DESKTOP_HOST_TRANSPORT_RELAY_PATH,
+  type DesktopHostCommand,
 } from "@fleet-console/protocol/desktop";
-import { createDesktopHostTransport } from "../../fleet-desktop/src/host-transport.js";
 import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
 import {
   HOST_TERMINAL_UPGRADE_PATH,
@@ -250,13 +251,12 @@ describe("host gateway admission", () => {
   });
 
   it("keeps the terminal's first resize and a normal burst until the remote socket is ready", async () => {
+    // Gateway and bridge over the public desktop host-transport protocol, not the shell executor.
     const bridge = createHostShellBridge();
     const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
     const sent: string[] = [];
-    let openedPath = "";
     let remoteClosed = false;
-    let finishRemote = (): void => undefined;
-    const remoteClosedPromise = new Promise<void>((resolve) => { finishRemote = resolve; });
+    let heldUntilReady = false;
     const endpoint = { origin: "" };
     const gateway = createHostGateway({
       isLoopback: (req) => {
@@ -266,95 +266,34 @@ describe("host gateway admission", () => {
       isExactOrigin: (req) => req.headers.origin === endpoint.origin,
       findHost: () => target,
       bridge,
-      readJsonBody: async <T,>(req: http.IncomingMessage) => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        const text = Buffer.concat(chunks).toString("utf8");
-        return (text ? JSON.parse(text) : null) as T | null;
-      },
-      writeJson: (res, status, payload) => {
-        const body = JSON.stringify(payload);
-        res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-        res.end(body);
-      },
+      readJsonBody: readJson,
+      writeJson,
       withSecurityHeaders: (headers) => headers,
     });
-    const server = http.createServer(async (req, res) => {
-      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-      if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") {
-        const body = JSON.stringify(bridge.snapshot());
-        res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-        res.end(body);
-        return;
-      }
-      if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-        const unsubscribe = bridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
-        res.on("close", unsubscribe);
-        return;
-      }
-      if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        const accepted = await bridge.relay(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
-        res.writeHead(accepted ? 204 : 400);
-        res.end();
-        return;
-      }
-      const handled = await gateway.handle({ req, res, pathname });
-      if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
-    });
-    server.on("upgrade", (req, socket, head) => {
-      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-      if (!gateway.upgrade({ req, socket, head, pathname })) socket.destroy();
-    });
-    const port = await new Promise<number>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        if (address === null || typeof address === "string") throw new Error("no address");
-        resolve(address.port);
-      });
-    });
+    const server = hostTransportServer(bridge, gateway);
+    const port = await listen(server);
     endpoint.origin = `http://127.0.0.1:${port}`;
     const origin = endpoint.origin;
-    const transport = createDesktopHostTransport({
-      fetch: globalThis.fetch,
-      confirmIdentity: async () => undefined,
-      openPartition: () => ({
-        async fetch(url) {
-          if (url.endsWith("/api/v1/sessions")) {
-            return new Response(JSON.stringify({ capability: "host-session", mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } });
-          }
-          if (url.endsWith("/api/v1/agent/ticket")) return new Response(JSON.stringify({ ticket: "shell-ticket" }), { status: 200, headers: { "content-type": "application/json" } });
-          return new Response("no", { status: 404 });
-        },
-        async readCookies() { return []; },
-        async writeCookie() { return undefined; },
-        pin() { return undefined; },
-        clear() { return undefined; },
-      }),
-      readWindowCookies: async () => [],
-      writeWindowCookie: async () => undefined,
-      openSocket: async (input) => {
-        openedPath = input.path;
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        if (input.signal.aborted) throw new Error("remote_host_unavailable");
-        return {
-          sendText: (text) => { sent.push(text); },
-          sendBytes: () => undefined,
-          close: () => { remoteClosed = true; finishRemote(); },
-          closed: remoteClosedPromise,
-        };
-      },
+    const shell = followHostCommands(origin, (command) => {
+      if (command.op === "presence") void postHostRelay(origin, { id: command.id, capability: "supported", mode: "controller", access: "full" });
+      if (command.op === "ws-open") {
+        void delay(80).then(() => {
+          heldUntilReady = sent.length === 0;
+          return postHostRelay(origin, { id: command.id, ready: true });
+        });
+      }
+      if (command.op === "ws-send" && typeof command.params.text === "string") {
+        sent.push(command.params.text);
+        void postHostRelay(origin, { id: command.id, end: true });
+      }
+      if (command.op === "ws-close") {
+        remoteClosed = true;
+        void postHostRelay(origin, { id: command.id, end: true });
+      }
     });
     let socket: WebSocket | null = null;
     try {
-      await transport.start(origin);
-      const attached = Date.now() + 2000;
-      while (!bridge.attached()) {
-        if (Date.now() > attached) throw new Error("desktop did not attach");
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
+      await shell.attached;
       const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
         method: "POST",
         headers: { origin, "content-type": "application/json" },
@@ -373,34 +312,26 @@ describe("host gateway admission", () => {
       socket.send(JSON.stringify({ type: "resize", cols: 80, rows: 24 }));
       socket.send(JSON.stringify({ type: "flow", paused: false }));
       for (let index = 0; index < 20; index += 1) socket.send(`k${index}`);
-      const delivered = Date.now() + 8000;
-      while (sent.length < 22) {
-        if (Date.now() > delivered) break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
+      await waitUntil(() => sent.length >= 22, "terminal frames were not relayed");
       expect(closedEarly).toBe(false);
+      expect(heldUntilReady).toBe(true);
       expect(sent[0]).toContain("resize");
       expect(sent[1]).toContain("flow");
       expect(sent).toHaveLength(22);
-      expect(openedPath).toContain("ticket=");
       expect(socket.url).not.toContain("ticket=");
       socket.close();
-      const closed = Date.now() + 2000;
-      while (!remoteClosed) {
-        if (Date.now() > closed) break;
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      expect(remoteClosed).toBe(true);
+      await waitUntil(() => remoteClosed, "terminal close was not commanded");
       expect(socket.readyState).toBe(WebSocket.CLOSED);
     } finally {
       socket?.close();
-      transport.stop();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      server.closeAllConnections?.();
+      shell.stop();
+      await closeServer(server);
     }
   });
 
   it("cancels a host post when the client leaves, not when its body has been read", async () => {
+    // A short subscription gap keeps the bridge command, and a client leaving a POST publishes abort.
+    // Cancelling the remote fetch and retrying a rejected relay are the desktop representative test.
     const held = createHostShellBridge({ detachMs: 200 });
     const stopHolding = held.subscribe(() => undefined);
     const heldOpen = held.open({
@@ -409,19 +340,16 @@ describe("host gateway admission", () => {
       params: { path: "/api/v1/operations/events" },
     }, () => undefined);
     stopHolding();
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await delay(80);
     expect(held.snapshot().commands).toHaveLength(1);
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await delay(250);
     expect(held.snapshot().commands).toHaveLength(0);
     await heldOpen;
 
     const bridge = createHostShellBridge();
     const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
-    const remote = { theaters: 0, theaterAborted: false, messages: [] as { aborted: boolean; waitedMs: number }[], operations: 0, sseAborts: 0 };
     const endpoint = { origin: "" };
     const eventResponses = new Set<http.ServerResponse>();
-    let failOperationsRelay = false;
-    let failedOperationsRelay = false;
     const gateway = createHostGateway({
       isLoopback: (req) => {
         const address = req.socket.remoteAddress;
@@ -430,130 +358,57 @@ describe("host gateway admission", () => {
       isExactOrigin: (req) => req.headers.origin === endpoint.origin,
       findHost: () => target,
       bridge,
-      readJsonBody: async <T,>(req: http.IncomingMessage) => {
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        const text = Buffer.concat(chunks).toString("utf8");
-        return (text ? JSON.parse(text) : null) as T | null;
-      },
-      writeJson: (res, status, payload) => {
-        if (res.writableEnded) return;
-        const body = JSON.stringify(payload);
-        res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-        res.end(body);
-      },
+      readJsonBody: readJson,
+      writeJson,
       withSecurityHeaders: (headers) => headers,
     });
-    const server = http.createServer(async (req, res) => {
-      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-      if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") {
-        const body = JSON.stringify(bridge.snapshot());
-        res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
-        res.end(body);
-        return;
-      }
-      if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
-        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-        eventResponses.add(res);
-        const unsubscribe = bridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
-        res.on("close", () => { eventResponses.delete(res); unsubscribe(); });
-        return;
-      }
-      if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
-        const chunks: Buffer[] = [];
-        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        const text = Buffer.concat(chunks).toString("utf8");
-        if (failOperationsRelay && !failedOperationsRelay && text.includes("\"operations\"")) {
-          failedOperationsRelay = true;
-          res.writeHead(500);
-          res.end();
-          return;
-        }
-        const accepted = await bridge.relay(JSON.parse(text) as unknown);
-        res.writeHead(accepted ? 204 : 400);
-        res.end();
-        return;
-      }
-      const handled = await gateway.handle({ req, res, pathname });
-      if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
-    });
-    const port = await new Promise<number>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        if (address === null || typeof address === "string") throw new Error("no address");
-        resolve(address.port);
-      });
-    });
+    const server = hostTransportServer(bridge, gateway, eventResponses);
+    const port = await listen(server);
     endpoint.origin = `http://127.0.0.1:${port}`;
     const origin = endpoint.origin;
-    const transport = createDesktopHostTransport({
-      fetch: globalThis.fetch,
-      confirmIdentity: async () => undefined,
-      openPartition: () => ({
-        async fetch(url: string, init?: RequestInit) {
-          const path = new URL(url).pathname;
-          if (path === "/api/v1/sessions") {
-            return new Response(JSON.stringify({ capability: "host-session", mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } });
-          }
-          if (path === "/api/v1/theaters") {
-            remote.theaters += 1;
-            remote.theaterAborted = init?.signal?.aborted === true;
-            return new Response(JSON.stringify({ theaters: [{ id: "kept" }] }), { status: 200, headers: { "content-type": "application/json" } });
-          }
-          if (path.endsWith("/message")) {
-            const started = performance.now();
-            await new Promise<void>((resolve) => {
-              const timer = setTimeout(resolve, 3000);
-              init?.signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
-            });
-            const observed = { aborted: init?.signal?.aborted === true, waitedMs: Math.round(performance.now() - started) };
-            remote.messages.push(observed);
-            if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
-            return new Response(JSON.stringify({ delivered: true }), { status: 200, headers: { "content-type": "application/json" } });
-          }
-          if (path === "/api/v1/operations") {
-            remote.operations += 1;
-            return new Response(JSON.stringify({ operations: [{ id: "current" }] }), { status: 200, headers: { "content-type": "application/json" } });
-          }
-          if (path === "/api/v1/operations/events") {
-            let timer: ReturnType<typeof setInterval> | undefined;
-            const body = new ReadableStream<Uint8Array>({
-              start(controller) {
-                let n = 0;
-                timer = setInterval(() => {
-                  try { controller.enqueue(new TextEncoder().encode(`event: operation:changed\ndata: {"n":${n++}}\n\n`)); } catch { /* closed */ }
-                }, 100);
-                init?.signal?.addEventListener("abort", () => {
-                  remote.sseAborts += 1;
-                  clearInterval(timer);
-                  try { controller.close(); } catch { /* closed */ }
-                }, { once: true });
-              },
-              cancel() { clearInterval(timer); },
-            });
-            return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
-          }
-          return new Response(JSON.stringify({ error: "not_found" }), { status: 404, headers: { "content-type": "application/json" } });
-        },
-        async readCookies() { return []; },
-        async writeCookie() { return undefined; },
-        pin() { return undefined; },
-        clear() { return undefined; },
-      }),
-      readWindowCookies: async () => [],
-      writeWindowCookie: async () => undefined,
-    });
-    const until = async (ready: () => boolean, label: string): Promise<void> => {
-      const deadline = Date.now() + 4000;
-      while (!ready()) {
-        if (Date.now() > deadline) throw new Error(label);
-        await new Promise((resolve) => setTimeout(resolve, 20));
+    const live = new Set<number>();
+    const seenHttp = new Map<string, number>();
+    const abortTargets: number[] = [];
+    let theatersStillLive = false;
+    let messageId = 0;
+    let messageStarted = 0;
+    let messageWait = 0;
+    let sseId = 0;
+    const timers: ReturnType<typeof setInterval>[] = [];
+    const shell = followHostCommands(origin, (command) => {
+      if (command.op === "presence") void postHostRelay(origin, { id: command.id, capability: "supported", mode: "controller", access: "full" });
+      if (command.op === "abort" && typeof command.params.commandId === "number") {
+        abortTargets.push(command.params.commandId);
+        if (command.params.commandId === messageId && messageStarted > 0) messageWait = performance.now() - messageStarted;
+        void postHostRelay(origin, { id: command.id, end: true });
       }
-    };
+      if (command.op === "http" && command.params.path === "/api/v1/theaters") {
+        seenHttp.set("theaters", (seenHttp.get("theaters") ?? 0) + 1);
+        void delay(80).then(async () => {
+          theatersStillLive = live.has(command.id) && !abortTargets.includes(command.id);
+          await postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json: { theaters: [{ id: "kept" }] } });
+        });
+      }
+      if (command.op === "http" && command.params.path === "/api/v1/agent/sessions/op1/message") {
+        seenHttp.set("message", (seenHttp.get("message") ?? 0) + 1);
+        messageId = command.id;
+        messageStarted = performance.now();
+      }
+      if (command.op === "sse") {
+        sseId = command.id;
+        const timer = setInterval(() => {
+          if (!live.has(command.id)) { clearInterval(timer); return; }
+          void postHostRelay(origin, { id: command.id, text: "event: operation:changed\ndata: {}\n\n" });
+        }, 100);
+        timers.push(timer);
+      }
+    }, (current) => {
+      live.clear();
+      for (const id of current) live.add(id);
+    });
     const streamAbort = new AbortController();
     try {
-      await transport.start(origin);
-      await until(() => bridge.attached(), "desktop did not attach");
+      await shell.attached;
       const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
         method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
       });
@@ -566,17 +421,20 @@ describe("host gateway admission", () => {
       const read = await request("GET", "/api/v1/theaters");
       expect(read.status).toBe(200);
       expect(await read.json()).toMatchObject({ status: 200, json: { theaters: [{ id: "kept" }] } });
-      expect(remote.theaters).toBe(1);
-      expect(remote.theaterAborted).toBe(false);
+      expect(seenHttp.get("theaters")).toBe(1);
+      expect(theatersStillLive).toBe(true);
 
       const postAbort = new AbortController();
       const posted = request("POST", "/api/v1/agent/sessions/op1/message", { text: "x" }, postAbort.signal).catch((error: unknown) => error);
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await waitUntil(() => messageId !== 0, "message was not commanded");
+      await delay(200);
+      expect(abortTargets.includes(messageId)).toBe(false);
       postAbort.abort();
       await posted;
-      await until(() => remote.messages.length === 1, "remote message did not settle");
-      expect(remote.messages[0]?.aborted).toBe(true);
-      expect(remote.messages[0]?.waitedMs ?? 3000).toBeLessThan(1500);
+      await waitUntil(() => abortTargets.includes(messageId), "message abort was not commanded");
+      expect(seenHttp.get("message")).toBe(1);
+      expect(messageWait).toBeGreaterThan(0);
+      expect(messageWait).toBeLessThan(1500);
 
       let frames = 0;
       let ended = false;
@@ -594,28 +452,161 @@ describe("host gateway admission", () => {
           }
         } catch { ended = true; }
       })();
-      await until(() => frames >= 2, "event stream did not start");
+      await waitUntil(() => frames >= 2, "event stream did not start");
       const beforeDrop = frames;
       for (const response of [...eventResponses]) response.destroy();
-      await new Promise((resolve) => setTimeout(resolve, 1600));
+      await delay(1600);
       expect(frames).toBeGreaterThan(beforeDrop);
       expect(ended).toBe(false);
       expect(eventResponses.size).toBe(1);
+      expect(bridge.snapshot().commands.some((command) => command.id === sseId && command.op === "sse")).toBe(true);
       streamAbort.abort();
       await pump;
-      await until(() => remote.sseAborts === 1, "remote event stream was not aborted");
-
-      failOperationsRelay = true;
-      const listed = await request("GET", "/api/v1/operations");
-      expect(listed.status).toBe(200);
-      expect(await listed.json()).toMatchObject({ json: { operations: [{ id: "current" }] } });
-      expect(remote.operations).toBe(1);
-      expect(failedOperationsRelay).toBe(true);
+      await waitUntil(() => abortTargets.includes(sseId), "event abort was not commanded");
     } finally {
       streamAbort.abort();
-      transport.stop();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      server.closeAllConnections?.();
+      for (const timer of timers) clearInterval(timer);
+      shell.stop();
+      await closeServer(server);
     }
   });
 });
+
+function hostTransportServer(bridge: ReturnType<typeof createHostShellBridge>, gateway: { handle(context: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean>; upgrade?(context: { req: http.IncomingMessage; socket: import("node:stream").Duplex; head: Buffer; pathname: string }): boolean }, eventResponses?: Set<http.ServerResponse>): http.Server {
+  const server = http.createServer(async (req, res) => {
+    const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") {
+      const body = JSON.stringify(bridge.snapshot());
+      res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+      res.end(body);
+      return;
+    }
+    if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
+      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      eventResponses?.add(res);
+      const unsubscribe = bridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
+      res.on("close", () => { eventResponses?.delete(res); unsubscribe(); });
+      return;
+    }
+    if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
+      const body = await readJson<unknown>(req);
+      const accepted = await bridge.relay(body);
+      res.writeHead(accepted ? 204 : 400);
+      res.end();
+      return;
+    }
+    const handled = await gateway.handle({ req, res, pathname });
+    if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
+  });
+  server.on("upgrade", (req, socket, head) => {
+    const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+    if (!gateway.upgrade?.({ req, socket, head, pathname })) socket.destroy();
+  });
+  return server;
+}
+
+function listen(server: http.Server): Promise<number> {
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("no address");
+      resolve(address.port);
+    });
+  });
+}
+
+function closeServer(server: http.Server): Promise<void> {
+  return new Promise((resolve) => {
+    server.close(() => resolve());
+    server.closeAllConnections?.();
+  });
+}
+
+async function readJson<T>(req: http.IncomingMessage): Promise<T | null> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  const text = Buffer.concat(chunks).toString("utf8");
+  return (text ? JSON.parse(text) : null) as T | null;
+}
+
+function writeJson(res: http.ServerResponse, status: number, payload: unknown): void {
+  if (res.writableEnded) return;
+  const body = JSON.stringify(payload);
+  res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+  res.end(body);
+}
+
+function followHostCommands(origin: string, onCommand: (command: DesktopHostCommand) => void, onLive?: (live: ReadonlySet<number>) => void): { readonly attached: Promise<void>; stop(): void } {
+  const controller = new AbortController();
+  const seen = new Set<number>();
+  let stopped = false;
+  let resolveAttached = (): void => undefined;
+  const attached = new Promise<void>((resolve) => { resolveAttached = resolve; });
+  const consume = (commands: readonly DesktopHostCommand[]): void => {
+    resolveAttached();
+    const live = new Set(commands.map((command) => command.id));
+    onLive?.(live);
+    for (const command of commands) {
+      if (seen.has(command.id)) continue;
+      seen.add(command.id);
+      onCommand(command);
+    }
+  };
+  const run = async (): Promise<void> => {
+    while (!stopped) {
+      try {
+        const response = await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_EVENTS_PATH}`, {
+          headers: { accept: "text/event-stream", origin },
+          signal: controller.signal,
+        });
+        if (!response.body) throw new Error("no events");
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffered = "";
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffered += decoder.decode(chunk.value, { stream: true });
+          const frames = buffered.split(/\n\n/u);
+          buffered = frames.pop() ?? "";
+          for (const frame of frames) {
+            if (!frame.includes(DESKTOP_HOST_TRANSPORT_EVENT)) continue;
+            const data = frame.split(/\n/u).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+            if (!data) continue;
+            const snapshot = JSON.parse(data) as { commands?: DesktopHostCommand[] };
+            consume(snapshot.commands ?? []);
+          }
+        }
+      } catch {
+        if (stopped) return;
+      }
+      if (!stopped) await delay(25);
+    }
+  };
+  void run();
+  return { attached, stop() { stopped = true; controller.abort(); } };
+}
+
+function postHostRelay(origin: string, body: unknown): Promise<void> {
+  return fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify(body),
+  }).then(() => undefined, () => undefined);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function waitUntil(ready: () => boolean, label: string): Promise<void> {
+  const deadline = Date.now() + 4000;
+  return new Promise((resolve, reject) => {
+    const tick = (): void => {
+      if (ready()) { resolve(); return; }
+      if (Date.now() > deadline) { reject(new Error(label)); return; }
+      setTimeout(tick, 20);
+    };
+    tick();
+  });
+}

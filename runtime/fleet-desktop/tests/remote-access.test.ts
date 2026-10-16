@@ -3,6 +3,7 @@ import tls from "node:tls";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
 import { openPinnedWebSocket } from "../src/host-socket.js";
 import { createDesktopHostTransport, createHostTransportExecutor } from "../src/host-transport.js";
 import {
@@ -331,6 +332,8 @@ describe("desktop host transport lifetime", () => {
       instanceId, generation, commands: [command(epoch, op)],
     });
     let events: ReadableStreamDefaultController<Uint8Array> | null = null;
+    let eventConnections = 0;
+    let endEvents = (): void => undefined;
     const encoder = new TextEncoder();
     const relays: { error?: string; status?: number }[] = [];
     let remoteStreams = 0;
@@ -346,9 +349,11 @@ describe("desktop host transport lifetime", () => {
         if (path === "/api/v1/desktop/host-transport/events") {
           return new Response(new ReadableStream({
             start(controller) {
+              eventConnections += 1;
               events = controller;
+              endEvents = () => { try { controller.close(); } catch { /* already ended */ } };
               push(snapshot(instanceA, 1, 9, "sse"));
-              init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+              init?.signal?.addEventListener("abort", () => { try { controller.close(); } catch { /* already ended */ } }, { once: true });
             },
           }), { status: 200, headers: { "content-type": "text/event-stream" } });
         }
@@ -387,6 +392,9 @@ describe("desktop host transport lifetime", () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
       expect(remoteAborts).toBe(0);
       expect(remoteStreams).toBe(1);
+      endEvents();
+      events = null;
+      await waitFor(() => eventConnections >= 2 && remoteAborts === 0 && remoteStreams === 1);
       push(snapshot(instanceB, 1, 1, "http"));
       await waitFor(() => remoteGets === 1 && relays.some((relay) => relay.status === 200));
       expect(remoteAborts).toBe(1);
@@ -395,6 +403,178 @@ describe("desktop host transport lifetime", () => {
       transport.stop();
     }
   });
+
+  it("aborts a remote call when its command leaves and retries the relay without running it again", async () => {
+    // 공개 snapshot 명령의 수명이다. Console gateway와 붙인 끝단 검증은 아니다.
+    const instanceId = "33333333-3333-4333-8333-333333333333";
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const http = (id: number, path: string, method = "GET") => ({
+      id, hostKey: "host1", epoch: 1, op: "http" as const, routeId: "host-route", target,
+      params: { method, path },
+    });
+    let generation = 1;
+    let commands: DesktopHostCommand[] = [http(1, "/api/v1/agent/sessions/op1/message", "POST")];
+    let events: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const encoder = new TextEncoder();
+    const push = (): void => {
+      generation += 1;
+      events?.enqueue(encoder.encode(`event: ${DESKTOP_HOST_TRANSPORT_EVENT}\ndata: ${JSON.stringify({ instanceId, generation, commands })}\n\n`));
+    };
+    let messageFetches = 0;
+    let messageAborted = false;
+    let operationFetches = 0;
+    const relayStatuses: number[] = [];
+    let rejectOperations = true;
+    const transport = createDesktopHostTransport({
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname;
+        if (path === DESKTOP_HOST_TRANSPORT_PATH) return Response.json({ instanceId, generation, commands });
+        if (path === DESKTOP_HOST_TRANSPORT_EVENTS_PATH) {
+          return new Response(new ReadableStream({
+            start(controller) {
+              events = controller;
+              controller.enqueue(encoder.encode(`event: ${DESKTOP_HOST_TRANSPORT_EVENT}\ndata: ${JSON.stringify({ instanceId, generation, commands })}\n\n`));
+              init?.signal?.addEventListener("abort", () => { try { controller.close(); } catch { /* already ended */ } }, { once: true });
+            },
+          }), { status: 200, headers: { "content-type": "text/event-stream" } });
+        }
+        if (path === DESKTOP_HOST_TRANSPORT_RELAY_PATH && typeof init?.body === "string") {
+          const body = JSON.parse(init.body) as { json?: { operations?: unknown } };
+          if (rejectOperations && body.json && "operations" in body.json) {
+            rejectOperations = false;
+            relayStatuses.push(500);
+            return new Response(null, { status: 500 });
+          }
+          relayStatuses.push(204);
+          return new Response(null, { status: 204 });
+        }
+        return new Response(null, { status: 404 });
+      },
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        async fetch(url, init) {
+          const path = new URL(url).pathname;
+          if (path.endsWith("/message")) {
+            messageFetches += 1;
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, 3000);
+              init?.signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+            });
+            messageAborted = init?.signal?.aborted === true;
+            if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+            return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (path === "/api/v1/operations") {
+            operationFetches += 1;
+            return new Response(JSON.stringify({ operations: [{ id: "current" }] }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+        },
+        async readCookies() { return []; },
+        async writeCookie() { return undefined; },
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    try {
+      await transport.start("http://127.0.0.1:9");
+      await waitFor(() => messageFetches === 1 && events !== null);
+      commands = [];
+      push();
+      await waitFor(() => messageAborted);
+      commands = [{ id: 2, hostKey: "host1", epoch: 1, op: "abort", routeId: "abort", target, params: { commandId: 1 } }];
+      push();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(messageFetches).toBe(1);
+      commands = [http(3, "/api/v1/operations")];
+      push();
+      await waitFor(() => operationFetches === 1 && relayStatuses.includes(500) && relayStatuses.includes(204));
+      expect(operationFetches).toBe(1);
+      expect(messageFetches).toBe(1);
+    } finally {
+      transport.stop();
+    }
+  });
+
+  it("puts the shell ticket on the remote socket and delivers a send after it opens", async () => {
+    const instanceId = "44444444-4444-4444-8444-444444444444";
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const open = { id: 4, hostKey: "host1", epoch: 1, op: "ws-open" as const, routeId: "terminal-ws", target, params: { channel: "terminal", operationId: "op-1" } };
+    const send = { id: 5, hostKey: "host1", epoch: 1, op: "ws-send" as const, routeId: "terminal-ws", target, params: { socketId: 4, text: "{\"type\":\"resize\"}" } };
+    let generation = 1;
+    let commands: Array<typeof open | typeof send> = [open];
+    let events: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const encoder = new TextEncoder();
+    const push = (): void => {
+      generation += 1;
+      events?.enqueue(encoder.encode(`event: ${DESKTOP_HOST_TRANSPORT_EVENT}\ndata: ${JSON.stringify({ instanceId, generation, commands })}\n\n`));
+    };
+    let openedPath = "";
+    const sent: string[] = [];
+    let ticketFetches = 0;
+    const transport = createDesktopHostTransport({
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname;
+        if (path === DESKTOP_HOST_TRANSPORT_PATH) return Response.json({ instanceId, generation, commands });
+        if (path === DESKTOP_HOST_TRANSPORT_EVENTS_PATH) {
+          return new Response(new ReadableStream({
+            start(controller) {
+              events = controller;
+              controller.enqueue(encoder.encode(`event: ${DESKTOP_HOST_TRANSPORT_EVENT}\ndata: ${JSON.stringify({ instanceId, generation, commands })}\n\n`));
+              init?.signal?.addEventListener("abort", () => { try { controller.close(); } catch { /* already ended */ } }, { once: true });
+            },
+          }), { status: 200, headers: { "content-type": "text/event-stream" } });
+        }
+        if (path === DESKTOP_HOST_TRANSPORT_RELAY_PATH) return new Response(null, { status: 204 });
+        return new Response(null, { status: 404 });
+      },
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        async fetch(url) {
+          if (new URL(url).pathname === "/api/v1/agent/ticket") {
+            ticketFetches += 1;
+            return new Response(JSON.stringify({ ticket: "shell-ticket" }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          return new Response("{}", { status: 404 });
+        },
+        async readCookies() { return []; },
+        async writeCookie() { return undefined; },
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+      openSocket: async (input) => {
+        expect(input.cookie).toBe("");
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        if (input.signal.aborted) throw new Error("remote_host_unavailable");
+        openedPath = input.path;
+        let finish = (): void => undefined;
+        const closed = new Promise<void>((resolve) => { finish = resolve; });
+        return {
+          sendText: (text) => { sent.push(text); },
+          sendBytes: () => undefined,
+          close: () => finish(),
+          closed,
+        };
+      },
+    });
+    try {
+      await transport.start("http://127.0.0.1:9");
+      await waitFor(() => openedPath.includes("ticket=shell-ticket") && events !== null);
+      expect(JSON.stringify(open.params)).not.toContain("ticket");
+      expect(ticketFetches).toBe(1);
+      commands = [open, send];
+      push();
+      await waitFor(() => sent.includes("{\"type\":\"resize\"}"));
+      expect(ticketFetches).toBe(1);
+    } finally {
+      transport.stop();
+    }
+  });
+
 });
 
 function waitFor(ready: () => boolean): Promise<void> {
