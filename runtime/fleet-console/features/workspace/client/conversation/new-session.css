@@ -66,7 +66,8 @@
   background: var(--surface-capsule);
   overflow: visible;
 }
-.new-session-card > * + * { border-top: 1px solid var(--surface-rim); }
+/* 행 자체의 border: 0 보다 이겨야 하므로 :is() 로 명시도를 한 단 올린다. */
+.new-session-card > * + :is(*, .new-session-row) { border-top: 1px solid var(--surface-rim); }
 
 .new-session-row {
   display: flex;
