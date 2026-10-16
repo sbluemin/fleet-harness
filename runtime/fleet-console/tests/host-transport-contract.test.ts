@@ -850,6 +850,7 @@ describe("host session loss after a controller replacement", () => {
   it("reopens the observer through the real presence transition instead of trusting a stale ready link", async () => {
     let mode = "observer";
     let sessionAlive = true;
+    let stayDead = false;
     const presenceIntents: string[] = [];
     const pairs: number[] = [];
     const harness = await startHostHarness((command, origin) => {
@@ -857,7 +858,7 @@ describe("host session loss after a controller replacement", () => {
         const intent = String(command.params.intent);
         presenceIntents.push(intent);
         mode = intent === "activate" ? "controller" : "observer";
-        sessionAlive = true; // 관찰·활성화는 새 세션을 연다
+        if (!stayDead) sessionAlive = true; // 관찰·활성화는 새 세션을 연다
         void postHostRelay(origin, { id: command.id, capability: "supported", mode, access: "full" });
       } else if (command.op === "pair") {
         pairs.push(command.id);
@@ -908,6 +909,15 @@ describe("host session loss after a controller replacement", () => {
       expect(presenceIntents.slice(second)).toEqual(["observe"]);
       expect(runtime.getSnapshot()).toMatchObject({ mode: "observer", phase: "ready", error: null });
       expect(presenceIntents.filter((intent) => intent === "activate")).toHaveLength(2);
+
+      // 상한: 관찰 전환이 새 세션을 열지 못하는 지속 401에서도 호출당 관찰 전환은 정확히 한 번이다(되풀이하지 않고 오류로 끝난다).
+      stayDead = true;
+      sessionAlive = false;
+      for (let call = 0; call < 2; call += 1) {
+        const before = presenceIntents.length;
+        await runtime.observe(new AbortController().signal).catch(() => undefined);
+        expect(presenceIntents.slice(before)).toEqual(["observe"]);
+      }
     } finally {
       runtime.dispose();
       workspace.dispose();

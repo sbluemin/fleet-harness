@@ -233,6 +233,8 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     // 세션이 필요한 요청의 401은 원격이 이 기기의 세션을 끝냈다는 뜻이다(다른 기기가 제어를 가져갔거나 세션이 만료됐다). 나머지 조회를
     // 보내지 않고, 호출자가 관찰 전환으로 복구할 수 있게 표시한다. 페어링 자체의 상실은 관찰 전환의 401이 따로 알린다.
     if (theatersResponse.status === 401 || operationsResponse.status === 401) {
+      // 세션 상태는 현재성을 확인한 뒤에만 바꾼다 — 교체된 scope나 옛 세대의 늦은 응답은 새 세션에 아무 영향도 주지 않는다.
+      if (version !== revision || bound !== transport || bound.scope.signal.aborted) return;
       sessionLost = true;
       throw new SessionEnded(state.mode === "controller" ? "not_controller" : "remote_host_unavailable");
     }
@@ -286,11 +288,13 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       };
       const work = (async () => {
         await discover((readSignal) => deps.readPresence(readSignal));
-        if (sessionLost || state.mode === "off" || state.connection !== "ready") await reobserve();
+        // 관찰 전환은 호출당 최대 한 번이다. 이미 한 번 열었는데도 세션이 또 끝나 있으면 같은 호출에서 되풀이하지 않고 오류로 끝낸다.
+        let reopened = false;
+        if (sessionLost || state.mode === "off" || state.connection !== "ready") { await reobserve(); reopened = true; }
         try { await refresh(); }
         catch (cause) {
           // gateway가 ready라고 말해도 원격 세션이 이미 끝났을 수 있다. 같은 요청을 되풀이하지 않고 관찰 전환으로 새 세션을 연다(제어권은 가져오지 않는다).
-          if (!(cause instanceof SessionEnded)) throw cause;
+          if (!(cause instanceof SessionEnded) || reopened) throw cause;
           await reobserve();
           await refresh();
         }
