@@ -37,7 +37,7 @@ Forbidden patterns:
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
 2. Keep shared Fleet execution policy under `runtime/fleet-console/foundation/agent-runtime/src/fleet/`, and Gateway model exposure and the routing decision under `runtime/fleet-console/features/ai-gateway/runtime/src/fleet/`. `assets/hooks/` is an authoring source only: its hooks and the routing mod ship inside the launched plugin.
-3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
+3. Keep the Admiral runtime boot explicit in `createFleetGatewayAgentRuntimeLifecycle` (`runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-runtime/gateway-runtime.ts`). Console starts it from `runtime/fleet-console/features/execution/host/agent/routes.ts`.
 4. Keep the routing decision in Console, not in a prompt or a hook: the mod posts a dispatch's facts to `/v1/fleet/routing/assign` and applies the answer, and no pre-dispatch hook judges a pin. Never gate a hook on `Skill(<name>)` — Claude Code evaluates `if` as a permission rule whose content match needs the tool's `preparePermissionMatcher`, which the Skill tool lacks, so such a hook is silently skipped forever.
 5. Keep graph mechanics in the live Workflow tool contract rather than restating them in Fleet documentation; after meaningful returns, prune branches that can no longer change the host decision.
 6. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.

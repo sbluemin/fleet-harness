@@ -173,22 +173,13 @@ not serialized into a per-turn prompt wrapper.
 
 ## 4. Lifecycle Boot
 
-Each launch path boots its own Admiral runtime.
+Console boots one Admiral runtime for its execution host.
 
-The Console-owned `fleet` launcher
-(`runtime/fleet-console/cli/runtime/runtime.ts`, `createFleetCliRuntime()`)
-composes the thin gateway process directly:
-
-- creates infrastructure services
-- opens the AI Gateway settings store and the in-process quota service
-- renders the shared Agent CLI plugin tree
-- starts the in-process Fleet MCP runtime (`createFleetGatewayAgentRuntimeLifecycle`)
-- applies the stored gateway wire-log switch
-
-Its `cleanup()` stops the runtime, disposes the MCP HTTP transport, and resets
-the wire-log target. Fleet Console's terminal plugin boots the same
-`createFleetGatewayAgentRuntimeLifecycle`, so both launch paths share one runtime
-shape inside the Fleet Console host package.
+`runtime/fleet-console/features/execution/host/agent/routes.ts` starts
+`createFleetGatewayAgentRuntimeLifecycle`
+(`runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-runtime/gateway-runtime.ts`).
+That function opens the in-process Fleet MCP runtime. Its `cleanup()` stops that
+MCP server. The shell `fleet` entry does not boot a second copy.
 
 ---
 

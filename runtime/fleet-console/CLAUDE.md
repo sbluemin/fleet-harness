@@ -1,12 +1,12 @@
 # Fleet Console
 
-`runtime/fleet-console` is the sole published host for Fleet Console and the `fleet` terminal launcher. The Console product — core plus built-ins under `../fleet-plugins/` — owns Console HTTP, streaming, PTY/provider/plugin runtime, durable state, and browser UI; `cli/` owns the thin Claude Code launcher and shared auth/update commands.
+`runtime/fleet-console` is the sole published host for Fleet Console and the `fleet` terminal launcher. The Console product — core plus built-ins under `../fleet-plugins/` — owns Console HTTP, streaming, PTY/provider/plugin runtime, durable state, and browser UI; `cli/` owns the published `fleet` entry: Console lifecycle, updates, and gateway configuration. It does not launch Claude Code.
 
 ## Directory index
 
 | Directory | Responsibility |
 |---|---|
-| `cli/` | Dual-entry `fleet` launcher (auth/update/console/cli passthrough) and thin Claude gateway |
+| `cli/` | Published `fleet` entry: Console lifecycle, updates, and interactive gateway configuration |
 | `core/host/` | Bootstrap, transport, plugin adapters, and native-shell composition |
 | `core/client/` | Application composition, global chrome, and feature integration |
 | `features/` | Vertical product owners: execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, Updates, Onboarding |
@@ -49,7 +49,7 @@
 
 ## Distribution constraints
 
-- Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry may still run an AI Gateway listener of its own — ephemeral for Claude Code passthrough, or explicitly long-lived under `fleet gateway serve` — always bound to loopback, never a Console web/HTTP surface, and never authenticated.
+- Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry does not start an AI Gateway listener of its own. Console's own listener keeps the loopback and remote rules in Security and state constraints.
 - Published Console artifacts are self-contained: workspace packages are bundled and must not survive as workspace-version dependencies.
 - The published `./desktop-protocol` subpath is a compatibility surface for shipped Desktop shells under always-latest Console installs; keep its export surface unchanged.
 - Host and built-in plugin bundles may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.

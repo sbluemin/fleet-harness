@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-console",
   "version": "1.237.0",
-  "description": "Fleet Console \u2014 sole owner of the fleet and fleet-console bins, Console web surface, and thin Claude Code launcher.",
+  "description": "Fleet Console \u2014 sole owner of the fleet and fleet-console bins and the Console web surface.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",

@@ -156,7 +156,7 @@ function describeCredential(credential: GatewayCredentialReport): string {
   if (credential.source === "api-key") {
     return credential.state === "present"
       ? "signed in"
-      : "not signed in";
+      : "not signed in — `fleet gateway`, then Providers";
   }
   return credential.state === "present" ? "subscription found" : "no subscription found";
 }
