@@ -75,7 +75,7 @@ export function steerTurn(objective: Objective, language: PromptLanguage, contex
       : `${who} changed objective \`${objective.id}\`${what ? ` (${what})` : ""} — read the board again and continue.`;
   const noteBy = what && note ? (language === "ko" ? ` ${actorName(by, language)}의 덧붙인 말입니다.` : ` Note from ${actorName(by, language)}.`) : "";
   const opened = language === "ko" ? " 달성 기준 제안이 열려 있습니다." : " Success-criterion proposals are open.";
-  return `${word}${noteBy}${note}${opened}`;
+  return `${word}${opened}${noteBy}${note}`;
 }
 
 /**
