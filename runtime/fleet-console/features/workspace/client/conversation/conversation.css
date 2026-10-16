@@ -245,6 +245,8 @@
 }
 
 .conversation-pill-row > * { pointer-events: auto; }
+/* 새 세션 화면(new-session.css)의 카드 칸은 투명한 맨 위 줄 밑에서 시작한다 — 줄 높이가 이 시트의 토큰이라 여기서 비운다. */
+.new-session-body { padding: calc(var(--conversation-top-row) + var(--space-4)) var(--space-4) var(--space-4); }
 /* 머리 줄의 폭을 기준으로 줄 안 요소가 좁은 폭 모양을 고른다(그룹 대화의 「턴 접기」 스위치가 라벨을 접는다). 줄은 절대 위치로
    칸 폭을 따르므로 inline-size 격리가 배치를 바꾸지 않는다. */
 .conversation-pill-row { container: conversation-pill-row / inline-size; }

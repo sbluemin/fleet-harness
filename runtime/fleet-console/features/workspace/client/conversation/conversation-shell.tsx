@@ -11,7 +11,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { closeNewSession, requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
 import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
@@ -45,6 +45,7 @@ import { PluginOperationRenderer } from "../operation-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
+import { NewSessionColumn } from "./new-session.js";
 import "./conversation.css";
 
 /**
@@ -555,7 +556,11 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const surface = useConversationSurface();
   const { conversationSurfaces } = usePluginRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
-  useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : subject); }, [subject, surfaceDescriptor]);
+  // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Operation 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
+  const newSession = state.newSession !== null && state.theaters.some((theater) => theater.id === state.newSession?.theaterId) ? state.newSession : null;
+  // 오른쪽 패널·분할 칸이 읽는 대상 — 새 세션 화면 동안은 보던 대화를 대상으로 삼지 않는다.
+  const stageSubject = newSession ? null : subject;
+  useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : stageSubject); }, [stageSubject, surfaceDescriptor]);
   // 플러그인 대화가 아직 서지 않은 Operation 을 대신하면(시작 전 목표) 오른쪽 패널이 그 Operation 대화처럼 선다 — 머리와 「구성원」 탭이 읽는다.
   let standInId: string | null = null;
   if (surfaceDescriptor?.standInOperationId && surface) {
@@ -582,24 +587,38 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 가운데 칸에 선 대화가 곧 활성 Operation 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeOperationId = state.activeOperationId;
+  const seenNewSessionRef = useRef(newSession);
+  const seenSurfaceRef = useRef(surface);
+  useEffect(() => {
+    const openedNewSession = newSession !== null && seenNewSessionRef.current !== newSession;
+    const openedSurface = surface !== null && seenSurfaceRef.current !== surface;
+    seenNewSessionRef.current = newSession;
+    seenSurfaceRef.current = surface;
+    if (openedNewSession && surface !== null) closeConversationSurface(surface.surfaceId);
+    else if (openedSurface && newSession !== null) closeNewSession();
+  }, [newSession, surface]);
   useEffect(() => {
     // 플러그인 대화가 선 동안에는 어느 Operation 도 칸에 없다 — 사이드바의 Operation 줄 선택을 걷는다(대화를 걷으면 되돌아온다).
+    if (newSession !== null) {
+      if (activeOperationId !== null) setActiveOperation(null);
+      return;
+    }
     if (surfaceDescriptor !== null) {
       if (activeOperationId !== null) setActiveOperation(null);
       return;
     }
     if (subject === null || activeOperationId === subject.id) return;
     setActiveOperation(subject.id);
-  }, [activeOperationId, subject, surfaceDescriptor]);
+  }, [activeOperationId, newSession, subject, surfaceDescriptor]);
   useEffect(() => () => { publishConversationSubject(null); publishConversationStandIn(null); }, []);
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
   const operationClusters = useOperationClusters();
   useEffect(() => { publishConversationClusters(operationClusters); }, [operationClusters]);
   const stageInbox = useTheaterInboxState();
   // 아직 서지 않은 Operation 을 대신하는 플러그인 대화(시작 전 목표)도 Operation 대화처럼 「목표」가 먼저다.
-  const operationConversation = (surfaceDescriptor === null ? subject !== null : standInId !== null) && stageInbox === null;
+  const operationConversation = (surfaceDescriptor === null ? stageSubject !== null : standInId !== null) && stageInbox === null;
   const toggleDetails = useToggleDetails(operationConversation);
-  usePanelFollowsSubject(surfaceDescriptor ? standInId : subject?.id ?? null);
+  usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
 
   // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
   // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Session 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
@@ -609,7 +628,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const operationSplit = useOperationBrowserSplit();
   const sessionSplit = useSessionBrowserSplit();
   const desktop = isDesktopShell();
-  const splitSubjectId = surfaceDescriptor ? null : subject?.id ?? null;
+  const splitSubjectId = surfaceDescriptor ? null : stageSubject?.id ?? null;
   const splitKind: SplitKind | null = desktop && fleetBrowserOpen
     ? "fleet"
     : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation"
@@ -645,7 +664,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       aria-label={t("conversation.stage.aria")}
     >
       <ConversationQuota />
-      {surfaceDescriptor && surface ? (
+      {newSession ? (
+        <NewSessionColumn state={state} target={newSession} tools={tools} />
+      ) : surfaceDescriptor && surface ? (
         <ConversationSurfaceColumn
           key={surface.surfaceId}
           descriptor={surfaceDescriptor}

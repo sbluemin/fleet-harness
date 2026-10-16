@@ -26,6 +26,14 @@ export interface QuickLaunchRequest {
    * 저장 경로는 어디에도 없다.
    */
   readonly attachments?: readonly QuickLaunchDraftAttachment[];
+  /** 새 세션 화면이 그룹 머리 「+」에서 열렸으면 그 그룹 — 실행 뒤 새 Operation 을 그 그룹에 세운다(브라우저 쪽 의도, 서버 계약 아님). */
+  readonly groupId?: string | null;
+}
+
+/** 본문 「새 세션 화면」의 대상. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다. */
+export interface NewSessionTarget {
+  readonly theaterId: string;
+  readonly groupId: string | null;
 }
 
 /** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
@@ -359,8 +367,8 @@ export interface ConsoleState {
   readonly pendingOperationFocus: string | null;
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
-  readonly pendingSideBarTheaterLaunch: string | null;
-  readonly launchMenuRequest: { readonly requestId: number } | null;
+  /** 본문 「새 세션 화면」 — Theater·그룹 머리 「+」와 팔레트 「New Operation」이 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
+  readonly newSession: NewSessionTarget | null;
   readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;

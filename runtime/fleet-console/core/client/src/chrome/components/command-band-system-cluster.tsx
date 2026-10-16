@@ -16,7 +16,7 @@ import { openSettingsSurface } from "../../../../../features/settings/client/set
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
 import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
-import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/workspace/client/sidebar/operation-launch-context-menu.js";
+import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/onboarding/client/seen-store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 

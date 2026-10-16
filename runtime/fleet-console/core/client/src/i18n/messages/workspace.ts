@@ -1,7 +1,5 @@
 // 대화 화면과 사이드바가 쓰는 문구.
 export const workspaceEn = {
-  "sidebar.menu.aria": "Operation launcher",
-  "sidebar.menu.empty": "No operations available.",
   "sidebar.accent.none": "None",
   "sidebar.accent.noneAria": "No accent",
   "sidebar.accent.crimson": "Crimson",
@@ -209,8 +207,6 @@ export const workspaceEn = {
 } as const;
 
 export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
-  "sidebar.menu.aria": "Operation 실행 메뉴",
-  "sidebar.menu.empty": "사용 가능한 Operation이 없습니다.",
   "sidebar.accent.none": "없음",
   "sidebar.accent.noneAria": "액센트 없음",
   "sidebar.accent.crimson": "Crimson",

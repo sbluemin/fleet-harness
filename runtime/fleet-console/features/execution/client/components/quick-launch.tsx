@@ -2048,7 +2048,7 @@ export function QuickLaunch() {
             onClick={() => setPopover(popover === "model" ? null : "model")}
           >
             {/* 아이콘은 플러그인 소유다 — console-core는 어느 플러그인인지 모른 채 렌더만 위임한다
-                (캔버스 우클릭 메뉴의 renderKindIcon과 같은 계약). */}
+                (플러그인 renderLaunchIcon 계약). */}
             {kindIcon ? (
               <span
                 className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`}

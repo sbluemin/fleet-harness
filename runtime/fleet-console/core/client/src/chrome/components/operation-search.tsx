@@ -67,7 +67,7 @@ import {
   openOnboarding,
   openWhatsNew,
   operationSearchEntries,
-  requestOperationLaunchMenu,
+  openNewSession,
   requestSideBarAddTheater,
   setActiveTheme,
   setOperationSearchMode,
@@ -363,7 +363,11 @@ export function OperationSearch({
       case "new-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        requestOperationLaunchMenu();
+        // 사이드바 Theater 머리 「+」와 같은 길 — 보고 있는 Theater 의 새 세션 화면을 본문에 연다.
+        {
+          const theaterId = getViewedTheaterId();
+          if (theaterId) openNewSession({ theaterId, groupId: null });
+        }
         break;
       }
       case "resume-operation": {

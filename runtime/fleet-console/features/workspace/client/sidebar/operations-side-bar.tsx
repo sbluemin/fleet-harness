@@ -9,20 +9,18 @@ import { createPortal } from "react-dom";
 import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { OperationLaunchContextMenu } from "./operation-launch-context-menu.js";
 import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "./group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../operation-accent.js";
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
-import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { consumeSideBarAddTheater, openNewSession, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
@@ -87,12 +85,8 @@ interface OperationsSideBarProps {
   readonly groups: readonly OperationGroup[];
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
-  readonly catalog: readonly OperationCatalogPlugin[];
-  readonly canLaunch: boolean;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
-  readonly renderKindIcon: (pluginId: string | null, kind: OperationLaunchKind) => ReactNode;
-  readonly onLaunchKind: (pluginId: string | null, kind: OperationLaunchKind, variantLaunch?: Readonly<Record<string, string>>, groupId?: string | null, theaterId?: string | null) => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
@@ -130,15 +124,6 @@ type ActiveContextMenu =
   /** atCursor — 우클릭으로 열었으면 앵커는 커서 한 점이고 메뉴는 그 자리에 선다. 아니면(키·길게 누르기·「+」) 앵커 아래에 선다. */
   | { readonly kind: "theater"; readonly theaterId: string; readonly anchor: DOMRect; readonly returnFocus?: HTMLElement | null; readonly newGroup?: boolean; readonly atCursor?: boolean };
 
-interface NewMenuState {
-  readonly anchor: { readonly x: number; readonly y: number };
-  readonly viewportBounds?: { readonly width: number; readonly height: number };
-  /** Theater 머리 「+」에서 열었으면 그 Theater 와 「+」의 자리 — 메뉴 맨 아래 「새 그룹…」이 그 자리에 Theater 메뉴를 연다. */
-  readonly theaterId?: string;
-  readonly theaterAnchor?: DOMRect;
-  /** 그룹 머리 「+」에서 열었으면 그 그룹 — 새 줄(목표)과 발사한 Operation 이 그 그룹에 선다. */
-  readonly groupId?: string | null;
-}
 
 interface ChipDragState {
   readonly theaterId: string;
@@ -348,12 +333,8 @@ export function OperationsSideBar({
   groups,
   activeOperationId,
   operationNotifications,
-  catalog,
-  canLaunch,
   addingTheater,
   theaterError,
-  renderKindIcon,
-  onLaunchKind,
   onClose,
   onFocus,
   onResume,
@@ -407,7 +388,6 @@ export function OperationsSideBar({
   const onReorderTheatersRef = useRef(onReorderTheaters);
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
-  const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const peekOverlayOpenRef = useRef(false);
@@ -443,11 +423,6 @@ export function OperationsSideBar({
     peekOverlayOpenRef.current = false;
     publishConsoleOverlay("sidebar-peek", false);
   }, []);
-  // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
-  // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
-  useEffect(() => {
-    if (theaters.length === 0) setNewMenu(null);
-  }, [theaters.length]);
   const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const collapsedGroups = theaters.flatMap((theater) => getTheaterGroupCollapse(theater.id).collapsedGroups);
   const collapsedTheaters = useCollapsedTheaters();
@@ -456,8 +431,6 @@ export function OperationsSideBar({
     activeOperationAcknowledged,
     selectedOperationId,
     pendingSideBarAddTheater,
-    pendingSideBarTheaterLaunch,
-    launchMenuRequest,
   } = useConsoleState();
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   // 묶음 띠(임무 점)는 지휘관 행의 셋째 줄에 선다. 구성원 행은 스토어의 기본 목록에 없어 여기서 거를 것이 없다.
@@ -676,21 +649,6 @@ export function OperationsSideBar({
     statusLandingTimeoutsRef.current.clear();
   }, []);
 
-  // 팔레트 "New Operation" 커맨드 요청을 소비해 ＋New 버튼과 동일한 launch 오버레이를 그 버튼 앵커 위치에 연다.
-  useEffect(() => {
-    if (!launchMenuRequest) return;
-    consumeOperationLaunchMenu();
-    // aria-label은 로케일마다 달라지므로 고정 클래스로 런치 버튼을 찾는다.
-    const theaterId = getViewedTheaterId();
-    const launchButton = theaterId ? rootRef.current?.querySelector<HTMLButtonElement>(`[data-theater-id="${CSS.escape(theaterId)}"] .side-bar-theater-launch-btn`) : null;
-    const rect = launchButton?.getBoundingClientRect();
-    setActiveContextMenu(null);
-    setNewMenu({
-      anchor: rect ? { x: rect.right + 8, y: rect.top } : { x: 16, y: 64 },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-      ...(theaterId ? { theaterId } : {}),
-    });
-  }, [launchMenuRequest]);
 
 
   // 메뉴 주인 조회는 표시 목록이 아니라 전체 목록에서 한다 — 메뉴가 열린 채 필터가 바뀌어
@@ -896,11 +854,9 @@ export function OperationsSideBar({
       // 뿌리가 없는 줄은 플러그인이 보관을 선언했을 때만 메뉴가 선다 — 뿌리 있는 줄 메뉴의 이름 바꾸기·보관 칸과 같은 모양이다.
       const archive = item.row.archive;
       if (!archive) return;
-      setNewMenu(null);
       setActiveContextMenu({ kind: "row", clusterId: item.layout.cluster.id, anchor, returnFocus, renamable: item.row.rename !== undefined, archive });
       return;
     }
-    setNewMenu(null);
     setActiveContextMenu({ kind: "chip", operationId: item.anchor.operation.id, anchor, returnFocus, fromRow: true, renamable: item.row.rename !== undefined });
   };
   const renderRow = (item: SideBarRowItem, promoted: boolean) => {
@@ -962,12 +918,10 @@ export function OperationsSideBar({
   // 그 누름이 세워 둔 끌기 대기를 거둔다 — 메뉴가 열린 뒤 손가락이 미끄러져도 Theater 가 옮겨지지 않는다.
   const openTheaterMenu = (theaterId: string, anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => {
     if (dragRef.current && !dragRef.current.dragging) updateDrag(null);
-    setNewMenu(null);
     setActiveContextMenu({ kind: "theater", theaterId, anchor, returnFocus, atCursor });
   };
 
   const openTheaterBrowser = () => {
-    setNewMenu(null);
     setActiveContextMenu(null);
     setBrowserOpen(true);
   };
@@ -982,25 +936,14 @@ export function OperationsSideBar({
     onAddTheater(path);
   };
 
-  // 사이드바 빈 영역 우클릭 = ＋New 버튼과 동일한 launch 오버레이를 커서 위치에 연다.
-  // chip/그룹 헤더는 자체 우클릭 핸들러가 preventDefault()를 호출하므로(버블로 도달 시
-  // defaultPrevented=true), 그쪽 우클릭은 accent/그룹 메뉴를 유지하고 여기서는 무시한다.
-  // 등록된 Theater가 없으면 실행할 대상이 없다 — 브라우저 메뉴만 막고 상자는 열지 않는다.
-  const openNewMenuAtCursor = (event: React.MouseEvent<HTMLElement>) => {
+  // 사이드바 빈 영역 우클릭 = Theater 머리 「+」와 같은 새 세션 화면(보고 있는 Theater). chip/그룹 헤더는 자체 우클릭
+  // 핸들러가 preventDefault()를 호출하므로(버블로 도달 시 defaultPrevented=true) 그쪽 메뉴를 지키고 여기서는 무시한다.
+  // 등록된 Theater가 없으면 실행할 대상이 없다 — 브라우저 메뉴만 막는다.
+  const openNewSessionAtCursor = (event: React.MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented) return;
     event.preventDefault();
-    setActiveContextMenu(null);
-    // 다른 입구에서 열린 실행 메뉴도 함께 닫는다.
-    // 포털의 mousedown 외부-클릭 닫기가 안 잡는다 — 포털이 구독하는 닫기 신호를 함께 본다.
-    window.dispatchEvent(new Event("operation-launch-context-menu-close"));
-    if (theaters.length === 0) {
-      setNewMenu(null);
-      return;
-    }
-    setNewMenu({
-      anchor: { x: event.clientX, y: event.clientY },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-    });
+    const theaterId = getViewedTheaterId() ?? theaters[0]?.id ?? null;
+    if (theaterId) openTheaterNewSession(theaterId);
   };
 
   const closeActiveContextMenu = useCallback(() => {
@@ -1019,26 +962,20 @@ export function OperationsSideBar({
     onEscape: closeActiveContextMenu,
   });
 
-  const openTheaterLaunchMenuAt = (anchor: DOMRect, theaterId: string, groupId: string | null = null) => {
+  // Theater·그룹 머리 「+」 — 모델 메뉴 대신 본문에 새 세션 화면을 연다. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다.
+  const openTheaterNewSession = (theaterId: string, groupId: string | null = null) => {
     setActiveContextMenu(null);
-    setNewMenu({
-      anchor: { x: anchor.right + 8, y: anchor.top },
-      viewportBounds: { width: window.innerWidth, height: window.innerHeight },
-      groupId,
-      // 그룹 머리 「+」는 그 그룹에 서는 것만 만든다 — 「새 그룹…」은 Theater 머리 「+」에만 싣는다.
-      ...(groupId === null ? { theaterId, theaterAnchor: anchor } : {}),
-    });
+    openNewSession({ theaterId, groupId });
   };
 
   const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
     event.stopPropagation();
-    openTheaterLaunchMenuAt(event.currentTarget.getBoundingClientRect(), theaterId);
+    openTheaterNewSession(theaterId);
   };
 
   // 활성 Theater 머리 — 그 Theater 의 Inbox. 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도 정하지 않으면
   // 호스트의 시스템 프롬프트 칸이다(「시스템 프롬프트…」 항목과 같은 길이라 폰·대화 중심 화면도 그 경로를 그대로 탄다).
   const openTheaterHeaderInbox = (theater: TheaterInfo, returnFocus: HTMLElement | null) => {
-    setNewMenu(null);
     setActiveContextMenu(null);
     const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
     if (landing) openTheaterInbox({ theaterId: theater.id, ...landing, returnFocus });
@@ -1054,45 +991,11 @@ export function OperationsSideBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
 
-  // 커맨드 밴드 "New Operation in X…" 요청 소비 — 해당 Theater의 New Operation 버튼을 앵커로 launch 메뉴를 연다.
-  useEffect(() => {
-    const theaterId = pendingSideBarTheaterLaunch;
-    if (theaterId === null) return;
-    if (collapsed) {
-      // 신호는 유지한다 — 펼침 재렌더 후 이 effect가 다시 돌며 앵커를 실측한다.
-      setSideBarCollapsed(false);
-      return;
-    }
-    if (!theaters.some((theater) => theater.id === theaterId)) {
-      consumeSideBarTheaterLaunch();
-      return;
-    }
-    // consume은 실측 시점에 한다 — 여기서 먼저 소비하면 deps 변경 cleanup이 아래 타이머를 즉시 취소한다.
-    const openAtLaunchButton = () => {
-      consumeSideBarTheaterLaunch();
-      const section = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-theater-id]") ?? [])
-        .find((candidate) => candidate.dataset.theaterId === theaterId);
-      const button = section?.querySelector<HTMLButtonElement>(".side-bar-theater-launch-btn");
-      if (!button) return;
-      openTheaterLaunchMenuAt(button.getBoundingClientRect(), theaterId);
-    };
-    // 접힘 해제 직후에는 width 200ms 전환이 진행 중이라 즉시 실측하면 앵커가 왼쪽으로 틀어진다 — 전환 종료 후 실측.
-    const settled = rootRef.current !== null && Math.abs(rootRef.current.getBoundingClientRect().width - width) <= 1;
-    if (settled) {
-      openAtLaunchButton();
-      return;
-    }
-    const timer = window.setTimeout(openAtLaunchButton, 220);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingSideBarTheaterLaunch, collapsed]);
-
   const toggleTheaterSectionCollapsed = (theaterId: string) => {
     setTheaterCollapsed(theaterId, !collapsedTheaters.includes(theaterId));
   };
 
   const startAliasEdit = (theaterId: string) => {
-    setNewMenu(null);
     setActiveContextMenu(null);
     setAliasEditingTheaterId(theaterId);
   };
@@ -1115,7 +1018,7 @@ export function OperationsSideBar({
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       inert={collapsed && !sideBar.peeking}
-      onContextMenu={openNewMenuAtCursor}
+      onContextMenu={openNewSessionAtCursor}
       onPointerLeave={(event) => {
         // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝난다. 엣지 독으로 되돌아가는
         // 이동만 픽의 연속으로 본다(독 쪽 이탈은 독이 대칭으로 판정한다).
@@ -1280,7 +1183,7 @@ export function OperationsSideBar({
                   onToggle={(groupId) => toggleTheaterGroupCollapsed(theater.id, groupId)}
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
-                  onOpenLaunch={(groupId, anchor) => { openTheaterLaunchMenuAt(anchor, theater.id, groupId); }}
+                  onOpenLaunch={(groupId) => { openTheaterNewSession(theater.id, groupId); }}
                   clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                 />
               ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
@@ -1386,35 +1289,6 @@ export function OperationsSideBar({
       {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
-
-      {newMenu ? createPortal(
-        <OperationLaunchContextMenu
-          key={`${newMenu.anchor.x}:${newMenu.anchor.y}`}
-          anchor={newMenu.anchor}
-          viewportBounds={newMenu.viewportBounds}
-          placement="cursor"
-          catalog={catalog}
-          canLaunch={canLaunch}
-          renderKindIcon={renderKindIcon}
-          onLaunchKind={(pluginId, kind, variantLaunch) => { setNewMenu(null); onLaunchKind(pluginId, kind, variantLaunch, newMenu.groupId ?? null, newMenu.theaterId ?? getViewedTheaterId()); }}
-          onClose={() => setNewMenu(null)}
-          // Theater 머리 「+」에서 연 메뉴의 맨 아래 — 만드는 일을 한자리에 둔다. 누르면 그 Theater 동작 메뉴가 이름 입력부터 열린다.
-          {...(newMenu.theaterId ? {
-            footerItems: [{
-              id: "new-group",
-              label: t("sidebar.theater.newGroup"),
-              icon: <PlusIcon />,
-              onSelect: () => {
-                const theaterId = newMenu.theaterId;
-                const anchor = newMenu.theaterAnchor;
-                setNewMenu(null);
-                if (theaterId && anchor) setActiveContextMenu({ kind: "theater", theaterId, anchor, newGroup: true });
-              },
-            }],
-          } : {})}
-        />,
-        document.body,
-      ) : null}
 
       {activeContextMenu?.kind === "chip" && contextMenuOperation ? (
         <GroupContextMenu

@@ -3,8 +3,7 @@ import { useHostCapabilities } from "../../../core/client/src/integration/use-ho
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability, ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterAlias, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
@@ -62,7 +61,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
   const t = useT();
-  const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [mutationError, setMutationError] = useState<{ readonly retry: () => void } | null>(null);
   const [operationMenu, setOperationMenu] = useState<{
     readonly operationId: string;
@@ -97,7 +95,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
 
   const stateRef = useRef(state);
   const operationMenuReturnFocusRef = useRef<HTMLElement | null>(null);
-  const catalogRequestEpochRef = useRef(0);
   stateRef.current = state;
 
   // 여는 제스처로 이어지는 휴면 재개 — 대화 화면에서는 여는 제스처가 곧 재개 판정이다.
@@ -135,28 +132,10 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     }
   }, [registry.providers, state.operationRuntimeHydration]);
 
-  const refreshCatalog = useCallback(() => {
-    const epoch = ++catalogRequestEpochRef.current;
-    void fetchOperationCatalog()
-      .then((nextCatalog) => {
-        if (catalogRequestEpochRef.current === epoch) setCatalog(nextCatalog);
-      })
-      .catch(() => {});
-  }, []);
-
   useEffect(() => {
     if (!state.operationsHydrated) return;
     for (const theater of state.theaters) pruneOperationAccents(theater.id, new Set(state.operations.filter((operation) => operation.theaterId === theater.id).map((operation) => operation.id)));
   }, [state.operations, state.theaters, state.operationsHydrated]);
-
-  useEffect(() => {
-    window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
-    refreshCatalog();
-    return () => {
-      window.removeEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshCatalog);
-      catalogRequestEpochRef.current += 1;
-    };
-  }, [refreshCatalog]);
 
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 상태별 보기다.
   useEffect(() => {
@@ -239,14 +218,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     consumeOperationFocus();
   }, [viewedTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
-  const canLaunch = state.theaters.length > 0 && !state.addingTheater;
   const theaterOperations = state.operations;
   const pooledOperations = useMemo(() => [...state.operations, ...state.nestedOperations], [state.operations, state.nestedOperations]);
-  const renderKindIcon = useCallback((pluginId: string | null, kind: OperationLaunchKind): ReactNode => {
-    const plugin = registry.providers.find((p) => p.id === pluginId);
-    return plugin?.renderLaunchIcon?.(kind) ?? null;
-  }, [registry.providers]);
-
   const handleSideBarLaunchKind = useCallback((
     pluginId: string | null,
     kind: OperationLaunchKind,
@@ -268,7 +241,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const request = state.pendingQuickLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeQuickLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, request.groupId ?? null)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
@@ -487,12 +460,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       groups={state.groups}
       activeOperationId={state.activeOperationId}
       operationNotifications={state.operationNotifications}
-      catalog={catalog}
-      canLaunch={canLaunch}
       addingTheater={state.addingTheater}
       theaterError={state.theaterError}
-      renderKindIcon={renderKindIcon}
-      onLaunchKind={handleSideBarLaunchKind}
       onClose={handleClose}
       onFocus={handleFocus}
       onResume={handleResume}

@@ -11,6 +11,12 @@ export type TourPhase = "spotlight" | "walkthrough";
 
 const SEEN_LIMIT = 64;
 
+/**
+ * 강도 확인 팁의 기록 키 — 투어 카탈로그 항목은 아니지만 같은 seenFeatureTours 필드에 실렸다. 팁을 띄우던 '+' 모델 메뉴는 새 세션
+ * 화면으로 바뀌어 떠났지만, 이미 저장된 기록을 「화면 안내 다시 보기」가 함께 지우도록 키는 남긴다.
+ */
+export const EFFORT_CONFIRM_TIP_SEEN_KEY = "effort-confirm-tip";
+
 export function hintSeenKey(contribution: OnboardingContribution): string | null {
   if (!contribution.entryHint) return null;
   return contribution.entryHint.seenKey ?? `${contribution.id}.rail-hint`;

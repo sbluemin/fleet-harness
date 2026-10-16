@@ -26,6 +26,7 @@ import type {
   OperationNode,
   ObserverStatus,
   QuickLaunchDraftAttachment,
+  NewSessionTarget,
   QuickLaunchRequest,
   ReleaseNotesLocale,
   ReleaseNotesResponse,
@@ -131,8 +132,7 @@ let state: ConsoleState = {
   pendingOperationFocus: null,
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
-  pendingSideBarTheaterLaunch: null,
-  launchMenuRequest: null,
+  newSession: null,
   keyboardShortcutsOpen: false,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
@@ -607,8 +607,10 @@ export function setActiveOperation(
   const body = nested ? withNestedBody(nested.parentOperationId!, nested.id) : {};
   // 여는 것은 고르는 것을 덮는다 — 어느 경로로든 Operation 이 활성이 되면 사이드바의 선택은 끝난다.
   const selection = operationId !== null && state.selectedOperationId !== null ? { selectedOperationId: null } : {};
-  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedOperationId" in selection)) return;
-  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body, ...selection });
+  // Operation 을 여는 것은 아직 보내지 않은 새 세션 화면을 걷는다 — 입력 전에는 만든 것이 없으니 남는 것도 없다.
+  const leaveNewSession = operationId !== null && state.newSession !== null ? { newSession: null } : {};
+  if (state.activeOperationId === operationId && state.activeOperationAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedOperationId" in selection) && !("newSession" in leaveNewSession)) return;
+  setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged, ...body, ...selection, ...leaveNewSession });
 }
 
 /**
@@ -765,6 +767,8 @@ export function focusOperation(requestedOperationId: string, options?: { readonl
     pendingOperationFocus: operationId,
     operationNotifications: removeNotificationForOperation(state.operationNotifications, operationId),
     selectedOperationId: null,
+    // 새 세션 화면에서 보낸 첫 메시지가 Operation 을 세우면 그 포커스가 화면을 걷는다(다른 길로 연 Operation 도 같다).
+    newSession: null,
     ...body,
   });
 }
@@ -785,15 +789,6 @@ export function consumeSideBarAddTheater(): void {
   setState({ pendingSideBarAddTheater: false });
 }
 
-export function requestSideBarTheaterLaunch(theaterId: string): void {
-  setState({ pendingSideBarTheaterLaunch: theaterId });
-}
-
-export function consumeSideBarTheaterLaunch(): void {
-  if (state.pendingSideBarTheaterLaunch === null) return;
-  setState({ pendingSideBarTheaterLaunch: null });
-}
-
 export function requestOperationKeyboardFocus(operationId: string): void {
   setState({
     keyboardFocusRequest: {
@@ -803,24 +798,25 @@ export function requestOperationKeyboardFocus(operationId: string): void {
   });
 }
 
-// 팔레트 "New Operation" 커맨드가 사이드바의 ＋New launch 오버레이를 열도록 요청한다(keyboardFocusRequest 패턴 미러).
-export function requestOperationLaunchMenu(): void {
-  setState({ launchMenuRequest: { requestId: (state.launchMenuRequest?.requestId ?? 0) + 1 } });
+/**
+ * 본문에 「새 세션 화면」을 연다 — Theater·그룹 머리 「+」, 팔레트 「New Operation」. 여는 것만으로는 아무것도 만들지 않고,
+ * 첫 메시지가 Quick Launch 와 같은 실행 의도(requestQuickLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
+ */
+export function openNewSession(target: NewSessionTarget): void {
+  const current = state.newSession;
+  if (current?.theaterId === target.theaterId && current.groupId === target.groupId) return;
+  setState({ newSession: target });
 }
 
-export function consumeOperationLaunchMenu(): void {
-  if (state.launchMenuRequest === null) return;
-  setState({ launchMenuRequest: null });
+export function closeNewSession(): void {
+  if (state.newSession === null) return;
+  setState({ newSession: null });
 }
 
 // 소비자(OperationsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
 // consume은 UI 반응(다이얼로그 열림 등)을 동반하므로 경계 정리에는 쓸 수 없다.
 export function clearPendingSideBarSignals(): void {
-  setState({
-    pendingSideBarAddTheater: false,
-    pendingSideBarTheaterLaunch: null,
-    launchMenuRequest: null,
-  });
+  setState({ pendingSideBarAddTheater: false });
 }
 
 export function openKeyboardShortcuts(): void {
@@ -1195,7 +1191,8 @@ export function removeTheater(theaterId: string): void {
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
   // 사라진 Theater를 겨눈 Quick Launch 요청도 함께 버린다.
   const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
-  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch });
+  const newSession = state.newSession?.theaterId === theaterId ? null : state.newSession;
+  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch, newSession });
 }
 
 export function dismissNotificationsForOperation(operationId: string): void {
