@@ -131,7 +131,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
   /** `turn` — 보낸 쪽 원장에서 이 전언을 낸 턴(메시지의 `turn` 과 같은 좌표). 받은 쪽 원장만 본 전언에는 없다. */
   | { readonly kind: "delegation"; readonly sender: ConversationSpeaker; readonly recipients: readonly ConversationSpeaker[]; readonly text: string; readonly result: string; readonly ok?: boolean; readonly received: boolean; readonly turn?: string }
   | { readonly kind: "member-joined" | "member-left"; readonly speaker: ConversationSpeaker }
-  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: string; readonly text: string }
+  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string }
   /**
    * 사람이 결정 요청에 보낸 답 — 요청 하나에 한 줄, 답한 시각(`at`)의 자리에 선다. 질문마다 머리말(있으면)·질문·답(고른 선택지와 쓴 말).
    * 보드가 결정으로 남긴 답만 싣는다. 사람의 말과 같은 오른쪽 말풍선으로, 받는 이는 대화의 지휘관이다.
