@@ -86,6 +86,8 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
     if (event.key === "ArrowRight") { event.preventDefault(); move(1); return; }
     if (event.key === "ArrowUp") { event.preventDefault(); move(-7); return; }
     if (event.key === "ArrowDown") { event.preventDefault(); move(7); return; }
+    // 날짜 전용에서도 빠른 칩·월 이동 단추의 Enter 는 그 단추가 받는다 — 달력이 가로채면 커서 날짜(=고른 날짜)를 다시 골라 기한이 지워진다.
+    if (event.key === "Enter" && !withTime && event.target !== event.currentTarget && (event.target as HTMLElement).matches('button:not([role="gridcell"])')) return;
     if (event.key === "Enter") { event.preventDefault(); if (withTime) cardRef.current?.querySelector<HTMLInputElement>('input')?.focus(); else pickDay(iso(cursor)); }
   };
 
