@@ -67,7 +67,6 @@ import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 interface OperationsSideBarProps {
   /** 대화 화면이 그리는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
   readonly widthCap?: number;
-  /** 위쪽 줄 아래에 서는 셸의 기여(대화 중심 화면의 검색·새 Operation·고정 줄). 없으면 아무것도 서지 않는다. */
   /** 맨 위 줄 오른쪽, 접기 컨트롤 앞에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
   readonly topStripTrailing?: ReactNode;
   /**
@@ -76,7 +75,8 @@ interface OperationsSideBarProps {
    * 중심 화면에는 「더블클릭으로 열기」 선호가 없다(누르면 그 대화로 간다).
    */
   readonly topStripVariant?: "compact";
-  readonly topAccessory?: ReactNode;
+  /** compact 맨 위 줄 가운데에 떠 있는 셸의 기여(대화 중심 화면의 출근한 부관 머리). 자리는 기여가 스스로 잰다. */
+  readonly topStripCenter?: ReactNode;
   /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
   readonly bottomAccessory?: ReactNode;
   readonly archiveInBottomAccessory?: boolean;
@@ -354,7 +354,7 @@ export function OperationsSideBar({
   widthCap,
   topStripTrailing,
   topStripVariant,
-  topAccessory,
+  topStripCenter,
   bottomAccessory,
   archiveInBottomAccessory = false,
 }: OperationsSideBarProps) {
@@ -1034,6 +1034,7 @@ export function OperationsSideBar({
       {topStripVariant === "compact" ? (
         <div className="side-bar-top-strip is-compact">
           <span className="side-bar-top-strip-spacer" aria-hidden="true" />
+          {topStripCenter}
           {topStripTrailing}
         </div>
       ) : (
@@ -1049,7 +1050,6 @@ export function OperationsSideBar({
         <SideBarCollapseControl />
       </div>
       )}
-      {topAccessory}
 
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>

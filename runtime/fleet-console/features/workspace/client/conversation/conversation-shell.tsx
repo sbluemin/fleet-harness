@@ -177,21 +177,80 @@ export function ConversationSideBarActions() {
   );
 }
 
-/** 맨 위 줄 아래 — 출근한 부관(고정 표식)이 있을 때만 선다. */
-export function ConversationSideBarTop() {
+/** 부관 머리 크기 단계 — 맨 위 줄 가용 폭이 모자라면 한 단씩 줄인다(28px 가 바닥: 커맨드 밴드 머리 24px 보다 크다). */
+const DEPUTY_HEAD_SIZES = [40, 32, 28] as const;
+/** 머리 묶음과 이웃(신호등 예약·찾기·새 Theater 단추) 사이에 남기는 여유. */
+const DEPUTY_CLEARANCE = 8;
+
+/**
+ * 맨 위 줄 가운데 — 출근한 부관(고정 표식)이 있을 때만 선다. 따로 한 줄을 차지하지 않고 찾기·새 Theater 와 같은 52px 줄에 뜬다.
+ *
+ * 자리는 이 줄의 실제 기하로 정한다. 가용 칸은 줄의 왼쪽 안쪽 여백(macOS Desktop 은 신호등 예약 76px/zoom + 4px, 그 밖은 12px)부터
+ * 오른쪽 단추 묶음 앞까지다(Windows 캡션 단추는 맨 오른쪽 열이 비우므로 사이드바에는 예약이 없다). 머리는 40 → 32 → 28px 중
+ * 묶음이 가용 칸(양쪽 여유 8px)에 드는 가장 큰 단을 고르고, 사이드바 축 가운데에 선다 — 그 자리가 이웃과 부딪히면 가용 칸 가운데로
+ * 옮긴다. 크기는 플러그인 항목에 --command-band-entry-size 로 알린다(SDK 계약). 머리 단추는 창 끌기 줄 위에서도 no-drag 다
+ * (conversation.css 의 Desktop 규칙이 줄 안 button 을 모두 빼낸다).
+ */
+export function ConversationSideBarDeputies() {
   const t = useT();
   const { commandBandEntries } = usePluginRegistry();
   const pinned = commandBandEntries.filter((entry) => entry.id === DEPUTY_COMMAND_BAND_ENTRY_ID);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const cluster = ref.current;
+    const strip = cluster?.parentElement;
+    if (!cluster || !strip) return;
+    let frame = 0;
+    const place = () => {
+      const stripStyle = getComputedStyle(strip);
+      const width = strip.clientWidth;
+      const zoneLeft = Number.parseFloat(stripStyle.paddingLeft) || 0;
+      const trailing = strip.querySelector<HTMLElement>(".conversation-side-actions");
+      const zoneRight = trailing
+        ? trailing.offsetLeft - (Number.parseFloat(getComputedStyle(trailing).marginLeft) || 0)
+        : width - (Number.parseFloat(stripStyle.paddingRight) || 0);
+      const available = Math.max(0, zoneRight - zoneLeft);
+      let size: number = DEPUTY_HEAD_SIZES[0];
+      let clusterWidth = 0;
+      for (const candidate of DEPUTY_HEAD_SIZES) {
+        size = candidate;
+        cluster.style.setProperty("--command-band-entry-size", `${candidate}px`);
+        clusterWidth = cluster.offsetWidth;
+        if (clusterWidth <= available - DEPUTY_CLEARANCE * 2) break;
+      }
+      let left = width / 2 - clusterWidth / 2;
+      if (left < zoneLeft + DEPUTY_CLEARANCE || left + clusterWidth > zoneRight - DEPUTY_CLEARANCE) {
+        left = zoneLeft + (available - clusterWidth) / 2;
+      }
+      cluster.style.left = `${Math.round(left)}px`;
+      cluster.dataset.headSize = String(size);
+    };
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(place);
+    };
+    place();
+    // 줄 폭(사이드바 끌기·줌)과 오른쪽 단추 묶음, 부관 출퇴근(머리 수)에 따라 다시 잰다. 자기 크기 변화는 보지 않는다 — 재는 일이 곧 그 변화다.
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    resize?.observe(strip);
+    const trailing = strip.querySelector<HTMLElement>(".conversation-side-actions");
+    if (trailing) resize?.observe(trailing);
+    const mutation = new MutationObserver(schedule);
+    mutation.observe(cluster, { childList: true, subtree: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      resize?.disconnect();
+      mutation.disconnect();
+    };
+  }, [pinned.length]);
   if (pinned.length === 0) return null;
   return (
-    <div className="conversation-side-top">
-      <div className="conversation-side-pinned" role="group" aria-label={t("conversation.side.pinnedAria")}>
-        {pinned.map((entry) => (
-          <PluginErrorBoundary key={entry.id} fallback={null}>
-            <PluginEntry render={entry.render} />
-          </PluginErrorBoundary>
-        ))}
-      </div>
+    <div ref={ref} className="conversation-side-deputies" role="group" aria-label={t("conversation.side.pinnedAria")}>
+      {pinned.map((entry) => (
+        <PluginErrorBoundary key={entry.id} fallback={null}>
+          <PluginEntry render={entry.render} />
+        </PluginErrorBoundary>
+      ))}
     </div>
   );
 }

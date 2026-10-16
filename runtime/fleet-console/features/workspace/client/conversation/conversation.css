@@ -583,14 +583,6 @@
 }
 
 /* ── 사이드바 위·아래 줄 ────────────────────────────────────────────────── */
-.conversation-side-top {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: 0 var(--space-3) var(--space-2);
-}
-
 .conversation-side-actions {
   display: inline-flex;
   flex: none;
@@ -598,26 +590,24 @@
   margin-left: var(--space-1);
 }
 
-/* 대화 배치에는 커맨드 밴드가 없어 부관 머리는 이 줄에만 선다 — 밴드의 24px 대신 사이드바 폭에 맞춰 키워
-   가운데 세운다. 크기는 플러그인 항목에 --command-band-entry-size 로 알린다(SDK 계약). */
-.conversation-side-pinned {
+/* 대화 배치에는 커맨드 밴드가 없어 부관 머리는 사이드바 맨 위 줄 가운데에만 선다 — 따로 한 줄을 쓰지 않는다. 자리(left)와 머리 크기
+   (--command-band-entry-size 40 → 32 → 28px, SDK 계약)는 ConversationSideBarDeputies 가 줄의 실제 가용 폭으로 정한다. 여기 값은 재기 전 첫 칠이다. */
+.conversation-side-deputies {
   --command-band-entry-size: 40px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: var(--space-2);
-  min-height: var(--command-band-entry-size);
+  width: max-content;
 }
-
-/* 부관이 아무도 출근하지 않으면 고정 줄은 자리를 차지하지 않는다. */
-.conversation-side-pinned:empty { display: none; }
+.conversation-side-deputies:empty { display: none; }
 
 /* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
    목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
 .console-shell.is-operations-view .operations-side-bar.is-expanded { overflow: visible; }
-.operations-side-bar.is-closed .conversation-side-top {
-  display: none;
-}
 
 /* ── 사이드바 행: 대화 목록 문법 ───────────────────────────────────────── */
 /* 지휘관 행은 40px 이다 — 사령관 카드(52px)보다 낮아야 Theater 가 위, Operation 이 아래로 읽힌다(이전엔 행 50px > 머리 38px 로 뒤집혀 있었다). */
@@ -1142,7 +1132,7 @@
 
 /* ── 사이드바 맨 위 줄도 투명 오버레이 — 목록이 그 밑으로 흐르고 신호등 자리·단추만 떠 있다 ─────────────
    목록 위에 단추가 뜨므로 줄 안쪽만 바탕에서 투명으로 옅어지는 짧은 그라디언트를 둔다(가리는 띠가 아니다).
-   부관 고정 줄이 서면 그 줄이 맨 위 줄 아래에 고정으로 서고 목록은 그 아래서 시작한다. 오른쪽 세부 정보 머리는 글자 탭이라 내용이
+   출근한 부관 머리도 이 줄 가운데에 함께 뜬다(따로 줄을 쓰지 않는다). 오른쪽 세부 정보 머리는 글자 탭이라 내용이
    그 밑으로 흐르면 읽히지 않는다 — 효과 없이 바탕과 같은 면의 고정 줄로 둔다. */
 .console-shell.is-operations-view .side-bar-top-strip {
   position: absolute;
@@ -1160,10 +1150,6 @@
   padding-top: calc(var(--space-1) + var(--conversation-top-row));
 }
 
-/* 부관이 출근하지 않으면 고정 줄은 비어 있다 — 그 래퍼도 자리를 차지하지 않는다. */
-.conversation-side-top:has(> .conversation-side-pinned:empty) { display: none; }
-.console-shell.is-operations-view .conversation-side-top { margin-top: var(--conversation-top-row); }
-.console-shell.is-operations-view .operations-side-bar:has(.conversation-side-pinned:not(:empty)) .operations-side-bar-chips { padding-top: var(--space-1); }
 
 .console-shell.is-operations-view .side-bar-top-strip .side-bar-view-menu-button {
   background: color-mix(in oklch, var(--conversation-side) 80%, transparent);
