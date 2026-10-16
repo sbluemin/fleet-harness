@@ -36,7 +36,6 @@ export * from "./upstream/opencode-go/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./canonical/index.js";
-export * from "./upstream/cursor/credentials.js";
 export * from "./upstream/cursor/native/index.js";
 export * from "./upstream/cursor/diagnostic-log.js";
 export * from "./router/router.js";

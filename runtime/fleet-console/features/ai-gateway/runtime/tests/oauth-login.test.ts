@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +7,8 @@ import { createProviderAuthService } from "../src/auth/index.js";
 import {
   CODEX_AUTH_PROVIDER_ID,
   createCodexOAuth,
+  createCursorOAuth,
+  CURSOR_AUTH_PROVIDER_ID,
   createMuseCodeOAuth,
   createXaiOAuth,
   MUSE_CODE_AUTH_PROVIDER_ID,
@@ -175,6 +178,40 @@ describe("Fleet-owned subscription sign-in", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  // Cursor에는 device code가 없다. 사용자가 여는 URL에는 challenge만 있고, verifier는 서버의 폴링에만 실린다.
+  it("signs in to Cursor by polling with a server-held PKCE verifier", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cursor-oauth-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const accessToken = jwt({ sub: "auth0|user-1", exp: 2_000_000_000 });
+    let polls = 0;
+    const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
+      const target = new URL(String(url));
+      expect(`${target.origin}${target.pathname}`).toBe("https://api2.cursor.sh/auth/poll");
+      expect(init?.method).toBe("GET");
+      polls += 1;
+      return polls === 1 ? new Response(null, { status: 404 }) : Response.json({ accessToken, refreshToken: "refresh-secret" });
+    });
+    const oauth = createCursorOAuth({ authService, fetch: fetchImpl });
+    try {
+      const started = await oauth.start();
+      const login = new URL(started.verificationUri);
+      expect(`${login.origin}${login.pathname}`).toBe("https://cursor.com/loginDeepControl");
+      expect(login.searchParams.get("redirectTarget")).toBe("cli");
+      await vi.waitFor(() => expect(oauth.status(started.loginId)?.state).toBe("signed_in"), { timeout: 8000 });
+      const poll = new URL(String(fetchImpl.mock.calls[0]?.[0]));
+      const verifier = poll.searchParams.get("verifier") ?? "";
+      expect(poll.searchParams.get("uuid")).toBe(login.searchParams.get("uuid"));
+      expect(createHash("sha256").update(verifier).digest("base64url")).toBe(login.searchParams.get("challenge"));
+      expect(JSON.stringify(started)).not.toContain(verifier);
+      expect(await authService.getEntry(CURSOR_AUTH_PROVIDER_ID)).toEqual({
+        key: accessToken, type: "oauth", refreshToken: "refresh-secret", accessExpiresAt: 2_000_000_000_000, version: 1,
+      });
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }, 10_000);
 
   // quota와 추론(또는 Console과 `fleet gateway serve`)이 같은 갱신 토큰으로 동시에 갱신해도
   // 먼저 저장된 회전 쌍을 늦게 온 옛 응답이 덮으면 안 된다.

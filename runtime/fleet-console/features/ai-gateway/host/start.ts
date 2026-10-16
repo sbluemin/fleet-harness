@@ -10,6 +10,7 @@ import {
   createMuseCodeOAuth,
   createCodexOAuth,
   createXaiOAuth,
+  createCursorOAuth,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -123,7 +124,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const providerLoad = new Map<string, number>();
   const distribution = new GatewayRoutingDistribution();
   // 저장된 연결 동의는 유지하되 공급자 조회와 캐시는 Gateway 한 인스턴스가 소유한다.
-  const isConnected = async (provider: "claude" | "cursor") => {
+  const isConnected = async (provider: "claude") => {
     const settings = await ctx.host.storage.readJson("quota", "settings");
     return settings !== null && typeof settings === "object"
       && (settings as Record<string, unknown>)[`${provider}Connected`] === true;
@@ -136,10 +137,11 @@ export function startAiGateway(ctx: GatewayStartContext) {
   ctx.host.lifecycle.registerCleanup(() => codex.dispose());
   const xai = createXaiOAuth({ authService, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
+  const cursor = createCursorOAuth({ authService, onQuota: (value) => quota.record("cursor", value) });
+  ctx.host.lifecycle.registerCleanup(() => cursor.dispose());
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
-    isCursorConnected: () => isConnected("cursor"),
-    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
+    ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai, cursor }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -312,6 +314,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
+    readCursorToken: cursor.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

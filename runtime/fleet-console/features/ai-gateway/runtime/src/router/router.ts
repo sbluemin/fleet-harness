@@ -29,7 +29,6 @@ import {
   CursorUpstreamRefusalError,
 } from "../upstream/cursor/native/adapter.js";
 import type { CursorDiagnosticSink } from "../upstream/cursor/native/adapter.js";
-import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
@@ -120,18 +119,6 @@ export interface CodexSubscriptionAuth {
   readonly accountId: string;
 }
 
-
-/**
- * Cursor CLI/IDE 로그인이 남긴 구독 토큰.
- *
- * 조달 경로는 core-ai-gateway가 단일 출처다. macOS는 keychain을 먼저 보고, Linux/Windows는
- * 각 플랫폼의 auth.json을 읽는다. 여기서 keychain만 보면 `security`가 없는 Linux/WSL에서
- * 항상 토큰 없음으로 떨어져 Cursor 모델 호출이 401이 된다.
- */
-export async function readCursorSubscriptionToken(): Promise<string | null> {
-  const credentials = await resolveCursorCredentials(defaultCredentialDeps);
-  return credentials?.accessToken ?? null;
-}
 
 /**
  * The credential the Antigravity CLI (`agy`) left in the OS credential store or
@@ -586,7 +573,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     if (target?.provider === "cursor") {
       const cursorToken = await deps.readCursorToken?.();
       if (!cursorToken) {
-        writeAnthropicError(res, 401, "authentication_error", "No Cursor subscription token was found. Sign in to Cursor first.");
+        writeAnthropicError(res, 401, "authentication_error", "No Cursor sign-in was found. Sign in to Cursor in Console first.");
         clock?.finish("error", 401);
         return true;
       }

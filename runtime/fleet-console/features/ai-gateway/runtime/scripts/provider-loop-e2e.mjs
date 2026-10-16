@@ -24,7 +24,7 @@ Options:
   --operations <count>     Positive integer, default ${DEFAULT_OPERATIONS}, maximum ${MAX_OPERATIONS}
   --trials <count>         Positive integer, default ${DEFAULT_TRIALS}, maximum ${MAX_TRIALS}
   --timeout-ms <count>     Positive integer, default ${DEFAULT_TIMEOUT_MS}, maximum ${MAX_TIMER_MS}
-  --auth-path <path>       Console slot auth.json holding the OpenCode API key or the Codex/xAI sign-in; required for those models
+  --auth-path <path>       Console slot auth.json holding the OpenCode API key or the Codex/xAI/Cursor sign-in; required for those models
   ${CONFIRM_LIVE_PROVIDER}  Required explicit consent to spend live provider quota
   --help                   Show this help before loading build artifacts or credentials
 
@@ -376,7 +376,7 @@ function validateTarget(gateway, options) {
     }
   }
   // The auth store never guesses a data root, so an OpenCode run must name the slot's file.
-  if (["opencode", "codex", "xai"].includes(target.provider) && options.authPath === null) {
+  if (["opencode", "codex", "xai", "cursor"].includes(target.provider) && options.authPath === null) {
     throw new UsageError(`--auth-path is required for ${target.provider} models`);
   }
   return target;
@@ -434,10 +434,11 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
     : gateway.createProviderAuthService({ authPath: options.authPath });
   const codex = authService === null ? null : gateway.createCodexOAuth({ authService });
   const xai = authService === null ? null : gateway.createXaiOAuth({ authService });
+  const cursor = authService === null ? null : gateway.createCursorOAuth({ authService });
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: async () => (await codex?.readSubscription()) ?? null,
-    readCursorToken: gateway.readCursorSubscriptionToken,
+    readCursorToken: async () => (await cursor?.readSubscriptionToken()) ?? null,
     readXaiToken: async () => (await xai?.readSubscriptionToken()) ?? null,
     readAntigravityToken: gateway.readAntigravitySubscriptionToken,
     readOpencodeApiKey: async () => authService?.getApiKey(gateway.OPENCODE_AUTH_PROVIDER_ID),
@@ -460,6 +461,7 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
   } finally {
     codex?.dispose();
     xai?.dispose();
+    cursor?.dispose();
     if (!serverClosed) {
       router.dispose();
       await closeServer(server);

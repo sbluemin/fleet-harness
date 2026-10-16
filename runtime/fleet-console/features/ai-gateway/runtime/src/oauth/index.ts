@@ -9,3 +9,5 @@ export * from "./muse-code/login.js";
 export * from "./muse-code/mint.js";
 export * from "./xai/config.js";
 export * from "./xai/login.js";
+export * from "./cursor/config.js";
+export * from "./cursor/login.js";
