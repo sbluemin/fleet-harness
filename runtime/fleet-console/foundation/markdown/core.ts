@@ -1,6 +1,6 @@
 import type { MarkdownLinkTarget } from "./link-activation.js";
 import { siteIconName, siteIconSvg } from "./site-icons.js";
-import { Marked } from "marked";
+import { Marked, type Token, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
@@ -36,6 +36,11 @@ export interface RenderMarkdownOptions {
    * 맨 주소·`<주소>`는 호스트와 줄인 경로로 접고, 원문은 title에 둔다. 아이콘은 번들 글리프뿐이라 네트워크 요청이 없다.
    */
   readonly siteLinks?: boolean;
+  /**
+   * 스트리밍 중 아직 닫히지 않은 마지막 mermaid 펜스는 다이어그램 자리표시자로 바꾸지 않고 코드 블록으로 둔다.
+   * 미완성 원문을 델타마다 렌더하거나 파서 오류를 깜빡이지 않게 한다. 이미 닫힌 펜스는 그대로 자리표시자가 된다.
+   */
+  readonly deferUnclosedMermaid?: boolean;
 }
 
 interface FrontmatterEntry {
@@ -89,7 +94,7 @@ export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}
   decorateCodeBlocks(document, {
     copyLabel: options.copyLabel ?? "Copy",
     copyAriaLabel: options.copyAriaLabel ?? ((language) => `Copy ${language} code`),
-  });
+  }, options.deferUnclosedMermaid === true ? bodyWithWikiLinks : undefined);
   decorateLinks(document, options.resolveLink, options.siteLinks === true);
   const html = DOMPurify.sanitize(document.body.innerHTML, sanitizeConfig);
   return {
@@ -182,13 +187,22 @@ function removeDuplicateTitleHeading(document: Document, title: string | undefin
 function decorateCodeBlocks(
   document: Document,
   labels: { readonly copyLabel: string; readonly copyAriaLabel: (language: string) => string },
+  deferUnclosedMermaidSource?: string,
 ): void {
-  for (const code of document.querySelectorAll("pre > code")) {
+  const codes = [...document.querySelectorAll("pre > code")];
+  // marked가 아직 닫지 않은 마지막 mermaid 펜스만 코드로 남긴다. 앞선 닫힌 펜스는 그대로 그린다.
+  let trailingOpenMermaid: Element | null = null;
+  if (deferUnclosedMermaidSource !== undefined && trailingMermaidFenceOpen(deferUnclosedMermaidSource)) {
+    for (const code of codes) {
+      if (languageFromClass(code.className) === "mermaid") trailingOpenMermaid = code;
+    }
+  }
+  for (const code of codes) {
     const language = languageFromClass(code.className);
     const rawCode = code.textContent ?? "";
     const pre = code.parentElement;
     if (!pre) continue;
-    if (language === "mermaid") {
+    if (language === "mermaid" && code !== trailingOpenMermaid) {
       const placeholder = document.createElement("div");
       placeholder.className = "diagram-block";
       // Base64-encode so DOMPurify does not strip the attribute when the
@@ -206,6 +220,41 @@ function decorateCodeBlocks(
     pre.dataset.code = rawCode;
     pre.insertBefore(buildCodeToolbar(document, language || "text", labels), pre.firstChild);
   }
+}
+
+function isMermaidLanguage(language: string | undefined): boolean {
+  return language?.trim().split(/\s+/)[0]?.toLowerCase() === "mermaid";
+}
+
+/** marked가 낸 마지막 mermaid 코드 토큰의 raw에 닫는 펜스가 없으면, 스트리밍 중인 미완성 원문이다. */
+function trailingMermaidFenceOpen(source: string): boolean {
+  const last = lastMermaidCode(marked.lexer(source));
+  if (!last) return false;
+  return !mermaidFenceClosed(last.raw);
+}
+
+function lastMermaidCode(tokens: readonly Token[]): Tokens.Code | null {
+  let found: Tokens.Code | null = null;
+  const visit = (list: readonly Token[] | undefined): void => {
+    if (!list) return;
+    for (const token of list) {
+      if (token.type === "code" && "lang" in token && isMermaidLanguage(token.lang)) found = token as Tokens.Code;
+      if ("tokens" in token && token.tokens) visit(token.tokens);
+      if (token.type === "list") {
+        for (const item of token.items) visit(item.tokens);
+      }
+    }
+  };
+  visit(tokens);
+  return found;
+}
+
+function mermaidFenceClosed(raw: string): boolean {
+  const opening = /^(?: {0,3})(`{3,}|~{3,})/.exec(raw);
+  const marker = opening?.[1];
+  if (!opening || !marker) return true;
+  const closer = new RegExp(`(?:^|\\n) {0,3}\\${marker[0]}{${marker.length},}[ \\t]*(?:\\n|$)`);
+  return closer.test(raw.slice(opening[0].length));
 }
 
 function buildCodeToolbar(
