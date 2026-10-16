@@ -410,7 +410,12 @@ function waitFor(ready: () => boolean): Promise<void> {
 }
 
 function listenTls(onSocket: (socket: tls.TLSSocket) => void): Promise<{ port: number; close: () => Promise<void> }> {
-  const server = tls.createServer({ cert: TEST_CERTIFICATE, key: TEST_KEY }, onSocket);
+  const sockets = new Set<tls.TLSSocket>();
+  const server = tls.createServer({ cert: TEST_CERTIFICATE, key: TEST_KEY }, (socket) => {
+    sockets.add(socket);
+    socket.once("close", () => { sockets.delete(socket); });
+    onSocket(socket);
+  });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const address = server.address();
@@ -418,8 +423,8 @@ function listenTls(onSocket: (socket: tls.TLSSocket) => void): Promise<{ port: n
       resolve({
         port: address.port,
         close: () => new Promise((done) => {
+          for (const socket of sockets) socket.destroy();
           server.close(() => done());
-          server.closeAllConnections?.();
         }),
       });
     });
