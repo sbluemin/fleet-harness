@@ -4,6 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./host-context": {
+      "types": "./host-context/types.ts",
+      "import": "./host-context/types.ts",
+      "default": "./host-context/types.ts"
+    },
     "./conversation": {
       "types": "./conversation/index.ts",
       "import": "./conversation/index.ts",
