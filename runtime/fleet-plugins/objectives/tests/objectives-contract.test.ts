@@ -120,7 +120,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const reservedKeys = new Set<string>();
   // rejectModel — 호스트가 그 모델의 기동·재개를 거절한다(그새 Gateway 노출이 꺼진 모델). 재개는 세션 좌표의 모델을 읽는다.
   // coordinates — 떠 있는 채팅의 자식이 다음 좌표 변경 하나를 거절한다(호스트가 돌려주는 결과 그대로).
-  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("@fleet-console/sdk/mcp").ConsoleCoordinatesResult | null };
+  const hostFault = { afterCreate: 0, sendError: null as string | null, rejectModel: null as string | null, coordinates: null as import("@fleet-console/sdk/mcp").ConsoleCoordinatesResult | null, duringSend: null as (() => void) | null };
   // 사람이 지운 사이드바 그룹 — 호스트의 groups.get 이 더는 돌려주지 않는다.
   const removedGroups = new Set<string>();
   const operationsHost = {
@@ -199,7 +199,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
         launchState: ({ key }: { theaterId: string; key: string }) => deletedKeys.has(key) ? { state: "purged" } : keyed.has(key) && operations.has(keyed.get(key)!) ? { state: "live", operationId: keyed.get(key) } : reservedKeys.has(key) ? { state: "reserved" } : { state: "absent" },
         reserveLaunchKeys: ({ keys }: { theaterId: string; keys: readonly string[] }) => { for (const key of keys) reservedKeys.add(key); },
         request: async (input: ConsoleActionInput) => {
-          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } deliveries.push(input); sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
+          if (input.kind === "send") { if (hostFault.sendError) { const code = hostFault.sendError; hostFault.sendError = null; throw new Error(code); } const duringSend = hostFault.duringSend; hostFault.duringSend = null; duringSend?.(); deliveries.push(input); sent.push({ operationId: input.operationId!, text: input.text! }); if (activity.get(input.operationId!) === "dormant") activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
           if (input.kind === "interrupt") { if (activity.get(input.operationId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.operationId!); activity.set(input.operationId!, "idle"); return { operationId: input.operationId }; }
           // resume 은 휴면만 세션째 되살린다.
@@ -433,6 +433,13 @@ describe("Objectives contract", () => {
     await call("read", {});
     expect((await call("mark_criterion", { n: 1, met: false })).structuredContent.error).toBe("recheck_approval_required");
     expect((await call("plan", { missions: [{ text: "human addition" }] })).structuredContent.error).toBe("mission_kept");
+    // 기준만 제출하면 옛 충족과 사람의 임무는 그대로다. 편성 plan 의 withoutMet 와 다른 쓰기다.
+    const keptMissions = store.find(id)!.missions.map((mission) => mission.id);
+    const keptMet = store.find(id)!.criteria.map((criterion) => criterion.met ?? null);
+    expect((await call("plan", { criteria: [{ text: "added without a lineup" }] })).isError).toBe(false);
+    expect(store.find(id)!.missions.map((mission) => mission.id)).toEqual(keptMissions);
+    expect(store.find(id)!.criteria.map((criterion) => criterion.met ?? null)).toEqual(keptMet);
+    expect(store.find(id)!.criteriaProposals).toEqual([expect.objectContaining({ kind: "add", text: "added without a lineup" })]);
     expect((await call("plan", { missions: [{ text: "first extension" }], criteria: [{ recheck: original.criteria[1]!.id, reason: "scope changed" }, { text: "new criterion" }] })).isError).toBe(false);
     expect(store.find(id)!.missions.some((mission) => mission.id === human.id && !mission.unplaced)).toBe(true);
     expect(store.find(id)!.criteria.map((criterion) => criterion.met)).toEqual(["original evidence", "original evidence"]);
@@ -1818,7 +1825,7 @@ describe("Objectives contract", () => {
   });
 
   it("keeps criteria proposed until the person decides, then awaits hand-off and reaches review only through hand_off", async () => {
-    const { store, call, route, launch, events, savedObjective, launches, operations } = harness();
+    const { store, call, route, launch, events, savedObjective, launches, operations, hostFault } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Criteria", groupId: null, missions: [{ text: "fix" }] });
     const as = objective.id;
     const first = store.criterionAdd(as, "tests pass", "human").criteria[0]!;
@@ -1885,15 +1892,55 @@ describe("Objectives contract", () => {
     expect(savedObjective(as)).not.toHaveProperty("handoff");
     launch.missionAdded(as, { text: "one more" }, { by: "human" });
     expect(store.find(as)!.criteria.every((criterion) => !criterion.met)).toBe(true);
-    // 구상 중 스티어링 뒤의 턴은 planning=true여도 기준 제안 권한이 닫힌다.
-    await route("plan/request", { objectiveId: as });
-    expect((await route("commander/steer", { objectiveId: as })).status).toBe(200);
-    expect(store.find(as)!.planning).toBe(true);
-    expect((await plan([{ text: "unauthorized" }])).structuredContent.error).toBe("criteria_not_planning");
     await route("plan/request", { objectiveId: as });
     await plan([{ revise: second.id, text: "new copy" }]);
     store.criterionRemove(as, second.id);
     expect(store.find(as)!.criteriaProposals).toEqual([]); // 대상 기준 삭제와 제안 삭제는 같은 보드 변경이다.
+    // 이미 구상 중이면 스티어링은 구상을 유지하고 제안 창도 닫지 않는다.
+    expect((await route("commander/steer", { objectiveId: as })).status).toBe(200);
+    expect(store.find(as)).toMatchObject({ planning: true, criteriaOpen: true });
+    // 사람의 스티어링은 구상으로 바꾸지 않고 기준 제안만 연다. 전달이 실패하면 닫힌 창은 닫힌 채다.
+    store.setPlanning(as, false);
+    store.setCriteriaOpen(as, false);
+    store.criterionMet(as, first.id, "still met");
+    hostFault.sendError = "launch_failed";
+    expect((await route("commander/steer", { objectiveId: as })).value).toEqual({ error: "launch_failed" });
+    expect(store.find(as)).toMatchObject({ planning: false, criteriaOpen: false });
+    expect(store.find(as)!.criteria[0]!.met).toBe("still met");
+    const missions = store.find(as)!.missions.map((mission) => mission.id);
+    const members = store.find(as)!.members.map((member) => member.id);
+    expect((await route("commander/steer", { objectiveId: as })).status).toBe(200);
+    expect(store.find(as)).toMatchObject({ planning: false, criteriaOpen: true });
+    expect(store.find(as)!.criteria[0]!.met).toBeUndefined();
+    store.criterionMet(as, first.id, "kept by a criteria-only plan");
+    const criteriaText = store.find(as)!.criteria.map((criterion) => criterion.text);
+    expect((await call("plan", { objectiveId: as, criteria: [{ text: "from steer" }] }, as)).isError).toBe(false);
+    expect(store.find(as)!.missions.map((mission) => mission.id)).toEqual(missions);
+    expect(store.find(as)!.members.map((member) => member.id)).toEqual(members);
+    expect(store.find(as)!.criteria.map((criterion) => criterion.text)).toEqual(criteriaText);
+    expect(store.find(as)!.criteria[0]!.met).toBe("kept by a criteria-only plan");
+    expect(store.find(as)!.criteriaProposals).toEqual([expect.objectContaining({ kind: "add", text: "from steer" })]);
+    expect((await call("plan", { objectiveId: as, criteria: [] }, as)).isError).toBe(false);
+    expect(store.find(as)!.criteriaProposals).toEqual([]);
+    expect(store.find(as)!.criteria[0]!.met).toBe("kept by a criteria-only plan");
+    expect(store.find(as)!.missions.map((mission) => mission.id)).toEqual(missions);
+    expect((await call("plan", { objectiveId: as }, as)).structuredContent.error).toBe("invalid_arguments");
+    expect((await call("plan", { objectiveId: as, members: [{ role: "build" }] }, as)).structuredContent.error).toBe("invalid_arguments");
+    expect(() => launch.planApplied(as, {})).toThrow("invalid_arguments");
+    expect(() => launch.planApplied(as, { members: [{ role: "build" }] })).toThrow("invalid_arguments");
+    expect((await call("plan", { objectiveId: as, criteria: [{ revise: first.id, text: "commander rewrite" }] }, as)).isError).toBe(false);
+    const proposalId = store.find(as)!.criteriaProposals[0]!.id;
+    expect((await route("criterion/patch", { objectiveId: as, criterionId: first.id, patch: { text: "person's latest" } })).status).toBe(200);
+    expect(store.find(as)!.criteriaProposals).toEqual([]);
+    expect((await route("criterion/approve", { objectiveId: as, proposalId })).value).toEqual({ error: "unknown_proposal" });
+    expect(store.find(as)!.criteria.find((criterion) => criterion.id === first.id)!.text).toBe("person's latest");
+    // 전달을 기다리는 동안 생긴 편집은 스티어가 지우거나 옛 문구로 덮지 않는다.
+    store.setEdited(as, ["note"]);
+    hostFault.duringSend = () => { store.criterionPatch(as, first.id, "edited during send"); store.setEdited(as, ["criteria"]); };
+    expect((await route("commander/steer", { objectiveId: as })).status).toBe(200);
+    expect(store.find(as)!.criteria.find((criterion) => criterion.id === first.id)!.text).toBe("edited during send");
+    expect(store.find(as)!.edited?.kinds).toContain("criteria");
+    expect(store.find(as)).toMatchObject({ planning: false, criteriaOpen: true });
   });
 
   it("admits observable follow-ups and creates records once after hand-off without launching their Operations", async () => {

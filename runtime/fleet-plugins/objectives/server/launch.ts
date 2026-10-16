@@ -1649,20 +1649,25 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     },
 
     async steer(objectiveId, options) {
-      const current = objective(objectiveId);
+      let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       await accessOperation(objectiveId);
-      editableObjective(objectiveId);
-      // 스티어링 턴에서 기준 제안은 불가하다. 전송 전에 닫아 턴 전환 중 계획 쓰기와 경합하지 않는다.
-      if (current.criteriaOpen) store.setCriteriaOpen(objectiveId, false);
+      // 접근을 기다리는 동안 제안이 서거나 목표가 끝났으면, 그 전 스냅샷으로 창을 열거나 닫지 않는다.
+      current = editableObjective(objectiveId);
+      if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
+      const reportedEditAt = current.edited?.at ?? null;
       // 통지(send)와 달리 실패를 삼키지 않는다 — 지휘관이 받지 못했는데 띠가 「중단」으로 돌아가면 사람은 전해진 줄 안다.
+      // 제안 창은 전달된 뒤에만 연다. 실패하면 열지 않고, 구상(planning)으로도 바꾸지 않는다.
       const authored = authoredWords(options?.context, "steer", options?.actor);
       await control().request({ kind: "send", operationId: objectiveId, text: steerTurn(current, languageOf(options), options?.context, options?.actor), display: humanWords(options?.context), displayFormat: "markdown", ...(authored ? { humanInput: authored } : {}) }).catch(asStoreError);
       touchLive(objectiveId);
-      // 지휘관에게 닿았다 — 쌓인 편집을 지우고, 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다. 멈춘 뒤라면 보고 기대도 되살아난다.
-      store.setEdited(objectiveId, null);
+      // 대기 중에 생긴 편집·제안은 옛 스냅샷으로 되돌리지 않는다. 알린 편집만 지운다.
+      const delivered = store.find(objectiveId);
       store.setStopped(objectiveId, false);
+      if ((delivered?.edited?.at ?? null) === reportedEditAt) store.setEdited(objectiveId, null);
+      if (delivered && !delivered.done && !delivered.criteriaOpen) store.setCriteriaOpen(objectiveId, true);
+      // 지휘관이 다시 일하므로 앞선 충족 판단(곧 검토 대기)도 거둔다. 멈춘 뒤라면 보고 기대도 되살아난다.
       return store.clearMet(objectiveId, options?.actor ?? "human");
     },
 

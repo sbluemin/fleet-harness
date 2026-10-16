@@ -1686,6 +1686,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     plan: (objectiveId, input) => {
       const planned = update(objectiveId, (stored) => {
       if (input.criteria !== undefined && !stored.criteriaOpen) throw new ObjectiveStoreError("criteria_not_planning");
+      // 기준만 — 임무·구성원·충족 근거는 이 쓰기에서 바꾸지 않는다. 빈 호출과 명단만은 계획이 아니다.
+      const lineup = input.missions;
+      if (lineup === undefined) {
+        if (input.criteria === undefined || input.members !== undefined) throw new ObjectiveStoreError("invalid_arguments");
+        return { ...stored, criteriaProposals: proposalsOf(stored, input.criteria) };
+      }
       // 검증과 편성 변경은 한 번의 update 안에서 끝난다 — 실패하면 기준 제안도 임무도 바뀌지 않는다.
       const proposals = input.criteria === undefined ? stored.criteriaProposals : proposalsOf(stored, input.criteria);
       if (input.members !== undefined && stored.members?.length) throw new ObjectiveStoreError("members_exist");
@@ -1707,10 +1713,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const kept = stored.missions.filter((mission) => mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || !!mission.records?.length || (mission.memberBy !== undefined && mission.memberBy !== "commander"))
         .map((mission) => mission.unplaced && !mission.by ? { ...mission, by: "human" as const } : mission);
       const same = (text: string) => text.trim().toLowerCase();
-      if (kept.some((mission) => input.missions.some((planned) => same(planned.text) === same(mission.text)))) throw new ObjectiveStoreError("mission_kept");
+      if (kept.some((mission) => lineup.some((planned) => same(planned.text) === same(mission.text)))) throw new ObjectiveStoreError("mission_kept");
       const keptIds = new Set(kept.map((mission) => mission.id));
-      const freshIds = input.missions.map(() => randomUUID());
-      const fresh: StoredMission[] = input.missions.map((mission, ix) => {
+      const freshIds = lineup.map(() => randomUUID());
+      const fresh: StoredMission[] = lineup.map((mission, ix) => {
         const prerequisites: StoredEdge[] = [];
         for (const edge of mission.prerequisites ?? []) {
           // missionId 는 유지되는 기존 임무, n 은 이 계획 안의 1-based 임무 번호.
@@ -1724,7 +1730,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       });
       return withoutMet({ ...stored, members, criteriaProposals: proposals, missions: [...kept.map((mission) => ({ ...mission, prerequisites: mission.prerequisites.filter((edge) => keptIds.has(edge.id)) })), ...fresh] });
       });
-      if (input.missions.some((mission) => mission.member)) assignmentNoted(objectiveId);
+      if (input.missions?.some((mission) => mission.member)) assignmentNoted(objectiveId);
       return planned;
     },
 
@@ -1790,9 +1796,11 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       const criteria = stored.criteria ?? [];
       const target = criteria.find((entry) => entry.id === criterionId);
       if (!target) throw new ObjectiveStoreError("unknown_criterion");
-      if (target.text === text.trim()) return stored;
+      const nextText = text.trim();
+      if (target.text === nextText) return stored;
       // 문구가 바뀐 기준의 충족 근거는 옛 문구에 대한 것이다 — 그 기준만 미충족으로 돌린다.
-      return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: text.trim(), by: entry.by } : entry)) };
+      // 그 기준을 겨냥한 제안도 옛 문구에 대한 것이다. 남겨 두면 승인이 사람이 고친 최신 문구를 덮는다.
+      return { ...stored, criteria: criteria.map((entry) => (entry.id === criterionId ? { id: entry.id, text: nextText, by: entry.by } : entry)), criteriaProposals: stored.criteriaProposals?.filter((proposal) => proposal.target !== criterionId) };
     }),
     criterionRemove: (objectiveId, criterionId) => update(objectiveId, (stored) => {
       const criteria = stored.criteria ?? [];
