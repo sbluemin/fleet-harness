@@ -29,6 +29,7 @@ let models: ClientModelsCapability | null = null;
 const LaunchRosterContext = createContext<ClientModelsCapability | null>(null);
 /** 원격 표면은 자기 host의 로스터 능력을 명시 주입한다. 로컬 install을 갈아 끼우지 않는다. */
 export const LaunchRosterProvider = LaunchRosterContext.Provider;
+export const useScopedModels = () => useContext(LaunchRosterContext);
 const rowGroups = new WeakMap<OperationLaunchVariantRow, LaunchGroup>();
 /** 마지막으로 투영한 띠 — 리액트 밖의 이름 조회(modelFullName)가 쓴다. */
 let lastGroups: readonly LaunchGroup[] = [];

@@ -382,7 +382,7 @@ export const INTEL_EDIT_ATTRIBUTE = "data-intel-edit";
  * 다른 곳에서 지운 항목의 편집은 버린다. 본문이 그대로면 요청 없이 닫는다. 저장·취소로 닫히면 그 항목의 「수정」 단추로
  * 포커스를 돌려준다 — 그새 사람이 다른 곳에 포커스를 두었으면 건드리지 않는다. `listRef` 는 목록 요소에 붙인다.
  */
-export function useCommodoreIntelEdits(theaterId: string, intel: readonly { readonly id: string; readonly text: string }[], handlers: { readonly onClear: () => void }) {
+export function useCommodoreIntelEdits(theaterId: string, intel: readonly { readonly id: string; readonly text: string }[], handlers: { readonly onClear: () => void }, saveEdit = editCommodoreIntel, signal?: AbortSignal) {
   const [edits, setEdits] = useState<Readonly<Record<string, CommodoreIntelEdit>>>({});
   const latest = useRef({ edits, intel, handlers });
   latest.current = { edits, intel, handlers };
@@ -429,9 +429,10 @@ export function useCommodoreIntelEdits(theaterId: string, intel: readonly { read
       if (text === item.text) { close(intelId); return; }
       latest.current.handlers.onClear();
       patch(intelId, { saving: true, error: undefined });
-      void editCommodoreIntel(theaterId, intelId, text)
-        .then(() => close(intelId))
-        .catch((error: unknown) => patch(intelId, { saving: false, error: error instanceof Error ? error.message : "failed" }));
+      if (signal?.aborted) return;
+      void saveEdit(theaterId, intelId, text)
+        .then(() => { if (!signal?.aborted) close(intelId); })
+        .catch((error: unknown) => { if (!signal?.aborted) patch(intelId, { saving: false, error: error instanceof Error ? error.message : "failed" }); });
     },
   };
 }
@@ -583,8 +584,8 @@ export function useCommodoreOnline(): boolean {
  * 목표의 지휘관은 `launch`(Agent CLI) 대상이다. Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 다시 그린다.
  * 마운트가 로스터 읽기를 시작하고(렌더 밖), 아직이면 null이다.
  */
-export function useCommodoreRoster(target: ModelRosterTarget): ModelRoster | null {
-  return useModelRoster(installed?.models, target);
+export function useCommodoreRoster(target: ModelRosterTarget, models?: PluginInstallContext["models"] | null): ModelRoster | null {
+  return useModelRoster(models ?? installed?.models, target);
 }
 
 /** Theater 의 표시 이름을 React 로 — Theater 목록이 늦게 읽혀도 따라온다. */

@@ -342,8 +342,11 @@ function readTheaters(value: unknown): readonly HostTheaterSummary[] {
 
 function readOperations(value: unknown): readonly HostOperationSummary[] {
   if (!Array.isArray(value)) throw new Error("invalid_host_snapshot");
-  return value.map((entry: unknown) => {
+  return value.flatMap((entry: unknown): HostOperationSummary[] => {
     if (!record(entry) || typeof entry.id !== "string" || typeof entry.theaterId !== "string" || typeof entry.title !== "string" || typeof entry.type !== "string") throw new Error("invalid_host_snapshot");
-    return Object.freeze({ id: entry.id, theaterId: entry.theaterId, title: entry.title, type: entry.type, ...(typeof entry.parentOperationId === "string" ? { parentOperationId: entry.parentOperationId } : {}) });
+    const parent = Object.freeze({ id: entry.id, theaterId: entry.theaterId, title: entry.title, type: entry.type, ...(typeof entry.parentOperationId === "string" ? { parentOperationId: entry.parentOperationId } : {}) });
+    const children = Array.isArray(entry.childSessions) ? entry.childSessions.flatMap((child: unknown): HostOperationSummary[] => record(child) && typeof child.id === "string"
+      ? [Object.freeze({ id: child.id, theaterId: parent.theaterId, title: child.id, type: parent.type, parentOperationId: parent.id })] : []) : [];
+    return [parent, ...children];
   });
 }

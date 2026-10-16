@@ -27,28 +27,40 @@ export function imageFiles(list: FileList | readonly File[] | null | undefined):
 }
 
 /** 올리기 — 형식·크기·개수를 먼저 보고 하나씩 보낸다. 항목 갱신은 응답이 아니라 `objectives:objective` 사건으로 들어온다. */
-export function useAttachmentUpload(objective: Objective, t: T) {
+export interface ObjectiveUploadPort {
+  readonly request: (path: string, init: RequestInit) => Promise<Response>;
+  readonly signal: AbortSignal;
+  readonly canWrite: () => boolean;
+}
+export function useAttachmentUpload(objective: Objective, t: T, port?: ObjectiveUploadPort) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const current = () => mounted.current && !port?.signal.aborted;
   const upload = useCallback(async (files: readonly File[]) => {
+    if (!current() || (port && !port.canWrite())) return;
     setError(null);
     let room = MAX_COUNT - (objective.attachments?.length ?? 0);
     for (const file of files) {
+      if (!current() || (port && !port.canWrite())) return;
       if (!TYPES.has(file.type)) { setError(t("objectives.att.errType", { name: file.name })); continue; }
       if (file.size > MAX_BYTES) { setError(t("objectives.att.errSize", { name: file.name })); continue; }
       if (room <= 0) { setError(t("objectives.att.errCount")); break; }
       room -= 1;
       setSending((value) => value + 1);
       try {
-        const response = await fetch(`/plugins/objectives/attachment/add?objectiveId=${encodeURIComponent(objective.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file });
+        const response = await (port?.request ?? fetch)(`/plugins/objectives/attachment/add?objectiveId=${encodeURIComponent(objective.id)}&name=${encodeURIComponent(file.name)}`, { method: "POST", headers: { "Content-Type": file.type }, body: file, ...(port ? { signal: port.signal } : {}) });
+        if (!current()) return;
         if (!response.ok) {
           const code = ((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `http_${response.status}`;
+          if (!current()) return;
           setError(code === "attachment_type" ? t("objectives.att.errType", { name: file.name }) : code === "attachment_too_large" ? t("objectives.att.errSize", { name: file.name }) : code === "too_many_attachments" ? t("objectives.att.errCount") : t("objectives.att.errFailed", { name: file.name, code }));
         }
-      } catch { setError(t("objectives.att.errFailed", { name: file.name, code: "network" })); }
-      finally { setSending((value) => value - 1); }
+      } catch { if (current()) setError(t("objectives.att.errFailed", { name: file.name, code: "network" })); }
+      finally { if (current()) setSending((value) => value - 1); }
     }
-  }, [objective.attachments?.length, objective.id, t]);
+  }, [objective.attachments?.length, objective.id, t, port]);
   return { upload, error, sending };
 }
 

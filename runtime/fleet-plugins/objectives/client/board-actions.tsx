@@ -160,7 +160,7 @@ interface BoardLive {
 const shown = (activity: string | undefined): string => (activity === undefined ? "closed" : activity === "background" ? "running" : activity);
 
 export interface ObjectiveBoardPorts {
-  readonly operations: typeof listedOperationSummaries;
+  readonly operations: () => readonly { readonly id: string; readonly activity?: string; readonly ownActivity?: string }[];
   readonly theater: (theaterId: string) => { readonly launchAvailable: boolean };
   readonly find: typeof findAnyObjective;
   readonly subscribe: typeof subscribeObjective;
