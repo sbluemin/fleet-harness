@@ -159,6 +159,34 @@ describe("host workspace isolation", () => {
     expect(watches.every((watch) => watch.off.mock.calls.length === 1)).toBe(true);
   });
 
+  it("selects verified unstarted objectives without inventing operations and revokes deleted selections", async () => {
+    let presence: HostPresenceView = { hostKey: "remote", epoch: 1, instanceId: INSTANCE_A, mode: "observer", access: "full", connection: "ready" };
+    let objective = { id: "new-goal", theaterId: "same-theater", title: "New goal", commander: { started: false } };
+    const frames = new Map<string, (event: { data: string }) => void>();
+    const remote = createRemoteHostRuntime({ hostKey: "remote", label: "remote",
+      readPresence: async () => presence,
+      changePresence: async () => (presence = { ...presence, epoch: presence.epoch + 1, mode: "controller" }),
+      watchPresence: () => () => undefined,
+      createTransport: (scope) => ({ scope, resourceUrl: (path) => path, socket: () => { throw new Error("unexpected_socket"); },
+        events: () => ({ close() {}, onopen: null, onmessage: null, onerror: null, readyState: 1, addEventListener: (name: string, callback: (event: { data: string }) => void) => frames.set(name, callback), removeEventListener() {} }) as unknown as HostEventSource,
+        request: async (path) => Response.json(path === "/plugins/objectives/objective/get" ? { objective } : path === "/api/v1/theaters" ? { theaters: [{ id: "same-theater", label: "Remote" }] } : path === "/api/v1/operations" ? { operations: [] } : { sessions: [] }),
+      }),
+    });
+    const workspace = createHostWorkspace(runtime("local").port); workspace.add(remote);
+    const target = { hostKey: "remote", theaterId: "same-theater", role: "commander", operationId: "new-goal" } as const;
+    await expect(workspace.activateConversation(target)).rejects.toThrow("host_selection_missing");
+    await workspace.activateObjective(target);
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: target, canWrite: true });
+    expect(remote.getSnapshot().operations).toEqual([]);
+    expect(remote.getSnapshot().objectives).toEqual([{ id: "new-goal", theaterId: "same-theater", title: "New goal", started: false }]);
+    remote.setVisible(true);
+    frames.get("objectives:objective")!({ data: JSON.stringify({ op: "remove", theaterId: "same-theater", objectiveId: "new-goal" }) });
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: null, canWrite: false });
+    objective = { ...objective, theaterId: "another-theater" };
+    await expect(workspace.activateObjective(target)).rejects.toThrow("host_selection_missing");
+    workspace.dispose();
+  });
+
   it("binds HTTP and resource requests to the expected host epoch without credential or local fallback", async () => {
     const abort = new AbortController();
     let responseEpoch = 7;

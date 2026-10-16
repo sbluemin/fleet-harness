@@ -1,4 +1,4 @@
-import type { HostEventSource, HostScope, HostTransport, HostView, HostTheaterSummary, HostOperationSummary } from "@fleet-console/sdk/host-context";
+import type { HostEventSource, HostScope, HostTransport, HostView, HostTheaterSummary, HostOperationSummary, HostObjectiveSummary } from "@fleet-console/sdk/host-context";
 import { readHostJson } from "@fleet-console/sdk/host-context/browser";
 import type { HostRuntimePort } from "./host-workspace.js";
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
@@ -35,12 +35,13 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   let agentSource: HostEventSource | null = null;
   const sessions = new Map<string, SessionInfo>();
   let sessionRevision = 0;
+  let objectiveRevision = 0;
   const withActivity = (operations: readonly HostOperationSummary[]) => operations.map((operation): HostOperationSummary => {
     const session = sessions.get(operation.id);
     const runtime = session ? sessionRuntime(session) : null;
     return { ...operation, activity: runtime ? runtime.lifecycle === "dormant" ? "ended" : runtime.activity : "unknown" };
   });
-  let state: HostView = Object.freeze({ hostKey: deps.hostKey, label: deps.label, epoch: 0, mode: "off", access: null, connection: "closed", trust: "unknown", phase: "idle", error: null, theaters: [], operations: [] });
+  let state: HostView = Object.freeze({ hostKey: deps.hostKey, label: deps.label, epoch: 0, mode: "off", access: null, connection: "closed", trust: "unknown", phase: "idle", error: null, theaters: [], operations: [], objectives: [] });
   const listeners = new Set<() => void>();
   const channels = new Map<string, Set<(payload: unknown) => void>>();
   const attached = new Set<string>();
@@ -119,7 +120,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     const replaced = newLifetime || presence.epoch !== state.epoch;
     const unavailable = presence.connection !== "ready" || presence.mode === "off";
     if (replaced || unavailable) clearConnection();
-    publish({ ...presence, ...(replaced || unavailable ? { theaters: [], operations: [], phase: presence.connection === "blocked" ? "error" : "loading" } : {}), trust: presence.connection === "ready" ? "verified" : state.trust });
+    publish({ ...presence, ...(replaced || unavailable ? { theaters: [], operations: [], objectives: [], phase: presence.connection === "blocked" ? "error" : "loading" } : {}), trust: presence.connection === "ready" ? "verified" : state.trust });
     if (!unavailable && transport === null) {
       const scope = Object.freeze({ hostKey: deps.hostKey, epoch: presence.epoch, instanceId: presence.instanceId, signal: scopeAbort.signal });
       transport = deps.createTransport(scope);
@@ -130,7 +131,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     const code = cause instanceof Error ? cause.message : "remote_host_unavailable";
     acceptedRequest = ++discoveryRequest;
     clearConnection();
-    publish({ phase: "error", connection: "blocked", error: code, theaters: [], operations: [], ...(code === "remote_host_fingerprint_mismatch" ? { trust: "mismatch" as const } : {}) });
+    publish({ phase: "error", connection: "blocked", error: code, theaters: [], operations: [], objectives: [], ...(code === "remote_host_fingerprint_mismatch" ? { trust: "mismatch" as const } : {}) });
   }
 
   function attachChannel(channel: string): void {
@@ -153,11 +154,22 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     for (const name of ["operation:changed", "operation:removed", "theater:changed", "theater:removed", "group:changed", "group:removed"]) {
       next.addEventListener(name, () => { if (current()) void refresh().catch(fail); });
     }
+    next.addEventListener("objectives:objective", (event) => {
+      if (!current()) return;
+      let body: unknown;
+      try { body = JSON.parse((event as MessageEvent<string>).data); } catch { return; }
+      if (!record(body) || typeof body.objectiveId !== "string" || typeof body.theaterId !== "string") return;
+      objectiveRevision += 1;
+      const held = state.objectives ?? [];
+      if (!held.some((item) => item.id === body.objectiveId && item.theaterId === body.theaterId)) return;
+      const updated = body.op === "upsert" ? readObjective(body.objective, body.theaterId, body.objectiveId) : null;
+      publish({ objectives: updated ? [updated] : [] });
+    });
     for (const name of channels.keys()) attachChannel(name);
     next.addEventListener("control:reclaimed", () => {
       if (!current()) return;
       clearConnection();
-      publish({ mode: "off", access: null, connection: "closed", phase: "error", error: "not_controller", theaters: [], operations: [] });
+      publish({ mode: "off", access: null, connection: "closed", phase: "error", error: "not_controller", theaters: [], operations: [], objectives: [] });
     });
     next.addEventListener("control:changed", () => {
       if (!current()) return;
@@ -267,6 +279,22 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       signal.throwIfAborted();
       if (state.instanceId !== instanceId) throw new Error("stale_instance");
     },
+    resolveObjective: async (theaterId, objectiveId, outer) => {
+      const bound = transport;
+      if (!bound || !state.theaters.some((theater) => theater.id === theaterId)) throw new Error("host_selection_missing");
+      const signal = AbortSignal.any([outer, bound.scope.signal, AbortSignal.timeout(10_000)]);
+      const version = objectiveRevision;
+      const response = await bound.request("/plugins/objectives/objective/get", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ objectiveId }), signal,
+      });
+      const body = await readHostJson<{ objective?: unknown }>(bound.scope, response);
+      signal.throwIfAborted();
+      if (bound !== transport || version !== objectiveRevision) throw new Error("stale_objective_selection");
+      const objective = response.ok ? readObjective(body.objective, theaterId, objectiveId) : null;
+      if (!objective) throw new Error("host_selection_missing");
+      // 방문한 목표 하나만 보유한다. 모든 Theater를 훑거나 Operation을 합성하지 않는다.
+      publish({ objectives: [objective] });
+    },
     getTransport: () => transport,
     setVisible: (next) => {
       if (visible === next || lifetime.signal.aborted) return;
@@ -297,6 +325,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readObjective(value: unknown, theaterId: string, objectiveId: string): HostObjectiveSummary | null {
+  if (!record(value) || value.id !== objectiveId || value.theaterId !== theaterId || typeof value.title !== "string" || !record(value.commander) || typeof value.commander.started !== "boolean") return null;
+  return Object.freeze({ id: objectiveId, theaterId, title: value.title, started: value.commander.started });
 }
 
 function readTheaters(value: unknown): readonly HostTheaterSummary[] {

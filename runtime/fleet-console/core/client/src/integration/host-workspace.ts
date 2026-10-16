@@ -6,6 +6,7 @@ export interface HostRuntimePort {
   readonly subscribe: (listener: () => void) => () => void;
   readonly observe: (signal: AbortSignal) => Promise<void>;
   readonly activate: (signal: AbortSignal) => Promise<void>;
+  readonly resolveObjective?: (theaterId: string, objectiveId: string, signal: AbortSignal) => Promise<void>;
   readonly dispose: () => void;
 }
 
@@ -41,7 +42,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   function publish(): void {
     const hosts = [...runtimes.values()].map(({ runtime }) => runtime.getSnapshot());
     const selected = hosts.find((host) => host.hostKey === selection.hostKey);
-    if (!selected || selected.epoch !== foregroundEpoch || selected.instanceId !== foregroundInstanceId || selected.connection !== "ready" || selected.phase !== "ready") {
+    if (!selected || selected.epoch !== foregroundEpoch || selected.instanceId !== foregroundInstanceId || selected.connection !== "ready" || selected.phase !== "ready" || !containsSelection(selected, selection)) {
       foreground = null;
       activated = false;
     }
@@ -91,7 +92,8 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   function containsSelection(view: HostView, target: HostSelection): boolean {
     if (target.theaterId === null) return target.role === "commodore";
     if (!view.theaters.some((theater) => theater.id === target.theaterId)) return false;
-    return target.role === "commodore" || view.operations.some((operation) => operation.id === target.operationId && operation.theaterId === target.theaterId && (target.hostKey === "local" || (operation.type === "agent" && !operation.parentOperationId)));
+    return target.role === "commodore" || view.operations.some((operation) => operation.id === target.operationId && operation.theaterId === target.theaterId && (target.hostKey === "local" || (operation.type === "agent" && !operation.parentOperationId)))
+      || (view.objectives ?? []).some((objective) => objective.id === target.operationId && objective.theaterId === target.theaterId);
   }
 
   function select(next: HostSelection): void {
@@ -111,13 +113,18 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
     });
   }
 
-  async function activateConversation(next: HostSelection): Promise<void> {
+  async function activateConversation(next: HostSelection, objective = false): Promise<void> {
     if (next.theaterId === null) throw new Error("conversation_required");
     const pending = begin(next);
     const requestedInstance = pending.runtime.getSnapshot().instanceId;
     try {
       await pending.runtime.observe(pending.signal);
       if (!pending.current()) return;
+      if (objective) {
+        if (next.role !== "commander" || !pending.runtime.resolveObjective) throw new Error("objective_selection_unavailable");
+        await pending.runtime.resolveObjective(next.theaterId, next.operationId, pending.signal);
+        if (!pending.current()) return;
+      }
       const observed = pending.runtime.getSnapshot();
       if (requestedInstance !== undefined && observed.instanceId !== requestedInstance) throw new Error("stale_instance");
       if (!containsSelection(observed, next)) throw new Error("host_selection_missing");
@@ -132,6 +139,10 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       if (observed.access !== "full") throw new Error("observer_only");
       await pending.runtime.activate(pending.signal);
       if (!pending.current()) return;
+      if (objective && next.role === "commander") {
+        await pending.runtime.resolveObjective!(next.theaterId, next.operationId, pending.signal);
+        if (!pending.current()) return;
+      }
       const active = pending.runtime.getSnapshot();
       if (active.instanceId !== observed.instanceId) throw new Error("stale_instance");
       if (active.mode !== "controller" || active.access !== "full" || active.connection !== "ready" || active.phase !== "ready") throw new Error("not_controller");
@@ -167,6 +178,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     select,
     activateConversation,
+    activateObjective: (next) => activateConversation(next, true),
     returnLocal: () => select(lastLocal),
     syncLocalSelection: (next) => {
       if (selection.hostKey !== "local" || next.hostKey !== "local") return;

@@ -53,6 +53,8 @@ export interface HostView {
   readonly error: string | null;
   readonly theaters: readonly HostTheaterSummary[];
   readonly operations: readonly HostOperationSummary[];
+  /** 단건 조회로 확인한 목표 선택 좌표. 실행 Operation 목록과 합치지 않는다. */
+  readonly objectives?: readonly HostObjectiveSummary[];
 }
 
 export interface HostWorkspaceSnapshot {
