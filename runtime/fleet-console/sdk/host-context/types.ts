@@ -72,6 +72,8 @@ export interface HostWorkspacePort {
   readonly subscribe: (listener: () => void) => () => void;
   readonly select: (selection: HostSelection) => void;
   readonly activateConversation: (selection: HostSelection) => Promise<void>;
+  /** 서버에서 확인한 목표만 선택한다. 미시작 목표를 실행 중 Operation으로 꾸미지 않는다. */
+  readonly activateObjective: (selection: Extract<HostSelection, { role: "commander" }>) => Promise<void>;
   readonly returnLocal: () => void;
 }
 
@@ -112,6 +114,26 @@ export interface HostSurfaceState {
   readonly subscribe: (listener: () => void) => () => void;
 }
 
+/** 실행 Operation과 별개인 검증된 목표 좌표다. 권한을 부여하지 않는다. */
+export interface HostObjectiveSummary {
+  readonly id: string;
+  readonly theaterId: string;
+  readonly title: string;
+  readonly started: boolean;
+}
+
+export interface HostSurfaceNavigation {
+  readonly focusOperation: (operationId: string) => Promise<void>;
+  readonly focusObjective: (objectiveId: string) => Promise<void>;
+  /** 선택된 host의 QuickLaunch를 연다. 로컬 composer로 대체하지 않는다. */
+  readonly openNewOperation: () => void;
+}
+
+export interface HostSurfaceOperations {
+  readonly getSnapshot: () => readonly HostOperationSummary[];
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
 export interface HostSurfaceContext {
   readonly selection: HostSelection;
   readonly transport: HostTransport;
@@ -123,6 +145,8 @@ export interface HostSurfaceContext {
   readonly language: "en" | "ko";
   readonly hostLabel: string;
   readonly canWrite: () => boolean;
+  readonly navigation: HostSurfaceNavigation;
+  readonly operations: HostSurfaceOperations;
 }
 
 /** 설치된 코드의 명시적인 host-aware 표면. remote manifest나 코드를 불러오는 능력은 없다. */
