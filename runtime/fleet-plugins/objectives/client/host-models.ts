@@ -8,8 +8,11 @@ export function createHostModels(context: HostSurfaceContext): ClientModelsCapab
   const values = new Map<ModelRosterTarget, ModelRoster>();
   const flights = new Map<ModelRosterTarget, Promise<ModelRoster>>();
   const listeners = new Set<() => void>();
+  const requested = new Set<ModelRosterTarget>();
+  const stale = new Set<ModelRosterTarget>();
   const load = (target: ModelRosterTarget): Promise<ModelRoster> => {
     signal.throwIfAborted();
+    requested.add(target);
     const pending = flights.get(target);
     if (pending) return pending;
     const work = (async () => {
@@ -23,7 +26,11 @@ export function createHostModels(context: HostSurfaceContext): ClientModelsCapab
       return roster;
     })();
     flights.set(target, work);
-    void work.finally(() => { if (flights.get(target) === work) flights.delete(target); }).catch(() => undefined);
+    void work.finally(() => {
+      if (flights.get(target) !== work) return;
+      flights.delete(target);
+      if (!signal.aborted && stale.delete(target)) void load(target).catch(() => undefined);
+    }).catch(() => undefined);
     return work;
   };
   signal.addEventListener("abort", () => { values.clear(); listeners.clear(); flights.clear(); }, { once: true });
@@ -31,6 +38,12 @@ export function createHostModels(context: HostSurfaceContext): ClientModelsCapab
     read: (target) => values.get(target) ?? null,
     load,
     subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    refresh: () => { for (const target of values.keys()) void load(target).catch(() => undefined); },
+    refresh: () => {
+      if (signal.aborted) return;
+      for (const target of requested) {
+        if (flights.has(target)) stale.add(target);
+        else void load(target).catch(() => undefined);
+      }
+    },
   };
 }

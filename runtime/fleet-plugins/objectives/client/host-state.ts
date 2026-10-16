@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import type { HostSurfaceContext } from "@fleet-console/sdk/host-context";
+import { MODEL_ROSTER_CHANGED_CHANNEL } from "@fleet-console/sdk/models";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
 import type { Objective } from "../server/types.js";
 import type { CommodoreStateView } from "../server/commodore/routes.js";
@@ -61,6 +62,10 @@ export function createHostObjectiveState(context: HostSurfaceContext) {
           if (signal.aborted || version !== revision) return;
           const tail = snapshot.commodore.entries.filter((entry) => entry.seq > (page.entries.at(-1)?.seq ?? -1));
           publish({ commodore: patchCommodoreJournal(snapshot.commodore, { view, ...page, entries: [...page.entries, ...tail], transcriptLoaded: true }), loading: false });
+        } else {
+          const view = await read<CommodoreStateView>("/commodore/state");
+          if (signal.aborted || version !== revision) return;
+          publish({ commodore: patchCommodoreJournal(snapshot.commodore, { view }) });
         }
       } catch (error) {
         if (!signal.aborted && version === revision) publish({ loading: false, error: error instanceof Error ? error.message : "objectives_unavailable" });
@@ -169,8 +174,9 @@ export function createHostObjectiveState(context: HostSurfaceContext) {
           if (event?.theaterId !== theaterId || signal.aborted) return;
           stream.push(event);
         });
-        const offReconnect = context.events.onReconnect?.(() => { stream.flush(); publish({ commodore: { ...snapshot.commodore, live: [] } }); void load(); });
-        stop = () => { offBoard(); offCommodore(); offReconnect?.(); stream.dispose(); };
+        const offModels = context.events.subscribe(MODEL_ROSTER_CHANGED_CHANNEL, models.refresh);
+        const offReconnect = context.events.onReconnect?.(() => { stream.flush(); models.refresh(); publish({ commodore: { ...snapshot.commodore, live: [] } }); void load(); });
+        stop = () => { offBoard(); offCommodore(); offModels(); offReconnect?.(); stream.dispose(); };
         void load();
       }
       return () => { if (--holds === 0) { stop?.(); stop = null; } };

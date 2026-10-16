@@ -36,6 +36,7 @@ function HostCommodoreBody({ context }: { readonly context: HostSurfaceContext }
   const fail = (cause: unknown) => { if (!model.signal.aborted) setFailure(cause instanceof Error ? cause.message : "objectives_unavailable"); };
   return <div className="objectives-commodore-conversation" data-host-key={context.selection.hostKey}>
     {snapshot.error || failure ? <p className="objectives-commodore-failure" role="alert">{failure ?? snapshot.error}</p> : null}
+    {commodore.view?.run.phase === "error" || commodore.view?.run.phase === "retrying" ? <div className="objectives-commodore-retry"><span>{commodore.view.run.reason}</span><button type="button" disabled={!context.canWrite()} className="objectives-commodore-text-button" onClick={() => { void model.request("/commodore/retry", { theaterId }).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button></div> : null}
     <fieldset disabled={!context.canWrite()} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}><AskCards theaterId={theaterId} t={t} onEnded={fail} /></fieldset>
     <Conversation references={references} openBoardAction={{ label: t("objectives.commodore.trail.open"), open: (entry) => { if (entry.objectiveId) model.references.openObjective(theaterId, entry.objectiveId); } }} entries={entries} participants={participants} working={running ? [speaker] : []} language={context.language}
       theaterId={theaterId} loading={!commodore.transcriptLoaded} empty={t("objectives.commodore.log.empty")}
@@ -59,7 +60,7 @@ function HostCommander({ context }: { readonly context: HostSurfaceContext }) {
     return activity === "background" ? "running" : activity ?? "closed";
   };
   const Conversation = context.OperationConversation;
-  if (!objective) return snapshot.loading ? <p role="status">{t("objectives.results.loading")}</p> : <Conversation context={context} title={operation?.title ?? "Commander"} readOnlyLabel={t("objectives.commodore.conversation.readOnly")} />;
+  if (!objective) return snapshot.loading || !operation ? <p role={snapshot.error ? "alert" : "status"}>{snapshot.error ?? t(snapshot.loading ? "objectives.results.loading" : "objectives.switch.empty")}</p> : <Conversation context={context} title={operation.title} readOnlyLabel={t("objectives.commodore.conversation.readOnly")} />;
   const open = () => context.state.write("pickedObjective", objective.id);
   const actions = objectiveConversationActions(objective, { request: model.request, board: model.board.objectiveBoardActions });
   const conversation = objectiveConversation(objective, (index) => ["teal", "amber", "plum", "moss", "cerulean", "rose", "indigo", "crimson"][index % 8]!, open, undefined, actions, { state: stateOf, roster: model.models.read("launch") }, snapshot.commodore.view?.active === true, {
@@ -84,7 +85,7 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
   const picked = useSyncExternalStore(context.state.subscribe, () => context.state.read<string | null>("pickedObjective", context.selection.operationId));
   const tab = useSyncExternalStore(context.state.subscribe, () => context.state.read<DetailTab>("detailTab", "goal"));
   const collapsed = useSyncExternalStore(context.state.subscribe, () => context.state.read("detailCollapsed", EMPTY_COLLAPSED));
-  const current = snapshot.objectives.find((objective) => objective.id === picked) ?? snapshot.objectives.find((objective) => objective.id === context.selection.operationId) ?? snapshot.objectives[0];
+  const current = snapshot.objectives.find((objective) => objective.id === context.selection.operationId) ?? snapshot.objectives.find((objective) => objective.id === picked) ?? snapshot.objectives[0];
   const detailRef = useRef<HTMLElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ports = useMemo<ObjectiveDetailPorts>(() => ({

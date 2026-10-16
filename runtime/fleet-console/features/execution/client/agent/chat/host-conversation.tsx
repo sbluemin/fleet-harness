@@ -12,6 +12,7 @@ import { createChatSocketSession } from "./chat-store.js";
 import { readChatJournalEvent, type AgentChatJournalEvent } from "./chat-events.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
 import { fetchConversationSnapshot } from "./conversation-history.js";
+import { ChatHostProvider } from "./chat-host-context.js";
 
 /** 그룹 대화와 같은 저널 reducer·말풍선을 쓰되, 연결/초안은 주입한 host scope에만 속한다. */
 export function HostAgentConversation({ context, title, readOnlyLabel, conversation, operationExists = true }: HostOperationConversationProps) {
@@ -165,13 +166,13 @@ export function HostAgentConversation({ context, title, readOnlyLabel, conversat
   return <div className="agent-chat-panel" data-host-key={context.selection.hostKey}>
     {error ? <p role="alert">{error}</p> : null}
     {!context.canWrite() ? <p role="status">{readOnlyLabel}</p> : null}
-    <ConversationTheaterContext.Provider value={context.selection.theaterId}>
+    <ChatHostProvider value={context.transport}><ConversationTheaterContext.Provider value={context.selection.theaterId}>
       <GroupConversation snapshot={snapshot} language={context.language}
         cards={<fieldset disabled={!context.canWrite()} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
           {snapshot.decision ? <DecisionCard key={snapshot.decision.id} decision={snapshot.decision} actions={actions} asker={participants[0]?.speaker ?? null} language={context.language} onAnswered={() => undefined} /> : null}
           {snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={context.language} />)}
         </fieldset>}
         composer={composer} />
-    </ConversationTheaterContext.Provider>
+    </ConversationTheaterContext.Provider></ChatHostProvider>
   </div>;
 }

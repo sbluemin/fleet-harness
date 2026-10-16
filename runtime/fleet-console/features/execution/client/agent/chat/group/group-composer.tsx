@@ -95,8 +95,8 @@ interface BoardConsumed {
 
 /** 실행 기능이 소유하는 페이지 메모리 — 대화 본문이 내려가도 초안·업로드·전송은 같은 루트에 남는다. */
 const groupDrafts = new Map<string, ReturnType<typeof createGroupDraft>>();
-function createGroupDraft(signal?: AbortSignal) {
-  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null, mode: null, held: null };
+function createGroupDraft(signal?: AbortSignal, previous?: GroupComposerDraft) {
+  let current: GroupComposerDraft = { text: previous?.text ?? "", textRevision: previous?.textRevision ?? 0, target: previous?.target ?? null, attachments: [], busy: false, notice: null, mode: null, held: null };
   const listeners = new Set<() => void>();
   signal?.addEventListener("abort", () => {
     for (const attachment of current.attachments) URL.revokeObjectURL(attachment.previewUrl);
@@ -124,9 +124,12 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const draft = React.useMemo(() => {
     if (!host) return groupDraft(rootOperationId);
     const key = `group-composer:${rootOperationId}`;
-    const held = host.state.read<{ signal: AbortSignal; draft: ReturnType<typeof createGroupDraft> } | null>(key, null);
-    if (held?.signal === host.transport.scope.signal) return held.draft;
-    const next = { signal: host.transport.scope.signal, draft: createGroupDraft(host.transport.scope.signal) };
+    const held = host.state.read<{ signal: AbortSignal; instanceId?: string; epoch: number; draft: ReturnType<typeof createGroupDraft> } | null>(key, null);
+    const scope = host.transport.scope;
+    if (held?.signal === scope.signal) return held.draft;
+    // 같은 연결 수명에서 다른 대화를 둘러봤다면 글만 복원한다. 진행 중 파일/전송/오류는 옮기지 않는다.
+    const previous = held?.instanceId === scope.instanceId && held?.epoch === scope.epoch ? held.draft.read() : undefined;
+    const next = { signal: scope.signal, instanceId: scope.instanceId, epoch: scope.epoch, draft: createGroupDraft(scope.signal, previous) };
     host.state.write(key, next);
     return next.draft;
   }, [host, rootOperationId]);
