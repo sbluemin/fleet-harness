@@ -234,6 +234,20 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 .new-session-chips-trail { margin-left: auto; }
 .new-session-launch-slot { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .new-session-launch-slot:empty { display: none; }
+/* 모델 메뉴는 Quick Launch 카드용 좌표(왼쪽 16px·아래로)를 그대로 쓰면 포함 블록이 이 화면 칼럼이 되어
+   칩과 무관한 좌하단에 열리고, 칼럼이 넘친 뒤 포커스가 .console-body 를 스크롤한다.
+   앵커를 칩으로 두고 칩 줄이 화면 아래이므로 위로, 칩 오른쪽에 붙여 연다.
+   .quick-launch-pop 의 max-width: 100% 는 카드보다 넓은 팝오버를 바 안에 가두기 위한 것인데,
+   여기 포함 블록은 칩 앵커라 그 상한이 메뉴를 칩 폭으로 줄인다. 최대 높이는 Quick Launch 와 같은 340px. */
+.new-session-launch-slot .launch-model-effort-anchor { position: relative; }
+.new-session-launch-slot .quick-launch-pop {
+  top: auto;
+  left: auto;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  max-width: none;
+  --quick-launch-pop-max-height: 340px;
+}
 @container new-session-chips (max-width: 599px) {
   .new-session-chips-trail { flex-basis: 100%; justify-content: flex-end; }
 }
