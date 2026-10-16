@@ -718,7 +718,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
       aria-label={t("conversation.stage.aria")}
     >
-      {hostContext ? <div className="conversation-host-context">{hostContext}</div> : null}
+      {hostContext && !newSession ? <div className="conversation-host-context">{hostContext}</div> : null}
       <ConversationQuota />
       {newSession ? (
         <NewSessionColumn state={state} target={newSession} tools={tools} />

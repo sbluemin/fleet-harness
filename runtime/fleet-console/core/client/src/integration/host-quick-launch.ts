@@ -214,18 +214,20 @@ export function useHostQuickLaunch(binding: HostWorkspaceBinding | null): HostQu
 }
 
 /**
- * 원격 선택 중에는 Console 전역 단축키가 서지 않는다. 같은 등록부 조합(Quick Launch)만 원격 회차 열기로 잇는다 —
+ * 원격 선택 중에는 Console 전역 단축키가 서지 않는다. 같은 등록부의 Quick Launch·새 세션 조합을 원격 회차 열기로 잇는다 —
  * 로컬 Quick Launch 토글로 물러나지 않으며, 다른 차단 다이얼로그가 떠 있거나 조합을 기록하는 중이면 키를 두고 간다.
  */
 export function useHostQuickLaunchShortcut(port: HostQuickLaunch | null, enabled: boolean): void {
   useEffect(() => {
     if (!port || !enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isShortcutRecording(document) || !matchesShortcutCommand(event, "console.quick-launch")) return;
+      if (isShortcutRecording(document)) return;
+      if (!matchesShortcutCommand(event, "console.quick-launch") && !matchesShortcutCommand(event, "console.new-session")) return;
       const foreignModal = [...document.querySelectorAll('[aria-modal="true"]:not([hidden])')].some((element) => element.closest(".quick-launch-overlay") === null);
       if (foreignModal) return;
       event.preventDefault();
       event.stopImmediatePropagation();
+      if (event.repeat) return;
       // 이미 열린 회차는 그대로 둔다. 닫기는 컴포저의 Escape가 맡아 미발사 문면을 그 컴퓨터의 초안으로 넘긴다.
       if (port.getSnapshot() === null) port.open();
     };
