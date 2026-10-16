@@ -180,12 +180,14 @@ async function boot(): Promise<void> {
         fetch: (url, init) => partition.fetch(url, init),
         readCookies: async (url) => partition.cookies.get({ url }),
         writeCookie: (cookie) => partition.cookies.set(cookie),
+        removeCookie: (url, name) => partition.cookies.remove(url, name),
         pin: (hostname, fingerprint) => pins.pin(hostname, fingerprint),
         clear: () => pins.clear(),
       };
     },
     readWindowCookies: async (url) => consoleSession.cookies.get({ url }),
     writeWindowCookie: (cookie) => consoleSession.cookies.set(cookie),
+    removeWindowCookie: (url, name) => consoleSession.cookies.remove(url, name),
     deviceName: os.hostname().replace(/\.local$/iu, ""),
     log: (message) => logger.error(message),
   });

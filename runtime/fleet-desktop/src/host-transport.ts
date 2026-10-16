@@ -17,6 +17,8 @@ export interface HostPartition {
   fetch(url: string, init?: RequestInit): Promise<Response>;
   readCookies(url: string): Promise<readonly HostPartitionCookie[]>;
   writeCookie(cookie: HostPartitionCookie & { readonly url: string }): Promise<void>;
+  /** 그 origin의 쿠키 이름 하나만 지운다. 파티션 전체를 비우지 않는다. */
+  removeCookie?(url: string, name: string): Promise<void>;
   pin(hostname: string, fingerprint: string): void;
   clear(): void;
 }
@@ -26,6 +28,7 @@ export interface HostTransportExecutorDeps {
   readonly openPartition: (hostKey: string) => HostPartition;
   readonly readWindowCookies: (url: string) => Promise<readonly HostPartitionCookie[]>;
   readonly writeWindowCookie: (cookie: HostPartitionCookie & { readonly url: string }) => Promise<void>;
+  readonly removeWindowCookie?: (url: string, name: string) => Promise<void>;
   /** 없으면 pair를 구현하지 않는 셸이다. join으로 대체하지 않고 unsupported를 돌려준다. */
   readonly localOrigin?: () => string | null;
   readonly localFetch?: typeof fetch;
@@ -111,6 +114,14 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
   };
 
+  /** 원격이 거절한 그 origin·포트의 페어링과 세션만 지운다. 창에 남기면 다음 명령이 다시 복사한다. */
+  const forgetRejectedPairing = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
+    for (const name of [`fleet_console_pairing_${port}`, `fleet_console_session_${port}`]) {
+      await partition.removeCookie?.(origin, name);
+      await deps.removeWindowCookie?.(origin, name);
+    }
+  };
+
   const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
     // abort는 epoch 거절보다 먼저다. 늦게 도착한 취소가 stale로 버려지면 원격 전송이 끝까지 남는다.
     if (command.op === "abort") {
@@ -179,6 +190,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   async function performPresence(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
     const intent = command.params.intent;
     if (intent !== "observe" && intent !== "activate" && intent !== "release") return { id: command.id, error: "invalid_host_request" };
+    const hadPairing = await hasPairingCookie(partition, origin, command.target.port);
     let response: Response;
     try {
       response = await partition.fetch(`${origin}${SESSION_RESPONSE}`, {
@@ -186,6 +198,11 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       });
     } catch {
       return { id: command.id, error: "remote_host_unavailable" };
+    }
+    // release의 401은 세션만 끝난 것이다. observe·activate의 401만 페어링 거절이다.
+    if (response.status === 401 && (intent === "observe" || intent === "activate") && hadPairing) {
+      await forgetRejectedPairing(origin, command.target.port, partition);
+      return { id: command.id, error: "remote_host_not_paired" };
     }
     await rememberPairing(origin, command.target.port, partition);
     if (response.status === 404 || response.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
@@ -200,13 +217,28 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   async function performPair(command: DesktopHostCommand, origin: string, partition: HostPartition, signal: AbortSignal): Promise<DesktopHostRelay> {
     const port = command.target.port;
     if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    let paired = false;
     if (await hasPairingCookie(partition, origin, port)) {
-      await rememberPairing(origin, port, partition);
-      return { id: command.id, capability: "supported", mode: "off", access: null };
+      const confirmed = await postPair(origin, partition, "{}", signal);
+      if (!confirmed) return { id: command.id, error: "remote_host_unavailable", end: true };
+      if (confirmed.status === 204) {
+        if (await responseSetsSession(confirmed, port)) return { id: command.id, error: "remote_host_unavailable" };
+        if (!(await hasPairingCookie(partition, origin, port))) return { id: command.id, error: "remote_host_unavailable" };
+        await rememberPairing(origin, port, partition);
+        return { id: command.id, capability: "supported", mode: "off", access: null };
+      }
+      if (confirmed.status !== 401) {
+        if (confirmed.status === 404 || confirmed.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+        return { id: command.id, error: "remote_host_unavailable" };
+      }
+      await forgetRejectedPairing(origin, port, partition);
+      paired = true;
     }
-    const probe = await postPair(origin, partition, "{}", signal);
-    if (!probe) return { id: command.id, error: "remote_host_unavailable", end: true };
-    if (!(await isPairProbe(probe))) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+    if (!paired) {
+      const probe = await postPair(origin, partition, "{}", signal);
+      if (!probe) return { id: command.id, error: "remote_host_unavailable", end: true };
+      if (!(await isPairProbe(probe))) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+    }
     if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     const handoff = await takeHandoff(origin, signal);
     if (handoff.kind !== "ready") return { id: command.id, error: handoff.error, ...(handoff.error === "remote_host_unavailable" ? { end: true as const } : {}) };
@@ -215,7 +247,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     const device = sanitizeDeviceName(deps.deviceName);
     const submitted = await postPair(origin, partition, JSON.stringify(device === null ? { token: handoff.token } : { token: handoff.token, device }), signal);
-    if (!submitted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    // handoff는 이미 소진됐다. 다시 꺼낼 수 없으므로 재시도가 아니라 링크를 다시 넣어야 한다.
+    if (!submitted) return { id: command.id, error: "remote_link_required" };
     if (submitted.status === 401) return { id: command.id, error: "remote_link_required" };
     if (submitted.status === 409) {
       let code = "remote_host_unavailable";
@@ -230,6 +263,13 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (await storePairingCookie(submitted, origin, port, partition) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
     await rememberPairing(origin, port, partition);
     return { id: command.id, capability: "supported", mode: "off", access: null };
+  }
+
+
+  function responseSetsSession(response: Response, port: number): boolean {
+    const name = `fleet_console_session_${port}`;
+    const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+    return lines.some((line) => line.startsWith(`${name}=`) && !line.startsWith(`${name}=;`));
   }
 
   async function postPair(origin: string, partition: HostPartition, body: string, signal: AbortSignal): Promise<Response | null> {

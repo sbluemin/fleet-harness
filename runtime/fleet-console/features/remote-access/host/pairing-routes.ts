@@ -221,6 +221,15 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     const secret = readPairingCookie(req.headers, listener.port);
     const pairedDevice = secret === null ? null : pairedDeviceStore.resolve(secret, listener.audience);
     if (!pairedDevice || secret === null) {
+      // 쿠키를 냈는데 그 페어링이 없으면 세션 만료가 아니다. 그 쿠키만 만료시킨다.
+      if (secret !== null) {
+        res.writeHead(401, withSecurityHeaders({
+          "Content-Type": "application/json",
+          "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
+        }));
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return false;
+      }
       writeJson(res, 401, { error: "unauthorized" });
       return false;
     }
@@ -317,8 +326,26 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
     if (token === null) {
-      writeJson(res, 400, { error: "invalid_join", capability: "pair" });
-      return false;
+      const secret = readPairingCookie(req.headers, listener.port);
+      if (secret === null) {
+        writeJson(res, 400, { error: "invalid_join", capability: "pair" });
+        return false;
+      }
+      const paired = pairedDeviceStore.resolve(secret, listener.audience);
+      if (!paired) {
+        res.writeHead(401, withSecurityHeaders({
+          "Content-Type": "application/json",
+          "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
+        }));
+        res.end(JSON.stringify({ error: "unauthorized" }));
+        return false;
+      }
+      // 아직 유효한 페어링이다. 세션을 열거나 제어를 옮기지 않고 쿠키만 다시 준다.
+      res.writeHead(204, withSecurityHeaders({
+        "Set-Cookie": formatPairingCookie(secret, { secure: listener.secure, port: listener.port }),
+      }));
+      res.end();
+      return true;
     }
     const accepted = acceptPairingGrant(listener, token, device);
     if ("error" in accepted) {
