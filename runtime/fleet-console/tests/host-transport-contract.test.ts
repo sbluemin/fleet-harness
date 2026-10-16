@@ -13,11 +13,13 @@ import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.
 import {
   HOST_TERMINAL_UPGRADE_PATH,
   hostEventsUrl,
+  hostResourcesUrl,
   hostSocketUrl,
   hostTransportPath,
   isHostByteRequest,
   isHostByteResult,
   isHostJsonRequest,
+  isHostJsonResult,
   isHostPresence,
   isHostPresenceRequest,
   isHostTerminalUpgradePath,
@@ -29,40 +31,33 @@ import { createHostGateway } from "../features/remote-access/host/host-gateway.j
 import { admitHostRoute } from "../features/remote-access/host/host-route-table.js";
 
 const hostKey = "6f1c9a20-1111-4222-8333-444455556666";
+const instanceId = "aaaaaaaa-1111-4222-8333-444455556666";
 
 describe("host transport wire contract", () => {
-  it("requires expectedEpoch on presence and json bodies and rejects a ticket", () => {
-    expect(isHostPresenceRequest({ intent: "observe", expectedEpoch: 3 })).toBe(true);
-    expect(isHostPresenceRequest({ intent: "activate", epoch: 3 })).toBe(false);
-    expect(isHostJsonRequest({
-      requestId: "req-1234",
-      expectedEpoch: 3,
-      method: "POST",
-      path: "/api/v1/agent/sessions/op/message",
-      json: null,
-    })).toBe(true);
-    expect(isHostJsonRequest({
-      requestId: "req-1234",
-      expectedEpoch: 3,
-      method: "POST",
-      path: "/api/v1/agent/ticket",
-      ticket: "secret",
-    })).toBe(false);
-    expect(isHostJsonRequest({
-      requestId: "req-1234",
-      epoch: 3,
-      method: "GET",
-      path: "/api/v1/theaters",
-    })).toBe(false);
+  it("requires the gateway lifetime and epoch on bodies and results without admitting tickets", () => {
+    expect(isHostPresenceRequest({ intent: "observe", expectedEpoch: 3, expectedInstanceId: instanceId })).toBe(true);
+    expect(isHostPresenceRequest({ intent: "observe", expectedEpoch: 3 })).toBe(false);
+    expect(isHostPresenceRequest({ intent: "activate", epoch: 3, expectedInstanceId: instanceId })).toBe(false);
+    const request = { requestId: "req-1234", expectedEpoch: 3, expectedInstanceId: instanceId, method: "POST", path: "/api/v1/agent/sessions/op/message", json: null };
+    expect(isHostJsonRequest(request)).toBe(true);
+    expect(isHostJsonRequest({ ...request, expectedInstanceId: undefined })).toBe(false);
+    expect(isHostJsonRequest({ ...request, ticket: "secret" })).toBe(false);
+    const result = { requestId: "req-1234", epoch: 3, instanceId, status: 200, contentType: "application/json", json: {} };
+    expect(isHostJsonResult(result)).toBe(true);
+    expect(isHostJsonResult({ ...result, instanceId: undefined })).toBe(false);
   });
 
-  it("keeps byte requests free of a caller content type", () => {
-    expect(isHostByteRequest({ requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/browser/global/favicon?tab=a" })).toBe(true);
-    expect(isHostByteRequest({ requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/browser/global/favicon", contentType: "image/png" })).toBe(false);
-    const byte = { requestId: "req-1234", epoch: 2, status: 200, dataBase64: "aGk=" };
+  it("keeps byte requests scoped and free of caller content types", () => {
+    const request = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: instanceId, path: "/api/v1/browser/global/favicon?tab=a" };
+    expect(isHostByteRequest(request)).toBe(true);
+    expect(isHostByteRequest({ ...request, expectedInstanceId: undefined })).toBe(false);
+    expect(isHostByteRequest({ ...request, contentType: "image/png" })).toBe(false);
+    const byte = { requestId: "req-1234", epoch: 2, instanceId, status: 200, contentType: "image/png", dataBase64: "aGk=" };
+    expect(isHostByteResult(byte)).toBe(true);
     expect(isHostByteResult({ ...byte, contentType: "image/webp" })).toBe(true);
     expect(isHostByteResult({ ...byte, contentType: "text/plain; charset=utf-8" })).toBe(true);
     expect(isHostByteResult({ ...byte, contentType: "application/pdf" })).toBe(false);
+    expect(isHostByteResult({ ...byte, instanceId: undefined })).toBe(false);
     expect(admitHostRoute({ kind: "resources", method: "GET", path: "/plugins/objectives/result/file?objectiveId=a&resultId=b&v=1", mode: "observer" })).toMatchObject({ id: "objective-evidence", path: "/plugins/objectives/result/file?objectiveId=a&resultId=b&v=1" });
     expect(admitHostRoute({ kind: "resources", method: "GET", path: "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b", mode: "observer" })).toMatchObject({ id: "objective-attachment" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/objective/get", mode: "observer" })).toMatchObject({ id: "objectives-get" });
@@ -72,29 +67,37 @@ describe("host transport wire contract", () => {
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commander/message", mode: "observer" })).toEqual({ error: "not_controller" });
   });
 
-  it("builds a socket url without ticket, role, or upgrade path and rejects those queries", () => {
-    const url = hostSocketUrl(hostKey, { epoch: 4, channel: "chat", operationId: "op-1" });
-    expect(url).toBe(`/api/v1/hosts/${hostKey}/socket?epoch=4&channel=chat&operationId=op-1`);
+  it("binds sockets to a lifetime without ticket, role, or upgrade path", () => {
+    const url = hostSocketUrl(hostKey, { epoch: 4, instanceId, channel: "chat", operationId: "op-1" });
+    expect(url).toBe(`/api/v1/hosts/${hostKey}/socket?epoch=4&instanceId=${instanceId}&channel=chat&operationId=op-1`);
     expect(url).not.toContain(HOST_TERMINAL_UPGRADE_PATH);
     expect(isHostTerminalUpgradePath("/api/v1/terminal/ws")).toBe(true);
     expect(isHostTerminalUpgradePath("/api/v1/terminal/ws?ticket=1")).toBe(false);
-    const accepted = new URL(url ?? "http://invalid", "http://127.0.0.1");
-    expect(parseHostSocketQuery(accepted.searchParams)?.channel).toBe("chat");
-    const tainted = new URLSearchParams("epoch=4&channel=terminal&operationId=op-1&ticket=secret&role=viewer&path=/api/v1/terminal/ws");
-    expect(parseHostSocketQuery(tainted)).toBeNull();
+    const accepted = new URL(url!, "http://127.0.0.1");
+    expect(parseHostSocketQuery(accepted.searchParams)).toMatchObject({ instanceId, epoch: 4, channel: "chat" });
+    accepted.searchParams.delete("instanceId");
+    expect(parseHostSocketQuery(accepted.searchParams)).toBeNull();
+    accepted.searchParams.set("instanceId", instanceId);
+    accepted.searchParams.set("ticket", "secret");
+    expect(parseHostSocketQuery(accepted.searchParams)).toBeNull();
   });
 
-  it("requires epoch on event and resource queries and ignores local", () => {
-    expect(hostEventsUrl(hostKey, { path: "/api/v1/operations/events", epoch: 1 })).toContain("epoch=1");
-    expect(parseHostStreamQuery(new URLSearchParams("path=/api/v1/operations/events"))).toBeNull();
+  it("fences event/resource queries and discovers lifetime only through presence", () => {
+    const query = { path: "/api/v1/operations/events", epoch: 1, instanceId };
+    const events = new URL(hostEventsUrl(hostKey, query)!, "http://127.0.0.1");
+    expect(parseHostStreamQuery(events.searchParams)).toEqual(query);
+    expect(hostResourcesUrl(hostKey, { ...query, path: "/plugins/file-explorer/files/image?path=one.png" })).toContain(`instanceId=${instanceId}`);
+    events.searchParams.append("instanceId", instanceId);
+    expect(parseHostStreamQuery(events.searchParams)).toBeNull();
+    expect(parseHostStreamQuery(new URLSearchParams("path=/api/v1/operations/events&epoch=1"))).toBeNull();
     expect(hostTransportPath("presence", "local")).toBeNull();
-    expect(isHostPresence({
-      hostKey, epoch: 1, mode: "off", access: null, connection: "blocked", capability: "unsupported",
-    })).toBe(true);
-    expect(isHostPresence({
-      hostKey, epoch: 1, mode: "controller", access: "full", connection: "ready", capability: "unsupported",
-    })).toBe(false);
+    const presence = { hostKey, epoch: 1, instanceId, mode: "off", access: null, connection: "blocked", capability: "unsupported" };
+    expect(isHostPresence(presence)).toBe(true);
+    expect(isHostPresence({ ...presence, instanceId: "not-a-lifetime" })).toBe(false);
+    expect(isHostPresence({ ...presence, mode: "controller", access: "full", connection: "ready" })).toBe(false);
     expect(isHostTransportErrorBody({ error: "stale_epoch", epoch: 9 })).toBe(true);
+    expect(isHostTransportErrorBody({ error: "stale_instance" })).toBe(true);
+    expect(isHostTransportErrorBody({ error: "stale_instance", instanceId, epoch: 1 })).toBe(false);
     expect(isHostTransportErrorBody({ error: "read_only", epoch: 9 })).toBe(false);
   });
 });

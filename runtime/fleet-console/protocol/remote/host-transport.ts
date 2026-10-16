@@ -6,6 +6,9 @@
  *
  * 요청 본문의 세대는 `expectedEpoch`다. 스트림·자원·소켓 URL의 세대는 쿼리 `epoch`다.
  * 둘 다 마지막으로 받은 `HostPresence.epoch`여야 하며, 서버는 상류로 보내기 전에 비교한다.
+ * gateway 프로세스 수명은 별개의 `instanceId`다. 본문은 `expectedInstanceId`, scoped URL은
+ * `instanceId`로 고정한다. 이 UUID는 인증값도 Desktop bridge의 instanceId도 아니다.
+ * presence GET/presenceEvents만 수명 발견용 비고정 읽기이고, 모든 응답/사건에 현재 수명을 싣는다.
  */
 export const HOST_TERMINAL_UPGRADE_PATH = "/api/v1/terminal/ws";
 export const HOST_PRESENCE_EVENT = "host-presence";
@@ -13,6 +16,7 @@ export const HOST_JSON_CONTENT_TYPE = "application/json";
 export const HOST_JSON_MAX_CHARS = 1_048_576;
 export const HOST_BYTE_MAX_BYTES = 8 * 1024 * 1024;
 export const HOST_EPOCH_QUERY = "epoch";
+export const HOST_INSTANCE_QUERY = "instanceId";
 export const HOST_PATH_QUERY = "path";
 export const HOST_SOCKET_CHANNEL_QUERY = "channel";
 export const HOST_SOCKET_OPERATION_QUERY = "operationId";
@@ -20,6 +24,7 @@ export const HOST_SOCKET_OPERATION_QUERY = "operationId";
 export const HOST_TRANSPORT_ERRORS = [
   "invalid_host_request",
   "stale_epoch",
+  "stale_instance",
   "remote_host_unknown",
   "remote_host_not_paired",
   "observer_only",
@@ -38,6 +43,7 @@ export type HostTransportError = (typeof HOST_TRANSPORT_ERRORS)[number];
 export const HOST_ERROR_STATUS: Readonly<Record<HostTransportError, number>> = {
   invalid_host_request: 400,
   stale_epoch: 409,
+  stale_instance: 409,
   remote_host_unknown: 404,
   remote_host_not_paired: 401,
   observer_only: 403,
@@ -76,11 +82,13 @@ export type HostByteContentType = (typeof HOST_BYTE_CONTENT_TYPES)[number];
 export interface HostPresenceRequest {
   readonly intent: HostPresenceIntent;
   readonly expectedEpoch: number;
+  readonly expectedInstanceId: string;
 }
 
 export interface HostPresence {
   readonly hostKey: string;
   readonly epoch: number;
+  readonly instanceId: string;
   readonly mode: HostMode;
   readonly access: HostAccess | null;
   readonly connection: HostConnection;
@@ -97,6 +105,7 @@ export interface HostTransportErrorBody {
 export interface HostJsonRequest {
   readonly requestId: string;
   readonly expectedEpoch: number;
+  readonly expectedInstanceId: string;
   readonly method: HostRelayMethod;
   readonly path: string;
   readonly json?: unknown;
@@ -105,6 +114,7 @@ export interface HostJsonRequest {
 export interface HostJsonResult {
   readonly requestId: string;
   readonly epoch: number;
+  readonly instanceId: string;
   readonly status: number;
   readonly contentType: typeof HOST_JSON_CONTENT_TYPE | null;
   readonly json?: unknown;
@@ -114,12 +124,14 @@ export interface HostJsonResult {
 export interface HostByteRequest {
   readonly requestId: string;
   readonly expectedEpoch: number;
+  readonly expectedInstanceId: string;
   readonly path: string;
 }
 
 export interface HostByteResult {
   readonly requestId: string;
   readonly epoch: number;
+  readonly instanceId: string;
   readonly status: number;
   readonly contentType: HostByteContentType;
   readonly dataBase64: string;
@@ -128,11 +140,13 @@ export interface HostByteResult {
 export interface HostStreamQuery {
   readonly path: string;
   readonly epoch: number;
+  readonly instanceId: string;
 }
 
 /** 브라우저 소켓 쿼리. ticket·role·path는 없다. 업그레이드 경로는 셸 내부다. */
 export interface HostSocketParams {
   readonly epoch: number;
+  readonly instanceId: string;
   readonly channel: HostSocketChannel;
   readonly operationId: string;
 }
@@ -151,6 +165,10 @@ function hasOnlyKeys(value: Record<string, unknown>, required: readonly string[]
   const allowed = new Set<string>([...required, ...optional]);
   const keys = Object.keys(value);
   return keys.every((key) => allowed.has(key)) && required.every((key) => Object.prototype.hasOwnProperty.call(value, key));
+}
+
+export function isHostInstanceId(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value);
 }
 
 export function isHostEpoch(value: unknown): value is number {
@@ -203,14 +221,15 @@ function jsonChars(value: unknown): number | null {
 
 export function isHostPresenceRequest(value: unknown): value is HostPresenceRequest {
   return isRecord(value)
-    && hasOnlyKeys(value, ["intent", "expectedEpoch"])
+    && hasOnlyKeys(value, ["intent", "expectedEpoch", "expectedInstanceId"])
     && isListed(HOST_PRESENCE_INTENTS, value.intent)
-    && isHostEpoch(value.expectedEpoch);
+    && isHostEpoch(value.expectedEpoch)
+    && isHostInstanceId(value.expectedInstanceId);
 }
 
 export function isHostPresence(value: unknown): value is HostPresence {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["hostKey", "epoch", "mode", "access", "connection", "capability"])) return false;
-  if (!isRemoteHostKey(value.hostKey) || !isHostEpoch(value.epoch)) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ["hostKey", "epoch", "instanceId", "mode", "access", "connection", "capability"])) return false;
+  if (!isRemoteHostKey(value.hostKey) || !isHostEpoch(value.epoch) || !isHostInstanceId(value.instanceId)) return false;
   if (!isListed(HOST_MODES, value.mode) || !isListed(HOST_CONNECTIONS, value.connection) || !isListed(HOST_CAPABILITIES, value.capability)) return false;
   if (value.access !== null && !isListed(HOST_ACCESS_LEVELS, value.access)) return false;
   if (value.capability === "unsupported") return value.mode === "off" && value.access === null && value.connection === "blocked";
@@ -226,23 +245,24 @@ export function isHostTransportErrorBody(value: unknown): value is HostTransport
 }
 
 export function isHostJsonRequest(value: unknown): value is HostJsonRequest {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["requestId", "expectedEpoch", "method", "path"], ["json"])) return false;
-  if (!isHostRequestId(value.requestId) || !isHostEpoch(value.expectedEpoch) || !isListed(HOST_RELAY_METHODS, value.method) || !isHostRelativePath(value.path)) return false;
+  if (!isRecord(value) || !hasOnlyKeys(value, ["requestId", "expectedEpoch", "expectedInstanceId", "method", "path"], ["json"])) return false;
+  if (!isHostRequestId(value.requestId) || !isHostEpoch(value.expectedEpoch) || !isHostInstanceId(value.expectedInstanceId) || !isListed(HOST_RELAY_METHODS, value.method) || !isHostRelativePath(value.path)) return false;
   return !Object.prototype.hasOwnProperty.call(value, "json") || jsonChars(value.json) !== null;
 }
 
 export function isHostJsonResult(value: unknown): value is HostJsonResult {
-  if (!isRecord(value) || !isHostRequestId(value.requestId) || !isHostEpoch(value.epoch) || !isHttpStatus(value.status)) return false;
+  if (!isRecord(value) || !isHostRequestId(value.requestId) || !isHostEpoch(value.epoch) || !isHostInstanceId(value.instanceId) || !isHttpStatus(value.status)) return false;
   const hasJson = Object.prototype.hasOwnProperty.call(value, "json");
-  if (value.contentType === null) return !hasJson && hasOnlyKeys(value, ["requestId", "epoch", "status", "contentType"]);
-  return value.contentType === HOST_JSON_CONTENT_TYPE && hasJson && jsonChars(value.json) !== null && hasOnlyKeys(value, ["requestId", "epoch", "status", "contentType", "json"]);
+  if (value.contentType === null) return !hasJson && hasOnlyKeys(value, ["requestId", "epoch", "instanceId", "status", "contentType"]);
+  return value.contentType === HOST_JSON_CONTENT_TYPE && hasJson && jsonChars(value.json) !== null && hasOnlyKeys(value, ["requestId", "epoch", "instanceId", "status", "contentType", "json"]);
 }
 
 export function isHostByteRequest(value: unknown): value is HostByteRequest {
   return isRecord(value)
-    && hasOnlyKeys(value, ["requestId", "expectedEpoch", "path"])
+    && hasOnlyKeys(value, ["requestId", "expectedEpoch", "expectedInstanceId", "path"])
     && isHostRequestId(value.requestId)
     && isHostEpoch(value.expectedEpoch)
+    && isHostInstanceId(value.expectedInstanceId)
     && isHostRelativePath(value.path);
 }
 
@@ -254,9 +274,10 @@ function decodedBase64Bytes(value: string): number | null {
 
 export function isHostByteResult(value: unknown): value is HostByteResult {
   return isRecord(value)
-    && hasOnlyKeys(value, ["requestId", "epoch", "status", "contentType", "dataBase64"])
+    && hasOnlyKeys(value, ["requestId", "epoch", "instanceId", "status", "contentType", "dataBase64"])
     && isHostRequestId(value.requestId)
     && isHostEpoch(value.epoch)
+    && isHostInstanceId(value.instanceId)
     && isHttpStatus(value.status)
     && isListed(HOST_BYTE_CONTENT_TYPES, value.contentType)
     && typeof value.dataBase64 === "string"
@@ -265,13 +286,14 @@ export function isHostByteResult(value: unknown): value is HostByteResult {
 }
 
 export function isHostStreamQuery(value: unknown): value is HostStreamQuery {
-  return isRecord(value) && hasOnlyKeys(value, ["path", "epoch"]) && isHostRelativePath(value.path) && isHostEpoch(value.epoch);
+  return isRecord(value) && hasOnlyKeys(value, ["path", "epoch", "instanceId"]) && isHostRelativePath(value.path) && isHostEpoch(value.epoch) && isHostInstanceId(value.instanceId);
 }
 
 export function isHostSocketParams(value: unknown): value is HostSocketParams {
   return isRecord(value)
-    && hasOnlyKeys(value, ["epoch", "channel", "operationId"])
+    && hasOnlyKeys(value, ["epoch", "instanceId", "channel", "operationId"])
     && isHostEpoch(value.epoch)
+    && isHostInstanceId(value.instanceId)
     && isListed(HOST_SOCKET_CHANNELS, value.channel)
     && isHostOperationId(value.operationId);
 }
@@ -301,19 +323,19 @@ function queryFrom(entries: readonly (readonly [string, string])[]): string {
 export function hostEventsUrl(hostKey: string, query: HostStreamQuery): string | null {
   const path = hostTransportPath("events", hostKey);
   if (path === null || !isHostStreamQuery(query)) return null;
-  return `${path}?${queryFrom([[HOST_PATH_QUERY, query.path], [HOST_EPOCH_QUERY, String(query.epoch)]])}`;
+  return `${path}?${queryFrom([[HOST_PATH_QUERY, query.path], [HOST_EPOCH_QUERY, String(query.epoch)], [HOST_INSTANCE_QUERY, query.instanceId]])}`;
 }
 
 export function hostResourcesUrl(hostKey: string, query: HostStreamQuery): string | null {
   const path = hostTransportPath("resources", hostKey);
   if (path === null || !isHostStreamQuery(query)) return null;
-  return `${path}?${queryFrom([[HOST_PATH_QUERY, query.path], [HOST_EPOCH_QUERY, String(query.epoch)]])}`;
+  return `${path}?${queryFrom([[HOST_PATH_QUERY, query.path], [HOST_EPOCH_QUERY, String(query.epoch)], [HOST_INSTANCE_QUERY, query.instanceId]])}`;
 }
 
 export function hostSocketUrl(hostKey: string, params: HostSocketParams): string | null {
   const path = hostTransportPath("socket", hostKey);
   if (path === null || !isHostSocketParams(params)) return null;
-  return `${path}?${queryFrom([[HOST_EPOCH_QUERY, String(params.epoch)], [HOST_SOCKET_CHANNEL_QUERY, params.channel], [HOST_SOCKET_OPERATION_QUERY, params.operationId]])}`;
+  return `${path}?${queryFrom([[HOST_EPOCH_QUERY, String(params.epoch)], [HOST_INSTANCE_QUERY, params.instanceId], [HOST_SOCKET_CHANNEL_QUERY, params.channel], [HOST_SOCKET_OPERATION_QUERY, params.operationId]])}`;
 }
 
 function soleQuery(params: URLSearchParams, key: string): string | null {
@@ -327,19 +349,21 @@ function exactQuery(params: URLSearchParams, keys: readonly string[]): boolean {
 }
 
 export function parseHostStreamQuery(params: URLSearchParams): HostStreamQuery | null {
-  if (!exactQuery(params, [HOST_PATH_QUERY, HOST_EPOCH_QUERY])) return null;
+  if (!exactQuery(params, [HOST_PATH_QUERY, HOST_EPOCH_QUERY, HOST_INSTANCE_QUERY])) return null;
   const path = soleQuery(params, HOST_PATH_QUERY);
   const epoch = parseHostEpochText(soleQuery(params, HOST_EPOCH_QUERY));
-  const query = { path, epoch };
+  const instanceId = soleQuery(params, HOST_INSTANCE_QUERY);
+  const query = { path, epoch, instanceId };
   return isHostStreamQuery(query) ? query : null;
 }
 
 export function parseHostSocketQuery(params: URLSearchParams): HostSocketParams | null {
-  if (!exactQuery(params, [HOST_EPOCH_QUERY, HOST_SOCKET_CHANNEL_QUERY, HOST_SOCKET_OPERATION_QUERY])) return null;
+  if (!exactQuery(params, [HOST_EPOCH_QUERY, HOST_INSTANCE_QUERY, HOST_SOCKET_CHANNEL_QUERY, HOST_SOCKET_OPERATION_QUERY])) return null;
   const epoch = parseHostEpochText(soleQuery(params, HOST_EPOCH_QUERY));
+  const instanceId = soleQuery(params, HOST_INSTANCE_QUERY);
   const channel = soleQuery(params, HOST_SOCKET_CHANNEL_QUERY);
   const operationId = soleQuery(params, HOST_SOCKET_OPERATION_QUERY);
-  const parsed = { epoch, channel, operationId };
+  const parsed = { epoch, instanceId, channel, operationId };
   return isHostSocketParams(parsed) ? parsed : null;
 }
 
