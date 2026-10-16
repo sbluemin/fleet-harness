@@ -841,6 +841,81 @@ describe("host gateway admission", () => {
   });
 });
 
+/**
+ * 다른 기기가 제어권을 가져가면 원격은 이 기기의 세션을 끝내고, 그 뒤 세션이 필요한 요청은 relay 안의 상태 401로 돌아온다(HTTP 봉투는 200).
+ * gateway의 presence는 그대로 controller/ready다. 그 판정을 믿고 "이미 연결됨"으로 새로고침만 하면 영원히 401이므로, 관찰 다시 연결과
+ * 명시 관찰은 관찰 전환(presence observe)을 실제로 보내 observer로 복구해야 한다 — 제어권을 가져오지 않고, 다시 pair하지도 않는다.
+ */
+describe("host session loss after a controller replacement", () => {
+  it("reopens the observer through the real presence transition instead of trusting a stale ready link", async () => {
+    let mode = "observer";
+    let sessionAlive = true;
+    const presenceIntents: string[] = [];
+    const pairs: number[] = [];
+    const harness = await startHostHarness((command, origin) => {
+      if (command.op === "presence") {
+        const intent = String(command.params.intent);
+        presenceIntents.push(intent);
+        mode = intent === "activate" ? "controller" : "observer";
+        sessionAlive = true; // 관찰·활성화는 새 세션을 연다
+        void postHostRelay(origin, { id: command.id, capability: "supported", mode, access: "full" });
+      } else if (command.op === "pair") {
+        pairs.push(command.id);
+        void postHostRelay(origin, { id: command.id, capability: "supported", mode: "off", access: null });
+      } else if (command.op === "http") {
+        const path = String(command.params.path ?? "");
+        if (!sessionAlive) { void postHostRelay(origin, { id: command.id, status: 401, contentType: "application/json", json: { reason: "superseded" } }); return; }
+        const json = path === "/api/v1/theaters" ? { theaters: [{ id: "th1", label: "T" }] }
+          : path === "/api/v1/operations" ? { operations: [{ id: "op1", theaterId: "th1", title: "O", type: "agent" }] }
+            : path.startsWith("/api/v1/agent/sessions") ? { sessions: [] } : {};
+        void postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json });
+      }
+    });
+    const network = {
+      fetch: ((path: string, init?: RequestInit) => fetch(`${harness.origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), origin: harness.origin } })) as typeof fetch,
+      events: () => { throw new Error("unused"); },
+      socket: () => { throw new Error("unused"); },
+      origin: harness.origin,
+    };
+    const runtime = createRemoteHostRuntime(createRemoteHostDependencies("host1", "label", network));
+    const local = {
+      getSnapshot: () => ({ hostKey: "local", label: "local", epoch: 1, instanceId: "local", mode: "controller", access: "full", connection: "ready", trust: "verified", phase: "ready", error: null, theaters: [], operations: [], objectives: [] }) as never,
+      subscribe: () => () => undefined, observe: async () => undefined, activate: async () => undefined, dispose: () => undefined,
+    };
+    const workspace = createHostWorkspace(local);
+    workspace.add(runtime);
+    const selection = { hostKey: "host1", theaterId: "th1", role: "commodore" as const, operationId: null };
+    try {
+      await workspace.activateConversation(selection);
+      expect(runtime.getSnapshot()).toMatchObject({ mode: "controller", connection: "ready", phase: "ready" });
+
+      // 다른 기기가 제어를 가져갔다: 이 기기의 세션이 끝났지만 gateway는 여전히 controller/ready로 말한다.
+      sessionAlive = false;
+      const before = presenceIntents.length;
+      // "관찰 다시 연결": 관찰 전환을 실제로 보내고 pair 흐름(쿠키 재사용)으로 observer가 되어야 한다. 제어권은 가져오지 않는다.
+      await workspace.pair("host1", new AbortController().signal);
+      expect(presenceIntents.slice(before)).toEqual(["observe"]);
+      expect(pairs).toHaveLength(1);
+      expect(runtime.getSnapshot()).toMatchObject({ mode: "observer", connection: "ready", phase: "ready", error: null });
+      expect(workspace.getSnapshot().canWrite).toBe(false);
+
+      // 다시 끝난 세션: 명시 관찰(배경 새로고침·재로드 뒤 첫 시도)도 같은 호출 안에서 관찰 전환으로 복구한다.
+      await workspace.activateConversation(selection);
+      sessionAlive = false;
+      const second = presenceIntents.length;
+      workspace.select(selection);
+      await waitUntil(() => workspace.getSnapshot().phase !== "loading", "the explicit observe did not settle");
+      expect(presenceIntents.slice(second)).toEqual(["observe"]);
+      expect(runtime.getSnapshot()).toMatchObject({ mode: "observer", phase: "ready", error: null });
+      expect(presenceIntents.filter((intent) => intent === "activate")).toHaveLength(2);
+    } finally {
+      runtime.dispose();
+      workspace.dispose();
+      await harness.stop();
+    }
+  });
+});
+
 /** Node에는 브라우저 EventSource가 없다. 연결 열림·이벤트 이름 전달·자동 재연결만 흉내 낸다(응답 본문 모양은 gateway가 정한다). */
 class FetchEventSource {
   readyState = 0;

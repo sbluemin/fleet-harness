@@ -54,6 +54,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   let revision = 0;
   let refreshPending = false;
   let opened = false;
+  // 원격이 이 기기의 세션을 끝냈다는 근거(세션이 필요한 요청의 401, control:reclaimed)가 있는 동안 true. gateway의 presence는 그 사실을
+  // 모르고 controller/ready로 남을 수 있으므로, 이 값이 true면 "이미 연결됨"을 믿지 않고 관찰 전환을 실제로 보낸다.
+  let sessionLost = false;
   let visible = false;
   let retiredInstanceId: string | null = null;
   let discoveryAbort = new AbortController();
@@ -184,6 +187,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     for (const name of channels.keys()) attachChannel(name);
     next.addEventListener("control:reclaimed", () => {
       if (!current()) return;
+      sessionLost = true;
       clearConnection();
       publish({ mode: "off", access: null, connection: "closed", phase: "error", error: "not_controller", theaters: [], operations: [], objectives: [] });
     });
@@ -226,6 +230,12 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     // 배경 관찰 한 건이 남은 HTTP 슬롯을 모두 잡지 않도록 snapshot의 세 조회도 직렬화한다.
     const theatersResponse = await bound.request("/api/v1/theaters", { signal });
     const operationsResponse = await bound.request("/api/v1/operations", { signal });
+    // 세션이 필요한 요청의 401은 원격이 이 기기의 세션을 끝냈다는 뜻이다(다른 기기가 제어를 가져갔거나 세션이 만료됐다). 나머지 조회를
+    // 보내지 않고, 호출자가 관찰 전환으로 복구할 수 있게 표시한다. 페어링 자체의 상실은 관찰 전환의 401이 따로 알린다.
+    if (theatersResponse.status === 401 || operationsResponse.status === 401) {
+      sessionLost = true;
+      throw new SessionEnded(state.mode === "controller" ? "not_controller" : "remote_host_unavailable");
+    }
     const sessionSnapshot = await fetchSessions(signal, bound);
     if (!theatersResponse.ok || !operationsResponse.ok) throw new Error(`host_snapshot_http_${!theatersResponse.ok ? theatersResponse.status : operationsResponse.status}`);
     const [theatersBody, operationsBody] = await Promise.all([
@@ -238,6 +248,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     for (const session of sessionSnapshot) if (sessionVersion === sessionRevision || !sessions.has(session.sessionId)) sessions.set(session.sessionId, session);
     const theaters = readTheaters(theatersBody.theaters);
     const operations = withActivity(readOperations(operationsBody.operations));
+    sessionLost = false;
     publish({ theaters, operations, phase: "ready", connection: "ready", error: null });
     openEvents(bound);
   }
@@ -268,14 +279,21 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       return;
     }
     if (!observeFlight) {
+      const reobserve = async (): Promise<void> => {
+        const { epoch, instanceId } = state;
+        if (!instanceId) throw new Error("host_inactive");
+        await discover((readSignal) => deps.changePresence("observe", epoch, instanceId, readSignal));
+      };
       const work = (async () => {
         await discover((readSignal) => deps.readPresence(readSignal));
-        if (state.mode === "off" || state.connection !== "ready") {
-          const { epoch, instanceId } = state;
-          if (!instanceId) throw new Error("host_inactive");
-          await discover((readSignal) => deps.changePresence("observe", epoch, instanceId, readSignal));
+        if (sessionLost || state.mode === "off" || state.connection !== "ready") await reobserve();
+        try { await refresh(); }
+        catch (cause) {
+          // gateway가 ready라고 말해도 원격 세션이 이미 끝났을 수 있다. 같은 요청을 되풀이하지 않고 관찰 전환으로 새 세션을 연다(제어권은 가져오지 않는다).
+          if (!(cause instanceof SessionEnded)) throw cause;
+          await reobserve();
+          await refresh();
         }
-        await refresh();
       })();
       observeFlight = work;
       void work.finally(() => { if (observeFlight === work) observeFlight = null; }).catch(() => undefined);
@@ -299,7 +317,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
         signal.throwIfAborted();
         const { epoch, instanceId } = state;
         if (!instanceId) throw new Error("host_inactive");
-        if (state.mode !== "off" && state.connection === "ready") { await refresh(signal); return; }
+        if (state.mode !== "off" && state.connection === "ready" && !sessionLost) {
+          try { await refresh(signal); return; }
+          // 이미 연결된 줄 알았지만 원격 세션이 끝났다: 아래 pair 흐름(저장된 페어링 재사용 → 관찰 전환)으로 다시 연다.
+          catch (cause) { if (!(cause instanceof SessionEnded)) throw cause; }
+        }
         const current = () => {
           signal.throwIfAborted();
           if (state.instanceId !== instanceId) throw new Error("stale_instance");
@@ -399,6 +421,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     },
   };
 }
+
+/** 원격이 이 기기의 세션을 끝냈다는 신호. 메시지는 사용자에게 보일 오류 코드다. */
+class SessionEnded extends Error {}
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
