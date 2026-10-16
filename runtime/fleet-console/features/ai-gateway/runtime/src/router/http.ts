@@ -89,9 +89,31 @@ export function writeAnthropicError(
   status: number,
   type: string,
   message: string,
+  decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined,
 ): void {
-  res.writeHead(status, { "content-type": "application/json" });
+  res.writeHead(status, applyDecisiveRefusalHeaders(
+    status,
+    { "content-type": "application/json" },
+    decisiveRefusalHeaders,
+  ));
   res.end(JSON.stringify({ type: "error", error: { type, message } }));
+}
+
+/**
+ * Overlay a harness's "do not retry" headers on a refusal.
+ *
+ * The overlay wins over an upstream `x-should-retry`, because a `401`/`403` that
+ * reached this write is the gateway's verdict that another attempt will not help.
+ * Any other status, and a harness that declares nothing, keeps the headers it had —
+ * transient `429` and `5xx` responses stay retryable.
+ */
+export function applyDecisiveRefusalHeaders(
+  status: number,
+  headers: Record<string, string>,
+  decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined,
+): Record<string, string> {
+  const extra = decisiveRefusalHeaders?.(status);
+  return extra === undefined ? headers : { ...headers, ...extra };
 }
 
 /**

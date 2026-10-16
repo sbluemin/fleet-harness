@@ -83,6 +83,21 @@ export interface GatewayHarnessProfile {
    * Absent forwards the upstream status unchanged.
    */
   readonly retryableStatus?: (status: number) => number;
+  /**
+   * Headers this client needs on a refusal its status default would retry.
+   *
+   * Absent leaves the response headers untouched. Claude Code retries a `401` that
+   * arrives without `x-should-retry`; Grok Build's retry budget is unmeasured, so it
+   * does not declare this.
+   */
+  readonly decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined;
+  /**
+   * Status this client must see for a provider sign-in refusal.
+   *
+   * Applied only to a missing or rejected provider credential, never to the caller's own
+   * credential. Absent leaves the status unchanged — Grok Build's retry budget is unmeasured.
+   */
+  readonly decisiveRefusalStatus?: (status: number) => number;
   /** The status that carries a gateway-side fault this client should retry. */
   readonly transientErrorStatus: number;
   /** 완성된 스트리밍 호출부터 실행할 수 있는 읽기 전용 도구. 부재는 async 실행 미지원이다. */

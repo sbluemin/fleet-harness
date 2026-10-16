@@ -13,17 +13,51 @@ export const COMPACT_CEILING_CUSTOM_MAX = 99;
 export type CompactCeiling = "early" | "late" | number;
 
 /**
- * The statuses Claude Code's own retry budget acts on.
+ * The statuses Claude Code retries even when the response does not say so.
  *
  * Documented in Claude Code's error reference: a failure that arrives before the response
  * stream starts is retried up to `CLAUDE_CODE_MAX_RETRIES` (default 10) with exponential
- * backoff and `retry-after` honoured — but only for these codes. Every other status ends the
- * turn at the client, no matter how transient the cause was.
+ * backoff and `retry-after` honoured — for these codes.
  *
- * `502`, `503`, and `504` are deliberately absent from that list, which is why they must not
- * be what a transient upstream failure reaches Claude Code as.
+ * That list is not the whole budget. Measured on Claude Code 2.1.301: subscription OAuth
+ * mode retries every `401` before it reads `x-should-retry`, so the header does not end
+ * that turn. API-key mode does honor the header. A `403` is not retried in either mode
+ * unless its message says the OAuth token was revoked. {@link claudeDecisiveRefusalStatus}
+ * is what a provider sign-in refusal wears; {@link claudeDecisiveRefusalHeaders} still
+ * marks it, for API-key mode.
+ *
+ * `502`, `503`, and `504` are deliberately absent from the unconditional list, which is why
+ * they must not be what a transient upstream failure reaches Claude Code as.
  */
 const CLAUDE_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([408, 409, 429, 500, 529]);
+
+/**
+ * Headers that stop Claude Code retrying a refusal its status default would.
+ *
+ * Only `401` and `403`. Transient statuses (`429`, `5xx`, and the codes in
+ * {@link CLAUDE_RETRYABLE_STATUSES}) are left alone so the client's existing retry budget
+ * still applies to them. In subscription OAuth mode the header loses to a `401`, which is
+ * why {@link claudeDecisiveRefusalStatus} leaves a provider sign-in refusal as `403`.
+ */
+export function claudeDecisiveRefusalHeaders(
+  status: number,
+): Readonly<Record<string, string>> | undefined {
+  if (status !== 401 && status !== 403) return undefined;
+  return { "x-should-retry": "false" };
+}
+
+/**
+ * Status a provider sign-in refusal must wear so Claude Code does not retry it.
+ *
+ * Subscription OAuth mode retries `401` before `x-should-retry`. A `403` is not retried
+ * unless the message says the OAuth token was revoked, so `401` becomes `403` and every
+ * other status — including `429` and `5xx` — passes through. The caller's own missing
+ * Claude credential is not passed through this function; that `401` is a real Claude
+ * auth failure and stays one.
+ */
+export function claudeDecisiveRefusalStatus(status: number): number {
+  return status === 401 ? 403 : status;
+}
 
 /**
  * What a gateway-side transient failure reports when no upstream status exists.
@@ -48,8 +82,9 @@ export const GATEWAY_TRANSIENT_ERROR_STATUS = 500;
  * answered means "not now". That is also the one code Claude Code's retry watchdog will keep
  * retrying indefinitely when an operator turns it on.
  *
- * Statuses the client already retries pass through untouched, and so does every 4xx — a `400`
- * or `413` is a verdict about the request that retrying cannot change.
+ * Statuses the client already retries pass through untouched, and so does every 4xx. A `400`
+ * or `413` is a verdict retrying cannot change. A provider `401` is not remapped here: subscription
+ * mode would still retry it, so the harness reports that refusal as `403` separately.
  */
 export function claudeRetryableUpstreamStatus(status: number): number {
   if (CLAUDE_RETRYABLE_STATUSES.has(status)) return status;
