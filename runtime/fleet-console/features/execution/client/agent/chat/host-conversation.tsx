@@ -1,29 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
-import type { HostSurfaceContext } from "@fleet-console/sdk/host-context";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { HostOperationConversationProps } from "@fleet-console/sdk/host-context";
 import type { ConversationParticipant } from "@fleet-console/sdk/conversation";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
-import { HostMessageComposer } from "@fleet-console/sdk/composer";
+import { GroupComposer } from "./group/group-composer.js";
+import { GroupConversation } from "./group/group-conversation.js";
+import { DecisionCard, HoldCard } from "./group/group-cards.js";
+import { ConversationTheaterContext } from "./group/speaker-mark.js";
 import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
-import { fetchSessions, messageAgentSession } from "../api.js";
-import { getT } from "../i18n/index.js";
+import { fetchSessions, messageAgentSession, stopAgentChatTurn } from "../api.js";
 import { createChatSocketSession } from "./chat-store.js";
 import { readChatJournalEvent, type AgentChatJournalEvent } from "./chat-events.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
 import { fetchConversationSnapshot } from "./conversation-history.js";
 
 /** 그룹 대화와 같은 저널 reducer·말풍선을 쓰되, 연결/초안은 주입한 host scope에만 속한다. */
-export function HostAgentConversation({ context, title, readOnlyLabel, uploadUnsupported }: {
-  readonly context: HostSurfaceContext; readonly title: string; readonly readOnlyLabel: string; readonly uploadUnsupported: string;
-}) {
+export function HostAgentConversation({ context, title, readOnlyLabel, conversation, operationExists = true }: HostOperationConversationProps) {
   const operationId = context.selection.operationId;
   const [journal, setJournal] = useState<ConversationJournal>(EMPTY_CONVERSATION_JOURNAL);
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ConversationParticipant["activity"]>("unknown");
-  const working = activity === "running";
   const [error, setError] = useState<string | null>(null);
-  const t = getT(context.language);
+  const operations = useSyncExternalStore(context.operations.subscribe, context.operations.getSnapshot, context.operations.getSnapshot);
   useEffect(() => {
-    if (!operationId) return;
+    if (!operationId || !operationExists) { setJournal(EMPTY_CONVERSATION_JOURNAL); setLoading(false); setError(null); return; }
     const abort = new AbortController();
     const signal = AbortSignal.any([context.transport.scope.signal, abort.signal]);
     let session: ReturnType<typeof createChatSocketSession> | null = null;
@@ -136,14 +135,43 @@ export function HostAgentConversation({ context, title, readOnlyLabel, uploadUns
     const offReconnect = context.events.onReconnect?.(() => { void refresh(); });
     const poll = setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 15_000);
     return () => { abort.abort(); stopSocket(); stream.dispose(); offChanged(); offSession(); offAttention(); offReconnect?.(); clearInterval(poll); };
-  }, [context, operationId]);
-  const participants = useMemo<readonly ConversationParticipant[]>(() => operationId ? [{ speaker: { kind: "commander", operationId, name: title }, activity }] : [], [operationId, title, activity]);
-  const snapshot = useMemo(() => composeGroupTimeline({ rootOperationId: operationId, participants, journals: new Map(operationId ? [[operationId, journal]] : []), loading }), [operationId, participants, journal, loading]);
+  }, [context, operationId, operationExists]);
+  const participants = useMemo<readonly ConversationParticipant[]>(() => operationId ? [
+    { speaker: { kind: "commander", operationId, name: title }, activity },
+    ...(conversation?.members ?? []).map((member): ConversationParticipant => ({ speaker: member, activity: operations.find((entry) => entry.id === member.operationId)?.activity ?? "unknown" })),
+  ] : [], [operationId, title, activity, conversation, operations]);
+  const snapshot = useMemo(() => composeGroupTimeline({ rootOperationId: operationId, participants, journals: new Map(operationId ? [[operationId, journal]] : []), loading, board: conversation }), [operationId, participants, journal, loading, conversation]);
+  const stopOne = async (speaker: ConversationParticipant["speaker"]) => {
+    context.transport.scope.signal.throwIfAborted();
+    if (!speaker.operationId || !context.canWrite()) throw new Error("read_only");
+    await stopAgentChatTurn(speaker.operationId, context.transport.scope.signal, context.transport);
+  };
+  const fallback = useMemo(() => ({
+    send: async (_target: unknown, text: string, attachmentIds?: readonly string[]) => {
+      if (!operationId || !context.canWrite()) throw new Error("read_only");
+      await messageAgentSession(operationId, text, attachmentIds, context.transport.scope.signal, context.transport);
+      return { targets: [{ targetId: operationId, outcome: "sent" as const }] };
+    },
+    stopAll: async () => { await stopOne({ kind: "commander", operationId: operationId ?? undefined, name: title }); return { targets: [{ targetId: operationId!, outcome: "stopped" as const }] }; },
+    answerDecision: async () => { throw new Error("decision_unavailable"); },
+  }), [context, operationId, title]);
+  const actions = context.canWrite() ? conversation?.actions ?? fallback : null;
+  const composer = operationId ? <GroupComposer host={context} rootOperationId={operationId} snapshot={snapshot} actions={actions} language={context.language} onStopOne={stopOne} /> : null;
   const Conversation = context.chat.Conversation;
+  if (!conversation) return <div className="agent-chat-panel" data-host-key={context.selection.hostKey}>
+    {error ? <p role="alert">{error}</p> : null}
+    <Conversation entries={snapshot.entries} participants={participants} working={snapshot.working} language={context.language} loading={loading} truncated={snapshot.truncated} theaterId={context.selection.theaterId ?? undefined} composer={composer} />
+  </div>;
   return <div className="agent-chat-panel" data-host-key={context.selection.hostKey}>
     {error ? <p role="alert">{error}</p> : null}
-    <Conversation entries={snapshot.entries} participants={participants} working={snapshot.working} language={context.language} loading={loading} truncated={snapshot.truncated} theaterId={context.selection.theaterId ?? undefined}
-      composer={<HostMessageComposer context={context} label={t("terminal.chat.composerInputAria")} placeholder={t("terminal.chat.composerPlaceholder")} sendLabel={t("terminal.chat.composerSend")} readOnlyLabel={readOnlyLabel} uploadUnsupported={uploadUnsupported}
-        send={async (text) => { if (!operationId || !context.canWrite()) throw new Error("read_only"); await messageAgentSession(operationId, text, undefined, context.transport.scope.signal, context.transport); }} />} />
+    {!context.canWrite() ? <p role="status">{readOnlyLabel}</p> : null}
+    <ConversationTheaterContext.Provider value={context.selection.theaterId}>
+      <GroupConversation snapshot={snapshot} language={context.language}
+        cards={<fieldset disabled={!context.canWrite()} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
+          {snapshot.decision ? <DecisionCard key={snapshot.decision.id} decision={snapshot.decision} actions={actions} asker={participants[0]?.speaker ?? null} language={context.language} onAnswered={() => undefined} /> : null}
+          {snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={context.language} />)}
+        </fieldset>}
+        composer={composer} />
+    </ConversationTheaterContext.Provider>
   </div>;
 }

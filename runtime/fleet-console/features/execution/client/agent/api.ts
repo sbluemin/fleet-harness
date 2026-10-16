@@ -173,8 +173,8 @@ export async function answerAgentChatAsk(
  * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살며, 그것을 멈추는 문은
  * `stopAgentChatJob`이 따로 연다.
  */
-export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
+export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal, transport?: Pick<HostTransport, "request">): Promise<void> {
+  const response = await (transport?.request ?? fetch)(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);

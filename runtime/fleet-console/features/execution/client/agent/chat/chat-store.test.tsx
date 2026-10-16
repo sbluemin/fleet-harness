@@ -109,6 +109,7 @@ it("keeps HTTP history through capped replay and catches up without duplication 
   let resolveSnapshot: ((value: Response) => void) | null = null;
   let requests = 0;
   const abort = new AbortController();
+  const EMPTY_OPERATIONS: readonly never[] = [];
   const context = {
     selection: { hostKey: "remote-A", theaterId: "theater", role: "commander", operationId: "agent" }, language: "en", hostLabel: "A", canWrite: () => true,
     transport: { scope: { hostKey: "remote-A", epoch: 1, signal: abort.signal },
@@ -117,6 +118,7 @@ it("keeps HTTP history through capped replay and catches up without duplication 
     },
     events: { subscribe: () => () => {}, onReconnect: () => () => {} },
     state: { read: (_key: string, fallback: unknown) => fallback, write: () => {} },
+    operations: { getSnapshot: () => EMPTY_OPERATIONS, subscribe: () => () => {} },
     chat: { Conversation: ({ entries }: { entries: GroupTimelineSnapshot["entries"] }) => createElement("div", null, ...entries.map((entry) => createElement("span", { key: entry.id }, "text" in entry ? entry.text : ""))) },
   } as unknown as HostSurfaceContext;
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
