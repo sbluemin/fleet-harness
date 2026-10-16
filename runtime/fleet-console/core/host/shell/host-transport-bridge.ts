@@ -21,9 +21,10 @@ export interface HostShellBridge {
   relay(value: unknown): Promise<boolean>;
   /**
    * 큰 relay 본문을 받을 자격. 지금 기다리는 비스트리밍 자원 호출(`bytes` GET)일 때만, 그 번호당 한 번에 하나만 준다.
-   * 돌려받은 함수로 반납한다. 그 밖의 번호(일반 http·스트림·소켓·끝난 번호·모르는 번호)는 null이다.
+   * `signal`은 그 호출이 끝나는 순간(응답·취소·시간 초과·셸 이탈) 중단된다 — 읽던 큰 본문을 그때 버리라는 뜻이다.
+   * `release`는 여러 번 불러도 한 번만 반납한다. 그 밖의 번호(일반 http·스트림·소켓·끝난 번호·모르는 번호)는 null이다.
    */
-  claimResourceRelay(id: number): (() => void) | null;
+  claimResourceRelay(id: number): { readonly signal: AbortSignal; release(): void } | null;
   call(request: HostShellRequest, signal?: AbortSignal): Promise<DesktopHostRelay>;
   /** 프레임은 끝날 때까지 같은 명령에 실려 온다. 취소는 abort 명령을 셸에 보낸다. */
   open(request: HostShellRequest, onFrame: (relay: DesktopHostRelay) => Promise<void> | void, signal?: AbortSignal): Promise<DesktopHostRelay>;
@@ -34,8 +35,8 @@ const RELAY_TEXT_MAX_BYTES = 1024 * 1024;
 const RESOURCE_BASE64_MAX_CHARS = Math.ceil(HOST_RESOURCE_MAX_BYTES / 3) * 4;
 /** 자원 relay 본문 상한: 가장 큰 자원의 base64와 작은 봉투. */
 const RELAY_MAX_BYTES = RESOURCE_BASE64_MAX_CHARS + 64 * 1024;
-/** 거절할 본문을 버리며 읽는 최대 길이. 이를 넘으면 더 읽지 않고 연결을 닫는다. */
-const RELAY_DRAIN_MAX_BYTES = 64 * 1024 * 1024;
+/** 거절할 본문을 버리며 읽는 최대 길이(정상 자원 relay 크기까지). 이를 넘는 본문은 더 읽지 않고 연결을 닫는다. */
+const RELAY_DRAIN_MAX_BYTES = RELAY_MAX_BYTES;
 
 /**
  * 셸이 POST한 relay 하나를 읽어 bridge에 넘기고, 응답 상태를 돌려준다(204 받음, 400 거절, 413 너무 큼).
@@ -43,29 +44,50 @@ const RELAY_DRAIN_MAX_BYTES = 64 * 1024 * 1024;
  * 큰 본문은 그 번호의 자원 응답 모양(본문 id 일치, status·contentType, 올바른 base64, 디코딩 ≤ 자원 상한)일 때만 bridge에 넘긴다.
  * 그래서 대기자 판정·`onFrame`·호출 종료 전에 크기가 묶인다. 413은 본문을 끝까지 읽지 않았을 수 있으므로 호출자가 연결을 닫는다.
  */
-export async function relayHostRequest(bridge: HostShellBridge, req: AsyncIterable<Buffer | string> & { readonly headers: http.IncomingHttpHeaders }): Promise<204 | 400 | 413> {
+export async function relayHostRequest(bridge: HostShellBridge, req: RelayRequest): Promise<204 | 400 | 413> {
   const header = req.headers[DESKTOP_HOST_RELAY_ID_HEADER];
   const id = typeof header === "string" && /^[1-9]\d{0,15}$/u.test(header) ? Number(header) : null;
-  const release = id !== null && Number.isSafeInteger(id) ? bridge.claimResourceRelay(id) : null;
+  const claim = id !== null && Number.isSafeInteger(id) ? bridge.claimResourceRelay(id) : null;
   try {
-    const limit = release ? RELAY_MAX_BYTES : RELAY_TEXT_MAX_BYTES;
-    const chunks: Buffer[] = [];
-    let total = 0;
+    const read = await readRelayBody(req, claim?.signal ?? null);
+    if ("status" in read) return read.status;
+    if (read.total > RELAY_TEXT_MAX_BYTES && (id === null || !isResourceRelay(read.value, id))) return 413;
+    return await bridge.relay(read.value) ? 204 : 400;
+  } finally {
+    // 어느 끝(받음·거절·끊김)이든 자격은 한 번만 반납된다.
+    claim?.release();
+  }
+}
+
+type RelayRequest = AsyncIterable<Buffer | string> & { readonly headers: http.IncomingHttpHeaders; destroy?(): void };
+
+/**
+ * relay 본문을 읽는다. `claim`이 있으면 자원 상한, 없으면 1MiB다. 넘친 뒤에는 쥐지 않고 버리며 끝까지 읽어 셸이 413을 확실히 받게 하고,
+ * 정상 자원 relay보다 큰 본문은 버리기도 상한에서 끊는다. `claim`이 중단되면(그 호출이 끝남) 요청을 즉시 끊고 모은 조각을 버린다.
+ */
+async function readRelayBody(req: RelayRequest, claim: AbortSignal | null): Promise<{ readonly status: 400 | 413 } | { readonly value: unknown; readonly total: number }> {
+  const limit = claim ? RELAY_MAX_BYTES : RELAY_TEXT_MAX_BYTES;
+  const stop = (): void => { req.destroy?.(); };
+  claim?.addEventListener("abort", stop, { once: true });
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
     for await (const chunk of req) {
+      if (claim?.aborted) return { status: 400 };
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       total += buffer.length;
-      // 넘친 뒤에는 쥐지 않고 버리며 끝까지 읽어 셸이 413을 확실히 받게 한다. 끝없는 본문은 버리기도 상한에서 끊는다.
-      if (total > limit) { chunks.length = 0; if (total > RELAY_DRAIN_MAX_BYTES) return 413; continue; }
+      if (total > limit) { chunks.length = 0; if (total > RELAY_DRAIN_MAX_BYTES) return { status: 413 }; continue; }
       chunks.push(buffer);
     }
-    if (total > limit) return 413;
-    let value: unknown;
-    try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { return 400; }
-    if (total > RELAY_TEXT_MAX_BYTES && (id === null || !isResourceRelay(value, id))) return 413;
-    return await bridge.relay(value) ? 204 : 400;
+  } catch {
+    return { status: 400 };
   } finally {
-    release?.();
+    // 다 읽은 뒤에는 끊기 신호를 뗀다. bridge.relay가 호출을 끝내면서 신호가 와도 이 응답 연결을 닫지 않게 한다.
+    claim?.removeEventListener("abort", stop);
   }
+  if (claim?.aborted) return { status: 400 };
+  if (total > limit) return { status: 413 };
+  try { return { value: JSON.parse(Buffer.concat(chunks).toString("utf8")), total }; } catch { return { status: 400 }; }
 }
 
 function isResourceRelay(value: unknown, id: number): boolean {
@@ -104,8 +126,8 @@ export function createHostShellBridge(options?: { readonly detachMs?: number }):
   const pending = new Map<number, DesktopHostCommand>();
   const subscribers = new Set<(frame: string) => void>();
   const waiters = new Map<number, Waiter>();
-  // 큰 본문을 지금 읽고 있는 자원 호출 번호. 같은 번호로 큰 본문 두 개를 동시에 쥐지 않는다.
-  const resourceReads = new Set<number>();
+  // 큰 본문을 지금 읽고 있는 자원 호출 번호와 그 읽기를 끊는 신호. 같은 번호로 큰 본문 두 개를 동시에 쥐지 않는다.
+  const resourceReads = new Map<number, AbortController>();
   const uploadWaiters: Array<() => void> = [];
   let detachTimer: ReturnType<typeof setTimeout> | null = null;
   let bridge: HostShellBridge;
@@ -185,8 +207,12 @@ export function createHostShellBridge(options?: { readonly detachMs?: number }):
       const waiter = waiters.get(id);
       const command = pending.get(id);
       if (!waiter || waiter.streaming || !command || command.op !== "bytes" || command.params.method !== "GET" || resourceReads.has(id)) return null;
-      resourceReads.add(id);
-      return () => { resourceReads.delete(id); };
+      const reading = new AbortController();
+      resourceReads.set(id, reading);
+      return {
+        signal: reading.signal,
+        release: () => { if (resourceReads.get(id) === reading) resourceReads.delete(id); },
+      };
     },
     call(request, signal) { return start(request, undefined, signal, false); },
     open(request, onFrame, signal) { return start(request, onFrame, signal, true); },
@@ -212,6 +238,9 @@ export function createHostShellBridge(options?: { readonly detachMs?: number }):
         if (waiters.get(id) !== waiter) return false;
         waiters.delete(id);
         pending.delete(id);
+        // 이 호출의 큰 본문을 읽는 중이면 끊는다 — 끝난 호출의 본문을 계속 쥐지 않는다.
+        resourceReads.get(id)?.abort();
+        resourceReads.delete(id);
         resolve(relay);
         return true;
       };

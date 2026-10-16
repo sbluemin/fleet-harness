@@ -82,6 +82,8 @@ export interface HostGatewayDeps {
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly withSecurityHeaders: (extra: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
+  /** 자원 읽기 상한. 생략하면 `HOST_RESOURCE_LIMITS`다. */
+  readonly resourceLimits?: HostResourceLimits;
 }
 
 interface HostLink {
@@ -99,10 +101,19 @@ const KINDS = new Set<HostTransportKind>(["presence", "pair", "presenceEvents", 
 /**
  * 원격 자원(이미지) 읽기 한 건은 최대 10MiB 원본에 relay 본문·문자열·Buffer까지 수십 MB를 쥔다. 브라우저 연결 수에 기대지 않고
  * 이 gateway가 동시에 진행하는 수와 기다리는 수를 묶는다. 넘치거나 기다림이 길어지면 기존 공개 오류(`remote_host_unavailable`)로 끝낸다.
+ * - `slots`/`queue`: gateway 전체의 진행·대기 수.
+ * - `perHost`/`perHostQueue`: 한 호스트의 몫. 응답하지 않는 호스트 하나가 전체 자리를 오래 쥐어 다른 호스트를 세우지 못하게 한다.
+ * - `waitMs`: 대기 상한. `responseMs`: 응답을 다 쓴 뒤 받는 쪽이 읽어 가기를 기다리는 상한 — 넘기면 그 응답의 연결만 닫는다.
  */
-export const HOST_RESOURCE_SLOTS = 2;
-export const HOST_RESOURCE_QUEUE = 16;
-const HOST_RESOURCE_WAIT_MS = 15_000;
+export interface HostResourceLimits {
+  readonly slots: number;
+  readonly perHost: number;
+  readonly queue: number;
+  readonly perHostQueue: number;
+  readonly waitMs: number;
+  readonly responseMs: number;
+}
+export const HOST_RESOURCE_LIMITS: HostResourceLimits = Object.freeze({ slots: 2, perHost: 1, queue: 16, perHostQueue: 8, waitMs: 15_000, responseMs: 15_000 });
 
 export interface HostGateway {
   handle(context: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean>;
@@ -116,44 +127,81 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
   const listeners = new Map<string, Set<http.ServerResponse>>();
   const live = new Set<{ readonly hostKey: string; abort(): void }>();
   const retire = (hostKey: string): void => { for (const channel of [...live]) if (channel.hostKey === hostKey) channel.abort(); };
+  const limits = deps.resourceLimits ?? HOST_RESOURCE_LIMITS;
   let resourceActive = 0;
-  const resourceWaiters: Array<() => void> = [];
-
-  /** 자원 읽기 자리를 얻는다. 대기열이 차 있거나, 기다리다 취소·시간 초과되면 false다. */
-  const acquireResource = (signal: AbortSignal): Promise<boolean> => {
-    if (signal.aborted) return Promise.resolve(false);
-    if (resourceActive < HOST_RESOURCE_SLOTS) { resourceActive += 1; return Promise.resolve(true); }
-    if (resourceWaiters.length >= HOST_RESOURCE_QUEUE) return Promise.resolve(false);
+  const activeByHost = new Map<string, number>();
+  const resourceQueue: Array<{ readonly hostKey: string; grant(): void }> = [];
+  const canRunResource = (hostKey: string): boolean => resourceActive < limits.slots && (activeByHost.get(hostKey) ?? 0) < limits.perHost;
+  /** 자리 하나를 차지하고, 한 번만 반납되는 함수를 돌려준다. */
+  const leaseResource = (hostKey: string): (() => void) => {
+    resourceActive += 1;
+    activeByHost.set(hostKey, (activeByHost.get(hostKey) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      resourceActive -= 1;
+      const left = (activeByHost.get(hostKey) ?? 1) - 1;
+      if (left > 0) activeByHost.set(hostKey, left); else activeByHost.delete(hostKey);
+      pumpResources();
+    };
+  };
+  /** 자리가 난 순서대로, 몫이 남은 호스트의 대기자에게 준다. 몫이 찬 호스트의 대기자는 다른 호스트를 막지 않는다. */
+  const pumpResources = (): void => {
+    for (let index = 0; index < resourceQueue.length;) {
+      const entry = resourceQueue[index]!;
+      if (canRunResource(entry.hostKey)) { resourceQueue.splice(index, 1); entry.grant(); }
+      else index += 1;
+    }
+  };
+  /** 자원 읽기 자리를 얻는다. 전체·호스트 대기열이 차 있거나, 기다리다 취소·시간 초과되면 null이다. */
+  const acquireResource = (hostKey: string, signal: AbortSignal): Promise<(() => void) | null> => {
+    if (signal.aborted) return Promise.resolve(null);
+    // 같은 호스트의 앞선 대기자를 앞지르지 않는다.
+    if (canRunResource(hostKey) && !resourceQueue.some((entry) => entry.hostKey === hostKey)) return Promise.resolve(leaseResource(hostKey));
+    const waitingHere = resourceQueue.filter((entry) => entry.hostKey === hostKey).length;
+    if (resourceQueue.length >= limits.queue || waitingHere >= limits.perHostQueue) return Promise.resolve(null);
     return new Promise((resolve) => {
-      const timer = setTimeout(() => leave(), HOST_RESOURCE_WAIT_MS);
+      const timer = setTimeout(() => leave(), limits.waitMs);
       timer.unref?.();
-      const grant = (): void => {
-        clearTimeout(timer);
-        signal.removeEventListener("abort", leave);
-        resourceActive += 1;
-        resolve(true);
+      const entry = {
+        hostKey,
+        grant: (): void => {
+          clearTimeout(timer);
+          signal.removeEventListener("abort", leave);
+          resolve(leaseResource(hostKey));
+        },
       };
       function leave(): void {
-        const index = resourceWaiters.indexOf(grant);
+        const index = resourceQueue.indexOf(entry);
         if (index < 0) return;
-        resourceWaiters.splice(index, 1);
+        resourceQueue.splice(index, 1);
         clearTimeout(timer);
         signal.removeEventListener("abort", leave);
-        resolve(false);
+        resolve(null);
       }
-      resourceWaiters.push(grant);
+      resourceQueue.push(entry);
       signal.addEventListener("abort", leave, { once: true });
     });
   };
-  const releaseResource = (): void => {
-    resourceActive = Math.max(0, resourceActive - 1);
-    resourceWaiters.shift()?.();
-  };
-  /** 응답이 끝까지 나갔거나 연결이 닫혀 Buffer를 더 쥐지 않을 때. */
-  const responseDone = (res: http.ServerResponse): Promise<void> => new Promise((resolve) => {
+  /**
+   * 응답이 끝까지 나갔거나 연결이 닫혀 Buffer를 더 쥐지 않을 때까지 기다린다. 받는 쪽이 읽지 않아 `responseMs` 안에 끝나지 않으면
+   * 이 요청의 연결만 닫고 바로 끝낸다(다른 요청·연결은 건드리지 않는다). 같은 연결에 앞 응답이 밀려 있으면 이 응답은 아직 소켓에
+   * 붙지 않아 close가 오지 않을 수 있으므로, 연결 소켓을 직접 닫고 기다리지 않는다.
+   */
+  const responseDone = (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => new Promise((resolve) => {
     if (res.writableFinished || res.destroyed) { resolve(); return; }
-    res.once("finish", resolve);
-    res.once("close", resolve);
+    let settled = false;
+    const done = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(() => { res.destroy(); req.socket.destroy(); done(); }, limits.responseMs);
+    timer.unref?.();
+    res.once("finish", done);
+    res.once("close", done);
   });
 
   const linkFor = (hostKey: string, target: HostGatewayTarget): HostLink => {
@@ -348,7 +396,8 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       if ("error" in admitted) { fail(res, admitted.error); return true; }
       if (kind === "resources") {
         // 자리는 셸 호출부터 응답을 다 보낼 때까지(또는 연결이 닫힐 때까지) 쥔다. 어떤 끝(성공·오류·취소·시간 초과)이든 반납한다.
-        if (!await acquireResource(abort.signal)) { if (!res.destroyed) fail(res, "remote_host_unavailable", link.epoch); return true; }
+        const release = await acquireResource(hostKey, abort.signal);
+        if (!release) { if (!res.destroyed) fail(res, "remote_host_unavailable", link.epoch); return true; }
         try {
           const relay = await deps.bridge.call({
             hostKey, epoch: link.epoch, op: "bytes", routeId: admitted.id,
@@ -359,10 +408,10 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
           const bytes = Buffer.from(relay.dataBase64, "base64");
           res.writeHead(relay.status ?? 200, deps.withSecurityHeaders({ "Content-Type": relay.contentType, "Content-Length": String(bytes.length), "Cache-Control": "private, no-store" }));
           res.end(bytes);
-          await responseDone(res);
+          await responseDone(req, res);
           return true;
         } finally {
-          releaseResource();
+          release();
         }
       }
       return streamEvents(hostKey, target, link, admitted.id, admitted.path);

@@ -1,4 +1,5 @@
 import http from "node:http";
+import net from "node:net";
 import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
@@ -37,7 +38,7 @@ import {
   parseHostSocketQuery,
   parseHostStreamQuery,
 } from "@fleet-console/protocol/remote/host-transport";
-import { createHostGateway, HOST_RESOURCE_QUEUE, HOST_RESOURCE_SLOTS } from "../features/remote-access/host/host-gateway.js";
+import { createHostGateway, type HostResourceLimits } from "../features/remote-access/host/host-gateway.js";
 import { admitHostRoute } from "../features/remote-access/host/host-route-table.js";
 
 const hostKey = "6f1c9a20-1111-4222-8333-444455556666";
@@ -1085,8 +1086,14 @@ async function expectUploadWithinFrame(): Promise<void> {
     readJsonBody: readJson,
     writeJson,
     withSecurityHeaders: (headers) => headers,
+    resourceLimits: RESOURCE_LIMITS,
   });
   const server = hostTransportServer(bridge, gateway);
+  // 끝까지 쓰이기 전에 닫힌 자원 응답(받는 쪽이 읽지 않아 Console이 끊었거나 받는 쪽이 떠났다).
+  const cutResponses: string[] = [];
+  server.on("request", (req: http.IncomingMessage, res: http.ServerResponse) => {
+    res.on("close", () => { if (!res.writableFinished && (req.url ?? "").includes("/resources")) cutResponses.push(req.url ?? ""); });
+  });
   const port = await listen(server);
   endpoint.origin = `http://127.0.0.1:${port}`;
   const origin = endpoint.origin;
@@ -1102,6 +1109,10 @@ async function expectUploadWithinFrame(): Promise<void> {
   for (let index = 0; index < stored.length; index += 1) stored[index] = index % 251;
   const resource = { current: stored };
   let heldResources: Array<() => void> | null = null;
+  let heldHost: string | null = null;
+  // 셸이 큰 자원 본문을 절반만 보내고 멈춘 relay. 그 연결이 Console 쪽에서 끊기면 `closed`가 풀린다.
+  let slowRelay = false;
+  let slow: { closed: Promise<void> } | null = null;
   let heldCommandId = 0;
   const shell = followHostCommands(origin, (command) => {
     if (command.op === "presence") {
@@ -1149,7 +1160,8 @@ async function expectUploadWithinFrame(): Promise<void> {
     // 원격이 저장한 첨부를 미리보기로 돌려준다: 제품 상한 크기 이미지 한 장이 relay 하나로 온다.
     if (command.op === "bytes") {
       const reply = (): void => { void postHostRelay(origin, { id: command.id, status: 200, contentType: "image/png", dataBase64: resource.current.toString("base64") }); };
-      if (heldResources) heldResources.push(reply);
+      if (slowRelay) slow = { closed: sendHalfRelay(origin, { id: command.id, status: 200, contentType: "image/png", dataBase64: stored.toString("base64") }) };
+      else if (heldResources && (heldHost === null || command.hostKey === heldHost)) heldResources.push(reply);
       else reply();
     }
   }, undefined, (frame) => {
@@ -1224,18 +1236,25 @@ async function expectUploadWithinFrame(): Promise<void> {
     const oversized = await sendHostRelay(origin, { id: 999_999, status: 200, contentType: "image/png", dataBase64: Buffer.alloc(HOST_RESOURCE_MAX_BYTES + 3).toString("base64"), end: true });
     expect(oversized).toBe(413);
 
-    // 자원 읽기의 동시 수·대기 수 상한: 넘친 한 건은 즉시 공개 오류, 셸에는 자리 수만큼만 나간다. 취소한 요청도 자리를 돌려준다.
+    // 자원 읽기 상한은 호스트 몫(진행 1·대기 8)과 전체 몫(진행 2·대기 16)이다. 넘친 한 건은 즉시 공개 오류, 셸에는 몫만큼만 나간다.
+    // 응답하지 않는 host1이 자기 몫을 쥐고 있어도 host2는 진행한다. 취소한 요청은 진행 중이든 대기 중이든 자리를 돌려준다.
+    const host2 = await observeHost(origin, "host2");
+    const path = "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b";
+    const urlFor = (hostKey: string) => `${origin}${hostResourcesUrl(hostKey, { path, ...(hostKey === "host1" ? { epoch: current.epoch, instanceId: current.instanceId } : host2) })}`;
+    const read = (hostKey = "host1", signal?: AbortSignal) => fetch(urlFor(hostKey), { headers: { origin }, signal });
     resource.current = Buffer.from("small-preview");
     heldResources = [];
-    const read = (signal?: AbortSignal) => fetch(`${origin}${hostResourcesUrl("host1", { path: "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b", epoch: current.epoch, instanceId: current.instanceId })}`, { headers: { origin }, signal });
-    const aborts = Array.from({ length: HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE + 1 }, () => new AbortController());
-    const reads = aborts.map((controller, index) => read(controller.signal).then(async (response) => ({ index, status: response.status, body: await response.text() }), () => ({ index, status: 0, body: "aborted" })));
+    heldHost = "host1";
+    const aborts = Array.from({ length: RESOURCE_LIMITS.perHost + RESOURCE_LIMITS.perHostQueue + 1 }, () => new AbortController());
+    const reads = aborts.map((controller, index) => read("host1", controller.signal).then(async (response) => ({ index, status: response.status, body: await response.text() }), () => ({ index, status: 0, body: "aborted" })));
     const first = await Promise.race(reads);
     expect(first).toMatchObject({ status: 409, body: JSON.stringify({ error: "remote_host_unavailable" }) });
-    await waitUntil(() => heldResources !== null && heldResources.length === HOST_RESOURCE_SLOTS, "the resource slots were not filled");
+    await waitUntil(() => heldResources !== null && heldResources.length === RESOURCE_LIMITS.perHost, "host1 did not take its share");
     const pendingBytes = async () => ((await (await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_PATH}`, { headers: { origin } })).json()) as { commands: Array<{ op: string }> }).commands.filter((command) => command.op === "bytes").length;
-    expect(await pendingBytes()).toBe(HOST_RESOURCE_SLOTS);
-    // 진행 중인 하나와 기다리는 하나를 취소한다.
+    expect(await pendingBytes()).toBe(RESOURCE_LIMITS.perHost);
+    const other = await read("host2");
+    expect(other.status).toBe(200);
+    expect(await other.text()).toBe("small-preview");
     const cancelled = aborts.filter((_, index) => index !== first.index).slice(0, 2);
     for (const controller of cancelled) controller.abort();
     while (heldResources.length > 0 || (await pendingBytes()) > 0) {
@@ -1245,16 +1264,96 @@ async function expectUploadWithinFrame(): Promise<void> {
     const settled = await Promise.all(reads);
     expect(settled.filter((entry) => entry.status === 409)).toHaveLength(1);
     expect(settled.filter((entry) => entry.status === 200).every((entry) => entry.body === "small-preview")).toBe(true);
-    expect(settled.filter((entry) => entry.status === 200).length).toBeGreaterThanOrEqual(HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE - 2);
-    // 모든 자리가 돌아왔다: 상한만큼 다시 보내도 넘침 없이 끝난다.
+    expect(settled.filter((entry) => entry.status === 200).length).toBeGreaterThanOrEqual(RESOURCE_LIMITS.perHost + RESOURCE_LIMITS.perHostQueue - 2);
     heldResources = null;
-    const refilled = await Promise.all(Array.from({ length: HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE }, () => read().then((response) => response.status)));
+    heldHost = null;
+    const refilled = await Promise.all(Array.from({ length: RESOURCE_LIMITS.perHost + RESOURCE_LIMITS.perHostQueue }, () => read().then((response) => response.status)));
     expect(refilled.every((status) => status === 200)).toBe(true);
+
+    // 받는 쪽이 응답을 읽지 않으면(두 호스트 모두) `responseMs` 뒤 그 연결만 닫고 자리를 돌려준다. 그다음 요청은 대기 상한 안에 성공한다.
+    resource.current = stored;
+    cutResponses.length = 0;
+    const stalled = [stallRead(urlFor("host1"), origin), stallRead(urlFor("host2"), origin)];
+    await Promise.all(stalled.map((entry) => entry.started));
+    await delay(150);
+    try {
+      for (const hostKey of ["host1", "host2"]) {
+        const before = Date.now();
+        const recovered = await read(hostKey);
+        expect(recovered.status).toBe(200);
+        expect(Buffer.from(await recovered.arrayBuffer()).equals(stored)).toBe(true);
+        expect(Date.now() - before).toBeLessThan(RESOURCE_LIMITS.waitMs);
+      }
+      // host1의 읽지 않는 응답은 Console이 닫았다(그 연결만).
+      expect(cutResponses.some((url) => url.includes("/hosts/host1/"))).toBe(true);
+    } finally {
+      for (const entry of stalled) entry.destroy();
+    }
+
+    // 셸이 큰 자원 본문을 보내는 도중 브라우저가 떠나면, 그 호출이 끝나는 즉시 큰 본문 읽기도 끊긴다. 그 뒤 새 요청은 성공한다.
+    slowRelay = true;
+    const leaving = new AbortController();
+    const abandoned = read("host1", leaving.signal).catch(() => undefined);
+    await waitUntil(() => slow !== null, "the shell did not start the large relay");
+    await delay(50);
+    leaving.abort();
+    await abandoned;
+    expect(await Promise.race([slow!.closed.then(() => "closed"), delay(2_000).then(() => "still reading")])).toBe("closed");
+    slowRelay = false;
+    resource.current = Buffer.from("after-cancel");
+    const fresh = await read("host1");
+    expect(fresh.status).toBe(200);
+    expect(await fresh.text()).toBe("after-cancel");
   } finally {
     heldAck.current?.();
     shell.stop();
     await closeServer(server);
   }
+}
+
+/** 시험용 자원 상한: 제품 기본과 같은 수, 짧은 대기·응답 상한. */
+const RESOURCE_LIMITS: HostResourceLimits = { slots: 2, perHost: 1, queue: 16, perHostQueue: 8, waitMs: 5_000, responseMs: 400 };
+
+/** 다른 호스트 하나를 관찰 모드로 열고 그 세대를 돌려준다. */
+async function observeHost(origin: string, hostKey: string): Promise<{ epoch: number; instanceId: string }> {
+  const boot = await (await fetch(`${origin}/api/v1/hosts/${hostKey}/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
+  const observed = await fetch(`${origin}/api/v1/hosts/${hostKey}/presence`, {
+    method: "POST", headers: { origin, "content-type": "application/json" },
+    body: JSON.stringify({ intent: "observe", expectedEpoch: boot.epoch, expectedInstanceId: boot.instanceId }),
+  });
+  expect(observed.status).toBe(204);
+  const now = await (await fetch(`${origin}/api/v1/hosts/${hostKey}/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
+  return { epoch: now.epoch, instanceId: now.instanceId };
+}
+
+/**
+ * 요청을 보내고 소켓을 전혀 읽지 않는 클라이언트(멈춘 탭). 한 응답은 커널 버퍼가 다 받아 줄 수 있으므로 같은 연결에 요청 세 개를
+ * 이어 보낸다 — 뒤 응답은 앞 응답이 읽히기 전까지 끝나지 못한다. 읽지 않으므로 서버가 닫아도 스스로는 알아채지 못한다.
+ */
+function stallRead(url: string, origin: string): { started: Promise<void>; destroy(): void } {
+  const target = new URL(url);
+  const socket = net.connect({ host: target.hostname, port: Number(target.port) });
+  const request = `GET ${target.pathname}${target.search} HTTP/1.1\r\nHost: ${target.host}\r\nOrigin: ${origin}\r\n\r\n`;
+  const started = new Promise<void>((resolve) => {
+    socket.once("connect", () => {
+      socket.pause();
+      socket.write(request.repeat(3), () => resolve());
+    });
+  });
+  socket.on("error", () => undefined);
+  return { started, destroy: () => { socket.destroy(); } };
+}
+
+/** 셸처럼 큰 relay를 보내되 본문 절반에서 멈춘다. Console이 그 연결을 끊거나 응답하면 풀린다. */
+function sendHalfRelay(origin: string, body: { readonly id: number } & Record<string, unknown>): Promise<void> {
+  const data = Buffer.from(JSON.stringify(body));
+  const target = new URL(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`);
+  return new Promise<void>((resolve) => {
+    const request = http.request({ host: target.hostname, port: Number(target.port), path: target.pathname, method: "POST", agent: false, headers: { origin, "content-type": "application/json", "content-length": data.length, [DESKTOP_HOST_RELAY_ID_HEADER]: String(body.id) } }, (response) => { response.resume(); response.on("end", () => resolve()); });
+    request.on("error", () => resolve());
+    request.on("close", () => resolve());
+    request.write(data.subarray(0, Math.floor(data.length / 2)));
+  });
 }
 
 function readCommandUpload(command: DesktopHostCommand): { id: number; index: number; count: number } | null {

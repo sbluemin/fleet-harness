@@ -934,6 +934,8 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
         });
         if (response.ok) return true;
         if (owner === consoleInstance) deps.log?.(`host transport relay rejected status=${response.status}`);
+        // 400·413은 같은 본문을 다시 보내도 같은 거절이다(끝난 호출·너무 큰 본문). 일시적인 실패(5xx·네트워크)만 다시 보낸다.
+        if (response.status >= 400 && response.status < 500) return false;
       } catch (error) {
         if (owner === consoleInstance) deps.log?.(`host transport relay failed: ${error instanceof Error ? error.message : "unknown"}`);
       }
