@@ -96,7 +96,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   let opening = 0;
   const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void; readonly event?: "did-navigate" }> = [];
 
-  async function askLocalConsole(path: string, body: unknown): Promise<Response> {
+  async function askLocalConsole(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
     const origin = deps.localOrigin();
     if (!origin) throw new Error("remote_bridge_no_local_console");
     return localFetch(`${origin}${path}`, {
@@ -104,6 +104,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       // 로컬 Console의 쓰기 경로는 Origin을 본다. 메인 프로세스 요청에는 문서 출처가 없으므로 직접 싣는다.
       headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     });
   }
 
@@ -138,15 +139,28 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const release = await deps.cookieOrder.hold(orderOrigin, AbortSignal.any([AbortSignal.timeout(JOIN_ORDER_WAIT_MS), lifetime.signal]));
     if (release === null) throw new Error("remote_host_unavailable");
     try {
-      const response = await askLocalConsole(HANDOFF_PATH, { origin });
-      if (response.status === 404) throw new Error("remote_host_unknown");
-      if (!response.ok) throw new Error("remote_host_unavailable");
-      const handoff = await response.json() as Handoff;
+      // 순서를 쥔 채 로컬 Console 응답을 무한정 기다리지 않는다: 요청과 본문 읽기는 제한 시간과 다리의 수명에 묶인다.
+      // 이미 닫혔으면 자격을 꺼내는 요청을 새로 시작하지 않는다.
+      if (lifetime.signal.aborted) throw new Error("remote_host_unavailable");
+      const handoffSignal = AbortSignal.any([AbortSignal.timeout(JOIN_ORDER_WAIT_MS), lifetime.signal]);
+      let handoff: Handoff;
+      try {
+        const response = await askLocalConsole(HANDOFF_PATH, { origin }, handoffSignal);
+        if (response.status === 404) throw new Error("remote_host_unknown");
+        if (!response.ok) throw new Error("remote_host_unavailable");
+        handoff = await response.json() as Handoff;
+      } catch (error) {
+        // 제한 시간·닫힘으로 끊긴 요청은 도달 실패다. 로컬 Console이 이미 자격을 내줬을 수 있어 링크를 다시 넣어야 할 수 있다.
+        if (handoffSignal.aborted) throw new Error("remote_host_unavailable", { cause: error });
+        throw error;
+      }
       // 순서를 잡은 origin과 다른 곳으로 가는 핸드오프는 이 순서가 지키지 못한다.
       if (handoffOrigin(handoff.origin) !== orderOrigin) throw new Error("remote_host_unknown");
 
       // Chromium이 이 호스트를 처음 보기 전에 대조한다 — 어긋난 판정은 캐시에 눌어붙어 재시작 전까지 살아남는다.
+      // 기본 확인은 자기 제한 시간(8초)을 가진다. 그동안 다리가 닫히면 그 뒤의 핀·join은 시작하지 않는다.
       await confirmIdentity(handoff.hostname, handoff.port, handoff.fingerprint);
+      if (lifetime.signal.aborted) throw new Error("remote_host_unavailable");
 
       const policy = deps.policy();
       if (!policy) throw new Error("remote_bridge_no_window");

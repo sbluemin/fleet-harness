@@ -203,24 +203,22 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
   };
 
-  const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, laneOwner = false): Promise<void> => {
+  /**
+   * 응답이 실제로 페어링 쿠키를 갱신한 경로(pair, observe·activate)의 보유자만 부른다. 원격이 Set-Cookie를 발행하는 곳이
+   * 그 응답들뿐이라 일반 HTTP·bytes·release 뒤에는 갱신할 것이 없다 — 거기서 파티션 값을 창에 다시 복사하면, 사이에 join이
+   * 창 jar를 새 값으로 바꿨을 때 옛 값으로 되돌리게 된다. 보유자는 순서권을 이미 쥐고 있다.
+   */
+  const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<void> => {
     const port = command.target.port;
     const claim = claimFor(command);
-    // 순서 밖 명령의 늦은 응답은 창 jar를 덮지 못한다: 권한을 얻을 수 있을 때만 쓰고, 쓰기 settle까지 쥔다. 바쁘면 건너뛴다.
-    const release = laneOwner ? (): void => undefined : order.tryHold(origin);
-    if (release === null) return;
-    try {
-      await withPairing(origin, port, async () => {
-        if (!claimLive(origin, port, claim, signal)) return;
-        const name = cookieName("pairing", port);
-        const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
-        if (!renewed || !claimLive(origin, port, claim, signal)) return;
-        await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
-        publishClaim(origin, port, claim);
-      });
-    } finally {
-      release();
-    }
+    await withPairing(origin, port, async () => {
+      if (!claimLive(origin, port, claim, signal)) return;
+      const name = cookieName("pairing", port);
+      const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
+      if (!renewed || !claimLive(origin, port, claim, signal)) return;
+      await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+      publishClaim(origin, port, claim);
+    });
   };
 
   /**
@@ -365,7 +363,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       await forgetPresentedCookies(command, origin, command.target.port, partition, presented, signal);
       return { id: command.id, error: "remote_host_not_paired" };
     }
-    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal, intent !== "release");
+    // release의 응답은 쿠키를 갱신하지 않는다. observe·activate만 보유자 안에서 갱신을 확정한다.
+    if (intent !== "release" && claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal);
     if (response.status === 404 || response.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     let body: unknown = null;
     try { body = await response.json(); } catch { body = null; }
@@ -386,7 +385,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (!claimLive(origin, port, claimFor(command), signal) || responseSetsSession(probe, port)) return { id: command.id, error: "remote_host_unavailable" };
       const still = await withPairing(origin, port, () => readPartitionCookies(partition, origin, port));
       if (!still.pairing || !claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable" };
-      await rememberPairing(command, origin, partition, signal, true);
+      await rememberPairing(command, origin, partition, signal);
       return { id: command.id, capability: "supported", mode: "off", access: null };
     }
     const marker = await readPairMarker(probe);
@@ -422,7 +421,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (await storePairingCookie(submitted, command, origin, partition, signal) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
     if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
-    await rememberPairing(command, origin, partition, signal, true);
+    await rememberPairing(command, origin, partition, signal);
     return { id: command.id, capability: "supported", mode: "off", access: null };
   }
 
@@ -593,7 +592,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     } catch {
       return { id: command.id, error: "remote_host_unavailable" };
     }
-    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal);
+    // 일반 HTTP·bytes 응답은 쿠키를 발행하지 않는다(Console 전체에서 Set-Cookie는 join·host-session·pair뿐). 창 jar를 다시 복사하지 않는다.
     if (response.status === 204 || response.status === 205 || response.status === 304) return { id: command.id, status: response.status, contentType: null };
     const type = response.headers.get("content-type") ?? "";
     if (command.op === "bytes") {
