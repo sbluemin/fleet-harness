@@ -1,4 +1,4 @@
-import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
+import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
 import { normalizeFingerprint } from "@fleet-console/protocol/remote";
 import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
@@ -51,9 +51,11 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const partitions = new Map<string, { readonly origin: string; readonly fingerprint: string; readonly partition: HostPartition }>();
   const epochs = new Map<string, number>();
   const jobs = new Map<number, HostJob>();
+  const uploads = new Map<number, UploadAssembly>();
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
+    uploads.clear();
     for (const [id, job] of jobs) {
       jobs.delete(id);
       job.abort();
@@ -108,6 +110,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
     // abort는 epoch 거절보다 먼저다. 늦게 도착한 취소가 stale로 버려지면 원격 전송이 끝까지 남는다.
     if (command.op === "abort") {
+      const uploadId = command.params.uploadId;
+      if (typeof uploadId === "number") uploads.delete(uploadId);
       const target = command.params.commandId;
       if (typeof target === "number") { const job = jobs.get(target); jobs.delete(target); job?.abort(); }
       return { id: command.id, end: true };
@@ -115,6 +119,12 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (!admitEpoch(command)) return { id: command.id, error: "stale_epoch" };
     if (command.op === "ws-send" || command.op === "ws-close") return forwardSocket(command);
+    let staged: Buffer | undefined;
+    if (command.op === "http" && command.params.upload !== undefined) {
+      const outcome = acceptUploadChunk(command);
+      if (outcome.kind !== "body") return outcome.relay;
+      staged = outcome.body;
+    }
     const controller = new AbortController();
     const stop = (): void => controller.abort();
     if (signal) {
@@ -127,7 +137,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (controller.signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
       if (!("partition" in opened)) return opened;
       if (command.op === "presence") return await performPresence(command, opened.origin, opened.partition, controller.signal);
-      if (command.op === "http" || command.op === "bytes") return await performHttp(command, opened.origin, opened.partition, controller.signal);
+      if (command.op === "http" || command.op === "bytes") return await performHttp(command, opened.origin, opened.partition, controller.signal, staged);
       return { id: command.id, error: "remote_host_unavailable" };
     } finally {
       if (jobs.get(command.id)?.abort === stop) jobs.delete(command.id);
@@ -180,19 +190,61 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return { id: command.id, capability: "supported", mode: body.mode, access: body.access };
   }
 
-  async function performHttp(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
+  function acceptUploadChunk(command: DesktopHostCommand): { kind: "body"; body: Buffer } | { kind: "relay"; relay: DesktopHostRelay } {
+    const upload = readUpload(command.params.upload);
+    const raw = command.params.dataBase64;
+    if (!upload || typeof raw !== "string" || raw.length === 0 || raw.length > DESKTOP_HOST_UPLOAD_CHUNK_CHARS || raw.length % 4 !== 0) {
+      return { kind: "relay", relay: { id: command.id, error: "route_denied" } };
+    }
+    const piece = Buffer.from(raw, "base64");
+    if (piece.length === 0) return { kind: "relay", relay: { id: command.id, error: "route_denied" } };
+    let assembly = uploads.get(upload.id);
+    if (!assembly) {
+      if (uploads.size >= DESKTOP_HOST_UPLOAD_SLOTS || upload.index !== 0) {
+        return { kind: "relay", relay: { id: command.id, error: "remote_host_unavailable" } };
+      }
+      assembly = { count: upload.count, totalBytes: upload.totalBytes, next: 0, bytes: 0, parts: [] };
+      uploads.set(upload.id, assembly);
+    }
+    if (upload.count !== assembly.count || upload.totalBytes !== assembly.totalBytes || upload.index > assembly.next) {
+      uploads.delete(upload.id);
+      return { kind: "relay", relay: { id: command.id, error: "remote_host_unavailable" } };
+    }
+    if (upload.index < assembly.next) return { kind: "relay", relay: { id: command.id, uploadAck: upload.index } };
+    if (assembly.bytes + piece.length > assembly.totalBytes) {
+      uploads.delete(upload.id);
+      return { kind: "relay", relay: { id: command.id, error: "route_denied" } };
+    }
+    assembly.parts.push(piece);
+    assembly.bytes += piece.length;
+    assembly.next += 1;
+    if (assembly.next < assembly.count) return { kind: "relay", relay: { id: command.id, uploadAck: upload.index } };
+    if (assembly.bytes !== assembly.totalBytes) {
+      uploads.delete(upload.id);
+      return { kind: "relay", relay: { id: command.id, error: "route_denied" } };
+    }
+    const body = Buffer.concat(assembly.parts, assembly.bytes);
+    uploads.delete(upload.id);
+    return { kind: "body", body };
+  }
+
+  async function performHttp(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, staged?: Buffer): Promise<DesktopHostRelay> {
     const path = safePath(command.params.path);
     const method = command.params.method === "GET" || command.params.method === "HEAD" || command.params.method === "POST" || command.params.method === "DELETE" ? command.params.method : null;
     if (!path || !method) return { id: command.id, error: "route_denied" };
     const hasJson = Object.prototype.hasOwnProperty.call(command.params, "json");
     const raw = typeof command.params.dataBase64 === "string" ? command.params.dataBase64 : null;
-    if (raw !== null && hasJson) return { id: command.id, error: "route_denied" };
+    if ((raw !== null || staged !== undefined) && hasJson) return { id: command.id, error: "route_denied" };
     let body: string | Buffer | undefined;
     let contentType: string | undefined;
-    if (hasJson) {
+    if (staged !== undefined) {
+      body = staged;
+      contentType = "application/octet-stream";
+    } else if (hasJson) {
       body = JSON.stringify(command.params.json);
       contentType = "application/json";
     } else if (raw !== null) {
+      if (raw.length > DESKTOP_HOST_UPLOAD_CHUNK_CHARS) return { id: command.id, error: "route_denied" };
       const bytes = Buffer.from(raw, "base64");
       if (bytes.length === 0 || bytes.length > HOST_UPLOAD_MAX_BYTES) return { id: command.id, error: "route_denied" };
       body = bytes;
@@ -379,7 +431,7 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
     eventsPath: DESKTOP_HOST_TRANSPORT_EVENTS_PATH,
     eventName: DESKTOP_HOST_TRANSPORT_EVENT,
     parseSnapshot: (value) => isDesktopHostSnapshot(value) ? value : null,
-    maxFrameChars: 2_000_000,
+    maxFrameChars: DESKTOP_HOST_FRAME_MAX_CHARS,
     normalizeOrigin: (origin) => new URL(origin).origin,
     fetch: deps.fetch,
     apply: (snapshot) => {
@@ -439,3 +491,24 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
     },
   };
 }
+
+interface UploadAssembly {
+  readonly count: number;
+  readonly totalBytes: number;
+  next: number;
+  bytes: number;
+  readonly parts: Buffer[];
+}
+
+function readUpload(value: unknown): { id: number; index: number; count: number; totalBytes: number } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const body = value as Record<string, unknown>;
+  if (Object.keys(body).length !== 4) return null;
+  const { id, index, count, totalBytes } = body;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0) return null;
+  if (typeof index !== "number" || !Number.isSafeInteger(index) || index < 0) return null;
+  if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 1 || index >= count) return null;
+  if (typeof totalBytes !== "number" || !Number.isSafeInteger(totalBytes) || totalBytes < 1 || totalBytes > HOST_UPLOAD_MAX_BYTES) return null;
+  return { id, index, count, totalBytes };
+}
+

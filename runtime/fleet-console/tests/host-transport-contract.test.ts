@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 
 import {
+  DESKTOP_HOST_FRAME_MAX_CHARS,
   DESKTOP_HOST_TRANSPORT_EVENT,
   DESKTOP_HOST_TRANSPORT_EVENTS_PATH,
   DESKTOP_HOST_TRANSPORT_PATH,
   DESKTOP_HOST_TRANSPORT_RELAY_PATH,
+  DESKTOP_HOST_UPLOAD_CHUNK_CHARS,
   type DesktopHostCommand,
 } from "@fleet-console/protocol/desktop";
 import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
@@ -375,7 +377,8 @@ describe("host gateway admission", () => {
     body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: lifetime, method: "DELETE", path: "/api/v1/agent/attachments/att-1" };
     expect((await invoke("POST", "/api/v1/hosts/host1/request")).status).toBe(200);
     expect(calls.filter((entry) => entry.op === "http").map((entry) => entry.params.method)).toEqual(["POST", "POST", "DELETE"]);
-  });
+    await expectUploadWithinFrame();
+  }, 60_000);
 
   it("keeps the terminal's first resize and a normal burst until the remote socket is ready", async () => {
     // Gateway and bridge over the public desktop host-transport protocol, not the shell executor.
@@ -666,7 +669,159 @@ function writeJson(res: http.ServerResponse, status: number, payload: unknown): 
   res.end(body);
 }
 
-function followHostCommands(origin: string, onCommand: (command: DesktopHostCommand) => void, onLive?: (live: ReadonlySet<number>) => void): { readonly attached: Promise<void>; stop(): void } {
+
+async function expectUploadWithinFrame(): Promise<void> {
+  const bridge = createHostShellBridge();
+  const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+  const endpoint = { origin: "" };
+  const gateway = createHostGateway({
+    isLoopback: (req) => {
+      const address = req.socket.remoteAddress;
+      return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+    },
+    isExactOrigin: (req) => req.headers.origin === endpoint.origin,
+    findHost: () => target,
+    bridge,
+    readJsonBody: readJson,
+    writeJson,
+    withSecurityHeaders: (headers) => headers,
+  });
+  const server = hostTransportServer(bridge, gateway);
+  const port = await listen(server);
+  endpoint.origin = `http://127.0.0.1:${port}`;
+  const origin = endpoint.origin;
+  const remote: number[] = [];
+  const assemblies = new Map<number, Buffer[]>();
+  let maxFrame = 0;
+  const heldAck: { current: (() => void) | null } = { current: null };
+  let holdsLeft = 1;
+  const firstChunk = deferred();
+  let pauseNext = false;
+  const paused = deferred();
+  const shell = followHostCommands(origin, (command) => {
+    if (command.op === "presence") {
+      void postHostRelay(origin, { id: command.id, capability: "supported", mode: "controller", access: "full" });
+      return;
+    }
+    if (command.op === "abort") {
+      const uploadId = command.params.uploadId;
+      if (typeof uploadId === "number") assemblies.delete(uploadId);
+      void postHostRelay(origin, { id: command.id, end: true });
+      return;
+    }
+    const upload = readCommandUpload(command);
+    if (command.op === "http" && upload && typeof command.params.dataBase64 === "string") {
+      expect(command.params.dataBase64.length).toBeLessThanOrEqual(DESKTOP_HOST_UPLOAD_CHUNK_CHARS);
+      const parts = assemblies.get(upload.id) ?? [];
+      parts[upload.index] = Buffer.from(command.params.dataBase64, "base64");
+      assemblies.set(upload.id, parts);
+      const ack = (): void => {
+        if (upload.index + 1 < upload.count) void postHostRelay(origin, { id: command.id, uploadAck: upload.index });
+        else {
+          remote.push(Buffer.concat(parts).length);
+          void postHostRelay(origin, { id: command.id, status: 201, contentType: "application/json", json: { id: "att-1" } });
+        }
+      };
+      if (upload.index === 0 && holdsLeft > 0) {
+        holdsLeft -= 1;
+        heldAck.current = ack;
+        firstChunk.resolve();
+        return;
+      }
+      if (upload.index === 0 && pauseNext) {
+        pauseNext = false;
+        paused.resolve();
+        return;
+      }
+      ack();
+      return;
+    }
+    if (command.op === "http") {
+      if (typeof command.params.dataBase64 === "string") remote.push(Buffer.from(command.params.dataBase64, "base64").length);
+      void postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json: { ok: true } });
+    }
+  }, undefined, (frame) => {
+    expect(frame.length).toBeLessThanOrEqual(DESKTOP_HOST_FRAME_MAX_CHARS);
+    maxFrame = Math.max(maxFrame, frame.length);
+    const data = frame.split(/\n/u).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
+    if (!data.includes("upload")) return;
+    const snapshot = JSON.parse(data) as { commands?: Array<{ params?: { upload?: unknown; dataBase64?: unknown } }> };
+    const uploads = (snapshot.commands ?? []).filter((command) => command.params?.upload !== undefined);
+    expect(uploads.length).toBeLessThanOrEqual(1);
+  });
+  try {
+    await shell.attached;
+    const boot = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
+    const activated = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
+      method: "POST", headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ intent: "activate", expectedEpoch: boot.epoch, expectedInstanceId: boot.instanceId }),
+    });
+    expect(activated.status).toBe(204);
+    const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
+    const send = (bytes: number, signal?: AbortSignal) => {
+      const raw = Buffer.alloc(bytes, 0x61);
+      return fetch(`${origin}/api/v1/hosts/host1/bytes`, {
+        method: "POST", signal, headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ requestId: `req-${Math.random().toString(36).slice(2, 12)}`, expectedEpoch: current.epoch, expectedInstanceId: current.instanceId, path: "/api/v1/agent/attachments", dataBase64: raw.toString("base64") }),
+      });
+    };
+    const full = send(HOST_UPLOAD_MAX_BYTES);
+    await firstChunk.promise;
+    const over = Math.ceil((DESKTOP_HOST_FRAME_MAX_CHARS + 1) / 4) * 3;
+    const queued = send(over);
+    const rejected = send(over);
+    const early = await Promise.race([
+      queued.then(async (response) => ({ response, other: rejected })),
+      rejected.then(async (response) => ({ response, other: queued })),
+    ]);
+    expect(early.response.status).toBe(409);
+    expect(await early.response.json()).toMatchObject({ error: "remote_host_unavailable" });
+    const release = heldAck.current;
+    heldAck.current = null;
+    release?.();
+    const completed = await Promise.all([full, early.other]);
+    expect(completed[0].status).toBe(200);
+    expect(await completed[0].json()).toMatchObject({ status: 201, json: { id: "att-1" } });
+    expect(completed[1].status).toBe(200);
+    expect(remote).toEqual([HOST_UPLOAD_MAX_BYTES, over]);
+    expect(maxFrame).toBeGreaterThan(DESKTOP_HOST_UPLOAD_CHUNK_CHARS);
+    expect(maxFrame).toBeLessThanOrEqual(DESKTOP_HOST_FRAME_MAX_CHARS);
+    const snapshot = await (await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_PATH}`, { headers: { origin } })).json() as { commands: unknown[] };
+    expect(snapshot.commands).toEqual([]);
+    pauseNext = true;
+    const abort = new AbortController();
+    const stopped = send(over, abort.signal);
+    await paused.promise;
+    abort.abort();
+    await expect(stopped).rejects.toThrow();
+    expect(remote).toEqual([HOST_UPLOAD_MAX_BYTES, over]);
+    const again = await send(1);
+    expect(again.status).toBe(200);
+    expect(remote).toEqual([HOST_UPLOAD_MAX_BYTES, over, 1]);
+    const after = await (await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_PATH}`, { headers: { origin } })).json() as { commands: unknown[] };
+    expect(after.commands).toEqual([]);
+  } finally {
+    heldAck.current?.();
+    shell.stop();
+    await closeServer(server);
+  }
+}
+
+function readCommandUpload(command: DesktopHostCommand): { id: number; index: number; count: number } | null {
+  const upload = command.params.upload;
+  if (!upload || typeof upload !== "object" || Array.isArray(upload)) return null;
+  const body = upload as { id?: unknown; index?: unknown; count?: unknown };
+  if (typeof body.id !== "number" || typeof body.index !== "number" || typeof body.count !== "number") return null;
+  return { id: body.id, index: body.index, count: body.count };
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = (): void => undefined;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+function followHostCommands(origin: string, onCommand: (command: DesktopHostCommand) => void, onLive?: (live: ReadonlySet<number>) => void, onFrame?: (frame: string) => void): { readonly attached: Promise<void>; stop(): void } {
   const controller = new AbortController();
   const seen = new Set<number>();
   let stopped = false;
@@ -700,6 +855,7 @@ function followHostCommands(origin: string, onCommand: (command: DesktopHostComm
           const frames = buffered.split(/\n\n/u);
           buffered = frames.pop() ?? "";
           for (const frame of frames) {
+            onFrame?.(frame);
             if (!frame.includes(DESKTOP_HOST_TRANSPORT_EVENT)) continue;
             const data = frame.split(/\n/u).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trimStart()).join("\n");
             if (!data) continue;

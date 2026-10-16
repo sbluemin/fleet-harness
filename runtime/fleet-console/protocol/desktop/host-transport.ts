@@ -7,6 +7,27 @@ export const DESKTOP_HOST_TRANSPORT_EVENTS_PATH = "/api/v1/desktop/host-transpor
 export const DESKTOP_HOST_TRANSPORT_RELAY_PATH = "/api/v1/desktop/host-transport/relay";
 export const DESKTOP_HOST_TRANSPORT_EVENT = "desktop:host-transport";
 
+/**
+ * 셸 SSE가 한 프레임으로 받는 상한. 이보다 큰 스냅샷은 연결을 끊으므로 명령을 이 안에 둔다.
+ * 값을 올리면 대기 중인 명령이 스냅샷마다 다시 전송된다.
+ */
+export const DESKTOP_HOST_FRAME_MAX_CHARS = 2_000_000;
+
+/**
+ * 스냅샷에 실리는 업로드 조각의 base64 길이. 4의 배수다.
+ * 프레임 상한보다 작아서, 같은 스냅샷의 다른 명령과 함께 있어도 연결을 끊지 않는다.
+ */
+export const DESKTOP_HOST_UPLOAD_CHUNK_CHARS = 512 * 1024;
+
+/** 본문을 붙잡고 전송 중인 업로드. 스냅샷에는 그 현재 조각만 있다. */
+export const DESKTOP_HOST_UPLOAD_SLOTS = 1;
+
+/** 전송 슬롯을 기다리는 업로드. 이를 넘으면 본문을 큐에 두지 않고 바로 거절한다. */
+export const DESKTOP_HOST_UPLOAD_QUEUE = 1;
+
+/** 조각 업로드 전체의 제한 시간. 큐 대기와 모든 조각 왕복을 포함한다. */
+export const DESKTOP_HOST_UPLOAD_DEADLINE_MS = 15_000;
+
 export const DESKTOP_HOST_OPS = ["presence", "http", "bytes", "sse", "ws-open", "ws-send", "ws-close", "abort"] as const;
 export type DesktopHostOp = (typeof DESKTOP_HOST_OPS)[number];
 
@@ -47,6 +68,8 @@ export interface DesktopHostRelay {
   readonly end?: boolean;
   /** 소켓이 티켓을 소비해 열렸다. 티켓 자체는 싣지 않는다. */
   readonly ready?: boolean;
+  /** 업로드 조각만 받았다. 원격 POST는 마지막 조각 뒤에 한 번이다. */
+  readonly uploadAck?: number;
 }
 
 const HOST_KEY = /^(?!local$)[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
