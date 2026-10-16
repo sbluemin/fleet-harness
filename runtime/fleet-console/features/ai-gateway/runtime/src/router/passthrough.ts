@@ -34,6 +34,12 @@ export interface AnthropicProxyOptions {
    */
   readonly decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined;
   /**
+   * Harness-owned status for a provider sign-in refusal. Absent leaves the
+   * upstream status, which is what native Anthropic passthrough needs: that
+   * 401 is the caller's own credential.
+   */
+  readonly decisiveRefusalStatus?: (status: number) => number;
+  /**
    * 클라이언트가 요청한 모델 id. 지정하면 upstream이 에코한 wire id를 이 값으로
    * 되돌려 본다 — Claude Code가 자기 요청 모델과 응답 모델을 대조할 수 있게 한다.
    */
@@ -80,8 +86,10 @@ export async function proxyAnthropicMessages(
   });
   // Passthrough forwards the provider's own bytes, but a status the client refuses to retry
   // would strand a transient upstream failure that one attempt would have cleared.
-  // A 401/403 is the opposite: Claude Code retries it unless told not to.
-  const status = options.retryableStatus?.(upstream.status) ?? upstream.status;
+  // A provider sign-in 401 is then worn as the harness's non-retry status. Native
+  // Anthropic does not pass that function: its 401 belongs to the caller's credential.
+  const retryable = options.retryableStatus?.(upstream.status) ?? upstream.status;
+  const status = options.decisiveRefusalStatus?.(retryable) ?? retryable;
   res.writeHead(status, applyDecisiveRefusalHeaders(status, responseHeaders, options.decisiveRefusalHeaders));
   if (!upstream.body) {
     res.end();

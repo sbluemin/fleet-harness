@@ -77,7 +77,7 @@ import type { GatewayHttpHandler } from "./types.js";
 /** 패스스루 한 번에 하네스가 얹는 것: 본문 재작성과 상태 승격, 진단 상관용 세션 id. */
 export type PassthroughRelay = Pick<
   AnthropicProxyOptions,
-  "projectResponseBody" | "retryableStatus" | "decisiveRefusalHeaders" | "wireSessionId"
+  "projectResponseBody" | "retryableStatus" | "decisiveRefusalHeaders" | "decisiveRefusalStatus" | "wireSessionId"
 >;
 
 export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "../upstream/opencode-go/index.js";
@@ -581,11 +581,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     let credential = "";
     let chatgptAccountId = "";
+    // 공급자 로그인 거절만 하네스 상태로 나간다. 호출자 sk-ant·mod 토큰의 401은 위쪽에 그대로 둔다.
+    // 403 permission_error 문구에 "model:"이 있으면 Claude Code가 모델 접근 거절로 분류하므로 넣지 않는다.
+    const refuseProviderSignIn = (message: string): void => {
+      const status = harness.decisiveRefusalStatus?.(401) ?? 401;
+      writeClientError(
+        res,
+        status,
+        status === 403 ? "permission_error" : "authentication_error",
+        message,
+      );
+      clock?.finish("error", status);
+    };
     if (target?.provider === "cursor") {
       const cursorToken = await deps.readCursorToken?.();
       if (!cursorToken) {
-        writeClientError(res, 401, "authentication_error", "No Cursor sign-in was found. Sign in to Cursor in Console first.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("No Cursor sign-in was found. Sign in to Cursor in Console first.");
         return true;
       }
       credential = cursorToken;
@@ -593,8 +604,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
       const auth = await readAuth();
       if (!auth) {
-        writeClientError(res, 401, "authentication_error", "No Codex sign-in was found. Sign in to Codex in Console first.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("No Codex sign-in was found. Sign in to Codex in Console first.");
         return true;
       }
       credential = auth.accessToken;
@@ -602,32 +612,28 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else if (target?.provider === "opencode") {
       const opencodeApiKey = await deps.readOpencodeApiKey?.();
       if (!opencodeApiKey) {
-        writeClientError(res, 401, "authentication_error", "No OpenCode Go API key was found. Sign in to OpenCode Go first.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("No OpenCode Go API key was found. Sign in to OpenCode Go first.");
         return true;
       }
       credential = opencodeApiKey;
     } else if (target?.provider === "xai") {
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
-        writeClientError(res, 401, "authentication_error", "No xAI sign-in was found. Sign in to xAI in Console first.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("No xAI sign-in was found. Sign in to xAI in Console first.");
         return true;
       }
       credential = xaiToken;
     } else if (target?.provider === "muse-code") {
       const auth = await deps.readMuseCodeAuth?.();
       if (auth?.status !== "ok" || !auth.credentials.apiKey) {
-        writeClientError(res, 401, "authentication_error", "Sign in to Muse Code in the Console quota panel, then retry.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("Sign in to Muse Code in the Console quota panel, then retry.");
         return true;
       }
       credential = auth.credentials.apiKey;
     } else if (target?.provider === "antigravity") {
       const antigravityToken = await deps.readAntigravityToken?.();
       if (!antigravityToken) {
-        writeClientError(res, 401, "authentication_error", "No active Antigravity sign-in was found. Run `agy` and sign in first.");
-        clock?.finish("error", 401);
+        refuseProviderSignIn("No active Antigravity sign-in was found. Run `agy` and sign in first.");
         return true;
       }
       credential = antigravityToken;
@@ -674,6 +680,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
         ...(harness.decisiveRefusalHeaders
           ? { decisiveRefusalHeaders: harness.decisiveRefusalHeaders }
+          : {}),
+        ...(harness.decisiveRefusalStatus
+          ? { decisiveRefusalStatus: harness.decisiveRefusalStatus }
           : {}),
         ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
       };
@@ -841,8 +850,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
       clock?.setRoute("translated");
       upstream ??= await gateway.stream(body, callOptions);
-      res.writeHead(upstream.status, applyDecisiveRefusalHeaders(
-        upstream.status,
+      // 갱신 뒤에 남은 업스트림 401·403. 네이티브 Anthropic 패스스루는 이 분기에 오지 않는다.
+      const clientStatus = harness.decisiveRefusalStatus?.(upstream.status) ?? upstream.status;
+      res.writeHead(clientStatus, applyDecisiveRefusalHeaders(
+        clientStatus,
         headerEntries(upstream.headers),
         harness.decisiveRefusalHeaders,
       ));
