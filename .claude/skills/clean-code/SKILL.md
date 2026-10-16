@@ -48,4 +48,4 @@ cd <absolute-worktree> && pnpm --filter <pkg> typecheck && pnpm --filter <pkg> t
 
 Disclose missing scripts or blocked checks. Repair task-induced regressions and repeat verification.
 
-Finish when approved consolidation/deduplication and relevant checks are complete. Do not expand into general refactoring. Report before/after, API preservation, changed files, checks/results (every count taken from output re-run after the last edit), and unverified scope. Commits/PRs require a separately requested or authorized lifecycle.
+Finish when approved consolidation/deduplication and relevant checks are complete. Do not expand into general refactoring. Report before/after, API preservation, changed files, checks/results (every count taken from output re-run after the last edit), and unverified scope. Deliver approved repository changes through `pr-workflow` under the root `CLAUDE.md` standing authorization, unless the request is local-only or otherwise narrows delivery.
