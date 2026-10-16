@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as R
 import { createPortal } from "react-dom";
 
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
@@ -299,10 +300,26 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
     neutralizeUntrustedDom(root);
     const observer = new MutationObserver(() => neutralizeUntrustedDom(root));
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
+    installDiagramHydrator(root, {
+      renderFailed: (message) => t("objectives.results.diagram.failed", { message }),
+      openExpandedAria: t("objectives.results.diagram.open"),
+      lightboxTitle: t("objectives.results.diagram.title"),
+      close: t("objectives.detail.close"),
+      closeExpandedAria: t("objectives.results.diagram.close"),
+      zoomControlsAria: t("objectives.results.diagram.zoomControls"),
+      zoomOutAria: t("objectives.results.diagram.zoomOut"),
+      zoomInAria: t("objectives.results.diagram.zoomIn"),
+      fit: t("objectives.results.diagram.fit"),
+      fitAria: t("objectives.results.diagram.fitAria"),
+      reset: t("objectives.results.diagram.reset"),
+      resetAria: t("objectives.results.diagram.resetAria"),
+    });
     return () => observer.disconnect();
-  }, [html]);
+  }, [html, t]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // 확대 다이어그램이 이 보기를 inert로 두는 동안 키 처리는 위 모달에 맡긴다.
+      if (closeRef.current?.closest("[inert]")) return;
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCloseRef.current(); return; }
       if (event.key !== "Tab") return;
       // 초점은 이 보기 안에서만 돈다 — 닫기 글리프와 본문(스크롤·링크·복사) 사이.
