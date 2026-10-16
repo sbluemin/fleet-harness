@@ -8,12 +8,17 @@ import { objectivesApi, post } from "./objectives-state.js";
  * 사람용 보드 라우트를 공유한다. 컴포넌트가 보드/세션 상태를 직접 고쳐 성공을 만들지 않는다.
  * 보드 동작(`board`)은 지금 상태의 제안 칩이다 — 칩은 이 목표 값으로 서고, 실행은 그때의 보드를 다시 읽는다.
  */
-export function objectiveConversationActions(objective: Objective): GroupConversationActions {
-  const request = <T>(path: string, input: Record<string, unknown>) => {
+export interface ObjectiveConversationPorts {
+  readonly request: <T>(path: string, input: Record<string, unknown>) => Promise<T>;
+  readonly board: typeof objectiveBoardActions;
+}
+
+export function objectiveConversationActions(objective: Objective, ports?: ObjectiveConversationPorts): GroupConversationActions {
+  const request = ports?.request ?? (<T,>(path: string, input: Record<string, unknown>): Promise<T> => {
     const api = objectivesApi();
     if (!api) return Promise.reject(new Error("objectives_unavailable"));
     return post<T>(api, path, { ...input, language: commodoreLanguage() ?? "en" });
-  };
+  });
   return {
     async send(target, text, attachmentIds) {
       if (target.kind === "commodore") {
@@ -33,6 +38,6 @@ export function objectiveConversationActions(objective: Objective): GroupConvers
     async answerDecision(requestId, answers) {
       await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
     },
-    board: objectiveBoardActions(objective),
+    board: (ports?.board ?? objectiveBoardActions)(objective),
   };
 }
