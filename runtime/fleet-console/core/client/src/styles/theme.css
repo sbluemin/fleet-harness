@@ -466,6 +466,10 @@
   --duration-fast: 140ms;
   --duration-base: 220ms;
   --duration-slow: 360ms;
+  /* 손이 닿는 순간의 반응 — 호버·선택 배경이 들어오고 눌림이 시작되는 길이(사다리 tap 80 < fast 140 < base 220 < slow 360).
+     풀림은 --duration-fast spring 이 맡는다. 공통 규칙은 components.css 「클릭 모션」. */
+  --motion-tap: 80ms;
+  --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* 상호작용 컨트롤의 상태 recipe(Quiet Controls C′) — rest는 침묵이 아니라 낮은 목소리다:
      동사·컨트롤은 쉬는 상태에서 면(--control-rest)만으로 자기 몸을 알린다. 테두리는 상태가

@@ -4057,7 +4057,7 @@ button.status-glyph.is-actionable:focus-visible {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-3px);
-  transition: opacity 160ms ease, transform 180ms var(--ease-glide), visibility 0s 180ms;
+  transition: opacity var(--duration-fast) ease, transform var(--duration-fast) var(--ease-glide), visibility 0s var(--duration-fast);
 }
 .cluster-node-tooltip.is-visible {
   opacity: 1;
@@ -4188,7 +4188,7 @@ button.status-glyph.is-actionable:focus-visible {
   margin: 0 var(--space-1);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.18s ease;
+  transition: opacity var(--duration-fast) ease;
 }
 
 .operation-launch-context-menu-edge--top {
@@ -4351,7 +4351,7 @@ button.status-glyph.is-actionable:focus-visible {
   /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다.
      --glass-bevel은 그 반대편(아래 모서리)의 그늘로, 라이트에서만 값을 갖는다. */
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
 .operations-side-bar::before {
@@ -5002,7 +5002,7 @@ button.status-glyph.is-actionable:focus-visible {
 .side-bar-theater-chevron {
   width: 16px;
   height: 16px;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-fast) ease;
 }
 
 .side-bar-theater-chevron.is-collapsed {
@@ -8204,7 +8204,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: linear-gradient(to bottom, transparent, var(--apex) 40% 60%, transparent);
   opacity: 0;
   transform: scaleY(0.2);
-  transition: opacity 360ms var(--ease-spring) 120ms, transform 360ms var(--ease-spring) 120ms;
+  transition: opacity var(--duration-slow) var(--ease-spring) 120ms, transform var(--duration-slow) var(--ease-spring) 120ms;
   pointer-events: none;
 }
 
@@ -12141,7 +12141,7 @@ body[data-codex-side="true"] .command-card {
   width: 0;
   border-color: transparent;
   visibility: hidden;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear var(--duration-base);
 }
 
 /* ── Periscope 픽 — 접힌 카드를 엣지 독 호버가 오버레이로 되부른다 ─────────────────
@@ -12154,7 +12154,7 @@ body[data-codex-side="true"] .command-card {
   width: var(--side-bar-width, 280px);
   border-color: color-mix(in oklab, var(--brass) 38%, var(--surface-rim));
   visibility: visible;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
 /* 픽만 불투명 면이다. 고정된 카드의 유리 표현과 정지 화면 밝기는 바꾸지 않는다. */
@@ -12971,7 +12971,7 @@ body[data-expanded-surface-resizing="true"] {
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-tap) ease;
 }
 .command-band-version-row:hover .command-band-version-row-refresh,
 .command-band-version-row:focus-within .command-band-version-row-refresh,
@@ -15619,7 +15619,7 @@ body[data-expanded-surface-resizing="true"] {
 .right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
 @keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
 @keyframes console-use-wrap-caret { 50% { opacity: 0; } }
-.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
+.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: var(--duration-slow), 1.6s, 1.6s, 520ms; animation-delay: 0s, var(--duration-slow), var(--duration-slow), 0s; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
 .is-console-use-wrapped.is-leaving::after { display: none; }
 @keyframes console-use-wrap-leave { to { box-shadow: 0 0 0 0 transparent; background-image: none; } }
@@ -16225,3 +16225,43 @@ body[data-expanded-surface-resizing="true"] {
 .job-meta, .track-tag, .track-status, .stage-waiting, .track-waiting, .thought-toggle, .tool-chip, .track-text, .track-notice, .track-error, .timeline-toggle, .timeline-empty, .timeline-time, .timeline-type { font-family: var(--font-ui); }
 .job-id, .timeline-payload { font-family: var(--font-code); font-size: var(--font-code-size); }
 kbd { font-variant-numeric: tabular-nums; }
+
+/* ── 클릭 모션 공통 규칙 ────────────────────────────────────────────────────
+   팝오버·메뉴는 즉시 열고 닫는다(애니메이션 없음). 움직임은 손이 닿는 자리에만 둔다: 호버·선택 배경·테두리·글자색은
+   --motion-tap(80ms · soft)으로 들어오고, 누르면 원형 단추는 0.94, 행·칩은 0.985 로 --motion-tap 동안 줄었다가 놓으면
+   --duration-fast(140ms) spring 으로 풀린다. 이 목록의 요소는 배경·테두리·글자색 말고 다른 속성을 전이하지 않는다 —
+   새로 넣는 요소도 그 조건을 지켜야 이 transition 이 제 전이를 덮지 않는다. 모바일 배치는 자기 누름 문법(mobile-press.css)을
+   쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
+:root:not([data-view-mode="mobile"]) :is(
+  .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus,
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip
+) {
+  transition:
+    background-color var(--motion-tap) var(--ease-soft),
+    border-color var(--motion-tap) var(--ease-soft),
+    color var(--motion-tap) var(--ease-soft),
+    transform var(--duration-fast) var(--ease-spring);
+}
+:root:not([data-view-mode="mobile"]) :is(
+  .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus
+):active:not(:disabled) {
+  transform: scale(0.94);
+  transition-duration: var(--motion-tap);
+  transition-timing-function: var(--ease-soft);
+}
+:root:not([data-view-mode="mobile"]) :is(
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip
+):active:not(:disabled) {
+  transform: scale(0.985);
+  transition-duration: var(--motion-tap);
+  transition-timing-function: var(--ease-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-view-mode="mobile"]) :is(
+    .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus,
+    .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip
+  ):active:not(:disabled) {
+    /* 눌림 규칙과 같은 명시도여야 이긴다 — :not(:disabled) 가 빠지면 동작 줄이기에서도 축소가 남는다. */
+    transform: none;
+  }
+}

@@ -515,7 +515,7 @@
   align-items: center;
   gap: 1px;
   min-width: 0;
-  transition: transform 360ms var(--ease-spring);
+  transition: transform var(--duration-slow) var(--ease-spring);
 }
 /* 접혀 있거나 말리는 동안만 가로로 자른다 — 펼쳐 쉬는 동안 자르면 서랍보다 넓은 원격·도움말 메뉴가
    잘린다(유틸리티 화면처럼 서랍이 좁을 때). 세로는 늘 열어 두어 메뉴·말풍선이 서랍 밖(아래·위)으로 뜬다.
@@ -541,7 +541,7 @@
   cursor: pointer;
   transition: color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
 }
-.console-toolbar-fold svg { width: 12px; height: 12px; flex: none; transition: rotate 360ms var(--ease-spring); }
+.console-toolbar-fold svg { width: 12px; height: 12px; flex: none; transition: rotate var(--duration-slow) var(--ease-spring); }
 .console-toolbar.is-folded .console-toolbar-fold svg { rotate: 180deg; }
 .console-toolbar-fold:hover,
 .console-toolbar-fold:focus-visible { color: var(--brass-ink); background: var(--control-hover-fill); }

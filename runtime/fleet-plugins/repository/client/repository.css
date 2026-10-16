@@ -296,7 +296,7 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  transition: background 0.12s;
+  transition: background var(--motion-tap);
 }
 
 .repository-section-head:hover {
@@ -566,7 +566,7 @@
   display: inline-grid;
   place-items: center;
   border-radius: var(--radius-xs);
-  transition: color 0.12s;
+  transition: color var(--motion-tap);
 }
 
 .repository-hunk-close:hover {
@@ -2144,7 +2144,7 @@
    무채 텍스트 채널만 쓴다 — 신호 채널은 착지 ✓의 positive 하나다. */
 /* 아이콘 슬롯은 유휴·물결·완료 글리프를 같은 14px 자리에 겹친다 — 교체 시 버튼 폭이 흔들리지 않는다. */
 .repository-glyph-slot { position: relative; display: inline-block; width: 14px; height: 14px; flex: none; transition: transform 190ms var(--ease-spring); }
-.repository-glyph { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.72); transition: opacity 150ms ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
+.repository-glyph { position: absolute; inset: 0; display: grid; place-items: center; opacity: 0; transform: scale(.72); transition: opacity var(--duration-fast) ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
 .repository-glyph-settled { color: var(--positive-ink); }
 .repository-glyph-slot:not(.is-settled) .repository-glyph-idle,
 .repository-glyph-slot.is-settled .repository-glyph-settled { opacity: 1; transform: none; }
@@ -2277,7 +2277,7 @@
   text-align: left;
   opacity: 0;
   transform: translateY(-3px);
-  transition: opacity 160ms ease, transform 160ms ease;
+  transition: opacity var(--duration-fast) ease, transform var(--duration-fast) ease;
   pointer-events: none;
 }
 .repository-sync-hint.is-error { border-color: color-mix(in oklab, var(--coral) 45%, transparent); }
