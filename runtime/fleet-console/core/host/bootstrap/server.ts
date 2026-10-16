@@ -385,6 +385,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   {
+    method: "POST",
+    path: "/api/v1/pair",
+    summary: "Store a pairing from a single-use grant without opening a session.",
+    category: "Access",
+    gate: "loopback",
+    transport: "http",
+  },
+  {
     method: "GET",
     path: "/api/v1/remote-hosts",
     summary: "List the other consoles this one can jump to.",
@@ -1645,15 +1653,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; readOnly?: boolean; reason?: ControlReclaimedReason } {
-    // 세션 없이 지나는 경로는 join과 host session 둘이다. host session은 기존 페어링 쿠키만
-    // 받고 grant를 태우지 않는다. 페어링은 전용 앱으로만 이루어지고 브라우저는 자기서명
+    // 세션 없이 지나는 경로는 join, pair, host session이다. host session은 기존 페어링 쿠키만
+    // 받고 grant를 태우지 않는다. pair는 자격을 페어링 쿠키로만 바꾸고 세션을 열지 않는다.
+    // 페어링은 전용 앱으로만 이루어지고 브라우저는 자기서명
     // 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     //
-    // join은 어떤 세션에도 묶이지 않는다 — 들고 온 옛 세션 쿠키도 여기서 해석하지 않는다. 재합류는
+    // join과 pair는 어떤 세션에도 묶이지 않는다 — 들고 온 옛 세션 쿠키도 여기서 해석하지 않는다. 재합류는
     // 자기 페어링이 두고 간 옛 세션을 걷은 뒤 새 세션을 여는데, 이 요청이 옛 세션에 묶여 있으면
     // 그 세션을 닫는 종료 신호가 재합류 응답 자체를 파기한다. 페어링된 기기가 조용히 돌아오는 길이
     // 이 한 줄에 걸려 있다.
-    if (pathname === "/api/v1/join" || pathname === "/api/v1/sessions") return { admitted: true, sessionHandle: null };
+    if (pathname === "/api/v1/join" || pathname === "/api/v1/pair" || pathname === "/api/v1/sessions") return { admitted: true, sessionHandle: null };
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session !== null) {
       const observing = session.disposition === "observe" || session.access === "monitoring";
@@ -1775,6 +1784,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/join") {
       runAsyncBooleanHandler(handleAccessJoin(req, res), res);
+      return;
+    }
+    if (pathname === "/api/v1/pair") {
+      runAsyncBooleanHandler(handleAccessPair(req, res), res);
       return;
     }
     if (pathname === "/api/v1/sessions") {
@@ -2774,7 +2787,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
-  const { handleAccessJoin, handleHostSession } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
+  const { handleAccessJoin, handleAccessPair, handleHostSession } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
 
   const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, reconcileRemoteIdentity, consoleLabel });
 

@@ -28,7 +28,7 @@ export const DESKTOP_HOST_UPLOAD_QUEUE = 1;
 /** 조각 업로드 전체의 제한 시간. 큐 대기와 모든 조각 왕복을 포함한다. */
 export const DESKTOP_HOST_UPLOAD_DEADLINE_MS = 15_000;
 
-export const DESKTOP_HOST_OPS = ["presence", "http", "bytes", "sse", "ws-open", "ws-send", "ws-close", "abort"] as const;
+export const DESKTOP_HOST_OPS = ["presence", "pair", "http", "bytes", "sse", "ws-open", "ws-send", "ws-close", "abort"] as const;
 export type DesktopHostOp = (typeof DESKTOP_HOST_OPS)[number];
 
 export interface DesktopHostTarget {
@@ -101,11 +101,11 @@ export function isDesktopHostCommand(value: unknown): value is DesktopHostComman
   if (typeof target.hostname !== "string" || target.hostname.length === 0 || target.hostname.includes("/") || target.hostname.includes(" ")) return false;
   if (typeof target.port !== "number" || !Number.isInteger(target.port) || target.port < 1 || target.port > 65535) return false;
   if (typeof target.fingerprint !== "string" || !FINGERPRINT.test(target.fingerprint)) return false;
-  return !("url" in value.params) && !("cookie" in value.params) && !("ticket" in value.params) && !("authorization" in value.params);
+  return !("url" in value.params) && !("cookie" in value.params) && !("ticket" in value.params) && !("authorization" in value.params) && !("token" in value.params);
 }
 
 export function isDesktopHostRelay(value: unknown): value is DesktopHostRelay {
   if (!isRecord(value) || typeof value.id !== "number") return false;
-  if ("cookie" in value || "ticket" in value || "authorization" in value) return false;
+  if ("cookie" in value || "ticket" in value || "authorization" in value || "token" in value) return false;
   return true;
 }

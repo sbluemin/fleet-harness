@@ -186,6 +186,7 @@ async function boot(): Promise<void> {
     },
     readWindowCookies: async (url) => consoleSession.cookies.get({ url }),
     writeWindowCookie: (cookie) => consoleSession.cookies.set(cookie),
+    deviceName: os.hostname().replace(/\.local$/iu, ""),
     log: (message) => logger.error(message),
   });
   let overlayRefresher: TitleBarOverlayRefresher | null = null;

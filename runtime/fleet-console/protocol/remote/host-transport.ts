@@ -29,6 +29,8 @@ export const HOST_TRANSPORT_ERRORS = [
   "stale_instance",
   "remote_host_unknown",
   "remote_host_not_paired",
+  "remote_link_required",
+  "paired_device_limit",
   "observer_only",
   "remote_host_fingerprint_mismatch",
   "remote_host_unreachable",
@@ -48,6 +50,8 @@ export const HOST_ERROR_STATUS: Readonly<Record<HostTransportError, number>> = {
   stale_instance: 409,
   remote_host_unknown: 404,
   remote_host_not_paired: 401,
+  remote_link_required: 409,
+  paired_device_limit: 409,
   observer_only: 403,
   remote_host_fingerprint_mismatch: 409,
   remote_host_unreachable: 409,
@@ -83,6 +87,12 @@ export type HostByteContentType = (typeof HOST_BYTE_CONTENT_TYPES)[number];
 
 export interface HostPresenceRequest {
   readonly intent: HostPresenceIntent;
+  readonly expectedEpoch: number;
+  readonly expectedInstanceId: string;
+}
+
+/** 최초 페어링. 자격·intent·기기 이름은 브라우저 본문에 없다. */
+export interface HostPairRequest {
   readonly expectedEpoch: number;
   readonly expectedInstanceId: string;
 }
@@ -241,6 +251,13 @@ export function isHostPresenceRequest(value: unknown): value is HostPresenceRequ
     && isHostInstanceId(value.expectedInstanceId);
 }
 
+export function isHostPairRequest(value: unknown): value is HostPairRequest {
+  return isRecord(value)
+    && hasOnlyKeys(value, ["expectedEpoch", "expectedInstanceId"])
+    && isHostEpoch(value.expectedEpoch)
+    && isHostInstanceId(value.expectedInstanceId);
+}
+
 export function isHostPresence(value: unknown): value is HostPresence {
   if (!isRecord(value) || !hasOnlyKeys(value, ["hostKey", "epoch", "instanceId", "mode", "access", "connection", "capability"])) return false;
   if (!isRemoteHostKey(value.hostKey) || !isHostEpoch(value.epoch) || !isHostInstanceId(value.instanceId)) return false;
@@ -329,6 +346,7 @@ export function isHostSocketParams(value: unknown): value is HostSocketParams {
 
 const TRANSPORT_KINDS = {
   presence: "presence",
+  pair: "pair",
   presenceEvents: "presence/events",
   request: "request",
   bytes: "bytes",

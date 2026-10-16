@@ -1,5 +1,5 @@
 /**
- * 원격 리스너의 무인증 문은 join과 host session이다. host session도 이 예산을 같이 쓴다.
+ * 원격 리스너의 무인증 문은 join, pair, host session이다. pair와 host session도 이 예산을 같이 쓴다.
  *
  * 자격 추측은 여기서 막을 대상이 아니다 — grant와 페어링 비밀은 256비트라 대입이 성립하지
  * 않는다. 이 예산이 막는 것은 그 뒤의 비용이다: 본문 읽기, grant 조회, 페어링 저장소 쓰기.

@@ -120,9 +120,48 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     }
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
 
-    // 통과하는 것은 이 하나뿐이며, 자격이 없으면 401로 끝난다 — 열려 있다는 것과 들여보낸다는 것은 다르다.
+    // join과 pair만 세션 없이 자격 본문에 닿는다. pair는 자격이 없으면 세션을 열지 않는다.
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: "not-a-grant" })))
       .resolves.toMatchObject({ status: 401 });
+    const probe = await remoteRequest(fixture, "POST", "/api/v1/pair", "{}");
+    expect(probe.status).toBe(400);
+    expect(JSON.parse(probe.body)).toEqual({ error: "invalid_join", capability: "pair" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("stores a grant as a pairing without opening or displacing control", async () => {
+    const fixture = await startFixture({ remote: true });
+    const holder = await joinAs(fixture, "full", "holder");
+    const token = grantTokenOf(await createLink(fixture));
+    const misdirected = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, intent: "pair", device: "inline" }));
+    expect(misdirected.status).toBe(400);
+    expect(JSON.parse(misdirected.body)).toEqual({ error: "invalid_join" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+
+    const paired = await remoteRequest(fixture, "POST", "/api/v1/pair", JSON.stringify({ token, device: "inline" }));
+    expect(paired.status).toBe(204);
+    const cookies = paired.headers["set-cookie"] ?? [];
+    expect(cookies.some((cookie) => cookie.startsWith("fleet_console_session_"))).toBe(false);
+    expect(cookies.some((cookie) => cookie.includes("fleet_console_pairing_"))).toBe(true);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const status = await readRemoteStatus(fixture);
+    expect(status.devices.find((entry) => entry.device === "holder")?.sessionHandle).toBeTruthy();
+    expect(status.devices.find((entry) => entry.device === "inline")?.sessionHandle).toBeNull();
+
+    const pairing = cookiesOf(paired);
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toEqual({ capability: "host-session", mode: "observer", access: "full" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    expect((await remoteRequest(fixture, "POST", "/api/v1/pair", JSON.stringify({ token }))).status).toBe(401);
+
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const loopback = await fetch(`${origin}/api/v1/pair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: "{}",
+    });
+    expect(loopback.status).toBe(404);
   });
 
   /**

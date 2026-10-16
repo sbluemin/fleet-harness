@@ -1,5 +1,5 @@
 import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
-import { normalizeFingerprint } from "@fleet-console/protocol/remote";
+import { ACCESS_PAIR_PATH, normalizeFingerprint } from "@fleet-console/protocol/remote";
 import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
 import { createDesktopEventStream } from "./desktop-event-stream.js";
@@ -26,6 +26,10 @@ export interface HostTransportExecutorDeps {
   readonly openPartition: (hostKey: string) => HostPartition;
   readonly readWindowCookies: (url: string) => Promise<readonly HostPartitionCookie[]>;
   readonly writeWindowCookie: (cookie: HostPartitionCookie & { readonly url: string }) => Promise<void>;
+  /** 없으면 pair를 구현하지 않는 셸이다. join으로 대체하지 않고 unsupported를 돌려준다. */
+  readonly localOrigin?: () => string | null;
+  readonly localFetch?: typeof fetch;
+  readonly deviceName?: string | null;
   readonly openSocket?: typeof openPinnedWebSocket;
 }
 
@@ -118,6 +122,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (!admitEpoch(command)) return { id: command.id, error: "stale_epoch" };
+    if (command.op === "pair" && Object.keys(command.params).length > 0) return { id: command.id, error: "route_denied" };
+    if (command.op === "pair" && (!deps.localOrigin || !deps.localFetch)) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     if (command.op === "ws-send" || command.op === "ws-close") return forwardSocket(command);
     let staged: Buffer | undefined;
     if (command.op === "http" && command.params.upload !== undefined) {
@@ -137,6 +143,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (controller.signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
       if (!("partition" in opened)) return opened;
       if (command.op === "presence") return await performPresence(command, opened.origin, opened.partition, controller.signal);
+      if (command.op === "pair") return await performPair(command, opened.origin, opened.partition, controller.signal);
       if (command.op === "http" || command.op === "bytes") return await performHttp(command, opened.origin, opened.partition, controller.signal, staged);
       return { id: command.id, error: "remote_host_unavailable" };
     } finally {
@@ -188,6 +195,124 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (response.status === 403) return { id: command.id, error: "observer_only" };
     if (!response.ok || !isSessionCapability(body)) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     return { id: command.id, capability: "supported", mode: body.mode, access: body.access };
+  }
+
+  async function performPair(command: DesktopHostCommand, origin: string, partition: HostPartition, signal: AbortSignal): Promise<DesktopHostRelay> {
+    const port = command.target.port;
+    if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (await hasPairingCookie(partition, origin, port)) {
+      await rememberPairing(origin, port, partition);
+      return { id: command.id, capability: "supported", mode: "off", access: null };
+    }
+    const probe = await postPair(origin, partition, "{}", signal);
+    if (!probe) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (!(await isPairProbe(probe))) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+    if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    const handoff = await takeHandoff(origin, signal);
+    if (handoff.kind !== "ready") return { id: command.id, error: handoff.error, ...(handoff.error === "remote_host_unavailable" ? { end: true as const } : {}) };
+    if (handoff.token === null) return { id: command.id, error: "remote_link_required" };
+    if (!samePairTarget(handoff, command, origin)) return { id: command.id, error: "stale_epoch" };
+    if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    const device = sanitizeDeviceName(deps.deviceName);
+    const submitted = await postPair(origin, partition, JSON.stringify(device === null ? { token: handoff.token } : { token: handoff.token, device }), signal);
+    if (!submitted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (submitted.status === 401) return { id: command.id, error: "remote_link_required" };
+    if (submitted.status === 409) {
+      let code = "remote_host_unavailable";
+      try {
+        const body = await submitted.json() as { readonly error?: unknown };
+        if (body.error === "paired_device_limit") code = "paired_device_limit";
+      } catch { /* 본문을 읽지 못하면 성공으로 보지 않는다. */ }
+      return { id: command.id, error: code };
+    }
+    if (submitted.status === 404 || submitted.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+    if (submitted.status !== 204) return { id: command.id, error: "remote_host_unavailable" };
+    if (await storePairingCookie(submitted, origin, port, partition) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
+    await rememberPairing(origin, port, partition);
+    return { id: command.id, capability: "supported", mode: "off", access: null };
+  }
+
+  async function postPair(origin: string, partition: HostPartition, body: string, signal: AbortSignal): Promise<Response | null> {
+    try {
+      return await partition.fetch(`${origin}${ACCESS_PAIR_PATH}`, {
+        method: "POST", redirect: "error", headers: { "content-type": "application/json", Origin: origin }, body, signal,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function isPairProbe(response: Response): Promise<boolean> {
+    if (response.status !== 400) return false;
+    try {
+      const body = await response.json() as { readonly error?: unknown; readonly capability?: unknown };
+      return body.error === "invalid_join" && body.capability === "pair" && Object.keys(body).length === 2;
+    } catch {
+      return false;
+    }
+  }
+
+  async function takeHandoff(origin: string, signal: AbortSignal): Promise<{ kind: "ready"; token: string | null; origin: string; hostname: string; port: number; fingerprint: string } | { kind: "error"; error: "remote_host_unknown" | "remote_host_unavailable" }> {
+    const home = deps.localOrigin?.() ?? null;
+    if (!home || !deps.localFetch || signal.aborted) return { kind: "error", error: "remote_host_unavailable" };
+    let response: Response;
+    try {
+      response = await deps.localFetch(`${home}/api/v1/desktop/handoff`, {
+        method: "POST",
+        headers: { "content-type": "application/json", Origin: home },
+        body: JSON.stringify({ origin }),
+        signal,
+      });
+    } catch {
+      return { kind: "error", error: "remote_host_unavailable" };
+    }
+    if (response.status === 404) return { kind: "error", error: "remote_host_unknown" };
+    if (!response.ok) return { kind: "error", error: "remote_host_unavailable" };
+    let body: Record<string, unknown> | null = null;
+    try { body = await response.json() as Record<string, unknown>; } catch { body = null; }
+    if (!body || (body.token !== null && typeof body.token !== "string")) return { kind: "error", error: "remote_host_unavailable" };
+    return {
+      kind: "ready",
+      token: typeof body.token === "string" ? body.token : null,
+      origin: typeof body.origin === "string" ? body.origin : "",
+      hostname: typeof body.hostname === "string" ? body.hostname : "",
+      port: typeof body.port === "number" ? body.port : 0,
+      fingerprint: typeof body.fingerprint === "string" ? body.fingerprint : "",
+    };
+  }
+
+  function samePairTarget(handoff: { readonly origin: string; readonly hostname: string; readonly port: number; readonly fingerprint: string }, command: DesktopHostCommand, origin: string): boolean {
+    return handoff.origin === origin
+      && handoff.hostname === command.target.hostname
+      && handoff.port === command.target.port
+      && normalizeFingerprint(handoff.fingerprint) === normalizeFingerprint(command.target.fingerprint);
+  }
+
+  async function hasPairingCookie(partition: HostPartition, origin: string, port: number): Promise<boolean> {
+    const name = `fleet_console_pairing_${port}`;
+    return (await partition.readCookies(origin)).some((cookie) => cookie.name === name && cookie.value.length > 0);
+  }
+
+  async function storePairingCookie(response: Response, origin: string, port: number, partition: HostPartition): Promise<"paired" | "rejected"> {
+    const pairingName = `fleet_console_pairing_${port}`;
+    const sessionName = `fleet_console_session_${port}`;
+    const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+    if (lines.some((line) => line.startsWith(`${sessionName}=`) && !line.startsWith(`${sessionName}=;`))) return "rejected";
+    const header = lines.find((line) => line.startsWith(`${pairingName}=`));
+    if (header) {
+      const value = header.slice(pairingName.length + 1).split(";")[0] ?? "";
+      if (value.length === 0) return "rejected";
+      await partition.writeCookie({ name: pairingName, value, url: origin, path: "/", secure: true, httpOnly: true });
+    }
+    const cookies = await partition.readCookies(origin);
+    if (cookies.some((cookie) => cookie.name === sessionName && cookie.value.length > 0)) return "rejected";
+    return cookies.some((cookie) => cookie.name === pairingName && cookie.value.length > 0) ? "paired" : "rejected";
+  }
+
+  function sanitizeDeviceName(value: string | null | undefined): string | null {
+    if (typeof value !== "string") return null;
+    const cleaned = value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, 48);
+    return cleaned.length > 0 ? cleaned : null;
   }
 
   function acceptUploadChunk(command: DesktopHostCommand): { kind: "body"; body: Buffer } | { kind: "relay"; relay: DesktopHostRelay } {
@@ -399,11 +524,16 @@ function safeByteType(value: string): string {
 }
 
 export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { readonly fetch: typeof fetch; readonly log?: (message: string) => void }): { start(origin: string): Promise<void>; stop(): void } {
-  const executor = createHostTransportExecutor(deps);
+  let activeOrigin: string | null = null;
+  const executor = createHostTransportExecutor({
+    ...deps,
+    localOrigin: () => activeOrigin,
+    localFetch: deps.fetch,
+    deviceName: deps.deviceName ?? null,
+  });
   const running = new Set<number>();
   const streams = new Map<number, AbortController>();
   const calls = new Map<number, AbortController>();
-  let activeOrigin: string | null = null;
   // 같은 출처로 콘솔이 다시 떠도 instanceId가 같으면 살아 있는 스트림을 끊지 않는다. 달라질 때만 앞 프로세스의 번호와 epoch를 잊는다.
   let consoleInstance: string | null = null;
   const postRelay = async (relay: DesktopHostRelay, owner: string): Promise<boolean> => {

@@ -9,6 +9,7 @@ import {
   isHostByteRequest,
   isHostJsonRequest,
   isHostUploadRequest,
+  isHostPairRequest,
   isHostPresenceRequest,
   isRemoteHostKey,
   parseHostSocketQuery,
@@ -51,7 +52,7 @@ export interface HostShellPort {
   call(request: {
     readonly hostKey: string;
     readonly epoch: number;
-    readonly op: "presence" | "http" | "bytes" | "sse" | "ws-open" | "ws-send" | "ws-close" | "abort";
+    readonly op: "presence" | "pair" | "http" | "bytes" | "sse" | "ws-open" | "ws-send" | "ws-close" | "abort";
     readonly routeId: string;
     readonly target: { readonly hostname: string; readonly port: number; readonly fingerprint: string };
     readonly params: Readonly<Record<string, unknown>>;
@@ -93,7 +94,7 @@ interface HostLink {
   capability: HostCapability;
 }
 
-const KINDS = new Set<HostTransportKind>(["presence", "presenceEvents", "request", "bytes", "events", "resources", "socket"]);
+const KINDS = new Set<HostTransportKind>(["presence", "pair", "presenceEvents", "request", "bytes", "events", "resources", "socket"]);
 
 export interface HostGateway {
   handle(context: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean>;
@@ -162,6 +163,10 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     if (kind === "presence" && req.method === "GET") { deps.writeJson(res, 200, presenceOf(hostKey, link)); return true; }
     if (kind === "presenceEvents" && req.method === "GET") return writePresenceEvents(hostKey, link);
     if (kind === "presence" && req.method === "POST") return handlePresence(hostKey, target, link);
+    if (kind === "pair") {
+      if (req.method !== "POST") { fail(res, "invalid_host_request"); return true; }
+      return handlePair(hostKey, target, link);
+    }
     if (kind === "request" && req.method === "POST") return handleJson(hostKey, target, link);
     if (kind === "bytes" && req.method === "POST") return handleBytes(hostKey, target, link);
     if ((kind === "events" || kind === "resources") && req.method === "GET") return handleStream(hostKey, target, link, kind);
@@ -193,6 +198,32 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       retire(hostKey); applyPresence(link, relay);
       publish(hostKey);
       if (relay.error) { fail(res, asError(relay.error), link.epoch); return true; }
+      res.writeHead(204, deps.withSecurityHeaders({}));
+      res.end();
+      return true;
+    }
+
+    async function handlePair(hostKey: string, target: HostGatewayTarget, link: HostLink): Promise<boolean> {
+      const body = await deps.readJsonBody(req);
+      if (!isHostPairRequest(body)) { fail(res, "invalid_host_request"); return true; }
+      if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
+      if (body.expectedEpoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
+      const relay = await deps.bridge.call({
+        hostKey, epoch: link.epoch, op: "pair", routeId: "pair",
+        target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+        params: {},
+      }, abort.signal);
+      const current = deps.findHost(hostKey);
+      if (!current) { fail(res, "remote_host_unknown"); return true; }
+      if (current.origin !== target.origin || current.hostname !== target.hostname || current.port !== target.port || current.fingerprint !== target.fingerprint) {
+        const refreshed = linkFor(hostKey, current);
+        fail(res, "stale_epoch", refreshed.epoch);
+        return true;
+      }
+      if (relay.error === "stale_epoch") { fail(res, "stale_epoch", link.epoch); return true; }
+      if (relay.error || relay.capability === "unsupported") { fail(res, asError(relay.error ?? "host_unsupported")); return true; }
+      // pair는 관찰로 이어지기 전의 쿠키다. 제어·관찰 모드가 오면 성공으로 받지 않는다.
+      if (relay.mode !== "off" || relay.access != null) { fail(res, "remote_host_unavailable"); return true; }
       res.writeHead(204, deps.withSecurityHeaders({}));
       res.end();
       return true;

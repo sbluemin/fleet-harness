@@ -22,6 +22,7 @@ import {
   isHostByteResult,
   isHostJsonRequest,
   isHostJsonResult,
+  isHostPairRequest,
   isHostPresence,
   isHostPresenceRequest,
   isHostTerminalUpgradePath,
@@ -118,6 +119,11 @@ describe("host transport wire contract", () => {
     expect(isHostPresence({ ...presence, instanceId: "not-a-lifetime" })).toBe(false);
     expect(isHostPresence({ ...presence, mode: "controller", access: "full", connection: "ready" })).toBe(false);
     expect(isHostTransportErrorBody({ error: "stale_epoch", epoch: 9 })).toBe(true);
+    expect(isHostPairRequest({ expectedEpoch: 1, expectedInstanceId: instanceId })).toBe(true);
+    expect(isHostPairRequest({ expectedEpoch: 1, expectedInstanceId: instanceId, token: "grant" })).toBe(false);
+    expect(hostTransportPath("pair", hostKey)).toBe(`/api/v1/hosts/${hostKey}/pair`);
+    expect(isHostTransportErrorBody({ error: "remote_link_required" })).toBe(true);
+    expect(isHostTransportErrorBody({ error: "paired_device_limit" })).toBe(true);
     expect(isHostTransportErrorBody({ error: "stale_instance" })).toBe(true);
     expect(isHostTransportErrorBody({ error: "stale_instance", instanceId, epoch: 1 })).toBe(false);
     expect(isHostTransportErrorBody({ error: "read_only", epoch: 9 })).toBe(false);
@@ -186,6 +192,86 @@ describe("host gateway admission", () => {
     expect(posted.body).toMatchObject({ error: "host_unsupported" });
     const presence = await invoke("GET", "/api/v1/hosts/host1/presence");
     expect(presence.body).toMatchObject({ mode: "off", access: null, connection: "blocked", capability: "unsupported" });
+  });
+
+  it("pairs without activating and leaves a shell that cannot pair unsupported", async () => {
+    const calls: { op: string; params: unknown }[] = [];
+    const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = null;
+    let host = target;
+    let pairMode: "off" | "controller" = "off";
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => host,
+      bridge: { async open() { return { id: 1, end: true }; }, async call(request) {
+        calls.push({ op: request.op, params: request.params });
+        if (request.op !== "pair") return { id: 1, capability: "supported", mode: "controller", access: "full" };
+        if (request.params.token !== undefined) return { id: 1, error: "route_denied" };
+        return pairMode === "controller"
+          ? { id: 1, capability: "supported", mode: "controller" as const, access: "full" as const }
+          : { id: 1, capability: "supported", mode: "off" as const, access: null };
+      } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true, writableEnded: false } as unknown as http.ServerResponse;
+      await gateway.handle({ req, res, pathname: path.split("?")[0] ?? path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string; epoch: number }).instanceId;
+    expect((boot.body as { epoch: number; mode: string }).epoch).toBe(1);
+    body = { expectedEpoch: 1, expectedInstanceId: lifetime, token: "grant-secret" };
+    expect(await invoke("POST", "/api/v1/hosts/host1/pair")).toEqual({ status: 400, body: { error: "invalid_host_request" } });
+    body = { expectedEpoch: 1, expectedInstanceId: lifetime };
+    expect((await invoke("POST", "/api/v1/hosts/host1/pair")).status).toBe(204);
+    expect(calls).toEqual([{ op: "pair", params: {} }]);
+    expect(JSON.stringify(calls)).not.toContain("grant-secret");
+    const stayed = await invoke("GET", "/api/v1/hosts/host1/presence");
+    expect(stayed.body).toMatchObject({ epoch: 1, instanceId: lifetime, mode: "off", access: null, connection: "closed", capability: "supported" });
+    body = { expectedEpoch: 1, expectedInstanceId: "bbbbbbbb-1111-4222-8333-444455556666" };
+    expect(await invoke("POST", "/api/v1/hosts/host1/pair")).toEqual({ status: 409, body: { error: "stale_instance" } });
+    expect(calls).toHaveLength(1);
+    pairMode = "controller";
+    body = { expectedEpoch: 1, expectedInstanceId: lifetime };
+    expect(await invoke("POST", "/api/v1/hosts/host1/pair")).toEqual({ status: 409, body: { error: "remote_host_unavailable" } });
+    expect((await invoke("GET", "/api/v1/hosts/host1/presence")).body).toMatchObject({ epoch: 1, mode: "off", access: null, capability: "supported" });
+    pairMode = "off";
+    calls.length = 0;
+    const unsupported = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: { async open() { return { id: 1, end: true }; }, async call() { return { id: 1, capability: "unsupported", error: "host_unsupported" }; } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const deniedRes = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true, writableEnded: false } as unknown as http.ServerResponse;
+    const bootUnsupported = { method: "GET", url: "/api/v1/hosts/host1/presence", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    await unsupported.handle({ req: bootUnsupported, res: deniedRes, pathname: "/api/v1/hosts/host1/presence" });
+    const unsupportedLifetime = (slot.current?.body as { instanceId: string }).instanceId;
+    body = { expectedEpoch: 1, expectedInstanceId: unsupportedLifetime };
+    const denied = { method: "POST", url: "/api/v1/hosts/host1/pair", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    await unsupported.handle({ req: denied, res: deniedRes, pathname: "/api/v1/hosts/host1/pair" });
+    expect(slot.current).toEqual({ status: 409, body: { error: "host_unsupported" } });
+    const after = { method: "GET", url: "/api/v1/hosts/host1/presence", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    await unsupported.handle({ req: after, res: deniedRes, pathname: "/api/v1/hosts/host1/presence" });
+    expect(slot.current?.body).toMatchObject({ mode: "off", capability: "supported", connection: "closed" });
+    host = { ...target, fingerprint: "CD".repeat(32) };
+    body = { expectedEpoch: 1, expectedInstanceId: lifetime };
+    const changed = await invoke("POST", "/api/v1/hosts/host1/pair");
+    expect(changed.status).toBe(409);
+    expect(changed.body).toMatchObject({ error: "stale_epoch" });
+    const finalPresence = await invoke("GET", "/api/v1/hosts/host1/presence");
+    expect(finalPresence.body).toMatchObject({ mode: "off", access: null });
+    expect((finalPresence.body as { mode: string }).mode).not.toBe("controller");
   });
 
   it("denies an observer conversation write and an unknown route", async () => {

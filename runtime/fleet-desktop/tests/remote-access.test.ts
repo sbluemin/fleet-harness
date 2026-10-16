@@ -213,6 +213,97 @@ describe("host partition transport", () => {
     expect(relay.mode).toBeUndefined();
     expect(relay).toMatchObject({ capability: "unsupported", error: "host_unsupported" });
   });
+
+  it("pairs without navigating, activating, or putting the grant on the relay", async () => {
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const origin = "https://remote.example:8443";
+    const posts: { url: string; body: string }[] = [];
+    const cookies: { name: string; value: string }[] = [];
+    const windowCookies: { name: string; value: string }[] = [];
+    let grant: string | null = "grant-secret";
+    let handoffs = 0;
+    let confirm: () => Promise<void> = async () => undefined;
+    let submitted: Response | null = null;
+    const partition = {
+      async fetch(url: string, init?: RequestInit) {
+        const body = typeof init?.body === "string" ? init.body : "";
+        posts.push({ url, body });
+        if (body === "{}") return Response.json({ error: "invalid_join", capability: "pair" }, { status: 400 });
+        if (submitted) return submitted;
+        return new Response(null, { status: 204, headers: { "set-cookie": "fleet_console_pairing_8443=pairing-secret; HttpOnly; Secure; Path=/" } });
+      },
+      async readCookies() { return cookies.map((cookie) => ({ ...cookie })); },
+      async writeCookie(cookie: { name: string; value: string }) {
+        const index = cookies.findIndex((entry) => entry.name === cookie.name);
+        if (index >= 0) cookies[index] = { name: cookie.name, value: cookie.value };
+        else cookies.push({ name: cookie.name, value: cookie.value });
+      },
+      pin() { return undefined; },
+      clear() { cookies.splice(0, cookies.length); },
+    };
+    const executor = createHostTransportExecutor({
+      confirmIdentity: () => confirm(),
+      openPartition: () => partition,
+      readWindowCookies: async () => [],
+      writeWindowCookie: async (cookie) => { windowCookies.push({ name: cookie.name, value: cookie.value }); },
+      localOrigin: () => "http://127.0.0.1:4010",
+      deviceName: "inline-host",
+      localFetch: async () => {
+        handoffs += 1;
+        const token = grant;
+        grant = null;
+        return Response.json({ origin, hostname: target.hostname, port: target.port, fingerprint: target.fingerprint, token });
+      },
+    });
+    const command = { id: 7, hostKey: "host1", epoch: 1, op: "pair" as const, routeId: "pair", target, params: {} };
+    const relay = await executor.execute(command);
+    expect(relay).toEqual({ id: 7, capability: "supported", mode: "off", access: null });
+    expect(JSON.stringify(relay)).not.toContain("grant-secret");
+    expect(posts.map((entry) => entry.url)).toEqual([`${origin}/api/v1/pair`, `${origin}/api/v1/pair`]);
+    expect(posts[0]?.body).toBe("{}");
+    expect(JSON.parse(posts[1]?.body ?? "{}")).toEqual({ token: "grant-secret", device: "inline-host" });
+    expect(posts.every((entry) => !entry.url.includes("/api/v1/join") && !entry.url.includes("/console/") && !entry.url.includes("/api/v1/sessions"))).toBe(true);
+    expect(cookies).toEqual([{ name: "fleet_console_pairing_8443", value: "pairing-secret" }]);
+    expect(windowCookies.map((cookie) => cookie.name)).toEqual(["fleet_console_pairing_8443"]);
+    expect(await executor.execute({ ...command, id: 8 })).toMatchObject({ capability: "supported", mode: "off", access: null });
+    expect(handoffs).toBe(1);
+    expect(posts).toHaveLength(2);
+
+    cookies.splice(0, cookies.length);
+    grant = null;
+    expect(await executor.execute({ ...command, id: 9 })).toMatchObject({ error: "remote_link_required" });
+    expect(posts.at(-1)?.body).toBe("{}");
+
+    cookies.splice(0, cookies.length);
+    grant = "other-grant";
+    const shifted = await executor.execute({ ...command, id: 10, target: { ...target, fingerprint: "CD".repeat(32) } });
+    expect(shifted).toMatchObject({ error: "stale_epoch" });
+    expect(posts.some((entry) => entry.body.includes("other-grant"))).toBe(false);
+
+    const before = handoffs;
+    confirm = async () => { throw new Error("remote_link_fingerprint_mismatch"); };
+    expect(await executor.execute({ ...command, id: 11 })).toMatchObject({ error: "remote_host_fingerprint_mismatch" });
+    expect(handoffs).toBe(before);
+    confirm = async () => undefined;
+    expect(await executor.execute({ ...command, id: 12 }, AbortSignal.abort())).toMatchObject({ error: "remote_host_unavailable" });
+    expect(handoffs).toBe(before);
+    expect(await executor.execute({ ...command, id: 13, params: { token: "grant-secret" } })).toMatchObject({ error: "route_denied" });
+
+    submitted = new Response(null, { status: 204, headers: { "set-cookie": "fleet_console_session_8443=session-secret; HttpOnly; Secure; Path=/" } });
+    cookies.splice(0, cookies.length);
+    grant = "session-grant";
+    const sessionRelay = await executor.execute({ ...command, id: 14 });
+    expect(sessionRelay).toMatchObject({ error: "remote_host_unavailable" });
+    expect(windowCookies.some((cookie) => cookie.name.startsWith("fleet_console_session_"))).toBe(false);
+
+    const old = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => partition,
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    expect(await old.execute({ ...command, id: 15 })).toMatchObject({ capability: "unsupported", error: "host_unsupported" });
+  });
 });
 
 describe("host transport streams", () => {

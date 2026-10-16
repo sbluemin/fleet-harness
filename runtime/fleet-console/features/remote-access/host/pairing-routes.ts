@@ -49,9 +49,14 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
 
   /** 조인 본체. 반환값은 "페어링에 성공했는가"이며, 응답은 이 안에서 끝난다. */
   async function performAccessJoin(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
-    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
+    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown; readonly intent?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    // pair로 표시된 본문을 제어 join으로 흘리지 않는다. 옛 서버는 모르는 필드를 무시하고 컨트롤러를 연다.
+    if (isPlainObject(body) && body.intent !== undefined) {
+      writeJson(res, 400, { error: "invalid_join" });
+      return false;
+    }
     const joined = token === null
       ? resumePairedDevice(req, listener, device)
       : pairFromGrant(listener, token, device);
@@ -277,7 +282,70 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     res.end(JSON.stringify(body));
   }
 
-  return { handleAccessJoin, handleHostSession };
+  async function handleAccessPair(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    const listener = listenerForRequest(req);
+    if (!listener || listener.audience !== "remote") {
+      writeJson(res, 404, { error: "not_found" });
+      return true;
+    }
+    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
+    const verdict = remoteJoinGuard.begin(source);
+    if (verdict !== "ok") {
+      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
+        "Content-Type": "application/json",
+        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
+      }));
+      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
+      return true;
+    }
+    let paired = false;
+    try {
+      paired = await performAccessPair(req, res, listener);
+    } finally {
+      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
+    }
+    return true;
+  }
+
+  /** 자격으로 페어링 쿠키만 만든다. 세션을 열지 않고 제어를 축출하지 않는다. */
+  async function performAccessPair(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
+    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
+    const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
+    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    if (token === null) {
+      writeJson(res, 400, { error: "invalid_join", capability: "pair" });
+      return false;
+    }
+    const accepted = acceptPairingGrant(listener, token, device);
+    if ("error" in accepted) {
+      writeJson(res, accepted.status, { error: accepted.error });
+      return false;
+    }
+    res.writeHead(204, withSecurityHeaders({
+      "Set-Cookie": formatPairingCookie(accepted.pairingSecret, { secure: listener.secure, port: listener.port }),
+    }));
+    res.end();
+    return true;
+  }
+
+  function acceptPairingGrant(listener: ListenerIdentity, token: string, device: string | null): { readonly pairingSecret: string } | JoinRejected {
+    const pending = access.peekGrant(token, listener.audience);
+    if (pending !== null && listener.audience === "remote" && pairedDeviceStore.list("remote").length >= PAIRED_DEVICE_LIMIT) {
+      return { status: 409, error: "paired_device_limit" };
+    }
+    const grant = access.consumeGrant(token, listener.audience);
+    if (!grant) return { status: 401, error: "unauthorized" };
+    if (listener.audience !== "remote") return { status: 404, error: "not_found" };
+    const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
+    if (!paired) return { status: 409, error: "paired_device_limit" };
+    return { pairingSecret: paired.secret };
+  }
+
+  return { handleAccessJoin, handleAccessPair, handleHostSession };
 }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
