@@ -9,7 +9,7 @@ Deliver an authorized change as a PR on `sbluemin/fleet-harness`. Start new chan
 
 ## Scope and authority
 
-Run when the user requests this PR lifecycle or explicitly authorizes publication/merge. Automatic skill loading does not authorize commit, push, PR creation, or merge. Do not ask again between ordinary steps within an authorized full lifecycle.
+Run for the standing PR-to-`canary` delivery authorization in the root `CLAUDE.md`, or when the user requests this lifecycle or explicitly authorizes publication/merge. The standing authorization is sufficient; do not request a new publication/merge decision per Objective. Honor local-only requests, explicit stops, and narrower delivery scopes. Automatic skill loading alone grants no authority. Do not ask again between ordinary steps within an authorized full lifecycle.
 
 Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `canary`: the PR Target Guard workflow closes every pull request aimed elsewhere, and a request to target `main`/`master` belongs to `release-version-update`, not a PR. Reject head=base. With `auto_merge=false`, stop at review completion and preserve branch/worktree. Read [Inputs](references/inputs.md) when options need resolving.
 
@@ -19,7 +19,7 @@ Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `
 |---|---|
 | New commit, push, PR creation, changelog classification | [Publishing](references/publishing.md) |
 | Review start/resume, feedback application, final audit | [Judgment](references/judgment.md) |
-| Codex activation and signal wait | [Review wait](references/review-wait.md) |
+| Review-route selection, Codex activation and signal wait | [Review wait](references/review-wait.md) |
 | Final audit, canary-only CI pre-check, base integration, merge, post-merge `canary` CI, cleanup | [Merge and cleanup](references/merge-and-cleanup.md) |
 
 ## Core contracts
@@ -33,7 +33,9 @@ Defaults: base `canary`, merge `squash`, `auto_merge=true`. The base is always `
 
 ## Waiting and termination
 
-When no activation signal ([Review wait](references/review-wait.md) step 1) exists yet, explicitly request review and check for a default 60 seconds. Still no activation signal becomes `codex_activation_timeout` and may proceed through normal merge gates, but is not approval and never bypasses required checks.
+For an Objective with completed measured verification, default to skipping Codex under the [measured-verification route](references/review-wait.md#measured-verification-route), without another human confirmation. Record `REVIEW_BYPASS_REASON=measured_verification` and its evidence; this is not Codex approval or a waiver of the final audit, required checks, or the review-fix re-check gate.
+
+Otherwise, when no activation signal ([Review wait](references/review-wait.md) step 1) exists yet, explicitly request review and check for a default 60 seconds. Still no activation signal becomes `codex_activation_timeout` and may proceed through normal merge gates, but is not approval and never bypasses required checks.
 
 Use signal-driven background waiting. Launch a wait (the review poll or a CI watch) as late in its turn as you can, after any progress report such as an objective member's report to its Commander. A wait that ends while its turn is still running is folded into that turn instead of starting a new one, so before ending any turn that launched a wait, read the wait's output file and act on any signal already there. Do not treat stale `+1`, `eyes`, or re-anchored inline comments as fresh approval/feedback. A usage-limit notice means that request is not shown to have produced a review; it does not mean no review ever ran, and it does not approve the head; classify it as [Review wait](references/review-wait.md) describes and record `codex_usage_limit`. End the review loop on a pass with no FIX findings, with a default maximum of 3 passes. Continuing requires a named reproduced defect. Disclose timeouts, omissions, and failures.
 
