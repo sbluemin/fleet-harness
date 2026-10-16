@@ -37,7 +37,7 @@ import { createHostCapabilities } from "../integration/plugin-capabilities.js";
 import { HostClientProvider, useHostClientBindings } from "../integration/host-client-context.js";
 import { useHostWorkspace } from "../integration/use-host-workspace.js";
 import { HostContent } from "../integration/host-content.js";
-import { useHostQuickLaunch } from "../integration/host-quick-launch.js";
+import { useHostQuickLaunch, useHostQuickLaunchShortcut } from "../integration/host-quick-launch.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
@@ -114,6 +114,7 @@ function ConnectedApp() {
   const remoteSelection = hostSnapshot !== null && hostSnapshot.selection.hostKey !== "local";
   // 원격 새 목표의 유일한 진입 포트. 로컬 Quick Launch store와 별개로 host·세대를 고정한다.
   const hostQuickLaunch = useHostQuickLaunch(hostWorkspace);
+  useHostQuickLaunchShortcut(hostQuickLaunch, remoteSelection);
   const operationHost = useMemo(() => {
     if (!hostWorkspace || remoteSelection) return host;
     const scope = Object.freeze({ hostKey: "local", epoch: host.transport.scope.epoch, signal: AbortSignal.any([host.transport.scope.signal, hostWorkspace.workspace.getSelectionSignal()]) });

@@ -113,7 +113,11 @@ export function QuickLaunch({ host = null, local = true }: {
   const hostMode = hostSession !== null;
   const hostModeRef = useRef(hostMode);
   hostModeRef.current = hostMode;
-  const [hostErrorKey, setHostErrorKey] = useState<ReturnType<typeof hostErrorMessageKey> | null>(null);
+  const [hostErrorKey, setHostErrorKey] = useState<ReturnType<typeof hostErrorMessageKey> | "chrome.quickLaunch.hostAttachmentsPartial" | null>(null);
+  // 원격 회차의 이미지 칩. 로컬 실행 첨부(서버 id가 있는 칩)와 섞지 않고, 생성 전에는 미리보기와 원본만 이 컴퓨터에 둔다.
+  const [hostAttachments, setHostAttachments] = useState<readonly { readonly key: string; readonly name: string; readonly previewUrl: string; readonly file: Blob }[]>([]);
+  const hostAttachmentsRef = useRef(hostAttachments);
+  hostAttachmentsRef.current = hostAttachments;
   const navigate = useNavigate();
   const location = useLocation();
   const registry = usePluginRegistry();
@@ -196,7 +200,11 @@ export function QuickLaunch({ host = null, local = true }: {
   // 서버에서 도로 거둔다 — 안 거두면 보이지 않는 파일이 미발사 슬롯을 30분간 차지한다.
   const canceledUploadKeysRef = useRef(new Set<string>());
   // 실제로 떠 있는 확대 레이어 — 칩이 사라지면 스스로 null이 된다(Escape 판정의 원천).
-  const zoomedAttachment = zoomedKey === null ? null : attachments.find((attachment) => attachment.key === zoomedKey) ?? null;
+  // 원격 회차는 자기 칩 목록만 그린다 — 로컬 칩은 로컬 회차의 상태로 남는다.
+  const trayAttachments: readonly ComposerAttachment[] = hostMode
+    ? hostAttachments.map(({ key, name, previewUrl }) => ({ key, id: null, name, previewUrl, uploading: false }))
+    : attachments;
+  const zoomedAttachment = zoomedKey === null ? null : trayAttachments.find((attachment) => attachment.key === zoomedKey) ?? null;
   const submittedRef = useRef(false);
 
   // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
@@ -540,6 +548,14 @@ export function QuickLaunch({ host = null, local = true }: {
     setStartView(remembered.view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, openKey, getViewedTheaterId(), theaters]);
+
+  // 원격 회차가 끝나거나 바뀌면 그 회차의 이미지 미리보기를 거둔다. 다른 회차·로컬 회차로 넘기지 않는다.
+  const hostSessionId = hostSession?.id ?? null;
+  useEffect(() => () => {
+    for (const attachment of hostAttachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
+    hostAttachmentsRef.current = [];
+    setHostAttachments([]);
+  }, [hostSessionId]);
 
   // 원격 회차가 열린 동안 그 컴퓨터의 Theater가 사라지면 고른 값을 비운다 — 없는 좌표로 보내지 않는다.
   useEffect(() => {
@@ -1035,9 +1051,24 @@ export function QuickLaunch({ host = null, local = true }: {
     const images = files.filter((file) => isQuickLaunchAttachmentCandidate(file));
     // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 텍스트 붙여넣기·비이미지 드롭은 조용히 지나간다.
     if (images.length === 0) return;
-    // 원격 목표 생성은 이 컴퓨터의 실행 첨부 저장소로 올리지 않는다. 목표 첨부는 그 목표의 계획 화면이 받는다.
+    // 원격 회차는 이 컴퓨터의 실행 첨부 저장소로 올리지 않는다. 원본을 쥐고 있다가 목표를 만든 뒤 그 목표에 올린다.
     if (hostModeRef.current) {
-      setAttachmentErrorKey("chrome.quickLaunch.hostAttachments");
+      setAttachmentErrorKey(null);
+      let count = hostAttachmentsRef.current.length;
+      const added: { key: string; name: string; previewUrl: string; file: Blob }[] = [];
+      for (const file of images) {
+        if (count >= QUICK_LAUNCH_MAX_ATTACHMENTS) {
+          setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentLimit");
+          break;
+        }
+        if (file.size > QUICK_LAUNCH_ATTACHMENT_MAX_BYTES) {
+          setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentTooLarge");
+          continue;
+        }
+        count += 1;
+        added.push({ key: crypto.randomUUID(), name: file.name.length > 0 ? file.name : "pasted image", previewUrl: URL.createObjectURL(file), file });
+      }
+      if (added.length > 0) setHostAttachments((current) => [...current, ...added]);
       return;
     }
     if (mentionTargetRef.current?.kind === "plugin") {
@@ -1092,6 +1123,15 @@ export function QuickLaunch({ host = null, local = true }: {
   }, [attachmentPlugin]);
 
   const removeAttachment = useCallback((key: string) => {
+    if (hostModeRef.current) {
+      const hostFound = hostAttachmentsRef.current.find((attachment) => attachment.key === key);
+      if (hostFound) URL.revokeObjectURL(hostFound.previewUrl);
+      setHostAttachments((current) => current.filter((attachment) => attachment.key !== key));
+      setZoomedKey((current) => (current === key ? null : current));
+      setAttachmentErrorKey(null);
+      inputRef.current?.focus();
+      return;
+    }
     const found = attachmentsRef.current.find((attachment) => attachment.key === key);
     if (found) {
       URL.revokeObjectURL(found.previewUrl);
@@ -1272,13 +1312,21 @@ export function QuickLaunch({ host = null, local = true }: {
     setSubmitting(true);
     setHostErrorKey(null);
     const epoch = composerEpochRef.current;
-    void host.create(hostSession, { theaterId, text, language: locale })
+    const sent = hostAttachmentsRef.current;
+    void host.create(hostSession, { theaterId, text, language: locale, attachments: sent.map(({ name, file }) => ({ name, file })) })
       .then((result) => {
         if (composerEpochRef.current !== epoch) return;
         setSubmitting(false);
-        if (result === "created") {
+        if (result.kind === "created") {
           promptRef.current = "";
           setPrompt("");
+        } else if (result.kind === "partial") {
+          // 목표는 생겼다. 올린 칩은 내려놓고 실패한 칩만 남겨 같은 목표에 다시 올린다.
+          const failed = new Set(result.failed);
+          for (const [index, attachment] of sent.entries()) if (!failed.has(index)) URL.revokeObjectURL(attachment.previewUrl);
+          const keep = new Set(sent.filter((_, index) => failed.has(index)).map((attachment) => attachment.key));
+          setHostAttachments((current) => current.filter((attachment) => keep.has(attachment.key) || !sent.some((item) => item.key === attachment.key)));
+          setHostErrorKey("chrome.quickLaunch.hostAttachmentsPartial");
         }
       })
       .catch((error: unknown) => {
@@ -1680,8 +1728,10 @@ export function QuickLaunch({ host = null, local = true }: {
   // 행이 있는 덱이 열린 동안은 버튼도 잠근다(submit의 deckHasRows 가드와 같은 계약).
   // 업로드 중인 첨부도 같은 계약으로 잠근다(submit의 가드와 짝).
   // 원격 회차는 그 컴퓨터의 Theater 하나만 있으면 된다 — 모델은 목표의 계획 단계가 고른다.
+  // 이미 목표를 만든 회차는 남은 이미지 재시도만 보낸다.
+  const hostCreated = hostSession?.created ?? null;
   const canSubmit = hostMode
-    ? promptLength > 0 && !overLimit && !submitting && !!theaterId
+    ? (hostCreated ? hostAttachments.length > 0 && !submitting : promptLength > 0 && !overLimit && !submitting && !!theaterId)
     : promptLength > 0 && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !commandDeckHasRows && !attachmentsUploading
       && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
   // 로컬 실행 거절은 로컬 회차의 사유다. 원격 회차는 자기 생성 거절만 말한다.
@@ -1790,8 +1840,8 @@ export function QuickLaunch({ host = null, local = true }: {
         {/* 원격 회차의 대상 고지 — 어느 컴퓨터에 무엇이 생기는지, 모델은 어디서 정하는지를 보내기 전에 말한다. */}
         {hostSession ? (
           <p className="quick-launch-host-target" role="note">
-            <strong>{t("chrome.quickLaunch.hostTarget", { host: hostSession.hostLabel })}</strong>
-            <span>{t("chrome.quickLaunch.hostHint")}</span>
+            <strong>{hostSession.created ? t("chrome.quickLaunch.hostCreated", { title: hostSession.created.title }) : t("chrome.quickLaunch.hostTarget", { host: hostSession.hostLabel })}</strong>
+            <span>{t(hostSession.created ? "chrome.quickLaunch.hostCreatedHint" : "chrome.quickLaunch.hostHint")}</span>
           </p>
         ) : null}
         {/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤이다. 초안 자취를 싣고, 누르면 펼쳐진다.
@@ -2073,6 +2123,8 @@ export function QuickLaunch({ host = null, local = true }: {
             onKeyDown={handleInputKeyDown}
             onPaste={handlePaste}
             onScroll={syncUltracodeHighlight}
+            // 이미 만든 목표의 제목·브리핑은 이 회차가 다시 보내지 않는다 — 고칠 곳은 그 목표의 상세다.
+            readOnly={hostCreated !== null || undefined}
             placeholder={hostMode ? t("chrome.quickLaunch.hostPlaceholder") : conversationRow?.quickLaunch?.placeholder ?? (mentionTarget
               ? t(mentionTarget.kind === "operation"
                 ? "chrome.quickLaunch.mentionPlaceholder"
@@ -2089,7 +2141,7 @@ export function QuickLaunch({ host = null, local = true }: {
               입력 행에 사는 이유: 첨부는 초안에 붙는 내용이라 발사 좌표(하단 행)가 아니라 글이 있는 자리의
               도구다. 하단 행은 전송이 한 줄을 지켜야 하는 고정 예산이기도 하다(components.css의
               .quick-launch-bar 주석). */}
-          {!hostMode && attachmentPlugin?.uploadLaunchAttachment && mentionTarget?.kind !== "plugin" ? (
+          {(hostMode || attachmentPlugin?.uploadLaunchAttachment) && mentionTarget?.kind !== "plugin" ? (
             // 입구 폭은 paste·드롭과 같다(image/*, 블록 기본값) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
             <ComposerAttachControl
               className="quick-launch-attach"
@@ -2098,9 +2150,9 @@ export function QuickLaunch({ host = null, local = true }: {
             />
           ) : null}
           </span>
-          {attachments.length > 0 && !hostMode ? (
+          {trayAttachments.length > 0 ? (
             <div className="quick-launch-attachments" role="group" aria-label={t("chrome.quickLaunch.attachments")}>
-              {attachments.map((attachment) => (
+              {trayAttachments.map((attachment) => (
                 <span key={attachment.key} className={`quick-launch-attachment${attachment.uploading ? " is-uploading" : ""}`}>
                   {/* 썸네일 클릭은 확대 보기 토글이다 — 52px 칩만으로는 무엇을 붙였는지 확신할 수 없다. */}
                   <button
@@ -2161,6 +2213,7 @@ export function QuickLaunch({ host = null, local = true }: {
             ref={theaterChipRef}
             className="quick-launch-chip quick-launch-chip--theater"
             aria-expanded={popover === "theater"}
+            disabled={hostCreated !== null || undefined}
             onClick={() => setPopover(popover === "theater" ? null : "theater")}
           >
             <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterMark(activeTheater.id, activeTheater.label) : null}</span>
@@ -2271,8 +2324,8 @@ export function QuickLaunch({ host = null, local = true }: {
             // 시각 레이블이 없으므로 이름과 단축키를 여기서 싣는다. 무장 중에는 이 버튼이 무엇을
             // 하는지가 달라지므로 이름도 함께 바뀐다 — 안내줄을 못 읽는 사람에게는 여기가 유일한
             // 결과 재확인이다(멘션 중에는 이 값이 실려 가지 않으므로 평소 이름으로 돌아간다).
-            aria-label={t(hostMode ? "chrome.quickLaunch.hostCreateWithKey" : mentionTarget?.kind === "plugin" ? "chrome.quickLaunch.sendWithKey" : chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
-            title={t(hostMode ? "chrome.quickLaunch.hostCreateWithKey" : mentionTarget?.kind === "plugin" ? "chrome.quickLaunch.sendWithKey" : chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
+            aria-label={t(hostMode ? (hostCreated ? "chrome.quickLaunch.hostRetryWithKey" : "chrome.quickLaunch.hostCreateWithKey") : mentionTarget?.kind === "plugin" ? "chrome.quickLaunch.sendWithKey" : chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
+            title={t(hostMode ? (hostCreated ? "chrome.quickLaunch.hostRetryWithKey" : "chrome.quickLaunch.hostCreateWithKey") : mentionTarget?.kind === "plugin" ? "chrome.quickLaunch.sendWithKey" : chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
           />
 
           {popover === "theater" ? (
