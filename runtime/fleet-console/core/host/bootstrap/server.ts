@@ -17,7 +17,7 @@ import { createComputerUseRouter } from "../../../features/computer-use/host/rou
 import { createPluginAgentHost } from "../../../features/execution/host/agent/plugin-agent.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
-import { createHostGateway } from "../../../features/remote-access/host/host-gateway.js";
+import { admitHostPageOrigin, createHostGateway } from "../../../features/remote-access/host/host-gateway.js";
 import { isDeclaredObserverRead } from "../../../features/remote-access/host/read-only-admission.js";
 import { createHostShellBridge } from "../shell/host-transport-bridge.js";
 import { DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH } from "@fleet-console/protocol/desktop";
@@ -1573,7 +1573,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasController("remote"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   const hostGateway = createHostGateway({
     isLoopback: isLoopbackListener,
-    isExactOrigin: isExactConsoleOrigin,
+    // 브라우저 same-origin GET은 Origin이 없다. POST·WebSocket은 여전히 정확한 Origin만 받는다.
+    isExactOrigin: (req) => {
+      const listener = listenerForRequest(req);
+      return listener !== null && admitHostPageOrigin(req, listener.origin);
+    },
     findHost: (hostKey) => {
       const host = remoteHostStore.find(hostKey);
       return host ? { hostname: host.hostname, port: host.port, fingerprint: host.fingerprint, origin: host.origin } : null;

@@ -438,6 +438,51 @@ it("does not take control or permit writes when a paired device only observes", 
     expect(errorOf(evidence.body)).not.toBe("read_only");
   });
 
+  it("admits a same-origin host read without Origin and keeps foreign, cross-site, and write requests out", async () => {
+    const fixture = await startFixture({ remote: true });
+    const other = await startFixture({ remote: true });
+    const pageOrigin = new URL(fixture.loopbackEndpoint).origin;
+    const added = await fetch(`${fixture.loopbackEndpoint}api/v1/remote-hosts`, {
+      method: "POST",
+      headers: { Origin: pageOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ link: await createLink(other) }),
+    });
+    expect(added.status).toBe(201);
+    const hostId = ((await added.json()) as { host: { id: string } }).host.id;
+    const presencePath = `/api/v1/hosts/${encodeURIComponent(hostId)}/presence`;
+    const browser = { "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" };
+    const presence = await loopbackCall(fixture, "GET", presencePath, browser);
+    expect(presence.status).toBe(200);
+    const current = JSON.parse(presence.body) as { hostKey: string; epoch: number; instanceId: string; mode: string };
+    expect(current).toMatchObject({ hostKey: hostId, mode: "off" });
+    const eventsPath = `/api/v1/hosts/${encodeURIComponent(hostId)}/events?${new URLSearchParams({ path: "/api/v1/operations/events", epoch: String(current.epoch), instanceId: current.instanceId })}`;
+    const events = await loopbackCall(fixture, "GET", eventsPath, { accept: "text/event-stream", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" });
+    expect(events.status).toBe(409);
+    expect(JSON.parse(events.body)).toEqual({ error: "host_inactive", epoch: current.epoch });
+    const resourcePath = `/api/v1/hosts/${encodeURIComponent(hostId)}/resources?${new URLSearchParams({ path: "/plugins/file-explorer/files/image?path=one.png", epoch: String(current.epoch), instanceId: current.instanceId })}`;
+    const image = await loopbackCall(fixture, "GET", resourcePath, { "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" });
+    expect(image.status).toBe(409);
+    expect(JSON.parse(image.body)).toEqual({ error: "host_inactive", epoch: current.epoch });
+    expect(await loopbackCall(fixture, "GET", presencePath, {})).toMatchObject({ status: 400, body: "{\"error\":\"invalid_host_request\"}" });
+    expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "https://evil.example" })).status).toBe(400);
+    expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "null" })).status).toBe(400);
+    expect((await loopbackCall(fixture, "GET", presencePath, { "sec-fetch-site": "cross-site", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" })).status).toBe(400);
+    const posted = await loopbackCall(fixture, "POST", presencePath, { ...browser, "content-type": "application/json" }, JSON.stringify({ intent: "observe", expectedEpoch: current.epoch, expectedInstanceId: current.instanceId }));
+    expect(posted.status).toBe(400);
+    expect(JSON.parse(posted.body)).toEqual({ error: "invalid_host_request" });
+    const mismatched = await loopbackCall(fixture, "GET", presencePath, { ...browser, host: "evil.example" });
+    expect(mismatched.status).toBe(403);
+    expect(JSON.parse(mismatched.body)).toEqual({ error: "host_mismatch" });
+    const remote = await remoteRequest(fixture, "GET", presencePath, undefined, await joinAs(fixture, "full", "watcher"));
+    expect(remote.status).toBe(404);
+    expect(JSON.parse(remote.body)).toEqual({ error: "not_found" });
+    const upgrade = await loopbackCall(fixture, "GET", `/api/v1/hosts/${encodeURIComponent(hostId)}/socket?epoch=${current.epoch}&instanceId=${current.instanceId}&channel=terminal&operationId=op-1`, {
+      connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-fetch-site": "same-origin",
+    });
+    expect(upgrade.status).toBe(404);
+    expect(JSON.parse(upgrade.body)).toEqual({ error: "not_found" });
+  }, 20_000);
+
   it("charges the remote join budget for an unauthenticated host session", async () => {
     const fixture = await startFixture({ remote: true });
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -648,6 +693,26 @@ function errorOf(body: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function loopbackCall(fixture: Fixture, method: string, requestPath: string, headers: Record<string, string>, body?: string, headOnly = false): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
+  const url = new URL(fixture.loopbackEndpoint);
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: url.hostname, port: Number(url.port), path: requestPath, method, headers: { ...headers, ...(body ? { "content-length": Buffer.byteLength(body) } : {}) } }, (response) => {
+      if (headOnly) {
+        response.resume();
+        resolve({ status: response.statusCode ?? 0, headers: response.headers, body: "" });
+        response.destroy();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    request.on("error", reject);
+    if (body) request.write(body);
+    request.end();
+  });
 }
 
 function remoteRequest(

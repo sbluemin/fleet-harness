@@ -24,6 +24,29 @@ import {
 
 import { admitHostRoute } from "./host-route-table.js";
 
+/**
+ * 페이지의 same-origin GET·EventSource·이미지는 Origin을 빼는 경우가 있다.
+ * Origin이 있으면 이 리스너와 같아야 하고, `null`이나 다른 출처는 거절한다.
+ * Origin이 없을 때는 Fetch Metadata가 same-origin이거나 사용자가 연 탐색(none)일 때만 읽기를 연다.
+ * cross-site는 거절한다. POST와 WebSocket은 Origin이 정확히 같을 때만 통과한다.
+ * 이 판정은 인증이 아니다. Host 일치와 루프백 리스너는 서버가 따로 본다.
+ */
+export function admitHostPageOrigin(req: http.IncomingMessage, expectedOrigin: string): boolean {
+  const origin = singleHeader(req.headers.origin);
+  if (origin === expectedOrigin) return true;
+  if (origin !== undefined) return false;
+  if ((req.method ?? "GET").toUpperCase() !== "GET") return false;
+  if (String(req.headers.upgrade ?? "").toLowerCase() === "websocket") return false;
+  const site = singleHeader(req.headers["sec-fetch-site"]);
+  return site === "same-origin" || site === "none";
+}
+
+function singleHeader(value: string | string[] | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value.length === 1 ? value[0] : "\u0000";
+  return value.includes(",") ? "\u0000" : value;
+}
+
 export interface HostShellPort {
   call(request: {
     readonly hostKey: string;
