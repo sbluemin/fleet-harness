@@ -36,6 +36,12 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
   "client.reply",
   "server.frame",
   "tool.mcp.dropped",
+  "tool.catalog",
+  "tool.catalog.sent",
+  "tool.catalog.summary",
+  "tool.call",
+  "tool.result",
+  "tool.reference",
   "bridge.park",
   "bridge.attach",
   "bridge.defer",
@@ -133,7 +139,7 @@ export function createCursorDiagnosticLog(
 /** Rebuild the persisted object from an explicit allowlist; discard unexpected runtime fields. */
 function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | null {
   if (!CURSOR_DIAGNOSTIC_EVENTS.has(event.event)) return null;
-  const record: Record<string, string | number> = {
+  const record: Record<string, string | number | boolean> = {
     timestamp: safeString(event.timestamp, 40),
     runId: safeString(event.runId, 64),
     event: event.event,
@@ -145,7 +151,7 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
   if (event.requestedEffort && CURSOR_DIAGNOSTIC_EFFORTS.has(event.requestedEffort)) {
     record.requestedEffort = event.requestedEffort;
   }
-  if (event.turn === "prompt" || event.turn === "tool-continuation") record.turn = event.turn;
+  if (event.turn === "prompt" || event.turn === "tool-continuation" || event.turn === "resample") record.turn = event.turn;
   addNumber(record, "status", event.status);
   addString(record, "frame", event.frame, 128);
   addString(record, "reply", event.reply, 128);
@@ -154,8 +160,20 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
   addNumber(record, "frameCount", event.frameCount);
   addString(record, "lastFrame", event.lastFrame, 128);
   addNumber(record, "toolCount", event.toolCount);
-  if (event.event === "tool.mcp.dropped") {
+  addNumber(record, "requestSequence", event.requestSequence);
+  addNumber(record, "schemaBytes", event.schemaBytes);
+  for (const key of ["toolKey", "wireKey", "callKey", "schemaHash", "catalogHash", "previousCatalogHash"] as const) {
+    const value = event[key];
+    if (typeof value === "string" && /^[a-f0-9]{64}$/.test(value)) record[key] = value;
+  }
+  for (const key of ["expected", "deferred", "referenced", "truncated"] as const) {
+    if (typeof event[key] === "boolean") record[key] = event[key];
+  }
+  if (event.event.startsWith("tool.")) {
     addString(record, "toolName", event.toolName, 128);
+    addString(record, "wireName", event.wireName, 128);
+  }
+  if (event.event === "tool.mcp.dropped") {
     addString(record, "providerIdentifier", event.providerIdentifier, 128);
     if (event.reason === "foreign_provider" || event.reason === "catalog_miss") record.reason = event.reason;
   }
@@ -171,7 +189,7 @@ function serializeCursorDiagnosticEvent(event: CursorDiagnosticEvent): string | 
 }
 
 function addString(
-  record: Record<string, string | number>,
+  record: Record<string, string | number | boolean>,
   key: string,
   value: string | undefined,
   maxLength: number,
@@ -180,7 +198,7 @@ function addString(
 }
 
 function addNumber(
-  record: Record<string, string | number>,
+  record: Record<string, string | number | boolean>,
   key: string,
   value: number | undefined,
 ): void {
