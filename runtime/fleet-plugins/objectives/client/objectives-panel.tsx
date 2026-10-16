@@ -713,12 +713,6 @@ function MemberRoster({ objective, t, call, request, operationState, rows, touch
             ? <p>{[member.next.cause.errorClass, member.next.cause.code, member.next.cause.exitCode !== undefined ? `exit ${member.next.cause.exitCode}` : undefined, member.next.cause.signal].filter((value) => value !== undefined && value !== "").join(" · ")}</p> : null}
         </details> : null}
         {member.noReportTool ? <p className="objectives-member-note is-warn" role="status">{noteOf("noReportTool")?.text}</p> : null}
-        {/* 실패 없이 닫힌 턴이 아무 보고도 남기지 못했다 — 사유 칸은 판정한 출처가 있을 때만 붙는다. 마지막 응답은 원문 그대로다. */}
-        {member.unreported ? <details className="objectives-member-note is-warn objectives-member-failure">
-          <summary>{noteOf("unreported")?.text}</summary>
-          {member.unreported.reason?.detail !== undefined ? <pre>{member.unreported.reason.detail}</pre> : null}
-          {member.unreported.lastMessage !== undefined ? <><p>{t("objectives.members.unreportedData")}</p><pre>{member.unreported.lastMessage}</pre></> : <p>{t("objectives.members.unreportedEmpty")}</p>}
-        </details> : null}
         {((fallback) => fallback ? <p className="objectives-member-reason" title={fallback.title}>{fallback.text}</p> : null)(noteOf("fallback"))}
         {notes.has(member.id) ? <p className="objectives-member-note" aria-hidden="true">{t("objectives.members.subagentsLive")}</p> : null}
         {fault?.id === member.id && !picked ? <p className="objectives-member-note is-error" role="alert">{hasRoutingReason(fault.code) ? routingReason(t, fault.code) : t("objectives.toast.failed", { code: fault.code })}</p> : null}

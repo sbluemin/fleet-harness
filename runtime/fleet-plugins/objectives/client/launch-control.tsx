@@ -336,10 +336,10 @@ function memberFallbackNote(member: ObjectiveMember, launched: boolean, t: Trans
 
 /**
  * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음,
- * 보고 없이 닫힌 턴, 라우팅 폴백 사유. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
+ * 라우팅 폴백 사유. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
  */
 export interface MemberNote {
-  readonly kind: "failure" | "switch" | "noReportTool" | "unreported" | "fallback";
+  readonly kind: "failure" | "switch" | "noReportTool" | "fallback";
   readonly text: string;
   readonly title?: string;
   readonly tone: "danger" | "warn";
@@ -355,8 +355,6 @@ export function memberNotes(member: ObjectiveMember, launched: boolean, t: Trans
   }
   if (launched && member.next?.failed && member.next.cause) notes.push({ kind: "switch", tone: "danger", text: t("objectives.members.next.causeSummary"), ...raw([member.next.cause.message]) });
   if (member.noReportTool) notes.push({ kind: "noReportTool", tone: "warn", text: t("objectives.members.noReportTool") });
-  if (member.unreported) notes.push({ kind: "unreported", tone: "warn", text: member.unreported.reason ? t("objectives.members.unreportedReason", { reason: member.unreported.reason.code }) : t("objectives.members.unreported"),
-    ...raw([member.unreported.reason?.detail, member.unreported.lastMessage]) });
   const fallback = memberFallbackNote(member, launched, t);
   if (fallback) notes.push({ kind: "fallback", tone: "warn", ...fallback });
   return notes;
