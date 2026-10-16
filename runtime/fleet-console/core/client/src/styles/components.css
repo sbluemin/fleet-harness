@@ -13915,6 +13915,19 @@ body[data-expanded-surface-resizing="true"] {
     visibility 0s linear 0s;
 }
 
+/* 모델 칩·추론강도 트랙 공유 부품(LaunchModelEffort)의 감싸개는 레이아웃에 끼지 않는다 — 칩과
+   트랙이 부모(Quick Launch 묶음, 새 세션 슬롯)의 한 줄 flex 항목으로 그대로 선다. 감싸개가 inline
+   상자로 남으면 트랙이 익명 블록을 만들어 칩 아래 줄로 떨어진다(1440px에서 실측). */
+.launch-model-effort {
+  display: contents;
+}
+
+/* 팝오버 기준점. 칩의 말줄임(flex: 0 1 auto)이 살도록 최소폭을 0으로 누른다. */
+.launch-model-effort-anchor {
+  display: inline-flex;
+  min-width: 0;
+}
+
 .quick-launch-launch-sel.is-hidden {
   /* 접힐 때는 줄바꿈을 되돌린다 — 폭이 0으로 줄면 컨트롤이 저마다 줄을 차지해, 보이지 않는 채로
      바 높이만 부풀린다(visibility: hidden은 레이아웃에서 빠지지 않는다). */
