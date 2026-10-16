@@ -22,6 +22,11 @@ interface OpenSession {
   inFlight: boolean;
   /** 목표를 만든 Theater. 만든 뒤에는 다른 Theater로 바꿔 올리지 않는다. */
   theaterId: string | null;
+  /**
+   * 같은 시도의 재전송을 서버가 한 번만 저장하도록 실어 보내는 업로드 키. 원본 Blob마다 한 번 만들고
+   * 이 회차(=한 host·수명·목표)에서만 쓴다 — 새 파일·새 회차는 새 키라 의도한 새 첨부와 섞이지 않는다.
+   */
+  readonly uploadIds: WeakMap<Blob, string>;
 }
 
 /** 원격 Quick Launch 회차의 유일한 소유자다. host·수명·선택 세대가 바뀌면 회차와 진행 중 생성 요청을 함께 끝낸다. */
@@ -93,7 +98,7 @@ export function createHostQuickLaunch(binding: HostWorkspaceBinding): HostQuickL
           draft: drafts.get(host.hostKey) ?? "",
           created: null,
         }),
-        generation: snapshot.selectionGeneration, transport, abort: new AbortController(), inFlight: false, theaterId: null,
+        generation: snapshot.selectionGeneration, transport, abort: new AbortController(), inFlight: false, theaterId: null, uploadIds: new WeakMap(),
       };
       publish();
       return true;
@@ -149,15 +154,22 @@ export function createHostQuickLaunch(binding: HostWorkspaceBinding): HostQuickL
         const failed: number[] = [];
         for (const [index, attachment] of input.attachments.entries()) {
           if (!current(open)) return { kind: "stale" };
+          // 응답을 잃은 시도를 다시 보내도 같은 키다. 서버는 같은 목표·키·바이트면 기존 첨부를 돌려준다.
+          let uploadId = open.uploadIds.get(attachment.file);
+          if (!uploadId) {
+            uploadId = crypto.randomUUID();
+            open.uploadIds.set(attachment.file, uploadId);
+          }
           try {
-            const response = await open.transport.request(`/plugins/objectives/attachment/add?objectiveId=${encodeURIComponent(created.id)}&name=${encodeURIComponent(attachment.name)}`, {
+            const response = await open.transport.request(`/plugins/objectives/attachment/add?objectiveId=${encodeURIComponent(created.id)}&name=${encodeURIComponent(attachment.name)}&uploadId=${uploadId}`, {
               method: "POST",
               headers: { "Content-Type": attachment.file.type || "application/octet-stream" },
               body: attachment.file,
               signal: AbortSignal.any([open.abort.signal, scope.signal, AbortSignal.timeout(UPLOAD_TIMEOUT_MS)]),
             });
-            await readHostJson<unknown>(scope, response).catch(() => undefined);
-            if (!response.ok) failed.push(index);
+            const body = await readHostJson<{ readonly error?: unknown }>(scope, response).catch(() => null);
+            // 그사이 사람이 지운 첨부는 되살리지 않는다 — 다시 보낼 것이 없으므로 남은 칩으로 두지 않는다.
+            if (!response.ok && body?.error !== "attachment_upload_removed") failed.push(index);
           } catch {
             if (!current(open)) return { kind: "stale" };
             failed.push(index);
