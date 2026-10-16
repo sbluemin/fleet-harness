@@ -141,8 +141,10 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     for (const res of group) if (!res.destroyed) res.write(frame);
   };
 
+  // 공개 오류 본문 계약: `stale_epoch`만 현재 세대를 함께 싣고, 나머지는 정확히 `{ error }`다. 브라우저 validator가 그 밖의 형태를
+  // 거절하므로(예: 첫 observe의 not_paired), 호출 지점이 epoch를 넘겨도 여기서 한 번에 거른다 — 모든 오류 경로가 이 함수를 지난다.
   const fail = (res: http.ServerResponse, error: HostTransportError, epoch?: number): void => {
-    deps.writeJson(res, HOST_ERROR_STATUS[error], epoch === undefined ? { error } : { error, epoch });
+    deps.writeJson(res, HOST_ERROR_STATUS[error], error === "stale_epoch" && epoch !== undefined ? { error, epoch } : { error });
   };
 
   const handle = async ({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean> => {

@@ -11,6 +11,8 @@ import {
   DESKTOP_HOST_UPLOAD_CHUNK_CHARS,
   type DesktopHostCommand,
 } from "@fleet-console/protocol/desktop";
+import { createRemoteHostDependencies } from "../core/client/src/integration/remote-host-transport.js";
+import { createRemoteHostRuntime } from "../core/client/src/integration/remote-host-runtime.js";
 import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
 import {
   HOST_TERMINAL_UPGRADE_PATH,
@@ -695,6 +697,102 @@ describe("host gateway admission", () => {
       for (const timer of timers) clearInterval(timer);
       shell.stop();
       await closeServer(server);
+    }
+  });
+
+  /**
+   * 실제 loopback 서버·Origin 판정·bridge·gateway·writeJson 바이트를 지나 공개 browser dependencies·runtime까지 간다.
+   * 셸(Desktop)만 relay로 흉내 낸다. 오류 본문은 손으로 만들지 않는다.
+   */
+  it("sends the public error body for each shell failure and carries a not-paired observe to the browser runtime", async () => {
+    const start = async () => {
+      const bridge = createHostShellBridge();
+      const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+      const endpoint = { origin: "" };
+      const gateway = createHostGateway({
+        isLoopback: (req) => {
+          const address = req.socket.remoteAddress;
+          return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+        },
+        isExactOrigin: (req) => req.headers.origin === endpoint.origin,
+        findHost: () => target,
+        bridge,
+        readJsonBody: readJson,
+        writeJson,
+        withSecurityHeaders: (headers) => headers,
+      });
+      const server = hostTransportServer(bridge, gateway);
+      const port = await listen(server);
+      endpoint.origin = `http://127.0.0.1:${port}`;
+      const origin = endpoint.origin;
+      const relay = { current: {} as Record<string, unknown> };
+      const shell = followHostCommands(origin, (command) => { void postHostRelay(origin, { id: command.id, ...relay.current }); });
+      await shell.attached;
+      return { origin, relay, stop: async () => { shell.stop(); await closeServer(server); } };
+    };
+
+    // 브라우저 runtime: 실제 응답이 공개 error validator를 통과해야 정확한 코드가 HostView까지 간다.
+    const browser = await start();
+    const network = {
+      fetch: ((path: string, init?: RequestInit) => fetch(`${browser.origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), origin: browser.origin } })) as typeof fetch,
+      events: () => { throw new Error("unused"); },
+      socket: () => { throw new Error("unused"); },
+      origin: browser.origin,
+    };
+    const runtime = createRemoteHostRuntime(createRemoteHostDependencies("host1", "label", network));
+    try {
+      browser.relay.current = { error: "remote_host_not_paired" };
+      await expect(runtime.observe(new AbortController().signal)).rejects.toThrow("remote_host_not_paired");
+      expect(runtime.getSnapshot()).toMatchObject({ phase: "error", error: "remote_host_not_paired" });
+    } finally {
+      runtime.dispose();
+      await browser.stop();
+    }
+
+    // 서로 다른 기전의 오류가 각자 정확한 wire 형태로 나간다: epoch는 stale_epoch에만, 나머지는 {error}만.
+    const wire = await start();
+    try {
+      const presencePath = hostTransportPath("presence", "host1") ?? "";
+      const requestPath = hostTransportPath("request", "host1") ?? "";
+      const current = async (): Promise<{ epoch: number; instanceId: string }> => (await (await fetch(`${wire.origin}${presencePath}`, { headers: { origin: wire.origin } })).json()) as { epoch: number; instanceId: string };
+      const post = async (path: string, body: unknown, origin = wire.origin): Promise<{ status: number; body: unknown }> => {
+        const response = await fetch(`${wire.origin}${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
+        const text = await response.text();
+        return { status: response.status, body: text ? JSON.parse(text) as unknown : null };
+      };
+      const exact = (result: { status: number; body: unknown }, status: number, body: unknown): void => {
+        expect(result.status).toBe(status);
+        expect(result.body).toEqual(body);
+        expect(isHostTransportErrorBody(result.body)).toBe(true);
+      };
+      const lifetime = await current();
+      const observe = (epoch: number, instance = lifetime.instanceId) => ({ intent: "observe", expectedEpoch: epoch, expectedInstanceId: instance });
+
+      wire.relay.current = { error: "remote_host_not_paired" };
+      exact(await post(presencePath, observe(lifetime.epoch)), 401, { error: "remote_host_not_paired" });
+      wire.relay.current = { error: "observer_only" };
+      exact(await post(presencePath, { ...observe(lifetime.epoch), intent: "activate" }), 403, { error: "observer_only" });
+      // 게이트웨이 자신의 판정: 낡은 epoch만 현재 세대를 싣고, 낡은 수명은 {error}뿐이다.
+      exact(await post(presencePath, observe(lifetime.epoch + 5)), 409, { error: "stale_epoch", epoch: (await current()).epoch });
+      exact(await post(presencePath, observe(lifetime.epoch, "00000000-1111-4222-8333-444455556666")), 409, { error: "stale_instance" });
+      // 정확한 Origin이 아니면 게이트웨이가 닫는다.
+      exact(await post(presencePath, observe(lifetime.epoch), "http://127.0.0.1:1"), 400, { error: "invalid_host_request" });
+
+      // 제어 가능한 연결에서 원격 도달 실패는 일반 거절이다.
+      wire.relay.current = { capability: "supported", mode: "controller", access: "full" };
+      expect((await post(presencePath, { ...observe(lifetime.epoch), intent: "activate" })).status).toBe(204);
+      const live = await current();
+      const request = { requestId: "11111111-2222-4333-8444-555555555555", expectedEpoch: live.epoch, expectedInstanceId: live.instanceId, method: "GET", path: "/api/v1/theaters" };
+      wire.relay.current = { error: "remote_host_unreachable" };
+      exact(await post(requestPath, request), 409, { error: "remote_host_unreachable" });
+
+      // 셸이 지원하지 않는다고 하면 막힌 연결이 되고, 그 연결의 요청은 {error}만 받는다.
+      wire.relay.current = { capability: "unsupported", error: "host_unsupported" };
+      exact(await post(presencePath, observe(live.epoch)), 409, { error: "host_unsupported" });
+      const blocked = await current();
+      exact(await post(requestPath, { ...request, expectedEpoch: blocked.epoch }), 409, { error: "host_inactive" });
+    } finally {
+      await wire.stop();
     }
   });
 });
