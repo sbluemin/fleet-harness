@@ -180,19 +180,22 @@ describe("Fleet-owned subscription sign-in", () => {
   });
 
   // Cursor에는 device code가 없다. 사용자가 여는 URL에는 challenge만 있고, verifier는 서버의 폴링에만 실린다.
-  it("signs in to Cursor by polling with a server-held PKCE verifier", async () => {
+  // 갱신은 거절되므로(실측) 하지 않는다: 만료 직전에도 공급자를 부르지 않고 토큰을 쓰며, 만료 뒤에는 expired다.
+  it("signs in to Cursor with a server-held PKCE verifier and uses the token until it expires without refreshing", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "cursor-oauth-"));
     const authService = createProviderAuthService({ dataDir: directory });
-    const accessToken = jwt({ sub: "auth0|user-1", exp: 2_000_000_000 });
+    const expiresAt = 2_000_000_000_000;
+    const accessToken = jwt({ sub: "auth0|user-1", exp: expiresAt / 1000 });
+    let now = Date.now();
     let polls = 0;
     const fetchImpl = vi.fn<typeof fetch>(async (url, init) => {
       const target = new URL(String(url));
       expect(`${target.origin}${target.pathname}`).toBe("https://api2.cursor.sh/auth/poll");
       expect(init?.method).toBe("GET");
       polls += 1;
-      return polls === 1 ? new Response(null, { status: 404 }) : Response.json({ accessToken, refreshToken: "refresh-secret" });
+      return polls === 1 ? new Response(null, { status: 404 }) : Response.json({ accessToken, refreshToken: accessToken });
     });
-    const oauth = createCursorOAuth({ authService, fetch: fetchImpl });
+    const oauth = createCursorOAuth({ authService, fetch: fetchImpl, now: () => now });
     try {
       const started = await oauth.start();
       const login = new URL(started.verificationUri);
@@ -204,9 +207,14 @@ describe("Fleet-owned subscription sign-in", () => {
       expect(poll.searchParams.get("uuid")).toBe(login.searchParams.get("uuid"));
       expect(createHash("sha256").update(verifier).digest("base64url")).toBe(login.searchParams.get("challenge"));
       expect(JSON.stringify(started)).not.toContain(verifier);
-      expect(await authService.getEntry(CURSOR_AUTH_PROVIDER_ID)).toEqual({
-        key: accessToken, type: "oauth", refreshToken: "refresh-secret", accessExpiresAt: 2_000_000_000_000, version: 1,
-      });
+      expect(await authService.getEntry(CURSOR_AUTH_PROVIDER_ID)).toEqual({ key: accessToken, type: "oauth", accessExpiresAt: expiresAt, version: 1 });
+      const calls = fetchImpl.mock.calls.length;
+      now = expiresAt - 60_000;
+      await expect(oauth.readSubscriptionToken()).resolves.toBe(accessToken);
+      now = expiresAt + 1;
+      await expect(oauth.readSubscriptionToken()).resolves.toBeNull();
+      await expect(oauth.fetchUsage()).resolves.toEqual({ status: "expired" });
+      expect(fetchImpl).toHaveBeenCalledTimes(calls);
     } finally {
       oauth.dispose();
       fs.rmSync(directory, { recursive: true, force: true });

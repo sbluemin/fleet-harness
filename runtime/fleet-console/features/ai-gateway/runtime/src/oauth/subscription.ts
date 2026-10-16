@@ -5,14 +5,16 @@ import { createLoginSessions, type LoginFlow, type LoginStart } from "./login-se
 
 /**
  * Console이 로그인해 받은 구독 자격의 공통 항목. `key`는 추론에 쓰는 access token이다.
- * 공급자 모듈이 계정 필드(account id 등)를 더한다.
+ * 공급자 모듈이 계정 필드(account id 등)를 더한다. 갱신하는 공급자만 `refreshToken`을 둔다.
  */
 export interface SubscriptionOAuthEntry extends AuthStorageEntry {
   readonly type: "oauth";
-  readonly refreshToken: string;
+  readonly refreshToken?: string;
   readonly accessExpiresAt: number;
   readonly version: 1;
 }
+
+type Refreshable<E extends SubscriptionOAuthEntry> = E & { readonly refreshToken: string };
 
 export interface SubscriptionTokenGrant {
   readonly accessToken: string;
@@ -41,7 +43,11 @@ export interface SubscriptionOAuthConfig<E extends SubscriptionOAuthEntry> {
   buildEntry(token: Extract<DevicePollResult, { state: "authorized" }>, signal: AbortSignal): Promise<E> | E;
   /** 형식이 맞지 않으면 undefined. 옛 형식을 다른 형식으로 해석하지 않는다. */
   parseEntry(entry: AuthStorageEntry): E | undefined;
-  refresh(entry: E, signal: AbortSignal): Promise<SubscriptionRefreshOutcome>;
+  /**
+   * 없으면 갱신하지 않는다 — 토큰을 만료 시각까지 그대로 쓰고, 그 뒤에는 `expired`다
+   * (만료 전 여유 시간도 두지 않는다). 갱신 토큰이 없는 항목도 같다.
+   */
+  refresh?(entry: Refreshable<E>, signal: AbortSignal): Promise<SubscriptionRefreshOutcome>;
   /** 401/403이면 `{ status: "expired" }`를 돌려준다. 한 번 강제 갱신한 뒤 다시 부른다. */
   fetchQuota(entry: E): Promise<ProviderResult>;
 }
@@ -102,13 +108,13 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
   }
 
   /** 갱신이 실패했어도 다른 호출자가 이미 회전해 저장했다면 그 값이 답이다. */
-  async function movedOn(used: E): Promise<SubscriptionAuthResult<E> | undefined> {
+  async function movedOn(used: Refreshable<E>): Promise<SubscriptionAuthResult<E> | undefined> {
     const current = await stored();
     if (current.status !== "ok") return current;
     return current.entry.refreshToken !== used.refreshToken ? current : undefined;
   }
 
-  function refreshOnce(entry: E): Promise<SubscriptionAuthResult<E>> {
+  function refreshOnce(entry: Refreshable<E>, refresh: NonNullable<SubscriptionOAuthConfig<E>["refresh"]>): Promise<SubscriptionAuthResult<E>> {
     const pending = inFlight.get(entry.refreshToken);
     if (pending) return pending;
     const revision = generation;
@@ -116,7 +122,7 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     const task = (async (): Promise<SubscriptionAuthResult<E>> => {
       let outcome: SubscriptionRefreshOutcome;
       try {
-        outcome = await config.refresh(entry, signal);
+        outcome = await refresh(entry, signal);
       } catch {
         if (revision === generation) backoff.set(entry.refreshToken, now() + REFRESH_FAILURE_BACKOFF_MS);
         return await movedOn(entry) ?? { status: "unavailable" };
@@ -158,11 +164,14 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     const { entry } = current;
     const force = options.force === true && (options.failedKey === undefined || options.failedKey === entry.key);
     const usable = entry.accessExpiresAt > now();
+    const refreshToken = entry.refreshToken;
+    if (!config.refresh || refreshToken === undefined) return !force && usable ? current : { status: "expired" };
+    const refreshable = entry as Refreshable<E>;
     if (!force && entry.accessExpiresAt - now() > SUBSCRIPTION_REFRESH_WINDOW_MS) return current;
-    if (rejected.has(entry.refreshToken)) return !force && usable ? current : { status: "expired" };
-    if ((backoff.get(entry.refreshToken) ?? 0) > now()) return !force && usable ? current : { status: "unavailable" };
+    if (rejected.has(refreshToken)) return !force && usable ? current : { status: "expired" };
+    if ((backoff.get(refreshToken) ?? 0) > now()) return !force && usable ? current : { status: "unavailable" };
     let refreshed: SubscriptionAuthResult<E>;
-    try { refreshed = await refreshOnce(entry); } catch { refreshed = { status: "unavailable" }; }
+    try { refreshed = await refreshOnce(refreshable, config.refresh); } catch { refreshed = { status: "unavailable" }; }
     // 미리 하는 갱신이 실패해도 아직 유효한 토큰은 쓸 수 있다.
     if (refreshed.status !== "ok" && !force && usable) return current;
     return refreshed;
@@ -217,10 +226,15 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
 
 export type SubscriptionOAuth<E extends SubscriptionOAuthEntry> = ReturnType<typeof createSubscriptionOAuth<E>>;
 
-/** 공통 필드만 검사한다. 공급자 모듈이 자기 필드를 더 확인한다. */
+/** 공통 필드만 검사한다. 공급자 모듈이 자기 필드(갱신 토큰·계정 id)를 더 확인한다. */
 export function isSubscriptionOAuthEntry(entry: AuthStorageEntry): entry is SubscriptionOAuthEntry {
   return entry.type === "oauth" && entry.version === 1
     && typeof entry.key === "string" && entry.key.trim() !== ""
-    && typeof entry.refreshToken === "string" && entry.refreshToken.trim() !== ""
+    && (entry.refreshToken === undefined || (typeof entry.refreshToken === "string" && entry.refreshToken.trim() !== ""))
     && typeof entry.accessExpiresAt === "number" && Number.isFinite(entry.accessExpiresAt);
+}
+
+/** 갱신하는 공급자의 항목. 갱신 토큰이 없으면 그 공급자의 항목이 아니다. */
+export function isRefreshableOAuthEntry(entry: AuthStorageEntry): entry is SubscriptionOAuthEntry & { readonly refreshToken: string } {
+  return isSubscriptionOAuthEntry(entry) && entry.refreshToken !== undefined;
 }

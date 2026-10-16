@@ -191,6 +191,25 @@ describe("Grok endpoint selection", () => {
     expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
   });
 
+  // A machine without the Grok CLI sends the fallback version. When the proxy's floor has moved
+  // past it, the 426 names the floor; one retry with that version keeps the turn alive.
+  it("retries a version-gated 426 once with the floor it names and keeps that version", async () => {
+    const floor = new Response(JSON.stringify({
+      error: "Your Grok CLI version (1.0.5) is outdated. Please update to version 1.0.13 or later via `grok update`.",
+    }), { status: 426, headers: { "content-type": "application/json" } });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(floor).mockResolvedValueOnce(okStream());
+    const adoptClientVersion = vi.fn();
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, clientVersion: async () => "1.0.5", adoptClientVersion })
+      .stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    await collectXaiEvents(response.events);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-grok-client-version")).toBe("1.0.5");
+    expect(new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("x-grok-client-version")).toBe("1.0.13");
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBe(fetchMock.mock.calls[0]?.[1]?.body);
+    expect(adoptClientVersion).toHaveBeenCalledWith("1.0.13");
+  });
+
   // The two endpoints do not share a prompt cache, so a crossing re-prefills the whole
   // conversation. No upstream answer is worth that, and none of these reroute the turn.
   for (const status of [400, 401, 402, 404, 426, 429, 500]) {

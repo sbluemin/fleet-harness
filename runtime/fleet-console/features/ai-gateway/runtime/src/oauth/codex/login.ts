@@ -10,7 +10,7 @@ import {
 } from "../device-code.js";
 import {
   createSubscriptionOAuth,
-  isSubscriptionOAuthEntry,
+  isRefreshableOAuthEntry,
   type SubscriptionOAuthDeps,
   type SubscriptionOAuthEntry,
   type SubscriptionRefreshOutcome,
@@ -30,6 +30,7 @@ import {
 
 /** `accountId`는 ChatGPT 워크스페이스(구독 풀)다. 바꾸려면 다시 로그인한다. */
 export interface CodexAuthEntry extends SubscriptionOAuthEntry {
+  readonly refreshToken: string;
   readonly accountId: string;
 }
 
@@ -67,7 +68,7 @@ function tokenGrant(status: number, body: Record<string, unknown>, now: number):
 }
 
 export function parseCodexAuthEntry(entry: AuthStorageEntry): CodexAuthEntry | undefined {
-  return isSubscriptionOAuthEntry(entry) && nonEmpty(entry.accountId) !== undefined
+  return isRefreshableOAuthEntry(entry) && nonEmpty(entry.accountId) !== undefined
     ? entry as CodexAuthEntry : undefined;
 }
 

@@ -14,7 +14,6 @@ import {
   isSubscriptionOAuthEntry,
   type SubscriptionOAuthDeps,
   type SubscriptionOAuthEntry,
-  type SubscriptionRefreshOutcome,
 } from "../subscription.js";
 import {
   CURSOR_AUTH_PROVIDER_ID,
@@ -24,9 +23,9 @@ import {
   CURSOR_POLL_INTERVAL_SECONDS,
   CURSOR_POLL_MAX_CONSECUTIVE_ERRORS,
   CURSOR_POLL_URL,
-  CURSOR_REFRESH_URL,
 } from "./config.js";
 
+/** 갱신하지 않으므로 갱신 토큰을 두지 않는다. access token을 JWT 만료까지 쓴다. */
 export type CursorAuthEntry = SubscriptionOAuthEntry;
 
 export interface CursorOAuthDeps extends SubscriptionOAuthDeps {
@@ -37,14 +36,21 @@ function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+/** 이전 형식(갱신 토큰을 저장하던 항목)도 읽는다. 갱신 토큰은 쓰지 않으므로 버린다. */
 export function parseCursorAuthEntry(entry: AuthStorageEntry): CursorAuthEntry | undefined {
-  return isSubscriptionOAuthEntry(entry) ? entry : undefined;
+  if (!isSubscriptionOAuthEntry(entry)) return undefined;
+  const { refreshToken: _unused, ...rest } = entry;
+  return rest as CursorAuthEntry;
 }
 
 /**
  * Cursor Console 로그인. device code가 없다 — 서버가 PKCE verifier와 uuid를 만들고, 사용자는
  * challenge·uuid가 실린 cursor.com 페이지에서 승인하며, 서버는 api2.cursor.sh를 폴링해 토큰을
  * 받는다. localhost 콜백이 없어 원격 브라우저에서도 끝난다. 키체인·`~/.cursor`는 보지 않는다.
+ *
+ * 갱신하지 않는다. poll이 주는 refreshToken은 accessToken과 같은 값이고, 그것으로
+ * `exchange_user_api_key`를 부르면 401 "Invalid User API Key"다(실측 2026-10-16). access token은
+ * JWT 만료(약 60일)까지 그대로 쓰고, 만료되면 `expired`로 로그인 카드가 다시 선다.
  */
 export function createCursorOAuth(deps: CursorOAuthDeps) {
   const now = deps.now ?? Date.now;
@@ -53,18 +59,6 @@ export function createCursorOAuth(deps: CursorOAuthDeps) {
   const pollErrors = new WeakMap<DeviceAuthorization, number>();
 
   const expiresAt = (accessToken: string) => jwtExpiresAt(accessToken) ?? now() + CURSOR_FALLBACK_ACCESS_TTL_MS;
-
-  async function refresh(entry: CursorAuthEntry, signal: AbortSignal): Promise<SubscriptionRefreshOutcome> {
-    const { status, body } = await requestOAuthJson(fetchImpl, CURSOR_REFRESH_URL, {
-      method: "POST", signal, body: "{}",
-      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: `Bearer ${entry.refreshToken}` },
-    });
-    if (status === 401 || status === 403) return { status: "rejected" };
-    const accessToken = nonEmpty(body.accessToken);
-    if (status !== 200 || !accessToken) throw new OAuthRequestError(status);
-    const rotated = nonEmpty(body.refreshToken);
-    return { status: "ok", grant: { accessToken, accessExpiresAt: expiresAt(accessToken), ...(rotated ? { refreshToken: rotated } : {}) } };
-  }
 
   async function pollOnce(authorization: DeviceAuthorization, signal: AbortSignal): Promise<DevicePollResult> {
     if (authorization.expiresAt <= now()) return { state: "expired" };
@@ -84,9 +78,8 @@ export function createCursorOAuth(deps: CursorOAuthDeps) {
     // 승인 전에는 404로 답한다.
     if (response.status === 404) return { state: "pending" };
     const accessToken = nonEmpty(response.body.accessToken);
-    const refreshToken = nonEmpty(response.body.refreshToken);
-    if (response.status !== 200 || !accessToken || !refreshToken) throw new OAuthRequestError(response.status);
-    return { state: "authorized", accessToken, refreshToken, accessExpiresAt: expiresAt(accessToken) };
+    if (response.status !== 200 || !accessToken) throw new OAuthRequestError(response.status);
+    return { state: "authorized", accessToken, accessExpiresAt: expiresAt(accessToken) };
   }
 
   const oauth = createSubscriptionOAuth<CursorAuthEntry>({
@@ -107,14 +100,9 @@ export function createCursorOAuth(deps: CursorOAuthDeps) {
       pollOnce,
     },
     buildEntry(token) {
-      if (!token.refreshToken) throw new OAuthRequestError();
-      return {
-        key: token.accessToken, type: "oauth", refreshToken: token.refreshToken,
-        accessExpiresAt: token.accessExpiresAt ?? expiresAt(token.accessToken), version: 1,
-      };
+      return { key: token.accessToken, type: "oauth", accessExpiresAt: token.accessExpiresAt ?? expiresAt(token.accessToken), version: 1 };
     },
     parseEntry: parseCursorAuthEntry,
-    refresh,
     fetchQuota: (entry) => fetchCursorUsage({ accessToken: entry.key }, { fetch: fetchImpl, now }),
   }, deps);
 

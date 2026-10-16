@@ -9,7 +9,7 @@ import {
 } from "../device-code.js";
 import {
   createSubscriptionOAuth,
-  isSubscriptionOAuthEntry,
+  isRefreshableOAuthEntry,
   type SubscriptionOAuthDeps,
   type SubscriptionOAuthEntry,
   type SubscriptionRefreshOutcome,
@@ -22,7 +22,7 @@ import {
   XAI_OAUTH_TOKEN_URL,
 } from "./config.js";
 
-export type XaiAuthEntry = SubscriptionOAuthEntry;
+export type XaiAuthEntry = SubscriptionOAuthEntry & { readonly refreshToken: string };
 
 export interface XaiOAuthDeps extends SubscriptionOAuthDeps {
   readonly fetch?: typeof fetch;
@@ -40,7 +40,7 @@ function nonEmpty(value: unknown): string | undefined {
 }
 
 export function parseXaiAuthEntry(entry: AuthStorageEntry): XaiAuthEntry | undefined {
-  return isSubscriptionOAuthEntry(entry) ? entry : undefined;
+  return isRefreshableOAuthEntry(entry) ? entry : undefined;
 }
 
 /**
