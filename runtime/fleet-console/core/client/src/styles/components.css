@@ -11313,7 +11313,10 @@ body[data-codex-side="true"] .command-card {
   opacity: var(--control-disabled-opacity);
 }
 
+/* 숨은 체크박스(position: absolute)의 기준을 토글 자신으로 묶는다. 스크롤 칸 바깥 조상을 기준으로 삼으면,
+   라벨 클릭으로 입력에 초점이 갈 때 바깥 화면까지 스크롤되어 설정이 화면 밖으로 밀려난다. */
 .fc-settings-toggle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
