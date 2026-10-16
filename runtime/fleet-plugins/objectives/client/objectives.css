@@ -461,6 +461,8 @@ a.objectives-link:hover, a.objectives-link:focus-visible { color: var(--brass-in
 
 /* 기한 달력 — 메뉴와 같은 카드 위에 월 하나. 숫자는 모노, 오늘은 고리, 고른 날은 brass 채움, 지난 날은 dim. */
 .objectives-cal { position: fixed; z-index: 60; width: min(252px, calc(100vw - 16px)); padding: 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28); outline: none; }
+/* 달력은 body 끝 포털이라 패널 머리(창 끌기 줄) 위에 겹쳐 선다 — 카드 전체를 창 끌기에서 빼야 겹친 자리(「기한 없음」 등)가 클릭을 받는다. */
+html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-cal-quick { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 2px 8px; border-bottom: 1px solid var(--hairline); margin-bottom: 6px; }
 .objectives-cal-chip { padding: 2px 8px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
 .objectives-cal-chip:hover { border-color: var(--brass); color: var(--text-primary); }

@@ -74,7 +74,7 @@ function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTab
 
 /**
  * 탭 줄 위 한 줄의 오늘·기한 — 글리프와 짧은 낱말이 섹션 줄 문법(작은 pill)으로 선다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만
- * 말하고, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」이 맡는다.
+ * 말하고, 기한이 지나면 coral. 기한 지우기는 달력의 「기한 없음」과 고른 날짜의 재선택이 맡는다.
  */
 function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonly theaterId: string | null; readonly language: ConsoleLocale }) {
   const read = () => headObjective(contextTheaterId).objective;
