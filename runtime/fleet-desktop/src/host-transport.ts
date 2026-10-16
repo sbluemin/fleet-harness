@@ -59,12 +59,18 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const epochs = new Map<string, number>();
   const jobs = new Map<number, HostJob>();
   const uploads = new Map<number, UploadAssembly>();
-  // origin+port 하나의 쿠키 변경만 직렬화한다. 늦은 응답이 그 사이 기록된 새 값을 지우지 않게 한다.
+  // origin+port 하나의 쿠키 변경만 직렬화한다. 명령은 시작 순서로 번호를 받고, 그 번호보다 늦은 확정 뒤에는 쓰지 않는다.
   const pairingTurns = new Map<string, Promise<void>>();
+  const commandClaims = new Map<number, number>();
+  const committedClaims = new Map<string, number>();
+  let nextClaim = 1;
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
     uploads.clear();
+    commandClaims.clear();
+    committedClaims.clear();
+    nextClaim = 1;
     for (const [id, job] of jobs) {
       jobs.delete(id);
       job.abort();
@@ -81,7 +87,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return true;
   };
 
-  const partitionFor = async (command: DesktopHostCommand): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
+  const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
     try {
       await deps.confirmIdentity(command.target.hostname, command.target.port, command.target.fingerprint);
     } catch (error) {
@@ -98,7 +104,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const partition = partitions.get(command.hostKey)?.partition ?? deps.openPartition(command.hostKey);
     partition.pin(command.target.hostname, normalizeFingerprint(command.target.fingerprint));
     partitions.set(command.hostKey, { origin, fingerprint: normalizeFingerprint(command.target.fingerprint), partition });
-    await copyPairingCookie(origin, command.target.port, partition);
+    await copyPairingCookie(command, origin, partition, signal);
     return { origin, partition };
   };
 
@@ -108,6 +114,29 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const run = previous.then(work, work);
     pairingTurns.set(key, run.then(() => undefined, () => undefined));
     return run;
+  };
+
+  const claimKey = (origin: string, port: number): string => `${origin}\n${port}`;
+
+  /** 시작 순서. 응답이 먼저 도착해도 나중에 시작한 명령이 더 큰 번호를 가진다. */
+  const claimFor = (command: DesktopHostCommand): number => {
+    const existing = commandClaims.get(command.id);
+    if (existing !== undefined) return existing;
+    const claim = nextClaim;
+    nextClaim += 1;
+    commandClaims.set(command.id, claim);
+    return claim;
+  };
+
+  const claimLive = (origin: string, port: number, claim: number, signal?: AbortSignal): boolean => {
+    if (signal?.aborted) return false;
+    return claim >= (committedClaims.get(claimKey(origin, port)) ?? 0);
+  };
+
+  const publishClaim = (origin: string, port: number, claim: number): void => {
+    const key = claimKey(origin, port);
+    const current = committedClaims.get(key) ?? 0;
+    if (claim > current) committedClaims.set(key, claim);
   };
 
   const cookieName = (kind: "pairing" | "session", port: number): string => `fleet_console_${kind}_${port}`;
@@ -127,21 +156,28 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     session: cookieValue(await deps.readWindowCookies(origin), cookieName("session", port)),
   });
 
-  const copyPairingCookie = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
+  const copyPairingCookie = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<void> => {
+    const port = command.target.port;
+    const claim = claimFor(command);
     await withPairing(origin, port, async () => {
+      if (!claimLive(origin, port, claim, signal)) return;
       const name = cookieName("pairing", port);
       const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
-      if (!pairing) return;
+      if (!pairing || !claimLive(origin, port, claim, signal)) return;
       await partition.writeCookie({ ...pairing, url: origin });
     });
   };
 
-  const rememberPairing = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
+  const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<void> => {
+    const port = command.target.port;
+    const claim = claimFor(command);
     await withPairing(origin, port, async () => {
+      if (!claimLive(origin, port, claim, signal)) return;
       const name = cookieName("pairing", port);
       const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
-      if (!renewed) return;
+      if (!renewed || !claimLive(origin, port, claim, signal)) return;
       await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+      publishClaim(origin, port, claim);
     });
   };
 
@@ -158,24 +194,30 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   });
 
   const forgetPresentedCookies = async (
+    command: DesktopHostCommand,
     origin: string,
     port: number,
     partition: HostPartition,
     presented: Awaited<ReturnType<typeof readPresentedCookies>>,
     signal: AbortSignal | undefined,
   ): Promise<void> => {
+    const claim = claimFor(command);
     await withPairing(origin, port, async () => {
-      if (signal?.aborted) return;
+      if (!claimLive(origin, port, claim, signal)) return;
       const current = await readPresentedCookies(partition, origin, port);
+      if (!claimLive(origin, port, claim, signal)) return;
       for (const kind of ["pairing", "session"] as const) {
         const name = cookieName(kind, port);
+        if (!claimLive(origin, port, claim, signal)) return;
         if (presented.partition[kind] && current.partition[kind] === presented.partition[kind]) await partition.removeCookie?.(origin, name);
+        if (!claimLive(origin, port, claim, signal)) return;
         if (presented.window[kind] && current.window[kind] === presented.window[kind]) await deps.removeWindowCookie?.(origin, name);
       }
     });
   };
 
   const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
+    claimFor(command);
     // abort는 epoch 거절보다 먼저다. 늦게 도착한 취소가 stale로 버려지면 원격 전송이 끝까지 남는다.
     if (command.op === "abort") {
       const uploadId = command.params.uploadId;
@@ -203,7 +245,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     jobs.set(command.id, { hostKey: command.hostKey, epoch: command.epoch, abort: stop });
     try {
-      const opened = await partitionFor(command);
+      const opened = await partitionFor(command, controller.signal);
       if (controller.signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
       if (!("partition" in opened)) return opened;
       if (command.op === "presence") return await performPresence(command, opened.origin, opened.partition, controller.signal);
@@ -217,9 +259,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   };
 
   const run = async (command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void> => {
+    claimFor(command);
     if (signal?.aborted) { await emit({ id: command.id, error: "remote_host_unavailable", end: true }); return; }
     if (!admitEpoch(command)) { await emit({ id: command.id, error: "stale_epoch", end: true }); return; }
-    const opened = await partitionFor(command);
+    const opened = await partitionFor(command, signal);
     if (!("partition" in opened)) { await emit(opened); return; }
     if (command.op === "sse") { await streamEvents(command, opened.origin, opened.partition, emit, signal); return; }
     if (command.op === "ws-open") { await streamSocket(command, opened.origin, opened.partition, emit, signal); return; }
@@ -254,10 +297,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     // release의 401은 세션만 끝난 것이다. observe·activate의 401은 그때 보낸 쿠키 값만 걷는다.
     if (response.status === 401 && (intent === "observe" || intent === "activate") && (presented.partition.pairing || presented.window.pairing)) {
-      await forgetPresentedCookies(origin, command.target.port, partition, presented, signal);
+      await forgetPresentedCookies(command, origin, command.target.port, partition, presented, signal);
       return { id: command.id, error: "remote_host_not_paired" };
     }
-    await rememberPairing(origin, command.target.port, partition);
+    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal);
     if (response.status === 404 || response.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     let body: unknown = null;
     try { body = await response.json(); } catch { body = null; }
@@ -275,15 +318,16 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const probe = await postPair(origin, partition, "{}", signal);
     if (!probe || signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (probe.status === 204) {
-      if (responseSetsSession(probe, port)) return { id: command.id, error: "remote_host_unavailable" };
+      if (!claimLive(origin, port, claimFor(command), signal) || responseSetsSession(probe, port)) return { id: command.id, error: "remote_host_unavailable" };
       const still = await withPairing(origin, port, () => readPartitionCookies(partition, origin, port));
-      if (!still.pairing) return { id: command.id, error: "remote_host_unavailable" };
-      await rememberPairing(origin, port, partition);
+      if (!still.pairing || !claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable" };
+      await rememberPairing(command, origin, partition, signal);
       return { id: command.id, capability: "supported", mode: "off", access: null };
     }
     const marker = await readPairMarker(probe);
+    if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (marker === "revoked") {
-      await forgetPresentedCookies(origin, port, partition, presented, signal);
+      await forgetPresentedCookies(command, origin, port, partition, presented, signal);
     } else if (marker !== "probe") {
       if (probe.status === 404 || probe.status === 405 || probe.status === 401) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
       return { id: command.id, error: "remote_host_unavailable" };
@@ -298,6 +342,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const submitted = await postPair(origin, partition, JSON.stringify(device === null ? { token: handoff.token } : { token: handoff.token, device }), signal);
     // handoff는 이미 소진됐다. 다시 꺼낼 수 없으므로 재시도가 아니라 링크를 다시 넣어야 한다.
     if (!submitted) return { id: command.id, error: "remote_link_required" };
+    if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (submitted.status === 401) return { id: command.id, error: "remote_link_required" };
     if (submitted.status === 409) {
       let code = "remote_host_unavailable";
@@ -309,8 +354,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     if (submitted.status === 404 || submitted.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     if (submitted.status !== 204) return { id: command.id, error: "remote_host_unavailable" };
-    if (await storePairingCookie(submitted, origin, port, partition) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
-    await rememberPairing(origin, port, partition);
+    if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (await storePairingCookie(submitted, command, origin, partition, signal) !== "paired") return { id: command.id, error: "remote_host_unavailable" };
+    if (!claimLive(origin, port, claimFor(command), signal)) return { id: command.id, error: "remote_host_unavailable", end: true };
+    await rememberPairing(command, origin, partition, signal);
     return { id: command.id, capability: "supported", mode: "off", access: null };
   }
 
@@ -378,8 +425,12 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       && normalizeFingerprint(handoff.fingerprint) === normalizeFingerprint(command.target.fingerprint);
   }
 
-  async function storePairingCookie(response: Response, origin: string, port: number, partition: HostPartition): Promise<"paired" | "rejected"> {
+  async function storePairingCookie(response: Response, command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<"paired" | "rejected"> {
+    const port = command.target.port;
+    const claim = claimFor(command);
+    // 네이티브 session.fetch는 이 함수가 쓰기 전에 Set-Cookie를 partition jar에 넣을 수 있다. 확정은 여기서만 한다.
     return withPairing(origin, port, async () => {
+      if (!claimLive(origin, port, claim, signal)) return "rejected" as const;
       const pairingName = cookieName("pairing", port);
       const sessionName = cookieName("session", port);
       const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
@@ -387,12 +438,16 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       const header = lines.find((line) => line.startsWith(`${pairingName}=`));
       if (header) {
         const value = header.slice(pairingName.length + 1).split(";")[0] ?? "";
-        if (value.length === 0) return "rejected" as const;
+        if (value.length === 0 || !claimLive(origin, port, claim, signal)) return "rejected" as const;
         await partition.writeCookie({ name: pairingName, value, url: origin, path: "/", secure: true, httpOnly: true });
+        if (!claimLive(origin, port, claim, signal)) return "rejected" as const;
       }
       const cookies = await partition.readCookies(origin);
+      if (!claimLive(origin, port, claim, signal)) return "rejected" as const;
       if (cookies.some((cookie) => cookie.name === sessionName && cookie.value.length > 0)) return "rejected" as const;
-      return cookies.some((cookie) => cookie.name === pairingName && cookie.value.length > 0) ? "paired" as const : "rejected" as const;
+      if (!cookies.some((cookie) => cookie.name === pairingName && cookie.value.length > 0)) return "rejected" as const;
+      publishClaim(origin, port, claim);
+      return "paired" as const;
     });
   }
 
@@ -473,7 +528,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     } catch {
       return { id: command.id, error: "remote_host_unavailable" };
     }
-    await rememberPairing(origin, command.target.port, partition);
+    if (claimLive(origin, command.target.port, claimFor(command), signal)) await rememberPairing(command, origin, partition, signal);
     if (response.status === 204 || response.status === 205 || response.status === 304) return { id: command.id, status: response.status, contentType: null };
     const type = response.headers.get("content-type") ?? "";
     if (command.op === "bytes") {

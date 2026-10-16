@@ -230,6 +230,12 @@ describe("host partition transport", () => {
     let plainUnauthorized = false;
     let holdSession = false;
     const sessionGate: { release: ((response: Response) => void) | null; held: (() => void) | null } = { release: null, held: null };
+    let holdGrantBody: string | null = null;
+    const grantGate: { release: ((response: Response) => void) | null; held: (() => void) | null } = { release: null, held: null };
+    let grantCookie = "pairing-secret";
+    let pauseForgetRead = false;
+    let pauseNextRead = false;
+    const readGate: { resume: (() => void) | null; held: (() => void) | null } = { resume: null, held: null };
     const rememberWindow = (cookie: { url: string; name: string; value: string }): void => {
       const index = windowCookies.findIndex((entry) => entry.url === cookie.url && entry.name === cookie.name);
       if (index >= 0) windowCookies[index] = cookie;
@@ -246,7 +252,10 @@ describe("host partition transport", () => {
             return new Promise<Response>((resolve) => { sessionGate.release = resolve; });
           }
           if (body.includes('"release"')) return Response.json({ error: "unauthorized" }, { status: 401 });
-          if (presenceReject) return Response.json({ error: "unauthorized" }, { status: 401 });
+          if (presenceReject) {
+            if (pauseForgetRead) pauseNextRead = true;
+            return Response.json({ error: "unauthorized" }, { status: 401 });
+          }
           return Response.json({ capability: "host-session", mode: "observer", access: "full" }, { status: 200 });
         }
         if (body === "{}") {
@@ -258,10 +267,22 @@ describe("host partition transport", () => {
           if (pairing) return new Response(null, { status: 204 });
           return Response.json({ error: "invalid_join", capability: "pair" }, { status: 400 });
         }
+        if (holdGrantBody && body.includes(holdGrantBody)) {
+          holdGrantBody = null;
+          grantGate.held?.();
+          return new Promise<Response>((resolve) => { grantGate.release = resolve; });
+        }
         if (submitted) return submitted;
-        return new Response(null, { status: 204, headers: { "set-cookie": "fleet_console_pairing_8443=pairing-secret; HttpOnly; Secure; Path=/" } });
+        return new Response(null, { status: 204, headers: { "set-cookie": `fleet_console_pairing_8443=${grantCookie}; HttpOnly; Secure; Path=/` } });
       },
-      async readCookies() { return cookies.map((cookie) => ({ ...cookie })); },
+      async readCookies() {
+        if (pauseNextRead) {
+          pauseNextRead = false;
+          readGate.held?.();
+          await new Promise<void>((resolve) => { readGate.resume = resolve; });
+        }
+        return cookies.map((cookie) => ({ ...cookie }));
+      },
       async writeCookie(cookie: { name: string; value: string }) {
         const index = cookies.findIndex((entry) => entry.name === cookie.name);
         if (index >= 0) cookies[index] = { name: cookie.name, value: cookie.value };
@@ -456,6 +477,47 @@ describe("host partition transport", () => {
     expect(await abortedObserve).toMatchObject({ error: "remote_host_not_paired" });
     expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
     expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
+
+    cookies.splice(0, cookies.length, { name: "fleet_console_pairing_8443", value: "stale-secret" });
+    rememberWindow({ url: origin, name: "fleet_console_pairing_8443", value: "stale-secret" });
+    presenceReject = true;
+    pauseForgetRead = true;
+    const readHeld = new Promise<void>((resolve) => { readGate.held = resolve; });
+    const readAbort = new AbortController();
+    const reading = executor.execute({ ...command, id: 29, op: "presence", routeId: "presence", params: { intent: "observe" } }, readAbort.signal);
+    await readHeld;
+    readAbort.abort();
+    readGate.resume?.();
+    await reading;
+    expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("stale-secret");
+    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("stale-secret");
+    expect(windowCookies.find((entry) => entry.url === otherOrigin)?.value).toBe("other-port");
+
+    cookies.splice(0, cookies.length);
+    windowCookies.splice(0, windowCookies.length, { url: otherOrigin, name: "fleet_console_pairing_9443", value: "other-port" });
+    grant = "older-grant";
+    grantCookie = "newer-fixture";
+    holdGrantBody = "older-grant";
+    const grantHeld = new Promise<void>((resolve) => { grantGate.held = resolve; });
+    const lateAbort = new AbortController();
+    const lateGrant = executor.execute({ ...command, id: 27 }, lateAbort.signal);
+    await grantHeld;
+    grant = "newer-grant";
+    const newer = await executor.execute({ ...command, id: 28 });
+    expect(newer).toEqual({ id: 28, capability: "supported", mode: "off", access: null });
+    expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
+    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
+    lateAbort.abort();
+    grantGate.release?.(new Response(null, { status: 204, headers: { "set-cookie": "fleet_console_pairing_8443=older-fixture; HttpOnly; Secure; Path=/" } }));
+    await lateGrant;
+    expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
+    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
+    expect(windowCookies.find((entry) => entry.url === otherOrigin)?.value).toBe("other-port");
+    expect(posts.some((entry) => entry.url.includes("/api/v1/join"))).toBe(false);
+    grantCookie = "pairing-secret";
+
+    presenceReject = false;
+    pauseForgetRead = false;
   });
 });
 
