@@ -116,8 +116,10 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
     <section className="objectives-host-panel" data-host-key={context.selection.hostKey} data-objective-id={current?.id}>
       {error || snapshot.error ? <p role="alert">{error ?? snapshot.error}</p> : null}
       <Select label={t("objectives.panel.title")} value={current?.id ?? ""} options={snapshot.objectives.map((objective) => ({ value: objective.id, label: objective.title }))} onChange={open} />
-      {current ? <button type="button" onClick={() => open(current.id)}>{current.title}</button> : null}
-      <button type="button" disabled={!context.canWrite()} onClick={context.navigation.openNewOperation}>{t("objectives.none.newOperation")}</button>
+      <div className="objectives-pick-shortcuts">
+        {current ? <button type="button" onClick={() => open(current.id)}>{current.title}</button> : null}
+        <button type="button" disabled={!context.canWrite()} onClick={context.navigation.openNewOperation}>{t("objectives.none.newOperation")}</button>
+      </div>
       {current ? <>
         <ObjectiveScheduleTools objective={current} language={context.language} editable={context.canWrite() && !current.done && operationState(current.id) !== "running"}
           patch={(patch) => { void call("/objective/patch", { objectiveId: current.id, patch }); }} />

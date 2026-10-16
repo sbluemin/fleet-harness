@@ -17,8 +17,8 @@ import "./host-content.css";
 const NO_OPERATIONS: readonly HostOperationSummary[] = Object.freeze([]);
 
 const MESSAGES = {
-  en: { unstarted: "This objective has not started yet. Plan and commence it from Objectives.", files: "Files", objectives: "Objectives", quota: "Usage limits", unsupported: "This tool is not available for the selected computer.", readOnly: "Read-only observation — acquire control to send messages.", upload: "Image upload is unavailable here. Existing attachments can still be viewed.", tools: "Conversation tools", localOnly: "Other tools and settings are available after returning to this computer." },
-  ko: { unstarted: "아직 시작하지 않은 목표입니다. 목표에서 계획하고 개시하세요.", files: "파일", objectives: "목표", quota: "사용 한도", unsupported: "선택한 컴퓨터에서는 이 도구를 사용할 수 없습니다.", readOnly: "읽기 전용 관찰입니다. 메시지를 보내려면 제어권이 필요합니다.", upload: "이곳에서는 이미지 업로드를 지원하지 않습니다. 기존 첨부는 볼 수 있습니다.", tools: "대화 도구", localOnly: "다른 도구와 설정은 이 컴퓨터로 돌아온 뒤 사용할 수 있습니다." },
+  en: { unstarted: "This objective has not started yet. Plan and commence it from Objectives.", files: "Files", objectives: "Objectives", quota: "Usage limits", unsupported: "This tool is not available for the selected computer.", readOnly: "Read-only observation — acquire control to send messages.", upload: "Image upload is unavailable here. Existing attachments can still be viewed.", tools: "Conversation tools", manageCommodore: "Manage Commodore", localOnly: "App settings and other local-only tools are available after returning to this computer." },
+  ko: { unstarted: "아직 시작하지 않은 목표입니다. 목표에서 계획하고 개시하세요.", files: "파일", objectives: "목표", quota: "사용 한도", unsupported: "선택한 컴퓨터에서는 이 도구를 사용할 수 없습니다.", readOnly: "읽기 전용 관찰입니다. 메시지를 보내려면 제어권이 필요합니다.", upload: "이곳에서는 이미지 업로드를 지원하지 않습니다. 기존 첨부는 볼 수 있습니다.", tools: "대화 도구", manageCommodore: "사령관 관리", localOnly: "앱 설정 등 로컬 전용 도구는 이 컴퓨터로 돌아온 뒤 사용할 수 있습니다." },
 } as const;
 
 /** 기존 로컬 plugin.install은 건드리지 않는다. 등록된 host-aware factory에만 명시 context를 건넨다. */
@@ -124,7 +124,14 @@ export function HostContent({ binding, registry, insets, language, openNewOperat
     </div>
     <aside className="host-bound-rail">
       <div className="host-bound-tabs" role="tablist" aria-label={t("tools")}>{(["files", "objectives"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{t(value)}</button>)}</div>
-      <div className="host-bound-rail-caption"><HostWorkspaceLocation hosts={binding.workspace} t={coreT} rail /></div>
+      <div className="host-bound-rail-caption"><HostWorkspaceLocation hosts={binding.workspace} t={coreT} rail />
+        {selection.role === "commodore" && surfaces.some(({ surface }) => surface.slot === "objectives") ? <button className="host-bound-manage" type="button" aria-expanded={tab === "objectives"} onClick={() => {
+          // 진입은 현재 회차의 보기만 바꾼다. 제어권 획득이나 다른 host 선택을 동반하지 않는다.
+          const current = binding.workspace.getSnapshot();
+          if (transport.scope.signal.aborted || current.selectionGeneration !== snapshot.selectionGeneration || current.selection.hostKey !== selection.hostKey) return;
+          setTab("objectives");
+        }}>{t("manageCommodore")}</button> : null}
+      </div>
       <div className="host-bound-pane" key={`${host.hostKey}:${snapshot.selectionGeneration}:${host.epoch}:${tab}`}>
         <PluginErrorBoundary>{rail ? rail.surface.render(contexts.get(rail.pluginId)!) : <p role="status">{t("unsupported")}</p>}</PluginErrorBoundary>
       </div>

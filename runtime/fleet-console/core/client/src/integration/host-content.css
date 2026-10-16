@@ -13,4 +13,8 @@
 .host-bound-pane > .quota-root { height: 100%; overflow: auto; }
 .host-bound-unstarted { display: flex; align-items: center; justify-content: center; margin: 0; padding: var(--space-5); color: var(--text-secondary); text-align: center; }
 .host-bound-local-notice { color: var(--text-tertiary); padding: var(--space-2); }
+.host-bound-rail-caption { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.host-bound-manage { flex: none; margin: var(--space-2); padding: var(--space-1) var(--space-2); border: 0; background: transparent; color: var(--brass-ink); font: inherit; font-size: var(--t-sm); cursor: pointer; }
+.host-bound-manage:hover { text-decoration: underline; text-underline-offset: 3px; }
+.host-bound-manage:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 @media (max-width: 760px) { .host-bound-content { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(180px, 38%); } }
