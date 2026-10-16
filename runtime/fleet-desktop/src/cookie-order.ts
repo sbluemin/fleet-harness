@@ -15,8 +15,12 @@ export interface CookieOrder {
    * 해제는 네이티브 fetch가 실제로 settle된 뒤에 부른다. abort 요청은 settle이 아니다.
    */
   hold(origin: string, signal: AbortSignal, alive?: () => boolean): Promise<(() => void) | null>;
-  /** 지금 순서가 열려 있는가. 동기 읽기이며, 쓰기 직전과 비동기 읽기 뒤에 다시 부를 수 있다. */
-  held(origin: string): boolean;
+  /**
+   * 기다리지 않고 지금 가용할 때만 순서를 얻는다. 바쁘면 null이고 호출자는 그 쿠키 작업을 건너뛴다.
+   * 열려 있는지 읽은 뒤 쓰는 검사-사용 간격이 생기지 않도록, 짧은 쿠키 읽기·쓰기는 이 권한을 쥔 채 settle까지 한다.
+   * 순서 보유자는 같은 권한을 이미 갖고 있으므로 이것을 다시 부르지 않는다.
+   */
+  tryHold(origin: string): (() => void) | null;
 }
 
 interface Waiter {
@@ -96,9 +100,17 @@ export function createCookieOrder(): CookieOrder {
         signal.addEventListener("abort", onAbort, { once: true });
       });
     },
-    held(origin) {
+    tryHold(origin) {
       const key = keyOf(origin);
-      return key !== null && lanes.get(key)?.held === true;
+      if (key === null) return null;
+      let lane = lanes.get(key);
+      if (lane?.held) return null;
+      if (!lane) {
+        lane = { held: false, waiters: [] };
+        lanes.set(key, lane);
+      }
+      lane.held = true;
+      return onceRelease(key, lane);
     },
   };
 }

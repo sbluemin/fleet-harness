@@ -186,34 +186,41 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const copyPairingCookie = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, laneOwner = false): Promise<void> => {
     const port = command.target.port;
     const claim = claimFor(command);
-    await withPairing(origin, port, async () => {
-      if (!claimLive(origin, port, claim, signal)) return;
-      // 순서가 열려 있는 동안(join이든 inline 보유자든) 쿠키를 쥔 쪽의 jar가 더 새롭다. 순서 밖 명령이 값을 덮으면
-      // 응답 적용 위에 낡은 값이 놓인다. 판정은 withPairing 안에서 하므로 이미 줄 서 있던 copy·remember·forget 뒤의 현재 상태이고,
-      // 비동기 읽기 뒤에 다시 본다 — 읽는 사이 join이 순서를 얻어 응답을 적용했을 수 있다.
-      if (!laneOwner && order.held(origin)) return;
-      const name = cookieName("pairing", port);
-      const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
-      if (!pairing || !claimLive(origin, port, claim, signal)) return;
-      if (!laneOwner && order.held(origin)) return;
-      await partition.writeCookie({ ...pairing, url: origin });
-    });
+    // 순서 보유자는 이미 권한이 있다. 순서 밖 명령은 지금 얻을 수 있을 때만 권한을 쥐고 읽기부터 쓰기 settle까지 한다.
+    // 바쁘면(join이든 inline 보유자든) 건너뛴다: 쿠키를 쥔 쪽의 jar가 더 새롭다. 잠금 순서는 항상 order → withPairing이다.
+    const release = laneOwner ? (): void => undefined : order.tryHold(origin);
+    if (release === null) return;
+    try {
+      await withPairing(origin, port, async () => {
+        if (!claimLive(origin, port, claim, signal)) return;
+        const name = cookieName("pairing", port);
+        const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
+        if (!pairing || !claimLive(origin, port, claim, signal)) return;
+        await partition.writeCookie({ ...pairing, url: origin });
+      });
+    } finally {
+      release();
+    }
   };
 
   const rememberPairing = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, laneOwner = false): Promise<void> => {
     const port = command.target.port;
     const claim = claimFor(command);
-    await withPairing(origin, port, async () => {
-      if (!claimLive(origin, port, claim, signal)) return;
-      // 순서 밖 명령의 늦은 응답은 창 jar를 쓰지 않는다. join이 적용한 값을 옛 파티션 값이 덮으면 안 된다.
-      if (!laneOwner && order.held(origin)) return;
-      const name = cookieName("pairing", port);
-      const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
-      if (!renewed || !claimLive(origin, port, claim, signal)) return;
-      if (!laneOwner && order.held(origin)) return;
-      await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
-      publishClaim(origin, port, claim);
-    });
+    // 순서 밖 명령의 늦은 응답은 창 jar를 덮지 못한다: 권한을 얻을 수 있을 때만 쓰고, 쓰기 settle까지 쥔다. 바쁘면 건너뛴다.
+    const release = laneOwner ? (): void => undefined : order.tryHold(origin);
+    if (release === null) return;
+    try {
+      await withPairing(origin, port, async () => {
+        if (!claimLive(origin, port, claim, signal)) return;
+        const name = cookieName("pairing", port);
+        const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
+        if (!renewed || !claimLive(origin, port, claim, signal)) return;
+        await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+        publishClaim(origin, port, claim);
+      });
+    } finally {
+      release();
+    }
   };
 
   /**

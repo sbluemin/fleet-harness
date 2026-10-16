@@ -209,13 +209,16 @@ describe("remote bridge", () => {
     const partitionRequests: string[] = [];
     let joinsStarted = 0;
     let settleJoin: () => void = () => undefined;
+    let joinValue = "JOIN-A";
+    // 로컬 IPC 지연 모델: 창 jar 쓰기 Promise를 한 번 쥐고 있는다.
+    const windowWrite: { armed: boolean; entered: boolean; release: () => void } = { armed: false, entered: false, release: () => undefined };
     let holdObserve = false;
     const observeGate: { release: (() => void) | null } = { release: null };
     const harness = createHarness({
       cookieOrder: order,
       join: () => new Promise<Response>((resolve) => {
         joinsStarted += 1;
-        settleJoin = () => { windowJar.set(pairing, "JOIN-A"); resolve(new Response(null, { status: 204 })); };
+        settleJoin = () => { windowJar.set(pairing, joinValue); resolve(new Response(null, { status: 204 })); };
       }),
     });
     const executor = createHostTransportExecutor({
@@ -239,7 +242,14 @@ describe("remote bridge", () => {
         clear() { return undefined; },
       }),
       readWindowCookies: async () => [...windowJar].map(([name, value]) => ({ name, value })),
-      writeWindowCookie: async (cookie) => { windowJar.set(cookie.name, cookie.value); },
+      writeWindowCookie: async (cookie) => {
+        if (windowWrite.armed) {
+          windowWrite.armed = false;
+          windowWrite.entered = true;
+          await new Promise<void>((resolve) => { windowWrite.release = resolve; });
+        }
+        windowJar.set(cookie.name, cookie.value);
+      },
       localOrigin: () => LOCAL,
       localFetch: async () => Response.json({ origin: REMOTE, hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT, token: null }),
     });
@@ -265,6 +275,22 @@ describe("remote bridge", () => {
     expect(await pairing1).toMatchObject({ capability: "supported", mode: "off" });
     expect(partitionJar.get(pairing)).toBe("JOIN-A");
 
+    // 레인 밖 명령의 짧은 쿠키 쓰기도 순서를 쥔다. 그 쓰기 Promise가 settle되기 전에는 join이 요청을 보내지 못하고,
+    // 쓰기가 끝난 뒤의 join 응답이 최종 값이 된다 — "열려 있는지 읽고 나서 쓰는" 간격이 없다.
+    windowWrite.armed = true;
+    const reading = executor.execute({ ...base, id: 5, op: "http", routeId: "theaters", params: { method: "GET", path: "/api/v1/theaters" } });
+    await vi.waitFor(() => expect(windowWrite.entered).toBe(true));
+    joinValue = "JOIN-B";
+    const joining = harness.bridge.open(REMOTE);
+    await quiet();
+    expect(joinsStarted).toBe(1);
+    windowWrite.release();
+    await vi.waitFor(() => expect(joinsStarted).toBe(2));
+    settleJoin();
+    await joining;
+    await reading;
+    expect(windowJar.get(pairing)).toBe("JOIN-B");
+
     // 반대로 inline이 순서를 쥐고 있으면 join은 자격을 꺼내기 전에 기다리고, 다리가 닫히면 요청 없이 끝난다.
     holdObserve = true;
     const observing = executor.execute({ ...base, id: 4, op: "presence", routeId: "presence", params: { intent: "observe" } });
@@ -274,11 +300,11 @@ describe("remote bridge", () => {
     const settled = second.then(() => "opened", (error: Error) => error.message);
     await quiet();
     expect(harness.trace.filter((entry) => entry.startsWith("ask:")).length).toBe(asked);
-    expect(joinsStarted).toBe(1);
+    expect(joinsStarted).toBe(2);
     harness.bridge.dispose();
     expect(await settled).toBe("remote_host_unavailable");
     expect(harness.trace.filter((entry) => entry.startsWith("ask:")).length).toBe(asked);
-    expect(joinsStarted).toBe(1);
+    expect(joinsStarted).toBe(2);
     observeGate.release?.();
     expect(await observing).toMatchObject({ capability: "supported", mode: "observer" });
   });
