@@ -78,8 +78,8 @@ export function ArchiveRetention({ open, onOpenChange, archivedAts }: {
     <div className="archive-retention-row">
       <span id={titleId} className="archive-retention-label">{t("archive.retention.label")}</span>
       <span className="archive-retention-summary" aria-live="polite">{unavailable ? t("archive.retention.unavailable") : summary}</span>
-      {open || unavailable ? null : <button ref={toggleRef} type="button" className="archive-retention-toggle" aria-expanded={false} aria-controls={panelId}
-        aria-disabled={saving || undefined} onClick={() => { if (!saving) { setResult(null); onOpenChange(true); } }}>{t("archive.retention.change")}</button>}
+      {unavailable ? null : <button ref={toggleRef} type="button" className="archive-retention-toggle" aria-expanded={open} aria-controls={panelId}
+        aria-disabled={saving || undefined} onClick={() => { if (!saving) { setResult(null); onOpenChange(!open); } }}>{t("archive.retention.change")}</button>}
     </div>
     {result ? <p className={`archive-retention-result${result === "failed" ? " is-failed" : ""}`} role={result === "failed" ? "alert" : "status"}>
       {t(result === "failed" ? "archive.retention.failed" : "archive.retention.saved")}
