@@ -5,7 +5,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
-/** 기한 달력. withTime에서는 지역 날짜·시각을 함께 고르고 예약으로 확정한다. 날짜 전용 호출은 즉시 고른다. */
+/** 기한 달력. withTime에서는 지역 날짜·시각을 함께 고르고 예약으로 확정한다. 날짜 전용 호출은 즉시 고르고, 이미 고른 날짜를 다시 고르면 기한을 지운다. */
 const pad = (value: number) => String(value).padStart(2, "0");
 const iso = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 export const localDateTime = (date: Date) => `${iso(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -75,7 +75,7 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
   };
   const pickDay = (key: string) => {
     if (withTime) { const date = parse(key)!; setCursor(date); setMonth(new Date(date.getFullYear(), date.getMonth(), 1)); }
-    else { onPick(key); onClose(); }
+    else { onPick(key === value ? null : key); onClose(); }
   };
   const reserve = () => { if (validTime && new Date(candidate).getTime() > Date.now()) { onPick(candidate); onClose(); } };
   const onKey = (event: React.KeyboardEvent) => {
@@ -86,6 +86,8 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
     if (event.key === "ArrowRight") { event.preventDefault(); move(1); return; }
     if (event.key === "ArrowUp") { event.preventDefault(); move(-7); return; }
     if (event.key === "ArrowDown") { event.preventDefault(); move(7); return; }
+    // 날짜 전용에서도 빠른 칩·월 이동 단추의 Enter 는 그 단추가 받는다 — 달력이 가로채면 커서 날짜(=고른 날짜)를 다시 골라 기한이 지워진다.
+    if (event.key === "Enter" && !withTime && event.target !== event.currentTarget && (event.target as HTMLElement).matches('button:not([role="gridcell"])')) return;
     if (event.key === "Enter") { event.preventDefault(); if (withTime) cardRef.current?.querySelector<HTMLInputElement>('input')?.focus(); else pickDay(iso(cursor)); }
   };
 
@@ -109,7 +111,7 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
   return createPortal(
     <div ref={cardRef} className={`objectives-cal${withTime ? " is-time" : ""}`} role="dialog" aria-label={t(withTime ? "objectives.commodore.stop.title" : "objectives.schedule.due")} tabIndex={-1} style={pos} onKeyDown={onKey}>
       <div className="objectives-cal-quick">
-        {quick.map((entry) => <button key={entry.key} type="button" disabled={withTime && new Date(entry.value).getTime() <= now} className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(entry.value); onClose(); }}>{t(entry.key)}</button>)}
+        {quick.map((entry) => <button key={entry.key} type="button" disabled={withTime && new Date(entry.value).getTime() <= now} className={`objectives-cal-chip${value === entry.value ? " is-on" : ""}`} onClick={() => { onPick(!withTime && entry.value === value ? null : entry.value); onClose(); }}>{t(entry.key)}</button>)}
         {value ? <button type="button" className="objectives-cal-chip is-clear" onClick={() => { onPick(null); onClose(); }}>{t(withTime ? "objectives.commodore.stop.cancel" : "objectives.date.clear")}</button> : null}
       </div>
       <div className="objectives-cal-head">
