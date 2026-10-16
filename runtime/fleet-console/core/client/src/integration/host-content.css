@@ -1,4 +1,8 @@
 .host-bound-content { position: absolute; inset: 0 0 0 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 32%); gap: var(--space-3); padding: var(--space-3); min-height: 0; color: var(--text-primary); }
+.host-bound-header { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; padding: var(--space-2) 0; border-bottom: 1px solid var(--surface-rim); }
+.host-bound-header > .host-workspace-location { flex: 1 1 220px; }
+.host-bound-quota { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.host-bound-tabs button:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 .host-bound-conversation, .host-bound-rail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .host-bound-body, .host-bound-pane { flex: 1; min-height: 0; overflow: hidden; }
 .host-bound-body > * { height: 100%; min-height: 0; }

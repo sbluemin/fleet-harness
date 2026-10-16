@@ -1133,6 +1133,14 @@
   --conversation-quota-space: 56px;
 }
 
+.conversation-host-context {
+  flex: none;
+  min-height: var(--conversation-top-row);
+  padding: var(--space-2) calc(var(--conversation-quota-space) + var(--space-3)) var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
 .conversation-quota {
   position: absolute;
   top: calc((var(--conversation-top-row) - 30px) / 2);

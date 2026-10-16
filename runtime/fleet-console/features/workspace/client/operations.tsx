@@ -603,9 +603,10 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       operationKinds={registry.operationKinds}
       onClose={handleClose}
       toolContext={toolsContext}
+      hostContext={hostWorkspace ? <HostWorkspaceLocation hosts={hostWorkspace} t={t} conversationTitle={false} /> : undefined}
     />
     {toastRegion}
-    <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+    <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<><ConversationPanelHeader context={toolsContext} />{hostWorkspace ? <HostWorkspaceLocation hosts={hostWorkspace} t={t} rail /> : null}</>} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
     {operationMenuLayer}
     <ExpandedSurfaceLayer />
   </>;

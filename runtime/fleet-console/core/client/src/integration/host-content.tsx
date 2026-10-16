@@ -26,7 +26,7 @@ export function HostContent({ binding, registry, insets, language }: { readonly 
   const host = snapshot.hosts.find((candidate) => candidate.hostKey === snapshot.selection.hostKey);
   const t = useMemo(() => createTranslator(MESSAGES, language), [language]);
   const coreT = useT();
-  const [tab, setTab] = useState<"files" | "objectives" | "quota">("objectives");
+  const [tab, setTab] = useState<"files" | "objectives">("files");
   const contexts = useMemo(() => {
     const out = new Map<string, HostSurfaceContext>();
     if (!transport || !host) return out;
@@ -53,17 +53,24 @@ export function HostContent({ binding, registry, insets, language }: { readonly 
   const surfaces = registry.plugins.flatMap((plugin) => (plugin.hostSurfaces ?? []).map((surface) => ({ pluginId: plugin.id, surface })));
   const conversation = surfaces.find(({ surface }) => surface.slot === "conversation" && surface.role === snapshot.selection.role);
   const rail = surfaces.find(({ surface }) => surface.slot === tab);
-  const title = host.operations.find((operation) => operation.id === snapshot.selection.operationId)?.title ?? "";
+  const quota = surfaces.find(({ surface }) => surface.slot === "quota");
+  const title = host.operations.find((operation) => operation.id === snapshot.selection.operationId && operation.theaterId === snapshot.selection.theaterId)?.title ?? "";
   return <section className="host-bound-content" style={{ left: insets.left }} data-host-key={host.hostKey} data-host-epoch={host.epoch}>
     <div className="host-bound-conversation">
-      <HostWorkspaceLocation hosts={binding.workspace} t={coreT} />
+      <header className="host-bound-header">
+        <HostWorkspaceLocation hosts={binding.workspace} t={coreT} />
+        <div className="host-bound-quota" key={`${host.hostKey}:${snapshot.selectionGeneration}:${host.epoch}`}>
+          <PluginErrorBoundary>{quota ? quota.surface.render(contexts.get(quota.pluginId)!) : <span role="status">{t("unsupported")}</span>}</PluginErrorBoundary>
+        </div>
+      </header>
       <div className="host-bound-body" key={`${host.hostKey}:${snapshot.selectionGeneration}:${host.epoch}`}>
         <PluginErrorBoundary>{snapshot.selection.role === "commander" ? <HostAgentConversation context={contexts.get("execution")!} title={title} readOnlyLabel={t("readOnly")} uploadUnsupported={t("upload")} />
           : conversation ? conversation.surface.render(contexts.get(conversation.pluginId)!) : <p role="status">{t("unsupported")}</p>}</PluginErrorBoundary>
       </div>
     </div>
     <aside className="host-bound-rail">
-      <div className="host-bound-tabs" role="tablist" aria-label={t("tools")}>{(["objectives", "files", "quota"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{t(value)}</button>)}</div>
+      <div className="host-bound-tabs" role="tablist" aria-label={t("tools")}>{(["files", "objectives"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}>{t(value)}</button>)}</div>
+      <div className="host-bound-rail-caption"><HostWorkspaceLocation hosts={binding.workspace} t={coreT} rail /></div>
       <div className="host-bound-pane" key={`${host.hostKey}:${snapshot.selectionGeneration}:${host.epoch}:${tab}`}>
         <PluginErrorBoundary>{rail ? rail.surface.render(contexts.get(rail.pluginId)!) : <p role="status">{t("unsupported")}</p>}</PluginErrorBoundary>
       </div>

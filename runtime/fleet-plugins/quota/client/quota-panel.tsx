@@ -845,8 +845,21 @@ export function QuotaPanel({ api, locale, labelId, scope, source }: {
   readonly scope?: QuotaDataScope;
   readonly source?: { readonly hostKey: string; readonly label: string; readonly caption: string };
 }) {
+  const state = useQuotaData(api, scope);
+  return <QuotaPanelView api={api} locale={locale} labelId={labelId} scope={scope} source={source} state={state} />;
+}
+
+/** 수집 hook의 결과만 그린다. host 헤더와 popup이 같은 한 요청/폴링 수명을 공유한다. */
+export function QuotaPanelView({ api, locale, labelId, scope, source, state }: {
+  readonly api: ClientApiCapability;
+  readonly locale: ConsoleLocale;
+  readonly labelId: string;
+  readonly scope?: QuotaDataScope;
+  readonly source?: { readonly hostKey: string; readonly label: string; readonly caption: string };
+  readonly state: ReturnType<typeof useQuotaData>;
+}) {
   const t = useMemo(() => getT(locale), [locale]);
-  const { data, checkedAt, now, requestError, refresh, connect, logout, validated } = useQuotaData(api, scope);
+  const { data, checkedAt, now, requestError, refresh, connect, logout, validated } = state;
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));

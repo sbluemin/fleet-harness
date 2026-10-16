@@ -147,15 +147,17 @@ export function HostLocalTools({ hosts, children, t, notice = false }: HostWorks
   return state.selection.hostKey === "local" ? <>{children}</> : notice ? <span className="host-workspace-local-tools">{t("hosts.workspace.localTools")}</span> : null;
 }
 
-export function HostWorkspaceLocation({ hosts, t }: HostWorkspaceProps) {
+export function HostWorkspaceLocation({ hosts, t, rail = false, conversationTitle = true }: HostWorkspaceProps & { readonly rail?: boolean; readonly conversationTitle?: boolean }) {
   const state = useHostWorkspace(hosts);
   const host = state.hosts.find((host) => host.hostKey === state.selection.hostKey);
   if (!host) return null;
   const theater = host.theaters.find((theater) => theater.id === state.selection.theaterId);
-  return <div className="host-workspace-location" role="group" aria-label={t("hosts.workspace.viewing")}>
+  const operation = state.selection.role === "commander" ? host.operations.find((item) => item.id === state.selection.operationId && item.theaterId === state.selection.theaterId) : null;
+  return <div className={`host-workspace-location${rail ? " is-rail-caption" : ""}`} role="group" aria-label={t("hosts.workspace.viewing")} data-host-key={host.hostKey} data-theater-id={state.selection.theaterId ?? undefined}>
     <span className="host-workspace-location-host"><ComputerGlyph local={host.hostKey === "local"} />{host.label}</span>
-    {theater ? <><span aria-hidden="true">›</span><span>{theater.alias || theater.label}</span><span className="host-workspace-role">{t(state.selection.role === "commodore" ? "hosts.workspace.commodoreRole" : "hosts.workspace.commander")}</span></> : null}
-    {!state.canWrite ? <span className="host-workspace-mode">{t(state.phase === "loading" ? "hosts.workspace.controlPending" : host.access === "monitoring" ? "hosts.workspace.readOnly" : "hosts.workspace.observing")}</span> : null}
+    {theater ? <><span aria-hidden="true">›</span><span>{theater.alias || theater.label}</span>{!rail ? <span className="host-workspace-role">{t(state.selection.role === "commodore" ? "hosts.workspace.commodoreRole" : "hosts.workspace.commander")}</span> : null}</> : null}
+    {!rail && conversationTitle && operation ? <strong className="host-workspace-conversation-title" title={operation.title}>{operation.title}</strong> : null}
+    {!rail && !state.canWrite ? <span className="host-workspace-mode">{t(state.phase === "loading" ? "hosts.workspace.controlPending" : host.access === "monitoring" ? "hosts.workspace.readOnly" : "hosts.workspace.observing")}</span> : null}
   </div>;
 }
 
