@@ -173,11 +173,12 @@ ab --session fleet-console-e2e-20260807-strict eval "document.querySelectorAll('
 
 Theater registration is Console's own folder browser (a modal backed by `/api/v1/theaters/folder-listings`), not a native
 dialog. Fill the absolute-path textbox, use its Go action, then add the Theater.
-Use current localized accessible labels. The Theater's new-Operation action opens a menu whose items are
-`Claude (Gateway)` and `Shell`.
+Use current localized accessible labels. The sidebar's top + opens the new session screen, where *Add Theater…*
+opens that browser, the model chip lists Claude and every exposed gateway model, and the start-view chip
+switches between chat and terminal.
 
-Both entry points live in the sidebar, so a collapsed sidebar removes them from the
-accessibility tree and the snapshot simply has no new-Theater ref — which reads as a
+The top + lives in the sidebar, so a collapsed sidebar removes it from the
+accessibility tree and the snapshot simply has no new-session ref — which reads as a
 missing feature, not a hidden one. `Escape` can collapse it as a side effect of dismissing
 something else; use the sidebar expand control (⌘B on macOS) before hunting for the ref.
 

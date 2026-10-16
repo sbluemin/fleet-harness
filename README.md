@@ -39,7 +39,7 @@ fleet console
 
 Update from the Console or with `fleet update`. `npm update -g` rolls Fleet back to the old version left on npm.
 
-Add a project folder as a **Theater** with the **+** at the top of the sidebar. Then start your first conversation with the **+** on the Theater's header or <kbd>⌘</kbd><kbd>J</kbd>.
+Press the **+** at the top of the sidebar to open a new session. Add a project folder as a **Theater** with **Add Theater…** there, pick the model and effort, and send your first message, or start from <kbd>⌘</kbd><kbd>J</kbd>.
 
 ## Sessions that outlive the tab
 
