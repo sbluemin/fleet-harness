@@ -221,6 +221,31 @@ describe("host workspace isolation", () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it("relays the product upload limit as bytes and cancels a late file read before dispatch", async () => {
+    const abort = new AbortController();
+    const request = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({ expectedInstanceId: INSTANCE_A, expectedEpoch: 7, path: "/api/v1/agent/attachments" });
+      expect(Buffer.from(body.dataBase64, "base64")).toHaveLength(10 * 1024 * 1024);
+      expect(body).not.toHaveProperty("headers");
+      return Response.json({ requestId: body.requestId, epoch: 7, instanceId: INSTANCE_A, status: 200, contentType: "application/json", json: { id: "upload-id" } });
+    });
+    const transport = createRemoteHostTransport({ hostKey: "remote", epoch: 7, instanceId: INSTANCE_A, signal: abort.signal }, {
+      fetch: request, events: () => { throw new Error("unexpected_events"); }, socket: () => { throw new Error("unexpected_socket"); }, origin: "http://127.0.0.1:1234",
+    });
+    const file = new Blob([new Uint8Array(10 * 1024 * 1024)], { type: "image/png" });
+    const response = await transport.request("/api/v1/agent/attachments", { method: "POST", headers: { "Content-Type": file.type }, body: file });
+    expect(await response.json()).toEqual({ id: "upload-id" });
+    expect(request.mock.calls[0]?.[0]).toBe("/api/v1/hosts/remote/bytes");
+    let finish!: (bytes: ArrayBuffer) => void;
+    const lateFile = new Blob([new Uint8Array(8)], { type: "image/png" });
+    vi.spyOn(lateFile, "arrayBuffer").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const pending = transport.request("/api/v1/agent/attachments", { method: "POST", headers: { "Content-Type": lateFile.type }, body: lateFile });
+    abort.abort(); finish(new ArrayBuffer(8));
+    await expect(pending).rejects.toThrow();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("does not grant control during exploration or accept a late activation for another host", async () => {
     const local = runtime("local");
     const remote = runtime("remote");

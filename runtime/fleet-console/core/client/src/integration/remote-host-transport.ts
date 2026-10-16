@@ -1,7 +1,7 @@
 import type { HostEventSource, HostScope, HostTransport } from "@fleet-console/sdk/host-context";
 import { assertHostScope, readHostJson } from "@fleet-console/sdk/host-context/browser";
 import {
-  HOST_JSON_CONTENT_TYPE, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
+  HOST_JSON_CONTENT_TYPE, HOST_UPLOAD_MAX_BYTES, isHostUploadRequest, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
   isHostInstanceId, isHostJsonRequest, isHostJsonResult, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
   type HostJsonRequest, type HostPresence, type HostRelayMethod,
 } from "@fleet-console/protocol/remote/host-transport";
@@ -41,29 +41,45 @@ export function createRemoteHostTransport(inputScope: HostScope, network: HostBr
     request: async (path, init) => {
       assertHostScope(scope);
       const headers = new Headers(init?.headers);
+      const blob = init?.body instanceof Blob ? init.body : null;
+      const method = (init?.method ?? "GET").toUpperCase() as HostRelayMethod;
       // 일반 RequestInit을 상류 헤더로 전달하지 않는다. 기존 JSON 호출의 표현만 허용한다.
       for (const [key, value] of headers) {
-        if ((key === "content-type" && value.toLowerCase().split(";")[0]?.trim() === HOST_JSON_CONTENT_TYPE) || (key === "accept" && value === HOST_JSON_CONTENT_TYPE)) continue;
+        const contentType = value.toLowerCase().split(";")[0]?.trim();
+        if ((key === "content-type" && (blob ? ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(contentType ?? "") : contentType === HOST_JSON_CONTENT_TYPE)) || (key === "accept" && value === HOST_JSON_CONTENT_TYPE)) continue;
         throw new HostTransportFailure(400, "invalid_host_request");
       }
       if (init?.credentials || init?.redirect || init?.referrer || init?.referrerPolicy || init?.integrity || init?.mode) throw new HostTransportFailure(400, "invalid_host_request");
-      if (init?.body !== undefined && init.body !== null && typeof init.body !== "string") throw new HostTransportFailure(403, "route_denied");
+      if (init?.body !== undefined && init.body !== null && typeof init.body !== "string" && !blob) throw new HostTransportFailure(403, "route_denied");
       let json: unknown;
       if (typeof init?.body === "string") {
         try { json = JSON.parse(init.body); } catch { throw new HostTransportFailure(400, "invalid_host_request"); }
       }
       const requestId = crypto.randomUUID();
-      const request: HostJsonRequest = { requestId, expectedEpoch: scope.epoch, expectedInstanceId: instanceId, method: (init?.method ?? "GET").toUpperCase() as HostRelayMethod, path, ...(typeof init?.body === "string" ? { json } : {}) };
-      if (!isHostJsonRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
       const signal = init?.signal ? AbortSignal.any([scope.signal, init.signal]) : scope.signal;
-      const response = await network.fetch(requestPath, { method: "POST", headers: { "Content-Type": HOST_JSON_CONTENT_TYPE }, body: JSON.stringify(request), signal, redirect: "error" });
+      const coordinates = { requestId, expectedEpoch: scope.epoch, expectedInstanceId: instanceId, path };
+      let request: unknown;
+      if (blob) {
+        if (method !== "POST" || blob.size === 0 || blob.size > HOST_UPLOAD_MAX_BYTES) throw new HostTransportFailure(400, "invalid_host_request");
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        signal.throwIfAborted();
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += 32_768) binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+        request = { ...coordinates, dataBase64: btoa(binary) };
+        if (!isHostUploadRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
+      } else {
+        request = { ...coordinates, method, ...(typeof init?.body === "string" ? { json } : {}) } satisfies HostJsonRequest;
+        if (!isHostJsonRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
+      }
+      signal.throwIfAborted();
+      const response = await network.fetch(blob ? requiredPath(hostTransportPath("bytes", scope.hostKey)) : requestPath, { method: "POST", headers: { "Content-Type": HOST_JSON_CONTENT_TYPE }, body: JSON.stringify(request), signal, redirect: "error" });
       await assertRelayResponse(response);
       const result: unknown = await readHostJson(scope, response);
       signal.throwIfAborted();
       if (!isHostJsonResult(result) || result.requestId !== requestId || result.status < 200) throw new HostTransportFailure(502, "invalid_host_response");
       if (result.instanceId !== instanceId) throw new HostTransportFailure(409, "stale_instance");
       if (result.epoch !== scope.epoch) throw new HostTransportFailure(409, "stale_epoch");
-      const body = result.contentType === null || [204, 205, 304].includes(result.status) || request.method === "HEAD" ? null : JSON.stringify(result.json);
+      const body = result.contentType === null || [204, 205, 304].includes(result.status) || method === "HEAD" ? null : JSON.stringify(result.json);
       return new Response(body, { status: result.status, ...(result.contentType ? { headers: { "Content-Type": result.contentType } } : {}) });
     },
     events: (path) => {
