@@ -24,6 +24,8 @@ import { createHostPickerView } from "./host-picker-view.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
+import { createDesktopHostTransport } from "./host-transport.js";
+import { confirmRemoteIdentity, installRemoteCertificatePins } from "./remote-access.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
@@ -168,6 +170,24 @@ async function boot(): Promise<void> {
   });
   const remotePins = shellNetwork.pins;
   const consoleFetch = shellNetwork.fetch;
+  const hostTransport = createDesktopHostTransport({
+    fetch: consoleFetch,
+    confirmIdentity: confirmRemoteIdentity,
+    openPartition: (hostKey) => {
+      const partition = session.fromPartition(`fleet-host-${hostKey}`);
+      const pins = installRemoteCertificatePins(partition);
+      return {
+        fetch: (url, init) => partition.fetch(url, init),
+        readCookies: async (url) => partition.cookies.get({ url }),
+        writeCookie: (cookie) => partition.cookies.set(cookie),
+        pin: (hostname, fingerprint) => pins.pin(hostname, fingerprint),
+        clear: () => pins.clear(),
+      };
+    },
+    readWindowCookies: async (url) => consoleSession.cookies.get({ url }),
+    writeWindowCookie: (cookie) => consoleSession.cookies.set(cookie),
+    log: (message) => logger.error(message),
+  });
   let overlayRefresher: TitleBarOverlayRefresher | null = null;
   /**
    * 줌·모니터가 바뀌면 네이티브 크롬의 기하를 다시 맞춘다. Windows는 캡션 버튼 스트립의
@@ -537,6 +557,7 @@ async function boot(): Promise<void> {
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
         void publishShellHome(origin);
+        void hostTransport.start(origin);
       },
       synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
@@ -547,7 +568,7 @@ async function boot(): Promise<void> {
       startOrAdopt: (report) => supervisor.startOrAdopt(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
+  }, () => farewell.run(async () => { hostTransport.stop(); bridge.dispose(); await supervisor.stop(); }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",

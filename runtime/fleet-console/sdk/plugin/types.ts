@@ -1208,6 +1208,8 @@ export interface ApiCatalogEntry {
   readonly category: string;
   readonly gate: ApiCatalogGate;
   readonly transport: ApiCatalogTransport;
+  /** 관찰 세션에 열리는 읽기. 빠지면 관찰은 거절한다. GET도 선언 없이는 읽기가 아니다. */
+  readonly readOnly?: true;
 }
 
 export interface FleetPluginServerContext {

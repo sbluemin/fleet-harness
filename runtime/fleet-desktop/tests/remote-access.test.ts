@@ -12,6 +12,7 @@ import {
   type CertificateVerifyProc,
   type CertificateVerifyRequest,
 } from "../src/remote-access.js";
+import { createHostTransportExecutor } from "../src/host-transport.js";
 
 const TOKEN = "y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD";
 const FINGERPRINT = "4E65DB042A0B820A0833F016ADAD49B03D7DB5BC43100696AD023A77B647E325";
@@ -152,3 +153,61 @@ async function startTlsServer(): Promise<{ port: number; fingerprint: string; cl
     close: () => new Promise<void>((resolve) => { server.close(() => resolve()); }),
   };
 }
+
+describe("host partition transport", () => {
+  it("treats a remote without the session capability as unsupported and does not join", async () => {
+    const calls: string[] = [];
+    const executor = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        fetch: async (url) => {
+          calls.push(url);
+          return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
+        },
+        readCookies: async () => [],
+        writeCookie: async () => undefined,
+        pin: () => undefined,
+        clear: () => undefined,
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    const relay = await executor.execute({
+      id: 1,
+      hostKey: "host1",
+      epoch: 1,
+      op: "presence",
+      routeId: "presence",
+      target: { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) },
+      params: { intent: "observe" },
+    });
+    expect(relay).toMatchObject({ capability: "unsupported", error: "host_unsupported" });
+    expect(calls).toEqual(["https://remote.example:8443/api/v1/sessions"]);
+  });
+
+  it("does not promote a session response that omits the capability", async () => {
+    const executor = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        fetch: async () => new Response(JSON.stringify({ mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } }),
+        readCookies: async () => [],
+        writeCookie: async () => undefined,
+        pin: () => undefined,
+        clear: () => undefined,
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    const relay = await executor.execute({
+      id: 2,
+      hostKey: "host1",
+      epoch: 1,
+      op: "presence",
+      routeId: "presence",
+      target: { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) },
+      params: { intent: "activate" },
+    });
+    expect(relay.mode).toBeUndefined();
+    expect(relay).toMatchObject({ capability: "unsupported", error: "host_unsupported" });
+  });
+});

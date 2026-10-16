@@ -1,5 +1,5 @@
 import type * as http from "node:http";
-import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
+import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, readSessionCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
 import { PAIRED_DEVICE_LIMIT, type createPairedDeviceStore } from "./paired-devices.js";
 import { normalizeRemoteJoinSource, type createRemoteJoinGuard } from "./remote-join-guard.js";
 interface PairingRouteDeps {
@@ -12,6 +12,7 @@ interface PairingRouteDeps {
   readonly withSecurityHeaders: (extra: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
   readonly broadcastControlChanged: () => void;
 }
+const OBSERVER_SESSION_LIMIT = 8;
 export function createPairingRoutes(deps: PairingRouteDeps) {
   const { access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged } = deps;
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -71,11 +72,8 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       writeJson(res, joined.status, { error: joined.error });
       return false;
     }
-    /**
-     * 등급을 가리지 않고 알린다. 원격 접속이 하나뿐이므로 monitoring 조인도 앞선 보유자를
-     * 대신하고, 그때 커튼은 걷혀야 한다. 실제로 바뀌지 않은 사실은 브로드캐스트가 걸러낸다.
-     */
-    if (listener.audience === "remote") broadcastControlChanged();
+    // 제어 조인만 보유자 변화를 알린다. 관찰은 이 함수를 타지 않는다.
+    if (listener.audience === "remote" && joined.session.disposition === "control" && joined.session.access === "full") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
     const cookies = [formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port })];
     if (joined.pairingSecret !== null) cookies.push(formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }));
@@ -117,8 +115,8 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     }
     const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
     if (!paired) return { status: 409, error: "paired_device_limit" };
-    // 거절이 끝난 뒤에 자리를 비운다 — 받지도 못할 조인이 앞사람을 내보내서는 안 된다.
-    supersedeRemoteSessions(null);
+    // 제어 등급만 앞선 제어를 대신한다. monitoring 조인이 제어를 빼앗으면 안 된다.
+    if (grant.access === "full") supersedeRemoteControllers(null);
     return {
       session: access.openSession(listener.audience, grant.access, device, paired.device.id),
       pairingSecret: paired.secret,
@@ -133,7 +131,7 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
      * 자기 페어링이 두고 간 접속은 축출이 아니라 자기 자신의 잔상이므로 안내 없이 걷는다 —
      * 창을 다시 여는 것만으로 "다른 기기가 이어받았습니다"를 자기 화면에 띄울 수는 없다.
      */
-    supersedeRemoteSessions(paired.id);
+    if (paired.access === "full") supersedeRemoteControllers(paired.id);
     return {
       // 등급은 페어링이 정한다 — 재개가 monitoring을 full로 올릴 수 없어야 한다.
       session: access.openSession(listener.audience, paired.access, device ?? paired.device, paired.id),
@@ -143,19 +141,15 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
   }
 
   /**
-   * 원격 접속은 한 번에 하나다. 이 콘솔은 하나의 화면이고 하나의 터미널이므로, 둘이 동시에
-   * 붙으면 커튼은 "누가" 몰고 있는지 하나로 말하지 못하고 회수 버튼의 대상도 갈라진다.
-   *
-   * 그래서 새 조인이 앞선 접속을 대신한다. 거절하지 않는 이유는, 거절이 자기 기기를 되찾는
-   * 길까지 막기 때문이다 — 앞의 접속이 유휴로 남아 있거나 셸이 두고 간 잔상일 때 주인은
-   * 자기 콘솔 앞에 가서 그 줄을 끊기 전에는 돌아올 수 없었다. 페어링은 이미 주인이 승인한
-   * 자격이고, 그 자격을 거둘 자리는 여전히 기기 목록의 회수 버튼이다.
+   * 제어 접속은 한 번에 하나다. 새 제어 조인은 앞선 제어만 대신하고, 관찰 접속은 남긴다.
+   * 거절하지 않는 이유는, 거절이 자기 기기를 되찾는 길까지 막기 때문이다.
    *
    * 세션을 열기 전에 부른다 — 열고 나서 걷으면 방금 연 접속이 자기 자신에 걸린다.
    * `ownPairingId`가 두고 간 접속은 축출이 아니므로 안내 없이 걷는다.
    */
-  function supersedeRemoteSessions(ownPairingId: string | null): void {
+  function supersedeRemoteControllers(ownPairingId: string | null): void {
     for (const session of access.listSessions("remote")) {
+      if (session.access !== "full" || session.disposition !== "control") continue;
       const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
       /**
        * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
@@ -169,7 +163,99 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     }
   }
 
-  return { handleAccessJoin };
+
+  async function handleHostSession(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    if (req.method !== "POST") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    const listener = listenerForRequest(req);
+    if (!listener || listener.audience !== "remote") {
+      writeJson(res, 404, { error: "not_found" });
+      return true;
+    }
+    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
+    const verdict = remoteJoinGuard.begin(source);
+    if (verdict !== "ok") {
+      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
+        "Content-Type": "application/json",
+        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
+      }));
+      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
+      return true;
+    }
+    let paired = false;
+    try {
+      paired = await performHostSession(req, res, listener);
+    } finally {
+      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
+    }
+    return true;
+  }
+
+  async function performHostSession(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
+    const body = await readJsonBody<{ readonly intent?: unknown; readonly device?: unknown }>(req);
+    const intent = isPlainObject(body) ? body.intent : null;
+    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
+    if (intent !== "observe" && intent !== "activate" && intent !== "release") {
+      writeJson(res, 400, { error: "invalid_host_session" });
+      return false;
+    }
+    if (intent === "release") {
+      const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      if (!session) {
+        writeJson(res, 401, { error: "unauthorized" });
+        return false;
+      }
+      const wasController = session.access === "full" && session.disposition === "control";
+      access.revokeSessionByHandle(session.handle, null);
+      if (wasController) broadcastControlChanged();
+      writeSessionJson(res, 200, listener, null, { capability: "host-session", mode: "off", access: null });
+      return true;
+    }
+    const secret = readPairingCookie(req.headers, listener.port);
+    const pairedDevice = secret === null ? null : pairedDeviceStore.resolve(secret, listener.audience);
+    if (!pairedDevice || secret === null) {
+      writeJson(res, 401, { error: "unauthorized" });
+      return false;
+    }
+    if (intent === "activate" && pairedDevice.access !== "full") {
+      writeJson(res, 403, { error: "observer_only" });
+      return false;
+    }
+    if (intent === "observe") {
+      const observers = access.listSessions("remote").filter((session) => session.disposition === "observe").length;
+      if (observers >= OBSERVER_SESSION_LIMIT) {
+        writeJson(res, 409, { error: "observer_limit" });
+        return false;
+      }
+      const session = access.openSession(listener.audience, pairedDevice.access, device ?? pairedDevice.device, pairedDevice.id, "observe");
+      writeSessionJson(res, 200, listener, { session, pairingSecret: secret }, { capability: "host-session", mode: "observer", access: pairedDevice.access });
+      return true;
+    }
+    supersedeRemoteControllers(pairedDevice.id);
+    for (const session of access.listSessions("remote")) {
+      if (session.pairingId === pairedDevice.id && session.disposition === "observe") access.revokeSessionByHandle(session.handle, null);
+    }
+    const session = access.openSession(listener.audience, pairedDevice.access, device ?? pairedDevice.device, pairedDevice.id, "control");
+    broadcastControlChanged();
+    writeSessionJson(res, 200, listener, { session, pairingSecret: secret }, { capability: "host-session", mode: "controller", access: pairedDevice.access });
+    return true;
+  }
+
+  function writeSessionJson(res: http.ServerResponse, status: number, listener: ListenerIdentity, joined: { readonly session: AccessSession; readonly pairingSecret: string } | null, body: unknown): void {
+    const headers: http.OutgoingHttpHeaders = { "Content-Type": "application/json" };
+    if (joined) {
+      headers["Set-Cookie"] = [
+        formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port }),
+        formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }),
+      ];
+    }
+    res.writeHead(status, withSecurityHeaders(headers));
+    res.end(JSON.stringify(body));
+  }
+
+  return { handleAccessJoin, handleHostSession };
 }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -133,7 +133,7 @@ export async function registerAgentRoutes(
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
-    { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
     { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -146,9 +146,9 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-sleep", summary: "Put an Agent chat session dormant.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-coordinates", summary: "Change an Agent chat session's model and effort.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat-coordinates", summary: "Cancel a scheduled Agent chat model and effort change.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-history", summary: "Read an Agent session's saved conversation as a read-only group-chat projection without resuming it.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
+    { method: "GET", path: "/sessions/:sessionId/chat-history", summary: "Read an Agent session's saved conversation as a read-only group-chat projection without resuming it.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
+    { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
     { method: "POST", path: "/sessions/:sessionId/links", summary: "Confirm which links in displayed terminal text appear in an Agent session's transcript.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -160,7 +160,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
   ]);
   return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }

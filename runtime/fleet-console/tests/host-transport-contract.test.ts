@@ -14,6 +14,8 @@ import {
   parseHostSocketQuery,
   parseHostStreamQuery,
 } from "@fleet-console/protocol/remote/host-transport";
+import type http from "node:http";
+import { createHostGateway } from "../features/remote-access/host/host-gateway.js";
 
 const hostKey = "6f1c9a20-1111-4222-8333-444455556666";
 
@@ -72,5 +74,111 @@ describe("host transport wire contract", () => {
     })).toBe(false);
     expect(isHostTransportErrorBody({ error: "stale_epoch", epoch: 9 })).toBe(true);
     expect(isHostTransportErrorBody({ error: "read_only", epoch: 9 })).toBe(false);
+  });
+});
+
+
+describe("host gateway admission", () => {
+  const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+
+  async function call(options: {
+    method: string;
+    path: string;
+    body?: unknown;
+    origin?: boolean;
+    reply?: (request: { op: string; routeId: string; params: Record<string, unknown> }) => Record<string, unknown>;
+  }): Promise<{ status: number; body: unknown }> {
+    const calls: Array<{ op: string; routeId: string }> = [];
+    const slot = { current: null as { status: number; body: unknown } | null };
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => options.origin !== false,
+      findHost: () => target,
+      bridge: { async call(request) {
+        calls.push({ op: request.op, routeId: request.routeId });
+        return { id: 1, ...(options.reply ? options.reply(request) : { error: "remote_host_unavailable" }) };
+      } },
+      readJsonBody: async <T,>() => (options.body ?? null) as T | null,
+      writeJson: (_res, status, body) => { slot.current = { status, body }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const req = { method: options.method, url: options.path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+    await gateway({ req, res, pathname: options.path.split("?")[0] ?? options.path });
+    const written = slot.current;
+    if (!written) throw new Error("gateway wrote nothing");
+    return written;
+  }
+
+  it("rejects a stale presence epoch before asking the shell", async () => {
+    const result = await call({ method: "POST", path: "/api/v1/hosts/host1/presence", body: { intent: "observe", expectedEpoch: 0 } });
+    expect(result.status).toBe(409);
+    expect(result.body).toEqual({ error: "stale_epoch", epoch: 1 });
+  });
+
+  it("keeps an unsupported remote blocked instead of a controller", async () => {
+    const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = { intent: "observe", expectedEpoch: 1 };
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: { async call() { return { id: 1, capability: "unsupported", error: "host_unsupported" }; } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: () => undefined, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+      await gateway({ req, res, pathname: path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    const posted = await invoke("POST", "/api/v1/hosts/host1/presence");
+    expect(posted.status).toBe(409);
+    expect(posted.body).toMatchObject({ error: "host_unsupported" });
+    const presence = await invoke("GET", "/api/v1/hosts/host1/presence");
+    expect(presence.body).toMatchObject({ mode: "off", access: null, connection: "blocked", capability: "unsupported" });
+  });
+
+  it("denies an observer conversation write and an unknown route", async () => {
+    const gatewayState: { mode: "observer" | "controller" } = { mode: "observer" };
+    // The first successful observe moves the same gateway instance; this case uses a fresh call() each time,
+    // so exercise the route table through a controller-ready link by observing first inside one gateway.
+    const calls: string[] = [];
+    const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = { intent: "observe", expectedEpoch: 1 };
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: { async call(request) {
+        calls.push(request.op);
+        if (request.op === "presence") return { id: 1, capability: "supported", mode: "observer", access: "full" };
+        return { id: 1, status: 200, contentType: "application/json", json: {} };
+      } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+      await gateway({ req, res, pathname: path.split("?")[0] ?? path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    await invoke("POST", "/api/v1/hosts/host1/presence");
+    body = { requestId: "req-1234", expectedEpoch: 2, method: "POST", path: "/api/v1/agent/sessions/op/message", json: { text: "hi" } };
+    const conversation = await invoke("POST", "/api/v1/hosts/host1/request");
+    expect(conversation).toEqual({ status: 403, body: { error: "not_controller" } });
+    body = { requestId: "req-1234", expectedEpoch: 2, method: "POST", path: "/api/v1/remote-hosts", json: {} };
+    const unknown = await invoke("POST", "/api/v1/hosts/host1/request");
+    expect(unknown).toEqual({ status: 403, body: { error: "route_denied" } });
+    expect(calls).toEqual(["presence"]);
+    void gatewayState;
   });
 });

@@ -17,6 +17,10 @@ import { createComputerUseRouter } from "../../../features/computer-use/host/rou
 import { createPluginAgentHost } from "../../../features/execution/host/agent/plugin-agent.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
+import { createHostGateway } from "../../../features/remote-access/host/host-gateway.js";
+import { isDeclaredObserverRead } from "../../../features/remote-access/host/read-only-admission.js";
+import { createHostShellBridge } from "../shell/host-transport-bridge.js";
+import { DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH } from "@fleet-console/protocol/desktop";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
 import { createWorkspaceRoutes } from "../../../features/workspace/host/routes.js";
 import { createMcpHttpTransport } from "../transport/mcp-http.js";
@@ -54,7 +58,7 @@ import { createUseRequestBroker } from "../../../features/console-use/host/use-r
 import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { OperationNode } from "../../../features/execution/host/operations/operations-domain.js";
-import { createOperationStore, createOperationsRouter, createSanitizedOpDto } from "../../../features/execution/host/operations/operations-domain.js";
+import { OPERATIONS_API_CATALOG, createOperationStore, createOperationsRouter, createSanitizedOpDto } from "../../../features/execution/host/operations/operations-domain.js";
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "../../../features/remote-access/host/access-control-contract.js";
 import { parseAccessLink, sanitizeAccessLabel } from "../../../features/remote-access/host/access-link.js";
@@ -162,11 +166,14 @@ interface OperationSseSubscriber {
   /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
   readonly sessionHandle: string | null;
   /** 네이티브 Operation 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
-  readonly client: "desktop" | "browser" | "operation-browser";
+  readonly client: "desktop" | "browser" | "operation-browser" | "observer";
 }
 
 /** 화면을 든 클라이언트의 종류 — Desktop 창은 Electron 표기를 단 UA 로 온다(클라이언트의 셸 표식과 같은 판정). */
-function clientKindOf(req: http.IncomingMessage): OperationSseSubscriber["client"] {
+function clientKindOf(req: http.IncomingMessage, remote: { readonly access: string; readonly disposition: string } | null): OperationSseSubscriber["client"] {
+  // 원격은 인증된 세션의 모드로만 가른다. UA나 뷰 헤더를 신뢰하면 관찰 중계가 브라우저로 세어 탭을 닫는다.
+  if (remote && (remote.disposition === "observe" || remote.access !== "full")) return "observer";
+  if (remote) return "desktop";
   const agent = req.headers["user-agent"];
   return typeof agent === "string" && /\bElectron\//u.test(agent) ? "desktop" : "browser";
 }
@@ -239,6 +246,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     category: "Observer",
     gate: "loopback",
     transport: "http",
+    readOnly: true,
   },
   {
     method: "POST",
@@ -591,6 +599,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   const remoteIdentityStore = createRemoteIdentityStore(durablePaths.dir);
   const remoteHostStore = createRemoteHostStore(durablePaths.dir);
+  const hostShellBridge = createHostShellBridge();
   const pairedDeviceStore = createPairedDeviceStore(durablePaths.dir);
   const remoteEndpointStore = createRemoteEndpointStore(durablePaths.dir);
   const pluginOperationTypes = new Set<string>(["agent"]);
@@ -850,7 +859,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
-    localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
+    localControl: () => !access.hasController("remote"),
     onActiveOwnerChange: () => scheduleOperationUseBroadcast(),
   });
   // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
@@ -1473,17 +1482,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     subscribeOperationSse: (req, res) => {
       const listener = listenerForRequest(req);
       const audience: AccessAudience = listener?.audience ?? "local";
-      const sessionHandle = listener === null || listener.audience === "local"
+      const remoteSession = listener === null || listener.audience === "local"
         ? null
-        : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
+        : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      const sessionHandle = remoteSession?.handle ?? null;
       if (audience === "remote" && sessionHandle === null) { writeJson(res, 401, { error: "unauthorized" }); return; }
       const shellOwner = audience === "local" ? "local" : sessionHandle;
-      // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
-      // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
+      const kind = clientKindOf(req, remoteSession);
+      // 제어 Desktop의 네이티브 뷰만 operation-browser다. 관찰 세션의 헤더는 그 자격이 아니다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
-      const operationView = typeof viewId === "string" && shellOwner !== null
+      const operationView = kind === "desktop" && typeof viewId === "string" && shellOwner !== null
         && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOwner(viewId));
-      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : clientKindOf(req) };
+      const subscriber: OperationSseSubscriber = { res, audience, sessionHandle, client: operationView ? "operation-browser" : kind };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -1560,8 +1570,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
   routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
-  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
+  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasController("remote"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
+  routeRegistry.register("/api/v1/hosts", createHostGateway({
+    isLoopback: isLoopbackListener,
+    isExactOrigin: isExactConsoleOrigin,
+    findHost: (hostKey) => {
+      const host = remoteHostStore.find(hostKey);
+      return host ? { hostname: host.hostname, port: host.port, fingerprint: host.fingerprint, origin: host.origin } : null;
+    },
+    bridge: hostShellBridge,
+    readJsonBody,
+    writeJson,
+    withSecurityHeaders,
+  }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
+    if (await handleDesktopHostTransport(context)) return true;
     if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellUpdateRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
@@ -1588,7 +1611,33 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
-  function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; reason?: ControlReclaimedReason } {
+
+  async function handleDesktopHostTransport({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean> {
+    if (pathname !== DESKTOP_HOST_TRANSPORT_PATH && pathname !== DESKTOP_HOST_TRANSPORT_EVENTS_PATH && pathname !== DESKTOP_HOST_TRANSPORT_RELAY_PATH) return false;
+    if (!isLoopbackListener(req) || !isExactConsoleOrigin(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
+    if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") { writeJson(res, 200, hostShellBridge.snapshot()); return true; }
+    if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
+      res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
+      const unsubscribe = hostShellBridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
+      res.on("close", unsubscribe);
+      return true;
+    }
+    if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!hostShellBridge.relay(body)) { writeJson(res, 400, { error: "invalid_host_request" }); return true; }
+      res.writeHead(204, withSecurityHeaders({}));
+      res.end();
+      return true;
+    }
+    writeJson(res, 405, { error: "method_not_allowed" });
+    return true;
+  }
+
+  function observerCatalog(): readonly { readonly method: string; readonly path: string; readonly readOnly?: true }[] {
+    return [...SERVER_API_CATALOG, ...OPERATIONS_API_CATALOG, ...executionApiCatalog, ...pluginHost.apiCatalog];
+  }
+
+  function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; readOnly?: boolean; reason?: ControlReclaimedReason } {
     // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
     // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     //
@@ -1596,11 +1645,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 자기 페어링이 두고 간 옛 세션을 걷은 뒤 새 세션을 여는데, 이 요청이 옛 세션에 묶여 있으면
     // 그 세션을 닫는 종료 신호가 재합류 응답 자체를 파기한다. 페어링된 기기가 조용히 돌아오는 길이
     // 이 한 줄에 걸려 있다.
-    if (pathname === "/api/v1/join") return { admitted: true, sessionHandle: null };
+    if (pathname === "/api/v1/join" || pathname === "/api/v1/sessions") return { admitted: true, sessionHandle: null };
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session !== null) {
-      // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
-      return session.access !== "monitoring" || isReadOnlyRequest(req) ? { admitted: true, sessionHandle: session.handle } : { admitted: false };
+      const observing = session.disposition === "observe" || session.access === "monitoring";
+      if (observing) {
+        // 업그레이드는 선언된 GET이어도 쓰기다. 관찰 소켓은 여기서 막히고, 수신 전용도 명령 프레임을 받지 않는다.
+        if (String(req.headers.upgrade ?? "").toLowerCase() === "websocket" || !isDeclaredObserverRead(observerCatalog(), req.method ?? "GET", pathname)) {
+          return { admitted: false, readOnly: true };
+        }
+      }
+      return { admitted: true, sessionHandle: session.handle };
     }
     // 세션이 없다는 것은 회수·대체·만료·재시작 중 하나다. 그 기기가 아직 들고 있는 페어링
     // 쿠키로 끝난 사유를 찾아 — handle·기기 이름·openedAt은 들여다보지 않는다. 페어링이 없거나
@@ -1610,12 +1665,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return reason === null ? { admitted: false } : { admitted: false, reason };
   }
 
-
-  /** 읽기로 볼 수 있는 것만. 터미널 업그레이드는 method가 GET이어도 쓰기다. */
-  function isReadOnlyRequest(req: http.IncomingMessage): boolean {
-    if (req.method !== "GET" && req.method !== "HEAD") return false;
-    return String(req.headers.upgrade ?? "").toLowerCase() !== "websocket";
-  }
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
@@ -1629,7 +1678,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (listener && listener.audience !== "local") {
       const admission = remoteRequestAdmission(listener, req, pathname);
       if (!admission.admitted) {
-        writeJson(res, 401, admission.reason === undefined ? { error: "unauthorized" } : { error: "unauthorized", reason: admission.reason });
+        if (admission.readOnly) writeJson(res, 403, { error: "read_only" });
+        else writeJson(res, 401, admission.reason === undefined ? { error: "unauthorized" } : { error: "unauthorized", reason: admission.reason });
         return;
       }
       // 입장시킨 세션에 이 응답을 묶는다. 그 세션이 끝나면 SSE든 진행 중 요청이든 함께 닫힌다.
@@ -1717,6 +1767,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/join") {
       runAsyncBooleanHandler(handleAccessJoin(req, res), res);
+      return;
+    }
+    if (pathname === "/api/v1/sessions") {
+      runAsyncBooleanHandler(handleHostSession(req, res), res);
       return;
     }
     if (pathname === REMOTE_HOSTS_PATH || pathname.startsWith(`${REMOTE_HOSTS_PATH}/`)) {
@@ -1991,8 +2045,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function resolveTerminalSocketRole(req: http.IncomingMessage): "control" | "viewer" {
-    if (!isLoopbackListener(req)) return "control";
-    return access.hasSession("remote", "full") ? "viewer" : "control";
+    const listener = listenerForRequest(req);
+    if (listener && listener.audience !== "local") {
+      const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      if (!session || session.disposition !== "control" || session.access !== "full") return "viewer";
+      return "control";
+    }
+    return access.hasController("remote") ? "viewer" : "control";
   }
 
   function handleStatus(req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -2444,7 +2503,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function currentControlHolder(): ControlHolderSnapshot | null {
     for (const session of access.listSessions("remote")) {
-      if (session.access !== "full") continue;
+      if (session.access !== "full" || session.disposition !== "control") continue;
       return { handle: session.handle, device: session.device, openedAt: session.openedAt };
     }
     return null;
@@ -2457,9 +2516,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 서버는 아무것도 바뀌지 않았는데 화면만 틀린 것을 그리고 있는 자리에만 쓴다.
    */
   function broadcastControlChanged(resend = false): void {
-    if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) computerUse.stopDetached();
-    // 제어 보유자가 곧 브라우저 뷰를 그릴 창이다 — 바뀌면 옛 창의 탭은 닫히고 새 창이 이어받는다.
-    browserService.reconcile();
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.
      *
@@ -2473,7 +2529,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      */
     const holder = currentControlHolder();
     const handle = holder?.handle ?? null;
-    if (!resend && handle === lastPublishedControlHolder) return;
+    const changed = handle !== lastPublishedControlHolder;
+    // 관찰 세션의 조인·만료는 보유자를 바꾸지 않는다. 그때 로컬 컴퓨터 사용과 브라우저를 걷으면 안 된다.
+    if (changed) {
+      if (holder) computerUse.stopDetached();
+      browserService.reconcile();
+    }
+    if (!resend && !changed) return;
     lastPublishedControlHolder = handle;
     /**
      * 플러그인 쪽이 먼저다. 이미 열려 있는 터미널 소켓은 티켓 발급 시점의 등급을 그대로
@@ -2704,7 +2766,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   const { handleObserverReleaseNotes, handleUpdateProgress, handleUpdateCheck, handleUpdateApply } = createUpdatesRoutes({ releaseNotes, updateCheck, updateApply, durablePaths, release, version, channel, isExactConsoleOrigin, isLoopbackListener, readJsonBody, writeJson, readUrl, currentRuntime: () => ({ lockHandle, activeEndpoint, activeLockFile }), publishDesktopUpdateRequest, stopAfterAcceptedUpdateApply });
 
-  const { handleAccessJoin } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
+  const { handleAccessJoin, handleHostSession } = createPairingRoutes({ access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged });
 
   const { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue } = createRemoteAdminRoutes({ access, pairedDeviceStore, remoteJoinGuard, remoteIdentityStore, remoteEndpointStore, consoleSettingsStore, readListenerState: () => ({ listeners, remoteFingerprint, remoteLastError }), isLoopbackListener, isAccessAdminAuthorized, writeJson, withSecurityHeaders, broadcastControlChanged, reconcileRemoteIdentity, consoleLabel });
 

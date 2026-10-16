@@ -951,6 +951,7 @@ function assertValidCatalogEntry(entry: unknown): asserts entry is ApiCatalogEnt
     || !API_CATALOG_GATES.has(candidate.gate)
     || !API_CATALOG_TRANSPORTS.has(candidate.transport)
     || !isValidCatalogPath(candidate.path)
+    || (candidate.readOnly !== undefined && candidate.readOnly !== true)
   ) {
     throw new Error("plugin_catalog_entry_invalid");
   }

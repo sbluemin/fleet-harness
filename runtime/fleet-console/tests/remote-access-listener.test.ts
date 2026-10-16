@@ -306,7 +306,44 @@ interface RemoteAccessStatus {
   readonly interfaces: readonly { readonly kind: string; readonly label: string; readonly address: string }[];
 }
 
-async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
+it("does not take control or permit writes when a paired device only observes", async () => {
+    const fixture = await startFixture({ remote: true });
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const holder = await joinAs(fixture, "full", "holder");
+    const pairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    expect(pairing).toBeTruthy();
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe", device: "watcher" }), pairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toEqual({ capability: "host-session", mode: "observer", access: "full" });
+    const observer = cookiesOf(observed);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    const denied = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), observer);
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(denied.body)).toEqual({ error: "read_only" });
+    const status = await readRemoteStatus(fixture);
+    expect(status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device).sort()).toEqual(["holder", "watcher"]);
+    const activated = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "activate" }), observer);
+    expect(activated.status).toBe(200);
+    expect(JSON.parse(activated.body).mode).toBe("controller");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("refuses control to a monitoring pairing without displacing the controller", async () => {
+    const fixture = await startFixture({ remote: true });
+    const holder = await joinAs(fixture, "full", "holder");
+    const eye = await joinAs(fixture, "monitoring", "eye");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const denied = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "activate" }), eye);
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(denied.body)).toEqual({ error: "observer_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const write = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), eye);
+    expect(write.status).toBe(403);
+    expect(JSON.parse(write.body)).toEqual({ error: "read_only" });
+  });
+
+  async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
   const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links?access=${access}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${fixture.lockToken}` },
