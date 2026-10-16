@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { HostSelection, HostView, HostWorkspacePort, HostWorkspaceSnapshot } from "@fleet-console/sdk/host-context";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -15,7 +15,29 @@ export type HostWorkspaceMessageKey =
   | "hosts.workspace.loadFailed" | "hosts.workspace.trustHelp" | "hosts.workspace.connectionHelp"
   | "hosts.workspace.controlPending" | "hosts.workspace.selectConversation"
   | "hosts.workspace.running" | "hosts.workspace.idle" | "hosts.workspace.background" | "hosts.workspace.ended" | "hosts.workspace.unknown"
-  | "hosts.workspace.quotaSource" | "hosts.workspace.controlHeld" | "hosts.workspace.retryObservation";
+  | "hosts.workspace.quotaSource" | "hosts.workspace.controlHeld" | "hosts.workspace.retryObservation"
+  | "hosts.workspace.pairNeeded" | "hosts.workspace.pairAction" | "hosts.workspace.pairConfirm" | "hosts.workspace.pairConfirmAction"
+  | "hosts.workspace.pairCancel" | "hosts.workspace.pairBusy" | "hosts.workspace.pairLinkRequired" | "hosts.workspace.pairUnsupported"
+  | "hosts.workspace.pairDeviceLimit" | "hosts.workspace.pairFailed";
+
+/**
+ * pair 거절 코드(shared 계약)를 사람이 할 다음 행동으로 접는다. 원문 코드는 화면에 싣지 않는다.
+ * 옛 셸이 모르는 명령을 버려 끝난 시간 초과는 `remote_host_unavailable`로 오므로 "지원하지 않음"으로 단정하지 않는다 —
+ * `host_unsupported`는 셸·원격이 명시적으로 지원하지 않는다고 답한 경우뿐이다.
+ */
+function pairFailureKey(code: string): HostWorkspaceMessageKey {
+  if (code === "remote_link_required") return "hosts.workspace.pairLinkRequired";
+  if (code === "host_unsupported") return "hosts.workspace.pairUnsupported";
+  if (code === "remote_host_fingerprint_mismatch") return "hosts.workspace.trustHelp";
+  if (code === "paired_device_limit") return "hosts.workspace.pairDeviceLimit";
+  return "hosts.workspace.pairFailed";
+}
+
+/** 한 번에 한 컴퓨터만 연결한다. 확인 → 진행 중 → (실패 사유)의 표시 상태이고, 연결 결과의 진실은 workspace snapshot이다. */
+type PairState =
+  | { readonly hostKey: string; readonly phase: "confirm" }
+  | { readonly hostKey: string; readonly phase: "busy" }
+  | { readonly hostKey: string; readonly phase: "failed"; readonly key: HostWorkspaceMessageKey };
 
 type HostTranslate = Translate<HostWorkspaceMessageKey>;
 
@@ -54,6 +76,19 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
   const [expanded, setExpanded] = useState<Readonly<Record<string, boolean>>>({ local: true, [state.selection.hostKey]: true });
   const [filters, setFilters] = useState<Readonly<Record<string, string | null>>>({});
   const [activationFailed, setActivationFailed] = useState(false);
+  const [pairing, setPairing] = useState<PairState | null>(null);
+  const pairAbort = useRef<AbortController | null>(null);
+  // 화면이 내려가면 진행 중인 연결도 끝낸다 — 남은 응답이 사라진 화면을 칠하지 않는다.
+  useEffect(() => () => { pairAbort.current?.abort(); }, []);
+  // 목록에서 사라진 컴퓨터의 연결은 끝낸다 — 옛 컴퓨터의 결과가 같은 자리의 다른 컴퓨터에 붙지 않는다.
+  const pairingHostKey = pairing?.hostKey ?? null;
+  const pairingHostListed = pairingHostKey === null || state.hosts.some((host) => host.hostKey === pairingHostKey);
+  useEffect(() => {
+    if (pairingHostListed) return;
+    pairAbort.current?.abort();
+    pairAbort.current = null;
+    setPairing(null);
+  }, [pairingHostListed]);
   const selectedHost = state.hosts.find((host) => host.hostKey === state.selection.hostKey);
   const selectedFilter = filters[state.selection.hostKey] ?? null;
   const validFilter = selectedHost?.theaters.some((theater) => theater.id === selectedFilter) ? selectedFilter : null;
@@ -73,6 +108,47 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
     });
   };
 
+  /**
+   * 명시 클릭으로만 연결한다(펼침은 연결하지 않는다). 성공은 그 컴퓨터를 관찰 상태로 갱신할 뿐이고 선택·제어 획득·창 이동은 없다.
+   * 다른 컴퓨터의 연결을 시작하면 앞선 진행은 취소한다.
+   */
+  const startPair = (hostKey: string) => {
+    pairAbort.current?.abort();
+    const controller = new AbortController();
+    pairAbort.current = controller;
+    // 시작한 컴퓨터의 수명. 그사이 gateway 수명이 바뀌면 그 결과는 지금 카드의 것이 아니다.
+    const started = hosts.getSnapshot().hosts.find((host) => host.hostKey === hostKey);
+    const current = () => {
+      if (pairAbort.current !== controller || controller.signal.aborted) return false;
+      const host = hosts.getSnapshot().hosts.find((candidate) => candidate.hostKey === hostKey);
+      // 성공한 관찰은 epoch를 하나 올린다 — 수명 판정은 instance로 하고, epoch는 시작보다 뒤로 가지 않았는지만 본다.
+      return host !== undefined && host.instanceId === started?.instanceId && host.epoch >= (started?.epoch ?? 0);
+    };
+    setPairing({ hostKey, phase: "busy" });
+    void hosts.pair(hostKey, controller.signal).then(
+      () => {
+        if (pairAbort.current !== controller) return;
+        pairAbort.current = null;
+        setPairing(null);
+      },
+      (cause: unknown) => {
+        if (!current()) {
+          // 옛 수명·취소된 시도의 실패는 새 카드에 칠하지 않는다. 진행 표시만 내려 둔다.
+          if (pairAbort.current === controller) { pairAbort.current = null; setPairing(null); }
+          return;
+        }
+        pairAbort.current = null;
+        setPairing({ hostKey, phase: "failed", key: pairFailureKey(cause instanceof Error ? cause.message : "") });
+      },
+    );
+  };
+  const cancelPair = () => {
+    const controller = pairAbort.current;
+    pairAbort.current = null;
+    controller?.abort();
+    setPairing(null);
+  };
+
   return <div className="host-workspace-sidebar">
     <div className="host-workspace-computers" aria-label={t("hosts.workspace.selectConversation")}>
       {state.hosts.map((host, index) => {
@@ -81,6 +157,9 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
         const open = expanded[host.hostKey] === true;
         const ready = host.phase === "ready";
         const blocked = host.connection === "blocked" || host.connection === "closed" || host.trust === "mismatch";
+        // 이 기기가 아직 페어링되지 않은 컴퓨터만 화면 안 연결을 내놓는다. 다른 차단(끊김·인증서 변경)은 기존 안내 그대로다.
+        const unpaired = !local && host.trust !== "mismatch" && host.error === "remote_host_not_paired";
+        const hostPairing = pairing?.hostKey === host.hostKey ? pairing : null;
         const usable = ready && host.connection === "ready" && (local || host.trust === "verified");
         const filter = selected ? validFilter : null;
         const operations = host.operations.filter((operation) => !operation.parentOperationId && (local || operation.type === "agent"));
@@ -121,7 +200,23 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
               </div>;
             })}
             {ready && host.theaters.length === 0 ? <p className="host-workspace-note">{t("hosts.workspace.empty")}</p> : null}
-            {blocked ? <div className="host-workspace-note"><p>{t(host.trust === "mismatch" ? "hosts.workspace.trustHelp" : "hosts.workspace.connectionHelp")}</p>
+            {blocked && unpaired ? <div className="host-workspace-note host-workspace-pair">
+              <p>{t("hosts.workspace.pairNeeded", { host: host.label })}</p>
+              {hostPairing?.phase === "confirm" ? <>
+                <p>{t("hosts.workspace.pairConfirm", { host: host.label })}</p>
+                <div className="host-workspace-pair-actions">
+                  <button type="button" className="host-workspace-back" onClick={() => startPair(host.hostKey)}>{t("hosts.workspace.pairConfirmAction")}</button>
+                  <button type="button" className="host-workspace-back" onClick={cancelPair}>{t("hosts.workspace.pairCancel")}</button>
+                </div>
+              </> : hostPairing?.phase === "busy" ? <div className="host-workspace-pair-actions">
+                <p role="status" aria-live="polite">{t("hosts.workspace.pairBusy", { host: host.label })}</p>
+                <button type="button" className="host-workspace-back" onClick={cancelPair}>{t("hosts.workspace.pairCancel")}</button>
+              </div> : <>
+                {hostPairing?.phase === "failed" ? <p role="alert">{t(hostPairing.key, { host: host.label })}</p> : null}
+                <button type="button" className="host-workspace-back" disabled={pairing?.phase === "busy"} onClick={() => setPairing({ hostKey: host.hostKey, phase: "confirm" })}>{t("hosts.workspace.pairAction")}</button>
+              </>}
+              <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button>
+            </div> : blocked ? <div className="host-workspace-note"><p>{t(host.trust === "mismatch" ? "hosts.workspace.trustHelp" : "hosts.workspace.connectionHelp")}</p>
               {!local && host.trust !== "mismatch" ? <button type="button" className="host-workspace-back" onClick={() => hosts.select({ hostKey: host.hostKey, theaterId: null, role: "commodore", operationId: null })}>{t("hosts.workspace.retryObservation")}</button> : null}
               {!local ? <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button> : null}
             </div> : null}
