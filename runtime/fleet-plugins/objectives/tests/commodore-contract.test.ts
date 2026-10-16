@@ -71,6 +71,7 @@ describe("host-bound objective state", () => {
         transport: { scope: { hostKey, epoch: 1, signal: abort.signal } },
         api: { fetch: request },
         events: { subscribe: () => () => undefined, onReconnect: () => () => undefined },
+        operations: { getSnapshot: () => [], subscribe: () => () => undefined },
         canWrite: () => false,
       } as unknown as HostSurfaceContext;
       const model = createHostObjectiveState(context);
