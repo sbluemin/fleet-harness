@@ -11,6 +11,8 @@ import { startGatewayHttpServer, type FleetCliGatewayServer } from "../../../cli
 const authService: AuthService = {
   deleteApiKey: async () => false,
   getApiKey: async () => undefined,
+  getEntry: async () => undefined,
+  setEntry: async () => {},
   listProviderIds: async () => [],
   setApiKey: async () => {},
 };

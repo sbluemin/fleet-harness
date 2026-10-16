@@ -14,7 +14,7 @@ import {
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
-  readMuseCodeSubscriptionAuth,
+  createMuseCodeOAuth,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
   type AuthService,
@@ -53,6 +53,7 @@ export async function startGatewayHttpServer(deps: {
     },
     readSupportedModels: (executable) => readClaudeSupportedModels(executable === undefined ? {} : { executablePath: executable }),
   });
+  const museCode = createMuseCodeOAuth({ authService: deps.authService });
   const router = createAiGatewayRouter({
     ensureClaudeNativeModels: claudeNativeModels.ensure,
     compactionStore: createClaudeCodexCompactionStore({ directory: gatewayDir }),
@@ -67,7 +68,8 @@ export async function startGatewayHttpServer(deps: {
     readXaiToken: () => readXaiSubscriptionToken(),
     readAntigravityToken: () => readAntigravitySubscriptionToken(),
     renewAntigravityToken: () => readAntigravitySubscriptionToken({ forceRenew: true }),
-    readMuseCodeAuth: () => readMuseCodeSubscriptionAuth(),
+    readMuseCodeAuth: museCode.readAuth,
+    renewMuseCodeAuth: museCode.renew,
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: diagnostics.write,
   });
@@ -100,6 +102,7 @@ export async function startGatewayHttpServer(deps: {
     await listen(server, deps.port);
   } catch (error) {
     router.dispose();
+    museCode.dispose();
     await diagnostics.flush();
     await failureJournal.flush();
     throw error;
@@ -119,6 +122,7 @@ export async function startGatewayHttpServer(deps: {
     close() {
       closePromise ??= closeServer(server).finally(async () => {
         router.dispose();
+        museCode.dispose();
         await diagnostics.flush();
         await failureJournal.flush();
       });

@@ -14,3 +14,5 @@
 .quota-m-bar i { display: block; height: 100%; background: var(--text-secondary); }
 .quota-m-bar i.is-warning { background: var(--warn); }
 .quota-m-bar i.is-critical { background: var(--coral); }
+/* Muse Code 로그인 코드 — 승인 페이지의 코드와 눈으로 맞춰 보는 값이라 고정폭으로 크게 둔다. */
+.quota-m-code { font-family: var(--font-code); font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0.12em; user-select: all; }

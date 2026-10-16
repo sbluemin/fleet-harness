@@ -503,6 +503,39 @@
   font-size: var(--t-xs);
 }
 
+/* 로그인 카드의 단추 줄 — 1차 동작이 앞, 되돌리는 동작이 뒤. */
+.quota-connect-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Muse Code 로그인 코드 — 승인 페이지에 뜬 코드와 눈으로 맞춰 보는 값이라 크게, 고정폭으로 둔다.
+   틀 없이 낮은 면 하나에 얹는다(연결 카드와 같은 중립 면 문법). */
+.quota-login-code {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+}
+
+.quota-login-code__label {
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.quota-login-code__value {
+  color: var(--text-primary);
+  font-family: var(--font-code);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
 /* 팝업 안 단추는 중립 면 위의 글자다 — 1차 동작만 금색 글자를 얻고, 테두리는 두지 않는다. */
 .quota-button {
   padding: 6px 12px;

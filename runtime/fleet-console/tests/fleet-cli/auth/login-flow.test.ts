@@ -66,6 +66,8 @@ function createDeps() {
     authService: {
       deleteApiKey: vi.fn(),
       getApiKey: vi.fn(),
+      getEntry: vi.fn(),
+      setEntry: vi.fn(),
       listProviderIds: vi.fn(),
       setApiKey: mocks.setApiKey,
     },

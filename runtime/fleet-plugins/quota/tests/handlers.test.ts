@@ -4,8 +4,8 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService } from "@fleet-console/ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleConnect, handleSummary } from "../server/handlers.js";
-import type { SettingsSerializer } from "../server/handlers.js";
+import { handleConnect, handleMuseLogin, handleSummary } from "../server/handlers.js";
+import type { MuseLoginGateway, SettingsSerializer } from "../server/handlers.js";
 
 function createSerializer(): SettingsSerializer {
   let chain = Promise.resolve();
@@ -84,5 +84,25 @@ describe("quota route handlers", () => {
     await handleConnect(unauthorized.req, unauthorized.res, unauthorized.ctx, unauthorized.service, unauthorized.serializeSettings);
     expect(unauthorized.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
     expect(unauthorized.writeJson).not.toHaveBeenCalled();
+  });
+
+  it("forwards Muse Code sign-in calls to Console only for authorized callers", async () => {
+    // 프록시는 서버 자신의 Origin으로 Gateway를 부른다 — 브라우저 호출자를 거르는 문은 이 라우트뿐이다.
+    const gateway = { call: vi.fn(async () => ({ status: 200, payload: { signedIn: false } })) } satisfies MuseLoginGateway;
+    for (const [method, url, action] of [
+      ["POST", "/plugins/quota/muse-code/logout", "logout"],
+      ["GET", "/plugins/quota/muse-code/status?loginId=abc", "status"],
+    ] as const) {
+      const denied = harness(method, url, {});
+      (denied.ctx.host.security as unknown as { isTerminalAuthorized: () => boolean }).isTerminalAuthorized = () => false;
+      await handleMuseLogin(denied.req, denied.res, denied.ctx, action, gateway, denied.service);
+      expect(denied.writes).toEqual([{ status: 401, payload: { error: "unauthorized" } }]);
+    }
+    expect(gateway.call).not.toHaveBeenCalled();
+
+    const allowed = harness("POST", "/plugins/quota/muse-code/logout", {});
+    await handleMuseLogin(allowed.req, allowed.res, allowed.ctx, "logout", gateway, allowed.service);
+    expect(gateway.call).toHaveBeenCalledWith("logout", { body: {} });
+    expect(allowed.writes[0]?.status).toBe(200);
   });
 });

@@ -1,17 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
+import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
+import type { AuthStorageEntry } from "../../src/auth/types.js";
 import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.js";
 import { getJson } from "../../src/quota/windows.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
-
-const museAuth = vi.hoisted(() => ({
-  resolveMuseAuth: vi.fn(async () => ({
-    status: "ok" as const,
-    credentials: { accountToken: "muse-account-token", method: "keychain" as const },
-  })),
-}));
-vi.mock("../../src/upstream/muse-code/credentials.js", () => museAuth);
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
   return { status: "ok", fetchedAt, windows: [{ id: "session", usedPercent }] };
@@ -121,6 +115,8 @@ describe("quota service", () => {
 
   it("collectors read OpenCode keys only through the injected auth service", async () => {
     const authService = {
+      getEntry: async () => undefined,
+      setEntry: async () => undefined,
       getApiKey: vi.fn(async () => "opencode-key"),
       setApiKey: async () => undefined,
       deleteApiKey: async () => false,
@@ -157,7 +153,7 @@ describe("quota service", () => {
         ],
       } satisfies ProviderSuccess)
       .mockImplementationOnce(() => getJson(async () => new Response(null, { status: 429 }), "https://quota.example/usage", {}))
-      .mockResolvedValueOnce({ status: "error", message: "Credential store unavailable (keychain_denied)" })
+      .mockResolvedValueOnce({ status: "error", message: "Credential store unavailable" })
       .mockRejectedValue(new Error("Bearer super-secret upstream unavailable"));
     const service = createQuotaService({
       now: () => now,
@@ -175,7 +171,7 @@ describe("quota service", () => {
 
     // 조회가 예외 대신 오류 결과를 돌려줘도 실패다. 원인 문구는 stale 값에 실린다.
     const unreadable = (await service.getSummary({ force: true })).providers.claude;
-    expect(unreadable).toMatchObject({ status: "stale", message: "Credential store unavailable (keychain_denied)", windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
+    expect(unreadable).toMatchObject({ status: "stale", message: "Credential store unavailable", windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
 
     // 30분이 지나도 패널에는 잇되, 배정은 낡은 값을 믿지 않는다.
     now = 100_000 + 1_800_001;
@@ -211,8 +207,16 @@ describe("quota service", () => {
       }),
       { status, headers: { "Content-Type": "application/json" } },
     ));
+    let entry: AuthStorageEntry = { key: "previous-key", type: "oauth-device", version: 1, accessToken: "muse-account-token", mintedAt: now };
+    const authService = {
+      getEntry: async () => entry,
+      setEntry: async (_id: string, value: AuthStorageEntry) => { entry = value; },
+      getApiKey: async () => entry.key, setApiKey: async () => undefined,
+      deleteApiKey: async () => false, listProviderIds: async () => [MUSE_CODE_AUTH_PROVIDER_ID],
+    };
+    const museCode = createMuseCodeOAuth({ authService, fetch: fetchImpl as typeof fetch, now: () => now });
     const collectors = createAiGatewayQuotaCollectors({
-      authService: { getApiKey: async () => undefined, setApiKey: async () => undefined, deleteApiKey: async () => false, listProviderIds: async () => [] },
+      authService, museCode,
       fetch: fetchImpl as typeof fetch,
       now: () => now,
     });
@@ -233,13 +237,14 @@ describe("quota service", () => {
     expect(new Headers(init?.headers).get("x-api-version")).toBe("1.0.0");
     expect(muse).toMatchObject({
       status: "ok",
-      method: "keychain",
       plan: "Pro",
       windows: [
         { id: "session", usedPercent: 12, resetsAt: Date.parse("2026-09-25T03:00:00.000Z"), period: { durationMs: 18_000_000, durationBasis: "upstream" } },
         { id: "weekly", usedPercent: 30, resetsAt: 1_759_363_200_000 },
       ],
     });
+    expect(entry.key).toBe("minted-secret-key");
+    expect(muse).not.toHaveProperty("method");
     expect(muse.windows?.[1]).not.toHaveProperty("period");
     expect(JSON.stringify(muse)).not.toMatch(/minted-secret-key|person@example\.com|Person/);
 
@@ -258,7 +263,9 @@ describe("quota service", () => {
 
     now += 180_000;
     status = 401;
-    expect((await service.getSummary({ force: true })).providers["muse-code"]).toMatchObject({ status: "expired", method: "keychain" });
+    expect((await service.getSummary({ force: true })).providers["muse-code"]).toMatchObject({ status: "expired" });
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect((await museCode.readAuth()).status).toBe("expired");
+    museCode.dispose();
   });
 });

@@ -1,23 +1,5 @@
-import { defaultCredentialDeps } from "../../transport/credentials.js";
-import type { ProviderResult, QuotaWindow } from "../../quota/types.js";
-import {
-  expired,
-  object,
-  percent,
-  postJson,
-  safeTimestamp,
-  titleCase,
-  windowPeriod,
-  type ProviderDeps,
-} from "../../quota/windows.js";
-import { resolveMuseAuth } from "./credentials.js";
-
-/** 구독 사용량은 key endpoint가 알려 준다. 본문은 빈 객체로 두고 onboarding 필드는 보내지 않는다. */
-export const MUSE_CODE_KEY_URL = "https://api.meta.ai/muse-code/key";
-const MUSE_CODE_API_VERSION = "1.0.0";
-
-/** 패널이 "로그인 없음"과 "저장소를 읽지 못함"을 구분할 때 맞춰 보는 고정 문구. */
-export const MUSE_CODE_CREDENTIALS_UNAVAILABLE = "Credential store unavailable";
+import type { QuotaWindow } from "../../quota/types.js";
+import { object, percent, safeTimestamp, titleCase, windowPeriod } from "../../quota/windows.js";
 
 export type ParsedMuseCodeUsage =
   | { readonly status: "inactive" }
@@ -84,44 +66,4 @@ export function parseMuseCodeUsage(payload: unknown): ParsedMuseCodeUsage | null
   const windows = parseMuseCodeSubscriptionUsage(root.subs_usage);
   if (!windows) return null;
   return { status: "ok", windows, ...withPlan };
-}
-
-export async function fetchMuseCodeUsage(deps: ProviderDeps = {}): Promise<ProviderResult> {
-  const now = deps.now ?? Date.now;
-  const fetchImpl = deps.fetch ?? fetch;
-  const auth = await resolveMuseAuth(deps.credentials ?? defaultCredentialDeps);
-  if (auth.status === "signed_out") return { status: "signed_out" };
-  if (auth.status === "unavailable") {
-    return { status: "error", message: `${MUSE_CODE_CREDENTIALS_UNAVAILABLE} (${auth.reason})` };
-  }
-  const { expiresAt, method } = auth.credentials;
-  const accountToken = auth.credentials.accountToken?.trim();
-  // 사용량은 구독 계정의 정보다. API 키만 있는 로그인으로는 물어볼 계정이 없다.
-  if (!accountToken) return { status: "signed_out" };
-  // Muse CLI의 로그인은 Fleet이 갱신하지 않는다. 만료는 알리기만 한다.
-  if (expiresAt !== undefined && expiresAt <= now()) return { status: "expired", method };
-
-  let payload: unknown;
-  try {
-    payload = await postJson(fetchImpl, MUSE_CODE_KEY_URL, {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accountToken}`,
-      "x-api-version": MUSE_CODE_API_VERSION,
-    });
-  } catch (error) {
-    const result = expired(error);
-    if (result) return { ...result, method };
-    throw error;
-  }
-  const parsed = parseMuseCodeUsage(payload);
-  if (!parsed) throw new Error("Muse Code returned an unsupported quota response");
-  if (parsed.status === "inactive") return { status: "no_subscription", method };
-  return {
-    status: "ok",
-    method,
-    ...(parsed.plan ? { plan: parsed.plan } : {}),
-    windows: parsed.windows,
-    fetchedAt: now(),
-  };
 }

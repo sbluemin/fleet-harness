@@ -32,7 +32,6 @@ import {
 import type { CursorDiagnosticSink } from "../upstream/cursor/native/adapter.js";
 import { resolveCursorCredentials } from "../upstream/cursor/credentials.js";
 import { resolveXaiCliCredentials } from "../upstream/xai/credentials.js";
-import { museInferenceKey, resolveMuseAuth, type MuseAuthResult } from "../upstream/muse-code/credentials.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
@@ -170,10 +169,10 @@ export async function readAntigravitySubscriptionToken(
   return credentials?.accessToken ?? null;
 }
 
-/** Muse Code CLI(`muse login`)가 남긴 로그인. 읽기만 하며 갱신·기록하지 않는다. */
-export async function readMuseCodeSubscriptionAuth(): Promise<MuseAuthResult> {
-  return resolveMuseAuth(defaultCredentialDeps);
-}
+/** 호스트가 조달한 추론 키만 받는다. 계정 토큰은 라우터나 추론 헤더에 닿지 않는다. */
+export type MuseCodeInferenceAuth =
+  | { readonly status: "ok"; readonly credentials: { readonly apiKey: string; readonly baseUrl?: string } }
+  | { readonly status: "signed_out" | "expired" | "unavailable" };
 
 export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
   const credentials = await resolveCodexCredentials(defaultCredentialDeps);
@@ -216,12 +215,14 @@ export interface AiGatewayRouteDeps {
   readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
-  readonly readMuseCodeAuth?: () => MuseAuthResult | Promise<MuseAuthResult>;
+  readonly readMuseCodeAuth?: () => MuseCodeInferenceAuth | Promise<MuseCodeInferenceAuth>;
+  /** 401에서만 한 번 호출한다. 호스트가 quota 조회와 single-flight·backoff를 공유한다. */
+  readonly renewMuseCodeAuth?: (failedKey: string) => Promise<MuseCodeInferenceAuth>;
   /**
    * Muse Code 추론 스트림이 알려 준 구독 사용량. 사용량 캐시를 가진 호스트만 주입한다.
    * key endpoint는 진행 중인 창이 없으면 사용량을 싣지 않으므로, 실제 사용 직후의 값은 여기서 온다.
    */
-  readonly observeMuseCodeUsage?: (windows: readonly QuotaWindow[]) => void;
+  readonly observeMuseCodeUsage?: (windows: readonly QuotaWindow[], apiKey: string) => void;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -638,13 +639,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       credential = xaiToken;
     } else if (target?.provider === "muse-code") {
-      const museKey = museInferenceKey(await deps.readMuseCodeAuth?.());
-      if (museKey.apiKey === undefined) {
-        writeAnthropicError(res, 401, "authentication_error", museKey.message);
+      const auth = await deps.readMuseCodeAuth?.();
+      if (auth?.status !== "ok" || !auth.credentials.apiKey) {
+        writeAnthropicError(res, 401, "authentication_error", "Sign in to Muse Code in the Console quota panel, then retry.");
         clock?.finish("error", 401);
         return true;
       }
-      credential = museKey.apiKey;
+      credential = auth.credentials.apiKey;
     } else if (target?.provider === "antigravity") {
       const antigravityToken = await deps.readAntigravityToken?.();
       if (!antigravityToken) {
@@ -739,7 +740,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
                 : target.provider === "muse-code"
                   ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
                     fetch: requestFetch,
-                    ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: deps.observeMuseCodeUsage } : {}),
+                    ...(deps.renewMuseCodeAuth ? { renewApiKey: async (failedKey: string) => {
+                      const auth = await deps.renewMuseCodeAuth!(failedKey);
+                      if (auth.status !== "ok") return undefined;
+                      credential = auth.credentials.apiKey;
+                      return credential;
+                    } } : {}),
+                    ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: (windows: readonly QuotaWindow[]) => deps.observeMuseCodeUsage!(windows, credential) } : {}),
                     ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
                     ...(harness.yieldToolCalls ? { yieldToolCalls: harness.yieldToolCalls } : {}),
                   }))

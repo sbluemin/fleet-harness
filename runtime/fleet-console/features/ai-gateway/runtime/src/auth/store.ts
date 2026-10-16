@@ -106,6 +106,16 @@ export function createProviderAuthService(deps: CreateProviderAuthServiceDeps): 
       return typeof entry?.key === "string" ? entry.key : undefined;
     },
 
+    async getEntry(providerId: string) {
+      const entry = load()[providerId];
+      return entry === undefined ? undefined : structuredClone(entry);
+    },
+
+    async setEntry(providerId, entry): Promise<void> {
+      const snapshot = structuredClone(entry);
+      update((data) => ({ ...data, [providerId]: snapshot }));
+    },
+
     async listProviderIds(): Promise<string[]> {
       return Object.keys(load()).sort();
     },

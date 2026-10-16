@@ -43,6 +43,8 @@ export type AuthStorageData = Record<string, AuthStorageEntry>;
 export interface AuthService {
   deleteApiKey(providerId: string): Promise<boolean>;
   getApiKey(providerId: string): Promise<string | undefined>;
+  getEntry(providerId: string): Promise<AuthStorageEntry | undefined>;
+  setEntry(providerId: string, entry: AuthStorageEntry): Promise<void>;
   listProviderIds(): Promise<string[]>;
   setApiKey(providerId: string, key: string): Promise<void>;
 }
