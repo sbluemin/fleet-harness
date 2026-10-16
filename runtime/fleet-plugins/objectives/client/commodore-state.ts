@@ -9,7 +9,7 @@ import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
-import { livePersonHold, reasonAwaits } from "../server/board-state.js";
+import { followupsJudgeable, livePersonHold, reasonAwaits } from "../server/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
 import { post } from "./objectives-state.js";
 
@@ -614,7 +614,8 @@ export function isCommodoreWaiting(objective: Objective): boolean {
     || (objective.criteriaProposals.length > 0 && kept("criteria"))
     || (objective.decisionRequest !== null && kept("decision"))
     || (objective.awaitingReview && kept("review"))
-    || (objective.followups.some((followup) => followup.state === "open") && kept("followup"));
+    // 진행 중의 후속 후보는 모이기만 한다 — 검토 대기에 검토와 함께 사령관을 기다린다.
+    || (followupsJudgeable(objective) && objective.followups.some((followup) => followup.state === "open") && kept("followup"));
 }
 
 /* ── 폰 화면이 읽는 콘솔 사실 ───────────────────────────────────────── */

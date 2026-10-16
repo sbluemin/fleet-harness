@@ -91,7 +91,8 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
   readonly idPrefix: string;
   readonly onToggleCheck: (candidateId: string, checked: boolean) => void;
   readonly onToggleOpen: (candidateId: string) => void;
-  readonly onDiscard: (candidateId: string) => void;
+  /** 없으면 폐기 단추를 그리지 않는다 — 진행 중 상세는 읽기만 한다. */
+  readonly onDiscard?: (candidateId: string) => void;
 }) {
   const [briefAll, setBriefAll] = useState(false);
   useEffect(() => { setBriefAll(false); }, [candidate.id, candidate.rev]);
@@ -137,7 +138,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
           ) : null}
           <div className="objectives-followup-foot">
             <span className="objectives-followup-hint">{t("objectives.followup.noEdit")}</span>
-            <DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} />
+            {onDiscard ? <DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} /> : null}
           </div>
         </div>
       ) : null}
@@ -155,7 +156,7 @@ export function FollowupCandidateList({ candidates, selectable, selection, t, id
   readonly openId: string | null;
   readonly onOpenChange: (candidateId: string | null) => void;
   readonly onToggleCheck: (candidateId: string, checked: boolean) => void;
-  readonly onDiscard: (candidateId: string) => void;
+  readonly onDiscard?: (candidateId: string) => void;
 }) {
   return (
     <div className="objectives-followup-list">

@@ -715,6 +715,8 @@ button.objectives-followup-meta:focus-visible { outline: 1px solid var(--brass);
 .objectives-followup-count { font-variant-numeric: tabular-nums; color: var(--aurora); font-weight: var(--weight-medium); }
 /* 완료 뒤 결과 — 머리 아래에 영속한다. */
 .objectives-followup-results { display: flex; flex-direction: column; gap: 6px; padding: 2px 0 6px; }
+.objectives-followup-collected { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px; }
+.objectives-followup-caption { margin: 0 14px 2px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-followup-batch + .objectives-followup-batch { margin-top: 8px; }
 .objectives-followup-batchat { margin: 0 14px 2px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-followup-sum { margin: 0 14px 2px; font-size: var(--t-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }

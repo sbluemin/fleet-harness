@@ -9,7 +9,7 @@ import { readOperationLaunch, type OperationNode, type OperationDescription } fr
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
-import { heldItemStands, objectiveOperator, type HoldSubject } from "./board-state.js";
+import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, objectiveOperator, type HoldSubject } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
 import { deriveFailedOutcome } from "./views.js";
@@ -1746,6 +1746,8 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (target === "decision" && request && (delivering.has(request.id) || stored.decisionDelivery?.requestId === request.id)) throw new ObjectiveStoreError("decision_delivering");
         const hold: StoredPersonHold = { target, ...(target === "decision" && request ? { requestId: request.id } : {}), reason: reason.trim(), at: now(), by: { kind: "commodore", theaterId: by.theaterId } };
         if (!hold.reason || hold.reason.length > MAX_PERSON_HOLD_REASON) throw new ObjectiveStoreError("invalid_reason");
+        // 진행 중의 후속 후보는 모이기만 한다 — 넘길 판단은 검토 대기에 선다.
+        if (target === "followup" && !followupsJudgeable(holdSubject(stored))) throw new ObjectiveStoreError("not_in_review", undefined, { hint: FOLLOWUPS_AT_REVIEW_HINT });
         if (!heldItemStands(holdSubject(stored), hold)) throw new ObjectiveStoreError("nothing_to_hand");
         return withHold(stored, hold);
       });

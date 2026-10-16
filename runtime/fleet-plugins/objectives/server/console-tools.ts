@@ -4,7 +4,7 @@ import { defineConsoleTool, type ConsoleToolFilter } from "@fleet-console/sdk/mc
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { z } from "zod";
 
-import { inboxAwaits, inboxReasons, livePersonHold } from "./board-state.js";
+import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, inboxAwaits, inboxReasons, livePersonHold } from "./board-state.js";
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
@@ -107,7 +107,7 @@ const detailTool = defineConsoleTool({
     followup_retry: write(followupTarget),
     followup_abandon: write(followupTarget),
     // 후보는 보드의 후보 객체 그대로({id, rev}) 가리킨다 — complete 와 같은 모양이고, 그새 고쳐진 후보는 버리지 않는다.
-    followup_discard: write({ followups: followupSelectionSchema.shape.followups }),
+    followup_discard: write({ followups: followupSelectionSchema.shape.followups.describe("Open candidates to drop. They only collect while the objective works; refused as not_in_review before review.") }),
     plan: write({ context }),
     commence: write({ context }),
     steer: write({ context }),
@@ -118,7 +118,7 @@ const detailTool = defineConsoleTool({
     extend: write({ context: remark }),
     // 사령관만 — 서 있는 대기 항목을 사유와 함께 사람 몫으로 넘긴다. 사람은 화면의 「사령관에게 돌려주기」로 되돌린다.
     hand_to_person: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
-      target: z.enum(PERSON_HOLD_TARGETS).describe("The waiting item: the decision request, criteria proposals, review, or open follow-up candidates."),
+      target: z.enum(PERSON_HOLD_TARGETS).describe("The waiting item: decision request, criteria proposals, review, or open follow-ups (from review on)."),
       reason: z.string().trim().min(1).max(MAX_PERSON_HOLD_REASON).describe("Why the person should decide this; shown to them on the item."),
     }) },
   },
@@ -330,6 +330,8 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
             case "followup_retry": return actions.followupRetry({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
             case "followup_abandon": return actions.followupAbandon({ ...ref, batchId: call.batchId, candidateId: call.candidateId });
             case "followup_discard": {
+              // 진행 중의 후보는 모이기만 한다 — 버리기는 검토 대기(또는 완료 뒤)에 모인 후보 전체와 함께 판단한다.
+              if (!followupsJudgeable(current)) throw new ObjectiveStoreError("not_in_review", undefined, { hint: FOLLOWUPS_AT_REVIEW_HINT });
               // 전부 버릴 수 있을 때만 버린다 — 일부만 버린 채 오류로 끝나지 않게, 저장소의 거절 사유를 먼저 본다.
               for (const { id: candidateId, rev } of call.followups) {
                 const candidate = current.followups.find((entry) => entry.id === candidateId);

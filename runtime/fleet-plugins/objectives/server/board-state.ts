@@ -65,7 +65,10 @@ export function stalledObjectives(objectives: readonly Objective[], observe: Boa
   }).map((objective) => objective.id);
 }
 
-/** 목표마다 해당하는 이유를 한 번씩. 완료 뒤에도 미처리 후속은 사람·사령관의 inbox에 남는다. */
+/**
+ * 목표마다 해당하는 이유를 한 번씩. 후속 후보는 진행 중에는 모이기만 하고, 검토 대기(인계 뒤)에 검토와 함께 한 번에 판단할
+ * 대기로 선다. 완료 뒤에도 미처리 후속은 사람·사령관의 inbox에 남는다.
+ */
 export function inboxReasons(objective: Objective, options: { readonly observe?: BoardObserver; readonly now?: number } = {}): readonly InboxReason[] {
   if (objective.removed) return [];
   const reasons: InboxReason[] = [];
@@ -85,10 +88,15 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
     if (objective.members.some((member) => member.failure && !member.failure.acknowledged)) reasons.push("member-failed");
     if (options.observe && stalledObjectives([objective], options.observe, options.now).length) reasons.push("stalled");
   }
-  if (objective.followups.some((candidate) => candidate.state === "open")) reasons.push("followup");
+  if (followupsJudgeable(objective) && objective.followups.some((candidate) => candidate.state === "open")) reasons.push("followup");
   if (objective.followupBatches.some((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming"))) reasons.push("followup-failed");
   return reasons;
 }
+
+/** 후속 후보를 판단할 때인가 — 검토 대기이거나 완료 뒤. 진행 중의 후보는 모이기만 한다. */
+export const followupsJudgeable = (subject: { readonly awaitingReview: boolean; readonly done?: unknown }): boolean => subject.awaitingReview || !!subject.done;
+/** 진행 중 후보 판단 거절(not_in_review)의 안내. */
+export const FOLLOWUPS_AT_REVIEW_HINT = "Follow-up candidates only collect while the objective works; judge them all at once when it awaits review.";
 
 /**
  * 누가 답할 차례인가 — 대기 이유마다 하나. 사람이 운영하는 목표는 모두 사람이고, 사령관이 운영하는 목표는 사령관이 사람에게
@@ -114,7 +122,7 @@ export function heldItemStands(subject: HoldSubject, hold: Pick<StoredPersonHold
     case "decision": return !!subject.decisionRequest && subject.decisionRequest.id === hold.requestId;
     case "criteria": return !!subject.criteriaProposals?.length;
     case "review": return subject.awaitingReview && !subject.done;
-    case "followup": return !!subject.followups?.some((candidate) => candidate.state === "open");
+    case "followup": return followupsJudgeable(subject) && !!subject.followups?.some((candidate) => candidate.state === "open");
   }
 }
 /** 지금 사람이 답할 차례인 넘김 — 끝나지 않았고 그 항목이 서 있다. 없으면 null. */
