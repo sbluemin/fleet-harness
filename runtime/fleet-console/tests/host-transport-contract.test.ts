@@ -69,6 +69,8 @@ describe("host transport wire contract", () => {
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commander/message", mode: "observer" })).toEqual({ error: "not_controller" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", mode: "controller" })).toMatchObject({ id: "decision-answer" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", mode: "observer" })).toEqual({ error: "read_only" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commodore/ask/answer", mode: "controller" })).toMatchObject({ id: "commodore-ask-answer" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commodore/ask/answer", mode: "observer" })).toEqual({ error: "read_only" });
     expect(admitHostRoute({ kind: "upload", method: "POST", path: "/plugins/objectives/attachment/add?objectiveId=a&name=one.png", mode: "controller" })).toMatchObject({ id: "objective-attachment-add" });
     expect(admitHostRoute({ kind: "upload", method: "POST", path: "/api/v1/agent/attachments", mode: "observer" })).toEqual({ error: "read_only" });
     const upload = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: instanceId, path: "/api/v1/agent/attachments", dataBase64: "YQ==" };

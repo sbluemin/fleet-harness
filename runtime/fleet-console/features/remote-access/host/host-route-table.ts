@@ -81,6 +81,7 @@ const HOST_ROUTES: readonly HostRoute[] = [
   { id: "commander-start", kind: "json", method: "POST", path: "/plugins/objectives/commander/start", effect: "write" },
   { id: "commander-steer", kind: "json", method: "POST", path: "/plugins/objectives/commander/steer", effect: "write" },
   { id: "decision-answer", kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", effect: "write" },
+  { id: "commodore-ask-answer", kind: "json", method: "POST", path: "/plugins/objectives/commodore/ask/answer", effect: "write" },
   { id: "conversation-broadcast", kind: "json", method: "POST", path: "/plugins/objectives/conversation/broadcast", effect: "write" },
   { id: "criterion-add", kind: "json", method: "POST", path: "/plugins/objectives/criterion/add", effect: "write" },
   { id: "criterion-patch", kind: "json", method: "POST", path: "/plugins/objectives/criterion/patch", effect: "write" },
