@@ -223,10 +223,11 @@ describe("host workspace isolation", () => {
 
   it("relays the product upload limit as bytes and cancels a late file read before dispatch", async () => {
     const abort = new AbortController();
+    let expectedBytes = 10 * 1024 * 1024;
     const request = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body));
       expect(body).toMatchObject({ expectedInstanceId: INSTANCE_A, expectedEpoch: 7, path: "/api/v1/agent/attachments" });
-      expect(Buffer.from(body.dataBase64, "base64")).toHaveLength(10 * 1024 * 1024);
+      expect(Buffer.from(body.dataBase64, "base64")).toHaveLength(expectedBytes);
       expect(body).not.toHaveProperty("headers");
       return Response.json({ requestId: body.requestId, epoch: 7, instanceId: INSTANCE_A, status: 200, contentType: "application/json", json: { id: "upload-id" } });
     });
@@ -237,13 +238,19 @@ describe("host workspace isolation", () => {
     const response = await transport.request("/api/v1/agent/attachments", { method: "POST", headers: { "Content-Type": file.type }, body: file });
     expect(await response.json()).toEqual({ id: "upload-id" });
     expect(request.mock.calls[0]?.[0]).toBe("/api/v1/hosts/remote/bytes");
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF1cAAAAASUVORK5CYII=", "base64");
+    expectedBytes = png.length;
+    const unlabelled = new Blob([png]);
+    const unlabelledResponse = await transport.request("/api/v1/agent/attachments", { method: "POST", headers: { "Content-Type": unlabelled.type || "application/octet-stream" }, body: unlabelled });
+    expect(await unlabelledResponse.json()).toEqual({ id: "upload-id" });
+    expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body)).dataBase64).toBe(png.toString("base64"));
     let finish!: (bytes: ArrayBuffer) => void;
     const lateFile = new Blob([new Uint8Array(8)], { type: "image/png" });
     vi.spyOn(lateFile, "arrayBuffer").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     const pending = transport.request("/api/v1/agent/attachments", { method: "POST", headers: { "Content-Type": lateFile.type }, body: lateFile });
     abort.abort(); finish(new ArrayBuffer(8));
     await expect(pending).rejects.toThrow();
-    expect(request).toHaveBeenCalledTimes(1);
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("does not grant control during exploration or accept a late activation for another host", async () => {

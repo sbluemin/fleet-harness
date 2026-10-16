@@ -46,7 +46,8 @@ export function createRemoteHostTransport(inputScope: HostScope, network: HostBr
       // 일반 RequestInit을 상류 헤더로 전달하지 않는다. 기존 JSON 호출의 표현만 허용한다.
       for (const [key, value] of headers) {
         const contentType = value.toLowerCase().split(";")[0]?.trim();
-        if ((key === "content-type" && (blob ? ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(contentType ?? "") : contentType === HOST_JSON_CONTENT_TYPE)) || (key === "accept" && value === HOST_JSON_CONTENT_TYPE)) continue;
+        // Blob MIME은 파일 선택기의 힌트일 뿐 wire에 싣지 않는다. 실제 형식은 원격 첨부 handler가 바이트로 판정한다.
+        if ((key === "content-type" && (blob !== null || contentType === HOST_JSON_CONTENT_TYPE)) || (key === "accept" && value === HOST_JSON_CONTENT_TYPE)) continue;
         throw new HostTransportFailure(400, "invalid_host_request");
       }
       if (init?.credentials || init?.redirect || init?.referrer || init?.referrerPolicy || init?.integrity || init?.mode) throw new HostTransportFailure(400, "invalid_host_request");
