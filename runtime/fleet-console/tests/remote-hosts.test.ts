@@ -153,6 +153,33 @@ describe("host workspace isolation", () => {
     workspace.dispose();
   });
 
+  it("restores same-epoch local authority after hydration and reconnect without reactivating a remote", async () => {
+    const local = runtime("local");
+    local.update({ mode: "controller", connection: "connecting", phase: "loading" });
+    const remote = runtime("remote");
+    const workspace = createHostWorkspace(local.port);
+    workspace.add(remote.port);
+    workspace.syncLocalSelection(selection("local"));
+    expect(workspace.getSnapshot().canWrite).toBe(false);
+    local.update({ connection: "ready", phase: "ready" });
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("local"), canWrite: true });
+    local.update({ connection: "connecting", phase: "loading" });
+    expect(workspace.getSnapshot().canWrite).toBe(false);
+    local.update({ connection: "ready", phase: "ready" });
+    expect(workspace.getSnapshot().canWrite).toBe(true);
+    local.update({ mode: "observer" });
+    expect(workspace.getSnapshot().canWrite).toBe(false);
+    local.update({ mode: "controller" });
+    expect(workspace.getSnapshot().canWrite).toBe(true);
+    expect(local.port.activate).not.toHaveBeenCalled();
+    await workspace.activateConversation(selection("remote"));
+    expect(workspace.getSnapshot().canWrite).toBe(true);
+    remote.update({ connection: "connecting", phase: "loading" });
+    remote.update({ connection: "ready", phase: "ready" });
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("remote"), canWrite: false });
+    workspace.dispose();
+  });
+
   it("allows monitoring snapshots without writing and preserves remote failure on local return", async () => {
     const remote = runtime("remote", "monitoring");
     const workspace = createHostWorkspace(runtime("local").port);

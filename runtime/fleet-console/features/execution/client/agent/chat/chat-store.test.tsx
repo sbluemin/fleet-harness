@@ -8,6 +8,8 @@ import { connectTerminalSettings } from "../../terminal/shared/terminal-preferen
 import { createChatSocketSession, useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
 import type { HostSocket, HostTransport, HostSurfaceContext } from "@fleet-console/sdk/host-context";
 import { HostMessageComposer } from "@fleet-console/sdk/composer";
+import { HostAgentConversation } from "./host-conversation.js";
+import { EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationSnapshot } from "../../../conversation-journal.js";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
@@ -72,6 +74,7 @@ function mount(operationId: string, live: boolean): void {
 }
 
 beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   FakeWebSocket.instances = [];
   ticketFetches.length = 0;
   latest = null;
@@ -94,6 +97,62 @@ afterEach(() => {
   container = null;
   latest = null;
   vi.unstubAllGlobals();
+});
+
+it("keeps HTTP history through capped replay and catches up without duplication across reconnect, clear, and session replacement", async () => {
+  const generationA = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const generationB = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const row = (seq: number, text: string) => ({ seq, event: { kind: "text" as const, text } });
+  const initial = [row(1, "Old answer"), row(2, "Recent answer")];
+  let current: ConversationSnapshot = { generation: generationA, cursor: 2100,
+    journal: [row(10, "Old answer"), row(2088, "Recent answer")].reduce((state, entry) => reduceConversationJournal(state, entry, "agent"), EMPTY_CONVERSATION_JOURNAL) };
+  let resolveSnapshot: ((value: Response) => void) | null = null;
+  let requests = 0;
+  const abort = new AbortController();
+  const context = {
+    selection: { hostKey: "remote-A", theaterId: "theater", role: "commander", operationId: "agent" }, language: "en", hostLabel: "A", canWrite: () => true,
+    transport: { scope: { hostKey: "remote-A", epoch: 1, signal: abort.signal },
+      request: async (path: string) => path.endsWith("/chat-history") ? ++requests === 1 ? Response.json({ entries: initial }) : new Promise<Response>((resolve) => { resolveSnapshot = resolve; }) : Response.json({ sessions: [{ sessionId: "agent", chatActive: true, generation: "session-A", cwdLabel: "Fixture", status: "running", createdAt: 1 }] }),
+      socket: () => new FakeWebSocket("remote-A"),
+    },
+    events: { subscribe: () => () => {}, onReconnect: () => () => {} },
+    state: { read: (_key: string, fallback: unknown) => fallback, write: () => {} },
+    chat: { Conversation: ({ entries }: { entries: GroupTimelineSnapshot["entries"] }) => createElement("div", null, ...entries.map((entry) => createElement("span", { key: entry.id }, "text" in entry ? entry.text : ""))) },
+  } as unknown as HostSurfaceContext;
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+  await act(async () => { root!.render(createElement(HostAgentConversation, { context, title: "Agent", readOnlyLabel: "Read only", uploadUnsupported: "No upload" })); });
+  expect(container.textContent).toBe("Old answerRecent answer");
+  const emit = (socket: FakeWebSocket, seq: number, event: AgentChatStreamEvent, generation = current.generation) => socket.onmessage?.({ data: JSON.stringify({ seq, generation, event }) });
+  const first = FakeWebSocket.instances[0]!;
+  await act(async () => {
+    first.open();
+    emit(first, 2080, { kind: "replay-start" });
+    emit(first, 2088, { kind: "text", text: "Recent answer" });
+    emit(first, 2100.5, { kind: "snapshot-end", turns: 2 });
+    emit(first, 2101, { kind: "text", text: "During HTTP" });
+    resolveSnapshot!(Response.json({ conversation: current }));
+  });
+  expect(container.textContent).toBe("Old answerRecent answerDuring HTTP");
+  current = { ...current, cursor: 2101, journal: reduceConversationJournal(current.journal, row(2101, "During HTTP"), "agent") };
+  act(() => first.close());
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+  const second = FakeWebSocket.instances.at(-1)!;
+  expect(second).not.toBe(first);
+  await act(async () => {
+    second.open(); emit(second, 2101, { kind: "text", text: "During HTTP" });
+    resolveSnapshot!(Response.json({ conversation: current }));
+  });
+  expect(container.textContent).toBe("Old answerRecent answerDuring HTTP");
+  act(() => { emit(second, 2102, { kind: "cleared" }); emit(second, 2101, { kind: "text", text: "Duplicate" }); });
+  expect(container.textContent).toBe("");
+  current = { generation: generationB, cursor: 1, journal: reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, row(1, "New session"), "agent") };
+  act(() => second.close());
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+  const third = FakeWebSocket.instances.at(-1)!;
+  await act(async () => { third.open(); emit(third, 1, { kind: "text", text: "New session" }); resolveSnapshot!(Response.json({ conversation: current })); });
+  expect(container.textContent).toBe("New session");
+  act(() => abort.abort());
+  expect(ticketFetches).toEqual([]);
 });
 
 describe("Operation composer lifetime", () => {

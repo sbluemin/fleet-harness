@@ -29,6 +29,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   let foreground: HostSelection | null = null;
   let foregroundEpoch: number | null = null;
   let activated = false;
+  let localAuthorityEpoch = local.getSnapshot().epoch;
   let generation = 0;
   let selectionAbort = new AbortController();
   let error: string | null = null;
@@ -46,6 +47,10 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
     if (!selecting && error === null && foreground === null && selected?.connection === "ready" && selected.phase === "ready" && containsSelection(selected, selection)) {
       foreground = selection;
       foregroundEpoch = selected.epoch;
+    }
+    // 로컬 준비 상태의 일시 손실은 권한 획득을 요구하지 않는다. 원격 획득/회수와 다른 수명이다.
+    if (!selecting && selection.hostKey === "local" && selected?.epoch === localAuthorityEpoch) {
+      activated = foreground !== null && selected.mode === "controller" && selected.access === "full";
     }
     snapshot = Object.freeze({
       hosts: Object.freeze(hosts), selection, foreground, selectionGeneration: generation,
@@ -71,7 +76,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
     const signal = selectionAbort.signal;
     const ownGeneration = ++generation;
     selection = Object.freeze({ ...next });
-    if (next.hostKey === "local") lastLocal = selection;
+    if (next.hostKey === "local") { lastLocal = selection; localAuthorityEpoch = runtime.getSnapshot().epoch; }
     foreground = null;
     foregroundEpoch = null;
     activated = false;
