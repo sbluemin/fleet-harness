@@ -28,6 +28,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   let lastLocal: HostSelection = LOCAL_SELECTION;
   let foreground: HostSelection | null = null;
   let foregroundEpoch: number | null = null;
+  let foregroundInstanceId: string | undefined;
   let activated = false;
   let localAuthorityEpoch = local.getSnapshot().epoch;
   let generation = 0;
@@ -40,13 +41,14 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   function publish(): void {
     const hosts = [...runtimes.values()].map(({ runtime }) => runtime.getSnapshot());
     const selected = hosts.find((host) => host.hostKey === selection.hostKey);
-    if (!selected || selected.epoch !== foregroundEpoch || selected.connection !== "ready" || selected.phase !== "ready") {
+    if (!selected || selected.epoch !== foregroundEpoch || selected.instanceId !== foregroundInstanceId || selected.connection !== "ready" || selected.phase !== "ready") {
       foreground = null;
       activated = false;
     }
     if (!selecting && error === null && foreground === null && selected?.connection === "ready" && selected.phase === "ready" && containsSelection(selected, selection)) {
       foreground = selection;
       foregroundEpoch = selected.epoch;
+      foregroundInstanceId = selected.instanceId;
     }
     // 로컬 준비 상태의 일시 손실은 권한 획득을 요구하지 않는다. 원격 획득/회수와 다른 수명이다.
     if (!selecting && selection.hostKey === "local" && selected?.epoch === localAuthorityEpoch) {
@@ -98,7 +100,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       if (!pending.current()) return;
       const view = pending.runtime.getSnapshot();
       if (!containsSelection(view, next)) error = "host_selection_missing";
-      else { foreground = selection; foregroundEpoch = view.epoch; activated = next.hostKey === "local" && view.mode === "controller"; }
+      else { foreground = selection; foregroundEpoch = view.epoch; foregroundInstanceId = view.instanceId; activated = next.hostKey === "local" && view.mode === "controller"; }
       selecting = false;
       publish();
     }, (cause: unknown) => {
@@ -112,14 +114,17 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
   async function activateConversation(next: HostSelection): Promise<void> {
     if (next.theaterId === null) throw new Error("conversation_required");
     const pending = begin(next);
+    const requestedInstance = pending.runtime.getSnapshot().instanceId;
     try {
       await pending.runtime.observe(pending.signal);
       if (!pending.current()) return;
       const observed = pending.runtime.getSnapshot();
+      if (requestedInstance !== undefined && observed.instanceId !== requestedInstance) throw new Error("stale_instance");
       if (!containsSelection(observed, next)) throw new Error("host_selection_missing");
       if (observed.access === "monitoring") {
         foreground = selection;
         foregroundEpoch = observed.epoch;
+        foregroundInstanceId = observed.instanceId;
         selecting = false;
         publish();
         return;
@@ -128,10 +133,12 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       await pending.runtime.activate(pending.signal);
       if (!pending.current()) return;
       const active = pending.runtime.getSnapshot();
+      if (active.instanceId !== observed.instanceId) throw new Error("stale_instance");
       if (active.mode !== "controller" || active.access !== "full" || active.connection !== "ready" || active.phase !== "ready") throw new Error("not_controller");
       if (!containsSelection(active, next)) throw new Error("host_selection_missing");
       foreground = selection;
       foregroundEpoch = active.epoch;
+      foregroundInstanceId = active.instanceId;
       activated = true;
       selecting = false;
       publish();
@@ -165,7 +172,7 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       if (selection.hostKey !== "local" || next.hostKey !== "local") return;
       const pending = begin(next);
       const view = pending.runtime.getSnapshot();
-      if (containsSelection(view, next)) { foreground = selection; foregroundEpoch = view.epoch; activated = view.mode === "controller"; }
+      if (containsSelection(view, next)) { foreground = selection; foregroundEpoch = view.epoch; foregroundInstanceId = view.instanceId; activated = view.mode === "controller"; }
       selecting = false;
       publish();
     },

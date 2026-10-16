@@ -2,7 +2,7 @@ import type { HostEventSource, HostScope, HostTransport } from "@fleet-console/s
 import { assertHostScope, readHostJson } from "@fleet-console/sdk/host-context/browser";
 import {
   HOST_JSON_CONTENT_TYPE, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
-  isHostJsonRequest, isHostJsonResult, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
+  isHostInstanceId, isHostJsonRequest, isHostJsonResult, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
   type HostJsonRequest, type HostPresence, type HostRelayMethod,
 } from "@fleet-console/protocol/remote/host-transport";
 import type { RemoteHostRuntimeDependencies } from "./remote-host-runtime.js";
@@ -33,6 +33,8 @@ async function assertRelayResponse(response: Response): Promise<void> {
 /** 브라우저 생성자도 명시적 port다. 요청 대상은 공개 wire helper로만 만든다. */
 export function createRemoteHostTransport(inputScope: HostScope, network: HostBrowserNetwork): HostTransport {
   const scope = Object.freeze({ ...inputScope });
+  const instanceId = scope.instanceId;
+  if (!isHostInstanceId(instanceId)) throw new HostTransportFailure(400, "invalid_host_request");
   const requestPath = requiredPath(hostTransportPath("request", scope.hostKey));
   return Object.freeze<HostTransport>({
     scope,
@@ -51,7 +53,7 @@ export function createRemoteHostTransport(inputScope: HostScope, network: HostBr
         try { json = JSON.parse(init.body); } catch { throw new HostTransportFailure(400, "invalid_host_request"); }
       }
       const requestId = crypto.randomUUID();
-      const request: HostJsonRequest = { requestId, expectedEpoch: scope.epoch, method: (init?.method ?? "GET").toUpperCase() as HostRelayMethod, path, ...(typeof init?.body === "string" ? { json } : {}) };
+      const request: HostJsonRequest = { requestId, expectedEpoch: scope.epoch, expectedInstanceId: instanceId, method: (init?.method ?? "GET").toUpperCase() as HostRelayMethod, path, ...(typeof init?.body === "string" ? { json } : {}) };
       if (!isHostJsonRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
       const signal = init?.signal ? AbortSignal.any([scope.signal, init.signal]) : scope.signal;
       const response = await network.fetch(requestPath, { method: "POST", headers: { "Content-Type": HOST_JSON_CONTENT_TYPE }, body: JSON.stringify(request), signal, redirect: "error" });
@@ -59,23 +61,24 @@ export function createRemoteHostTransport(inputScope: HostScope, network: HostBr
       const result: unknown = await readHostJson(scope, response);
       signal.throwIfAborted();
       if (!isHostJsonResult(result) || result.requestId !== requestId || result.status < 200) throw new HostTransportFailure(502, "invalid_host_response");
+      if (result.instanceId !== instanceId) throw new HostTransportFailure(409, "stale_instance");
       if (result.epoch !== scope.epoch) throw new HostTransportFailure(409, "stale_epoch");
       const body = result.contentType === null || [204, 205, 304].includes(result.status) || request.method === "HEAD" ? null : JSON.stringify(result.json);
       return new Response(body, { status: result.status, ...(result.contentType ? { headers: { "Content-Type": result.contentType } } : {}) });
     },
     events: (path) => {
       assertHostScope(scope);
-      const source = network.events(requiredPath(hostEventsUrl(scope.hostKey, { path, epoch: scope.epoch })));
+      const source = network.events(requiredPath(hostEventsUrl(scope.hostKey, { path, epoch: scope.epoch, instanceId })));
       return bindEvents(scope, source);
     },
     resourceUrl: (path) => {
       assertHostScope(scope);
-      return requiredPath(hostResourcesUrl(scope.hostKey, { path, epoch: scope.epoch }));
+      return requiredPath(hostResourcesUrl(scope.hostKey, { path, epoch: scope.epoch, instanceId }));
     },
     socket: (path, target) => {
       assertHostScope(scope);
       if (!isHostTerminalUpgradePath(path) || target.ticket !== undefined || target.role !== undefined) throw new HostTransportFailure(400, "invalid_host_request");
-      const route = requiredPath(hostSocketUrl(scope.hostKey, { epoch: scope.epoch, channel: target.channel, operationId: target.operationId }));
+      const route = requiredPath(hostSocketUrl(scope.hostKey, { epoch: scope.epoch, instanceId, channel: target.channel, operationId: target.operationId }));
       const url = new URL(route, network.origin);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = network.socket(url.toString());
@@ -91,7 +94,7 @@ export function createRemoteHostTransport(inputScope: HostScope, network: HostBr
 export function createRemoteHostDependencies(hostKey: string, label: string, network: HostBrowserNetwork): RemoteHostRuntimeDependencies {
   const path = requiredPath(hostTransportPath("presence", hostKey));
   async function readPresence(signal: AbortSignal): Promise<HostPresence> {
-    const response = await network.fetch(path, { signal, redirect: "error" });
+    const response = await network.fetch(path, { signal, redirect: "error", cache: "no-store" });
     await assertRelayResponse(response);
     const body: unknown = await response.json();
     signal.throwIfAborted();
@@ -101,8 +104,8 @@ export function createRemoteHostDependencies(hostKey: string, label: string, net
   }
   return {
     hostKey, label, readPresence,
-    changePresence: async (intent, epoch, signal) => {
-      const request = { intent, expectedEpoch: epoch };
+    changePresence: async (intent, epoch, instanceId, signal) => {
+      const request = { intent, expectedEpoch: epoch, expectedInstanceId: instanceId };
       if (!isHostPresenceRequest(request)) throw new HostTransportFailure(400, "invalid_host_request");
       const response = await network.fetch(path, { method: "POST", headers: { "Content-Type": HOST_JSON_CONTENT_TYPE }, body: JSON.stringify(request), signal, redirect: "error" });
       await assertRelayResponse(response);

@@ -6,14 +6,14 @@ import { fetchSessions } from "../../../../features/execution/client/agent/api.j
 import { interpretAgentSessionFrame } from "../../../../features/execution/client/agent/sse.js";
 import type { SessionInfo } from "../../../../features/execution/client/agent/types.js";
 
-export type HostPresenceView = Pick<HostView, "hostKey" | "epoch" | "mode" | "access" | "connection">;
+export type HostPresenceView = Pick<HostView, "hostKey" | "epoch" | "mode" | "access" | "connection"> & { readonly instanceId: string };
 
 /** wire 해석은 제품 전송 어댑터가 맡는다. runtime은 검증된 존재/전송만 받아 상태를 소유한다. */
 export interface RemoteHostRuntimeDependencies {
   readonly hostKey: string;
   readonly label: string;
   readonly readPresence: (signal: AbortSignal) => Promise<HostPresenceView>;
-  readonly changePresence: (intent: "observe" | "activate", epoch: number, signal: AbortSignal) => Promise<HostPresenceView>;
+  readonly changePresence: (intent: "observe" | "activate", epoch: number, instanceId: string, signal: AbortSignal) => Promise<HostPresenceView>;
   readonly watchPresence: (receive: (presence: HostPresenceView) => void | Promise<void>, failed: (cause: Error) => void) => () => void;
   readonly createTransport: (scope: HostScope) => HostTransport;
 }
@@ -51,6 +51,43 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   let refreshPending = false;
   let opened = false;
   let visible = false;
+  let retiredInstanceId: string | null = null;
+  let discoveryAbort = new AbortController();
+  let discoveryVersion = 0;
+  let discoveryRequest = 0;
+  let acceptedRequest = 0;
+  let offPresence: (() => void) | null = null;
+
+  function restartDiscovery(): void {
+    discoveryAbort.abort();
+    discoveryAbort = new AbortController();
+    discoveryVersion += 1;
+    offPresence?.();
+    const version = discoveryVersion;
+    offPresence = deps.watchPresence(async () => {
+      // 비고정 watch 사건은 wake-up 힌트다. 오래된 연결의 payload로 수명을 바꾸지 않는다.
+      if (version !== discoveryVersion || lifetime.signal.aborted) return;
+      await discover(async (signal) => deps.readPresence(signal));
+      if ((!visible || state.phase !== "ready") && state.connection === "ready" && state.mode !== "off") await refresh();
+    }, (cause) => {
+      if (version !== discoveryVersion || lifetime.signal.aborted) return;
+      fail(cause);
+    });
+  }
+
+  async function discover(read: (signal: AbortSignal) => Promise<HostPresenceView>, outer = lifetime.signal): Promise<void> {
+    const version = discoveryVersion;
+    const request = ++discoveryRequest;
+    const signal = AbortSignal.any([outer, lifetime.signal, discoveryAbort.signal, AbortSignal.timeout(10_000)]);
+    let presence: HostPresenceView;
+    try { presence = await read(signal); }
+    catch (cause) { if (version !== discoveryVersion || request < acceptedRequest) return; acceptedRequest = request; throw cause; }
+    outer.throwIfAborted();
+    if (version !== discoveryVersion || request < acceptedRequest) return;
+    signal.throwIfAborted();
+    acceptedRequest = request;
+    acceptPresence(presence);
+  }
 
   function publish(patch: Partial<HostView>): void {
     if (lifetime.signal.aborted) return;
@@ -75,19 +112,23 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   }
 
   function acceptPresence(presence: HostPresenceView): void {
-    if (lifetime.signal.aborted || presence.hostKey !== deps.hostKey || presence.epoch < state.epoch) return;
-    const replaced = presence.epoch !== state.epoch;
+    if (lifetime.signal.aborted || presence.hostKey !== deps.hostKey) return;
+    const newLifetime = presence.instanceId !== state.instanceId;
+    if ((!newLifetime && presence.epoch < state.epoch) || presence.instanceId === retiredInstanceId) return;
+    if (newLifetime) { retiredInstanceId = state.instanceId ?? null; restartDiscovery(); }
+    const replaced = newLifetime || presence.epoch !== state.epoch;
     const unavailable = presence.connection !== "ready" || presence.mode === "off";
     if (replaced || unavailable) clearConnection();
     publish({ ...presence, ...(replaced || unavailable ? { theaters: [], operations: [], phase: presence.connection === "blocked" ? "error" : "loading" } : {}), trust: presence.connection === "ready" ? "verified" : state.trust });
     if (!unavailable && transport === null) {
-      const scope = Object.freeze({ hostKey: deps.hostKey, epoch: presence.epoch, signal: scopeAbort.signal });
+      const scope = Object.freeze({ hostKey: deps.hostKey, epoch: presence.epoch, instanceId: presence.instanceId, signal: scopeAbort.signal });
       transport = deps.createTransport(scope);
     }
   }
 
   function fail(cause: unknown): void {
     const code = cause instanceof Error ? cause.message : "remote_host_unavailable";
+    acceptedRequest = ++discoveryRequest;
     clearConnection();
     publish({ phase: "error", connection: "blocked", error: code, theaters: [], operations: [], ...(code === "remote_host_fingerprint_mismatch" ? { trust: "mismatch" as const } : {}) });
   }
@@ -122,10 +163,8 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       if (!current()) return;
       // holder DTO만으로 자기 권한을 추정하지 않는다. 쓰기를 먼저 막고 presence의 실제 mode를 다시 읽는다.
       publish({ phase: "loading" });
-      void deps.readPresence(AbortSignal.any([lifetime.signal, AbortSignal.timeout(8_000)])).then(async (presence) => {
-        if (!current()) return;
-        acceptPresence(presence);
-        if (presence.connection === "ready" && presence.mode !== "off") await refresh();
+      void discover((signal) => deps.readPresence(signal)).then(async () => {
+        if (state.connection === "ready" && state.mode !== "off") await refresh();
       }).catch((cause: unknown) => { if (current()) fail(cause); });
     });
     const agents = bound.events("/api/v1/agent/events");
@@ -196,12 +235,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     lifetime.signal.throwIfAborted();
     if (!observeFlight) {
       const work = (async () => {
-        const setupSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(10_000)]);
-        let presence = await deps.readPresence(setupSignal);
-        acceptPresence(presence);
-        if (presence.mode === "off" || presence.connection !== "ready") {
-          presence = await deps.changePresence("observe", presence.epoch, setupSignal);
-          acceptPresence(presence);
+        await discover((readSignal) => deps.readPresence(readSignal));
+        if (state.mode === "off" || state.connection !== "ready") {
+          const { epoch, instanceId } = state;
+          if (!instanceId) throw new Error("host_inactive");
+          await discover((readSignal) => deps.changePresence("observe", epoch, instanceId, readSignal));
         }
         await refresh();
       })();
@@ -212,10 +250,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     signal.throwIfAborted();
   }
 
-  const offPresence = deps.watchPresence(async (presence) => {
-    acceptPresence(presence);
-    if ((!visible || state.phase !== "ready") && presence.connection === "ready" && presence.mode !== "off") await refresh();
-  }, (cause) => { fail(cause); });
+  restartDiscovery();
 
   return {
     getSnapshot: () => state,
@@ -223,11 +258,14 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     observe,
     activate: async (signal) => {
       signal.throwIfAborted();
-      const presence = await deps.changePresence("activate", state.epoch, signal);
+      const { epoch, instanceId } = state;
+      if (!instanceId) throw new Error("host_inactive");
+      await discover((readSignal) => deps.changePresence("activate", epoch, instanceId, readSignal), signal);
       signal.throwIfAborted();
-      acceptPresence(presence);
+      if (state.instanceId !== instanceId) throw new Error("stale_instance");
       await refresh();
       signal.throwIfAborted();
+      if (state.instanceId !== instanceId) throw new Error("stale_instance");
     },
     getTransport: () => transport,
     setVisible: (next) => {
@@ -247,7 +285,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     dispose: () => {
       lifetime.abort();
       clearConnection();
-      offPresence();
+      discoveryAbort.abort();
+      offPresence?.();
+      offPresence = null;
       listeners.clear();
       channels.clear();
       reconnectListeners.clear();

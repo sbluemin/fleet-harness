@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { HostSelection, HostView } from "@fleet-console/sdk/host-context";
 import { createHostWorkspace, type HostRuntimePort } from "../core/client/src/integration/host-workspace.js";
 import { createRemoteHostTransport } from "../core/client/src/integration/remote-host-transport.js";
-import { createRemoteHostRuntime } from "../core/client/src/integration/remote-host-runtime.js";
+import { createRemoteHostRuntime, type HostPresenceView } from "../core/client/src/integration/remote-host-runtime.js";
 import type { HostEventSource } from "@fleet-console/sdk/host-context";
 
 import { encodeAccessLink, parseAccessLink, type ValidatedAccessLink } from "../features/remote-access/host/access-link.js";
 import { createRemoteHostStore, type RemoteHostStoreDeps } from "../features/remote-access/host/remote-hosts.js";
+
+const INSTANCE_A = "aaaaaaaa-1111-4222-8333-444455556666";
+const INSTANCE_B = "bbbbbbbb-1111-4222-8333-444455556666";
 
 const FINGERPRINT_A = "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F";
 const FINGERPRINT_B = "11223344556677889900AABBCCDDEEFF11223344556677889900AABBCCDDEEFF";
@@ -76,7 +79,7 @@ describe("host workspace isolation", () => {
     const request = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/theaters" ? { theaters: [{ id: "same-theater", label: "remote" }] } : path === "/api/v1/operations" ? { operations: [{ id: "same-operation", theaterId: "same-theater", title: "remote", type: "agent" }] } : { sessions: [] })));
     const remote = createRemoteHostRuntime({
       hostKey: "remote", label: "remote",
-      readPresence: async () => ({ hostKey: "remote", epoch: 1, mode: "observer", access: "monitoring", connection: "ready" }),
+      readPresence: async () => ({ hostKey: "remote", epoch: 1, instanceId: INSTANCE_A, mode: "observer", access: "monitoring", connection: "ready" }),
       changePresence: async () => { throw new Error("unexpected_join"); },
       watchPresence: () => () => undefined,
       createTransport: (scope) => ({ scope, request, resourceUrl: (path) => path, socket: () => { throw new Error("unexpected_socket"); }, events: () => {
@@ -99,14 +102,72 @@ describe("host workspace isolation", () => {
     remote.dispose();
   });
 
+  it("recovers a restarted gateway without accepting old discovery or reviving write authority", async () => {
+    let server: HostPresenceView = { hostKey: "remote", epoch: 3, instanceId: INSTANCE_A, mode: "observer", access: "full", connection: "ready" };
+    const watches: Array<{ receive: (presence: HostPresenceView) => void | Promise<void>; off: ReturnType<typeof vi.fn> }> = [];
+    const read = vi.fn(async () => ({ ...server }));
+    const change = vi.fn(async (intent: "observe" | "activate", epoch: number, instanceId: string) => {
+      if (instanceId !== server.instanceId) throw new Error("stale_instance");
+      if (epoch !== server.epoch) throw new Error("stale_epoch");
+      server = { ...server, epoch: epoch + 1, mode: intent === "activate" ? "controller" : "observer", access: "full", connection: "ready" };
+      return { ...server };
+    });
+    const remote = createRemoteHostRuntime({ hostKey: "remote", label: "remote", readPresence: read, changePresence: change,
+      watchPresence: (receive) => { const watch = { receive, off: vi.fn() }; watches.push(watch); return watch.off; },
+      createTransport: (scope) => ({ scope, resourceUrl: (path) => path, socket: () => { throw new Error("unexpected_socket"); },
+        events: () => ({ close() {}, onopen: null, onmessage: null, onerror: null, readyState: 1, addEventListener() {}, removeEventListener() {} }),
+        request: async (path) => Response.json(path === "/api/v1/theaters" ? { theaters: [{ id: "same-theater", label: "remote" }] } : path === "/api/v1/operations" ? { operations: [{ id: "same-operation", theaterId: "same-theater", title: "remote", type: "agent" }] } : { sessions: [] }),
+      }),
+    });
+    const workspace = createHostWorkspace(runtime("local").port); workspace.add(remote);
+    await workspace.activateConversation(selection("remote"));
+    expect(workspace.getSnapshot().canWrite).toBe(true);
+    const oldScope = remote.getTransport()!.scope;
+    const oldWatch = watches.at(-1)!;
+    let release!: (presence: HostPresenceView) => void;
+    read.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const late = oldWatch.receive({ ...server });
+    const oldReply = { ...server };
+    server = { ...server, instanceId: INSTANCE_B, epoch: 1, mode: "off", access: null, connection: "closed" };
+    await remote.observe(new AbortController().signal);
+    expect(remote.getSnapshot()).toMatchObject({ instanceId: INSTANCE_B, epoch: 2, phase: "ready", mode: "observer" });
+    expect(oldScope.signal.aborted).toBe(true);
+    expect(workspace.getSnapshot().canWrite).toBe(false);
+    release(oldReply); await late;
+    const calls = read.mock.calls.length;
+    await oldWatch.receive(oldReply);
+    expect(read).toHaveBeenCalledTimes(calls);
+    expect(remote.getSnapshot().instanceId).toBe(INSTANCE_B);
+    // 같은 수명의 뒤늦은 ready/controller 관측도 낮은 epoch로 현재 상태를 바꾸지 않는다.
+    read.mockResolvedValueOnce({ ...server, epoch: 1, mode: "controller" });
+    await watches.at(-1)!.receive(server);
+    expect(remote.getSnapshot()).toMatchObject({ epoch: 2, mode: "observer" });
+    await workspace.activateConversation(selection("remote"));
+    expect(workspace.getSnapshot().canWrite).toBe(true);
+    server = { ...server, instanceId: "cccccccc-1111-4222-8333-444455556666" };
+    await watches.at(-1)!.receive(server);
+    expect(remote.getSnapshot().epoch).toBe(server.epoch);
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("remote"), canWrite: false });
+    const sameEpochOld = { ...server };
+    read.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const sameEpochLate = watches.at(-1)!.receive(server);
+    server = { ...server, mode: "observer" };
+    await watches.at(-1)!.receive(server);
+    release(sameEpochOld); await sameEpochLate;
+    expect(remote.getSnapshot()).toMatchObject({ instanceId: server.instanceId, epoch: server.epoch, mode: "observer" });
+    workspace.dispose();
+    expect(watches.every((watch) => watch.off.mock.calls.length === 1)).toBe(true);
+  });
+
   it("binds HTTP and resource requests to the expected host epoch without credential or local fallback", async () => {
     const abort = new AbortController();
     let responseEpoch = 7;
+    let responseInstance = INSTANCE_A;
     const request = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const input = JSON.parse(String(init?.body)) as { requestId: string };
-      return new Response(JSON.stringify({ requestId: input.requestId, epoch: responseEpoch, status: 403, contentType: "application/json", json: { error: "read_only" } }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ requestId: input.requestId, epoch: responseEpoch, instanceId: responseInstance, status: 403, contentType: "application/json", json: { error: "read_only" } }), { headers: { "Content-Type": "application/json" } });
     });
-    const transport = createRemoteHostTransport({ hostKey: "remote", epoch: 7, signal: abort.signal }, {
+    const transport = createRemoteHostTransport({ hostKey: "remote", epoch: 7, instanceId: INSTANCE_A, signal: abort.signal }, {
       fetch: request,
       events: () => { throw new Error("unexpected_event_source"); },
       socket: () => { throw new Error("unexpected_socket"); },
@@ -116,7 +177,7 @@ describe("host workspace isolation", () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: "read_only" });
     expect(request.mock.calls[0]?.[0]).toBe("/api/v1/hosts/remote/request");
-    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toMatchObject({ expectedEpoch: 7, method: "POST", path: "/api/v1/operations", json: { theaterId: "same-theater" } });
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body))).toMatchObject({ expectedEpoch: 7, expectedInstanceId: INSTANCE_A, method: "POST", path: "/api/v1/operations", json: { theaterId: "same-theater" } });
     expect(transport.resourceUrl("/plugins/objectives/evidence/read?id=one")).toContain("epoch=7");
     await expect(transport.request("https://other.example/api/v1/operations")).rejects.toThrow("invalid_host_request");
     await expect(transport.request("/api/v1/operations", { headers: { Authorization: "secret" } })).rejects.toThrow("invalid_host_request");
@@ -124,9 +185,12 @@ describe("host workspace isolation", () => {
     responseEpoch = 8;
     await expect(transport.request("/api/v1/operations")).rejects.toThrow("stale_epoch");
     expect(request).toHaveBeenCalledTimes(2);
+    responseEpoch = 7; responseInstance = INSTANCE_B;
+    await expect(transport.request("/api/v1/operations")).rejects.toThrow("stale_instance");
+    expect(transport.resourceUrl("/plugins/objectives/evidence/read?id=one")).toContain(`instanceId=${INSTANCE_A}`);
     abort.abort();
     await expect(transport.request("/api/v1/operations")).rejects.toThrow();
-    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenCalledTimes(3);
   });
 
   it("does not grant control during exploration or accept a late activation for another host", async () => {

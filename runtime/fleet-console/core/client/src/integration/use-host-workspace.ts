@@ -3,8 +3,8 @@ import type { HostSelection, HostTransport, HostView, HostSurfaceState } from "@
 import { refreshRemoteHosts, useRemoteHosts, type RemoteHost } from "../../../../features/remote-access/client/remote-hosts.js";
 import { resolveTheaterInboxLanding } from "../../../../features/workspace/client/theater-contributions.js";
 import { openTheaterInbox } from "../../../../features/workspace/client/theater-inbox/store.js";
-import { getConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
-import { getConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
+import { getConversationSurface, subscribeConversationSurface } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { createHostWorkspace, type HostRuntimePort, type HostWorkspace } from "./host-workspace.js";
 import { createRemoteHostRuntime, type RemoteHostRuntime } from "./remote-host-runtime.js";
 import { createRemoteHostDependencies, createRemoteHostTransport, type HostBrowserNetwork } from "./remote-host-transport.js";
@@ -56,22 +56,32 @@ export function createAppHostWorkspace(registry: PluginRegistry, network: HostBr
 
   const offState = subscribe(() => {
     localView = readLocalView();
+    syncLocal();
     for (const listener of localListeners) listener();
   });
-  const syncLocal = () => {
-    if (applyingLocal || workspace.getSnapshot().selection.hostKey !== "local") return;
+  function syncLocal(): void {
+    if (disposed || applyingLocal || workspace.getSnapshot().selection.hostKey !== "local") return;
     const theaterId = getViewedTheaterId();
     const surface = getConversationSurface();
-    const operationId = surface ? null : getConversationSubject()?.id ?? getState().activeOperationId;
+    // focus는 동기 store 변경이고 subject는 렌더 뒤 투영이다. 아직 남은 이전 subject가 새 focus를 되돌리지 않는다.
+    const operationId = surface ? null : getState().activeOperationId ?? getConversationSubject()?.id;
     const target: HostSelection = operationId && theaterId
       ? { hostKey: "local", theaterId, role: "commander", operationId }
       : { hostKey: "local", theaterId, role: "commodore", operationId: null };
     const visible = workspace.getSnapshot();
     if (lastObservedLocal && sameSelection(target, lastObservedLocal) && !(visible.foreground === null && visible.phase === "ready")) return;
     lastObservedLocal = target;
-    if (!sameSelection(target, workspace.getSnapshot().selection) || workspace.getSnapshot().foreground === null) workspace.syncLocalSelection(target);
-  };
+    if (!sameSelection(target, visible.selection) || visible.foreground === null) {
+      applyingLocal = true;
+      try {
+        workspace.syncLocalSelection(target);
+        appliedLocalGeneration = workspace.getSnapshot().selectionGeneration;
+      } finally { applyingLocal = false; }
+    }
+  }
   const offViewed = subscribeViewedTheater(syncLocal);
+  const offSubject = subscribeConversationSubject(syncLocal);
+  const offSurface = subscribeConversationSurface(syncLocal);
   const offWorkspace = workspace.subscribe(() => {
     const snapshot = workspace.getSnapshot();
     for (const [key, remote] of remotes) remote.runtime.setVisible(key === snapshot.selection.hostKey);
@@ -150,7 +160,7 @@ export function createAppHostWorkspace(registry: PluginRegistry, network: HostBr
       const runtime = remotes.get(current.selection.hostKey)?.runtime.getTransport();
       if (!runtime || runtime.scope.signal.aborted) return null;
       if (selectedTransport?.generation === current.selectionGeneration && selectedTransport.epoch === runtime.scope.epoch && !selectedTransport.value.scope.signal.aborted) return selectedTransport.value;
-      const scope = Object.freeze({ hostKey: current.selection.hostKey, epoch: runtime.scope.epoch, signal: AbortSignal.any([workspace.getSelectionSignal(), runtime.scope.signal]) });
+      const scope = Object.freeze({ hostKey: current.selection.hostKey, epoch: runtime.scope.epoch, instanceId: runtime.scope.instanceId, signal: AbortSignal.any([workspace.getSelectionSignal(), runtime.scope.signal]) });
       const value = createRemoteHostTransport(scope, network);
       selectedTransport = { generation: current.selectionGeneration, epoch: scope.epoch, value };
       return value;
@@ -158,7 +168,7 @@ export function createAppHostWorkspace(registry: PluginRegistry, network: HostBr
     dispose: () => {
       disposed = true;
       backgroundAbort.abort();
-      offState(); offViewed(); offWorkspace();
+      offState(); offViewed(); offSubject(); offSurface(); offWorkspace();
       workspace.dispose();
       remotes.clear();
       surfaceStates.clear();

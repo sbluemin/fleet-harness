@@ -9,6 +9,8 @@ export type HostKey = string;
 export interface HostScope {
   readonly hostKey: HostKey;
   readonly epoch: number;
+  /** 원격 gateway의 공개 수명 UUID. local은 이 좌표를 쓰지 않는다. */
+  readonly instanceId?: string;
   readonly signal: AbortSignal;
 }
 
@@ -41,6 +43,8 @@ export interface HostView {
   readonly hostKey: HostKey;
   readonly label: string;
   readonly epoch: number;
+  /** 원격 gateway의 공개 수명 UUID. local은 이 좌표를 쓰지 않는다. */
+  readonly instanceId?: string;
   readonly connection: HostConnection;
   readonly trust: "unknown" | "verified" | "mismatch";
   readonly access: HostAccess | null;
