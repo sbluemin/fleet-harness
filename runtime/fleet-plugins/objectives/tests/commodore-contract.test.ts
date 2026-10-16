@@ -716,7 +716,8 @@ describe("commodore supervisor", () => {
       expect(tokens()).toHaveLength(wakesBeforeCancel);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeCancel);
       // 보드 — 사령관이 운영하는 목표의 상태가 한 단계 옮겨 갈 때마다(새 목표 포함) 깨우고, 대기 상태는 지금 그 상태인 목표 수로 함께 싣는다.
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      // 진행 중에 모인 후속 후보는 깨우지 않는다 — 인계 뒤 검토와 함께 한 번에 선다(아래).
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", createdAt: Date.now(), commodoreOperated: true, done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: { id: "q1" }, decisionRequestRevision: 1, criteriaProposals: [], followups: [{ id: "f1", rev: 1, state: "open", title: "Later" }], followupBatches: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
@@ -761,7 +762,7 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(6);
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(PLANNED_CHECK_MS + COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["review:1", "status:1"]);
+      expect(tokens().at(-1)).toEqual(["review:1", "followup:1", "status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Remote pairing" missions done, awaiting hand-off → awaiting review');
       expect(sessions[0]!.sent).toHaveLength(7);
       // 사령관 자신의 쓰기(개시)로 바뀐 상태는 깨우지 않는다 — 제가 한 일을 다시 듣는 빈 턴을 만들지 않게.

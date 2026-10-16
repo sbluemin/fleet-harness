@@ -764,7 +764,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     for (const runner of runners.values()) {
       const objectives = deps.objectives(runner.theaterId);
       const operators = operatorsOf(objectives);
-      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => (reason === "planned" || reason === "review") && !heldForPerson(objective, reason)))) boardChanged(runner);
+      if (objectives.some((objective) => operators.get(objective.id) === "commodore" && inboxReasons(objective).some((reason) => (reason === "planned" || reason === "review" || (reason === "followup" && !objective.done)) && !heldForPerson(objective, reason)))) boardChanged(runner);
     }
   }, PLANNED_CHECK_MS);
   plannedTimer.unref?.();
@@ -925,7 +925,9 @@ function writeTargets(args: unknown): readonly string[] {
  */
 function waitingReasons(objective: Objective, observe: BoardObserver | undefined): readonly InboxReason[] {
   // 검토 대기도 지휘관이 그 턴을 마친 뒤에 — 인계는 턴 도중에 기록되고, 그 턴이 끝나기 전의 완료는 objective_busy 다.
-  return inboxReasons(objective, observe ? { observe } : {}).filter((reason) => reason !== "stalled" && !(reason === "review" && commanderWorking(observe, objective.id)));
+  // 인계와 함께 선 후속 후보도 같은 때에 — 검토와 한 번에 깨워 모인 후보 전체를 판단하게 한다.
+  const atReview = (reason: InboxReason) => reason === "review" || (reason === "followup" && !objective.done);
+  return inboxReasons(objective, observe ? { observe } : {}).filter((reason) => reason !== "stalled" && !(atReview(reason) && commanderWorking(observe, objective.id)));
 }
 
 /** 지휘관이 일하는 중인가(턴 또는 백그라운드 작업) — 관측이 없으면 아니다. */

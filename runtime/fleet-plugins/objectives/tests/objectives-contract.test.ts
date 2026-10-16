@@ -2289,15 +2289,20 @@ describe("Objectives contract", () => {
     // 광고된 모양 그대로 부른다 — 후보는 보드가 내놓는 {id, rev} 로 버리고, 그새 고쳐진 후보는 버리지 않는다.
     const stray = (await command("followup", { add: { title: "Stray", summary: "Out of scope", userImpact: "None yet", fromMission: missionId, brief: "Drop", evidence: [{ kind: "command", text: "check" }] } }, id)).id as string;
     const strayRev = ((await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] }).followups.find((entry) => entry.id === stray)!.rev;
-    expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev + 1 }] })).toBe("followup_changed");
-    await board({ action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] });
-    expect(store.find(id)!.followups.find((entry) => entry.id === stray)?.state).toBe("discarded");
+    // 진행 중의 후보는 모이기만 한다 — 사령관의 inbox 에 서지 않고, 버리기·넘기기도 검토 대기 전에는 거절된다.
+    expect((await board({ action: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["followup"]) }));
+    expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] })).toBe("not_in_review");
+    expect(await refusal(commodore, { action: "hand_to_person", objectiveId: id, target: "followup", reason: "Too early" })).toBe("not_in_review");
     // 다른 action 의 필드로 부른 거절은 그 키와, 그 키를 받는 action 을 이름으로 말한다.
     const misdirected = await commodore.execute({ action: "steer", objectiveId: id, text: "Re-read the board" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
     expect(misdirected.structuredContent).toEqual({ error: "invalid_arguments", issues: [{ path: [], code: "unrecognized_keys", keys: ["text"], acceptedBy: { text: expect.arrayContaining(["message"]) } }] });
     const retrospective = { wentWell: [{ point: "Output preserved", because: "Evidence tool" }], fellShort: [{ point: "Review delayed", ifOnly: "Earlier decision" }] };
     await command("hand_off", { retrospective }, id);
-    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"] }));
+    // 인계로 검토와 함께 모인 후보 전체가 선다 — 판단은 이때 한 번에 한다.
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"], followups: [expect.objectContaining({ title: "Next round" }), expect.objectContaining({ id: stray })] }));
+    expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev + 1 }] })).toBe("followup_changed");
+    await board({ action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] });
+    expect(store.find(id)!.followups.find((entry) => entry.id === stray)?.state).toBe("discarded");
     expect(await board({ action: "evidence", objectiveId: id, resultId })).toMatchObject({ text: "Verified output\n", nextOffset: null });
     const reviewed = (await board({ action: "read", objectiveId: id })).objective as { followups: readonly { id: string; rev: number }[] };
     const candidate = reviewed.followups[0]!;
