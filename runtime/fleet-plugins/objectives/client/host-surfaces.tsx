@@ -5,7 +5,8 @@ import { CommodoreReferenceProvider, useCommodoreReferenceHost } from "./commodo
 import { Select } from "@fleet-console/sdk/react/browser";
 import { commodoreConversationEntries } from "./commodore-chat.js";
 import { useHostObjectiveState } from "./host-state.js";
-import { ObjectiveDetail, ObjectiveDetailProvider, type ObjectiveDetailPorts, type DetailTab } from "./objectives-panel.js";
+import { ObjectiveScheduleTools } from "./head-tabs.js";
+import { ObjectiveDetail, ObjectiveDetailProvider, DETAIL_TABS, type ObjectiveDetailPorts, type DetailTab } from "./objectives-panel.js";
 import { LaunchRosterProvider } from "./launch-control.js";
 import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
@@ -117,6 +118,13 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
       <Select label={t("objectives.panel.title")} value={current?.id ?? ""} options={snapshot.objectives.map((objective) => ({ value: objective.id, label: objective.title }))} onChange={open} />
       {current ? <button type="button" onClick={() => open(current.id)}>{current.title}</button> : null}
       <button type="button" disabled={!context.canWrite()} onClick={context.navigation.openNewOperation}>{t("objectives.none.newOperation")}</button>
+      {current ? <>
+        <ObjectiveScheduleTools objective={current} language={context.language} editable={context.canWrite() && !current.done && operationState(current.id) !== "running"}
+          patch={(patch) => { void call("/objective/patch", { objectiveId: current.id, patch }); }} />
+        <div className="objectives-host-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
+          {DETAIL_TABS.map((value) => <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => context.state.write("detailTab", value)}>{t(`objectives.tabs.${value}`)}</button>)}
+        </div>
+      </> : null}
       {current ? <ObjectiveDetail key={current.id} objective={current} t={t} language={context.language} call={call} request={model.request}
         toast={() => undefined} modeLabel={(mode) => t(mode === "direct" ? "objectives.mode.direct" : mode === "coordinate" ? "objectives.mode.coordinate" : "objectives.mode.mixed")}
         stateLabel={(state) => t(state === "running" ? "objectives.state.running" : state === "awaiting" ? "objectives.state.awaiting" : state === "idle" ? "objectives.state.idle" : state === "ended" ? "objectives.state.ended" : state === "closed" ? "objectives.state.closed" : "objectives.state.unknown")}
