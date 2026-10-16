@@ -1142,13 +1142,14 @@ export const missionPatchSchema = z.object({
 }).strict();
 
 export const planSchema = z.object({
+  // 생략하면 기준만 제출한다. 빈 배열은 편성이 아니다.
   missions: z.array(z.object({
     text: missionText,
     // n 은 이 plan 의 missions 안 1-based 번호, missionId 는 이미 있는(완료·배정된) 임무 — 새 임무가 기존 임무 뒤에 설 수 있다.
     prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_MISSIONS).optional(),
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
     member: ids.optional(),
-  })).min(1).max(MAX_MISSIONS),
+  })).min(1).max(MAX_MISSIONS).optional(),
   /** 지휘관이 짠 구성원 — gateway_models로 확인한 모델은 launch에 저장하고, 없으면 라우팅 선택으로 남는다. */
   members: z.array(memberAddSchema.pick({ role: true, brief: true, launch: true })).max(MAX_MISSIONS).optional(),
   criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
