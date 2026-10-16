@@ -1205,7 +1205,9 @@
 .console-shell.is-operations-view .side-bar-top-strip > * { pointer-events: auto; }
 .console-shell.is-operations-view .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
 
-.console-shell.is-operations-view .operations-side-bar-chips {
+/* 사이드바 목록은 떠 있는 맨 위 줄 아래에서 시작한다. 원격 컴퓨터 아코디언(.host-workspace-computers)도 같은 자리의 목록이다 —
+   빠지면 첫 컴퓨터 머리가 신호등 자리·찾기·새 세션 단추 밑에 깔린다. */
+.console-shell.is-operations-view :is(.operations-side-bar-chips, .host-workspace-computers) {
   padding-top: calc(var(--space-1) + var(--conversation-top-row));
 }
 
