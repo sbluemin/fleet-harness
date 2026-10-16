@@ -1,4 +1,6 @@
 import type http from "node:http";
+import type { Duplex } from "node:stream";
+import { WebSocket, WebSocketServer } from "ws";
 
 import type { DesktopHostRelay } from "@fleet-console/protocol/desktop";
 import {
@@ -29,6 +31,14 @@ export interface HostShellPort {
     readonly target: { readonly hostname: string; readonly port: number; readonly fingerprint: string };
     readonly params: Readonly<Record<string, unknown>>;
   }, signal?: AbortSignal): Promise<DesktopHostRelay>;
+  open(request: {
+    readonly hostKey: string;
+    readonly epoch: number;
+    readonly op: "sse" | "ws-open";
+    readonly routeId: string;
+    readonly target: { readonly hostname: string; readonly port: number; readonly fingerprint: string };
+    readonly params: Readonly<Record<string, unknown>>;
+  }, onFrame: (relay: DesktopHostRelay) => Promise<void> | void, signal?: AbortSignal): Promise<DesktopHostRelay>;
 }
 
 export interface HostGatewayTarget {
@@ -60,9 +70,16 @@ interface HostLink {
 
 const KINDS = new Set<HostTransportKind>(["presence", "presenceEvents", "request", "bytes", "events", "resources", "socket"]);
 
-export function createHostGateway(deps: HostGatewayDeps): (context: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }) => Promise<boolean> {
+export interface HostGateway {
+  handle(context: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean>;
+  upgrade(context: { readonly req: http.IncomingMessage; readonly socket: Duplex; readonly head: Buffer; readonly pathname: string }): boolean;
+}
+
+export function createHostGateway(deps: HostGatewayDeps): HostGateway {
   const links = new Map<string, HostLink>();
   const listeners = new Map<string, Set<http.ServerResponse>>();
+  const live = new Set<{ readonly hostKey: string; abort(): void }>();
+  const retire = (hostKey: string): void => { for (const channel of [...live]) if (channel.hostKey === hostKey) channel.abort(); };
 
   const linkFor = (hostKey: string, target: HostGatewayTarget): HostLink => {
     const current = links.get(hostKey);
@@ -100,7 +117,7 @@ export function createHostGateway(deps: HostGatewayDeps): (context: { readonly r
     deps.writeJson(res, HOST_ERROR_STATUS[error], epoch === undefined ? { error } : { error, epoch });
   };
 
-  return async ({ req, res, pathname }) => {
+  const handle = async ({ req, res, pathname }: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean> => {
     const match = pathname.match(/^\/api\/v1\/hosts\/([^/]+)\/([^/]+)$/u);
     if (!match) return false;
     const abort = new AbortController();
@@ -120,7 +137,7 @@ export function createHostGateway(deps: HostGatewayDeps): (context: { readonly r
     if (kind === "request" && req.method === "POST") return handleJson(hostKey, target, link);
     if (kind === "bytes" && req.method === "POST") return handleBytes(hostKey, target, link);
     if ((kind === "events" || kind === "resources") && req.method === "GET") return handleStream(hostKey, target, link, kind);
-    if (kind === "socket" && (req.method === "GET" || String(req.headers.upgrade ?? "").toLowerCase() === "websocket")) return handleSocket(hostKey, target, link);
+    if (kind === "socket" && (req.method === "GET" || String(req.headers.upgrade ?? "").toLowerCase() === "websocket")) return handleSocket();
     fail(res, "invalid_host_request");
     return true;
 
@@ -143,7 +160,7 @@ export function createHostGateway(deps: HostGatewayDeps): (context: { readonly r
         target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
         params: { intent: body.intent },
       }, abort.signal);
-      applyPresence(link, relay);
+      retire(hostKey); applyPresence(link, relay);
       publish(hostKey);
       if (relay.error) { fail(res, asError(relay.error), link.epoch); return true; }
       res.writeHead(204, deps.withSecurityHeaders({}));
@@ -205,21 +222,96 @@ export function createHostGateway(deps: HostGatewayDeps): (context: { readonly r
         res.end(bytes);
         return true;
       }
-      fail(res, "remote_host_unavailable");
+      return streamEvents(hostKey, target, link, admitted.id, admitted.path);
+    }
+
+    async function streamEvents(hostKey: string, target: HostGatewayTarget, link: HostLink, routeId: string, path: string): Promise<boolean> {
+      const epoch = link.epoch;
+      const controller = new AbortController();
+      const channel = { hostKey, abort: () => controller.abort() };
+      live.add(channel);
+      req.on("close", () => controller.abort());
+      res.writeHead(200, deps.withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
+      const relay = await deps.bridge.open({
+        hostKey, epoch, op: "sse", routeId,
+        target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+        params: { path },
+      }, async (frame) => {
+        if (link.epoch !== epoch) { controller.abort(); return; }
+        if (frame.text !== undefined && !res.destroyed) {
+          if (!res.write(frame.text)) await new Promise<void>((done) => res.once("drain", () => done()));
+        }
+      }, controller.signal);
+      live.delete(channel);
+      if (!res.writableEnded) res.end();
+      void relay;
       return true;
     }
 
-    function handleSocket(hostKey: string, target: HostGatewayTarget, link: HostLink): boolean {
-      const query = parseHostSocketQuery(new URL(req.url ?? "/", "http://127.0.0.1").searchParams);
-      if (!query) { fail(res, "invalid_host_request"); return true; }
-      if (query.epoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
-      const admitted = admitHostRoute({ kind: "socket", mode: link.mode === "controller" ? "controller" : "observer" });
-      if ("error" in admitted) { fail(res, admitted.error); return true; }
-      void hostKey; void target;
-      fail(res, "remote_host_unavailable");
+    function handleSocket(): boolean {
+      fail(res, "invalid_host_request");
       return true;
     }
   };
+
+  const upgrade = (context: { readonly req: http.IncomingMessage; readonly socket: Duplex; readonly head: Buffer; readonly pathname: string }): boolean => {
+    const match = context.pathname.match(/^\/api\/v1\/hosts\/([^/]+)\/socket$/u);
+    if (!match) return false;
+    const reject = (status: number, error: string): void => {
+      const body = JSON.stringify({ error });
+      context.socket.write(`HTTP/1.1 ${status} ${error}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`);
+      context.socket.destroy();
+    };
+    if (!deps.isLoopback(context.req) || !deps.isExactOrigin(context.req)) { reject(404, "not_found"); return true; }
+    const hostKey = decodeURIComponent(match[1] ?? "");
+    const target = isRemoteHostKey(hostKey) ? deps.findHost(hostKey) : null;
+    if (!target) { reject(404, "remote_host_unknown"); return true; }
+    const link = linkFor(hostKey, target);
+    const query = parseHostSocketQuery(new URL(context.req.url ?? "/", "http://127.0.0.1").searchParams);
+    if (!query || query.epoch !== link.epoch || link.mode !== "controller") {
+      reject(403, !query || link.mode !== "controller" ? "not_controller" : "stale_epoch");
+      return true;
+    }
+    const sockets = new WebSocketServer({ noServer: true });
+    sockets.handleUpgrade(context.req, context.socket, context.head, (ws) => { void bindSocket(hostKey, target, link, query.channel, query.operationId, ws); });
+    return true;
+  };
+
+  return { handle, upgrade };
+
+  async function bindSocket(hostKey: string, target: HostGatewayTarget, link: HostLink, channel: "chat" | "terminal", operationId: string, ws: WebSocket): Promise<void> {
+    const epoch = link.epoch;
+    const controller = new AbortController();
+    const entry = { hostKey, abort: () => controller.abort() };
+    live.add(entry);
+    let socketId = 0;
+    let chain: Promise<void> = Promise.resolve();
+    let depth = 0;
+    ws.on("close", () => { controller.abort(); void deps.bridge.call({ hostKey, epoch, op: "ws-close", routeId: "terminal-ws", target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint }, params: { socketId } }); });
+    ws.on("message", (data: Buffer, isBinary: boolean) => {
+      if (!socketId || depth > 8) { ws.close(); return; }
+      depth += 1;
+      const payload = isBinary ? { dataBase64: data.toString("base64") } : { text: data.toString("utf8") };
+      chain = chain.then(() => deps.bridge.call({
+        hostKey, epoch, op: "ws-send", routeId: "terminal-ws",
+        target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+        params: { socketId, ...payload },
+      })).then(() => undefined).finally(() => { depth -= 1; });
+    });
+    await deps.bridge.open({
+      hostKey, epoch, op: "ws-open", routeId: "terminal-ws",
+      target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+      params: { channel, operationId },
+    }, async (frame) => {
+      socketId = frame.id;
+      if (link.epoch !== epoch) { controller.abort(); return; }
+      if (frame.ready === true) return;
+      if (frame.text !== undefined) ws.send(frame.text);
+      else if (frame.dataBase64 !== undefined) ws.send(Buffer.from(frame.dataBase64, "base64"));
+    }, controller.signal);
+    live.delete(entry);
+    ws.close();
+  }
 }
 
 function applyPresence(link: HostLink, relay: DesktopHostRelay): void {

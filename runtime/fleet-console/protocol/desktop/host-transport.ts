@@ -43,6 +43,8 @@ export interface DesktopHostRelay {
   readonly dataBase64?: string;
   readonly text?: string;
   readonly end?: boolean;
+  /** 소켓이 티켓을 소비해 열렸다. 티켓 자체는 싣지 않는다. */
+  readonly ready?: boolean;
 }
 
 const HOST_KEY = /^(?!local$)[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;

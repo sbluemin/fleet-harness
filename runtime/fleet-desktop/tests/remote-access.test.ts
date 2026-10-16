@@ -2,6 +2,7 @@ import tls from "node:tls";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createHostTransportExecutor } from "../src/host-transport.js";
 import {
   CERTIFICATE_ACCEPTED,
   CERTIFICATE_DEFAULT,
@@ -12,7 +13,6 @@ import {
   type CertificateVerifyProc,
   type CertificateVerifyRequest,
 } from "../src/remote-access.js";
-import { createHostTransportExecutor } from "../src/host-transport.js";
 
 const TOKEN = "y8bWk3Qm5r7uJ2pS4vX9zA1cE6gI0lN8oR2tU5wY7bD";
 const FINGERPRINT = "4E65DB042A0B820A0833F016ADAD49B03D7DB5BC43100696AD023A77B647E325";
@@ -209,5 +209,37 @@ describe("host partition transport", () => {
     });
     expect(relay.mode).toBeUndefined();
     expect(relay).toMatchObject({ capability: "unsupported", error: "host_unsupported" });
+  });
+});
+
+describe("host transport streams", () => {
+  const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+  const partition = {
+    async fetch(url: string) {
+      if (url.endsWith("/api/v1/operations/events")) return new Response("event: operation:changed\n\ndata: {}\n\n", { status: 200 });
+      return new Response("no", { status: 404 });
+    },
+    async readCookies() { return []; },
+    async writeCookie() { return undefined; },
+    pin() { return undefined; },
+    clear() { return undefined; },
+  };
+
+  it("relays the current epoch's event stream and rejects an older command", async () => {
+    const frames: { text?: string; error?: string; end?: boolean }[] = [];
+    const executor = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => partition,
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    await executor.run({
+      id: 4, hostKey: "host1", epoch: 2, op: "sse", routeId: "operation-events", target, params: { path: "/api/v1/operations/events" },
+    }, async (relay) => { frames.push(relay); });
+    expect(frames.some((frame) => frame.text?.includes("operation:changed"))).toBe(true);
+    expect(frames.at(-1)?.end).toBe(true);
+    await expect(executor.execute({
+      id: 5, hostKey: "host1", epoch: 1, op: "http", routeId: "theaters", target, params: { method: "GET", path: "/api/v1/theaters" },
+    })).resolves.toMatchObject({ error: "stale_epoch" });
   });
 });

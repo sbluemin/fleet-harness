@@ -1571,7 +1571,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasController("remote"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
-  routeRegistry.register("/api/v1/hosts", createHostGateway({
+  const hostGateway = createHostGateway({
     isLoopback: isLoopbackListener,
     isExactOrigin: isExactConsoleOrigin,
     findHost: (hostKey) => {
@@ -1582,7 +1582,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     readJsonBody,
     writeJson,
     withSecurityHeaders,
-  }));
+  });
+  routeRegistry.register("/api/v1/hosts", (context) => hostGateway.handle(context));
+  upgradeRegistry.register("/api/v1/hosts", (context) => hostGateway.upgrade(context));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await handleDesktopHostTransport(context)) return true;
     if (await desktopBrowserRouter(context)) return true;

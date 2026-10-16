@@ -15,9 +15,10 @@ interface HostRoute {
 const HOST_ROUTES: readonly HostRoute[] = [
   { id: "theaters", kind: "json", method: "GET", path: "/api/v1/theaters", effect: "read" },
   { id: "operations", kind: "json", method: "GET", path: "/api/v1/operations", effect: "read" },
-  { id: "operation", kind: "json", method: "GET", path: "/api/v1/operations/:operationId", effect: "read" },
   { id: "operation-groups", kind: "json", method: "GET", path: "/api/v1/operations/groups", effect: "read" },
+  { id: "operation", kind: "json", method: "GET", path: "/api/v1/operations/:operationId", effect: "read" },
   { id: "operation-events", kind: "events", method: "GET", path: "/api/v1/operations/events", effect: "read" },
+  { id: "agent-state", kind: "json", method: "GET", path: "/api/v1/agent/state", effect: "read" },
   { id: "agent-sessions", kind: "json", method: "GET", path: "/api/v1/agent/sessions", effect: "read" },
   { id: "agent-history", kind: "json", method: "GET", path: "/api/v1/agent/sessions/:sessionId/chat-history", effect: "read" },
   { id: "agent-job", kind: "json", method: "GET", path: "/api/v1/agent/sessions/:sessionId/chat-job", effect: "read" },
@@ -40,6 +41,10 @@ const HOST_ROUTES: readonly HostRoute[] = [
   { id: "objectives-get", kind: "json", method: "POST", path: "/plugins/objectives/objective/get", effect: "read" },
   { id: "commodore-state", kind: "json", method: "POST", path: "/plugins/objectives/commodore/state", effect: "read" },
   { id: "commodore-transcript", kind: "json", method: "POST", path: "/plugins/objectives/commodore/transcript", effect: "read" },
+  { id: "commodore-message", kind: "json", method: "POST", path: "/plugins/objectives/commodore/message", effect: "write", conversation: true },
+  { id: "commander-message", kind: "json", method: "POST", path: "/plugins/objectives/commander/message", effect: "write", conversation: true },
+  { id: "objective-attachment", kind: "resources", method: "GET", path: "/plugins/objectives/attachment/file", effect: "read" },
+  { id: "objective-evidence", kind: "resources", method: "GET", path: "/plugins/objectives/result/file", effect: "read" },
   { id: "quota-summary", kind: "json", method: "GET", path: "/plugins/quota/summary", effect: "read" },
 ];
 

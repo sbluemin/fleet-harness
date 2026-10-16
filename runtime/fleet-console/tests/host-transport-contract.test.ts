@@ -94,7 +94,7 @@ describe("host gateway admission", () => {
       isLoopback: () => true,
       isExactOrigin: () => options.origin !== false,
       findHost: () => target,
-      bridge: { async call(request) {
+      bridge: { async open() { return { id: 1, error: "remote_host_unavailable", end: true }; }, async call(request) {
         calls.push({ op: request.op, routeId: request.routeId });
         return { id: 1, ...(options.reply ? options.reply(request) : { error: "remote_host_unavailable" }) };
       } },
@@ -104,7 +104,7 @@ describe("host gateway admission", () => {
     });
     const req = { method: options.method, url: options.path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
     const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
-    await gateway({ req, res, pathname: options.path.split("?")[0] ?? options.path });
+    await gateway.handle({ req, res, pathname: options.path.split("?")[0] ?? options.path });
     const written = slot.current;
     if (!written) throw new Error("gateway wrote nothing");
     return written;
@@ -123,7 +123,7 @@ describe("host gateway admission", () => {
       isLoopback: () => true,
       isExactOrigin: () => true,
       findHost: () => target,
-      bridge: { async call() { return { id: 1, capability: "unsupported", error: "host_unsupported" }; } },
+      bridge: { async open() { return { id: 1, end: true }; }, async call() { return { id: 1, capability: "unsupported", error: "host_unsupported" }; } },
       readJsonBody: async <T,>() => body as T | null,
       writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
       withSecurityHeaders: (headers) => headers,
@@ -131,7 +131,7 @@ describe("host gateway admission", () => {
     const invoke = async (method: string, path: string) => {
       const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
       const res = { writeHead: () => undefined, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
-      await gateway({ req, res, pathname: path });
+      await gateway.handle({ req, res, pathname: path });
       const written = slot.current;
       if (!written) throw new Error("no response");
       return written;
@@ -154,7 +154,7 @@ describe("host gateway admission", () => {
       isLoopback: () => true,
       isExactOrigin: () => true,
       findHost: () => target,
-      bridge: { async call(request) {
+      bridge: { async open() { return { id: 1, error: "remote_host_unavailable", end: true }; }, async call(request) {
         calls.push(request.op);
         if (request.op === "presence") return { id: 1, capability: "supported", mode: "observer", access: "full" };
         return { id: 1, status: 200, contentType: "application/json", json: {} };
@@ -166,7 +166,7 @@ describe("host gateway admission", () => {
     const invoke = async (method: string, path: string) => {
       const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
       const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
-      await gateway({ req, res, pathname: path.split("?")[0] ?? path });
+      await gateway.handle({ req, res, pathname: path.split("?")[0] ?? path });
       const written = slot.current;
       if (!written) throw new Error("no response");
       return written;
@@ -180,5 +180,48 @@ describe("host gateway admission", () => {
     expect(unknown).toEqual({ status: 403, body: { error: "route_denied" } });
     expect(calls).toEqual(["presence"]);
     void gatewayState;
+  });
+
+  it("relays an observer operation event stream and closes it when the epoch changes", async () => {
+    const frames: string[] = [];
+    let opened = false;
+    const slot = { current: null as { status: number; body: unknown } | null };
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => ({ hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" }),
+      bridge: {
+        async call() { return { id: 1, capability: "supported", mode: "observer", access: "full" }; },
+        async open(_request, onFrame, signal) {
+          opened = true;
+          await onFrame({ id: 7, text: "event: operation:changed\ndata: {}\n\n" });
+          signal?.addEventListener("abort", () => frames.push("aborted"));
+          return { id: 7, end: true };
+        },
+      },
+      readJsonBody: async <T,>() => ({ intent: "observe", expectedEpoch: 1 }) as T,
+      writeJson: (_res, status, body) => { slot.current = { status, body }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const presence = { method: "POST", url: "/api/v1/hosts/host1/presence", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    const presRes = { writeHead: () => undefined, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+    await gateway.handle({ req: presence, res: presRes, pathname: "/api/v1/hosts/host1/presence" });
+    const writes: string[] = [];
+    let ended = false;
+    const req = { method: "GET", url: "/api/v1/hosts/host1/events?path=%2Fapi%2Fv1%2Foperations%2Fevents&epoch=2", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    const res = {
+      writeHead: () => undefined,
+      write: (chunk: string) => { writes.push(chunk); return true; },
+      end: () => { ended = true; },
+      on: () => undefined,
+      once: () => undefined,
+      destroyed: false,
+      writableEnded: false,
+    } as unknown as http.ServerResponse;
+    await gateway.handle({ req, res, pathname: "/api/v1/hosts/host1/events" });
+    expect(opened).toBe(true);
+    expect(writes.join("")).toContain("operation:changed");
+    expect(ended).toBe(true);
+    expect(frames).toEqual([]);
   });
 });
