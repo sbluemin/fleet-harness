@@ -6397,7 +6397,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   animation: caption-action-live 1.6s ease-in-out infinite; animation-name: var(--state-motion, caption-action-live);
 }
 
-/* 사람의 손을 기다리는 수(보지 않은 Fleet 브라우저 뒤 탭 등) — 레일 도구 배지(.right-rail-ico-badge)와 같은 문법이다: brass 테두리만
+/* 사람의 손을 기다리는 수 — 레일 도구 배지(.right-rail-ico-badge)와 같은 문법이다: brass 테두리만
    두르고 채우지 않아 켜짐(워시)과 겹쳐도 켜짐으로 읽히지 않는다. */
 .fleet-caption-action-badge {
   position: absolute;
@@ -11616,7 +11616,7 @@ body[data-codex-side="true"] .command-card {
    원폭으로 떠오른다. 테두리의 brass 믹스는 상태가 아니라 "호버가 소환한 표면"의 위치/호버
    채널이다(전체화면 밴드 엣지 리빌과 같은 문법). */
 .operations-side-bar.is-closed.is-peeking {
-  /* 픽 카드와 그 문은 Fleet 브라우저 시트(30) 위, 시트 메뉴·대화상자(32) 아래다. */
+  /* 픽 카드와 그 문은 아레나 위로 뜨고, 대화상자(32) 아래다. */
   z-index: 31;
   width: var(--side-bar-width, 280px);
   border-color: color-mix(in oklab, var(--brass) 38%, var(--surface-rim));

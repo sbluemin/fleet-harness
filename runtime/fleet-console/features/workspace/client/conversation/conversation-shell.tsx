@@ -30,7 +30,6 @@ import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operat
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { closeGlobalBrowser, globalBrowserUnseenLabel, publishOperationBrowserTarget, requestBrowserChooser, useGlobalBrowserOpen, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
 import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
@@ -680,21 +679,15 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const toggleDetails = useToggleDetails(operationConversation);
   usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
 
-  // ── 오른쪽 분할 — 브라우저는 대화 열 오른쪽 칸에 선다 ──
-  // Fleet 브라우저(전역 시트)가 열렸거나, 이 대화의 Session 브라우저를 골랐으면 대화 열이 폭을 내주고 그 자리에 칸이 펼쳐진다.
-  // 대화 열(right)과 칸(width)은 같은 전이(--duration-base · --ease-spring)로 함께 움직인다. Fleet 브라우저 시트는 그 칸의
-  // 사각형에 앉고(global-browser-sheet.tsx), Session 브라우저(Operation 의 companion 이든 플러그인 세션의 것이든)는 칸 안에 그린다.
-  const fleetBrowserOpen = useGlobalBrowserOpen();
+  // ── 오른쪽 분할 — Session 브라우저는 대화 열 오른쪽 칸에 선다 ──
+  // 대화 열(right)과 칸(width)은 같은 전이(--duration-base · --ease-spring)로 함께 움직인다.
   const operationSplit = useOperationBrowserSplit();
   const sessionSplit = useSessionBrowserSplit();
   const desktop = isDesktopShell();
   const splitSubjectId = surfaceDescriptor ? null : stageSubject?.id ?? null;
-  const splitKind: SplitKind | null = desktop && fleetBrowserOpen
-    ? "fleet"
-    : operationSplit !== null && operationSplit.subjectId === splitSubjectId ? "operation"
-      : sessionSplit !== null && sessionSplit.subjectKey === sessionSubjectKey ? "session" : null;
-  // Fleet 브라우저가 열리면 Session 브라우저 칸은 걷힌다 — 칸은 브라우저 하나만 싣는다. 대상이 바뀌어도 걷는다.
-  useEffect(() => { if (fleetBrowserOpen) { closeOperationBrowserSplit(); closeSessionBrowserSplit(); } }, [fleetBrowserOpen]);
+  const splitKind: SplitKind | null = desktop && operationSplit !== null && operationSplit.subjectId === splitSubjectId
+    ? "operation"
+    : sessionSplit !== null && sessionSplit.subjectKey === sessionSubjectKey ? "session" : null;
   useEffect(() => {
     if (operationSplit !== null && operationSplit.subjectId !== splitSubjectId) closeOperationBrowserSplit();
   }, [operationSplit, splitSubjectId]);
@@ -1241,26 +1234,14 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const openOperationBrowser = useCallback(() => {
     openOperationBrowserSplit({ subjectId: operation.id, operationId: bodyOwner.id });
   }, [operation.id, bodyOwner.id]);
-  // Theater 패널의 Fleet 브라우저 칸이 세우는 선택 카드도 이 대화의 Operation 브라우저 행을 쓴다.
-  useEffect(() => {
-    if (!offersBrowser) return;
-    publishOperationBrowserTarget({ open: openOperationBrowser });
-    return () => publishOperationBrowserTarget(null);
-  }, [offersBrowser, openOperationBrowser]);
   const closeBrowserSplit = useCallback(() => {
-    closeGlobalBrowser();
     closeOperationBrowserSplit();
   }, []);
-  // pill 의 지구본: 칸이 비어 있으면 「Fleet 브라우저 / Operation 브라우저」 카드를 단추 아래에 세우고, 칸이 서 있으면 걷는다.
-  // 단추는 companion 문법(toggleCompanionPanel)으로 부르므로 여기서 그 호출을 카드로 바꾼다 — 누른 단추가 포커스를 쥐고 있다.
+  // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
     if (!visible) { closeBrowserSplit(); return; }
-    const focused = document.activeElement;
-    const pillActions = bodyRef.current?.parentElement?.querySelector<HTMLElement>(".conversation-pill-actions") ?? null;
-    const anchor = focused instanceof HTMLElement && pillActions?.contains(focused) ? focused : pillActions;
-    if (anchor === null) { openOperationBrowser(); return; }
-    requestBrowserChooser(anchor, { open: openOperationBrowser });
+    openOperationBrowser();
   }, [closeBrowserSplit, openOperationBrowser]);
   // 본문(채팅·CLI 링크 카드)의 「Operation 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
@@ -1370,7 +1351,7 @@ function noop(): void {}
 
 // ── 오른쪽 분할 칸 ─────────────────────────────────────────────────────────
 
-type SplitKind = "fleet" | "operation" | "session";
+type SplitKind = "operation" | "session";
 
 /** 브라우저 칸의 최소 폭 — 탭 줄과 주소창이 한 줄에 읽히는 폭이다. 대화 열은 CONVERSATION_MIN_WIDTH 를 지킨다. */
 const SPLIT_MIN_WIDTH = 360;
@@ -1391,7 +1372,7 @@ interface SplitSeat {
  * 칸의 자리 — 사람이 경계를 끌어 고른 폭(preferred)이 있으면 그 폭, 없으면 대화 열과 브라우저가 남은 폭을 반씩 나눈다. 어느 쪽이든
  * 대화 열은 CONVERSATION_MIN_WIDTH, 칸은 SPLIT_MIN_WIDTH 밑으로 줄지 않게 지금 창 폭으로 clamp 한다(고른 값 자체는 바꾸지 않는다).
  * 레일(오른쪽 패널) 옆에 둘 자리가 모자라면 칸이 레일 위로 덮는다(레일은 그 아래 그대로 산다). 그것도 모자라면 칸을
- * 세우지 않는다 — Fleet 브라우저는 기존 시트 기하로 뜨고, Operation 브라우저는 열지 않는다.
+ * 세우지 않는다 — Session 브라우저는 열지 않는다.
  */
 function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets, preferred: number | null): SplitSeat | null {
   const fit = (available: number) => {
@@ -1418,8 +1399,7 @@ function useViewportWidth(): number {
 
 /**
  * 대화 열 오른쪽 칸. 늘 마운트되어 있고(닫히면 폭 0), 폭 전이로 펼쳐지고 접힌다 — 대화 칸의 right 전이와 같은 시간·곡선이다.
- * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 내용이 선다: Fleet 브라우저는 이 칸 위에 시트가 앉아 네이티브 뷰를 한 번
- * 놓고, Session 브라우저(Operation 의 companion · 플러그인 세션의 것)는 이 칸 안에 그린다.
+ * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 Session 브라우저(Operation 의 companion · 플러그인 세션의 것)가 칸 안에 선다.
  */
 function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds, resizing, onResizingChange }: {
   readonly kind: SplitKind | null;
@@ -1439,7 +1419,7 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
   const open = kind !== null && seat !== null;
   const width = open ? seat.width : 0;
   const ref = useRef<HTMLDivElement | null>(null);
-  // 접히는 동안에도 칸은 무엇이 서 있던 자리인지 말한다 — Fleet 브라우저 시트가 이 표식을 보고 칸을 따라 줄어든다.
+  // 접히는 동안에도 칸은 무엇이 서 있던 자리인지 말한다.
   const [closingKind, setClosingKind] = useState<SplitKind | null>(null);
   const lastKindRef = useRef<SplitKind | null>(null);
   useEffect(() => {
@@ -1477,7 +1457,7 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
       className={`conversation-split${open ? " is-open" : ""}${seat?.overRail ? " is-over-rail" : ""}${open && resizing ? " is-resizing" : ""}`}
       {...(open ? { "data-kind": kind } : closingKind !== null ? { "data-kind": closingKind, "data-closing": "true" } : {})}
       data-settled={open && settled ? "true" : undefined}
-      // 끄는 동안의 표식 — Fleet 브라우저 시트와 칸 안의 Session 브라우저가 이 값을 보고 네이티브 뷰를 정지 화면 뒤로 물린다.
+      // 끄는 동안의 표식 — 칸 안의 Session 브라우저가 이 값을 보고 네이티브 뷰를 정지 화면 뒤로 물린다.
       data-resizing={open && resizing ? "true" : undefined}
       style={{ right: seat?.right ?? fallbackRight, width }}
       aria-hidden={open ? undefined : true}
@@ -1627,10 +1607,9 @@ interface SurfaceSessionBrowser {
 const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
 
 /**
- * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본(AgentCaptionActions `browser`)과 같은 글리프·크기·말풍선이다.
- * 칸이 비어 있으면 「Fleet 브라우저 / Session 브라우저」 카드를 단추 아래에 세우고, 칸이 서 있으면 걷는다. Session 행은 누르는 순간
- * 그 세션의 브라우저 owner 를 묻는다 — 세션이 아직 한 번도 서지 않았으면 행이 닫힌 채 까닭을 말한다. 엔진이 없거나 공유 중이면
- * 지구본 자체가 닫힌 채 까닭을 말한다(Operation 지구본과 같은 판정). 시트를 띄우지 않고 연 Fleet 브라우저 뒤 탭 수가 모서리에 선다.
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본과 같은 글리프·크기·말풍선이다.
+ * 칸이 비어 있으면 그 세션의 Session 브라우저를 바로 연다. 세션이 아직 서지 않았으면 가짜 세션을 만들지 않고
+ * 기존 비가용 안내만 말한다. 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채 까닭을 말한다.
  */
 function SurfaceBrowserButton({ session, language, splitOpen }: {
   readonly session: SurfaceSessionBrowser;
@@ -1640,39 +1619,44 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
-  const unseenTabs = useGlobalBrowserUnseenTabs();
-  const badge = engineMissing ? 0 : unseenTabs;
-  const slotRef = useRef<HTMLSpanElement | null>(null);
+  const sessionKey = session.subjectKey;
   const pendingRef = useRef(0);
+  const seenKeyRef = useRef(sessionKey);
+  // 세션이 바뀌면 렌더 안에서 진행 요청을 무효화한다. effect 청소보다 먼저라 이전 답이 새 칸을 열지 못한다.
+  if (seenKeyRef.current !== sessionKey) {
+    seenKeyRef.current = sessionKey;
+    pendingRef.current += 1;
+  }
+  const [blocked, setBlocked] = useState<{ readonly key: string; readonly message: string } | null>(null);
+  const blockedMessage = blocked?.key === sessionKey ? blocked.message : null;
+  useLayoutEffect(() => () => { pendingRef.current += 1; }, []);
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  const label = badge > 0 ? `${base} · ${globalBrowserUnseenLabel(badge, language)}` : base;
+    : blockedMessage ?? t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   const onClick = () => {
     if (splitOpen) {
-      closeGlobalBrowser();
+      pendingRef.current += 1;
+      setBlocked(null);
       closeSessionBrowserSplit();
       return;
     }
-    const anchor = slotRef.current?.querySelector<HTMLElement>("button") ?? null;
-    if (anchor === null) return;
-    // 늦게 온 답이 그 사이 다시 누른 카드를 덮지 않게 마지막 요청만 카드를 세운다.
     const request = ++pendingRef.current;
     const { pluginId, scopeId, subjectKey } = session;
     void resolveSessionBrowserTarget({ pluginId, scopeId })
       .then((ownerId) => ({ ownerId, failed: false }), () => ({ ownerId: null, failed: true }))
       .then(({ ownerId, failed }) => {
-        if (request !== pendingRef.current || !anchor.isConnected) return;
-        requestBrowserChooser(
-          anchor,
-          ownerId === null ? null : { open: () => openSessionBrowserSplit({ subjectKey, ownerId }) },
-          { sessionNotStarted: ownerId === null && !failed },
-        );
+        if (request !== pendingRef.current || seenKeyRef.current !== subjectKey) return;
+        if (ownerId === null) {
+          setBlocked({ key: subjectKey, message: t(failed ? "terminal.chooser.noOperation" : "terminal.chooser.sessionNotStarted") });
+          return;
+        }
+        setBlocked(null);
+        openSessionBrowserSplit({ subjectKey, ownerId });
       });
   };
   return (
-    <span ref={slotRef} className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={label} pressed={splitOpen} disabled={engineMissing} badge={badge} onClick={onClick}>
+    <span className="conversation-pill-browser">
+      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={onClick}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

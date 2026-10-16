@@ -49,16 +49,11 @@ export interface BrowserAvailability {
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
 export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean }
+/**
+ * 예전에 전역 Fleet 브라우저가 쓰던 소유자 id. 기능은 제거됐지만 이 문자열은 Operation·Session 이
+ * 될 수 없다 — 남은 상태나 옛 요청이 다른 Session 에 붙으면 안 된다.
+ */
 export const GLOBAL_BROWSER_OWNER_ID = "global" as const;
-
-export type BrowserOwner =
-  | { readonly kind: "operation"; readonly operationId: string }
-  | { readonly kind: "global" };
-
-export interface BrowserClosedTab {
-  readonly url: string;
-  readonly title: string;
-}
 
 export interface BrowserOperationState {
   readonly owner?: { readonly kind: "operation"; readonly operationId: string };
@@ -79,25 +74,7 @@ export interface BrowserOperationState {
   readonly reason: BrowserUnavailableReason | null;
 }
 
-export interface BrowserGlobalState {
-  readonly owner: { readonly kind: "global" };
-  /** 기존 DTO/SSE 수신 호환을 위한 고정 식별자. Operation ID 와 충돌하지 않는 예약어다. */
-  readonly operationId: "global";
-  readonly profile: string | null;
-  readonly defaultProfile: string | null;
-  readonly available: boolean;
-  readonly reason: BrowserUnavailableReason | null;
-  readonly tabs: readonly BrowserTabState[];
-  readonly activeTabId: string | null;
-  readonly viewport: BrowserViewport;
-  readonly consoleErrors: number;
-  readonly engine: "idle" | "starting" | "ready" | "failed";
-  readonly engineError: string | null;
-  /** 비정상 종료(shared 일시정지, 호스트 교체 등) 시 기억해 둔 마지막 탭 목록. 복원하거나 닫으면 비워진다. */
-  readonly closedTabs: readonly BrowserClosedTab[];
-}
-
-export type BrowserState = BrowserOperationState | BrowserGlobalState;
+export type BrowserState = BrowserOperationState;
 
 /**
  * 상태를 듣는 쪽. 구독은 Operation 마다가 아니라 서비스 하나에 걸린다 — 화면으로 나가는 길이 이미 열려 있는 Operation
@@ -267,8 +244,8 @@ export function resolveBrowserViewportSize(input: {
 /** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 사람이 무엇을 해야 하는지 말한다. */
 export function unavailableMessage(reason: BrowserUnavailableReason | null): string {
   switch (reason) {
-    case "shared": return "The Session Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
-    default: return "The Session Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
+    case "shared": return "The Fleet Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
+    default: return "The Fleet Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
   }
 }
 
@@ -338,29 +315,9 @@ export class BrowserService {
   private unsubscribeEvents: (() => void) | null = null;
   /** 마지막으로 본 가용성 — 열림에서 닫힘으로 넘어가는 순간에만 탭을 접는다. */
   private lastAvailable: boolean | null = null;
-  /** Console 전역 Fleet 브라우저 인스턴스. Operation Map 과 분리하여 가짜 Operation 생성을 방지한다. */
-  private readonly globalBrowser: OperationBrowser;
-  /** shared 일시정지나 호스트 변경으로 닫힌 마지막 전역 탭 목록(최대 8개, 비영속). */
-  private closedTabsMemory: BrowserClosedTab[] = [];
+  private readonly availabilityListeners = new Set<(notice: BrowserAvailability) => void>();
 
-  constructor(private readonly deps: BrowserServiceDeps) {
-    this.globalBrowser = {
-      operationId: GLOBAL_BROWSER_OWNER_ID,
-      contextId: "",
-      resetGeneration: 0,
-      profile: DESKTOP_BROWSER_DEFAULT_PROFILE,
-      tabs: new Map(),
-      activeTabId: null,
-      viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null },
-      pane: null,
-      viewportFollowsPane: true,
-      agentCalls: new Set(),
-      agentSession: null,
-      interruptSerial: 0,
-      pointer: null,
-      pendingTabs: 0,
-    };
-  }
+  constructor(private readonly deps: BrowserServiceDeps) {}
 
   status(): BrowserServiceStatus {
     const { available, reason } = this.availability();
@@ -389,13 +346,13 @@ export class BrowserService {
     const available = this.availability().available;
     const closing = this.lastAvailable === true && !available;
     this.lastAvailable = available;
+    this.emitAvailability();
     if (closing) {
       this.deps.log("browser paused: closing every tab");
       for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); this.endAgentSession(op.operationId, "revoke"); }
       void this.stopEngine();
       return;
     }
-    this.emitGlobalState();
     for (const op of this.operations.values()) this.emitState(op);
   }
 
@@ -423,18 +380,6 @@ export class BrowserService {
     this.unsubscribeEvents = null;
     this.identity = null;
     if (this.engine !== "failed") this.engine = "idle";
-    // A 조건: 전역 탭이 열려 있는 채로 엔진이 닫힐 때만 기록(최대 8개)
-    if (this.globalBrowser.tabs.size > 0) {
-      this.closedTabsMemory = [...this.globalBrowser.tabs.values()]
-        .filter((t) => t.url && t.url !== "about:blank")
-        .map((t) => ({ url: t.url, title: t.title || t.url }))
-        .slice(-8);
-    }
-    for (const tab of this.globalBrowser.tabs.values()) this.cancelViewportReapply(tab);
-    this.globalBrowser.tabs.clear();
-    this.globalBrowser.activeTabId = null;
-    this.globalBrowser.contextId = "";
-    this.emitGlobalState();
     for (const op of this.operations.values()) {
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
       op.tabs.clear();
@@ -447,8 +392,7 @@ export class BrowserService {
   private scheduleIdle(): void {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      const globalBusy = this.globalBrowser.tabs.size > 0;
-      const busy = globalBusy || [...this.operations.values()].some((op) => op.tabs.size > 0 || op.agentCalls.size > 0);
+      const busy = [...this.operations.values()].some((op) => op.tabs.size > 0 || op.agentCalls.size > 0);
       if (!busy) void this.stopEngine();
     }, IDLE_SHUTDOWN_MS);
   }
@@ -463,14 +407,13 @@ export class BrowserService {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const tab of this.globalBrowser.tabs.values()) this.cancelViewportReapply(tab);
     for (const op of this.operations.values()) {
       for (const call of op.agentCalls) call.abort();
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     }
     this.stateListeners.clear();
+    this.availabilityListeners.clear();
     await this.stopEngine();
-    this.globalBrowser.tabs.clear();
     this.operations.clear();
   }
 
@@ -479,7 +422,8 @@ export class BrowserService {
   private observationSerial = 0;
 
   private operation(operationId: string): OperationBrowser {
-    if (operationId === GLOBAL_BROWSER_OWNER_ID) return this.globalBrowser;
+    // 예약 id 로 Session 을 만들거나 옛 전역 탭을 다른 소유자에 붙이지 않는다.
+    if (operationId === GLOBAL_BROWSER_OWNER_ID) throw new BrowserPolicyError("browser_owner_reserved", "That id is reserved and is not a Fleet Browser.");
     let op = this.operations.get(operationId);
     if (!op) {
       // 새로 열리는 Operation 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
@@ -516,10 +460,7 @@ export class BrowserService {
     this.deps.desktop.place(operationId, placement);
   }
 
-  state(operationId: typeof GLOBAL_BROWSER_OWNER_ID): BrowserGlobalState;
-  state(operationId: string): BrowserOperationState;
-  state(operationId: string): BrowserOperationState | BrowserGlobalState {
-    if (operationId === GLOBAL_BROWSER_OWNER_ID) return this.globalState();
+  state(operationId: string): BrowserOperationState {
     const op = this.operation(operationId);
     const { available, reason } = this.availability();
     return {
@@ -539,93 +480,26 @@ export class BrowserService {
     };
   }
 
-  globalState(): BrowserGlobalState {
-    const { available, reason } = this.availability();
-    return {
-      owner: { kind: "global" },
-      operationId: GLOBAL_BROWSER_OWNER_ID,
-      profile: this.globalBrowser.profile,
-      defaultProfile: this.defaultProfile(),
-      available,
-      reason,
-      tabs: [...this.globalBrowser.tabs.values()].map((tab) => this.tabState(tab)),
-      activeTabId: this.globalBrowser.activeTabId,
-      viewport: this.globalBrowser.viewport,
-      consoleErrors: [...this.globalBrowser.tabs.values()].reduce((sum, tab) => sum + tab.consoleErrors, 0),
-      engine: this.engine,
-      engineError: this.engineError,
-      closedTabs: this.closedTabsMemory,
-    };
-  }
-
   /** 어느 Operation 의 것이든 상태가 바뀌면 듣는다 — 프레임은 자기 `operationId` 를 싣고 간다. */
   onState(listener: BrowserStateListener): () => void {
     this.stateListeners.add(listener);
     return () => { this.stateListeners.delete(listener); };
   }
 
+  /** 패널이 없어도 지구본이 가용성 변화를 바로 듣게 한다. Session 상태를 만들지 않는다. */
+  onAvailability(listener: (notice: BrowserAvailability) => void): () => void {
+    this.availabilityListeners.add(listener);
+    return () => { this.availabilityListeners.delete(listener); };
+  }
+
+  private emitAvailability(): void {
+    const notice = this.availability();
+    for (const listener of this.availabilityListeners) { try { listener(notice); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
+  }
+
   private emitState(op: OperationBrowser): void {
-    if (op.operationId === GLOBAL_BROWSER_OWNER_ID) {
-      this.emitGlobalState();
-      return;
-    }
     const state = this.state(op.operationId);
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
-  }
-
-  emitGlobalState(): void {
-    const state = this.globalState();
-    for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
-  }
-
-  private restoringClosedTabs: Promise<readonly string[]> | null = null;
-  /** 전역 링크·복원만 주소별 생성에 합류한다. 일반 새 탭과 에이전트 탭은 별개다. */
-  private readonly globalUrlCreations = new Map<string, Promise<BrowserTabState>>();
-
-  restoreClosedTabs(): Promise<readonly string[]> {
-    if (this.restoringClosedTabs) return this.restoringClosedTabs;
-    // 상태 알림이 재진입해도 같은 복원을 받도록, 목록을 만지기 전에 Promise를 등록한다.
-    this.restoringClosedTabs = Promise.resolve().then(async () => {
-      const restoredIds: string[] = [];
-      while (this.closedTabsMemory.length > 0) {
-        const openUrls = new Set([...this.globalBrowser.tabs.values()].map((tab) => tab.url));
-        for (const url of this.globalUrlCreations.keys()) openUrls.add(url);
-        // 아직 Map에 들어오지 않은 생성도 자리를 차지한다. 시도하지 못한 주소는 제안에 남기되,
-        // 이미 열린 주소는 자리가 필요 없으니 상한에 막혀도 제안에서 걷어 낸다.
-        if (this.globalBrowser.tabs.size + this.globalBrowser.pendingTabs >= MAX_TABS) {
-          const pending = this.closedTabsMemory.filter((tab) => !openUrls.has(tab.url));
-          if (pending.length !== this.closedTabsMemory.length) {
-            this.closedTabsMemory = pending;
-            this.emitGlobalState();
-          }
-          break;
-        }
-        const item = this.closedTabsMemory[0]!;
-        const existing = openUrls.has(item.url);
-        const remaining = this.closedTabsMemory.slice(1);
-        this.closedTabsMemory = remaining;
-        this.emitGlobalState();
-        // 치우기나 새 엔진 닫힘 기록이 목록을 교체했다면, 옛 복원은 그 목록을 건드리지 않는다.
-        if (this.closedTabsMemory !== remaining) break;
-        if (existing) continue;
-        try {
-          const tab = await this.openGlobalUrl(item.url);
-          restoredIds.push(tab.id);
-        } catch {
-          // 개별 탭 복구 실패 시 해당 주소는 소비한 채 계속 진행한다.
-        }
-        if (this.closedTabsMemory !== remaining) break;
-      }
-      return restoredIds;
-    }).finally(() => {
-      this.restoringClosedTabs = null;
-    });
-    return this.restoringClosedTabs;
-  }
-
-  dismissClosedTabs(): void {
-    this.closedTabsMemory = [];
-    this.emitGlobalState();
   }
 
   setShortcuts(shortcuts: readonly string[]): void {
@@ -742,33 +616,6 @@ export class BrowserService {
     return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1 };
   }
 
-  /** 전역 링크는 생성 중인 같은 주소에도 합류한다. 판정과 예약 사이에는 await가 없다. */
-  async openGlobalUrl(url: string, options?: { readonly activate?: boolean }): Promise<BrowserTabState> {
-    const activate = options?.activate !== false;
-    const href = this.admit(this.globalBrowser, url, "user").href;
-    const pending = this.globalUrlCreations.get(href);
-    if (pending) {
-      const tab = await pending;
-      if (activate) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, tab.id);
-      return this.tabState(this.tab(this.globalBrowser, tab.id));
-    }
-    const existing = [...this.globalBrowser.tabs.values()].find((tab) => tab.url === href);
-    if (existing) {
-      if (activate) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, existing.id);
-      return this.tabState(existing);
-    }
-    const previous = this.globalBrowser.activeTabId;
-    // 생성이 상태를 알리기 전 예약을 등록해 재진입도 같은 Promise에 합류시킨다.
-    const creating = Promise.resolve().then(async () => {
-      const tab = await this.createTab(GLOBAL_BROWSER_OWNER_ID, href, "user");
-      // 배경 열기는 보던 탭을 유지한다. 탭이 없었던 첫 배경 열기는 새 탭이 활성이다.
-      if (!activate && previous && this.globalBrowser.tabs.has(previous)) await this.selectTab(GLOBAL_BROWSER_OWNER_ID, previous);
-      return tab;
-    }).finally(() => { this.globalUrlCreations.delete(href); });
-    this.globalUrlCreations.set(href, creating);
-    return creating;
-  }
-
   async createTab(operationId: string, url: string | null, actor: "user" | "agent"): Promise<BrowserTabState> {
     const op = this.operation(operationId);
     if (op.tabs.size + op.pendingTabs >= MAX_TABS) throw new BrowserPolicyError("browser_tab_limit", `Tab cap reached (${MAX_TABS}). Close a tab before opening another.`);
@@ -850,7 +697,7 @@ export class BrowserService {
   private admit(_op: OperationBrowser, input: string, _actor: "user" | "agent"): URL {
     const url = parseUrl(input);
     if (!url || !["http:", "https:", "about:", "file:"].includes(url.protocol)) throw new BrowserPolicyError("browser_url_invalid", "That address couldn't be opened here.", { url: input });
-    if (url.protocol === "file:") throw new BrowserPolicyError("browser_url_invalid", "file: URLs are not served by the Session Browser. Serve the folder over HTTP instead.", { url: input });
+    if (url.protocol === "file:") throw new BrowserPolicyError("browser_url_invalid", "file: URLs are not served by the Fleet Browser. Serve the folder over HTTP instead.", { url: input });
     return url;
   }
 
@@ -952,9 +799,7 @@ export class BrowserService {
    * 세션은 살아 있는 뷰에 바꿔 끼울 수 없으므로 열린 탭을 닫고 컨텍스트를 새로 만든다. 사람에게는 화면이
    * 비워지는 일이라 패널이 먼저 확인을 받는다. 프로필의 디스크 저장소는 그대로 남는다.
    */
-  async setProfile(operationId: typeof GLOBAL_BROWSER_OWNER_ID, profile: string | null): Promise<BrowserGlobalState>;
-  async setProfile(operationId: string, profile: string | null): Promise<BrowserOperationState>;
-  async setProfile(operationId: string, profile: string | null): Promise<BrowserOperationState | BrowserGlobalState> {
+  async setProfile(operationId: string, profile: string | null): Promise<BrowserOperationState> {
     if (profile !== null && profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
     const op = this.operation(operationId);
     if (op.profile === profile) return this.state(operationId);
@@ -994,10 +839,6 @@ export class BrowserService {
    */
   async clearProfile(profile: string): Promise<void> {
     if (profile !== DESKTOP_BROWSER_DEFAULT_PROFILE) throw new BrowserPolicyError("browser_profile_unknown", "That browser profile does not exist.");
-    if (this.globalBrowser.profile === profile) {
-      await this.resetContext(this.globalBrowser);
-      this.emitGlobalState();
-    }
     for (const op of this.operations.values()) {
       if (op.profile !== profile) continue;
       await this.resetContext(op);
@@ -1038,8 +879,6 @@ export class BrowserService {
 
   private findTab(sessionId: string | undefined): { op: OperationBrowser; tab: Tab } | null {
     if (!sessionId) return null;
-    // 전역 브라우저는 Operation Map 밖에 산다 — 그 탭의 항해·제목·크기 이벤트도 여기서 찾아야 주소창이 따라간다.
-    for (const tab of this.globalBrowser.tabs.values()) if (tab.sessionId === sessionId) return { op: this.globalBrowser, tab };
     for (const op of this.operations.values()) for (const tab of op.tabs.values()) if (tab.sessionId === sessionId) return { op, tab };
     return null;
   }

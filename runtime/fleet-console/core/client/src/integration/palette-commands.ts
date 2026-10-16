@@ -5,8 +5,6 @@ import type { LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
-import { isDesktopShell } from "./desktop-shell.js";
-import { FleetBrowserGlyph } from "../../../../features/browser/client/global-browser-entry.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
@@ -53,7 +51,6 @@ export type PaletteCommandAction =
   | { readonly kind: "open-archive" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
-  | { readonly kind: "toggle-fleet-browser" }
   | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
@@ -186,20 +183,6 @@ export function buildPaletteCommands(
       glyph: "rail-entry",
       shortcut: CORE_SHORTCUT_COMMANDS.find((command) => command.railEntryId === panel.id)?.id,
       ...(panel.icon === undefined ? {} : { railIcon: panel.icon }),
-    });
-  }
-  // Fleet 브라우저는 레일 칸이 아니다 — ⇧⌘B 와 같은 일급 명령으로 시트를 바로 여닫는다. 그릴 셸이 있는 문서(Desktop)에만 선다.
-  if (isDesktopShell()) {
-    push({
-      commandId: "toggle-fleet-browser",
-      label: t("shortcuts.console.toggleFleetBrowser"),
-      aliasLabel: alias("shortcuts.console.toggleFleetBrowser"),
-      extraAliases: ["browser", "브라우저"],
-      action: { kind: "toggle-fleet-browser" },
-      group: "panel",
-      glyph: "rail-entry",
-      shortcut: "console.toggle-fleet-browser",
-      railIcon: FleetBrowserGlyph,
     });
   }
   push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });

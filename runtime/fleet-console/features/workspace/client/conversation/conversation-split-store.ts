@@ -1,12 +1,9 @@
 import { useSyncExternalStore } from "react";
 
-import { closeGlobalBrowser } from "../../../browser/client/global-browser-store.js";
-
 /**
  * 대화 중심 화면의 오른쪽 분할 칸에 Session 브라우저가 서 있는가 — 대화 열 오른쪽 칸은 브라우저 하나만 싣는다.
- * Fleet 브라우저(전역 시트)의 열림은 global-browser-store 가 갖고, 이 저장소는 Session 브라우저 쪽만 갖는다. 셋은 서로를 걷는다.
  * Session 브라우저는 둘 중 하나다: Operation 대화의 companion(OperationBrowserSplit), 또는 사령관 같은 플러그인 대화의 에이전트
- * 세션이 쓰는 브라우저(SessionBrowserSplit — 호스트가 owner 로 찾아 그린다).
+ * 세션이 쓰는 브라우저(SessionBrowserSplit — 호스트가 owner 로 찾아 그린다). 둘은 서로를 걷는다.
  *
  * subjectId 는 가운데 칸에 선 대화(묶음의 뿌리), operationId 는 브라우저를 가진 Operation(구성원 본문을 고르면 그 구성원)이다.
  * 가운데 칸의 대상이 바뀌면 칸은 접힌다 — 다른 대화 옆에 앞 대화의 브라우저를 두지 않는다.
@@ -40,7 +37,6 @@ export function useOperationBrowserSplit(): OperationBrowserSplit | null {
 }
 
 export function openOperationBrowserSplit(next: OperationBrowserSplit): void {
-  closeGlobalBrowser();
   closeSessionBrowserSplit();
   if (split?.subjectId === next.subjectId && split.operationId === next.operationId) return;
   split = next;
@@ -58,7 +54,6 @@ export function useSessionBrowserSplit(): SessionBrowserSplit | null {
 }
 
 export function openSessionBrowserSplit(next: SessionBrowserSplit): void {
-  closeGlobalBrowser();
   closeOperationBrowserSplit();
   if (sessionSplit?.subjectKey === next.subjectKey && sessionSplit.ownerId === next.ownerId) return;
   sessionSplit = next;
@@ -72,7 +67,7 @@ export function closeSessionBrowserSplit(): void {
 }
 
 // ── 칸의 폭 ──────────────────────────────────────────────────────────────────
-// 사람이 경계를 끌어 고른 브라우저 칸 폭(px) — 세 브라우저(Fleet · Operation · 플러그인 세션)가 같은 값을 쓴다. 뷰어별 편의 상태라
+// 사람이 경계를 끌어 고른 브라우저 칸 폭(px) — Operation 과 플러그인 세션이 같은 값을 쓴다. 뷰어별 편의 상태라
 // 이 브라우저의 localStorage 에만 둔다. null 은 「고른 적 없음」 — 칸이 남은 폭을 반씩 나눈다. 저장한 값은 그대로 두고 그리는 쪽이
 // 창 폭에 맞춰 clamp 하므로, 창이 좁아졌다 다시 넓어지면 고른 폭으로 돌아온다.
 const SPLIT_WIDTH_KEY = "fleet-console.conversation.splitWidth";

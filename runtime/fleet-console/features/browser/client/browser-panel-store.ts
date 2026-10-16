@@ -52,7 +52,7 @@ export function useBrowserPanel(operationId: string): BrowserPanelSnapshot | nul
 // ---------- 밖에서 온 주소 ----------
 
 /**
- * CLI·채팅에서 고른 주소 한 개 — 「Fleet 브라우저에서 열기」가 여기 놓고 companion 을 연다.
+ * CLI·채팅에서 고른 주소 한 개 — Session 브라우저로 열기가 여기 놓고 companion 을 연다.
  *
  * 패널이 아직 없을 수도 있고(문을 여는 그 순간 마운트된다), 엔진이 뜨는 동안일 수도 있으므로
  * 요청은 패널이 실제로 열 수 있게 될 때까지 남는다. 여는 일은 언제나 패널의 것이다 — 실패·거부의

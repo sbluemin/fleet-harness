@@ -58,8 +58,6 @@ import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
-import { isDesktopShell } from "../integration/desktop-shell.js";
-import { toggleGlobalBrowser } from "../../../../features/browser/client/global-browser-store.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -479,12 +477,6 @@ function ConnectedApp() {
         if (surfaceId === undefined) return false;
         if (outcome === "apply" && getExpandedSurfaceState().instances.some((instance) => instance.surfaceId === surfaceId)) closeExpandedSurfacesOf(surfaceId);
         else openExpandedSurface({ surfaceId });
-        return true;
-      },
-      // ⇧⌘B — 카드 없이 Fleet 브라우저 시트를 바로 여닫는다. 네이티브 뷰가 없는 문서(웹 탭·모바일)에서는 키를 두고 간다.
-      toggleFleetBrowser: () => {
-        if (!isDesktopShell()) return false;
-        toggleGlobalBrowser();
         return true;
       },
       canUndoLastClose,

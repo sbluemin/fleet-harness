@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 
 import { getT } from "../../agent/i18n/index.js";
 import { openShellLink, useShellLinkChoice } from "../../agent/link-open.js";
-import { notifySharedFallback } from "../../../../browser/client/global-browser-store.js";
+import { notifySharedFallback } from "../../../../browser/client/browser-shared-fallback.js";
 import { useBrowserEngine } from "../../../../browser/client/browser-panel-store.js";
 import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
 import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "../shared/index.js";

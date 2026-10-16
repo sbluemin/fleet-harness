@@ -12,7 +12,7 @@ import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
 
-describe("global fleet browser host contract", () => {
+describe("session browser host contract", () => {
   it("includes shortcuts (including empty list) and generalizes viewOwner without fake operations", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });
@@ -42,7 +42,7 @@ describe("global fleet browser host contract", () => {
     expect(engine.viewOperation(targetId)).toBe("global");
   });
 
-  it("handles /api/v1/browser/global/* and shortcuts with strict origin gates and no fake operations", async () => {
+  it("rejects the removed global browser route and keeps shortcut origin gates", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });
     let defaultProfileValue: string | null = null;
@@ -76,7 +76,7 @@ describe("global fleet browser host contract", () => {
       withSecurityHeaders: (h) => h,
     });
 
-    // 1. GET /api/v1/browser/global/state — operations.get("global") 이 없어도 200 반환 (가짜 Operation 불필요)
+    // 삭제된 전역 경로는 Operation 으로 열리지 않는다.
     const stateRes = {} as ServerResponse;
     const handledState = await router({
       req: { method: "GET" } as IncomingMessage,
@@ -84,13 +84,9 @@ describe("global fleet browser host contract", () => {
       pathname: "/api/v1/browser/global/state",
     });
     expect(handledState).toBe(true);
-    expect((stateRes as unknown as { status: number }).status).toBe(200);
-    expect((stateRes as unknown as { body: { owner: { kind: string }; operationId: string } }).body).toMatchObject({
-      owner: { kind: "global" },
-      operationId: "global",
-    });
+    expect((stateRes as unknown as { status: number }).status).toBe(404);
 
-    // 1-1. 옛 상태·복원으로 id "global"인 Operation이 들어와 있어도 Operation 경로는 전역 브라우저에 닿지 않는다.
+    // 옛 상태·복원으로 id "global"인 Operation이 들어와 있어도 Session 경로에 붙지 않는다.
     operations.set("global", { id: "global", payload: {} });
     const spoofRes = {} as ServerResponse;
     await router({ req: { method: "GET" } as IncomingMessage, res: spoofRes, pathname: "/api/v1/browser/operations/global/state" });
@@ -119,7 +115,7 @@ describe("global fleet browser host contract", () => {
     expect((forbiddenRes as unknown as { status: number }).status).toBe(403);
   });
 
-  it("preserves global tabs on operation closure and manages closed-tab suggestions (condition A & Q4)", async () => {
+  it("keeps Session browsers isolated from the reserved global id", async () => {
     const attached = new Set<string>();
     const answered = new Set<number>();
     const urls = new Map<string, string>();
@@ -161,24 +157,9 @@ describe("global fleet browser host contract", () => {
     const released: string[] = [];
     const browser = createBrowserMcpHost({ service, operations: () => [], screenshots: { release: (id: string) => released.push(id), cleanup: () => {} } as never });
     try {
-      const existingUrl = "https://example.com/existing";
-      const firstUrl = "https://example.com/first";
-      const secondUrl = "https://example.com/second";
-      const remainingUrl = "https://example.com/remaining";
-      const existing = await service.createTab(GLOBAL_BROWSER_OWNER_ID, existingUrl, "user");
-      for (let index = 0; index < 5; index += 1) await service.createTab(GLOBAL_BROWSER_OWNER_ID, null, "user");
-      (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory =
-        [existingUrl, firstUrl, firstUrl, secondUrl, remainingUrl, existingUrl].map((url) => ({ url, title: url }));
-
-      // 열린 주소와 목록 안 중복이 빈자리를 먹지 않으며, 상한 밖 주소는 남고 이미 열린 주소는 상한 밖에서도 걷힌다.
-      const restored = await service.restoreClosedTabs();
-      const state = service.globalState();
-      expect(restored).toHaveLength(2);
-      expect(state.tabs.filter((tab) => restored.includes(tab.id)).map((tab) => tab.url)).toEqual([firstUrl, secondUrl]);
-      expect(state.tabs.filter((tab) => tab.url === existingUrl).map((tab) => tab.id)).toEqual([existing.id]);
-      expect(state.tabs.filter((tab) => tab.url === firstUrl)).toHaveLength(1);
-      expect(state.tabs).toHaveLength(8);
-      expect(state.closedTabs.map((tab) => tab.url)).toEqual([remainingUrl]);
+      await expect(service.createTab(GLOBAL_BROWSER_OWNER_ID, "https://example.com/reserved", "user")).rejects.toMatchObject({ code: "browser_owner_reserved" });
+      expect(service.status().operations).not.toContain(GLOBAL_BROWSER_OWNER_ID);
+      const foreign = await service.createTab("op-foreign", "https://example.com/foreign", "user");
 
       // 에이전트의 동시 생성도 완성 탭과 생성 예약을 합쳐 Operation별 8개까지만 받는다.
       for (let index = 0; index < 7; index += 1) await service.createTab("op-target", null, "agent");
@@ -189,9 +170,8 @@ describe("global fleet browser host contract", () => {
       ]);
       expect(service.state("op-target").tabs).toHaveLength(8);
 
-      // Operation 종료가 실제 열린 전역 탭에 영향을 주지 않음
       await service.closeOperation("op-target");
-      expect(service.globalState().tabs).toEqual(state.tabs);
+      expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
       // 허용 회수가 첫 탭 생성과 겹쳐도 제거된 Operation에 옛 탭·네이티브 타깃이 되살아나지 않는다.
       const viewsBeforeReset = engine.snapshot().views.map((view) => view.id);
@@ -204,7 +184,7 @@ describe("global fleet browser host contract", () => {
       expect(resettingOp.contextId).toBe("");
       expect(resettingOp.pendingTabs).toBe(0);
       expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
-      expect(service.globalState().tabs).toEqual(state.tabs);
+      expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
       // 사령관은 실제 AgentHost가 실은 MCP로 자기 탭만 다룬다. 전역 탭 id를 알아도 넘어갈 수 없다.
       let client: Client | null = null;
@@ -237,8 +217,8 @@ describe("global fleet browser host contract", () => {
           expect((await client.listTools()).tools.some((tool) => tool.name === "capture")).toBe(true);
           expect((await client.callTool({ name: "tabs_create", arguments: {} })).isError).not.toBe(true);
           expect(service.state(owner).tabs).toHaveLength(1);
-          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: existing.id } })).isError).toBe(true);
-          expect(service.globalState().tabs).toEqual(state.tabs);
+          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: foreign.id } })).isError).toBe(true);
+          expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
         };
         await session.send("open isolated tab");
         expect(service.state(owner).driving).toBe(false);
@@ -255,7 +235,7 @@ describe("global fleet browser host contract", () => {
         expect((await client!.callTool({ name: "tabs_context", arguments: {} })).isError).toBe(true);
         expect(service.state(owner).tabs).toHaveLength(0);
         expect(released).toContain(owner);
-        expect(service.globalState().tabs).toEqual(state.tabs);
+        expect(service.state("op-foreign").tabs.map((tab) => tab.id)).toEqual([foreign.id]);
         const resumed = browser.connectPlugin({ pluginId: "objectives", scopeId: "commodore:t1", enabled: () => true });
         expect(browser.resolveSessionOwner("objectives", "commodore:t1")).toBe(owner);
         const another = browser.connectPlugin({ pluginId: "another", scopeId: "commodore:t1", enabled: () => true });
@@ -263,22 +243,14 @@ describe("global fleet browser host contract", () => {
         await resumed.dispose(); await another.dispose();
       } finally { await agent.dispose(); await (client as Client | null)?.close(); }
 
-      service.dismissClosedTabs();
-      expect(service.globalState().closedTabs).toHaveLength(0);
-
-      // 링크 열기와 복원이 겹쳐도 URL 예약을 공유한다. HTTP 링크 동작과 복원 서비스의 공통 경계다.
-      for (const tabId of restored) await service.closeTab(GLOBAL_BROWSER_OWNER_ID, tabId);
-      const concurrentUrl = "https://example.com/concurrent";
-      (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory = [{ url: concurrentUrl, title: concurrentUrl }];
       const router = createBrowserRouter({
         browserService: service,
         browserMcp: browser,
-        operations: { get: () => null },
+        operations: { get: (id: string) => id === GLOBAL_BROWSER_OWNER_ID ? { id, payload: {} } : null },
         isWriteAdmitted: () => true,
         isExactConsoleOrigin: () => true,
-        isDesktopHostClient: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
-        readJsonBody: async <T>() => ({ action: "open", url: concurrentUrl, activate: false }) as T,
+        readJsonBody: async <T>() => ({} as T),
         readUrl: () => new URL("http://localhost:50212/api/v1/browser/sessions/resolve?pluginId=objectives&scopeId=commodore%3At1"),
         withSecurityHeaders: (headers) => headers,
       });
@@ -289,92 +261,20 @@ describe("global fleet browser host contract", () => {
       await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/operations/${encodeURIComponent(resolved.body.ownerId)}/state` });
       expect(sessionState.status).toBe(200);
       expect(sessionState.body.operationId).toBe(resolved.body.ownerId);
-      const opened = {} as ServerResponse & { status: number; body: { tab: { id: string } } };
-      await Promise.all([
-        router({ req: { method: "POST" } as IncomingMessage, res: opened, pathname: "/api/v1/browser/global/tabs" }),
-        service.restoreClosedTabs(),
-      ]);
-      expect(opened.status).toBe(200);
-      const sameUrlTabs = service.globalState().tabs.filter((tab) => tab.url === concurrentUrl);
-      expect(sameUrlTabs.map((tab) => tab.id)).toEqual([opened.body.tab.id]);
-      expect(service.globalState().closedTabs).toHaveLength(0);
+      const removed = {} as ServerResponse & { status: number; body: { error: string } };
+      await router({ req: { method: "GET" } as IncomingMessage, res: removed, pathname: "/api/v1/browser/global/state" });
+      expect(removed.status).toBe(404);
+      const spoof = {} as ServerResponse & { status: number };
+      await router({ req: { method: "GET" } as IncomingMessage, res: spoof, pathname: "/api/v1/browser/operations/global/state" });
+      expect(spoof.status).toBe(404);
+      expect(service.status().operations).not.toContain(GLOBAL_BROWSER_OWNER_ID);
 
-      // shared 해제 등 가용성 회복 시 전역 상태 이벤트가 발행된다 (QA-11)
-      const emitted: unknown[] = [];
-      service.onState((s) => emitted.push(s));
+      const notices: { available: boolean }[] = [];
+      service.onAvailability((notice) => notices.push(notice));
       service.reconcile();
-      expect(emitted.some((s) => (s as { operationId?: string; available?: boolean }).operationId === "global" && (s as { available?: boolean }).available === true)).toBe(true);
+      expect(notices.some((notice) => notice.available === true)).toBe(true);
     } finally {
       await browser.dispose();
     }
-  });
-
-  it("masks closedTabs and tabs for non-desktop web clients to protect privacy (QA-7)", async () => {
-    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
-    const service = new BrowserService({
-      enabled: () => true,
-      availability: () => ({ available: true, reason: null, host: "local" }),
-      desktop: engine,
-      log: () => {},
-      defaultProfile: { read: () => "default", write: () => {} },
-    });
-
-    // 닫힌 탭 목록이 인메모리에 존재하는 상태 시뮬레이션
-    (service as unknown as { closedTabsMemory: { url: string; title: string }[] }).closedTabsMemory = [
-      { url: "https://github.com/private/repo", title: "Private Project" },
-    ];
-    expect(service.globalState().closedTabs).toHaveLength(1);
-
-    let isDesktopClient = false;
-    const router = createBrowserRouter({
-      browserService: service,
-      browserMcp: { interruptOperation: () => 0, pasteIntoTerminal: () => false },
-      operations: { get: () => null },
-      isWriteAdmitted: () => true,
-      isExactConsoleOrigin: () => true,
-      isDesktopHostClient: () => isDesktopClient,
-      writeJson: (res: ServerResponse, status: number, body: unknown) => {
-        (res as unknown as { status: number; body: unknown }).status = status;
-        (res as unknown as { status: number; body: unknown }).body = body;
-      },
-      readJsonBody: async () => null,
-      readUrl: () => new URL("http://localhost:50212"),
-      withSecurityHeaders: (h) => h,
-    });
-
-    // 1. 비-Desktop 웹 클라이언트(isDesktopClient=false)의 GET state: closedTabs 와 tabs 가 빈 목록으로 마스킹됨
-    const webRes = {} as ServerResponse;
-    await router({
-      req: { method: "GET" } as IncomingMessage,
-      res: webRes,
-      pathname: "/api/v1/browser/global/state",
-    });
-    expect((webRes as unknown as { status: number }).status).toBe(200);
-    const webBody = (webRes as unknown as { body: { closedTabs: unknown[]; tabs: unknown[]; available: boolean } }).body;
-    expect(webBody.closedTabs).toEqual([]);
-    expect(webBody.tabs).toEqual([]);
-    expect(webBody.available).toBe(false);
-
-    // 2. 비-Desktop 웹 클라이언트의 restore-closed-tabs: 403 거부
-    const restoreRes = {} as ServerResponse;
-    await router({
-      req: { method: "POST" } as IncomingMessage,
-      res: restoreRes,
-      pathname: "/api/v1/browser/global/restore-closed-tabs",
-    });
-    expect((restoreRes as unknown as { status: number }).status).toBe(403);
-
-    // 3. Desktop 클라이언트(isDesktopClient=true)는 원본 closedTabs 정상 수신
-    isDesktopClient = true;
-    const desktopRes = {} as ServerResponse;
-    await router({
-      req: { method: "GET" } as IncomingMessage,
-      res: desktopRes,
-      pathname: "/api/v1/browser/global/state",
-    });
-    expect((desktopRes as unknown as { status: number }).status).toBe(200);
-    const desktopBody = (desktopRes as unknown as { body: { closedTabs: { url: string }[] } }).body;
-    expect(desktopBody.closedTabs).toHaveLength(1);
-    expect(desktopBody.closedTabs[0]?.url).toBe("https://github.com/private/repo");
   });
 });
