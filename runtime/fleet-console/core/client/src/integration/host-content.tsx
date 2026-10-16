@@ -82,7 +82,8 @@ export function HostContent({ binding, registry, insets, language, openNewOperat
       },
     };
     for (const id of ["execution", ...registry.plugins.map((plugin) => plugin.id)]) out.set(id, {
-      selection, transport, api, events, chat, canWrite, language, hostLabel: host.label, navigation, operations,
+      // 원장·결정·입력창 조립은 실행 기능의 host-bound 대화가 맡는다. 플러그인은 보드 사실과 동작만 넘긴다.
+      selection, transport, api, events, chat, OperationConversation: HostAgentConversation, canWrite, language, hostLabel: host.label, navigation, operations,
       state: binding.surfaceState(id, transport), readResource: (path, signal) => binding.readResource(transport, path, signal),
     });
     return out;
