@@ -239,7 +239,8 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 }
 @container new-session-chips (max-width: 379px) {
   .new-session-chips .effort-track-value { display: none; }
-  .new-session-chip { max-width: 140px; }
+  .new-session-chip,
+  .new-session-launch-slot .quick-launch-chip { max-width: 140px; }
 }
 .new-session-chip {
   display: inline-flex;

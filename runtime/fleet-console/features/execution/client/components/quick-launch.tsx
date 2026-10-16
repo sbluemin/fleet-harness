@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -21,7 +21,8 @@ import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, c
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { OperationNameMark } from "./operation-name-mark.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
-import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
+import { resolveRowEffort } from "./effort-track.js";
+import { LaunchModelEffort } from "./launch-model-effort.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "./start-view-glyphs.js";
 import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
@@ -112,7 +113,6 @@ export function QuickLaunch() {
   const highlightRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const theaterChipRef = useRef<HTMLButtonElement | null>(null);
-  const modelChipRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
   // 컴포저 세션 에포크 — 열림 전이마다 오른다. 대기 중인 멘션 전달 promise가 다음 세션을
@@ -125,6 +125,8 @@ export function QuickLaunch() {
   const [model, setModel] = useState<string | null>(QUICK_LAUNCH_DEFAULT_MODEL);
   const [effort, setEffort] = useState<string | null>(null);
   const [popover, setPopover] = useState<PopoverKind | null>(null);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [dismissModelMenu, setDismissModelMenu] = useState(0);
   const [popoverLeft, setPopoverLeft] = useState<number | null>(null);
   const [popoverMaxHeight, setPopoverMaxHeight] = useState<number | null>(null);
   const [viewportEpoch, setViewportEpoch] = useState(0);
@@ -650,7 +652,7 @@ export function QuickLaunch() {
       setPopoverMaxHeight(null);
       return;
     }
-    const chip = (popover === "theater" ? theaterChipRef : modelChipRef).current;
+    const chip = theaterChipRef.current;
     const bar = barRef.current;
     const pop = bar?.querySelector<HTMLElement>(".quick-launch-pop");
     if (!chip || !bar || !pop) return;
@@ -1087,7 +1089,7 @@ export function QuickLaunch() {
       // 메뉴 계약: Tab은 항목 순회가 아니라 메뉴를 닫고 다음 컨트롤로 넘어간다. 칩에 포커스를
       // 되돌린 채 기본 동작을 살려 두면 브라우저가 칩의 다음(또는 이전) 정지점으로 옮긴다.
       closePopover();
-      (popover === "theater" ? theaterChipRef : modelChipRef).current?.focus();
+      theaterChipRef.current?.focus();
       return;
     }
     if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && /\S/.test(event.key)) {
@@ -1286,9 +1288,13 @@ export function QuickLaunch() {
         setZoomedKey(null);
         return;
       }
+      if (modelMenuOpen) {
+        setDismissModelMenu((tick) => tick + 1);
+        return;
+      }
       if (popover) {
         closePopover();
-        (popover === "theater" ? theaterChipRef : modelChipRef).current?.focus();
+        theaterChipRef.current?.focus();
         return;
       }
       // 고정 중 Escape는 닫기가 아니라 물러남이다 — 상주하기로 한 바를 Escape가 없애면, 사용자가
@@ -1300,7 +1306,7 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-  }, [closePopover, pinned, popover, zoomedAttachment]);
+  }, [closePopover, modelMenuOpen, pinned, popover, zoomedAttachment]);
 
   // 모달일 때의 Tab 가둠은 문서 수준에서 건다 — 안내 카드는 이 컴포저 밖에 렌더되므로 카드에만
   // 건 핸들러로는 카드에서 나가는 Tab을 잡지 못해, 열려 있는 모달 뒤로 포커스가 샌다.
@@ -1325,6 +1331,7 @@ export function QuickLaunch() {
     if (next instanceof Node && cardRef.current?.contains(next)) return;
     // 접히면서 열린 팝오버를 남기면, 잘라내기가 돌아온 바 안에서 목록만 사라진 채 상태가 남는다.
     setPopover(null);
+    setDismissModelMenu((tick) => tick + 1);
     // 멘션·커맨드 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남겨 두면 물러난 바 위로
     // 목록이 떠서, 도킹이 되돌려 준 그 화면을 도로 가린다.
     setMentionToken(null);
@@ -1563,10 +1570,6 @@ export function QuickLaunch() {
   // 업로드 중인 첨부도 같은 계약으로 잠근다(submit의 가드와 짝).
   const canSubmit = promptLength > 0 && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !commandDeckHasRows && !attachmentsUploading
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
-  // 로스터가 비어 최후 폴백 행으로 서면 칩에도 그 사실을 붙인다 — 골라 둔 모델로 도는 것처럼 보이면 안 된다.
-  const fallbackBadge = t("settings.models.fallback");
-  const onFallbackRow = selectedRow !== null && groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow));
-  const modelLabel = selectedRow ? (onFallbackRow ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
   // 거절은 접힘보다 우선한다 — 사유를 실은 바가 시선을 뗐다고 접히면, 클릭 한 번으로 사라지는
   // 에러가 된다. 상한 초과 경고도 같은 이유로 바를 펼친 채 붙잡는다.
@@ -1651,7 +1654,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || modelMenuOpen || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -2040,45 +2043,26 @@ export function QuickLaunch() {
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
           </ComposerChip>
 
-          <ComposerChip
-            ref={modelChipRef}
-            className="quick-launch-chip quick-launch-chip--model"
-            aria-expanded={popover === "model"}
+          {/* 모델 칩·강도 트랙은 새 세션 화면과 같은 부품이다. 메뉴는 선택 줄의 overflow 밖(바)에 선다. */}
+          <LaunchModelEffort
+            groups={groups}
+            model={model}
+            effort={effort}
             disabled={groups.length === 0}
-            onClick={() => setPopover(popover === "model" ? null : "model")}
-          >
-            {/* 아이콘은 플러그인 소유다 — console-core는 어느 플러그인인지 모른 채 렌더만 위임한다
-                (플러그인 renderLaunchIcon 계약). */}
-            {kindIcon ? (
-              <span
-                className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`}
-                aria-hidden="true"
-              >
-                {kindIcon}
-              </span>
-            ) : null}
-            <span className="quick-launch-chip-label">{modelLabel}</span>
-            <span className="quick-launch-caret" aria-hidden="true">▾</span>
-          </ComposerChip>
-
-          {/* 강도는 고른 모델에 딸린 값이라 그 칩 바로 옆에 산다. 사다리가 없는 모델에서는
-              접는다 — 조작할 수 없는 컨트롤이 자리를 지키면 바가 고장 난 것처럼 읽힌다. */}
-          {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
-            <EffortTrack
-              row={selectedRow}
-              value={effort}
-              onChange={(nextEffort) => {
-                setEffort(nextEffort);
-                writeQuickLaunchModelEffort(model, nextEffort);
-              }}
-              autoLabel={t("launchVariants.effort.auto")}
-              ariaLabel={t("launchVariants.effort.track")}
-              autoValueText={t("launchVariants.effort.autoValue")}
-              apexToggleLabel={t("launchVariants.effort.apexToggle", { tiers: gatedEffortNames(selectedRow) })}
-              apexCollapseLabel={t("launchVariants.effort.apexCollapse", { tiers: gatedEffortNames(selectedRow) })}
-              className="quick-launch-effort-track"
-            />
-          ) : null}
+            placement={pinned ? "above" : "below"}
+            menuRoot={barRef}
+            dismissSignal={dismissModelMenu}
+            onOpenChange={(next) => {
+              setModelMenuOpen(next);
+              if (next) setPopover(null);
+            }}
+            fallbackIcon={kindIcon}
+            onChange={(nextModel, nextEffort) => {
+              setModel(nextModel);
+              setEffort(nextEffort);
+              writeQuickLaunchModelEffort(nextModel, nextEffort);
+            }}
+          />
           </span>
 
           {conversationRow?.quickLaunch?.renderCapabilities ? (
@@ -2200,81 +2184,12 @@ export function QuickLaunch() {
             </div>
           ) : null}
 
-          {popover === "model" ? (
-            <div
-              className="quick-launch-pop quick-launch-pop--model theater-menu"
-              role="menu"
-              aria-label={t("chrome.quickLaunch.modelMenu")}
-              onKeyDown={handlePopoverKeyDown}
-              style={{ ...(popoverLeft === null ? {} : { left: popoverLeft }), ...(popoverMaxHeight === null ? {} : { "--quick-launch-pop-max-height": `${popoverMaxHeight}px` }) }}
-            >
-              {groups.map((group) => (
-                <div key={group.id} className="quick-launch-pop-group">
-                  {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={closePopover} /> : (() => {
-                    const provider = launchProviderFromGroupId(group.id);
-                    return (
-                      <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
-                        {provider ? (
-                          <span className="operation-launch-provider-glyph" aria-hidden="true">
-                            {launchProviderGlyph(provider)}
-                          </span>
-                        ) : null}
-                        <span title={group.label}>{group.label}</span>
-                      </p>
-                    );
-                  })()}
-                  {group.rows.map((row) => (
-                    <QuickLaunchVariantRow
-                      key={row.id}
-                      row={row}
-                      selectedModel={model}
-                      onPick={(nextModel) => {
-                        // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다 — 비운 상태로 떨어진다.
-                        const nextEffort = resolveRowEffort(row, effort);
-                        setModel(nextModel);
-                        setEffort(nextEffort);
-                        writeQuickLaunchModelEffort(nextModel, nextEffort);
-                        closePopover();
-                        inputRef.current?.focus();
-                      }}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : null}
         </ComposerBar>
       </section>
     </div>
   );
 }
 
-function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
-  readonly row: OperationLaunchVariantRow;
-  readonly selectedModel: string | null;
-  readonly onPick: (model: string | null) => void;
-}) {
-  const rowModel = row.launch.model ?? null;
-  return (
-    <div className="quick-launch-variant-row">
-      <button
-        type="button"
-        className="quick-launch-variant-name"
-        role="menuitemradio"
-        aria-checked={rowModel === selectedModel}
-        tabIndex={-1}
-        data-menu-label={row.label}
-        title={row.label}
-        onClick={() => onPick(rowModel)}
-      >
-        {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
-        <span className="quick-launch-variant-label">{row.label}</span>
-        {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
-        {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
-      </button>
-    </div>
-  );
-}
 
 // 커맨드 덱 1레벨의 리드 아이콘 3종 — Pin·SubmitArrow와 같은 16 viewBox·1.5px stroke 문법.
 // 값 레벨은 기존 어휘(이니셜 마크·프로바이더 글리프)를 그대로 쓰므로 여기서 끝난다.

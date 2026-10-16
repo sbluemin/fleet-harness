@@ -3335,10 +3335,11 @@ describe("Effort track interaction grammar", () => {
     const common = source("i18n/messages/common.ts");
     expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
     expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
-    for (const surface of [composer]) {
-      expect(surface).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
-      expect(surface).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
-    }
+    // 바 트랙은 Quick Launch와 새 세션이 같은 부품을 쓴다. 문구 유도는 그 부품에 있다.
+    const track = source("../../../features/execution/client/components/launch-model-effort.tsx");
+    expect(composer).toContain("<LaunchModelEffort");
+    expect(track).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
+    expect(track).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
 
     // 두 표면은 여는 것이 다르므로 이름의 원천도 다르다. 트랙은 사다리에서 문을 세우니 사다리
     // 기준(gatedEffortNames)을, 덱은 chips에 실린 단만 행으로 내니 자기 판정과 같은 원천
@@ -3422,7 +3423,8 @@ describe("Effort track interaction grammar", () => {
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
     // 한 공유 계기가 Quick Launch 트랙의 hover 문법을 소유한다.
-    expect(quickLaunch).toContain("<EffortTrack");
+    expect(quickLaunch).toContain("<LaunchModelEffort");
+    expect(source("../../../features/execution/client/components/launch-model-effort.tsx")).toContain("<EffortTrack");
     expect(preview).toContain("background: var(--brass)");
     expect(preview).toContain("transform: scale(3)");
     expect(knobHover).toContain("transform: scale(1.1)");
