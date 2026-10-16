@@ -7,7 +7,7 @@ import { decisionTurn } from "./commodore-state.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, patchObjectiveView, returnPersonHold, revealObjective } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
-import { followupGate, openFollowups, setFollowupOpen } from "./followups.js";
+import { followupHoldRoute, openFollowups, setFollowupOpen } from "./followups.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberRoutedTag, memberStatus, type LaunchShown } from "./launch-control.js";
 
 /** 명부 줄의 보드 사실을 셀 재료 — 구성원 Operation 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
@@ -88,14 +88,10 @@ function conversationHolds(objective: Objective): readonly ConversationHold[] {
     const hold = livePersonHold(objective, target);
     if (!hold) return [];
     const pickable = target === "followup" && followupPickable(objective);
-    const gate = target === "followup" ? followupGate(objective) : null;
     const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria"
       : target === "review" ? "objectives.hold.route.review"
-        : objective.done ? "objectives.hold.route.followupDone"
-          : pickable ? "objectives.followup.sub"
-            : gate === "steer" ? "objectives.followup.bodyEdited"
-              : gate === "criteria" ? "objectives.followup.bodyGated"
-                : objective.awaitingHandoff ? "objectives.followup.bodyHandoff" : "objectives.hold.route.followupLater";
+        : pickable && !objective.done ? "objectives.followup.sub"
+          : followupHoldRoute(objective);
     const reveal = target === "criteria"
       ? { label: localized((t) => t("objectives.composer.reveal")), run: () => {
           // 구성원·결과물 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
