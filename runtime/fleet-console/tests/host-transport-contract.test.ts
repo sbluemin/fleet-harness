@@ -14,7 +14,7 @@ import {
 import { createHostWorkspace } from "../core/client/src/integration/host-workspace.js";
 import { createRemoteHostDependencies } from "../core/client/src/integration/remote-host-transport.js";
 import { createRemoteHostRuntime } from "../core/client/src/integration/remote-host-runtime.js";
-import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
+import { createHostShellBridge, relayHostRequest } from "../core/host/shell/host-transport-bridge.js";
 import {
   HOST_TERMINAL_UPGRADE_PATH,
   hostEventsUrl,
@@ -30,6 +30,7 @@ import {
   isHostPresenceRequest,
   isHostTerminalUpgradePath,
   isHostUploadRequest,
+  HOST_RESOURCE_MAX_BYTES,
   HOST_UPLOAD_MAX_BYTES,
   isHostTransportErrorBody,
   parseHostSocketQuery,
@@ -1020,9 +1021,9 @@ function hostTransportServer(bridge: ReturnType<typeof createHostShellBridge>, g
       return;
     }
     if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
-      const body = await readJson<unknown>(req);
-      const accepted = await bridge.relay(body);
-      res.writeHead(accepted ? 204 : 400);
+      // 실제 Console relay 끝점과 같은 판독(크기 상한 포함)을 거친다.
+      const status = await relayHostRequest(bridge, req);
+      res.writeHead(status, status === 413 ? { connection: "close" } : {});
       res.end();
       return;
     }
@@ -1096,6 +1097,8 @@ async function expectUploadWithinFrame(): Promise<void> {
   const firstChunk = deferred();
   let pauseNext = false;
   const paused = deferred();
+  const stored = Buffer.alloc(HOST_RESOURCE_MAX_BYTES, 0);
+  for (let index = 0; index < stored.length; index += 1) stored[index] = index % 251;
   const shell = followHostCommands(origin, (command) => {
     if (command.op === "presence") {
       void postHostRelay(origin, { id: command.id, capability: "supported", mode: "controller", access: "full" });
@@ -1138,6 +1141,8 @@ async function expectUploadWithinFrame(): Promise<void> {
       if (typeof command.params.dataBase64 === "string") remote.push(Buffer.from(command.params.dataBase64, "base64").length);
       void postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json: { ok: true } });
     }
+    // 원격이 저장한 첨부를 미리보기로 돌려준다: 제품 상한 크기 이미지 한 장이 relay 하나로 온다.
+    if (command.op === "bytes") void postHostRelay(origin, { id: command.id, status: 200, contentType: "image/png", dataBase64: stored.toString("base64") });
   }, undefined, (frame) => {
     expect(frame.length).toBeLessThanOrEqual(DESKTOP_HOST_FRAME_MAX_CHARS);
     maxFrame = Math.max(maxFrame, frame.length);
@@ -1198,6 +1203,16 @@ async function expectUploadWithinFrame(): Promise<void> {
     expect(remote).toEqual([HOST_UPLOAD_MAX_BYTES, over, 1]);
     const after = await (await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_PATH}`, { headers: { origin } })).json() as { commands: unknown[] };
     expect(after.commands).toEqual([]);
+    // 올린 크기의 이미지를 같은 호스트의 자원 경로로 그대로 다시 읽는다. 자원 상한을 넘는 relay는 받지 않는다.
+    const preview = await fetch(`${origin}${hostResourcesUrl("host1", { path: "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b", epoch: current.epoch, instanceId: current.instanceId })}`, { headers: { origin } });
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await preview.arrayBuffer()).equals(stored)).toBe(true);
+    const oversized = await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
+      method: "POST", headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ id: 999_999, status: 200, contentType: "image/png", dataBase64: Buffer.alloc(HOST_RESOURCE_MAX_BYTES + 3).toString("base64"), end: true }),
+    }).then((response) => response.status);
+    expect(oversized).toBe(413);
   } finally {
     heldAck.current?.();
     shell.stop();

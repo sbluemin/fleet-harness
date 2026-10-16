@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { DesktopHostCommand, DesktopHostRelay, DesktopHostSnapshot } from "@fleet-console/protocol/desktop";
 import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_DEADLINE_MS, DESKTOP_HOST_UPLOAD_QUEUE, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostRelay } from "@fleet-console/protocol/desktop";
-import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
+import { HOST_RESOURCE_MAX_BYTES, HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
 export interface HostShellRequest {
   readonly hostKey: string;
@@ -21,6 +21,41 @@ export interface HostShellBridge {
   call(request: HostShellRequest, signal?: AbortSignal): Promise<DesktopHostRelay>;
   /** 프레임은 끝날 때까지 같은 명령에 실려 온다. 취소는 abort 명령을 셸에 보낸다. */
   open(request: HostShellRequest, onFrame: (relay: DesktopHostRelay) => Promise<void> | void, signal?: AbortSignal): Promise<DesktopHostRelay>;
+}
+
+/** JSON·텍스트·소켓 relay 한 건의 본문 상한. 자원 바이트를 실은 relay만 아래 상한까지 받는다. */
+const RELAY_TEXT_MAX_BYTES = 1024 * 1024;
+const RESOURCE_BASE64_MAX_CHARS = Math.ceil(HOST_RESOURCE_MAX_BYTES / 3) * 4;
+/** 자원 relay 본문 상한: 가장 큰 자원의 base64와 작은 봉투. */
+const RELAY_MAX_BYTES = RESOURCE_BASE64_MAX_CHARS + 64 * 1024;
+
+/**
+ * 셸이 POST한 relay 하나를 읽어 bridge에 넘기고, 응답 상태를 돌려준다(204 받음, 400 거절, 413 너무 큼).
+ * 자원(resources) 응답은 제품 이미지 상한까지 한 relay로 오므로 일반 JSON 상한으로 자르면 미리보기가 조용히 사라진다.
+ * 그 relay만 넓히고 나머지 relay는 예전 1MiB 안에 둔다. 413은 본문을 끝까지 읽지 않았다는 뜻이므로 호출자가 연결을 닫는다.
+ */
+export async function relayHostRequest(bridge: HostShellBridge, req: AsyncIterable<Buffer | string>): Promise<204 | 400 | 413> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > RELAY_MAX_BYTES) return 413;
+    chunks.push(buffer);
+  }
+  let value: unknown;
+  try { value = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { return 400; }
+  if (total > RELAY_TEXT_MAX_BYTES && !isResourceRelay(value)) return 413;
+  return await bridge.relay(value) ? 204 : 400;
+}
+
+function isResourceRelay(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const relay = value as { dataBase64?: unknown; json?: unknown; text?: unknown };
+  if (typeof relay.dataBase64 !== "string" || relay.json !== undefined || relay.text !== undefined) return false;
+  // base64 길이만 보면 상한보다 1~2바이트 큰 자원도 같은 길이로 들어온다. 디코딩될 바이트 수로 판정한다.
+  const bytes = relay.dataBase64.length <= RESOURCE_BASE64_MAX_CHARS ? decodedBase64Bytes(relay.dataBase64) : null;
+  return bytes !== null && bytes <= HOST_RESOURCE_MAX_BYTES;
 }
 
 const CALL_TIMEOUT_MS = 15_000;

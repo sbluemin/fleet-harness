@@ -1,6 +1,6 @@
 import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
 import { ACCESS_PAIR_PATH, normalizeFingerprint } from "@fleet-console/protocol/remote";
-import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
+import { HOST_RESOURCE_MAX_BYTES, HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
 import type { CookieOrder } from "./cookie-order.js";
 import { createDesktopEventStream } from "./desktop-event-stream.js";
@@ -775,7 +775,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const type = response.headers.get("content-type") ?? "";
     if (command.op === "bytes") {
       const bytes = Buffer.from(await response.arrayBuffer());
-      if (bytes.length > 8 * 1024 * 1024) return { id: command.id, error: "remote_host_unavailable" };
+      // 제품이 저장한 이미지(최대 10MiB)를 그대로 미리 보여 준다. 그보다 큰 응답은 자원 통로로 넘기지 않는다.
+      if (bytes.length > HOST_RESOURCE_MAX_BYTES) return { id: command.id, error: "remote_host_unavailable" };
       return { id: command.id, status: response.status, contentType: safeByteType(type), dataBase64: bytes.toString("base64") };
     }
     if (!type.includes("json")) return { id: command.id, status: response.status, contentType: null };

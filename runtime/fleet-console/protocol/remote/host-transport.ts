@@ -17,6 +17,11 @@ export const HOST_JSON_MAX_CHARS = 1_048_576;
 export const HOST_BYTE_MAX_BYTES = 8 * 1024 * 1024;
 /** 제품 첨부 라우트가 받는 원시 이미지 상한. base64는 전송 형식일 뿐이며 이 바이트를 넘기면 거절한다. */
 export const HOST_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * 자원(resources) 응답 한 건의 원시 바이트 상한. 제품이 저장하는 가장 큰 이미지(첨부·결과물)를 그대로 미리 볼 수 있어야
+ * 하므로 업로드 상한과 같다. 일반 파일 내려받기 통로가 아니다 — JSON·이벤트·소켓 상한은 따로 유지한다.
+ */
+export const HOST_RESOURCE_MAX_BYTES = HOST_UPLOAD_MAX_BYTES;
 export const HOST_EPOCH_QUERY = "epoch";
 export const HOST_INSTANCE_QUERY = "instanceId";
 export const HOST_PATH_QUERY = "path";

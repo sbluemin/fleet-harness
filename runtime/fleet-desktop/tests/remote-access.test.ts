@@ -4,6 +4,7 @@ import tls from "node:tls";
 import { describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
+import { HOST_RESOURCE_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 import { openPinnedWebSocket } from "../src/host-socket.js";
 import { createCookieOrder } from "../src/cookie-order.js";
 import { createHostPartitionAdapter } from "../src/host-partition-adapter.js";
@@ -972,6 +973,31 @@ describe("host transport streams", () => {
     await expect(executor.execute({
       id: 5, hostKey: "host1", epoch: 1, op: "http", routeId: "theaters", target, params: { method: "GET", path: "/api/v1/theaters" },
     })).resolves.toMatchObject({ error: "stale_epoch" });
+  });
+
+  it("returns a stored image at the product limit as one resource and refuses a larger one", async () => {
+    // 원격 첨부 미리보기: 제품이 받는 가장 큰 이미지는 그대로 돌려주고, 그보다 큰 응답은 자원 통로로 넘기지 않는다.
+    const sizes = new Map([["full", HOST_RESOURCE_MAX_BYTES], ["over", HOST_RESOURCE_MAX_BYTES + 1]]);
+    const executor = createHostTransportExecutor({
+      cookieOrder: createCookieOrder(),
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        ...partition,
+        async fetch(url: string) {
+          const size = sizes.get(new URL(url).searchParams.get("attachmentId") ?? "");
+          return size === undefined ? new Response("no", { status: 404 }) : new Response(Buffer.alloc(size, 1), { status: 200, headers: { "content-type": "image/png" } });
+        },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    const read = (id: number, attachmentId: string) => executor.execute({
+      id, hostKey: "host1", epoch: 2, op: "bytes", routeId: "objective-attachment", target, params: { method: "GET", path: `/plugins/objectives/attachment/file?objectiveId=a&attachmentId=${attachmentId}` },
+    });
+    const full = await read(6, "full");
+    expect(full).toMatchObject({ status: 200, contentType: "image/png" });
+    expect(Buffer.from(full.dataBase64 ?? "", "base64").length).toBe(HOST_RESOURCE_MAX_BYTES);
+    await expect(read(7, "over")).resolves.toMatchObject({ error: "remote_host_unavailable" });
   });
 });
 

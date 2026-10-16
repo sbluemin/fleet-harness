@@ -19,7 +19,7 @@ import { createRemoteAdminRoutes } from "../../../features/remote-access/host/ad
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { admitHostPageOrigin, createHostGateway } from "../../../features/remote-access/host/host-gateway.js";
 import { isDeclaredObserverRead } from "../../../features/remote-access/host/read-only-admission.js";
-import { createHostShellBridge } from "../shell/host-transport-bridge.js";
+import { createHostShellBridge, relayHostRequest } from "../shell/host-transport-bridge.js";
 import { DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH } from "@fleet-console/protocol/desktop";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
 import { createWorkspaceRoutes } from "../../../features/workspace/host/routes.js";
@@ -1638,10 +1638,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return true;
     }
     if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
-      const body = await readJsonBody(req);
-      if (!hostShellBridge.relay(body)) { writeJson(res, 400, { error: "invalid_host_request" }); return true; }
-      res.writeHead(204, withSecurityHeaders({}));
-      res.end();
+      const status = await relayHostRequest(hostShellBridge, req);
+      if (status === 204) { res.writeHead(204, withSecurityHeaders({})); res.end(); return true; }
+      // 413이면 본문을 끝까지 읽지 않았다. 남은 바이트가 다음 relay를 막지 않게 연결을 닫는다.
+      res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json", ...(status === 413 ? { Connection: "close" } : {}) }));
+      res.end(JSON.stringify({ error: "invalid_host_request" }));
       return true;
     }
     writeJson(res, 405, { error: "method_not_allowed" });
