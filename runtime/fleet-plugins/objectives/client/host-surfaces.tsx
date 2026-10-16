@@ -8,6 +8,8 @@ import { useHostObjectiveState } from "./host-state.js";
 import { BriefSection, MissionRecords } from "./objectives-panel.js";
 import { ObjectiveResults } from "./results.js";
 import { DecisionList } from "./decisions.js";
+import { openFollowups } from "./followups.js";
+import { FollowupCandidateList } from "./followups-view.js";
 import { LinkText } from "./link-text.js";
 import { getT } from "./i18n/index.js";
 import "./objectives.css";
@@ -44,11 +46,13 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
   const [picked, setPicked] = useState<string | null>(() => context.state.read(key, context.selection.operationId));
   const [tab, setTab] = useState<"goal" | "crew" | "results">("goal");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [openFollowup, setOpenFollowup] = useState<{ objectiveId: string; candidateId: string | null } | null>(null);
   const current = snapshot.objectives.find((objective) => objective.id === picked) ?? snapshot.objectives.find((objective) => objective.id === context.selection.operationId) ?? snapshot.objectives[0];
   const resource = useMemo(() => ({ url: context.transport.resourceUrl, read: context.readResource }), [context]);
   if (snapshot.loading) return <p role="status">{t("objectives.results.loading")}</p>;
   if (snapshot.error) return <p role="alert">{snapshot.error}</p>;
   if (!current) return <p>{t("objectives.switch.empty")}</p>;
+  const collectedFollowups = current.done ? [] : openFollowups(current);
   return <section className="objectives-host-panel" data-host-key={context.selection.hostKey} data-objective-id={current.id}>
     <Select label={t("objectives.panel.title")} value={current.id} options={snapshot.objectives.map((objective) => ({ value: objective.id, label: objective.title }))}
       onChange={(value) => { context.state.write(key, value); setPicked(value); }} />
@@ -69,7 +73,16 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
         <h3>{index + 1}. {mission.text}</h3><p>{mission.done ? "✓" : "—"} · {current.members.find((member) => member.id === mission.member)?.role ?? "—"}</p>
         <MissionRecords id={`host-records-${mission.id}`} records={mission.records} seenAtOpen={new Set(mission.records.map((record) => record.id))} open t={t} language={context.language} />
       </section>)}
-    </> : <ObjectiveResults objective={current} t={t} language={context.language} resource={resource} highlightMission={null} groupOpen={(group) => !collapsed.has(group)} onToggleGroup={(group) => setCollapsed((previous) => { const next = new Set(previous); if (next.has(group)) next.delete(group); else next.add(group); return next; })} />}
+    </> : <>
+      <ObjectiveResults objective={current} t={t} language={context.language} resource={resource} highlightMission={null} groupOpen={(group) => !collapsed.has(group)} onToggleGroup={(group) => setCollapsed((previous) => { const next = new Set(previous); if (next.has(group)) next.delete(group); else next.add(group); return next; })} />
+      {collectedFollowups.length ? <section className="objectives-group">
+        <h3>{t("objectives.followup.results")}</h3>
+        <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: collectedFollowups.length })}</p>
+        <FollowupCandidateList candidates={collectedFollowups} selectable={false} selection={new Set<string>()} t={t}
+          idPrefix={`host-followups-${current.id}`} openId={openFollowup?.objectiveId === current.id ? openFollowup.candidateId : null}
+          onOpenChange={(candidateId) => setOpenFollowup({ objectiveId: current.id, candidateId })} onToggleCheck={() => undefined} />
+      </section> : null}
+    </>}
     <p className="objectives-host-note">{t("objectives.host.managementReadOnly")}</p>
   </section>;
 }
