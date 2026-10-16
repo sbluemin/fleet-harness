@@ -3,7 +3,7 @@ import tls from "node:tls";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_HOST_RELAY_ID_HEADER, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, type DesktopHostCommand } from "@fleet-console/protocol/desktop";
 import { HOST_RESOURCE_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 import { openPinnedWebSocket } from "../src/host-socket.js";
 import { createCookieOrder } from "../src/cookie-order.js";
@@ -1179,6 +1179,7 @@ describe("desktop host transport lifetime", () => {
     let messageAborted = false;
     let operationFetches = 0;
     const relayStatuses: number[] = [];
+    const relayHeaderMatches: boolean[] = [];
     let rejectOperations = true;
     const transport = createDesktopHostTransport({
       cookieOrder: createCookieOrder(),
@@ -1195,7 +1196,9 @@ describe("desktop host transport lifetime", () => {
           }), { status: 200, headers: { "content-type": "text/event-stream" } });
         }
         if (path === DESKTOP_HOST_TRANSPORT_RELAY_PATH && typeof init?.body === "string") {
-          const body = JSON.parse(init.body) as { json?: { operations?: unknown } };
+          const body = JSON.parse(init.body) as { id?: number; json?: { operations?: unknown } };
+          // Console은 본문을 읽기 전에 이 번호로 relay 상한을 고른다.
+          relayHeaderMatches.push(new Headers(init.headers).get(DESKTOP_HOST_RELAY_ID_HEADER) === String(body.id));
           if (rejectOperations && body.json && "operations" in body.json) {
             rejectOperations = false;
             relayStatuses.push(500);
@@ -1249,6 +1252,7 @@ describe("desktop host transport lifetime", () => {
       await waitFor(() => operationFetches === 1 && relayStatuses.includes(500) && relayStatuses.includes(204));
       expect(operationFetches).toBe(1);
       expect(messageFetches).toBe(1);
+      expect(relayHeaderMatches.length > 0 && relayHeaderMatches.every(Boolean)).toBe(true);
     } finally {
       transport.stop();
     }

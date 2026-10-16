@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 
 import {
   DESKTOP_HOST_FRAME_MAX_CHARS,
+  DESKTOP_HOST_RELAY_ID_HEADER,
   DESKTOP_HOST_TRANSPORT_EVENT,
   DESKTOP_HOST_TRANSPORT_EVENTS_PATH,
   DESKTOP_HOST_TRANSPORT_PATH,
@@ -36,7 +37,7 @@ import {
   parseHostSocketQuery,
   parseHostStreamQuery,
 } from "@fleet-console/protocol/remote/host-transport";
-import { createHostGateway } from "../features/remote-access/host/host-gateway.js";
+import { createHostGateway, HOST_RESOURCE_QUEUE, HOST_RESOURCE_SLOTS } from "../features/remote-access/host/host-gateway.js";
 import { admitHostRoute } from "../features/remote-access/host/host-route-table.js";
 
 const hostKey = "6f1c9a20-1111-4222-8333-444455556666";
@@ -1099,6 +1100,9 @@ async function expectUploadWithinFrame(): Promise<void> {
   const paused = deferred();
   const stored = Buffer.alloc(HOST_RESOURCE_MAX_BYTES, 0);
   for (let index = 0; index < stored.length; index += 1) stored[index] = index % 251;
+  const resource = { current: stored };
+  let heldResources: Array<() => void> | null = null;
+  let heldCommandId = 0;
   const shell = followHostCommands(origin, (command) => {
     if (command.op === "presence") {
       void postHostRelay(origin, { id: command.id, capability: "supported", mode: "controller", access: "full" });
@@ -1125,6 +1129,7 @@ async function expectUploadWithinFrame(): Promise<void> {
       };
       if (upload.index === 0 && holdsLeft > 0) {
         holdsLeft -= 1;
+        heldCommandId = command.id;
         heldAck.current = ack;
         firstChunk.resolve();
         return;
@@ -1142,7 +1147,11 @@ async function expectUploadWithinFrame(): Promise<void> {
       void postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json: { ok: true } });
     }
     // 원격이 저장한 첨부를 미리보기로 돌려준다: 제품 상한 크기 이미지 한 장이 relay 하나로 온다.
-    if (command.op === "bytes") void postHostRelay(origin, { id: command.id, status: 200, contentType: "image/png", dataBase64: stored.toString("base64") });
+    if (command.op === "bytes") {
+      const reply = (): void => { void postHostRelay(origin, { id: command.id, status: 200, contentType: "image/png", dataBase64: resource.current.toString("base64") }); };
+      if (heldResources) heldResources.push(reply);
+      else reply();
+    }
   }, undefined, (frame) => {
     expect(frame.length).toBeLessThanOrEqual(DESKTOP_HOST_FRAME_MAX_CHARS);
     maxFrame = Math.max(maxFrame, frame.length);
@@ -1170,6 +1179,10 @@ async function expectUploadWithinFrame(): Promise<void> {
     };
     const full = send(HOST_UPLOAD_MAX_BYTES);
     await firstChunk.promise;
+    // 큰 relay 본문은 지금 기다리는 자원 호출에만 허용된다. 대기 중인 일반 http 번호와 모르는 번호는 예전 1MiB 상한이다.
+    const large = Buffer.alloc(2 * 1024 * 1024, 1).toString("base64");
+    expect(await sendHostRelay(origin, { id: heldCommandId, status: 200, contentType: "image/png", dataBase64: large })).toBe(413);
+    expect(await sendHostRelay(origin, { id: 987_654, status: 200, contentType: "image/png", dataBase64: large, end: true })).toBe(413);
     const over = Math.ceil((DESKTOP_HOST_FRAME_MAX_CHARS + 1) / 4) * 3;
     const queued = send(over);
     const rejected = send(over);
@@ -1208,11 +1221,35 @@ async function expectUploadWithinFrame(): Promise<void> {
     expect(preview.status).toBe(200);
     expect(preview.headers.get("content-type")).toBe("image/png");
     expect(Buffer.from(await preview.arrayBuffer()).equals(stored)).toBe(true);
-    const oversized = await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
-      method: "POST", headers: { origin, "content-type": "application/json" },
-      body: JSON.stringify({ id: 999_999, status: 200, contentType: "image/png", dataBase64: Buffer.alloc(HOST_RESOURCE_MAX_BYTES + 3).toString("base64"), end: true }),
-    }).then((response) => response.status);
+    const oversized = await sendHostRelay(origin, { id: 999_999, status: 200, contentType: "image/png", dataBase64: Buffer.alloc(HOST_RESOURCE_MAX_BYTES + 3).toString("base64"), end: true });
     expect(oversized).toBe(413);
+
+    // 자원 읽기의 동시 수·대기 수 상한: 넘친 한 건은 즉시 공개 오류, 셸에는 자리 수만큼만 나간다. 취소한 요청도 자리를 돌려준다.
+    resource.current = Buffer.from("small-preview");
+    heldResources = [];
+    const read = (signal?: AbortSignal) => fetch(`${origin}${hostResourcesUrl("host1", { path: "/plugins/objectives/attachment/file?objectiveId=a&attachmentId=b", epoch: current.epoch, instanceId: current.instanceId })}`, { headers: { origin }, signal });
+    const aborts = Array.from({ length: HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE + 1 }, () => new AbortController());
+    const reads = aborts.map((controller, index) => read(controller.signal).then(async (response) => ({ index, status: response.status, body: await response.text() }), () => ({ index, status: 0, body: "aborted" })));
+    const first = await Promise.race(reads);
+    expect(first).toMatchObject({ status: 409, body: JSON.stringify({ error: "remote_host_unavailable" }) });
+    await waitUntil(() => heldResources !== null && heldResources.length === HOST_RESOURCE_SLOTS, "the resource slots were not filled");
+    const pendingBytes = async () => ((await (await fetch(`${origin}${DESKTOP_HOST_TRANSPORT_PATH}`, { headers: { origin } })).json()) as { commands: Array<{ op: string }> }).commands.filter((command) => command.op === "bytes").length;
+    expect(await pendingBytes()).toBe(HOST_RESOURCE_SLOTS);
+    // 진행 중인 하나와 기다리는 하나를 취소한다.
+    const cancelled = aborts.filter((_, index) => index !== first.index).slice(0, 2);
+    for (const controller of cancelled) controller.abort();
+    while (heldResources.length > 0 || (await pendingBytes()) > 0) {
+      for (const reply of heldResources.splice(0)) reply();
+      await delay(20);
+    }
+    const settled = await Promise.all(reads);
+    expect(settled.filter((entry) => entry.status === 409)).toHaveLength(1);
+    expect(settled.filter((entry) => entry.status === 200).every((entry) => entry.body === "small-preview")).toBe(true);
+    expect(settled.filter((entry) => entry.status === 200).length).toBeGreaterThanOrEqual(HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE - 2);
+    // 모든 자리가 돌아왔다: 상한만큼 다시 보내도 넘침 없이 끝난다.
+    heldResources = null;
+    const refilled = await Promise.all(Array.from({ length: HOST_RESOURCE_SLOTS + HOST_RESOURCE_QUEUE }, () => read().then((response) => response.status)));
+    expect(refilled.every((status) => status === 200)).toBe(true);
   } finally {
     heldAck.current?.();
     shell.stop();
@@ -1287,11 +1324,17 @@ function followHostCommands(origin: string, onCommand: (command: DesktopHostComm
 }
 
 function postHostRelay(origin: string, body: unknown): Promise<void> {
+  return sendHostRelay(origin, body).then(() => undefined, () => undefined);
+}
+
+/** Desktop 셸처럼 relay 본문과 명령 번호 헤더를 보낸다. 응답 상태를 돌려준다. */
+function sendHostRelay(origin: string, body: unknown): Promise<number> {
+  const id = body !== null && typeof body === "object" && typeof (body as { id?: unknown }).id === "number" ? (body as { id: number }).id : null;
   return fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
     method: "POST",
-    headers: { "content-type": "application/json", origin },
+    headers: { "content-type": "application/json", origin, ...(id === null ? {} : { [DESKTOP_HOST_RELAY_ID_HEADER]: String(id) }) },
     body: JSON.stringify(body),
-  }).then(() => undefined, () => undefined);
+  }).then((response) => response.status);
 }
 
 function delay(ms: number): Promise<void> {

@@ -1,4 +1,4 @@
-import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
+import { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_RELAY_ID_HEADER, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
 import { ACCESS_PAIR_PATH, normalizeFingerprint } from "@fleet-console/protocol/remote";
 import { HOST_RESOURCE_MAX_BYTES, HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
@@ -929,7 +929,8 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
       if (activeOrigin !== origin || owner !== consoleInstance) return false;
       try {
         const response = await deps.fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
-          method: "POST", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify(relay),
+          // 명령 번호를 헤더에도 싣는다. Console은 본문을 읽기 전에 그 번호가 기다리는 자원 호출인지 보고 상한을 고른다.
+          method: "POST", headers: { "content-type": "application/json", Origin: origin, [DESKTOP_HOST_RELAY_ID_HEADER]: String(relay.id) }, body: JSON.stringify(relay),
         });
         if (response.ok) return true;
         if (owner === consoleInstance) deps.log?.(`host transport relay rejected status=${response.status}`);

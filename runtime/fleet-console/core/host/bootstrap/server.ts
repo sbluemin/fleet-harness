@@ -1640,7 +1640,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
       const status = await relayHostRequest(hostShellBridge, req);
       if (status === 204) { res.writeHead(204, withSecurityHeaders({})); res.end(); return true; }
-      // 413이면 본문을 끝까지 읽지 않았다. 남은 바이트가 다음 relay를 막지 않게 연결을 닫는다.
+      // 413은 버리기 상한을 넘겨 본문을 끝까지 읽지 않았을 수 있다. 남은 바이트가 다음 relay를 막지 않게 연결을 닫는다.
       res.writeHead(status, withSecurityHeaders({ "Content-Type": "application/json", ...(status === 413 ? { Connection: "close" } : {}) }));
       res.end(JSON.stringify({ error: "invalid_host_request" }));
       return true;

@@ -6,6 +6,11 @@ export const DESKTOP_HOST_TRANSPORT_PATH = "/api/v1/desktop/host-transport";
 export const DESKTOP_HOST_TRANSPORT_EVENTS_PATH = "/api/v1/desktop/host-transport/events";
 export const DESKTOP_HOST_TRANSPORT_RELAY_PATH = "/api/v1/desktop/host-transport/relay";
 export const DESKTOP_HOST_TRANSPORT_EVENT = "desktop:host-transport";
+/**
+ * 셸이 relay POST에 싣는 명령 번호. Console은 본문을 읽기 전에 이 번호로 상한을 고른다 — 지금 기다리는 자원(이미지) 호출이면
+ * 자원 상한, 그 밖의 번호나 헤더가 없으면 일반 relay 상한이다. 본문의 `id`와 다르면 거절한다.
+ */
+export const DESKTOP_HOST_RELAY_ID_HEADER = "x-fleet-host-relay-id";
 
 /**
  * 셸 SSE가 한 프레임으로 받는 상한. 이보다 큰 스냅샷은 연결을 끊으므로 명령을 이 안에 둔다.

@@ -96,6 +96,14 @@ interface HostLink {
 
 const KINDS = new Set<HostTransportKind>(["presence", "pair", "presenceEvents", "request", "bytes", "events", "resources", "socket"]);
 
+/**
+ * 원격 자원(이미지) 읽기 한 건은 최대 10MiB 원본에 relay 본문·문자열·Buffer까지 수십 MB를 쥔다. 브라우저 연결 수에 기대지 않고
+ * 이 gateway가 동시에 진행하는 수와 기다리는 수를 묶는다. 넘치거나 기다림이 길어지면 기존 공개 오류(`remote_host_unavailable`)로 끝낸다.
+ */
+export const HOST_RESOURCE_SLOTS = 2;
+export const HOST_RESOURCE_QUEUE = 16;
+const HOST_RESOURCE_WAIT_MS = 15_000;
+
 export interface HostGateway {
   handle(context: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }): Promise<boolean>;
   upgrade(context: { readonly req: http.IncomingMessage; readonly socket: Duplex; readonly head: Buffer; readonly pathname: string }): boolean;
@@ -108,6 +116,45 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
   const listeners = new Map<string, Set<http.ServerResponse>>();
   const live = new Set<{ readonly hostKey: string; abort(): void }>();
   const retire = (hostKey: string): void => { for (const channel of [...live]) if (channel.hostKey === hostKey) channel.abort(); };
+  let resourceActive = 0;
+  const resourceWaiters: Array<() => void> = [];
+
+  /** 자원 읽기 자리를 얻는다. 대기열이 차 있거나, 기다리다 취소·시간 초과되면 false다. */
+  const acquireResource = (signal: AbortSignal): Promise<boolean> => {
+    if (signal.aborted) return Promise.resolve(false);
+    if (resourceActive < HOST_RESOURCE_SLOTS) { resourceActive += 1; return Promise.resolve(true); }
+    if (resourceWaiters.length >= HOST_RESOURCE_QUEUE) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => leave(), HOST_RESOURCE_WAIT_MS);
+      timer.unref?.();
+      const grant = (): void => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", leave);
+        resourceActive += 1;
+        resolve(true);
+      };
+      function leave(): void {
+        const index = resourceWaiters.indexOf(grant);
+        if (index < 0) return;
+        resourceWaiters.splice(index, 1);
+        clearTimeout(timer);
+        signal.removeEventListener("abort", leave);
+        resolve(false);
+      }
+      resourceWaiters.push(grant);
+      signal.addEventListener("abort", leave, { once: true });
+    });
+  };
+  const releaseResource = (): void => {
+    resourceActive = Math.max(0, resourceActive - 1);
+    resourceWaiters.shift()?.();
+  };
+  /** 응답이 끝까지 나갔거나 연결이 닫혀 Buffer를 더 쥐지 않을 때. */
+  const responseDone = (res: http.ServerResponse): Promise<void> => new Promise((resolve) => {
+    if (res.writableFinished || res.destroyed) { resolve(); return; }
+    res.once("finish", resolve);
+    res.once("close", resolve);
+  });
 
   const linkFor = (hostKey: string, target: HostGatewayTarget): HostLink => {
     const current = links.get(hostKey);
@@ -300,16 +347,23 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       const admitted = admitHostRoute({ kind, method: "GET", path: query.path, mode: link.mode === "controller" ? "controller" : "observer" });
       if ("error" in admitted) { fail(res, admitted.error); return true; }
       if (kind === "resources") {
-        const relay = await deps.bridge.call({
-          hostKey, epoch: link.epoch, op: "bytes", routeId: admitted.id,
-          target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
-          params: { method: "GET", path: admitted.path },
-        }, abort.signal);
-        if (relay.error || relay.dataBase64 === undefined || typeof relay.contentType !== "string") { fail(res, asError(relay.error ?? "remote_host_unavailable"), link.epoch); return true; }
-        const bytes = Buffer.from(relay.dataBase64, "base64");
-        res.writeHead(relay.status ?? 200, deps.withSecurityHeaders({ "Content-Type": relay.contentType, "Content-Length": String(bytes.length), "Cache-Control": "private, no-store" }));
-        res.end(bytes);
-        return true;
+        // 자리는 셸 호출부터 응답을 다 보낼 때까지(또는 연결이 닫힐 때까지) 쥔다. 어떤 끝(성공·오류·취소·시간 초과)이든 반납한다.
+        if (!await acquireResource(abort.signal)) { if (!res.destroyed) fail(res, "remote_host_unavailable", link.epoch); return true; }
+        try {
+          const relay = await deps.bridge.call({
+            hostKey, epoch: link.epoch, op: "bytes", routeId: admitted.id,
+            target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+            params: { method: "GET", path: admitted.path },
+          }, abort.signal);
+          if (relay.error || relay.dataBase64 === undefined || typeof relay.contentType !== "string") { fail(res, asError(relay.error ?? "remote_host_unavailable"), link.epoch); return true; }
+          const bytes = Buffer.from(relay.dataBase64, "base64");
+          res.writeHead(relay.status ?? 200, deps.withSecurityHeaders({ "Content-Type": relay.contentType, "Content-Length": String(bytes.length), "Cache-Control": "private, no-store" }));
+          res.end(bytes);
+          await responseDone(res);
+          return true;
+        } finally {
+          releaseResource();
+        }
       }
       return streamEvents(hostKey, target, link, admitted.id, admitted.path);
     }
