@@ -9,6 +9,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { Objective } from "../server/types.js";
+import type { ObjectiveMessageKey } from "./i18n/index.js";
 
 export type FollowupState = "open" | "selected" | "discarded";
 
@@ -226,6 +227,19 @@ export function followupGate(objective: Objective): "steer" | "criteria" | null 
   if (steeredEdits(objective)) return "steer";
   if (objective.criteriaProposals.length > 0) return "criteria";
   return null;
+}
+
+/**
+ * 사령관이 넘긴 후속 후보를 지금 고를 수 없을 때의 안내 — 완료 뒤면 남은 후보, 그 밖에는 무엇이 고르기를 막는지.
+ * 데스크톱 대화의 넘김 카드와 폰의 넘김 카드가 같은 판정을 쓴다. 고를 수 있을 때의 문구는 각 화면이 정한다.
+ */
+export function followupHoldRoute(objective: Objective): ObjectiveMessageKey {
+  if (objective.done) return "objectives.hold.route.followupDone";
+  const gate = followupGate(objective);
+  return gate === "steer" ? "objectives.followup.bodyEdited"
+    : gate === "criteria" ? "objectives.followup.bodyGated"
+      : objective.awaitingHandoff ? "objectives.followup.bodyHandoff"
+        : "objectives.hold.route.followupLater";
 }
 
 // ── 탭 안 편의 상태 (초안과 같은 규칙: 접어도, 다른 목표를 보다 와도 남는다) ──

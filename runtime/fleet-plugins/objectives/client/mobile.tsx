@@ -18,8 +18,8 @@ import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
 import { PersonHoldNote } from "./decisions.js";
-import { clearSelection, discardedFollowups, followupGate, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
-import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
+import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readBatches, readHistory, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
+import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
@@ -529,7 +529,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
         {/* 폰에는 완료 검토·후속 고르기 칸이 따로 없다 — 사령관이 넘긴 것이면 그 이유·돌려주기와 함께 그 자리에서 답하는 카드로 세운다.
             지금 할 일(결정 요청 답하기·넘김 답하기·개시 카드)은 탭과 무관하게 탭 칸 맨 위에 선다. 결정 내역은 목표 탭 맨 아래다. */}
         <DecisionSection objective={objective} operations={operations} t={t} language={language} api={api} say={say} />
-        <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
+        <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
         {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} onReview={() => setRoutingSheet(true)} /> : null}
         {tab === "goal" ? <>
           <BriefCard objective={objective} t={t} />
@@ -556,6 +556,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           </> : null}
         </> : <>
           <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
+          <FollowupResults objective={objective} t={t} language={language} api={api} say={say} />
           <RetroCard objective={objective} t={t} />
         </>}
       </div>
@@ -580,15 +581,14 @@ function finishBlockText(t: T, objective: Objective, block: FinishBlock): string
   }
 }
 
-/** 후속 후보를 지금 고를 수 있는지의 한 줄 — 고를 수 없으면 데스크톱 본문 구획의 말로, 띠가 다른 할 일을 먼저 세우면 그 상태로 말한다. */
+/**
+ * 후속 후보를 지금 고를 수 있는지의 한 줄 — 띠가 다른 할 일을 먼저 세우면 그 상태로, 고를 수 없으면 데스크톱 넘김 카드와 같은 판정
+ * (`followupHoldRoute`: 완료 뒤 남은 후보·스티어링·기준 잠금·인계 대기·검토 대기에서 고르기)으로 말한다.
+ */
 function followupNote(objective: Objective, finish: ObjectiveActions["finish"], t: T, count: number): string {
   if (finish?.followups) return t("objectives.followup.listTip", { n: count });
   if (isFollowupSelectable(objective)) return finishBlockText(t, objective, finish?.blocked ?? "notInReview");
-  const gate = followupGate(objective);
-  return gate === "steer" ? t("objectives.followup.bodyEdited")
-    : gate === "criteria" ? t("objectives.followup.bodyGated")
-      : objective.awaitingHandoff ? t("objectives.followup.bodyHandoff")
-        : t("objectives.followup.bodyWorking");
+  return t(followupHoldRoute(objective), { n: count });
 }
 
 /**
@@ -596,15 +596,16 @@ function followupNote(objective: Objective, finish: ObjectiveActions["finish"], 
  * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
  * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
  * 둘이 함께 서면 두 카드가 같은 시트를 연다 — 넘김은 따로 돌려줄 수 있어, 하나를 돌려준 뒤에도 남은 카드만으로 답이 된다.
- * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다(데스크톱 본문 구획과 같다).
+ * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다. 완료 뒤에는 고르기 시트가 없으므로 결과물 탭의 남긴 후보로 잇는다.
  */
-function HoldAnswers({ objective, finish, t, language, api, onPick }: {
+function HoldAnswers({ objective, finish, t, language, api, onPick, onShowLeftover }: {
   readonly objective: Objective;
   readonly finish: ObjectiveActions["finish"];
   readonly t: T;
   readonly language: ConsoleLocale;
   readonly api: PaneContext["api"];
   readonly onPick: () => void;
+  readonly onShowLeftover: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
@@ -639,7 +640,7 @@ function HoldAnswers({ objective, finish, t, language, api, onPick }: {
       ) : null}
       {followupHeld ? (
         <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} locked={busy}
-          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={onPick}>{pickable ? t("objectives.mobile.followup.pick") : t("objectives.followup.openTip", { n: count })}</button>}>
+          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={objective.done ? onShowLeftover : onPick}>{pickable ? t("objectives.mobile.followup.pick") : t("objectives.followup.openTip", { n: count })}</button>}>
           <p className="objectives-m-prop-sub">{followupNote(objective, finish, t, count)}</p>
         </PersonHoldNote>
       ) : null}
@@ -805,6 +806,55 @@ function ResultsSection({ objective, t, language, openLink }: { readonly objecti
     </>
   );
 }
+
+const FOLLOWUP_RESULTS_ID = "objectives-m-followup-results";
+/** 넘김 카드에서 결과물 탭으로 건너온 뒤, 탭이 그려지면 후속 목표 묶음을 화면에 들인다. */
+function revealFollowupResults(): void {
+  requestAnimationFrame(() => document.getElementById(FOLLOWUP_RESULTS_ID)?.scrollIntoView({ block: "start" }));
+}
+
+/**
+ * 후속 목표 — 데스크톱 결과물 탭의 「후속 목표」 묶음과 같은 내용이다. 진행 중에는 모인 후보를 읽기만 하고(고르기·폐기는
+ * 검토 대기의 시트), 완료 뒤에는 고른 후보의 생성 결과(다시 시도)와 남긴 후보를 보인다. 폰은 접지 않고 펼쳐 둔다.
+ */
+function FollowupResults({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = openFollowups(objective);
+  const batches = readBatches(objective);
+  const history = readHistory(objective);
+  if (batches.length === 0 && !history && open.length === 0) return null;
+  const collected = objective.done ? [] : open;
+  return (
+    <section id={FOLLOWUP_RESULTS_ID} className="objectives-m-followup-results" aria-label={t("objectives.followup.results")}>
+      <h2 className="objectives-m-glab">{t("objectives.followup.results")}</h2>
+      {collected.length ? <>
+        <p className="objectives-m-secnote">{t("objectives.followup.collected", { n: collected.length })}</p>
+        <div className="objectives-m-followups">
+          <FollowupCandidateList
+            candidates={collected}
+            selectable={false}
+            selection={NO_SELECTION}
+            t={t}
+            idPrefix={`m-res-${objective.id}`}
+            openId={openId}
+            onOpenChange={setOpenId}
+            onToggleCheck={() => {}}
+          />
+        </div>
+      </> : null}
+      <FollowupBatchResults
+        batches={batches}
+        leftover={objective.done ? open : []}
+        historyTotal={history}
+        language={language === "ko" ? "ko" : "en"}
+        t={t}
+        onRetry={(batchId, candidateId) => { void post(api, "/followup/retry", { objectiveId: objective.id, batchId, candidateId, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); }}
+        onOpenObjective={(operationId) => openObjectiveOnPhone(operationId, objective.theaterId)}
+      />
+    </section>
+  );
+}
+const NO_SELECTION: ReadonlySet<string> = new Set();
 
 /** 회고 — 데스크톱 결과물 탭의 접힌 묶음과 같다. 인계 기록이 있을 때만 서고, 접힌 채 「더 보기」로 편다. 내용은 데스크톱 회고와 같은 구성요소다. */
 function RetroCard({ objective, t }: { readonly objective: Objective; readonly t: T }) {

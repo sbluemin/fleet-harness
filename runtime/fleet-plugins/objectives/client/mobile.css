@@ -245,6 +245,23 @@
 .objectives-m-followups .objectives-followup-detail { gap: 10px; padding: 0 4px 12px 36px; }
 .objectives-m-followups .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 4px; }
 .objectives-m-followups .objectives-followup-lab { color: var(--m-text-faint); font-family: var(--m-sans); font-size: var(--m-fs-small); }
+/*
+ * 결과물 탭의 후속 목표 — 데스크톱 묶음과 같은 줄·결과 구성요소(followups-view.tsx)를 모바일 여백·글자로 입힌다. 근거 수는 시트와 같은 글자이고,
+ * 결과 줄은 좁은 폭에서 제목을 자르지 않고 상태를 그 아래 줄로 내린다. 남긴 후보 펼침은 누름 칸 44.
+ */
+.objectives-m-followup-results { display: flex; flex-direction: column; gap: 4px; }
+.objectives-m-followup-results .objectives-followup-meta { min-height: 32px; padding-top: 0; color: var(--m-text-faint); font-family: var(--m-sans); font-size: var(--m-fs-caption); }
+.objectives-m-followup-results .objectives-followup-batchat,
+.objectives-m-followup-results .objectives-followup-sum,
+.objectives-m-followup-results .objectives-followup-history,
+.objectives-m-followup-results .objectives-followup-trace { margin-left: 4px; margin-right: 4px; font-family: var(--m-sans); font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+.objectives-m-followup-results .objectives-followup-sum { color: var(--m-text-muted); }
+.objectives-m-followup-results .objectives-followup-res { padding: 0; }
+.objectives-m-followup-results .objectives-followup-rrow { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 4px; border-top: 1px solid var(--m-hairline); border-radius: 0; }
+.objectives-m-followup-results .objectives-followup-rrow:hover { background: none; }
+.objectives-m-followup-results .objectives-followup-rt { white-space: normal; color: var(--m-text); font-size: var(--m-fs-list); }
+.objectives-m-followup-results .objectives-followup-rstat { flex-wrap: wrap; white-space: normal; font-size: var(--m-fs-caption); }
+.objectives-m-followup-results .objectives-followup-trace > button { min-height: 44px; }
 .objectives-m-followups :is(.objectives-followup-brief, .objectives-followup-ev li) { color: var(--m-text-muted); font-family: var(--m-sans); font-size: var(--m-fs-caption); }
 .objectives-m-followups .objectives-followup-ev li b { color: var(--m-text); }
 .objectives-m-sheet-layer .objectives-m-followups .objectives-followup-more { min-height: 32px; color: var(--m-text); font-size: var(--m-fs-caption); }
