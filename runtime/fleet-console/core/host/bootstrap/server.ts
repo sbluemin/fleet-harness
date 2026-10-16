@@ -1640,8 +1640,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; readOnly?: boolean; reason?: ControlReclaimedReason } {
-    // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
-    // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
+    // 세션 없이 지나는 경로는 join과 host session 둘이다. host session은 기존 페어링 쿠키만
+    // 받고 grant를 태우지 않는다. 페어링은 전용 앱으로만 이루어지고 브라우저는 자기서명
+    // 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     //
     // join은 어떤 세션에도 묶이지 않는다 — 들고 온 옛 세션 쿠키도 여기서 해석하지 않는다. 재합류는
     // 자기 페어링이 두고 간 옛 세션을 걷은 뒤 새 세션을 여는데, 이 요청이 옛 세션에 묶여 있으면

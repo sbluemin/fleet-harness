@@ -343,6 +343,70 @@ it("does not take control or permit writes when a paired device only observes", 
     expect(JSON.parse(write.body)).toEqual({ error: "read_only" });
   });
 
+  it("admits a host session only for an existing pairing and replaces that pairing's previous observation", async () => {
+    const fixture = await startFixture({ remote: true });
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const loopback = await fetch(`${origin}/api/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ intent: "observe" }),
+    });
+    expect(loopback.status).toBe(404);
+
+    const token = grantTokenOf(await createLink(fixture));
+    const before = await readRemoteStatus(fixture);
+    const grantOnly = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe", token }));
+    expect(grantOnly.status).toBe(401);
+    expect(JSON.parse(grantOnly.body)).toEqual({ error: "unauthorized" });
+    const kept = await readRemoteStatus(fixture);
+    expect(kept.links.map((entry) => entry.id)).toEqual(before.links.map((entry) => entry.id));
+    expect((await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device: "grant" }))).status).toBe(204);
+
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const holder = await joinAs(fixture, "full", "holder");
+    const pairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    expect(pairing).toBeTruthy();
+    const mismatched = await remoteRequestBody(fixture, "POST", "/api/v1/sessions", "evil.example", pairing);
+    expect(mismatched.status).toBe(403);
+    expect(JSON.parse(mismatched.body)).toEqual({ error: "host_mismatch" });
+
+    const sessionCookie = (cookies: string): string => cookies.split("; ").find((cookie) => cookie.startsWith("fleet_console_session_")) ?? "";
+    const first = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(first.status).toBe(200);
+    const firstSession = sessionCookie(cookiesOf(first));
+    let latest = firstSession;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const again = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+      expect(again.status).toBe(200);
+      latest = sessionCookie(cookiesOf(again));
+    }
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, firstSession)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, latest)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+
+    for (let index = 0; index < 7; index += 1) {
+      const eye = (await joinAs(fixture, "monitoring", `eye-${index}`)).split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+      expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), eye)).status).toBe(200);
+    }
+    const ninth = (await joinAs(fixture, "monitoring", "ninth")).split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    const capped = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), ninth);
+    expect(capped.status).toBe(409);
+    expect(JSON.parse(capped.body)).toEqual({ error: "observer_limit" });
+    expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing)).status).toBe(200);
+    expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), ninth)).status).toBe(409);
+  });
+
+  it("charges the remote join budget for an unauthenticated host session", async () => {
+    const fixture = await startFixture({ remote: true });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }))).status).toBe(401);
+    }
+    const throttled = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }));
+    expect(throttled.status).toBe(429);
+    expect(JSON.parse(throttled.body)).toEqual({ error: "too_many_attempts" });
+    expect((await readRemoteStatus(fixture)).rejectedJoins.count).toBe(1);
+  });
+
   async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
   const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links?access=${access}`, {
     method: "POST",

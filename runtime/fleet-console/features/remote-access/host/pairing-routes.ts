@@ -224,6 +224,15 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       return false;
     }
     if (intent === "observe") {
+      const presented = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      if (presented?.pairingId === pairedDevice.id && presented.disposition === "observe") {
+        writeSessionJson(res, 200, listener, { session: presented, pairingSecret: secret }, { capability: "host-session", mode: "observer", access: pairedDevice.access });
+        return true;
+      }
+      // 같은 페어링의 이전 관찰은 재연결이다. 남기면 그 기기만으로 관찰 상한을 채운다.
+      for (const session of access.listSessions("remote")) {
+        if (session.pairingId === pairedDevice.id && session.disposition === "observe") access.revokeSessionByHandle(session.handle, null);
+      }
       const observers = access.listSessions("remote").filter((session) => session.disposition === "observe").length;
       if (observers >= OBSERVER_SESSION_LIMIT) {
         writeJson(res, 409, { error: "observer_limit" });
