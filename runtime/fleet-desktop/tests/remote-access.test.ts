@@ -442,12 +442,17 @@ describe("host partition transport", () => {
     const oldObserve = executor.execute({ ...command, id: 23, op: "presence", routeId: "presence", params: { intent: "observe" } }, observeAbort.signal);
     await held;
     grant = "fresh-grant";
-    const replaced = await executor.execute({ ...command, id: 24 });
-    expect(replaced).toEqual({ id: 24, capability: "supported", mode: "off", access: null });
-    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
+    const pairsBefore = posts.filter((entry) => entry.url.endsWith("/api/v1/pair")).length;
+    const replacing = executor.execute({ ...command, id: 24 });
+    // 쿠키를 싣는 이전 요청이 응답을 쥐고 있는 동안 같은 origin의 새 pair는 요청을 보내지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(posts.filter((entry) => entry.url.endsWith("/api/v1/pair")).length).toBe(pairsBefore);
     sessionGate.release?.(Response.json({ error: "unauthorized" }, { status: 401 }));
     observeAbort.abort();
     expect(await oldObserve).toMatchObject({ error: "remote_host_not_paired" });
+    const replaced = await replacing;
+    expect(replaced).toEqual({ id: 24, capability: "supported", mode: "off", access: null });
+    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
     expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
     expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("pairing-secret");
     expect(windowCookies.find((entry) => entry.url === otherOrigin)?.value).toBe("other-port");
@@ -503,13 +508,12 @@ describe("host partition transport", () => {
     const lateGrant = executor.execute({ ...command, id: 27 }, lateAbort.signal);
     await grantHeld;
     grant = "newer-grant";
-    const newer = await executor.execute({ ...command, id: 28 });
-    expect(newer).toEqual({ id: 28, capability: "supported", mode: "off", access: null });
-    expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
-    expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
+    const newerRunning = executor.execute({ ...command, id: 28 });
     lateAbort.abort();
     grantGate.release?.(new Response(null, { status: 204, headers: { "set-cookie": "fleet_console_pairing_8443=older-fixture; HttpOnly; Secure; Path=/" } }));
     await lateGrant;
+    const newer = await newerRunning;
+    expect(newer).toEqual({ id: 28, capability: "supported", mode: "off", access: null });
     expect(cookies.find((entry) => entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
     expect(windowCookies.find((entry) => entry.url === origin && entry.name === "fleet_console_pairing_8443")?.value).toBe("newer-fixture");
     expect(windowCookies.find((entry) => entry.url === otherOrigin)?.value).toBe("other-port");
@@ -552,6 +556,144 @@ describe("host partition transport", () => {
     // 새 수명은 id를 1부터 다시 쓴다. 옛 수명의 늦은 확정이 더 큰 번호로 남아 있으면 이 pair가 막힌다.
     const fresh = await executor.execute({ ...base, id: 1, op: "pair", routeId: "pair", params: {} });
     expect(fresh).toEqual({ id: 1, capability: "supported", mode: "off", access: null });
+  });
+
+  it("orders cookie-bearing requests per origin when the jar is written as a response resolves", async () => {
+    // N1이 Electron에서 본 순서(응답 직전 jar 적용, 응답 뒤 abort는 무효)를 가짜 fetch로 흉내 낸 모델이다. 실제 Electron 검증이 아니다.
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const pairing = "fleet_console_pairing_8443";
+    const jar = new Map<string, string>();
+    const windowJar = new Map<string, string>();
+    const requests: string[] = [];
+    const observes: { settle: () => void }[] = [];
+    let rejectOnAbort = false;
+    let handoffs = 0;
+    const pairCount = (): number => requests.filter((entry) => entry.startsWith("pair:")).length;
+    const executor = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        fetch: (url: string, init?: RequestInit) => {
+          if (url.endsWith("/api/v1/sessions")) {
+            requests.push("sessions");
+            const rejects = rejectOnAbort;
+            return new Promise<Response>((resolve, reject) => {
+              let aborted = false;
+              init?.signal?.addEventListener("abort", () => { aborted = true; if (rejects) reject(new DOMException("aborted", "AbortError")); }, { once: true });
+              observes.push({ settle: () => {
+                if (aborted && rejects) return;
+                jar.set(pairing, "OLD");
+                resolve(Response.json({ capability: "host-session", mode: "observer", access: "full" }));
+              } });
+            });
+          }
+          if (url.endsWith("/api/v1/pair")) {
+            const probe = init?.body === "{}";
+            requests.push(probe ? "pair:probe" : "pair:grant");
+            if (!probe) {
+              jar.set(pairing, "NEW");
+              return Promise.resolve(new Response(null, { status: 204, headers: { "set-cookie": `${pairing}=NEW; HttpOnly; Secure; Path=/` } }));
+            }
+            const value = jar.get(pairing);
+            if (value === "NEW") return Promise.resolve(new Response(null, { status: 204 }));
+            if (value === "OLD") return Promise.resolve(Response.json({ error: "unauthorized", capability: "pair" }, { status: 401 }));
+            return Promise.resolve(Response.json({ error: "invalid_join", capability: "pair" }, { status: 400 }));
+          }
+          requests.push(new URL(url).pathname);
+          if (url.endsWith("/api/v1/operations/events")) return Promise.resolve(new Response("event: x\n\n", { status: 200 }));
+          return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+        },
+        readCookies: async () => [...jar].map(([name, value]) => ({ name, value })),
+        writeCookie: async (cookie: { name: string; value: string }) => { jar.set(cookie.name, cookie.value); },
+        removeCookie: async (_url: string, name: string) => { jar.delete(name); },
+        pin() { return undefined; },
+        clear() { jar.clear(); },
+      }),
+      readWindowCookies: async () => [...windowJar].map(([name, value]) => ({ name, value })),
+      writeWindowCookie: async (cookie) => { windowJar.set(cookie.name, cookie.value); },
+      removeWindowCookie: async (_url, name) => { windowJar.delete(name); },
+      localOrigin: () => "http://127.0.0.1:4010",
+      localFetch: async () => {
+        handoffs += 1;
+        return Response.json({ origin: "https://remote.example:8443", hostname: target.hostname, port: target.port, fingerprint: target.fingerprint, token: `grant-${handoffs}` });
+      },
+    });
+    const base = { hostKey: "host1", epoch: 1, target };
+    const observe = (id: number, signal?: AbortSignal) => executor.execute({ ...base, id, op: "presence", routeId: "presence", params: { intent: "observe" } }, signal);
+    const pair = (id: number, signal?: AbortSignal) => executor.execute({ ...base, id, op: "pair", routeId: "pair", params: {} }, signal);
+    const quiet = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
+
+    // 이전 observe의 응답이 늦다. 새 pair는 보내지 않고 기다리며, 읽기와 SSE는 막히지 않는다.
+    const oldObserve = observe(1);
+    await waitFor(() => observes.length === 1);
+    const fresh = pair(2);
+    await quiet();
+    expect(pairCount()).toBe(0);
+    expect(await executor.execute({ ...base, id: 3, op: "http", routeId: "theaters", params: { method: "GET", path: "/api/v1/theaters" } })).toMatchObject({ status: 200 });
+    const frames: unknown[] = [];
+    await executor.run({ ...base, id: 4, op: "sse", routeId: "operation-events", params: { path: "/api/v1/operations/events" } }, async (relay) => { frames.push(relay); });
+    expect(frames.length).toBeGreaterThan(0);
+    expect(pairCount()).toBe(0);
+    observes[0]?.settle();
+    expect(await oldObserve).toMatchObject({ capability: "supported", mode: "observer" });
+    expect(await fresh).toEqual({ id: 2, capability: "supported", mode: "off", access: null });
+    expect(jar.get(pairing)).toBe("NEW");
+    expect(windowJar.get(pairing)).toBe("NEW");
+    expect(handoffs).toBe(1);
+
+    // 줄 선 요청을 취소하면 요청을 보내지 않고 빠지며, 보유자가 끝나면 다음이 진행한다.
+    const holder = observe(5);
+    await waitFor(() => observes.length === 2);
+    const queued = new AbortController();
+    const cancelled = pair(6, queued.signal);
+    await quiet();
+    const sentBefore = pairCount();
+    queued.abort();
+    expect(await cancelled).toMatchObject({ error: "remote_host_unavailable" });
+    expect(pairCount()).toBe(sentBefore);
+    observes[1]?.settle();
+    await holder;
+
+    // 줄이 가득 차면 새 요청은 보내지 않고 바로 거절한다. 줄 선 요청은 취소하면 모두 빠진다.
+    jar.set(pairing, "NEW");
+    const longHolder = observe(10);
+    await waitFor(() => observes.length === 3);
+    const waiting = Array.from({ length: 8 }, (_, index) => ({ abort: new AbortController(), id: 11 + index }));
+    const waits = waiting.map((entry) => pair(entry.id, entry.abort.signal));
+    await quiet();
+    const sentFull = pairCount();
+    expect(await pair(30)).toMatchObject({ error: "remote_host_unavailable", end: true });
+    expect(pairCount()).toBe(sentFull);
+    for (const entry of waiting) entry.abort.abort();
+    expect((await Promise.all(waits)).every((relay) => relay.error === "remote_host_unavailable")).toBe(true);
+    observes[2]?.settle();
+    await longHolder;
+
+    // 취소로 fetch가 거절된 보유자는 오류로 끝나고 다음 요청이 진행한다.
+    rejectOnAbort = true;
+    const abortHolder = new AbortController();
+    const aborting = observe(40, abortHolder.signal);
+    await waitFor(() => observes.length === 4);
+    const afterAbort = pair(41);
+    abortHolder.abort();
+    expect(await aborting).toMatchObject({ error: "remote_host_unavailable" });
+    expect(await afterAbort).toMatchObject({ capability: "supported", mode: "off" });
+    rejectOnAbort = false;
+
+    // 새 콘솔 수명이 시작돼도 옛 수명의 fetch가 settle되기 전에는 같은 origin의 쿠키 요청을 열지 않는다.
+    jar.delete(pairing);
+    windowJar.delete(pairing);
+    const oldLifetime = observe(50);
+    await waitFor(() => observes.length === 5);
+    executor.releaseConsole();
+    const sentAtRelease = pairCount();
+    const nextLifetime = pair(1);
+    await quiet();
+    expect(pairCount()).toBe(sentAtRelease);
+    observes[4]?.settle();
+    await oldLifetime;
+    expect(await nextLifetime).toMatchObject({ capability: "supported", mode: "off" });
+    expect(jar.get(pairing)).toBe("NEW");
+    expect(windowJar.get(pairing)).toBe("NEW");
   });
 });
 

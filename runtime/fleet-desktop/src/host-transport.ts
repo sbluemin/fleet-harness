@@ -67,6 +67,15 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   let nextClaim = 1;
   // 콘솔 수명이 바뀌면 이 값 아래의 번호는 죽은 수명의 것이다. 카운터를 되감지 않으므로 새 명령이 옛 번호와 겹치지 않는다.
   let claimFloor = 1;
+  /**
+   * 쿠키를 싣는 요청(pair, observe·activate)만 origin+port마다 하나씩 순서대로 보낸다. 네이티브 fetch는 응답을
+   * 돌려주기 전에 Set-Cookie를 jar에 적용하므로, 앞선 응답이 늦게 도착해 새 값을 덮는 순서를 만들지 않으려면
+   * 요청 시작부터 응답 적용·확정까지가 한 구간이어야 한다. 일반 HTTP·SSE·ws는 쿠키를 발행하지 않아 이 레인을 쓰지 않는다.
+   * 레인은 releaseConsole로 비우지 않는다. 취소 요청과 실제 fetch 종료는 다르므로, 옛 수명의 fetch가 settle된 뒤에야 풀린다.
+   */
+  const lanes = new Map<string, { held: boolean; readonly waiters: LaneWaiter[] }>();
+  // 보유자 하나가 15초 안에 끝난다는 bridge 계약 위에서, 같은 origin을 가리키는 호스트 몇 개와 폴링이 겹쳐도 넘지 않는 크기다.
+  const MAX_LANE_WAITERS = 8;
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
@@ -89,7 +98,69 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return true;
   };
 
-  const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
+  const originOf = (command: DesktopHostCommand): string => {
+    const host = command.target.hostname.includes(":") ? `[${command.target.hostname}]` : command.target.hostname;
+    return new URL(`https://${host}:${command.target.port}`).origin;
+  };
+
+  const isLaneCommand = (command: DesktopHostCommand): boolean => command.op === "pair"
+    || (command.op === "presence" && (command.params.intent === "observe" || command.params.intent === "activate"));
+
+  const onceRelease = (key: string, lane: { held: boolean; readonly waiters: LaneWaiter[] }): (() => void) => {
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      releaseLane(key, lane);
+    };
+  };
+
+  const releaseLane = (key: string, lane: { held: boolean; readonly waiters: LaneWaiter[] }): void => {
+    lane.held = false;
+    for (;;) {
+      const next = lane.waiters.shift();
+      if (!next) break;
+      next.detach();
+      if (next.signal.aborted || next.claim < claimFloor) { next.resolve(null); continue; }
+      lane.held = true;
+      next.resolve(onceRelease(key, lane));
+      return;
+    }
+    if (lanes.get(key) === lane) lanes.delete(key);
+  };
+
+  /** 대기열은 상한이 있고 취소하면 즉시 빠진다. 얻지 못하면 null이며, 호출자는 요청을 보내지 않는다. */
+  const acquireLane = (key: string, claim: number, signal: AbortSignal): Promise<(() => void) | null> => {
+    if (signal.aborted || claim < claimFloor) return Promise.resolve(null);
+    let lane = lanes.get(key);
+    if (!lane) {
+      lane = { held: false, waiters: [] };
+      lanes.set(key, lane);
+    }
+    const mine = lane;
+    if (!mine.held) {
+      mine.held = true;
+      return Promise.resolve(onceRelease(key, mine));
+    }
+    if (mine.waiters.length >= MAX_LANE_WAITERS) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const onAbort = (): void => {
+        const index = mine.waiters.indexOf(waiter);
+        if (index >= 0) mine.waiters.splice(index, 1);
+        resolve(null);
+      };
+      const waiter: LaneWaiter = {
+        claim,
+        signal,
+        detach: () => signal.removeEventListener("abort", onAbort),
+        resolve,
+      };
+      mine.waiters.push(waiter);
+      signal.addEventListener("abort", onAbort, { once: true });
+    });
+  };
+
+  const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal, laneOwner = false): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
     try {
       await deps.confirmIdentity(command.target.hostname, command.target.port, command.target.fingerprint);
     } catch (error) {
@@ -106,7 +177,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const partition = partitions.get(command.hostKey)?.partition ?? deps.openPartition(command.hostKey);
     partition.pin(command.target.hostname, normalizeFingerprint(command.target.fingerprint));
     partitions.set(command.hostKey, { origin, fingerprint: normalizeFingerprint(command.target.fingerprint), partition });
-    await copyPairingCookie(command, origin, partition, signal);
+    await copyPairingCookie(command, origin, partition, signal, laneOwner);
     return { origin, partition };
   };
 
@@ -169,11 +240,14 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     session: cookieValue(await deps.readWindowCookies(origin), cookieName("session", port)),
   });
 
-  const copyPairingCookie = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<void> => {
+  const copyPairingCookie = async (command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal, laneOwner = false): Promise<void> => {
     const port = command.target.port;
     const claim = claimFor(command);
     await withPairing(origin, port, async () => {
       if (!claimLive(origin, port, claim, signal)) return;
+      // 레인이 열려 있는 동안 파티션 jar가 더 새롭다. 레인 밖 명령이 창 값을 덮어쓰면 응답 적용 위에 낡은 값이 놓인다.
+      // 이 판정은 withPairing 안에서 하므로 이미 줄 서 있던 copy·remember·forget 뒤에 현재 상태로 내려진다.
+      if (!laneOwner && lanes.get(claimKey(origin, port))?.held) return;
       const name = cookieName("pairing", port);
       const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
       if (!pairing || !claimLive(origin, port, claim, signal)) return;
@@ -256,8 +330,13 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       else signal.addEventListener("abort", stop, { once: true });
     }
     jobs.set(command.id, { hostKey: command.hostKey, epoch: command.epoch, abort: stop });
+    let releaseCookieLane: (() => void) | null = null;
     try {
-      const opened = await partitionFor(command, controller.signal);
+      if (isLaneCommand(command)) {
+        releaseCookieLane = await acquireLane(claimKey(originOf(command), command.target.port), claimFor(command), controller.signal);
+        if (releaseCookieLane === null) return { id: command.id, error: "remote_host_unavailable", end: true };
+      }
+      const opened = await partitionFor(command, controller.signal, releaseCookieLane !== null);
       if (controller.signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
       if (!("partition" in opened)) return opened;
       if (command.op === "presence") return await performPresence(command, opened.origin, opened.partition, controller.signal);
@@ -265,6 +344,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       if (command.op === "http" || command.op === "bytes") return await performHttp(command, opened.origin, opened.partition, controller.signal, staged);
       return { id: command.id, error: "remote_host_unavailable" };
     } finally {
+      releaseCookieLane?.();
       if (jobs.get(command.id)?.abort === stop) jobs.delete(command.id);
       signal?.removeEventListener("abort", stop);
     }
@@ -791,6 +871,13 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
       stream.stop();
     },
   };
+}
+
+interface LaneWaiter {
+  readonly claim: number;
+  readonly signal: AbortSignal;
+  detach(): void;
+  resolve(release: (() => void) | null): void;
 }
 
 interface UploadAssembly {
