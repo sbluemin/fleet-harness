@@ -4866,10 +4866,6 @@ button.status-glyph.is-actionable:focus-visible {
     color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-theater-launch-btn {
-  width: 24px;
-}
-
 .side-bar-theater-row-btn svg {
   width: 13px;
   height: 13px;
@@ -5653,33 +5649,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
   color: light-dark(color-mix(in oklch, var(--grp-color) 65%, var(--text-primary)), color-mix(in oklab, var(--grp-color) 65%, var(--text-primary)));
-}
-
-/* 그룹 「+」 — 이 그룹에 서는 새 목표·Operation. 카운트 뒤에 조용히 서고 hover에서만 또렷해진다. */
-.side-bar-group-header__plus {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.side-bar-group-header__plus svg {
-  width: 12px;
-  height: 12px;
-}
-
-.side-bar-group-header__plus:hover,
-.side-bar-group-header__plus:focus-visible {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-  outline: none;
 }
 
 .side-bar-cluster-row.is-dragging {
@@ -15733,7 +15702,7 @@ kbd { font-variant-numeric: tabular-nums; }
    새로 넣는 요소도 그 조건을 지켜야 이 transition 이 제 전이를 덮지 않는다. 모바일 배치는 자기 누름 문법(mobile-press.css)을
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus,
+  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
   .new-session-send, .new-session-cancel,
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
@@ -15745,7 +15714,7 @@ kbd { font-variant-numeric: tabular-nums; }
     transform var(--duration-fast) var(--ease-spring);
 }
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus,
+  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
   .new-session-send, .new-session-cancel
 ):active:not(:disabled) {
   transform: scale(0.94);
@@ -15762,7 +15731,7 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
-    .conversation-round, .side-bar-theater-row-btn, .side-bar-group-header__plus, .group-composer-send, .group-composer-plus,
+    .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
     .new-session-send, .new-session-cancel,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip

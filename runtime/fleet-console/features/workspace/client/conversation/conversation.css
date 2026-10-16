@@ -1332,18 +1332,6 @@
 .console-shell.is-operations-view :is(.side-bar-group-header:hover, .side-bar-group-header:focus-within, .side-bar-group-header--collapsed) .side-bar-group-header__mark {
   visibility: hidden;
 }
-.console-shell.is-operations-view .side-bar-group-header__plus {
-  display: none;
-}
-.console-shell.is-operations-view .side-bar-group-header:is(:hover, :focus-within) .side-bar-group-header__plus {
-  display: grid;
-}
-.console-shell.is-operations-view .side-bar-group-header:is(:hover, :focus-within):has(.side-bar-group-header__plus) .side-bar-group-header__count {
-  display: none;
-}
-@media (hover: none) {
-  .console-shell.is-operations-view .side-bar-group-header__plus { display: grid; }
-}
 
 /* 활성 Theater 구역의 2px brass 스파인(components.css)도 이 배치에서는 걷는다 — 사이드바가 창 가장자리에 붙으므로
    스파인이 창 왼쪽 끝의 세로 띠로 읽힌다. 활성은 헤더의 이름 명도와 이니셜 배지가 말한다. */

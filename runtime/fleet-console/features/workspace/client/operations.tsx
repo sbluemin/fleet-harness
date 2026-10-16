@@ -241,7 +241,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const request = state.pendingQuickLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeQuickLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, request.groupId ?? null)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })

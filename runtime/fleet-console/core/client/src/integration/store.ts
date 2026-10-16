@@ -799,12 +799,11 @@ export function requestOperationKeyboardFocus(operationId: string): void {
 }
 
 /**
- * 본문에 「새 세션 화면」을 연다 — Theater·그룹 머리 「+」, 팔레트 「New Operation」. 여는 것만으로는 아무것도 만들지 않고,
- * 첫 메시지가 Quick Launch 와 같은 실행 의도(requestQuickLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
+ * 본문에 「새 세션 화면」을 연다 — 사이드바 맨 위 「+」, 팔레트 「New Operation」, 새 세션 단축키. 여는 것만으로는 아무것도
+ * 만들지 않고, 첫 메시지가 Quick Launch 와 같은 실행 의도(requestQuickLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
  */
 export function openNewSession(target: NewSessionTarget): void {
-  const current = state.newSession;
-  if (current?.theaterId === target.theaterId && current.groupId === target.groupId) return;
+  if (state.newSession?.theaterId === target.theaterId) return;
   setState({ newSession: target });
 }
 
@@ -1191,7 +1190,8 @@ export function removeTheater(theaterId: string): void {
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
   // 사라진 Theater를 겨눈 Quick Launch 요청도 함께 버린다.
   const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
-  const newSession = state.newSession?.theaterId === theaterId ? null : state.newSession;
+  // 잊은 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
+  const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
   setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch, newSession });
 }
 

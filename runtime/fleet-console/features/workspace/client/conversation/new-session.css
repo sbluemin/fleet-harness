@@ -1,5 +1,5 @@
 /* ── 새 세션 화면 ────────────────────────────────────────────────────────────
-   가운데 칸이 「어디서·이어서·다른 시작」 카드와 아래 컴포저·칩 줄을 싣는다. 카드·컴포저는 대화 입력 캡슐과 같은 면(--surface-capsule)
+   가운데 칸이 「어디서·다른 시작」 카드와 아래 컴포저·칩 줄을 싣는다. 카드·컴포저는 대화 입력 캡슐과 같은 면(--surface-capsule)
    이고, 행·칩의 호버·눌림 모션은 components.css 「클릭 모션」 공통 규칙이 정한다. 팝업은 즉시 열린다. */
 
 .new-session .conversation-pill-row { gap: var(--space-2); }
@@ -148,6 +148,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 .new-session-menu-item:hover,
 .new-session-menu-item:focus-visible { background: var(--wash-hover); outline: none; }
 .new-session-menu-check { color: var(--brass-ink); font-size: var(--t-sm); }
+.new-session-menu-divider { height: 1px; margin: 4px 6px; background: var(--surface-rim); }
 
 /* 컴포저 — 대화 입력 캡슐과 같은 면·테두리·포커스 링. */
 .new-session-composer-zone {
@@ -206,16 +207,39 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 .new-session-send:focus-visible { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
 .new-session-send:disabled { color: var(--text-tertiary); cursor: default; }
 
-/* 칩 줄 — 컴포저 밖, 테두리 없는 글자 칩. 왼쪽은 어디서(Theater·시작 보기), 오른쪽은 무엇으로(모델·강도 칸). */
+/* 칩 줄 — 컴포저 밖, 테두리 없는 글자 칩. 왼쪽 묶음은 어디서(Theater·시작 표면), 오른쪽 묶음은 무엇으로(모델·강도 칸).
+   두 묶음은 각각 끊지 않는다. 폭이 모자라면 ① 600px 미만에서 오른쪽 묶음이 둘째 줄 오른쪽으로 내려가고 ② 380px 미만에서 강도 값 라벨을
+   숨기고 칩 이름을 더 짧게 자른다(승인안 v4). 모델·강도 칸의 좁은 폭 규칙도 이 컨테이너 아래에 둔다. */
 .new-session-chips {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
+  container: new-session-chips / inline-size;
   min-width: 0;
   padding: 0 var(--space-2);
 }
-.new-session-chips-spacer { flex: 1 1 auto; }
+.new-session-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.new-session-chips-lead,
+.new-session-chips-trail {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.new-session-chips-trail { margin-left: auto; }
+.new-session-launch-slot { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.new-session-launch-slot:empty { display: none; }
+@container new-session-chips (max-width: 599px) {
+  .new-session-chips-trail { flex-basis: 100%; justify-content: flex-end; }
+}
+@container new-session-chips (max-width: 379px) {
+  .new-session-chips .effort-track-value { display: none; }
+  .new-session-chip { max-width: 140px; }
+}
 .new-session-chip {
   display: inline-flex;
   align-items: center;
@@ -243,16 +267,3 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 
 .new-session-status { color: var(--text-tertiary); font-size: var(--t-sm); }
 .new-session-status.is-alert { color: var(--coral); }
-
-.new-session-model-slot { display: inline-flex; align-items: center; min-width: 0; }
-.new-session-model {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 9px;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  white-space: nowrap;
-}
-.new-session-effort { color: var(--text-tertiary); }

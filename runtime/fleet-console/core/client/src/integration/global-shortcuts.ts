@@ -24,6 +24,8 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
   readonly toggleQuickLaunch: () => void;
+  /** 새 세션 화면을 연다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
+  readonly openNewSession?: () => boolean;
   readonly openPluginQuickLaunch?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   /** Fleet 브라우저 시트를 바로 여닫는다(카드 없이). 그릴 셸이 없는 문서에서는 false — 키를 소비하지 않는다. */
@@ -91,6 +93,14 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
+    if (matches("console.new-session")) {
+      // 길게 눌러도 한 번만 연다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
+      if (event.repeat || dependencies.openNewSession?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
     if (matches("console.toggle-fleet-browser")) {
       // 길게 눌러도 한 번만 토글한다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
       if (event.repeat || dependencies.toggleFleetBrowser?.()) {

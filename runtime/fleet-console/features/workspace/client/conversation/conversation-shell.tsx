@@ -11,8 +11,8 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, requestSideBarAddTheater, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
-import { useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { closeNewSession, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { useNewSessionShortcutLabel, useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -46,6 +46,7 @@ import { publishConversationClusters, publishConversationStandIn, publishConvers
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { NewSessionColumn } from "./new-session.js";
+import { openDefaultNewSession } from "./new-session-entry.js";
 import "./conversation.css";
 
 /**
@@ -158,19 +159,19 @@ const PlusGlyph = () => (
 );
 
 /**
- * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 Theater(폴더 고르기). 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. 목록 안의 「+」가
- * 모두 무엇을 더하는 입구라 맨 위 「+」도 가장 바깥 단위(Theater)를 더한다. 새 Operation 은 Theater 머리 「+」·팔레트·Quick Launch 단축키다.
+ * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 새 세션. 보기·정렬·접기 단추와 한 줄, 같은 원형 문법이다. 「+」는 본문에 새 세션 화면을 연다
+ * (승인안 v4 — Theater 머리·그룹 머리의 「+」는 없고 진입은 이 하나다). 새 Theater 는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
  */
 export function ConversationSideBarActions() {
   const t = useT();
-  // 폴더 대화상자가 Theater 를 더하는 동안은 다시 열지 않는다.
-  const { addingTheater } = useConsoleState();
+  const newSessionShortcut = useNewSessionShortcutLabel();
+  const newSessionTitle = newSessionShortcut ? `${t("conversation.side.newSession")} (${newSessionShortcut})` : t("conversation.side.newSession");
   return (
     <span className="conversation-side-actions">
       <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      <button type="button" className="conversation-round" onClick={requestSideBarAddTheater} disabled={addingTheater} aria-label={t("conversation.side.newTheater")} title={t("conversation.side.newTheater")}>
+      <button type="button" className="conversation-round" onClick={openDefaultNewSession} aria-label={t("conversation.side.newSession")} title={newSessionTitle} data-new-session-entry="sidebar">
         <PlusGlyph />
       </button>
     </span>
@@ -616,7 +617,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const { conversationSurfaces } = usePluginRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
   // 새 세션 화면(Theater·그룹 머리 「+」)이 서면 칸에는 아직 아무 Operation 도 없다. 플러그인 대화와는 나중에 연 쪽이 칸을 갖는다.
-  const newSession = state.newSession !== null && state.theaters.some((theater) => theater.id === state.newSession?.theaterId) ? state.newSession : null;
+  const newSession = state.newSession;
   // 오른쪽 패널·분할 칸이 읽는 대상 — 새 세션 화면 동안은 보던 대화를 대상으로 삼지 않는다.
   const stageSubject = newSession ? null : subject;
   useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : stageSubject); }, [stageSubject, surfaceDescriptor]);

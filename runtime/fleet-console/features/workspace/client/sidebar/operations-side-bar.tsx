@@ -18,9 +18,10 @@ import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } f
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "./group-context-menu.js";
+import { openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { operationAccentFromNode, resolveAccentColor } from "../operation-accent.js";
 import { getTheaterGroupCollapse, toggleTheaterGroupCollapsed, useStoredTheaterRevision } from "./group-collapse-store.js";
-import { consumeSideBarAddTheater, openNewSession, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
+import { consumeSideBarAddTheater, openOnboarding, operationOrderFromNodes, selectOperation, setOperationOrder, sortOperationsByOrder } from "../../../../core/client/src/integration/store.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, TheaterContributionRows, useTheaterContributionMark, useTheaterHeaderLive } from "../theater-contributions.js";
 import { openTheaterInbox } from "../theater-inbox/store.js";
@@ -201,7 +202,6 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   /** 활성 Theater 머리를 눌렀을 때 — 그 Theater 의 Inbox 를 연다(비활성 머리는 전환만 한다). */
   readonly onOpenInbox: (theater: TheaterInfo, returnFocus: HTMLElement | null) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
-  readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   /** 이 머리의 Theater 메뉴를 연다 — 우클릭은 커서 자리(atCursor), 키·길게 누르기는 앵커 아래. */
   readonly onContextMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean) => void;
   /** 열린 Theater 메뉴가 이 머리를 대상으로 한다 — 활성이 아닌 Theater 에서도 열리므로 머리가 대상을 말한다. */
@@ -936,14 +936,13 @@ export function OperationsSideBar({
     onAddTheater(path);
   };
 
-  // 사이드바 빈 영역 우클릭 = Theater 머리 「+」와 같은 새 세션 화면(보고 있는 Theater). chip/그룹 헤더는 자체 우클릭
-  // 핸들러가 preventDefault()를 호출하므로(버블로 도달 시 defaultPrevented=true) 그쪽 메뉴를 지키고 여기서는 무시한다.
-  // 등록된 Theater가 없으면 실행할 대상이 없다 — 브라우저 메뉴만 막는다.
+  // 사이드바 빈 영역 우클릭 = 맨 위 「+」와 같은 새 세션 화면. chip/그룹 헤더는 자체 우클릭 핸들러가 preventDefault()를
+  // 호출하므로(버블로 도달 시 defaultPrevented=true) 그쪽 메뉴를 지키고 여기서는 무시한다.
   const openNewSessionAtCursor = (event: React.MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented) return;
     event.preventDefault();
-    const theaterId = getViewedTheaterId() ?? theaters[0]?.id ?? null;
-    if (theaterId) openTheaterNewSession(theaterId);
+    setActiveContextMenu(null);
+    openDefaultNewSession();
   };
 
   const closeActiveContextMenu = useCallback(() => {
@@ -961,17 +960,6 @@ export function OperationsSideBar({
     requestedAction: activeContextMenu?.kind === "chip" ? activeContextMenu.requestedAction : undefined,
     onEscape: closeActiveContextMenu,
   });
-
-  // Theater·그룹 머리 「+」 — 모델 메뉴 대신 본문에 새 세션 화면을 연다. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다.
-  const openTheaterNewSession = (theaterId: string, groupId: string | null = null) => {
-    setActiveContextMenu(null);
-    openNewSession({ theaterId, groupId });
-  };
-
-  const openTheaterLaunchMenu = (event: MouseEvent<HTMLButtonElement>, theaterId: string) => {
-    event.stopPropagation();
-    openTheaterNewSession(theaterId);
-  };
 
   // 활성 Theater 머리 — 그 Theater 의 Inbox. 첫 칸은 기여가 정한다(예: 자율 운영이 켜졌으면 사령관 기록). 아무도 정하지 않으면
   // 호스트의 시스템 프롬프트 칸이다(「시스템 프롬프트…」 항목과 같은 길이라 폰·대화 중심 화면도 그 경로를 그대로 탄다).
@@ -1104,7 +1092,6 @@ export function OperationsSideBar({
                 dragOffsetY={theaterDragOffsetY}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
                 onOpenInbox={openTheaterHeaderInbox}
-                onOpenLaunch={openTheaterLaunchMenu}
                 onContextMenu={(anchor, returnFocus, atCursor) => openTheaterMenu(theater.id, anchor, returnFocus, atCursor)}
                 menuTarget={theaterMenuTargetId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
@@ -1183,7 +1170,6 @@ export function OperationsSideBar({
                   onToggle={(groupId) => toggleTheaterGroupCollapsed(theater.id, groupId)}
                   onContextMenu={(groupId, anchor) => setActiveContextMenu({ kind: "group", groupId, anchor })}
                   onPointerDragStart={beginGroupPointerDrag}
-                  onOpenLaunch={(groupId) => { openTheaterNewSession(theater.id, groupId); }}
                   clusterHead={groupClusterHead(theater.id, sectionItems, foldItems, isCollapsed)}
                 />
               ) : hasCustomGroups && sectionItems.length + foldItems.length > 0 ? (
@@ -1528,7 +1514,6 @@ function TheaterSectionHeader({
   dragOffsetY,
   onOpenInbox,
   onToggleCollapsed,
-  onOpenLaunch,
   onContextMenu,
   menuTarget,
   onStartAliasEdit,
@@ -1705,15 +1690,6 @@ function TheaterSectionHeader({
           onClick={() => onToggleCollapsed(theater.id)}
         >
           <ChevronIcon collapsed={collapsed} />
-        </button>
-        <button
-          type="button"
-          className="side-bar-theater-row-btn side-bar-theater-launch-btn"
-          aria-label={t("sidebar.theater.newOperation", { theater: displayName })}
-          title={t("sidebar.theater.newOperation", { theater: displayName })}
-          onClick={(event) => onOpenLaunch(event, theater.id)}
-        >
-          <PlusIcon />
         </button>
       </span>
     </div>

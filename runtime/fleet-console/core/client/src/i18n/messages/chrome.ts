@@ -542,7 +542,7 @@ export const chromeEn = {
   "conversation.split.resize": "Resize browser",
   "conversation.split.resetWidth": "Double-click to reset width",
   "conversation.quota.aria": "Usage",
-  "conversation.side.newTheater": "New Theater",
+  "conversation.side.newSession": "New session",
   "conversation.side.pinnedAria": "Pinned",
   "conversation.side.systemAria": "Host, usage and settings",
   "conversation.newSession.title": "New session",
@@ -551,9 +551,8 @@ export const chromeEn = {
   "conversation.newSession.currentTheater": "This Theater",
   "conversation.newSession.group": "Group · {name}",
   "conversation.newSession.otherTheater": "Another Theater…",
+  "conversation.newSession.addTheater": "Add Theater…",
   "conversation.newSession.theaterMenuAria": "Theaters",
-  "conversation.newSession.continue": "Pick up",
-  "conversation.newSession.resumeRecent": "Latest session here",
   "conversation.newSession.otherKinds": "Other ways to start",
   "conversation.newSession.placeholder": "What should it do? Enter to start",
   "conversation.newSession.promptLabel": "First message",
@@ -562,7 +561,6 @@ export const chromeEn = {
   "conversation.newSession.viewChat": "Chat",
   "conversation.newSession.viewTerminal": "Terminal",
   "conversation.newSession.viewAria": "Starts in {view} — click to switch",
-  "conversation.newSession.modelAria": "Runs with {model}",
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
@@ -1094,7 +1092,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.split.resize": "브라우저 폭 조절",
   "conversation.split.resetWidth": "두 번 눌러 폭 초기화",
   "conversation.quota.aria": "사용량",
-  "conversation.side.newTheater": "새 Theater",
+  "conversation.side.newSession": "새 세션",
   "conversation.side.pinnedAria": "고정",
   "conversation.side.systemAria": "호스트 · 사용량 · 설정",
   "conversation.newSession.title": "새 세션",
@@ -1103,9 +1101,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.newSession.currentTheater": "지금 Theater",
   "conversation.newSession.group": "그룹 · {name}",
   "conversation.newSession.otherTheater": "다른 Theater…",
+  "conversation.newSession.addTheater": "Theater 추가…",
   "conversation.newSession.theaterMenuAria": "Theater",
-  "conversation.newSession.continue": "이어서",
-  "conversation.newSession.resumeRecent": "이 Theater의 최근 세션",
   "conversation.newSession.otherKinds": "다른 시작",
   "conversation.newSession.placeholder": "무엇을 할지 적어 주세요 · Enter로 시작",
   "conversation.newSession.promptLabel": "첫 메시지",
@@ -1114,5 +1111,4 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.newSession.viewChat": "채팅",
   "conversation.newSession.viewTerminal": "터미널",
   "conversation.newSession.viewAria": "시작 보기: {view} — 눌러서 바꾸기",
-  "conversation.newSession.modelAria": "실행 모델: {model}",
 };
