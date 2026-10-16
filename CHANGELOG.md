@@ -5,6 +5,34 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.237.0] - 2026-10-16
+
+### fleet-console
+
+#### Added
+- Type @ in the Commodore's message box to reference up to three of the Theater's commanders inline, so the Commodore knows which objectives you mean; references stay in the log and open their objective.
+- Let agents find archived objectives by archive date and permanently delete them after a 10-second undo grace period; restarting Console cancels pending deletions.
+- Let an Objectives Commander change an existing member's model and effort or return it to routing, while preserving launch settings chosen by the person.
+
+#### Changed
+- AI Gateway settings now match the conversation view: each enabled model is one row you open to adjust its reasoning levels, host-only setting, or removal, and routing reads as one group that shows which models can take delegated runs and keeps the quota-using routing test folded until you open it.
+- On phones, each AI Gateway model opens its own screen, models are added from a bottom sheet, and the routing test opens on its own screen.
+- Menus, popovers, and dialogs across Console and its built-in plugins now share the calm, solid look of the conversation view instead of the old frosted-glass panels, and the row you reach with the keyboard is clearly marked.
+- In member chat, the working line above the composer is larger and each working participant's avatar now acts out what it is doing, such as thinking, reading, or editing, as in the sidebar.
+- Pressing a selected Objectives command above the composer again now runs it instead of deselecting it; use the chip's close button or Backspace to deselect.
+- In desktop member chat, see the Commodore's reasons for handing you success criteria, a completion review or follow-up candidates, and return them from the same place as handed decisions.
+- In member chat, clicking a working participant's avatar or name above the composer now opens that participant's ledger instead of stopping them.
+
+#### Fixed
+- Links in a Commander's decision request now appear like chat links instead of plain text, and links in a group conversation, including its decision requests, open the same way as in one-on-one chat, including file links.
+- Open chat file links in Files instead of switching to Theater settings on desktop.
+- Deleting Commodore intel no longer shows up as new intel: an item removed before the Commodore saw it no longer wakes it, and removing one it already knew is logged as intel removed.
+- Keep the intended Theater when opening Commander from a phone attention item or switching its desktop section to the phone layout.
+- On a phone, opening a not-started or finished objective from home or from the Commodore now shows that objective instead of an empty Objectives screen, and reloading keeps it open.
+
+#### Removed
+- Removed the Session Analyst, including its model and effort choice in Settings > Experimental features and its Console Use tool for agents.
+
 ## [1.236.0] - 2026-10-15
 
 ### fleet-console
