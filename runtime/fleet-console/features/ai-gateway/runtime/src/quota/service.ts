@@ -4,7 +4,7 @@ import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
 import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
 import { fetchCodexUsage } from "../upstream/codex/quota.js";
 import { fetchCursorUsage } from "../upstream/cursor/quota.js";
-import { fetchMuseCodeUsage } from "../upstream/muse-code/quota.js";
+import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
 import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
 import { fetchXaiUsage } from "../upstream/xai/quota.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
@@ -31,6 +31,8 @@ export const QUOTA_FORCE_MIN_INTERVAL_MS = 60_000;
 
 export interface QuotaService {
   peekSummary(): QuotaSummaryDto | undefined;
+  /** 로그인·로그아웃이 알려 준 확정값. 이전 진행 중 조회가 이 값을 되살리지 못한다. */
+  record(id: ProviderId, value: ProviderResult): void;
   /**
    * 패널이 기다리지 않고 먼저 그릴 마지막 값. 나이 상한이 없다 — 사람은 "N분 전" 표시로
    * 나이를 판단한다. 다만 리셋이 지난 창과 만료된 크레딧은 이미 틀린 값이라 뺀다. 공급자 하나라도
@@ -73,6 +75,7 @@ export interface QuotaServiceDeps {
 export interface AiGatewayQuotaCollectorDeps {
   readonly authService: AuthService;
   readonly credentialDeps?: CredentialResolverDeps;
+  readonly museCode?: Pick<MuseCodeOAuth, "fetchUsage">;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
 }
@@ -94,6 +97,7 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   };
+  const museCode = deps.museCode ?? createMuseCodeOAuth(deps);
   return {
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => fetchCodexUsage(providerDeps),
@@ -101,7 +105,7 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     fetchOpencode: () => fetchOpencodeUsage(providerDeps),
     fetchXai: () => fetchXaiUsage(providerDeps),
     fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
-    fetchMuseCode: () => fetchMuseCodeUsage(providerDeps),
+    fetchMuseCode: () => museCode.fetchUsage(),
   };
 }
 
@@ -136,6 +140,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   const inFlight = new Map<ProviderId, Promise<ProviderDto>>();
   /** 공급자별 마지막 추론 관측 시각. 그보다 먼저 시작한 조회는 관측값을 덮지 못한다. */
   const observedAt = new Map<ProviderId, number>();
+  const revisions = new Map<ProviderId, number>();
 
   /**
    * 조회가 시작된 뒤 추론 관측이 들어왔다면 그 관측값. 조회 응답은 시작 시점의 upstream 상태라,
@@ -172,9 +177,11 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const pending = inFlight.get(id);
     if (pending) return pending;
     const startedAt = now();
+    const revision = revisions.get(id);
+    const currentMutation = () => revisions.get(id) !== revision ? cache.get(id)?.value : undefined;
     const task = fetchers[id]()
       .then((result) => {
-        const newer = observationSince(id, startedAt);
+        const newer = currentMutation() ?? observationSince(id, startedAt);
         if (newer) return newer;
         if (isProviderSuccess(result)) lastGood.set(id, result);
         // 로그아웃·만료·구독 없음은 확정된 답이다. 이전 계정의 값이 이후 실패에서 되살아나면 안 된다.
@@ -186,7 +193,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         return value;
       })
       .catch((error: unknown) => {
-        const newer = observationSince(id, startedAt);
+        const newer = currentMutation() ?? observationSince(id, startedAt);
         if (newer) return newer;
         const failedAt = now();
         const value = staleOrError(id, sanitizeProviderError(error), failedAt);
@@ -251,6 +258,13 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   }
 
   return {
+    record(id, value) {
+      revisions.set(id, (revisions.get(id) ?? 0) + 1);
+      if (isProviderSuccess(value)) lastGood.set(id, value);
+      else lastGood.delete(id);
+      const at = now();
+      cache.set(id, { value, expiresAt: at + QUOTA_CACHE_TTL_MS, settledAt: at });
+    },
     observe(id, windows) {
       if (windows.length === 0) return;
       const previous = lastGood.get(id) ?? cache.get(id)?.value;

@@ -80,6 +80,7 @@ export { findClaudeGatewayModel, findClaudeGatewayModel as findGatewayModel } fr
 // 떨어진다 — 호출자는 다른 업스트림으로 요청을 보내고도 그 사실을 모른다.
 export { resolveClaudeGatewayModel as resolveGatewayModel } from "./downstream/harness/claude-code/discovery.js";
 export * from "./auth/index.js";
+export * from "./oauth/index.js";
 export * from "./settings/index.js";
 export * from "./settings/store.js";
 export * from "./upstream/opencode-go/index.js";

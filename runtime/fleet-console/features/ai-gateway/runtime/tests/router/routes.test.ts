@@ -1,6 +1,9 @@
 import {
   AnthropicMessagesGateway,
   createClaudeCodexCompactionStore,
+  createProviderAuthService,
+  createMuseCodeOAuth,
+  MUSE_CODE_AUTH_PROVIDER_ID,
   ContextWindowExceededError,
   CLAUDE_COMPACT_CONTINUATION_MARKER,
   CLAUDE_COMPACT_PROMPT_MARKER,
@@ -17,6 +20,8 @@ import type { GatewayHttpHandlerContext } from "../../src/router/types.js";
 import { createHash } from "node:crypto";
 import http from "node:http";
 import net from "node:net";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -1035,7 +1040,7 @@ describe("OpenCode conversation routing", () => {
 describe("Muse Code routing", () => {
   const MUSE_KEY = "LLM|muse-model-key";
   const MUSE_MODEL = "claude-gateway--muse-code--muse-spark-1.3-contributor";
-  const signedIn = () => ({ status: "ok" as const, credentials: { apiKey: MUSE_KEY, accountToken: "acct", method: "keychain" as const } });
+  const signedIn = () => ({ status: "ok" as const, credentials: { apiKey: MUSE_KEY } });
   // Muse가 실제로 보내는 reasoning id 형태(콜론 포함)를 쓴다.
   const REASONING_ID = "rs_n1:rs_n2";
   const museCreated = (id: string) => ({
@@ -1536,30 +1541,42 @@ describe("Muse Code routing", () => {
       { status: 401, headers: { "content-type": "application/json" } },
     ));
 
-    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: () => ({ status: "signed_out" }) });
-    const signedOutRes = response();
-    await signedOut.handle(ctx({ res: signedOutRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
-    expect(signedOutRes.status).toBe(401);
-    expect(signedOutRes.body).toContain("muse login");
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "muse-auth-routing-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const oauth = createMuseCodeOAuth({ authService });
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: oauth.readAuth });
+    try {
+      const signedOutRes = response();
+      await signedOut.handle(ctx({ res: signedOutRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+      expect(signedOutRes.status).toBe(401);
+      expect(signedOutRes.body).toContain("Console quota panel");
 
-    const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: signedIn });
-    const forcedRes = response();
-    await router.handle(ctx({
-      res: forcedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL,
-      tools: SEARCH_CATALOG, toolChoice: { type: "tool", name: "Read" },
-    }));
-    expect(forcedRes.status).toBe(400);
-    expect(forcedRes.body).toContain("automatic tool choice");
-    expect(fetchMock).not.toHaveBeenCalled();
+      await authService.setEntry(MUSE_CODE_AUTH_PROVIDER_ID, {
+        key: MUSE_KEY, type: "oauth-device", accessToken: "account-token", mintedAt: Date.now(), version: 1,
+      });
+      const router = createAiGatewayRouter({ fetch: fetchMock, readMuseCodeAuth: oauth.readAuth });
+      const forcedRes = response();
+      await router.handle(ctx({
+        res: forcedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL,
+        tools: SEARCH_CATALOG, toolChoice: { type: "tool", name: "Read" },
+      }));
+      expect(forcedRes.status).toBe(400);
+      expect(forcedRes.body).toContain("automatic tool choice");
+      expect(fetchMock).not.toHaveBeenCalled();
 
-    const refusedRes = response();
-    await router.handle(ctx({ res: refusedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(refusedRes.status).toBe(401);
-    expect(refusedRes.body).toContain("muse login");
-    expect(refusedRes.body).not.toContain(MUSE_KEY);
-    signedOut.dispose();
-    router.dispose();
+      const refusedRes = response();
+      await router.handle(ctx({ res: refusedRes, token: ANTHROPIC_CRED, model: MUSE_MODEL }));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization")).toBe(`Bearer ${MUSE_KEY}`);
+      expect(refusedRes.status).toBe(401);
+      expect(refusedRes.body).toContain("Console quota panel");
+      expect(refusedRes.body).not.toContain(MUSE_KEY);
+      router.dispose();
+    } finally {
+      signedOut.dispose();
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

@@ -93,6 +93,8 @@ export interface MuseCodeResponsesAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
+  /** 호스트 소유 복구. 401에서만 한 번 재mint하고, 요청 본문은 그대로 다시 보낸다. */
+  renewApiKey?: (failedKey: string) => Promise<string | undefined>;
   /**
    * 스트림 끝의 `response.subscription_usage` 이벤트가 알려 준 구독 사용량. 응답 완료 뒤에
    * 오므로 소비자가 스트림을 끝까지 읽을 때만 불린다. 관측의 실패는 응답에 영향을 주지 않는다.
@@ -115,6 +117,7 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
+  private readonly renewApiKey: MuseCodeResponsesAdapterOptions["renewApiKey"];
   private readonly onSubscriptionUsage: ((windows: readonly QuotaWindow[]) => void) | undefined;
   private readonly messagingToolNames: ReadonlySet<string>;
   private readonly yieldToolCalls: readonly MuseYieldToolCall[];
@@ -122,6 +125,7 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
   constructor(options: MuseCodeResponsesAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.onSubscriptionUsage = options.onSubscriptionUsage;
+    this.renewApiKey = options.renewApiKey;
     this.messagingToolNames = new Set(options.messagingToolNames ?? []);
     this.yieldToolCalls = options.yieldToolCalls ?? [];
     this.maxBodyBytes = positiveInteger(
@@ -156,7 +160,15 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
       ...(arming.skip === undefined ? {} : { skip: arming.skip }),
       ...(arming.lastToolName === undefined ? {} : { lastTool: arming.lastToolName }),
     });
-    const first = await this.send(payload, options.apiKey, options.signal);
+    let apiKey = options.apiKey;
+    let first = await this.send(payload, apiKey, options.signal);
+    if (!first.ok && first.status === 401 && this.renewApiKey && !options.signal?.aborted) {
+      const renewed = await this.renewApiKey(apiKey).catch(() => undefined);
+      if (renewed && !options.signal?.aborted) {
+        apiKey = renewed;
+        first = await this.send(payload, apiKey, options.signal);
+      }
+    }
     if (!first.ok || !arming.armed) return first;
     return {
       ...first,
@@ -167,7 +179,7 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
         // 호출자 abort에도 묶인다.
         reopen: (announcement) => this.send(
           { ...payload, input: [...payload.input, ...resampleNudgeItems(announcement)] },
-          options.apiKey,
+          apiKey,
           options.signal,
           true,
         ),
@@ -251,14 +263,14 @@ export class MuseCodeResponsesAdapter implements AiGatewayAdapter {
 }
 
 /**
- * 키 거부는 CLI에서 다시 로그인해 고칠 문제다. 거부 본문이 무엇을 되돌려 주는지 검증되지
+ * 키 거부는 Console에서 다시 로그인해 고친다. 거부 본문이 무엇을 되돌려 주는지 검증되지
  * 않았으므로 원문은 중계하지 않고 안내로 바꾼다.
  */
 function signInRefusedBody(status: number): Uint8Array {
   return new TextEncoder().encode(JSON.stringify({
     error: {
       type: status === 401 ? "authentication_error" : "permission_error",
-      message: `Muse Code refused the local sign-in (HTTP ${status}). Run \`muse login\` again, then retry.`,
+      message: `Muse Code refused the local sign-in (HTTP ${status}). Sign in again in the Console quota panel, then retry.`,
     },
   }));
 }

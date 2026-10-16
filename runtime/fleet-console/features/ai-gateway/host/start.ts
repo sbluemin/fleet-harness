@@ -7,6 +7,7 @@ import {
   DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
   createClaudeNativeModelSync,
   createQuotaService,
+  createMuseCodeOAuth,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -54,6 +55,7 @@ interface GatewayStartContext {
 }
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
+import { registerMuseCodeOAuthRoutes } from "./oauth-routes.js";
 
 function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
   setWireLogTarget(stored === undefined
@@ -124,10 +126,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
     return settings !== null && typeof settings === "object"
       && (settings as Record<string, unknown>)[`${provider}Connected`] === true;
   };
+  const museCode = createMuseCodeOAuth({ authService, onQuota: (value) => quota.record("muse-code", value) });
+  ctx.host.lifecycle.registerCleanup(() => museCode.dispose());
+  registerMuseCodeOAuthRoutes(ctx, museCode);
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     isCursorConnected: () => isConnected("cursor"),
-    ...createAiGatewayQuotaCollectors({ authService }),
+    ...createAiGatewayQuotaCollectors({ authService, museCode }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -298,8 +303,10 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readAiGatewaySettings: aiGatewayStore.read,
     assignRouting: (request, options) => assign(request, options?.signal),
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+    readMuseCodeAuth: museCode.readAuth,
+    renewMuseCodeAuth: museCode.renew,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
-    observeMuseCodeUsage: (windows) => quota.observe("muse-code", windows),
+    observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels };
 }

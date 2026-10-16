@@ -22,7 +22,6 @@ import {
   readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
-  readMuseCodeSubscriptionAuth,
   readXaiSubscriptionToken,
 } from "@fleet-console/ai-gateway";
 import type { AiGatewayRouteDeps } from "@fleet-console/ai-gateway";
@@ -86,7 +85,6 @@ export function registerAiGatewayRoutes(
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
     renewAntigravityToken: deps.renewAntigravityToken
       ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
-    readMuseCodeAuth: deps.readMuseCodeAuth ?? (() => readMuseCodeSubscriptionAuth()),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });

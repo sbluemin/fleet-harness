@@ -82,18 +82,6 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   xai: "quota.noSubscription",
 };
 
-const CREDENTIAL_UNAVAILABLE_KEY: Readonly<Record<string, QuotaMessageKey>> = {
-  keychain_denied: "quota.error.credentials.denied",
-  keychain_timeout: "quota.error.credentials.timeout",
-  malformed: "quota.error.credentials.malformed",
-};
-
-/** Gateway가 자격 증명 저장소를 읽지 못했을 때 보내는 고정 문구를 안내 키로 옮긴다. */
-export function credentialUnavailableKey(message: string | undefined): QuotaMessageKey | undefined {
-  const reason = message?.match(/^Credential store unavailable \(([a-z_]+)\)$/)?.[1];
-  return reason === undefined ? undefined : CREDENTIAL_UNAVAILABLE_KEY[reason];
-}
-
 /** 이 Gateway가 아직 보고하지 않는 공급자 — 카드를 빼지 않고 읽을 수 없음으로 둔다. */
 export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
 
@@ -512,21 +500,12 @@ function ProviderCard({
       {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
       {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
-      {provider.status === "stale" ? (() => {
-        // 이전 값을 보여 주더라도 사용자가 고칠 수 있는 원인(키체인 권한 등)은 가리지 않는다.
-        const credentialKey = credentialUnavailableKey(provider.message);
-        return credentialKey ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip> : null;
-      })() : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
         if (match?.[1] !== undefined) {
           return <StatusStrip kind="error">{t("quota.error.tls", { provider: name, code: match[1] })}</StatusStrip>;
         }
-        // 로그인이 없는 것과 저장소를 읽지 못한 것은 다른 조치를 부른다 — 로그인하라고 하면 틀린 지시가 된다.
-        const credentialKey = credentialUnavailableKey(provider.message);
-        return credentialKey
-          ? <StatusStrip kind="error">{t(credentialKey, { provider: name })}</StatusStrip>
-          : <div className="quota-error">{t("quota.error", { provider: name })}</div>;
+        return <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />
