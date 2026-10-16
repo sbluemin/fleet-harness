@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
@@ -76,6 +77,8 @@ export interface HostGateway {
 }
 
 export function createHostGateway(deps: HostGatewayDeps): HostGateway {
+  // Desktop bridge의 instanceId와 다른 값이다. 이 gateway가 살아있는 동안만 유지된다.
+  const gatewayInstanceId = crypto.randomUUID();
   const links = new Map<string, HostLink>();
   const listeners = new Map<string, Set<http.ServerResponse>>();
   const live = new Set<{ readonly hostKey: string; abort(): void }>();
@@ -102,7 +105,7 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
   };
 
   const presenceOf = (hostKey: string, link: HostLink): HostPresence => ({
-    hostKey, epoch: link.epoch, mode: link.mode, access: link.access, connection: link.connection, capability: link.capability,
+    hostKey, epoch: link.epoch, instanceId: gatewayInstanceId, mode: link.mode, access: link.access, connection: link.connection, capability: link.capability,
   });
 
   const publish = (hostKey: string): void => {
@@ -135,11 +138,11 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     if (kind === "presence" && req.method === "GET") { deps.writeJson(res, 200, presenceOf(hostKey, link)); return true; }
     if (kind === "presenceEvents" && req.method === "GET") return writePresenceEvents(hostKey, link);
     if (kind === "presence" && req.method === "POST") return handlePresence(hostKey, target, link);
-    if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
     if (kind === "request" && req.method === "POST") return handleJson(hostKey, target, link);
     if (kind === "bytes" && req.method === "POST") return handleBytes(hostKey, target, link);
     if ((kind === "events" || kind === "resources") && req.method === "GET") return handleStream(hostKey, target, link, kind);
     if (kind === "socket" && (req.method === "GET" || String(req.headers.upgrade ?? "").toLowerCase() === "websocket")) return handleSocket();
+    if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
     fail(res, "invalid_host_request");
     return true;
 
@@ -156,6 +159,7 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     async function handlePresence(hostKey: string, target: HostGatewayTarget, link: HostLink): Promise<boolean> {
       const body = await deps.readJsonBody(req);
       if (!isHostPresenceRequest(body)) { fail(res, "invalid_host_request"); return true; }
+      if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
       if (body.expectedEpoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
       const relay = await deps.bridge.call({
         hostKey, epoch: link.epoch, op: "presence", routeId: "presence",
@@ -173,6 +177,8 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     async function handleJson(hostKey: string, target: HostGatewayTarget, link: HostLink): Promise<boolean> {
       const body = await deps.readJsonBody(req);
       if (!isHostJsonRequest(body)) { fail(res, "invalid_host_request"); return true; }
+      if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
+      if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
       if (body.expectedEpoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
       const admitted = admitHostRoute({ kind: "json", method: body.method, path: body.path, mode: link.mode === "controller" ? "controller" : "observer" });
       if ("error" in admitted) { fail(res, admitted.error); return true; }
@@ -185,14 +191,16 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       const status = relay.status ?? 502;
       const empty = status === 204 || status === 205 || status === 304 || relay.contentType === null;
       deps.writeJson(res, 200, empty
-        ? { requestId: body.requestId, epoch: link.epoch, status, contentType: null }
-        : { requestId: body.requestId, epoch: link.epoch, status, contentType: "application/json", json: relay.json ?? null });
+        ? { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status, contentType: null }
+        : { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status, contentType: "application/json", json: relay.json ?? null });
       return true;
     }
 
     async function handleBytes(hostKey: string, target: HostGatewayTarget, link: HostLink): Promise<boolean> {
       const body = await deps.readJsonBody(req);
       if (!isHostByteRequest(body)) { fail(res, "invalid_host_request"); return true; }
+      if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
+      if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
       if (body.expectedEpoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
       const admitted = admitHostRoute({ kind: "bytes", method: "POST", path: body.path, mode: link.mode === "controller" ? "controller" : "observer" });
       if ("error" in admitted) { fail(res, admitted.error); return true; }
@@ -202,13 +210,15 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
         params: { method: "POST", path: admitted.path },
       }, abort.signal);
       if (relay.error || relay.dataBase64 === undefined || typeof relay.contentType !== "string") { fail(res, asError(relay.error ?? "remote_host_unavailable"), link.epoch); return true; }
-      deps.writeJson(res, 200, { requestId: body.requestId, epoch: link.epoch, status: relay.status ?? 200, contentType: relay.contentType, dataBase64: relay.dataBase64 });
+      deps.writeJson(res, 200, { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status: relay.status ?? 200, contentType: relay.contentType, dataBase64: relay.dataBase64 });
       return true;
     }
 
     async function handleStream(hostKey: string, target: HostGatewayTarget, link: HostLink, kind: "events" | "resources"): Promise<boolean> {
       const query = parseHostStreamQuery(new URL(req.url ?? "/", "http://127.0.0.1").searchParams);
       if (!query) { fail(res, "invalid_host_request"); return true; }
+      if (query.instanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
+      if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
       if (query.epoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
       const admitted = admitHostRoute({ kind, method: "GET", path: query.path, mode: link.mode === "controller" ? "controller" : "observer" });
       if ("error" in admitted) { fail(res, admitted.error); return true; }
@@ -270,8 +280,10 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     if (!target) { reject(404, "remote_host_unknown"); return true; }
     const link = linkFor(hostKey, target);
     const query = parseHostSocketQuery(new URL(context.req.url ?? "/", "http://127.0.0.1").searchParams);
-    if (!query || query.epoch !== link.epoch || link.mode !== "controller") {
-      reject(403, !query || link.mode !== "controller" ? "not_controller" : "stale_epoch");
+    if (!query) { reject(400, "invalid_host_request"); return true; }
+    if (query.instanceId !== gatewayInstanceId) { reject(409, "stale_instance"); return true; }
+    if (link.mode !== "controller" || query.epoch !== link.epoch) {
+      reject(403, link.mode !== "controller" ? "not_controller" : "stale_epoch");
       return true;
     }
     const sockets = new WebSocketServer({ noServer: true });

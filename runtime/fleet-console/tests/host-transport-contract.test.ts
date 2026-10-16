@@ -106,44 +106,39 @@ describe("host transport wire contract", () => {
 describe("host gateway admission", () => {
   const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
 
-  async function call(options: {
-    method: string;
-    path: string;
-    body?: unknown;
-    origin?: boolean;
-    reply?: (request: { op: string; routeId: string; params: Record<string, unknown> }) => Record<string, unknown>;
-  }): Promise<{ status: number; body: unknown }> {
-    const calls: Array<{ op: string; routeId: string }> = [];
+  it("rejects a stale presence epoch before asking the shell", async () => {
     const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = null;
+    const calls: string[] = [];
     const gateway = createHostGateway({
       isLoopback: () => true,
-      isExactOrigin: () => options.origin !== false,
+      isExactOrigin: () => true,
       findHost: () => target,
-      bridge: { async open() { return { id: 1, error: "remote_host_unavailable", end: true }; }, async call(request) {
-        calls.push({ op: request.op, routeId: request.routeId });
-        return { id: 1, ...(options.reply ? options.reply(request) : { error: "remote_host_unavailable" }) };
-      } },
-      readJsonBody: async <T,>() => (options.body ?? null) as T | null,
-      writeJson: (_res, status, body) => { slot.current = { status, body }; },
+      bridge: { async open() { return { id: 1, end: true }; }, async call(request) { calls.push(request.op); return { id: 1, error: "remote_host_unavailable" }; } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
       withSecurityHeaders: (headers) => headers,
     });
-    const req = { method: options.method, url: options.path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
-    const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
-    await gateway.handle({ req, res, pathname: options.path.split("?")[0] ?? options.path });
-    const written = slot.current;
-    if (!written) throw new Error("gateway wrote nothing");
-    return written;
-  }
-
-  it("rejects a stale presence epoch before asking the shell", async () => {
-    const result = await call({ method: "POST", path: "/api/v1/hosts/host1/presence", body: { intent: "observe", expectedEpoch: 0 } });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+      await gateway.handle({ req, res, pathname: path.split("?")[0] ?? path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string; epoch: number });
+    body = { intent: "observe", expectedEpoch: 0, expectedInstanceId: lifetime.instanceId };
+    const result = await invoke("POST", "/api/v1/hosts/host1/presence");
     expect(result.status).toBe(409);
-    expect(result.body).toEqual({ error: "stale_epoch", epoch: 1 });
+    expect(result.body).toEqual({ error: "stale_epoch", epoch: lifetime.epoch });
+    expect(calls).toEqual([]);
   });
 
   it("keeps an unsupported remote blocked instead of a controller", async () => {
     const slot = { current: null as { status: number; body: unknown } | null };
-    let body: unknown = { intent: "observe", expectedEpoch: 1 };
+    let body: unknown = null;
     const gateway = createHostGateway({
       isLoopback: () => true,
       isExactOrigin: () => true,
@@ -161,6 +156,9 @@ describe("host gateway admission", () => {
       if (!written) throw new Error("no response");
       return written;
     };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string }).instanceId;
+    body = { intent: "observe", expectedEpoch: 1, expectedInstanceId: lifetime };
     const posted = await invoke("POST", "/api/v1/hosts/host1/presence");
     expect(posted.status).toBe(409);
     expect(posted.body).toMatchObject({ error: "host_unsupported" });
@@ -174,7 +172,7 @@ describe("host gateway admission", () => {
     // so exercise the route table through a controller-ready link by observing first inside one gateway.
     const calls: string[] = [];
     const slot = { current: null as { status: number; body: unknown } | null };
-    let body: unknown = { intent: "observe", expectedEpoch: 1 };
+    let body: unknown = null;
     const gateway = createHostGateway({
       isLoopback: () => true,
       isExactOrigin: () => true,
@@ -196,14 +194,17 @@ describe("host gateway admission", () => {
       if (!written) throw new Error("no response");
       return written;
     };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string }).instanceId;
+    body = { intent: "observe", expectedEpoch: 1, expectedInstanceId: lifetime };
     await invoke("POST", "/api/v1/hosts/host1/presence");
-    body = { requestId: "req-1234", expectedEpoch: 2, method: "POST", path: "/api/v1/agent/sessions/op/message", json: { text: "hi" } };
+    body = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: lifetime, method: "POST", path: "/api/v1/agent/sessions/op/message", json: { text: "hi" } };
     const conversation = await invoke("POST", "/api/v1/hosts/host1/request");
     expect(conversation).toEqual({ status: 403, body: { error: "not_controller" } });
-    body = { requestId: "req-1234", expectedEpoch: 2, method: "POST", path: "/api/v1/remote-hosts", json: {} };
+    body = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: lifetime, method: "POST", path: "/api/v1/remote-hosts", json: {} };
     const unknown = await invoke("POST", "/api/v1/hosts/host1/request");
     expect(unknown).toEqual({ status: 403, body: { error: "route_denied" } });
-    body = { requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/agent/attachments" };
+    body = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: lifetime, path: "/api/v1/agent/attachments" };
     const upload = await invoke("POST", "/api/v1/hosts/host1/bytes");
     expect(upload).toEqual({ status: 403, body: { error: "route_denied" } });
     expect(calls).toEqual(["presence"]);
@@ -213,6 +214,7 @@ describe("host gateway admission", () => {
   it("relays an observer operation event stream and closes it when the epoch changes", async () => {
     const frames: string[] = [];
     let opened = false;
+    let lifetime = "";
     const slot = { current: null as { status: number; body: unknown } | null };
     const gateway = createHostGateway({
       isLoopback: () => true,
@@ -227,16 +229,20 @@ describe("host gateway admission", () => {
           return { id: 7, end: true };
         },
       },
-      readJsonBody: async <T,>() => ({ intent: "observe", expectedEpoch: 1 }) as T,
+      readJsonBody: async <T,>() => ({ intent: "observe", expectedEpoch: 1, expectedInstanceId: lifetime }) as T,
       writeJson: (_res, status, body) => { slot.current = { status, body }; },
       withSecurityHeaders: (headers) => headers,
     });
+    const bootReq = { method: "GET", url: "/api/v1/hosts/host1/presence", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    const bootRes = { writeHead: () => undefined, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+    await gateway.handle({ req: bootReq, res: bootRes, pathname: "/api/v1/hosts/host1/presence" });
+    lifetime = (slot.current?.body as { instanceId: string }).instanceId;
     const presence = { method: "POST", url: "/api/v1/hosts/host1/presence", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
     const presRes = { writeHead: () => undefined, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
     await gateway.handle({ req: presence, res: presRes, pathname: "/api/v1/hosts/host1/presence" });
     const writes: string[] = [];
     let ended = false;
-    const req = { method: "GET", url: "/api/v1/hosts/host1/events?path=%2Fapi%2Fv1%2Foperations%2Fevents&epoch=2", headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+    const req = { method: "GET", url: `/api/v1/hosts/host1/events?path=%2Fapi%2Fv1%2Foperations%2Fevents&epoch=2&instanceId=${lifetime}`, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
     const res = {
       writeHead: () => undefined,
       write: (chunk: string) => { writes.push(chunk); return true; },
@@ -251,6 +257,57 @@ describe("host gateway admission", () => {
     expect(writes.join("")).toContain("operation:changed");
     expect(ended).toBe(true);
     expect(frames).toEqual([]);
+  });
+
+  it("does not relay a previous gateway lifetime at the same epoch", async () => {
+    const previous = "bbbbbbbb-1111-4222-8333-444455556666";
+    const calls: string[] = [];
+    const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = null;
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: { async open() { calls.push("open"); return { id: 1, end: true }; }, async call(request) {
+        calls.push(request.op);
+        if (request.op === "presence") return { id: 1, capability: "supported", mode: "controller", access: "full" };
+        return { id: 1, status: 200, contentType: "application/json", json: {}, dataBase64: "YQ==" };
+      } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true, writableEnded: false } as unknown as http.ServerResponse;
+      await gateway.handle({ req, res, pathname: path.split("?")[0] ?? path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string; epoch: number }).instanceId;
+    expect(lifetime).not.toBe(previous);
+    body = { intent: "activate", expectedEpoch: 1, expectedInstanceId: lifetime };
+    expect((await invoke("POST", "/api/v1/hosts/host1/presence")).status).toBe(204);
+    const current = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const epoch = (current.body as { epoch: number }).epoch;
+    body = { intent: "observe", expectedEpoch: epoch, expectedInstanceId: previous };
+    expect(await invoke("POST", "/api/v1/hosts/host1/presence")).toEqual({ status: 409, body: { error: "stale_instance" } });
+    body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: previous, method: "POST", path: "/api/v1/agent/sessions/op/message", json: { text: "old" } };
+    expect(await invoke("POST", "/api/v1/hosts/host1/request")).toEqual({ status: 409, body: { error: "stale_instance" } });
+    body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: previous, path: "/plugins/file-explorer/files/image?path=one.png" };
+    expect(await invoke("POST", "/api/v1/hosts/host1/bytes")).toEqual({ status: 409, body: { error: "stale_instance" } });
+    const resource = `/api/v1/hosts/host1/resources?path=${encodeURIComponent("/plugins/file-explorer/files/image?path=one.png")}&epoch=${epoch}&instanceId=${previous}`;
+    expect(await invoke("GET", resource)).toEqual({ status: 409, body: { error: "stale_instance" } });
+    const events = `/api/v1/hosts/host1/events?path=${encodeURIComponent("/api/v1/operations/events")}&epoch=${epoch}&instanceId=${previous}`;
+    expect(await invoke("GET", events)).toEqual({ status: 409, body: { error: "stale_instance" } });
+    const written: Buffer[] = [];
+    const socket = { write: (chunk: string | Buffer) => { written.push(Buffer.from(chunk)); return true; }, destroy: () => undefined };
+    const req = { url: `/api/v1/hosts/host1/socket?epoch=${epoch}&instanceId=${previous}&channel=terminal&operationId=op-1`, headers: {}, socket: { remoteAddress: "127.0.0.1" } } as unknown as http.IncomingMessage;
+    expect(gateway.upgrade({ req, socket: socket as unknown as import("node:stream").Duplex, head: Buffer.alloc(0), pathname: "/api/v1/hosts/host1/socket" })).toBe(true);
+    expect(Buffer.concat(written).toString("utf8")).toContain('"error":"stale_instance"');
+    expect(calls).toEqual(["presence"]);
   });
 
   it("keeps the terminal's first resize and a normal burst until the remote socket is ready", async () => {
@@ -297,16 +354,17 @@ describe("host gateway admission", () => {
     let socket: WebSocket | null = null;
     try {
       await shell.attached;
+      const boot = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
       const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
         method: "POST",
         headers: { origin, "content-type": "application/json" },
-        body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
+        body: JSON.stringify({ intent: "activate", expectedEpoch: boot.epoch, expectedInstanceId: boot.instanceId }),
       });
       expect(presence.status).toBe(204);
-      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; mode: string };
-      expect(current).toMatchObject({ mode: "controller" });
+      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string; mode: string };
+      expect(current).toMatchObject({ mode: "controller", instanceId: boot.instanceId });
       let closedEarly = false;
-      socket = new WebSocket(`${origin.replace("http", "ws")}/api/v1/hosts/host1/socket?epoch=${current.epoch}&channel=terminal&operationId=op-1`, { headers: { Origin: origin } });
+      socket = new WebSocket(`${origin.replace("http", "ws")}/api/v1/hosts/host1/socket?epoch=${current.epoch}&instanceId=${current.instanceId}&channel=terminal&operationId=op-1`, { headers: { Origin: origin } });
       socket.on("close", () => { if (sent.length < 22) closedEarly = true; });
       await new Promise<void>((resolve, reject) => {
         socket?.once("open", () => resolve());
@@ -412,14 +470,16 @@ describe("host gateway admission", () => {
     const streamAbort = new AbortController();
     try {
       await shell.attached;
+      const boot = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
       const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
-        method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
+        method: "POST", headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ intent: "activate", expectedEpoch: boot.epoch, expectedInstanceId: boot.instanceId }),
       });
       expect(presence.status).toBe(204);
-      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number };
+      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; instanceId: string };
       const request = (method: string, path: string, json?: unknown, signal?: AbortSignal) => fetch(`${origin}/api/v1/hosts/host1/request`, {
         method: "POST", signal, headers: { origin, "content-type": "application/json" },
-        body: JSON.stringify({ requestId: `req-${Math.random().toString(36).slice(2, 12)}`, expectedEpoch: current.epoch, method, path, ...(json === undefined ? {} : { json }) }),
+        body: JSON.stringify({ requestId: `req-${Math.random().toString(36).slice(2, 12)}`, expectedEpoch: current.epoch, expectedInstanceId: current.instanceId, method, path, ...(json === undefined ? {} : { json }) }),
       });
       const read = await request("GET", "/api/v1/theaters");
       expect(read.status).toBe(200);
@@ -441,7 +501,7 @@ describe("host gateway admission", () => {
 
       let frames = 0;
       let ended = false;
-      const events = await fetch(`${origin}/api/v1/hosts/host1/events?path=${encodeURIComponent("/api/v1/operations/events")}&epoch=${current.epoch}`, {
+      const events = await fetch(`${origin}/api/v1/hosts/host1/events?path=${encodeURIComponent("/api/v1/operations/events")}&epoch=${current.epoch}&instanceId=${current.instanceId}`, {
         headers: { origin }, signal: streamAbort.signal,
       });
       const reader = events.body?.getReader();
