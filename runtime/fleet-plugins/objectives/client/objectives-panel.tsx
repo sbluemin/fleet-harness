@@ -34,7 +34,7 @@ import {
   requestFollowupFocus,
   setFollowupOpen,
 } from "./followups.js";
-import { FollowupBatchResults, FollowupForkGlyph } from "./followups-view.js";
+import { FollowupBatchResults, FollowupCandidateList, FollowupForkGlyph } from "./followups-view.js";
 import { criterionSources, MergedTrail } from "./merged.js";
 import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
@@ -1399,8 +1399,9 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     onTabRef.current("crew");
     setMissionReveal({ id: highlightMission, at: Date.now() });
   }, [highlightMission]);
-  // 후속 후보 — 고르기·폐기는 하단 띠가 맡고, 상세에는 완료 뒤 결과만 결과물 탭의 접힌 묶음으로 선다.
+  // 후속 후보 — 고르기·폐기는 하단 띠가 맡는다. 상세는 결과물 탭의 접힌 묶음에서 진행 중에 모인 후보를 읽기만 하고, 완료 뒤에는 결과를 보인다.
   const followupOpenList = openFollowups(objective);
+  const [followupOpenId, setFollowupOpenId] = useState<string | null>(null);
   const followupBatches = readBatches(objective);
   const followupHistory = readHistory(objective);
   const followupOrigin = readOrigin(objective);
@@ -1620,7 +1621,8 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
       </div>
   ) : null;
   // 결과물 탭 아래 접힌 묶음 — 회고 · 후속 목표 · 이전 회차. 있는 것만 선다.
-  const showFollowupResults = followupBatches.length > 0 || !!followupHistory || (objective.done && followupOpenList.length > 0);
+  const followupCollected = objective.done ? [] : followupOpenList;
+  const showFollowupResults = followupBatches.length > 0 || !!followupHistory || followupOpenList.length > 0;
   const sResultFolds = objective.handoff || showFollowupResults || objective.extensions.length ? (
       <div className="objectives-group objectives-result-folds">
         {/* 회고 — 인계 기록이 있을 때만(검토 대기와 완료 뒤). 지휘관이 넘겼으면 두 표, 사람이 넘겼으면 회고 없음 한 줄. 읽기 전용. */}
@@ -1635,10 +1637,23 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
             />
           </div>
         </> : null}
-        {/* 후속 목표 — 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
+        {/* 후속 목표 — 진행 중에 모인 후보(읽기만), 완료 때 고른 후보의 배치 요약과 줄 상태, 남긴 후보. */}
         {showFollowupResults ? <>
-          <SectionHead glyph={<FollowupForkGlyph />} label={t("objectives.followup.results")} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
+          <SectionHead glyph={<FollowupForkGlyph />} label={t("objectives.followup.results")} {...(followupCollected.length ? { tools: <span className="objectives-criteria-count">{followupCollected.length}</span> } : {})} controls="objectives-sec-followup-results" expanded={sectionOpen("detail:followupResults")} onToggle={() => onToggleSection("detail:followupResults")} />
           <div id="objectives-sec-followup-results" hidden={!sectionOpen("detail:followupResults")}>
+            {followupCollected.length ? <div className="objectives-followup-collected">
+              <p className="objectives-followup-caption">{t("objectives.followup.collected", { n: followupCollected.length })}</p>
+              <FollowupCandidateList
+                candidates={followupCollected}
+                selectable={false}
+                selection={EMPTY_IDS}
+                t={t}
+                idPrefix={`detail-${objective.id}`}
+                openId={followupOpenId}
+                onOpenChange={setFollowupOpenId}
+                onToggleCheck={() => {}}
+              />
+            </div> : null}
             <FollowupBatchResults
               batches={followupBatches}
               leftover={objective.done ? followupOpenList : []}
