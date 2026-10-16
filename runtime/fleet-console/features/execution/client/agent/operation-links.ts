@@ -4,7 +4,7 @@ import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { notifySharedFallback } from "../../../browser/client/global-browser-store.js";
+import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { createChatLinkInterceptor, openOperationLink, useLinkOpenChoice, type LinkOpenAt } from "./link-open.js";
 
@@ -38,7 +38,7 @@ export interface OperationLinks {
 /**
  * 한 Operation 의 링크 길 — 채팅(마크다운 앵커)과 CLI(터미널이 찾은 링크)가 같은 카드·손짓·파일 열기를 쓴다.
  * Operation 본문과, 그 본문 대신 가운데 칸에 서는 그룹 대화가 같은 길을 쓰도록 한곳에 둔다.
- * 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다. shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다.
+ * 수식 없는 왼클릭은 Session 브라우저와 내 브라우저 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다. shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다.
  */
 export function useOperationLinks(target: OperationLinkTarget): OperationLinks {
   const linkOpen = useLinkOpenChoice(target);

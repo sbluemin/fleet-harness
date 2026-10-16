@@ -436,7 +436,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/operation-use", summary: "List the Operations currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Session Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Fleet Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/sessions/resolve", summary: "Resolve a plugin session's browser owner for its panel.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/state", summary: "Read an Operation's browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/operations/:operationId/screenshot", summary: "Capture the active tab of an Operation's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -455,19 +455,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/browser/operations/:operationId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Operation's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/profile", summary: "Choose whether an Operation's browser uses a temporary session or the persistent profile; open tabs close.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/operations/:operationId/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/global/state", summary: "Read the Console-wide Fleet Browser tab state; later changes arrive on the Operation event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/global/screenshot", summary: "Capture the active tab of the Console-wide Fleet Browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/global/favicon", summary: "Serve a Fleet Browser tab's favicon through the Console.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/tabs", summary: "Create, close or select a tab in the Console-wide Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/navigate", summary: "Navigate a Fleet Browser tab as the user.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/viewport", summary: "Set the viewport preset or size of the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/place", summary: "Tell the Desktop shell where the Fleet Browser floating sheet sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/inspect", summary: "Describe the page element under a Fleet Browser viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/profile", summary: "Choose whether the Fleet Browser uses a temporary session or the persistent profile.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into the Fleet Browser's current session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/clear-profile", summary: "Erase the persistent browser profile's cookies and site storage on the attached Desktop.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/restore-closed-tabs", summary: "Restore previously closed tabs after reconnection in the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "POST", path: "/api/v1/browser/global/dismiss-closed-tabs", summary: "Dismiss the suggestion to restore closed tabs in the Fleet Browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/browser/shortcuts", summary: "Update active Console shortcut bindings for Desktop native view forwarding.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   {
     method: "GET",
@@ -513,7 +500,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const operations = createOperationStore({
     onGroupChanged: (event) => publishPluginEvent(OPERATION_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OPERATION_GROUP_REMOVED_EVENT_CHANNEL, event),
-    // 전역 Fleet 브라우저의 소유자 id는 Operation이 가질 수 없다 — 그 이름의 Operation이 생기면 그 에이전트가 사람의 탭에 닿는다.
+    // 예전 전역 브라우저 id "global" 은 Operation이 될 수 없다 — 남은 상태나 옛 요청이 Session에 붙지 않게.
     isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || archiveStorage.entries().some((entry) => entry.operation.id === id || entry.operation.childSessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingOperation(id),
     assertRelationMutable: (id) => operationArchive.assertMutable(id),
   });
@@ -887,6 +874,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     scheduleOperationUseBroadcast();
     if (operationSseSubscribers.size === 0) return;
     const data = encodeSseData(BROWSER_STATE_EVENT, state);
+    for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") writeOperationSse(subscriber, data);
+  });
+  const BROWSER_AVAILABILITY_EVENT = "browser:availability";
+  browserService.onAvailability((notice) => {
+    if (operationSseSubscribers.size === 0) return;
+    const data = encodeSseData(BROWSER_AVAILABILITY_EVENT, { available: notice.available, reason: notice.reason });
     for (const subscriber of operationSseSubscribers) if (subscriber.client === "desktop") writeOperationSse(subscriber, data);
   });
   // 스크린샷은 Console 호스트에 놓인다 — 뷰를 그리는 Desktop 은 원격일 수 있어도 도구를 부르는 에이전트는
@@ -1544,25 +1537,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson(res, 200, operationUseSnapshot());
     return true;
   });
-  /** 요청한 클라이언트가 현재 제어 호스트의 Desktop 셸인지 판정한다. */
-  function isDesktopHostClient(req: http.IncomingMessage): boolean {
-    if (clientKindOf(req) !== "desktop") return false;
-    const currentHost = desktopEngine.currentHost;
-    if (!currentHost) return false;
-    const listener = listenerForRequest(req);
-    const audience: AccessAudience = listener?.audience ?? "local";
-    const sessionHandle = listener === null || listener.audience === "local"
-      ? null
-      : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
-    if (audience === "remote" && sessionHandle === null) return false;
-    const shellOwner = audience === "local" ? "local" : sessionHandle;
-    return shellOwner === currentHost;
-  }
   /**
    * Operation 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
-  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, isDesktopHostClient, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
+  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;

@@ -69,7 +69,7 @@ export interface AgentSessionOptions {
     readonly builtins?: readonly ("WebSearch" | "WebFetch")[];
     readonly custom?: readonly AgentToolGroup[];
     readonly consoleUse?: Parameters<ConsoleUseMcpHost["connect"]>[0];
-    /** Session 브라우저. 플러그인 안의 화면 좌표만 지정하며, 탭 소유자는 Console이 발급한다. */
+    /** 플릿 브라우저. 플러그인 안의 화면 좌표만 지정하며, 탭 소유자는 Console이 발급한다. */
     readonly browser?: { readonly scopeId: string };
     /**
      * 컴퓨터 사용(실험). 도구는 세션이 열릴 때 실리고 허용은 호출마다 `enabled()`로 다시 묻는다 —

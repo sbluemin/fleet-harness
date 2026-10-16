@@ -52,7 +52,7 @@ async function sendShortcuts(shortcuts: readonly string[]): Promise<boolean> {
   }
 }
 
-export function useGlobalBrowserShortcutsSync(active: boolean): void {
+export function useBrowserShortcutsSync(active: boolean): void {
   const overrides = useShortcutOverrides();
   const registry = usePluginRegistry();
   React.useEffect(() => {

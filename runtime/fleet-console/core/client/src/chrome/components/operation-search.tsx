@@ -39,7 +39,6 @@ import { resolveOperationMarkVisual } from "../../../../../features/execution/cl
 import { archiveOperationFromUi, resumeOperationInPlace, type ArchiveOutcome } from "../../integration/operation-actions.js";
 import { openArchiveSheet, openRestoredOperation, refreshOperationArchive, useOperationArchive } from "../../integration/operation-archive.js";
 import { restoreOperationCluster } from "@fleet-console/sdk/operations/browser";
-import { toggleGlobalBrowser } from "../../../../../features/browser/client/global-browser-store.js";
 import { fetchOperations } from "../../integration/api.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import {
@@ -398,12 +397,6 @@ export function OperationSearch({
         if (action.surfaceId) openExpandedSurface({ surfaceId: action.surfaceId });
         else openRailPanel(action.panelId);
             break;
-      }
-      case "toggle-fleet-browser": {
-        // 시트는 Console 전역 영속 컴포넌트라 경로와 무관하게 선다. 닫히면 포커스는 시트가 연 자리로 돌아간다.
-        previousFocusRef.current = null;
-        toggleGlobalBrowser();
-        break;
       }
       case "toggle-sidebar": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");

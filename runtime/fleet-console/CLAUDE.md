@@ -39,7 +39,7 @@
 - Shared markdown and Mermaid output must remain sanitized before DOM insertion; Mermaid stays strict with HTML labels disabled, and renderer-supplied bind functions are never executed.
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored Operations are dormant until explicitly relaunched.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
-- The Session Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
+- The Fleet Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
 
 ## Design invariants
 

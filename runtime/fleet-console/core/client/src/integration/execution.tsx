@@ -4,9 +4,8 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { agentAttentionNotification, agentOperationKind, agentExecution, agentSettingsSection, generalSettingsSection } from "../../../../features/execution/client/agent/index.js";
 import { globalShellEntry } from "../../../../features/execution/client/terminal/global-shell/rail-panel.js";
+import { BrowserSessionHost } from "../../../../features/browser/client/browser-session-host.js";
 import { installGlobalLinkRouter } from "../../../../features/browser/client/global-link-router.js";
-import { GlobalBrowserSheet } from "../../../../features/browser/client/global-browser-sheet.js";
-import { GlobalLinkCardHost } from "../../../../features/browser/client/global-link-card.js";
 import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
 import { connectShellLaunchContext, PersistentShellHost, shellSurface } from "../../../../features/execution/client/terminal/shell/index.js";
 import { connectShellSession } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
@@ -25,15 +24,12 @@ import "@fontsource/nanum-gothic-coding/korean-700.css";
 export const consoleExecution: ClientExecutionProvider = {
   ...agentExecution,
   id: null,
-  // 전역 Fleet 브라우저는 레일 엔트리가 아니다 — 대화 머리의 지구본 카드와 ⇧⌘B 가 연다. 시트는 레일 패널·확대 표면이
-  // 아니라 Console 전역 영속 컴포넌트로 산다. 모바일에서는 시트 스스로 그리지 않는다.
   railEntries: [globalShellEntry],
   expandedSurfaces: [shellSurface],
   persistentComponents: [
     { id: "terminal-shell-host", render: (ctx) => <PersistentShellHost language={ctx.language} theme={ctx.theme} /> },
-    { id: "global-browser-sheet", render: (ctx) => <GlobalBrowserSheet language={ctx.language} theme={ctx.theme} /> },
-    // Operation 밖 링크의 「어디서 열까」 카드 — 전역 Shell과 같은 2행이다.
-    { id: "global-link-card", render: (ctx) => <GlobalLinkCardHost language={ctx.language} /> },
+    // Session 브라우저의 단축키 중계·엔진 가용성·shared 안내. 전역 브라우저 화면은 없다.
+    { id: "browser-session-host", render: (ctx) => <BrowserSessionHost language={ctx.language} /> },
   ],
   install: (ctx) => {
     void preloadTerminalFallbackFonts();

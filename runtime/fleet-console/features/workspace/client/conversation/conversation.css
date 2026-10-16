@@ -101,7 +101,7 @@
 /* ── 오른쪽 분할 칸 — 브라우저가 대화 열 옆에 선다 ─────────────────────────────
    대화 칸(.conversation-stage)이 right 로 폭을 내주고, 이 칸이 같은 시간·곡선의 width 전이로 그 자리를 채운다. 닫히면 폭 0 으로
    접힌다(늘 마운트). 펼쳐지는 동안은 대화 바탕 위 고요한 면과 왼쪽 1px 경계만 보인다 — 내용은 정착한 뒤에 선다.
-   Fleet 브라우저는 이 칸의 사각형에 시트가 앉고(global-browser-sheet.css .is-split), Operation 브라우저는 칸 안에 그린다. */
+   Session 브라우저는 이 칸 안에 그린다. */
 .conversation-split {
   position: absolute;
   top: 0;

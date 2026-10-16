@@ -35,9 +35,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },
-  // 전역 Fleet 브라우저 — Mod+Shift+B는 기본 목록에 없던 빈 자리다. Mod+B(사이드바)와는
-  // Shift 유무로 갈린다. 레일 칸은 없다 — 전역 발화(global-shortcuts.ts)가 시트를 바로 여닫고, 팔레트의 같은 명령이 이 조합을 그린다.
-  { id: "console.toggle-fleet-browser", group: "console", descriptionKey: "shortcuts.console.toggleFleetBrowser", defaults: ["Mod+Shift+KeyB"] },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.operations.undoClose", defaults: ["Mod+KeyZ"] },
   { id: "operations.sort-by-status", group: "operations", descriptionKey: "shortcuts.map.sortByStatus", defaults: ["Alt+KeyS"] },
 ];

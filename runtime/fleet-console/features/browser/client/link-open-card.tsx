@@ -4,37 +4,19 @@ import { createPortal } from "react-dom";
 import { openInDefaultOsBrowser } from "@fleet-console/link/core";
 
 import { useBrowserEngine } from "./browser-panel-store.js";
-import { FleetBrowserGlyph } from "./global-browser-entry.js";
-import { focusOrCreateGlobalTab, noteBackgroundTab, openGlobalBrowser } from "./global-browser-store.js";
 import { getLinkOpenT } from "./link-open-i18n.js";
 import "./link-open-card.css";
 
 /**
  * 링크 하나, 어디서 열까 — 주소를 누르면 서는 한 장의 카드.
  *
- * - Operation 표면(채팅·CLI): 3행(Fleet 브라우저 / Operation 브라우저 / 내 브라우저).
- * - 전역 Shell과 Operation 밖 Console(목표·Wiki·Settings 등): 2행(Fleet 브라우저 / 내 브라우저).
- * 카드는 브라우저 기능이 소유한다 — Operation 행은 부른 쪽이 `companion`으로 넘길 때만 선다.
+ * Session 이 있는 표면(채팅·CLI): 2행(Session 브라우저 / 내 브라우저).
+ * Session 이 없는 표면은 카드를 세우지 않고 내 브라우저로 바로 연다.
+ * 카드는 브라우저 기능이 소유한다 — Session 행은 부른 쪽이 `companion`으로 넘길 때만 선다.
  */
 
 /** 누른 자리. 카드는 그 점에서 펼쳐진다 — 커서 앵커 메뉴와 같은 문법이다. */
 export interface LinkOpenAt { readonly x: number; readonly y: number }
-
-/** Fleet 브라우저 새 탭(같은 주소면 그 탭)으로 열고 시트를 띄운다. 실패하면 OS로 떨어진다. */
-export function openInFleetBrowserSheet(url: string): void {
-  void focusOrCreateGlobalTab(url).then((ok) => {
-    if (ok) openGlobalBrowser();
-    else openInDefaultOsBrowser(url);
-  }).catch(() => openInDefaultOsBrowser(url));
-}
-
-/** Fleet 브라우저 뒤 탭 — 시트를 띄우지 않고 탭만 열고, 칸에 수를 남긴다. 실패하면 OS로 떨어진다. */
-export function openInFleetBrowserBackground(url: string): void {
-  void focusOrCreateGlobalTab(url, { activate: false }).then((ok) => {
-    if (ok) noteBackgroundTab();
-    else openInDefaultOsBrowser(url);
-  }).catch(() => openInDefaultOsBrowser(url));
-}
 
 const CARD_GAP = 8;
 const VIEWPORT_MARGIN = 8;
@@ -51,9 +33,9 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 문을 닫지 않는다 — 캡션의 지구본과 같은 판정이다.
   const engineMissing = engine !== null && !engine.available;
+  const hasCompanion = companion !== undefined;
   const cardRef = React.useRef<HTMLDivElement | null>(null);
-  // 첫 행(Fleet 브라우저)이 기본 포커스다. 문이 닫혀 있으면 내 브라우저가 첫 손잡이가 된다.
-  const globalRef = React.useRef<HTMLButtonElement | null>(null);
+  // Session 행이 기본 포커스다. 문이 닫혀 있거나 Session 이 없으면 내 브라우저가 첫 손잡이가 된다.
   const companionRef = React.useRef<HTMLButtonElement | null>(null);
   const webRef = React.useRef<HTMLButtonElement | null>(null);
   // 카드는 포커스를 쥐고 서지만(Enter 한 번이면 열린다) 그 사실을 링으로 말하지는 않는다 — 마우스로 연
@@ -97,8 +79,9 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
     card.style.top = `${Math.round(top)}px`;
     card.style.visibility = "visible";
     // 누르던 링크가 포커스를 쥐고 있으므로, 카드가 서는 그 자리에서 가져온다.
-    (engineMissing ? webRef : globalRef).current?.focus();
-  }, [at.x, at.y, engineMissing]);
+    // companion 객체는 부모가 렌더마다 새로 만들 수 있다. 행이 있는지만 본다.
+    (engineMissing || !hasCompanion ? webRef : companionRef).current?.focus();
+  }, [at.x, at.y, engineMissing, hasCompanion]);
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -119,19 +102,13 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
     setKeyboard(true);
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
-    const items = [globalRef.current, companionRef.current, webRef.current].filter((item): item is HTMLButtonElement => item !== null && !item.disabled);
+    const items = [companionRef.current, webRef.current].filter((item): item is HTMLButtonElement => item !== null && !item.disabled);
     if (items.length === 0) return;
     const index = items.indexOf(document.activeElement as HTMLButtonElement);
     const next = event.key === "ArrowDown" ? index + 1 : index - 1;
     items[(next + items.length) % items.length]!.focus();
   };
 
-  const openInGlobalFleet = () => {
-    onClose();
-    // 같은 주소의 탭이 있으면 그 탭으로 가고, 없으면 새 탭을 연 뒤 시트를 띄운다.
-    // 실패하면 OS로 떨어진다 — 누른 링크는 반드시 어딘가 열린다.
-    openInFleetBrowserSheet(url);
-  };
   const openInCompanionBrowser = () => {
     onClose();
     companion?.open();
@@ -161,13 +138,6 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
         onKeyDown={onMenuKeyDown}
       >
         <p className="link-open-url" title={url}><LinkParts url={url} /></p>
-        <button type="button" role="menuitem" className="link-open-choice" ref={globalRef} disabled={engineMissing} onClick={openInGlobalFleet}>
-          <FleetBrowserGlyph />
-          <span className="link-open-choice-text">
-            <strong>{t("terminal.link.fleetBrowser")}</strong>
-            <span>{unavailableHelp ?? t("terminal.link.fleetBrowserHelp")}</span>
-          </span>
-        </button>
         {companion ? (
           <button type="button" role="menuitem" className="link-open-choice" ref={companionRef} disabled={engineMissing} onClick={openInCompanionBrowser}>
             <GlobeGlyph />

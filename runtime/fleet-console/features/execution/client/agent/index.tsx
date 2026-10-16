@@ -21,7 +21,6 @@ import { isDesktopShell } from "../../../../core/client/src/integration/desktop-
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { focusOperation as focusConsoleOperation, requestOperationKeyboardFocus, themePolarity } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
-import { globalBrowserUnseenLabel, useGlobalBrowserUnseenTabs } from "../../../browser/client/global-browser-store.js";
 import { BrowserCaption, BrowserPanel } from "../../../browser/client/browser-panel.js";
 import { ComputerScreenShare, useOperationUse } from "../../../computer-use/client/computer-screen-share.js";
 import { gestureCallerLabel, getOperationWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
@@ -433,7 +432,7 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
     }
   }, [context]);
 
-  // 브라우저 문 — 대화 중심 화면에서는 「Fleet 브라우저 / Session 브라우저」 카드를 여는 통합 지구본이다. 허용은 패널 안에서 켠다.
+  // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
   const using = useOperationUse(context.operationId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
@@ -443,15 +442,11 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   const browserLabel = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  // 시트를 띄우지 않고 연 Fleet 브라우저 뒤 탭 — 별도 도구 칸이 걷힌 뒤로는 이 지구본 모서리가 그 수를 말한다(시트가 닫혀 있을 때만).
-  const unseenTabs = useGlobalBrowserUnseenTabs();
-  const browserBadge = engineMissing ? 0 : unseenTabs;
   const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
     <CaptionActionButton
       actionId="browser"
-      label={browserBadge > 0 ? `${browserLabel} · ${globalBrowserUnseenLabel(browserBadge, context.language)}` : browserLabel}
+      label={browserLabel}
       pressed={browserOpen}
-      badge={browserBadge}
       disabled={engineMissing}
       agent={using.browser}
       {...(engineMissing ? {} : { tourAnchor: "browser" })}
