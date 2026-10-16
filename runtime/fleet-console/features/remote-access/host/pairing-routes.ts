@@ -221,15 +221,7 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     const secret = readPairingCookie(req.headers, listener.port);
     const pairedDevice = secret === null ? null : pairedDeviceStore.resolve(secret, listener.audience);
     if (!pairedDevice || secret === null) {
-      // 쿠키를 냈는데 그 페어링이 없으면 세션 만료가 아니다. 그 쿠키만 만료시킨다.
-      if (secret !== null) {
-        res.writeHead(401, withSecurityHeaders({
-          "Content-Type": "application/json",
-          "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
-        }));
-        res.end(JSON.stringify({ error: "unauthorized" }));
-        return false;
-      }
+      // 이름 단위 Set-Cookie 만료는 늦게 도착하면 그 사이 받은 새 쿠키까지 지운다. 삭제는 셸이 보낸 값과 비교해 한다.
       writeJson(res, 401, { error: "unauthorized" });
       return false;
     }
@@ -333,11 +325,8 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       }
       const paired = pairedDeviceStore.resolve(secret, listener.audience);
       if (!paired) {
-        res.writeHead(401, withSecurityHeaders({
-          "Content-Type": "application/json",
-          "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
-        }));
-        res.end(JSON.stringify({ error: "unauthorized" }));
+        // capability가 없는 일반 401은 옛 서버의 미인증 응답이다. 이 표식이 있을 때만 그 쿠키의 거절이다.
+        writeJson(res, 401, { error: "unauthorized", capability: "pair" });
         return false;
       }
       // 아직 유효한 페어링이다. 세션을 열거나 제어를 옮기지 않고 쿠키만 다시 준다.

@@ -59,6 +59,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const epochs = new Map<string, number>();
   const jobs = new Map<number, HostJob>();
   const uploads = new Map<number, UploadAssembly>();
+  // origin+port 하나의 쿠키 변경만 직렬화한다. 늦은 응답이 그 사이 기록된 새 값을 지우지 않게 한다.
+  const pairingTurns = new Map<string, Promise<void>>();
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
@@ -100,26 +102,77 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return { origin, partition };
   };
 
+  const withPairing = <T,>(origin: string, port: number, work: () => Promise<T>): Promise<T> => {
+    const key = `${origin}\n${port}`;
+    const previous = pairingTurns.get(key) ?? Promise.resolve();
+    const run = previous.then(work, work);
+    pairingTurns.set(key, run.then(() => undefined, () => undefined));
+    return run;
+  };
+
+  const cookieName = (kind: "pairing" | "session", port: number): string => `fleet_console_${kind}_${port}`;
+
+  const cookieValue = (cookies: readonly HostPartitionCookie[], name: string): string | null => {
+    const found = cookies.find((cookie) => cookie.name === name && cookie.value.length > 0);
+    return found?.value ?? null;
+  };
+
+  const readPartitionCookies = async (partition: HostPartition, origin: string, port: number): Promise<{ pairing: string | null; session: string | null }> => ({
+    pairing: cookieValue(await partition.readCookies(origin), cookieName("pairing", port)),
+    session: cookieValue(await partition.readCookies(origin), cookieName("session", port)),
+  });
+
+  const readWindowCookies = async (origin: string, port: number): Promise<{ pairing: string | null; session: string | null }> => ({
+    pairing: cookieValue(await deps.readWindowCookies(origin), cookieName("pairing", port)),
+    session: cookieValue(await deps.readWindowCookies(origin), cookieName("session", port)),
+  });
+
   const copyPairingCookie = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
-    const name = `fleet_console_pairing_${port}`;
-    const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name);
-    if (!pairing) return;
-    await partition.writeCookie({ ...pairing, url: origin });
+    await withPairing(origin, port, async () => {
+      const name = cookieName("pairing", port);
+      const pairing = (await deps.readWindowCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
+      if (!pairing) return;
+      await partition.writeCookie({ ...pairing, url: origin });
+    });
   };
 
   const rememberPairing = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
-    const name = `fleet_console_pairing_${port}`;
-    const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name);
-    if (!renewed) return;
-    await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+    await withPairing(origin, port, async () => {
+      const name = cookieName("pairing", port);
+      const renewed = (await partition.readCookies(origin)).find((cookie) => cookie.name === name && cookie.value.length > 0);
+      if (!renewed) return;
+      await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
+    });
   };
 
-  /** 원격이 거절한 그 origin·포트의 페어링과 세션만 지운다. 창에 남기면 다음 명령이 다시 복사한다. */
-  const forgetRejectedPairing = async (origin: string, port: number, partition: HostPartition): Promise<void> => {
-    for (const name of [`fleet_console_pairing_${port}`, `fleet_console_session_${port}`]) {
-      await partition.removeCookie?.(origin, name);
-      await deps.removeWindowCookie?.(origin, name);
-    }
+  /**
+   * 이 명령이 보냈던 값과 아직 같은 쿠키만 지운다. 그 사이 같은 origin·포트에 기록된 새 값은 남긴다.
+   * 취소된 명령의 응답은 어느 값도 지우지 않는다.
+   */
+  const readPresentedCookies = async (partition: HostPartition, origin: string, port: number): Promise<{
+    readonly partition: { readonly pairing: string | null; readonly session: string | null };
+    readonly window: { readonly pairing: string | null; readonly session: string | null };
+  }> => ({
+    partition: await readPartitionCookies(partition, origin, port),
+    window: await readWindowCookies(origin, port),
+  });
+
+  const forgetPresentedCookies = async (
+    origin: string,
+    port: number,
+    partition: HostPartition,
+    presented: Awaited<ReturnType<typeof readPresentedCookies>>,
+    signal: AbortSignal | undefined,
+  ): Promise<void> => {
+    await withPairing(origin, port, async () => {
+      if (signal?.aborted) return;
+      const current = await readPresentedCookies(partition, origin, port);
+      for (const kind of ["pairing", "session"] as const) {
+        const name = cookieName(kind, port);
+        if (presented.partition[kind] && current.partition[kind] === presented.partition[kind]) await partition.removeCookie?.(origin, name);
+        if (presented.window[kind] && current.window[kind] === presented.window[kind]) await deps.removeWindowCookie?.(origin, name);
+      }
+    });
   };
 
   const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
@@ -190,7 +243,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   async function performPresence(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
     const intent = command.params.intent;
     if (intent !== "observe" && intent !== "activate" && intent !== "release") return { id: command.id, error: "invalid_host_request" };
-    const hadPairing = await hasPairingCookie(partition, origin, command.target.port);
+    const presented = await withPairing(origin, command.target.port, () => readPresentedCookies(partition, origin, command.target.port));
     let response: Response;
     try {
       response = await partition.fetch(`${origin}${SESSION_RESPONSE}`, {
@@ -199,9 +252,9 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     } catch {
       return { id: command.id, error: "remote_host_unavailable" };
     }
-    // release의 401은 세션만 끝난 것이다. observe·activate의 401만 페어링 거절이다.
-    if (response.status === 401 && (intent === "observe" || intent === "activate") && hadPairing) {
-      await forgetRejectedPairing(origin, command.target.port, partition);
+    // release의 401은 세션만 끝난 것이다. observe·activate의 401은 그때 보낸 쿠키 값만 걷는다.
+    if (response.status === 401 && (intent === "observe" || intent === "activate") && (presented.partition.pairing || presented.window.pairing)) {
+      await forgetPresentedCookies(origin, command.target.port, partition, presented, signal);
       return { id: command.id, error: "remote_host_not_paired" };
     }
     await rememberPairing(origin, command.target.port, partition);
@@ -217,27 +270,23 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   async function performPair(command: DesktopHostCommand, origin: string, partition: HostPartition, signal: AbortSignal): Promise<DesktopHostRelay> {
     const port = command.target.port;
     if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
-    let paired = false;
-    if (await hasPairingCookie(partition, origin, port)) {
-      const confirmed = await postPair(origin, partition, "{}", signal);
-      if (!confirmed) return { id: command.id, error: "remote_host_unavailable", end: true };
-      if (confirmed.status === 204) {
-        if (await responseSetsSession(confirmed, port)) return { id: command.id, error: "remote_host_unavailable" };
-        if (!(await hasPairingCookie(partition, origin, port))) return { id: command.id, error: "remote_host_unavailable" };
-        await rememberPairing(origin, port, partition);
-        return { id: command.id, capability: "supported", mode: "off", access: null };
-      }
-      if (confirmed.status !== 401) {
-        if (confirmed.status === 404 || confirmed.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
-        return { id: command.id, error: "remote_host_unavailable" };
-      }
-      await forgetRejectedPairing(origin, port, partition);
-      paired = true;
+    const presented = await withPairing(origin, port, () => readPresentedCookies(partition, origin, port));
+    // 쿠키가 있어도 능력 표식 없는 401은 옛 서버다. 그 응답만으로 자격을 보내거나 쿠키를 지우지 않는다.
+    const probe = await postPair(origin, partition, "{}", signal);
+    if (!probe || signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (probe.status === 204) {
+      if (responseSetsSession(probe, port)) return { id: command.id, error: "remote_host_unavailable" };
+      const still = await withPairing(origin, port, () => readPartitionCookies(partition, origin, port));
+      if (!still.pairing) return { id: command.id, error: "remote_host_unavailable" };
+      await rememberPairing(origin, port, partition);
+      return { id: command.id, capability: "supported", mode: "off", access: null };
     }
-    if (!paired) {
-      const probe = await postPair(origin, partition, "{}", signal);
-      if (!probe) return { id: command.id, error: "remote_host_unavailable", end: true };
-      if (!(await isPairProbe(probe))) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+    const marker = await readPairMarker(probe);
+    if (marker === "revoked") {
+      await forgetPresentedCookies(origin, port, partition, presented, signal);
+    } else if (marker !== "probe") {
+      if (probe.status === 404 || probe.status === 405 || probe.status === 401) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
+      return { id: command.id, error: "remote_host_unavailable" };
     }
     if (signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     const handoff = await takeHandoff(origin, signal);
@@ -265,9 +314,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return { id: command.id, capability: "supported", mode: "off", access: null };
   }
 
-
   function responseSetsSession(response: Response, port: number): boolean {
-    const name = `fleet_console_session_${port}`;
+    const name = cookieName("session", port);
     const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
     return lines.some((line) => line.startsWith(`${name}=`) && !line.startsWith(`${name}=;`));
   }
@@ -282,13 +330,15 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
   }
 
-  async function isPairProbe(response: Response): Promise<boolean> {
-    if (response.status !== 400) return false;
+  async function readPairMarker(response: Response): Promise<"probe" | "revoked" | "absent"> {
     try {
-      const body = await response.json() as { readonly error?: unknown; readonly capability?: unknown };
-      return body.error === "invalid_join" && body.capability === "pair" && Object.keys(body).length === 2;
+      const body = await response.json() as Record<string, unknown>;
+      if (!body || typeof body !== "object" || Array.isArray(body) || body.capability !== "pair" || Object.keys(body).length !== 2) return "absent";
+      if (response.status === 400 && body.error === "invalid_join") return "probe";
+      if (response.status === 401 && body.error === "unauthorized") return "revoked";
+      return "absent";
     } catch {
-      return false;
+      return "absent";
     }
   }
 
@@ -328,25 +378,22 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
       && normalizeFingerprint(handoff.fingerprint) === normalizeFingerprint(command.target.fingerprint);
   }
 
-  async function hasPairingCookie(partition: HostPartition, origin: string, port: number): Promise<boolean> {
-    const name = `fleet_console_pairing_${port}`;
-    return (await partition.readCookies(origin)).some((cookie) => cookie.name === name && cookie.value.length > 0);
-  }
-
   async function storePairingCookie(response: Response, origin: string, port: number, partition: HostPartition): Promise<"paired" | "rejected"> {
-    const pairingName = `fleet_console_pairing_${port}`;
-    const sessionName = `fleet_console_session_${port}`;
-    const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
-    if (lines.some((line) => line.startsWith(`${sessionName}=`) && !line.startsWith(`${sessionName}=;`))) return "rejected";
-    const header = lines.find((line) => line.startsWith(`${pairingName}=`));
-    if (header) {
-      const value = header.slice(pairingName.length + 1).split(";")[0] ?? "";
-      if (value.length === 0) return "rejected";
-      await partition.writeCookie({ name: pairingName, value, url: origin, path: "/", secure: true, httpOnly: true });
-    }
-    const cookies = await partition.readCookies(origin);
-    if (cookies.some((cookie) => cookie.name === sessionName && cookie.value.length > 0)) return "rejected";
-    return cookies.some((cookie) => cookie.name === pairingName && cookie.value.length > 0) ? "paired" : "rejected";
+    return withPairing(origin, port, async () => {
+      const pairingName = cookieName("pairing", port);
+      const sessionName = cookieName("session", port);
+      const lines = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+      if (lines.some((line) => line.startsWith(`${sessionName}=`) && !line.startsWith(`${sessionName}=;`))) return "rejected" as const;
+      const header = lines.find((line) => line.startsWith(`${pairingName}=`));
+      if (header) {
+        const value = header.slice(pairingName.length + 1).split(";")[0] ?? "";
+        if (value.length === 0) return "rejected" as const;
+        await partition.writeCookie({ name: pairingName, value, url: origin, path: "/", secure: true, httpOnly: true });
+      }
+      const cookies = await partition.readCookies(origin);
+      if (cookies.some((cookie) => cookie.name === sessionName && cookie.value.length > 0)) return "rejected" as const;
+      return cookies.some((cookie) => cookie.name === pairingName && cookie.value.length > 0) ? "paired" as const : "rejected" as const;
+    });
   }
 
   function sanitizeDeviceName(value: string | null | undefined): string | null {

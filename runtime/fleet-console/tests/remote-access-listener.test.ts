@@ -172,12 +172,12 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const rejectedObserve = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
     expect(rejectedObserve.status).toBe(401);
     expect(JSON.parse(rejectedObserve.body)).toEqual({ error: "unauthorized" });
-    expect((rejectedObserve.headers["set-cookie"] ?? []).join("\n")).toContain("Max-Age=0");
+    expect((rejectedObserve.headers["set-cookie"] ?? []).join("\n")).not.toContain("Max-Age=0");
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
     const rejectedPair = await remoteRequest(fixture, "POST", "/api/v1/pair", "{}", pairing);
     expect(rejectedPair.status).toBe(401);
-    expect(JSON.parse(rejectedPair.body)).toEqual({ error: "unauthorized" });
-    expect((rejectedPair.headers["set-cookie"] ?? []).join("\n")).toContain("Max-Age=0");
+    expect(JSON.parse(rejectedPair.body)).toEqual({ error: "unauthorized", capability: "pair" });
+    expect((rejectedPair.headers["set-cookie"] ?? []).join("\n")).not.toContain("Max-Age=0");
     expect((rejectedPair.headers["set-cookie"] ?? []).join("\n")).not.toContain("fleet_console_session_");
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
     const fresh = grantTokenOf(await createLink(fixture));
