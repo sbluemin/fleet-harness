@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -732,6 +733,77 @@ describe("Cursor live client-tool Run bridge", () => {
     await expectCursorMcpOwnership(
       cursorToolFrames([{ ...valid, name: "Read" }]), ["Read"], [], originalNameRequest,
     );
+    const recoveryRequest: CanonicalResponseRequest = {
+      ...cursorRequest("mcp-tuple-recovery", "grok-4.7"),
+      tools: [{ ...PROBE_TOOLS[0]!, name: "SendMessage", description: "SECRET_SCHEMA_DESCRIPTION" }],
+    };
+    const alias = buildCursorRunPlan(recoveryRequest, "recovery").tools[0]!.toolName;
+    const rejected = [
+      { ...cursorCall("alias-as-provider", 20), name: "SendMessage", providerIdentifier: alias },
+      { ...cursorCall("external-exact-name", 21), name: alias, providerIdentifier: "UNTRUSTED_PROVIDER_CANARY" },
+      { ...cursorCall("unadvertised-name", 22), name: "select:SendMessage" },
+      { ...cursorCall("near-match-name", 23), name: `${alias}_extra` },
+    ];
+    const recoveryFrames = rejected.flatMap((call, index) => {
+      const exec = cursorExecFrame(call) as { execServerMessage: { mcpArgs: { args: Record<string, string> } } };
+      exec.execServerMessage.mcpArgs.args = { path: cursorValue("SECRET_ARGUMENT_CANARY") };
+      return [cursorToolStartedFrame(index === 0 ? { ...call, name: "send" } : call), exec, cursorToolCompletedFrame(call)];
+    });
+    const recoveryStream = new BridgeCursorStream(recoveryFrames, cursorCompletionFrames("recovered"), 5);
+    const recoveryDiagnostics: CursorDiagnosticEvent[] = [];
+    const recoveryHarness = cursorHarness([recoveryStream], { diagnostics: (event) => recoveryDiagnostics.push(event) });
+    try {
+      const response = collectCursorResponse(recoveryHarness.adapter, recoveryRequest);
+      await waitFor(() => cursorMcpResultWrites(recoveryStream).length === 4);
+      expect(recoveryDiagnostics.filter((event) => event.event === "tool.call")).toEqual([]);
+      expect(recoveryDiagnostics.find((event) => event.event === "tool.mcp.dropped"))
+        .toMatchObject({ toolName: "send", reason: "foreign_provider" });
+      expect(recoveryDiagnostics
+        .filter((event) => event.event === "client.reply" && event.reply === "exec.policy.mcpArgs")
+        .map((event) => event.outcome))
+        .toEqual(["advertised_tuple", "advertised_tuple", "generic", "generic"]);
+      const refusals = cursorMcpResultWrites(recoveryStream);
+      expect(refusals.map((reply) => reply.execId)).toEqual(rejected.map((call) => call.execId));
+      const messages = refusals.map((reply) => (reply.mcpResult as { error: { error: string } }).error.error);
+      for (const message of messages.slice(0, 2)) {
+        expect(message).toContain('providerIdentifier="fleet-gateway"');
+        expect(message).toContain(`toolName=${JSON.stringify(alias)}`);
+      }
+      for (const message of messages.slice(2)) {
+        expect(message).not.toContain("providerIdentifier=");
+        expect(message).not.toContain(`toolName=${JSON.stringify(alias)}`);
+      }
+      const safeOutput = JSON.stringify([refusals, recoveryDiagnostics]);
+      for (const secret of ["SECRET_ARGUMENT_CANARY", "SECRET_SCHEMA_DESCRIPTION", "cursor-test-token"]) {
+        expect(safeOutput).not.toContain(secret);
+      }
+      expect(JSON.stringify(refusals)).not.toContain("UNTRUSTED_PROVIDER_CANARY");
+      expect(recoveryDiagnostics.filter((event) => event.event === "tool.mcp.dropped").map((event) => event.reason))
+        .toEqual(["foreign_provider", "foreign_provider", "catalog_miss", "catalog_miss"]);
+
+      const corrected = { ...cursorCall("new-corrected-call", 24), name: alias };
+      await recoveryStream.emitFrames(cursorToolFrames([corrected]));
+      const initialEvents = await response;
+      expect(addedFunctionCallIds(initialEvents)).toEqual([corrected.callId]);
+      expect(initialEvents.filter((event) => event.type === "response.output_item.done")).toEqual([
+        expect.objectContaining({ item: expect.objectContaining({ name: "SendMessage", call_id: corrected.callId }) }),
+      ]);
+      const continued = await collectCursorResponse(recoveryHarness.adapter, cursorContinuation(
+        recoveryRequest,
+        [{ ...corrected, name: "SendMessage" }],
+        [cursorResult(corrected, "delivered")],
+      ));
+      expect(canonicalText(continued)).toBe("recovered");
+      expect(recoveryDiagnostics.filter((event) => event.event === "tool.call")).toHaveLength(1);
+      expect(recoveryDiagnostics).toContainEqual(expect.objectContaining({ event: "tool.result", outcome: "success" }));
+      expect(cursorMcpResultWrites(recoveryStream)).toHaveLength(5);
+      expect(recoveryDiagnostics).not.toContainEqual(expect.objectContaining({ event: "bridge.mismatch" }));
+      expect(recoveryHarness.openedStreams).toBe(1);
+    } finally {
+      recoveryHarness.adapter.dispose();
+    }
+    expect(cursorAdapterLiveState(recoveryHarness.adapter)).toEqual({ liveRuns: 0, pendingRuns: 0, pendingTimers: 0 });
+
     // The result a parked Run receives names a tool the model can only call by its advertised name.
     const referenced = { ...valid, name: "Read" };
     const referenceStream = new BridgeCursorStream(cursorToolFrames([referenced]), cursorCompletionFrames("loaded"), 1);
@@ -1170,6 +1242,33 @@ describe("Cursor live client-tool Run bridge", () => {
         });
         const mismatch = diagnostics.find((event) => event.event === "bridge.mismatch");
         const writes = cursorClientWrites(parked);
+        const emitted = diagnostics.find((event) => event.event === "tool.call");
+        expect(emitted).toMatchObject({
+          requestSequence: 1,
+          toolName: "probe_tool",
+          callKey: createHash("sha256").update(call.callId).digest("hex"),
+          outcome: "emitted",
+        });
+        expect(diagnostics).toContainEqual(expect.objectContaining({
+          event: "tool.catalog", toolName: "probe_tool", expected: true, schemaBytes: expect.any(Number),
+        }));
+        expect(diagnostics).toContainEqual(expect.objectContaining({
+          event: "tool.catalog.sent", toolName: "probe_tool", outcome: "serialized", schemaBytes: expect.any(Number),
+        }));
+        expect(diagnostics).toContainEqual(expect.objectContaining({
+          event: "tool.catalog.summary", outcome: "serialized", count: 1, truncated: false,
+        }));
+        if (!mismatch) {
+          expect(diagnostics).toContainEqual(expect.objectContaining({
+            event: "tool.result", runId: emitted!.runId, requestSequence: 2,
+            callKey: emitted!.callKey, outcome: "success",
+          }));
+          expect(diagnostics).toContainEqual(expect.objectContaining({
+            event: "tool.catalog.sent", requestSequence: 2, outcome: "reused", toolName: "probe_tool",
+          }));
+        }
+        expect(JSON.stringify(diagnostics)).not.toContain("cursor-test-token");
+        expect(JSON.stringify(diagnostics)).not.toContain(call.callId);
         return {
           streams: harness.openedStreams,
           attached: diagnostics.some((event) => (
@@ -1757,7 +1856,7 @@ async function expectCursorMcpOwnership(
     const runId = diagnostics.find((event) => event.event === "turn.start")?.runId;
     expect(dropped.every((event) => event.runId === runId)).toBe(true);
     expect(dropped.map((event) => Object.keys(event).sort()))
-      .toEqual(expectedDrops.map(() => ["count", "elapsedMs", "event", "providerIdentifier", "reason", "runId", "timestamp", "toolName"].sort()));
+      .toEqual(expectedDrops.map(() => ["count", "elapsedMs", "event", "providerIdentifier", "reason", "requestSequence", "runId", "timestamp", "toolName"].sort()));
     expect(harness.openedStreams).toBe(1);
   } finally {
     harness.adapter.dispose();

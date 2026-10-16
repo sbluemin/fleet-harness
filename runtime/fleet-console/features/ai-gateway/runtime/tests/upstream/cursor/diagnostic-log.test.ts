@@ -29,7 +29,7 @@ describe("Cursor diagnostic log", () => {
     const root = await temporaryDirectory();
     const log = createCursorDiagnosticLog(path.join(root, "ai-gateway"));
     const event = diagnosticEvent({
-      event: "server.frame",
+      event: "tool.catalog",
       model: "grok-4.5",
       wireModel: "cursor-grok-4.5-high",
       requestedEffort: "high",
@@ -38,17 +38,42 @@ describe("Cursor diagnostic log", () => {
       contextTokens: 42_000,
       contextWindow: 256_000,
       argumentRepairCount: 1,
+      requestSequence: 2,
+      toolName: "SendMessage",
+      wireName: "cc_send_message_12345678",
+      schemaHash: "a".repeat(64),
+      schemaBytes: 128,
+      expected: true,
+      deferred: false,
+      truncated: false,
+      turn: "resample",
     });
     log.write({
       ...event,
       prompt: "SECRET_PROMPT",
       toolArguments: "SECRET_TOOL_ARGUMENTS",
+      inputSchema: { description: "SECRET_SCHEMA_DESCRIPTION" },
+      callKey: "SECRET_RAW_CALL_ID",
+    } as CursorDiagnosticEvent);
+    log.write({
+      ...diagnosticEvent({ event: "client.reply", reply: "exec.policy.mcpArgs", outcome: "advertised_tuple" }),
+      toolArguments: "SECRET_TOOL_ARGUMENTS",
+      responseBody: "SECRET_RESPONSE_BODY",
     } as CursorDiagnosticEvent);
     await log.flush();
 
     const contents = await readFile(log.path, "utf8");
-    expect(JSON.parse(contents)).toEqual(expect.objectContaining({
-      event: "server.frame",
+    const records = contents.trim().split("\n").map((line) => JSON.parse(line));
+    expect(records[1]).toEqual({
+      timestamp: "2026-08-01T03:43:30.570Z",
+      runId: "cursor-run-test",
+      elapsedMs: 210,
+      event: "client.reply",
+      reply: "exec.policy.mcpArgs",
+      outcome: "advertised_tuple",
+    });
+    expect(records[0]).toEqual(expect.objectContaining({
+      event: "tool.catalog",
       model: "grok-4.5",
       wireModel: "cursor-grok-4.5-high",
       requestedEffort: "high",
@@ -57,9 +82,20 @@ describe("Cursor diagnostic log", () => {
       contextTokens: 42_000,
       contextWindow: 256_000,
       argumentRepairCount: 1,
+      requestSequence: 2,
+      toolName: "SendMessage",
+      wireName: "cc_send_message_12345678",
+      schemaHash: "a".repeat(64),
+      schemaBytes: 128,
+      expected: true,
+      deferred: false,
+      truncated: false,
+      turn: "resample",
     }));
     expect(contents).not.toContain("SECRET_PROMPT");
     expect(contents).not.toContain("SECRET_TOOL_ARGUMENTS");
+    expect(contents).not.toContain("SECRET_SCHEMA_DESCRIPTION");
+    expect(contents).not.toContain("SECRET_RAW_CALL_ID");
     expect((await stat(path.dirname(log.path))).mode & 0o777).toBe(0o700);
     expect((await stat(log.path)).mode & 0o777).toBe(0o600);
   });

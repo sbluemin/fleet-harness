@@ -181,6 +181,12 @@ export type CursorDiagnosticEventName =
   | "client.reply"
   | "server.frame"
   | "tool.mcp.dropped"
+  | "tool.catalog"
+  | "tool.catalog.sent"
+  | "tool.catalog.summary"
+  | "tool.call"
+  | "tool.result"
+  | "tool.reference"
   | "bridge.park"
   | "bridge.attach"
   | "bridge.defer"
@@ -257,6 +263,19 @@ export interface CursorDiagnosticEvent {
   readonly operationSequence?: number;
   readonly adapter?: "read-direct" | "grep-direct" | "glob-direct" | "grep-shell" | "shell-direct";
   readonly error?: string;
+  readonly requestSequence?: number;
+  readonly toolKey?: string;
+  readonly wireName?: string;
+  readonly wireKey?: string;
+  readonly schemaHash?: string;
+  readonly schemaBytes?: number;
+  readonly catalogHash?: string;
+  readonly previousCatalogHash?: string;
+  readonly callKey?: string;
+  readonly expected?: boolean;
+  readonly deferred?: boolean;
+  readonly referenced?: boolean;
+  readonly truncated?: boolean;
 }
 
 export type CursorDiagnosticSink = (event: CursorDiagnosticEvent) => void;
@@ -1821,6 +1840,8 @@ export class CursorAdapter implements AiGatewayAdapter {
           toolCount: preflight.tools.length,
           estimatedInputTokens: preflight.estimatedInputTokens,
         });
+        reportCursorCatalog(pending.run.report, request, preflight.tools,
+          preparation.context.toolBudget.omittedNames, descriptor.toolCatalogFingerprint, true);
         pending.run.report("bridge.attach", {
           model: cursorDiagnosticLabel(request.model),
           outcome: "exact_match",
@@ -1840,13 +1861,15 @@ export class CursorAdapter implements AiGatewayAdapter {
       if (!results && descriptorMismatch) {
         const plan = buildPreparedCursorRunPlan(request, identity.conversationId, preparation);
         wireLog("cursor.wire.plan", plan);
-        return (await this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint))
+        return (await this.openRun(request, options, identity, plan, descriptor, preparation.context.toolBudget, contextRecall.checkpoint))
           .response;
       }
       if (this.claimPendingLiveRun(pending)) {
         pending.run.report("bridge.mismatch", {
           model: cursorDiagnosticLabel(request.model),
           outcome: mismatch ?? "concurrent_claim",
+          catalogHash: descriptor.toolCatalogFingerprint,
+          previousCatalogHash: pending.run.descriptor.toolCatalogFingerprint,
         });
         pending.run.dispose(`bridge_mismatch_${mismatch ?? "concurrent_claim"}`);
       }
@@ -1857,7 +1880,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     // post-rewrite tool set plus the resolved model coordinate. Exact bridge attaches never send
     // this payload, so build and log it only after that path is ruled out.
     wireLog("cursor.wire.plan", plan);
-    const opened = await this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
+    const opened = await this.openRun(request, options, identity, plan, descriptor, preparation.context.toolBudget, contextRecall.checkpoint);
     return opened.run === undefined ? opened.response : resampled(opened.run, opened.response.events);
   }
 
@@ -1903,7 +1926,7 @@ export class CursorAdapter implements AiGatewayAdapter {
         if (refusal) throw refusal;
         const plan = buildPreparedCursorRunPlan(nudged, identity.conversationId, nudgedPreparation);
         wireLog("cursor.wire.plan", { resample: true, ...plan });
-        const opened = await this.openRun(nudged, options, identity, plan, descriptor, recall.checkpoint, {
+        const opened = await this.openRun(nudged, options, identity, plan, descriptor, nudgedPreparation.context.toolBudget, recall.checkpoint, {
           resample: true,
           // The client's next request carries the announcement and the recovered call but never the
           // nudge. Measured against a baseline that includes it, a short tool result reads as a
@@ -2005,6 +2028,7 @@ export class CursorAdapter implements AiGatewayAdapter {
     identity: CursorSessionIdentity,
     plan: CursorRunPlan,
     descriptor: CursorLiveRunDescriptor,
+    toolBudget: CursorToolBudget,
     previousContextCheckpoint: CursorContextCheckpoint | undefined,
     extras: CursorOpenRunExtras = {},
   ): Promise<CursorOpenedRun> {
@@ -2033,6 +2057,7 @@ export class CursorAdapter implements AiGatewayAdapter {
       toolCount: plan.tools.length,
       estimatedInputTokens: plan.estimatedInputTokens,
     });
+    reportCursorCatalog(report, request, plan.tools, toolBudget.omittedNames, descriptor.toolCatalogFingerprint);
     if (previousWireModel !== undefined && previousWireModel !== plan.wireModelId) {
       report("model.switch", {
         model,
@@ -2097,7 +2122,9 @@ export class CursorAdapter implements AiGatewayAdapter {
     try {
       try {
         // KV, interaction, heartbeat, and later mcpResult messages share this request stream.
-        stream.write(encodeCursorClientMessage(plan.payload));
+        const encoded = encodeCursorClientMessage(plan.payload);
+        stream.write(encoded);
+        reportCursorSerializedCatalog(report, encoded, plan.tools);
       } catch (error) {
         const failure = error instanceof Error ? error : new Error(String(error));
         report("turn.finish", {
@@ -2422,18 +2449,20 @@ type CursorDiagnosticFields = Omit<
   "timestamp" | "runId" | "event" | "elapsedMs"
 >;
 
-type CursorDiagnosticReporter = (
-  event: CursorDiagnosticEventName,
-  fields?: CursorDiagnosticFields,
-) => void;
+type CursorDiagnosticReporter = {
+  (event: CursorDiagnosticEventName, fields?: CursorDiagnosticFields): void;
+  readonly enabled: boolean;
+};
 
 function createCursorDiagnosticReporter(
   sink: CursorDiagnosticSink | undefined,
 ): CursorDiagnosticReporter {
   const startedAt = Date.now();
   const runId = `cursor-run-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  return (event, fields = {}) => {
+  let requestSequence = 0;
+  return Object.assign((event: CursorDiagnosticEventName, fields: CursorDiagnosticFields = {}) => {
     if (!sink) return;
+    if (event === "turn.start") requestSequence += 1;
     try {
       sink({
         timestamp: new Date().toISOString(),
@@ -2441,11 +2470,119 @@ function createCursorDiagnosticReporter(
         event,
         elapsedMs: Math.max(0, Date.now() - startedAt),
         ...fields,
+        requestSequence,
       });
     } catch {
       // Diagnostics are observational only and must never change transport behavior.
     }
-  };
+  }, { enabled: sink !== undefined });
+}
+
+function cursorDiagnosticHash(value: string | Uint8Array): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function reportCursorCatalog(
+  report: CursorDiagnosticReporter,
+  request: CanonicalResponseRequest,
+  tools: readonly CursorWireTool[],
+  omittedNames: readonly string[],
+  catalogHash: string,
+  reused = false,
+): void {
+  if (!report.enabled) return;
+  try {
+    const declared = request.tools ?? [];
+    const selected = new Set(tools.map((tool) => tool.clientName));
+    const budget = new Set(omittedNames);
+    const referenced = cursorReferencedToolNames(request.input);
+    for (const tool of declared.slice(0, 1024)) {
+      const expected = selected.has(tool.name);
+      const schema = JSON.stringify(tool.parameters);
+      report("tool.catalog", {
+        toolName: cursorDiagnosticLabel(tool.name),
+        toolKey: cursorDiagnosticHash(tool.name),
+        wireName: cursorDiagnosticLabel(cursorWireToolName(tool.name)),
+        wireKey: cursorDiagnosticHash(cursorWireToolName(tool.name)),
+        schemaHash: cursorDiagnosticHash(schema),
+        schemaBytes: Buffer.byteLength(schema),
+        deferred: tool.defer_loading === true,
+        referenced: referenced.has(tool.name),
+        expected,
+        outcome: selected.has(tool.name) ? "selected" : budget.has(tool.name) ? "budget_excluded"
+          : isCursorWithheldToolName(tool.name) ? "native_redirect" : "deferred",
+      });
+    }
+    report("tool.catalog.summary", {
+      count: declared.length,
+      toolCount: tools.length,
+      catalogHash,
+      truncated: declared.length > 1024,
+      outcome: reused ? "reused" : "prepared",
+    });
+    for (const result of cursorBridgeToolBatch(request.input)?.results ?? []) {
+      report("tool.result", {
+        callKey: cursorDiagnosticHash(result.call_id),
+        outcome: result.is_error === true ? "error" : "success",
+      });
+      for (const name of (result.tool_references ?? []).slice(0, 1024)) {
+        report("tool.reference", {
+          callKey: cursorDiagnosticHash(result.call_id),
+          toolName: cursorDiagnosticLabel(name),
+          toolKey: cursorDiagnosticHash(name),
+          outcome: selected.has(name) ? "selected" : "not_selected",
+        });
+      }
+    }
+    if (reused) reportCursorSentCatalog(report, tools.map(cursorWireToolDefinition), tools, "reused");
+  } catch {
+    report("tool.catalog.summary", { outcome: "diagnostic_error", truncated: true });
+  }
+}
+
+function reportCursorSentCatalog(
+  report: CursorDiagnosticReporter,
+  definitions: readonly unknown[],
+  tools: readonly CursorWireTool[],
+  outcome: "serialized" | "reused" | "request_context",
+): void {
+  if (!report.enabled) return;
+  for (const definition of definitions.slice(0, 1024)) {
+    if (!isRecord(definition) || typeof definition.name !== "string") continue;
+    const tool = tools.find((candidate) => candidate.name === definition.name);
+    const schema = typeof definition.inputSchema === "string"
+      ? Buffer.from(definition.inputSchema, "base64") : Buffer.alloc(0);
+    report("tool.catalog.sent", {
+      toolName: cursorDiagnosticLabel(tool?.clientName ?? definition.name),
+      toolKey: cursorDiagnosticHash(tool?.clientName ?? definition.name),
+      wireName: cursorDiagnosticLabel(definition.name),
+      wireKey: cursorDiagnosticHash(definition.name),
+      schemaHash: cursorDiagnosticHash(schema),
+      schemaBytes: schema.byteLength,
+      outcome,
+    });
+  }
+}
+
+function reportCursorSerializedCatalog(
+  report: CursorDiagnosticReporter,
+  encoded: Uint8Array,
+  tools: readonly CursorWireTool[],
+): void {
+  if (!report.enabled) return;
+  try {
+    const payload = toJson(AgentClientMessageSchema, fromBinary(AgentClientMessageSchema, encoded.subarray(5)));
+    const run = isRecord(payload) && isRecord(payload.runRequest) ? payload.runRequest : undefined;
+    const catalog = run && isRecord(run.mcpTools) ? run.mcpTools.mcpTools : [];
+    reportCursorSentCatalog(report, Array.isArray(catalog) ? catalog : [], tools, "serialized");
+    report("tool.catalog.summary", {
+      outcome: "serialized",
+      count: Array.isArray(catalog) ? catalog.length : 0,
+      truncated: !Array.isArray(catalog),
+    });
+  } catch {
+    report("tool.catalog.summary", { outcome: "diagnostic_error", truncated: true });
+  }
 }
 
 function cursorDiagnosticLabel(value: string): string {
@@ -3203,6 +3340,12 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
     entry.arguments = argumentsText;
     entry.completed = true;
     activeSegment.outputText += `\n${entry.name}\n${argumentsText}`;
+    if (report.enabled) report("tool.call", {
+      callKey: cursorDiagnosticHash(entry.itemId),
+      toolKey: cursorDiagnosticHash(entry.name),
+      toolName: cursorDiagnosticLabel(entry.name),
+      outcome: "emitted",
+    });
     emit({
       type: "response.output_item.done",
       output_index: entry.index,
@@ -3556,9 +3699,14 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       // A native exec answered here (a policy rejection or an unknown-call fallback) ends one model
       // step; the model writes its next step from scratch. Only the last step says how the turn ends.
       activeSegment.stepText = "";
+      const rejectedTool = wireCall ? cursorAdvertisedMcpTool(wireCall.name, tools) : undefined;
       const policyReplies = cursorNativeExecPolicyReplies(
         frame.execServerMessage,
         tools.map((tool) => ({ clientName: tool.clientName, wireName: tool.toolName })),
+        rejectedTool === undefined ? undefined : {
+          providerIdentifier: CURSOR_TOOL_PROVIDER_IDENTIFIER,
+          toolName: rejectedTool.toolName,
+        },
       );
       for (const reply of policyReplies ?? []) stream.write(encodeCursorClientMessage(reply));
       if (policyReplies) {
@@ -3566,6 +3714,9 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
           model: diagnosticModel,
           reply: `exec.policy.${cursorNestedRecordCase(frame.execServerMessage, CURSOR_EXEC_CASES)}`,
           count: policyReplies.length,
+          ...(isRecord(frame.execServerMessage.mcpArgs)
+            ? { outcome: rejectedTool === undefined ? "generic" : "advertised_tuple" }
+            : {}),
         });
       } else {
         const fallback = cursorUnknownExecReply(frame.execServerMessage, unknownExecFields, {
@@ -4179,6 +4330,17 @@ const CURSOR_MCP_DISPLAY_PREFIX = `mcp_${CURSOR_TOOL_PROVIDER_IDENTIFIER}_`;
 
 type CursorMcpDropReporter = (call: CursorMcpCall, reason: NonNullable<CursorDiagnosticEvent["reason"]>) => void;
 
+function cursorAdvertisedMcpTool(name: string, tools: readonly CursorWireTool[]): CursorWireTool | undefined {
+  const wireName = name.startsWith(CURSOR_MCP_DISPLAY_PREFIX)
+    ? name.slice(CURSOR_MCP_DISPLAY_PREFIX.length)
+    : name;
+  return tools.find((candidate) => (
+    candidate.name === wireName
+    || candidate.toolName === wireName
+    || candidate.clientName === name
+  ));
+}
+
 function cursorClientMcpCall(
   call: CursorMcpCall,
   tools: readonly CursorWireTool[],
@@ -4188,14 +4350,7 @@ function cursorClientMcpCall(
     reportDroppedMcpCall(call, "foreign_provider");
     return null;
   }
-  const wireName = call.name.startsWith(CURSOR_MCP_DISPLAY_PREFIX)
-    ? call.name.slice(CURSOR_MCP_DISPLAY_PREFIX.length)
-    : call.name;
-  const tool = tools.find((candidate) => (
-    candidate.name === wireName
-    || candidate.toolName === wireName
-    || candidate.clientName === call.name
-  ));
+  const tool = cursorAdvertisedMcpTool(call.name, tools);
   if (!tool) {
     reportDroppedMcpCall(call, "catalog_miss");
     return null;

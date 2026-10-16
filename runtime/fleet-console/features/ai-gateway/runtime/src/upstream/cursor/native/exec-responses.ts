@@ -17,6 +17,7 @@ export interface CursorClientToolReference {
 export function cursorNativeExecPolicyReplies(
   exec: ExecMessage,
   clientTools: readonly (string | CursorClientToolReference)[],
+  advertisedMcpTool?: { readonly providerIdentifier: string; readonly toolName: string },
 ): readonly unknown[] | null {
   const readMessage = alternativeToolFacts(clientTools, [
     "Read",
@@ -156,8 +157,11 @@ export function cursorNativeExecPolicyReplies(
     })];
   }
   if (isRecord(exec.mcpArgs)) {
+    const message = advertisedMcpTool
+      ? `MCP call rejected; no caller tool was executed. The advertised tool requires providerIdentifier=${JSON.stringify(advertisedMcpTool.providerIdentifier)} and toolName=${JSON.stringify(advertisedMcpTool.toolName)}. These are separate fields: do not use a tool name as providerIdentifier. Submit a new call with this exact tuple.`
+      : nativeRefusal("mcpArgs", alternativeToolFacts(clientTools, []));
     return [execReply(exec, "mcpResult", {
-      error: { error: nativeRefusal("mcpArgs", alternativeToolFacts(clientTools, [])) },
+      error: { error: message },
     })];
   }
   return null;
