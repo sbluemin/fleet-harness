@@ -58,7 +58,7 @@ Compare each one's `paths`/`paths-ignore` with `git diff --name-only origin/<bas
 
 ### Phase 7 — Cleanup & completion
 
-**Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself — do **not** ask the user. Follow the git-worktree skill's remove flow:
+**Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself under the root's owned post-merge cleanup authority — do **not** ask the user again for that covered action. Before removal, preserve any task evidence not held by the PR/merge outside the worktree. Dirty/untracked work or unknown ignored artifacts outside that authority stay: report incomplete cleanup rather than using force to discard them. Follow the git-worktree skill's remove flow:
 1. If `<headRefName>` is in this task's dedicated worktree, invoke `git-worktree` remove mode. That skill owns protected/dirty/unpushed/ownership checks and removal commands.
 2. If the user authorized direct work in the main checkout, first confirm its current branch is `<headRefName>`, clean, and unprotected. Then switch to `<base>` and delete only the merged head branch. Otherwise preserve user changes and report incomplete cleanup.
 3. Hard stops — never cross even autonomously: never delete the main checkout, and never delete a protected branch (`main` / `master` / `<base>`). The remote head branch is typically auto-deleted by GitHub on merge; otherwise leave it unless remote cleanup was requested.
