@@ -16,7 +16,7 @@ export type GatewayCredentialState = "present" | "absent";
 export interface GatewayCredentialReport {
   readonly provider: GatewayProvider;
   readonly state: GatewayCredentialState;
-  /** 이 공급자의 자격증명이 어디서 오는지. `fleet gateway auth`가 다루는 축인지 구분한다. */
+  /** 이 공급자의 자격증명이 어디서 오는지. API 키 축인지 구독 축인지 구분한다. */
   readonly source: "subscription" | "api-key";
 }
 
@@ -156,7 +156,7 @@ function describeCredential(credential: GatewayCredentialReport): string {
   if (credential.source === "api-key") {
     return credential.state === "present"
       ? "signed in"
-      : "not signed in — `fleet gateway auth login`";
+      : "not signed in — `fleet gateway`, then Providers";
   }
   return credential.state === "present" ? "subscription found" : "no subscription found";
 }

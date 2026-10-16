@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { classifyFleetArgv, dispatchFleetArgv } from "../cli/fleet-dispatch.js";
 
@@ -30,37 +30,42 @@ function createIo() {
 
 describe("dual-entry dispatch", () => {
 
-  it("reserves fleet gateway and keeps it off the Claude passthrough path", async () => {
+  it("reserves fleet gateway and treats a bare invocation as help", () => {
     expect(classifyFleetArgv(["gateway"])).toEqual({ kind: "gateway", gatewayArgv: [] });
     expect(classifyFleetArgv(["gateway", "set", "wire-log", "on"])).toEqual({
       kind: "gateway",
       gatewayArgv: ["set", "wire-log", "on"],
     });
-    // `cli` 뒤의 예약어는 지금처럼 Claude에게 간다.
-    expect(classifyFleetArgv(["cli", "gateway"])).toEqual({
-      kind: "passthrough",
-      passthroughArgs: ["gateway"],
-    });
+    expect(classifyFleetArgv([])).toEqual({ kind: "help" });
+    expect(classifyFleetArgv(["--help"])).toEqual({ kind: "help" });
+    expect(classifyFleetArgv(["cli", "gateway"])).toEqual({ kind: "unknown", command: "cli" });
+    expect(classifyFleetArgv(["--version"])).toEqual({ kind: "version" });
   });
 
-  it("keeps fleet cli --version as Claude passthrough", async () => {
-    expect(classifyFleetArgv(["cli", "--version"])).toEqual({
-      kind: "passthrough",
-      passthroughArgs: ["--version"],
+  it("prints help for bare fleet and rejects a retired cli invocation", async () => {
+    const helpIo = createIo();
+    const helpStatus = await dispatchFleetArgv([], {
+      stdout: helpIo.stdout,
+      stderr: helpIo.stderr,
+      env: {},
+      dispatchUpdateCommand: (async () => 0) as never,
     });
+    expect(helpStatus).toBe(0);
+    expect(helpIo.stdout.toString()).toContain("console");
+    expect(helpIo.stderr.toString()).toBe("");
+
     const io = createIo();
-    const runApp = vi.fn(async () => undefined);
     const status = await dispatchFleetArgv(["cli", "--version"], {
       stdout: io.stdout,
       stderr: io.stderr,
       env: {},
-      runApp: runApp as never,
-      createAuthService: (() => ({})) as never,
-      dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
-    expect(status).toBe(0);
-    expect(runApp).toHaveBeenCalledWith({ passthroughArgs: ["--version"] });
+    expect(status).not.toBe(0);
+    const stderr = io.stderr.toString();
+    expect(stderr).toContain("Unknown fleet command: cli");
+    expect(stderr).toContain("fleet --help");
+    expect(io.stdout.toString()).toBe("");
   });
 
   it("keeps entry isolation: fleet entry never imports the direct-run-guarded Console entry", async () => {

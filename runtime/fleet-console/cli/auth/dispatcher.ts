@@ -10,12 +10,10 @@ import {
   type AuthCommandIo,
 } from "./login-flow.js";
 
-const AUTH_HELP_TEXT = `fleet gateway auth — AI Gateway provider authentication
+const AUTH_HELP_TEXT = `AI Gateway provider authentication
 
-Usage:
-  fleet gateway auth login [opencode|typesafe]
-  fleet gateway auth list
-  fleet gateway auth logout [opencode|typesafe]
+Sign in or out from fleet gateway, then Providers.
+OpenCode Go and TypeSafe take an API key there.
 
 Codex, Cursor, and xAI use their own subscription credentials.
 Run fleet gateway status to see whether each one was found.
@@ -38,7 +36,7 @@ export async function dispatchAuthCommand(
   if (command === "list") return listAuthProviders(io, deps);
   if (command === "logout") return logoutAuthProvider(argv.slice(2), io, deps);
 
-  io.stderr.write(`Unknown fleet gateway auth command: ${command}\n`);
+  io.stderr.write(`Unknown authentication command: ${command}\n`);
   io.stdout.write(AUTH_HELP_TEXT);
   return 1;
 }

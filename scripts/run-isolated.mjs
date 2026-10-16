@@ -29,8 +29,7 @@ const FLEET_ENTRY = "runtime/fleet-console/dist/fleet.mjs";
 
 const TARGETS = {
   // `fleet`은 설치본과 같은 진입점이다 — `pnpm fleet gateway status`는 `fleet gateway status`가
-  // 하는 일을 격리 루트에 대고 한다. `cli`는 이 타겟의 옛 이름으로 남는다: `fleet cli`가 이제
-  // 세 런타임 중 하나(Claude 패스스루)를 가리키므로, 그 이름으로 전체 launcher를 부르면 거짓말이 된다.
+  // 하는 일을 격리 루트에 대고 한다. `cli`는 이 타겟의 옛 이름이라 같은 진입점을 연다.
   fleet: [process.execPath, FLEET_ENTRY],
   cli: [process.execPath, FLEET_ENTRY],
   console: [process.execPath, "runtime/fleet-console/dist/cli.mjs"],

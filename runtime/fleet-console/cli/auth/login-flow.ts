@@ -89,7 +89,7 @@ export function resolveAuthCliId(
   if (parsed) return parsed;
   // 목록을 정의에서 세운다 — 손으로 적은 목록은 공급자가 늘 때 조용히 낡는다.
   const known = (Object.keys(AUTH_CLI_DEFINITIONS) as AuthCliId[]).join(", ");
-  io.stderr.write(`Unknown fleet gateway auth provider: ${value}\nUse one of: ${known}.\n`);
+  io.stderr.write(`Unknown provider: ${value}\nUse one of: ${known}.\n`);
   return "invalid";
 }
 

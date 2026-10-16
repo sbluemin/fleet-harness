@@ -4,7 +4,7 @@
 
 Fleet Console is the sole published owner of the CLI launcher and web product. Private workspace identities are implementation boundaries, not separately published products.
 
-- `runtime/fleet-console/cli/` owns argv/process lifecycle and thin Claude Code passthrough.
+- `runtime/fleet-console/cli/` owns `fleet` argv and process lifecycle for Console management and gateway configuration. It does not launch Claude Code.
 - `runtime/fleet-console/core/host/` owns bootstrap, transport, plugin adapters, and native-shell composition.
 - `runtime/fleet-console/core/client/src/` owns app composition, chrome, and integration.
 - `runtime/fleet-console/features/` owns Execution, AI Gateway, Console Use, Browser, Computer Use, Remote Access, Workspace, Settings, and Updates.

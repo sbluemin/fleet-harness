@@ -24,14 +24,11 @@ import {
   renderGatewayStatusText,
   type GatewayCredentialReport,
 } from "./report.js";
-import { runGatewayServe } from "./serve.js";
 import { dispatchAuthCommand } from "../auth/dispatcher.js";
 
 export type GatewayDispatch =
   | { readonly kind: "help" }
   | { readonly kind: "interactive" }
-  | { readonly kind: "serve"; readonly argv: readonly string[] }
-  | { readonly kind: "auth"; readonly argv: readonly string[] }
   | { readonly kind: "models"; readonly json: boolean }
   | { readonly kind: "status"; readonly json: boolean }
   | { readonly kind: "set"; readonly key: string | undefined; readonly value: string | undefined }
@@ -49,7 +46,6 @@ export interface GatewayCommandDeps {
   readonly createAuthService?: () => AuthService;
   readonly dispatchAuthCommand?: typeof dispatchAuthCommand;
   readonly runInteractive?: typeof runGatewayInteractive;
-  readonly runServe?: typeof runGatewayServe;
   readonly readSubscriptions?: GatewaySubscriptionReaders;
 }
 
@@ -64,8 +60,6 @@ export function classifyGatewayArgv(argv: readonly string[]): GatewayDispatch {
   const command = argv[0];
   if (command === undefined) return { kind: "interactive" };
   if (command === "--help" || command === "-h") return { kind: "help" };
-  if (command === "serve") return { kind: "serve", argv: argv.slice(1) };
-  if (command === "auth") return { kind: "auth", argv: ["auth", ...argv.slice(1)] };
   if (command === "models") return { kind: "models", json: hasJsonFlag(argv.slice(1)) };
   if (command === "status") return { kind: "status", json: hasJsonFlag(argv.slice(1)) };
   if (command === "set") return { kind: "set", key: argv[1], value: argv[2] };
@@ -91,23 +85,9 @@ export async function dispatchGatewayCommand(
     return 1;
   }
 
-  if (dispatch.kind === "serve") {
-    return await (deps.runServe ?? runGatewayServe)(dispatch.argv, io, {
-      env,
-      ...(deps.dataDir === undefined ? {} : { dataDir: deps.dataDir }),
-      ...(deps.createStore === undefined ? {} : { createStore: deps.createStore }),
-      ...(deps.createAuthService === undefined ? {} : { createAuthService: deps.createAuthService }),
-    });
-  }
-
   const slot = resolveGatewaySlot(deps.dataDir);
   const dataDir = slot.dataDir;
   const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir, legacyDirs: slot.legacyDirs })))(dataDir);
-
-  if (dispatch.kind === "auth") {
-    const authService = resolveAuthService(deps);
-    return await (deps.dispatchAuthCommand ?? dispatchAuthCommand)(dispatch.argv, io, { authService });
-  }
 
   if (dispatch.kind === "interactive") {
     const authService = resolveAuthService(deps);

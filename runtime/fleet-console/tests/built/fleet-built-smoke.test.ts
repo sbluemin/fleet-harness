@@ -66,7 +66,7 @@ afterEach(async () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("console             start · stop · restart · status");
     expect(result.stdout).not.toContain("console             start · stop · restart · status · help");
-    expect(result.stdout).toContain("Unrecognized arguments are passed through to Claude Code.");
+    expect(result.stdout).not.toContain("Unrecognized arguments are passed through to Claude Code.");
   });
 
   it("prints Console help from dist/cli.mjs --help without Gateway passthrough notes", () => {

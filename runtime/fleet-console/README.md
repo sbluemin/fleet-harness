@@ -167,12 +167,10 @@ The AI Gateway is configured from the same launcher, against the same `ai-gatewa
 fleet gateway                          # interactive configuration
 fleet gateway status                   # configuration and credential state
 fleet gateway models --json            # what the gateway currently exposes
-fleet gateway auth login               # OpenCode Go / TypeSafe API keys
 fleet gateway set xai-endpoint direct  # one policy axis, no prompts
-fleet gateway serve                    # a standalone loopback gateway
 ```
 
-The CLI writes the settings file directly, so it works with the Console stopped; an open Console tab shows the change after a reload. `fleet gateway serve` binds 127.0.0.1 and carries no authentication: a client sets `ANTHROPIC_BASE_URL` to the printed URL and any `ANTHROPIC_API_KEY` starting with `sk-ant-`, whose value the gateway never reads.
+The CLI writes the settings file directly, so it works with the Console stopped; an open Console tab shows the change after a reload. API-key providers (OpenCode Go, TypeSafe) sign in from that interactive screen: Providers, then Sign in.
 
 ## Desktop coexistence
 
