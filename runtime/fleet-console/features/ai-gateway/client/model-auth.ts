@@ -1,8 +1,8 @@
 /**
  * 자격증명이 무엇에 쓰이는지. 호스트가 실어 보내므로 브라우저가 공급자 id를 외워 두고
- * 갈라 볼 필요가 없다. 모르는 값이 와도 모델 공급자로 보아 기존 자리에 남긴다.
+ * 갈라 볼 필요가 없다. 지금 호스트가 싣는 자격증명은 모두 서비스다.
  */
-export type ModelAuthProviderKind = "model-provider" | "service";
+export type ModelAuthProviderKind = "service";
 
 /** 서비스 자격증명이 열어 주는 모델 한 줄. 고를 수 있는 항목이 아니다. */
 export interface ModelAuthServiceModel {
@@ -106,7 +106,7 @@ function assertProviderState(value: unknown, status: number): ModelAuthProviderS
   }
   return {
     provider: payload.provider,
-    kind: payload.kind === "service" ? "service" : "model-provider",
+    kind: "service",
     displayName: payload.displayName,
     signedIn: payload.signedIn,
     ...(Array.isArray(payload.models) ? { models: payload.models.filter(isServiceModel) } : {}),

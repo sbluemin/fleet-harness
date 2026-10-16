@@ -6,7 +6,6 @@ export {
   createAuthValidationError,
   formatAuthValidationFailureMessage,
   isAuthValidationSuccess,
-  validateAnthropicCompatibleApiKey,
   validateApiKeyByProbe,
 } from "./validation.js";
 
@@ -19,7 +18,6 @@ export type {
   AuthValidationFailureMessageInput,
   AuthValidationFailureResult,
   AuthValidationFailureStatus,
-  AuthValidationRequest,
   AuthValidationResult,
   AuthValidationStatus,
   CreateProviderAuthServiceDeps,

@@ -19,15 +19,6 @@ export type AuthValidationFailureStatus =
 
 export type AuthValidationStatus = "success" | AuthValidationFailureStatus;
 
-export interface AuthValidationRequest {
-  providerId: string;
-  apiKey: string;
-  baseUrl: string;
-  model?: string;
-  timeoutMs?: number;
-  headers?: Readonly<Record<string, string>>;
-}
-
 export interface AuthValidationResult {
   providerId: string;
   status: AuthValidationStatus;

@@ -205,12 +205,10 @@ function firstPathSegment(rel: string): string {
   return rel.split(/[\\/]/)[0];
 }
 
-/** The two inbound-wire modules an upstream provider may import. */
+/** The inbound-wire module an upstream provider may import. */
 const SHARED_WIRE_MODULES = new Set([
   "downstream/wire/anthropic-messages/protocol.js",
-  "downstream/wire/anthropic-messages/passthrough.js",
   "downstream/wire/anthropic-messages/protocol.ts",
-  "downstream/wire/anthropic-messages/passthrough.ts",
 ]);
 
 /**
@@ -593,12 +591,10 @@ describe("gateway module specifier extraction", () => {
     `)).toEqual([]);
   });
 
-  it("allows only the two shared inbound-wire modules across both path styles", () => {
+  it("allows only the shared inbound-wire module across both path styles", () => {
     for (const rel of [
       "downstream/wire/anthropic-messages/protocol.js",
-      "downstream/wire/anthropic-messages/passthrough.js",
       "downstream\\wire\\anthropic-messages\\protocol.js",
-      "downstream\\wire\\anthropic-messages\\passthrough.js",
     ]) {
       expect(isSharedWireModule(rel)).toBe(true);
     }

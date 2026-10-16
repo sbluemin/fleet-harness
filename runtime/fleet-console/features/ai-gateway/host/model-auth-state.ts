@@ -4,11 +4,10 @@ import type { AuthService } from "@fleet-console/ai-gateway";
 export type TerminalModelAuthProviderId = "typesafe";
 
 /**
- * 자격증명이 무엇에 쓰이는지. `model-provider`는 모델 카탈로그에 좌석을 가진 공급자라
- * 모델 팔레트에서 로그인하고, `service`는 라우팅되는 모델이 없는 서비스 자격증명이라
- * 팔레트 밖에서 로그인한다. 브라우저가 id를 외우지 않고 갈라 보도록 상태에 싣는다.
+ * 자격증명이 무엇에 쓰이는지. `service`는 라우팅되는 모델이 없는 서비스 자격증명이라
+ * 모델 카탈로그 밖에서 로그인한다. 브라우저가 id를 외우지 않고 갈라 보도록 상태에 싣는다.
  */
-export type TerminalModelAuthProviderKind = "model-provider" | "service";
+export type TerminalModelAuthProviderKind = "service";
 
 /** 서비스가 내놓는 모델 한 줄. 고를 수 있는 항목이 아니라 무엇을 쓰게 되는지의 표시다. */
 export interface TerminalModelAuthServiceModel {

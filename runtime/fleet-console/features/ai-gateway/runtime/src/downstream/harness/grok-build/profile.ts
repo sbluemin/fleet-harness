@@ -50,7 +50,7 @@ export const grokBuildHarnessProfile: GatewayHarnessProfile = {
   // 사용량 투영이 없다 — 이것이 이 프로필을 만드는 이유다. Grok Build는 창 크기를 자기
   // `[model.<id>].context_window` 설정에서 읽고, Fleet이 그 값에 공급자의 실제 창을 써 준다.
   // Claude Code의 200k/1M 좌표로 환산하면(실측 배율 0.637) 이 클라이언트의 미터와 자동 압축
-  // 시점이 둘 다 틀린다. 그래서 usageProjection과 passthroughProjection을 선언하지 않는다.
+  // 시점이 둘 다 틀린다. 그래서 usageProjection을 선언하지 않는다.
   //
   // retryableStatus도 선언하지 않는다. Grok Build의 재시도 예산이 어느 상태 코드에 반응하는지
   // 아직 실측하지 않았고, 측정 없이 Claude Code의 목록을 복사하면 이 클라이언트가 재시도하지

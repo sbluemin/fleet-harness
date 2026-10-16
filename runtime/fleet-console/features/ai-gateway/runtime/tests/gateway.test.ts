@@ -13,7 +13,6 @@ import {
   findGatewayModel,
   gatewayModelIdentity,
   parseGatewayModelsRegistry,
-  projectAnthropicResponseUsage,
   resolveGatewayModel,
   projectClaudeContextInputTokens,
   unprojectClaudeContextInputTokens,

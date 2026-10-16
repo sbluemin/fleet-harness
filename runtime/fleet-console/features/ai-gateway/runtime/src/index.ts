@@ -4,7 +4,6 @@ export * from "./downstream/wire/anthropic-messages/protocol.js";
 export * from "./downstream/harness/claude-code/context.js";
 export * from "./downstream/harness/claude-code/discovery.js";
 export * from "./downstream/wire/anthropic-messages/inbound.js";
-export * from "./downstream/wire/anthropic-messages/passthrough.js";
 export * from "./upstream/anthropic/native.js";
 export * from "./upstream/antigravity/index.js";
 // Provider quota probes and the shared quota vocabulary. `CredentialMethod` is

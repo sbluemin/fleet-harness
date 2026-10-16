@@ -4,7 +4,7 @@ import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
 import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
-import { getModelAuthStoreState, loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
+import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { ROSTER_FALLBACK_MODEL, findRosterRow, rosterRowEfforts, rosterRows, type ModelRoster } from "@fleet-console/sdk/models";
@@ -868,15 +868,11 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   const roster = buildAiGatewayRoster(providers, selection, priority);
   const groups = groupAiGatewayRoster(roster);
   const providerCount = groups.length;
-  const authOf = (id: string): ModelAuthProviderState | undefined =>
-    auth.state?.providers.find((entry) => entry.provider === id);
   // 카탈로그 밖 서비스 자격증명. 팔레트는 전부(로그인 자리로), 로스터는 로그인된 것만 세운다.
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   const signedInServices = services.filter((entry) => entry.signedIn);
-  const authLabelOf = (providerId: string): string =>
-    authOf(providerId) !== undefined
-      ? t("terminal.settings.aiGatewayAuthApiKey")
-      : t("terminal.settings.aiGatewayAuthSubscription");
+  // 카탈로그 공급자는 모두 구독(벤더 CLI 자격증명)으로 연결한다.
+  const subscriptionLabel = t("terminal.settings.aiGatewayAuthSubscription");
 
   // 선택지는 켠 공급자 수까지만이다. 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가
   // 늘지 않는다 — 한 칸 더 주면 placeAiGatewayPriority가 끝으로 접어 고른 숫자와 결과가 어긋난다.
@@ -898,7 +894,6 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
       providers={providers}
       services={services}
       selection={selection}
-      authOf={authOf}
       authBusy={auth.busyProvider}
       saving={saving}
       onAdd={actions.addModel}
@@ -923,7 +918,6 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   );
 
   if (mobileDetail) {
-    const keyedProviders = auth.state?.providers.filter((entry) => entry.kind === "model-provider") ?? [];
     const openSubScreen = mobileHost?.openSubScreen;
     return (
       <>
@@ -949,7 +943,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
           const providerId = group.provider.id as AiGatewayProviderId;
           const name = t(AI_GATEWAY_PROVIDER_LABEL_KEYS[providerId]);
           return (
-            <SettingsGroup key={group.provider.id} ariaLabel={name} title={`${name} · ${authLabelOf(group.provider.id)}`}>
+            <SettingsGroup key={group.provider.id} ariaLabel={name} title={`${name} · ${subscriptionLabel}`}>
               <SettingsItem label={t("terminal.settings.aiGatewayPriority")} helpTip={<SettingsHelp title={t("terminal.settings.aiGatewayPriority")}>{t("terminal.settings.aiGatewayPriorityTip")}</SettingsHelp>}>
                 <Select
                   label={t("terminal.settings.aiGatewayPriorityAria", { provider: name })}
@@ -989,26 +983,6 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
             </SettingsGroup>
           );
         })}
-        {keyedProviders.length > 0 ? (
-          <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayAuthApiKey")} title={t("terminal.settings.aiGatewayAuthApiKey")}>
-            {keyedProviders.map((entry) => (
-              <SettingsInputRow
-                key={entry.provider}
-                label={entry.displayName}
-                valueText={entry.signedIn ? t("terminal.auth.keySet") : t("terminal.auth.keyNone")}
-                input={{
-                  value: "",
-                  secret: true,
-                  placeholder: t("terminal.auth.apiKey"),
-                  onSave: async (value) => {
-                    if (!(await signInModel(entry.provider, value))) throw new Error(getModelAuthStoreState().error ?? t("terminal.auth.signInFailed"));
-                  },
-                  ...(entry.signedIn ? { onClear: async () => { if (!(await signOutModel(entry.provider))) throw new Error(getModelAuthStoreState().error ?? t("terminal.auth.signInFailed")); } } : {}),
-                }}
-              />
-            ))}
-          </SettingsGroup>
-        ) : null}
       </>
     );
   }
@@ -1055,7 +1029,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
                 <div className="ai-gateway-group-head">
                   <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(providerId)}</span>
                   <span className="ai-gateway-provider-name">{name}</span>
-                  <span className="ai-gateway-provider-sub">{authLabelOf(group.provider.id)}</span>
+                  <span className="ai-gateway-provider-sub">{subscriptionLabel}</span>
                   <span className="ai-gateway-group-controls">
                     {group.provider.id === "xai" ? <AiGatewayXaiEndpointRow saving={settings.savingFields.has("xaiEndpoint")} /> : null}
                     {/* 순위 셀렉트는 라벨과 함께 서고, hover·포커스에서 말풍선이 뜻을 말한다. 목록을 열면 말풍선은 물러난다. */}
@@ -1367,7 +1341,6 @@ interface AiGatewayModelPaletteProps {
   /** 카탈로그 밖 서비스 자격증명 — 로그인 자리와 그 서비스가 여는 모델 이름을 이 목록이 진다. */
   readonly services: readonly ModelAuthProviderState[];
   readonly selection: AiGatewaySettings;
-  readonly authOf: (id: string) => ModelAuthProviderState | undefined;
   readonly authBusy: string | null;
   readonly saving: boolean;
   readonly onAdd: (model: AiGatewayCatalogModel) => void;
@@ -1498,7 +1471,6 @@ function AiGatewayModelPalette({
   providers,
   services,
   selection,
-  authOf,
   authBusy,
   saving,
   onAdd,
@@ -1510,7 +1482,7 @@ function AiGatewayModelPalette({
   const { size, resizing, startResize } = useAiGatewayPaletteResize(rootRef);
   const searchRef = React.useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = React.useState("");
-  /** 머리글의 "로그인"으로 펼친 키 입력 줄의 공급자. 한 번에 하나만 펼친다. */
+  /** 서비스 머리글의 "로그인"으로 펼친 키 입력 줄의 서비스. 한 번에 하나만 펼친다. */
   const [keyLineFor, setKeyLineFor] = React.useState<string | null>(null);
   const [picked, setPicked] = React.useState<{ providerId: string; familyKey: string } | null>(null);
   const [variantId, setVariantId] = React.useState<string | null>(null);
@@ -1522,16 +1494,9 @@ function AiGatewayModelPalette({
     () => providers.flatMap((provider) => groupAiGatewayModelFamilies(provider.models, baseContextLabel).map((family) => ({ provider, family }))),
     [providers, baseContextLabel],
   );
-  const matched = filterAiGatewayPalette(entries, query, providerLabel);
+  const hits = filterAiGatewayPalette(entries, query, providerLabel);
   const enabledIds = new Set((selection.models ?? []).map((entry) => entry.id));
-  // 키 공급자는 서버(model-auth 상태)가 알려 준 로그인 여부로 잠근다.
-  const isLocked = (providerId: string): boolean => {
-    const providerAuth = authOf(providerId);
-    return providerAuth !== undefined && !providerAuth.signedIn;
-  };
-  // 로그인되지 않은 공급자의 모델은 고를 수 없으므로 목록에서 감춘다 — 머리글만 남아 로그인 자리가 된다.
-  const hits = matched.filter((hit) => !isLocked(hit.provider.id));
-  const headingProviders = matched.map((hit) => hit.provider).filter((provider, index, all) => all.indexOf(provider) === index);
+  const headingProviders = hits.map((hit) => hit.provider).filter((provider, index, all) => all.indexOf(provider) === index);
   // 서비스는 이름과 모델 id 어느 쪽으로도 찾을 수 있다 — 사용자가 "jev"를 칠 수 있어야 한다.
   const serviceQuery = query.trim().toLowerCase();
   const serviceHits = services.filter((service) =>
@@ -1662,17 +1627,9 @@ function AiGatewayModelPalette({
           listbox는 프로바이더마다 하나씩이고 바깥은 구조 없는 스크롤 면이다. */}
       <div className="ai-gateway-palette-list">
         {headingProviders.map((provider) => {
-          const providerAuth = authOf(provider.id);
           return (
             <React.Fragment key={provider.id}>
-              <AiGatewayPaletteGroupHead
-                provider={provider}
-                auth={providerAuth}
-                busy={authBusy === provider.id}
-                keyLineOpen={keyLineFor === provider.id}
-                onToggleKeyLine={() => setKeyLineFor((current) => current === provider.id ? null : provider.id)}
-                onKeyLineDone={() => setKeyLineFor(null)}
-              />
+              <AiGatewayPaletteGroupHead provider={provider} />
               <div role="listbox" id={`${listboxId}-${provider.id}`} aria-label={providerLabel(provider.id)}>
               {hits.filter((hit) => hit.provider === provider).map((hit) => {
                 const allEnabled = hit.family.variants.every((candidate) => enabledIds.has(candidate.model.id));
@@ -1887,69 +1844,24 @@ function AiGatewayPaletteServiceGroup({ service, busy, keyLineOpen, onToggleKeyL
 
 interface AiGatewayPaletteGroupHeadProps {
   readonly provider: AiGatewayCatalogProvider;
-  readonly auth: ModelAuthProviderState | undefined;
-  readonly busy: boolean;
-  readonly keyLineOpen: boolean;
-  readonly onToggleKeyLine: () => void;
-  readonly onKeyLineDone: () => void;
 }
 
 /**
- * 팔레트의 프로바이더 머리글 — 목록의 묶음 라벨이자 그 프로바이더의 인증 줄이다. 오른쪽에
- * [구독 / API key] [로그인·로그아웃]이 서고, 키가 없는 프로바이더는 "API key"가 머리글 아래에
- * 키 입력 줄을 펼친다. 로그인은 켠 모델이 없는 프로바이더에도 필요하므로 여기 남고, 우선 소진
+ * 팔레트의 프로바이더 머리글 — 목록의 묶음 라벨이다. 오른쪽에 연결 방식(구독)이 서고, 우선 소진
  * 순위와 xAI 엔드포인트는 켠 모델이 있어야 뜻이 있는 값이라 로스터의 묶음 머리글에 선다.
  */
-function AiGatewayPaletteGroupHead({
-  provider,
-  auth,
-  busy,
-  keyLineOpen,
-  onToggleKeyLine,
-  onKeyLineDone,
-}: AiGatewayPaletteGroupHeadProps) {
+function AiGatewayPaletteGroupHead({ provider }: AiGatewayPaletteGroupHeadProps) {
   const t = getT(useTerminalLocale());
   const id = provider.id as AiGatewayProviderId;
-  const keyed = auth !== undefined;
-  const locked = auth !== undefined && !auth.signedIn;
   return (
-    <>
-      <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
-        <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
-        <span className="ai-gateway-palette-group-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
-        <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayModelCount", { count: provider.models.length })}</span>
-        <span className="ai-gateway-palette-group-controls">
-          {/* 인증 셀: 구독은 글자, API key는 글자 자체가 로그인 버튼, 로그인된 뒤에는 로그아웃만. */}
-          {!keyed ? (
-            <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayAuthSubscription")}</span>
-          ) : auth?.signedIn ? (
-            <button
-              type="button"
-              className="ai-gateway-key-signout"
-              disabled={busy}
-              aria-label={`${auth.displayName} · ${t("terminal.auth.signOut")}`}
-              onClick={() => void signOutModel(auth.provider)}
-            >
-              {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="ai-gateway-palette-signin"
-              aria-expanded={keyLineOpen}
-              aria-label={auth ? t("terminal.auth.apiKeyAria", { name: auth.displayName }) : t("terminal.settings.aiGatewayAuthApiKey")}
-              disabled={busy || auth === undefined}
-              onClick={onToggleKeyLine}
-            >
-              {busy ? t("terminal.auth.verifying") : t("terminal.settings.aiGatewayAuthApiKey")}
-            </button>
-          )}
-        </span>
-      </div>
-      {locked && keyLineOpen && auth ? (
-        <AiGatewayKeyForm provider={auth} busy={busy} compact onSignedIn={onKeyLineDone} />
-      ) : null}
-    </>
+    <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
+      <span className="ai-gateway-provider-glyph" aria-hidden="true">{launchProviderGlyph(id)}</span>
+      <span className="ai-gateway-palette-group-name">{t(AI_GATEWAY_PROVIDER_LABEL_KEYS[id])}</span>
+      <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayModelCount", { count: provider.models.length })}</span>
+      <span className="ai-gateway-palette-group-controls">
+        <span className="ai-gateway-provider-sub">{t("terminal.settings.aiGatewayAuthSubscription")}</span>
+      </span>
+    </div>
   );
 }
 
