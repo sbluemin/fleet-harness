@@ -152,7 +152,11 @@ export function HostWorkspaceLocation({ hosts, t, rail = false, conversationTitl
   const host = state.hosts.find((host) => host.hostKey === state.selection.hostKey);
   if (!host) return null;
   const theater = host.theaters.find((theater) => theater.id === state.selection.theaterId);
-  const operation = state.selection.role === "commander" ? host.operations.find((item) => item.id === state.selection.operationId && item.theaterId === state.selection.theaterId) : null;
+  // 실행 Operation이 없으면 확인된 미기동 목표의 제목을 쓴다. 두 목록을 합치지 않는다.
+  const operation = state.selection.role === "commander"
+    ? host.operations.find((item) => item.id === state.selection.operationId && item.theaterId === state.selection.theaterId)
+      ?? host.objectives?.find((item) => item.id === state.selection.operationId && item.theaterId === state.selection.theaterId)
+    : null;
   return <div className={`host-workspace-location${rail ? " is-rail-caption" : ""}`} role="group" aria-label={t("hosts.workspace.viewing")} data-host-key={host.hostKey} data-theater-id={state.selection.theaterId ?? undefined}>
     <span className="host-workspace-location-host"><ComputerGlyph local={host.hostKey === "local"} />{host.label}</span>
     {theater ? <><span aria-hidden="true">›</span><span>{theater.alias || theater.label}</span>{!rail ? <span className="host-workspace-role">{t(state.selection.role === "commodore" ? "hosts.workspace.commodoreRole" : "hosts.workspace.commander")}</span> : null}</> : null}

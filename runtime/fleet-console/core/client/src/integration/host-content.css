@@ -11,5 +11,6 @@
 .host-bound-tabs button { background: transparent; color: var(--text-secondary); border: 0; cursor: pointer; padding: var(--space-2); }
 .host-bound-tabs button[aria-selected="true"] { color: var(--text-primary); box-shadow: inset 0 -2px var(--brass); }
 .host-bound-pane > .quota-root { height: 100%; overflow: auto; }
+.host-bound-unstarted { display: flex; align-items: center; justify-content: center; margin: 0; padding: var(--space-5); color: var(--text-secondary); text-align: center; }
 .host-bound-local-notice { color: var(--text-tertiary); padding: var(--space-2); }
 @media (max-width: 760px) { .host-bound-content { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(180px, 38%); } }
