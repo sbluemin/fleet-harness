@@ -396,6 +396,38 @@ it("does not take control or permit writes when a paired device only observes", 
     expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), ninth)).status).toBe(409);
   });
 
+  it("releases only that pairing's control when it returns to observation", async () => {
+    const fixture = await startFixture({ remote: true });
+    const eye = await joinAs(fixture, "monitoring", "eye");
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const watcherPairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_")) ?? "";
+    expect((await localInstall(fixture)).body).toContain("computer_use_local_only");
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), watcherPairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toMatchObject({ capability: "host-session", mode: "observer", access: "full" });
+    expect((await localInstall(fixture)).body).toContain("computer_use_backend_mismatch");
+    const observer = cookiesOf(observed);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const holder = await joinAs(fixture, "full", "holder");
+    expect((await localInstall(fixture)).body).toContain("computer_use_local_only");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const holderPairing = holder.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_")) ?? "";
+    const holderObserved = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), holderPairing);
+    expect(holderObserved.status).toBe(200);
+    expect((await localInstall(fixture)).body).toContain("computer_use_backend_mismatch");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const state = await remoteRequest(fixture, "GET", "/api/v1/agent/state", undefined, observer);
+    expect(state.status).toBe(200);
+    expect(errorOf(state.body)).not.toBe("read_only");
+    const attachment = await remoteRequest(fixture, "GET", "/plugins/objectives/attachment/file?objectiveId=missing&attachmentId=missing", undefined, observer);
+    const evidence = await remoteRequest(fixture, "GET", "/plugins/objectives/result/file?objectiveId=missing&resultId=missing", undefined, observer);
+    expect(errorOf(attachment.body)).not.toBe("read_only");
+    expect(errorOf(evidence.body)).not.toBe("read_only");
+  });
+
   it("charges the remote join budget for an unauthenticated host session", async () => {
     const fixture = await startFixture({ remote: true });
     for (let attempt = 0; attempt < 10; attempt += 1) {
@@ -587,6 +619,25 @@ function readPresentedCertificateFingerprint(port: number): Promise<string> {
     request.on("error", reject);
     request.end();
   });
+}
+
+async function localInstall(fixture: Fixture): Promise<{ status: number; body: string }> {
+  const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+  const response = await fetch(`${origin}/api/v1/computer-use/install`, {
+    method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  return { status: response.status, body: await response.text() };
+}
+
+function errorOf(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === "string" ? parsed.error : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function remoteRequest(

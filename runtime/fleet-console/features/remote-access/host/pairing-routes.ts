@@ -224,6 +224,8 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       return false;
     }
     if (intent === "observe") {
+      // 이 페어링이 잡고 있던 제어만 놓는다. 다른 기기의 제어·관찰은 그대로다.
+      if (releaseOwnControl(pairedDevice.id)) broadcastControlChanged();
       const presented = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
       if (presented?.pairingId === pairedDevice.id && presented.disposition === "observe") {
         writeSessionJson(res, 200, listener, { session: presented, pairingSecret: secret }, { capability: "host-session", mode: "observer", access: pairedDevice.access });
@@ -250,6 +252,17 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     broadcastControlChanged();
     writeSessionJson(res, 200, listener, { session, pairingSecret: secret }, { capability: "host-session", mode: "controller", access: pairedDevice.access });
     return true;
+  }
+
+  function releaseOwnControl(pairingId: string): boolean {
+    let released = false;
+    for (const session of access.listSessions("remote")) {
+      if (session.pairingId === pairingId && session.access === "full" && session.disposition === "control") {
+        access.revokeSessionByHandle(session.handle, null);
+        released = true;
+      }
+    }
+    return released;
   }
 
   function writeSessionJson(res: http.ServerResponse, status: number, listener: ListenerIdentity, joined: { readonly session: AccessSession; readonly pairingSecret: string } | null, body: unknown): void {

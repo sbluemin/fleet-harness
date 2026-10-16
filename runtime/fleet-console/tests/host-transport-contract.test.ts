@@ -1,5 +1,14 @@
+import http from "node:http";
 import { describe, expect, it } from "vitest";
+import { WebSocket } from "ws";
 
+import {
+  DESKTOP_HOST_TRANSPORT_EVENTS_PATH,
+  DESKTOP_HOST_TRANSPORT_PATH,
+  DESKTOP_HOST_TRANSPORT_RELAY_PATH,
+} from "@fleet-console/protocol/desktop";
+import { createDesktopHostTransport } from "../../fleet-desktop/src/host-transport.js";
+import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
 import {
   HOST_TERMINAL_UPGRADE_PATH,
   hostEventsUrl,
@@ -15,7 +24,6 @@ import {
   parseHostSocketQuery,
   parseHostStreamQuery,
 } from "@fleet-console/protocol/remote/host-transport";
-import type http from "node:http";
 import { createHostGateway } from "../features/remote-access/host/host-gateway.js";
 import { admitHostRoute } from "../features/remote-access/host/host-route-table.js";
 
@@ -191,6 +199,9 @@ describe("host gateway admission", () => {
     body = { requestId: "req-1234", expectedEpoch: 2, method: "POST", path: "/api/v1/remote-hosts", json: {} };
     const unknown = await invoke("POST", "/api/v1/hosts/host1/request");
     expect(unknown).toEqual({ status: 403, body: { error: "route_denied" } });
+    body = { requestId: "req-1234", expectedEpoch: 2, path: "/api/v1/agent/attachments" };
+    const upload = await invoke("POST", "/api/v1/hosts/host1/bytes");
+    expect(upload).toEqual({ status: 403, body: { error: "route_denied" } });
     expect(calls).toEqual(["presence"]);
     void gatewayState;
   });
@@ -236,5 +247,247 @@ describe("host gateway admission", () => {
     expect(writes.join("")).toContain("operation:changed");
     expect(ended).toBe(true);
     expect(frames).toEqual([]);
+  });
+
+  it("keeps the terminal's first resize and a normal burst until the remote socket is ready", async () => {
+    const bridge = createHostShellBridge();
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+    const sent: string[] = [];
+    let openedPath = "";
+    let remoteClosed = false;
+    let finishRemote = (): void => undefined;
+    const remoteClosedPromise = new Promise<void>((resolve) => { finishRemote = resolve; });
+    const endpoint = { origin: "" };
+    const gateway = createHostGateway({
+      isLoopback: (req) => {
+        const address = req.socket.remoteAddress;
+        return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+      },
+      isExactOrigin: (req) => req.headers.origin === endpoint.origin,
+      findHost: () => target,
+      bridge,
+      readJsonBody: async <T,>(req: http.IncomingMessage) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const text = Buffer.concat(chunks).toString("utf8");
+        return (text ? JSON.parse(text) : null) as T | null;
+      },
+      writeJson: (res, status, payload) => {
+        const body = JSON.stringify(payload);
+        res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+        res.end(body);
+      },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const server = http.createServer(async (req, res) => {
+      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+      if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") {
+        const body = JSON.stringify(bridge.snapshot());
+        res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+        res.end(body);
+        return;
+      }
+      if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+        const unsubscribe = bridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
+        res.on("close", unsubscribe);
+        return;
+      }
+      if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const accepted = await bridge.relay(JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
+        res.writeHead(accepted ? 204 : 400);
+        res.end();
+        return;
+      }
+      const handled = await gateway.handle({ req, res, pathname });
+      if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
+    });
+    server.on("upgrade", (req, socket, head) => {
+      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+      if (!gateway.upgrade({ req, socket, head, pathname })) socket.destroy();
+    });
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("no address");
+        resolve(address.port);
+      });
+    });
+    endpoint.origin = `http://127.0.0.1:${port}`;
+    const origin = endpoint.origin;
+    const transport = createDesktopHostTransport({
+      fetch: globalThis.fetch,
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        async fetch(url) {
+          if (url.endsWith("/api/v1/sessions")) {
+            return new Response(JSON.stringify({ capability: "host-session", mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (url.endsWith("/api/v1/agent/ticket")) return new Response(JSON.stringify({ ticket: "shell-ticket" }), { status: 200, headers: { "content-type": "application/json" } });
+          return new Response("no", { status: 404 });
+        },
+        async readCookies() { return []; },
+        async writeCookie() { return undefined; },
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+      openSocket: async (input) => {
+        openedPath = input.path;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        if (input.signal.aborted) throw new Error("remote_host_unavailable");
+        return {
+          sendText: (text) => { sent.push(text); },
+          sendBytes: () => undefined,
+          close: () => { remoteClosed = true; finishRemote(); },
+          closed: remoteClosedPromise,
+        };
+      },
+    });
+    let socket: WebSocket | null = null;
+    try {
+      await transport.start(origin);
+      const attached = Date.now() + 2000;
+      while (!bridge.attached()) {
+        if (Date.now() > attached) throw new Error("desktop did not attach");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
+      });
+      expect(presence.status).toBe(204);
+      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number; mode: string };
+      expect(current).toMatchObject({ mode: "controller" });
+      let closedEarly = false;
+      socket = new WebSocket(`${origin.replace("http", "ws")}/api/v1/hosts/host1/socket?epoch=${current.epoch}&channel=terminal&operationId=op-1`, { headers: { Origin: origin } });
+      socket.on("close", () => { if (sent.length < 22) closedEarly = true; });
+      await new Promise<void>((resolve, reject) => {
+        socket?.once("open", () => resolve());
+        socket?.once("error", reject);
+      });
+      socket.send(JSON.stringify({ type: "resize", cols: 80, rows: 24 }));
+      socket.send(JSON.stringify({ type: "flow", paused: false }));
+      for (let index = 0; index < 20; index += 1) socket.send(`k${index}`);
+      const delivered = Date.now() + 8000;
+      while (sent.length < 22) {
+        if (Date.now() > delivered) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(closedEarly).toBe(false);
+      expect(sent[0]).toContain("resize");
+      expect(sent[1]).toContain("flow");
+      expect(sent).toHaveLength(22);
+      expect(openedPath).toContain("ticket=");
+      expect(socket.url).not.toContain("ticket=");
+      socket.close();
+      const closed = Date.now() + 2000;
+      while (!remoteClosed) {
+        if (Date.now() > closed) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(remoteClosed).toBe(true);
+      expect(socket.readyState).toBe(WebSocket.CLOSED);
+    } finally {
+      socket?.close();
+      transport.stop();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      server.closeAllConnections?.();
+    }
+  });
+
+  it("cancels a host post when the client leaves, not when its body has been read", async () => {
+    const signals: AbortSignal[] = [];
+    let releaseCall = (): void => undefined;
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: {
+        async open(_request, _onFrame, signal) {
+          if (signal) signals.push(signal);
+          await new Promise<void>((resolve) => { releaseCall = resolve; });
+          return { id: 1, end: true };
+        },
+        async call(request, signal) {
+          if (request.op === "presence") return { id: 1, capability: "supported", mode: "controller", access: "full" };
+          if (signal) signals.push(signal);
+          await new Promise<void>((resolve) => { releaseCall = resolve; });
+          return { id: 1, status: 200, contentType: "application/json", json: { ok: true } };
+        },
+      },
+      readJsonBody: async <T,>(req: http.IncomingMessage) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const text = Buffer.concat(chunks).toString("utf8");
+        return (text ? JSON.parse(text) : null) as T | null;
+      },
+      writeJson: (res, status, payload) => {
+        const body = JSON.stringify(payload);
+        res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+        res.end(body);
+      },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const server = http.createServer((req, res) => {
+      const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
+      void gateway.handle({ req, res, pathname }).then((handled) => {
+        if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
+      });
+    });
+    const port = await new Promise<number>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("no address");
+        resolve(address.port);
+      });
+    });
+    const origin = `http://127.0.0.1:${port}`;
+    const until = async (ready: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 2000;
+      while (!ready()) {
+        if (Date.now() > deadline) throw new Error("timed out");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    try {
+      const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
+        method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
+      });
+      expect(presence.status).toBe(204);
+      const postAbort = new AbortController();
+      const posted = fetch(`${origin}/api/v1/hosts/host1/request`, {
+        method: "POST", headers: { origin, "content-type": "application/json" }, signal: postAbort.signal,
+        body: JSON.stringify({ requestId: "req-1234", expectedEpoch: 2, method: "GET", path: "/api/v1/theaters" }),
+      }).catch((error: unknown) => error);
+      await until(() => signals.length === 1);
+      const postSignal = signals[0]!;
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(postSignal.aborted).toBe(false);
+      postAbort.abort();
+      await until(() => postSignal.aborted);
+      releaseCall();
+      await posted;
+      signals.length = 0;
+      const streamAbort = new AbortController();
+      const streamed = fetch(`${origin}/api/v1/hosts/host1/events?path=%2Fapi%2Fv1%2Foperations%2Fevents&epoch=2`, { headers: { origin }, signal: streamAbort.signal }).catch((error: unknown) => error);
+      await until(() => signals.length === 1);
+      const streamSignal = signals[0]!;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(streamSignal.aborted).toBe(false);
+      streamAbort.abort();
+      await until(() => streamSignal.aborted);
+      releaseCall();
+      await streamed;
+    } finally {
+      releaseCall();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      server.closeAllConnections?.();
+    }
   });
 });

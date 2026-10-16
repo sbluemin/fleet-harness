@@ -131,8 +131,8 @@ export async function registerAgentRoutes(
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle, [
-    { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
+    { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http", readOnly: true },
+    { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse", readOnly: true },
     { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
     { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },

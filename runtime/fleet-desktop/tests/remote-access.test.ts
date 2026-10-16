@@ -1,8 +1,10 @@
+import crypto from "node:crypto";
 import tls from "node:tls";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createHostTransportExecutor } from "../src/host-transport.js";
+import { openPinnedWebSocket } from "../src/host-socket.js";
+import { createDesktopHostTransport, createHostTransportExecutor } from "../src/host-transport.js";
 import {
   CERTIFICATE_ACCEPTED,
   CERTIFICATE_DEFAULT,
@@ -243,3 +245,183 @@ describe("host transport streams", () => {
     })).resolves.toMatchObject({ error: "stale_epoch" });
   });
 });
+
+describe("pinned remote sockets", () => {
+  const ticket = "ticket-must-not-leave";
+  const cookie = "fleet_console_session_8443=cookie-must-not-leave";
+
+  it("does not write the ticket or cookie when the live certificate pin does not match", async () => {
+    const received: Buffer[] = [];
+    const server = await listenTls((socket) => {
+      socket.on("data", (chunk: Buffer) => received.push(chunk));
+    });
+    try {
+      await expect(openPinnedWebSocket({
+        hostname: "127.0.0.1",
+        port: server.port,
+        path: `/api/v1/terminal/ws?ticket=${ticket}`,
+        fingerprint: OTHER_FINGERPRINT,
+        cookie,
+        signal: AbortSignal.timeout(2000),
+        onText: () => undefined,
+        onBytes: () => undefined,
+      })).rejects.toThrow("remote_host_fingerprint_mismatch");
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const wire = Buffer.concat(received).toString("utf8");
+      expect(wire).not.toContain(ticket);
+      expect(wire).not.toContain(cookie);
+      expect(wire).not.toContain("Sec-WebSocket-Key");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("accepts only the matching Sec-WebSocket-Accept before delivering frames", async () => {
+    const texts: string[] = [];
+    const good = await listenTls((socket) => {
+      socket.once("data", (chunk: Buffer) => {
+        const key = /Sec-WebSocket-Key: (\S+)/u.exec(chunk.toString("latin1"))?.[1] ?? "";
+        const accept = crypto.createHash("sha1").update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest("base64");
+        socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+        socket.write(Buffer.from([0x81, 0x04, 0x70, 0x69, 0x6e, 0x67]));
+      });
+    });
+    try {
+      const opened = await openPinnedWebSocket({
+        hostname: "127.0.0.1", port: good.port, path: "/api/v1/terminal/ws?ticket=kept-in-shell", fingerprint: FINGERPRINT, cookie: "", signal: AbortSignal.timeout(2000),
+        onText: (text) => { texts.push(text); },
+        onBytes: () => undefined,
+      });
+      await waitFor(() => texts.includes("ping"));
+      opened.close();
+    } finally {
+      await good.close();
+    }
+
+    const bad = await listenTls((socket) => {
+      socket.once("data", () => {
+        socket.write("HTTP/1.1 101 Switching Protocols\r\nSec-WebSocket-Accept: AAAA\r\n\r\n");
+        socket.write(Buffer.from([0x81, 0x04, 0x70, 0x69, 0x6e, 0x67]));
+      });
+    });
+    const leaked: string[] = [];
+    try {
+      await expect(openPinnedWebSocket({
+        hostname: "127.0.0.1", port: bad.port, path: "/api/v1/terminal/ws?ticket=kept-in-shell", fingerprint: FINGERPRINT, cookie: "", signal: AbortSignal.timeout(2000),
+        onText: (text) => { leaked.push(text); },
+        onBytes: () => undefined,
+      })).rejects.toThrow("remote_host_unavailable");
+      expect(leaked).toEqual([]);
+    } finally {
+      await bad.close();
+    }
+  });
+});
+
+describe("desktop host transport lifetime", () => {
+  it("keeps a live stream across the same console instance and accepts restarted ids", async () => {
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const instanceA = "11111111-1111-4111-8111-111111111111";
+    const instanceB = "22222222-2222-4222-8222-222222222222";
+    const command = (epoch: number, op: "sse" | "http") => ({
+      id: 1, hostKey: "host1", epoch, op, routeId: op === "sse" ? "operation-events" : "theaters", target,
+      params: op === "sse" ? { path: "/api/v1/operations/events" } : { method: "GET", path: "/api/v1/theaters" },
+    });
+    const snapshot = (instanceId: string, generation: number, epoch: number, op: "sse" | "http") => ({
+      instanceId, generation, commands: [command(epoch, op)],
+    });
+    let events: ReadableStreamDefaultController<Uint8Array> | null = null;
+    const encoder = new TextEncoder();
+    const relays: { error?: string; status?: number }[] = [];
+    let remoteStreams = 0;
+    let remoteAborts = 0;
+    let remoteGets = 0;
+    const push = (value: unknown): void => {
+      events?.enqueue(encoder.encode(`event: desktop:host-transport\ndata: ${JSON.stringify(value)}\n\n`));
+    };
+    const transport = createDesktopHostTransport({
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname;
+        if (path === "/api/v1/desktop/host-transport") return Response.json(snapshot(instanceA, 1, 9, "sse"));
+        if (path === "/api/v1/desktop/host-transport/events") {
+          return new Response(new ReadableStream({
+            start(controller) {
+              events = controller;
+              push(snapshot(instanceA, 1, 9, "sse"));
+              init?.signal?.addEventListener("abort", () => controller.close(), { once: true });
+            },
+          }), { status: 200, headers: { "content-type": "text/event-stream" } });
+        }
+        if (path === "/api/v1/desktop/host-transport/relay" && init?.body) relays.push(JSON.parse(String(init.body)) as { error?: string; status?: number });
+        return new Response(null, { status: 204 });
+      },
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        async fetch(url, init) {
+          if (url.endsWith("/api/v1/operations/events")) {
+            remoteStreams += 1;
+            return new Response(new ReadableStream({
+              start(controller) {
+                init?.signal?.addEventListener("abort", () => {
+                  remoteAborts += 1;
+                  controller.error(new Error("aborted"));
+                }, { once: true });
+              },
+            }), { status: 200 });
+          }
+          remoteGets += 1;
+          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+        },
+        async readCookies() { return []; },
+        async writeCookie() { return undefined; },
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    try {
+      await transport.start("http://127.0.0.1:9");
+      await waitFor(() => remoteStreams === 1 && events !== null);
+      push(snapshot(instanceA, 2, 9, "sse"));
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(remoteAborts).toBe(0);
+      expect(remoteStreams).toBe(1);
+      push(snapshot(instanceB, 1, 1, "http"));
+      await waitFor(() => remoteGets === 1 && relays.some((relay) => relay.status === 200));
+      expect(remoteAborts).toBe(1);
+      expect(relays.some((relay) => relay.error === "stale_epoch")).toBe(false);
+    } finally {
+      transport.stop();
+    }
+  });
+});
+
+function waitFor(ready: () => boolean): Promise<void> {
+  const deadline = Date.now() + 4000;
+  return new Promise((resolve, reject) => {
+    const tick = (): void => {
+      if (ready()) { resolve(); return; }
+      if (Date.now() > deadline) { reject(new Error("timed out")); return; }
+      setTimeout(tick, 10);
+    };
+    tick();
+  });
+}
+
+function listenTls(onSocket: (socket: tls.TLSSocket) => void): Promise<{ port: number; close: () => Promise<void> }> {
+  const server = tls.createServer({ cert: TEST_CERTIFICATE, key: TEST_KEY }, onSocket);
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") throw new Error("no address");
+      resolve({
+        port: address.port,
+        close: () => new Promise((done) => {
+          server.close(() => done());
+          server.closeAllConnections?.();
+        }),
+      });
+    });
+  });
+}

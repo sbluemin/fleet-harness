@@ -121,7 +121,9 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     const match = pathname.match(/^\/api\/v1\/hosts\/([^/]+)\/([^/]+)$/u);
     if (!match) return false;
     const abort = new AbortController();
-    req.on("close", () => abort.abort());
+    // 요청 본문이 끝나면 Node는 req 'close'를 쏜다. 그때 끊으면 아직 응답을 기다리는 호출이 취소된다.
+    // 클라이언트가 실제로 떠난 경우만 — 응답이 끝나기 전의 close — 취소한다.
+    res.on("close", () => { if (!res.writableEnded) abort.abort(); });
     if (!deps.isLoopback(req)) { deps.writeJson(res, 404, { error: "not_found" }); return true; }
     if (!deps.isExactOrigin(req)) { fail(res, "invalid_host_request"); return true; }
     const hostKey = decodeURIComponent(match[1] ?? "");
@@ -230,7 +232,7 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       const controller = new AbortController();
       const channel = { hostKey, abort: () => controller.abort() };
       live.add(channel);
-      req.on("close", () => controller.abort());
+      res.on("close", () => { if (!res.writableEnded) controller.abort(); });
       res.writeHead(200, deps.withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
       const relay = await deps.bridge.open({
         hostKey, epoch, op: "sse", routeId,
@@ -284,28 +286,52 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
     const controller = new AbortController();
     const entry = { hostKey, abort: () => controller.abort() };
     live.add(entry);
+    // 원격 ready 이전의 resize·flow와 붙여넣기 폭주는 깊이로 끊지 않는다. 바이트가 상한을 넘을 때만 닫는다.
+    const softBytes = 256 * 1024;
+    const hardBytes = 1024 * 1024;
     let socketId = 0;
+    let ready = false;
     let chain: Promise<void> = Promise.resolve();
-    let depth = 0;
-    ws.on("close", () => { controller.abort(); void deps.bridge.call({ hostKey, epoch, op: "ws-close", routeId: "terminal-ws", target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint }, params: { socketId } }); });
-    ws.on("message", (data: Buffer, isBinary: boolean) => {
-      if (!socketId || depth > 8) { ws.close(); return; }
-      depth += 1;
-      const payload = isBinary ? { dataBase64: data.toString("base64") } : { text: data.toString("utf8") };
-      chain = chain.then(() => deps.bridge.call({
-        hostKey, epoch, op: "ws-send", routeId: "terminal-ws",
-        target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
-        params: { socketId, ...payload },
-      })).then(() => undefined).finally(() => { depth -= 1; });
+    let queuedBytes = 0;
+    let depthBytes = 0;
+    const queued: { readonly text?: string; readonly dataBase64?: string; readonly bytes: number }[] = [];
+    const targetWire = { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint };
+    const flush = (): void => {
+      if (!ready || socketId === 0) return;
+      while (queued.length > 0 && depthBytes < softBytes) {
+        const next = queued.shift();
+        if (!next) break;
+        queuedBytes -= next.bytes;
+        depthBytes += next.bytes;
+        const payload = next.text !== undefined ? { text: next.text } : { dataBase64: next.dataBase64 };
+        chain = chain.then(() => deps.bridge.call({
+          hostKey, epoch, op: "ws-send", routeId: "terminal-ws", target: targetWire,
+          params: { socketId, ...payload },
+        }).then(() => undefined, () => undefined)).finally(() => { depthBytes -= next.bytes; flush(); });
+      }
+      if (queuedBytes + depthBytes < softBytes) ws.resume();
+    };
+    ws.on("close", () => {
+      controller.abort();
+      if (socketId === 0) return;
+      void deps.bridge.call({ hostKey, epoch, op: "ws-close", routeId: "terminal-ws", target: targetWire, params: { socketId } });
+    });
+    ws.on("message", (data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean) => {
+      const payload = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data);
+      const bytes = payload.length;
+      if (queuedBytes + depthBytes + bytes > hardBytes) { ws.close(); return; }
+      queued.push(isBinary ? { dataBase64: payload.toString("base64"), bytes } : { text: payload.toString("utf8"), bytes });
+      queuedBytes += bytes;
+      if (queuedBytes + depthBytes >= softBytes) ws.pause();
+      flush();
     });
     await deps.bridge.open({
-      hostKey, epoch, op: "ws-open", routeId: "terminal-ws",
-      target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+      hostKey, epoch, op: "ws-open", routeId: "terminal-ws", target: targetWire,
       params: { channel, operationId },
     }, async (frame) => {
       socketId = frame.id;
       if (link.epoch !== epoch) { controller.abort(); return; }
-      if (frame.ready === true) return;
+      if (frame.ready === true) { ready = true; flush(); return; }
       if (frame.text !== undefined) ws.send(frame.text);
       else if (frame.dataBase64 !== undefined) ws.send(Buffer.from(frame.dataBase64, "base64"));
     }, controller.signal);

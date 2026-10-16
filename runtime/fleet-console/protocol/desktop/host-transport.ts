@@ -27,6 +27,8 @@ export interface DesktopHostCommand {
 }
 
 export interface DesktopHostSnapshot {
+  /** 콘솔 프로세스가 살아있는 동안만 유지된다. 같은 출처로 다시 떠도 이 값이 바뀔 때만 셸이 명령 번호를 잊는다. */
+  readonly instanceId: string;
   readonly generation: number;
   readonly commands: readonly DesktopHostCommand[];
 }
@@ -49,6 +51,7 @@ export interface DesktopHostRelay {
 
 const HOST_KEY = /^(?!local$)[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
 const FINGERPRINT = /^[0-9A-F]{64}$/u;
+const INSTANCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -56,6 +59,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function isDesktopHostSnapshot(value: unknown): value is DesktopHostSnapshot {
   return isRecord(value)
+    && typeof value.instanceId === "string"
+    && INSTANCE_ID.test(value.instanceId)
     && typeof value.generation === "number"
     && Number.isSafeInteger(value.generation)
     && Array.isArray(value.commands)

@@ -47,6 +47,14 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const partitions = new Map<string, { readonly origin: string; readonly fingerprint: string; readonly partition: HostPartition }>();
   const epochs = new Map<string, number>();
   const jobs = new Map<number, HostJob>();
+  // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
+  const releaseConsole = (): void => {
+    epochs.clear();
+    for (const [id, job] of jobs) {
+      jobs.delete(id);
+      job.abort();
+    }
+  };
 
   const admitEpoch = (command: DesktopHostCommand): boolean => {
     const current = epochs.get(command.hostKey);
@@ -93,7 +101,8 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     await deps.writeWindowCookie({ ...renewed, url: origin, path: "/", secure: true, httpOnly: true });
   };
 
-  const execute = async (command: DesktopHostCommand): Promise<DesktopHostRelay> => {
+  const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
+    if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (!admitEpoch(command)) return { id: command.id, error: "stale_epoch" };
     if (command.op === "abort") {
       const target = command.params.commandId;
@@ -102,9 +111,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     if (command.op === "ws-send" || command.op === "ws-close") return forwardSocket(command);
     const opened = await partitionFor(command);
+    if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
     if (!("partition" in opened)) return opened;
-    if (command.op === "presence") return performPresence(command, opened.origin, opened.partition);
-    if (command.op === "http" || command.op === "bytes") return performHttp(command, opened.origin, opened.partition);
+    if (command.op === "presence") return performPresence(command, opened.origin, opened.partition, signal);
+    if (command.op === "http" || command.op === "bytes") return performHttp(command, opened.origin, opened.partition, signal);
     return { id: command.id, error: "remote_host_unavailable" };
   };
 
@@ -115,10 +125,10 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (!("partition" in opened)) { await emit(opened); return; }
     if (command.op === "sse") { await streamEvents(command, opened.origin, opened.partition, emit, signal); return; }
     if (command.op === "ws-open") { await streamSocket(command, opened.origin, opened.partition, emit, signal); return; }
-    await emit(await execute(command));
+    await emit(await execute(command, signal));
   };
 
-  return { execute, run };
+  return { execute, run, releaseConsole };
 
   function forwardSocket(command: DesktopHostCommand): DesktopHostRelay {
     const socketId = command.params.socketId;
@@ -132,12 +142,17 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return { id: command.id, end: true };
   }
 
-  async function performPresence(command: DesktopHostCommand, origin: string, partition: HostPartition): Promise<DesktopHostRelay> {
+  async function performPresence(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
     const intent = command.params.intent;
     if (intent !== "observe" && intent !== "activate" && intent !== "release") return { id: command.id, error: "invalid_host_request" };
-    const response = await partition.fetch(`${origin}${SESSION_RESPONSE}`, {
-      method: "POST", redirect: "error", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify({ intent }),
-    });
+    let response: Response;
+    try {
+      response = await partition.fetch(`${origin}${SESSION_RESPONSE}`, {
+        method: "POST", redirect: "error", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify({ intent }), signal,
+      });
+    } catch {
+      return { id: command.id, error: "remote_host_unavailable" };
+    }
     await rememberPairing(origin, command.target.port, partition);
     if (response.status === 404 || response.status === 405) return { id: command.id, capability: "unsupported", error: "host_unsupported" };
     let body: unknown = null;
@@ -148,16 +163,21 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     return { id: command.id, capability: "supported", mode: body.mode, access: body.access };
   }
 
-  async function performHttp(command: DesktopHostCommand, origin: string, partition: HostPartition): Promise<DesktopHostRelay> {
+  async function performHttp(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
     const path = safePath(command.params.path);
     const method = command.params.method === "GET" || command.params.method === "HEAD" || command.params.method === "POST" ? command.params.method : null;
     if (!path || !method) return { id: command.id, error: "route_denied" };
     const hasJson = Object.prototype.hasOwnProperty.call(command.params, "json");
-    const response = await partition.fetch(`${origin}${path}`, {
-      method, redirect: "error",
-      headers: { Origin: origin, ...(hasJson ? { "content-type": "application/json" } : {}) },
-      body: hasJson ? JSON.stringify(command.params.json) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await partition.fetch(`${origin}${path}`, {
+        method, redirect: "error", signal,
+        headers: { Origin: origin, ...(hasJson ? { "content-type": "application/json" } : {}) },
+        body: hasJson ? JSON.stringify(command.params.json) : undefined,
+      });
+    } catch {
+      return { id: command.id, error: "remote_host_unavailable" };
+    }
     await rememberPairing(origin, command.target.port, partition);
     if (response.status === 204 || response.status === 205 || response.status === 304) return { id: command.id, status: response.status, contentType: null };
     const type = response.headers.get("content-type") ?? "";
@@ -177,6 +197,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const controller = new AbortController();
     const stop = () => controller.abort();
     signal?.addEventListener("abort", stop, { once: true });
+    if (signal?.aborted) stop();
     jobs.set(command.id, { hostKey: command.hostKey, epoch: command.epoch, abort: stop });
     try {
       const response = await partition.fetch(`${origin}${path}`, {
@@ -227,10 +248,20 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     const cookie = (await partition.readCookies(origin)).map((entry) => `${entry.name}=${entry.value}`).join("; ");
     const controller = new AbortController();
     let chain = Promise.resolve();
-    const enqueue = (relay: DesktopHostRelay): Promise<void> => { chain = chain.then(() => emit(relay)); return chain; };
+    // 핀된 원격이 프레임을 쏟아도 릴레이 대기열이 메모리를 먹지 않게 한다. 넘치면 소켓을 닫는다.
+    const maxRelayChars = 1024 * 1024;
+    let relayChars = 0;
     let socket: PinnedSocket | null = null;
     const stop = () => { controller.abort(); socket?.close(); };
+    const enqueue = (relay: DesktopHostRelay): Promise<void> => {
+      const size = (relay.text?.length ?? 0) + (relay.dataBase64?.length ?? 0);
+      if (size > 0 && relayChars + size > maxRelayChars) { stop(); return chain; }
+      relayChars += size;
+      chain = chain.then(() => emit(relay)).then(() => { relayChars -= size; }, () => { relayChars -= size; });
+      return chain;
+    };
     signal?.addEventListener("abort", stop, { once: true });
+    if (signal?.aborted) stop();
     jobs.set(command.id, {
       hostKey: command.hostKey, epoch: command.epoch,
       abort: stop,
@@ -287,15 +318,18 @@ function safeByteType(value: string): string {
 export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { readonly fetch: typeof fetch; readonly log?: (message: string) => void }): { start(origin: string): Promise<void>; stop(): void } {
   const executor = createHostTransportExecutor(deps);
   const running = new Set<number>();
-  const controllers = new Map<number, AbortController>();
+  const streams = new Map<number, AbortController>();
+  const calls = new Map<number, AbortController>();
   let activeOrigin: string | null = null;
-  const postRelay = async (relay: DesktopHostRelay): Promise<void> => {
+  // 같은 출처로 콘솔이 다시 떠도 instanceId가 같으면 살아 있는 스트림을 끊지 않는다. 달라질 때만 앞 프로세스의 번호와 epoch를 잊는다.
+  let consoleInstance: string | null = null;
+  const postRelay = async (relay: DesktopHostRelay, owner: string): Promise<void> => {
     const origin = activeOrigin;
-    if (!origin) return;
+    if (!origin || owner !== consoleInstance) return;
     const response = await deps.fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
       method: "POST", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify(relay),
     });
-    if (!response.ok) deps.log?.(`host transport relay rejected status=${response.status}`);
+    if (!response.ok && owner === consoleInstance) deps.log?.(`host transport relay rejected status=${response.status}`);
   };
   const stream = createDesktopEventStream({
     snapshotPath: DESKTOP_HOST_TRANSPORT_PATH,
@@ -306,26 +340,56 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
     normalizeOrigin: (origin) => new URL(origin).origin,
     fetch: deps.fetch,
     apply: (snapshot) => {
+      if (snapshot.instanceId !== consoleInstance) {
+        const replacing = consoleInstance !== null;
+        consoleInstance = snapshot.instanceId;
+        if (replacing) {
+          running.clear();
+          for (const controller of streams.values()) controller.abort();
+          for (const controller of calls.values()) controller.abort();
+          streams.clear();
+          calls.clear();
+          executor.releaseConsole();
+        }
+      }
+      const owner = consoleInstance ?? snapshot.instanceId;
       const live = new Set(snapshot.commands.map((command) => command.id));
-      for (const [id, controller] of controllers) if (!live.has(id)) controller.abort();
+      for (const [id, controller] of streams) if (!live.has(id)) controller.abort();
       for (const command of snapshot.commands) {
         if (running.has(command.id)) continue;
         running.add(command.id);
         const streaming = command.op === "sse" || command.op === "ws-open";
         const controller = new AbortController();
-        if (streaming) controllers.set(command.id, controller);
+        (streaming ? streams : calls).set(command.id, controller);
+        const deliver = async (relay: DesktopHostRelay): Promise<void> => {
+          if (owner !== consoleInstance) return;
+          if (streaming && controller.signal.aborted && relay.end !== true && relay.error === undefined) return;
+          await postRelay(relay, owner);
+        };
         const done = streaming
-          ? executor.run(command, async (relay) => { if (!controller.signal.aborted || relay.end === true || relay.error !== undefined) await postRelay(relay); }, controller.signal)
-          : executor.execute(command).then((relay) => postRelay(relay));
+          ? executor.run(command, deliver, controller.signal)
+          : executor.execute(command, controller.signal).then((relay) => deliver(relay));
         void done.catch((error: unknown) => {
           deps.log?.(`host transport failed: ${error instanceof Error ? error.message : "unknown"}`);
-          return postRelay({ id: command.id, error: "remote_host_unavailable", end: true });
-        }).finally(() => { controllers.delete(command.id); });
+          return postRelay({ id: command.id, error: "remote_host_unavailable", end: true }, owner);
+        }).finally(() => {
+          const map = streaming ? streams : calls;
+          if (map.get(command.id) === controller) map.delete(command.id);
+        });
       }
     },
   });
   return {
     start(origin) { activeOrigin = new URL(origin).origin; return stream.start(activeOrigin); },
-    stop() { activeOrigin = null; running.clear(); for (const controller of controllers.values()) controller.abort(); stream.stop(); },
+    stop() {
+      activeOrigin = null;
+      running.clear();
+      for (const controller of streams.values()) controller.abort();
+      for (const controller of calls.values()) controller.abort();
+      streams.clear();
+      calls.clear();
+      executor.releaseConsole();
+      stream.stop();
+    },
   };
 }

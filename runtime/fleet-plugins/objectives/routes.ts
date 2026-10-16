@@ -137,7 +137,7 @@ export default definePlugin({
 
     const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {
-      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http", ...(route.name === "state" || route.name === "finished" || route.name === "objective/get" ? { readOnly: true as const } : {}) });
+      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http", ...(route.name === "state" || route.name === "finished" || route.name === "objective/get" || route.name === "attachment/file" || route.name === "result/file" ? { readOnly: true as const } : {}) });
     }
 
     // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.

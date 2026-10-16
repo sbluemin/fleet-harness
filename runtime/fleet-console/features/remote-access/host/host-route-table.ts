@@ -23,10 +23,11 @@ const HOST_ROUTES: readonly HostRoute[] = [
   { id: "agent-history", kind: "json", method: "GET", path: "/api/v1/agent/sessions/:sessionId/chat-history", effect: "read" },
   { id: "agent-job", kind: "json", method: "GET", path: "/api/v1/agent/sessions/:sessionId/chat-job", effect: "read" },
   { id: "agent-catalog", kind: "json", method: "GET", path: "/api/v1/agent/sessions/:sessionId/chat-catalog", effect: "read" },
+  { id: "agent-events", kind: "events", method: "GET", path: "/api/v1/agent/events", effect: "read" },
   { id: "agent-message", kind: "json", method: "POST", path: "/api/v1/agent/sessions/:sessionId/message", effect: "write", conversation: true },
   { id: "agent-answer", kind: "json", method: "POST", path: "/api/v1/agent/sessions/:sessionId/chat-answer", effect: "write", conversation: true },
   { id: "agent-stop", kind: "json", method: "POST", path: "/api/v1/agent/sessions/:sessionId/chat-stop", effect: "write", conversation: true },
-  { id: "agent-attachment", kind: "bytes", method: "POST", path: "/api/v1/agent/attachments", effect: "write" },
+  // 원격 이진 업로드는 지원하지 않는다. 빈 POST도 셸로 보내지 않고 route_denied다. 미리보기 GET은 남긴다.
   { id: "agent-preview", kind: "resources", method: "GET", path: "/api/v1/agent/attachments/:attachmentId/preview", effect: "read" },
   { id: "files-list", kind: "json", method: "POST", path: "/plugins/file-explorer/files/list", effect: "read" },
   { id: "files-git", kind: "json", method: "POST", path: "/plugins/file-explorer/files/git-status", effect: "read" },

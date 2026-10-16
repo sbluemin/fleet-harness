@@ -12,6 +12,23 @@ export interface PinnedSocket {
 }
 
 const MAX_PAYLOAD = 1024 * 1024;
+const MAX_BUFFER = MAX_PAYLOAD + 64 * 1024;
+const MAX_FRAGMENTS = 32;
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+function websocketAccept(key: string): string {
+  return crypto.createHash("sha1").update(key + WS_GUID).digest("base64");
+}
+
+function headerValue(head: string, name: string): string {
+  for (const line of head.split("\r\n").slice(1)) {
+    const split = line.indexOf(":");
+    if (split <= 0) continue;
+    if (line.slice(0, split).trim().toLowerCase() !== name) continue;
+    return line.slice(split + 1).trim();
+  }
+  return "";
+}
 
 export function openPinnedWebSocket(input: {
   readonly hostname: string;
@@ -30,6 +47,9 @@ export function openPinnedWebSocket(input: {
     let handshake = false;
     let buffer = Buffer.alloc(0);
     let fragments: Buffer[] = [];
+    let fragmentBytes = 0;
+    let outstanding = 0;
+    let accept = "";
     const fail = (error: Error): void => {
       if (settled) { socket.destroy(); return; }
       settled = true;
@@ -43,14 +63,17 @@ export function openPinnedWebSocket(input: {
       servername: input.hostname.includes(":") ? undefined : input.hostname,
     });
     const closed = new Promise<void>((done) => socket.once("close", () => done()));
+    socket.once("close", () => { if (!settled) fail(new Error("remote_host_unavailable")); });
     const abort = (): void => { socket.destroy(); };
     input.signal.addEventListener("abort", abort, { once: true });
     socket.once("secureConnect", () => {
       const certificate = socket.getPeerX509Certificate();
       const presented = certificate ? normalizeFingerprint(certificate.fingerprint256) : "";
+      // 지문이 다르면 티켓과 쿠키가 든 요청 줄을 쓰지 않는다.
       if (presented !== expected) { fail(new Error("remote_host_fingerprint_mismatch")); return; }
       const host = input.hostname.includes(":") ? `[${input.hostname}]` : input.hostname;
       const key = crypto.randomBytes(16).toString("base64");
+      accept = websocketAccept(key);
       const lines = [
         `GET ${input.path} HTTP/1.1`,
         `Host: ${host}:${input.port}`,
@@ -67,13 +90,17 @@ export function openPinnedWebSocket(input: {
     });
     socket.on("data", (chunk: Buffer) => {
       buffer = Buffer.concat([buffer, chunk]);
+      if (buffer.length > MAX_BUFFER) { fail(new Error("remote_host_unavailable")); return; }
       if (!handshake) {
         const split = buffer.indexOf("\r\n\r\n");
         if (split < 0) { if (buffer.length > 8192) fail(new Error("remote_host_unavailable")); return; }
         const head = buffer.subarray(0, split).toString("latin1");
         buffer = buffer.subarray(split + 4);
         handshake = true;
-        if (!head.startsWith("HTTP/1.1 101")) { fail(new Error("remote_host_unavailable")); return; }
+        if (!head.startsWith("HTTP/1.1 101") || headerValue(head, "sec-websocket-accept") !== accept) {
+          fail(new Error("remote_host_unavailable"));
+          return;
+        }
         settled = true;
         resolve({
           sendText: (text) => socket.write(clientFrame(0x1, Buffer.from(text))),
@@ -88,18 +115,29 @@ export function openPinnedWebSocket(input: {
         for (const frame of taken.frames) {
           if (frame.opcode === 0x8) { socket.end(); return; }
           if (frame.opcode === 0x9) { socket.write(clientFrame(0xa, frame.payload)); continue; }
-          if (frame.opcode === 0x0) { fragments.push(frame.payload); continue; }
+          if (frame.opcode === 0x0) {
+            if (fragments.length >= MAX_FRAGMENTS || fragmentBytes + frame.payload.length > MAX_PAYLOAD) throw new Error("frame_too_large");
+            fragments.push(frame.payload);
+            fragmentBytes += frame.payload.length;
+            continue;
+          }
           const payload = frame.opcode === 0x1 || frame.opcode === 0x2
             ? Buffer.concat([...fragments, frame.payload])
             : null;
           fragments = [];
+          fragmentBytes = 0;
           if (!payload) continue;
+          if (payload.length > MAX_PAYLOAD || outstanding + payload.length > MAX_PAYLOAD) throw new Error("frame_too_large");
+          outstanding += payload.length;
           socket.pause();
           const delivered = frame.opcode === 0x1 ? input.onText(payload.toString("utf8")) : input.onBytes(payload);
-          void Promise.resolve(delivered).finally(() => socket.resume());
+          void Promise.resolve(delivered).finally(() => {
+            outstanding -= payload.length;
+            if (outstanding < MAX_PAYLOAD) socket.resume();
+          });
         }
       } catch {
-        socket.destroy();
+        fail(new Error("remote_host_unavailable"));
       }
     });
     socket.once("error", () => fail(new Error("remote_host_unreachable")));

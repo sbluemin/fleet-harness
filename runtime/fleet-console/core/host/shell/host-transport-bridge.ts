@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 import type { DesktopHostCommand, DesktopHostRelay, DesktopHostSnapshot } from "@fleet-console/protocol/desktop";
 import { isDesktopHostRelay } from "@fleet-console/protocol/desktop";
 
@@ -29,6 +31,7 @@ interface Waiter {
 }
 
 export function createHostShellBridge(): HostShellBridge {
+  const instanceId = crypto.randomUUID();
   let generation = 0;
   let nextId = 1;
   const pending = new Map<number, DesktopHostCommand>();
@@ -42,7 +45,7 @@ export function createHostShellBridge(): HostShellBridge {
     for (const subscriber of subscribers) subscriber(frame);
   };
 
-  const snapshot = (): DesktopHostSnapshot => ({ generation, commands: [...pending.values()] });
+  const snapshot = (): DesktopHostSnapshot => ({ instanceId, generation, commands: [...pending.values()] });
 
   bridge = {
     attached: () => subscribers.size > 0,
@@ -74,18 +77,13 @@ export function createHostShellBridge(): HostShellBridge {
   };
 
   function start(request: HostShellRequest, onFrame: Waiter["onFrame"], signal: AbortSignal | undefined, streaming: boolean): Promise<DesktopHostRelay> {
-    if (subscribers.size === 0) return Promise.resolve({ id: 0, error: "remote_host_unavailable", end: true });
+    if (subscribers.size === 0 || signal?.aborted) return Promise.resolve({ id: 0, error: "remote_host_unavailable", end: true });
     const id = nextId;
     nextId += 1;
     const command: DesktopHostCommand = { id, ...request };
     pending.set(id, command);
     return new Promise((resolve) => {
       const timer = streaming ? null : setTimeout(() => finish({ id, error: "remote_host_unavailable", end: true }), CALL_TIMEOUT_MS);
-      const onAbort = (): void => {
-        finish({ id, error: "remote_host_unavailable", end: true });
-        if (streaming) void bridge.call({ ...request, op: "abort", routeId: "abort", params: { commandId: id } }).catch(() => undefined);
-      };
-      signal?.addEventListener("abort", onAbort, { once: true });
       const finish = (relay: DesktopHostRelay): void => {
         if (timer) clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
@@ -95,9 +93,16 @@ export function createHostShellBridge(): HostShellBridge {
         resolve(relay);
         publish();
       };
+      const onAbort = (): void => {
+        finish({ id, error: "remote_host_unavailable", end: true });
+        if (streaming && subscribers.size > 0) void bridge.call({ ...request, op: "abort", routeId: "abort", params: { commandId: id } }).catch(() => undefined);
+      };
       const waiter: Waiter = { streaming, ...(onFrame ? { onFrame } : {}), finish };
       waiters.set(id, waiter);
-      publish();
+      // 이미 취소된 신호에 리스너를 붙이면 콜백이 호출되지 않는다. 붙인 뒤 한 번 더 본다.
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) onAbort();
+      else publish();
     });
   }
 
