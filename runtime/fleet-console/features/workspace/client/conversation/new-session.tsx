@@ -14,6 +14,7 @@ import { TheaterAvatar } from "../theater-avatar.js";
 import { registerTheaterFromPath } from "../theater.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
 import { resolveNewSessionTheaterId } from "./new-session-entry.js";
+import { clearNewSessionDraft, readNewSessionDraft, writeNewSessionDraft } from "./new-session-draft.js";
 import "./new-session.css";
 
 /**
@@ -37,7 +38,8 @@ export function NewSessionColumn({ state, target, tools }: {
     ?? state.theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId())
     ?? null;
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[] | null>(null);
-  const [prompt, setPrompt] = useState("");
+  // 쓰던 문장은 열린 새 세션의 것이다 — 칸이 잠시 내려갔다 다시 서도 이어 쓴다(new-session-draft).
+  const [prompt, setPrompt] = useState(readNewSessionDraft);
   const [startView, setStartView] = useState<OperationLaunchView>(readLaunchStartSurface);
   const [starting, setStarting] = useState(false);
   const [theaterMenuOpen, setTheaterMenuOpen] = useState<"chip" | "card" | null>(null);
@@ -109,6 +111,7 @@ export function NewSessionColumn({ state, target, tools }: {
     if (launchChoice.effort) variant.effort = launchChoice.effort;
     setStarting(true);
     writeQuickLaunchTheater(theater.id);
+    clearNewSessionDraft();
     requestQuickLaunch({
       theaterId: theater.id,
       pluginId: variantTarget.pluginId,
@@ -208,7 +211,7 @@ export function NewSessionColumn({ state, target, tools }: {
             rows={1}
             value={prompt}
             disabled={starting}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(event) => { setPrompt(event.target.value); writeNewSessionDraft(event.target.value); }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
