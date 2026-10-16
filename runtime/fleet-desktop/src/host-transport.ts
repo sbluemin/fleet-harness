@@ -61,16 +61,18 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const uploads = new Map<number, UploadAssembly>();
   // origin+port 하나의 쿠키 변경만 직렬화한다. 명령은 시작 순서로 번호를 받고, 그 번호보다 늦은 확정 뒤에는 쓰지 않는다.
   const pairingTurns = new Map<string, Promise<void>>();
-  const commandClaims = new Map<number, number>();
+  // 번호는 명령 객체에 묶인 lease가 들고, 가장 바깥 호출이 끝나면 함께 사라진다. 완료된 명령의 id를 맵에 남기지 않는다.
+  const leases = new WeakMap<DesktopHostCommand, { readonly claim: number; pins: number }>();
   const committedClaims = new Map<string, number>();
   let nextClaim = 1;
+  // 콘솔 수명이 바뀌면 이 값 아래의 번호는 죽은 수명의 것이다. 카운터를 되감지 않으므로 새 명령이 옛 번호와 겹치지 않는다.
+  let claimFloor = 1;
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
     uploads.clear();
-    commandClaims.clear();
     committedClaims.clear();
-    nextClaim = 1;
+    claimFloor = nextClaim;
     for (const [id, job] of jobs) {
       jobs.delete(id);
       job.abort();
@@ -119,21 +121,32 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   const claimKey = (origin: string, port: number): string => `${origin}\n${port}`;
 
   /** 시작 순서. 응답이 먼저 도착해도 나중에 시작한 명령이 더 큰 번호를 가진다. */
-  const claimFor = (command: DesktopHostCommand): number => {
-    const existing = commandClaims.get(command.id);
-    if (existing !== undefined) return existing;
-    const claim = nextClaim;
-    nextClaim += 1;
-    commandClaims.set(command.id, claim);
-    return claim;
+  const enter = (command: DesktopHostCommand): (() => void) => {
+    let lease = leases.get(command);
+    if (!lease) {
+      lease = { claim: nextClaim, pins: 0 };
+      nextClaim += 1;
+      leases.set(command, lease);
+    }
+    const held = lease;
+    held.pins += 1;
+    return () => {
+      held.pins -= 1;
+      if (held.pins === 0 && leases.get(command) === held) leases.delete(command);
+    };
   };
+
+  /** 들어온 적 없는 명령은 0이다. 어떤 floor보다 낮으므로 쿠키를 건드리지 못한다. */
+  const claimFor = (command: DesktopHostCommand): number => leases.get(command)?.claim ?? 0;
 
   const claimLive = (origin: string, port: number, claim: number, signal?: AbortSignal): boolean => {
     if (signal?.aborted) return false;
+    if (claim < claimFloor) return false;
     return claim >= (committedClaims.get(claimKey(origin, port)) ?? 0);
   };
 
   const publishClaim = (origin: string, port: number, claim: number): void => {
+    if (claim < claimFloor) return;
     const key = claimKey(origin, port);
     const current = committedClaims.get(key) ?? 0;
     if (claim > current) committedClaims.set(key, claim);
@@ -216,8 +229,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     });
   };
 
-  const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
-    claimFor(command);
+  const executeLeased = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
     // abort는 epoch 거절보다 먼저다. 늦게 도착한 취소가 stale로 버려지면 원격 전송이 끝까지 남는다.
     if (command.op === "abort") {
       const uploadId = command.params.uploadId;
@@ -258,8 +270,16 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
   };
 
-  const run = async (command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void> => {
-    claimFor(command);
+  const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
+    const leave = enter(command);
+    try {
+      return await executeLeased(command, signal);
+    } finally {
+      leave();
+    }
+  };
+
+  const runLeased = async (command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void> => {
     if (signal?.aborted) { await emit({ id: command.id, error: "remote_host_unavailable", end: true }); return; }
     if (!admitEpoch(command)) { await emit({ id: command.id, error: "stale_epoch", end: true }); return; }
     const opened = await partitionFor(command, signal);
@@ -267,6 +287,15 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     if (command.op === "sse") { await streamEvents(command, opened.origin, opened.partition, emit, signal); return; }
     if (command.op === "ws-open") { await streamSocket(command, opened.origin, opened.partition, emit, signal); return; }
     await emit(await execute(command, signal));
+  };
+
+  const run = async (command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void> => {
+    const leave = enter(command);
+    try {
+      await runLeased(command, emit, signal);
+    } finally {
+      leave();
+    }
   };
 
   return { execute, run, releaseConsole };

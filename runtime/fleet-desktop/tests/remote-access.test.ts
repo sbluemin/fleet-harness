@@ -519,6 +519,42 @@ describe("host partition transport", () => {
     presenceReject = false;
     pauseForgetRead = false;
   });
+
+  it("does not let a command from a released console lifetime commit into the next one", async () => {
+    const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) };
+    const origin = "https://remote.example:8443";
+    const cookies = [{ name: "fleet_console_pairing_8443", value: "existing" }];
+    let hold = true;
+    let entered: () => void = () => undefined;
+    let letGo: () => void = () => undefined;
+    const writing = new Promise<void>((resolve) => { entered = resolve; });
+    const gate = new Promise<void>((resolve) => { letGo = resolve; });
+    const executor = createHostTransportExecutor({
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        fetch: async (url: string) => (url.endsWith("/pair") ? new Response(null, { status: 204 }) : Response.json({ capability: "host-session", mode: "observer", access: "full" })),
+        readCookies: async () => cookies,
+        writeCookie: async () => undefined,
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => cookies,
+      writeWindowCookie: async () => { if (hold) { hold = false; entered(); await gate; } },
+      localOrigin: () => "http://127.0.0.1:4010",
+      localFetch: async () => { throw new Error("unexpected_handoff"); },
+    });
+    const base = { hostKey: "host1", epoch: 1, routeId: "abort", target };
+    for (let id = 1; id <= 5; id += 1) await executor.execute({ ...base, id, op: "abort", params: { commandId: 99999 } });
+    const old = executor.execute({ ...base, id: 6, op: "presence", routeId: "presence", params: { intent: "observe" } });
+    await writing;
+    executor.releaseConsole();
+    letGo();
+    await old;
+    // 새 수명은 id를 1부터 다시 쓴다. 옛 수명의 늦은 확정이 더 큰 번호로 남아 있으면 이 pair가 막힌다.
+    const fresh = await executor.execute({ ...base, id: 1, op: "pair", routeId: "pair", params: {} });
+    expect(fresh).toEqual({ id: 1, capability: "supported", mode: "off", access: null });
+    expect(origin).toBe("https://remote.example:8443");
+  });
 });
 
 describe("host transport streams", () => {
