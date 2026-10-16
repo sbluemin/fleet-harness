@@ -1,5 +1,7 @@
 export const quotaEn = {
   "quota.panel.title": "Usage limits",
+  "quota.host.source": "Collected by this computer; matching the conversation account has not been verified.",
+  "quota.host.manageLogin": "Manage provider sign-in on this remote computer, not from this read-only view.",
   "quota.meter.session": "Session",
   "quota.meter.weekly": "Weekly",
   "quota.meter.cycle": "Included usage",
@@ -87,6 +89,8 @@ export const quotaEn = {
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.panel.title": "사용 한도",
+  "quota.host.source": "이 컴퓨터가 수집한 사용 한도입니다. 대화 계정과의 대응은 확인되지 않았습니다.",
+  "quota.host.manageLogin": "공급자 로그인은 이 읽기 전용 화면이 아닌 해당 원격 컴퓨터에서 관리하세요.",
   "quota.meter.session": "세션",
   "quota.meter.weekly": "주간",
   "quota.meter.cycle": "포함된 사용량",

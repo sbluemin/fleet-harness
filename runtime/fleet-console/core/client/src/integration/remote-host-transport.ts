@@ -1,7 +1,7 @@
 import type { HostEventSource, HostScope, HostTransport } from "@fleet-console/sdk/host-context";
 import { assertHostScope, readHostJson } from "@fleet-console/sdk/host-context/browser";
 import {
-  HOST_JSON_CONTENT_TYPE, HOST_PRESENCE_EVENT, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
+  HOST_JSON_CONTENT_TYPE, hostEventsUrl, hostResourcesUrl, hostSocketUrl, hostTransportPath,
   isHostJsonRequest, isHostJsonResult, isHostPresence, isHostPresenceRequest, isHostTerminalUpgradePath, isHostTransportErrorBody,
   type HostJsonRequest, type HostPresence, type HostRelayMethod,
 } from "@fleet-console/protocol/remote/host-transport";
@@ -12,6 +12,7 @@ export interface HostBrowserNetwork {
   readonly events: (path: string) => EventSource;
   readonly socket: (url: string) => WebSocket;
   readonly origin: string;
+  readonly background?: (work: () => Promise<void>, signal: AbortSignal) => Promise<void>;
 }
 
 export class HostTransportFailure extends Error {
@@ -109,19 +110,27 @@ export function createRemoteHostDependencies(hostKey: string, label: string, net
       return readPresence(signal);
     },
     watchPresence: (receive, failed) => {
-      const source = network.events(requiredPath(hostTransportPath("presenceEvents", hostKey)));
-      let live = true;
-      source.addEventListener(HOST_PRESENCE_EVENT, (event) => {
-        if (!live) return;
+      // origin당 HTTP/1.1 여섯 연결을 배경 EventSource가 독점하지 않는다. 연결을 유지한 채 상태만 읽는다.
+      const abort = new AbortController();
+      let delay = 15_000;
+      let timer: ReturnType<typeof setTimeout>;
+      const poll = async () => {
+        const work = async () => {
+          if (abort.signal.aborted) return;
+          const presence = await readPresence(AbortSignal.any([abort.signal, AbortSignal.timeout(8_000)]));
+          if (!abort.signal.aborted) await receive(presence);
+        };
         try {
-          const body: unknown = JSON.parse((event as MessageEvent<string>).data);
-          if (!isHostPresence(body) || body.hostKey !== hostKey) throw new Error("invalid_host_response");
-          if (body.capability !== "supported") throw new Error("host_unsupported");
-          receive(body);
-        } catch (cause) { failed(cause instanceof Error ? cause : new Error("invalid_host_response")); }
-      });
-      source.onerror = () => { if (live) failed(new Error("remote_host_unavailable")); };
-      return () => { live = false; source.close(); };
+          await (network.background ? network.background(work, abort.signal) : work());
+          delay = 15_000;
+        } catch (cause) {
+          if (!abort.signal.aborted) failed(cause instanceof Error ? cause : new Error("remote_host_unavailable"));
+          delay = Math.min(60_000, delay * 2);
+        }
+        if (!abort.signal.aborted) timer = setTimeout(() => { void poll(); }, delay);
+      };
+      timer = setTimeout(() => { void poll(); }, delay);
+      return () => { abort.abort(); clearTimeout(timer); };
     },
     createTransport: (scope) => createRemoteHostTransport(scope, network),
   };

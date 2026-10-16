@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 
 import { SDK_API_VERSION } from "@fleet-console/sdk/version";
+import { createLocalHostTransport } from "@fleet-console/sdk/host-context/browser";
 
 import { ActiveCompanionShortcutsProvider, takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
@@ -35,6 +36,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/plugin-capabilities.js";
 import { HostClientProvider, useHostClientBindings } from "../integration/host-client-context.js";
 import { useHostWorkspace } from "../integration/use-host-workspace.js";
+import { HostContent } from "../integration/host-content.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
 import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
@@ -109,6 +111,11 @@ function ConnectedApp() {
   const hostWorkspace = useHostWorkspace(registry, isDesktopShell() && desktopHome.origin === window.location.origin);
   const hostSnapshot = useSyncExternalStore(hostWorkspace?.workspace.subscribe ?? subscribeWithoutWorkspace, hostWorkspace?.workspace.getSnapshot ?? snapshotWithoutWorkspace, snapshotWithoutWorkspace);
   const remoteSelection = hostSnapshot !== null && hostSnapshot.selection.hostKey !== "local";
+  const operationHost = useMemo(() => {
+    if (!hostWorkspace || remoteSelection) return host;
+    const scope = Object.freeze({ hostKey: "local", epoch: host.transport.scope.epoch, signal: AbortSignal.any([host.transport.scope.signal, hostWorkspace.workspace.getSelectionSignal()]) });
+    return { ...host, transport: createLocalHostTransport({ scope, fetch: (...args) => fetch(...args), events: (path) => new EventSource(path), socket: (url) => new WebSocket(url), origin: window.location.origin }) };
+  }, [host, hostWorkspace, remoteSelection, hostSnapshot?.selectionGeneration]);
   const surfaceDescriptors = useExpandedSurfaceDescriptors();
   const globalSettings = useGlobalSettingsStore();
   const [pendingUndos, setPendingUndos] = useState<readonly PendingUndo[]>([]);
@@ -599,7 +606,7 @@ function ConnectedApp() {
             <main className="console-route-content">
               <Routes>
                 <Route path="/" element={<Navigate to="/operations" replace />} />
-                <Route path="/operations" element={<Operations state={state} {...(hostWorkspace ? { hostWorkspace: hostWorkspace.workspace } : {})} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} />} />
+                <Route path="/operations" element={<HostClientProvider bindings={operationHost}><Operations state={state} {...(hostWorkspace ? { hostWorkspace: hostWorkspace.workspace, renderHostContent: (insets) => <HostContent binding={hostWorkspace} registry={registry} insets={insets} language={consoleLocale} /> } : {})} onDeferredDeletion={enqueueDeletion} onArchived={enqueueArchive} deletionToast={mobileLayout ? null : deletionToast} /></HostClientProvider>} />
                 <Route path="/settings" element={remoteSelection ? <Navigate to="/operations" replace /> : mobileLayout ? <MobileSettingsPage /> : <SettingsRouteAdapter />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>

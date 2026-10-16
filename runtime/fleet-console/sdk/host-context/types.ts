@@ -1,3 +1,7 @@
+import type { ReactNode } from "react";
+import type { ClientApiCapability, ClientConsoleEventsCapability } from "../plugin/types.js";
+import type { ClientAgentChatCapability } from "../components/agent-chat-transcript.js";
+
 /** 저장 host의 opaque id다. origin이나 사용자 제공 주소를 식별자로 사용하지 않는다. */
 export type HostKey = string;
 
@@ -29,7 +33,7 @@ export interface HostOperationSummary {
   readonly title: string;
   readonly type: string;
   readonly parentOperationId?: string;
-  readonly activity?: "idle" | "running" | "awaiting" | "background";
+  readonly activity?: "idle" | "running" | "awaiting" | "background" | "ended" | "unknown";
 }
 
 /** 목록에 남은 오류는 로컬 복귀와 독립적이다. ready 전에는 본문 데이터로 사용하지 않는다. */
@@ -97,6 +101,34 @@ export interface HostSocketTarget {
 }
 
 /** 하나의 불변 scope에 결박된다. path는 승인된 Console 상대 경로이며 외부 URL이 아니다. */
+/** Core가 host+surface별로 보유하는 메모리 상태다. 번들 전역 singleton이나 credential 저장소가 아니다. */
+export interface HostSurfaceState {
+  readonly read: <T>(key: string, fallback: T) => T;
+  readonly write: <T>(key: string, value: T) => void;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+export interface HostSurfaceContext {
+  readonly selection: HostSelection;
+  readonly transport: HostTransport;
+  readonly api: ClientApiCapability;
+  readonly readResource: (path: string, signal?: AbortSignal) => Promise<Response>;
+  readonly events: ClientConsoleEventsCapability;
+  readonly chat: ClientAgentChatCapability;
+  readonly state: HostSurfaceState;
+  readonly language: "en" | "ko";
+  readonly hostLabel: string;
+  readonly canWrite: () => boolean;
+}
+
+/** 설치된 코드의 명시적인 host-aware 표면. remote manifest나 코드를 불러오는 능력은 없다. */
+export interface HostSurfaceDescriptor {
+  readonly id: string;
+  readonly slot: "conversation" | "files" | "objectives" | "quota";
+  readonly role?: HostSelection["role"];
+  readonly render: (context: HostSurfaceContext) => ReactNode;
+}
+
 export interface HostTransport {
   readonly scope: HostScope;
   readonly request: (path: string, init?: RequestInit) => Promise<Response>;

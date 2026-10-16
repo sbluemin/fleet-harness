@@ -14,8 +14,8 @@ export type HostWorkspaceMessageKey =
   | "hosts.workspace.readOnly" | "hosts.workspace.observing" | "hosts.workspace.localTools"
   | "hosts.workspace.loadFailed" | "hosts.workspace.trustHelp" | "hosts.workspace.connectionHelp"
   | "hosts.workspace.controlPending" | "hosts.workspace.selectConversation"
-  | "hosts.workspace.running" | "hosts.workspace.idle" | "hosts.workspace.background"
-  | "hosts.workspace.quotaSource";
+  | "hosts.workspace.running" | "hosts.workspace.idle" | "hosts.workspace.background" | "hosts.workspace.ended" | "hosts.workspace.unknown"
+  | "hosts.workspace.quotaSource" | "hosts.workspace.controlHeld" | "hosts.workspace.retryObservation";
 
 type HostTranslate = Translate<HostWorkspaceMessageKey>;
 
@@ -96,6 +96,7 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
           </button>
           <div id={bodyId} hidden={!open} className="host-workspace-computer-body" aria-busy={!ready && !blocked}>
             {selected ? <p className="host-workspace-connection">{hostStatus(host, t)}{host.access === "monitoring" ? ` · ${t("hosts.workspace.readOnly")}` : ""}</p> : null}
+            {!local && host.mode === "controller" ? <p className="host-workspace-connection">{t("hosts.workspace.controlHeld")}</p> : null}
             {!ready && !blocked ? <p className="host-workspace-note" role="status">{t("hosts.workspace.loading", { host: host.label })}</p> : null}
             {(ready ? host.theaters : []).filter((theater) => !filter || theater.id === filter).map((theater) => {
               const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
@@ -113,7 +114,7 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
                   const target: HostSelection = { hostKey: host.hostKey, theaterId: theater.id, role: "commander", operationId: operation.id };
                   return <button key={operation.id} type="button" className="host-workspace-commander" disabled={!usable}
                     aria-current={sameSelection(state.selection, target) ? "true" : undefined} onClick={() => activate(target)}>
-                    <span className="host-workspace-activity" data-activity={operation.activity ?? "idle"} role="img" aria-label={t(`hosts.workspace.${operation.activity === "awaiting" ? "awaiting" : operation.activity ?? "idle"}`, { count: 1 })} />
+                    <span className="host-workspace-activity" data-activity={operation.activity ?? "unknown"} role="img" aria-label={t(`hosts.workspace.${operation.activity === "awaiting" ? "awaiting" : operation.activity ?? "unknown"}`, { count: 1 })} />
                     <span className="host-workspace-operation-title">{operation.title}</span>
                   </button>;
                 })}
@@ -121,6 +122,7 @@ export function HostWorkspaceSidebar({ hosts, t }: HostWorkspaceProps) {
             })}
             {ready && host.theaters.length === 0 ? <p className="host-workspace-note">{t("hosts.workspace.empty")}</p> : null}
             {blocked ? <div className="host-workspace-note"><p>{t(host.trust === "mismatch" ? "hosts.workspace.trustHelp" : "hosts.workspace.connectionHelp")}</p>
+              {!local && host.trust !== "mismatch" ? <button type="button" className="host-workspace-back" onClick={() => hosts.select({ hostKey: host.hostKey, theaterId: null, role: "commodore", operationId: null })}>{t("hosts.workspace.retryObservation")}</button> : null}
               {!local ? <button type="button" className="host-workspace-back" onClick={hosts.returnLocal}>{t("hosts.workspace.returnLocal")}</button> : null}
             </div> : null}
           </div>

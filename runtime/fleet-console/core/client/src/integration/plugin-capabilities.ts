@@ -184,7 +184,7 @@ export function createHostCapabilities(
       ...base.operations,
       // 플러그인의 「이 Operation 으로」는 검색·알림과 같은 이동 요청이다 — 대화 화면이 그 Operation 을 가운데에 세운다.
       // 확대 도구는 focusOperation이 접어 대화를 드러낸다 — 도구 자체는 같은 자리에 남는다.
-      focus: (operationId) => focusOperation(operationId),
+      focus: (operationId) => { base.host?.signal.throwIfAborted(); focusOperation(operationId); },
     },
     notifications: {
       emit: (notification) => raiseOperationNotification(notification),

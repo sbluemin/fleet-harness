@@ -1,3 +1,4 @@
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import type { FileDiskStatus, FileReadRequest, FileReadResult } from "../server/types.js";
@@ -50,6 +51,21 @@ export async function refreshLegacyWikiMetadata(theaterId: string, relativePath:
   setDocViewState(theaterId, relativePath, { ...current, migratedWikiEntryId: result.migratedWikiEntryId });
 }
 
+/** 같은 파일 읽기 경로를 로컬 문서 store와 host-bound viewer가 함께 쓴다. */
+export async function readDocumentFile(theaterId: string, relativePath: string, window: FileReadRequest, signal?: AbortSignal, transport?: HostTransport): Promise<FileReadResult> {
+  const response = await (transport?.request ?? fetch)("/plugins/file-explorer/files/read", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId, relativePath, window }), ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) {
+    const body = await response.json() as { error?: string };
+    throw new Error(body.error ?? "read_failed");
+  }
+  const result = await response.json() as FileReadResult;
+  signal?.throwIfAborted();
+  transport?.scope.signal.throwIfAborted();
+  return result;
+}
+
 export interface LoadDocumentOptions {
   /** 캐시가 이미 그려져 있어 로딩 화면 없이 배경에서 재검증하는가. */
   readonly silent: boolean;
@@ -99,17 +115,7 @@ export async function loadDocument(
   if (!silent) setDocViewState(theaterId, relativePath, { kind: "loading" });
   try {
     // files/read는 422(binary_file)를 error 바디로 반환하므로 raw fetch로 직접 처리한다.
-    const res = await fetch("/plugins/file-explorer/files/read", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, relativePath, window: readWindow }),
-      ...(signal ? { signal } : {}),
-    });
-    if (!res.ok) {
-      const payload = await res.json() as { error?: string };
-      throw new Error(payload.error ?? "read_failed");
-    }
-    const result = await res.json() as FileReadResult;
+    const result = await readDocumentFile(theaterId, relativePath, readWindow, signal);
     if (!current()) return;
     if (result.binary) {
       setDocViewState(theaterId, relativePath, { kind: "binary", name });

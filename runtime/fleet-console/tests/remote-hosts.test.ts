@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { HostSelection, HostView } from "@fleet-console/sdk/host-context";
 import { createHostWorkspace, type HostRuntimePort } from "../core/client/src/integration/host-workspace.js";
 import { createRemoteHostTransport } from "../core/client/src/integration/remote-host-transport.js";
+import { createRemoteHostRuntime } from "../core/client/src/integration/remote-host-runtime.js";
+import type { HostEventSource } from "@fleet-console/sdk/host-context";
 
 import { encodeAccessLink, parseAccessLink, type ValidatedAccessLink } from "../features/remote-access/host/access-link.js";
 import { createRemoteHostStore, type RemoteHostStoreDeps } from "../features/remote-access/host/remote-hosts.js";
@@ -69,6 +71,34 @@ const selection = (hostKey: string): HostSelection => ({ hostKey, theaterId: "sa
 
 // 기존 저장 host 검증은 화면 전환을 거치지 않는다. 같은 id와 늦은 획득 결과의 교차 host 입력 방어를 이 경계에서 검사한다.
 describe("host workspace isolation", () => {
+  it("keeps background hosts stream-free and closes both viewer streams before parking", async () => {
+    const sources: Array<{ close: ReturnType<typeof vi.fn>; listeners: Map<string, (event: { data: string }) => void> }> = [];
+    const request = vi.fn(async (path: string) => new Response(JSON.stringify(path === "/api/v1/theaters" ? { theaters: [{ id: "same-theater", label: "remote" }] } : path === "/api/v1/operations" ? { operations: [{ id: "same-operation", theaterId: "same-theater", title: "remote", type: "agent" }] } : { sessions: [] })));
+    const remote = createRemoteHostRuntime({
+      hostKey: "remote", label: "remote",
+      readPresence: async () => ({ hostKey: "remote", epoch: 1, mode: "observer", access: "monitoring", connection: "ready" }),
+      changePresence: async () => { throw new Error("unexpected_join"); },
+      watchPresence: () => () => undefined,
+      createTransport: (scope) => ({ scope, request, resourceUrl: (path) => path, socket: () => { throw new Error("unexpected_socket"); }, events: () => {
+        const source = { close: vi.fn(), listeners: new Map<string, (event: { data: string }) => void>() };
+        sources.push(source);
+        return { ...source, readyState: 1, onopen: null, onmessage: null, onerror: null, addEventListener: (name: string, callback: (event: { data: string }) => void) => source.listeners.set(name, callback), removeEventListener: () => undefined } as unknown as HostEventSource;
+      } }),
+    });
+    await remote.observe(new AbortController().signal);
+    expect(sources).toHaveLength(0);
+    remote.setVisible(true);
+    expect(sources).toHaveLength(2);
+    remote.setVisible(false);
+    expect(sources.every((source) => source.close.mock.calls.length === 1)).toBe(true);
+    const count = request.mock.calls.length;
+    sources[0]!.listeners.get("operation:changed")?.({ data: "{}" });
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledTimes(count);
+    expect(remote.getSnapshot().mode).toBe("observer");
+    remote.dispose();
+  });
+
   it("binds HTTP and resource requests to the expected host epoch without credential or local fallback", async () => {
     const abort = new AbortController();
     let responseEpoch = 7;
@@ -116,8 +146,10 @@ describe("host workspace isolation", () => {
     release();
     await pending;
     expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("local"), canWrite: true });
-    local.update({ epoch: 2 });
+    local.update({ epoch: 2, phase: "loading" });
     expect(workspace.getSnapshot()).toMatchObject({ foreground: null, canWrite: false });
+    local.update({ phase: "ready" });
+    expect(workspace.getSnapshot()).toMatchObject({ foreground: selection("local"), canWrite: false });
     workspace.dispose();
   });
 

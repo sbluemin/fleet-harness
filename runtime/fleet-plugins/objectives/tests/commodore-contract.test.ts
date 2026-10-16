@@ -21,6 +21,8 @@ import { createCommodoreStore } from "../server/commodore/store.js";
 import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
+import type { HostSurfaceContext } from "@fleet-console/sdk/host-context";
+import { createHostObjectiveState } from "../client/host-state.js";
 import type { CommodoreAttachmentReader } from "../server/console-tools.js";
 
 /**
@@ -58,6 +60,35 @@ function harness(now?: () => number) {
   };
   return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = resolveExperimentSettings({ ...experiments, ...next }); }, setAuthorized: (next: boolean) => { authorized = next; } };
 }
+
+describe("host-bound objective state", () => {
+  it("keeps identical Theater ids separate and rejects a late snapshot after scope disposal", async () => {
+    let finishA: (response: Response) => void = () => undefined;
+    const make = (hostKey: string, request: HostSurfaceContext["api"]["fetch"]) => {
+      const abort = new AbortController();
+      const context = {
+        selection: { hostKey, theaterId: "same-theater", role: "commander", operationId: "same-operation" },
+        transport: { scope: { hostKey, epoch: 1, signal: abort.signal } },
+        api: { fetch: request },
+        events: { subscribe: () => () => undefined, onReconnect: () => () => undefined },
+        canWrite: () => false,
+      } as unknown as HostSurfaceContext;
+      const model = createHostObjectiveState(context);
+      const stop = model.hold();
+      return { abort, model, stop };
+    };
+    const a = make("host-a", () => new Promise<Response>((resolve) => { finishA = resolve; }));
+    const b = make("host-b", async () => new Response(JSON.stringify({ objectives: [{ id: "same-operation", theaterId: "same-theater", title: "B" }] })));
+    await vi.waitFor(() => expect(b.model.getSnapshot().objectives[0]?.title).toBe("B"));
+    a.abort.abort();
+    finishA(new Response(JSON.stringify({ objectives: [{ id: "same-operation", theaterId: "same-theater", title: "A" }] })));
+    await Promise.resolve(); await Promise.resolve();
+    expect(a.model.getSnapshot().objectives).toEqual([]);
+    expect(b.model.getSnapshot().objectives[0]?.title).toBe("B");
+    await expect(b.model.message("must not send")).rejects.toThrow("read_only");
+    a.stop(); b.stop(); b.abort.abort();
+  });
+});
 
 describe("commodore theater state", () => {
   it("persists per-Theater autonomy, directive and intel beside the board", async () => {

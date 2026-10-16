@@ -99,7 +99,8 @@ export function AttachmentDropVeil({ t }: { readonly t: T }) {
   return <div className="objectives-att-drop" aria-hidden="true"><span><AttachImageIcon />{t("objectives.att.drop")}</span></div>;
 }
 
-export function NoteAttachments({ objective, t, touchable, error, sending, onRemove }: {
+export function NoteAttachments({ objective, t, touchable, error, sending, onRemove, resourceUrl = (path) => path }: {
+  readonly resourceUrl?: (path: string) => string;
   readonly objective: Objective;
   readonly t: T;
   readonly touchable: boolean;
@@ -121,7 +122,7 @@ export function NoteAttachments({ objective, t, touchable, error, sending, onRem
           {attachments.map((attachment) => (
             <div key={attachment.id} className="objectives-att-thumb">
               <button type="button" className="objectives-att-open" aria-label={t("objectives.att.open", { label: label(attachment), name: attachment.name })} title={`${label(attachment)} · ${attachment.name}`} ref={(node) => { if (node) thumbRefs.current.set(attachment.id, node); else thumbRefs.current.delete(attachment.id); }} onClick={() => setOpenId(attachment.id)}>
-                <img src={fileUrl(objective, attachment)} alt="" loading="lazy" draggable={false} />
+                <img src={resourceUrl(fileUrl(objective, attachment))} alt="" loading="lazy" draggable={false} />
               </button>
               <span className="objectives-att-n" aria-hidden="true">{attachment.n}</span>
               {touchable ? <button type="button" className="objectives-att-x" aria-label={t("objectives.att.remove", { label: label(attachment) })} title={t("objectives.att.remove", { label: label(attachment) })} onClick={() => onRemove(attachment)}><CloseGlyph /></button> : null}
@@ -137,7 +138,7 @@ export function NoteAttachments({ objective, t, touchable, error, sending, onRem
       {error ? <div className="objectives-att-err" role="alert">{error}</div> : null}
       {openIndex >= 0 ? createPortal(
         <AttachmentView t={t} index={openIndex} onIndex={(index) => setOpenId(attachments[index]!.id)}
-          images={attachments.map((attachment) => ({ src: fileUrl(objective, attachment), caption: `${label(attachment)} · ${attachment.name}${attachment.width && attachment.height ? ` · ${attachment.width}×${attachment.height}` : ""}` }))}
+          images={attachments.map((attachment) => ({ src: resourceUrl(fileUrl(objective, attachment)), caption: `${label(attachment)} · ${attachment.name}${attachment.width && attachment.height ? ` · ${attachment.width}×${attachment.height}` : ""}` }))}
           onClose={() => { setOpenId(null); if (openId) thumbRefs.current.get(openId)?.focus(); }} />,
         document.body,
       ) : null}

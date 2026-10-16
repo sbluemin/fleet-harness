@@ -1,6 +1,10 @@
 import type { HostEventSource, HostScope, HostTransport, HostView, HostTheaterSummary, HostOperationSummary } from "@fleet-console/sdk/host-context";
 import { readHostJson } from "@fleet-console/sdk/host-context/browser";
 import type { HostRuntimePort } from "./host-workspace.js";
+import { sessionRuntime } from "@fleet-console/sdk/operations/activity";
+import { fetchSessions } from "../../../../features/execution/client/agent/api.js";
+import { interpretAgentSessionFrame } from "../../../../features/execution/client/agent/sse.js";
+import type { SessionInfo } from "../../../../features/execution/client/agent/types.js";
 
 export type HostPresenceView = Pick<HostView, "hostKey" | "epoch" | "mode" | "access" | "connection">;
 
@@ -10,12 +14,13 @@ export interface RemoteHostRuntimeDependencies {
   readonly label: string;
   readonly readPresence: (signal: AbortSignal) => Promise<HostPresenceView>;
   readonly changePresence: (intent: "observe" | "activate", epoch: number, signal: AbortSignal) => Promise<HostPresenceView>;
-  readonly watchPresence: (receive: (presence: HostPresenceView) => void, failed: (cause: Error) => void) => () => void;
+  readonly watchPresence: (receive: (presence: HostPresenceView) => void | Promise<void>, failed: (cause: Error) => void) => () => void;
   readonly createTransport: (scope: HostScope) => HostTransport;
 }
 
 export interface RemoteHostRuntime extends HostRuntimePort {
   readonly getTransport: () => HostTransport | null;
+  readonly setVisible: (visible: boolean) => void;
   readonly subscribeChannel: (channel: string, receive: (payload: unknown) => void) => () => void;
   readonly onReconnect: (listener: () => void) => () => void;
 }
@@ -27,6 +32,14 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   let scopeAbort = new AbortController();
   let transport: HostTransport | null = null;
   let source: HostEventSource | null = null;
+  let agentSource: HostEventSource | null = null;
+  const sessions = new Map<string, SessionInfo>();
+  let sessionRevision = 0;
+  const withActivity = (operations: readonly HostOperationSummary[]) => operations.map((operation): HostOperationSummary => {
+    const session = sessions.get(operation.id);
+    const runtime = session ? sessionRuntime(session) : null;
+    return { ...operation, activity: runtime ? runtime.lifecycle === "dormant" ? "ended" : runtime.activity : "unknown" };
+  });
   let state: HostView = Object.freeze({ hostKey: deps.hostKey, label: deps.label, epoch: 0, mode: "off", access: null, connection: "closed", trust: "unknown", phase: "idle", error: null, theaters: [], operations: [] });
   const listeners = new Set<() => void>();
   const channels = new Map<string, Set<(payload: unknown) => void>>();
@@ -37,6 +50,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   let revision = 0;
   let refreshPending = false;
   let opened = false;
+  let visible = false;
 
   function publish(patch: Partial<HostView>): void {
     if (lifetime.signal.aborted) return;
@@ -51,6 +65,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     transport = null;
     source?.close();
     source = null;
+    agentSource?.close();
+    agentSource = null;
+    sessions.clear();
     attached.clear();
     snapshotFlight = null;
     refreshPending = false;
@@ -83,12 +100,12 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       if (source !== current || lifetime.signal.aborted) return;
       let payload: unknown;
       try { payload = JSON.parse((event as MessageEvent<string>).data); } catch { return; }
-      for (const receive of channels.get(channel) ?? []) receive(payload);
+      for (const receive of channels.get(channel) ?? []) { try { receive(payload); } catch { /* 한 표면의 오류가 다른 host 구독자를 막지 않는다. */ } }
     });
   }
 
   function openEvents(bound: HostTransport): void {
-    if (source || bound.scope.signal.aborted) return;
+    if (!visible || source || bound.scope.signal.aborted) return;
     const next = bound.events("/api/v1/operations/events");
     source = next;
     const current = () => source === next && !bound.scope.signal.aborted;
@@ -96,11 +113,39 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       next.addEventListener(name, () => { if (current()) void refresh().catch(fail); });
     }
     for (const name of channels.keys()) attachChannel(name);
+    next.addEventListener("control:reclaimed", () => {
+      if (!current()) return;
+      clearConnection();
+      publish({ mode: "off", access: null, connection: "closed", phase: "error", error: "not_controller", theaters: [], operations: [] });
+    });
+    next.addEventListener("control:changed", () => {
+      if (!current()) return;
+      // holder DTO만으로 자기 권한을 추정하지 않는다. 쓰기를 먼저 막고 presence의 실제 mode를 다시 읽는다.
+      publish({ phase: "loading" });
+      void deps.readPresence(AbortSignal.any([lifetime.signal, AbortSignal.timeout(8_000)])).then(async (presence) => {
+        if (!current()) return;
+        acceptPresence(presence);
+        if (presence.connection === "ready" && presence.mode !== "off") await refresh();
+      }).catch((cause: unknown) => { if (current()) fail(cause); });
+    });
+    const agents = bound.events("/api/v1/agent/events");
+    agentSource = agents;
+    for (const name of ["session:updated", "session:attention"]) agents.addEventListener(name, (event) => {
+      if (agentSource !== agents || bound.scope.signal.aborted) return;
+      const frame = interpretAgentSessionFrame({ event: name, data: (event as MessageEvent<string>).data });
+      if (!frame) return;
+      sessionRevision += 1;
+      sessions.set(frame.session.sessionId, frame.kind === "attention" && frame.reason !== "idle_prompt" ? { ...frame.session, attentionPending: true } : frame.session);
+      publish({ operations: withActivity(state.operations) });
+      for (const receive of channels.get(name) ?? []) { try { receive({ session: frame.session }); } catch { /* 구독자별 실패는 격리한다. */ } }
+    });
+    agents.onopen = () => { if (agentSource === agents && !bound.scope.signal.aborted) void refresh().catch(fail); };
+    agents.onerror = () => { if (agentSource === agents && !bound.scope.signal.aborted) publish({ operations: state.operations.map((operation) => ({ ...operation, activity: "unknown" })) }); };
     next.onopen = () => {
       if (!current()) return;
       const reconnected = opened;
       opened = true;
-      void refresh().then(() => { if (current() && reconnected) for (const receive of reconnectListeners) receive(); }).catch(fail);
+      void refresh().then(() => { if (current() && reconnected) for (const receive of reconnectListeners) { try { receive(); } catch { /* 표면 오류를 연결 오류로 바꾸지 않는다. */ } } }).catch(fail);
     };
     next.onerror = () => {
       if (!current()) return;
@@ -109,17 +154,22 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
   }
 
   async function readSnapshot(bound: HostTransport, version: number): Promise<void> {
-    const [theatersResponse, operationsResponse] = await Promise.all([
-      bound.request("/api/v1/theaters"), bound.request("/api/v1/operations"),
-    ]);
+    const sessionVersion = sessionRevision;
+    const signal = AbortSignal.any([bound.scope.signal, AbortSignal.timeout(10_000)]);
+    // 배경 관찰 한 건이 남은 HTTP 슬롯을 모두 잡지 않도록 snapshot의 세 조회도 직렬화한다.
+    const theatersResponse = await bound.request("/api/v1/theaters", { signal });
+    const operationsResponse = await bound.request("/api/v1/operations", { signal });
+    const sessionSnapshot = await fetchSessions(signal, bound);
     if (!theatersResponse.ok || !operationsResponse.ok) throw new Error(`host_snapshot_http_${!theatersResponse.ok ? theatersResponse.status : operationsResponse.status}`);
     const [theatersBody, operationsBody] = await Promise.all([
       readHostJson<{ theaters?: unknown }>(bound.scope, theatersResponse),
       readHostJson<{ operations?: unknown }>(bound.scope, operationsResponse),
     ]);
     if (version !== revision || bound !== transport) return;
+    if (sessionVersion === sessionRevision) sessions.clear();
+    for (const session of sessionSnapshot) if (sessionVersion === sessionRevision || !sessions.has(session.sessionId)) sessions.set(session.sessionId, session);
     const theaters = readTheaters(theatersBody.theaters);
-    const operations = readOperations(operationsBody.operations);
+    const operations = withActivity(readOperations(operationsBody.operations));
     publish({ theaters, operations, phase: "ready", connection: "ready", error: null });
     openEvents(bound);
   }
@@ -146,10 +196,11 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     lifetime.signal.throwIfAborted();
     if (!observeFlight) {
       const work = (async () => {
-        let presence = await deps.readPresence(lifetime.signal);
+        const setupSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(10_000)]);
+        let presence = await deps.readPresence(setupSignal);
         acceptPresence(presence);
         if (presence.mode === "off" || presence.connection !== "ready") {
-          presence = await deps.changePresence("observe", presence.epoch, lifetime.signal);
+          presence = await deps.changePresence("observe", presence.epoch, setupSignal);
           acceptPresence(presence);
         }
         await refresh();
@@ -161,9 +212,9 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     signal.throwIfAborted();
   }
 
-  const offPresence = deps.watchPresence((presence) => {
+  const offPresence = deps.watchPresence(async (presence) => {
     acceptPresence(presence);
-    if (presence.connection === "ready" && presence.mode !== "off") void refresh().catch(fail);
+    if ((!visible || state.phase !== "ready") && presence.connection === "ready" && presence.mode !== "off") await refresh();
   }, (cause) => { fail(cause); });
 
   return {
@@ -179,6 +230,12 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       signal.throwIfAborted();
     },
     getTransport: () => transport,
+    setVisible: (next) => {
+      if (visible === next || lifetime.signal.aborted) return;
+      visible = next;
+      if (next) { if (transport && state.phase === "ready") openEvents(transport); }
+      else { source?.close(); source = null; agentSource?.close(); agentSource = null; attached.clear(); opened = false; }
+    },
     subscribeChannel: (channel, receive) => {
       let held = channels.get(channel);
       if (!held) { held = new Set(); channels.set(channel, held); }

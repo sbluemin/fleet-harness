@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { connectTerminalSettings } from "../../terminal/shared/terminal-preferences.js";
 import { createChatSocketSession, useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
-import type { HostSocket, HostTransport } from "@fleet-console/sdk/host-context";
+import type { HostSocket, HostTransport, HostSurfaceContext } from "@fleet-console/sdk/host-context";
+import { HostMessageComposer } from "@fleet-console/sdk/composer";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
@@ -96,6 +97,31 @@ afterEach(() => {
 });
 
 describe("Operation composer lifetime", () => {
+  it("restores a host draft and does not clear it or another host after an old send finishes", async () => {
+    const a = { text: "draft A" }, b = { text: "draft B" };
+    const abortA = new AbortController();
+    const context = (hostKey: string, saved: { text: string }, signal: AbortSignal) => ({
+      selection: { hostKey, theaterId: "same-theater", role: "commander", operationId: "same-operation" },
+      transport: { scope: { hostKey, epoch: 1, signal } }, canWrite: () => true,
+      state: { read: () => saved.text, write: (_key: string, text: string) => { saved.text = text; } },
+    } as unknown as HostSurfaceContext);
+    let finish: () => void = () => undefined;
+    const send = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const render = (key: string, ctx: HostSurfaceContext) => createElement(HostMessageComposer, { key, context: ctx, send, label: "Message", placeholder: "Message", sendLabel: "Send", readOnlyLabel: "Read only", uploadUnsupported: "No upload" });
+    container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+    act(() => { root!.render(render("a", context("a", a, abortA.signal))); });
+    act(() => { container!.querySelector<HTMLButtonElement>("button")!.click(); });
+    expect(send).toHaveBeenCalledWith("draft A");
+    abortA.abort();
+    act(() => { root!.render(render("b", context("b", b, new AbortController().signal))); });
+    await act(async () => { finish(); await Promise.resolve(); });
+    expect(container.querySelector("textarea")?.value).toBe("draft B");
+    expect(a.text).toBe("draft A");
+    act(() => { root!.render(render("a-return", context("a", a, new AbortController().signal))); });
+    expect(container.querySelector("textarea")?.value).toBe("draft A");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a send alive without a view and does not resend or erase a newer draft", async () => {
     let finish!: (response: Response) => void;
     const fetch = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));

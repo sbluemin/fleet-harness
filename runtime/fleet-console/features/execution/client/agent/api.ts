@@ -1,3 +1,4 @@
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { OperationGeometry, OperationNode } from "@fleet-console/sdk/operations";
 import {
   readAgentChatCatalogPayload,
@@ -43,10 +44,12 @@ export async function fetchAgentState(signal?: AbortSignal): Promise<readonly Ag
   return payload.agentClis.map((cli) => assertAgentCliMetadata(cli, response.status));
 }
 
-export async function fetchSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
-  const response = await fetch("/api/v1/agent/sessions", { signal });
+export async function fetchSessions(signal?: AbortSignal, transport?: HostTransport): Promise<readonly SessionInfo[]> {
+  const response = await (transport?.request ?? fetch)("/api/v1/agent/sessions", { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly sessions?: unknown };
+  transport?.scope.signal.throwIfAborted();
+  signal?.throwIfAborted();
   if (!Array.isArray(payload.sessions)) throw new AgentApiError(response.status, "Invalid agent sessions response");
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
 }
@@ -120,8 +123,8 @@ export async function resumeAgentSession(sessionId: string, options?: { readonly
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
+export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal, transport?: HostTransport): Promise<void> {
+  const response = await (transport?.request ?? fetch)(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, ...(attachmentIds?.length ? { attachmentIds } : {}) }),

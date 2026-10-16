@@ -281,6 +281,8 @@ export interface ClientExecutionProvider {
 
 export interface FleetClientPlugin extends ClientExecutionProvider {
   readonly id: string;
+  /** 명시 scope/state를 받아 그리는 표면만 원격에 선다. 기존 install을 원격에 다시 실행하지 않는다. */
+  readonly hostSurfaces?: readonly import("../host-context/types.js").HostSurfaceDescriptor[];
 }
 
 export interface PluginInstallContext {

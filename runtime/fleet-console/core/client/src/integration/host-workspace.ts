@@ -43,6 +43,10 @@ export function createHostWorkspace(local: HostRuntimePort): HostWorkspace {
       foreground = null;
       activated = false;
     }
+    if (!selecting && error === null && foreground === null && selected?.connection === "ready" && selected.phase === "ready" && containsSelection(selected, selection)) {
+      foreground = selection;
+      foregroundEpoch = selected.epoch;
+    }
     snapshot = Object.freeze({
       hosts: Object.freeze(hosts), selection, foreground, selectionGeneration: generation,
       phase: error !== null ? "error" : selecting ? "loading" : selected?.phase ?? "idle",

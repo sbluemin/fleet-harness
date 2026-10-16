@@ -86,7 +86,7 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
  * 임무 기록 — 구상 입력 줄과 같은 문법이다: 상자·배경 없이 임무 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
  * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간 이미 읽은 기록의 id 로 가른다(펼치면 읽음이 되어도 표시는 남는다; 상한에서 밀려나도 위치가 아니라 id 라 어긋나지 않는다).
  */
-function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
+export function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
   return (
     <div id={id} className={`objectives-records${open ? " is-open" : ""}`} hidden={!open}>
       <div className="objectives-records-inner">
@@ -1132,7 +1132,7 @@ const BRIEF_LINES = 3;
 // 제목 초안은 제 칸에서만 산다 — 상세 전체가 글자마다 다시 그리지 않는다. 값은 SyncedTextarea가 DOM에 맞춘다(글자마다
 // React가 defaultValue를 다시 쓰면 문서의 :has() 무효화가 맵 전체의 스타일을 다시 계산한다).
 /** 브리핑 — 후속으로 태어난 목표면 원본 한 줄(origin)이 머리 바로 아래, 브리핑의 일부로 선다. */
-function BriefSection({ objective, t, language, touchable, call, origin }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; origin: ReactNode }) {
+export function BriefSection({ objective, t, language, touchable, call, origin, resourceUrl }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; origin: ReactNode; resourceUrl?: (path: string) => string }) {
   const [note, setNote] = useState(objective.note);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { setNote(objective.note); }, [objective.note]);
@@ -1230,7 +1230,7 @@ function BriefSection({ objective, t, language, touchable, call, origin }: { obj
           {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
         </> : null} />
         {origin}
-        <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
+        <NoteAttachments resourceUrl={resourceUrl} objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
         {briefEditing && touchable ? (
           <SyncedTextarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} onChange={(event) => saveNote(event.target.value)}
             onFocus={() => setNoteFocus(true)} onBlur={() => { setNoteFocus(false); setBriefEditing(false); }}

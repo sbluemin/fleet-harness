@@ -78,13 +78,15 @@ const extension = (name: string) => name.slice(name.lastIndexOf(".") + 1).toLowe
 
 export const resultGroupKey = (objectiveId: string, missionId: string = "loose") => `result:${objectiveId}:${missionId}`;
 
-export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup }: {
+export function ObjectiveResults({ objective, t, language, onShowMission, highlightMission, groupOpen, onToggleGroup, resource }: {
+  readonly resource?: { readonly url: (path: string) => string; readonly read: (path: string, signal?: AbortSignal) => Promise<Response> };
   readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale;
   /** 그래프로 가는 ↗ — 그래프가 없는 자리(모바일 상세)는 넘기지 않고, 그때는 ↗ 칸도 세우지 않는다. */
   readonly onShowMission?: (missionId: string) => void; readonly highlightMission: string | null;
   readonly groupOpen: (key: string) => boolean; readonly onToggleGroup: (key: string) => void;
 }) {
   const now = useNow();
+  const fileSrc = (result: EvidenceResult) => { const path = resultFileUrl(objective.id, result); return resource ? resource.url(path) : path; };
   // 열린 보기는 resultId로 고른다. 묶음 이동·교체도 현재 객체를 따르고, 이미지 넘기기는 같은 묶음 안에서만 한다.
   const [viewingId, setViewingId] = useState<string | null>(null);
   const openerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -106,7 +108,7 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
   const images = (viewingGroup?.results ?? loose).filter((result): result is EvidenceResult => result.kind === "evidence" && result.mediaType !== "text/plain");
   const imageIndex = viewingLive ? images.indexOf(viewingLive) : -1;
   const viewerImages = images.map((result) => ({
-    src: resultFileUrl(objective.id, result), title: result.label ?? null, note: result.note ?? null,
+    src: fileSrc(result), title: result.label ?? null, note: result.note ?? null,
     caption: `${result.name}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${uploaded(result)} · ${source(result)}`,
   }));
   const group = (mission: ObjectiveMission | null, n: number, results: readonly ObjectiveResult[]) => {
@@ -135,7 +137,7 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
         const title = result.label ?? result.name;
         return <div key={result.id} className="objectives-result-thumb">
           <button ref={openerRef(result.id)} type="button" className="objectives-result-thumb-hit" aria-label={`${t("objectives.results.zoom", { name: title })} · ${source(result)}`} title={`${result.name} · ${uploaded(result)} · ${source(result)}`} onClick={() => setViewingId(result.id)}>
-            <span className="objectives-result-img"><img src={resultFileUrl(objective.id, result)} alt="" loading="lazy" draggable={false} /></span>
+            <span className="objectives-result-img"><img src={fileSrc(result)} alt="" loading="lazy" draggable={false} /></span>
           </button>
           <span className="objectives-result-name" onClick={(event) => { if (event.target instanceof Element && event.target.closest("a")) return; setViewingId(result.id); }}><LinkText text={title} /></span>
           {!mission ? <span className="objectives-result-sub">{source(result)}</span> : null}
@@ -178,7 +180,7 @@ export function ObjectiveResults({ objective, t, language, onShowMission, highli
     {artifactVisible ? <p className="objectives-artifact-notice"><InfoGlyph /><span>{t("objectives.results.artifact.notice")}</span></p> : null}
     {viewingLive ? createPortal(
       viewingLive.mediaType === "text/plain"
-        ? <EvidenceTextView t={t} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)} · ${source(viewingLive)}`} onClose={close} />
+        ? <EvidenceTextView t={t} readResource={resource?.read} src={resultFileUrl(objective.id, viewingLive)} name={viewingLive.name} caption={`${viewingLive.name} · ${bytesLabel(viewingLive.bytes)} · ${uploaded(viewingLive)} · ${source(viewingLive)}`} onClose={close} />
         : <AttachmentView t={t} images={viewerImages} index={imageIndex} onIndex={(index) => setViewingId(images[index]!.id)} onClose={close} />,
       document.body,
     ) : null}
@@ -264,7 +266,7 @@ function fencedJson(text: string): string {
   return `${fence}json\n${text}\n${fence}`;
 }
 
-function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; readonly src: string; readonly name: string; readonly caption: string; readonly onClose: () => void }) {
+function EvidenceTextView({ t, src, name, caption, onClose, readResource }: { readonly t: T; readonly src: string; readonly name: string; readonly caption: string; readonly onClose: () => void; readonly readResource?: (path: string, signal?: AbortSignal) => Promise<Response> }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -273,18 +275,19 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
   useEffect(() => {
     const controller = new AbortController();
     setLoaded(null);
-    fetch(src, { signal: controller.signal })
+    (readResource ? readResource(src, controller.signal) : fetch(src, { signal: controller.signal }))
       .then(async (response) => {
         if (!response.ok) {
           const code = ((await response.json().catch(() => null)) as { error?: string } | null)?.error ?? `http_${response.status}`;
           setLoaded({ error: code });
           return;
         }
-        setLoaded({ text: await response.text() });
+        const text = await response.text();
+        if (!controller.signal.aborted) setLoaded({ text });
       })
       .catch(() => { if (!controller.signal.aborted) setLoaded({ error: "network" }); });
     return () => controller.abort();
-  }, [src]);
+  }, [src, readResource]);
   const mode = textMode(name);
   const html = useMemo(() => {
     if (!loaded || !("text" in loaded) || mode === "plain") return "";
