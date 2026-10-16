@@ -150,11 +150,18 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   // 쿠키를 싣는 요청(pair, observe·activate)은 main이 주입한 순서(cookieOrder)를 지난다. legacy join과 같은 순서를 공유한다.
   // 이 순서는 releaseConsole로 비우지 않는다. 취소 요청과 실제 fetch 종료는 다르므로, 옛 수명의 fetch가 settle된 뒤에야 풀린다.
   const order = deps.cookieOrder;
+  /**
+   * 호스트별로 가장 늦게 시작해 지문 확인을 통과한 대상(시작 번호·origin·지문). 늦게 돌아온 옛 확인이 새로 확정된 대상의 쿠키·핀·파티션을
+   * 되돌리지 못하게 하는 호스트 수명의 작은 상태다. 쿠키 확정 번호(committedClaims)는 쿠키를 쓴 뒤에야 오르므로 이 경합을 대신하지 못한다.
+   * hostKey당 하나라 호스트 수만큼만 자라며 releaseConsole이 비운다. 자격이나 URL은 담지 않는다.
+   */
+  const confirmedTargets = new Map<string, { claim: number; origin: string; fingerprint: string }>();
   // 새 콘솔 프로세스는 같은 출처라도 명령 번호와 epoch를 1부터 다시 쓴다. 이 실행기가 앞 세션의 값을 남기면 새 명령이 걸리거나 stale_epoch가 된다.
   const releaseConsole = (): void => {
     epochs.clear();
     uploads.clear();
     committedClaims.clear();
+    confirmedTargets.clear();
     claimFloor = nextClaim;
     for (const [id, job] of jobs) {
       jobs.delete(id);
@@ -197,6 +204,7 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     command: DesktopHostCommand,
     existing: { readonly origin: string; readonly fingerprint: string; readonly partition: HostPartition },
     origin: string,
+    fingerprint: string,
     signal: AbortSignal | undefined,
     laneOwner: boolean,
   ): Promise<boolean> => {
@@ -211,15 +219,38 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     if (release === null) return false;
     try {
+      // 순서를 기다리는 사이 이 명령이 취소됐거나 더 늦게 시작한 명령이 다른 대상을 확정했을 수 있다. 파괴는 그 뒤 현재성을 다시 보고 한다.
+      if (!targetCurrent(command, origin, fingerprint, signal)) return false;
+      let cleared = false;
       await withPairing(oldOrigin, oldPort, async () => {
+        // 줄 서 있던 다른 쿠키 작업을 기다리는 동안에도 같은 일이 생길 수 있다.
+        if (!targetCurrent(command, origin, fingerprint, signal)) return;
         await existing.partition.clear();
         for (const kind of ["pairing", "session"] as const) await deps.removeWindowCookie?.(oldOrigin, cookieName(kind, oldPort));
+        cleared = true;
       });
+      if (!cleared || !targetCurrent(command, origin, fingerprint, signal)) return false;
       partitions.delete(command.hostKey);
       return true;
     } finally {
       release();
     }
+  };
+
+  /** 이 명령의 대상이 아직 호스트의 현재 대상인가. 취소됐거나, 죽은 콘솔 수명이거나, 더 늦게 시작한 명령이 다른 대상을 확정했으면 아니다. */
+  const targetCurrent = (command: DesktopHostCommand, origin: string, fingerprint: string, signal: AbortSignal | undefined): boolean => {
+    if (signal?.aborted) return false;
+    const claim = claimFor(command);
+    if (claim < claimFloor) return false;
+    const known = confirmedTargets.get(command.hostKey);
+    return known === undefined || (known.origin === origin && known.fingerprint === fingerprint) || known.claim <= claim;
+  };
+
+  /** 현재가 아니면 보낼 응답. 취소·옛 수명은 도달 실패, 더 새 대상이 확정된 경우는 stale이다. */
+  const notCurrent = (command: DesktopHostCommand, origin: string, fingerprint: string, signal: AbortSignal | undefined): DesktopHostRelay | null => {
+    if (targetCurrent(command, origin, fingerprint, signal)) return null;
+    if (signal?.aborted || claimFor(command) < claimFloor) return { id: command.id, error: "remote_host_unavailable", end: true };
+    return { id: command.id, error: "stale_epoch" };
   };
 
   const partitionFor = async (command: DesktopHostCommand, signal?: AbortSignal, laneOwner = false): Promise<{ origin: string; partition: HostPartition } | DesktopHostRelay> => {
@@ -231,15 +262,26 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
     }
     const host = command.target.hostname.includes(":") ? `[${command.target.hostname}]` : command.target.hostname;
     const origin = new URL(`https://${host}:${command.target.port}`).origin;
+    const fingerprint = normalizeFingerprint(command.target.fingerprint);
+    // 확인을 기다리는 사이 취소됐거나 더 늦게 시작한 명령이 같은 호스트의 다른 대상을 이미 확정했을 수 있다. 그 경우 파괴적 동작·핀·파티션
+    // 기록을 전혀 하지 않는다. 현재면 이 대상을 확정 대상으로 올린다(더 늦은 시작 번호만 덮어쓴다).
+    const gone = notCurrent(command, origin, fingerprint, signal);
+    if (gone) return gone;
+    const known = confirmedTargets.get(command.hostKey);
+    const claim = claimFor(command);
+    if (!known || claim >= known.claim) confirmedTargets.set(command.hostKey, { claim, origin, fingerprint });
     const existing = partitions.get(command.hostKey);
     // 새로 등록된 지문의 확인이 위에서 끝난 뒤에만 도달한다(불일치는 위에서 종료되어 쿠키를 건드리지 않는다). 대상 교체이므로
     // 옛 대상의 자격이 새 대상에 전송되지 않게 먼저 폐기하고, 폐기하지 못하면 아무것도 보내지 않는다.
-    if (existing && (existing.origin !== origin || existing.fingerprint !== normalizeFingerprint(command.target.fingerprint))) {
-      if (!await replaceTarget(command, existing, origin, signal, laneOwner)) return { id: command.id, error: "remote_host_unavailable", end: true };
+    if (existing && (existing.origin !== origin || existing.fingerprint !== fingerprint)) {
+      if (!await replaceTarget(command, existing, origin, fingerprint, signal, laneOwner)) return notCurrent(command, origin, fingerprint, signal) ?? { id: command.id, error: "remote_host_unavailable", end: true };
     }
+    // 교체를 기다리는 동안에도 같은 일이 생길 수 있다. 핀과 파티션 기록은 옛 지문으로 되돌려선 안 된다.
+    const late = notCurrent(command, origin, fingerprint, signal);
+    if (late) return late;
     const partition = partitions.get(command.hostKey)?.partition ?? deps.openPartition(command.hostKey);
-    partition.pin(command.target.hostname, normalizeFingerprint(command.target.fingerprint));
-    partitions.set(command.hostKey, { origin, fingerprint: normalizeFingerprint(command.target.fingerprint), partition });
+    partition.pin(command.target.hostname, fingerprint);
+    partitions.set(command.hostKey, { origin, fingerprint, partition });
     await copyPairingCookie(command, origin, partition, signal, laneOwner);
     return { origin, partition };
   };

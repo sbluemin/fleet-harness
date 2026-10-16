@@ -777,12 +777,20 @@ describe("host partition transport", () => {
     const build = (applySetCookie: boolean) => {
       const partition = nativeSession(applySetCookie);
       const windowJar = nativeSession(false);
-      const current = { fingerprint: fingerprintOf("A"), mismatch: null as string | null };
+      const current = { fingerprint: fingerprintOf("A"), mismatch: null as string | null, unreachable: false };
+      // 지문별로 확인을 쥐고 있다가 풀어 주는 게이트와, 어댑터가 받은 핀 호출 기록.
+      const confirmGates = new Map<string, Promise<void>>();
+      const pinLog: string[] = [];
+      const cookieOrder = createCookieOrder();
       let handoffs = 0;
       const executor = createHostTransportExecutor({
-        cookieOrder: createCookieOrder(),
-        confirmIdentity: async (_host, _port, fingerprint) => { if (current.mismatch === fingerprint) throw new Error("remote_link_fingerprint_mismatch"); },
-        openPartition: () => createHostPartitionAdapter(partition.native as never, { pin() { return undefined; }, clear() { return undefined; } }),
+        cookieOrder,
+        confirmIdentity: async (_host, _port, fingerprint) => {
+          if (current.unreachable) throw new Error("connect_failed");
+          if (current.mismatch === fingerprint) throw new Error("remote_link_fingerprint_mismatch");
+          await confirmGates.get(fingerprint);
+        },
+        openPartition: () => createHostPartitionAdapter(partition.native as never, { pin(_hostname: string, fingerprint: string) { pinLog.push(fingerprint); }, clear() { return undefined; } }),
         readWindowCookies: async () => windowJar.native.cookies.get(),
         writeWindowCookie: async (cookie) => { await windowJar.native.cookies.set(cookie as never); },
         removeWindowCookie: async (_url, name) => { await windowJar.native.cookies.remove(origin, name); },
@@ -793,7 +801,7 @@ describe("host partition transport", () => {
         id, hostKey: "host1", epoch: 1, op, routeId: op, params: op === "presence" ? { intent: "observe" } : op === "http" ? { method: "GET", path: "/api/v1/theaters" } : {},
         target: { hostname: host, port: 8443, fingerprint: current.fingerprint },
       });
-      return { executor, partition, windowJar, current, command };
+      return { executor, partition, windowJar, current, command, cookieOrder, confirmGates, pinLog };
     };
     const expected = (): number => Math.floor(Date.now() / 1000) + 31536000;
 
@@ -859,6 +867,78 @@ describe("host partition transport", () => {
     expect(applied.partition.state.clears).toBe(clearsBefore + 1);
     expect(applied.partition.jar.has(sessionName)).toBe(false);
     expect(applied.partition.requests.at(-1)?.cookies).toEqual([]);
+
+    // 대상 교체의 파괴적 동작은 각 await 뒤 현재성을 다시 본다. 정상 쿠키를 심어 두고 어느 경계에서도 지워지지 않는지 본다.
+    const seed = (): void => {
+      for (const jar of [applied.partition.jar, applied.windowJar.jar]) {
+        jar.set(pairing, { name: pairing, value: "kept", domain: host, hostOnly: true, path: "/", secure: true, httpOnly: true, sameSite: "strict", session: false, expirationDate: expected() });
+      }
+    };
+    const kept = (): void => {
+      expect(applied.partition.jar.get(pairing)?.value).toBe("kept");
+      expect(applied.windowJar.jar.get(pairing)?.value).toBe("kept");
+    };
+    const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
+
+    // 일반 네트워크 실패는 신뢰 판정이 아니다: 쿠키와 파티션은 그대로다.
+    seed();
+    applied.current.fingerprint = fingerprintOf("4");
+    applied.current.unreachable = true;
+    expect(await applied.executor.execute(applied.command(6))).toMatchObject({ error: "remote_host_unreachable" });
+    applied.current.unreachable = false;
+    kept();
+
+    // (a) 지문 확인이 보류된 동안 취소되면 비우지도 핀을 바꾸지도 않는다.
+    seed();
+    let openF = (): void => undefined;
+    applied.confirmGates.set(fingerprintOf("F"), new Promise<void>((resolve) => { openF = resolve; }));
+    applied.current.fingerprint = fingerprintOf("F");
+    const clearsA = applied.partition.state.clears;
+    const pinsA = applied.pinLog.length;
+    const abortA = new AbortController();
+    const pendingA = applied.executor.execute(applied.command(7), abortA.signal);
+    await settle();
+    abortA.abort();
+    openF();
+    expect(await pendingA).toMatchObject({ error: "remote_host_unavailable" });
+    expect(applied.partition.state.clears).toBe(clearsA);
+    expect(applied.pinLog.length).toBe(pinsA);
+    kept();
+
+    // (b) 옛 대상의 확인이 보류된 사이 더 늦게 시작한 새 대상이 확정·처리된 뒤 옛 확인이 돌아와도, 새 대상의 쿠키·핀·파티션은 그대로다.
+    seed();
+    let openG = (): void => undefined;
+    applied.confirmGates.set(fingerprintOf("1"), new Promise<void>((resolve) => { openG = resolve; }));
+    applied.current.fingerprint = fingerprintOf("1");
+    const oldRun = applied.executor.execute(applied.command(8, "http"));
+    await settle();
+    applied.current.fingerprint = fingerprintOf("2");
+    expect(await applied.executor.execute(applied.command(9))).toMatchObject({ capability: "supported", mode: "off" });
+    const clearsB = applied.partition.state.clears;
+    const pinsB = applied.pinLog.length;
+    const pairingAfterNew = applied.partition.jar.get(pairing)?.value;
+    expect(pairingAfterNew).toBe("fresh");
+    openG();
+    expect(await oldRun).toMatchObject({ error: "stale_epoch" });
+    expect(applied.partition.state.clears).toBe(clearsB);
+    expect(applied.pinLog.length).toBe(pinsB);
+    expect(applied.pinLog.at(-1)).toBe(fingerprintOf("2"));
+    expect(applied.partition.jar.get(pairing)?.value).toBe("fresh");
+    expect(applied.windowJar.jar.get(pairing)?.value).toBe("fresh");
+
+    // (c) 교체가 순서를 얻은 직후 취소되면 아무것도 지우지 않는다(순서를 쥐는 쪽이 넘겨준 뒤 첫 확인에서 걸린다).
+    seed();
+    applied.current.fingerprint = fingerprintOf("3");
+    const heldOrder = await applied.cookieOrder.hold(origin, new AbortController().signal);
+    const abortC = new AbortController();
+    const replacingC = applied.executor.execute(applied.command(10, "http"), abortC.signal);
+    await settle();
+    const clearsC = applied.partition.state.clears;
+    heldOrder?.();
+    abortC.abort();
+    expect(await replacingC).toMatchObject({ error: "remote_host_unavailable" });
+    expect(applied.partition.state.clears).toBe(clearsC);
+    kept();
   });
 });
 
