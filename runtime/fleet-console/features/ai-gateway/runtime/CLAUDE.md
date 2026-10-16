@@ -11,7 +11,7 @@ When changing layer placement, model registration, request shaping, or provider 
 - Only `src/router/` composes both directions. Inject host settings, credentials, fetch, and diagnostics explicitly; the router owns no environment lookups or host identity.
 - Provider semantics belong in `src/upstream/<provider>/`, client grammar in `src/downstream/harness/<client>/`, and wire protocols in `src/downstream/wire/<wire>/`. Wire code must not import harness code. Select the harness by a declared URL path segment, never by guessing from headers, credentials, or bodies.
 - Separate provider `request-policy.ts` declarations from router-owned shaping steps. The only upstream-to-router dependency is an `import type` of the policy contract. Add clients through harness profiles, not router branches.
-- Sharing a wire does not justify sharing provider request/response/tool/header/capability semantics. Share only canonical vocabulary, direction-neutral transport, and `anthropic-messages/protocol.ts` / `passthrough.ts` for providers relaying that same Anthropic wire. Transport imports neither direction.
+- Sharing a wire does not justify sharing provider request/response/tool/header/capability semantics. Share only canonical vocabulary, direction-neutral transport, and `anthropic-messages/protocol.ts` for providers relaying that same Anthropic wire. Transport imports neither direction.
 - The only downstream-to-upstream exception is the legacy `OpenAIResponsesAdapter` in the default `AnthropicMessagesGateway` constructor. `src/index.ts` remains a public re-export facade.
 
 ## Catalog and credentials

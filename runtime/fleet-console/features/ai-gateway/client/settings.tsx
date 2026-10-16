@@ -871,7 +871,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
   // 카탈로그 밖 서비스 자격증명. 팔레트는 전부(로그인 자리로), 로스터는 로그인된 것만 세운다.
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   const signedInServices = services.filter((entry) => entry.signedIn);
-  // 카탈로그 공급자는 모두 구독(벤더 CLI 자격증명)으로 연결한다.
+  // 카탈로그 공급자는 모두 구독으로 연결한다.
   const subscriptionLabel = t("terminal.settings.aiGatewayAuthSubscription");
 
   // 선택지는 켠 공급자 수까지만이다. 이미 순위에 있는 공급자는 자기 자리를 옮길 뿐이라 칸 수가

@@ -1,5 +1,5 @@
 ---
-branch: feat/remove-opencode-go
+branch: refactor/remove-opencode-go-integration
 ---
 
 ### fleet-console
