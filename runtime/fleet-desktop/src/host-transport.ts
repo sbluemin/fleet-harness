@@ -1,5 +1,6 @@
 import { DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, isDesktopHostSnapshot, type DesktopHostCommand, type DesktopHostRelay } from "@fleet-console/protocol/desktop";
 import { normalizeFingerprint } from "@fleet-console/protocol/remote";
+import { HOST_UPLOAD_MAX_BYTES } from "@fleet-console/protocol/remote/host-transport";
 
 import { createDesktopEventStream } from "./desktop-event-stream.js";
 import { openPinnedWebSocket, type PinnedSocket } from "./host-socket.js";
@@ -181,15 +182,29 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
 
   async function performHttp(command: DesktopHostCommand, origin: string, partition: HostPartition, signal?: AbortSignal): Promise<DesktopHostRelay> {
     const path = safePath(command.params.path);
-    const method = command.params.method === "GET" || command.params.method === "HEAD" || command.params.method === "POST" ? command.params.method : null;
+    const method = command.params.method === "GET" || command.params.method === "HEAD" || command.params.method === "POST" || command.params.method === "DELETE" ? command.params.method : null;
     if (!path || !method) return { id: command.id, error: "route_denied" };
     const hasJson = Object.prototype.hasOwnProperty.call(command.params, "json");
+    const raw = typeof command.params.dataBase64 === "string" ? command.params.dataBase64 : null;
+    if (raw !== null && hasJson) return { id: command.id, error: "route_denied" };
+    let body: string | Buffer | undefined;
+    let contentType: string | undefined;
+    if (hasJson) {
+      body = JSON.stringify(command.params.json);
+      contentType = "application/json";
+    } else if (raw !== null) {
+      const bytes = Buffer.from(raw, "base64");
+      if (bytes.length === 0 || bytes.length > HOST_UPLOAD_MAX_BYTES) return { id: command.id, error: "route_denied" };
+      body = bytes;
+      // 브라우저가 말한 MIME은 전달하지 않는다. 원격이 머리 바이트로 판정한다.
+      contentType = "application/octet-stream";
+    }
     let response: Response;
     try {
       response = await partition.fetch(`${origin}${path}`, {
         method, redirect: "error", signal,
-        headers: { Origin: origin, ...(hasJson ? { "content-type": "application/json" } : {}) },
-        body: hasJson ? JSON.stringify(command.params.json) : undefined,
+        headers: { Origin: origin, ...(contentType ? { "content-type": contentType } : {}) },
+        body,
       });
     } catch {
       return { id: command.id, error: "remote_host_unavailable" };

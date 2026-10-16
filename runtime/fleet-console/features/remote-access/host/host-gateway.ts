@@ -8,6 +8,7 @@ import {
   HOST_ERROR_STATUS,
   isHostByteRequest,
   isHostJsonRequest,
+  isHostUploadRequest,
   isHostPresenceRequest,
   isRemoteHostKey,
   parseHostSocketQuery,
@@ -198,6 +199,7 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
 
     async function handleBytes(hostKey: string, target: HostGatewayTarget, link: HostLink): Promise<boolean> {
       const body = await deps.readJsonBody(req);
+      if (isHostUploadRequest(body)) return relayUpload(hostKey, target, link, body);
       if (!isHostByteRequest(body)) { fail(res, "invalid_host_request"); return true; }
       if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
       if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
@@ -211,6 +213,25 @@ export function createHostGateway(deps: HostGatewayDeps): HostGateway {
       }, abort.signal);
       if (relay.error || relay.dataBase64 === undefined || typeof relay.contentType !== "string") { fail(res, asError(relay.error ?? "remote_host_unavailable"), link.epoch); return true; }
       deps.writeJson(res, 200, { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status: relay.status ?? 200, contentType: relay.contentType, dataBase64: relay.dataBase64 });
+      return true;
+    }
+
+    async function relayUpload(hostKey: string, target: HostGatewayTarget, link: HostLink, body: { readonly requestId: string; readonly expectedEpoch: number; readonly expectedInstanceId: string; readonly path: string; readonly dataBase64: string }): Promise<boolean> {
+      if (body.expectedInstanceId !== gatewayInstanceId) { fail(res, "stale_instance"); return true; }
+      if (link.capability === "unsupported" || link.mode === "off") { fail(res, "host_inactive", link.epoch); return true; }
+      if (body.expectedEpoch !== link.epoch) { fail(res, "stale_epoch", link.epoch); return true; }
+      const admitted = admitHostRoute({ kind: "upload", method: "POST", path: body.path, mode: link.mode === "controller" ? "controller" : "observer" });
+      if ("error" in admitted) { fail(res, admitted.error); return true; }
+      const relay = await deps.bridge.call({
+        hostKey, epoch: link.epoch, op: "http", routeId: admitted.id,
+        target: { hostname: target.hostname, port: target.port, fingerprint: target.fingerprint },
+        params: { method: "POST", path: admitted.path, dataBase64: body.dataBase64 },
+      }, abort.signal);
+      if (relay.error) { fail(res, asError(relay.error), link.epoch); return true; }
+      const status = relay.status ?? 502;
+      deps.writeJson(res, 200, relay.contentType === null
+        ? { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status, contentType: null }
+        : { requestId: body.requestId, epoch: link.epoch, instanceId: gatewayInstanceId, status, contentType: "application/json", json: relay.json ?? null });
       return true;
     }
 

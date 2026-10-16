@@ -15,6 +15,8 @@ export const HOST_PRESENCE_EVENT = "host-presence";
 export const HOST_JSON_CONTENT_TYPE = "application/json";
 export const HOST_JSON_MAX_CHARS = 1_048_576;
 export const HOST_BYTE_MAX_BYTES = 8 * 1024 * 1024;
+/** 제품 첨부 라우트가 받는 원시 이미지 상한. base64는 전송 형식일 뿐이며 이 바이트를 넘기면 거절한다. */
+export const HOST_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const HOST_EPOCH_QUERY = "epoch";
 export const HOST_INSTANCE_QUERY = "instanceId";
 export const HOST_PATH_QUERY = "path";
@@ -120,12 +122,25 @@ export interface HostJsonResult {
   readonly json?: unknown;
 }
 
-/** 바이트 업로드·다운로드. 요청에 contentType을 싣지 않는다. */
+/** 바이트 다운로드. 요청에 contentType과 본문을 싣지 않는다. */
 export interface HostByteRequest {
   readonly requestId: string;
   readonly expectedEpoch: number;
   readonly expectedInstanceId: string;
   readonly path: string;
+}
+
+/**
+ * 허용된 첨부 경로에만 보내는 원시 이미지.
+ * `path`의 질의만 파일 이름을 담을 수 있고, MIME·multipart·별도 파일 이름 필드는 없다.
+ * 원격은 Content-Type이 아니라 머리 바이트로 형식을 판정한다.
+ */
+export interface HostUploadRequest {
+  readonly requestId: string;
+  readonly expectedEpoch: number;
+  readonly expectedInstanceId: string;
+  readonly path: string;
+  readonly dataBase64: string;
 }
 
 export interface HostByteResult {
@@ -154,7 +169,6 @@ export interface HostSocketParams {
 const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/u;
 const OPERATION_ID = /^[A-Za-z0-9._:-]{1,128}$/u;
 const REMOTE_HOST_KEY = /^(?!local$)[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/u;
-const STANDARD_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u;
 const MAX_HOST_PATH_LENGTH = 512;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -266,9 +280,24 @@ export function isHostByteRequest(value: unknown): value is HostByteRequest {
     && isHostRelativePath(value.path);
 }
 
+export function isHostUploadRequest(value: unknown): value is HostUploadRequest {
+  if (!isRecord(value) || !hasOnlyKeys(value, ["requestId", "expectedEpoch", "expectedInstanceId", "path", "dataBase64"])) return false;
+  if (!isHostRequestId(value.requestId) || !isHostEpoch(value.expectedEpoch) || !isHostInstanceId(value.expectedInstanceId) || !isHostRelativePath(value.path)) return false;
+  if (typeof value.dataBase64 !== "string") return false;
+  if (value.dataBase64.length > Math.ceil(HOST_UPLOAD_MAX_BYTES / 3) * 4) return false;
+  const bytes = decodedBase64Bytes(value.dataBase64);
+  return bytes !== null && bytes > 0 && bytes <= HOST_UPLOAD_MAX_BYTES;
+}
+
 function decodedBase64Bytes(value: string): number | null {
-  if (!STANDARD_BASE64.test(value)) return null;
+  if (value.length === 0 || value.length % 4 !== 0) return null;
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  const stop = value.length - padding;
+  for (let index = 0; index < stop; index += 1) {
+    const code = value.charCodeAt(index);
+    const digit = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 43 || code === 47;
+    if (!digit) return null;
+  }
   return (value.length / 4) * 3 - padding;
 }
 

@@ -23,6 +23,8 @@ import {
   isHostPresence,
   isHostPresenceRequest,
   isHostTerminalUpgradePath,
+  isHostUploadRequest,
+  HOST_UPLOAD_MAX_BYTES,
   isHostTransportErrorBody,
   parseHostSocketQuery,
   parseHostStreamQuery,
@@ -65,6 +67,14 @@ describe("host transport wire contract", () => {
     expect(admitHostRoute({ kind: "json", method: "GET", path: "/plugins/quota/summary?force=1", mode: "observer" })).toMatchObject({ path: "/plugins/quota/summary?force=1" });
     expect(admitHostRoute({ kind: "events", method: "GET", path: "/plugins/file-explorer/files/watch?theaterId=t&directory=.", mode: "observer" })).toMatchObject({ id: "files-watch" });
     expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/commander/message", mode: "observer" })).toEqual({ error: "not_controller" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", mode: "controller" })).toMatchObject({ id: "decision-answer" });
+    expect(admitHostRoute({ kind: "json", method: "POST", path: "/plugins/objectives/decision/answer", mode: "observer" })).toEqual({ error: "read_only" });
+    expect(admitHostRoute({ kind: "upload", method: "POST", path: "/plugins/objectives/attachment/add?objectiveId=a&name=one.png", mode: "controller" })).toMatchObject({ id: "objective-attachment-add" });
+    expect(admitHostRoute({ kind: "upload", method: "POST", path: "/api/v1/agent/attachments", mode: "observer" })).toEqual({ error: "read_only" });
+    const upload = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: instanceId, path: "/api/v1/agent/attachments", dataBase64: "YQ==" };
+    expect(isHostUploadRequest(upload)).toBe(true);
+    expect(isHostUploadRequest({ ...upload, contentType: "image/png" })).toBe(false);
+    expect(isHostUploadRequest({ ...upload, dataBase64: "A".repeat(Math.ceil(HOST_UPLOAD_MAX_BYTES / 3) * 4 + 4) })).toBe(false);
   });
 
   it("binds sockets to a lifetime without ticket, role, or upgrade path", () => {
@@ -308,6 +318,61 @@ describe("host gateway admission", () => {
     expect(gateway.upgrade({ req, socket: socket as unknown as import("node:stream").Duplex, head: Buffer.alloc(0), pathname: "/api/v1/hosts/host1/socket" })).toBe(true);
     expect(Buffer.concat(written).toString("utf8")).toContain('"error":"stale_instance"');
     expect(calls).toEqual(["presence"]);
+  });
+
+  it("relays a controller image upload and refuses the same body from an observer", async () => {
+    const calls: Array<{ op: string; params: Record<string, unknown> }> = [];
+    const slot = { current: null as { status: number; body: unknown } | null };
+    let body: unknown = null;
+    const gateway = createHostGateway({
+      isLoopback: () => true,
+      isExactOrigin: () => true,
+      findHost: () => target,
+      bridge: { async open() { return { id: 1, end: true }; }, async call(request) {
+        calls.push({ op: request.op, params: request.params });
+        if (request.op === "presence") {
+          const intent = request.params.intent;
+          const mode = intent === "activate" ? "controller" : "observer";
+          return { id: 1, capability: "supported", mode, access: "full" };
+        }
+        return { id: 1, status: 200, contentType: "application/json", json: { id: "att-1" } };
+      } },
+      readJsonBody: async <T,>() => body as T | null,
+      writeJson: (_res, status, payload) => { slot.current = { status, body: payload }; },
+      withSecurityHeaders: (headers) => headers,
+    });
+    const invoke = async (method: string, path: string) => {
+      const req = { method, url: path, headers: {}, on: () => undefined } as unknown as http.IncomingMessage;
+      const res = { writeHead: (status: number) => { slot.current = { status, body: null }; }, end: () => undefined, on: () => undefined, destroyed: false, write: () => true } as unknown as http.ServerResponse;
+      await gateway.handle({ req, res, pathname: path.split("?")[0] ?? path });
+      const written = slot.current;
+      if (!written) throw new Error("no response");
+      return written;
+    };
+    const boot = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const lifetime = (boot.body as { instanceId: string }).instanceId;
+    body = { intent: "observe", expectedEpoch: 1, expectedInstanceId: lifetime };
+    await invoke("POST", "/api/v1/hosts/host1/presence");
+    body = { requestId: "req-1234", expectedEpoch: 2, expectedInstanceId: lifetime, path: "/plugins/objectives/attachment/add?objectiveId=a&name=one.png", dataBase64: "YQ==" };
+    const denied = await invoke("POST", "/api/v1/hosts/host1/bytes");
+    expect(denied).toEqual({ status: 403, body: { error: "read_only" } });
+    expect(calls.map((entry) => entry.op)).toEqual(["presence"]);
+    body = { intent: "activate", expectedEpoch: 2, expectedInstanceId: lifetime };
+    expect((await invoke("POST", "/api/v1/hosts/host1/presence")).status).toBe(204);
+    const current = await invoke("GET", "/api/v1/hosts/host1/presence");
+    const epoch = (current.body as { epoch: number }).epoch;
+    body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: lifetime, path: "/api/v1/agent/attachments", dataBase64: "YQ==" };
+    const uploaded = await invoke("POST", "/api/v1/hosts/host1/bytes");
+    expect(uploaded.status).toBe(200);
+    expect(uploaded.body).toMatchObject({ json: { id: "att-1" }, instanceId: lifetime });
+    const sent = calls.at(-1);
+    expect(sent).toMatchObject({ op: "http", params: { method: "POST", path: "/api/v1/agent/attachments", dataBase64: "YQ==" } });
+    expect(sent?.params).not.toHaveProperty("contentType");
+    body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: lifetime, method: "POST", path: "/plugins/objectives/objective/create", json: { title: "remote" } };
+    expect((await invoke("POST", "/api/v1/hosts/host1/request")).status).toBe(200);
+    body = { requestId: "req-1234", expectedEpoch: epoch, expectedInstanceId: lifetime, method: "DELETE", path: "/api/v1/agent/attachments/att-1" };
+    expect((await invoke("POST", "/api/v1/hosts/host1/request")).status).toBe(200);
+    expect(calls.filter((entry) => entry.op === "http").map((entry) => entry.params.method)).toEqual(["POST", "POST", "DELETE"]);
   });
 
   it("keeps the terminal's first resize and a normal burst until the remote socket is ready", async () => {

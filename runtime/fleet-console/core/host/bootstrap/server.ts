@@ -1579,7 +1579,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return host ? { hostname: host.hostname, port: host.port, fingerprint: host.fingerprint, origin: host.origin } : null;
     },
     bridge: hostShellBridge,
-    readJsonBody,
+    // 첨부만 10MB 원시 이미지를 base64로 싣는다. 그 외 JSON은 기존 1MB 상한이다.
+    readJsonBody: (req) => readJsonBody(req, /\/api\/v1\/hosts\/[^/]+\/bytes$/u.test((req.url ?? "").split("?")[0] ?? "") ? 14 * 1024 * 1024 : MAX_BODY_BYTES),
     writeJson,
     withSecurityHeaders,
   });
