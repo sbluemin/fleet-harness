@@ -298,7 +298,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .objectives-launch-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
 .objectives-launch-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 
 /* 지휘관 바로 아래의 구성원 명단 — 역할·설명, 오른쪽 선택 방식과 Operation 상태. */

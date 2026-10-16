@@ -1,6 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import type { AuthService } from "@fleet-console/ai-gateway";
-import { OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
+import { TYPESAFE_AUTH_PROVIDER_ID, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;
@@ -11,7 +11,7 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "opencode" | "typesafe";
+export type AuthCliId = "typesafe";
 
 interface AuthCliDefinition {
   readonly label: string;
@@ -22,12 +22,6 @@ interface AuthCliDefinition {
 }
 
 export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>> = {
-  opencode: {
-    label: "OpenCode Go for AI Gateway",
-    shortName: "OpenCode Go",
-    providerId: OPENCODE_AUTH_PROVIDER_ID,
-    validate: validateOpencodeGoAuthKey,
-  },
   typesafe: {
     label: "TypeSafe System One",
     shortName: "TypeSafe",

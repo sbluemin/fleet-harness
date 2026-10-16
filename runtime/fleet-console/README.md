@@ -170,7 +170,7 @@ fleet gateway models --json            # what the gateway currently exposes
 fleet gateway set xai-endpoint direct  # one policy axis, no prompts
 ```
 
-The CLI writes the settings file directly, so it works with the Console stopped; an open Console tab shows the change after a reload. API-key providers (OpenCode Go, TypeSafe) sign in from that interactive screen: Providers, then Sign in.
+The CLI writes the settings file directly, so it works with the Console stopped; an open Console tab shows the change after a reload. The TypeSafe API key signs in from that interactive screen: Providers, then Sign in.
 
 ## Desktop coexistence
 

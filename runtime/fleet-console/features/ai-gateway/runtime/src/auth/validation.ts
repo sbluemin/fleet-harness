@@ -1,13 +1,12 @@
 import type {
   AuthValidationFailureMessageInput,
   AuthValidationFailureResult,
-  AuthValidationRequest,
   AuthValidationResult,
 } from "./types.js";
 
-// Auth validation issues a real 1-token generation probe. Upstream TTFB for a
-// live model often exceeds a few seconds, so a short budget falsely times out
-// valid keys (observed on OpenCode Go / minimax-m3) before they can be stored.
+// A key probe reaches a live upstream whose first byte can take several seconds,
+// so a short budget falsely times out valid keys before they can be stored
+// (observed on a 1-token generation probe of the since-removed OpenCode Go).
 export const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 20_000;
 
 export interface AuthProbeRequest {
@@ -72,33 +71,6 @@ export async function validateApiKeyByProbe(
   }
 }
 
-export async function validateAnthropicCompatibleApiKey(
-  request: AuthValidationRequest,
-): Promise<AuthValidationResult> {
-  return validateApiKeyByProbe(request, (signal) =>
-    fetch(buildMessagesUrl(request.baseUrl), {
-      method: "POST",
-      headers: {
-        ...request.headers,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-        "x-api-key": request.apiKey,
-      },
-      body: JSON.stringify({
-        model: request.model ?? "claude-3-5-haiku-20241022",
-        max_tokens: 1,
-        messages: [
-          {
-            role: "user",
-            content: "ping",
-          },
-        ],
-      }),
-      signal,
-    }),
-  );
-}
-
 export function isAuthValidationSuccess(
   result: AuthValidationResult,
 ): result is AuthValidationResult & { status: "success" } {
@@ -127,10 +99,6 @@ export function formatAuthValidationFailureMessage(input: AuthValidationFailureM
     return `Auth token validation failed because the provider returned an error (providerId: '${input.providerId}'). Try again later.${detail}`;
   }
   return `Auth token validation failed (providerId: '${input.providerId}'). Check the token and try again.${detail}`;
-}
-
-function buildMessagesUrl(baseUrl: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}/v1/messages`;
 }
 
 function isAbortError(error: unknown): boolean {

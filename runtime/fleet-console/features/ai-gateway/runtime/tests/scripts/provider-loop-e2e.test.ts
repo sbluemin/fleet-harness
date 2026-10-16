@@ -74,7 +74,7 @@ describe("provider loop runner", () => {
     const result = runScript(
       sourceScript,
       "--model",
-      "claude-gateway--opencode--deepseek-v4-flash",
+      "claude-gateway--codex--retired-model",
       "--confirm-live-provider",
     );
 

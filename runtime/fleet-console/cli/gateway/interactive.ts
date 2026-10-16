@@ -185,7 +185,7 @@ async function editProviders(io: GatewayInteractiveIo, deps: GatewayInteractiveD
   const action = await select<"login" | "logout" | "back">({
     message: "Provider authentication",
     options: [
-      { value: "login", label: "Sign in", hint: "OpenCode Go or TypeSafe API key" },
+      { value: "login", label: "Sign in", hint: "TypeSafe API key" },
       { value: "logout", label: "Sign out" },
       { value: "back", label: "Back" },
     ],

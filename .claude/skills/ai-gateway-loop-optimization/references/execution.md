@@ -26,7 +26,7 @@ printf '%s\nrc=%s\n' "$OUT" "$rc"
 On failure, rebuild the package above and check again; if it still fails, stop before the paid call. No Console build or process is needed for this runner. Once it passes, run:
 
 ```sh
-pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4-flash[1m]' --operations 3 --trials 5 --confirm-live-provider
+pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6-sol' --auth-path <authorized-console-slot>/auth.json --operations 3 --trials 5 --confirm-live-provider
 ```
 
 `--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.

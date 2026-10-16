@@ -58,7 +58,7 @@ sidecar. Setting them on the spawned agent CLI is too late.
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> \
   --set CLAUDE_BIN=<claude-abs-path> \
   --set FLEET_GATEWAY_WIRE_LOG=<scratch>/wire.jsonl \
-  --set 'FLEET_AI_GATEWAY_MODEL=claude-gateway--opencode--deepseek-v4-flash[1m]' \
+  --set 'FLEET_AI_GATEWAY_MODEL=claude-gateway--codex--gpt-6-sol' \
   -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve
 ```
 
@@ -110,7 +110,7 @@ are not. Add one first:
 
 Settings → **AI Gateway** (Terminal) → the provider's row in the gateway model section → choose
 the model in that row's combobox → the add-model action (use its current localized label). Launch the Operation afterwards and the
-entry appears, e.g. `OpenCode-DeepSeek-V4-Flash (1M Context) · From gateway`.
+entry appears, e.g. `Codex-GPT-6-Sol · From gateway`.
 
 That combobox resists automation in four ways:
 

@@ -21,7 +21,7 @@ describe("buildAgentCliLaunchKinds", () => {
       version: 1,
       models: [
         { id: "claude--sonnet-1m" },
-        { id: "opencode--muse-spark-1.3-contributor", efforts: ["high"] },
+        { id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] },
         { id: "codex--gpt-6-sol-fast" },
       ],
     });
@@ -76,21 +76,21 @@ describe("buildAgentCliLaunchKinds", () => {
         ],
       },
       {
-        id: "gateway:opencode",
-        label: "OpenCode",
+        id: "gateway:muse-code",
+        label: "Muse Code",
         rows: [
           {
-            id: "opencode--muse-spark-1.3-contributor",
+            id: "muse-code--muse-spark-1.3-contributor",
             label: "Muse-Spark-1.3-Contributor",
-            launch: { model: "opencode--muse-spark-1.3-contributor" },
-            quotaPool: "opencode:shared",
+            launch: { model: "muse-code--muse-spark-1.3-contributor" },
+            quotaPool: "muse-code:shared",
             contextWindow: expect.any(Number),
             capabilityClass: expect.any(String),
             effortAxis: MAX_LESS_AXIS,
             gatedEfforts: ["ultra"],
             chips: [
-              gatewayChip("opencode--muse-spark-1.3-contributor", "high", "HIGH"),
-              gatewayChip("opencode--muse-spark-1.3-contributor", "ultra", "ULTRACODE"),
+              gatewayChip("muse-code--muse-spark-1.3-contributor", "high", "HIGH"),
+              gatewayChip("muse-code--muse-spark-1.3-contributor", "ultra", "ULTRACODE"),
             ],
           },
         ],
@@ -147,7 +147,7 @@ describe("buildAgentCliLaunchKinds", () => {
       "agent",
       resolveAiGatewaySelection({
         version: 1,
-        models: [{ id: "opencode--glm-5.3" }],
+        models: [{ id: "codex--gpt-6-sol-fast" }],
       }),
     );
 

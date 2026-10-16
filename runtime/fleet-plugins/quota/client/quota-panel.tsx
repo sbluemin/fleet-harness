@@ -31,7 +31,6 @@ export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   codex: "Codex",
   cursor: "Cursor",
   "muse-code": "Muse Code",
-  opencode: "OpenCode Go",
   xai: "xAI",
 };
 
@@ -66,7 +65,6 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.codex.signedOut",
   cursor: "quota.cursor.signedOut",
   "muse-code": "quota.museCode.signedOut",
-  opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
 
@@ -76,11 +74,10 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.expired.codex",
   cursor: "quota.expired.cursor",
   "muse-code": "quota.expired.museCode",
-  opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
-// Cursor·OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
+// Cursor만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
 // 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.noSubscription",
@@ -88,7 +85,6 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   codex: "quota.noSubscription",
   cursor: "quota.cursor.noSubscription",
   "muse-code": "quota.noSubscription",
-  opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
 };
 

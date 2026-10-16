@@ -11,7 +11,7 @@ When changing layer placement, model registration, request shaping, or provider 
 - Only `src/router/` composes both directions. Inject host settings, credentials, fetch, and diagnostics explicitly; the router owns no environment lookups or host identity.
 - Provider semantics belong in `src/upstream/<provider>/`, client grammar in `src/downstream/harness/<client>/`, and wire protocols in `src/downstream/wire/<wire>/`. Wire code must not import harness code. Select the harness by a declared URL path segment, never by guessing from headers, credentials, or bodies.
 - Separate provider `request-policy.ts` declarations from router-owned shaping steps. The only upstream-to-router dependency is an `import type` of the policy contract. Add clients through harness profiles, not router branches.
-- Sharing a wire does not justify sharing provider request/response/tool/header/capability semantics. Share only canonical vocabulary, direction-neutral transport, and `anthropic-messages/protocol.ts` / `passthrough.ts` for providers relaying that same Anthropic wire. Transport imports neither direction.
+- Sharing a wire does not justify sharing provider request/response/tool/header/capability semantics. Share only canonical vocabulary, direction-neutral transport, and `anthropic-messages/protocol.ts` for providers relaying that same Anthropic wire. Transport imports neither direction.
 - The only downstream-to-upstream exception is the legacy `OpenAIResponsesAdapter` in the default `AnthropicMessagesGateway` constructor. `src/index.ts` remains a public re-export facade.
 
 ## Catalog and credentials
@@ -24,7 +24,7 @@ When changing layer placement, model registration, request shaping, or provider 
 ## Loss-prevention boundaries
 
 - Responses strict-schema rewriting, completed-argument null stripping, and argument-delta dropping are one mechanism per provider. Partial JSON cannot be null-stripped; restoring argument streaming in these strict-mode implementations reintroduces un-stripped arguments. Determine compatibility through an observed JSON Schema keyword allowlist.
-- Never suppress declared default-valued arguments: intentional input is indistinguishable from pollution. Cursor has no equivalent optional-argument guarantee. OpenCode Chat Completions guarantees undeclared-key pruning on completed arguments, not a strict-mode outbound rewrite. Unreadable `pattern` values are dropped outbound so a backend that cannot compile them does not fail the request.
+- Never suppress declared default-valued arguments: intentional input is indistinguishable from pollution. Cursor has no equivalent optional-argument guarantee. Unreadable `pattern` values are dropped outbound so a backend that cannot compile them does not fail the request.
 - Cursor native redirect targets and advertised-catalog exclusions are separate predicates. Preserve both Run HTTP-status gating and failure on a transport that ends without a decoded frame. Do not independently tighten or loosen the live bridge's park gate, late tail, answered echo, or raced-call handling.
 - A redirect that parses a client tool's output back into a Cursor native result must accept what that client actually emits — CRLF line endings, non-ASCII text and paths, and a tail the caller trims — so run those variants through it before reporting the parser done.
 - Do not re-exclude Cursor models from the live client-tool bridge without measurement. The reference and adapter classifiers own provider-specific exceptions and rationale.

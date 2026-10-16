@@ -7,7 +7,6 @@ import {
   claudeDecisiveRefusalHeaders,
   claudeDecisiveRefusalStatus,
   claudeRetryableUpstreamStatus,
-  projectAnthropicResponseUsage,
   projectClaudeContextInputTokens,
   stripClaudeUsageLimitDirectives,
 } from "./context.js";
@@ -54,14 +53,6 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
       upstreamContextWindow,
       compactCeiling,
     )
-  ),
-  passthroughProjection: (compactCeiling: CompactCeilingSetting) => (
-    (chunks, options) => projectAnthropicResponseUsage(chunks, {
-      contentType: options.contentType,
-      ...(options.contextWindow === undefined ? {} : { contextWindow: options.contextWindow }),
-      ...(options.responseModel === undefined ? {} : { responseModel: options.responseModel }),
-      compactCeiling,
-    })
   ),
   retryableStatus: claudeRetryableUpstreamStatus,
   decisiveRefusalHeaders: claudeDecisiveRefusalHeaders,

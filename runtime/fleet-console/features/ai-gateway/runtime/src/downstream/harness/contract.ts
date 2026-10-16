@@ -68,16 +68,6 @@ export interface GatewayHarnessProfile {
    */
   readonly usageProjection?: (compactCeiling: CompactCeilingSetting) => UsageProjection | undefined;
   /**
-   * How this client meters a passthrough turn, whose body is the provider's own bytes.
-   *
-   * Separate from `usageProjection` because the two paths hold different things: the
-   * translated path maps a number the wire is about to encode, while this one rewrites
-   * an already-encoded SSE or JSON body. Absent relays the provider's bytes untouched.
-   */
-  readonly passthroughProjection?: (
-    compactCeiling: CompactCeilingSetting,
-  ) => PassthroughBodyProjection | undefined;
-  /**
    * Lift an upstream refusal onto a status this client's retry budget acts on.
    *
    * Absent forwards the upstream status unchanged.
@@ -130,20 +120,6 @@ export interface GatewayHarnessProfile {
     headers: Readonly<Record<string, unknown>>,
   ) => string | undefined;
 }
-
-/**
- * A rewrite of a passthrough response body, applied between the upstream bytes and
- * the client. `contentType` decides which encoding is being rewritten; a projection
- * that does not recognize it must relay the bytes unchanged.
- */
-export type PassthroughBodyProjection = (
-  chunks: AsyncIterable<Uint8Array>,
-  options: {
-    readonly contentType: string | null;
-    readonly contextWindow?: number;
-    readonly responseModel?: string;
-  },
-) => AsyncIterable<Uint8Array>;
 
 /** The inbound protocols `downstream/wire/` implements. */
 export type GatewayHarnessWire = "anthropic-messages";

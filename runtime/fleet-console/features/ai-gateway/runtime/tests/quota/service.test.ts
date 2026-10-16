@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
-import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.js";
 import { getJson } from "../../src/quota/windows.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
@@ -19,7 +18,6 @@ describe("quota service", () => {
       isClaudeConnected: async () => false,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
-      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     expect((await service.getSummary()).providers.claude).toEqual({ status: "not_connected", method: "keychain" });
     expect(fetchClaude).not.toHaveBeenCalled();
@@ -34,7 +32,6 @@ describe("quota service", () => {
       isClaudeConnected: async () => true,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
-      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     const first = service.getSummary();
     const second = service.getSummary();
@@ -84,7 +81,6 @@ describe("quota service", () => {
       isClaudeConnected: async () => true,
       fetchClaude,
       fetchCodex,
-      fetchOpencode: async () => ({ status: "signed_out" }),
       fetchXai,
     });
     const cached = await service.getSummary();
@@ -95,35 +91,6 @@ describe("quota service", () => {
     expect(refreshed.providers.claude).toEqual(cached.providers.claude);
     expect(refreshed.providers.codex).toEqual(cached.providers.codex);
     expect(refreshed.providers.xai.windows?.[0]?.usedPercent).toBe(42);
-  });
-
-  it("collectors read OpenCode keys only through the injected auth service", async () => {
-    const authService = {
-      getEntry: async () => undefined,
-      setEntry: async () => undefined,
-      updateEntry: async () => false,
-      getApiKey: vi.fn(async () => "opencode-key"),
-      setApiKey: async () => undefined,
-      deleteApiKey: async () => false,
-      listProviderIds: async () => [],
-    };
-    const fetchImpl = vi.fn(async () => new Response(
-      JSON.stringify({
-        usage: {
-          rolling: { percent: 1, resetsAt: "2026-07-12T17:00:00.000Z" },
-          weekly: { percent: 2, resetsAt: "2026-07-13T00:00:00.000Z" },
-          monthly: { percent: 3, resetsAt: "2026-08-04T00:00:00.000Z" },
-        },
-      }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
-    ));
-    const collectors = createAiGatewayQuotaCollectors({
-      authService,
-      fetch: fetchImpl as typeof fetch,
-    });
-
-    await expect(collectors.fetchOpencode()).resolves.toMatchObject({ status: "ok", plan: "Go" });
-    expect(authService.getApiKey).toHaveBeenCalledWith(OPENCODE_AUTH_PROVIDER_ID);
   });
 
   it("keeps last-good data as stale after any failure until its windows reset, but not for routing", async () => {
@@ -145,7 +112,6 @@ describe("quota service", () => {
       isClaudeConnected: async () => true,
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
-      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     await service.getSummary();
     now += 300_000;
@@ -211,7 +177,6 @@ describe("quota service", () => {
       isClaudeConnected: async () => false,
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
-      fetchOpencode: async () => ({ status: "signed_out" }),
       fetchMuseCode: collectors.fetchMuseCode,
     });
 

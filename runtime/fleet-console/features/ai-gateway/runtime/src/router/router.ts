@@ -57,12 +57,6 @@ import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
-  createOpencodeGateway,
-  isOpencodeAnthropicPassthrough,
-  opencodeGoWire,
-  proxyToOpencode,
-} from "./opencode-dispatch.js";
-import {
   applyDecisiveRefusalHeaders,
   drain,
   errorMessage,
@@ -71,16 +65,9 @@ import {
   writeSseErrorFrame,
   type GatewayProxyResponse,
 } from "./http.js";
-import { proxyAnthropicMessages, type AnthropicProxyOptions } from "./passthrough.js";
+import { proxyAnthropicMessages } from "./passthrough.js";
 import type { GatewayHttpHandler } from "./types.js";
 
-/** 패스스루 한 번에 하네스가 얹는 것: 본문 재작성과 상태 승격, 진단 상관용 세션 id. */
-export type PassthroughRelay = Pick<
-  AnthropicProxyOptions,
-  "projectResponseBody" | "retryableStatus" | "decisiveRefusalHeaders" | "decisiveRefusalStatus" | "wireSessionId"
->;
-
-export { OPENCODE_GO_MESSAGES_URL as OPENCODE_MESSAGES_URL } from "../upstream/opencode-go/index.js";
 export { ANTHROPIC_MESSAGES_URL } from "../upstream/anthropic/native.js";
 
 export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
@@ -180,7 +167,6 @@ export interface AiGatewayRouteDeps {
    * for every provider that cannot renew on demand.
    */
   readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
-  readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
   readonly readMuseCodeAuth?: () => MuseCodeInferenceAuth | Promise<MuseCodeInferenceAuth>;
   /** 401에서만 한 번 호출한다. 호스트가 quota 조회와 single-flight·backoff를 공유한다. */
@@ -609,13 +595,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       credential = auth.accessToken;
       chatgptAccountId = auth.accountId;
-    } else if (target?.provider === "opencode") {
-      const opencodeApiKey = await deps.readOpencodeApiKey?.();
-      if (!opencodeApiKey) {
-        refuseProviderSignIn("No OpenCode Go API key was found. Sign in to OpenCode Go first.");
-        return true;
-      }
-      credential = opencodeApiKey;
     } else if (target?.provider === "xai") {
       const xaiToken = await deps.readXaiToken?.();
       if (!xaiToken) {
@@ -672,36 +651,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const claudeContextWindow = target.contextWindow;
       const ceiling = compactCeiling();
       const projection = harness.usageProjection?.(ceiling);
-      // 패스스루는 이미 인코딩된 본문을 다시 쓰므로 번역 경로와 다른 맵을 받는다. 둘 다
-      // 하네스가 소유하고, 없으면 공급자 수치를 그대로 보낸다.
-      const passthroughProjection = harness.passthroughProjection?.(ceiling);
-      const passthroughRelay: PassthroughRelay = {
-        ...(passthroughProjection ? { projectResponseBody: passthroughProjection } : {}),
-        ...(harness.retryableStatus ? { retryableStatus: harness.retryableStatus } : {}),
-        ...(harness.decisiveRefusalHeaders
-          ? { decisiveRefusalHeaders: harness.decisiveRefusalHeaders }
-          : {}),
-        ...(harness.decisiveRefusalStatus
-          ? { decisiveRefusalStatus: harness.decisiveRefusalStatus }
-          : {}),
-        ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
-      };
-      if (target.provider === "opencode" && isOpencodeAnthropicPassthrough(target)) {
-        clock?.setRoute("passthrough");
-        await proxyToOpencode(
-          req.headers,
-          res,
-          body,
-          upstreamModelId(target),
-          claudeContextWindow,
-          passthroughRelay,
-          credential,
-          requestFetch,
-          controller.signal,
-        );
-        clock?.finish("ok");
-        return true;
-      }
       const codexAdapter = target.provider === "codex"
         ? new CodexResponsesAdapter({
             accountId: chatgptAccountId,
@@ -715,12 +664,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const gateway = deps.gateway
         ?? (target.provider === "cursor"
           ? ownedCursorGateways!.get(harness)!
-          : target.provider === "opencode"
-            ? createOpencodeGateway(
-              opencodeGoWire(target) as "responses" | "chat-completions",
-              requestFetch,
-            )
-            : target.provider === "xai"
+          : target.provider === "xai"
               ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
                 fetch: requestFetch,
                 endpoint: xaiEndpoint(),

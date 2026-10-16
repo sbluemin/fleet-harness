@@ -7314,8 +7314,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .quick-launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
 .operation-launch-variant-caption.is-cursor,
 .quick-launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.operation-launch-variant-caption.is-opencode,
-.quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .operation-launch-variant-caption.is-xai,
 .quick-launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 /* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
@@ -7323,7 +7321,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-model-picker__glyph.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-model-picker__glyph.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.fc-model-picker__glyph.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .fc-model-picker__glyph.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
@@ -7353,7 +7350,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .quick-launch-kind-icon.is-claude,
 .quick-launch-kind-icon.is-codex,
 .quick-launch-kind-icon.is-cursor,
-.quick-launch-kind-icon.is-opencode,
 .quick-launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
@@ -7361,7 +7357,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
 .quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
@@ -12786,7 +12781,6 @@ body[data-expanded-surface-resizing="true"] {
 .fc-coord-menu-provider.is-codex, .fc-coord-trigger-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-coord-menu-provider.is-xai, .fc-coord-trigger-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
 .fc-coord-menu-provider.is-cursor, .fc-coord-trigger-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.fc-coord-menu-provider.is-opencode, .fc-coord-trigger-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 /* 빈 로스터의 폴백 띠 머리 — Quick Launch·캔버스·채팅 좌표가 공급자 띠 대신 그린다. 폴백은 상태라 warn이 말하고, 길 안내는 brass 잉크다.
    공급자 캡션(대문자·자간)을 물려받지 않는 문장이다 — 호출부는 캡션 클래스를 섞지 않는다. */

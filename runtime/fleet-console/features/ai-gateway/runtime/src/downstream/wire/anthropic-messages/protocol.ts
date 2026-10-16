@@ -720,7 +720,7 @@ export interface ResponseCompatibilityOptions {
    * Deterministic character-based estimate of this request's input tokens, used ONLY when the
    * upstream envelope reports no input usage at all.
    *
-   * Responses-backed providers (xAI, Codex, OpenCode) send `usage: null` on `response.created`,
+   * Responses-backed providers (xAI, Codex, Muse Code) send `usage: null` on `response.created`,
    * so the `message_start` frame they produce would otherwise claim zero input tokens for the
    * whole turn — and Claude Code reads that frame to size the turn while it is still running,
    * which is what leaves those models showing `0 tok` until the turn ends. Cursor never hits

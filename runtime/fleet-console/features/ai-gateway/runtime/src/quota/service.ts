@@ -6,7 +6,6 @@ import { createCodexOAuth, type CodexOAuth } from "../oauth/codex/login.js";
 import { createCursorOAuth, type CursorOAuth } from "../oauth/cursor/login.js";
 import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
 import { createXaiOAuth, type XaiOAuth } from "../oauth/xai/login.js";
-import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import { deriveQuotaWindowRisk } from "./pressure.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto, QuotaWindow } from "./types.js";
@@ -19,7 +18,7 @@ export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
  */
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "muse-code" | "opencode" | "xai";
+type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "muse-code" | "xai";
 
 /**
  * 사용량 조회가 rate limit이 걸린 key endpoint인 공급자(Muse Code). 실패 뒤에는
@@ -56,7 +55,6 @@ export interface QuotaServiceDeps {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor?: () => Promise<ProviderResult>;
-  readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
@@ -66,7 +64,7 @@ export interface QuotaServiceDeps {
 
 /**
  * Deps for building the provider probes. `authService` is required here —
- * OpenCode Go reads the key Fleet itself stores through it — so a host
+ * Muse Code reads the entry Fleet itself stores through it — so a host
  * that composes these collectors can never silently fall back to constructing a
  * default auth path inside the package.
  */
@@ -86,7 +84,6 @@ export interface AiGatewayQuotaCollectors {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor: () => Promise<ProviderResult>;
-  readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai: () => Promise<ProviderResult>;
   readonly fetchAntigravity: () => Promise<ProviderResult>;
   readonly fetchMuseCode: () => Promise<ProviderResult>;
@@ -95,7 +92,6 @@ export interface AiGatewayQuotaCollectors {
 export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps): AiGatewayQuotaCollectors {
   const providerDeps: ProviderDeps = {
     credentials: deps.credentialDeps ?? defaultCredentialDeps,
-    authService: deps.authService,
     ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
   };
@@ -107,7 +103,6 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => codex.fetchUsage(),
     fetchCursor: () => cursor.fetchUsage(),
-    fetchOpencode: () => fetchOpencodeUsage(providerDeps),
     fetchXai: () => xai.fetchUsage(),
     fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
     fetchMuseCode: () => museCode.fetchUsage(),
@@ -135,7 +130,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     claude: deps.fetchClaude,
     codex: deps.fetchCodex,
     cursor: deps.fetchCursor ?? (async () => ({ status: "signed_out" })),
-    opencode: deps.fetchOpencode,
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
     antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
@@ -294,7 +288,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       };
       return { providers: {
         claude: read("claude"), codex: read("codex"), cursor: read("cursor"),
-        opencode: read("opencode"), xai: read("xai"), antigravity: read("antigravity"),
+        xai: read("xai"), antigravity: read("antigravity"),
         "muse-code": read("muse-code"),
       } };
     },
@@ -315,22 +309,20 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const claude = read("claude");
       const codex = read("codex");
       const cursor = read("cursor");
-      const opencode = read("opencode");
       const xai = read("xai");
       const antigravity = read("antigravity");
       const museCode = read("muse-code");
-      if (!claude || !codex || !cursor || !opencode || !xai || !antigravity || !museCode) return undefined;
+      if (!claude || !codex || !cursor || !xai || !antigravity || !museCode) return undefined;
       return {
-        summary: { providers: { claude, codex, cursor, opencode, xai, antigravity, "muse-code": museCode } },
+        summary: { providers: { claude, codex, cursor, xai, antigravity, "muse-code": museCode } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, cursor, opencode, xai, antigravity, museCode] = await Promise.all([
+      const [claude, codex, cursor, xai, antigravity, museCode] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("cursor", options.force === true || options.forceProvider === "cursor"),
-        load("opencode", options.force === true || options.forceProvider === "opencode"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
@@ -340,7 +332,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           claude: withRisk(claude),
           codex: withRisk(codex),
           cursor: withRisk(cursor),
-          opencode: withRisk(opencode),
           xai: withRisk(xai),
           antigravity: withRisk(antigravity),
           "muse-code": withRisk(museCode),
