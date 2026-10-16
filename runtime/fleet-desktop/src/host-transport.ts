@@ -32,6 +32,8 @@ const SESSION_RESPONSE = "/api/v1/sessions";
 const TICKET_PATH = "/api/v1/agent/ticket";
 const TERMINAL_SOCKET_PATH = "/api/v1/terminal/ws";
 const FRAME_CHARS = 32 * 1024;
+const RELAY_ATTEMPTS = 3;
+const RELAY_BACKOFF_MS = [200, 400];
 
 interface HostJob {
   readonly hostKey: string;
@@ -41,8 +43,9 @@ interface HostJob {
 }
 
 export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
-  execute(command: DesktopHostCommand): Promise<DesktopHostRelay>;
+  execute(command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay>;
   run(command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void>;
+  releaseConsole(): void;
 } {
   const partitions = new Map<string, { readonly origin: string; readonly fingerprint: string; readonly partition: HostPartition }>();
   const epochs = new Map<string, number>();
@@ -102,20 +105,33 @@ export function createHostTransportExecutor(deps: HostTransportExecutorDeps): {
   };
 
   const execute = async (command: DesktopHostCommand, signal?: AbortSignal): Promise<DesktopHostRelay> => {
-    if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
-    if (!admitEpoch(command)) return { id: command.id, error: "stale_epoch" };
+    // abort는 epoch 거절보다 먼저다. 늦게 도착한 취소가 stale로 버려지면 원격 전송이 끝까지 남는다.
     if (command.op === "abort") {
       const target = command.params.commandId;
       if (typeof target === "number") { const job = jobs.get(target); jobs.delete(target); job?.abort(); }
       return { id: command.id, end: true };
     }
-    if (command.op === "ws-send" || command.op === "ws-close") return forwardSocket(command);
-    const opened = await partitionFor(command);
     if (signal?.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
-    if (!("partition" in opened)) return opened;
-    if (command.op === "presence") return performPresence(command, opened.origin, opened.partition, signal);
-    if (command.op === "http" || command.op === "bytes") return performHttp(command, opened.origin, opened.partition, signal);
-    return { id: command.id, error: "remote_host_unavailable" };
+    if (!admitEpoch(command)) return { id: command.id, error: "stale_epoch" };
+    if (command.op === "ws-send" || command.op === "ws-close") return forwardSocket(command);
+    const controller = new AbortController();
+    const stop = (): void => controller.abort();
+    if (signal) {
+      if (signal.aborted) stop();
+      else signal.addEventListener("abort", stop, { once: true });
+    }
+    jobs.set(command.id, { hostKey: command.hostKey, epoch: command.epoch, abort: stop });
+    try {
+      const opened = await partitionFor(command);
+      if (controller.signal.aborted) return { id: command.id, error: "remote_host_unavailable", end: true };
+      if (!("partition" in opened)) return opened;
+      if (command.op === "presence") return await performPresence(command, opened.origin, opened.partition, controller.signal);
+      if (command.op === "http" || command.op === "bytes") return await performHttp(command, opened.origin, opened.partition, controller.signal);
+      return { id: command.id, error: "remote_host_unavailable" };
+    } finally {
+      if (jobs.get(command.id)?.abort === stop) jobs.delete(command.id);
+      signal?.removeEventListener("abort", stop);
+    }
   };
 
   const run = async (command: DesktopHostCommand, emit: (relay: DesktopHostRelay) => Promise<void>, signal?: AbortSignal): Promise<void> => {
@@ -323,13 +339,25 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
   let activeOrigin: string | null = null;
   // 같은 출처로 콘솔이 다시 떠도 instanceId가 같으면 살아 있는 스트림을 끊지 않는다. 달라질 때만 앞 프로세스의 번호와 epoch를 잊는다.
   let consoleInstance: string | null = null;
-  const postRelay = async (relay: DesktopHostRelay, owner: string): Promise<void> => {
+  const postRelay = async (relay: DesktopHostRelay, owner: string): Promise<boolean> => {
     const origin = activeOrigin;
-    if (!origin || owner !== consoleInstance) return;
-    const response = await deps.fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
-      method: "POST", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify(relay),
-    });
-    if (!response.ok && owner === consoleInstance) deps.log?.(`host transport relay rejected status=${response.status}`);
+    if (!origin || owner !== consoleInstance) return false;
+    // 이미 끝난 원격 호출을 다시 실행하지 않는다. 거절된 결과만 몇 번 더 전달한다.
+    for (let attempt = 0; attempt < RELAY_ATTEMPTS; attempt += 1) {
+      if (activeOrigin !== origin || owner !== consoleInstance) return false;
+      try {
+        const response = await deps.fetch(`${origin}${DESKTOP_HOST_TRANSPORT_RELAY_PATH}`, {
+          method: "POST", headers: { "content-type": "application/json", Origin: origin }, body: JSON.stringify(relay),
+        });
+        if (response.ok) return true;
+        if (owner === consoleInstance) deps.log?.(`host transport relay rejected status=${response.status}`);
+      } catch (error) {
+        if (owner === consoleInstance) deps.log?.(`host transport relay failed: ${error instanceof Error ? error.message : "unknown"}`);
+      }
+      if (attempt + 1 < RELAY_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, RELAY_BACKOFF_MS[attempt] ?? 400));
+    }
+    if (owner === consoleInstance) deps.log?.(`host transport relay dropped id=${relay.id}`);
+    return false;
   };
   const stream = createDesktopEventStream({
     snapshotPath: DESKTOP_HOST_TRANSPORT_PATH,
@@ -355,6 +383,8 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
       const owner = consoleInstance ?? snapshot.instanceId;
       const live = new Set(snapshot.commands.map((command) => command.id));
       for (const [id, controller] of streams) if (!live.has(id)) controller.abort();
+      for (const [id, controller] of calls) if (!live.has(id)) controller.abort();
+      for (const id of running) if (!live.has(id)) running.delete(id);
       for (const command of snapshot.commands) {
         if (running.has(command.id)) continue;
         running.add(command.id);
@@ -364,7 +394,8 @@ export function createDesktopHostTransport(deps: HostTransportExecutorDeps & { r
         const deliver = async (relay: DesktopHostRelay): Promise<void> => {
           if (owner !== consoleInstance) return;
           if (streaming && controller.signal.aborted && relay.end !== true && relay.error === undefined) return;
-          await postRelay(relay, owner);
+          const accepted = await postRelay(relay, owner);
+          if (!accepted && owner === consoleInstance) controller.abort();
         };
         const done = streaming
           ? executor.run(command, deliver, controller.signal)

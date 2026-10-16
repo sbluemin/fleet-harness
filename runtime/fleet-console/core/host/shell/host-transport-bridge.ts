@@ -23,6 +23,8 @@ export interface HostShellBridge {
 }
 
 const CALL_TIMEOUT_MS = 15_000;
+/** 이벤트 구독이 끊어진 뒤, 같은 인스턴스가 돌아올 수 있는 시간. 그 안에 없으면 진행 중인 명령을 닫는다. */
+const SHELL_DETACH_MS = 5_000;
 
 interface Waiter {
   readonly streaming: boolean;
@@ -30,14 +32,22 @@ interface Waiter {
   finish(relay: DesktopHostRelay): void;
 }
 
-export function createHostShellBridge(): HostShellBridge {
+export function createHostShellBridge(options?: { readonly detachMs?: number }): HostShellBridge {
   const instanceId = crypto.randomUUID();
+  const detachMs = options?.detachMs ?? SHELL_DETACH_MS;
   let generation = 0;
   let nextId = 1;
   const pending = new Map<number, DesktopHostCommand>();
   const subscribers = new Set<(frame: string) => void>();
   const waiters = new Map<number, Waiter>();
+  let detachTimer: ReturnType<typeof setTimeout> | null = null;
   let bridge: HostShellBridge;
+
+  const detachShell = (): void => {
+    detachTimer = null;
+    if (subscribers.size > 0) return;
+    for (const [id, waiter] of [...waiters]) waiter.finish({ id, error: "remote_host_unavailable", end: true });
+  };
 
   const publish = (): void => {
     generation += 1;
@@ -51,14 +61,18 @@ export function createHostShellBridge(): HostShellBridge {
     attached: () => subscribers.size > 0,
     snapshot,
     subscribe(write) {
+      if (detachTimer !== null) {
+        clearTimeout(detachTimer);
+        detachTimer = null;
+      }
       subscribers.add(write);
       write(`event: desktop:host-transport\ndata: ${JSON.stringify(snapshot())}\n\n`);
       return () => {
         subscribers.delete(write);
-        if (subscribers.size === 0) {
-          for (const [id, waiter] of waiters) waiter.finish({ id, error: "remote_host_unavailable", end: true });
-          waiters.clear();
-          pending.clear();
+        // 같은 인스턴스의 재구독은 스트림을 유지한다. 셸이 유예 안에 돌아오지 않으면 그때 정리한다.
+        if (subscribers.size === 0 && detachTimer === null) {
+          detachTimer = setTimeout(detachShell, detachMs);
+          detachTimer.unref?.();
         }
       };
     },
@@ -83,7 +97,7 @@ export function createHostShellBridge(): HostShellBridge {
     const command: DesktopHostCommand = { id, ...request };
     pending.set(id, command);
     return new Promise((resolve) => {
-      const timer = streaming ? null : setTimeout(() => finish({ id, error: "remote_host_unavailable", end: true }), CALL_TIMEOUT_MS);
+      let timer: ReturnType<typeof setTimeout> | null = null;
       const finish = (relay: DesktopHostRelay): void => {
         if (timer) clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
@@ -93,10 +107,22 @@ export function createHostShellBridge(): HostShellBridge {
         resolve(relay);
         publish();
       };
+      // 취소는 아직 끝나지 않은 전송을 끊는 명령이다. 원격이 이미 받아 들인 일을 되돌리지는 않는다.
+      const cancelRemote = (): void => {
+        if (subscribers.size === 0) return;
+        void bridge.call({ ...request, op: "abort", routeId: "abort", params: { commandId: id } }).catch(() => undefined);
+      };
       const onAbort = (): void => {
         finish({ id, error: "remote_host_unavailable", end: true });
-        if (streaming && subscribers.size > 0) void bridge.call({ ...request, op: "abort", routeId: "abort", params: { commandId: id } }).catch(() => undefined);
+        cancelRemote();
       };
+      if (!streaming) {
+        timer = setTimeout(() => {
+          finish({ id, error: "remote_host_unavailable", end: true });
+          cancelRemote();
+        }, CALL_TIMEOUT_MS);
+        timer.unref?.();
+      }
       const waiter: Waiter = { streaming, ...(onFrame ? { onFrame } : {}), finish };
       waiters.set(id, waiter);
       // 이미 취소된 신호에 리스너를 붙이면 콜백이 호출되지 않는다. 붙인 뒤 한 번 더 본다.

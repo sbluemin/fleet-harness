@@ -401,26 +401,35 @@ describe("host gateway admission", () => {
   });
 
   it("cancels a host post when the client leaves, not when its body has been read", async () => {
-    const signals: AbortSignal[] = [];
-    let releaseCall = (): void => undefined;
+    const held = createHostShellBridge({ detachMs: 200 });
+    const stopHolding = held.subscribe(() => undefined);
+    const heldOpen = held.open({
+      hostKey: "host1", epoch: 1, op: "sse", routeId: "operation-events",
+      target: { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32) },
+      params: { path: "/api/v1/operations/events" },
+    }, () => undefined);
+    stopHolding();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(held.snapshot().commands).toHaveLength(1);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(held.snapshot().commands).toHaveLength(0);
+    await heldOpen;
+
+    const bridge = createHostShellBridge();
     const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+    const remote = { theaters: 0, theaterAborted: false, messages: [] as { aborted: boolean; waitedMs: number }[], operations: 0, sseAborts: 0 };
+    const endpoint = { origin: "" };
+    const eventResponses = new Set<http.ServerResponse>();
+    let failOperationsRelay = false;
+    let failedOperationsRelay = false;
     const gateway = createHostGateway({
-      isLoopback: () => true,
-      isExactOrigin: () => true,
-      findHost: () => target,
-      bridge: {
-        async open(_request, _onFrame, signal) {
-          if (signal) signals.push(signal);
-          await new Promise<void>((resolve) => { releaseCall = resolve; });
-          return { id: 1, end: true };
-        },
-        async call(request, signal) {
-          if (request.op === "presence") return { id: 1, capability: "supported", mode: "controller", access: "full" };
-          if (signal) signals.push(signal);
-          await new Promise<void>((resolve) => { releaseCall = resolve; });
-          return { id: 1, status: 200, contentType: "application/json", json: { ok: true } };
-        },
+      isLoopback: (req) => {
+        const address = req.socket.remoteAddress;
+        return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
       },
+      isExactOrigin: (req) => req.headers.origin === endpoint.origin,
+      findHost: () => target,
+      bridge,
       readJsonBody: async <T,>(req: http.IncomingMessage) => {
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -428,17 +437,45 @@ describe("host gateway admission", () => {
         return (text ? JSON.parse(text) : null) as T | null;
       },
       writeJson: (res, status, payload) => {
+        if (res.writableEnded) return;
         const body = JSON.stringify(payload);
         res.writeHead(status, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
         res.end(body);
       },
       withSecurityHeaders: (headers) => headers,
     });
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
       const pathname = new URL(req.url ?? "/", "http://127.0.0.1").pathname;
-      void gateway.handle({ req, res, pathname }).then((handled) => {
-        if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
-      });
+      if (pathname === DESKTOP_HOST_TRANSPORT_PATH && req.method === "GET") {
+        const body = JSON.stringify(bridge.snapshot());
+        res.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+        res.end(body);
+        return;
+      }
+      if (pathname === DESKTOP_HOST_TRANSPORT_EVENTS_PATH && req.method === "GET") {
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+        eventResponses.add(res);
+        const unsubscribe = bridge.subscribe((frame) => { if (!res.destroyed) res.write(frame); });
+        res.on("close", () => { eventResponses.delete(res); unsubscribe(); });
+        return;
+      }
+      if (pathname === DESKTOP_HOST_TRANSPORT_RELAY_PATH && req.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        const text = Buffer.concat(chunks).toString("utf8");
+        if (failOperationsRelay && !failedOperationsRelay && text.includes("\"operations\"")) {
+          failedOperationsRelay = true;
+          res.writeHead(500);
+          res.end();
+          return;
+        }
+        const accepted = await bridge.relay(JSON.parse(text) as unknown);
+        res.writeHead(accepted ? 204 : 400);
+        res.end();
+        return;
+      }
+      const handled = await gateway.handle({ req, res, pathname });
+      if (!handled && !res.writableEnded) { res.writeHead(404); res.end(); }
     });
     const port = await new Promise<number>((resolve) => {
       server.listen(0, "127.0.0.1", () => {
@@ -447,45 +484,136 @@ describe("host gateway admission", () => {
         resolve(address.port);
       });
     });
-    const origin = `http://127.0.0.1:${port}`;
-    const until = async (ready: () => boolean): Promise<void> => {
-      const deadline = Date.now() + 2000;
+    endpoint.origin = `http://127.0.0.1:${port}`;
+    const origin = endpoint.origin;
+    const transport = createDesktopHostTransport({
+      fetch: globalThis.fetch,
+      confirmIdentity: async () => undefined,
+      openPartition: () => ({
+        async fetch(url: string, init?: RequestInit) {
+          const path = new URL(url).pathname;
+          if (path === "/api/v1/sessions") {
+            return new Response(JSON.stringify({ capability: "host-session", mode: "controller", access: "full" }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (path === "/api/v1/theaters") {
+            remote.theaters += 1;
+            remote.theaterAborted = init?.signal?.aborted === true;
+            return new Response(JSON.stringify({ theaters: [{ id: "kept" }] }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (path.endsWith("/message")) {
+            const started = performance.now();
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(resolve, 3000);
+              init?.signal?.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+            });
+            const observed = { aborted: init?.signal?.aborted === true, waitedMs: Math.round(performance.now() - started) };
+            remote.messages.push(observed);
+            if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+            return new Response(JSON.stringify({ delivered: true }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (path === "/api/v1/operations") {
+            remote.operations += 1;
+            return new Response(JSON.stringify({ operations: [{ id: "current" }] }), { status: 200, headers: { "content-type": "application/json" } });
+          }
+          if (path === "/api/v1/operations/events") {
+            let timer: ReturnType<typeof setInterval> | undefined;
+            const body = new ReadableStream<Uint8Array>({
+              start(controller) {
+                let n = 0;
+                timer = setInterval(() => {
+                  try { controller.enqueue(new TextEncoder().encode(`event: operation:changed\ndata: {"n":${n++}}\n\n`)); } catch { /* closed */ }
+                }, 100);
+                init?.signal?.addEventListener("abort", () => {
+                  remote.sseAborts += 1;
+                  clearInterval(timer);
+                  try { controller.close(); } catch { /* closed */ }
+                }, { once: true });
+              },
+              cancel() { clearInterval(timer); },
+            });
+            return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+          }
+          return new Response(JSON.stringify({ error: "not_found" }), { status: 404, headers: { "content-type": "application/json" } });
+        },
+        async readCookies() { return []; },
+        async writeCookie() { return undefined; },
+        pin() { return undefined; },
+        clear() { return undefined; },
+      }),
+      readWindowCookies: async () => [],
+      writeWindowCookie: async () => undefined,
+    });
+    const until = async (ready: () => boolean, label: string): Promise<void> => {
+      const deadline = Date.now() + 4000;
       while (!ready()) {
-        if (Date.now() > deadline) throw new Error("timed out");
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        if (Date.now() > deadline) throw new Error(label);
+        await new Promise((resolve) => setTimeout(resolve, 20));
       }
     };
+    const streamAbort = new AbortController();
     try {
+      await transport.start(origin);
+      await until(() => bridge.attached(), "desktop did not attach");
       const presence = await fetch(`${origin}/api/v1/hosts/host1/presence`, {
         method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ intent: "activate", expectedEpoch: 1 }),
       });
       expect(presence.status).toBe(204);
+      const current = await (await fetch(`${origin}/api/v1/hosts/host1/presence`, { headers: { origin } })).json() as { epoch: number };
+      const request = (method: string, path: string, json?: unknown, signal?: AbortSignal) => fetch(`${origin}/api/v1/hosts/host1/request`, {
+        method: "POST", signal, headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ requestId: `req-${Math.random().toString(36).slice(2, 12)}`, expectedEpoch: current.epoch, method, path, ...(json === undefined ? {} : { json }) }),
+      });
+      const read = await request("GET", "/api/v1/theaters");
+      expect(read.status).toBe(200);
+      expect(await read.json()).toMatchObject({ status: 200, json: { theaters: [{ id: "kept" }] } });
+      expect(remote.theaters).toBe(1);
+      expect(remote.theaterAborted).toBe(false);
+
       const postAbort = new AbortController();
-      const posted = fetch(`${origin}/api/v1/hosts/host1/request`, {
-        method: "POST", headers: { origin, "content-type": "application/json" }, signal: postAbort.signal,
-        body: JSON.stringify({ requestId: "req-1234", expectedEpoch: 2, method: "GET", path: "/api/v1/theaters" }),
-      }).catch((error: unknown) => error);
-      await until(() => signals.length === 1);
-      const postSignal = signals[0]!;
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      expect(postSignal.aborted).toBe(false);
+      const posted = request("POST", "/api/v1/agent/sessions/op1/message", { text: "x" }, postAbort.signal).catch((error: unknown) => error);
+      await new Promise((resolve) => setTimeout(resolve, 200));
       postAbort.abort();
-      await until(() => postSignal.aborted);
-      releaseCall();
       await posted;
-      signals.length = 0;
-      const streamAbort = new AbortController();
-      const streamed = fetch(`${origin}/api/v1/hosts/host1/events?path=%2Fapi%2Fv1%2Foperations%2Fevents&epoch=2`, { headers: { origin }, signal: streamAbort.signal }).catch((error: unknown) => error);
-      await until(() => signals.length === 1);
-      const streamSignal = signals[0]!;
-      await new Promise((resolve) => setTimeout(resolve, 40));
-      expect(streamSignal.aborted).toBe(false);
+      await until(() => remote.messages.length === 1, "remote message did not settle");
+      expect(remote.messages[0]?.aborted).toBe(true);
+      expect(remote.messages[0]?.waitedMs ?? 3000).toBeLessThan(1500);
+
+      let frames = 0;
+      let ended = false;
+      const events = await fetch(`${origin}/api/v1/hosts/host1/events?path=${encodeURIComponent("/api/v1/operations/events")}&epoch=${current.epoch}`, {
+        headers: { origin }, signal: streamAbort.signal,
+      });
+      const reader = events.body?.getReader();
+      if (!reader) throw new Error("no event body");
+      const pump = (async () => {
+        try {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) { ended = true; break; }
+            frames += 1;
+          }
+        } catch { ended = true; }
+      })();
+      await until(() => frames >= 2, "event stream did not start");
+      const beforeDrop = frames;
+      for (const response of [...eventResponses]) response.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 1600));
+      expect(frames).toBeGreaterThan(beforeDrop);
+      expect(ended).toBe(false);
+      expect(eventResponses.size).toBe(1);
       streamAbort.abort();
-      await until(() => streamSignal.aborted);
-      releaseCall();
-      await streamed;
+      await pump;
+      await until(() => remote.sseAborts === 1, "remote event stream was not aborted");
+
+      failOperationsRelay = true;
+      const listed = await request("GET", "/api/v1/operations");
+      expect(listed.status).toBe(200);
+      expect(await listed.json()).toMatchObject({ json: { operations: [{ id: "current" }] } });
+      expect(remote.operations).toBe(1);
+      expect(failedOperationsRelay).toBe(true);
     } finally {
-      releaseCall();
+      streamAbort.abort();
+      transport.stop();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       server.closeAllConnections?.();
     }
