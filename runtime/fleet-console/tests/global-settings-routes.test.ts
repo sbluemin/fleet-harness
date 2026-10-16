@@ -192,6 +192,36 @@ describe("global settings routes", () => {
     expect(harness.writes[1]).toMatchObject({ status: 400, body: { error: "invalid_theme" } });
   });
 
+  it("stores archive retention only as 7, 30, 90, or null and keeps a rejected write unchanged", async () => {
+    expect(sanitizeConsoleSettingsData({ version: 1, general: {} }).general?.archiveRetentionDays).toBeUndefined();
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { archiveRetentionDays: 14 } }).general?.archiveRetentionDays).toBeUndefined();
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { archiveRetentionDays: "30" } }).general?.archiveRetentionDays).toBeUndefined();
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { archiveRetentionDays: null } }).general?.archiveRetentionDays).toBeNull();
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { archiveRetentionDays: 7 } }).general?.archiveRetentionDays).toBe(7);
+
+    const missing = createRouterHarness({});
+    await missing.router({ req: jsonReq("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(missing.writes[0]?.body).toMatchObject({ archiveRetentionDays: null });
+
+    const invalid = createRouterHarness({ general: { archiveRetentionDays: 30 }, body: { archiveRetentionDays: 14 } });
+    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(invalid.writes[0]).toEqual({ status: 400, body: { error: "invalid_archive_retention_days" } });
+    expect(invalid.updateCalls).toBe(0);
+    expect(invalid.currentGeneral()?.archiveRetentionDays).toBe(30);
+
+    const harness = createRouterHarness({ body: { archiveRetentionDays: 90 } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.archiveRetentionDays).toBe(90);
+    expect(harness.writes[0]?.body).toMatchObject({ state: { archiveRetentionDays: 90 } });
+    harness.setBody({ theme: "light" });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.archiveRetentionDays).toBe(90);
+    harness.setBody({ archiveRetentionDays: null });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.archiveRetentionDays).toBeNull();
+    expect(harness.writes.at(-1)?.body).toMatchObject({ state: { archiveRetentionDays: null } });
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
     const harness = createRouterHarness({ authorized: false, body: { theme: "dark" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });

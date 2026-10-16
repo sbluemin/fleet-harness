@@ -277,6 +277,123 @@ describe("Operation archive persistence and deletion", () => {
       expect(fs.readFileSync(archiveFile, "utf8")).toBe("{broken");
     });
   });
+
+  it("purges only expired archived roots and leaves manual undo, active, and re-archived entries", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      const day = 86_400_000;
+      const start = 5_000_000_000;
+      h.clock.value = start;
+      h.operations.create(makeOperation("live"));
+      h.operations.create(makeOperation("old"));
+      h.operations.createChild({ parentOperationId: "old", childSessionId: "11111111-1111-4111-8111-111111111111" });
+      h.operations.create(makeOperation("young"));
+      h.operations.create(makeOperation("held"));
+      h.operations.create(makeOperation("reborn"));
+      h.operations.create(makeOperation("future"));
+      h.save();
+      await h.archive.archive("old");
+      await h.archive.archive("held");
+      await h.archive.archive("reborn");
+      h.clock.value = start + 30 * day - 1;
+      await h.archive.archive("young");
+      h.clock.value = start + 30 * day + 5_000;
+      await h.archive.archive("future");
+      h.clock.value = start + 30 * day;
+      await h.archive.restore("reborn");
+      await h.archive.archive("reborn");
+      const pending = await h.archive.purge(h.archive.previewPurge("held"));
+      await h.archive.sweepRetention();
+      expect(h.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["future", "held", "old", "reborn", "young"]);
+
+      h.retention.days = 30;
+      await h.archive.sweepRetention();
+      expect(h.archive.describe("old")).toBeNull();
+      expect(h.archive.describe("11111111-1111-4111-8111-111111111111")).toBeNull();
+      expect(h.events.filter((event) => event.channel === "operation:purged").map((event) => event.operation.id)).toEqual(["old"]);
+      expect(h.archive.listArchived().entries.map((entry) => entry.operation.id).sort()).toEqual(["future", "held", "reborn", "young"]);
+      expect(h.operations.get("live")?.id).toBe("live");
+      await h.archive.undoPurge(pending.purgeId);
+      expect(h.archive.describe("held")?.location).toBe("archived");
+
+      h.retention.days = null;
+      h.clock.value += 90 * day;
+      await h.archive.sweepRetention();
+      expect(h.archive.describe("young")?.location).toBe("archived");
+      const before = h.scheduled.length;
+      await h.archive.startRetention();
+      expect(h.archive.describe("young")?.location).toBe("archived");
+      const armed = h.scheduled.slice(before).find((item) => item.delay === 60_000);
+      expect(armed?.delay).toBe(60_000);
+      h.retention.days = 30;
+      armed?.run();
+      await h.archive.sweepRetention();
+      expect(h.archive.describe("young")).toBeNull();
+      h.operations.create(makeOperation("fresh"));
+      await h.archive.archive("fresh");
+      const next = h.scheduled.filter((item) => item.delay === 60_000).at(-1);
+      const armedCount = h.scheduled.filter((item) => item.delay === 60_000).length;
+      h.archive.dispose();
+      expect(h.cleared.has(next?.handle)).toBe(true);
+      next?.run();
+      await h.archive.sweepRetention();
+      expect(h.scheduled.filter((item) => item.delay === 60_000)).toHaveLength(armedCount);
+      expect(h.archive.describe("fresh")?.location).toBe("archived");
+    });
+  });
+
+  it("arms the next retention check only after the in-flight sweep, including one blocked by stop", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      const day = 86_400_000;
+      h.clock.value = 5_000_000_000;
+      h.operations.create(makeOperation("blocker"));
+      h.operations.create(makeOperation("old"));
+      h.save();
+      await h.archive.archive("old");
+      h.clock.value += 30 * day;
+      h.retention.days = 30;
+      let release: () => void = () => {};
+      h.stopGate.current = new Promise<void>((resolve) => { release = resolve; });
+      const archiving = h.archive.archive("blocker");
+      await vi.waitFor(() => { expect(h.stopped).toContain("blocker"); });
+      const starting = h.archive.startRetention();
+      expect(h.scheduled.filter((item) => item.delay === 60_000)).toHaveLength(0);
+      expect(h.archive.describe("old")?.location).toBe("archived");
+      release();
+      h.stopGate.current = null;
+      await archiving;
+      await starting;
+      expect(h.archive.describe("old")).toBeNull();
+      expect(h.scheduled.filter((item) => item.delay === 60_000)).toHaveLength(1);
+      h.archive.dispose();
+      h.scheduled.find((item) => item.delay === 60_000)?.run();
+      await h.archive.sweepRetention();
+      expect(h.scheduled.filter((item) => item.delay === 60_000)).toHaveLength(1);
+    });
+  });
+
+  it("does not overwrite an archive journal when automatic retention fails to commit", async () => {
+    await withArchiveDirectory(async (directory) => {
+      const h = createArchiveHarness(directory);
+      const day = 86_400_000;
+      h.clock.value = 5_000_000_000;
+      h.operations.create(makeOperation("old"));
+      h.save();
+      await h.archive.archive("old");
+      h.clock.value += 30 * day;
+      h.retention.days = 30;
+      h.fault.finalize = true;
+      await expect(h.archive.sweepRetention()).rejects.toThrow("archive_finalize_failed");
+      expect(h.storage.blocked()).toBe(true);
+      const journal = fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8");
+      expect(journal).toContain("\"transaction\"");
+      await expect(h.archive.sweepRetention()).rejects.toThrow("archive_recovery_required");
+      expect(fs.readFileSync(path.join(directory, "operations-archive.json"), "utf8")).toBe(journal);
+      const recovered = createArchiveHarness(directory);
+      expect(recovered.archive.describe("old")).toBeNull();
+    });
+  });
 });
 
 async function withArchiveDirectory(run: (directory: string) => Promise<void>): Promise<void> {
@@ -302,6 +419,10 @@ function createArchiveHarness(directory: string) {
   const events: Array<{ channel: string; operation: OperationNode }> = [];
   const purged: string[] = [];
   const stopped: string[] = [];
+  const retention = { days: null as null | 7 | 30 | 90 };
+  const scheduled: Array<{ delay: number; run: () => void; handle: ReturnType<typeof setTimeout> }> = [];
+  const cleared = new Set<unknown>();
+  const stopGate: { current: Promise<void> | null } = { current: null };
   const snapshot = (tombstones = deletion.list()): DurableConsoleState => ({ version: STATE_VERSION, theaters: theaters.list(), operations: operations.list(), groups: operations.listAllGroups(), deletionTombstones: tombstones });
   const save = (tombstones?: readonly DurableDeletionTombstone[], entries?: readonly ArchivedOperation[]) => storage.save(snapshot(tombstones), entries);
   const deletion = createDeferredDeletionCoordinator({ operations, theaters, archives: storage.entries, save,
@@ -313,11 +434,17 @@ function createArchiveHarness(directory: string) {
   deletion.load(state.deletionTombstones ?? []);
   const archive = createOperationArchiveCoordinator({ operations, storage, snapshot,
     theaterExists: (id) => !!theaters.get(id), pendingDeletion: deletion.hasPendingOperation,
-    stop: async (node) => { stopped.push(node.id); }, use: async () => {}, now: () => clock.value,
+    stop: async (node) => { stopped.push(node.id); if (stopGate.current) await stopGate.current; }, use: async () => {}, now: () => clock.value,
     publish: (event) => events.push(event), publishChanged: () => {},
-    setTimer: (() => ({ unref() {} })) as unknown as typeof setTimeout, clearTimer: () => {},
+    readRetentionDays: () => retention.days,
+    setTimer: ((run: () => void, delay: number) => {
+      const handle = { unref() {} } as ReturnType<typeof setTimeout>;
+      scheduled.push({ delay, run, handle });
+      return handle;
+    }) as typeof setTimeout,
+    clearTimer: ((handle: ReturnType<typeof setTimeout>) => { cleared.add(handle); }) as typeof clearTimeout,
   });
-  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped };
+  return { operations, theaters, archive, deletion, storage, save, fault, clock, events, purged, stopped, retention, scheduled, cleared, stopGate };
 }
 
 describe("idempotent launch keys", () => {

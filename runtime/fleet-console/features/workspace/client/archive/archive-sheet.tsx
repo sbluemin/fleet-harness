@@ -16,6 +16,7 @@ import { fetchOperations } from "../../../../core/client/src/integration/api.js"
 import { getState, hydrateOperations } from "../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useArchiveSections } from "./archive-entry.js";
+import { ArchiveRetention } from "./archive-retention.js";
 
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const LOCALE_TAG: Readonly<Record<ConsoleLocale, string>> = { en: "en-US", ko: "ko-KR" };
@@ -96,6 +97,7 @@ function ArchiveSheetDialog() {
   // 복원 기록은 열린 시트 수명만 가진다. 원본 위치·날짜를 보존하고 다시 열면 사라진다.
   const [restored, setRestored] = useState<readonly OperationDescription[]>([]);
   const [notice, setNotice] = useState<CoreMessageKey | null>(null);
+  const [retentionOpen, setRetentionOpen] = useState(false);
   const [clock, setClock] = useState(Date.now());
   // 확정 응답의 영수증 — 뒤따르는 목록 새로고침이 실패해도 유예 동안 되돌리기를 보여 준다.
   // 만료는 서버 시각 대신 받은 순간부터의 유예로 잰다(기기 시계 차이로 바로 사라지지 않게).
@@ -130,6 +132,8 @@ function ArchiveSheetDialog() {
   const selectedIds = selectable.filter((cluster) => selected.has(cluster.rootId)).map((cluster) => cluster.rootId);
   const old = allClusters.filter((cluster) => (allTheaters || cluster.root.operation.theaterId === viewedTheaterId) && !restoredIds.has(cluster.rootId) && !pendingOf(cluster.rootId) && cluster.archivedAt < clock - 30 * 24 * 60 * 60 * 1000);
   const showTools = allCount > 0 || restored.length > 0;
+  // 자동 정리는 화면의 검색·범위와 무관하게 모든 Theater의 보관 루트가 대상이다(삭제 보류 중인 묶음은 서버도 건너뛴다).
+  const retentionTargets = (archive.snapshot?.entries ?? []).filter((entry) => !restoredIds.has(entry.operation.id) && !pendingOf(entry.operation.id)).map((entry) => entry.archivedAt ?? Number.NaN);
 
   useLayoutEffect(() => {
     returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -185,6 +189,7 @@ function ArchiveSheetDialog() {
   const changeScope = (value: boolean) => { setAllTheaters(value); clearSelection(); };
   const escape = () => {
     if (armed) setArmed(null);
+    else if (retentionOpen) setRetentionOpen(false);
     else if (selectedIds.length) clearSelection();
     else if (query) { changeQuery(""); searchRef.current?.focus(); }
     else closeArchiveSheet();
@@ -271,6 +276,7 @@ function ArchiveSheetDialog() {
           <h2 id="archive-sheet-title">{t("archive.title")}</h2><span className="archive-sheet-count">{total}</span>
           <button type="button" className="archive-sheet-close" onClick={closeArchiveSheet} aria-label={t("archive.closeAria")}>✕</button>
         </header>
+        <ArchiveRetention open={retentionOpen} onOpenChange={setRetentionOpen} archivedAts={retentionTargets} />
         {showTools ? <div className="archive-sheet-tools">
           <input ref={searchRef} className="archive-sheet-search" value={query} onChange={(event) => changeQuery(event.target.value)} placeholder={t("archive.search")} aria-label={t("archive.search")} />
           <div className="archive-sheet-scope" aria-label={t("archive.scope")}>

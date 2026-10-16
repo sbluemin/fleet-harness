@@ -194,6 +194,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     experiments: resolveExperimentSettings(payload.experiments),
     // 구서버 응답에는 없다 — 빈 객체가 곧 전부 기본값이다.
     shortcuts: sanitizeShortcutBindings(payload.shortcuts) ?? {},
+    // 구서버 응답에는 없다 — 자동 영구 삭제는 고른 사람만 켜므로 부재·미지의 값은 꺼짐이다.
+    archiveRetentionDays: payload.archiveRetentionDays === 7 || payload.archiveRetentionDays === 30 || payload.archiveRetentionDays === 90 ? payload.archiveRetentionDays : null,
   };
 }
 

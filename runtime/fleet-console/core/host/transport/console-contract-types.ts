@@ -337,6 +337,8 @@ export interface GlobalSettingsState {
   readonly experiments: ConsoleExperimentSettings;
   /** 사용자가 바꾼 단축키만(명령 id → 조합 목록). 항상 실리며 빈 객체는 전부 기본값이다. */
   readonly shortcuts: ShortcutBindings;
+  /** 보관 Operation 자동 정리 일수. null 은 꺼짐이고, 구응답의 누락도 꺼짐으로 읽는다. */
+  readonly archiveRetentionDays: 7 | 30 | 90 | null;
 }
 
 export interface GlobalSettingsMutationResult {

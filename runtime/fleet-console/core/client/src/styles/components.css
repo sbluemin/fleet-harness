@@ -15489,9 +15489,70 @@ body[data-expanded-surface-resizing="true"] {
   opacity: 0.6;
 }
 
+/* 자동 정리 — 빈 보관함에서도 서는 정책 줄. 펼치면 영구 삭제 안내, 기간 초안, 명시적 적용이 이어진다. */
+.archive-retention {
+  flex-shrink: 0;
+  padding: 8px 20px 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+.archive-retention-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+.archive-retention-label { color: var(--text-secondary); font-weight: var(--weight-medium); }
+.archive-retention-summary { flex: 1 1 160px; min-width: 0; }
+.archive-retention-toggle,
+.archive-retention-apply,
+.archive-retention-cancel {
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--brass-ink);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.archive-retention-toggle:hover:not([aria-disabled]),
+.archive-retention-apply:hover:not([aria-disabled]),
+.archive-retention-cancel:hover:not([aria-disabled]) { color: var(--text-primary); }
+.archive-retention-apply { font-weight: var(--weight-bold); }
+/* 켜거나 기간을 바꾸는 적용은 영구 삭제를 부르는 동작이라 삭제 무장과 같은 coral로 말한다. */
+.archive-retention-apply.is-destructive { color: var(--coral-ink); }
+.archive-retention-cancel { color: var(--text-tertiary); }
+.archive-retention [aria-disabled="true"] { cursor: default; opacity: 0.6; }
+.archive-retention-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+.archive-retention-help {
+  margin: 0;
+  padding-left: 16px;
+  line-height: 1.6;
+}
+.archive-retention-help .is-warning,
+.archive-retention-expired { color: var(--warn-ink); }
+.archive-retention-expired,
+.archive-retention-result { margin: 0; }
+.archive-retention-result { margin-top: 4px; }
+.archive-retention-result.is-failed { color: var(--warn-ink); }
+.archive-retention-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+
 .archive-sheet-restore:focus-visible,
 .archive-sheet-purge:focus-visible,
 .archive-sheet-close:focus-visible,
+.archive-retention-toggle:focus-visible,
+.archive-retention-apply:focus-visible,
+.archive-retention-cancel:focus-visible,
 .app-toast-link:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
