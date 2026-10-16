@@ -11,6 +11,7 @@ import {
   DESKTOP_HOST_UPLOAD_CHUNK_CHARS,
   type DesktopHostCommand,
 } from "@fleet-console/protocol/desktop";
+import { createHostWorkspace } from "../core/client/src/integration/host-workspace.js";
 import { createRemoteHostDependencies } from "../core/client/src/integration/remote-host-transport.js";
 import { createRemoteHostRuntime } from "../core/client/src/integration/remote-host-runtime.js";
 import { createHostShellBridge } from "../core/host/shell/host-transport-bridge.js";
@@ -705,31 +706,7 @@ describe("host gateway admission", () => {
    * 셸(Desktop)만 relay로 흉내 낸다. 오류 본문은 손으로 만들지 않는다.
    */
   it("sends the public error body for each shell failure and carries a not-paired observe to the browser runtime", async () => {
-    const start = async () => {
-      const bridge = createHostShellBridge();
-      const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
-      const endpoint = { origin: "" };
-      const gateway = createHostGateway({
-        isLoopback: (req) => {
-          const address = req.socket.remoteAddress;
-          return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
-        },
-        isExactOrigin: (req) => req.headers.origin === endpoint.origin,
-        findHost: () => target,
-        bridge,
-        readJsonBody: readJson,
-        writeJson,
-        withSecurityHeaders: (headers) => headers,
-      });
-      const server = hostTransportServer(bridge, gateway);
-      const port = await listen(server);
-      endpoint.origin = `http://127.0.0.1:${port}`;
-      const origin = endpoint.origin;
-      const relay = { current: {} as Record<string, unknown> };
-      const shell = followHostCommands(origin, (command) => { void postHostRelay(origin, { id: command.id, ...relay.current }); });
-      await shell.attached;
-      return { origin, relay, stop: async () => { shell.stop(); await closeServer(server); } };
-    };
+    const start = () => startHostHarness();
 
     // 브라우저 runtime: 실제 응답이 공개 error validator를 통과해야 정확한 코드가 HostView까지 간다.
     const browser = await start();
@@ -795,7 +772,151 @@ describe("host gateway admission", () => {
       await wire.stop();
     }
   });
+
+  /**
+   * 사용자가 관찰 중인 호스트의 대화 행을 처음 누르는 순서: 이벤트 스트림이 열려 있고, 활성화가 epoch를 올린다. 그 직후 옛 scope의
+   * 스냅샷 새로고침이 stale_epoch로 끝난다(활성화 자신이 만든 stale이다). 그 stale은 호스트 오류가 아니라 재탐색 신호여야 하고,
+   * 활성화가 받은 새 presence는 버려지지 않아야 한다. 실제 gateway·bridge·runtime·workspace를 지나며 셸과 브라우저 EventSource,
+   * presence 읽기의 도착 순서만 흉내 낸다(요청 순서를 타이밍이 아니라 구조로 고정한다).
+   */
+  it("opens the first conversation click on an observed host even when its own activation stales an older snapshot", async () => {
+    const streams = new Set<number>();
+    let mode = "observer";
+    const gate = { hold: false, open: (): void => undefined, opened: Promise.resolve() };
+    const answer = (command: DesktopHostCommand, origin: string): void => {
+      const path = String(command.params.path ?? "");
+      const json = path === "/api/v1/theaters" ? { theaters: [{ id: "th1", label: "T" }] }
+        : path === "/api/v1/operations" ? { operations: [{ id: "op1", theaterId: "th1", title: "O", type: "agent" }] }
+          : path.startsWith("/api/v1/agent/sessions") ? { sessions: [] } : {};
+      void postHostRelay(origin, { id: command.id, status: 200, contentType: "application/json", json });
+    };
+    const harness = await startHostHarness((command, origin) => {
+      if (command.op === "sse") { streams.add(command.id); return; }
+      if (command.op === "http") { answer(command, origin); return; }
+      if (command.op !== "presence") return;
+      if (command.params.intent !== "activate") { void postHostRelay(origin, { id: command.id, capability: "supported", mode, access: "full" }); return; }
+      // 활성화: presence 읽기는 옛 스냅샷의 stale이 처리될 때까지 쥐어 두고, epoch를 올린 뒤 열린 스트림이 새로고침을 일으키게 한다.
+      mode = "controller";
+      gate.hold = true;
+      gate.opened = new Promise<void>((resolve) => { gate.open = resolve; });
+      void postHostRelay(origin, { id: command.id, capability: "supported", mode, access: "full" })
+        .then(() => delay(15))
+        .then(() => { for (const id of streams) void postHostRelay(origin, { id, text: "event: operation:changed\ndata: {}\n\n" }); });
+    });
+    const events: Array<{ close(): void }> = [];
+    const network = {
+      fetch: (async (path: string, init?: RequestInit) => {
+        const isPresenceRead = path.endsWith("/presence") && (init?.method ?? "GET") === "GET";
+        if (isPresenceRead && gate.hold) await gate.opened;
+        const response = await fetch(`${harness.origin}${path}`, { ...init, headers: { ...Object.fromEntries(new Headers(init?.headers)), origin: harness.origin } });
+        // 옛 scope의 요청이 stale로 거절되어 runtime이 그것을 처리할 시간을 준 뒤에 presence 읽기를 풀어 준다.
+        if (path.endsWith("/request") && response.status === 409 && gate.hold) setTimeout(() => { gate.hold = false; gate.open(); }, 30);
+        return response;
+      }) as typeof fetch,
+      events: (path: string) => { const source = new FetchEventSource(`${harness.origin}${path}`, harness.origin); events.push(source); return source as unknown as EventSource; },
+      socket: () => { throw new Error("unused"); },
+      origin: harness.origin,
+    };
+    const runtime = createRemoteHostRuntime(createRemoteHostDependencies("host1", "label", network));
+    const local = {
+      getSnapshot: () => ({ hostKey: "local", label: "local", epoch: 1, instanceId: "local", mode: "controller", access: "full", connection: "ready", trust: "verified", phase: "ready", error: null, theaters: [], operations: [], objectives: [] }) as never,
+      subscribe: () => () => undefined, observe: async () => undefined, activate: async () => undefined, dispose: () => undefined,
+    };
+    const workspace = createHostWorkspace(local);
+    workspace.add(runtime);
+    try {
+      await runtime.observe(new AbortController().signal);
+      runtime.setVisible(true);
+      await waitUntil(() => streams.size >= 2, "the host event streams did not open");
+      await delay(150);
+      await workspace.activateConversation({ hostKey: "host1", theaterId: "th1", role: "commodore", operationId: null });
+      expect(workspace.getSnapshot()).toMatchObject({ error: null, canWrite: true });
+      expect(runtime.getSnapshot()).toMatchObject({ mode: "controller", connection: "ready", phase: "ready", error: null });
+    } finally {
+      for (const source of events) source.close();
+      runtime.dispose();
+      workspace.dispose();
+      await harness.stop();
+    }
+  });
 });
+
+/** Node에는 브라우저 EventSource가 없다. 연결 열림·이벤트 이름 전달·자동 재연결만 흉내 낸다(응답 본문 모양은 gateway가 정한다). */
+class FetchEventSource {
+  readyState = 0;
+  onopen: ((event: unknown) => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+  onmessage: ((event: unknown) => void) | null = null;
+  private readonly listeners = new Map<string, Set<(event: unknown) => void>>();
+  private closed = false;
+  private readonly abort = new AbortController();
+  constructor(private readonly url: string, private readonly origin: string) { void this.run(); }
+  addEventListener(name: string, listener: (event: unknown) => void): void { const set = this.listeners.get(name) ?? new Set(); set.add(listener); this.listeners.set(name, set); }
+  removeEventListener(name: string, listener: (event: unknown) => void): void { this.listeners.get(name)?.delete(listener); }
+  close(): void { this.closed = true; this.readyState = 2; this.abort.abort(); }
+  private async run(): Promise<void> {
+    while (!this.closed) {
+      try {
+        const response = await fetch(this.url, { headers: { origin: this.origin, accept: "text/event-stream" }, signal: this.abort.signal });
+        if (!response.ok || !response.body) throw new Error(`status ${response.status}`);
+        this.readyState = 1;
+        this.onopen?.({});
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffered = "";
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          buffered += decoder.decode(chunk.value, { stream: true });
+          const frames = buffered.split(/\n\n/u);
+          buffered = frames.pop() ?? "";
+          for (const frame of frames) {
+            const name = /^event: (.+)$/mu.exec(frame)?.[1] ?? "message";
+            const data = /^data: (.*)$/mu.exec(frame)?.[1] ?? "";
+            for (const listener of this.listeners.get(name) ?? []) listener({ data });
+          }
+        }
+      } catch { /* 닫혔거나 끊겼다 */ }
+      if (this.closed) return;
+      this.readyState = 0;
+      this.onerror?.({});
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+}
+
+/**
+ * 실제 loopback 서버·Origin 판정·bridge·gateway·writeJson을 세우고, 셸(Desktop)만 relay로 흉내 낸다.
+ * 기본 셸은 `relay.current`를 모든 명령의 응답으로 보낸다. `onCommand`를 주면 셸 동작을 그 함수가 정한다.
+ */
+async function startHostHarness(onCommand?: (command: DesktopHostCommand, origin: string) => void): Promise<{ origin: string; relay: { current: Record<string, unknown> }; stop: () => Promise<void> }> {
+  const bridge = createHostShellBridge();
+  const target = { hostname: "remote.example", port: 8443, fingerprint: "AB".repeat(32), origin: "https://remote.example:8443" };
+  const endpoint = { origin: "" };
+  const gateway = createHostGateway({
+    isLoopback: (req) => {
+      const address = req.socket.remoteAddress;
+      return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+    },
+    isExactOrigin: (req) => req.headers.origin === endpoint.origin,
+    findHost: () => target,
+    bridge,
+    readJsonBody: readJson,
+    writeJson,
+    withSecurityHeaders: (headers) => headers,
+  });
+  const server = hostTransportServer(bridge, gateway);
+  const port = await listen(server);
+  endpoint.origin = `http://127.0.0.1:${port}`;
+  const origin = endpoint.origin;
+  const relay = { current: {} as Record<string, unknown> };
+  const shell = followHostCommands(origin, (command) => {
+    if (onCommand) onCommand(command, origin);
+    else void postHostRelay(origin, { id: command.id, ...relay.current });
+  });
+  await shell.attached;
+  return { origin, relay, stop: async () => { shell.stop(); await closeServer(server); } };
+}
 
 function hostTransportServer(bridge: ReturnType<typeof createHostShellBridge>, gateway: { handle(context: { req: http.IncomingMessage; res: http.ServerResponse; pathname: string }): Promise<boolean>; upgrade?(context: { req: http.IncomingMessage; socket: import("node:stream").Duplex; head: Buffer; pathname: string }): boolean }, eventResponses?: Set<http.ServerResponse>): http.Server {
   const server = http.createServer(async (req, res) => {

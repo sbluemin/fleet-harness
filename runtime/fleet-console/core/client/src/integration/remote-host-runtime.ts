@@ -137,6 +137,19 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     publish({ phase: "error", connection: "blocked", error: code, theaters: [], operations: [], objectives: [], ...(code === "remote_host_fingerprint_mismatch" ? { trust: "mismatch" as const } : {}) });
   }
 
+  /**
+   * 배경 스냅샷의 실패. 활성화·관찰이 epoch나 수명을 바꾸면 옛 scope의 요청이 stale로 끝난다 — 그것은 호스트 오류가 아니라 "다시 읽어라"는
+   * 신호다. fail()은 더 늦은 발견을 모두 버리고 연결을 끊으므로, 같은 명령이 막 받은 새 presence까지 버려 호출자가 transport 없이
+   * (host_inactive) 남는다. 대신 presence를 다시 읽어 새 좌표에 붙는다. 다시 읽은 뒤의 실패는 일반 오류로 끝내 반복하지 않는다.
+   */
+  function refreshFailed(cause: unknown): void {
+    const code = cause instanceof Error ? cause.message : "";
+    if (code !== "stale_epoch" && code !== "stale_instance") { fail(cause); return; }
+    void discover((signal) => deps.readPresence(signal)).then(async () => {
+      if (state.connection === "ready" && state.mode !== "off") await refresh();
+    }).catch(fail);
+  }
+
   function attachChannel(channel: string): void {
     const current = source;
     if (!current || attached.has(channel)) return;
@@ -155,7 +168,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     source = next;
     const current = () => source === next && !bound.scope.signal.aborted;
     for (const name of ["operation:changed", "operation:removed", "theater:changed", "theater:removed", "group:changed", "group:removed"]) {
-      next.addEventListener(name, () => { if (current()) void refresh().catch(fail); });
+      next.addEventListener(name, () => { if (current()) void refresh().catch(refreshFailed); });
     }
     next.addEventListener("objectives:objective", (event) => {
       if (!current()) return;
@@ -193,13 +206,13 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
       publish({ operations: withActivity(state.operations) });
       for (const receive of channels.get(name) ?? []) { try { receive({ session: frame.session }); } catch { /* 구독자별 실패는 격리한다. */ } }
     });
-    agents.onopen = () => { if (agentSource === agents && !bound.scope.signal.aborted) void refresh().catch(fail); };
+    agents.onopen = () => { if (agentSource === agents && !bound.scope.signal.aborted) void refresh().catch(refreshFailed); };
     agents.onerror = () => { if (agentSource === agents && !bound.scope.signal.aborted) publish({ operations: state.operations.map((operation) => ({ ...operation, activity: "unknown" })) }); };
     next.onopen = () => {
       if (!current()) return;
       const reconnected = opened;
       opened = true;
-      void refresh().then(() => { if (current() && reconnected) for (const receive of reconnectListeners) { try { receive(); } catch { /* 표면 오류를 연결 오류로 바꾸지 않는다. */ } } }).catch(fail);
+      void refresh().then(() => { if (current() && reconnected) for (const receive of reconnectListeners) { try { receive(); } catch { /* 표면 오류를 연결 오류로 바꾸지 않는다. */ } } }).catch(refreshFailed);
     };
     next.onerror = () => {
       if (!current()) return;
@@ -240,7 +253,7 @@ export function createRemoteHostRuntime(deps: RemoteHostRuntimeDependencies): Re
     }).finally(() => {
       if (snapshotFlight !== flight) return;
       snapshotFlight = null;
-      if (refreshPending) { refreshPending = false; void refresh().catch(fail); }
+      if (refreshPending) { refreshPending = false; void refresh().catch(refreshFailed); }
     });
     snapshotFlight = flight;
     return flight;
