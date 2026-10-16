@@ -28,6 +28,12 @@ export interface QuickLaunchRequest {
   readonly attachments?: readonly QuickLaunchDraftAttachment[];
 }
 
+/** 본문 「새 세션 화면」의 대상. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다. */
+export interface NewSessionTarget {
+  /** 처음 고른 Theater. 등록된 Theater 가 없으면 null — 화면이 「Theater 추가…」를 먼저 세운다. */
+  readonly theaterId: string | null;
+}
+
 /** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
 export interface QuickLaunchDraftAttachment {
   readonly id: string;
@@ -359,8 +365,8 @@ export interface ConsoleState {
   readonly pendingOperationFocus: string | null;
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
-  readonly pendingSideBarTheaterLaunch: string | null;
-  readonly launchMenuRequest: { readonly requestId: number } | null;
+  /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
+  readonly newSession: NewSessionTarget | null;
   readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;

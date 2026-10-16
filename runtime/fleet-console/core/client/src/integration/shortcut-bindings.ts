@@ -27,6 +27,9 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.search-operations", group: "console", descriptionKey: "shortcuts.console.searchOps", defaults: ["Mod+KeyK"] },
   { id: "console.command-palette", group: "console", descriptionKey: "shortcuts.console.commandPalette", defaults: ["Mod+KeyP"] },
   { id: "console.quick-launch", group: "console", descriptionKey: "shortcuts.console.quickLaunch", defaults: ["Mod+KeyJ", "Ctrl+Space"] },
+  // 새 세션 화면(사이드바 맨 위 「+」). ⌘N 이 아니다: 웹 브라우저는 ⌘N·Ctrl+N(새 창)을 예약해 페이지에 넘기지 않고, Windows 에서는
+  // Ctrl+N 이 터미널의 다음 기록 키와 겹친다. ⇧⌘O 는 기본 목록에 없던 빈 자리이고 브라우저가 페이지에 넘기는 조합이다.
+  { id: "console.new-session", group: "console", descriptionKey: "shortcuts.console.newSession", defaults: ["Mod+Shift+KeyO"] },
   { id: "console.plugin-quick-launch", group: "console", descriptionKey: "shortcuts.console.pluginQuickLaunch", defaults: ["Mod+Shift+Space"] },
   { id: "console.toggle-sidebar", group: "console", descriptionKey: "shortcuts.console.toggleSidebar", defaults: ["Mod+KeyB"] },
   { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },

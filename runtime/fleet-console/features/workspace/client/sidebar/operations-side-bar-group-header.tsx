@@ -16,7 +16,6 @@ interface GroupHeaderProps {
   readonly onContextMenu: (groupId: string, anchor: DOMRect) => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, groupId: string) => void;
   /** 그룹 「+」 — 이 그룹에 서는 새 목표·Operation 메뉴. 없으면 버튼을 세우지 않는다. */
-  readonly onOpenLaunch?: (groupId: string, anchor: DOMRect) => void;
   /** 이 그룹이 목표 줄을 모은 묶음 머리일 때 — 목록 읽기와, 접혀 안 보이는 줄의 표식을 헤더가 대신 두른다(`groupClusterHead`). */
   readonly clusterHead?: { readonly theaterId: string; readonly hiddenClusterIds: readonly string[] } | undefined;
 }
@@ -31,7 +30,6 @@ export function OperationsSideBarGroupHeader({
   onToggle,
   onContextMenu,
   onPointerDragStart,
-  onOpenLaunch,
   clusterHead,
 }: GroupHeaderProps) {
   const t = useT();
@@ -62,7 +60,6 @@ export function OperationsSideBarGroupHeader({
     onContextMenu(group.id, event.currentTarget.getBoundingClientRect());
   };
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.target instanceof Element && event.target.closest(".side-bar-group-header__plus")) return;
     onPointerDragStart(event, group.id);
   };
   const handlePointerUp = () => {
@@ -102,21 +99,6 @@ export function OperationsSideBarGroupHeader({
       <span className="side-bar-group-header__name">{group.name}</span>
       <span className="side-bar-group-header__rule" aria-hidden="true" />
       <span className="side-bar-group-header__count" aria-label={t("sidebar.group.operationsCount", { count })}>{count}</span>
-      {onOpenLaunch ? (
-        <button
-          type="button"
-          className="side-bar-group-header__plus"
-          aria-label={t("sidebar.group.add", { name: group.name })}
-          title={t("sidebar.group.add", { name: group.name })}
-          aria-haspopup="menu"
-          onClick={(event) => {
-            event.stopPropagation();
-            onOpenLaunch(group.id, event.currentTarget.getBoundingClientRect());
-          }}
-        >
-          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2.5v7M2.5 6h7" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
-        </button>
-      ) : null}
     </div>
   );
 }

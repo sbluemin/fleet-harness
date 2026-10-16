@@ -126,7 +126,7 @@
   box-shadow: var(--popover-shadow);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-tap) ease;
 }
 
 /* 포커스는 표시를 결정하지 않는다. :focus-within으로 열면 Escape가 pinned를 내려도
@@ -386,7 +386,7 @@
   left: 0;
   border-radius: var(--radius-pill);
   background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
-  transition: width 200ms ease, background-color 200ms ease;
+  transition: width var(--duration-base) ease, background-color var(--duration-base) ease;
 }
 
 /* The stretch the current burn rate reaches before the reset. Hatched rather

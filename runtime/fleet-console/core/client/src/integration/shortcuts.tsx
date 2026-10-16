@@ -251,6 +251,11 @@ export function useQuickLaunchShortcutLabel(): string {
   return shortcutCommandLabel("console.quick-launch");
 }
 
+export function useNewSessionShortcutLabel(): string {
+  useShortcutOverrides();
+  return shortcutCommandLabel("console.new-session");
+}
+
 export function useSideBarStatusViewShortcutLabel(): string {
   useShortcutOverrides();
   return shortcutCommandLabel("operations.sort-by-status");

@@ -1,7 +1,5 @@
 // 대화 화면과 사이드바가 쓰는 문구.
 export const workspaceEn = {
-  "sidebar.menu.aria": "Operation launcher",
-  "sidebar.menu.empty": "No operations available.",
   "sidebar.accent.none": "None",
   "sidebar.accent.noneAria": "No accent",
   "sidebar.accent.crimson": "Crimson",
@@ -60,7 +58,6 @@ export const workspaceEn = {
   "sidebar.chrome.collapse": "Collapse sidebar ({shortcut})",
   "sidebar.chrome.keepOpen": "Keep sidebar open ({shortcut})",
   "sidebar.chrome.edgeExpand": "Expand sidebar ({shortcut})",
-  "sidebar.theater.newOperation": "New Operation in {theater}",
   "sidebar.theater.actionsMenuAria": "{theater} actions",
   "sidebar.theater.actionsHint": "Right-click for Theater actions",
   "sidebar.theater.newTheater": "New Theater",
@@ -133,7 +130,6 @@ export const workspaceEn = {
   "sidebar.theater.alias.inputAria": "Commodore alias for {theater}",
   "sidebar.ungrouped.label": "Ungrouped",
   "sidebar.ungrouped.aria": "Ungrouped operations",
-  "sidebar.group.add": "Add to {name}",
   "sidebar.row.glyph.fresh": "Not started",
   "sidebar.row.glyph.review": "Awaiting review — complete or pick follow-ups",
   "sidebar.row.glyph.done": "Done",
@@ -209,8 +205,6 @@ export const workspaceEn = {
 } as const;
 
 export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
-  "sidebar.menu.aria": "Operation 실행 메뉴",
-  "sidebar.menu.empty": "사용 가능한 Operation이 없습니다.",
   "sidebar.accent.none": "없음",
   "sidebar.accent.noneAria": "액센트 없음",
   "sidebar.accent.crimson": "Crimson",
@@ -268,7 +262,6 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "sidebar.chrome.collapse": "사이드바 접기 ({shortcut})",
   "sidebar.chrome.keepOpen": "사이드바 열어 두기 ({shortcut})",
   "sidebar.chrome.edgeExpand": "사이드바 펼치기 ({shortcut})",
-  "sidebar.theater.newOperation": "{theater}에서 새 Operation",
   "sidebar.theater.actionsMenuAria": "{theater} 동작",
   "sidebar.theater.actionsHint": "우클릭하면 Theater 동작",
   "sidebar.theater.newTheater": "새 Theater",
@@ -341,7 +334,6 @@ export const workspaceKo: Record<keyof typeof workspaceEn, string> = {
   "sidebar.theater.alias.inputAria": "{theater} 사령관 별칭",
   "sidebar.ungrouped.label": "미분류",
   "sidebar.ungrouped.aria": "미분류 Operation",
-  "sidebar.group.add": "{name}에 추가",
   "sidebar.row.glyph.fresh": "시작 전",
   "sidebar.row.glyph.review": "검토 대기 — 완료하거나 후속을 고릅니다",
   "sidebar.row.glyph.done": "완료",

@@ -36,7 +36,7 @@
   background: none;
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   overflow: hidden;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
@@ -309,7 +309,7 @@
 .right-rail:not(.is-open) {
   border-color: transparent;
   visibility: hidden;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear var(--duration-base);
 }
 
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */

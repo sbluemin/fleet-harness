@@ -9,7 +9,6 @@
   border-radius: var(--radius-md);
 }
 
-
 .stage {
   overflow: hidden;
 }
@@ -23,7 +22,6 @@
   background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--brass) 62%, transparent), transparent);
   pointer-events: none;
 }
-
 
 .job-meta,
 .job-id,
@@ -1003,7 +1001,6 @@
   color: var(--warn-ink);
   font-weight: var(--weight-bold);
 }
-
 
 /* 원격 접속 — 포트 행의 제어 문법을 그대로 쓰고, 자격을 다루는 부분만 경고 채널을 더한다. */
 .remote-access-row .console-port-input {
@@ -3863,21 +3860,6 @@ button.status-glyph.is-actionable:focus-visible {
   text-transform: uppercase;
 }
 
-.operation-launch-control {
-  position: relative;
-}
-
-.operation-launch-control--anchored {
-  /* body 포털: Map의 contain/clip과 부유 사이드바를 벗어나 Console 전역에 선다. */
-  position: fixed;
-  z-index: var(--z-overlay);
-  /* 캔버스 메뉴 폭의 단일 소유자. 메뉴 박스와 설명 어사이드의 기준점이 여기 하나로 모인다 —
-     컨테이너에 폭이 없으면 어사이드의 100%가 메뉴 오른쪽이 아니라 왼쪽 모서리를 가리켜
-     설명이 메뉴 위를 덮는다. 컴포넌트의 MENU_WIDTH(측정 전 clamp 폴백)만 이 값을 따로 안다. */
-  --launch-menu-width: 264px;
-  width: var(--launch-menu-width);
-}
-
 .workspace-add-button {
   display: grid;
   width: 24px;
@@ -3918,36 +3900,6 @@ button.status-glyph.is-actionable:focus-visible {
 .workspace-add-button:disabled {
   cursor: wait;
   opacity: 0.55;
-}
-
-.operation-launch-control .operation-launch-menu {
-  top: calc(100% + var(--space-2));
-  /* '+' 버튼 왼쪽 모서리에 정렬해 오른쪽으로 펼친다(왼쪽 전개는 이질적이라는 UX 피드백). */
-  left: 0;
-  right: auto;
-  min-width: 168px;
-}
-
-.operation-launch-control--anchored .operation-launch-menu {
-  top: 0;
-  /* 설명 문장이 항목 안에서 접히면서 폭을 넓힐 이유가 사라졌다. 라벨과 한 단어짜리 대비만
-     한 줄에 들어가면 된다. */
-  min-width: var(--launch-menu-width);
-}
-
-/* 런처로 연 경우 메뉴를 컨테이너 바닥에 정렬해 위로 펼친다(아래 FAB/Dock과 겹치지 않게). */
-.operation-launch-control--up .operation-launch-menu {
-  top: auto;
-  bottom: 0;
-}
-
-.operation-launch-control .operation-launch-menu-item .theater-menu-check {
-  color: var(--text-secondary);
-}
-
-/* 메뉴 컨테이너는 키보드 탐색용으로만 포커스를 받으므로(첫 항목 자동 강조 회피) 외곽선을 숨긴다. */
-.operation-launch-control .operation-launch-menu:focus {
-  outline: none;
 }
 
 /* 아레나 인셋(--arena-*)은 캔버스 인라인 스타일이 싣는 단일 채널이다. 사이드바 접기 동안 매 프레임
@@ -4057,7 +4009,7 @@ button.status-glyph.is-actionable:focus-visible {
   opacity: 0;
   visibility: hidden;
   transform: translateY(-3px);
-  transition: opacity 160ms ease, transform 180ms var(--ease-glide), visibility 0s 180ms;
+  transition: opacity var(--duration-fast) ease, transform var(--duration-fast) var(--ease-glide), visibility 0s var(--duration-fast);
 }
 .cluster-node-tooltip.is-visible {
   opacity: 1;
@@ -4162,163 +4114,6 @@ button.status-glyph.is-actionable:focus-visible {
   color: var(--aurora);
 }
 
-.operation-launch-context-menu {
-  width: var(--launch-menu-width);
-  /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
-  max-height: var(--launch-menu-max-height, 520px);
-  overflow-y: auto;
-  /* 네이티브 스크롤바는 걷어낸다 — 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼
-     읽힌다. 절단 신호와 포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다.
-     휠·키보드 스크롤과 강도 플라이아웃의 scroll-follow는 스크롤 포트 그대로라 영향이 없다. */
-  scrollbar-width: none;
-}
-
-.operation-launch-context-menu::-webkit-scrollbar {
-  display: none;
-}
-
-/* 방향 스트립 — 잘린 방향에만 서는 절단 신호이자 hover 글라이드/클릭 페이지 점프 조작면.
-   sticky+height:0이라 스크롤 포트 가장자리에
-   붙고 목록 흐름을 밀지 않는다. 음수 오프셋은 메뉴 패딩(--space-1)을 넘어 테두리 안쪽까지
-   덮기 위한 것이다. */
-.operation-launch-context-menu-edge {
-  position: sticky;
-  z-index: 3;
-  height: 0;
-  margin: 0 var(--space-1);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.18s ease;
-}
-
-.operation-launch-context-menu-edge--top {
-  top: calc(-1 * var(--space-1));
-}
-
-.operation-launch-context-menu-edge--bottom {
-  bottom: calc(-1 * var(--space-1));
-}
-
-.operation-launch-context-menu-edge.is-on {
-  opacity: 1;
-  pointer-events: auto;
-  cursor: pointer;
-}
-
-.operation-launch-context-menu-edge-fill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-}
-
-/* 페이드는 메뉴 언더레이(.theater-menu의 불투명 --ink-deep 믹스)와 같은 식이어야 한다 —
-   다른 색으로 접으면 접힘선이 띠처럼 분리돼 보인다. */
-.operation-launch-context-menu-edge--top .operation-launch-context-menu-edge-fill {
-  background: linear-gradient(color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 35%, transparent);
-}
-
-.operation-launch-context-menu-edge--bottom .operation-launch-context-menu-edge-fill {
-  transform: translateY(-100%);
-  background: linear-gradient(transparent, color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 65%);
-}
-
-/* brass는 위치/hover 채널 — 스트립 hover 강조는 그 문법 그대로다. */
-.operation-launch-context-menu-edge.is-on:hover .operation-launch-context-menu-edge-fill {
-  color: var(--brass-ink);
-}
-
-.operation-launch-context-menu-edge-fill svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-
-/* 스크롤 게이지 — 굴리는 동안에만 나타나는 표시 전용 위치 표식(is-on은 TSX 스크롤 핸들러가
-   토글). 기하(top/height)는 프레임당 재렌더를 피해 TSX가 직접 쓴다. */
-.operation-launch-context-menu-gauge {
-  position: sticky;
-  top: calc(-1 * var(--space-1));
-  z-index: 4;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-
-.operation-launch-context-menu-gauge.is-on {
-  opacity: 1;
-}
-
-.operation-launch-context-menu-gauge-thumb {
-  position: absolute;
-  right: -1px;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--scrollbar-thumb-hover);
-}
-
-/* 방향키 포커스 스크롤이 목표 행을 스트립(26px) 아래에 두고 멈추지 않게 여유를 준다. */
-.operation-launch-context-menu .operation-launch-context-menu-item,
-.operation-launch-context-menu .operation-launch-variant-row {
-  scroll-margin-block: 28px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .operation-launch-context-menu-edge,
-  .operation-launch-context-menu-gauge {
-    transition: none;
-  }
-}
-
-/* 바깥 패딩은 캔버스 메뉴에서만 좁힌다 — 공유 .theater-menu를 고치면 사이드바 Theater 메뉴까지
-   함께 얇아진다. 두 클래스를 함께 짚어야 하는 이유: .theater-menu의 padding 선언이 이 파일
-   뒤쪽에 있어 한 클래스짜리 선택자로는 특이도가 같아 지고, 값은 조용히 8px로 남는다. */
-.operation-launch-menu.operation-launch-context-menu {
-  padding: var(--space-1);
-}
-
-/* 설명 어사이드 — 짚은 항목의 설명 문장을 메뉴 옆에 편다. 메뉴의 overflow 바깥 형제라
-   스크롤 박스에 잘리지 않는다. */
-.operation-launch-context-menu-aside {
-  position: absolute;
-  left: calc(100% + 8px);
-  top: 0;
-  width: 208px;
-  margin: 0;
-  padding: 10px var(--space-3);
-  /* 공통 팝업 표면 — 옆 .theater-menu와 같은 면이다. */
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
-  background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  line-height: 1.4;
-  color: var(--text-secondary);
-  pointer-events: none;
-}
-
-/* 오른쪽 끝에서 열리면 왼쪽으로 뒤집는다 — 뒤집지 않으면 설명이 화면 밖으로 잘려 사라진다. */
-.operation-launch-context-menu-aside--flip {
-  left: auto;
-  right: calc(100% + 8px);
-}
-
-/* 항목은 tabIndex=-1이라 방향키로만 포커스가 옮겨온다. 프로그래매틱 포커스에서도 자리가
-   보이도록 :focus-visible뿐 아니라 :focus에도 hover와 같은 중립 워시를 깐다. 링은 키보드 포커스만 진다. */
-.operation-launch-context-menu-item:focus {
-  outline: none;
-  background: var(--wash-hover);
-}
-.operation-launch-context-menu-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-
-.operation-launch-context-menu-help {
-  display: grid;
-  gap: var(--space-2);
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════════
    Operations Progressive Left SideBar
@@ -4351,7 +4146,7 @@ button.status-glyph.is-actionable:focus-visible {
   /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다.
      --glass-bevel은 그 반대편(아래 모서리)의 그늘로, 라이트에서만 값을 갖는다. */
   box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-floating);
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
 .operations-side-bar::before {
@@ -5002,7 +4797,7 @@ button.status-glyph.is-actionable:focus-visible {
 .side-bar-theater-chevron {
   width: 16px;
   height: 16px;
-  transition: transform 0.15s ease;
+  transition: transform var(--duration-fast) ease;
 }
 
 .side-bar-theater-chevron.is-collapsed {
@@ -5069,10 +4864,6 @@ button.status-glyph.is-actionable:focus-visible {
   transition:
     border-color var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
-}
-
-.side-bar-theater-launch-btn {
-  width: 24px;
 }
 
 .side-bar-theater-row-btn svg {
@@ -5595,7 +5386,6 @@ button.status-glyph.is-actionable:focus-visible {
   }
 }
 
-
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
 
 /* STATUS 축의 3px stripe는 identity가 아니라 OperationActivity 신호 채널이다.
@@ -5859,33 +5649,6 @@ button.status-glyph.is-actionable:focus-visible {
 
 .side-bar-group-header[style*="--grp-color"] .side-bar-group-header__count {
   color: light-dark(color-mix(in oklch, var(--grp-color) 65%, var(--text-primary)), color-mix(in oklab, var(--grp-color) 65%, var(--text-primary)));
-}
-
-/* 그룹 「+」 — 이 그룹에 서는 새 목표·Operation. 카운트 뒤에 조용히 서고 hover에서만 또렷해진다. */
-.side-bar-group-header__plus {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.side-bar-group-header__plus svg {
-  width: 12px;
-  height: 12px;
-}
-
-.side-bar-group-header__plus:hover,
-.side-bar-group-header__plus:focus-visible {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-  outline: none;
 }
 
 .side-bar-cluster-row.is-dragging {
@@ -6862,8 +6625,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--brass-bright);
 }
 
-
-
 .theater-menu-new-group {
   color: var(--text-primary);
 }
@@ -7528,118 +7289,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-size: var(--t-sm);
 }
 
-/* 미설치/미로그인 CLI 항목: 흐리게 표시하고 포인터를 막는다. */
-.operation-launch-menu-item:disabled {
-  color: var(--text-tertiary);
-  cursor: not-allowed;
-}
-
-.operation-launch-menu-item:disabled .theater-menu-check {
-  color: var(--text-tertiary);
-  opacity: var(--control-disabled-opacity);
-}
-
-/* 비활성 사유(미설치/미로그인)를 항목 우측에 작은 보조 라벨로 표시한다 — 문장형 보조 줄이다. */
-.operation-launch-menu-reason {
-  margin-left: auto;
-  padding-left: var(--space-2);
-  flex: none;
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
-/* 실행 종류 항목은 그리드로 둔다. 아이콘·라벨·한 단어 대비가 첫 행을 나눠 쓰고, 비활성 사유만
-   그 아래 전체 폭에 선다. 설명 문장은 첫 행에 접혀 있다가 항목을 짚었을 때 메뉴 옆에 펴진다 —
-   상시 두 줄로 두면 항목 하나가 50px를 먹어 메뉴가 실행 목록이 아니라 설명서가 된다. */
-.operation-launch-menu-item--annotated {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: var(--space-2);
-  row-gap: 2px;
-}
-
-.operation-launch-menu-item--annotated .theater-menu-check {
-  grid-row: 1;
-  margin-top: 1px;
-}
-
-.operation-launch-menu-item--annotated .theater-menu-label {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-/* 라벨 오른쪽에 늘 서는 한 단어짜리 대비. 배지가 아니라 무배경 텍스트다 — 캡슐을 두면
-   brass 채널을 빌려야 하고, 그 예외는 이미 폐기됐다. */
-.operation-launch-menu-brief {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-  min-width: 0;
-  max-width: 124px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  color: var(--text-tertiary);
-}
-
-.operation-launch-menu-item:hover:not(:disabled) .operation-launch-menu-brief,
-.operation-launch-menu-item:focus-visible .operation-launch-menu-brief {
-  color: var(--text-tertiary);
-}
-
-/* 비활성 사유는 설명이 서던 아래 줄로 내린다 — 라벨과 같은 행에 두면 둘이 폭을 다투어
-   `Claude (Gateway)` 같은 긴 종류 이름이 잘린다. */
-.operation-launch-menu-item--annotated .operation-launch-menu-reason {
-  grid-column: 2 / -1;
-  grid-row: 2;
-  margin-left: 0;
-  padding-left: 0;
-}
-
-.operation-launch-menu-item--annotated .operation-launch-menu-description {
-  grid-column: 2 / -1;
-  grid-row: 2;
-}
-
-/* 한 줄 설명은 본문 서체로 한 티어 낮은 잉크에 둔다 — mono 라벨과 같은 서체로 두면 이름과
-   설명이 한 덩어리로 뭉쳐 어디까지가 종류 이름인지 읽히지 않는다. */
-.operation-launch-menu-description {
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  line-height: 1.35;
-  white-space: normal;
-}
-
-/* 캔버스 메뉴에서 설명 문장은 시각적으로만 접힌다. 지우지 않는 이유는 화면 낭독기 때문이다 —
-   버튼 안에 남아 접근 이름에 실리므로, 옆 어사이드가 떠 있든 아니든 세 Claude의 차이가
-   항상 낭독된다. absolute라 그리드 흐름에서 빠져 행 높이를 늘리지 않는다. */
-.operation-launch-menu-description--quiet {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* 세로 인셋은 모델 행 껍데기(.operation-launch-variant-entry)와 같은 값이어야 한다 — 한 목록에
-   두 껍데기가 서므로, 값이 갈리면 머리글~첫 행과 행~행 간격이 그룹마다 어긋난다. 가로는 비운다:
-   여기에 인셋을 주면 항목 라벨이 모델 행 라벨보다 그만큼 밀려 왼쪽 글자 열이 둘로 갈린다. */
-.operation-launch-menu-item-wrap {
-  position: relative;
-  padding: 1px 0;
-}
-
-.operation-launch-menu-item-wrap > .operation-launch-menu-item {
-  width: 100%;
-}
-
 /* 캔버스 메뉴의 모든 그룹 머리글이 이 한 규칙을 쓴다 — 공급자 밴드, 실행 종류 이름, 최하단 Etc가
    각자 머리글 문법을 가지면 같은 목록 안에서 머리글과 첫 항목 사이 간격이 그룹마다 달라진다.
    대화 입력창의 모델 메뉴(.agent-chat-coord-pop-caption)와 설정의 모델 선택기(.fc-coord-menu-caption)도
@@ -7715,97 +7364,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
-/* .operation-provider-mark 대조표는 퇴역했다 — 기존 Operation을 고르는 목록 표면(사이드바 칩·
-   커맨드 밴드·팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은 활동 상태(status-glyph)가 소유한다.
-   새 Operation의 실행 좌표를 고르는 표면의 공급자 톤은 --launch-provider-tone 축이 맡는다. */
-
-.operation-launch-variant-entry {
-  padding: 1px var(--space-1);
-}
-
-.operation-launch-variant-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: var(--popover-row-dense);
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-base);
-  text-align: left;
-  transition: background var(--duration-fast) var(--ease-spring);
-}
-
-.operation-launch-variant-row:hover,
-.operation-launch-variant-row[aria-expanded="true"] { background: var(--wash-hover); }
-.operation-launch-variant-row:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-
-/* 캔버스 메뉴는 실행 종류 행과 모델 밴드를 한 목록에 세운다. 그 목록의 왼쪽 홈통은 표식 자리다 —
-   종류 행의 아이콘과 밴드 캡션의 공급자 글리프가 같은 x에 서고, 글자는 그 오른쪽 한 열로 모인다.
-   모델 행에는 표식이 없으므로 그 홈통 폭만큼 들여쓰지 않으면 모델 이름만 왼쪽으로 튀어나와,
-   같은 메뉴 안에서 글자 열이 둘로 갈린다. 값은 .theater-menu-item의 라벨 자리를 그대로 옮긴 것
-   (항목 패딩 12px + .theater-menu-check 16px + 간격 12px)에서 자기 조상 패딩(entry·row)만 되뺀다. */
-.operation-launch-context-menu .operation-launch-variant-row {
-  padding-left: calc(12px + 16px + 12px - var(--space-1));
-}
-
-/* 시작 표면 표식 — 이 행이 무엇으로 태어나는지 상시 말하고, 누르면 그 표면을 뒤집는다.
-   값은 메뉴 하나에 하나이므로 한 번 뒤집으면 밴드의 모든 행이 함께 바뀐다.
-
-   새 홈통을 열지 않는다. 위 규칙이 모델 행을 들여쓴 것은 왼쪽 홈통이 표식 자리이기 때문이고,
-   표식이 실제로 서면 그 자리를 채우므로 들여쓰기를 되돌린다 — 둘을 함께 두면 모델 이름만 한 칸
-   더 밀려 같은 메뉴 안에서 글자 열이 셋으로 갈린다. 폭은 그 홈통과 같은 16px여야 라벨의 x가
-   표식 유무와 무관하게 한 자리에 남는다.
-
-   [doctrine] 채널은 `--apex`다. 채팅 시작은 신호(상태)도 위치도 아닌 "기본 밖의 선택"이며,
-   Quick Launch의 `.quick-launch-card.is-chat-start`가 같은 이유로 이미 같은 채널을 쓴다. */
-.operation-launch-surface-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--text-tertiary);
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.operation-launch-surface-mark svg {
-  width: 13px;
-  height: 13px;
-}
-
-.operation-launch-surface-mark[data-launch-start-surface="chat"] {
-  color: var(--apex);
-}
-
-.operation-launch-surface-mark:hover {
-  color: var(--text-primary);
-}
-
-.operation-launch-context-menu .operation-launch-variant-row:has(.operation-launch-surface-mark) {
-  padding-left: calc(12px - var(--space-1));
-}
-
-/* 표면 이름은 시각적으로만 접어 행의 접근 이름에 남긴다 — 아이콘 하나로는 보조기술이 이 행이
-   어디서 태어나는지 말하지 못한다. 종류 설명의 --quiet와 같은 기법이다. */
-.operation-launch-surface-mark-name {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
    표식이 둘일 때 여백이 그 사이에서 나뉘어 ★가 행 한가운데 뜬다. */
-.operation-launch-variant-row-label,
 .quick-launch-variant-label {
   flex: 1;
   min-width: 0;
@@ -7817,7 +7377,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 /* 기본 모델 표식은 두 실행 메뉴에서 같은 별이어야 한다. 조판을 행에서 상속시키면 mono를 쓰는
    캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반 폭으로 가늘게 렌더돼, 같은 뜻의 표식이
    표면마다 다른 기호로 읽힌다. */
-.operation-launch-variant-star,
 .quick-launch-variant-star {
   color: var(--brass-ink);
   font-family: var(--font-ui);
@@ -7825,40 +7384,10 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   line-height: 1;
 }
 
-.operation-launch-variant-chevron,
 .quick-launch-variant-chevron {
   color: var(--text-tertiary);
   font-size: var(--t-sm);
   line-height: 1;
-}
-
-/* 강도 상자는 행 전체가 아니라 이 손잡이에서 열린다 — 목록을 훑는 동안 지나치는 행마다
-   캐스케이드가 튀어나오면, 모델을 고르려는 동작이 매번 서브메뉴를 여는 동작이 된다.
-   꺾쇠 하나로는 무엇이 열리는지 말하지 못하므로 계기 표식과 현재 단을 함께 묶는다. */
-.operation-launch-variant-effort-handle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  /* 행 안쪽 여백을 되먹어 손잡이 테두리가 행 오른쪽 끝선에 맞춰 선다. */
-  margin-right: -3px;
-  padding: 2px 3px 2px 5px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
-
-/* 행을 짚으면 손잡이의 윤곽만 먼저 드러난다 — 누를 곳이 있다는 사실은 알리되, 아직 열지는 않는다. */
-.operation-launch-variant-row:hover .operation-launch-variant-effort-handle,
-.operation-launch-variant-row:focus-visible .operation-launch-variant-effort-handle {
-  border-color: color-mix(in oklch, var(--surface-rim) 85%, transparent);
-}
-
-.operation-launch-variant-effort-handle:hover,
-.operation-launch-variant-effort-handle[data-open="true"] {
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
 }
 
 .operation-launch-variant-effort-gauge {
@@ -7875,50 +7404,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 .operation-launch-variant-effort-gauge rect[data-lit="true"] {
   fill: var(--effort-tone, var(--brass-ink));
-}
-
-.operation-launch-effort-menu.theater-menu {
-  --flyout-enter-x: -4px;
-  z-index: 42;
-  /* 콘텐츠(트랙·토글·라벨)에 맞춘다 — 고정 폭이면 짧을 때 라벨이 잘리고 길면
-     오른쪽에 빈 칸이 남는다. 배치 최악 폭은 operation-launch-context-menu의 EFFORT_SUBMENU_WIDTH. */
-  width: max-content;
-  max-height: var(--launch-menu-max-height, 520px);
-  /* auto가 아니다 — apex burst의 transform scale이 스크롤 높이를 잠깐 밀어 세로
-     스크롤바가 깜빡인다. 트랙+팁은 max-height 아래에 남는다. */
-  overflow: hidden;
-  animation: operation-launch-flyout-in var(--duration-fast) var(--ease-spring) both;
-}
-
-.operation-launch-effort-menu.theater-menu.is-left {
-  --flyout-enter-x: 4px;
-}
-
-.operation-launch-effort-menu-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-width: max-content;
-}
-
-.operation-launch-effort-menu .effort-track-shell {
-  min-width: max-content;
-}
-
-/* 같은 단을 다시 눌러 실행한다는 숨은 확정 제스처를 처음 비-AUTO를 고른 순간에만 알려 준다.
-   파선 테두리는 이 앱에서 "아직 확정되지 않은 자리"의 어휘이고, brass 워시로 위치·초점 채널에
-   묶는다 — 신호색을 쓰면 "무슨 일이 일어났다"로 읽힌다. */
-.operation-launch-effort-confirm-tip {
-  margin: 0;
-  padding: 7px 9px;
-  border: 1px dashed color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  line-height: 1.35;
-  text-wrap: pretty;
 }
 
 /* ── 추론 강도 트랙 ─────────────────────────────────────────────────────────
@@ -8204,7 +7689,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   background: linear-gradient(to bottom, transparent, var(--apex) 40% 60%, transparent);
   opacity: 0;
   transform: scaleY(0.2);
-  transition: opacity 360ms var(--ease-spring) 120ms, transform 360ms var(--ease-spring) 120ms;
+  transition: opacity var(--duration-slow) var(--ease-spring) 120ms, transform var(--duration-slow) var(--ease-spring) 120ms;
   pointer-events: none;
 }
 
@@ -8544,11 +8029,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   }
 }
 
-@keyframes operation-launch-flyout-in {
-  from { opacity: 0; transform: translateX(var(--flyout-enter-x)); }
-  to { opacity: 1; transform: translateX(0); }
-}
-
 .theater-menu-error {
   margin: var(--space-1) 0 0;
   padding: var(--space-1) var(--space-2);
@@ -8592,7 +8072,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-
 
 /* ── Operations 터미널 ─────────────────────────────────────────────
    높이 전파 체인(stage → shell → canvas)을 flex로 확정해 xterm FitAddon이
@@ -9269,7 +8748,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   color: var(--text-primary);
   background: var(--wash-hover);
 }
-
 
 .operation-search-overlay {
   position: fixed;
@@ -11417,12 +10895,7 @@ body[data-codex-side="true"] .command-card {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .operation-launch-effort-menu,
-  .operation-launch-variant-row {
-    animation: none;
-    transition: none;
-  }
-
+  
   .codex-side-panel {
     animation: none;
   }
@@ -12136,12 +11609,11 @@ body[data-codex-side="true"] .command-card {
   color: var(--coral-ink);
 }
 
-
 .operations-side-bar.is-closed {
   width: 0;
   border-color: transparent;
   visibility: hidden;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear var(--duration-base);
 }
 
 /* ── Periscope 픽 — 접힌 카드를 엣지 독 호버가 오버레이로 되부른다 ─────────────────
@@ -12154,7 +11626,7 @@ body[data-codex-side="true"] .command-card {
   width: var(--side-bar-width, 280px);
   border-color: color-mix(in oklab, var(--brass) 38%, var(--surface-rim));
   visibility: visible;
-  transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+  transition: width var(--duration-base) ease, border-color var(--duration-base) ease, visibility 0s linear 0s;
 }
 
 /* 픽만 불투명 면이다. 고정된 카드의 유리 표현과 정지 화면 밝기는 바꾸지 않는다. */
@@ -12971,7 +12443,7 @@ body[data-expanded-surface-resizing="true"] {
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--motion-tap) ease;
 }
 .command-band-version-row:hover .command-band-version-row-refresh,
 .command-band-version-row:focus-within .command-band-version-row-refresh,
@@ -14443,6 +13915,19 @@ body[data-expanded-surface-resizing="true"] {
     visibility 0s linear 0s;
 }
 
+/* 모델 칩·추론강도 트랙 공유 부품(LaunchModelEffort)의 감싸개는 레이아웃에 끼지 않는다 — 칩과
+   트랙이 부모(Quick Launch 묶음, 새 세션 슬롯)의 한 줄 flex 항목으로 그대로 선다. 감싸개가 inline
+   상자로 남으면 트랙이 익명 블록을 만들어 칩 아래 줄로 떨어진다(1440px에서 실측). */
+.launch-model-effort {
+  display: contents;
+}
+
+/* 팝오버 기준점. 칩의 말줄임(flex: 0 1 auto)이 살도록 최소폭을 0으로 누른다. */
+.launch-model-effort-anchor {
+  display: inline-flex;
+  min-width: 0;
+}
+
 .quick-launch-launch-sel.is-hidden {
   /* 접힐 때는 줄바꿈을 되돌린다 — 폭이 0으로 줄면 컨트롤이 저마다 줄을 차지해, 보이지 않는 채로
      바 높이만 부풀린다(visibility: hidden은 레이아웃에서 빠지지 않는다). */
@@ -14603,7 +14088,6 @@ body[data-expanded-surface-resizing="true"] {
   color: var(--text-primary);
   font-weight: var(--weight-medium);
 }
-
 
 .quick-launch-caret {
   flex: none;
@@ -14860,7 +14344,6 @@ body[data-expanded-surface-resizing="true"] {
   .effort-track-stop,
   .effort-track-value,
   .operation-launch-variant-effort,
-  .operation-launch-variant-effort-handle,
   .operation-launch-variant-effort-gauge rect {
     animation: none;
     transition: none;
@@ -15335,7 +14818,6 @@ body[data-expanded-surface-resizing="true"] {
   }
 }
 
-
 /* ── Live line · History band (sdk/components) ───────────────────────────────
    도는 턴의 "지금" 한 줄과, 접힌 이전 대화을 대신 말하는 로그 상단 밴드. 채팅뷰 집계 줄의
    문법(aurora 링·물결 문구·경과)을 한 부품으로 옮겨 코워크·부관이 같은 줄을 쓴다.
@@ -15619,7 +15101,7 @@ body[data-expanded-surface-resizing="true"] {
 .right-rail-ico.is-console-use-wrapped { border-color: color-mix(in oklch, var(--console-use-wrap) 50%, transparent); }
 @keyframes console-use-wrap-press { 50% { transform: scale(0.97); } }
 @keyframes console-use-wrap-caret { 50% { opacity: 0; } }
-.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: 360ms, 1.6s, 1.6s, 520ms; animation-delay: 0s, 360ms, 360ms, 0s; animation-iteration-count: 1, infinite, infinite, 1; }
+.side-bar-group-header.is-console-use-wrapped.is-create { animation-name: console-use-wrap-arrive, var(--state-motion, console-use-wrap-halo), var(--state-motion, console-use-wrap-breathe), console-use-wrap-grow; animation-duration: var(--duration-slow), 1.6s, 1.6s, 520ms; animation-delay: 0s, var(--duration-slow), var(--duration-slow), 0s; animation-iteration-count: 1, infinite, infinite, 1; }
 @keyframes console-use-wrap-grow { from { opacity: 0; transform: scaleY(0.6); transform-origin: top; } to { opacity: 1; transform: none; } }
 .is-console-use-wrapped.is-leaving::after { display: none; }
 @keyframes console-use-wrap-leave { to { box-shadow: 0 0 0 0 transparent; background-image: none; } }
@@ -16225,3 +15707,49 @@ body[data-expanded-surface-resizing="true"] {
 .job-meta, .track-tag, .track-status, .stage-waiting, .track-waiting, .thought-toggle, .tool-chip, .track-text, .track-notice, .track-error, .timeline-toggle, .timeline-empty, .timeline-time, .timeline-type { font-family: var(--font-ui); }
 .job-id, .timeline-payload { font-family: var(--font-code); font-size: var(--font-code-size); }
 kbd { font-variant-numeric: tabular-nums; }
+
+/* ── 클릭 모션 공통 규칙 ────────────────────────────────────────────────────
+   팝오버·메뉴는 즉시 열고 닫는다(애니메이션 없음). 움직임은 손이 닿는 자리에만 둔다: 호버·선택 배경·테두리·글자색은
+   --motion-tap(80ms · soft)으로 들어오고, 누르면 원형 단추는 0.94, 행·칩은 0.985 로 --motion-tap 동안 줄었다가 놓으면
+   --duration-fast(140ms) spring 으로 풀린다. 이 목록의 요소는 배경·테두리·글자색 말고 다른 속성을 전이하지 않는다 —
+   새로 넣는 요소도 그 조건을 지켜야 이 transition 이 제 전이를 덮지 않는다. 모바일 배치는 자기 누름 문법(mobile-press.css)을
+   쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
+:root:not([data-view-mode="mobile"]) :is(
+  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+  .new-session-send, .new-session-cancel,
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+  .new-session-row, .new-session-menu-item, .new-session-chip
+) {
+  transition:
+    background-color var(--motion-tap) var(--ease-soft),
+    border-color var(--motion-tap) var(--ease-soft),
+    color var(--motion-tap) var(--ease-soft),
+    transform var(--duration-fast) var(--ease-spring);
+}
+:root:not([data-view-mode="mobile"]) :is(
+  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+  .new-session-send, .new-session-cancel
+):active:not(:disabled) {
+  transform: scale(0.94);
+  transition-duration: var(--motion-tap);
+  transition-timing-function: var(--ease-soft);
+}
+:root:not([data-view-mode="mobile"]) :is(
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+  .new-session-row, .new-session-menu-item, .new-session-chip
+):active:not(:disabled) {
+  transform: scale(0.985);
+  transition-duration: var(--motion-tap);
+  transition-timing-function: var(--ease-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-view-mode="mobile"]) :is(
+    .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+    .new-session-send, .new-session-cancel,
+    .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+    .new-session-row, .new-session-menu-item, .new-session-chip
+  ):active:not(:disabled) {
+    /* 눌림 규칙과 같은 명시도여야 이긴다 — :not(:disabled) 가 빠지면 동작 줄이기에서도 축소가 남는다. */
+    transform: none;
+  }
+}

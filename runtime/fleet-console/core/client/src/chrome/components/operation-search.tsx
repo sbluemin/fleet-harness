@@ -1,5 +1,6 @@
 import { closeConversationSurface } from "../../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
+import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { landPaneTarget } from "../pane/pane-target.js";
@@ -67,7 +68,6 @@ import {
   openOnboarding,
   openWhatsNew,
   operationSearchEntries,
-  requestOperationLaunchMenu,
   requestSideBarAddTheater,
   setActiveTheme,
   setOperationSearchMode,
@@ -363,7 +363,8 @@ export function OperationSearch({
       case "new-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        requestOperationLaunchMenu();
+        // 사이드바 맨 위 「+」와 같은 길 — 새 세션 화면을 본문에 연다(Theater 는 Quick Launch 와 같은 기본 규칙).
+        openDefaultNewSession();
         break;
       }
       case "resume-operation": {

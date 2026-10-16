@@ -39,7 +39,7 @@ fleet console
 
 업데이트는 Console 화면이나 `fleet update`로 하세요. `npm update -g`는 npm에 남은 옛 버전으로 되돌립니다.
 
-사이드바 맨 위의 **+**로 프로젝트 폴더를 **Theater**로 추가하세요. 그다음 Theater 머리의 **+**나 <kbd>⌘</kbd><kbd>J</kbd>로 첫 대화를 시작합니다.
+사이드바 맨 위의 **+**를 누르면 새 세션 화면이 열립니다. 거기서 **Theater 추가…**로 프로젝트 폴더를 **Theater**로 더하고, 모델과 강도를 고른 뒤 첫 메시지를 보내세요. <kbd>⌘</kbd><kbd>J</kbd>로도 시작할 수 있습니다.
 
 ## 탭을 닫아도 살아 있는 세션
 

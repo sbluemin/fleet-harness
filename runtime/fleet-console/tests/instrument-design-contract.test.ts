@@ -67,7 +67,8 @@ const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx"
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
   "app/app.tsx",
-  "../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx",
+  "../../../features/workspace/client/conversation/new-session.tsx",
+  "../../../features/workspace/client/conversation/new-session.css",
   "../../../features/workspace/client/operations.tsx",
   "chrome/components/command-band.tsx",
   "chrome/components/command-band-system-cluster.tsx",
@@ -656,32 +657,6 @@ describe("Instrument core design contract", () => {
 
   it("removes ambient radar, panel pulse, perimeter wake, and anchor surfaces", () => {
     for (const path of OWNED_SOURCES) expect(source(path)).not.toMatch(FORBIDDEN_DECORATION);
-  });
-
-  it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
-    const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
-    const menuBlock = components.match(/\n\.operation-launch-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
-
-    // 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼 읽힌다 — 스크롤 포트(휠·키보드·
-    // 플라이아웃 scroll-follow)는 남기고 시각 장치만 메뉴 문법으로 바꾼다.
-    expect(menuBlock).toContain("overflow-y: auto;");
-    expect(menuBlock).toContain("scrollbar-width: none;");
-    expect(components).toContain(".operation-launch-context-menu::-webkit-scrollbar");
-
-    // 절단 신호·포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다. 전부 포인터
-    // 전용 장치라 aria-hidden이어야 한다 — 키보드는 방향키 포커스 추적이, 보조기술은 목록
-    // 자체가 담당한다.
-    expect(contextMenu).toContain("operation-launch-context-menu-edge operation-launch-context-menu-edge--top");
-    expect(contextMenu).toContain("operation-launch-context-menu-edge operation-launch-context-menu-edge--bottom");
-    expect(contextMenu).toContain('className="operation-launch-context-menu-gauge"');
-
-    // 스트립 hover 강조는 brass(위치/hover 채널) 문법 그대로다.
-    expect(components).toContain(".operation-launch-context-menu-edge.is-on:hover .operation-launch-context-menu-edge-fill");
-
-    // reduced-motion에서는 연속 글라이드를 접는다 — 클릭 스텝·휠·키보드만 남긴다.
-    expect(contextMenu).toContain("if (prefersReducedMotion()) return;");
-    expect(contextMenu).toContain("menuRef.current?.focus({ preventScroll: true });");
   });
 
   it("keeps glass fallbacks and focus grammar without deprecated accent variables", () => {
@@ -2658,64 +2633,6 @@ describe("Instrument core design contract", () => {
     expect(terminalAgent).not.toContain("data-captain");
   });
 
-  it("pins the launch-kind description grammar and keeps the menu free of decoration tokens", () => {
-    const components = source("styles/components.css");
-    const contextMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
-    // 줄머리 앵커가 필요하다 — 앵커 없이는 `--annotated` 하위 배치 규칙이 먼저 잡힌다.
-    const descriptionBlock = components.match(/^\.operation-launch-menu-description \{[^}]*\}/m)?.[0] ?? "";
-    const reasonCell = components.match(/\.operation-launch-menu-item--annotated \.operation-launch-menu-reason \{[^}]*\}/)?.[0] ?? "";
-
-    // 설명과 비활성 사유는 라벨 아래 줄에 선다 — 같은 행에 두면 긴 종류 이름이 잘린다.
-    expect(reasonCell).toContain("grid-row: 2;");
-    expect(reasonCell).toContain("grid-column: 2 / -1;");
-    expect(descriptionBlock).toContain("color: var(--text-tertiary);");
-    expect(descriptionBlock).toContain("font-family: var(--font-ui);");
-    expect(descriptionBlock).not.toMatch(/font-weight:\s*\d/);
-
-    // 실행 메뉴에는 별도 표식 배지를 두지 않는다 — 종류 구분은 라벨 괄호 안과 무배경 한 단어
-    // 대비가 들고 있다. 배지가 돌아오면 brass 채널을 빌리는 doctrine 예외가 다시 필요해지므로
-    // 여기서 막는다.
-    expect(components).not.toContain("operation-launch-menu-badge");
-
-    // 캔버스 메뉴는 실행 목록이지 설명서가 아니다. 설명 문장은 항목 안에 남아 접근 이름에는
-    // 실리되 시각적으로는 접히고(--quiet), 짚은 항목의 것만 메뉴 옆 어사이드에 펴진다.
-    // 상시 두 줄로 되돌아오면 항목 하나가 33px에서 50px로 불어나므로 트립와이어를 건다.
-    const quietBlock = components.match(/^\.operation-launch-menu-description--quiet \{[^}]*\}/m)?.[0] ?? "";
-    expect(quietBlock).toContain("position: absolute;");
-    expect(quietBlock).toContain("clip-path: inset(50%);");
-    const briefBlock = components.match(/^\.operation-launch-menu-brief \{[^}]*\}/m)?.[0] ?? "";
-    expect(briefBlock).toContain("grid-row: 1;");
-    expect(briefBlock).toContain("font-family: var(--font-ui);");
-    expect(briefBlock).not.toMatch(/background|border-radius/);
-    expect(contextMenu).toContain('className="operation-launch-menu-brief"');
-    expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
-
-    // 역할·플러그인·동작 이름을 반복하던 시각 헤더는 제거한다. 메뉴 역할은 aria-label이 맡고,
-    // Terminal Shell은 rail 실행으로 이동해 Etc 그룹을 만들지 않는다.
-    expect(components).not.toContain(".operation-launch-context-menu-reticle");
-    expect(contextMenu).not.toContain('className="operation-launch-context-menu-reticle"');
-    expect(contextMenu).not.toContain("operation-launch-context-menu-head");
-    expect(components).not.toContain(".operation-launch-context-menu-head {");
-    expect(contextMenu).toContain('aria-label={menuLabel}');
-    expect(contextMenu).not.toContain('canvas.menu.etc');
-    expect(contextMenu).not.toContain("operation-launch-provider-glyph--etc");
-
-    // 폭은 세 곳이 함께 알아야 한다. 하나만 고치면 컴파일은 되고 치수만 조용히 어긋난다.
-    // 폭은 컨테이너가 단일 소유자다. 컨테이너에 폭이 없으면 설명 어사이드의 100%가 메뉴
-    // 오른쪽이 아니라 왼쪽 모서리를 가리켜 설명이 메뉴 위를 덮는다(실측으로 확인).
-    expect(contextMenu).toContain("const MENU_WIDTH = 264;");
-    expect(components).toMatch(/\.operation-launch-control--anchored \{[^}]*--launch-menu-width: 264px;[^}]*width: var\(--launch-menu-width\);/);
-    expect(components).toContain(".operation-launch-context-menu {\n  width: var(--launch-menu-width);");
-    expect(components).toMatch(/\.operation-launch-control--anchored \.operation-launch-menu \{[^}]*min-width: var\(--launch-menu-width\);/);
-    // 캔버스 전용 패딩은 두 클래스를 함께 짚어야 한다 — 한 클래스면 뒤쪽의 .theater-menu와
-    // 특이도가 같아 조용히 지고 8px로 남는다(실측으로 확인한 함정).
-    expect(components).toContain(".operation-launch-menu.operation-launch-context-menu {\n  padding: var(--space-1);");
-
-    // 메뉴 조상 관계가 올바라야 menuitem이 유효하다. dialog로 되돌아가면 ARIA가 깨진다.
-    expect(contextMenu).toContain('role="menu"');
-    expect(contextMenu).not.toContain('role="dialog"');
-  });
-
   it("keeps the remote NAT endpoint on the established token grammar without warn hover", () => {
     const settings = source("../../../features/remote-access/client/settings-section.tsx");
     const components = source("styles/components.css");
@@ -3413,16 +3330,16 @@ describe("Effort track interaction grammar", () => {
     );
 
     // 문구는 실제로 열리는 단에서 유도한다 — max만 내놓는 모델(Codex Luna 계열 등)에서
-    // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
+    // 고정 문구는 열리지 않는 단을 약속한다. 두 표면(덱 문 행·바 트랙)이 같은 유도를
     // 쓰므로 문구가 갈라지지 않는다.
     const common = source("i18n/messages/common.ts");
-    const canvasMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
     expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
     expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
-    for (const surface of [composer, canvasMenu]) {
-      expect(surface).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
-      expect(surface).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
-    }
+    // 바 트랙은 Quick Launch와 새 세션이 같은 부품을 쓴다. 문구 유도는 그 부품에 있다.
+    const track = source("../../../features/execution/client/components/launch-model-effort.tsx");
+    expect(composer).toContain("<LaunchModelEffort");
+    expect(track).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
+    expect(track).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
 
     // 두 표면은 여는 것이 다르므로 이름의 원천도 다르다. 트랙은 사다리에서 문을 세우니 사다리
     // 기준(gatedEffortNames)을, 덱은 chips에 실린 단만 행으로 내니 자기 판정과 같은 원천
@@ -3502,13 +3419,12 @@ describe("Effort track interaction grammar", () => {
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
     const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
-    const canvasMenu = source("../../../features/workspace/client/sidebar/operation-launch-context-menu.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
-    // 한 공유 계기가 Quick Launch와 캔버스 실행 메뉴 양쪽의 hover 문법을 소유한다.
-    expect(quickLaunch).toContain("<EffortTrack");
-    expect(canvasMenu).toContain("<EffortTrack");
+    // 한 공유 계기가 Quick Launch 트랙의 hover 문법을 소유한다.
+    expect(quickLaunch).toContain("<LaunchModelEffort");
+    expect(source("../../../features/execution/client/components/launch-model-effort.tsx")).toContain("<EffortTrack");
     expect(preview).toContain("background: var(--brass)");
     expect(preview).toContain("transform: scale(3)");
     expect(knobHover).toContain("transform: scale(1.1)");
