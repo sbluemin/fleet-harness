@@ -47,7 +47,7 @@ import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { useAgentState } from "../../../execution/client/agent/store.js";
-import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryOpen, subscribeWorkbench, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserOpen, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
+import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryOpen, subscribeWorkbench, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import "./conversation.css";
 
 /**
@@ -719,7 +719,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   useConversationWorkbenchHost(conversationKey, toolEntryIds);
   const layout = useWorkbenchLayout();
   const focusedTileId = useWorkbenchFocusedTileId();
-  const browserOpen = useWorkbenchBrowserOpen();
+  const browserOpen = useWorkbenchBrowserShown();
   const viewport = useViewportSize();
   const [regionSize, setRegionSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
   const regionObserverRef = useRef<ResizeObserver | null>(null);

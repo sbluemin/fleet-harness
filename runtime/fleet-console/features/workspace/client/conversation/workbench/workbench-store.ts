@@ -591,12 +591,16 @@ export function isWorkbenchSurfaceOpen(surfaceId: string): boolean {
   return workbenchTiles(getWorkbenchLayout()).some((tile) => tile.kind === "surface" && tile.surfaceId === surfaceId);
 }
 
-export function isWorkbenchBrowserOpen(): boolean {
-  return workbenchTiles(getWorkbenchLayout()).some((tile) => tile.kind === "browser");
+/** 브라우저 칸이 화면에 보이는가. 칸이 있고, 펼친 칸이 없거나 그 칸 자신일 때다. */
+export function isWorkbenchBrowserShown(): boolean {
+  const layout = getWorkbenchLayout();
+  const browser = workbenchTiles(layout).find((tile) => tile.kind === "browser");
+  if (browser === undefined) return false;
+  return layout.expandedTileId === null || layout.expandedTileId === browser.id;
 }
 
-export function useWorkbenchBrowserOpen(): boolean {
-  return useSyncExternalStore(subscribeWorkbench, isWorkbenchBrowserOpen, () => false);
+export function useWorkbenchBrowserShown(): boolean {
+  return useSyncExternalStore(subscribeWorkbench, isWorkbenchBrowserShown, () => false);
 }
 
 export function openWorkbenchEntry(entryId: string): void {
@@ -620,8 +624,9 @@ export function closeWorkbenchBrowser(): void {
   closeWhere((tile) => tile.kind === "browser");
 }
 
+/** 보이는 브라우저 칸은 닫고, 없거나 다른 칸에 가려 있으면 연다. 가려진 칸은 다시 열기 경로가 펼침을 접고 초점을 준다. */
 export function toggleWorkbenchBrowser(): void {
-  if (isWorkbenchBrowserOpen()) closeWorkbenchBrowser();
+  if (isWorkbenchBrowserShown()) closeWorkbenchBrowser();
   else openWorkbenchBrowser();
 }
 
