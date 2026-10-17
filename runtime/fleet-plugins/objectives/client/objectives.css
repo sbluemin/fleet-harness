@@ -1551,6 +1551,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ledger-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .objectives-commodore-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .objectives-commodore-ledger-body > * { flex: 1 1 auto; min-height: 0; }
+.objectives-commodore-ledger-body > .objectives-commodore-ledger-older { flex: none; align-self: center; margin-top: var(--space-2); }
 @media (prefers-reduced-motion: reduce) { .objectives-commodore-ledger-back { transition: none; } }
 @media (forced-colors: active) { .objectives-commodore-ledger-back:hover { outline: 1px solid Highlight; } }
 .objectives-commodore-conversation .objectives-commodore-foot { flex: none; border-top: 0; display: flex; flex-direction: column; align-items: stretch; padding: 0 clamp(16px, 4cqi, 48px) var(--space-4); }
