@@ -153,12 +153,17 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup, onCho
   const state = useConsoleState();
   const hosts = useRemoteHosts();
   const shellHome = useDesktopHomeOrigin();
-  const homeOrigin = shellHome.origin;
   // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
   const canOpenRemote = isDesktopShell();
   const navigate = useNavigate();
   /** 집이 펼친 목록으로 서빙된 화면. 칩은 없고, 판은 처음부터 열려 있다. */
   const inPicker = picker !== undefined;
+  /**
+   * 집이 펼친 목록은 집이 서빙하므로, 셸의 답이 오기 전에도 이 화면의 주인이 곧 집이다 — 그 답을
+   * 기다리면 판이 처음 서는 순간 돌아갈 줄이 없다. 피커 밖에서는 이렇게 짐작하지 않는다: 셸이 있는데
+   * 집을 모르는 동안 손님 콘솔을 집으로 세우면 안 된다(아래 `standingAtHome`).
+   */
+  const homeOrigin = shellHome.origin ?? (inPicker ? location.origin : null);
   const [open, setOpen] = useState(inPicker);
   const [addOpen, setAddOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
@@ -211,12 +216,20 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup, onCho
    * 집이 펼친 목록(피커)은 집이 서빙하므로 이 판정이 참이고, 평소대로 묻는다.
    */
   const servedFromLoopback = isLoopbackOrigin(location.origin);
+  /**
+   * 저장·주변 목록의 첫 답이 왔는가. 그 전에 빈 목록을 보고 "목록에 없다"고 말하면 저장된 콘솔도 잠깐
+   * 미저장으로 읽힌다. 묻지 않는 콘솔은 기다릴 답이 없고, 실패한 물음도 답으로 친다 — 아니면 그 줄이
+   * 영영 서지 않는다.
+   */
+  const [listsSettled, setListsSettled] = useState(!servedFromLoopback);
 
   useEffect(() => {
     if (!servedFromLoopback) return;
     const controller = new AbortController();
-    void refreshRemoteHosts(controller.signal).catch(() => undefined);
-    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
+    void Promise.allSettled([
+      refreshRemoteHosts(controller.signal),
+      fetchLocalConsoles(controller.signal).then(setLocal),
+    ]).then(() => { if (!controller.signal.aborted) setListsSettled(true); });
     return () => controller.abort();
   }, [servedFromLoopback]);
 
@@ -552,7 +565,7 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup, onCho
             </>
           ) : null}
           {/* 목록 어디에도 없는 콘솔에 서 있다면 그 사실을 숨기지 않는다. */}
-          {!nearbyCurrent && savedCurrent === null ? (
+          {listsSettled && !nearbyCurrent && savedCurrent === null ? (
             <>
               <div className="host-switcher-divider" role="separator" />
               <HostRow name={currentLabel || t("chrome.hosts.console")} detail={currentHost(currentOrigin)} status={{ label: t("chrome.hosts.notSaved") }} current />
