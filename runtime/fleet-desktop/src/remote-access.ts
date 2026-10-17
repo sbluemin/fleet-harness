@@ -117,6 +117,18 @@ function readPresentedFingerprint(hostname: string, port: number, timeoutMs: num
  * 기기 이름은 자격이 아니라 상대편 운영자를 위한 표식이다. 그것이 없으면 원격 콘솔의 기기
  * 목록에서 어느 줄을 끊어야 하는지 알 수 없다.
  */
+/**
+ * 본문을 비우지 않은 응답은 소켓을 풀에 돌려주지 않는다. 다음 요청이 같은 연결을 재사용하지 못하고
+ * 새 TLS(왕복 세 번)를 연다. 조인·확인·게시는 그 다음 요청이 바로 이어서 나가므로 여기서 놓는다.
+ */
+export async function releaseFetchBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // 이미 읽었거나 취소된 본문은 연결을 붙잡고 있지 않다.
+  }
+}
+
 export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string | null, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -129,16 +141,18 @@ export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: str
       body: JSON.stringify({ ...(token === null ? {} : { token }), ...(device === null ? {} : { device }) }),
       signal: controller.signal,
     });
-    // 자격을 내밀었는데 거절당한 것과, 이 콘솔이 더 이상 이 기기를 알아보지 못하는 것은 다른 사실이다.
-    if (response.status === 401) throw new Error(token === null ? "remote_host_not_paired" : "remote_link_rejected");
-    if (response.status === 403) throw new Error("remote_link_host_mismatch");
     /**
      * 409는 자격 문제가 아니다 — 그 콘솔이 지금은 받을 수 없다는 뜻이고, 이유가 둘이다.
      * 제어를 다른 기기가 쥐고 있거나, 그 콘솔이 기억할 수 있는 기기 수가 다 찼거나. 서버는
      * 둘을 다른 코드로 보내는데 여기서 하나로 뭉개면, 자리만 비면 되는 경우와 남의 기기를
      * 지워야 하는 경우에 같은 안내가 나가 사용자가 듣는 해법이 틀린다.
+     * 본문을 읽기 전에 취소하면 그 이유가 사라진다.
      */
     if (response.status === 409) throw new Error(await readConflictCode(response));
+    await releaseFetchBody(response);
+    // 자격을 내밀었는데 거절당한 것과, 이 콘솔이 더 이상 이 기기를 알아보지 못하는 것은 다른 사실이다.
+    if (response.status === 401) throw new Error(token === null ? "remote_host_not_paired" : "remote_link_rejected");
+    if (response.status === 403) throw new Error("remote_link_host_mismatch");
     if (!response.ok) throw new Error("remote_link_unverified");
   } catch (error) {
     // 이 함수가 스스로 내린 판정은 그대로 올려 보낸다. 접두사만으로 가르면 "이 기기를 모른다"는

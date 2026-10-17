@@ -22,6 +22,7 @@ import { createLaunchController, type RuntimeEntryState } from "./launch-control
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
+import { releaseFetchBody } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -456,6 +457,8 @@ async function boot(): Promise<void> {
       // 돌아갈 줄이 버전 표기보다 중요하다. 게시 전체는 창을 띄우는 마감(console-handoff.ts)과 경주하므로,
       // 어느 Console이든 받는 집만 적은 몸을 먼저 보내 마감이 이겨도 집은 남게 한다.
       const response = await put({ homeOrigin: home });
+      // 본문을 들고 있으면 다음 게시가 방금 연 연결을 재사용하지 못한다.
+      await releaseFetchBody(response);
       // 세션이 아직 없는 원격 콘솔은 401로 답한다 — 재기동 직후라면 화면이 곧 되살리므로 오류가 아니다.
       if (response.status === 401) return "unauthorized";
       // 경로가 어긋나면 404가 조용히 돌아온다 — 돌아갈 줄이 사라진 이유를 로그에서 찾을 수 있어야 한다.
@@ -466,7 +469,9 @@ async function boot(): Promise<void> {
       // 버전과 능력은 그 위에 덧쓴다. 이 키를 모르는 옛 Console은 400으로 거절한다 — 능력을 빼고 버전만 다시
       // 보내고, 그것도 거절되면 이미 게시된 집이 그대로 선다.
       const capable = await put({ homeOrigin: home, version: app.getVersion(), capabilities: DESKTOP_SHELL_CAPABILITIES });
+      await releaseFetchBody(capable);
       const versioned = capable.status === 400 ? await put({ homeOrigin: home, version: app.getVersion() }) : capable;
+      if (versioned !== capable) await releaseFetchBody(versioned);
       if (!versioned.ok && versioned.status !== 400) logger.error(`shell version publish rejected status=${versioned.status}`);
       return "accepted";
     } catch (error) {
@@ -478,6 +483,8 @@ async function boot(): Promise<void> {
     pins: remotePins,
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
+    // 지문 대조 뒤에 브리지가 부른다. 소켓 둘이면 조인 뒤 확인과 문서 적재가 새 연결을 덜 연다.
+    preconnect: (origin) => { consoleSession.preconnect({ url: origin, numSockets: 2 }); },
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
     loadConsole: (url) => {
