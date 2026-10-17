@@ -6,6 +6,7 @@ import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
   createClaudeNativeModelSync,
+  createQuotaLastGoodStore,
   createQuotaService,
   createMuseCodeOAuth,
   createCodexOAuth,
@@ -145,6 +146,10 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai, cursor }),
+    // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
+    lastGoodStore: createQuotaLastGoodStore({
+      filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "quota-last-good.json"),
+    }),
   });
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
