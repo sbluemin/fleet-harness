@@ -99,7 +99,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
         {asker ? <SpeakerMark speaker={asker} size="sm" /> : null}
         <span className="group-card-who">{asker ? `${asker.name} · ${t("group.decision.badge")}` : t("group.decision.badge")}</span>
         {decision.handler && !handed ? <span className="group-card-handler">{text(decision.handler)}</span> : null}
-        <button type="button" className="group-chat-link" onClick={decision.open}>{t(phone ? "group.decision.openPhone" : "group.decision.open")}</button>
+        {decision.open ? <button type="button" className="group-chat-link" onClick={decision.open}>{t(phone ? "group.decision.openPhone" : "group.decision.open")}</button> : null}
       </div>
       {handed ? (
         <div className="group-card-handed"><span className="group-card-handed-label">{text(handed.label)}</span><CardMarkdown text={handed.reason} language={locale} lead /></div>

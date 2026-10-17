@@ -224,7 +224,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         </div>
       ) : null}
       {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 남는다. */}
-      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} /> : null}
+      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} /> : null}
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>

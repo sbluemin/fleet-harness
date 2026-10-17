@@ -239,6 +239,8 @@ export const agentExecution: ClientExecutionProvider = {
 export { AgentChatTranscript } from "./chat/chat-transcript.js";
 /** 플러그인 소유 대화의 대화 화면 렌더러 — 코어가 플러그인 install 컨텍스트의 `chat.Conversation` 으로 넘긴다. */
 export { AgentConversation } from "./chat/agent-conversation.js";
+/** 플러그인이 사람에게 묻는 결정 카드 — 코어가 플러그인 install 컨텍스트의 `chat.DecisionCard` 로 넘긴다. 그룹 대화의 결정 카드와 같은 컴포넌트다. */
+export { AgentDecisionCard } from "./chat/agent-decision-card.js";
 
 export const operationKinds = [agentOperationKind] as const;
 

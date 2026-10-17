@@ -53,8 +53,8 @@ export interface ConversationDecision {
   }[];
   /** 사람이 직접 쓰는 답 한 칸의 글자 수 상한 — 플러그인이 받는 상한을 그대로 건넨다. 없으면 호스트가 막지 않는다. */
   readonly answerMaxLength?: number;
-  /** 결정 쓰기는 플러그인의 승인 표면을 통해서만 한다. */
-  readonly open: () => void;
+  /** 결정 쓰기는 플러그인의 승인 표면을 통해서만 한다. 열 곳이 없는 요청(보드 밖의 질문)은 주지 않고, 그때 열기 단추가 서지 않는다. */
+  readonly open?: () => void;
   /** 기존 보드 결정 제출 경로. 오래된 요청/전달 실패는 reject한다. */
   readonly answer?: (answers: readonly GroupDecisionAnswer[]) => Promise<void>;
   /** 지금 이 요청을 사람 대신 다루는 맡은 이의 한마디(예: 「사령관이 답하는 중」). 사람도 답할 수 있다. 머리 끝에 무채색으로 선다. */

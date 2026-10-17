@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 
 import type { ConversationReference } from "../conversation/references.js";
-import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../conversation/types.js";
+import type { ConversationDecision, ConversationParticipant, ConversationSpeaker, GroupTimelineEntry } from "../conversation/types.js";
 
 /**
  * Agent chat transcript — the Operation chat view's turn renderer, offered to plugins that keep their own agent transcript.
@@ -117,8 +117,27 @@ export interface AgentConversationProps {
   readonly references?: AgentChatReferenceHost;
 }
 
+/**
+ * Decision card — the card a group conversation shows when someone waits on the person's answer (questions, choices, an own
+ * answer, where the answer goes), offered to plugins that ask the person from their own surface. The card sends only through
+ * `decision.answer`; without it the send button stays locked. A rejection keeps the person's choices and shows one failure line.
+ */
+export interface AgentDecisionCardProps {
+  readonly decision: ConversationDecision;
+  /** Who asks — their mark and name head the card. */
+  readonly asker: ConversationSpeaker | null;
+  readonly language: "en" | "ko";
+  /** The Theater a `commodore` asker belongs to — its mark is that Theater's avatar. */
+  readonly theaterId?: string;
+  /** Phone layout — the open link reads as the phone's objective view. */
+  readonly mobile?: boolean;
+  /** The answer was accepted — the plugin takes the card down. */
+  readonly onAnswered: (decisionId: string) => void;
+}
+
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */
 export interface ClientAgentChatCapability {
   readonly Transcript: ComponentType<AgentChatTranscriptProps>;
   readonly Conversation: ComponentType<AgentConversationProps>;
+  readonly DecisionCard: ComponentType<AgentDecisionCardProps>;
 }
