@@ -6,40 +6,73 @@ import ExpoModulesCore
 // Android는 이걸 별도 Activity로 푼다: FleetLinkActivity가 인텐트를 받아 데이터를 읽고
 // `source.data = null`로 지운 뒤 MainActivity를 띄우므로, JS는 URI를 볼 기회 자체가 없다.
 //
-// iOS에서 구독자만으로는 같은 보장을 만들 수 없다. ExpoAppDelegateSubscriberManager는
-//   - open:url을 `reduce(false) { s.application?(...) ?? false || result }`로 돌려 **모든**
-//     구독자를 호출한다 — true를 반환해도 전파가 멈추지 않는다.
-//   - didFinishLaunching은 `forEach`로 **같은** launchOptions를 모든 구독자에게 넘기고
-//     반환값을 버린다.
-// 즉 여기서 무엇을 반환하든 RN Linking은 URL을 그대로 받는다.
+// iOS 콜드 스타트에서 launchOptions의 URL은 willFinishLaunching이 본다. 이 콜백은
+// AppDelegate가 launchOptions를 소독하기 전이고, ExpoAppDelegate가 구독자에게 원본을 넘긴다.
+// didFinishLaunching 소독은 구독자가 돌려준 값으로 dictionary를 고치지 않는다
+// (SubscriberManager가 반환값을 버린다). 그래서 인박스 적재는 여기서 하고, JS로 가는 사본을
+// 지우는 일은 AppDelegate 플러그인이 한다.
 //
-// 그래서 실제 차단은 AppDelegate에서 한다(plugins/withFleetIos.ts가 주입): super로 넘기기
-// 전에 launchOptions에서 fleet:// URL을 제거하므로 React 호스트와 이후 구독자는 소독된
-// 사본만 본다. 이 구독자는 그 소독보다 **먼저** 도는 willFinishLaunching에서 원본을 받아
-// 인박스에 넣는다 — 콜드 스타트에서 우리가 URL을 보는 유일한 지점이다.
+// iOS 웜 스타트에서 application:openURL은 이 구독자까지 도달한다. ExpoAppDelegate는
+// SubscriberManager의 Bool을 그대로 반환하고, 템플릿의 `super || RCTLinkingManager`는 super가
+// true면 RCTLinkingManager를 호출하지 않는다. 그 단락 평가에 기대지 않는다. 플러그인이
+// scheme==fleet이면 RCTLinkingManager를 건너뛰는 가드를 따로 넣는다. 이 메서드가 true를
+// 반환해도 SubscriberManager는 다른 구독자를 계속 호출한다.
+//
+// UIScene을 채택하면 같은 URL이 connectionOptions.urlContexts / scene:openURLContexts로만
+// 올 수 있다. 앱 타깃은 이 모듈을 import하지 못하므로 SceneDelegate가
+// fleet.mobile.link-url 통지를 보내고, 여기서 인박스로 넣는다. UIKit이 애플리케이션 경로와
+// 씬 경로에 같은 크리덴셜을 둘 다 주면 1회용 토큰이 두 번 join된다. 같은 문자열의 재전달은
+// 짧게 접는다.
 public final class FleetLinkAppDelegateSubscriber: ExpoAppDelegateSubscriber {
+  private static let sceneURLNotification = Notification.Name("fleet.mobile.link-url")
+  private static let duplicateWindow: CFAbsoluteTime = 2
+  private var lastDeliveredRaw: String?
+  private var lastDeliveredAt: CFAbsoluteTime = 0
+
+  public func subscriberDidRegister() {
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(receiveSceneLink(_:)),
+      name: Self.sceneURLNotification,
+      object: nil
+    )
+  }
+
+  @objc private func receiveSceneLink(_ notification: Notification) {
+    guard let raw = notification.object as? String else { return }
+    deliver(raw)
+  }
+
   // 콜드 스타트. AppDelegate가 launchOptions를 소독하기 전에 도는 단계라 원본이 들어온다.
   public func application(
     _ application: UIApplication,
     willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
-    if let url = launchOptions?[.url] as? URL, FleetLinkInbox.isCandidate(url.absoluteString) {
-      FleetLinkInbox.offer(url.absoluteString)
+    if let url = launchOptions?[.url] as? URL {
+      deliver(url.absoluteString)
     }
     return false
   }
 
-  // 실행 중 열림. AppDelegate가 fleet:// URL을 super로 넘기지 않으므로 RN Linking에는
-  // 도달하지 않는다. 여기 반환값은 전파를 막지 못하며(위 참조), 이 앱이 그 URL을 처리했다는
-  // 사실만 iOS에 알린다.
+  // 실행 중 열림. super는 항상 호출되고, fleet 스킴을 RCTLinkingManager로 넘기지 않는 가드는
+  // AppDelegate에 있다. true는 "이 앱이 처리했다"는 뜻일 뿐 다른 구독자를 멈추지 않는다.
   public func application(
     _ app: UIApplication,
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    let raw = url.absoluteString
-    guard FleetLinkInbox.isCandidate(raw) else { return false }
-    FleetLinkInbox.offer(raw)
+    guard url.scheme == "fleet" else { return false }
+    deliver(url.absoluteString)
     return true
+  }
+
+  private func deliver(_ raw: String) {
+    let now = CFAbsoluteTimeGetCurrent()
+    if lastDeliveredRaw == raw, now - lastDeliveredAt < Self.duplicateWindow {
+      return
+    }
+    lastDeliveredRaw = raw
+    lastDeliveredAt = now
+    FleetLinkInbox.offer(raw)
   }
 }

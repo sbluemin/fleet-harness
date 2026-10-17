@@ -116,16 +116,32 @@ jobs:
           const fs = require('node:fs');
           const file = process.argv[2];
           const source = fs.readFileSync(file, 'utf8');
+          const path = require('node:path');
           const marker = source.indexOf('var fleetSanitizedLaunchOptions = launchOptions');
           const strip = source.indexOf('fleetSanitizedLaunchOptions?.removeValue(forKey: .url)');
-          const start = source.indexOf('factory.startReactNative');
-          const startOptions = source.indexOf('launchOptions: fleetSanitizedLaunchOptions', start);
-          const superOptions = source.indexOf('didFinishLaunchingWithOptions: fleetSanitizedLaunchOptions', startOptions);
-          const originalStartOptions = source.indexOf('launchOptions: launchOptions', start);
-          if (marker < 0 || strip < marker || start < strip || startOptions < start || superOptions < startOptions ||
-              (originalStartOptions >= start && originalStartOptions < superOptions)) {
-            console.error(`::error::${file} does not sanitize the fleet:// launch URL before React Native and super`);
-            console.error(source.split('\n').slice(0, 80).join('\n'));
+          const store = source.indexOf('self.fleetSanitizedLaunchOptions = fleetSanitizedLaunchOptions', strip);
+          const superOptions = source.indexOf('didFinishLaunchingWithOptions: fleetSanitizedLaunchOptions', store);
+          const start = source.indexOf('factory.startReactNative', superOptions);
+          const startOptions = source.indexOf('launchOptions: appDelegate.fleetSanitizedLaunchOptions', start);
+          const contexts = source.indexOf('connectionOptions.urlContexts');
+          const reattach = source.indexOf('window.windowScene = windowScene');
+          const key = source.indexOf('window.makeKeyAndVisible()');
+          const started = source.indexOf('appDelegate.fleetReactNativeStarted = true');
+          const plist = fs.readFileSync(path.join(path.dirname(file), 'Info.plist'), 'utf8');
+          const fleetBranches = [...source.matchAll(/if url\.scheme == "fleet" \{([\s\S]*?)\n\s*\}/g)];
+          const linkingCalls = [...source.matchAll(/RCTLinkingManager\.application\([^)]*open:/g)].length;
+          const reconnect = source.indexOf('if appDelegate.fleetReactNativeStarted');
+          const sceneOk = source.includes('class SceneDelegate:') && source.includes('UIWindow(windowScene:') &&
+            !source.includes('UIWindow(frame:') && contexts >= 0 && contexts < reconnect &&
+            reattach > reconnect && key > reattach && started > key && started < start &&
+            !source.slice(reconnect, started).includes('startReactNative') &&
+            plist.includes('UIApplicationSceneManifest') && plist.includes('.SceneDelegate') &&
+            linkingCalls === 2 && fleetBranches.length === 2 &&
+            fleetBranches.every((branch) => !branch[1].includes('RCTLinkingManager'));
+          if (marker < 0 || strip < marker || store < strip || superOptions < store || start < superOptions ||
+              startOptions < start || !sceneOk) {
+            console.error(`::error::${file} does not keep the fleet:// credential out of React Native on the scene path`);
+            console.error(source.split('\n').slice(0, 120).join('\n'));
             process.exit(1);
           }
           console.log(`${file}: pairing credential is stripped before React Native`);
