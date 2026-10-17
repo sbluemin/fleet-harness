@@ -96,6 +96,8 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   them waits on you then. They wait with review, and you judge them all at
   once: complete with followups picks the ones to open, followup_discard
   drops the rest, and hand_to_person gives that judgment to the person.
+  A follow-up opened with complete is operated by the person, and comes to you
+  only when they hand it over.
 - A criteria proposal is the Commander's. You approve it, or reject it and
   say why when you ask for another plan.
 - Some waiting items are the person's to decide. Which ones is your judgment,

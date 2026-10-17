@@ -593,8 +593,8 @@ export interface StoredObjective {
   readonly commencedBy?: ObjectiveActor;
   /**
    * 정해 둔 운영 주체 — true 면 Theater 의 사령관이 운영하고, false 면 사람이 운영한다. 바꾸는 것은 사람뿐이고(`objective/operator`),
-   * 사령관이 고른 후속은 태어날 때 true 로 적힌다. 없으면 사령관이 만든 목표만 사령관이 운영한다(`board-state.ts` `objectiveOperator`).
-   * 옛 레코드는 고쳐 쓰지 않는다.
+   * 사령관이 고른 후속은 태어날 때 false 로 적힌다(원본이 영구 삭제되면 대체 판정을 못 읽으므로 생략하지 않는다). 필드가 없으면
+   * 옛 레코드만 사령관이 만든 목표를 사령관이 운영한다(`board-state.ts` `objectiveOperator`). 옛 레코드는 고쳐 쓰지 않는다.
    */
   readonly commodoreOperated?: boolean;
   /**

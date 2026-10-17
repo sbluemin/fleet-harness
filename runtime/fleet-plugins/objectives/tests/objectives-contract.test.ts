@@ -2366,7 +2366,9 @@ describe("Objectives contract", () => {
     });
     expect((await board({ action: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
     expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
-    // 사령관이 고른 후속은 따로 정하지 않아도 사령관이 운영한다(깨움과 같은 판정).
+    // 사령관이 고른 후속은 따로 정하지 않아도 사람이 운영한다. 사람이 맡기면 사령관 운영이 된다(깨움과 같은 판정).
+    expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "human" }));
+    expect((await route("objective/operator", { objectiveId: nextId, commodore: true })).status).toBe(200);
     expect((await board({ action: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"], operator: "commodore" }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
     expect(store.find(nextId)!.commander.viewMode).toBe("chat");
