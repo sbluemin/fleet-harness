@@ -346,6 +346,8 @@
 :root[data-view-mode="mobile"] .objectives-att-view-meta { font-family: var(--m-sans); font-size: var(--m-fs-small); color: var(--m-text-muted); }
 :root[data-view-mode="mobile"] .objectives-att-view-meta b { color: var(--m-text-nav); }
 /* 텍스트 보기 — 설명을 머리 줄로 올리고(order) 본문이 남은 높이를 다 쓴다. */
+:root[data-view-mode="mobile"] .objectives-result-resize { display: none; }
+:root[data-view-mode="mobile"] .objectives-result-textview.is-sized { position: static; }
 :root[data-view-mode="mobile"] .objectives-result-textview { grid-template-rows: auto minmax(0, 1fr); gap: 0; align-content: stretch; padding: env(safe-area-inset-top, 0px) 0 0; background: var(--m-bg); color: var(--m-text); }
 :root[data-view-mode="mobile"] .objectives-result-textview figcaption { order: -1; display: flex; align-items: center; justify-content: flex-start; box-sizing: border-box; width: 100%; max-width: none; min-height: 60px; max-height: none; padding: 8px 64px 8px 16px; border-bottom: 1px solid var(--m-hairline); font-size: var(--m-fs-caption); line-height: 1.4; color: var(--m-text-muted); text-align: left; overflow: hidden; }
 :root[data-view-mode="mobile"] .objectives-result-markdown.markdown-body { max-height: none; height: 100%; padding: 16px 16px calc(env(safe-area-inset-bottom, 0px) + 24px); border-radius: 0; background: var(--m-bg); color: var(--m-text); font-size: var(--m-fs-secondary); line-height: 1.6; overscroll-behavior: contain; }

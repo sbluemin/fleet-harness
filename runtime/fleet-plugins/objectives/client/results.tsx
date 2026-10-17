@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { renderMarkdown } from "@fleet-console/markdown/core";
@@ -264,6 +264,23 @@ function fencedJson(text: string): string {
   return `${fence}json\n${text}\n${fence}`;
 }
 
+type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+type ResizeRect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+const RESIZE_DIRS: readonly ResizeDir[] = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
+/** 리사이즈 한계 — 최소 360×160, 화면 가장자리에서 12px 안(폭 ≤ 100vw − 24, 높이 ≤ 100dvh − 24). */
+const RESIZE_MIN_W = 360;
+const RESIZE_MIN_H = 160;
+const RESIZE_GAP = 12;
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), Math.max(min, max));
+/** 뷰포트가 줄면 크기를 먼저 줄이고 위치를 화면 안으로 되돌린다. */
+function fitRect(rect: ResizeRect, vw: number, vh: number): ResizeRect {
+  const w = Math.min(clamp(rect.w, RESIZE_MIN_W, vw - RESIZE_GAP * 2), vw);
+  const h = Math.min(clamp(rect.h, RESIZE_MIN_H, vh - RESIZE_GAP * 2), vh);
+  const x = Math.max(0, clamp(rect.x, RESIZE_GAP, vw - RESIZE_GAP - w));
+  const y = Math.max(0, clamp(rect.y, RESIZE_GAP, vh - RESIZE_GAP - h));
+  return rect.x === x && rect.y === y && rect.w === w && rect.h === h ? rect : { x, y, w, h };
+}
+
 function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; readonly src: string; readonly name: string; readonly caption: string; readonly onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -333,6 +350,55 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
+  // 크기는 이 보기를 연 동안만 산다 — 다시 열면 내용 폭(fit-content)으로 연다. 끌지 않은 반대쪽 변은 제자리에 둔다.
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  const figureRef = useRef<HTMLElement | null>(null);
+  const [rect, setRect] = useState<ResizeRect | null>(null);
+  const [resizing, setResizing] = useState(false);
+  const sized = rect !== null;
+  useEffect(() => {
+    if (!sized) return;
+    const onResize = () => {
+      const view = backdropRef.current;
+      if (view) setRect((current) => current && fitRect(current, view.clientWidth, view.clientHeight));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [sized]);
+  const onResizeStart = useCallback((event: ReactPointerEvent<HTMLSpanElement>, dir: ResizeDir) => {
+    const view = backdropRef.current;
+    const figure = figureRef.current;
+    if (event.button !== 0 || !view || !figure) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const origin = view.getBoundingClientRect();
+    const box = figure.getBoundingClientRect();
+    const start = { px: event.clientX, py: event.clientY, x: box.left - origin.left, y: box.top - origin.top, w: box.width, h: box.height };
+    setRect({ x: start.x, y: start.y, w: start.w, h: start.h });
+    setResizing(true);
+    const move = (ev: PointerEvent) => {
+      const vw = view.clientWidth, vh = view.clientHeight;
+      const dx = ev.clientX - start.px, dy = ev.clientY - start.py;
+      let { x, y, w, h } = start;
+      if (dir.includes("e")) w = clamp(start.w + dx, RESIZE_MIN_W, vw - RESIZE_GAP - start.x);
+      if (dir.includes("w")) { x = clamp(start.x + dx, RESIZE_GAP, start.x + start.w - RESIZE_MIN_W); w = start.x + start.w - x; }
+      if (dir.includes("s")) h = clamp(start.h + dy, RESIZE_MIN_H, vh - RESIZE_GAP - start.y);
+      if (dir.includes("n")) { y = clamp(start.y + dy, RESIZE_GAP, start.y + start.h - RESIZE_MIN_H); h = start.y + start.h - y; }
+      setRect(fitRect({ x, y, w, h }, vw, vh));
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      handle.removeEventListener("lostpointercapture", end);
+      setResizing(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+    handle.addEventListener("lostpointercapture", end);
+  }, []);
   const onCopy = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
     const code = button?.closest("pre")?.getAttribute("data-code");
@@ -344,8 +410,9 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
     }, () => undefined);
   }, [t]);
   return (
-    <div className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <figure className="objectives-att-view objectives-result-textview" role="dialog" aria-modal="true" aria-label={caption}>
+    <div ref={backdropRef} className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <figure ref={figureRef} className={`objectives-att-view objectives-result-textview${rect ? " is-sized" : ""}${resizing ? " is-resizing" : ""}`} role="dialog" aria-modal="true" aria-label={caption} style={rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined}>
+        {RESIZE_DIRS.map((dir) => <span key={dir} className={`objectives-result-resize is-${dir}`} aria-hidden="true" onPointerDown={(event) => onResizeStart(event, dir)} />)}
         <button ref={closeRef} type="button" className="objectives-att-view-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         {loaded === null ? <div className="objectives-result-textstate" role="status">{t("objectives.results.loading")}</div>
           : "error" in loaded ? <div className="objectives-result-textstate is-error" role="alert">{t("objectives.results.loadFailed", { code: loaded.error })}</div>
