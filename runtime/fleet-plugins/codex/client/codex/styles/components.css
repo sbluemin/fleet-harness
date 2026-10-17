@@ -2510,33 +2510,40 @@ button.chip:focus-visible {
 /* 좁은 레일(분할 배치의 최소 폭)에서는 칩을 다음 줄로 넘긴다 — 한 줄 nowrap이면 행이
    navigator 폭을 넘고, 헬스 래퍼가 flex-shrink로 눌려 내부 칩 문구를 가렸다.
    넓은 폭에서는 모두 한 줄에 들어가 줄바꿈이 일어나지 않는다. */
+/* Quiet Line — 내비게이터의 바로가기·상태·정렬은 상자 없는 글자 단추다. 면·테두리·brass 틴트를 겹치지 않고, 줄 하나(헤어라인)가
+   구역을 나눈다. brass는 초점에만 남는다. */
 .codex-nav-quick-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--surface-rim);
 }
 
 .codex-nav-quick {
   display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
+  align-items: baseline;
+  gap: 6px;
   white-space: nowrap;
-  padding: var(--space-1) var(--space-2);
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
+  padding: 2px 0;
+  background: none;
+  border: 0;
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   cursor: pointer;
-  transition: background var(--duration-base) var(--ease-spring);
+  transition: color var(--duration-base) var(--ease-spring);
 }
 
 .codex-nav-quick:hover {
-  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
   color: var(--text-primary);
+}
+
+.codex-nav-quick:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* display 지정이 UA의 [hidden]을 이겨 "0" 배지가 새어 나온다 — 명시적으로 닫는다. */
@@ -2544,39 +2551,22 @@ button.chip:focus-visible {
   display: none;
 }
 
+/* 개수는 면 없는 숫자다 — 이름 옆에 한 단계 밝은 잉크로 선다. */
 .codex-nav-quick .badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--space-1);
-  background: color-mix(in oklch, var(--brass) 20%, transparent);
-  border-radius: 8px;
-  color: var(--brass-bright);
-  font-size: var(--t-2xs);
+  display: inline;
+  padding: 0;
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 /* 새로 도착한 대기는 상태 채널이 말한다 — brass는 위치·포커스 전용이므로 도착을 칠할 수 없다.
-   숫자가 늘어난 순간에만 켜지고, 대기열이 비면 꺼진다. */
+   숫자가 늘어난 순간에만 숫자 잉크가 aurora로 서고, 대기열이 비면 꺼진다. */
 .codex-nav-quick .badge[data-arrived="true"] {
-  background: color-mix(in oklch, var(--aurora) 24%, transparent);
   color: var(--aurora);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 42%, transparent);
-  animation: codex-badge-arrive var(--duration-slow) var(--ease-spring);
-}
-
-@keyframes codex-badge-arrive {
-  from { box-shadow: 0 0 0 5px color-mix(in oklch, var(--aurora) 22%, transparent); }
-  to { box-shadow: 0 0 0 1px color-mix(in oklch, var(--aurora) 42%, transparent); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .codex-nav-quick .badge[data-arrived="true"] {
-    animation: none;
-  }
 }
 
 /* 헬스는 quick-row에 사는 응축 칩이다 — 문장형 스트립은 좁은 폭에서 잘렸다(F6). */
@@ -2592,11 +2582,11 @@ button.chip:focus-visible {
 .codex-nav-health-chip {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  gap: 6px;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
   color: var(--text-tertiary);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
@@ -2613,12 +2603,11 @@ button.chip:focus-visible {
 .codex-nav-health-chip:focus-visible,
 .codex-nav-health-chip[aria-expanded="true"] {
   color: var(--text-secondary);
-  background: color-mix(in oklab, var(--brass) 8%, var(--surface-glass));
 }
 
 .codex-nav-health-chip:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: 1px;
+  outline: 1px solid var(--brass);
+  outline-offset: 2px;
 }
 
 .codex-nav-health[hidden] {
@@ -2715,15 +2704,12 @@ button.chip:focus-visible {
   white-space: nowrap;
 }
 
+/* 정렬은 글자 둘이다 — 고른 쪽만 밝은 잉크와 밑줄 한 줄로 선다(버튼형 상자·brass 틴트 없음). */
 .codex-nav-sort {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-  background: var(--surface-glass);
+  gap: var(--space-2);
 }
 
 .codex-nav-sort button,
@@ -2738,28 +2724,40 @@ button.chip:focus-visible {
 }
 
 .codex-nav-sort button {
-  padding: 3px 5px;
+  padding: 1px 0;
+  border-radius: 0;
+  border-bottom: 1px solid transparent;
 }
 
-.codex-nav-sort button:hover,
+.codex-nav-sort button:hover {
+  color: var(--text-secondary);
+}
+
 .codex-nav-sort button[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--brass-bright);
+  color: var(--text-primary);
+  border-bottom-color: var(--text-secondary);
+}
+
+.codex-nav-sort button:focus-visible,
+.codex-nav-active-filter:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 2px;
 }
 
 .codex-nav-active-filter {
   min-width: 0;
   max-width: 10ch;
-  padding: 2px var(--space-1);
+  padding: 1px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
-  color: var(--brass-bright);
+  border-radius: 0;
+  border-bottom: 1px solid var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .codex-nav-active-filter:hover {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  color: var(--text-secondary);
 }
 
 .codex-nav-list:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
