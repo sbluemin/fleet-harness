@@ -898,68 +898,23 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-chat-report-tag:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
 .group-chat-report-detail { max-width: min(680px, 100%); margin-top: 0; font-size: var(--t-sm); }
 
-/* 대화 머리의 「턴 접기」 스위치 — pill 옆에 따로 선 한 겹 캡슐(옆 도구 묶음과 같은 면·테두리·높이). 켬/끔 모양은 콘솔 스위치의
-   조용한 슬롯(--quiet-switch-*)을 작게 쓴다. 머리 줄이 좁으면(컨테이너 conversation-pill-row) 라벨을 접고 트랙만 남긴다 —
-   이름은 aria-label·title 이 그대로 진다. */
-.group-chat-fold-toggle {
+/* 대화 머리의 「턴 접기」 — pill 옆에 따로 선 캡슐. 면·테두리·여백은 옆 동작 묶음(.conversation-pill-actions)과 같고,
+   안의 칸은 캡션 동작(24px)이라 캡슐 높이가 30px로 맞는다. 켬/끔·겨눔·고대비는 그 칸의 기존 규칙이 지고, 캡슐 테두리는 바꾸지 않는다. */
+.group-chat-fold-capsule {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  height: 38px;
-  padding: 0 12px 0 9px;
+  padding: 2px 3px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--conversation-surface, var(--surface-glass)) 88%, transparent);
   backdrop-filter: blur(14px);
-  font: inherit;
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.group-chat-fold-toggle:hover,
-.group-chat-fold-toggle:focus-visible { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim)); color: var(--text-primary); outline: none; }
-@container conversation-pill-row (max-width: 520px) {
-  .group-chat-fold-toggle { padding: 0 9px; }
-  .group-chat-fold-label { display: none; }
-}
-.group-chat-fold-toggle[aria-checked="true"] { color: var(--text-primary); }
-.group-chat-fold-track {
-  position: relative;
-  flex: none;
-  width: 26px;
-  height: 16px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
-  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
-}
-.group-chat-fold-track::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-  transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
-}
-.group-chat-fold-toggle[aria-checked="true"] .group-chat-fold-track { background: var(--quiet-switch-track); border-color: var(--quiet-switch-rim); }
-.group-chat-fold-toggle[aria-checked="true"] .group-chat-fold-track::after { transform: translateX(10px); background: var(--quiet-switch-knob); }
 
 @media (prefers-reduced-motion: reduce) {
   .group-chat-notes-chip,
-  .group-chat-report-tag,
-  .group-chat-fold-toggle,
-  .group-chat-fold-track,
-  .group-chat-fold-track::after { transition: none; }
+  .group-chat-report-tag { transition: none; }
   .group-chat-notes-chip.is-live .group-chat-notes-count::before { animation: none; }
-}
-@media (forced-colors: active) {
-  .group-chat-fold-toggle[aria-checked="true"] .group-chat-fold-track { background: Highlight; }
 }
 
 /* 보관된 지휘관 자리에서도 넘김은 입력창 바로 위에 선다. */
