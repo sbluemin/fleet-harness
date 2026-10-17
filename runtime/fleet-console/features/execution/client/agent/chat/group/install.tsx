@@ -1,3 +1,4 @@
+import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { ConversationParticipant, ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -143,20 +144,50 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 스위치 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+/** 대화 머리의 「턴 접기」 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
   if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
   return <GroupFoldToggle language={context.language} />;
 }
 
+/**
+ * 접기 글리프 — 가운데 가로선과, 위아래에서 그 선을 향한 꺾쇠. 캡션 글리프와 같은 16px 격자·1.35 획이다.
+ * 켬/끔은 이 모양이 아니라 칸의 aria-pressed(워시 + 황동)가 말한다.
+ */
+function GroupFoldGlyph() {
+  const stroke = { fill: "none", stroke: "currentColor", strokeWidth: 1.35, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path d="M3.2 8h9.6" {...stroke} />
+      <path d="M5.7 2.9 8 5.1l2.3-2.2" {...stroke} />
+      <path d="M5.7 13.1 8 10.9l2.3 2.2" {...stroke} />
+    </svg>
+  );
+}
+
+/**
+ * pill 옆의 글리프 캡슐 하나. 칸은 이웃 캡션 동작과 같은 클래스라 켬(워시 + 황동)·겨눔·고대비를 그대로 받는다.
+ * 접근 이름은 「턴 접기」로 고정하고 상태는 aria-pressed가 전한다. 말풍선만 누르면 일어날 일을 말한다.
+ * CaptionActionButton은 접근 이름과 말풍선을 한 문자열로 묶어, 이 둘을 가를 수 없다.
+ */
 function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
   const t = getGroupT(language);
   const folded = useFoldTurns();
   return (
-    <button type="button" role="switch" aria-checked={folded} aria-label={t("group.fold.toggle")} className="group-chat-fold-toggle" title={t("group.fold.hint")} onClick={() => setFoldTurns(!folded)}>
-      <span className="group-chat-fold-track" aria-hidden="true" />
-      <span className="group-chat-fold-label" aria-hidden="true">{t("group.fold.toggle")}</span>
-    </button>
+    <span className="group-chat-fold-capsule">
+      <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
+        <button
+          type="button"
+          className="fleet-caption-action"
+          aria-pressed={folded}
+          aria-label={t("group.fold.toggle")}
+          onPointerDown={(event) => { event.stopPropagation(); }}
+          onClick={() => setFoldTurns(!folded)}
+        >
+          <GroupFoldGlyph />
+        </button>
+      </CaptionTipHost>
+    </span>
   );
 }
 
