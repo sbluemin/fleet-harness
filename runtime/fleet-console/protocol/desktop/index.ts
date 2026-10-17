@@ -264,7 +264,7 @@ export const DESKTOP_SCREEN_PERMISSION_PATH = "/api/v1/desktop/screen-permission
  * 화면 기록 사유를 쓰는 Desktop 메인 프로세스의 User-Agent.
  * 렌더러는 이 헤더를 바꾸지 못하므로 페이지가 사유를 지어낼 수 없다. 비밀이 아니다.
  */
-export const DESKTOP_SCREEN_PERMISSION_REPORT_AGENT = "fleet-desktop-screen-permission";
+export const DESKTOP_SCREEN_PERMISSION_REPORT_AGENT = "FleetShell-ScreenPermission";
 export const DESKTOP_SCREEN_PERMISSION_REASONS = ["screen_recording_permission_required"] as const;
 export type DesktopScreenPermissionReason = (typeof DESKTOP_SCREEN_PERMISSION_REASONS)[number];
 export interface DesktopScreenPermissionSnapshot {
