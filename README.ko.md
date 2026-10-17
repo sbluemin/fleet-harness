@@ -47,7 +47,7 @@ fleet console
 
 ## 런치 메뉴 하나 뒤의 모든 프런티어 모델
 
-<img src=".github/console-launch-menu.webp" alt="런치 메뉴: Claude의 Fable, Opus, Sonnet 아래로 Codex GPT-6.1-Sol, xAI Grok-4.7, Antigravity Gemini-3.1-Pro 등 켜 둔 게이트웨이 모델" width="300" align="right" />
+<img src=".github/console-launch-menu.webp" alt="런치 메뉴: Claude의 Fable, Opus, Sonnet 아래로 Codex GPT-6.1-Sol, xAI Grok-4.7 등 켜 둔 게이트웨이 모델" width="300" align="right" />
 
 런치 메뉴에는 Claude의 모델이 먼저 오고, 그 아래로 **Settings → AI Gateway**에서 켠 게이트웨이 모델이 이어집니다. Claude Code의 `/model` 선택기에도 같은 목록이 나옵니다.
 
@@ -58,7 +58,7 @@ fleet console
 | 공급자 | 로그인 | 모델 |
 |---|---|---|
 | **Codex** | ChatGPT 구독 | GPT-6.1 Sol, GPT-6 Astra · Sol · Luna, GPT-5.6 Terra. 각각 272K·524K·1M 컨텍스트, 그리고 각각의 Fast 쌍둥이 |
-| **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 3.1 Pro |
+| **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 4 Argon |
 | **xAI** | Grok 구독 | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
 | **Cursor** | Cursor 구독 | Grok 4.7 · Grok 4.7 Fast. 각각 256K·500K 컨텍스트 · Muse Spark 1.3 · Muse Wonder 1.0. 각각 300K·1M 컨텍스트 · Gemini 3.8 Flash · Gemini 4 Argon. 각각 200K·1M 컨텍스트 |
 | **Muse Code** | Muse Code 구독 | Muse Spark 1.3 · Muse Spark 1.3 Contributor |

@@ -61,15 +61,22 @@ export const ANTIGRAVITY_DAILY_API = "https://daily-cloudcode-pa.googleapis.com"
 export const ANTIGRAVITY_PROD_API = "https://cloudcode-pa.googleapis.com";
 
 /**
- * The IDE fingerprint Cloud Code Assist expects on every call.
+ * The client fingerprint Cloud Code Assist expects on every call.
  *
  * The platform triple is this host's, not a pinned `windows/amd64`: the header is
  * a client identity, and claiming a platform the process is not running on is a
- * lie the wire has no reason to need. Observed accepted from darwin/arm64 on
- * 2026-08-22 against `streamGenerateContent`, `loadCodeAssist`, and
- * `retrieveUserQuotaSummary`.
+ * lie the wire has no reason to need. The identity itself tracks the vendor CLI:
+ * measured 2026-10-18, the backend serves Gemini 4 Argon only to the CLI
+ * identity — the previous `antigravity/ide/2.5.5` identity answered Gemini 3.8
+ * Flash but returned `404 NOT_FOUND` for every Argon rung, while the CLI
+ * identity observed from agy 1.4.1 local traffic answered Argon and listed it
+ * in `fetchAvailableModels` with a 1,048,576-token window and
+ * `defaultAgentModelId gemini-4-argon-medium`. The `cl` build id is quoted from
+ * that same observation; re-measure it when the pinned CLI version moves on,
+ * because a stale identity is exactly how the previous one lost Argon.
  */
-export const ANTIGRAVITY_IDE_VERSION = "2.5.5";
+export const ANTIGRAVITY_CLI_VERSION = "1.4.1";
+export const ANTIGRAVITY_CLI_BUILD_ID = "1001498785";
 
 const ARCH_LABELS: Readonly<Record<string, string>> = Object.freeze({
   x64: "amd64",
@@ -83,7 +90,7 @@ export function antigravityUserAgent(
 ): string {
   const osType = platform === "win32" ? "windows" : platform;
   const archLabel = ARCH_LABELS[arch] ?? arch;
-  return `antigravity/ide/${ANTIGRAVITY_IDE_VERSION} (os_type=${osType}; arch=${archLabel}; aidev_client; auth_method=oauth)`;
+  return `antigravity/cli/${ANTIGRAVITY_CLI_VERSION} (aidev_client; os_type=${osType}; arch=${archLabel}; cl=${ANTIGRAVITY_CLI_BUILD_ID}; auth_method=oauth)`;
 }
 
 /** Same 60-second early-refresh window OpenUsage and the Antigravity CLI use. */
