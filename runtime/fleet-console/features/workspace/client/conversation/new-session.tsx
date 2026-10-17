@@ -12,6 +12,7 @@ import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunc
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 import { TheaterAvatar } from "../theater-avatar.js";
 import { registerTheaterFromPath } from "../theater.js";
+import { NewSessionPlayground } from "./new-session-playground.js";
 import { NewSessionLaunchSlot, type NewSessionLaunchChoice } from "./new-session-launch-slot.js";
 import { resolveNewSessionTheaterId } from "./new-session-entry.js";
 import "./new-session.css";
@@ -159,6 +160,7 @@ export function NewSessionColumn({ state, target, tools }: {
         {tools}
       </div>
       <div className="new-session-body">
+        <NewSessionPlayground state={state} theaterId={theater?.id ?? null} />
         <div className="new-session-cards">
           <section className="new-session-section" aria-labelledby="new-session-where">
             <h2 className="new-session-heading" id="new-session-where">{t("conversation.newSession.where")}</h2>

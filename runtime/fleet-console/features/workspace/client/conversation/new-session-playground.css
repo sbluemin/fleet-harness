@@ -1,0 +1,155 @@
+/* ── 몽글 놀이터 (새 세션 화면 배경 층) ─────────────────────────────────────────
+   「어디서」 카드 아래 바닥선에 산책로와 놀이기구(그네·시소·모래밭·미끄럼틀)를 두는 배경 층이다(목표 b4f89230 승인안 A+C).
+   클릭·포커스를 받지 않고(pointer-events: none, aria-hidden) 카드는 층 위에 선다. 기구 선은 중립 잉크 한 가지다 — 기구는 상태도
+   정체성도 아니므로 신호·brass·정체성 톤을 쓰지 않는다. 반복 동작은 --state-motion 으로 숨은 창·inert·OS 움직임 줄이기에서 멈추고,
+   「아바타 차분하게」와 움직임 줄이기에서는 스케줄러가 정지 장면(.is-still)을 세운다. */
+
+.new-session-body:has(> .new-session-playground) {
+  position: relative;
+  isolation: isolate;
+}
+.new-session-body:has(> .new-session-playground) > .new-session-cards {
+  position: relative;
+  z-index: 1;
+}
+
+.new-session-playground {
+  --pg-ink: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pg-band {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  transform-origin: 0 100%;
+}
+
+/* 기구 — 바닥선(top)에 아랫변을 맞춘다. */
+.pg-item { position: absolute; }
+.pg-prop { position: absolute; left: 0; bottom: 0; overflow: visible; }
+.pg-line { fill: none; stroke: var(--pg-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pg-line.is-thin { stroke-width: 1.3; }
+.pg-dot { fill: var(--pg-ink); }
+
+.pg-item.is-swing { width: 116px; height: 0; }
+.pg-swing-arm {
+  position: absolute;
+  left: 32px;
+  top: -134px;
+  width: 52px;
+  height: 112px;
+  transform-origin: 50% 0;
+}
+.pg-swing-arm .pg-prop { top: 0; bottom: auto; }
+
+.pg-item.is-seesaw { width: 200px; height: 0; }
+.pg-plank {
+  position: absolute;
+  left: 0;
+  top: -31px;
+  width: 200px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--pg-ink);
+  transform-origin: 50% 50%;
+}
+.pg-plank.is-tilted { transform: rotate(-11deg); }
+
+.pg-item.is-sand { width: 176px; height: 0; }
+/* 앞 테두리는 몽글이보다 앞에 선다 — 앉은 몽글이가 모래에 반쯤 잠긴다. */
+.pg-item.is-sand-lip { width: 176px; height: 0; z-index: 2; }
+.pg-item.is-slide { width: 176px; height: 0; }
+
+/* 배우 — 위치는 바깥 div 의 transform 전이(합성기), 탈것 회전은 안쪽 .pg-ride 가 기구 축(--pg-ox/--pg-oy)을 기준으로 돈다. */
+.pg-actor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 48px;
+  height: 48px;
+  will-change: transform;
+}
+.pg-ride,
+.pg-gait { width: 100%; height: 100%; }
+.pg-ride { position: relative; z-index: 1; transform-origin: var(--pg-ox, 50%) var(--pg-oy, 100%); }
+.pg-shadow {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: -3px;
+  height: 5px;
+  border-radius: 50%;
+  /* 깊이만 전하는 무채색 그림자 — 디자인 계약의 허용 예외(near-achromatic shadow). */
+  background: oklch(0% 0 0 / 16%);
+}
+
+/* 걷기: 몸 출렁임 위에 작은 폴짝. 방향은 눈동자가 말한다 — 몸을 뒤집지 않는다(사령관 별은 왼쪽 위 고정). */
+.pg-gait.is-walking {
+  transform-origin: 50% 100%;
+  animation: pg-hop 0.56s ease-in-out infinite; animation-name: var(--state-motion, pg-hop);
+}
+.pg-actor.is-look-left .mongle-avatar-eyes { translate: -1.2px 0; }
+.pg-actor.is-look-right .mongle-avatar-eyes { translate: 1.2px 0; }
+
+.pg-ride.is-tilted { transform: rotate(-11deg); }
+.pg-ride.is-swinging,
+.pg-swing-arm.is-swinging {
+  animation: pg-swing 3s infinite; animation-name: var(--state-motion, pg-swing);
+}
+.pg-ride.is-rocking,
+.pg-plank.is-rocking {
+  animation: pg-seesaw 3.6s ease-in-out infinite; animation-name: var(--state-motion, pg-seesaw);
+}
+/* 미끄럼틀 한 번 — 사다리를 오르고 위에서 잠깐 쉰 뒤 내려온다. 끝 좌표(142px)는 스케줄러가 몸을 옮기는 거리와 짝이다. */
+.pg-ride.is-sliding { animation: pg-slide 5.2s linear 1 forwards; }
+
+/* 얼음 — 입력하는 동안 모두 그 자리에서 멈추고, 아래 입력창 쪽을 본다. */
+.new-session-playground.is-frozen,
+.new-session-playground.is-frozen * { animation-play-state: paused !important; }
+.new-session-playground.is-watching .mongle-avatar-eyes { translate: 0 1.3px; }
+
+/* 정지 장면 — 「아바타 차분하게」·움직임 줄이기. 기구는 쉬는 자세로, 몽글이는 소품 포즈로 선다. */
+.new-session-playground.is-still *,
+:root[data-avatar-motion="calm"] .new-session-playground * {
+  animation: none !important;
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .new-session-playground * { animation: none !important; transition: none !important; }
+}
+
+@keyframes pg-hop {
+  0%, 100% { transform: translateY(0) scale(1.04, 0.95); }
+  45% { transform: translateY(-5px) scale(0.97, 1.04); }
+}
+/* 가운데에서 가장 빠르고 끝에서 멈칫한다 — 0%=100%=가운데라 반복 경계에서 내려도 튀지 않는다. */
+@keyframes pg-swing {
+  0% { transform: rotate(0deg); animation-timing-function: ease-out; }
+  25% { transform: rotate(22deg); animation-timing-function: ease-in; }
+  50% { transform: rotate(0deg); animation-timing-function: ease-out; }
+  75% { transform: rotate(-22deg); animation-timing-function: ease-in; }
+  100% { transform: rotate(0deg); }
+}
+/* 0%=100%=왼쪽이 내려간 쉬는 자세 — 혼자 앉은 기울기(.is-tilted)에서 이어지고 같은 자세로 끝난다. */
+@keyframes pg-seesaw {
+  0%, 100% { transform: rotate(-11deg); }
+  50% { transform: rotate(11deg); }
+}
+@keyframes pg-slide {
+  0% { transform: translate(0, 0); animation-timing-function: ease-in-out; }
+  12% { transform: translate(2px, -28px); animation-timing-function: ease-in-out; }
+  24% { transform: translate(2px, -56px); animation-timing-function: ease-in-out; }
+  36% { transform: translate(2px, -84px); animation-timing-function: ease-in-out; }
+  44% { transform: translate(4px, -104px); animation-timing-function: ease-out; }
+  52%, 62% { transform: translate(30px, -104px); animation-timing-function: ease-in; }
+  70% { transform: translate(52px, -84px); animation-timing-function: linear; }
+  88% { transform: translate(122px, -10px); animation-timing-function: ease-out; }
+  100% { transform: translate(142px, 0); }
+}
