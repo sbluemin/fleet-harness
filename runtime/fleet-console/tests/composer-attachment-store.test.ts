@@ -27,12 +27,12 @@ describe("composer attachment expiry", () => {
     finish("token-1");
     await Promise.resolve();
     expect(store.ids()).toEqual(["token-1"]);
-    expect(store.noteSendFailure(new Error("attachment_not_found"))).toBe("expired");
+    expect(store.noteSendFailure(new Error("attachment_not_found"), ["token-1"])).toBe("expired");
     expect(store.read().items).toEqual([]);
     expect(store.read().notice).toEqual({ kind: "expired" });
     expect(discarded).toEqual([]);
     expect(revoke).toHaveBeenCalledWith("blob:pending");
     expect(draftText).toBe("keep this instruction");
-    expect(store.noteSendFailure(new Error("attachment_budget_exceeded"))).toBe("other");
+    expect(store.noteSendFailure(new Error("attachment_budget_exceeded"), [])).toBe("other");
   });
 });

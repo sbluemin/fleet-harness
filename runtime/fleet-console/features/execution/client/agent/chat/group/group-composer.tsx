@@ -386,7 +386,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         notice: describeSend(result, sentTo),
       });
     } catch (error) {
-      if (draft.attachments.noteSendFailure(error) === "expired") return;
+      if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       const code = error instanceof Error ? error.message : "";
       setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? ct("composer.attach.commodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
     } finally {

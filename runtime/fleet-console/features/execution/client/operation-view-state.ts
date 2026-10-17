@@ -82,7 +82,7 @@ function createComposerDraft(operationId: string) {
         });
         return true;
       } catch (error) {
-        if (attachments.noteSendFailure(error) !== "expired") update({ failed: true });
+        if (attachments.noteSendFailure(error, ids) !== "expired") update({ failed: true });
         return false;
       } finally {
         update({ sending: false });

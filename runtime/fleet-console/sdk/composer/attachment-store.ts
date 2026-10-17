@@ -85,10 +85,10 @@ export interface ComposerAttachments {
   /** 보낸 칩의 미리보기를 회수한다. `discard`면 서버 파일도 지운다(보내지 않고 초안을 버리는 길). */
   releaseSent(keys: readonly string[], discard?: boolean): void;
   /**
-   * 전송이 `attachment_not_found`로 거절되면 서버 id가 있는 칩을 걷는다.
-   * 서버가 이미 회수했으므로 discard는 부르지 않는다. 진행 중 칩과 초안 문면은 건드리지 않는다.
+   * 전송이 `attachment_not_found`로 거절되면 그 전송에 실린 칩(`submittedIds`)만 걷는다.
+   * 서버가 이미 회수했으므로 discard는 부르지 않는다. 전송 중 새로 붙은 칩, 진행 중 칩, 초안 문면은 건드리지 않는다.
    */
-  noteSendFailure(error: unknown): "expired" | "other";
+  noteSendFailure(error: unknown, submittedIds: readonly string[]): "expired" | "other";
   dispose(): void;
 }
 
@@ -267,9 +267,12 @@ export function createComposerAttachments(
         if (item.id !== null) discard(item.id);
       }
       if (expired) {
+        // 서버는 첫 누락에서 거절하므로 나머지 장은 아직 대기 중이다. 칩을 버리는 만큼 서버 파일도 거둔다
+        // (이미 회수된 장의 discard 실패는 삼킨다) — 남기면 TTL까지 대기 상한을 잡아먹는다.
         for (const item of slot) {
           if (!slotPreviews.has(item.previewUrl)) continue;
           revoke(item.previewUrl);
+          discard(item.id);
           slotPreviews.delete(item.previewUrl);
         }
         items = [];
@@ -309,10 +312,11 @@ export function createComposerAttachments(
       items = items.filter((item) => !keySet.has(item.key));
       emit();
     },
-    noteSendFailure: (error) => {
+    noteSendFailure: (error, submittedIds) => {
       if (!isComposerAttachmentExpired(error)) return "other";
-      const gone = items.filter((item) => item.id !== null);
-      items = items.filter((item) => item.id === null);
+      const submitted = new Set(submittedIds);
+      const gone = items.filter((item) => item.id !== null && submitted.has(item.id));
+      items = items.filter((item) => item.id === null || !submitted.has(item.id));
       for (const item of gone) revoke(item.previewUrl);
       notice = { kind: "expired" };
       emit();

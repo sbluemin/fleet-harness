@@ -893,7 +893,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     const ids = draft.attachments.ids();
     // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다. 만료만 칩을 걷는다.
     void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sentKeys, sent.textRevision, false)).catch((error) => {
-      if (draft.attachments.noteSendFailure(error) === "expired") return;
+      if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setBudgetNotice(ct("composer.attach.commodoreBudget"));
       else if (mounted.current) onFail(error);
     }).finally(() => {

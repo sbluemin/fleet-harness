@@ -1169,7 +1169,7 @@ export function QuickLaunch() {
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;
           setSubmitting(false);
-          if (attachmentStore.noteSendFailure(error) === "expired") return;
+          if (attachmentStore.noteSendFailure(error, deliveredAttachments.map((attachment) => attachment.id)) === "expired") return;
           setMentionErrorKey(quickLaunchMentionErrorMessageKey(error instanceof Error ? error.message : null));
         });
       return;

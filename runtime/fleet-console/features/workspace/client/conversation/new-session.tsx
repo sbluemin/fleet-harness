@@ -53,6 +53,9 @@ export function NewSessionColumn({ state, target, tools }: {
     upload: (file) => uploadLaunchAttachment(file),
     discard: (id) => discardLaunchAttachment(id),
   }), []);
+  // 시작하지 않고 칸을 닫으면(또는 프롬프트 없는 실행으로 넘어가면) 넘기지 않은 칩의 미리보기·서버 파일을 거둔다.
+  // dispose가 아니라 discardAll이다 — StrictMode의 재마운트가 같은 스토어를 다시 쓴다.
+  useEffect(() => () => attachmentStore.discardAll(), [attachmentStore]);
   const attachmentSnap = useComposerAttachmentSnapshot(attachmentStore);
   const attachmentInput = useComposerAttachmentInput(attachmentStore, {
     disabled: starting,
