@@ -241,7 +241,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     open: (entry) => { if (entry.objectiveId) revealObjective({ objectiveId: entry.objectiveId }); },
   }), [t]);
 
-  // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말·진행 칩이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 기록에 턴이
+  // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 기록에 턴이
   // 하나도 없으면 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다).
   const Transcript = commodoreTranscriptRenderer();
   const ledgerOpen = useCommodoreLedger(theaterId) && Transcript !== null;

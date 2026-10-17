@@ -470,7 +470,7 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
           ))}
           {ledger ? (
             <div className="group-chat-line-actions">
-              <button type="button" className="group-chat-link" data-ledger-speaker={speaker.kind} onClick={() => onOpenLedger!(ledger)}>{t("group.delegation.openLedger", { name: speaker.name })}</button>
+              <button type="button" className="group-chat-link" onClick={() => onOpenLedger!(ledger)}>{t("group.delegation.openLedger", { name: speaker.name })}</button>
             </div>
           ) : null}
         </div>
@@ -710,7 +710,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
       {showMark ? (
         <span className="group-chat-agent-mark">
-          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" data-ledger-speaker={speaker.kind} tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
         </span>
       ) : null}
       <div className="group-chat-agent-box">

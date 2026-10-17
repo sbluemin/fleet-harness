@@ -11,7 +11,7 @@ import { ConversationTheaterContext, LedgerTargetContext, speakerKey, useLocaliz
  * 화면 문법(말풍선·발화자 표식·가운데 줄·진행 줄·입력 자리)은 그룹 대화(`GroupConversation`) 하나가 진다. 여기는 플러그인이 준
  * 줄을 스냅숏 모양으로 감싸 발화자 이름을 화면 언어로 고치고(그룹 대화와 같은 `useLocalizedSnapshot`), 사령관 표식이 쓸 Theater 를 알려 주기만 한다. 결정 카드·정지는 플러그인 대화에 없다.
  * 원장은 플러그인이 `openLedger` 를 줄 때만 선다 — 그때 명부의 발화자(Operation 이 없는 사령관도)가 그룹 대화와 같은 입구(말풍선 이름·
- * 진행 줄 표식과 낱말·진행 칩)로 그 원장을 연다.
+ * 진행 줄 표식과 낱말)로 그 원장을 연다. 플러그인 대화는 턴을 접지 않으므로 진행 칩이 없다.
  */
 export function AgentConversation({ entries, participants, working, language, theaterId, loading = false, empty, older = null, reveal = null, openBoardAction = null, openLedger = null, composer, references }: AgentConversationProps) {
   const snapshot = useLocalizedSnapshot(React.useMemo<ConversationLogSnapshot>(() => ({
