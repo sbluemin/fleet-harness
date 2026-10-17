@@ -5,6 +5,48 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.240.0] - 2026-10-17
+
+### fleet-console
+
+#### Added
+- Send images in chat, group conversations, and new sessions without typing a message; the conversation shows just the images.
+- Review a commander's proposed edits right inside the Codex wiki page they change, and apply or discard them with a confirming second press.
+- In the Commodore conversation, click the Commodore's name, its avatar or the working line above the composer to open the Commodore's ledger, its full turn record, as in objective group chats.
+- The Commodore ledger now looks and scrolls like the commander ledger, with the same header, margins, message bubbles, model line, and turn footer.
+- Use Muse Wonder 1.0, Gemini 3.8 Flash, and Gemini 4 Argon through your Cursor subscription, each also available with a 1M context window.
+
+#### Changed
+- Select a passage in a Codex wiki page and attach it as a comment or question straight into a commander's or the Commodore's message box, then keep the conversation in that chat. Revisions still arrive as proposals you approve.
+- The Commodore's question card now looks and works like the group chat decision card, with single-line answers you send with Enter.
+- A message you send the Commodore while it is working now reaches it in the same turn, and the Commodore picks up the same conversation after a Console restart or an autonomy pause instead of starting over from a summary.
+- Messages the Commodore could not read before autonomy was turned off are delivered when it is turned back on.
+- The Commodore's note to a commander is a steer, shown as the Commodore's and kept on the objective. It no longer sends a separate message, including one spoken directly to a member.
+- Files, Repository, Shell, Codex, Skills, and the Fleet Browser now open as split panels beside each commodore or commander conversation instead of borrowing the right sidebar or covering the conversation. Each conversation keeps its own panels and layout, even after a restart, and its tools start from where that conversation works, including its worktree.
+- Each conversation now has its own Shell; closing it ends that Shell and asks first while a command is still running.
+- The new session screen now replaces Quick Launch: Cmd+J and Ctrl+Space open it, and its composer takes `/` commands and `@` destinations.
+- The `@` and `/` menus now look and work the same in the new session, Commodore, commander and member, and chat composers, with section titles followed by a divider line as in the former Quick Launch menu.
+- The Commodore composer's `@` menu no longer lists archived objectives, and both it and the new session `@` menu show not-started items in their own section.
+- The new session effort bar keeps MAX and ULTRACODE behind a glyph until you open them.
+- The new session playground picks up where it left off when you reopen it, with varied entrances, new faces, and a crowd that ebbs and flows.
+- Objective result text views now open as wide as their content, so tables and code no longer get squeezed into a narrow box, and you can drag any edge or corner to resize the view.
+- Objectives now treats a commander resting 15 minutes while a member works as stalled: the Commodore wakes and the commander gets one neutral notice.
+- The new session playground keeps playing while you type in the composer; it still pauses in a hidden window and stays still when motion is reduced.
+- Opening a remote Console, including switching to one from Desktop, is now noticeably faster on slow networks.
+
+#### Fixed
+- When the window is too narrow to open the browser beside a conversation, the globe button now explains why and offers to collapse the sidebar or cancel, instead of appearing pressed with nothing shown.
+
+#### Removed
+- Codex Cowork's separate editing session and its model and effort setting in Settings are gone; commanders and the Commodore use their own models.
+- Removed the Quick Launch bar, including its pin-to-bottom and mention-the-open-Operation options and the deputy chat lane; `@` a deputy from the new session to get its reply on the deputy's card. Custom key bindings for Quick Launch or the new session return to the defaults, so set them again in Settings if you had changed them.
+- The Codex, Files, and Shell panels no longer show a Theater chip above their content.
+
+### fleet-desktop
+
+#### Fixed
+- When a remote Console ends your session, Fleet Desktop now returns to your own Console and shows the error, instead of freezing until you force it to quit.
+
 ## [1.239.0] - 2026-10-17
 
 ### fleet-console
