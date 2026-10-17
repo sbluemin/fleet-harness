@@ -66,7 +66,7 @@
   --hairline: oklch(29% 0.018 245);
   --hairline-strong: oklch(37% 0.02 245);
   --radius-xs: 6px;
-  --chrome-band-height: 36px;
+  --chrome-band-height: 52px;
   --font-ui: "Manrope Variable", "Manrope", "Pretendard Variable", system-ui, sans-serif;
   --font-content: var(--font-ui);
   --font-code: "JetBrains Mono Variable", "JetBrains Mono", monospace;
@@ -77,13 +77,13 @@
   --duration-fade: 200ms;
   /* launch-controller.ts HANDOFF_SETTLE_MS와 짝 — 이 전환이 끝난 뒤에 Console 문서로 바뀐다. */
   --handoff-duration: 420ms;
-  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. 퇴역한 Console Command Band(36px)의 브랜드 위치(좌측 패딩 +
-     브랜드 패딩, 글리프 16px, 간격 7px)를 그대로 쓴다. 대화 중심 화면에는 그 브랜드가 없다 — 맨 위 줄(52px)에 맞춘
-     재정렬은 시각 확인을 거칠 후속 과제다. macOS는 신호등 76px를 비운다. */
-  --brand-glyph-left: 13px;
+  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. 대화 중심 화면 맨 위 줄(52px)의 세로 중심에 맞춘다.
+     그 줄에는 브랜드가 없으므로 빈 자리에 내려앉는다. 기본 왼쪽은 space-3(12px). macOS는 Console이
+     비우는 신호등 76px에 space-3 12px를 더해 88px에서 시작한다. */
+  --brand-glyph-left: 12px;
   --brand-mark-size: 72px;
 }
-:root[data-platform="darwin"] { --brand-glyph-left: 93px; }
+:root[data-platform="darwin"] { --brand-glyph-left: 88px; }
 /* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
 :root[data-scheme="light"] { color-scheme: light; }
 /* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console 라이트 테마의 값으로 바꿔 판독성을 지킨다. */
@@ -93,8 +93,8 @@
 html, body { height: 100%; margin: 0; }
 body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
 
-/* 창을 끌 수 있는 자리. 높이는 옛 Console Command Band(36px)에서 이어졌다 — 대화 중심 화면 맨 위 줄(52px)과의 정합은 핸드오프 좌표 재정렬과 함께 다룰 후속 과제다. */
-.drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); border-bottom: 1px solid transparent; -webkit-app-region: drag; transition: border-color var(--handoff-duration) var(--ease-spring); }
+/* 창을 끌 수 있는 자리. 높이는 대화 중심 화면 맨 위 줄(52px)과 같다. 그 줄(사이드바 컴팩트 줄)은 투명 오버레이라 아랫선이 없다. */
+.drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); -webkit-app-region: drag; }
 
 .brand-mark {
   position: fixed;
@@ -159,14 +159,14 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .dev-tag { display: none; position: fixed; right: 16px; bottom: 18px; padding: 2px 9px; border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); color: var(--ink-spectral); font-family: var(--font-ui); font-size: calc(var(--font-ui-size) * 10 / 14); letter-spacing: 0.1em; }
 .dev-tag.is-visible { display: inline-block; }
 
-/* 넘겨주기: 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고, 나머지는 먼저 사라진다. */
-.is-handoff .drag-strip { border-bottom-color: var(--hairline); }
-.is-handoff .brand-mark { top: 9.5px; left: var(--brand-glyph-left); width: 16px; height: 16px; }
-.is-handoff .wordmark { top: 11px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14); letter-spacing: 0.01em; }
+/* 넘겨주기: 마크와 워드마크가 대화 중심 화면 맨 위 줄(52px)의 세로 중심으로 줄어들고, 나머지는 먼저 사라진다.
+   16px 마크의 중심은 y26(top 18), 13px 워드마크의 중심도 y26(top 19.5). 워드마크는 글리프에서 23px 떨어진다. */
+.is-handoff .brand-mark { top: 18px; left: var(--brand-glyph-left); width: 16px; height: 16px; }
+.is-handoff .wordmark { top: 19.5px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14); letter-spacing: 0.01em; }
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
 .is-handoff .brand-mark-beacon { animation: none; }
 
-/* 종료 인사: 넘겨주기의 역재생. 투명한 판(is-veiled)에서 마크가 Console 브랜드 자리에 앉은 채 시작해,
+/* 종료 인사: 넘겨주기의 역재생. 투명한 판(is-veiled)에서 마크가 맨 위 줄 세로 중심에 앉은 채 시작해,
    바탕이 차오르는 동안 가운데로 돌아와 "종료 중"을 말한다. 아래의 Console은 판이 차오를 때까지 비친다. */
 .is-farewell body { transition: background-color var(--duration-fade) ease; }
 .is-veiled body { background-color: transparent; }
