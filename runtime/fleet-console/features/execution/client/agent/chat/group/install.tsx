@@ -225,7 +225,10 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const speakerOf = (operationId: string) => snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
   // 지휘관과 구성원은 컴퓨터 하나를 함께 쓴다(호스트의 공유 컨텍스트) — 화면공유는 원장이 아니라 이 대화에 서고, 누가 조작하는지는
   // 미리보기 위 칩과 진행 줄 꼬리가 같은 이름으로 말한다.
-  const computerActor = useComputerActor(root.id);
+  // 함께 쓰는 사람(구성원)이 있을 때만 목표 표면이다 — 목표 밖 일반 채팅은 예전 그대로(카드 문구·진행 줄·미리보기 자리).
+  const shared = useConsoleState().nestedOperations.some((operation) => operation.parentOperationId === root.id);
+  const actorId = useComputerActor(root.id);
+  const computerActor = shared ? actorId : null;
   const t = getGroupT(language);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
   const decision = snapshot.decision && !answered.includes(snapshot.decision.id) ? snapshot.decision : null;
@@ -241,7 +244,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
       ) : null}
-      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speakers={request.requestedBy.flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
+      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} shared={shared} speakers={(shared ? request.requestedBy : [request.operationId]).flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
       {!phone ? snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
@@ -255,7 +258,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       cards={cards}
       fold={fold}
       computerActor={computerActor}
-      overlay={phone ? null : (
+      overlay={phone || !shared ? null : (
         <ComputerScreenShare
           operationId={root.id}
           className="is-group"
@@ -301,8 +304,9 @@ function MemberLedger({ root, member, language, children }: {
   // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
   React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
   // 컴퓨터는 목표가 함께 쓰고 그 화면은 대화에만 선다 — 원장을 보는 동안 공유 중이면 머리 아래 한 줄이 대화로 데려간다.
+  const shared = useConsoleState().nestedOperations.some((operation) => operation.parentOperationId === root.id);
   const actorId = useComputerActor(root.id);
-  const actor = actorId ? snapshot.participants.find((participant) => participant.speaker.operationId === actorId)?.speaker ?? null : null;
+  const actor = shared && actorId ? snapshot.participants.find((participant) => participant.speaker.operationId === actorId)?.speaker ?? null : null;
   const t = getGroupT(language);
   const notice = actor ? (
     <div className="group-ledger-share" role="status">

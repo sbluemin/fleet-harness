@@ -205,9 +205,14 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
  * 반복 키 무시, 초점 미이동)에 요청한 참여자들의 표식과 이름을 더한다. 허용은 목표(루트)의 것이라 카드는 하나이고, 머리에는
  * 지금 그 답을 기다리는 참여자를 모두 겹쳐 세운다(세 명까지 이름을 잇고, 넘으면 「구현 외 2명」). 답 보내기는 `useUseRequestAnswer` 가 진다.
  */
-export function UseRequestGroupCard({ request, speakers, language }: {
+export function UseRequestGroupCard({ request, speakers, shared, language }: {
   readonly request: OperationUseRequest;
   readonly speakers: readonly ConversationSpeaker[];
+  /**
+   * 이 대화의 루트에 구성원(자식 세션)이 있어 허용을 함께 쓰는가. 아니면(목표 밖 일반 채팅) 예전 카드 그대로다 — 요청한 한 사람의
+   * 머리와 일반 문구. 목표 문구(「지휘관과 구성원이 함께 씁니다」)는 함께 쓰는 사람이 있을 때만 맞다.
+   */
+  readonly shared: boolean;
   readonly language: ConsoleLocale | undefined;
 }) {
   const tt = getT(language ?? "en");
@@ -218,19 +223,21 @@ export function UseRequestGroupCard({ request, speakers, language }: {
   const isConsole = request.capability === "console";
   const title = tt(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   const titleId = `group-use-request-${request.id}`;
-  const names = speakers.length > 3
-    ? t("group.use.names.others", { name: speakers[0]!.name, count: String(speakers.length - 1) })
-    : speakers.map((speaker) => speaker.name).join("·");
+  const shown = shared ? speakers : speakers.slice(0, 1);
+  const names = shown.length > 3
+    ? t("group.use.names.others", { name: shown[0]!.name, count: String(shown.length - 1) })
+    : shown.map((speaker) => speaker.name).join("·");
   return (
     <div className="group-card is-use" role="group" aria-labelledby={titleId} onKeyDown={onKeyDown}>
       <div className="group-card-head">
-        {speakers.length > 0
-          ? <span className="group-card-stack">{speakers.slice(0, 3).map((speaker) => <SpeakerMark key={speaker.operationId ?? speaker.name} speaker={speaker} size="sm" />)}</span>
+        {shown.length > 1
+          ? <span className="group-card-stack">{shown.slice(0, 3).map((speaker) => <SpeakerMark key={speaker.operationId ?? speaker.name} speaker={speaker} size="sm" />)}</span>
+          : shown.length === 1 ? <SpeakerMark speaker={shown[0]!} size="sm" />
           : <span className="group-card-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>}
-        <span className="group-card-who" id={titleId}>{speakers.length > 0 ? t("group.use.from", { name: names, title }) : title}</span>
+        <span className="group-card-who" id={titleId}>{shown.length > 0 ? t("group.use.from", { name: names, title }) : title}</span>
         <span className={`group-card-timer${left <= 60 ? " is-soon" : ""}`} aria-hidden="true">{tt("terminal.useRequest.waiting", { time: formatUseRequestTime(left) })}</span>
       </div>
-      <p className="group-card-lead">{t(isConsole ? "group.use.consoleLead" : "group.use.computerLead")}</p>
+      <p className="group-card-lead">{shared ? t(isConsole ? "group.use.consoleLead" : "group.use.computerLead") : tt(isConsole ? "terminal.useRequest.consoleLead" : "terminal.useRequest.computerLead")}</p>
       {request.tools.length > 0 ? <p className="group-card-tools">{request.tools.join(" · ")}</p> : null}
       <div className="group-card-foot">
         <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("deny")}>{tt("terminal.useRequest.deny")}</button>
@@ -238,7 +245,7 @@ export function UseRequestGroupCard({ request, speakers, language }: {
         <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("always")}>{tt("terminal.useRequest.always")}</button>
         <button type="button" className="group-card-send" disabled={pending} onClick={answer("turn")}>{tt("terminal.useRequest.turn")}</button>
       </div>
-      <p className="group-card-fine">{t("group.use.fine")}</p>
+      <p className="group-card-fine">{shared ? t("group.use.fine") : tt("terminal.useRequest.fine")}</p>
       {failed ? <p className="group-card-error" role="alert">{tt("terminal.useRequest.failed")}</p> : null}
     </div>
   );
