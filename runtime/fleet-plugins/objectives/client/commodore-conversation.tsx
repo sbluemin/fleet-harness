@@ -282,7 +282,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
         </div>
       ) : null}
       {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
-      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} />}
+      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
       {ledgerOpen && Transcript ? (
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
           <div className="objectives-commodore-ledger-head">

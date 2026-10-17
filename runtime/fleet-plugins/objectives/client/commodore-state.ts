@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
 
-import type { AgentChatTranscriptProps, AgentConversationProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
@@ -333,6 +333,11 @@ export function commodoreTranscriptRenderer(): ComponentType<AgentChatTranscript
 /** 대화 중심 화면의 대화 렌더러 — Operation 대화와 같은 말풍선 화면(호스트 `ctx.chat.Conversation`). */
 export function commodoreConversationRenderer(): ComponentType<AgentConversationProps> | null {
   return installed?.chat.Conversation ?? null;
+}
+
+/** 사령관의 질문 카드 — 지휘관·구성원 그룹 대화의 결정 카드와 같은 컴포넌트(호스트 `ctx.chat.DecisionCard`). 설치 전이면 null. */
+export function commodoreDecisionCardRenderer(): ComponentType<AgentDecisionCardProps> | null {
+  return installed?.chat.DecisionCard ?? null;
 }
 
 const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
