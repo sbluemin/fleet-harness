@@ -644,6 +644,18 @@
   white-space: nowrap;
 }
 
+/* 지휘관 칩의 상태 줄 — 목표 줄과 같이 단계(✓ N/N, .side-bar-cluster-row-lead)가 상태 문구 앞에 선다. 단계는 잘리지 않는다. */
+.side-bar-chip-status-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.side-bar-chip-status-line > .side-bar-chip-preview {
+  flex: 1 1 auto;
+}
+
 /* 대화 행의 제목은 Theater 이름과 같은 최고 명도 잉크다 — 활성·고름은 면 워시·점선이 말하고 이름 잉크를
    바꾸지 않는다. 사용자 accent 는 정체성 채널이라 그대로 이름을 칠한다. */
 .side-bar-cluster-row--conversation:not([style*="--user-accent"]) .side-bar-cluster-row-title,

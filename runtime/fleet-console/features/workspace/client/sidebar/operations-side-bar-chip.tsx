@@ -47,10 +47,13 @@ export interface SideBarEntry {
 }
 
 /**
- * 묶음의 뿌리(지휘관) 행 — 이름 뒤에 단계 띠를 얹는다. 사이드바는 지휘관 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
+ * 묶음의 뿌리(지휘관) 행 — 상태 줄 앞에 `✓ N/N` 을 얹는다. 사이드바는 지휘관 한 행이 묶음을 대표하므로 단계 행은 서지 않는다.
  */
 export interface SideBarChipCluster {
+  /** 상태 문구 앞의 단계 글. 임무가 없으면 null. */
   readonly strip: ReactNode;
+  /** 칩 접근 이름에 싣는 같은 글. 보이는 단계가 없으면 없다. */
+  readonly progressLabel?: string;
   /** 뿌리에게 결정 요청이 섰다 — 이름 옆에 표식이 선다(비콘·상태 칸은 활동 그대로). */
   readonly decisionRequest?: boolean;
   /** 뿌리의 목표가 사람의 검토를 기다린다 — 아바타가 검토 대기 얼굴이 된다(다른 표면과 같은 기준). */
@@ -145,13 +148,15 @@ export function OperationsSideBarChip({
   // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
   // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const ariaTitle = title;
-  const chipAriaLabel = selected
+  const chipVerb = selected
     ? t("sidebar.chip.selectedAria", { title: ariaTitle, groupContext })
     : resumeOnActivate
       ? t("sidebar.chip.resumeAria", { title: ariaTitle, groupContext })
       : active
         ? t("sidebar.chip.focusedAria", { title: ariaTitle, groupContext })
         : t("sidebar.chip.focusAria", { title: ariaTitle, groupContext });
+  // 단계 글은 보이는 `✓ N/N` 과 같다. 줄에 접근 이름이 있어 자식 글은 낭독되지 않으므로 여기에 싣는다.
+  const chipAriaLabel = cluster?.progressLabel ? `${chipVerb}, ${cluster.progressLabel}` : chipVerb;
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next) });
   // Console Use — 에이전트가 이 Operation 을 읽거나 만지면 행 전체가 그 채널 색으로 감싸인다.
   const wrap = useSyncExternalStore(subscribeConsoleUseGestures, () => (preview ? null : getOperationWrap(operation.id)), () => null);
@@ -385,13 +390,16 @@ export function OperationsSideBarChip({
             </>
           )}
         </span>
-        {markVisual ? (
-          <span className="side-bar-chip-preview" aria-hidden="true">
-            {rowPreview?.text ?? t(cluster?.decisionRequest ? "conversation.row.decision" : CONVERSATION_ROW_PHRASE[markVisual])}
+        {markVisual || cluster?.strip ? (
+          <span className="side-bar-chip-status-line" aria-hidden="true">
+            {cluster?.strip ?? null}
+            {markVisual ? (
+              <span className="side-bar-chip-preview">
+                {rowPreview?.text ?? t(cluster?.decisionRequest ? "conversation.row.decision" : CONVERSATION_ROW_PHRASE[markVisual])}
+              </span>
+            ) : null}
           </span>
         ) : null}
-        {/* 묶음의 단계 띠는 이름·위치 줄 아래 셋째 줄 — 이름 옆에 세우면 제목이 밀려 잘린다. */}
-        {cluster ? cluster.strip : null}
       </span>
       {preview ? null : <PluginOperationMarks operation={operation} />}
       {groupMark && statusAxis && !preview ? (

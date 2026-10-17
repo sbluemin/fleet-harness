@@ -22,7 +22,7 @@ import { activeOperationId, viewedTheaterId, findFinishedObjective, finishedObje
  * 목표 → 호스트 묶음 서술자.
  *
  * 목표의 지휘관 Operation 이 뿌리, 구성원 Operation 이 묶음의 구성원이다 — 호스트는 구성원 목록에 든 Operation 을 지휘관
- * 아래로 접는다. 띠는 여전히 임무 단위로 그린다: 구성원 Operation 은 자기 **대표 임무**(아직 끝나지 않은 첫 임무, 모두 끝났으면
+ * 아래로 접는다. 구성원은 여전히 임무 단위다: 구성원 Operation 은 자기 **대표 임무**(아직 끝나지 않은 첫 임무, 모두 끝났으면
  * 마지막 임무) 칸에 한 번만 서고, 같은 구성원의 나머지 임무와 지휘관 직접 임무는 자리표시 칸이다(호스트는 Operation id 로
  * 색인하므로 같은 id 를 두 번 내지 않는다). 임무를 맡지 않은 구성원도 역할 이름 칸으로 서서 따로 떠돌지 않는다.
  * 임무도 떠 있는 구성원도 없는 Operation 은 캡션 띠·노드 줄을 세우지 않는다. 완료된 목표도 묶음으로 남는다.
