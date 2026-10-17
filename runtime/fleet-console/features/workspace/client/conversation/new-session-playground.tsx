@@ -293,9 +293,17 @@ class PlaygroundStage {
       actor.dur = 0;
     }
     this.structureKey = key;
+    if (!this.dynamic) {
+      // 정지 장면은 시계가 없다. 새 폭의 인원 상한에 맞추고 소품 포즈를 다시 세운다(setup 의 정지 경로와 같다).
+      this.actors = this.actors.filter((actor) => actor.present).slice(0, this.cap);
+      while (this.actors.length < this.cap) this.actors.push(this.cast());
+      this.stillScene();
+      this.publish();
+      return;
+    }
     this.publish();
     // 빈 무대(null 레이아웃)에서 넘어온 경우에도 다시 돌게, 배우 예약과 연출을 새로 건다. 떠나 있거나 얼어 있으면 돌아올 때 건다.
-    if (!this.dynamic || this.held || this.frozen) return;
+    if (this.held || this.frozen) return;
     this.actors.forEach((actor, index) => {
       if (!actor.present) return;
       if (actor.exiting) this.walkOff(actor);
