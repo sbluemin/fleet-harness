@@ -14,7 +14,7 @@ type T = Translate<ObjectiveMessageKey>;
 
 /**
  * 제목 ⌄ 전환 목록 — 사이드바가 접혀 있거나 모바일일 때 표면이 사이드바 그룹 트리를 대신한다.
- * 같은 트리를 같은 규칙으로 그린다: 「내 결정」(사람의 차례, 시각순)·접힌 「사령관이 맡음」·「오늘」(오늘 + 기한 지남) 구역이 먼저 서고,
+ * 같은 트리를 같은 규칙으로 그린다: 「내 결정」(사람의 차례, 시각순)·「오늘」(오늘 + 기한 지남) 구역이 먼저 서고,
  * 올라간 목표는 그룹에서 빠진다. 빈 구역은 세우지 않는다. 시작 전 목표는 그룹 맨 아래 「시작 전 N ›」 한 줄로 접힌다 — 펼침은 그룹별로 이 탭의 메모리에만
  * 둔다(사이드바의 접기와 같은 규칙, 번들이 달라 상태는 따로). 고른 목표가 접기 안에 있으면 열 때 그 접기를 펼쳐 둔다.
  * 사람이 세션 없는 목표를 만드는 입구는 없다 — 목표는 「새 Operation」에서 시작한다. Esc 나 바깥 누름으로 닫힌다.
@@ -81,13 +81,13 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
 
   const live = objectives.filter((objective) => !objective.removed && !objective.done);
   const none = !objectives.some((objective) => !objective.removed);
-  // 사이드바 구역과 같은 판정 — 사람의 차례는 「내 결정」, 자율 운영 중 사령관이 맡은 결정 요청은 접힌 「사령관이 맡음」.
+  // 사이드바 구역과 같은 판정 — 사람의 차례는 「내 결정」. 자율 운영 중 사령관이 맡은 결정 요청은 구역 없이 그룹 제자리에 서고
+  // 줄 메타의 「사령관이 답하는 중」이 말한다.
   const turnAt = (objective: Objective) => personTurnAt(objective, commodore.active);
+  const handling = (objective: Objective) => turnAt(objective) === null && decisionTurn(objective, commodore.active) === "commodore";
   const decisions = live.filter((objective) => turnAt(objective) !== null).sort((a, b) => turnAt(a)! - turnAt(b)!);
-  const delegated = live.filter((objective) => turnAt(objective) === null && decisionTurn(objective, commodore.active) === "commodore")
-    .sort((a, b) => (a.decisionRequest?.createdAt ?? 0) - (b.decisionRequest?.createdAt ?? 0));
   const today = live.filter((objective) => !objective.decisionRequest && turnAt(objective) === null && (objective.today || overdueOf(objective)));
-  const promoted = new Set([...decisions, ...delegated, ...today].map((objective) => objective.id));
+  const promoted = new Set([...decisions, ...today].map((objective) => objective.id));
   const rest = live.filter((objective) => !promoted.has(objective.id));
   const day = new Intl.DateTimeFormat(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", weekday: "short" });
   const groupOf = (objective: Objective) => (objective.groupId ? groups.find((group) => group.id === objective.groupId) ?? null : null);
@@ -106,7 +106,8 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
   const byId = new Map(objectives.map((objective) => [objective.id, objective]));
   const known = new Set(groups.map((group) => group.id));
   const sectionOf = (objective: Objective): string | null => (objective.groupId && known.has(objective.groupId) ? objective.groupId : null);
-  const freshOf = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !hasOperation(objective.id);
+  // 사령관이 답하는 중인 줄은 접힌 「시작 전」에 묻으면 그 문구가 보이지 않으므로 그룹 자리에 선다.
+  const freshOf = (objective: Objective) => !objective.awaitingReview && !objective.commander.started && !hasOperation(objective.id) && !handling(objective);
   const toggleFold = (key: string) => { foldOpen.set(key, !foldOpen.get(key)); setFoldTick((tick) => tick + 1); };
 
   // 열 때: 고른 목표가 접기 안에 있으면 그 접기를 펼치고, 고른 줄이 보이게 스크롤한다.
@@ -132,6 +133,8 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
     const failureNote = memberFailureNote(objective);
     if (failureNote) meta.push({ key: "failed", text: t(failureNote), tone: "warn" });
     if (objective.missions.length) meta.push({ key: "progress", text: `✓ ${objective.missions.filter((mission) => mission.done).length}/${objective.missions.length}` });
+    // 사이드바 줄의 상태 문구와 같은 판정·같은 말·같은 명도 물결 — 단계 바로 뒤에 선다.
+    if (handling(objective)) meta.push({ key: "answering", text: t("objectives.commodore.note.answering"), tone: "handling" });
     if (objective.dueDate) meta.push({ key: "due", text: day.format(new Date(`${objective.dueDate}T00:00:00`)), ...(overdueOf(objective) ? { tone: "late" } : {}) });
     const originTitle = from ? originTitleOf(objective, byId) : undefined;
     if (originTitle !== undefined) meta.push({ key: "from", text: originTitle ? t("objectives.switch.followupOf", { title: originTitle }) : t("objectives.switch.followup"), tone: "from" });
@@ -151,20 +154,6 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
       </li>
     );
   };
-  const delegatedKey = `${theaterId}::delegated`;
-  const delegatedOpen = foldOpen.get(delegatedKey) === true;
-  const delegatedZone = delegated.length ? (
-    <li key="delegated" className="objectives-pop-zone is-delegated">
-      <button type="button" className="objectives-pop-zone-hd" aria-expanded={delegatedOpen}
-        aria-label={`${t("objectives.commodore.zone.handling")} ${delegated.length}`} onClick={() => toggleFold(delegatedKey)}
-        onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); /* 캔버스 Space-pan이 기본 활성화를 막지 않게 */ }}>
-        <span className="objectives-pop-fold-chev" aria-hidden="true">›</span>
-        <span aria-hidden="true">{t("objectives.commodore.zone.handling")}</span>
-        <span className="objectives-pop-count" aria-hidden="true">{delegated.length}</span>
-      </button>
-      {delegatedOpen ? <ol>{delegated.map((objective) => row(objective, true))}</ol> : null}
-    </li>
-  ) : null;
   const zone = (kind: "decisions" | "today", items: readonly Objective[]) => (items.length ? (
     <li key={kind} className={`objectives-pop-zone is-${kind}`}>
       <div className="objectives-pop-zone-hd"><span>{t(kind === "decisions" ? "objectives.switch.decisions" : "objectives.switch.today")}</span><span className="objectives-pop-count">{items.length}</span></div>
@@ -218,7 +207,6 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
           {none ? null : (
             <ul className="objectives-pop-tree">
               {zone("decisions", decisions)}
-              {delegatedZone}
               {zone("today", today)}
               {groups.map((group) => section(group, rest.filter((objective) => objective.groupId === group.id)))}
               {section(null, ungrouped)}

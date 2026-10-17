@@ -68,9 +68,9 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
 
 /**
  * 줄 메모 — 자율 운영 중이면 사람의 손을 기다리던 자리를 사령관이 맡고 있다는 사실, 그리고 정체. 모듈 상수라
- * 줄 서명이 메모의 종류로 비교된다(글은 로케일마다 호스트가 푼다).
+ * 줄 서명이 메모의 종류로 비교된다(글은 로케일마다 호스트가 푼다). 사령관이 결정 요청에 답하는 중이라는 사실은 메모가 아니라
+ * 줄의 상태 문구(`delegated.status`)가 말한다.
  */
-const NOTE_ANSWERING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.answering"), tone: "accent" };
 const NOTE_REVIEWING: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.reviewing"), tone: "accent" };
 const NOTE_STALLED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.commodore.note.stalled"), tone: "warn" };
 /** 사령관이 사람에게 넘긴 항목이 선 줄 — 「내 결정」에 선 까닭(`decisionNote`). 대화 중심 화면에서도 줄의 상태 문구로 보인다. */
@@ -79,7 +79,7 @@ const HANDED_NOTE = (locale: "en" | "ko") => getT(locale)("objectives.commodore.
 const NOTE_MEMBER_FAILED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberFailed"), tone: "warn" };
 const NOTE_MEMBER_LIMITED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberLimited"), tone: "warn" };
 const NOTE_MEMBER_RATE_LIMITED: OperationClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberRateLimited"), tone: "warn" };
-const NOTE_KEYS = new Map<OperationClusterRowNote, string>([[NOTE_ANSWERING, "answering"], [NOTE_REVIEWING, "reviewing"], [NOTE_STALLED, "stalled"], [NOTE_MEMBER_FAILED, "member-failed"], [NOTE_MEMBER_LIMITED, "member-limited"], [NOTE_MEMBER_RATE_LIMITED, "member-rate-limited"]]);
+const NOTE_KEYS = new Map<OperationClusterRowNote, string>([[NOTE_REVIEWING, "reviewing"], [NOTE_STALLED, "stalled"], [NOTE_MEMBER_FAILED, "member-failed"], [NOTE_MEMBER_LIMITED, "member-limited"], [NOTE_MEMBER_RATE_LIMITED, "member-rate-limited"]]);
 const FAILURE_NOTE_TEXT = { limit_exhausted: "objectives.note.memberLimited", rate_limited: "objectives.note.memberRateLimited" } as const;
 type MemberFailureNoteKey = "objectives.note.memberFailed" | (typeof FAILURE_NOTE_TEXT)[keyof typeof FAILURE_NOTE_TEXT];
 
@@ -95,7 +95,8 @@ export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | 
   const [only] = reasons;
   return reasons.size === 1 && only ? FAILURE_NOTE_TEXT[only] : "objectives.note.memberFailed";
 };
-const ZONE_HANDLING = (locale: "en" | "ko") => getT(locale)("objectives.commodore.zone.handling");
+/** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 모듈 상수라 줄 서명이 바뀌지 않는다. */
+const STATUS_ANSWERING = (locale: "en" | "ko") => getT(locale)("objectives.commodore.note.answering");
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
@@ -179,15 +180,15 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
   // 답하는 중·검토하는 중은 사령관이 운영하고 사람에게 넘기지 않은 항목에만 — 사람의 목표의 결정·검토로는 사령관이 깨어나지 않는다(서버 판정 `operator`).
   const handles = objective.operator !== "human";
   const notes: OperationClusterRowNote[] = [...failed];
-  if (decisionTurn(objective, true) === "commodore") notes.push(NOTE_ANSWERING);
   if (handles && objective.awaitingReview && !livePersonHold(objective, "review")) notes.push(NOTE_REVIEWING);
   if (board.stalled.includes(objective.id)) notes.push(NOTE_STALLED);
   return notes.length ? { notes } : {};
 }
 
 /**
- * 결정 구역 — 사람이 답할 차례면 「내 결정」(사람에게 넘긴 기준·검토·후속도 같은 구역), 자율 운영 중 사령관이 맡은 결정 요청은
- * 접힌 「사령관이 맡음」. 판정은 `decisionTurn`·`personTurnAt` 하나를 폰·전환 목록·레일과 함께 쓴다.
+ * 결정 구역 — 사람이 답할 차례면 「내 결정」(사람에게 넘긴 기준·검토·후속도 같은 구역). 자율 운영 중 사령관이 맡은 결정 요청은
+ * 구역으로 올라가지 않고 제자리에서 상태 문구 「사령관이 답하는 중」으로 말한다. 판정은 `decisionTurn`·`personTurnAt` 하나를
+ * 폰·전환 목록·레일과 함께 쓴다.
  */
 function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<OperationClusterRow, "decisionRequestedAt" | "decisionQuestions" | "decisionNote" | "delegated"> {
   const request = objective.decisionRequest;
@@ -197,7 +198,7 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Opera
   const handed = livePersonHolds(objective).length > 0;
   return {
     ...(at !== null ? { decisionRequestedAt: at, ...(turn === "person" && request ? { decisionQuestions: request.questions.length } : {}), ...(handed ? { decisionNote: HANDED_NOTE } : {}) } : {}),
-    ...(turn === "commodore" && request ? { delegated: { at: request.createdAt, questions: request.questions.length, zone: ZONE_HANDLING } } : {}),
+    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: STATUS_ANSWERING } } : {}),
   };
 }
 
@@ -381,7 +382,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   return out;
 }
 
-const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? resolveText(row.decisionNote) : "", row.commodore === true, row.delegated ? [row.delegated.at, row.delegated.questions] : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
+const rowSignature = (row: OperationClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? resolveText(row.decisionNote) : "", row.commodore === true, row.delegated ? row.delegated.questions : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 /** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */

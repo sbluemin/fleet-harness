@@ -720,6 +720,32 @@
   color: var(--warn-ink);
 }
 
+/* 맡은 이(사령관)가 결정 요청을 처리하는 동안 — 상태 문구 위로 무채색 명도 물결이 지나간다(2.2초 지나감 + 1.8초 쉼). 명도 채널이라
+   신호·위치 색을 빌리지 않고, 물결의 두 끝은 Theater 이름 물결과 같은 --live-sweep-* 잉크다. 양 끝이 휴지 잉크라 쉼과 되풀이에
+   이음매가 없다. 동작 줄이기에서는 물결을 거두고 둘째 줄 기본 잉크로 문구만 남는다. */
+.side-bar-cluster-row-preview.is-handling {
+  background-image: linear-gradient(90deg, var(--live-sweep-trough) 0 38%, color-mix(in oklch, var(--live-sweep-crest) 72%, var(--live-sweep-trough)) 50%, var(--live-sweep-trough) 62% 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: side-bar-row-handling-sweep 4s ease-in-out infinite;
+  animation-name: var(--state-motion, side-bar-row-handling-sweep);
+}
+
+@keyframes side-bar-row-handling-sweep {
+  0% { background-position: 100% 0; }
+  55%, 100% { background-position: 0% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .side-bar-cluster-row-preview.is-handling {
+    background-image: none;
+    color: var(--text-tertiary);
+    animation: none;
+  }
+}
+
 /* ── 오른쪽 세부 정보 머리: Grok Bot 세부 정보와 같은 구성 ─────────────────────────────
    맨 위 줄(52px, Desktop 에서 창을 끄는 자리)에 작전구역 도구 글리프와 닫기 원형 단추, 그 아래 가운데에 지금 대상의 표식·이름,
    그 아래 대상의 글자 탭(Grok 의 세부 정보 세그먼트 자리). 바탕은 대화와 같은 면이고 경계·그라디언트를 두지 않는다. */

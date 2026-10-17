@@ -75,12 +75,6 @@
 .objectives-pop-zone-hd { letter-spacing: 0.03em; }
 .objectives-pop-zone-hd::after { content: ""; flex: 1; height: 1px; margin-left: 6px; background: var(--hairline); }
 .objectives-pop-zone.is-decisions .objectives-pop-zone-hd { color: var(--aurora); }
-/* 사령관이 맡음 — 사람의 차례가 아니라 신호색 없이 접힌 머리가 펼침 단추다. 갈매기는 머리 앞에 선다. */
-.objectives-pop-zone.is-delegated .objectives-pop-zone-hd { width: 100%; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
-.objectives-pop-zone.is-delegated .objectives-pop-zone-hd:hover { background: var(--control-rest); color: var(--text-secondary); }
-.objectives-pop-zone.is-delegated .objectives-pop-zone-hd:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.objectives-pop-zone.is-delegated .objectives-pop-fold-chev { margin-left: 0; }
-.objectives-pop-zone-hd[aria-expanded="true"] .objectives-pop-fold-chev { transform: rotate(90deg); }
 .objectives-pop-group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .objectives-pop-count { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 /* 줄은 사이드바 목표 줄·칩과 같은 이름 문법과 격자다 — 제목 700/13, 글리프 칸은 칩 비콘과 같은 24px이고 한 줄이면 가운데로,
@@ -102,6 +96,10 @@
 .objectives-pop-meta { display: flex; flex-wrap: wrap; gap: 0 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .objectives-pop-meta .is-req { color: var(--aurora); }
 .objectives-pop-meta .is-late { color: var(--coral); }
+/* 사령관이 결정 요청에 답하는 동안 — 사이드바 줄 상태 문구(.side-bar-cluster-row-preview.is-handling)와 같은 무채색 명도 물결. */
+.objectives-pop-meta .is-handling { background-image: linear-gradient(90deg, var(--live-sweep-trough) 0 38%, color-mix(in oklch, var(--live-sweep-crest) 72%, var(--live-sweep-trough)) 50%, var(--live-sweep-trough) 62% 100%); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: objectives-pop-handling-sweep 4s ease-in-out infinite; animation-name: var(--state-motion, objectives-pop-handling-sweep); }
+@keyframes objectives-pop-handling-sweep { 0% { background-position: 100% 0; } 55%, 100% { background-position: 0% 0; } }
+@media (prefers-reduced-motion: reduce) { .objectives-pop-meta .is-handling { background-image: none; color: var(--text-tertiary); animation: none; } }
 /* 사이드바 줄 메모의 warn 과 같은 신호 잉크 — 확인하지 않은 구성원 실패. */
 .objectives-pop-meta .is-warn { color: var(--warn-ink); }
 .objectives-pop-meta .is-from { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

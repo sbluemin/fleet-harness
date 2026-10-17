@@ -16,7 +16,8 @@ import { MobileIcon } from "./mobile-icons.js";
 /**
  * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「끝남 N」(기본 접힘). 둘 다 0개면 서지 않는다.
  * 「시작 전」은 데스크톱 사이드바의 「시작 전 N」 접기와 같은 원천이다: 지금 Theater의 뿌리 없는 묶음 줄(`OperationCluster.row.glyph === "fresh"`) 가운데
- * 결정 요청 줄(사람 차례 `decisionRequestedAt`는 「확인 필요」에, 맡김 `delegated`는 맡은 이의 몫)을 뺀 것, 줄 순서(`row.order`)대로. 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
+ * 사람 차례의 결정 요청 줄(`decisionRequestedAt`, 「확인 필요」에 선다)을 뺀 것, 줄 순서(`row.order`)대로. 맡은 이가 처리 중인 줄(`delegated`)은
+ * 폰에는 그 줄이 설 다른 자리가 없어 여기서 빼면 어디에도 보이지 않으므로 남긴다(이 접기는 기본으로 펼쳐 있다). 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
  * 「끝남」은 엔트리가 `mobile.finished`로 올린 끝난 일이다. 호스트는 어느 플러그인의 것인지 읽지 않고 선언만 그린다.
  */
 export function MobileHomeSections({ theaterId }: { readonly theaterId: string | null }) {
@@ -26,7 +27,7 @@ export function MobileHomeSections({ theaterId }: { readonly theaterId: string |
   const bindings = useRailEntries();
   const finished = useFinishedItems(bindings, theaterId, locale);
   const fresh = useMemo(() => clusters
-    .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "fresh" && cluster.row.decisionRequestedAt === undefined && cluster.row.delegated === undefined)
+    .filter((cluster) => cluster.theaterId === theaterId && cluster.root === undefined && cluster.row?.glyph === "fresh" && cluster.row.decisionRequestedAt === undefined)
     .sort((left, right) => (left.row?.order ?? 0) - (right.row?.order ?? 0)), [clusters, theaterId]);
   const [freshOpen, setFreshOpen] = useFold("fresh", true);
   const [finishedOpen, setFinishedOpen] = useFold("finished", false);
