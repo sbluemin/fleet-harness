@@ -28,9 +28,25 @@ export type SubscriptionRefreshOutcome =
   | { readonly status: "ok"; readonly grant: SubscriptionTokenGrant }
   | { readonly status: "rejected" };
 
+export type SubscriptionCredentialOrigin = "fleet" | "cli";
+
 export type SubscriptionAuthResult<E extends SubscriptionOAuthEntry> =
-  | { readonly status: "ok"; readonly entry: E }
+  | { readonly status: "ok"; readonly entry: E; readonly origin: SubscriptionCredentialOrigin }
   | { readonly status: "signed_out" | "expired" | "unavailable" };
+
+/**
+ * 명시적 로그아웃. `key`는 빈 문자열이라 `getApiKey`가 bearer로 넘길 값이 없다.
+ * 공급자 ID는 그대로다. 항목을 지우면 '한 번도 로그인한 적 없음'과 구분되지 않는다.
+ */
+export const SUBSCRIPTION_SIGNED_OUT_ENTRY: AuthStorageEntry = {
+  type: "signed-out",
+  version: 1,
+  key: "",
+};
+
+export function isSubscriptionSignedOutEntry(entry: AuthStorageEntry): boolean {
+  return entry.type === "signed-out" && entry.version === 1;
+}
 
 export interface SubscriptionOAuthConfig<E extends SubscriptionOAuthEntry> {
   /** `login-sessions`와 로그 문구에 쓰는 짧은 이름. */
@@ -50,6 +66,13 @@ export interface SubscriptionOAuthConfig<E extends SubscriptionOAuthEntry> {
   refresh?(entry: Refreshable<E>, signal: AbortSignal): Promise<SubscriptionRefreshOutcome>;
   /** 401/403이면 `{ status: "expired" }`를 돌려준다. 한 번 강제 갱신한 뒤 다시 부른다. */
   fetchQuota(entry: E): Promise<ProviderResult>;
+  /**
+   * Fleet 항목이 없을 때만 호출한다. 반환 항목은 메모리에서만 쓰고 `auth.json`에 저장하지 않는다.
+   * 벤더 파일을 갱신하거나 쓰지 않는다.
+   */
+  readAbsent?(signal: AbortSignal): Promise<E | undefined>;
+  /** 로그아웃이 항목을 지우지 않고 토큰 없는 표식을 남긴다. 표식이 있으면 CLI로 내려가지 않는다. */
+  rememberSignOut?: boolean;
 }
 
 export interface SubscriptionOAuthDeps {
@@ -67,10 +90,11 @@ const REFRESH_FAILURE_BACKOFF_MS = 30_000;
 /**
  * 공급자 하나의 Console 로그인과 그 자격의 수명.
  *
- * 자격은 Console 슬롯의 `auth.json` 항목뿐이다. 벤더 CLI 파일·환경변수·OS 비밀 저장소는 읽지도
- * 쓰지도 않는다. 갱신은 프로세스 안에서 갱신 토큰마다 한 번만 돌고(single-flight), 저장은
- * "저장된 갱신 토큰이 요청에 쓴 값과 같을 때만" 한다 — quota와 추론, Console과 다른 Fleet
- * 프로세스가 동시에 갱신해도 먼저 회전된 쌍을 옛 응답으로 덮지 않는다.
+ * 저장된 Fleet 항목이 있으면 그것만 쓴다. 항목이 아예 없을 때만 `readAbsent`가 벤더 CLI 파일을
+ * 읽기 전용으로 볼 수 있다. 그 파일은 쓰지 않고, 읽은 토큰은 `auth.json`에 복사하지 않는다.
+ * 갱신은 프로세스 안에서 갱신 토큰마다 한 번만 돌고(single-flight), 저장은 "저장된 갱신 토큰이
+ * 요청에 쓴 값과 같을 때만" 한다 — quota와 추론, Console과 다른 Fleet 프로세스가 동시에 갱신해도
+ * 먼저 회전된 쌍을 옛 응답으로 덮지 않는다.
  */
 export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
   config: SubscriptionOAuthConfig<E>,
@@ -83,7 +107,13 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
   let controller = new AbortController();
   const inFlight = new Map<string, Promise<SubscriptionAuthResult<E>>>();
   const rejected = new Set<string>();
+  const cliRejected = new Set<string>();
   const backoff = new Map<string, number>();
+  /**
+   * 로그아웃 표식을 저장하는 동안만 true다. 저장이 끝나면 표식이 차단을 소유하므로 끈다.
+   * 저장이 실패하면 켜 둔 채 부재를 CLI 로그인으로 보지 않는다.
+   */
+  let explicitSignOut = false;
 
   function clear() {
     generation++;
@@ -94,17 +124,47 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     backoff.clear();
   }
 
-  async function readEntry(): Promise<E | undefined | null> {
-    const entry = await deps.authService.getEntry(config.providerId);
-    if (entry === undefined) return undefined;
-    return config.parseEntry(entry) ?? null;
+  async function loadRaw(): Promise<AuthStorageEntry | undefined | "unreadable"> {
+    try {
+      return await deps.authService.getEntry(config.providerId);
+    } catch {
+      return "unreadable";
+    }
+  }
+
+  function classify(raw: AuthStorageEntry | undefined | "unreadable"): SubscriptionAuthResult<E> | "absent" {
+    if (raw === "unreadable") return { status: "unavailable" };
+    if (raw === undefined) return "absent";
+    if (isSubscriptionSignedOutEntry(raw)) return { status: "signed_out" };
+    const parsed = config.parseEntry(raw);
+    if (!parsed) return { status: "unavailable" };
+    return { status: "ok", entry: parsed, origin: "fleet" };
   }
 
   async function stored(): Promise<SubscriptionAuthResult<E>> {
-    const entry = await readEntry();
-    if (entry === undefined) return { status: "signed_out" };
-    if (entry === null) return { status: "unavailable" };
-    return { status: "ok", entry };
+    const classified = classify(await loadRaw());
+    return classified === "absent" ? { status: "signed_out" } : classified;
+  }
+
+  /** 저장된 Fleet 항목의 만료·갱신. CLI 읽기 도중 항목이 생겨도 이 경로를 탄다. */
+  async function finish(
+    current: SubscriptionAuthResult<E> & { readonly status: "ok" },
+    options: { readonly force?: boolean; readonly failedKey?: string },
+  ): Promise<SubscriptionAuthResult<E>> {
+    const { entry } = current;
+    const force = options.force === true && (options.failedKey === undefined || options.failedKey === entry.key);
+    const usable = entry.accessExpiresAt > now();
+    const refreshToken = entry.refreshToken;
+    if (!config.refresh || refreshToken === undefined) return !force && usable ? current : { status: "expired" };
+    const refreshable = entry as Refreshable<E>;
+    if (!force && entry.accessExpiresAt - now() > SUBSCRIPTION_REFRESH_WINDOW_MS) return current;
+    if (rejected.has(refreshToken)) return !force && usable ? current : { status: "expired" };
+    if ((backoff.get(refreshToken) ?? 0) > now()) return !force && usable ? current : { status: "unavailable" };
+    let refreshed: SubscriptionAuthResult<E>;
+    try { refreshed = await refreshOnce(refreshable, config.refresh); } catch { refreshed = { status: "unavailable" }; }
+    // 미리 하는 갱신이 실패해도 아직 유효한 토큰은 쓸 수 있다.
+    if (refreshed.status !== "ok" && !force && usable) return current;
+    return refreshed;
   }
 
   /** 갱신이 실패했어도 다른 호출자가 이미 회전해 저장했다면 그 값이 답이다. */
@@ -152,29 +212,44 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     return task;
   }
 
+  /** Fleet 항목이 없을 때의 읽기 전용 CLI. 결과는 저장하지 않는다. */
+  async function readCli(revision: number, signal: AbortSignal): Promise<SubscriptionAuthResult<E>> {
+    if (!config.readAbsent || explicitSignOut) return { status: "signed_out" };
+    let candidate: E | undefined;
+    try {
+      candidate = await config.readAbsent(signal);
+    } catch {
+      candidate = undefined;
+    }
+    if (disposed) return { status: "unavailable" };
+    const current = classify(await loadRaw());
+    if (disposed) return { status: "unavailable" };
+    if (current !== "absent") {
+      if (current.status !== "ok") return current;
+      // 대기 중에 저장된 Fleet 항목은 만료·갱신 검사를 건너뛰지 않는다.
+      return finish(current, {});
+    }
+    // 오래 걸린 읽기가 그 사이 로그인·로그아웃을 덮거나 되살리지 않는다.
+    if (revision !== generation || signal.aborted || explicitSignOut) return { status: "signed_out" };
+    if (!candidate || cliRejected.has(candidate.key)) return { status: "signed_out" };
+    return { status: "ok", entry: candidate, origin: "cli" };
+  }
+
   /**
    * 저장된 자격을 읽고, 만료가 가까우면 갱신한다. `force`는 upstream이 지금 토큰을 거절했을 때만
    * 쓴다 — 그때도 `failedKey`가 이미 바뀌었다면(다른 호출자가 갱신했다면) 다시 갱신하지 않는다.
    */
   async function read(options: { readonly force?: boolean; readonly failedKey?: string } = {}): Promise<SubscriptionAuthResult<E>> {
     if (disposed) return { status: "unavailable" };
-    let current: SubscriptionAuthResult<E>;
-    try { current = await stored(); } catch { return { status: "unavailable" }; }
-    if (current.status !== "ok") return current;
-    const { entry } = current;
-    const force = options.force === true && (options.failedKey === undefined || options.failedKey === entry.key);
-    const usable = entry.accessExpiresAt > now();
-    const refreshToken = entry.refreshToken;
-    if (!config.refresh || refreshToken === undefined) return !force && usable ? current : { status: "expired" };
-    const refreshable = entry as Refreshable<E>;
-    if (!force && entry.accessExpiresAt - now() > SUBSCRIPTION_REFRESH_WINDOW_MS) return current;
-    if (rejected.has(refreshToken)) return !force && usable ? current : { status: "expired" };
-    if ((backoff.get(refreshToken) ?? 0) > now()) return !force && usable ? current : { status: "unavailable" };
-    let refreshed: SubscriptionAuthResult<E>;
-    try { refreshed = await refreshOnce(refreshable, config.refresh); } catch { refreshed = { status: "unavailable" }; }
-    // 미리 하는 갱신이 실패해도 아직 유효한 토큰은 쓸 수 있다.
-    if (refreshed.status !== "ok" && !force && usable) return current;
-    return refreshed;
+    let classified: SubscriptionAuthResult<E> | "absent";
+    try { classified = classify(await loadRaw()); } catch { return { status: "unavailable" }; }
+    if (disposed) return { status: "unavailable" };
+    if (classified === "absent") {
+      if (explicitSignOut) return { status: "signed_out" };
+      return readCli(generation, controller.signal);
+    }
+    if (classified.status !== "ok") return classified;
+    return finish(classified, options);
   }
 
   return {
@@ -187,6 +262,7 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
           signal.throwIfAborted();
           if (disposed || revision !== generation) return { state: "cancelled" };
           // 새 로그인은 완전 교체한다. 옛 계정의 갱신 토큰·계정 id·임의 extra 필드는 물려받지 않는다.
+          explicitSignOut = false;
           clear();
           await deps.authService.setEntry(config.providerId, entry);
           return { state: "signed_in" };
@@ -197,9 +273,22 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     cancel: sessions.cancel,
     async logout() {
       sessions.cancelProvider(config.provider);
+      // 표식 쓰기보다 먼저 막는다. 그 사이에 CLI 토큰이 로그아웃을 되살리지 않게.
+      if (config.rememberSignOut === true) explicitSignOut = true;
       clear();
-      // 벤더 CLI의 자기 로그인은 지우지 않는다 — Console 슬롯의 항목만 지운다.
-      await deps.authService.deleteApiKey(config.providerId);
+      try {
+        if (config.rememberSignOut === true) {
+          await deps.authService.setEntry(config.providerId, { ...SUBSCRIPTION_SIGNED_OUT_ENTRY });
+        } else {
+          // 벤더 CLI의 자기 로그인은 지우지 않는다 — Console 슬롯의 항목만 지운다.
+          await deps.authService.deleteApiKey(config.providerId);
+        }
+      } catch (error) {
+        deps.onQuota?.({ status: "not_connected" });
+        throw error;
+      }
+      // 표식이 이후의 차단을 소유한다. 실패하면 플래그를 유지해 부재를 CLI로 열지 않는다.
+      if (config.rememberSignOut === true) explicitSignOut = false;
       deps.onQuota?.({ status: "not_connected" });
     },
     read,
@@ -212,6 +301,11 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
       }
       const result = await config.fetchQuota(auth.entry);
       if (result.status !== "expired") return result;
+      if (auth.origin === "cli") {
+        // 벤더 refresh는 호출하지 않는다. 거절된 access만 이 프로세스에서 버리고 로그인을 안내한다.
+        cliRejected.add(auth.entry.key);
+        return { status: "not_connected" };
+      }
       const retried = await read({ force: true, failedKey: auth.entry.key });
       if (retried.status !== "ok" || retried.entry.key === auth.entry.key) return { status: "expired" };
       return config.fetchQuota(retried.entry);

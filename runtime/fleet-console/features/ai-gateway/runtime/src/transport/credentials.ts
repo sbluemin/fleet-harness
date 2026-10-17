@@ -1,11 +1,10 @@
 /**
  * Mechanics for reading a credential another CLI left on this machine.
  *
- * Only providers whose sign-in Fleet does not own still read vendor stores here:
- * Claude Code (quota only) and the Antigravity CLI (`agy`). Codex, xAI, Cursor,
- * and Muse Code sign in through Console and live solely in the Console slot's
- * `auth.json` (`src/oauth/`); they never read vendor files, the environment, or
- * the OS keychain.
+ * Claude Code (quota only) and the Antigravity CLI (`agy`) still read vendor stores
+ * here. Codex and xAI read a vendor CLI file only when the Console slot has no entry
+ * for that provider (`src/upstream/<provider>/credentials.ts`); that read never writes.
+ * Cursor and Muse Code never read vendor files, the environment, or the OS keychain.
  *
  * This file holds only provider-unaware mechanics: bounded file I/O, platform
  * resolver deps, and the shared credential shapes. Each provider's login path,
