@@ -8,7 +8,7 @@
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
-export const COMMODORE_PROMPT_VERSION = 17;
+export const COMMODORE_PROMPT_VERSION = 18;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
