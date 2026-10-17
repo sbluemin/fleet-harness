@@ -435,7 +435,9 @@ export function createSwitchHold(deps: SwitchHoldDeps): SwitchHold {
 }
 
 export function holdScript(update: HoldUpdate): string {
-  return HOLD_RENDERER.replace("__HOLD_UPDATE__", JSON.stringify(update).replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character));
+  const serialized = JSON.stringify(update).replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
+  // 치환 함수로 넘긴다 — 문자열로 넘기면 이름 안의 `$'`·`$&` 같은 패턴이 해석되어 템플릿 조각이 리터럴 안으로 끼어든다.
+  return HOLD_RENDERER.replace("__HOLD_UPDATE__", () => serialized);
 }
 
 /** 같은 콘솔을 다른 철자로 불러도 같은 시도로 본다(기본 포트·대소문자). */

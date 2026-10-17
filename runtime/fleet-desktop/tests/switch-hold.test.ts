@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createRemoteBridge } from "../src/remote-bridge.js";
@@ -13,7 +15,8 @@ const FINGERPRINT = "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476C
  * 그래서 이 파일은 판이 서는 길 하나와, 판이 반드시 걷히는 길들을 다리(remote-bridge)와 판(switch-hold)을
  * 실제로 이어 붙인 채 확인한다.
  */
-function createHarness(options: { readonly load?: (url: string) => Promise<void> } = {}) {
+function createHarness(options: { readonly load?: (url: string) => Promise<void>; readonly label?: string } = {}) {
+  const scripts: string[] = [];
   const presented: unknown[] = [];
   const removed: unknown[] = [];
   const notices: string[] = [];
@@ -33,7 +36,7 @@ function createHarness(options: { readonly load?: (url: string) => Promise<void>
     shell: () => shell,
     createView: () => ({
       setBounds: () => undefined,
-      webContents: { loadFile: async () => undefined, executeJavaScript: async () => true, close: () => undefined },
+      webContents: { loadFile: async () => undefined, executeJavaScript: async (code: string) => { scripts.push(code); return true; }, close: () => undefined },
     }) as never,
     pagePath: "/switch.html",
     lang: "en",
@@ -57,7 +60,7 @@ function createHarness(options: { readonly load?: (url: string) => Promise<void>
     pins: { pin: () => undefined, unpin: () => undefined, clear: () => undefined } as never,
     policy: () => policy as never,
     sessionFetch: async (url: string) => url.endsWith("/console/") ? new Response("<!doctype html>") : new Response(null, { status: 204 }),
-    localFetch: (async () => Response.json({ origin: REMOTE, label: "build-mini", hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT, token: null })) as never,
+    localFetch: (async () => Response.json({ origin: REMOTE, label: options.label ?? "build-mini", hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT, token: null })) as never,
     localOrigin: () => LOCAL,
     // main의 넘겨주기와 같은 차례 — 붙잡고, 적재하고, 다 받았다고 알린다.
     loadConsole: async (url) => {
@@ -73,7 +76,7 @@ function createHarness(options: { readonly load?: (url: string) => Promise<void>
     on: (event: string, listener: never) => { if (event === "did-navigate") navigation.landed = listener; },
     removeListener: () => undefined,
   } as never);
-  return { bridge, hold, presented, removed, notices, navigation, current: () => current };
+  return { bridge, hold, scripts, presented, removed, notices, navigation, current: () => current };
 }
 
 describe("switch hold", () => {
@@ -81,13 +84,22 @@ describe("switch hold", () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it("keeps the old screen until the new console says it drew, then lets go", async () => {
-    const harness = createHarness();
+    // 이름은 사용자가 붙였거나 원격에서 온 것이다 — 치환 패턴이 섞여도 판에 들어가는 코드는 깨지지 않는다.
+    const harness = createHarness({ label: "a$'b$&c$`d" });
 
     await harness.bridge.open(REMOTE);
     expect(harness.presented).toHaveLength(1);
     // 적재는 끝났지만 아직 첫 목록을 칠하지 않았다 — 판은 그대로다.
     await vi.advanceTimersByTimeAsync(SWITCH_READY_CAP_MS - 100);
     expect(harness.removed).toHaveLength(0);
+
+    // 느린 전환의 알약은 그 이름을 글자 그대로 말한다.
+    const pillText = { textContent: "" };
+    const root = { setAttribute: () => undefined, classList: { add: () => undefined, remove: () => undefined }, style: { setProperty: () => undefined } };
+    const pillScript = harness.scripts.find((script) => script.includes("\"tone\":\"busy\""));
+    expect(pillScript).toBeDefined();
+    expect(runInNewContext(pillScript ?? "", { document: { documentElement: root, getElementById: (id: string) => id === "pill-text" ? pillText : null } })).toBe(true);
+    expect(pillText.textContent).toBe("Connecting to a$'b$&c$`d…");
 
     harness.hold.ready(REMOTE);
     await vi.advanceTimersByTimeAsync(SWITCH_FADE_MS + 50);
