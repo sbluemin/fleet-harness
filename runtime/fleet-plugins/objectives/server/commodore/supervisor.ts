@@ -13,6 +13,7 @@ import { commodorePersistKey, createCommodoreSession, type CommodoreSession, typ
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
+import { undeliveredMessageSeqs } from "./delivery.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
 import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "./types.js";
 
@@ -522,9 +523,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
       if (runner.stopping || runner.ending) {
-        // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다. 남는 대화라면 끊긴 턴의 말도
-        // 그 대화 안에 있다 — 다음에 이어 받는 세션이 읽었으므로 다시 싣지 않는다.
-        if (outcome.outcome !== "ok") { if (session.persistent) releaseMessages(runner, messages); else runner.messages.unshift(...messages); }
+        // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다. 남는 대화라도 끊긴 턴의 말이 그
+        // 대화에 닿았는지는 모른다(자식이 기록하기 전에 접혔을 수 있다) — 성공을 듣기 전까지는 다시 보낼 수 있게 둔다. 겹쳐 읽는 쪽이 잃는 쪽보다 낫다.
+        if (outcome.outcome !== "ok") runner.messages.unshift(...messages);
         return;
       }
       if (outcome.outcome !== "ok") {
@@ -603,8 +604,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     let entries: readonly CommodoreTranscriptEntry[];
     try { entries = deps.store.transcriptRead(runner.theaterId, { limit: MAX_TRANSCRIPT_PAGE }).entries; }
     catch { return; }
-    const settled = new Set(entries.flatMap((entry) => (entry.kind === "requeued" ? entry.seqs : [])));
-    const waiting = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])).filter((seq) => !settled.has(seq)));
+    const waiting = undeliveredMessageSeqs(entries);
     const messages = entries.flatMap((entry) => (entry.kind === "message" && waiting.has(entry.seq) && !entry.attachments?.length ? [entry] : []));
     if (!messages.length) return;
     for (const entry of messages) runner.messages.push({ seq: entry.seq, text: messagePromptText(entry) });

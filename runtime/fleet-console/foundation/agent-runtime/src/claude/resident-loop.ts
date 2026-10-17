@@ -151,6 +151,9 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
       }
     } catch (error) { failure = error; }
     // 자식이 끝났다 — 접힌 것(중지·폐기)이든 스스로 죽은 것이든 다음 턴은 새 자식을 띄워 같은 대화를 resume한다.
+    // 스스로 끝난 자식도 닫는다: SDK 슬롯은 `close()`로만 돌아오므로, 닫지 않으면 다음 `openSession`이 "already running"으로 막힌다.
+    // 접힌 자식의 close는 멱등이고, 그사이 새 자식이 슬롯을 잡았어도 그 슬롯을 건드리지 않는다.
+    try { owner.session.close(); } catch { /* 정리 실패가 다음 턴을 막지 않는다 */ }
     if (child === owner) child = null;
     if (owner.silentResume) resumeBroken = true;
     const turn = current;

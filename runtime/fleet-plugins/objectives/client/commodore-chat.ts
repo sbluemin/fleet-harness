@@ -2,6 +2,7 @@ import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversat
 import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import { undeliveredMessageSeqs } from "../server/commodore/delivery.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import type { Objective } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
@@ -18,7 +19,7 @@ type T = Translate<ObjectiveMessageKey>;
 export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
-  const undelivered = undeliveredSeqs(entries);
+  const undelivered = undeliveredMessageSeqs(entries);
   const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
   // 턴 중에 왔지만 그 턴이 집지 않은 말 — 다음 턴이 읽는다. 턴이 닫힌 뒤 말풍선으로 선다(턴 안에 두면 읽힌 것처럼 보인다).
@@ -122,12 +123,6 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
   return out;
 }
 
-/** 「전달되지 않음」인 말 — 끌 때 남았고, 그 뒤 다시 실리지 않은 것. */
-function undeliveredSeqs(entries: readonly CommodoreTranscriptEntry[]): ReadonlySet<number> {
-  const requeued = new Set(entries.flatMap((entry) => (entry.kind === "requeued" ? entry.seqs : [])));
-  return new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs.filter((seq) => !requeued.has(seq)) : [])));
-}
-
 /**
  * 사람의 말 한 줄의 문면과 참조 — 본문 속 지휘관 참조(`references`)는 그 자리의 토큰이다. 그룹 대화의 '@사령관'이 가리킨 목표
  * (`objective`)도 같은 토큰으로 본문 맨 앞에 선다(예전의 `[제목 · id]` 원문 접두). 서버는 본문의 표식 수와 참조 수가 같을 때만 기록하므로
@@ -149,7 +144,7 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
 export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[]): readonly AgentConversationEntry[] {
   const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
-  const undelivered = undeliveredSeqs(entries);
+  const undelivered = undeliveredMessageSeqs(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
   // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);

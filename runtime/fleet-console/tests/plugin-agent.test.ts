@@ -89,18 +89,21 @@ describe("Console-owned plugin Agent", () => {
 
   it("keeps a persisted resident conversation: steers a running turn, resumes after host restart, and forgets on request", async () => {
     const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-persist-")); roots.push(dataRoot);
-    const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {};
+    const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
     // 자식 하나 — 보낸 말마다 스크립트가 답한다. 트랜스크립트는 Claude Code처럼 홈의 projects 아래에 쌓인다.
     let reply: (text: string, messageId?: string) => void = () => undefined;
-    const engine = (configDir: string) => ({ configDir, dispose: vi.fn(async () => undefined), openSession: vi.fn(async (request: Record<string, unknown>) => {
+    // 실제 SDK처럼 한 인스턴스의 슬롯은 하나이고 `close()`로만 돌아온다 — 스스로 끝난 자식도 닫지 않으면 다음 자식이 막힌다.
+    const engine = (configDir: string) => { let slot = false; return { configDir, dispose: vi.fn(async () => undefined), openSession: vi.fn(async (request: Record<string, unknown>) => {
+      if (slot) throw new Error("A turn or session is already running on this instance.");
+      slot = true;
       opened.push(request);
       const id = (request.resume ?? request.sessionId) as string;
       await fs.mkdir(path.join(configDir, "projects", "-cwd"), { recursive: true }); await fs.writeFile(path.join(configDir, "projects", "-cwd", `${id}.jsonl`), "{}\n");
       const queue: ClaudeGatewayMessage[] = []; let wake: (() => void) | null = null; let done = false;
-      push = (message) => { queue.push(message); wake?.(); }; closeChild = () => { done = true; wake?.(); };
+      push = (message) => { queue.push(message); wake?.(); }; closeChild = () => { done = true; slot = false; wake?.(); }; dieChild = () => { done = true; wake?.(); };
       return { send: (input: unknown, options?: { messageId?: string }) => reply(typeof input === "string" ? input : JSON.stringify(input), options?.messageId), close: () => closeChild(),
         async *[Symbol.asyncIterator]() { for (;;) { while (queue.length) yield queue.shift()!; if (done) return; await new Promise<void>((r) => { wake = r; }); wake = null; } } };
-    }) }) as unknown as ClaudeGatewaySdk;
+    }) } as unknown as ClaudeGatewaySdk; };
     const hostFor = () => createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, persistRoot: () => dataRoot, createSdk: async (sdkOptions) => { homes.push(sdkOptions.home); return engine((sdkOptions.home as { configDir: string }).configDir); } });
     const persist = { key: "commodore:t1" };
     const events: AgentEvent[] = [];
@@ -146,6 +149,12 @@ describe("Console-owned plugin Agent", () => {
     expect(resumed.resumed).toBe(true);
     reply = () => push({ type: "result", is_error: false });
     await resumed.send("third");
+    expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
+    // 자식이 스스로 죽었다(close 없이 스트림이 끝남) — 다음 턴은 슬롯을 되찾아 같은 대화를 다시 resume한다.
+    dieChild(); await new Promise((r) => setTimeout(r, 0));
+    const before = opened.length;
+    await resumed.send("after a crash");
+    expect(opened).toHaveLength(before + 1);
     expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
     // 버리기 — 열린 세션을 닫고 자리를 지운다. 다음은 새 대화다.
     await restarted.forget!(persist.key);

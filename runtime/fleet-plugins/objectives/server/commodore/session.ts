@@ -80,8 +80,6 @@ export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
   /** `start()` 뒤 — 남아 있던 같은 대화를 이어 받았는가. */
   readonly resumed: boolean;
-  /** 이 세션의 대화가 호스트에 남는가 — 남으면 끊긴 턴에 실린 말도 다음에 이어 받는 대화 안에 있다. */
-  readonly persistent: boolean;
   start(): Promise<void>;
   /** 도는 턴에 사람의 말을 건넨다. 도는 턴이 없거나 건넬 수 없으면 false — 부른 쪽이 다음 턴에 싣는다. */
   steer(message: string, id: string): boolean;
@@ -213,7 +211,6 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   return {
     coordinates: options.coordinates,
     get resumed() { return session?.resumed === true; },
-    get persistent() { return typeof session?.steer === "function"; },
     steer(message, id) {
       if (disposed || !turnActive || !session?.steer) return false;
       // 깨움 턴의 메시지와 같은 머리로 건넨다 — 모델에게는 「사람의 말」 한 덩이로 읽힌다.
