@@ -1,5 +1,19 @@
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "@fleet-console/sdk/conversation";
-import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate } from "@fleet-console/sdk/composer";
+import {
+  AttachImageIcon,
+  COMPOSER_ATTACHMENT_MAX_BYTES,
+  COMPOSER_MAX_ATTACHMENTS,
+  ComposerAttachmentTray,
+  ComposerMenu,
+  ComposerMenuHeading,
+  ComposerMenuItem,
+  ComposerMenuSeparator,
+  ComposerNotice,
+  ComposerPlusButton,
+  ComposerSendButton,
+  composerT,
+  isComposerAttachmentCandidate,
+} from "@fleet-console/sdk/composer";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -113,6 +127,8 @@ function groupDraft(rootOperationId: string) {
 
 export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne }: GroupComposerProps) {
   const t = getGroupT(language);
+  // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
+  const ct = composerT(language);
   const draft = groupDraft(rootOperationId);
   const { text, target, attachments, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
@@ -236,17 +252,17 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     let count = draft.read().attachments.length;
     for (const file of images) {
       if (count >= COMPOSER_MAX_ATTACHMENTS) {
-        rejected = { tone: "warn", text: t("group.notice.attachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) }) };
+        rejected = { tone: "warn", text: ct("composer.attach.limit", { count: String(COMPOSER_MAX_ATTACHMENTS) }) };
         break;
       }
       if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
-        rejected = { tone: "warn", text: t("group.notice.attachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) }) };
+        rejected = { tone: "warn", text: ct("composer.attach.tooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) }) };
         continue;
       }
       count += 1;
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const previewUrl = URL.createObjectURL(file);
-      const name = file.name.length > 0 ? file.name : "pasted image";
+      const name = file.name.length > 0 ? file.name : ct("composer.attach.pasted");
       draft.update({ attachments: [...draft.read().attachments, { key, id: null, name, previewUrl, uploading: true }] });
       void uploadLaunchAttachment(file)
         .then(({ id }) => {
@@ -261,11 +277,11 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           const current = draft.read().attachments;
           if (!current.some((attachment) => attachment.key === key)) return;
           URL.revokeObjectURL(previewUrl);
-          draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: { tone: "warn", text: t("group.notice.attachFailed") } });
+          draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: { tone: "warn", text: ct("composer.attach.failed") } });
         });
     }
     setNotice(rejected);
-  }, [draft, t]);
+  }, [draft, ct]);
 
   const removeAttachment = (key: string) => {
     const current = draft.read().attachments;
@@ -422,7 +438,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
       });
     } catch (error) {
       const code = error instanceof Error ? error.message : "";
-      setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? t("group.notice.attachCommodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
+      setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? ct("composer.attach.commodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
     } finally {
       setBusy(false);
     }
@@ -492,12 +508,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
 
   return (
     <div ref={wrapRef} className="group-composer-wrap">
-      {notice ? (
-        <div className={`group-composer-notice is-${notice.tone}`} role="status">
-          <span>{notice.text}</span>
-          <button type="button" className="group-chat-link" onClick={() => setNotice(null)}>{t("group.notice.dismiss")}</button>
-        </div>
-      ) : null}
+      {notice ? <ComposerNotice tone={notice.tone} text={notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} /> : null}
       {popOpen ? (
         <div className="group-composer-pop" role="listbox" aria-label={t("group.mention.heading")}>
           {candidates.map((candidate, at) => {
@@ -540,59 +551,49 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         </div>
       ) : null}
       {menuOpen ? (
-        <div ref={menuRef} id={menuId} className="group-composer-pop is-plus" role="menu" aria-label={t("group.composer.more")}>
-          <button type="button" role="menuitem" className="group-composer-pop-row" onClick={pickImages}>
-            <span className="group-composer-pop-glyph" aria-hidden="true"><AttachImageIcon /></span>
-            <span className="group-composer-pop-name">{t("group.composer.attachImage")}</span>
-          </button>
+        <ComposerMenu ref={menuRef} id={menuId} className="group-composer-plus-menu" aria-label={ct("composer.more")}>
+          <ComposerMenuItem glyph={<AttachImageIcon />} onClick={pickImages}>{ct("composer.attach.image")}</ComposerMenuItem>
           {seated === null && !board?.actionsOnly ? (
-            <button type="button" role="menuitem" className="group-composer-pop-row" onClick={pickTarget}>
-              <span className="group-composer-pop-glyph is-at" aria-hidden="true">@</span>
-              <span className="group-composer-pop-name">{t("group.composer.pickTarget")}</span>
-            </button>
+            <ComposerMenuItem glyph="@" onClick={pickTarget}>{t("group.composer.pickTarget")}</ComposerMenuItem>
           ) : null}
           {more.length > 0 ? (
             <>
-              <div className="group-composer-pop-sep" role="separator" />
-              <div className="group-composer-pop-heading" role="presentation">{t("group.board.more")}</div>
+              <ComposerMenuSeparator />
+              <ComposerMenuHeading>{t("group.board.more")}</ComposerMenuHeading>
               {more.map((action) => (
-                <button
+                <ComposerMenuItem
                   key={action.id}
-                  type="button"
-                  role="menuitem"
-                  className={`group-composer-pop-row${armed === action.id ? " is-armed" : ""}`}
+                  className={armed === action.id ? "is-armed" : undefined}
+                  glyph={BOARD_GLYPHS[action.glyph]}
+                  sub={action.detail ? local(action.detail) : undefined}
                   data-board-arm={action.id}
                   aria-disabled={busy || !!action.unavailable || undefined}
                   title={action.unavailable ? local(action.unavailable) : seated?.id === action.id ? t("group.board.again", { label: local(action.label) }) : undefined}
                   onClick={() => { const arming = !action.context && action.confirm && armed !== action.id; pressChip(action); if (!arming) setMenuOpen(false); }}
                   onKeyDown={ignoreRepeat}
                 >
-                  <span className="group-composer-pop-glyph" aria-hidden="true">{BOARD_GLYPHS[action.glyph]}</span>
-                  <span className="group-composer-pop-name">{armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}</span>
-                  {action.detail ? <span className="group-composer-pop-sub">{local(action.detail)}</span> : null}
-                </button>
+                  {armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}
+                </ComposerMenuItem>
               ))}
             </>
           ) : null}
           {board?.compact ? (
             <>
-              <div className="group-composer-pop-sep" role="separator" />
-              <button
-                type="button"
-                role="menuitem"
-                className={`group-composer-pop-row${armed === "compact" ? " is-armed" : ""}`}
+              <ComposerMenuSeparator />
+              <ComposerMenuItem
+                className={armed === "compact" ? "is-armed" : undefined}
+                glyph={<CompactGlyph />}
+                sub={t("group.board.compactSub")}
                 data-board-arm="compact"
                 aria-disabled={board.compact.sessions === 0 || busy || undefined}
                 onClick={() => { void pressCompact(); }}
                 onKeyDown={ignoreRepeat}
               >
-                <span className="group-composer-pop-glyph" aria-hidden="true"><CompactGlyph /></span>
-                <span className="group-composer-pop-name">{board.compact.sessions === 0 ? t("group.board.compactNone") : armed === "compact" ? t("group.board.compactArmed", { count: String(board.compact.sessions) }) : t("group.board.compact")}</span>
-                <span className="group-composer-pop-sub">{t("group.board.compactSub")}</span>
-              </button>
+                {board.compact.sessions === 0 ? t("group.board.compactNone") : armed === "compact" ? t("group.board.compactArmed", { count: String(board.compact.sessions) }) : t("group.board.compact")}
+              </ComposerMenuItem>
             </>
           ) : null}
-        </div>
+        </ComposerMenu>
       ) : null}
       {panel !== null ? <div className="group-composer-panel">{panel}</div> : null}
       {suggest ? (
@@ -626,40 +627,23 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           {showHint ? <span className="group-composer-suggest-hint">{local(board!.hint!)}</span> : null}
         </div>
       ) : null}
-      <div className={`group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}`}>
-        {attachments.length > 0 ? (
-          <div className="group-composer-attachments" role="group" aria-label={t("group.composer.attachments")}>
-            {attachments.map((attachment) => (
-              <span key={attachment.key} className={`group-composer-attachment${attachment.uploading ? " is-uploading" : ""}`}>
-                <img src={attachment.previewUrl} alt={attachment.name} />
-                <button
-                  type="button"
-                  className="group-composer-attachment-remove"
-                  onClick={() => removeAttachment(attachment.key)}
-                  aria-label={t("group.composer.removeAttachment", { name: attachment.name })}
-                  title={t("group.composer.removeAttachment", { name: attachment.name })}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        ) : null}
+      <div className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}`}>
+        <ComposerAttachmentTray
+          items={attachments}
+          label={ct("composer.attach.list")}
+          removeLabel={(name) => ct("composer.attach.remove", { name })}
+          onRemove={removeAttachment}
+        />
         <span className="group-composer-plus-root" ref={plusRootRef}>
-          <button
+          <ComposerPlusButton
             ref={plusRef}
-            type="button"
-            className="group-composer-plus"
-            aria-label={t("group.composer.more")}
-            title={t("group.composer.more")}
-            aria-haspopup="menu"
+            aria-label={ct("composer.more")}
+            title={ct("composer.more")}
             aria-expanded={menuOpen}
             aria-controls={menuOpen ? menuId : undefined}
             disabled={!actions}
             onClick={() => setMenuOpen((open) => !open)}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
-          </button>
+          />
           <input
             ref={fileRef}
             type="file"
@@ -691,7 +675,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         ) : null}
         <textarea
           ref={inputRef}
-          className="group-composer-input"
+          className="fc-composer-input group-composer-input"
           rows={1}
           value={text}
           disabled={!actions}
@@ -714,20 +698,17 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           }}
         />
         {stopMode ? (
-          <button type="button" className="group-composer-send is-stop" aria-label={t("group.composer.stop")} title={t("group.composer.stop")} aria-haspopup="menu" aria-expanded={stopOpen} onClick={() => setStopOpen((open) => !open)}>
+          <ComposerSendButton className="is-stop" aria-label={t("group.composer.stop")} title={t("group.composer.stop")} aria-haspopup="menu" aria-expanded={stopOpen} onClick={() => setStopOpen((open) => !open)}>
             <span className="group-composer-stop-mark" aria-hidden="true" />
-          </button>
+          </ComposerSendButton>
         ) : (
-          <button
-            type="button"
-            className={`group-composer-send${seated ? " is-action" : ""}`}
+          <ComposerSendButton
+            className={seated ? "group-composer-send-action" : undefined}
             aria-label={seated ? local(seated.label) : t("group.composer.send")}
             title={seated ? local(seated.label) : t("group.composer.send")}
             disabled={!actions || busy || uploading || (seated ? !!seated.unavailable : empty || !!board?.actionsOnly)}
             onClick={() => { void submit(); }}
-          >
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M3.8 7.5 8 3.3l4.2 4.2" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </button>
+          />
         )}
       </div>
     </div>

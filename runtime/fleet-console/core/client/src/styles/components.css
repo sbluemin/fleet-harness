@@ -12530,6 +12530,207 @@ body[data-expanded-surface-resizing="true"] {
   color: var(--brass-ink);
 }
 
+/* ── 캡슐 컴포저(SDK `composer/attachment-surface`)의 호스트 외양 ─────────────────
+   그룹 대화 입력창과 사령관 입력창이 같은 캡슐 · 원 · 첨부 줄 · 안내 줄 · 「+」 메뉴를 쓴다. 형태는 SDK 가, 외양은 여기가
+   소유한다 — 표면은 자리(메뉴가 뜨는 위치·감싼 칸의 여백)만 덧붙인다. 폰 배치에서는 theme.css 가 데스크톱 토큰을 모바일
+   토큰으로 바꿔 같은 규칙이 폰 값으로 선다. */
+.fc-composer-capsule {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-height: 48px;
+  /* 양 끝에 같은 크기의 원(「+」·보내기)이 앉으므로 안쪽 여백도 양쪽이 같다. */
+  padding: 7px;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-capsule-rim);
+  border-radius: 24px;
+  background: var(--surface-capsule);
+  transition: border-color var(--duration-fast);
+}
+.fc-composer-capsule:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
+.fc-composer-capsule.is-disabled { opacity: var(--control-disabled-opacity); }
+.fc-composer-capsule.has-attachments { flex-wrap: wrap; }
+.fc-composer-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  max-height: 160px;
+  padding: 6px 0;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-body-size);
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+.fc-composer-input::placeholder { color: var(--text-tertiary); }
+
+/* 「+」·보내기 원 — 같은 크기·면. 메뉴가 열려 있는 동안 「+」는 hover 와 같은 brass 워시로 선다. */
+.fc-composer-circle {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--control-rest);
+  cursor: pointer;
+}
+.fc-composer-circle svg { width: 16px; height: 16px; }
+.fc-composer-plus { color: var(--text-secondary); }
+.fc-composer-send { color: var(--text-primary); }
+.fc-composer-circle:focus-visible,
+.fc-composer-plus[aria-expanded="true"] { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
+/* 터치에서는 누른 뒤 :hover 가 남는다 — 빈 보내기 원이 밝게 남지 않게 hover 는 마우스 같은 포인터에서만 칠한다. */
+@media (hover: hover) {
+  .fc-composer-circle:hover:not(:disabled) { background: var(--brass-glow); color: var(--brass-ink); }
+}
+/* 보낼 것이 없으면 원이 흐려진다 — 잠긴 원(:disabled)과, 눌러도 입력칸으로 초점만 보내는 빈 원(is-idle)이 같은 모습이다. */
+.fc-composer-circle:disabled,
+.fc-composer-send.is-idle { color: var(--text-tertiary); }
+.fc-composer-circle:disabled { cursor: default; }
+
+/* 붙인 이미지 — 캡슐 안 맨 위 줄. */
+.fc-composer-attachments {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 4px 4px 2px;
+}
+.fc-composer-attachment {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+.fc-composer-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: calc(var(--radius-xs) - 1px);
+}
+.fc-composer-attachment.is-uploading img { opacity: 0.45; }
+.fc-composer-attachment__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--glass-tint-panel);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+/* 제거는 파괴 동작 — coral 은 상태 채널이라 hover 에만 오른다(1:1 채팅 입력창·Quick Launch 와 같은 계약). */
+@media (hover: hover) {
+  .fc-composer-attachment__remove:hover:not(:disabled) { color: var(--coral); }
+}
+.fc-composer-attachment__remove:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
+.fc-composer-attachment__remove:disabled { cursor: default; }
+/* 16px 모서리 × 는 손가락에 작다 — 거친 포인터에서만 보이지 않는 히트 영역을 넓힌다. */
+@media (pointer: coarse) {
+  .fc-composer-attachment__remove::before { content: ""; position: absolute; inset: -10px; }
+}
+
+/* 안내 — 입력창 바로 위 한 줄과 끝의 「닫기」. 되돌릴 수 있는 거절은 warn, 보내기 실패는 coral 잉크, 그 밖은 중립. */
+.fc-composer-notice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.fc-composer-notice.is-warn { color: var(--warn-ink); }
+.fc-composer-notice.is-danger { color: var(--coral-ink); }
+.fc-composer-notice > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.fc-composer-notice__dismiss {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.fc-composer-notice__dismiss:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.fc-composer-notice__dismiss:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+
+/* 「+」 메뉴 — 위로 뜨는 상자. 자리는 표면이 정한다. */
+.fc-composer-menu {
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 240px;
+  max-width: calc(100vw - 2 * var(--space-4));
+  max-height: 320px;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: var(--space-1);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
+}
+.fc-composer-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  font: inherit;
+  font-size: var(--t-sm);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+.fc-composer-menu__item:hover,
+.fc-composer-menu__item:focus-visible { background: var(--control-wash-hover); outline: none; }
+.fc-composer-menu__item[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
+/* 두 번 눌러 확정하는 행의 첫 누름 — 다음 누름이 실행이라는 상태다. */
+.fc-composer-menu__item.is-armed .fc-composer-menu__name { color: var(--coral-ink); }
+.fc-composer-menu__glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.fc-composer-menu__glyph svg { width: 16px; height: 16px; }
+.fc-composer-menu__glyph.is-text { font-size: var(--t-sm); font-weight: var(--weight-bold); }
+.fc-composer-menu__name { flex: none; font-weight: var(--weight-medium); }
+.fc-composer-menu__sub { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
+.fc-composer-menu__key { margin-left: auto; padding: 0 5px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: 16px; }
+.fc-composer-menu__sep { height: 1px; margin: 3px 6px; background: var(--hairline); }
+.fc-composer-menu__heading {
+  padding: var(--space-2) var(--space-2) 2px;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
 /* ── Shared SDK Select listbox grammar (Option B1) ─────────────────────────── */
 
 :root {
@@ -15770,7 +15971,7 @@ kbd { font-variant-numeric: tabular-nums; }
    새로 넣는 요소도 그 조건을 지켜야 이 transition 이 제 전이를 덮지 않는다. 모바일 배치는 자기 누름 문법(mobile-press.css)을
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+  .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
   .new-session-send, .new-session-cancel,
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
@@ -15782,7 +15983,7 @@ kbd { font-variant-numeric: tabular-nums; }
     transform var(--duration-fast) var(--ease-spring);
 }
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+  .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
   .new-session-send, .new-session-cancel
 ):active:not(:disabled) {
   transform: scale(0.94);
@@ -15799,7 +16000,7 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
-    .conversation-round, .side-bar-theater-row-btn, .group-composer-send, .group-composer-plus,
+    .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
     .new-session-send, .new-session-cancel,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip
