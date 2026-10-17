@@ -1,5 +1,10 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
+import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
@@ -117,6 +122,7 @@ describe("quota service", () => {
     now += 300_000;
     const limited = (await service.getSummary()).providers.claude;
     expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
+    expect(limited).not.toHaveProperty("staleReason");
     await service.getSummary();
     expect(fetchClaude).toHaveBeenCalledTimes(2);
 
@@ -218,5 +224,106 @@ describe("quota service", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect((await museCode.readAuth()).status).toBe("expired");
     museCode.dispose();
+  });
+
+  it("keeps an empty success from erasing the last windows and restores that snapshot after restart", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "quota-last-good-"));
+    const filePath = path.join(directory, "quota-last-good.json");
+    let now = 1_000_000;
+    const liveReset = now + 7 * 86_400_000;
+    let windows: ProviderSuccess["windows"] = [
+      { id: "session", usedPercent: 12, resetsAt: now - 1_000 },
+      { id: "weekly", usedPercent: 30, resetsAt: liveReset },
+    ];
+    let plan = "Pro";
+    const fetchMuseCode = vi.fn(async (): Promise<ProviderSuccess> => ({
+      status: "ok",
+      plan,
+      fetchedAt: now,
+      windows,
+    }));
+    const open = () => createQuotaService({
+      now: () => now,
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchMuseCode,
+      lastGoodStore: createQuotaLastGoodStore({ filePath }),
+    });
+    try {
+      fs.writeFileSync(filePath, JSON.stringify({
+        version: 1,
+        providers: {
+          "muse-code": {
+            status: "ok",
+            plan: "Old",
+            fetchedAt: now,
+            apiKey: "secret-key",
+            accessToken: "secret-token",
+            windows: [{ id: "weekly", usedPercent: 1, resetsAt: liveReset, apiKey: "secret-window" }],
+          },
+        },
+      }));
+      const service = open();
+      expect(fs.readFileSync(filePath, "utf8")).not.toMatch(/secret-key|secret-token|secret-window|apiKey|accessToken/);
+
+      const fetched = (await service.getSummary()).providers["muse-code"];
+      expect(fetched).toMatchObject({ status: "ok", plan: "Pro" });
+      expect(fetched.windows?.map((window) => window.id)).toEqual(["session", "weekly"]);
+
+      windows = [];
+      plan = "Power";
+      now += 300_000;
+      const emptied = (await service.getSummary()).providers["muse-code"];
+      expect(emptied).toMatchObject({
+        status: "stale",
+        staleReason: "no_window",
+        plan: "Power",
+        windows: [{ id: "weekly", usedPercent: 30 }],
+      });
+      expect(JSON.stringify(emptied)).not.toMatch(/secret/);
+
+      // 추론 스트림이 알려 준 창은 그 뒤의 빈 key 성공이 리셋 전에 지우면 안 된다.
+      const sessionReset = now + 5 * 3_600_000;
+      service.record("muse-code", {
+        status: "ok",
+        fetchedAt: now,
+        windows: [
+          { id: "session", usedPercent: 4, resetsAt: sessionReset },
+          { id: "weekly", usedPercent: 30, resetsAt: liveReset },
+        ],
+      });
+      now += 300_000;
+      const afterStream = (await service.getSummary()).providers["muse-code"];
+      expect(afterStream).toMatchObject({
+        status: "stale",
+        staleReason: "no_window",
+        plan: "Power",
+        windows: [
+          { id: "session", usedPercent: 4 },
+          { id: "weekly", usedPercent: 30 },
+        ],
+      });
+
+      const restarted = (await open().getSummary()).providers["muse-code"];
+      expect(restarted).toMatchObject({
+        status: "stale",
+        staleReason: "no_window",
+        plan: "Power",
+        windows: [
+          { id: "session", usedPercent: 4 },
+          { id: "weekly", usedPercent: 30 },
+        ],
+      });
+
+      open().record("muse-code", { status: "not_connected" });
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).providers["muse-code"]).toBeUndefined();
+
+      fs.writeFileSync(filePath, "{not json");
+      const ignored = (await open().getSummary()).providers["muse-code"];
+      expect(ignored).toMatchObject({ status: "ok", plan: "Power", windows: [] });
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

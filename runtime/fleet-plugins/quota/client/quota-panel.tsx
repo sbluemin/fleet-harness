@@ -617,7 +617,13 @@ function ProviderCard({
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
       {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
-      {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
+      {provider.status === "stale" ? (
+        <StatusStrip kind="stale">
+          {provider.staleReason === "no_window"
+            ? t("quota.stale.noWindow", { t: elapsed(provider.fetchedAt, now) })
+            : t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}
+        </StatusStrip>
+      ) : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
         if (match?.[1] !== undefined) {

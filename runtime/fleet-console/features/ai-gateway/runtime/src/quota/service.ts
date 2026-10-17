@@ -8,7 +8,8 @@ import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/logi
 import { createXaiOAuth, type XaiOAuth } from "../oauth/xai/login.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import { deriveQuotaWindowRisk } from "./pressure.js";
-import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto, QuotaWindow } from "./types.js";
+import { QUOTA_LAST_GOOD_PROVIDERS, type QuotaLastGoodProviderId, type QuotaLastGoodStore } from "./last-good.js";
+import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
 import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 
 export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
@@ -18,7 +19,7 @@ export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
  */
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "antigravity" | "claude" | "codex" | "cursor" | "muse-code" | "xai";
+type ProviderId = QuotaLastGoodProviderId;
 
 /**
  * 사용량 조회가 rate limit이 걸린 key endpoint인 공급자(Muse Code). 실패 뒤에는
@@ -39,11 +40,6 @@ export interface QuotaService {
    * `expired`는 TTL이 지난 공급자가 있어 다음 `getSummary`가 upstream을 부른다는 뜻이다.
    */
   readCachedSummary(): { readonly summary: QuotaSummaryDto; readonly expired: boolean } | undefined;
-  /**
-   * 추론 응답이 함께 알려 준 사용량을 조회 결과처럼 기록한다. upstream이 방금 답한 값이라
-   * backoff를 풀고, 요금제·로그인 방식은 마지막 조회 값을 잇는다.
-   */
-  observe(id: ProviderId, windows: readonly QuotaWindow[]): void;
   getSummary(options?: {
     readonly force?: boolean;
     readonly forceProvider?: ProviderId;
@@ -58,6 +54,11 @@ export interface QuotaServiceDeps {
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
+  /**
+   * 마지막 성공 사용량. 호스트가 파일 자리를 정해 넘긴다. 없으면 이 프로세스 메모리만 쓴다.
+   * 읽기에 실패하거나 파일이 깨져 있으면 빈 값으로 시작한다.
+   */
+  readonly lastGoodStore?: QuotaLastGoodStore;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
 }
@@ -116,6 +117,11 @@ interface CacheEntry {
   readonly settledAt: number;
   /** 보호 대상 공급자만: 이 시각 전에는 upstream을 부르지 않는다. */
   readonly backoffUntil?: number;
+  /**
+   * upstream이 성공으로 답했다. 창이 없어 화면은 stale이어도, 강제 새로고침 간격은
+   * 성공 응답과 같이 둔다.
+   */
+  readonly accepted?: boolean;
 }
 
 function isProviderSuccess(value: ProviderResult): value is ProviderSuccess {
@@ -136,6 +142,19 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
+  if (deps.lastGoodStore) {
+    try {
+      const saved = deps.lastGoodStore.read();
+      for (const id of QUOTA_LAST_GOOD_PROVIDERS) {
+        const value = saved[id];
+        if (value) lastGood.set(id, value);
+      }
+      // 읽기에서 걸러 낸 비밀·깨진 필드는 다음 성공을 기다리지 않고 파일에서도 뺀다.
+      if (lastGood.size > 0) deps.lastGoodStore.write(saved);
+    } catch {
+      // 깨진 저장소는 없는 것과 같다. 다음 성공이 파일을 다시 쓴다.
+    }
+  }
   const inFlight = new Map<ProviderId, Promise<ProviderDto>>();
   /** 공급자별 마지막 추론 관측 시각. 그보다 먼저 시작한 조회는 관측값을 덮지 못한다. */
   const observedAt = new Map<ProviderId, number>();
@@ -154,7 +173,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     if (id === "claude" && !await deps.isClaudeConnected()) {
       const value: ProviderDto = { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
       cache.set(id, { value, expiresAt: now(), settledAt: now() });
-      lastGood.delete(id);
+      forget(id);
       return value;
     }
     const cached = cache.get(id);
@@ -162,7 +181,10 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       // stale 값이 backoff보다 먼저 낡아도 backoff는 유지한다.
       if (cached.backoffUntil !== undefined && cached.backoffUntil > now()) return presentable(cached.value);
       // 간격은 upstream이 답한 결과에만 둔다. 로컬 로그인 없음·읽기 실패는 로그인 즉시 갱신돼야 한다.
-      const answered = cached.value.status === "ok" || cached.value.status === "no_subscription";
+      // 빈 성공을 stale로 이은 값도 그 답이다. 새로고침 연타가 key endpoint를 다시 두드리면 안 된다.
+      const answered = cached.value.status === "ok"
+        || cached.value.status === "no_subscription"
+        || cached.accepted === true;
       if (force && answered && now() - cached.settledAt < QUOTA_FORCE_MIN_INTERVAL_MS) force = false;
     }
     if (!force && cached && cached.expiresAt > now()) {
@@ -179,13 +201,14 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       .then((result) => {
         const newer = currentMutation() ?? observationSince(id, startedAt);
         if (newer) return newer;
-        if (isProviderSuccess(result)) lastGood.set(id, result);
-        // 로그아웃·만료·구독 없음은 확정된 답이다. 이전 계정의 값이 이후 실패에서 되살아나면 안 된다.
-        else if (result.status !== "error") lastGood.delete(id);
         const settledAt = now();
-        // 예외 대신 오류 결과를 돌려주는 조회(자격 증명 저장소를 읽지 못함 등)도 실패다.
-        const value = result.status === "error" ? staleOrError(id, result.message, settledAt) : result;
-        cache.set(id, { value, expiresAt: settledAt + QUOTA_CACHE_TTL_MS, settledAt });
+        const value = applySettled(id, result, settledAt);
+        cache.set(id, {
+          value,
+          expiresAt: settledAt + QUOTA_CACHE_TTL_MS,
+          settledAt,
+          ...(isProviderSuccess(result) ? { accepted: true } : {}),
+        });
         return value;
       })
       .catch((error: unknown) => {
@@ -204,6 +227,106 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       .finally(() => inFlight.delete(id));
     inFlight.set(id, task);
     return task;
+  }
+
+  /** 창에 붙은 파생 판정은 저장하지 않는다. 읽는 쪽에서 다시 계산한다. */
+  function stripDerived(value: ProviderSuccess): ProviderSuccess {
+    return {
+      ...value,
+      windows: value.windows.map(({ risk: _risk, ...window }) => window),
+    };
+  }
+
+  function persist(): void {
+    const store = deps.lastGoodStore;
+    if (!store) return;
+    const providers: Partial<Record<ProviderId, ProviderSuccess>> = {};
+    for (const id of QUOTA_LAST_GOOD_PROVIDERS) {
+      const value = lastGood.get(id);
+      if (value && value.windows.length > 0) providers[id] = stripDerived(value);
+    }
+    try {
+      store.write(providers);
+    } catch {
+      // 디스크가 거절해도 이번 조회 결과는 메모리에 남긴다.
+    }
+  }
+
+  /** 확정된 로그아웃·만료·구독 없음. 이전 계정 값이 파일에 남으면 재시작 뒤 되살아난다. */
+  function forget(id: ProviderId): void {
+    if (!lastGood.delete(id)) return;
+    persist();
+  }
+
+  /**
+   * `observed`를 넘길 때만 관측 시각을 옮긴다. 요금제나 지난 창을 정리하려고 같은 값을
+   * 다시 적는 경우에는 늦은 조회를 막는 시각을 과거로 되돌리지 않는다.
+   */
+  function remember(id: ProviderId, value: ProviderSuccess, observed?: number): void {
+    lastGood.set(id, stripDerived(value));
+    if (observed !== undefined) observedAt.set(id, observed);
+    persist();
+  }
+
+  /**
+   * 창이 있는 성공만 마지막 값을 갈아 끼운다. 창이 없는 성공(Muse key가 진행 중인 창을
+   * 빠뜨릴 때)은 이전 창을 지우지 않고, 실패와 같이 stale로 보이되 리셋이 지난 창은 뺀다.
+   * 남는 창이 없으면 그 빈 성공 자체를 그대로 둔다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
+   */
+  function applySettled(id: ProviderId, result: ProviderResult, at: number): ProviderDto {
+    if (isProviderSuccess(result) && result.windows.length > 0) {
+      const previous = lastGood.get(id);
+      const value: ProviderSuccess = {
+        ...result,
+        ...(result.plan || !previous?.plan ? {} : { plan: previous.plan }),
+        ...(result.method || !previous?.method ? {} : { method: previous.method }),
+        ...(result.cycleDays !== undefined || previous?.cycleDays === undefined ? {} : { cycleDays: previous.cycleDays }),
+        ...(result.credits || !previous?.credits ? {} : { credits: previous.credits }),
+      };
+      remember(id, value, at);
+      return value;
+    }
+    if (isProviderSuccess(result)) return presentEmptySuccess(id, result, at);
+    // 예외 대신 오류 결과를 돌려주는 조회(자격 증명 저장소를 읽지 못함 등)도 실패다.
+    if (result.status === "error") return staleOrError(id, result.message, at);
+    forget(id);
+    return result;
+  }
+
+  /**
+   * 빈 성공. 이전 창이 리셋 전이면 stale로 잇고, 하나도 남지 않으면 지금 응답(idle)을 그대로 둔다.
+   * 오류로 바꾸지 않는다 — 구독은 살아 있고 단지 진행 중인 창이 없는 것이다.
+   */
+  function presentEmptySuccess(id: ProviderId, result: ProviderSuccess, at: number): ProviderDto {
+    const previous = lastGood.get(id);
+    const plan = result.plan ?? previous?.plan;
+    const idle: ProviderDto = {
+      status: "ok",
+      windows: [],
+      fetchedAt: result.fetchedAt,
+      ...(plan ? { plan } : {}),
+      ...(result.method ? { method: result.method } : {}),
+    };
+    if (!previous) return idle;
+    if (result.plan && result.plan !== previous.plan) remember(id, { ...previous, plan: result.plan });
+    const kept = withoutLapsed({
+      ...lastGood.get(id)!,
+      status: "stale",
+      staleReason: "no_window",
+      ...(plan ? { plan } : {}),
+    }, at);
+    if (kept === null || (kept.windows?.length ?? 0) === 0) {
+      forget(id);
+      return idle;
+    }
+    const survived = kept.windows ?? [];
+    const creditsChanged = (kept.credits?.available !== previous.credits?.available)
+      || (kept.credits?.nextExpiresAt !== previous.credits?.nextExpiresAt);
+    if (survived.length !== previous.windows.length || creditsChanged) {
+      const { status: _status, message: _message, staleReason: _reason, ...rest } = kept;
+      remember(id, { ...rest, status: "ok", windows: survived, fetchedAt: previous.fetchedAt });
+    }
+    return kept;
   }
 
   /**
@@ -256,26 +379,14 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   return {
     record(id, value) {
       revisions.set(id, (revisions.get(id) ?? 0) + 1);
-      if (isProviderSuccess(value)) lastGood.set(id, value);
-      else lastGood.delete(id);
       const at = now();
-      cache.set(id, { value, expiresAt: at + QUOTA_CACHE_TTL_MS, settledAt: at });
-    },
-    observe(id, windows) {
-      if (windows.length === 0) return;
-      const previous = lastGood.get(id) ?? cache.get(id)?.value;
-      const at = now();
-      const value: ProviderSuccess = {
-        status: "ok",
-        ...(previous?.method ? { method: previous.method } : {}),
-        ...(previous?.plan ? { plan: previous.plan } : {}),
-        ...(previous?.cycleDays !== undefined ? { cycleDays: previous.cycleDays } : {}),
-        windows,
-        fetchedAt: at,
-      };
-      lastGood.set(id, value);
-      cache.set(id, { value, expiresAt: at + QUOTA_CACHE_TTL_MS, settledAt: at });
-      observedAt.set(id, at);
+      const settled = applySettled(id, value, at);
+      cache.set(id, {
+        value: settled,
+        expiresAt: at + QUOTA_CACHE_TTL_MS,
+        settledAt: at,
+        ...(isProviderSuccess(value) ? { accepted: true } : {}),
+      });
     },
     peekSummary() {
       if (cache.size === 0) return undefined;

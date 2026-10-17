@@ -27,6 +27,7 @@ export type {
 export * from "./quota/pressure.js";
 export * from "./quota/windows.js";
 export * from "./quota/service.js";
+export * from "./quota/last-good.js";
 export * from "./upstream/anthropic/quota.js";
 export * from "./upstream/anthropic/credentials.js";
 export * from "./upstream/codex/quota.js";
