@@ -151,7 +151,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
-          ...(entry.seq > lastWakeSeq ? { pending: true as const } : {}) });
+          ...(entry.seq > lastWakeSeq && !undelivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "text":
