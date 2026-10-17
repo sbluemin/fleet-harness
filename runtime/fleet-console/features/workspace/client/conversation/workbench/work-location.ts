@@ -20,7 +20,15 @@ export type WorkLocationTarget =
   | { readonly kind: "none" };
 
 const REFRESH_MIN_INTERVAL_MS = 1_500;
+// 읽지 못하면 짧게 늘려 가며 몇 번만 다시 묻는다 — 그 뒤로는 다음 신호(revision·폴더 변화)를 기다린다.
+const RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000] as const;
+// (Operation, 폴더) 한 쌍의 값만 담는다 — 다른 폴더(같은 세션의 옛 폴더 포함)의 값으로 대신하지 않는다.
 const cache = new Map<string, { readonly location: ConversationWorkLocation; readonly at: number }>();
+
+/** 쌍의 키 — 폴더 없음(세션의 실행 작업 폴더)과 빈 폴더(Theater 루트로 옮김)는 다른 자리다. */
+function pairKey(operationId: string, folder: string | null): string {
+  return JSON.stringify([operationId, folder]);
+}
 
 async function fetchLocation(operationId: string, folder: string | null): Promise<ConversationWorkLocation | null> {
   try {
@@ -62,31 +70,35 @@ export function useConversationWorkLocation(target: WorkLocationTarget): Convers
   const folder = target.kind === "operation" ? target.folder ?? null : null;
   const theaterId = target.kind === "none" ? null : target.theaterId;
   const theaterLabel = target.kind === "none" ? "" : target.theaterLabel;
-  const [fetched, setFetched] = useState<{ readonly operationId: string; readonly location: ConversationWorkLocation } | null>(null);
+  const key = operationId === null ? null : pairKey(operationId, folder);
+  const [fetched, setFetched] = useState<{ readonly key: string; readonly location: ConversationWorkLocation } | null>(null);
 
   useEffect(() => {
-    if (operationId === null) return;
+    if (operationId === null || key === null) return;
     let live = true;
-    const cacheKey = `${operationId}\n${folder ?? ""}`;
-    const cached = cache.get(cacheKey) ?? null;
-    const wait = cached === null ? 0 : Math.max(0, REFRESH_MIN_INTERVAL_MS - (Date.now() - cached.at));
-    const timer = setTimeout(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cached = cache.get(key) ?? null;
+    const attempt = (failures: number) => {
       void fetchLocation(operationId, folder).then((result) => {
-        // 읽지 못하면 그 Theater 루트다 — 사람이 고르지 않는 가장 안전한 기본값.
-        const next = result ?? (theaterId === null ? null : rootOf(theaterId, theaterLabel));
-        if (next === null) return;
-        cache.set(cacheKey, { location: next, at: Date.now() });
-        cache.set(operationId, { location: next, at: Date.now() });
-        if (live) setFetched((current) => (current?.operationId === operationId && sameLocation(current.location, next) ? current : { operationId, location: next }));
+        if (result === null) {
+          // 읽지 못한 동안은 모른다 — 옛 위치나 Theater 루트로 대신하면 도구 칸이 엉뚱한 자리에 선다(같은 쌍의 캐시는 그대로 쓴다).
+          const delay = RETRY_DELAYS_MS[failures];
+          if (live && delay !== undefined) timer = setTimeout(() => attempt(failures + 1), delay);
+          return;
+        }
+        cache.set(key, { location: result, at: Date.now() });
+        if (live) setFetched((current) => (current?.key === key && sameLocation(current.location, result) ? current : { key, location: result }));
       });
-    }, wait);
+    };
+    timer = setTimeout(() => attempt(0), cached === null ? 0 : Math.max(0, REFRESH_MIN_INTERVAL_MS - (Date.now() - cached.at)));
     return () => { live = false; clearTimeout(timer); };
-  }, [folder, operationId, revision, theaterId, theaterLabel]);
+  }, [folder, key, operationId, revision]);
 
   if (operationId === null) return theaterId === null ? null : stableRoot(theaterId, theaterLabel);
-  // 지금 대화의 값만 — 막 읽은 값, 없으면 이 화면이 전에 읽어 둔 값(같은 폴더 → 같은 세션의 아무 값). 둘 다 없으면 아직 모른다.
-  if (fetched?.operationId === operationId) return fetched.location;
-  return cache.get(`${operationId}\n${folder ?? ""}`)?.location ?? cache.get(operationId)?.location ?? null;
+  // 지금 (Operation, 폴더) 쌍의 값만 — 막 읽은 값, 없으면 이 화면이 전에 그 쌍으로 읽어 둔 값. 둘 다 없으면 아직 모른다(null).
+  // 폴더가 바뀐 렌더에서 옛 폴더의 값을 흘리지 않는다 — 부르는 쪽은 null 인 동안 도구 칸을 세우지 않는다.
+  if (fetched?.key === key) return fetched.location;
+  return cache.get(key!)?.location ?? null;
 }
 
 const roots = new Map<string, ConversationWorkLocation>();
