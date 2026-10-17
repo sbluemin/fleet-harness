@@ -4,7 +4,7 @@ branch: feat/composer-attachment-ssot
 
 ### fleet-console
 #### Added
-- Attach images in a new session the same way as in chat, and open any attached thumbnail — before or after sending — to look through the images.
+- Attach images in a new session the same way as in chat, and open any attached thumbnail, before or after sending, to look through the images.
   ko: 새 세션에서도 채팅과 같이 이미지를 첨부할 수 있고, 보내기 전후의 첨부 썸네일을 눌러 이미지를 넘겨 볼 수 있습니다.
 
 #### Fixed
