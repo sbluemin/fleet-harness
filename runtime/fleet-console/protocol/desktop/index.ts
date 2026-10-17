@@ -254,6 +254,29 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
 }
 
 /**
+ * 화면공유가 실패한 뒤 미리보기가 읽는 화면 기록 사유.
+ * Desktop이 macOS `denied` / `not-determined` / `restricted`를 이 코드 하나로 접어 보내고,
+ * 그 외(허용·판독 실패·해당 없음·다른 플랫폼)는 null이다.
+ * 창 제목·경로·오류 원문·OS 상태 문자열은 싣지 않는다.
+ */
+export const DESKTOP_SCREEN_PERMISSION_PATH = "/api/v1/desktop/screen-permission";
+/**
+ * 화면 기록 사유를 쓰는 Desktop 메인 프로세스의 User-Agent.
+ * 렌더러는 이 헤더를 바꾸지 못하므로 페이지가 사유를 지어낼 수 없다. 비밀이 아니다.
+ */
+export const DESKTOP_SCREEN_PERMISSION_REPORT_AGENT = "FleetShell-ScreenPermission";
+export const DESKTOP_SCREEN_PERMISSION_REASONS = ["screen_recording_permission_required"] as const;
+export type DesktopScreenPermissionReason = (typeof DESKTOP_SCREEN_PERMISSION_REASONS)[number];
+export interface DesktopScreenPermissionSnapshot {
+  readonly reason: DesktopScreenPermissionReason | null;
+}
+
+export function isDesktopScreenPermissionSnapshot(value: unknown): value is DesktopScreenPermissionSnapshot {
+  return isRecord(value) && Object.keys(value).length === 1
+    && (value.reason === null || (typeof value.reason === "string" && (DESKTOP_SCREEN_PERMISSION_REASONS as readonly string[]).includes(value.reason)));
+}
+
+/**
  * 창이 자기를 든 셸에게 시키는 창 조작. 방향은 셸 갱신 명령과 같다(창 → Console → 그 창의 셸 SSE)
  * 이지만, 명령은 걸어 두지 않고 지금 붙어 있는 셸에만 흘린다 — 나중에 붙은 셸이 사용자가 잊은
  * 전체화면 전환을 수행하면 창이 저 혼자 커진다. 스냅샷 경로는 옛 Console을 가려내는 데만 쓰이고
@@ -264,9 +287,11 @@ export const DESKTOP_WINDOW_COMMAND_EVENTS_PATH = "/api/v1/desktop/window/comman
 export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
 /**
  * `request-accessibility-permission`은 화면공유 창 식별이 손쉬운 사용 권한 부족으로 실패했을 때 사람이 미리보기에서 누른 요청이다.
- * TCC는 Console 자식(osascript)을 띄운 앱 — 창을 든 Desktop — 을 기준으로 판정하므로 그 앱이 묻는다. 모르는 옛 셸은 프레임을 버린다.
+ * TCC는 Console 자식(osascript)을 띄운 앱 — 창을 든 Desktop — 을 기준으로 판정하므로 그 앱이 묻는다.
+ * `open-screen-recording-settings`는 화면 기록 권한이 없어 공유가 실패했을 때 사람이 누른 요청이다.
+ * Desktop은 고정된 화면 기록 설정 주소만 열고, OS 권한 안내를 새로 띄우지 않는다. 모르는 옛 셸은 프레임을 버린다.
  */
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission"] as const;
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
 export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
 

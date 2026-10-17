@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { desktopCapturer, systemPreferences, type WebContents } from "electron";
-import { DESKTOP_COMPUTER_CAPTURE_PATH, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget } from "@fleet-console/protocol/desktop";
+import { desktopCapturer, shell, systemPreferences, type WebContents } from "electron";
+import { DESKTOP_COMPUTER_CAPTURE_PATH, DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot } from "@fleet-console/protocol/desktop";
 
 const VERIFY_WINDOW = `
 ObjC.import('AppKit'); ObjC.import('CoreGraphics');
@@ -22,6 +22,45 @@ async function verifyWindow(target: DesktopComputerCaptureTarget): Promise<boole
 function screenAccess(): string {
   if (process.platform !== "darwin" && process.platform !== "win32") return "not_applicable";
   try { return systemPreferences.getMediaAccessStatus("screen"); } catch { return "unreadable"; }
+}
+
+/** macOS가 화면 기록을 막은 상태만 미리보기 사유가 된다. OS 문자열 자체는 나가지 않는다. */
+const SCREEN_RECORDING_BLOCKED = new Set(["denied", "not-determined", "restricted"]);
+
+function screenRecordingReason(): DesktopScreenPermissionReason | null {
+  if (process.platform !== "darwin") return null;
+  return SCREEN_RECORDING_BLOCKED.has(screenAccess()) ? "screen_recording_permission_required" : null;
+}
+
+/** 캡처를 거절하기 전에 사유를 남겨, 렌더러가 실패를 본 뒤에는 이미 읽을 수 있게 한다. 실패해도 캡처 판단은 그대로다. */
+async function publishScreenPermission(origin: string, reason: DesktopScreenPermissionReason | null): Promise<boolean> {
+  const body: DesktopScreenPermissionSnapshot = { reason };
+  try {
+    const response = await fetch(`${origin}${DESKTOP_SCREEN_PERMISSION_PATH}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Origin: origin, "User-Agent": DESKTOP_SCREEN_PERMISSION_REPORT_AGENT },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(3000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 사람이 미리보기에서 누를 때만 연다. 주소는 이 상수뿐이고 요청에서 읽지 않는다. */
+const SCREEN_RECORDING_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+const SCREEN_SETTINGS_INTERVAL_MS = 5_000;
+let lastScreenSettingsAt = 0;
+
+export function openScreenRecordingSettings(log: (message: string) => void, now = Date.now()): void {
+  if (process.platform !== "darwin") { log("computer capture screen recording settings ignored: platform"); return; }
+  if (now - lastScreenSettingsAt < SCREEN_SETTINGS_INTERVAL_MS) { log("computer capture screen recording settings ignored: repeated"); return; }
+  lastScreenSettingsAt = now;
+  void shell.openExternal(SCREEN_RECORDING_SETTINGS_URL).then(
+    () => log("computer capture screen recording settings opened"),
+    () => log("computer capture screen recording settings failed"),
+  );
 }
 
 /** 같은 클릭이 겹쳐 와도 OS 안내를 거듭 띄우지 않는 간격. */
@@ -48,6 +87,11 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
     const respond: typeof callback = (streams) => { answered = true; callback(streams); };
     void (async () => {
       const origin = localOrigin();
+      // 거절보다 먼저 남긴다. 렌더러의 getDisplayMedia 거부는 이 핸들러가 답을 낸 뒤에야 온다.
+      if (origin) {
+        const published = await publishScreenPermission(origin, screenRecordingReason());
+        if (!published) log("computer capture screen permission unpublished");
+      }
       if (!origin || request.frame !== contents.mainFrame || !request.videoRequested || request.audioRequested) { log("computer capture rejected: request scope"); respond({}); return; }
       const readTarget = async () => {
         const response = await fetch(`${origin}${DESKTOP_COMPUTER_CAPTURE_PATH}`, { signal: AbortSignal.timeout(3000) });

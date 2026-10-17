@@ -40,7 +40,7 @@ import { createConsoleUseMcpHost, type ConsoleUseActions } from "../../../featur
 import { createPluginAdmiralMcpHost } from "../plugin-host/mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { CONSOLE_LIFECYCLE_WIRE, CONSOLE_STOP_REQUEST_PATH, CONSOLE_STOP_REQUEST_REVISION, OWNED_GROUP_TERM_GRACE_MS } from "@fleet-console/protocol/lifecycle";
 import { DesktopEngine } from "../../../features/browser/host/desktop-engine.js";
@@ -77,7 +77,7 @@ import type { TheaterRegistration } from "../../../features/workspace/host/theat
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../plugin-host/plugin-host.js";
 import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
-import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
+import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopScreenPermissionRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createAgentProcessSpawner } from "./agent-process.js";
@@ -1414,6 +1414,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
   });
+  let screenRecordingPermissionReason: DesktopScreenPermissionReason | null = null;
+  const desktopScreenPermissionRouter = createDesktopScreenPermissionRouter({
+    getReason: () => screenRecordingPermissionReason,
+    setReason: (reason) => {
+      if (screenRecordingPermissionReason === reason) return;
+      screenRecordingPermissionReason = reason;
+      logComputerCapture({ captureReason: "screen_permission", unavailableReason: reason ?? "none" });
+    },
+    isLoopback: isLoopbackListener,
+    isAuthorized: isSameOriginConsoleRead,
+    isShellReport: (req) => isExactConsoleOrigin(req) && req.headers["user-agent"] === DESKTOP_SCREEN_PERMISSION_REPORT_AGENT && req.headers["sec-fetch-site"] === undefined,
+    readJsonBody,
+    writeJson,
+    writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
+  });
   const desktopWindowCommandRouter = createDesktopWindowCommandRouter({
     isAuthorized: isExactConsoleOrigin,
     readJsonBody,
@@ -1424,6 +1439,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (command === "request-accessibility-permission") {
         const admitted = owner === "local" && computerUse.captureUnavailableReason() === "accessibility_permission_required";
         logComputerCapture({ captureReason: "accessibility_request", admitted });
+        if (!admitted) return;
+      }
+      // 설정 열기도 사람이 누른 명령이 이 기계에 닿을 때만, Desktop이 보고한 화면 기록 사유가 있을 때만 보낸다.
+      if (command === "open-screen-recording-settings") {
+        const admitted = owner === "local" && screenRecordingPermissionReason === "screen_recording_permission_required";
+        logComputerCapture({ captureReason: "screen_recording_settings", admitted });
         if (!admitted) return;
       }
       publishDesktopWindowCommand(owner, command);
@@ -1559,6 +1580,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellUpdateRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
+    if (await desktopScreenPermissionRouter(context)) return true;
     if (await desktopWindowCommandRouter(context)) return true;
     if (desktopUpdateRouter(context)) return true;
     return desktopThemeRouter(context);
@@ -2027,6 +2049,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
     return listener !== null && req.headers.origin === listener.origin;
+  }
+
+  /**
+   * 같은 출처의 읽기. Chromium은 동일 출처 GET에 Origin을 싣지 않으므로, 그 요청은 Sec-Fetch-Site가
+   * same-origin일 때만 통과한다. Origin이 있으면 리스너 출처와 같아야 하고, 어긋나면 거절한다.
+   * 페이지는 Sec-Fetch-Site를 바꾸지 못하므로 크로스 사이트 읽기는 열리지 않는다.
+   */
+  function isSameOriginConsoleRead(req: http.IncomingMessage): boolean {
+    if (req.headers.origin !== undefined) return isExactConsoleOrigin(req);
+    return req.headers["sec-fetch-site"] === "same-origin";
   }
 
   function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
