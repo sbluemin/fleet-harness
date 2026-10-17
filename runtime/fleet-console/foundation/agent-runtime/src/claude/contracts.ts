@@ -255,6 +255,12 @@ export interface ClaudeGatewaySdkOptions {
    */
   readonly ultracode?: true;
   /**
+   * 세션 설정 `autoMemoryEnabled`. `false`면 자식이 auto-memory 디렉터리를 읽지도 쓰지도 않는다.
+   *
+   * `false`만 연다. 켜는 쪽은 사용자·프로젝트 설정이 정하고, flag 소스가 `true`로 덮을 이유가 없다.
+   */
+  readonly autoMemoryEnabled?: false;
+  /**
    * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
    *
    * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트

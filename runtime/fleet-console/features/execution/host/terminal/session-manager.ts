@@ -352,6 +352,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(context.resumeSessionId ? { resumeSessionId: context.resumeSessionId } : {}),
       ...(context.sessionName ? { sessionName: context.sessionName } : {}),
       ...(context.disableSubagents ? { disableSubagents: true } : {}),
+      ...(context.disableAutoMemory ? { disableAutoMemory: true } : {}),
       ...(context.colorScheme ? { colorScheme: context.colorScheme } : {}),
     });
     if (guard.cancelled) {

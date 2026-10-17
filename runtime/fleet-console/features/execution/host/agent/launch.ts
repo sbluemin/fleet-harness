@@ -123,6 +123,7 @@ export async function prepareChatClaudeSession(
     readonly claudeCodeSystemPrompt?: "on" | "append" | "off";
     readonly claudeCodeCustomSystemPrompt?: string;
     readonly claudeCodeDisabledAgents?: readonly string[];
+    readonly disableAutoMemory?: boolean;
   },
 ): Promise<ClaudeSessionHandle> {
   const gatewaySelection = deps.readAiGatewaySettings
@@ -136,6 +137,7 @@ export async function prepareChatClaudeSession(
     ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     ...(deps.claudeCodeCustomSystemPrompt ? { claudeCodeCustomSystemPrompt: deps.claudeCodeCustomSystemPrompt } : {}),
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
+    ...(deps.disableAutoMemory ? { disableAutoMemory: true } : {}),
     claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
     workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
     ...(gatewaySelection
@@ -221,6 +223,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       resumeSessionId: context?.resumeSessionId,
       sessionName: context?.sessionName,
       ...(context?.disableSubagents ? { disableSubagents: true } : {}),
+      ...(context?.disableAutoMemory ? { disableAutoMemory: true } : {}),
       sessionId,
     });
   };
@@ -255,6 +258,8 @@ async function createAgentCliLaunchSpec(options: {
   readonly sessionName?: string;
   /** 서브에이전트 전부 끄기 — 설정의 옵트아웃 목록 대신 `Agent` 도구 자체를 막는다. */
   readonly disableSubagents?: boolean;
+  /** auto-memory 끄기 — Chat 표면과 같은 설정 키(`autoMemoryEnabled: false`)로 실린다. */
+  readonly disableAutoMemory?: boolean;
   readonly sessionId: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
@@ -340,6 +345,7 @@ async function createAgentCliLaunchSpec(options: {
       // Theater 설정은 새 세션에만 적용된다 — 값이 없으면 Claude Code 기본값으로 연다.
       ...(theaterPrompt ? { claudeCodeSystemPrompt: theaterPrompt.mode, claudeCodeCustomSystemPrompt: theaterPrompt.body } : {}),
       ...(options.disableSubagents ? { claudeCodeDisabledAgents: [ALL_SUBAGENTS] } : {}),
+      ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       // 사람에게 묻는 도구와 계획 모드 도구는 늘 뺀다 — 서브에이전트 규칙과 합쳐 같은 deny 목록으로 실린다.
       claudeCodeDisabledTools: CONSOLE_DISABLED_TOOLS,
       // 이어 붙일 세션이 있으면 그 좌표로 연다. 없으면 admiral이 새 id를 발급해 못박는다.

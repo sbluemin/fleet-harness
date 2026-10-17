@@ -302,7 +302,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     if (!groupId || !groups) return groupId ?? null;
     return groups.get(groupId)?.theaterId === theaterId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newOperationId?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; autoMemory?: boolean; parentOperationId?: string; childSessionId?: string; launchKey?: string }): Promise<string> => {
     const groupId = liveGroupId(input.theaterId, input.groupId);
     const result = await control().request({
       kind: "launch",
@@ -313,6 +313,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       ...(input.dormant ? { dormant: true } : {}),
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
       ...(input.subagents === false ? { disableSubagents: true } : {}),
+      // 구성원은 지휘관을 통해서만 제어된다 — 그 세션만 auto-memory를 끄고 띄운다. 지휘관은 사용자 설정을 그대로 쓴다.
+      ...(input.autoMemory === false ? { disableAutoMemory: true } : {}),
       ...(input.model && input.model !== "default" ? { model: input.model } : {}),
       ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
       ...(groupId ? { groupId } : {}),
@@ -661,7 +663,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
-      const spawn = (with_: MemberPreset) => launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id });
+      const spawn = (with_: MemberPreset) => launch({ objectiveId, theaterId: current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, autoMemory: false, viewMode: "chat", parentOperationId: current.id, childSessionId: member.id });
       let launchedId: string;
       try { launchedId = await spawn(preset); }
       catch (error) {

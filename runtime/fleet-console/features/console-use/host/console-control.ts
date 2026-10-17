@@ -28,7 +28,7 @@ const actionObjectSchema = z.object({
   display: z.string().max(32_000).optional(), displayFormat: z.enum(["markdown", "text"]).optional(),
   groupId: z.string().min(1).max(128).optional(), title: z.string().trim().min(1).max(120).optional(),
   sessionName: z.string().trim().min(1).max(64).regex(/^[^\r\n\t\u0000-\u001f]+$/).optional(),
-  disableSubagents: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
+  disableSubagents: z.boolean().optional(), disableAutoMemory: z.boolean().optional(), disableUserQuestions: z.boolean().optional(), dormant: z.boolean().optional(),
   parentOperationId: z.string().min(1).max(128).optional(),
   childSessionId: z.uuid().optional(),
   launchKey: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/).optional(),
@@ -37,7 +37,7 @@ const actionObjectSchema = z.object({
 export const actionSchema = actionObjectSchema.superRefine((value, ctx) => {
   // launch 는 첫 프롬프트 없이도 선다 — 시스템 지침만 싣고 다른 세션의 메시지를 기다리는 담당 세션이 그렇다.
   if (value.kind === "launch" ? !value.theaterId || value.operationId : !value.operationId || value.theaterId || (value.kind === "send" && value.text === undefined)) ctx.addIssue({ code: "custom", message: "invalid_action_target" });
-  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
+  if (value.kind !== "launch" && (value.model || value.effort || value.viewMode || value.groupId || value.title || value.sessionName || value.disableSubagents || value.disableAutoMemory || value.disableUserQuestions || value.dormant !== undefined || value.parentOperationId !== undefined || value.childSessionId !== undefined || value.launchKey !== undefined || value.newOperationId !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if (value.kind !== "send" && (value.liveOnly !== undefined || value.humanInput !== undefined || value.attachmentIds !== undefined)) ctx.addIssue({ code: "custom", message: "invalid_send_option" });
   if (value.newOperationId && !value.launchKey) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });
   if ((value.parentOperationId === undefined) !== (value.childSessionId === undefined)) ctx.addIssue({ code: "custom", message: "invalid_launch_option" });

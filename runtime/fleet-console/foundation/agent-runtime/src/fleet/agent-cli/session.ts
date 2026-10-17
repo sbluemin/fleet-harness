@@ -35,6 +35,7 @@ export interface ClaudeSessionSdkOptions {
   readonly allowAmbientMcpServers: boolean;
   readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
+  readonly autoMemoryEnabled?: false;
 }
 
 /** `startSession`/`startTurn` 요청에 그대로 펼치는 몫. */
@@ -64,6 +65,8 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺀 도구 이름들. 생략은 뺀 것이 없다는 뜻이다. */
   readonly claudeCodeDisabledTools?: readonly string[];
+  /** 이 세션에서 auto-memory를 끄는가. 생략은 사용자·프로젝트 설정을 따른다는 뜻이다. */
+  readonly disableAutoMemory?: true;
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
 }
@@ -105,6 +108,11 @@ export interface PrepareClaudeSessionOptions {
    * CLI는 `permissions.deny`, SDK는 `disallowedTools`로 같은 목록이 실린다.
    */
   readonly claudeCodeDisabledTools?: readonly string[];
+  /**
+   * 이 세션에서 auto-memory를 끈다. 누구를 끌지는 호출자 정책이다. 두 표면이 같은 설정 키를 받는다 —
+   * CLI는 `--settings`의 `autoMemoryEnabled: false`, SDK는 flag settings의 같은 키로 실린다.
+   */
+  readonly disableAutoMemory?: boolean;
 }
 
 /**
@@ -133,6 +141,7 @@ export async function prepareClaudeSession(
     claudeCodeSystemPrompt,
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
     ...(claudeCodeDisabledTools.length > 0 ? { claudeCodeDisabledTools } : {}),
+    ...(options.disableAutoMemory ? { disableAutoMemory: true as const } : {}),
     sdk: {
       options: {
         pluginUrl,
@@ -142,6 +151,7 @@ export async function prepareClaudeSession(
         allowAmbientMcpServers: true,
         ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
         ...(skillOverrides ? { skillOverrides } : {}),
+        ...(options.disableAutoMemory ? { autoMemoryEnabled: false as const } : {}),
       },
       request: {
         ...toSdkSessionCoordinate(coordinate),
