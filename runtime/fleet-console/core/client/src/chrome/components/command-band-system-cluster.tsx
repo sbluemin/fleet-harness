@@ -106,6 +106,11 @@ function pickerAnchorOf(trigger: HTMLElement | null): string | undefined {
   return [clamp(rect.left, width), clamp(rect.top, height), clamp(rect.right, width), clamp(rect.bottom, height), width, height].join(",");
 }
 
+/** 닫힌 메뉴가 한 프레임 칠해진 뒤에 실행한다. 첫 rAF는 칠하기 전, 둘째는 그 칠이 끝난 프레임이다. */
+function afterNextPaint(run: () => void): void {
+  window.requestAnimationFrame(() => { window.requestAnimationFrame(run); });
+}
+
 function isConsoleOriginShape(origin: string): boolean {
   try {
     const parsed = new URL(origin);
@@ -143,7 +148,7 @@ export function ConsoleHelpMenu({ menuItem = false, sideSubmenuGroup }: { readon
  * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
  * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
  */
-export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean; readonly sideSubmenuGroup?: SideSubmenuGroup } = {}) {
+export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup, onChosen }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean; readonly sideSubmenuGroup?: SideSubmenuGroup; readonly onChosen?: () => void } = {}) {
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
@@ -445,6 +450,8 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup }: { r
    * 겨눔만으로는 청하지 않는다 — 덮개는 창 전체를 덮으므로, 지나가는 포인터가 부르면 메뉴가 통째로 가려진다.
    */
   const openHomePicker = (home: string) => {
+    // 덮개는 다른 뷰다. 이 문서의 독 메뉴를 접지 않으면, 고른 뒤 붙잡는 화면은 그 메뉴가 열린 채다.
+    onChosen?.();
     location.assign(desktopPickerUrl(home, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
   };
   const openByHand = () => {
@@ -461,7 +468,15 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup }: { r
   activateRef.current = openByHand;
   const go = (origin: string) => {
     setOpen(false);
-    if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
+    // 서브메뉴의 setOpen은 이 판만 접는다. 독 메뉴는 바깥 상태라 여기서 같이 접지 않으면 고정 장면에 남는다.
+    onChosen?.();
+    if (origin === currentOrigin) return;
+    const href = new URL("/console/", `${origin}/`).toString();
+    // 셸은 assign을 가로채 그 순간의 화면을 붙잡는다. setState는 이 함수가 돌아온 뒤에야 커밋되므로,
+    // 바로 항해하면 닫히기 전 프레임이 찍힌다. 첫 프레임은 그 커밋을 칠하기 전이고, 다음 프레임은 칠한 뒤다.
+    // 웹은 같은 두 프레임 뒤에 그대로 이동한다. 바깥 메뉴가 없는 덮개는 붙잡는 문서가 아니므로 기다리지 않는다.
+    if (onChosen) afterNextPaint(() => location.assign(href));
+    else location.assign(href);
   };
 
   return (
