@@ -1129,10 +1129,17 @@ export function NewSessionPlayground() {
     const host = ensureSceneHost();
     host.classList.remove("is-parked");
     slot.appendChild(host);
-    const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
-    const cleanup = layer ? bindPlayground(layer, stage) : () => {};
-    stage.resume();
+    let cleanup = () => {};
+    let frame = 0;
+    const attach = () => {
+      const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
+      if (!layer) { frame = requestAnimationFrame(attach); return; }
+      cleanup = bindPlayground(layer, stage);
+      stage.resume();
+    };
+    frame = requestAnimationFrame(attach);
     return () => {
+      cancelAnimationFrame(frame);
       cleanup();
       stage.park();
       host.classList.add("is-parked");
