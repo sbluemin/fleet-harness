@@ -26,12 +26,29 @@ export interface QuickLaunchRequest {
    * 저장 경로는 어디에도 없다.
    */
   readonly attachments?: readonly QuickLaunchDraftAttachment[];
+  /**
+   * 새 세션 화면에서 보낸 실행. 거절은 그 컴포저로 돌아가고 Quick Launch 시트·고정 바의 초안 슬롯은 건드리지 않는다.
+   * 화면이 이미 닫혀 있으면 초안이 있는 거절만 시트로 넘어간다.
+   */
+  readonly fromNewSession?: true;
 }
 
 /** 본문 「새 세션 화면」의 대상. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다. */
 export interface NewSessionTarget {
   /** 처음 고른 Theater. 등록된 Theater 가 없으면 null — 화면이 「Theater 추가…」를 먼저 세운다. */
   readonly theaterId: string | null;
+}
+
+/**
+ * 새 세션 화면에서 시작한 실행의 거절. Quick Launch 초안 슬롯과 나눈다 — 고정 바는
+ * `quickLaunchDraft`가 도착하면 열림 전이 없이 가져가므로, 같은 필드를 쓰면 둘 중 하나가 빈다.
+ * `draft`가 null이면 문면을 덮지 않는다(프롬프트 없는 직접 실행). `attachments`가 null이면 칩을 건드리지 않는다.
+ */
+export interface NewSessionRejection {
+  readonly draft: string | null;
+  readonly attachments: readonly QuickLaunchDraftAttachment[] | null;
+  readonly errorCode: string | null;
+  readonly shortenByChars: number | null;
 }
 
 /** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
@@ -366,6 +383,8 @@ export interface ConsoleState {
   readonly pendingSideBarAddTheater: boolean;
   /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
   readonly newSession: NewSessionTarget | null;
+  /** 새 세션 화면이 소비하는 거절. Quick Launch 시트·고정 바의 초안과는 다른 칸이다. */
+  readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;

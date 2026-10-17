@@ -133,6 +133,7 @@ let state: ConsoleState = {
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   newSession: null,
+  newSessionRejection: null,
   keyboardShortcutsOpen: false,
   operationNotifications: {},
   notificationPreferences: readStoredNotificationPreferences(),
@@ -1019,6 +1020,31 @@ export function consumeQuickLaunchMentionDraft(): string | null {
 // 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
 export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null, shortenByChars: number | null = null, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
   setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchDraftAttachments: attachments, quickLaunchError: errorCode, quickLaunchErrorShortenBy: shortenByChars });
+}
+
+/**
+ * 새 세션 화면에서 시작한 실행의 거절. 시트와 고정 바가 읽는 quickLaunchDraft에는 싣지 않는다.
+ * 화면이 이미 닫혔으면 초안이 있는 경우만 시트로 넘긴다 — 빈 직접 실행은 되돌릴 문면이 없다.
+ */
+export function rejectNewSession(draft: string, errorCode: string | null, shortenByChars: number | null = null, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
+  if (state.newSession === null) {
+    if (draft.length > 0) reopenQuickLaunchWithDraft(draft, errorCode, shortenByChars, attachments);
+    return;
+  }
+  setState({
+    newSessionRejection: {
+      draft: draft.length > 0 ? draft : null,
+      attachments,
+      errorCode,
+      shortenByChars,
+    },
+  });
+}
+
+/** 새 세션 화면이 거절을 문면·칩에 반영한 뒤 한 번 비운다. */
+export function consumeNewSessionRejection(): void {
+  if (state.newSessionRejection === null) return;
+  setState({ newSessionRejection: null });
 }
 
 export function consumeQuickLaunchDraft(): void {
