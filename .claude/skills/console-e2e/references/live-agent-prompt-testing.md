@@ -261,7 +261,9 @@ not on Console UI. The shell `fleet` no longer runs Claude Code: `fleet.mjs -p` 
 
 Boot the owned Console as in [Serve with the capture and model levers](#serve-with-the-capture-and-model-levers-already-set),
 setting any `FLEET_GATEWAY_WIRE_LOG` or `FLEET_AI_GATEWAY_MODEL` on that `serve`, and take
-`<port>` with the [fixed lock read](setup.md#read-the-lock-without-the-token). For paid runs,
+`<port>` with the [fixed lock read](setup.md#read-the-lock-without-the-token). The listener port
+is ephemeral (`DEFAULT_PORT = 0` in `runtime/fleet-console/core/host/bootstrap/server.ts`), so
+write `gateway-settings.json` below only after the read, and rewrite it after every restart. For paid runs,
 the change under test must be in that host: apply the [serve bundle check](#serve-bundle-freshness).
 The wrapper refuses `--set ANTHROPIC_BASE_URL`, so point Claude Code at the gateway with a
 settings file in the run directory, and start it through the wrapper from a clean environment,
@@ -279,12 +281,14 @@ cd <owned-theater> && node <worktree>/.claude/skills/console-e2e/scripts/isolate
 Before the paid turn, confirm the route at no cost with the same command and a model id the
 slot does not expose, such as `claude-gateway--nope--nope`: the turn's text must read
 `API Error: 400 Unknown AI gateway model: …`. Run this probe with `FLEET_AI_GATEWAY_MODEL`
-unset — restart the owned `serve` without the pin if you set one above — because a pin
+unset — restart the owned `serve` without the pin if you set one above, then re-take `<port>`
+and rewrite `gateway-settings.json` — because a pin
 replaces the requested model before the alias check (`requested = modelOverride ?? body.model`
 in `runtime/fleet-console/features/ai-gateway/runtime/src/router/router.ts`), so the probe
 would dispatch a real request to the pinned provider instead of returning 400. When the paid
 scenario relies on the pin, restart the owned `serve` with `FLEET_AI_GATEWAY_MODEL` set again
-after the probe succeeds, and re-take `<port>` with the fixed lock read before the paid turn;
+after the probe succeeds, and re-take `<port>` with the fixed lock read, rewriting
+`gateway-settings.json` with it, before the paid turn;
 otherwise the paid call follows the requested alias instead of the forced provider. `Invalid API key` means the request went to
 Anthropic instead, because the settings file did not apply.
 
