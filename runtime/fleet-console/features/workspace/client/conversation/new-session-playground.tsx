@@ -125,6 +125,8 @@ class PlaygroundStage {
   private deck: number[] = [];
   private serial = 0;
   private entered = false;
+  /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
+  private readonly kindOrder = shuffle(ITEM_KINDS);
 
   constructor(private readonly publish: () => void, private readonly pinX: (id: string) => number | null) {}
 
@@ -148,7 +150,7 @@ class PlaygroundStage {
     }
     this.cap = layout.width < 520 ? 3 : layout.width < 820 ? 4 : STAGE_CAP;
     const itemCount = !layout.withItems ? 0 : layout.width >= 820 ? 4 : layout.width >= 470 ? 2 : layout.width >= 230 ? 1 : 0;
-    const kinds = shuffle(ITEM_KINDS).slice(0, itemCount);
+    const kinds = this.kindOrder.slice(0, itemCount);
     this.items = kinds.map((kind, index) => ({
       kind,
       cx: (layout.width * (index + 0.5)) / itemCount,
@@ -158,7 +160,7 @@ class PlaygroundStage {
     // 이미 무대에 선 배우는 남기고(상한까지) 기구에서 내려 바닥에 세운다. 퇴장하던 배우도 그 자리에 선다.
     this.actors = this.actors.filter((actor) => actor.present).slice(0, this.cap);
     for (const actor of this.actors) {
-      Object.assign(actor, { mode: "rest", x: rand(6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, remaining: null });
+      Object.assign(actor, { mode: "rest", x: clamp(actor.x, 6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, remaining: null });
     }
     if (!dynamic) {
       while (this.actors.length < this.cap) this.actors.push(this.cast());
@@ -628,15 +630,35 @@ export function NewSessionPlayground() {
       if (stage.isDynamic && (document.hidden || typing)) stage.freeze();
     };
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    // 첫 무대는 크기가 자리 잡은 뒤에 세운다 — 다른 화면(예: 오른쪽 패널이 있는 사령관 채팅)에서 넘어오면 열 폭이 전이하는 동안
+    // 첫 측정과 그 뒤 측정의 기구 수·좌표가 달라 배치가 한 번 바뀌어 보인다. 층·카드 크기가 10프레임 그대로이거나 1.2초가 지나면 세운다.
+    let settled = false;
+    let settleFrame = 0;
+    let settleKey = "";
+    let stableFrames = 0;
+    const settleStart = performance.now();
+    const settle = () => {
+      const box = layer.getBoundingClientRect();
+      const key = `${box.width}x${box.height}:${cards?.getBoundingClientRect().bottom ?? 0}`;
+      stableFrames = key === settleKey ? stableFrames + 1 : 0;
+      settleKey = key;
+      if (stableFrames >= 10 || performance.now() - settleStart > 1200) {
+        settled = true;
+        measure(true);
+        return;
+      }
+      settleFrame = requestAnimationFrame(settle);
+    };
     const observer = new ResizeObserver(() => {
+      if (!settled) return;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => measure(), 180);
     });
     observer.observe(layer);
     if (cards) observer.observe(cards);
-    measure(true);
+    settleFrame = requestAnimationFrame(settle);
 
-    const restage = () => measure(true);
+    const restage = () => { if (settled) measure(true); };
     reduced.addEventListener("change", restage);
     const calmObserver = new MutationObserver(restage);
     calmObserver.observe(root, { attributes: true, attributeFilter: ["data-avatar-motion"] });
@@ -667,6 +689,7 @@ export function NewSessionPlayground() {
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      cancelAnimationFrame(settleFrame);
       observer.disconnect();
       calmObserver.disconnect();
       reduced.removeEventListener("change", restage);
