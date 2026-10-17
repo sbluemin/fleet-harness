@@ -96,7 +96,7 @@ export function MoorIcon() {
   );
 }
 
-/** 막대 위로 향하는 화살표 — 도구모음에 두기. */
+/** 막대 위로 향하는 화살표 — 사이드바에 두기. */
 export function DockIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true" {...STROKE}>

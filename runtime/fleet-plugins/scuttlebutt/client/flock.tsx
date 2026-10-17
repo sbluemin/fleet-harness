@@ -153,7 +153,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const doriChat = useStoreSnapshot(sessions[2]!.subscribe, sessions[2]!.snapshot);
   const chats = [toriChat, boriChat, doriChat] as const;
   const phases = chats.map((chat) => chat.state.phase);
-  // 저장된 「도구모음에 두기」는 글리프가 설 호스트 슬롯이 있을 때만 유효하다 — 모바일 배치처럼 그 슬롯이
+  // 저장된 「사이드바에 두기」는 글리프가 설 호스트 슬롯이 있을 때만 유효하다 — 모바일 배치처럼 그 슬롯이
   // 없는 곳에서는 새로 남는다(글리프도 떼어내기도 없는 곳에 숨기면 되찾을 길이 없다).
   const dockHost = useStoreSnapshot(subscribeDock, readDockSnapshot).host;
   const docked = React.useMemo<Record<AdmiralId, boolean>>(() => ({
@@ -375,7 +375,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [releaseMentionMoor]);
 
   /**
-   * 도구모음에 두기. 답을 위해 세운 정박과 말풍선은 거둔다 — 그 답은 시트가 이어받는다. 사용자의
+   * 사이드바에 두기. 답을 위해 세운 정박과 말풍선은 거둔다 — 그 답은 시트가 이어받는다. 사용자의
    * 「제자리에 두기」 좌표는 지우지 않는다: 떼어낼 때 그 자리로 돌아간다.
    */
   const dockAide = React.useCallback((admiral: AdmiralId) => {
@@ -837,7 +837,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     gesture.lastX = event.clientX;
     gesture.lastY = event.clientY;
     gesture.lastAt = now;
-    // 화면 위쪽까지 끌어올리면 내려놓을 자리를 보인다 — 「도구모음에 두기」의 손 제스처.
+    // 화면 위쪽까지 끌어올리면 내려놓을 자리를 보인다 — 「사이드바에 두기」의 손 제스처.
     const armed = readDockSnapshot().host && event.clientY < DOCK_DROP_Y;
     if (armed !== dropArmedRef.current) {
       dropArmedRef.current = armed;
