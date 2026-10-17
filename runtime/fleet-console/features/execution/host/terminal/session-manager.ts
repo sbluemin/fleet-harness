@@ -54,6 +54,11 @@ interface TerminalSession {
    */
   lineClosed: boolean;
   /**
+   * 붙여넣기 구간(bracketed paste `ESC[200~` … `ESC[201~`) 안인가. 그 구간의 줄 끝은 셸이 실행하지 않고 줄 버퍼에 그대로
+   * 넣는다(zsh·bash 의 bracketed paste) — 실행된 줄로 세면 아무것도 돌지 않는데 「프롬프트 아님」으로 남는다.
+   */
+  inPaste: boolean;
+  /**
    * 프롬프트 표식(OSC 133;A)을 처리하는 파서. cwd 보고(OSC 7)와 따로 둔다 — zsh `chpwd`처럼 명령
    * 도중에도 cwd는 보고되므로, cwd 보고를 "프롬프트에 돌아왔다"로 읽으면 `cd /tmp; read x`의
    * `read`가 기다리는 줄을 프롬프트로 착각한다.
@@ -109,6 +114,13 @@ const ANSI_ESCAPE = "\x1b";
 const LINE_FEED = 0x0a;
 const CARRIAGE_RETURN = 0x0d;
 const END_OF_TEXT = 0x03;
+/** bracketed paste 표식 `ESC [ 2 0 0 ~`(시작)·`ESC [ 2 0 1 ~`(끝)의 바이트. */
+const ESCAPE = 0x1b;
+const LEFT_BRACKET = 0x5b;
+const DIGIT_ZERO = 0x30;
+const DIGIT_ONE = 0x31;
+const DIGIT_TWO = 0x32;
+const TILDE = 0x7e;
 const ANSI_CSI_PREFIX = `${ANSI_ESCAPE}[`;
 const DSR_STATUS_QUERY = `${ANSI_CSI_PREFIX}5n`;
 const DSR_CURSOR_POSITION_QUERY = `${ANSI_CSI_PREFIX}6n`;
@@ -373,6 +385,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       ...(cwdListener ? { cwdListener, cwdParser: createOscCwdParser(deps.localHostnames ?? []) } : {}),
       lineDirty: false,
       lineClosed: false,
+      inPaste: false,
       ...(cwdListener ? { promptParser: createOscPromptParser() } : {}),
       promptSeen: false,
       promptOpen: false,
@@ -484,13 +497,23 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     // 일반 화면에서 도는 자식(sleep 등) 중의 typeahead는 그대로 남는다 — 셸이 다음 줄에 다시 올린다.
     if (session.modeTracker.snapshot().alternateScreenActive) return;
     let lastTerminator = -1;
+    let lastContent = -1;
     for (let index = 0; index < input.length; index += 1) {
+      // 붙여넣기 구간의 시작·끝 표식은 줄의 내용이 아니다. 구간 안의 줄 끝은 셸이 실행하지 않는다.
+      if (input[index] === ESCAPE && input[index + 1] === LEFT_BRACKET && input[index + 2] === DIGIT_TWO && input[index + 3] === DIGIT_ZERO
+        && (input[index + 4] === DIGIT_ZERO || input[index + 4] === DIGIT_ONE) && input[index + 5] === TILDE) {
+        session.inPaste = input[index + 4] === DIGIT_ZERO;
+        index += 5;
+        continue;
+      }
+      lastContent = index;
       const byte = input[index];
+      if (session.inPaste) continue;
       if (byte === LINE_FEED || byte === CARRIAGE_RETURN || byte === END_OF_TEXT) lastTerminator = index;
     }
     session.lineDirty = true;
-    // 줄 끝 뒤에 바이트가 더 있으면 그것은 새로 열린, 아직 끝나지 않은 줄이다.
-    session.lineClosed = lastTerminator === input.length - 1;
+    // 줄 끝 뒤에 바이트가 더 있으면 그것은 새로 열린, 아직 끝나지 않은 줄이다(붙여넣은 글자도 그런 바이트다).
+    session.lineClosed = lastTerminator >= 0 && lastTerminator === lastContent;
     // 줄이 실행됐다 — 다음 프롬프트 표식까지 셸은 그 명령(또는 그 안의 `read`)에 있다.
     if (lastTerminator >= 0) session.promptOpen = false;
   }
