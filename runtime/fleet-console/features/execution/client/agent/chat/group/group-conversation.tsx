@@ -648,12 +648,13 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             {via}
           </span>
         ) : null}
-        <div className={`group-chat-bubble is-human${entry.format === "markdown" ? " is-markdown" : ""}`}>
+        <div className={`group-chat-bubble is-human${entry.pending ? " is-pending" : ""}${entry.format === "markdown" ? " is-markdown" : ""}`}>
           {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
           {entry.format === "markdown"
             ? <StreamedMarkdown text={entry.text} streaming={false} className="agent-chat-dispatch-md" language={language} />
             : <ChatReferenceText text={entry.text} references={entry.references} />}
         </div>
+        {entry.pending ? <span className="group-chat-pending">{t("group.pending")}</span> : null}
         {entry.undelivered ? <span className="agent-chat-undelivered" title={t("group.undelivered")}>{t("group.undelivered")}</span> : null}
       </div>
     );

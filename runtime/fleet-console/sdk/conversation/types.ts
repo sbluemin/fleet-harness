@@ -119,10 +119,11 @@ export type GroupTimelineEntry = EntryCoordinate & (
   /**
    * `via` — 그 말이 함께 간 보드 행위(개시·구상·방향 수정). 사람·사령관이 그 행위에 덧붙인 말이면 선다.
    * `undelivered` — 받는 쪽이 끝내 받지 못한 사람의 말(꺼진 사령관에 남은 말 등). 말풍선에 「전달되지 않음」이 선다.
+   * `pending` — 받는 쪽이 아직 이 말을 집어가지 않았다. 접수 직후의 표시이고, 처리가 시작되거나 취소되면 걷힌다.
    * `turn` — 그 말을 한 발화자 원장의 턴 좌표. 같은 값이면 한 턴(지시 하나에 대한 응답)이다. 턴 접기가 읽고, 없으면 그 말은 접지 않는다.
    * `references` — 사람이 문면 속 자리에 둔 참조(`./references.ts`). 평문 말풍선만 그 자리에 토큰을 세운다.
    */
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly turn?: string }
+  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly pending?: true; readonly turn?: string }
   /**
    * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
    * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.
