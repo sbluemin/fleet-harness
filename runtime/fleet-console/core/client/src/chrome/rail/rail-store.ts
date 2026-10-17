@@ -65,8 +65,48 @@ function useRailStoreField<K extends keyof RailStore>(key: K): RailStore[K] {
   return useSyncExternalStore(subscribeRailStore, () => store[key]);
 }
 
+/**
+ * 레일 엔트리 가운데 **도구**(파일·Codex·스킬처럼 대화 옆에서 쓰는 것)를 대신 여는 호스트 — 데스크톱 대화 칸의 도구 작업대다.
+ * 묶여 있는 동안 그 호스트가 `owns`라고 답한 엔트리는 오른쪽 사이드바 슬롯이 아니라 지금 대화의 도구 칸으로 열리고 닫힌다.
+ * 오른쪽 사이드바 자체(대상의 탭·설정)는 그대로 이 슬롯의 몫이다. 폰 배치처럼 호스트가 없으면 지금처럼 슬롯이 연다.
+ */
+export interface RailToolHost {
+  readonly owns: (id: string) => boolean;
+  readonly open: (id: string) => void;
+  readonly toggle: (id: string) => void;
+  readonly close: (id: string) => void;
+  readonly isOpen: (id: string) => boolean;
+}
+
+let toolHost: RailToolHost | null = null;
+
+/** 도구 호스트를 묶는다. 돌려준 함수로 푼다. */
+export function bindRailToolHost(next: RailToolHost): () => void {
+  toolHost = next;
+  return () => { if (toolHost === next) toolHost = null; };
+}
+
+/**
+ * 슬롯에 도구가 남아 있으면 호스트로 옮긴다 — 호스트가 없던 동안(첫 로드의 기억, 폰 배치, 다른 화면) 슬롯에 선 도구다. 호스트가
+ * 도구 목록을 새로 알게 될 때마다 부른다(플러그인은 늦게 선다).
+ */
+export function adoptRailToolPanel(): void {
+  const active = store.activePanelId;
+  const host = toolHost;
+  if (active === null || host === null || !host.owns(active)) return;
+  deactivateRailPanel();
+  host.open(active);
+}
+
+/** 그 엔트리가 지금 열려 있는가 — 도구 칸이든 오른쪽 사이드바 슬롯이든 실제로 선 자리를 본다. */
+export function isRailPanelOpen(id: string): boolean {
+  if (toolHost?.owns(id)) return toolHost.isOpen(id);
+  return store.activePanelId === id;
+}
+
 /** 아이콘 클릭의 배타 토글 — 켜진 패널이면 닫고, 아니면 그 패널로 교체한다. */
 export function toggleRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.toggle(id); return; }
   if (store.activePanelId === id) {
     deactivateRailPanel();
     return;
@@ -76,10 +116,12 @@ export function toggleRailPanel(id: string): void {
 
 /** Ensure-open(팔레트·플러그인 capability): 그 패널이 활성임을 보장한다. 절대 닫지 않는다. */
 export function openRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.open(id); return; }
   activateRailPanel(id);
 }
 
 export function closeRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.close(id); return; }
   if (store.activePanelId !== id) return;
   deactivateRailPanel();
 }

@@ -8,11 +8,11 @@
 .op-browser-cap { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-1); height: 100%; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-primary); }
 .op-browser-cap__tabs { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
 /* 에이전트 세션 — 분할 머리의 틴트와 2px 레일. reduced-motion 은 균일 채움으로 단락한다. */
-.conversation-split-head:has(> .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
-.conversation-split-head:has(> .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
+.workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving) { position: relative; background: linear-gradient(90deg, color-mix(in oklab, var(--agent-control-badge) 26%, var(--glass-tint-caption)), var(--glass-tint-caption) 70%); }
+.workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; pointer-events: none;
   background: linear-gradient(90deg, transparent 0%, var(--agent-control-badge) 30%, var(--agent-control-badge) 70%, transparent 100%); background-size: 55% 100%; background-repeat: no-repeat;
   animation: caption-rail-travel 3.8s ease-in-out infinite; animation-name: var(--state-motion, caption-rail-travel); }
-@media (prefers-reduced-motion: reduce) { .conversation-split-head:has(> .op-browser-cap.is-driving)::after { animation: none; background: var(--agent-control-badge); } }
+@media (prefers-reduced-motion: reduce) { .workbench-tile-head:has(> .workbench-tile-title > .op-browser-cap.is-driving)::after { animation: none; background: var(--agent-control-badge); } }
 .op-browser__tab { display: inline-flex; align-items: center; gap: var(--space-1); max-width: 180px; min-width: 0; padding: 2px var(--space-2); border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-xs); line-height: 18px; }
 .op-browser__tab:hover { background: var(--ink-veil); }
 .op-browser__tab.is-active { background: var(--ink-veil); color: var(--text-primary); border-color: var(--hairline-strong); }

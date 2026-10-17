@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-
-import { flushSync } from "react-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -11,8 +9,8 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
-import { useNewSessionShortcutLabel, useSideBarShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { closeNewSession, selectNestedBody, setActiveOperation, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
+import { useNewSessionShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -30,15 +28,10 @@ import { AvatarEditor, KeyedAvatar, OperationAvatar, operationAvatarRole, operat
 import { pluginRuntimeState } from "../../../execution/client/operation-activity.js";
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
-import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel } from "../../../browser/client/browser-panel.js";
-import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
+import { useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
-import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
-import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, setConversationSplitWidth, useConversationSplitWidth, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
-import { setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -49,6 +42,10 @@ import { closeConversationSurface, useConversationSurface, type ConversationSurf
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
+import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
+import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
+import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
+import { closeWorkbenchBrowser, isWorkbenchEntryOpen, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserOpen, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import "./conversation.css";
 
 /**
@@ -93,6 +90,14 @@ export function ConversationShellHost(): null {
   return null;
 }
 
+/**
+ * 대화 옆 도구 칸으로 여는 엔트리 — 코어 탭(대상의 탭·Theater 칸)·대화 탭(목표)·설정이 아닌 페인 엔트리. 오른쪽 사이드바는 그대로 대상의 탭을
+ * 싣고, 이 엔트리들은 대화별 작업대가 연다(시안 v2 「정해진 것」).
+ */
+export function isWorkbenchToolBinding(binding: RailEntryBinding): boolean {
+  return !binding.core && binding.panes.length > 0 && binding.entry.conversationTab !== true && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID;
+}
+
 /** 패널 머리 탭 줄 맨 앞에 서는 대화 도구(목표) — Operation 대화에서 패널이 처음 보이는 탭이다. 없으면 null. */
 function firstConversationTab(bindings: readonly RailEntryBinding[]): RailEntryBinding | null {
   return bindings.find((binding) => !binding.core && binding.panes.length > 0 && isConversationTab(binding.entry) && binding.entry.visible?.() !== false) ?? null;
@@ -115,7 +120,8 @@ function useToggleDetails(operationConversation: boolean): () => void {
       openRailPanel(lead.entry.id);
       return;
     }
-    const panes = bindings.filter((binding) => binding.panes.length > 0 && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && binding.entry.visible?.() !== false);
+    // 도구(파일·Codex·스킬 등)는 오른쪽 사이드바가 아니라 대화 옆 도구 칸에 열린다 — 사이드바가 여는 것은 대상의 탭과 대화 탭(목표)뿐이다.
+    const panes = bindings.filter((binding) => binding.panes.length > 0 && binding.entry.id !== SETTINGS_RAIL_ENTRY_ID && binding.entry.visible?.() !== false && !isWorkbenchToolBinding(binding));
     const last = readLastPanel();
     const target = panes.find((binding) => binding.entry.id === last) ?? panes.find((binding) => binding.core) ?? panes[0];
     if (target) openRailPanel(target.entry.id);
@@ -685,41 +691,65 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   const toggleDetails = useToggleDetails(operationConversation);
   usePanelFollowsSubject(surfaceDescriptor ? standInId : stageSubject?.id ?? null);
 
-  // ── 오른쪽 분할 — Session 브라우저는 대화 열 오른쪽 칸에 선다 ──
-  // 대화 열(right)과 칸(width)은 같은 전이(--duration-base · --ease-spring)로 함께 움직인다.
-  const operationSplit = useOperationBrowserSplit();
-  const sessionSplit = useSessionBrowserSplit();
-  const desktop = isDesktopShell();
-  const splitSubjectId = surfaceDescriptor ? null : stageSubject?.id ?? null;
-  const splitKind: SplitKind | null = desktop && operationSplit !== null && operationSplit.subjectId === splitSubjectId
-    ? "operation"
-    : sessionSplit !== null && sessionSplit.subjectKey === sessionSubjectKey ? "session" : null;
-  useEffect(() => {
-    if (operationSplit !== null && operationSplit.subjectId !== splitSubjectId) closeOperationBrowserSplit();
-  }, [operationSplit, splitSubjectId]);
-  useEffect(() => {
-    if (sessionSplit !== null && sessionSplit.subjectKey !== sessionSubjectKey) closeSessionBrowserSplit();
-  }, [sessionSplit, sessionSubjectKey]);
-  const viewportWidth = useViewportWidth();
-  const preferredSplitWidth = useConversationSplitWidth();
-  // 경계를 끄는 동안 대화 칸과 브라우저 칸은 전이 없이 포인터를 바로 따라간다.
-  const [splitResizing, setSplitResizing] = useState(false);
-  const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets, preferredSplitWidth);
-  // 칸을 열어 달라는 요청은 있는데 자리가 없다 — 요청은 그대로 두고(자리가 생기면 칸이 저절로 선다) 이유와 대안을 대화 머리 밑에 말한다.
-  const noRoom = splitKind !== null && seat === null;
-  const stageRef = useRef<HTMLElement | null>(null);
-  // 안내 안에서 무언가를 눌렀거나 포커스가 안내 안에 있었으면, 안내가 걷힐 때 포커스를 지구본으로 돌린다 — 그대로 두면 사라진 단추와 함께 body 로 떨어진다.
-  const refocusGlobeRef = useRef(false);
-  useEffect(() => {
-    if (noRoom || !refocusGlobeRef.current) return;
-    refocusGlobeRef.current = false;
-    stageRef.current?.querySelector<HTMLElement>('[data-caption-action="browser"]')?.focus();
-  }, [noRoom]);
-  const splitOperation = splitKind === "operation" && operationSplit !== null
-    ? state.operations.find((candidate) => candidate.id === operationSplit.operationId)
-      ?? state.nestedOperations.find((candidate) => candidate.id === operationSplit.operationId)
-      ?? null
-    : null;
+  // ── 도구 분할 — 이 대화의 도구 칸(작업대)이 대화 오른쪽과 아래에 선다 ──
+  // 배치는 대화마다 하나다(서버 저장). 대화 키는 그 대화를 가리키는 가장 오래가는 이름이다: Operation, 아직 서지 않은 Operation 을 대신하는
+  // 플러그인 대화는 그 Operation, 세션 브라우저를 가진 플러그인 대화(사령관)는 그 세션, 그 밖은 Theater 또는 표면 주소.
+  let surfaceTheaterId: string | null = null;
+  if (surfaceDescriptor?.theater && surface) {
+    try {
+      surfaceTheaterId = surfaceDescriptor.theater({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) })?.theaterId ?? null;
+    } catch {
+      surfaceTheaterId = null;
+    }
+  }
+  const conversationKey = newSession ? null
+    : surfaceDescriptor && surface
+      ? standInId !== null ? `operation:${standInId}`
+        : sessionSubjectKey !== null ? `session:${sessionSubjectKey}`
+          : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
+            : `surface:${surface.surfaceId}:${stableParamsKey(surface.params)}`
+      : subject ? `operation:${subject.id}` : null;
+  const railBindings = useDesktopRailEntries();
+  const toolEntryIds = useMemo(
+    () => railBindings.filter((binding) => isWorkbenchToolBinding(binding) && binding.entry.visible?.() !== false).map((binding) => binding.entry.id),
+    [railBindings],
+  );
+  useConversationWorkbenchHost(conversationKey, toolEntryIds);
+  const layout = useWorkbenchLayout();
+  const focusedTileId = useWorkbenchFocusedTileId();
+  const browserOpen = useWorkbenchBrowserOpen();
+  const viewport = useViewportSize();
+  const [regionSize, setRegionSize] = useState<{ readonly width: number; readonly height: number } | null>(null);
+  const regionObserverRef = useRef<ResizeObserver | null>(null);
+  const workbenchLayerRef = useCallback((element: HTMLDivElement | null) => {
+    regionObserverRef.current?.disconnect();
+    regionObserverRef.current = null;
+    if (element === null) return;
+    const measure = () => {
+      const width = Math.round(element.clientWidth);
+      const height = Math.round(element.clientHeight);
+      setRegionSize((current) => (current?.width === width && current.height === height ? current : { width, height }));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    regionObserverRef.current = new ResizeObserver(measure);
+    regionObserverRef.current.observe(element);
+  }, []);
+  useEffect(() => () => regionObserverRef.current?.disconnect(), []);
+  const regionWidth = regionSize?.width ?? Math.max(0, viewport.width - insets.left - insets.right);
+  const regionHeight = regionSize?.height ?? viewport.height;
+  const geometry = useMemo(() => computeWorkbenchGeometry(layout, regionWidth, regionHeight), [layout, regionWidth, regionHeight]);
+  const workbenchConversation = useMemo<WorkbenchConversation>(() => {
+    if (surfaceDescriptor) {
+      return {
+        kind: "surface",
+        sessionBrowser: sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null
+          ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey, attach: sessionAttach }
+          : null,
+      };
+    }
+    return stageSubject ? { kind: "operation", operation: stageSubject } : { kind: "none" };
+  }, [sessionAttach, sessionPluginId, sessionScopeId, sessionSubjectKey, stageSubject, surfaceDescriptor]);
 
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Operation·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
   const tools = (lead: ReactNode = null) => <ConversationToolbar context={toolContext} lead={lead} />;
@@ -727,10 +757,10 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   return (
     <>
     <section
-      ref={stageRef}
-      className={`conversation-stage${splitResizing ? " is-split-resizing" : ""}`}
-      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 브라우저 칸이 서면 그 폭만큼 더 비킨다.
-      style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
+      className="conversation-stage"
+      // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
+      // 대화 아래 줄 높이(아래)만큼 더 비킨다.
+      style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom }}
       aria-label={t("conversation.stage.aria")}
     >
       <ConversationQuota />
@@ -746,7 +776,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           onToggleDetails={toggleDetails}
           tools={tools}
           sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
-          browserSplitOpen={splitKind !== null}
+          browserSplitOpen={browserOpen}
         />
       ) : subject ? (
         <ConversationColumn
@@ -757,7 +787,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           operationKinds={operationKinds}
           onToggleDetails={toggleDetails}
           onClose={onClose}
-          browserSplitOpen={splitKind !== null}
+          browserSplitOpen={browserOpen}
           tools={tools}
         />
       ) : (
@@ -770,25 +800,39 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           </div>
         </div>
       )}
-      {noRoom && splitKind !== null ? (
-        <SplitNoRoomNotice kind={splitKind} insets={insets} viewportWidth={viewportWidth} refocusGlobeRef={refocusGlobeRef} />
-      ) : null}
     </section>
-    <ConversationSplit
-      kind={seat === null ? null : splitKind}
-      seat={seat}
-      fallbackRight={insets.right}
-      operation={splitOperation}
-      sessionOwnerId={splitKind === "session" ? sessionSplit?.ownerId ?? null : null}
-      sessionAttach={splitKind === "session" ? sessionAttach : null}
+    <ConversationWorkbench
+      layerRef={workbenchLayerRef}
+      insets={insets}
+      geometry={geometry}
+      layout={layout}
+      focusedTileId={focusedTileId}
+      bindings={railBindings}
+      toolContext={toolContext}
+      conversation={workbenchConversation}
       state={state}
       language={language}
       operationKinds={operationKinds}
-      resizing={splitResizing}
-      onResizingChange={setSplitResizing}
     />
     </>
   );
+}
+
+/** 플러그인 대화의 params 를 대화 키로 — 키 순서와 무관하게 같은 값이면 같은 키다. 너무 길면 해시로 줄인다. */
+function stableParamsKey(params: Readonly<Record<string, unknown>>): string {
+  let text: string;
+  try {
+    text = JSON.stringify(Object.keys(params).sort().map((key) => [key, params[key]]));
+  } catch {
+    text = "";
+  }
+  if (text.length <= 160) return text;
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `#${(hash >>> 0).toString(36)}:${text.length}`;
 }
 
 /**
@@ -937,6 +981,12 @@ function isCommonTool(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab !== true;
 }
 
+/** 도구 캡슐의 켜짐 — 지금 대화의 도구 칸에 그 도구가 서 있는가. 저장소·Shell 처럼 표면을 여는 도구는 그 표면 칸을 본다. */
+function workbenchToolActive(entry: RailEntryDescriptor): boolean | undefined {
+  if (entry.activate !== undefined) return entry.surfaceId === undefined ? undefined : isWorkbenchSurfaceOpen(entry.surfaceId);
+  return isWorkbenchEntryOpen(entry.id);
+}
+
 interface HiddenTool {
   readonly entryId: string;
   readonly active: boolean;
@@ -962,6 +1012,8 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
   const [hidden, setHidden] = useState<readonly HiddenTool[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const bindings = useDesktopRailEntries();
+  // 켜짐은 이 대화의 도구 칸이 말한다 — 배치가 바뀌면 다시 그린다.
+  useWorkbenchLayout();
   useLayoutEffect(() => {
     const tools = toolsRef.current;
     const itemsBox = itemsRef.current;
@@ -1083,7 +1135,7 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
     <span className="conversation-pill-tools" ref={toolsRef} role="toolbar" aria-label={t("conversation.tools.aria")}>
       {showLead ? <span className="conversation-pill-tools-lead">{lead}</span> : null}
       <span className="conversation-pill-tools-items" ref={itemsRef}>
-        <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={isCommonTool} />
+        <RailToolIcons context={context} variant="icons" scope="tools" toolFilter={isCommonTool} toolActive={workbenchToolActive} />
       </span>
       <span className="conversation-pill-tools-more-wrap">
         <button
@@ -1216,7 +1268,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 지구본은 도구 캡슐 맨 앞이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
-  const browser = sessionBrowser === null ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
+  // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
+  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSplitOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Operation 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   return (
@@ -1297,12 +1350,9 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
   // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Operation 이 아니라 루트의 브라우저를 함께 쓰므로,
   // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
-  const openOperationBrowser = useCallback(() => {
-    openOperationBrowserSplit({ subjectId: operation.id, operationId: operation.id });
-  }, [operation.id]);
-  const closeBrowserSplit = useCallback(() => {
-    closeOperationBrowserSplit();
-  }, []);
+  // 칸은 이 대화의 도구 분할에 선다 — 대화 키가 이미 이 루트라 주인을 따로 싣지 않는다.
+  const openOperationBrowser = useCallback(() => { openWorkbenchBrowser(); }, []);
+  const closeBrowserSplit = useCallback(() => { closeWorkbenchBrowser(); }, []);
   // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
@@ -1369,7 +1419,8 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
       <PluginOperationRenderer {...captionRender} render={descriptor.captionViewSwitch} />
     </PluginErrorBoundary>
   );
-  const toolsLead = descriptor?.captionToolsLead === undefined ? null : (
+  // 지구본(tools-lead)은 플릿 브라우저 문이다 — 웹 브라우저 Console 에서는 세우지 않는다(시안 v2 규칙 g).
+  const toolsLead = descriptor?.captionToolsLead === undefined || !isDesktopShell() ? null : (
     <PluginErrorBoundary fallback={<></>}>
       <PluginOperationRenderer {...captionRender} render={descriptor.captionToolsLead} />
     </PluginErrorBoundary>
@@ -1426,330 +1477,36 @@ const CONVERSATION_COMPANION_PANEL_IDS: readonly string[] = [BROWSER_COMPANION_I
 
 function noop(): void {}
 
-// ── 오른쪽 분할 칸 ─────────────────────────────────────────────────────────
+// ── 도구 분할의 브라우저 ─────────────────────────────────────────────────────
 
-type SplitKind = "operation" | "session";
-
-/** 브라우저 칸의 최소 폭 — 탭 줄과 주소창이 한 줄에 읽히는 폭이다. 대화 열은 CONVERSATION_MIN_WIDTH 를 지킨다. */
-const SPLIT_MIN_WIDTH = 360;
-
-interface SplitSeat {
-  /** 칸의 폭. */
-  readonly width: number;
-  /** 경계를 끌어 넓힐 수 있는 끝 — 대화 열이 CONVERSATION_MIN_WIDTH 를 지키는 폭이다. 좁힐 수 있는 끝은 SPLIT_MIN_WIDTH. */
-  readonly maxWidth: number;
-  /** 칸의 오른쪽 끝 — 레일 옆이면 레일 폭, 레일 위로 덮으면 0. */
-  readonly right: number;
-  /** 대화 칸(.conversation-stage)의 right — 레일과 칸을 합친 만큼 비킨다. */
-  readonly stageRight: number;
-  readonly overRail: boolean;
-}
-
-/**
- * 칸의 자리 — 사람이 경계를 끌어 고른 폭(preferred)이 있으면 그 폭, 없으면 대화 열과 브라우저가 남은 폭을 반씩 나눈다. 어느 쪽이든
- * 대화 열은 CONVERSATION_MIN_WIDTH, 칸은 SPLIT_MIN_WIDTH 밑으로 줄지 않게 지금 창 폭으로 clamp 한다(고른 값 자체는 바꾸지 않는다).
- * 레일(오른쪽 패널) 옆에 둘 자리가 모자라면 칸이 레일 위로 덮는다(레일은 그 아래 그대로 산다). 그것도 모자라면 칸을
- * 세우지 않는다 — Session 브라우저는 열지 않는다.
- */
-function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets, preferred: number | null): SplitSeat | null {
-  const fit = (available: number) => {
-    const maxWidth = available - CONVERSATION_MIN_WIDTH;
-    if (maxWidth < SPLIT_MIN_WIDTH) return null;
-    return { width: Math.max(SPLIT_MIN_WIDTH, Math.min(preferred ?? Math.round(available / 2), maxWidth)), maxWidth };
-  };
-  const beside = fit(viewportWidth - insets.left - insets.right);
-  if (beside !== null) return { ...beside, right: insets.right, stageRight: insets.right + beside.width, overRail: false };
-  if (insets.right <= 0) return null;
-  const over = fit(viewportWidth - insets.left);
-  return over === null ? null : { ...over, right: 0, stageRight: over.width, overRail: true };
-}
-
-/**
- * 칸 자리가 없을 때의 안내 — 대화 머리 줄 바로 밑 오른쪽 끝에 뜬다. 왜 안 열리는지(필요한 창 폭)와 지금 할 수 있는 일을 말한다.
- * 사이드바를 접어 자리가 나면 「사이드바 접기」가 곧은 길이고(⌘B 와 같은 영속 접기), 접어도 모자라면 창을 넓히라고 말한다.
- * 「취소」·Esc(포커스가 안내 안에 있을 때만)는 요청을 버린다. 자리가 생기면 칸이 저절로 서고 이 안내는 걷힌다.
- */
-function SplitNoRoomNotice({ kind, insets, viewportWidth, refocusGlobeRef }: {
-  readonly kind: SplitKind;
-  readonly insets: ArenaInsets;
-  readonly viewportWidth: number;
-  readonly refocusGlobeRef: { current: boolean };
-}) {
-  const t = useT();
-  const shortcut = useSideBarShortcutLabel();
-  const boxRef = useRef<HTMLDivElement | null>(null);
-  // ⌘B·창 넓힘처럼 안내 밖의 길로 걷혀도 포커스가 안내 안에 있었다면 지구본으로 돌린다 — DOM 에서 떨어지기 전에 본다.
-  useLayoutEffect(() => {
-    const box = boxRef.current;
-    return () => {
-      if (box !== null && box.contains(document.activeElement)) refocusGlobeRef.current = true;
-    };
-  }, [refocusGlobeRef]);
-  const need = Math.ceil(insets.left + CONVERSATION_MIN_WIDTH + SPLIT_MIN_WIDTH);
-  // 사이드바를 접으면(L=0) 레일 위로 덮는 자리까지 쓸 수 있다 — 그때 대화 열과 칸이 함께 들어가는 창이어야 접기가 뜻이 있다.
-  const collapseHelps = insets.left > 0 && viewportWidth >= CONVERSATION_MIN_WIDTH + SPLIT_MIN_WIDTH;
-  const cancel = () => {
-    refocusGlobeRef.current = true;
-    if (kind === "operation") closeOperationBrowserSplit();
-    else closeSessionBrowserSplit();
-  };
-  const cause = t("conversation.split.noRoom.cause", { need });
-  const actions = [
-    ...(collapseHelps ? [{
-      label: shortcut === "" ? t("conversation.split.noRoom.collapsePlain") : t("conversation.split.noRoom.collapse", { shortcut }),
-      primary: true,
-      onSelect: () => { refocusGlobeRef.current = true; setSideBarCollapsed(true); },
-    }] : []),
-    { label: t("conversation.split.noRoom.cancel"), onSelect: cancel },
-  ];
-  return (
-    <div
-      ref={boxRef}
-      className="conversation-split-no-room"
-      onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
-        event.preventDefault();
-        event.stopPropagation();
-        cancel();
-      }}
-    >
-      <FailureNotice
-        tone="warn"
-        title={t("conversation.split.noRoom.title")}
-        cause={collapseHelps ? cause : `${cause} ${t("conversation.split.noRoom.widen")}`}
-        actions={actions}
-      />
-    </div>
-  );
-}
-
-function useViewportWidth(): number {
-  const [width, setWidth] = useState(() => (typeof window === "undefined" ? 1440 : window.innerWidth));
+function useViewportSize(): { readonly width: number; readonly height: number } {
+  const read = () => (typeof window === "undefined" ? { width: 1440, height: 900 } : { width: window.innerWidth, height: window.innerHeight });
+  const [size, setSize] = useState(read);
   useEffect(() => {
-    const onResize = () => setWidth(window.innerWidth);
+    const onResize = () => setSize((current) => {
+      const next = read();
+      return current.width === next.width && current.height === next.height ? current : next;
+    });
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  return width;
-}
-
-/**
- * 대화 열 오른쪽 칸. 늘 마운트되어 있고(닫히면 폭 0), 폭 전이로 펼쳐지고 접힌다 — 대화 칸의 right 전이와 같은 시간·곡선이다.
- * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 Session 브라우저(Operation 의 companion · 플러그인 세션의 것)가 칸 안에 선다.
- */
-function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, sessionAttach, state, language, operationKinds, resizing, onResizingChange }: {
-  readonly kind: SplitKind | null;
-  readonly seat: SplitSeat | null;
-  readonly fallbackRight: number;
-  readonly operation: OperationNode | null;
-  /** 플러그인 대화의 Session 브라우저 owner — kind 가 "session" 일 때만. */
-  readonly sessionOwnerId: string | null;
-  /** 그 Session 브라우저의 첨부가 붙을 플러그인 대화의 입력창(`sessionBrowser().attach`). 없으면 그 칸에서 첨부할 곳이 없다. */
-  readonly sessionAttach: ((files: readonly File[]) => void) | null;
-  readonly state: ConsoleState;
-  readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
-  /** 경계를 끄는 중인가 — 칸이 전이 없이 따라가고, data-resizing 으로 브라우저가 네이티브 뷰를 물린다. */
-  readonly resizing: boolean;
-  readonly onResizingChange: (resizing: boolean) => void;
-}) {
-  const [settled, setSettled] = useState(false);
-  const open = kind !== null && seat !== null;
-  const width = open ? seat.width : 0;
-  const ref = useRef<HTMLDivElement | null>(null);
-  // 접히는 동안에도 칸은 무엇이 서 있던 자리인지 말한다.
-  const [closingKind, setClosingKind] = useState<SplitKind | null>(null);
-  const lastKindRef = useRef<SplitKind | null>(null);
-  useEffect(() => {
-    if (open) { lastKindRef.current = kind; setClosingKind(null); return; }
-    const was = lastKindRef.current;
-    lastKindRef.current = null;
-    if (was === null) return;
-    const element = ref.current;
-    const moving = (element?.getAnimations?.() ?? []).some((animation) => (animation as CSSTransition).transitionProperty === "width");
-    if (!moving) { setClosingKind(null); return; }
-    setClosingKind(was);
-    const onEnd = (event: TransitionEvent) => { if (event.target === element && event.propertyName === "width") setClosingKind(null); };
-    element?.addEventListener("transitionend", onEnd);
-    const fallback = window.setTimeout(() => setClosingKind(null), 600);
-    return () => { element?.removeEventListener("transitionend", onEnd); window.clearTimeout(fallback); };
-  }, [open, kind]);
-  // 정착 — 펼치는 폭 전이가 끝나면(또는 전이가 없는 환경이면 곧바로) 내용을 세운다. 닫히면 내용부터 걷는다.
-  // 열린 채 폭만 바뀌면(경계 끌기·창 크기·레일 개폐) 내용은 선 채로 따라간다 — 다시 세우지 않는다.
-  useEffect(() => {
-    if (!open) { setSettled(false); return; }
-    const element = ref.current;
-    const moving = (element?.getAnimations?.() ?? []).some((animation) => (animation as CSSTransition).transitionProperty === "width");
-    if (!moving) { setSettled(true); return; }
-    setSettled(false);
-    const onEnd = (event: TransitionEvent) => { if (event.target === element && event.propertyName === "width") setSettled(true); };
-    element?.addEventListener("transitionend", onEnd);
-    const fallback = window.setTimeout(() => setSettled(true), 600);
-    return () => { element?.removeEventListener("transitionend", onEnd); window.clearTimeout(fallback); };
-  }, [open]);
-  return (
-    <>
-    {open && settled ? <SplitResizeHandle seat={seat} splitRef={ref} resizing={resizing} onResizingChange={onResizingChange} /> : null}
-    <div
-      ref={ref}
-      className={`conversation-split${open ? " is-open" : ""}${seat?.overRail ? " is-over-rail" : ""}${open && resizing ? " is-resizing" : ""}`}
-      {...(open ? { "data-kind": kind } : closingKind !== null ? { "data-kind": closingKind, "data-closing": "true" } : {})}
-      data-settled={open && settled ? "true" : undefined}
-      // 끄는 동안의 표식 — 칸 안의 Session 브라우저가 이 값을 보고 네이티브 뷰를 정지 화면 뒤로 물린다.
-      data-resizing={open && resizing ? "true" : undefined}
-      style={{ right: seat?.right ?? fallbackRight, width }}
-      aria-hidden={open ? undefined : true}
-    >
-      {open && settled && kind === "session" && sessionOwnerId !== null ? (
-        <SessionBrowserSplitPane key={sessionOwnerId} ownerId={sessionOwnerId} theme={state.activeTheme} language={language} onAttach={sessionAttach} />
-      ) : null}
-      {open && settled && kind === "operation" && operation !== null ? (
-        <OperationBrowserSplitPane operation={operation} state={state} language={language} operationKinds={operationKinds} />
-      ) : null}
-    </div>
-    </>
-  );
-}
-
-/** 키보드 한 걸음 — Shift 를 누르면 크게 간다. */
-const SPLIT_RESIZE_STEP = 16;
-const SPLIT_RESIZE_STEP_LARGE = 64;
-
-/**
- * 대화 열과 브라우저 칸 사이 경계 — 끌면 칸 폭이 바뀐다(왼쪽으로 끌면 브라우저가 넓어진다). 손잡이는 경계의 대화 열 쪽에 선다:
- * 칸 쪽은 Desktop 에서 네이티브 뷰가 페이지 위를 덮어 포인터를 가져간다. 끄는 동안은 포인터를 손잡이에 붙들고(setPointerCapture)
- * 칸에 data-resizing 을 달아 브라우저가 네이티브 뷰를 정지 화면 뒤로 물리게 한다 — 커서가 뷰 자리 위를 지나도 끌기가 끊기지 않고,
- * 놓으면 정착한 자리에 뷰가 한 번 다시 놓인다. 손잡이를 가리키면 끌기를 예고(announceNativeViewResize)해 브라우저가 보이는 뷰를
- * 미리 찍어 두게 하고, 누르는 순간(렌더 전에) 끌기 시작을 알려 그 장을 깔고 곧바로 물러나게 한다. 키보드(←/→, Shift 로 크게,
- * Home/End)로도 조절하고, 두 번 누르면 고른 폭을 지워 반씩 나누는 폭으로 돌아간다. 폭은 언제나 SPLIT_MIN_WIDTH ~ seat.maxWidth(대화 열의 최소폭을 남기는 끝) 안이다.
- */
-function SplitResizeHandle({ seat, splitRef, resizing, onResizingChange }: {
-  readonly seat: SplitSeat;
-  /** 브라우저를 실은 칸 — 끌기 예고·시작을 이 칸 안의 브라우저에 알린다. */
-  readonly splitRef: { readonly current: HTMLDivElement | null };
-  readonly resizing: boolean;
-  readonly onResizingChange: (resizing: boolean) => void;
-}) {
-  const t = useT();
-  const seatRef = useRef(seat);
-  seatRef.current = seat;
-  const draggingRef = useRef(false);
-  const announce = (phase: "armed" | "held" | null) => {
-    const container = splitRef.current;
-    if (phase === null || container === null) {
-      if (getNativeViewResize()?.container === container) announceNativeViewResize(null);
-      return;
-    }
-    announceNativeViewResize({ container, held: phase === "held" });
-  };
-  // 예고는 포인터가 손잡이 위에 있는 동안뿐이다 — 키보드 조절은 전이로 따라가며 뷰를 끌기처럼 물리지 않는다.
-  const arm = () => { if (!draggingRef.current) announce("armed"); };
-  const disarm = () => { if (!draggingRef.current) announce(null); };
-  // 손잡이가 걷히면(칸이 닫힘) 예고도 걷는다.
-  useEffect(() => () => {
-    const container = splitRef.current;
-    if (container !== null && getNativeViewResize()?.container === container) announceNativeViewResize(null);
-  }, [splitRef]);
-  const clamp = (value: number) => Math.max(SPLIT_MIN_WIDTH, Math.min(seatRef.current.maxWidth, Math.round(value)));
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const handle = event.currentTarget;
-    const { pointerId, clientX: startX } = event;
-    const startWidth = seatRef.current.width;
-    let width = startWidth;
-    let done = false;
-    try { handle.setPointerCapture(pointerId); } catch { /* 붙들지 못해도 창 전체의 움직임으로 따라간다. */ }
-    draggingRef.current = true;
-    // 렌더(data-resizing)보다 먼저 칸 안의 브라우저에 알린다 — 미리 찍어 둔 장으로 곧바로 물러나게.
-    announce("held");
-    onResizingChange(true);
-    const onMove = (move: PointerEvent) => {
-      if (move.pointerId !== pointerId) return;
-      // 놓는 순간을 듣지 못했으면(네이티브 뷰 위에서 놓는 등) 버튼이 떨어진 첫 움직임에서 끝낸다.
-      if ((move.buttons & 1) === 0) { finish(move); return; }
-      width = clamp(startWidth + startX - move.clientX);
-      setConversationSplitWidth(width);
-    };
-    // 끌기의 끝은 버튼을 놓을 때(pointerup)와 취소(pointercancel)뿐이다. 버튼을 누른 채 포인터 붙들기만 풀리면(뷰 층 순서가 바뀌는
-    // 순간 등) 다시 붙들고 끌기를 잇는다 — 붙들기가 풀린 것을 끝으로 보면 끄는 도중 data-resizing 이 걷혀 물러났던 뷰가 다시 선다.
-    const onLostCapture = (lost: PointerEvent) => {
-      if (done || lost.pointerId !== pointerId) return;
-      try { handle.setPointerCapture(pointerId); } catch { /* 포인터가 이미 끝났다 — 창 전체의 움직임·놓음으로 끝난다. */ }
-    };
-    const finish = (end: PointerEvent) => {
-      if (done || end.pointerId !== pointerId) return;
-      done = true;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", finish);
-      window.removeEventListener("pointercancel", finish);
-      handle.removeEventListener("lostpointercapture", onLostCapture);
-      try { if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId); } catch { /* 이미 풀렸다. */ }
-      // 움직이지 않은 누름(두 번 누르기의 반쪽 포함)은 고른 폭을 만들지 않는다 — 반씩 나누는 기본을 지키게.
-      if (width !== startWidth) setConversationSplitWidth(width, { persist: true });
-      draggingRef.current = false;
-      // data-resizing 을 먼저 걷어 커밋한 뒤 알린다 — 칸 안의 브라우저가 알림을 받는 그 자리에서 뷰를 다시 놓게.
-      flushSync(() => onResizingChange(false));
-      announce(handle.matches(":hover") ? "armed" : null);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", finish);
-    window.addEventListener("pointercancel", finish);
-    handle.addEventListener("lostpointercapture", onLostCapture);
-  };
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const step = event.shiftKey ? SPLIT_RESIZE_STEP_LARGE : SPLIT_RESIZE_STEP;
-    const current = seatRef.current.width;
-    let next: number;
-    switch (event.key) {
-      case "ArrowLeft": next = current + step; break;
-      case "ArrowRight": next = current - step; break;
-      case "Home": next = SPLIT_MIN_WIDTH; break;
-      case "End": next = seatRef.current.maxWidth; break;
-      default: return;
-    }
-    event.preventDefault();
-    setConversationSplitWidth(clamp(next), { persist: true });
-  };
-  return (
-    <div
-      className={`conversation-split-resize${seat.overRail ? " is-over-rail" : ""}${resizing ? " is-resizing" : ""}`}
-      style={{ right: seat.right + seat.width }}
-      role="separator"
-      aria-orientation="vertical"
-      tabIndex={0}
-      aria-label={t("conversation.split.resize")}
-      title={t("conversation.split.resetWidth")}
-      aria-valuenow={seat.width}
-      aria-valuemin={SPLIT_MIN_WIDTH}
-      aria-valuemax={seat.maxWidth}
-      onPointerDown={onPointerDown}
-      onPointerEnter={arm}
-      onPointerMove={arm}
-      onPointerLeave={disarm}
-      onKeyDown={onKeyDown}
-      onDoubleClick={() => setConversationSplitWidth(null, { persist: true })}
-    />
-  );
+  return size;
 }
 
 /** 플러그인 대화(사령관)가 쓰는 Session 브라우저 — 플러그인 id 는 호스트 등록 id, scopeId 는 그 대화가 돌려준 세션 scope 다. */
 interface SurfaceSessionBrowser {
   readonly pluginId: string;
   readonly scopeId: string;
-  /** 분할 칸이 이 대화의 것인지 가리는 열쇠 — `<pluginId>:<scopeId>`. */
+  /** 이 대화의 세션 열쇠 — `<pluginId>:<scopeId>`. */
   readonly subjectKey: string;
 }
 
-/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. 첨부 경로(onAttach)는 대화가 따로 준다. */
-const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
-
 /**
- * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본과 같은 글리프·크기·말풍선이다.
- * 칸이 비어 있으면 그 세션의 Session 브라우저를 바로 연다. 세션이 아직 서지 않았으면 가짜 세션을 만들지 않고
- * 기존 비가용 안내만 말한다. 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채 까닭을 말한다.
+ * 플러그인 대화(사령관)의 브라우저 지구본 — Operation 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 이 대화의 도구 분할에
+ * 브라우저 칸을 열고 닫는다(세션이 아직 서지 않았으면 칸이 그 까닭을 말한다). 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
+ * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
  */
-function SurfaceBrowserButton({ session, language, splitOpen }: {
+function SurfaceBrowserButton({ language, splitOpen }: {
   readonly session: SurfaceSessionBrowser;
   readonly language: "en" | "ko";
   readonly splitOpen: boolean;
@@ -1757,142 +1514,14 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
-  const sessionKey = session.subjectKey;
-  const pendingRef = useRef(0);
-  const seenKeyRef = useRef(sessionKey);
-  // 세션이 바뀌면 렌더 안에서 진행 요청을 무효화한다. effect 청소보다 먼저라 이전 답이 새 칸을 열지 못한다.
-  if (seenKeyRef.current !== sessionKey) {
-    seenKeyRef.current = sessionKey;
-    pendingRef.current += 1;
-  }
-  const [blocked, setBlocked] = useState<{ readonly key: string; readonly message: string } | null>(null);
-  const blockedMessage = blocked?.key === sessionKey ? blocked.message : null;
-  useLayoutEffect(() => () => { pendingRef.current += 1; }, []);
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : blockedMessage ?? t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  const onClick = () => {
-    if (splitOpen) {
-      pendingRef.current += 1;
-      setBlocked(null);
-      closeSessionBrowserSplit();
-      return;
-    }
-    const request = ++pendingRef.current;
-    const { pluginId, scopeId, subjectKey } = session;
-    void resolveSessionBrowserTarget({ pluginId, scopeId })
-      .then((ownerId) => ({ ownerId, failed: false }), () => ({ ownerId: null, failed: true }))
-      .then(({ ownerId, failed }) => {
-        if (request !== pendingRef.current || seenKeyRef.current !== subjectKey) return;
-        if (ownerId === null) {
-          setBlocked({ key: subjectKey, message: t(failed ? "terminal.chooser.noOperation" : "terminal.chooser.sessionNotStarted") });
-          return;
-        }
-        setBlocked(null);
-        openSessionBrowserSplit({ subjectKey, ownerId });
-      });
-  };
+    : t(splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={onClick}>
+      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={toggleWorkbenchBrowser}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>
-  );
-}
-
-/** 칸 안의 플러그인 세션 Session 브라우저 — 캡션(탭 줄)과 본문을 그 owner 로 그린다. */
-function SessionBrowserSplitPane({ ownerId, theme, language, onAttach }: {
-  readonly ownerId: string;
-  readonly onAttach: ((files: readonly File[]) => void) | null;
-  readonly theme: ConsoleState["activeTheme"];
-  readonly language: "en" | "ko";
-}) {
-  const t = useT();
-  return (
-    <div className="conversation-split-pane" data-keep-operation-active>
-      <header className="conversation-split-head">
-        <SessionBrowserCaption ownerId={ownerId} language={language} />
-        <button type="button" className="conversation-round conversation-split-close" onClick={closeSessionBrowserSplit} aria-label={t("conversation.split.close")} title={t("conversation.split.close")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-      </header>
-      <div className="conversation-split-body">
-        <SessionBrowserPanel ownerId={ownerId} language={language} theme={theme} bodyLive services={SESSION_BROWSER_SERVICES} {...(onAttach ? { onAttach } : {})} />
-      </div>
-    </div>
-  );
-}
-
-/** 칸 안의 Operation 브라우저 — 캡션과 본문의 두 슬롯을 같은 context로 그린다. */
-function OperationBrowserSplitPane({ operation, state, language, operationKinds }: {
-  readonly operation: OperationNode;
-  readonly state: ConsoleState;
-  readonly language: "en" | "ko";
-  readonly operationKinds: readonly OperationKindDescriptor[];
-}) {
-  const t = useT();
-  const capabilities = useHostCapabilities();
-  const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
-  const companion = descriptor?.companions?.find((panel) => panel.id === BROWSER_COMPANION_ID) ?? null;
-  const runtimeState = pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id);
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  const [geometry, setGeometry] = useState<OperationGeometry>({ x: 0, y: 0, width: 480, height: 640, zIndex: 0 });
-  useLayoutEffect(() => {
-    const element = bodyRef.current;
-    if (!element) return;
-    const update = () => setGeometry((current) => {
-      const width = Math.max(1, element.clientWidth);
-      const height = Math.max(1, element.clientHeight);
-      return current.width === width && current.height === height ? current : { ...current, width, height };
-    });
-    update();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-  const activate = useCallback(() => setActiveOperation(operation.id), [operation.id]);
-  const onCompanion = useCallback((companionPanelId: string, visible: boolean) => {
-    if (companionPanelId === BROWSER_COMPANION_ID && !visible) closeOperationBrowserSplit();
-  }, []);
-  if (companion === null) return null;
-  const shared = {
-    active: state.activeOperationId === operation.id,
-    capabilities,
-    geometry,
-    operation,
-    theme: state.activeTheme,
-    language,
-    viewportZoom: 1,
-    runtimeState,
-    onActivate: activate,
-    onClose: closeOperationBrowserSplit,
-    onGeometryChange: setGeometry,
-    onRequestCompanions: noop,
-    companionsOpen: true,
-    hiddenCompanionPanelIds: NO_HIDDEN_COMPANIONS,
-    onSetCompanionPanelVisible: onCompanion,
-    companionPanelIds: CONVERSATION_COMPANION_PANEL_IDS,
-    bodyLive: true,
-  } as const;
-  return (
-    <div className="conversation-split-pane" data-keep-operation-active>
-      <header className="conversation-split-head">
-        {companion.caption === undefined ? <span className="conversation-split-title">{resolveLocalizedText(companion.title, language)}</span> : (
-          <PluginErrorBoundary fallback={<></>}>
-            <PluginOperationRenderer {...shared} render={companion.caption} />
-          </PluginErrorBoundary>
-        )}
-        <button type="button" className="conversation-round conversation-split-close" onClick={closeOperationBrowserSplit} aria-label={t("conversation.split.close")} title={t("conversation.split.close")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-      </header>
-      <div className="conversation-split-body" ref={bodyRef}>
-        <PluginErrorBoundary fallback={null}>
-          <PluginOperationRenderer {...shared} render={companion.render} />
-        </PluginErrorBoundary>
-      </div>
-    </div>
   );
 }

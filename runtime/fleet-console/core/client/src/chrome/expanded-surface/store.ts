@@ -5,6 +5,11 @@ import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "@f
 /**
  * 확대 표면 스토어 — 열린 페인의 순서 있는 목록과 폭 가중치를 소유한다.
  *
+ * 데스크톱 대화 화면에서는 이 목록이 아니라 **대화별 도구 작업대**가 표면을 세운다: 대화 칸이 서 있는 동안
+ * `bindExpandedSurfaceHost`로 작업대를 묶으면 열기·닫기·조회가 모두 그 대화의 도구 칸으로 간다(공개 `surfaces` 능력의
+ * 모양은 그대로다). 묶인 호스트가 없을 때(폰 배치·대화 화면이 내려간 동안)만 아래 목록이 쓰인다 — 그 사이 열린 표면은
+ * 호스트가 다시 묶일 때 `takeUnhostedExpandedSurfaces`로 넘겨받는다.
+ *
  * 같은 탭에서 콘솔을 오가도 열어 둔 자리를 잃지 않도록 sessionStorage에 보관한다.
  * 탭과 origin이 저장 경계이며 durable state나 앱 재시작 복원을 구현하지 않는다.
  * 표면 본문이 소유하는 draft·스크롤 등은 저장하지 않는다.
@@ -20,7 +25,7 @@ export interface ExpandedSurfaceInstance {
   readonly weight: number;
 }
 
-interface ExpandedSurfaceState {
+export interface ExpandedSurfaceState {
   readonly instances: readonly ExpandedSurfaceInstance[];
   readonly focusedInstanceId: string | null;
 }
@@ -32,8 +37,6 @@ const EMPTY: ExpandedSurfaceState = { instances: [], focusedInstanceId: null };
 const SESSION_KEY = "fleet.console.expanded-surfaces.v1";
 const listeners = new Set<Listener>();
 let state: ExpandedSurfaceState = readSession();
-/** 대화 중심 화면에서 표면을 접어 두었는가 — 저장하지 않는 일시 상태(아래 `stowExpandedSurfaces`). */
-let stowed = false;
 let instanceSeq = 0;
 
 function readSession(): ExpandedSurfaceState {
@@ -98,6 +101,68 @@ function announceClosed(instances: readonly ExpandedSurfaceInstance[]): void {
   }
 }
 
+/**
+ * 표면을 대신 세우는 호스트 — 데스크톱 대화 칸의 도구 작업대. `state`는 지금 보이는 대화의 표면 칸만 담고, 같은 상태에는
+ * 같은 객체를 돌려준다(useSyncExternalStore 스냅숏).
+ */
+export interface ExpandedSurfaceHost {
+  readonly state: () => ExpandedSurfaceState;
+  readonly subscribe: (listener: Listener) => () => void;
+  readonly open: (request: ExpandedSurfaceOpenRequest) => string;
+  readonly close: (instanceId: string) => void;
+  readonly closeOf: (surfaceId: string) => void;
+  readonly closeAll: () => void;
+  readonly focus: (instanceId: string) => void;
+  readonly replaceParams: (instanceId: string, params: Readonly<Record<string, string>>) => void;
+  /** 대화를 드러낸다(펼친 칸을 접는다) — 옛 「접어 두기」의 자리다. 칸은 닫지 않는다. */
+  readonly reveal: () => void;
+}
+
+let host: ExpandedSurfaceHost | null = null;
+let releaseHost: (() => void) | null = null;
+
+function notifyListeners(): void {
+  for (const listener of listeners) listener();
+}
+
+/** 호스트를 묶는다. 돌려준 함수로 푼다 — 푼 뒤에는 이 모듈의 목록이 다시 주인이다. */
+export function bindExpandedSurfaceHost(next: ExpandedSurfaceHost): () => void {
+  releaseHost?.();
+  host = next;
+  const unsubscribe = next.subscribe(notifyListeners);
+  const release = () => {
+    if (host !== next) return;
+    unsubscribe();
+    host = null;
+    releaseHost = null;
+    notifyListeners();
+  };
+  releaseHost = release;
+  notifyListeners();
+  return release;
+}
+
+/**
+ * 호스트가 없는 동안 이 목록에 열린 표면을 넘겨준다 — 넘긴 것은 목록에서 빠지되 닫힘 통보는 보내지 않는다(자리를 옮길 뿐이다).
+ */
+export function takeUnhostedExpandedSurfaces(): readonly ExpandedSurfaceInstance[] {
+  const taken = state.instances;
+  if (taken.length === 0) return taken;
+  setState(EMPTY);
+  return taken;
+}
+
+/** 호스트가 닫은 표면의 닫힘 통보 — 닫기 경로가 어디든 통보는 이 배달부 하나로 간다. */
+export function announceExpandedSurfacesClosed(instances: readonly ExpandedSurfaceCloseContext[]): void {
+  for (const instance of instances) {
+    try {
+      notifyClosed(instance);
+    } catch (error) {
+      console.error(`Expanded surface onClose failed: ${instance.surfaceId}`, error);
+    }
+  }
+}
+
 export function subscribeExpandedSurfaces(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
@@ -106,40 +171,22 @@ export function subscribeExpandedSurfaces(listener: Listener): () => void {
 }
 
 export function getExpandedSurfaceState(): ExpandedSurfaceState {
-  return state;
+  return host ? host.state() : state;
 }
 
 function setState(next: ExpandedSurfaceState): void {
   if (next === state) return;
   state = next;
-  // 접어 둘 표면이 없으면 접힘도 없다 — 다음에 여는 표면이 접힌 채 서지 않게 한다.
-  if (next.instances.length === 0) stowed = false;
   writeSession();
   for (const listener of listeners) listener();
 }
 
 /**
- * 대화 중심 화면에서 표면을 잠시 접어 둔 상태 — 가운데 칸을 대화에 돌려주되 페인은 닫지 않는다(셸·초안이 그대로 산다).
- * 화면 배치의 일시 상태라 저장하지 않는다(값은 `state` 곁의 `stowed`). 표면을 새로 열면(같은 표면을 다시 불러도) 풀린다.
- * 캔버스 배치는 읽지 않는다.
+ * 대화를 드러낸다 — 이동(「이 Operation 으로」)이 부른다. 데스크톱 도구 작업대는 펼친 칸을 접고(칸은 닫지 않는다), 호스트가 없는
+ * 폰 배치는 할 일이 없다(도구 시트·목적지 화면은 이동이 스스로 걷는다).
  */
-function setStowed(next: boolean): void {
-  if (stowed === next) return;
-  stowed = next;
-  for (const listener of listeners) listener();
-}
-
 export function stowExpandedSurfaces(): void {
-  if (state.instances.length === 0) return;
-  setStowed(true);
-}
-
-export function restoreExpandedSurfaces(): void {
-  setStowed(false);
-}
-
-export function useExpandedSurfacesStowed(): boolean {
-  return useSyncExternalStore(subscribeExpandedSurfaces, () => stowed, () => false);
+  host?.reveal();
 }
 
 function nextInstanceId(surfaceId: string): string {
@@ -169,10 +216,9 @@ function sameParams(
  * 창만 쌓인다. 나란히 두고 비교하려는 의도는 `"split"`으로 명시해야 한다.
  */
 export function openExpandedSurface(request: ExpandedSurfaceOpenRequest): string {
+  if (host) return host.open(request);
   const params = request.params ?? {};
   const mode = request.mode ?? "reuse";
-  // 여는 것은 보려는 뜻이다 — 접어 둔 표면이 있으면 함께 편다.
-  setStowed(false);
 
   if (mode === "reuse") {
     const existing = state.instances.find((instance) => instance.surfaceId === request.surfaceId);
@@ -223,6 +269,7 @@ function averageWeight(instances: readonly ExpandedSurfaceInstance[]): number {
 }
 
 export function closeExpandedSurface(instanceId: string): void {
+  if (host) { host.close(instanceId); return; }
   const index = state.instances.findIndex((instance) => instance.instanceId === instanceId);
   if (index === -1) return;
   const instances = state.instances.filter((instance) => instance.instanceId !== instanceId);
@@ -241,6 +288,7 @@ export function closeExpandedSurface(instanceId: string): void {
 }
 
 export function closeExpandedSurfacesOf(surfaceId: string): void {
+  if (host) { host.closeOf(surfaceId); return; }
   const closed = state.instances.filter((instance) => instance.surfaceId === surfaceId);
   if (closed.length === 0) return;
   const instances = state.instances.filter((instance) => instance.surfaceId !== surfaceId);
@@ -250,6 +298,7 @@ export function closeExpandedSurfacesOf(surfaceId: string): void {
 }
 
 export function closeAllExpandedSurfaces(): void {
+  if (host) { host.closeAll(); return; }
   if (state.instances.length === 0) return;
   const closed = state.instances;
   setState(EMPTY);
@@ -257,6 +306,7 @@ export function closeAllExpandedSurfaces(): void {
 }
 
 export function focusExpandedSurface(instanceId: string): void {
+  if (host) { host.focus(instanceId); return; }
   if (state.focusedInstanceId === instanceId) return;
   if (!state.instances.some((instance) => instance.instanceId === instanceId)) return;
   setState({ ...state, focusedInstanceId: instanceId });
@@ -266,6 +316,7 @@ export function replaceExpandedSurfaceParams(
   instanceId: string,
   params: Readonly<Record<string, string>>,
 ): void {
+  if (host) { host.replaceParams(instanceId, params); return; }
   const target = state.instances.find((instance) => instance.instanceId === instanceId);
   if (!target || sameParams(target.params, params)) return;
   setState({
@@ -296,13 +347,14 @@ export function setExpandedSurfaceWeights(weights: readonly number[]): void {
 
 /** 열려 있는 페인 중 focus 대상의 인덱스. 없으면 -1. */
 export function focusedExpandedSurfaceIndex(): number {
-  return state.instances.findIndex(
-    (instance) => instance.instanceId === state.focusedInstanceId,
+  const current = getExpandedSurfaceState();
+  return current.instances.findIndex(
+    (instance) => instance.instanceId === current.focusedInstanceId,
   );
 }
 
 export function focusExpandedSurfaceByIndex(index: number): void {
-  const target = state.instances[index];
+  const target = getExpandedSurfaceState().instances[index];
   if (!target) return;
   focusExpandedSurface(target.instanceId);
 }
@@ -318,8 +370,9 @@ export function useExpandedSurfaces(): ExpandedSurfaceState {
 /** 테스트 전용 — 모듈 싱글턴을 초기 상태로 되돌린다. */
 export function resetExpandedSurfacesForTest(): void {
   state = EMPTY;
-  stowed = false;
   instanceSeq = 0;
+  releaseHost?.();
+  host = null;
   listeners.clear();
   // 배달부도 함께 푼다 — 남겨 두면 앞 테스트의 표면이 뒤 테스트의 닫기를 받는다.
   notifyClosed = () => undefined;

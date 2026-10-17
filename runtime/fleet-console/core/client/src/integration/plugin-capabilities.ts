@@ -23,7 +23,7 @@ import { AgentChatTranscript, AgentConversation } from "../../../../features/exe
 import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
+import { closeRailPanel, getRailStoreSnapshot, isRailPanelOpen, openRailPanel, subscribeRailStore } from "../chrome/rail/rail-store.js";
 import { getArenaInsets, subscribeArenaInsets } from "../../../../features/workspace/client/conversation/arena-insets.js";
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
@@ -309,7 +309,7 @@ export function createHostCapabilities(
         if (getViewModeSnapshot().effective === "mobile" && destination.kind === "plugin" && destination.entryId === panelId) setMobileDestination({ kind: "home" });
         closeRailPanel(panelId);
       },
-      isOpen: (panelId) => getRailStoreSnapshot().activePanelId === panelId,
+      isOpen: (panelId) => isRailPanelOpen(panelId),
     },
     consoleEvents: {
       subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
