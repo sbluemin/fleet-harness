@@ -403,6 +403,7 @@ export class ComputerUseService {
       if (!this.deps.platform.hasActionObservation(actionResult)) {
         this.captureUnavailable = true;
         this.deps.onCaptureTarget?.(null);
+        this.captureDiagnostic("action_without_observation");
         return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "unavailable", snapshotId: null, hint: "Action returned without a usable native AX observation. No follow-up read was made. Do not repeat the action. If more observation is needed, request computer_state explicitly; reads may activate/restore the app." }).content, ...actionResult.content] };
       }
       const observation = this.publishObservation(broker, target, actionResult, false, observationMode, 0);
@@ -442,10 +443,11 @@ export class ComputerUseService {
     this.stage = "get_app_state";
     const state = await this.call(broker, "get_app_state", { app, ...options });
     this.assertActive(lifetime);
-    if (state.isError) { this.deps.onCaptureTarget?.(null); return state; }
+    if (state.isError) { this.deps.onCaptureTarget?.(null); this.captureDiagnostic("observation_error"); return state; }
     if (fullTree && !this.deps.platform.hasFullObservation(state)) {
       this.captureUnavailable = true;
       this.deps.onCaptureTarget?.(null);
+      this.captureDiagnostic("full_tree_unavailable");
       return result({ error: "computer_use_full_tree_unavailable", snapshotId: null, observationReads: 1, hint: "The native response was not a standalone App/Window tree. No diff was presented as a full tree and no extra read was made. This backend may not support forcing full trees for this surface." }, true);
     }
     return this.publishObservation(broker, app, state, includeSchemas, observationMode, 1);
@@ -458,6 +460,7 @@ export class ComputerUseService {
     // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
     if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
     else if (state.captureWindow === null) this.deps.onCaptureTarget?.(null);
+    this.captureDiagnostic(captureTarget && this.owner ? "window_identified" : captureTarget ? "owner_missing" : state.captureWindow === null ? "window_unidentified" : "identity_not_reported");
     const interactionHints = this.deps.platform.interactionHints(state);
     this.apps.add(this.deps.platform.displayTarget(app));
     const snapshotId = crypto.randomUUID();
@@ -505,6 +508,12 @@ export class ComputerUseService {
     }
   }
 
+  /** 화면공유 대상이 정해지거나 걷힌 사유. 미리보기의 「창을 식별하지 못했습니다」가 어느 갈래에서 왔는지 로그로 가른다. */
+  private captureDiagnostic(captureReason: NonNullable<ComputerUseDiagnostic["captureReason"]>): void {
+    try { this.deps.diagnostic?.({ tool: this.activeTool ?? "unknown", scope: "capture", phase: "end", captureReason, captureUnavailable: this.captureUnavailable }); }
+    catch { /* 진단 실패가 조작을 반복시키면 안 된다. */ }
+  }
+
   private assertActive(lifetime: AbortController): void {
     if (lifetime.signal.aborted || !this.deps.enabled() || !this.deps.localControl()) throw new Error("computer_use_stopped");
   }
@@ -513,7 +522,11 @@ export class ComputerUseService {
 
 export interface ComputerUseDiagnostic {
   readonly allowActivation?: boolean;
-  readonly scope?: "native_output" | "model_output";
+  readonly scope?: "native_output" | "model_output" | "capture";
+  /** scope "capture" 전용 — 공유 대상 판정의 사유 코드. */
+  readonly captureReason?: "window_identified" | "window_unidentified" | "identity_not_reported" | "owner_missing" | "action_without_observation" | "full_tree_unavailable" | "observation_error";
+  /** scope "capture" 전용 — 판정 직후의 공유 불가 표시(미리보기 문구의 근거). */
+  readonly captureUnavailable?: boolean;
   readonly tool: string;
   readonly phase: "start" | "end";
   readonly elapsedMs?: number;

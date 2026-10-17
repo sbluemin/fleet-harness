@@ -18,6 +18,12 @@ async function verifyWindow(target: DesktopComputerCaptureTarget): Promise<boole
   });
 }
 
+/** 화면 기록 권한 상태. 창 식별 실패와 권한 부족을 같은 로그 줄에서 가르기 위해 붙인다. 묻지 않고 읽기만 한다. */
+function screenAccess(): string {
+  if (process.platform !== "darwin" && process.platform !== "win32") return "not_applicable";
+  try { return systemPreferences.getMediaAccessStatus("screen"); } catch { return "unreadable"; }
+}
+
 /** Console가 관찰 시 확보한 창 ID와 프로세스 수명을 검증한다. 제목으로 다른 창을 찾지 않는다. */
 export function installComputerCapture(contents: WebContents, localOrigin: () => string | null, log: (message: string) => void): void {
   contents.session.setDisplayMediaRequestHandler((request, callback) => {
@@ -33,16 +39,16 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
         return isDesktopComputerCaptureTarget(body.target) ? body.target : null;
       };
       const target = await readTarget();
-      if (!target) { log("computer capture rejected: window identity unavailable"); respond({}); return; }
+      if (!target) { log(`computer capture rejected: window identity unavailable, screen permission=${screenAccess()}`); respond({}); return; }
       // Electron 자신의 TCC 요청을 거친다. 목록은 floating 창을 생략할 수 있어 식별의 근거가 아니다.
       const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
       const source = sources.find(source => source.id === `window:${target.windowId}:0`);
-      if (process.platform !== "darwin" && !source) { log("computer capture rejected: exact window source unavailable"); respond({}); return; }
-      if (process.platform === "darwin" && !await verifyWindow(target)) { log("computer capture rejected: window owner changed or closed"); respond({}); return; }
+      if (process.platform !== "darwin" && !source) { log(`computer capture rejected: exact window source unavailable, screen permission=${screenAccess()}`); respond({}); return; }
+      if (process.platform === "darwin" && !await verifyWindow(target)) { log(`computer capture rejected: window owner changed or closed, screen permission=${screenAccess()}`); respond({}); return; }
       const current = await readTarget();
       if (current?.id !== target.id || localOrigin() !== origin || (process.platform === "darwin" && !await verifyWindow(target))) { log("computer capture rejected: selection changed"); respond({}); return; }
-      log(`computer capture source selected window=${target.windowId}`);
+      log(`computer capture source selected window=${target.windowId} listed=${source ? "yes" : "no"}, screen permission=${screenAccess()}`);
       respond({ video: { id: `window:${target.windowId}:0`, name: target.title } });
-    })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${systemPreferences.getMediaAccessStatus("screen")}`); if (!answered) respond({}); });
+    })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${screenAccess()}`); if (!answered) respond({}); });
   }, { useSystemPicker: false });
 }
