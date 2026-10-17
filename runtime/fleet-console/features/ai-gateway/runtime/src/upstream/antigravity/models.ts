@@ -41,10 +41,9 @@ function thinkingLevel(effort: ReasoningEffort): AntigravityThinkingLevel {
  * Antigravity spells effort two ways and the catalog says which one a model uses:
  *
  * - **Id-encoded** — the entry declares `effort.upstreamModelIds`, so the rung is
- *   part of the model id and no `thinkingConfig` is sent. Gemini 3.1 Pro works
- *   this way, and it is also why `gemini-3.1-pro-high` never reaches the wire:
- *   upstream refuses it (`INVALID_ARGUMENT`) and its own `deprecatedModelIds`
- *   names `gemini-pro-agent` as the replacement.
+ *   part of the model id and no `thinkingConfig` is sent. Gemini 4 Argon uses
+ *   `gemini-4-argon-{low,medium,high}` (live agy turns, 2026-10-18); Gemini
+ *   3.8 Flash also declares three explicit upstream rung ids.
  * - **Request-field** — the entry declares levels with no id overrides, so one
  *   wire id carries every rung and `thinkingConfig.thinkingLevel` selects it.
  *   Gemini 3.7 Flash works this way, on the `-tiered` id: measured 2026-08-22 it
