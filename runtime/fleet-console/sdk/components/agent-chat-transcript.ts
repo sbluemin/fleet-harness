@@ -103,6 +103,12 @@ export interface AgentConversationProps {
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   /** Bring this entry into view and mark it briefly. A new `nonce` repeats the request for the same entry. */
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
+  /**
+   * A participant's ledger — the plugin's full turn record for that speaker. When given, the participant's name on its bubbles and
+   * its mark and words on the working line open it, with the hit rules an Operation conversation uses (the name is the tab stop,
+   * the mark a pointer copy). Omit it while there is no ledger to open; nothing then pretends to be pressable.
+   */
+  readonly openLedger?: ((speaker: ConversationSpeaker) => void) | null;
   /** A board-action line's link (`label`) and what it opens. Without it the line only unfolds its reason. */
   readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
   /** Below the working line — the plugin's own composer or a way back. */

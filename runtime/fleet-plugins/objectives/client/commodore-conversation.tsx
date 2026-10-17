@@ -7,13 +7,13 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "@fleet-console/sdk/plugin";
 import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-inbox";
 
-import { commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, commodoreTranscriptRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
@@ -114,6 +114,29 @@ function useCommodoreReveal(theaterId: string) {
     () => null,
   );
   return current?.theaterId === theaterId ? current : null;
+}
+
+/* ── 사령관 원장 — 가운데 칸의 읽기 전용 턴 기록 ─────────────────────── */
+
+/**
+ * 원장을 연 Theater — 그룹 대화의 지휘관 원장처럼 가운데 칸 상태로만, 페이지 수명 동안 쥔다(저장하지 않고 다른 표면과 나누지 않는다).
+ * 원장은 채팅뷰와 같은 펼친 턴 기록(`ctx.chat.Transcript` + `commodoreChatEntries`)이다 — 턴 중 주입·대기·다시 실음이 그 어휘로 선다.
+ */
+const ledgers = new Set<string>();
+const ledgerListeners = new Set<() => void>();
+
+function setCommodoreLedger(theaterId: string, open: boolean): void {
+  if (ledgers.has(theaterId) === open) return;
+  if (open) ledgers.add(theaterId); else ledgers.delete(theaterId);
+  for (const listener of ledgerListeners) listener();
+}
+
+function useCommodoreLedger(theaterId: string): boolean {
+  return useSyncExternalStore(
+    (listener) => { ledgerListeners.add(listener); return () => { ledgerListeners.delete(listener); }; },
+    () => ledgers.has(theaterId),
+    () => false,
+  );
 }
 
 /* ── 실패 한 줄 — 가운데 본문과 머리 pill 옆 지우기 단추가 함께 쓴다 ─────────── */
@@ -218,6 +241,26 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     open: (entry) => { if (entry.objectiveId) revealObjective({ objectiveId: entry.objectiveId }); },
   }), [t]);
 
+  // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 원장에 설 턴이 없으면
+  // 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다). 읽은 창은 아무 줄에서나 시작하므로(쪽·보관 상한) 깨움 줄이 아니라
+  // 턴을 이루는 줄과 지금의 실행 상태로 가린다 — 창이 턴 한가운데서 시작해도 도는 턴의 원장은 열린다.
+  const Transcript = commodoreTranscriptRenderer();
+  const ledgerOpen = useCommodoreLedger(theaterId) && Transcript !== null;
+  const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
+  // 도는 턴의 시작 — 그 깨움이 창 밖이면 창의 첫 줄에서 그 턴이 이어진다(`commodoreChatEntries` 가 거기서 턴을 연다).
+  const runningAt = turning ? entries.findLast((entry) => entry.kind === "wake")?.at ?? entries[0]?.at : undefined;
+  const [ledgerReveal, setLedgerReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
+  const showInLedger = (at: number) => setLedgerReveal((previous) => ({ at, nonce: (previous?.nonce ?? 0) + 1 }));
+  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn && Transcript ? () => {
+    if (runningAt !== undefined) showInLedger(runningAt); else setLedgerReveal(null);
+    setCommodoreLedger(theaterId, true);
+  } : null), [hasTurn, Transcript, runningAt, theaterId]);
+  // 원장이 열린 채 곁 칸·목표 대화가 턴을 가리키면 그 요청은 원장이 받는다 — 대화는 지금 그려지지 않는다. 앞쪽 읽기는 위의 같은 효과가 맡는다.
+  useEffect(() => {
+    if (reveal && ledgerOpen) showInLedger(reveal.at);
+  }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
+  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, entries, live, view?.state.asks) : []), [ledgerOpen, t, entries, live, view?.state.asks]);
+
   // 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 입력 대신 돌아가기가 서고, pill 의 부제가 그 사실을 말한다.
   const composer = (
     <footer className="objectives-commodore-foot">
@@ -240,6 +283,23 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
       ) : null}
       {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
       {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} onEnded={fail} />}
+      {ledgerOpen && Transcript ? (
+        <div className="objectives-commodore-ledger" data-commodore-ledger="">
+          <div className="objectives-commodore-ledger-head">
+            <span className="objectives-commodore-ledger-banner" role="status">{t("objectives.commodore.ledger.banner")}</span>
+            <button type="button" className="objectives-commodore-ledger-back" onClick={() => setCommodoreLedger(theaterId, false)}>{t("objectives.commodore.ledger.back")}</button>
+          </div>
+          <div className="objectives-commodore-ledger-body">
+            {/* 대화의 「이전 기록」과 같은 계약 — 같은 기록 창을 앞으로 넓힌다. */}
+            {hasMore ? (
+              <button type="button" className="objectives-commodore-text-button objectives-commodore-older objectives-commodore-ledger-older" disabled={loadingOlder} onClick={readOlder}>
+                {t("objectives.commodore.log.older")}
+              </button>
+            ) : null}
+            <Transcript entries={ledgerEntries} language={language} reveal={ledgerReveal} references={references} />
+          </div>
+        </div>
+      ) : (
       <div className="objectives-commodore-conversation-log">
         {Conversation ? (
           <Conversation
@@ -253,11 +313,13 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
             reveal={revealEntry}
             openBoardAction={openBoardAction}
+            openLedger={openLedger}
             references={references}
             composer={composer}
           />
         ) : composer}
       </div>
+      )}
     </div>
   );
 }
