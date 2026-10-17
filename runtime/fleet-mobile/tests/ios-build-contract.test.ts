@@ -7,6 +7,53 @@ import { sanitizeAppDelegateContents } from "../plugins/withFleetIos.ts";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const read = (rel: string) => readFileSync(path.join(repoRoot, rel), "utf8");
 
+// Expo 57 템플릿 AppDelegate에서 이 플러그인이 앵커로 삼는 부분만 남긴 입력.
+const templateAppDelegate = `class AppDelegate: ExpoAppDelegate {
+  var window: UIWindow?
+
+  var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
+  var reactNativeFactory: RCTReactNativeFactory?
+
+  public override func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+  ) -> Bool {
+    let factory = ExpoReactNativeFactory(delegate: delegate)
+    reactNativeFactory = factory
+
+#if os(iOS) || os(tvOS)
+    window = UIWindow(frame: UIScreen.main.bounds)
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: launchOptions)
+#endif
+
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  public override func application(
+    _ app: UIApplication,
+    open url: URL,
+    options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+  ) -> Bool {
+    return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  public override func application(
+    _ application: UIApplication,
+    continue userActivity: NSUserActivity,
+    restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+  ) -> Bool {
+    let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+
+class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
+}
+`;
+
 describe("Fleet Mobile iOS build contract", () => {
 
   it("withFleetIos disables arbitrary ATS loads and owns the fleet URL scheme", () => {
@@ -23,16 +70,48 @@ describe("Fleet Mobile iOS build contract", () => {
   // Android는 FleetLinkActivity가 URI를 지우고 MainActivity를 띄워 크리덴셜을 JS에서 막는다.
   // iOS는 구독자로 그 보장을 만들 수 없어(Expo가 launchOptions를 모든 구독자에게 그대로 넘김)
   // AppDelegate에서 지운다. 이 주입이 사라지면 Linking.getInitialURL()이 페어링 토큰을 준다.
+  // UIScene 경로는 launchOptions에 URL이 없을 수 있으므로, willConnect의 urlContexts와
+  // scene:openURLContexts도 fleet 스킴이면 RCTLinkingManager로 넘기지 않아야 한다.
   it("strips the fleet:// credential from launchOptions before React sees it", () => {
     const plugin = read("runtime/fleet-mobile/plugins/withFleetIos.ts");
+    const subscriber = read("runtime/fleet-mobile/modules/fleet-console-view/ios/FleetLinkAppDelegateSubscriber.swift");
     expect(plugin).toContain("withAppDelegate");
     expect(plugin).toContain("didFinishLaunchingWithOptions");
     expect(plugin).toContain("removeValue(forKey: .url)");
     expect(plugin).toContain("factory.startReactNative");
     expect(plugin).toContain("var fleetSanitizedLaunchOptions = launchOptions");
+    expect(plugin).toContain("UIApplicationSceneManifest");
+    expect(plugin).toContain("$(PRODUCT_MODULE_NAME).SceneDelegate");
     // 앵커를 못 찾았을 때 조용히 넘어가면 크리덴셜이 노출된 채로 빌드된다 — 반드시 세워야 한다.
     expect(plugin).toContain("could not find factory.startReactNative");
     expect(plugin).toContain("could not find the didFinishLaunchingWithOptions super call");
+    expect(plugin).toContain("could not find the openURL forward to RCTLinkingManager");
+    expect(plugin).toContain("fleet.mobile.link-url");
+    expect(subscriber).toContain('Notification.Name("fleet.mobile.link-url")');
+
+    const out = sanitizeAppDelegateContents(templateAppDelegate);
+    expect(out).toBe(sanitizeAppDelegateContents(out));
+    const marker = out.indexOf("var fleetSanitizedLaunchOptions = launchOptions");
+    const strip = out.indexOf("fleetSanitizedLaunchOptions?.removeValue(forKey: .url)");
+    const store = out.indexOf("self.fleetSanitizedLaunchOptions = fleetSanitizedLaunchOptions");
+    const superAt = out.indexOf("didFinishLaunchingWithOptions: fleetSanitizedLaunchOptions");
+    const start = out.indexOf("factory.startReactNative");
+    const startOptions = out.indexOf("launchOptions: appDelegate.fleetSanitizedLaunchOptions", start);
+    expect(marker).toBeGreaterThanOrEqual(0);
+    expect(strip).toBeGreaterThan(marker);
+    expect(store).toBeGreaterThan(strip);
+    expect(superAt).toBeGreaterThan(store);
+    expect(start).toBeGreaterThan(superAt);
+    expect(startOptions).toBeGreaterThan(start);
+    expect(out).not.toContain("UIWindow(frame:");
+    expect(out).toContain("UIWindow(windowScene:");
+    expect(out).toContain('Notification.Name("fleet.mobile.link-url")');
+    expect(out).toContain("connectionOptions.urlContexts");
+    expect(out.indexOf("connectionOptions.urlContexts")).toBeLessThan(start);
+    const fleetBranches = [...out.matchAll(/if url\.scheme == "fleet" \{([\s\S]*?)\n\s*\}/g)];
+    expect(fleetBranches).toHaveLength(2);
+    for (const branch of fleetBranches) expect(branch[1]).not.toContain("RCTLinkingManager");
+    expect(out.match(/RCTLinkingManager\.application\([^)]*open:/g)).toHaveLength(2);
   });
 
   it("fails closed when the startReactNative or super.didFinish anchors are missing", () => {
@@ -47,6 +126,9 @@ describe("Fleet Mobile iOS build contract", () => {
           launchOptions: launchOptions)
       `),
     ).toThrow(/could not find the didFinishLaunchingWithOptions super call/);
+    expect(() =>
+      sanitizeAppDelegateContents(templateAppDelegate.replace(/public override func application\(\s*\n\s*_ app: UIApplication,[\s\S]*?\n  \}\n/, "")),
+    ).toThrow(/could not find the openURL forward to RCTLinkingManager/);
   });
 
   it("recovers a terminated committed WKWebView without leaving a connected black screen", () => {
