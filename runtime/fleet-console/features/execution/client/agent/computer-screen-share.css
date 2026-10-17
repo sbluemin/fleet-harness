@@ -60,3 +60,5 @@
 .computer-screen-share-retry:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 /* 조작자 칩 자리 — 그리는 쪽(그룹채팅)이 칩을 준다. 끌기를 가로채지 않는다. */
 .computer-screen-share-actor { position: absolute; left: 6px; top: 6px; z-index: 2; pointer-events: none; }
+/* 영상이 없는 상태(실패·권한 안내)의 칩은 글을 가리지 않도록 본문 위 한 줄로 흐른다. 자리는 영상 위 칩과 같다. */
+.computer-screen-share.has-actor:not(.is-streaming) .computer-screen-share-actor { position: static; display: flex; padding: 6px 6px 0; }

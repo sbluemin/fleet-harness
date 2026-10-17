@@ -252,7 +252,9 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
     return () => { element.srcObject = null; };
   }, [own?.stream]);
   if (!own) return null;
-  return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
+  // 칩은 영상 위에는 겹쳐도 되지만 문구(실패·권한 안내) 위에는 겹치면 안 된다 — 영상이 없을 때는 CSS 가 칩을 본문 위 한 줄로 내린다.
+  const chip = actor && actorId ? actor(actorId) : null;
+  return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${chip ? " has-actor" : ""}${own.stream ? " is-streaming" : ""}${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
     style={maximized && own.stream ? { inset: 0, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%" } : { width: own.stream ? size.width : 256, height: own.stream ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
     onPointerDown={(event) => {
       const resizing = event.target instanceof Element && Boolean(event.target.closest(".computer-screen-share-resize"));
@@ -300,7 +302,7 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
     }}
     onLostPointerCapture={() => { drag.current = null; setDragging(false); }}
     onClick={(event) => event.stopPropagation()}>
-    {actor && actorId ? <span className="computer-screen-share-actor">{actor(actorId)}</span> : null}
+    {chip ? <span className="computer-screen-share-actor">{chip}</span> : null}
     {own.stream ? <><video ref={video} muted playsInline aria-label={t("settings.computerUse.sharePreview")} />
       <button type="button" className="computer-screen-share-maximize" aria-label={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} title={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} onClick={() => setMaximized((value) => !value)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">{maximized ? <><path d="M5 5V2h9v9h-3" /><rect x="2" y="5" width="9" height="9" rx="1" /></> : <path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" />}</svg>
