@@ -1203,7 +1203,7 @@ export type FleetPluginRouteExport =
   | { readonly register?: (ctx: FleetPluginServerContext) => void | Promise<void> };
 
 export type ApiCatalogMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
-export type ApiCatalogGate = "loopback" | "origin-write" | "origin-strict" | "lock-token" | "anthropic-credential" | "one-use-ticket";
+export type ApiCatalogGate = "loopback" | "origin-write" | "origin-strict" | "lock-token" | "anthropic-credential" | "one-use-ticket" | "remote-cookie";
 export type ApiCatalogTransport = "http" | "sse" | "websocket" | "proxy";
 
 export interface ApiCatalogEntry {

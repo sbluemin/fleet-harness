@@ -67,7 +67,7 @@ function isApiCatalogMethod(value: unknown): value is ApiCatalogEntry["method"] 
 }
 
 function isApiCatalogGate(value: unknown): value is ApiCatalogEntry["gate"] {
-  return value === "loopback" || value === "origin-write" || value === "origin-strict" || value === "lock-token" || value === "anthropic-credential" || value === "one-use-ticket";
+  return value === "loopback" || value === "origin-write" || value === "origin-strict" || value === "lock-token" || value === "anthropic-credential" || value === "one-use-ticket" || value === "remote-cookie";
 }
 
 function isApiCatalogTransport(value: unknown): value is ApiCatalogEntry["transport"] {
