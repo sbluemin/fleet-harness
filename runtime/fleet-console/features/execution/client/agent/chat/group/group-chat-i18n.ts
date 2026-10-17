@@ -130,7 +130,7 @@ const ko: Record<GroupChatMessageKey, string> = {
   "group.truncated": "앞부분은 보관 상한을 넘어 표시하지 않습니다.",
   "group.unavailable": "{names}의 원장은 읽을 수 없습니다. 저장된 기록이 없거나 터미널로 실행 중입니다.",
   "group.unavailableOne": "참여자 한 명의 원장을 읽을 수 없습니다. 저장된 기록이 없거나 터미널로 실행 중입니다.",
-  "group.you": "나",
+  "group.you": "사람",
   "group.commander": "지휘관",
   "group.member": "구성원",
   "group.commodore": "사령관",
