@@ -1095,7 +1095,7 @@ export function NewSessionPlayground() {
             const rideName = ["pg-ride", ride, actor.flourish === "slide-in" ? "is-slide-in" : null].filter(Boolean).join(" ");
             const popName = ["pg-pop", actor.flourish === "rise" ? "is-rise" : null, actor.flourish === "peek" ? "is-peek" : null].filter(Boolean).join(" ");
             return (
-              <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style} data-pg-face={actor.cast.key} data-pg-flourish={actor.flourish ?? ""}>
+              <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style} data-pg-id={actor.cast.id} data-pg-face={actor.cast.key} data-pg-flourish={actor.flourish ?? ""}>
                 <div key={actor.flourish === "slide-in" || ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={rideName}>
                   <div key={actor.flourish ?? "pop"} className={popName}>
                     <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
