@@ -439,7 +439,20 @@ async function boot(): Promise<void> {
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
    */
-  const notifier = createDesktopNotifier(Notification, { showMessageBox: (options) => dialog.showMessageBox(options) });
+  const notifier = createDesktopNotifier<BaseWindow>({
+    notification: Notification,
+    dialog: {
+      showSheet: (parent, options) => dialog.showMessageBox(parent, options),
+      showDetached: (options) => dialog.showMessageBox(options),
+    },
+    parent: () => {
+      const shown = window;
+      if (!shown || shown.isDestroyed() || !shown.base.isVisible() || shown.base.isMinimized()) return null;
+      return shown.base;
+    },
+    detachedDialogBlocks: process.platform === "darwin",
+    log: (message) => logger.error(message),
+  });
   /**
    * 창이 어느 콘솔에 있든 "이 셸이 띄운 콘솔이 어디인가"는 알려 준다. 집이 아닌 콘솔이 서빙한
    * 화면은 자기가 떠나온 곳을 알 수 없으므로 — 원격이든 이 기계의 다른 콘솔이든 — 이것이 없으면
