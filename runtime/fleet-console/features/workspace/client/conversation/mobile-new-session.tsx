@@ -76,10 +76,11 @@ export function MobileNewSession() {
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
   const mentionEntries = useMemo(() => sources.operationGroups.flatMap((group) => group.entries), [sources.operationGroups]);
+  const pendingMentionEntries = useMemo(() => sources.pendingGroups.flatMap((group) => group.entries), [sources.pendingGroups]);
   const pluginMentionRows = useMemo(() => sources.pluginCategories.flatMap((category) => category.rows), [sources.pluginCategories]);
   const mentionDeckOpen = mentionToken !== null;
   // 행이 있는 덱만 제출을 막는다 — 매치가 없으면 "@3pm" 같은 프로즈 토큰이다.
-  const deckHasRows = mentionDeckOpen && (mentionEntries.length + pluginMentionRows.length) > 0;
+  const deckHasRows = mentionDeckOpen && (mentionEntries.length + pendingMentionEntries.length + pluginMentionRows.length) > 0;
 
   const ultracodeTokens = useMemo(() => readUltracodeTokens(prompt), [prompt]);
   const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
@@ -349,6 +350,7 @@ export function MobileNewSession() {
       onRemoveAttachment={removeAttachment}
       mentionDeckOpen={mentionDeckOpen}
       mentionEntries={mentionEntries}
+      pendingMentionEntries={pendingMentionEntries}
       pluginMentionRows={pluginMentionRows}
       mentionTarget={mentionTarget}
       onPickMention={(picked) => { if (picked.kind === "plugin" || isMentionSelectable(picked.entry.activity)) pickMention(picked); }}

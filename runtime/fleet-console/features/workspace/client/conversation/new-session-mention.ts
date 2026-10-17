@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
+import type { MentionTargetDescriptor, OperationClusterRow } from "@fleet-console/sdk/plugin";
 
 import type { OperationActivityVisual } from "../../../execution/client/operation-activity.js";
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, searchTokens, type OperationSearchEntry, type OperationSearchGroup } from "../../../../core/client/src/integration/operation-search.js";
@@ -44,6 +44,8 @@ export function isMentionSelectable(activity: OperationActivityVisual): boolean 
 
 /**
  * 멘션 덱의 목록: messageOperation을 선언한 플러그인의 해당 타입 Operation만, Theater로 묶어서.
+ * 원천은 활성 목록(`state.operations`)뿐이다 — 보관함 스냅샷(팔레트의 `refreshOperationArchive`)은 섞지 않으므로 보관된
+ * Operation 은 '@'에 서지 않는다.
  * 구성원(부모가 대표하는 Operation)은 스토어의 기본 목록에 없으므로 덱에도 서지 않는다.
  * 활동 분류는 팔레트와 같은 원천(resolveOperationActivity)을 쓰되 idle-arrival 화면 승격은 받지
  * 않는다 — 여기서 awaiting은 선택 차단 신호라, 표시용 승격이 섞이면 보낼 수 있는 대상이 막힌다.
@@ -57,6 +59,35 @@ export function buildMentionGroups(
   if (mentionable.length === 0) return [];
   const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
   return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
+}
+
+/**
+ * 「시작 전」 — 사이드바 「시작 전 N」 접기·모바일 홈 「시작 전」과 같은 원천이다. Operation 을 대표하는 묶음 줄(`ClusterIndex.rowOf`)의
+ * 글리프가 `fresh`(SDK `OperationClusterRowGlyph`, 플러그인이 세션 없는 시작 전 줄에 단다)이고 사람이 답할 결정이 걸려 있지 않은
+ * 줄이다(결정이 걸리면 「내 결정」으로 올라간다). 정의를 사이드바 하나에 두어야 두 화면이 어긋나지 않는다.
+ */
+export function isNotStartedRow(row: OperationClusterRow | undefined): boolean {
+  return row?.glyph === "fresh" && row.decisionRequestedAt === undefined;
+}
+
+/**
+ * '@' Operation 묶음을 Operations 와 「시작 전」으로 가른다. Theater 띠 순서는 그대로 두고, 행이 남지 않은 띠는 뺀다.
+ * 데스크톱 새 세션 화면과 모바일 새 대화 시트가 같은 결과를 받는다(`useMentionSources`).
+ */
+export function splitNotStartedGroups(
+  groups: readonly OperationSearchGroup[],
+  rowOf: (operationId: string) => OperationClusterRow | undefined,
+): { readonly operationGroups: readonly OperationSearchGroup[]; readonly pendingGroups: readonly OperationSearchGroup[] } {
+  const operationGroups: OperationSearchGroup[] = [];
+  const pendingGroups: OperationSearchGroup[] = [];
+  for (const group of groups) {
+    const pending = group.entries.filter((entry) => isNotStartedRow(rowOf(entry.operationId)));
+    if (pending.length === 0) { operationGroups.push(group); continue; }
+    const rest = group.entries.filter((entry) => !pending.includes(entry));
+    if (rest.length > 0) operationGroups.push({ ...group, entries: rest });
+    pendingGroups.push({ ...group, entries: pending });
+  }
+  return { operationGroups, pendingGroups };
 }
 
 /**

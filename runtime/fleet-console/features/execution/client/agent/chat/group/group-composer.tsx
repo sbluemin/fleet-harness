@@ -2,6 +2,9 @@ import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, Grou
 import {
   AttachImageIcon,
   ComposerAttachmentTray,
+  ComposerDeck,
+  ComposerDeckGroup,
+  ComposerDeckRow,
   ComposerMenu,
   ComposerMenuHeading,
   ComposerMenuItem,
@@ -11,6 +14,7 @@ import {
   ComposerSendButton,
   MentionChip,
   composerAttachmentNoticeText,
+  composerDeckKeyDown,
   composerT,
   createComposerAttachments,
   useComposerAttachmentInput,
@@ -157,6 +161,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const menuRef = React.useRef<HTMLDivElement | null>(null);
   useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
   const menuId = React.useId();
+  const deckId = React.useId();
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const local = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, language ?? "en");
 
@@ -436,16 +441,20 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (popOpen) {
-      if (event.key === "ArrowDown") { event.preventDefault(); setPopIndex((index + 1) % candidates.length); return; }
-      if (event.key === "ArrowUp") { event.preventDefault(); setPopIndex((index - 1 + candidates.length) % candidates.length); return; }
-      if (event.key === "Escape") { event.preventDefault(); setPopDismissed(true); return; }
-      if (event.key === "Enter" || event.key === "Tab") {
+      // 한글 조합 중의 Enter 는 조합을 끝내는 키다 — 조합이 끝난 뒤에 고른다.
+      if ((event.key === "Enter" || event.key === "Tab") && event.nativeEvent.isComposing) {
         event.preventDefault();
-        // 한글 조합 중의 Enter 는 조합을 끝내는 키다 — 조합이 끝난 뒤에 고른다.
-        if (event.nativeEvent.isComposing) pendingPick.current = candidates[index]!;
-        else choose(candidates[index]!);
+        pendingPick.current = candidates[index]!;
         return;
       }
+      // 덱 키 문법(SDK) — ↑↓ 이동, Enter·Tab 고르기, Esc 는 목록만 닫는다.
+      if (composerDeckKeyDown(event, {
+        rows: candidates,
+        activeIndex: index,
+        setActive: setPopIndex,
+        pick: (at) => choose(candidates[at]!),
+        dismiss: () => setPopDismissed(true),
+      })) return;
     }
     if (event.key === "Backspace" && text.length === 0 && seated && !board?.fixed) { draft.update({ mode: null }); return; }
     if (event.key === "Backspace" && text.length === 0 && target && !seated) { setTarget(null); return; }
@@ -472,34 +481,30 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
       {notice ? <ComposerNotice tone={notice.tone} text={notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} />
         : composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <ComposerNotice tone="warn" text={composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
       {popOpen ? (
-        <div className="group-composer-pop" role="listbox" aria-label={t("group.mention.heading")}>
-          {candidates.map((candidate, at) => {
-            const previous = candidates[at - 1];
-            const heading = candidate.kind === "member" && previous === undefined ? t("group.mention.members")
-              : candidate.kind === "commodore" ? t("group.mention.outside") : null;
-            return (
-              <React.Fragment key={candidate.kind === "member" ? speakerKey(candidate.speaker) : candidate.kind}>
-                {heading ? <div className="group-composer-pop-heading">{heading}</div> : null}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={at === index}
-                  className="group-composer-pop-row"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => choose(candidate)}
-                >
-                  {candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="sm" />
+        // '@' 덱 — 네 컴포저가 같이 쓰는 SDK 덱이다. 묶음은 「이 목표」(구성원 → 모두)와 「바깥 · 목표 밖 운영자」(사령관).
+        <ComposerDeck id={deckId} label={t("group.mention.heading")} listbox contentKey={`${query ?? ""}:${candidates.length}`} className="group-composer-deck">
+          {[
+            { key: "objective", label: t("group.mention.objective"), rows: candidates.flatMap((candidate, at) => (candidate.kind === "commodore" ? [] : [{ candidate, at }])) },
+            { key: "outside", label: t("group.mention.outside"), rows: candidates.flatMap((candidate, at) => (candidate.kind === "commodore" ? [{ candidate, at }] : [])) },
+          ].filter((group) => group.rows.length > 0).map((group) => (
+            <ComposerDeckGroup key={group.key} label={group.label}>
+              {group.rows.map(({ candidate, at }) => (
+                <ComposerDeckRow
+                  key={candidate.kind === "member" ? speakerKey(candidate.speaker) : candidate.kind}
+                  id={`${deckId}-${at}`}
+                  active={at === index}
+                  lead={candidate.kind === "member" ? <SpeakerMark speaker={candidate.speaker} size="sm" />
                     : candidate.kind === "all" ? <span className="cluster-member-glyph is-neutral group-chat-mark is-sm" aria-hidden="true">@</span>
                       : <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />}
-                  <span className="group-composer-pop-name">{targetName(candidate)}</span>
-                  <span className="group-composer-pop-sub">
-                    {candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
-                  </span>
-                </button>
-              </React.Fragment>
-            );
-          })}
-        </div>
+                  name={targetName(candidate)}
+                  value={candidate.kind === "member" ? t("group.mention.member") : candidate.kind === "all" ? t("group.mention.everyoneSub") : t("group.mention.commodoreSub")}
+                  onPick={() => choose(candidate)}
+                  onHover={() => setPopIndex(at)}
+                />
+              ))}
+            </ComposerDeckGroup>
+          ))}
+        </ComposerDeck>
       ) : null}
       {stopOpen && stopMode ? (
         <div className="group-composer-pop is-stop" role="menu" aria-label={t("group.stop.heading")}>
@@ -633,6 +638,10 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           maxLength={seated?.context?.maxLength}
           placeholder={placeholder}
           aria-label={t("group.composer.aria")}
+          aria-autocomplete="list"
+          aria-controls={popOpen ? deckId : undefined}
+          aria-expanded={popOpen}
+          aria-activedescendant={popOpen ? `${deckId}-${index}` : undefined}
           onChange={(event) => edit(event.target.value)}
           onPaste={attachmentInput.onPaste}
           onKeyDown={onKeyDown}

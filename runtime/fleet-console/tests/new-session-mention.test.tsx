@@ -8,7 +8,15 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 // 플러그인 행선지('@')로의 전달은 SDK 계약(mentionTargets·messageMentionTarget)이 호스트 컴포저에 닿는 유일한 길이다.
 // 새 세션 컴포저에서 목록을 열어 고르고 보내는 대표 경로가, 거절에도 문장·보낼 곳을 지키고 성공하면 옵션 없이 전달되는지 본다.
-const fixture = vi.hoisted(() => ({ providers: [] as ClientExecutionProvider[], theaterContributions: [] as never[] }));
+const fixture = vi.hoisted(() => {
+  const noClusters: never[] = [];
+  return {
+    providers: [] as ClientExecutionProvider[],
+    theaterContributions: [] as never[],
+    // '@' 묶음의 「시작 전」 판정이 사이드바와 같은 묶음 원천을 읽는다 — 이 경로에는 묶음이 없다.
+    operationClusters: { subscribe: () => () => {}, get: () => noClusters },
+  };
+});
 vi.mock("../core/client/src/integration/plugin-registry.js", () => ({ usePluginRegistry: () => fixture }));
 vi.mock("@fleet-console/sdk/operations/browser", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@fleet-console/sdk/operations/browser")>()),

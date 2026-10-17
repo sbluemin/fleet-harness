@@ -496,7 +496,17 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-plus-root { flex: none; display: inline-flex; }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 
-/* 멘션 목록과 정지 목록 — 입력창 위로 뜬다. 행은 글자형, 고른 행은 배경 워시. */
+/* '@' 덱의 자리 — 덱 자체는 네 컴포저가 같이 쓰는 SDK 덱(`fc-composer-deck`, 호스트 components.css)이다. 캡슐 양끝(감싼 칸의 안쪽
+   여백)에 맞춰 캡슐 위로 뜬다. */
+/* 덱 기본 자리(`.fc-composer-deck`)와 특이도가 같으면 시트 적재 순서가 이긴다 — 두 클래스로 선언한다. */
+.fc-composer-deck.group-composer-deck {
+  left: clamp(var(--space-4), 4cqi, 48px);
+  right: clamp(var(--space-4), 4cqi, 48px);
+  z-index: 5;
+}
+.fc-composer-deck.group-composer-deck:not(.is-below) { bottom: calc(100% - var(--space-2)); }
+
+/* 정지 목록 — 입력창 위로 뜬다. 행은 글자형, 고른 행은 배경 워시. */
 .group-composer-pop {
   position: absolute;
   left: var(--space-4);
@@ -521,14 +531,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   left: clamp(var(--space-4), 4cqi, 48px);
   bottom: calc(100% + var(--space-2));
 }
-.group-composer-pop-heading {
-  padding: var(--space-2) var(--space-2) 2px;
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
 .group-composer-pop-row {
   display: flex;
   align-items: center;
@@ -544,10 +546,8 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   cursor: pointer;
 }
 .group-composer-pop-row:hover,
-.group-composer-pop-row[aria-selected="true"],
 .group-composer-pop-row:focus-visible { background: var(--control-wash-hover); outline: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-medium); }
-.group-composer-pop-sub { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
 
 /* 제안 줄 — 입력창 바로 위 한 줄. 보드가 고른 지금 할 일이 칩으로 선다(받는 이 칩과 같은 알약 문법). 할 일이 없으면 서지 않는다. */
 .group-composer-suggest {

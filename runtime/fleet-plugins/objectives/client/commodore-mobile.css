@@ -81,17 +81,17 @@
 .objectives-cm .fc-mention-chip { background: var(--m-chip); color: var(--m-text); }
 .objectives-cm .objectives-commodore-ref-input.is-empty::before { color: var(--m-text-muted); }
 .objectives-cm .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--m-text-muted); }
-.objectives-commodore-ref-list.is-phone { left: -1px; right: -1px; max-height: 290px; padding: 6px; border-color: var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); box-shadow: var(--m-shadow); }
-.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-heading { color: var(--m-text-muted); }
-.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row { min-height: 46px; padding: 0 10px; border-radius: 10px; color: var(--m-text); font-size: var(--m-fs-list); }
-.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row[aria-selected="true"] { background: var(--m-selected); }
-.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-row[aria-disabled="true"] .objectives-commodore-ref-name { color: var(--m-text-muted); }
-.objectives-commodore-ref-list.is-phone .objectives-avatar { width: 24px; height: 24px; }
+/* 지휘관 참조 덱(SDK `fc-composer-deck`) — 폰에서는 모바일 면 토큰으로 서고, 행은 엄지 높이(46px)·아바타 24px 다. */
+.objectives-commodore-ref-list.is-phone { max-height: 290px; border-color: var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); box-shadow: var(--m-shadow); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-list { grid-template-columns: 24px minmax(0, 1fr) fit-content(40%) fit-content(40%); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-category { color: var(--m-text-muted); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-row { min-height: 46px; padding: 0 10px; border-radius: 10px; color: var(--m-text); font-size: var(--m-fs-list); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-lead { width: 24px; height: 24px; }
 .objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub { flex-direction: column; align-items: flex-end; gap: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); line-height: 1.35; }
 .objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub .is-decision,
 .objectives-commodore-ref-list.is-phone .objectives-commodore-ref-sub .is-review { color: var(--m-awaiting); }
 .objectives-commodore-ref-list.is-phone .objectives-commodore-ref-note { color: var(--m-awaiting); font-size: var(--m-fs-caption); }
-.objectives-commodore-ref-list.is-phone .objectives-commodore-ref-empty { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-empty { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 
 /* 상태 화면 — 불러오는 중 · 빈 기록 · 실험 기능 꺼짐. */
 .objectives-cm-center { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 36px; text-align: center; }

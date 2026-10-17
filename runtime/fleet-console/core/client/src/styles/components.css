@@ -6998,15 +6998,20 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .operation-launch-variant-caption.is-antigravity,
-.launch-pop-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.launch-pop-band.is-antigravity,
+.fc-composer-deck-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .operation-launch-variant-caption.is-claude,
-.launch-pop-band.is-claude { --launch-provider-tone: var(--provider-claude); }
+.launch-pop-band.is-claude,
+.fc-composer-deck-band.is-claude { --launch-provider-tone: var(--provider-claude); }
 .operation-launch-variant-caption.is-codex,
-.launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
+.launch-pop-band.is-codex,
+.fc-composer-deck-band.is-codex { --launch-provider-tone: var(--provider-codex); }
 .operation-launch-variant-caption.is-cursor,
-.launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.launch-pop-band.is-cursor,
+.fc-composer-deck-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .operation-launch-variant-caption.is-xai,
-.launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
+.launch-pop-band.is-xai,
+.fc-composer-deck-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 /* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
 .fc-model-picker__glyph.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
@@ -12528,6 +12533,182 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-tertiary);
+}
+
+/* ── '@'·'/' 덱 (SDK `ComposerDeck`) ──────────────────────────────────────
+   새 세션·사령관·지휘관/구성원·채팅 원장이 같이 쓰는 한 벌 — 퀵 런치바 덱의 문법을 그대로 옮겼다. 공통 팝업 표면(theme.css
+   --popover-*)을 입고 입력 상자 위로 연다. 자리(z-index·좌우 끝)는 표면 CSS가 덧붙이고, 높이는 SDK가 상자 위·아래에 남은 공간을
+   재서 인라인으로 준다(위가 모자라면 `.is-below`로 아래에 뒤집는다). 모바일 배치는 --popover-* 를 모바일 면으로 바꿔 같은 규칙이 선다. */
+.fc-composer-deck {
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% + var(--space-2));
+  max-height: min(340px, 42vh);
+  overflow-y: auto;
+  /* 행은 자기 칸 안에서 말줄임한다 — x축을 막지 않으면 overflow-y:auto 가 가로 스크롤바까지 세운다. */
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid var(--popover-rim);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-shadow);
+  cursor: default;
+}
+.fc-composer-deck.is-below {
+  top: calc(100% + var(--space-2));
+  bottom: auto;
+}
+
+/* 목록 전체가 격자 하나다 — 행이 subgrid 로 열을 나눠 써야 값·메타 열이 모든 행에서 같은 x 에 선다.
+   [머리 17px][이름][값 ≤40%][메타 ≤30%] — 메타 상한이 있어야 긴 인자 문법·모델 id 가 이름 열을 0폭으로 밀지 않는다. */
+.fc-composer-deck-list {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr) fit-content(40%) fit-content(30%);
+  column-gap: 10px;
+}
+.fc-composer-deck-group { display: contents; }
+
+/* 묶음 머리 — 공통 팝업의 구역 머리다. 12px 보조색 문장형이고 오른쪽으로 구분선이 이어진다(대문자·자간 없음). */
+.fc-composer-deck-category {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: var(--space-2) 12px 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+.fc-composer-deck-category-note { color: var(--text-tertiary); }
+.fc-composer-deck-category-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--popover-divider);
+}
+
+/* 띠(Theater·공급자) — 묶음 머리와 같은 글자, 구분선은 없다. 머리 글리프가 있으면 글자가 행 이름 열(12 + 17 + 10px)에 선다. */
+.fc-composer-deck-band {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: var(--space-2) 12px 6px;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+.fc-composer-deck-band-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-composer-deck-band-lead {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 17px;
+  height: 17px;
+  margin-right: 2px;
+}
+.fc-composer-deck-band-lead > svg { width: 15px; height: 15px; }
+/* 공급자 띠는 스크롤을 따라 붙는다 — 덱이 스크롤해도 출처가 시야에 남는다. 바탕은 덱의 것을 다시 칠한다(투명이면 행이 비친다). */
+.fc-composer-deck-band.is-sticky {
+  position: sticky;
+  /* 덱 패딩(6px)만큼 위로 물려 스크롤 상단에 빈틈이 생기지 않게 한다. */
+  top: calc(6px * -1);
+  z-index: 1;
+  background: var(--popover-face);
+}
+
+.fc-composer-deck-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-height: var(--popover-row-dense);
+  scroll-margin-block: 6px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--t-base);
+  text-align: left;
+  cursor: pointer;
+}
+.fc-composer-deck-row:hover:not(.is-dim) { background: var(--wash-hover); }
+/* 키보드 활성 행은 고른 행 워시 위에 메뉴 행 :focus-visible 과 같은 2px 금색 링(행 안쪽)을 더한다 — 입력 포커스는 컴포저에 남는다. */
+.fc-composer-deck-row.is-active {
+  background: var(--wash-selected);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: -2px;
+}
+/* 고를 수 없는 행(입력 대기 중·이미 붙음) — 흐리게 서고 방향키가 건너뛴다. 숨기면 "내 대상이 왜 없지"가 된다. */
+.fc-composer-deck-row.is-dim {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fc-composer-deck-lead {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  color: var(--text-tertiary);
+}
+.fc-composer-deck-lead > svg { width: 15px; height: 15px; }
+.fc-composer-deck-row.is-active .fc-composer-deck-lead { color: var(--text-secondary); }
+.fc-composer-deck-name,
+.fc-composer-deck-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-composer-deck-name { color: var(--text-primary); }
+/* 일치 부분은 굵기로만 선다 — 바탕을 칠하면 선택 워시와 두 신호가 섞인다. */
+.fc-composer-deck mark {
+  background: none;
+  color: inherit;
+  font-weight: var(--weight-bold);
+}
+.fc-composer-deck-value {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+.fc-composer-deck-meta {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+}
+.fc-composer-deck-token { font-size: var(--t-xs); }
+.fc-composer-deck-row.is-active .fc-composer-deck-token { color: var(--text-secondary); }
+.fc-composer-deck-check { color: var(--text-primary); }
+.fc-composer-deck-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--space-2) 12px;
+  color: var(--text-tertiary);
+  font-size: var(--t-base);
+}
+
+/* 강도 행 — 트랙과 같은 단계 톤(data-effort-level → --effort-tone)으로 이름을 칠한다. */
+.fc-composer-deck-row[data-effort-level] .fc-composer-deck-name { color: var(--effort-tone, var(--text-secondary)); }
+/* `/effort` 게이트의 문 — 트랙 우측 ✦ 토글을 목록 문법으로 옮긴 것이라 값 행과 달리 apex 채널로 말하고 계기 글꼴을 쓴다. */
+.fc-composer-deck-row.is-gate .fc-composer-deck-name {
+  color: var(--apex-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
 }
 
 /* ── Shared SDK Select listbox grammar (Option B1) ─────────────────────────── */

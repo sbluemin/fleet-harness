@@ -4,8 +4,8 @@ branch: feat/new-session-absorbs-quick-launch
 
 ### fleet-console
 #### Changed
-- The new session screen now replaces Quick Launch: Cmd+J and Ctrl+Space open it, and its composer takes `/` commands and `@` destinations in a list that grows inside the composer.
-  ko: 새 세션 화면이 Quick Launch를 대신합니다. ⌘J와 Ctrl+Space로 열고, 컴포저 안에서 펼쳐지는 목록으로 `/` 명령과 `@` 보낼 곳을 고를 수 있습니다.
+- The new session screen now replaces Quick Launch: Cmd+J and Ctrl+Space open it, and its composer takes `/` commands and `@` destinations.
+  ko: 새 세션 화면이 Quick Launch를 대신합니다. ⌘J와 Ctrl+Space로 열고, 컴포저에서 `/` 명령과 `@` 보낼 곳을 고를 수 있습니다.
 - The new session effort bar keeps MAX and ULTRACODE behind a glyph until you open them.
   ko: 새 세션의 추론 강도 막대는 MAX와 ULTRACODE를 ✦ 글리프 뒤에 두었다가 펼칠 때만 보여 줍니다.
 - The new session playground picks up where it left off when you reopen it, with varied entrances, new faces, and a crowd that ebbs and flows.

@@ -4,7 +4,7 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type Chang
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 
-import { ComposerAttachmentTray, type ComposerAttachments, type ComposerMessageKey } from "@fleet-console/sdk/composer";
+import { ComposerAttachmentTray, ComposerDeckCategory, type ComposerAttachments, type ComposerMessageKey } from "@fleet-console/sdk/composer";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
@@ -54,6 +54,8 @@ export interface MobileNewSessionSheetProps {
   readonly onRemoveAttachment: (key: string) => void;
   readonly mentionDeckOpen: boolean;
   readonly mentionEntries: readonly OperationSearchEntry[];
+  /** 「시작 전」 Operation — 데스크톱 새 세션 '@'와 같은 원천(`useMentionSources().pendingGroups`)이다. */
+  readonly pendingMentionEntries: readonly OperationSearchEntry[];
   readonly pluginMentionRows: readonly PluginMentionRow[];
   readonly mentionTarget: MentionTarget | null;
   readonly onPickMention: (target: MentionTarget) => void;
@@ -232,29 +234,41 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
     );
   }
 
-  const mentionRows: ReactNode[] = props.mentionDeckOpen ? [
-    ...props.mentionEntries.map((entry) => {
-      const selectable = isMentionSelectable(entry.activity);
-      return (
-        <button key={`op-${entry.operationId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
-          {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
-              여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
-          <OperationNameMark
-            operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
-            status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
-            size={24}
-           
-          />
-          <span className="mls-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
-        </button>
-      );
-    }),
-    ...props.pluginMentionRows.map((row) => (
-      <button key={`plugin-${row.optionId}`} type="button" className="mls-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
-        <span className="mls-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
-        <span className="mls-mention-name">{row.label}<small>{row.categoryLabel}</small></span>
+  const operationRow = (entry: OperationSearchEntry) => {
+    const selectable = isMentionSelectable(entry.activity);
+    return (
+      <button key={`op-${entry.operationId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
+        {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
+            여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
+        <OperationNameMark
+          operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }}
+          status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+          size={24}
+        />
+        <span className="mls-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
       </button>
-    )),
+    );
+  };
+  // 묶음 머리는 데스크톱 덱과 같은 문법(글자 + 오른쪽 구분선, SDK `ComposerDeckCategory`)이고 행이 있는 묶음에만 선다 —
+  // Operations → 시작 전 → 플러그인 행선지(분류마다) 순서다.
+  const pluginSections = props.pluginMentionRows.reduce<{ label: string; rows: PluginMentionRow[] }[]>((sections, row) => {
+    const last = sections[sections.length - 1];
+    if (last && last.label === row.categoryLabel) last.rows.push(row);
+    else sections.push({ label: row.categoryLabel, rows: [row] });
+    return sections;
+  }, []);
+  const mentionRows: ReactNode[] = props.mentionDeckOpen ? [
+    ...(props.mentionEntries.length > 0 ? [<ComposerDeckCategory key="h-operations" label={t("conversation.newSession.deckOperations")} />, ...props.mentionEntries.map(operationRow)] : []),
+    ...(props.pendingMentionEntries.length > 0 ? [<ComposerDeckCategory key="h-pending" label={t("conversation.newSession.deckPending")} />, ...props.pendingMentionEntries.map(operationRow)] : []),
+    ...pluginSections.flatMap((section, at) => [
+      <ComposerDeckCategory key={`h-plugin-${at}`} label={section.label} />,
+      ...section.rows.map((row) => (
+        <button key={`plugin-${row.optionId}`} type="button" className="mls-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
+          <span className="mls-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
+          <span className="mls-mention-name">{row.label}{row.capabilityLabel ? <small>{row.capabilityLabel}</small> : null}</span>
+        </button>
+      )),
+    ]),
   ] : [];
 
   return (

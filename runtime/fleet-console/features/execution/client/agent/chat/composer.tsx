@@ -10,6 +10,7 @@ import {
   ComposerPlusButton,
   ComposerSubmitButton,
   composerAttachmentNoticeText,
+  composerDeckKeyDown,
   composerT,
   isUltracodeDisarmCaret,
   nextUltracodeIgnored,
@@ -709,34 +710,16 @@ export function AgentChatComposer({
                     setUltracodeIgnored(true);
                     return;
                   }
-                  // 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면 Enter를 잡지
-                  // 않는다 — "일치 없으면 쓴 문장이 그대로 나간다"가 두 컴포저 공통 계약이다.
-                  if (deckOpen && deckRows.length > 0 && !event.nativeEvent.isComposing) {
-                    if (event.key === "ArrowDown") {
-                      event.preventDefault();
-                      setDeckIndex((current) => (current + 1 >= deckRows.length ? 0 : current + 1));
-                      return;
-                    }
-                    if (event.key === "ArrowUp") {
-                      event.preventDefault();
-                      setDeckIndex((current) => (current - 1 < 0 ? deckRows.length - 1 : current - 1));
-                      return;
-                    }
-                    if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
-                      event.preventDefault();
-                      pickDeckRow(deckIndex);
-                      return;
-                    }
-                  }
-                  // 열린 덱을 먼저 닫는다. 프레임의 Esc(도는 턴 중지)까지 올라가지 않도록 전파를
-                  // 끊는다 — 열린 표면을 닫는 것이 Esc의 통상 위계이고, 여기서 멈추지 않으면 한
-                  // 번의 Esc가 덱을 닫으면서 턴까지 끊는다.
-                  if (event.key === "Escape" && deckOpen && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setDeckDismissed(true);
-                    return;
-                  }
+                  // 덱 키 문법(SDK, 네 컴포저 공통) — 덱이 열려 있는 동안만 이동·확정 키를 가져간다. 매치가 0이면
+                  // Enter를 잡지 않는다(쓴 문장이 그대로 나간다). Esc는 덱만 닫고 전파를 끊는다 — 여기서 멈추지 않으면
+                  // 한 번의 Esc가 덱을 닫으면서 프레임의 Esc(도는 턴 중지)까지 올라간다.
+                  if (deckOpen && composerDeckKeyDown(event, {
+                    rows: deckRows,
+                    activeIndex: deckIndex,
+                    setActive: setDeckIndex,
+                    pick: pickDeckRow,
+                    dismiss: () => setDeckDismissed(true),
+                  })) return;
                   if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     void send();

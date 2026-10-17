@@ -7,7 +7,8 @@ import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/compon
 import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, openNewSession, requestLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
-import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
+import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerDeckActiveIndex, composerDeckKeyDown, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
+import { launchProviderFromGroupId, launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { resolveRowEffort } from "../../../execution/client/components/effort-track.js";
@@ -37,8 +38,9 @@ import "./new-session.css";
  * 나가고, 실행은 Operations 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
  * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Operation 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
  *
- * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(부관 같은 플러그인 행선지·기존 Operation)을 부른다. 목록은 떠 있는 팝오버가
- * 아니라 캡슐 안 입력 줄 위에 서고 캡슐이 위로 자란다(승인안 S3, new-session-deck). 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
+ * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(기존 Operation·사령관·부관 같은 플러그인 행선지)을 부른다. 목록은 네 컴포저가
+ * 같이 쓰는 SDK 덱(퀵 런치바 문법 — 묶음 머리 옆 구분선)이고 캡슐 위에 뜬다(new-session-deck). S3 「캡슐 안 목록」은 이 덱으로
+ * 대체됐다. 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
  * 새 Operation 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
  *
  * Theater 가 없거나 새로 더할 때는 이 화면에서 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길). 더한 Theater 가
@@ -264,8 +266,16 @@ export function NewSessionColumn({ state, target, tools }: {
           ...groups.flatMap((group): NewSessionDeckItem[] => {
             const matched = group.rows.filter((row) => row.label.toLowerCase().includes(query));
             if (matched.length === 0) return [];
+            // 공급자 띠는 글리프를 달고 스크롤을 따라 붙는다 — 좁힌 목록에서도 출처가 사라지지 않아 행마다 공급자 마크를 반복하지 않는다.
+            const provider = launchProviderFromGroupId(group.id);
             return [
-              { kind: "band", key: `band-${group.id}`, label: group.label },
+              {
+                kind: "band",
+                key: `band-${group.id}`,
+                label: group.label,
+                sticky: true,
+                ...(provider ? { lead: <span className="operation-launch-provider-glyph">{launchProviderGlyph(provider)}</span>, className: `is-${provider}` } : {}),
+              },
               ...matched.map((row): NewSessionDeckItem => ({
                 kind: "row",
                 key: `model-${group.id}-${row.id}`,
@@ -302,7 +312,7 @@ export function NewSessionColumn({ state, target, tools }: {
             kind: "row" as const,
             key: "effort-gate",
             gate: true,
-            icon: <span className="new-session-deck-gate-glyph">{deck.gateOpen ? "‹" : "✦"}</span>,
+            icon: <span>{deck.gateOpen ? "‹" : "✦"}</span>,
             name: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle", { tiers: deck.gatedNames }),
             pick: () => {
               if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current);
@@ -338,7 +348,20 @@ export function NewSessionColumn({ state, target, tools }: {
         setTargetGone(false);
         placeCaret(stripped);
       };
-      // 부관(플러그인 행선지)이 먼저, 그다음 Operations 를 Theater 띠로 묶는다.
+      // 퀵 런치바 순서 — Operations(Theater 띠) → 시작 전(Theater 띠) → 플러그인 행선지(사령관·부관). 묶음 머리는 행이 있을 때만 선다.
+      const operationRows = (groups: typeof sources.operationGroups, prefix: string) => groups.flatMap((group): NewSessionDeckItem[] => [
+        { kind: "band", key: `${prefix}band-${group.theaterId ?? "none"}`, label: group.theaterLabel },
+        ...group.entries.map((entry): NewSessionDeckItem => ({
+          kind: "row",
+          key: `op-${entry.operationId}`,
+          icon: <OperationNameMark operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })} size={16} />,
+          name: markMatch(entry.operationName, query),
+          value: entry.activity === "running" ? t("conversation.newSession.mentionWorking") : null,
+          // 입력을 기다리는 Operation 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다(흐리게 서고 방향키가 건너뛴다).
+          disabled: !isMentionSelectable(entry.activity),
+          pick: () => pickMention({ kind: "operation", entry }),
+        })),
+      ]);
       const pluginItems = sources.pluginCategories.flatMap((category): NewSessionDeckItem[] => [
         { kind: "section", key: `plugin-${category.key}`, label: category.label, note: category.capabilityLabel },
         ...category.rows.map((row): NewSessionDeckItem => ({
@@ -350,29 +373,22 @@ export function NewSessionColumn({ state, target, tools }: {
           pick: () => pickMention({ kind: "plugin", row }),
         })),
       ]);
-      const operationItems = sources.operationGroups.length === 0 ? [] : [
-        { kind: "section" as const, key: "operations", label: t("conversation.newSession.deckOperations") },
-        ...sources.operationGroups.flatMap((group): NewSessionDeckItem[] => [
-          { kind: "band", key: `band-${group.theaterId ?? "none"}`, label: group.theaterLabel },
-          ...group.entries.map((entry): NewSessionDeckItem => ({
-            kind: "row",
-            key: `op-${entry.operationId}`,
-            icon: <OperationNameMark operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })} size={16} />,
-            name: markMatch(entry.operationName, query),
-            value: entry.activity === "running" ? t("conversation.newSession.mentionWorking") : null,
-            // 입력을 기다리는 Operation 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다.
-            disabled: !isMentionSelectable(entry.activity),
-            pick: () => pickMention({ kind: "operation", entry }),
-          })),
-        ]),
+      return [
+        { kind: "section", key: "operations", label: t("conversation.newSession.deckOperations") },
+        ...operationRows(sources.operationGroups, ""),
+        { kind: "section", key: "pending", label: t("conversation.newSession.deckPending") },
+        ...operationRows(sources.pendingGroups, "pending-"),
+        ...pluginItems,
       ];
-      return [...pluginItems, ...operationItems];
     }
     return [];
   })();
-  const deckOpen = !deckDismissed && (command !== null || mentionToken !== null) && (command !== null || deckItems.length > 0);
-  const selectableRows = deckRows(deckItems);
-  const activeRow = selectableRows.find((row) => row.key === deckActiveKey) ?? selectableRows[0] ?? null;
+  // 일치가 없어도 '@'·'/' 덱은 「일치 없음」 한 줄로 선다(퀵 런치바와 같다). 그때 Enter 는 막히지 않고 쓴 문장이 나간다.
+  const deckOpen = !deckDismissed && (command !== null || mentionToken !== null);
+  const allRows = deckRows(deckItems);
+  const activeIndex = composerDeckActiveIndex(allRows, allRows.findIndex((row) => row.key === deckActiveKey));
+  const activeRow = allRows[activeIndex] ?? null;
+  const selectableRows = allRows.filter((row) => row.disabled !== true);
   // 목록은 떠다니는 위젯(부관)의 회피 영역이다. 화면의 로컬 상태로 여닫히므로 스토어 알림이 없다 — 열고 닫는 순간 직접 알려,
   // 위젯이 주기 재측정을 기다리는 동안 막 열린 목록 위에 서 있지 않게 한다. 칠한 뒤에 알려야 새 상자를 잰다.
   useEffect(() => { notifyKeepOutSurfaceChanged(); }, [deckOpen, deckItems.length]);
@@ -478,28 +494,15 @@ export function NewSessionColumn({ state, target, tools }: {
 
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
-    if (deckHasRows) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        const at = activeRow ? selectableRows.indexOf(activeRow) : -1;
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        const next = selectableRows[(at + delta + selectableRows.length) % selectableRows.length];
-        if (next) setDeckActiveKey(next.key);
-        return;
-      }
-      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
-        event.preventDefault();
-        activeRow?.pick();
-        return;
-      }
-    }
-    // Esc 한 번은 목록만 닫고 문면은 남긴다. 목록이 없을 때의 Esc 는 화면 닫기(열의 처리기)로 올라간다.
-    if (event.key === "Escape" && deckOpen) {
-      event.preventDefault();
-      event.stopPropagation();
-      setDeckDismissed(true);
-      return;
-    }
+    // 덱 키 문법(SDK) — ↑↓ 는 고를 수 있는 행만 돌고, Enter·Tab 은 고르기, Esc 한 번은 목록만 닫고 문면은 남긴다.
+    // 목록이 없을 때의 Esc 는 화면 닫기(열의 처리기)로 올라간다.
+    if (deckOpen && composerDeckKeyDown(event, {
+      rows: allRows,
+      activeIndex,
+      setActive: (index) => setDeckActiveKey(allRows[index]?.key ?? null),
+      pick: (index) => allRows[index]?.pick(),
+      dismiss: () => setDeckDismissed(true),
+    })) return;
     if (event.key === "Backspace" && mentionPick && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
       event.preventDefault();
       clearMention();
@@ -618,7 +621,7 @@ export function NewSessionColumn({ state, target, tools }: {
         </div>
       </div>
       <div className="new-session-composer-zone">
-        <div className={`new-session-composer${starting ? " is-starting" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}${deckOpen ? " is-grown" : ""}`} onDragOver={attachmentInput.onDragOver} onDragLeave={attachmentInput.onDragLeave} onDrop={attachmentInput.onDrop}>
+        <div className={`new-session-composer${starting ? " is-starting" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`}onDragOver={attachmentInput.onDragOver} onDragLeave={attachmentInput.onDragLeave} onDrop={attachmentInput.onDrop}>
           {deckOpen ? (
             <NewSessionDeck
               id={deckId}
