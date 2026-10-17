@@ -867,7 +867,7 @@ export interface OperationCluster {
 
 /**
  * 묶음 줄의 원형 글리프를 플러그인이 정할 때 — 없으면 호스트가 뿌리·`fold` 가운데 가장 급한 활동으로 그린다.
- * `fresh`(시작 전) 줄은 「오늘」·「결정 요청」 구역에 올라가지 않는 한 그룹 맨 아래 「시작 전 N」 접기 안에 선다.
+ * `fresh`(시작 전) 줄은 「오늘」·「결정 요청」 구역에 올라가거나 맡은 이가 처리 중(`delegated`)이지 않는 한 그룹 맨 아래 「시작 전 N」 접기 안에 선다.
  */
 export type OperationClusterRowGlyph = "fresh" | "review" | "done";
 
@@ -901,11 +901,11 @@ export interface OperationClusterRow {
    */
   readonly commodore?: true;
   /**
-   * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 「내 결정」이 아니라 접힌 맡김 구역에 `at`
-   * 순으로 선다. `zone` 은 그 구역 머리 이름이다(같은 플러그인의 줄은 같은 말을 내고, 호스트는 처음 것을 쓴다).
-   * `decisionRequestedAt` 이 함께 있으면 그 줄은 「내 결정」에 선다.
+   * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 줄은 구역으로 올라가지 않고 그룹 안 제자리에
+   * 선다. 처리 중인 동안 호스트는 둘째 줄의 상태 문구(대화 미리보기 포함) 자리에 `status`(예: 「사령관이 답하는 중」)를 무채색 명도
+   * 물결로 적는다. 뿌리 없는 시작 전 줄이라도 「시작 전」 접기에 묻지 않는다. `decisionRequestedAt` 이 함께 있으면 그 줄은 「내 결정」에 선다.
    */
-  readonly delegated?: { readonly at: number; readonly questions: number; readonly zone: LocalizedText };
+  readonly delegated?: { readonly questions: number; readonly status: LocalizedText };
   readonly progress?: { readonly done: number; readonly total: number };
   /** 다른 목표의 후속으로 태어난 줄. `originTitle` 이 null 이면 원래 목표를 더는 찾을 수 없다. */
   readonly followup?: { readonly originTitle: string | null };

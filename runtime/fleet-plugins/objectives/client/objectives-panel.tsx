@@ -226,7 +226,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
   const current = selected ? state.objectives.find((objective) => objective.id === selected) ?? (shownDone?.id === selected ? shownDone : null) : null;
   const detailRef = useRef<HTMLElement | null>(null);
   // 사람의 차례만 센다 — 사이드바 「내 결정」·레일 배지와 같은 판정(`personTurnAt`). 상세 머리의 「다른 요청」이 이 줄을 돈다.
-  // 사령관이 맡은 요청은 접힌 「사령관이 맡음」에서 연다.
+  // 사령관이 맡은 요청은 그룹 제자리의 그 목표 줄(「사령관이 답하는 중」)에서 연다.
   const commodore = useCommodoreBoard(theaterId ?? "");
   const requests = useMemo(() => state.objectives
     .flatMap((objective) => { const at = objective.removed ? null : personTurnAt(objective, commodore.active); return at === null ? [] : [{ objective, at }]; })

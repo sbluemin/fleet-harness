@@ -202,32 +202,6 @@ export function setSideBarFreshFoldExpanded(theaterId: string, groupId: string |
   for (const listener of freshFoldListeners) listener();
 }
 
-// Theater 별 맡김 구역(사람 대신 맡은 이가 다루는 결정)의 펼침 — 「시작 전」 접기와 같은 비영속 규칙. 새 페이지 로드마다 접힌 채 시작한다.
-const delegatedZoneListeners = new Set<() => void>();
-let expandedDelegatedZones: ReadonlySet<string> = new Set();
-
-export function useSideBarDelegatedZones(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribeDelegatedZones, getDelegatedZones, getDelegatedZones);
-}
-
-function getDelegatedZones(): ReadonlySet<string> {
-  return expandedDelegatedZones;
-}
-
-function subscribeDelegatedZones(listener: () => void): () => void {
-  delegatedZoneListeners.add(listener);
-  return () => delegatedZoneListeners.delete(listener);
-}
-
-export function setSideBarDelegatedZoneExpanded(theaterId: string, expanded: boolean): void {
-  if (expandedDelegatedZones.has(theaterId) === expanded) return;
-  const next = new Set(expandedDelegatedZones);
-  if (expanded) next.add(theaterId);
-  else next.delete(theaterId);
-  expandedDelegatedZones = next;
-  for (const listener of delegatedZoneListeners) listener();
-}
-
 export function recordStatusTransitions(ids: readonly string[]): void {
   for (const id of ids) statusTransitionTicks.set(id, ++statusTransitionCounter);
 }

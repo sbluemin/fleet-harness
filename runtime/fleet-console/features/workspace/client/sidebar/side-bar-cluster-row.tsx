@@ -14,7 +14,7 @@ import { pointOnText } from "./operations-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
-import { setSideBarDelegatedZoneExpanded, setSideBarFreshFoldExpanded, useSideBarDelegatedZones } from "./operations-side-bar-store.js";
+import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
 import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
@@ -97,16 +97,17 @@ export interface SideBarRowPlan {
   readonly sections: ReadonlyMap<string | null, readonly SideBarSectionItem[]>;
   /** 「내 결정」 구역 — 사람이 답할 차례인 줄, 기다리기 시작한 시각순. */
   readonly decisions: readonly SideBarRowItem[];
-  /** 맡김 구역 — 플러그인이 정한 맡은 이가 다루는 결정 요청, 요청 시각순. 기본으로 접힌다. */
-  readonly delegated: readonly SideBarRowItem[];
   /** 「오늘」 구역 — 보드 순서. */
   readonly today: readonly SideBarRowItem[];
   /** 그룹(또는 미분류) id → 그 그룹 맨 아래 「시작 전 N」 접기에 드는 줄, 보드 순서. 비었으면 키가 없다. */
   readonly folds: ReadonlyMap<string | null, readonly SideBarRowItem[]>;
 }
 
-/** 「시작 전」 접기에 드는 줄 — Operation 이 아직 없는 시작 전 목표. 개시해 뿌리가 서면 첫 턴 전이라도 빠진다. */
-const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0;
+/**
+ * 「시작 전」 접기에 드는 줄 — Operation 이 아직 없는 시작 전 목표. 개시해 뿌리가 서면 첫 턴 전이라도 빠진다. 맡은 이가 처리 중인
+ * 줄(`delegated`)은 접힌 접기에 묻히면 그 상태 문구가 보이지 않으므로 그룹 자리에 선다.
+ */
+const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0 && item.row.delegated === undefined;
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.
 const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, idle: 4, ended: 5 };
@@ -124,7 +125,7 @@ export function rowGlyphState(item: SideBarRowItem): OperationClusterRowGlyph | 
 /**
  * 그룹 섹션의 엔트리에 묶음 줄을 섞는다. 뿌리가 선 줄은 뿌리 칩 자리를 이어받고, 뿌리 없는 줄은 같은 그룹 안에서
  * 보드 순서가 가장 가까운 줄 곁에 선다. 뿌리 없는 시작 전 줄은 섹션이 아니라 그 그룹의 「시작 전」 접기로 간다.
- * 구역으로 올라간 줄은 그룹 자리에서도 접기에서도 빠진다.
+ * 구역으로 올라간 줄은 그룹 자리에서도 접기에서도 빠진다. 맡은 이가 처리 중인 줄(`delegated`)은 구역으로 올라가지 않고 제자리에 선다.
  */
 export function planSideBarRows(
   sections: readonly { readonly groupId: string | null; readonly entries: readonly SideBarEntry[] }[],
@@ -141,13 +142,11 @@ export function planSideBarRows(
       const root = layout.cluster.root;
       return { layout, row, anchor: (root !== undefined ? entryById.get(root) : undefined) ?? fold[0] ?? null, fold };
     });
-  const promoted = (item: SideBarRowItem) => item.row.decisionRequestedAt !== undefined || item.row.delegated !== undefined || item.row.today === true;
+  const promoted = (item: SideBarRowItem) => item.row.decisionRequestedAt !== undefined || item.row.today === true;
   const decisions = items.filter((item) => item.row.decisionRequestedAt !== undefined)
     .sort((a, b) => a.row.decisionRequestedAt! - b.row.decisionRequestedAt!);
   // 사람의 결정이 함께 선 줄은 「내 결정」에만 선다 — 한 줄은 한 구역에.
-  const delegated = items.filter((item) => item.row.decisionRequestedAt === undefined && item.row.delegated !== undefined)
-    .sort((a, b) => a.row.delegated!.at - b.row.delegated!.at);
-  const today = items.filter((item) => item.row.decisionRequestedAt === undefined && item.row.delegated === undefined && item.row.today === true)
+  const today = items.filter((item) => item.row.decisionRequestedAt === undefined && item.row.today === true)
     .sort((a, b) => a.row.order - b.row.order);
   const folded = new Set(items.flatMap((item) => item.fold.map((entry) => entry.operation.id)));
   const byAnchor = new Map(items.flatMap((item) => (item.anchor ? [[item.anchor.operation.id, item] as const] : [])));
@@ -182,7 +181,7 @@ export function planSideBarRows(
     list.splice(at, 0, { kind: "row", item });
     result.set(key, list);
   }
-  return { sections: result, decisions, delegated, today, folds };
+  return { sections: result, decisions, today, folds };
 }
 
 // 포매터 생성은 비싸다 — 줄이 다시 그려질 때마다 만들지 않고 언어별로 하나를 쓴다.
@@ -255,7 +254,9 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   // 「시작 전」 접기 안의 시작 전 줄은 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
   // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
-  const conversationLine = (decisionNote || null)
+  // 맡은 이가 처리 중인 동안(`delegated`)은 그 상태 문구가 미리보기 자리를 차지하고 명도 물결로 흐른다 — 미리보기가 가려지는 것은 알고 고른 비용이다.
+  const handlingStatus = row.decisionRequestedAt === undefined && row.delegated ? resolveLocalizedText(row.delegated.status, locale) : "";
+  const conversationLine = (decisionNote || handlingStatus || null)
       ?? rowPreview?.text
       ?? (inFreshFold && state === "fresh" ? null : row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
@@ -292,7 +293,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn"; readonly prov?: true }[] = [];
   // 결정 수 — 사람이 답할 요청만 대기 신호로 칠한다. 맡은 이가 다루는 요청은 같은 자리에 무채색으로 선다.
   if (row.decisionRequestedAt !== undefined && row.decisionQuestions !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions }), tone: "req" });
-  else if (row.decisionRequestedAt === undefined && row.delegated) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.delegated.questions }) });
+  else if (row.decisionRequestedAt === undefined && row.delegated) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.delegated.questions }) }, { key: "handling", text: handlingStatus });
   if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `✓ ${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
@@ -447,7 +448,7 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
             {leadMeta.map((part) => (
               <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")}>{part.text}</span>
             ))}
-            {conversationLine ? <span className="side-bar-chip-preview side-bar-cluster-row-preview">{conversationLine}</span> : null}
+            {conversationLine ? <span className={["side-bar-chip-preview side-bar-cluster-row-preview", handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span> : null}
           </span>
         ) : null}
       </button>
@@ -556,47 +557,14 @@ function ClusterRowMarkToggle({ mark, toggle }: { readonly mark: OperationCluste
   );
 }
 
-/** 맡김 구역 머리 이름 — 같은 플러그인의 줄은 같은 말을 낸다. 처음 것 하나를 쓴다. */
-export function delegatedZoneLabelOf(items: readonly SideBarRowItem[]): LocalizedText | null {
-  return items.find((item) => item.row.delegated !== undefined)?.row.delegated?.zone ?? null;
-}
-
-/**
- * 구역 머리 — 「내 결정 N」 「오늘 N」은 접지 않는다. 맡김 구역(`delegated`)은 사람이 답할 것이 아니라 기본으로 접히고, 머리가
- * 펼침 단추다. 머리 이름은 줄이 낸 말(`label`)이다. 펼침은 Theater 별로 이 탭의 메모리에만 둔다.
- */
-export function SideBarRowZone({ theaterId, zone, count, label = null, children }: { readonly theaterId: string; readonly zone: "decisions" | "delegated" | "today"; readonly count: number; readonly label?: LocalizedText | null; readonly children: ReactNode }) {
+/** 구역 머리 — 「내 결정 N」 「오늘 N」은 접지 않는다. */
+export function SideBarRowZone({ theaterId, zone, count, children }: { readonly theaterId: string; readonly zone: "decisions" | "today"; readonly count: number; readonly children: ReactNode }) {
   const t = useT();
-  const locale = useConsoleLocale();
-  const expandedZones = useSideBarDelegatedZones();
-  const title = zone === "decisions" ? t("sidebar.zone.decisions") : zone === "today" ? t("sidebar.zone.today") : (label === null ? "" : resolveLocalizedText(label, locale)) || t("sidebar.zone.delegated");
+  const title = zone === "decisions" ? t("sidebar.zone.decisions") : t("sidebar.zone.today");
   // 구역은 여러 그룹의 줄을 모으므로 Theater 전체 목록 읽기에만 감싸인다. 접지 않는 머리라 줄 하나를 대신하지 않는다.
   const wrap = useClusterHeadWrap(theaterId, undefined, NO_IDS);
   const pinClass = ["side-bar-row-zone-pin pin", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ");
   const pinTitle = wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined;
-  if (zone === "delegated") {
-    const expanded = expandedZones.has(theaterId);
-    return (
-      <li className="side-bar-row-zone is-delegated" data-row-zone={zone}>
-        <button
-          type="button"
-          className={pinClass}
-          title={pinTitle}
-          aria-expanded={expanded}
-          aria-label={t("sidebar.zone.delegatedAria", { title, n: count })}
-          // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
-          onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
-          onClick={() => setSideBarDelegatedZoneExpanded(theaterId, !expanded)}
-        >
-          <span className="side-bar-row-zone-chev" aria-hidden="true">›</span>
-          <span aria-hidden="true">{title}</span>
-          <span className="side-bar-row-zone-count" aria-hidden="true">{count}</span>
-          <span className="side-bar-row-zone-rim" aria-hidden="true" />
-        </button>
-        {expanded ? <ol className="side-bar-group-chips side-bar-row-zone-list" aria-label={title}>{children}</ol> : null}
-      </li>
-    );
-  }
   return (
     <li className={`side-bar-row-zone is-${zone}`} data-row-zone={zone}>
       <div className={pinClass} title={pinTitle}>

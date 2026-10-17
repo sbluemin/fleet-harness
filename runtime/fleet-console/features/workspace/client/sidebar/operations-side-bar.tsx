@@ -40,7 +40,7 @@ import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
 import { clampTheaterAlias } from "../theater.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, delegatedZoneLabelOf, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader, SideBarUngroupedLabel } from "./operations-side-bar-group-header.js";
 import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
@@ -1122,11 +1122,6 @@ export function OperationsSideBar({
                   ...(rowPlan.decisions.length > 0 ? [
                     <SideBarRowZone key="__decisions__" theaterId={theater.id} zone="decisions" count={rowPlan.decisions.length}>
                       {rowPlan.decisions.map((item) => renderRow(item, true))}
-                    </SideBarRowZone>,
-                  ] : []),
-                  ...(rowPlan.delegated.length > 0 ? [
-                    <SideBarRowZone key="__delegated__" theaterId={theater.id} zone="delegated" count={rowPlan.delegated.length} label={delegatedZoneLabelOf(rowPlan.delegated)}>
-                      {rowPlan.delegated.map((item) => renderRow(item, true))}
                     </SideBarRowZone>,
                   ] : []),
                   ...(rowPlan.today.length > 0 ? [
