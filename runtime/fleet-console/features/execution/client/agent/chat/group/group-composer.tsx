@@ -3,6 +3,7 @@ import {
   AttachImageIcon,
   ComposerAttachmentTray,
   ComposerDeck,
+  ComposerQuoteTray,
   ComposerDeckGroup,
   ComposerDeckRow,
   ComposerMenu,
@@ -15,10 +16,14 @@ import {
   MentionChip,
   composerAttachmentNoticeText,
   composerDeckKeyDown,
+  composeQuotedPrompt,
+  composerQuotePlaceholder,
+  composerQuoteValues,
   composerT,
   createComposerAttachments,
   useComposerAttachmentInput,
   useComposerAttachmentSnapshot,
+  useComposerQuotes,
 } from "@fleet-console/sdk/composer";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -26,6 +31,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
+import { getComposerDraft } from "../../../operation-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, speakerKey } from "./speaker-mark.js";
@@ -136,6 +142,10 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const { text, target, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
+  // 인용 칩은 지휘관 Operation 의 초안이 가진다 — 채팅 원장과 이 그룹 입력창이 같은 묶음을 읽어, 어느 화면으로 열어도 칩이 서 있다.
+  const quoteStore = getComposerDraft(rootOperationId).quotes;
+  const quotes = useComposerQuotes(quoteStore);
+  const hasQuotes = quotes.length > 0;
   const attachmentInput = useComposerAttachmentInput(draft.attachments, {
     disabled: busy || !actions,
     pastedName: ct("composer.attach.pasted"),
@@ -148,6 +158,12 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const [popDismissed, setPopDismissed] = React.useState(false);
   const [stopOpen, setStopOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다. 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
+  const quoteCount = React.useRef(quotes.length);
+  React.useEffect(() => {
+    if (quotes.length > quoteCount.current) inputRef.current?.focus({ preventScroll: true });
+    quoteCount.current = quotes.length;
+  }, [quotes.length]);
   // 수신함 — 대화 중심 화면에서는 이 입력창이 지휘관(루트)의 입력 자리다. Operation Browser 가 맡긴 주석·스크린샷을 주차된 원장 채팅
   // 대신 여기서 붙여넣기와 같은 길(업로드 → 칩)로 세운다. 보내지는 않는다.
   React.useEffect(() => claimComposerInbox(rootOperationId, (entry) => {
@@ -221,8 +237,9 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const empty = text.trim().length === 0;
   const uploading = attachments.some((attachment) => attachment.uploading);
   // 문면이 비어도 첨부가 있으면 보낼 말이다. 다만 「모두」 방송은 첨부를 싣지 않고 사령관은 말을 기록으로 남기므로 둘에게는 문면이 있어야 한다.
-  const blank = empty && (attachments.length === 0 || target?.kind === "all" || target?.kind === "commodore");
-  const stopMode = empty && attachments.length === 0 && working.length > 0 && seated === null;
+  // 인용은 문면 끝 줄로 합성되는 글이라 「모두」·사령관에게도 실린다.
+  const blank = empty && !hasQuotes && (attachments.length === 0 || target?.kind === "all" || target?.kind === "commodore");
+  const stopMode = empty && attachments.length === 0 && !hasQuotes && working.length > 0 && seated === null;
 
   // 결과 안내는 다음 행동까지 남는다 — 새로 쓰기 시작하면 걷는다.
   const edit = (value: string) => {
@@ -381,7 +398,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     const sentAttachments = draft.attachments.read().items;
     const sentKeys = sentAttachments.map((attachment) => attachment.key);
     const ids = draft.attachments.ids();
-    if (empty && ids.length === 0) return;
+    const sentQuotes = quoteStore.read();
+    if (empty && ids.length === 0 && sentQuotes.length === 0) return;
     if (ids.length > 0 && (sentTo?.kind === "all")) {
       setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
       return;
@@ -392,10 +410,11 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     setBusy(true);
     setNotice(null);
     try {
-      const result = await actions.send(groupTarget, sentText.trim(), ids.length > 0 ? ids : undefined);
+      const result = await actions.send(groupTarget, composeQuotedPrompt(sentText.trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
       // 일부만 닿았어도 보낸 말이다 — 보낸 스냅샷만 걷고, 기다리는 동안 새로 쓴 말은 남긴다.
       const current = draft.read();
       draft.attachments.releaseSent(sentKeys);
+      quoteStore.releaseSent(sentQuotes.map((quote) => quote.key));
       draft.update({
         ...(current.textRevision === sentRevision ? { text: "" } : {}),
         target: current.target === sentTo ? null : current.target,
@@ -467,7 +486,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const placeholder = !actions ? t("group.composer.unavailable")
     : seated?.context ? local(seated.context.placeholder)
       : board?.actionsOnly ? t("group.board.placeholder")
-        : target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t("group.composer.placeholder");
+        : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t("group.composer.placeholder"));
   const chips = board && !board.fixed ? board.suggestions : [];
   const note = board?.note ?? null;
   const showHint = !!board?.hint && (chips.length > 0 || !!board.fixed);
@@ -600,6 +619,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         onDragLeave={attachmentInput.onDragLeave}
         onDrop={attachmentInput.onDrop}
       >
+        <ComposerQuoteTray store={quoteStore} t={ct} disabled={busy} onDone={() => inputRef.current?.focus()} />
         <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={busy} />
         <span className="group-composer-plus-root" ref={plusRootRef}>
           <ComposerPlusButton

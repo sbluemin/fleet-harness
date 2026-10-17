@@ -32,7 +32,6 @@ import {
 } from "../wiki/index.js";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "../wiki/index.js";
 import type { BriefingHit, MemoryPaths, PatchMeta, WikiEntry, WikiEntryFrontmatter } from "../wiki/index.js";
-import type { CoworkService } from "./cowork/index.js";
 
 import type {
   CodexHealthResponse,
@@ -59,9 +58,6 @@ import type {
   SchemaDocumentResponse,
 } from "./contracts.js";
 import { withSecurityHeaders } from "./contracts.js";
-import { handleCoworkRequest } from "./cowork/routes.js";
-import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -76,11 +72,6 @@ interface RouteContext {
   externalMode: boolean;
   /** 이 요청이 통과한 리스너가 쓰기를 허락하는가. 게이트웨이가 리스너로 판정해 넘긴다. */
   admitted: boolean;
-  coworkService?: CoworkService;
-  /** Console의 모델 로스터와 좌표 해석. Cowork가 받을 수 있는 모델 목록과 실행 좌표의 근거다. */
-  models?: Pick<FleetPluginModelsHost, "roster" | "resolve">;
-  /** Settings › 실험 기능 읽기 — Cowork 좌표(모델·강도)가 여기서 온다. 요청마다 읽는다. */
-  readExperiments?: () => ConsoleExperimentSettings;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -127,9 +118,6 @@ export async function handleApiRequest(request: IncomingMessage, response: Serve
   if (!request.url) return false;
   const url = new URL(request.url, "http://127.0.0.1");
   if (!url.pathname.startsWith("/api/")) return false;
-
-  const coworkService = context.coworkService;
-  if (coworkService && await handleCoworkRequest(request, response, { ...context, coworkService })) return true;
 
   if (request.method === "POST") {
     try {

@@ -11114,7 +11114,7 @@ body[data-codex-side="true"] .command-card {
   overflow-y: auto;
   /* --space-7은 미정의 토큰이라 shorthand 전체가 무효화되어 padding 0이 됐었다(.document
      패딩이 가리던 잠복 결함). .document 플랫화로 이 거터가 유일한 가터가 되므로 정의된
-     토큰만 사용해야 한다. Cowork 도크는 스크롤 밖 컴포저 행으로 내려가 본문을 덮지 않는다. */
+     토큰만 사용해야 한다. */
   padding: var(--space-6) var(--space-8) var(--space-10);
   /* 문서 타이포 컨테이너 — 분할·덱이 같은 @container 문법(codex/styles/components.css)을 공유한다. */
   container-type: inline-size;
@@ -11673,30 +11673,12 @@ body[data-codex-side="true"] .command-card {
   container-name: codex-reader;
 }
 
-/* 일반 읽기와 확대 표면이 같은 부유 레이어를 사용한다. 본문 끝의 여유는 실제 높이를 따른다. */
 .codex-doc-pane,
 .codex-reading-sheet-main { position: relative; }
-
-.codex-reader-composer {
-  position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  z-index: 6;
-  pointer-events: none;
-}
-.codex-reader-composer .cowork-thread-root > * { pointer-events: auto; }
 .codex-doc-scroll,
 .codex-reading-sheet-read {
-  padding-bottom: calc(var(--codex-composer-height, 0px) + var(--space-10));
-  scroll-padding-bottom: calc(var(--codex-composer-height, 0px) + var(--space-4));
-}
-
-.codex-reader-composer:not(:has(.cowork-dock-zone.is-open)) {
-  display: none;
-}
-
-.codex-reader-composer > .codex-dock-host {
-  width: 100%;
+  padding-bottom: var(--space-10);
+  scroll-padding-bottom: var(--space-4);
 }
 
 /* split 좌측 문서는 읽기 measure 캡 없이 doc-pane 폭을 채운다(베이스 .markdown-body의
@@ -12378,6 +12360,142 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 @media (pointer: coarse) {
   .fc-composer-attachment__remove::before { content: ""; position: absolute; inset: -10px; }
 }
+
+/* 붙인 인용 — 첨부 줄과 같은 자리의 글 칩(Quiet Line). 면을 겹치지 않고 헤어라인 하나로 선다. 인용은 따옴표와 흐린 글자로만
+   표시하고 세로 띠를 두지 않는다. brass 는 초점·hover 에만, 질문 표식만 aurora(상태가 아니라 종류) 대신 중립 잉크로 둔다. */
+.fc-composer-quotes {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 4px 4px 2px;
+  min-width: 0;
+}
+.fc-composer-quotes.is-sent { flex: none; padding: 0; }
+.fc-composer-quote {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 3px 3px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  line-height: 1.35;
+}
+.fc-composer-quote.is-sent { padding-right: 8px; }
+.fc-composer-quote__kind { display: inline-grid; place-items: center; flex: none; color: var(--text-tertiary); }
+.fc-composer-quote__kind svg { width: 13px; height: 13px; }
+.fc-composer-quote__open,
+.fc-composer-quote__body {
+  display: grid;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.fc-composer-quote__open { cursor: pointer; border-radius: 4px; }
+.fc-composer-quote__open:disabled { cursor: default; }
+.fc-composer-quote__open:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.fc-composer-quote__excerpt,
+.fc-composer-quote__note {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-composer-quote__excerpt::before { content: "\201C"; color: var(--text-tertiary); }
+.fc-composer-quote__excerpt::after { content: "\201D"; color: var(--text-tertiary); }
+.fc-composer-quote__note { font-size: var(--t-xs); color: var(--text-tertiary); }
+.fc-composer-quote__remove {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .fc-composer-quote__remove:hover:not(:disabled) { color: var(--coral); }
+  .fc-composer-quote__open:hover:not(:disabled) .fc-composer-quote__excerpt { color: var(--brass-ink); }
+}
+.fc-composer-quote__remove:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
+.fc-composer-quote__remove:disabled { cursor: default; }
+@media (pointer: coarse) {
+  .fc-composer-quote__remove { position: relative; }
+  .fc-composer-quote__remove::before { content: ""; position: absolute; inset: -10px; }
+}
+/* 인용 하나의 메모·종류 편집기 — 칩 위에 뜨는 작은 판. */
+.fc-composer-quote-editor {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: calc(100% + 6px);
+  width: min(320px, 80vw);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: 0 12px 28px oklch(0% 0 0 / 28%);
+  color: var(--text-primary);
+}
+.fc-composer-quote-editor__excerpt { font-size: var(--t-sm); color: var(--text-tertiary); overflow-wrap: anywhere; }
+.fc-composer-quote-editor__excerpt::before { content: "\201C"; }
+.fc-composer-quote-editor__excerpt::after { content: "\201D"; }
+.fc-composer-quote-editor__kinds { display: flex; gap: var(--space-3); font-size: var(--t-sm); }
+.fc-composer-quote-editor__kinds button {
+  padding: 0 0 2px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+.fc-composer-quote-editor__kinds button[aria-pressed="true"] { color: var(--text-primary); border-bottom-color: var(--text-secondary); }
+.fc-composer-quote-editor__kinds button:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.fc-composer-quote-editor__field {
+  width: 100%;
+  min-height: 52px;
+  resize: none;
+  padding: 7px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.fc-composer-quote-editor__field:focus { outline: none; border-color: var(--brass); }
+.fc-composer-quote-editor__row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); font-size: var(--t-xs); color: var(--text-tertiary); }
+.fc-composer-quote-editor__save {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--text-primary);
+  color: var(--surface-panel);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.fc-composer-quote-editor__save:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
 
 /* 안내 — 입력창 바로 위 한 줄과 끝의 「닫기」. 되돌릴 수 있는 거절은 warn, 보내기 실패는 coral 잉크, 그 밖은 중립. */
 .fc-composer-notice {

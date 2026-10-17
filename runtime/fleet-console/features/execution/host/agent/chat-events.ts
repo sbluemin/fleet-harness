@@ -2,6 +2,7 @@ import { homedir } from "node:os";
 import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
 
 import { isChatCommandLane, type ChatCommandConsoleTarget } from "./chat-command-policy.js";
+import { splitQuotedPrompt, type ComposerQuote } from "@fleet-console/sdk/composer/quotes";
 import { splitLaunchAttachmentInstructions } from "./launch-attachments.js";
 
 /**
@@ -23,7 +24,16 @@ export type ChatOrigin = { readonly kind: "operation"; readonly operationId: str
  * 경로는 서버에 남는다. `lapsed`는 지시 줄은 남았지만 바이트가 이미 회수된 자리다 — 지난
  * 프로세스의 재생이 여기로 온다(스토어는 기동 때 자기 네임스페이스를 비운다).
  */
-export type ChatAttachment = { readonly id: string } | { readonly lapsed: true };
+export type ChatAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly quote: ComposerQuote };
+
+/**
+ * 말풍선 문면에서 인용 줄(`[Fleet quote] …`)을 떼어 인용 첨부로 옮긴다 — 다른 표면이 입력창에 붙인 인용은 프롬프트 끝 줄로
+ * 합성되어 오므로, 라이브와 재생이 같은 판정으로 문면과 칩을 가른다.
+ */
+export function splitDisplayQuotes(text: string): { readonly text: string; readonly attachments: readonly ChatAttachment[] } {
+  const split = splitQuotedPrompt(text);
+  return { text: split.text, attachments: split.quotes.map((quote) => ({ quote })) };
+}
 
 export interface AgentChatChange {
   readonly file: string;
@@ -624,10 +634,11 @@ function readChatOriginTag(text: string, options: ChatEventMapOptions): { readon
   const body = text.slice(match[0].length);
   const start = match[2] === undefined ? 0 : Number(match[2]);
   const end = match[3] === undefined ? 0 : Number(match[3]);
-  const attachments = transcriptAttachments(splitLaunchAttachmentInstructions(body).paths, options);
+  const quoted = splitDisplayQuotes(start <= end ? body.slice(start, end).trim() : "");
+  const attachments = [...transcriptAttachments(splitLaunchAttachmentInstructions(body).paths, options), ...quoted.attachments];
   return {
     by: { kind: "plugin", pluginId: match[1]!, ...(match[5] ? { humanInput: readHumanInputTag(match[5]) } : {}) },
-    text: start <= end ? body.slice(start, end).trim() : "",
+    text: quoted.text,
     ...(match[4] ? { format: "markdown" as const } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
@@ -662,10 +673,12 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     if (isInjectedCarrier(line, text)) return [{ kind: "turn-start", ...atField }];
     // 이 줄이 첨부와 함께 보낸 턴이면, 서버가 합성한 경로 지시가 그대로 적혀 있다. 재생에서도
     // 문면과 첨부를 갈라 세운다 — 그러지 않으면 새로고침 한 번이 걷어낸 경로를 도로 불러온다.
+    // 인용 줄도 같은 자리에서 갈라 칩으로 세운다.
     const attached = splitLaunchAttachmentInstructions(text);
-    if (attached.paths.length === 0) return [{ kind: "dispatch", text, ...atField }];
-    const attachments = transcriptAttachments(attached.paths, options);
-    return [{ kind: "dispatch", text: attached.text, attachments, ...atField }];
+    const quoted = splitDisplayQuotes(attached.text);
+    const attachments = [...transcriptAttachments(attached.paths, options), ...quoted.attachments];
+    if (attachments.length === 0) return [{ kind: "dispatch", text, ...atField }];
+    return [{ kind: "dispatch", text: quoted.text, attachments, ...atField }];
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);

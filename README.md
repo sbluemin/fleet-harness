@@ -97,7 +97,7 @@ A tool bar above every conversation opens tools for that conversation's Theater:
 - **Repository**: history, changes, compare, worktrees, branches, tags, and stashes.
 - **Files**: a tree with quick peek, pinned folders, and git status tints.
 - **Shell**: one terminal for the whole Console, a keystroke away (<kbd>Ctrl</kbd><kbd>`</kbd>).
-- **Codex**: the project wiki. An experimental Cowork mode lets an AI draft edits to a page, and nothing changes until you apply them.
+- **Codex**: the project wiki. Select a passage to attach it as a comment or question to a commander's or the Commodore's chat; their edits arrive as proposals, and nothing changes until you approve them.
 - **Skills**: browse and install skills.
 
 Provider quotas stay in view as usage meters at the top right; click them for the details.

@@ -283,6 +283,11 @@
       "import": "./composer/index.ts",
       "default": "./composer/index.ts"
     },
+    "./composer/quotes": {
+      "types": "./composer/quotes.ts",
+      "import": "./composer/quotes.ts",
+      "default": "./composer/quotes.ts"
+    },
     "./agent": {
       "types": "./agent/types.ts",
       "import": "./agent/types.ts",

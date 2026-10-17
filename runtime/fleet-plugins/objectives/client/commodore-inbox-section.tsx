@@ -10,11 +10,19 @@ import {
   ComposerNotice,
   ComposerPlusButton,
   ComposerSendButton,
+  ComposerQuoteTray,
+  composeQuotedPrompt,
   composerAttachmentNoticeText,
+  composerQuotePlaceholder,
+  composerQuoteValues,
   composerT,
   createComposerAttachments,
+  createComposerQuotes,
   isComposerAttachmentCandidate,
   useComposerAttachmentSnapshot,
+  useComposerQuotes,
+  type ComposerQuote,
+  type ComposerQuoteAttachResult,
 } from "@fleet-console/sdk/composer";
 import { referencePlainText } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -753,6 +761,8 @@ function createCommodoreDraft() {
   const listeners = new Set<() => void>();
   return {
     attachments,
+    /** 다른 표면(Codex 문서)이 붙인 인용 칩 — 보낼 때 문면 끝 줄로 합성된다. */
+    quotes: createComposerQuotes(),
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (patch: Partial<CommodoreComposerDraft>) => {
@@ -765,6 +775,11 @@ function commodoreDraft(theaterId: string) {
   let draft = commodoreDrafts.get(theaterId);
   if (!draft) { draft = createCommodoreDraft(); commodoreDrafts.set(theaterId, draft); }
   return draft;
+}
+
+/** 호스트가 중개한 인용(Codex 문서에서 고른 문장)을 이 Theater 사령관 입력창의 초안에 칩으로 붙인다. 보내지 않는다. */
+export function attachQuoteToCommodoreComposer(theaterId: string, quote: ComposerQuote): ComposerQuoteAttachResult {
+  return commodoreDraft(theaterId).quotes.add(quote);
 }
 
 /**
@@ -837,6 +852,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
+  const quotes = useComposerQuotes(draft.quotes);
   const value = useMemo(() => ({ text, references }), [text, references]);
   const setValue = (next: { readonly text: string; readonly references: readonly CommodoreReference[] }) => draft.update({ text: next.text, references: next.references, textRevision: draft.read().textRevision + 1 });
   const setSending = (value: boolean) => draft.update({ sending: value });
@@ -855,9 +871,10 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
   const menuId = `commodore-composer-menu-${theaterId}`;
   // 폰은 연결이 끊겨도 잠근다. 데스크톱은 자율 운영이 꺼져도 /clear 를 받으므로 입력은 열어 둔다.
   const usable = active && (phone ? phone.online : true);
-  const finishSentDraft = (sentKeys: readonly string[], sentRevision: number, discardSent: boolean) => {
+  const finishSentDraft = (sentKeys: readonly string[], sentRevision: number, discardSent: boolean, sentQuoteKeys: readonly string[] = []) => {
     const current = draft.read();
     draft.attachments.releaseSent(sentKeys, discardSent);
+    draft.quotes.releaseSent(sentQuoteKeys);
     draft.update({
       ...(current.textRevision === sentRevision ? { text: "", references: [] } : {}),
     });
@@ -896,13 +913,22 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     if (!phone) inputRef.current?.focus();
   };
   useEffect(() => subscribeCommodoreInbox(theaterId, () => takeInbox.current()), [theaterId]);
+  // 다른 표면이 인용을 붙이면 커서가 이 입력창으로 온다(폰은 화면 키보드를 올리지 않는다). 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
+  const quoteCount = useRef(quotes.length);
+  useEffect(() => {
+    if (quotes.length > quoteCount.current && !phone) inputRef.current?.focus();
+    quoteCount.current = quotes.length;
+  }, [quotes.length, phone]);
   useEffect(() => { takeInbox.current(); }, [usable, sending, clear.busy]);
   const uploading = attachments.some((item) => item.uploading);
   // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
   const isClear = !phone && text.trim() === "/clear";
-  const armed = (usable || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
+  const armed = (usable || isClear) && (!!text.trim() || (!isClear && quotes.length > 0)) && !sending && !clear.busy && !uploading;
   const send = () => {
-    const message = text.trim();
+    const typed = text.trim();
+    const sentQuotes = draft.quotes.read();
+    // 인용은 문면 끝 줄로 합성된다 — 사령관 기록은 그 줄을 떼어 칩으로 세운다(`commodore-chat.ts`).
+    const message = composeQuotedPrompt(typed, composerQuoteValues(sentQuotes)).trim();
     // 폰에서 빈 입력으로 원을 누르면 입력칸에 초점만 간다(FD-19).
     if (phone && !message) { inputRef.current?.focus(); return; }
     if (draft.read().sending || uploading || clear.busy) return;
@@ -920,13 +946,13 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
     phone?.onPending({
       key: Date.now(),
-      text: referencePlainText(message, sent.references.map(({ id, title }) => ({ id, label: title }))),
+      text: referencePlainText(typed, sent.references.map(({ id, title }) => ({ id, label: title }))),
       at: Date.now(),
       images: sentItems.map((item) => ({ key: item.key, name: item.name, url: item.previewUrl })),
     });
     const ids = draft.attachments.ids();
     // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다. 만료만 칩을 걷는다.
-    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sentKeys, sent.textRevision, false)).catch((error) => {
+    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sentKeys, sent.textRevision, false, sentQuotes.map((quote) => quote.key))).catch((error) => {
       if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setBudgetNotice(ct("composer.attach.commodoreBudget"));
       else if (mounted.current) onFail(error);
@@ -943,6 +969,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
       : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
     <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+      <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
         {menuOpen ? <ComposerMenu ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" aria-label={ct("composer.more")}>
@@ -965,7 +992,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        placeholder={t("objectives.commodore.composer.placeholder")}
+        placeholder={composerQuotePlaceholder(quotes.length, ct) ?? t("objectives.commodore.composer.placeholder")}
         ariaLabel={t("objectives.commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}

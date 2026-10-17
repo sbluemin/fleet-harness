@@ -36,7 +36,7 @@ import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSessio
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { createMessageRecipientResolver } from "./message-recipient.js";
 import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
-import { maskChatText, neutralizeChatOriginTag, type ChatOrigin } from "./chat-events.js";
+import { maskChatText, neutralizeChatOriginTag, splitDisplayQuotes, type ChatOrigin } from "./chat-events.js";
 import type { ConsoleUseActions } from "../../../console-use/host/console-use.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveConsoleAiGatewayBaseUrl } from "../../../ai-gateway/host/gateway-url.js";
@@ -1546,9 +1546,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         // 자식에게는 첨부 경로가 붙은 프롬프트를, 화면에는 사람이 쓴 문면을 준다 — 예약 칩이
         // 호스트 절대 경로를 브라우저로 실어 나르지 않게 하는 경계가 이 인자 둘이다.
         assertCurrent();
+        // 다른 표면이 붙인 인용은 문면 끝 줄로 와 있다 — 자식은 그 줄을 그대로 읽고, 말풍선은 줄을 떼어 인용 칩으로 세운다.
+        const shown = splitDisplayQuotes(presentation?.display ?? text.trim());
         chat.send(
           composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string,
-          { display: presentation?.display ?? text.trim(), ...(presentation?.format ? { format: presentation.format } : {}), attachments: attachmentIds.map((id) => ({ id })) },
+          { display: shown.text, ...(presentation?.format ? { format: presentation.format } : {}), attachments: [...attachmentIds.map((id) => ({ id })), ...shown.attachments] },
           onSettled,
           by,
         );

@@ -3,7 +3,6 @@ import path from "node:path";
 
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
-import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import { createWikiWorkspaceResolver } from "./server/wiki/index.js";
 
 import { createCodexMcpTools } from "./server/wiki-mcp.js";
@@ -57,15 +56,11 @@ export default definePlugin({
     const gateway = createCodexGateway({
       host: "127.0.0.1",
       version: "1",
-      // 모델 목록과 실행 좌표는 Console의 모델 로스터에서 온다 — Gateway 설정 파일을 플러그인이 직접 열지 않는다.
-      ...(ctx.host.models ? { models: ctx.host.models } : {}),
-      readExperiments: () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS,
       theaterPaths: {
         canonicalize: (cwd) => ctx.host.paths.canonicalizeTheaterPath(cwd),
         hash: (canonicalCwd) => ctx.host.paths.workspaceHash(canonicalCwd),
       },
       getPort: () => readPort(ctx),
-      agent: ctx.host.agent,
       // 대조할 Origin은 요청을 받은 리스너의 것이다 — 콘솔의 루프백 주소로 고정하면
       // 원격 리스너로 들어온 정당한 쓰기가 자기 주소를 실었는데도 막힌다.
       allowedOriginsFor: (request) => {

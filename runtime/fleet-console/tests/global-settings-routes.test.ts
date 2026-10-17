@@ -164,11 +164,8 @@ describe("global settings routes", () => {
     const invalid = createRouterHarness({ body: { experiments: { computerUseBackend: "unknown" } } });
     await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(invalid.writes[0]?.status).toBe(400);
-    // 보조 AI 강도는 Agent SDK 사다리 전체(low…max)를 받고, 하네스 센티넬 ultra는 거절한다.
-    const deep = createRouterHarness({ body: { experiments: { coworkEffort: "xhigh" } } });
-    await deep.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(deep.currentGeneral()?.experiments?.coworkEffort).toBe("xhigh");
-    const ultra = createRouterHarness({ body: { experiments: { coworkEffort: "ultra" } } });
+    // 보조 AI 강도는 Agent SDK 사다리 안의 값만 받고, 하네스 센티넬 ultra는 거절한다.
+    const ultra = createRouterHarness({ body: { experiments: { commodoreEffort: "ultra" } } });
     await ultra.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(ultra.writes[0]?.status).toBe(400);
     const missing = createRouterHarness({ installation: "missing", body: { experiments: { computerUse: true } } });

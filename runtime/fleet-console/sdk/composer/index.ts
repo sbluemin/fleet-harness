@@ -93,6 +93,31 @@ export {
 } from "./deck.js";
 export type { ComposerDeckKeyEvent, ComposerDeckKeyRow, ComposerDeckProps, ComposerDeckRowProps } from "./deck.js";
 export { composerAttachmentNoticeText, composerT } from "./messages.js";
+export {
+  COMPOSER_MAX_QUOTES,
+  COMPOSER_QUOTE_LINE_PREFIX,
+  COMPOSER_QUOTE_MAX_EXCERPT,
+  COMPOSER_QUOTE_MAX_LABEL,
+  COMPOSER_QUOTE_MAX_NOTE,
+  COMPOSER_QUOTE_MAX_REF,
+  composeQuotedPrompt,
+  composerQuoteValues,
+  createComposerQuotes,
+  normalizeComposerQuote,
+  normalizeComposerQuotes,
+  splitQuotedPrompt,
+} from "./quotes.js";
+export type {
+  ComposerQuote,
+  ComposerQuoteAttachResult,
+  ComposerQuoteItem,
+  ComposerQuoteKind,
+  ComposerQuotes,
+  ComposerQuoteSource,
+  ComposerQuoteTarget,
+} from "./quotes.js";
+export { ComposerQuoteList, ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "./quote-tray.js";
+export type { ComposerQuoteTrayProps } from "./quote-tray.js";
 export type { ComposerMessageKey } from "./messages.js";
 export {
   isUltracodeDisarmCaret,

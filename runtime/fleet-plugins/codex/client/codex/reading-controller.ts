@@ -37,8 +37,8 @@ import { installEntryLinkPreview } from "./components/link-preview.js";
 import type { EntryLinkPreview } from "./components/link-preview.js";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
-import { mountCoworkInline } from "./cowork-controller.js";
-import type { CoworkController } from "./cowork-controller.js";
+import { mountQuoteSelection } from "./quote-controller.js";
+import type { QuoteSelectionController } from "./quote-controller.js";
 import { CODEX_LIVE_CHANGED_EVENT } from "./live.js";
 import type { CodexLiveChangedDetail } from "./live.js";
 import { getState } from "./state.js";
@@ -102,8 +102,6 @@ export interface MountReadingOptions {
   readonly onEntryRendered?: (entryId: string) => void;
   readonly onTocChanged?: (count: number) => void;
   readonly tocContainer: HTMLElement;
-  /** Cowork 도크가 정박할 프레임 경계 슬롯(스크롤포트 밖). */
-  readonly dockContainer?: HTMLElement;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -131,12 +129,11 @@ export function mountReadingInto(
   // 재부착에 필요한 마지막 설치 인자 — relocate 후 같은 문서 위에 스파이를 다시 세운다.
   let spyContext: { article: HTMLElement; items: TocItem[] } | null = null;
   let currentDocument: ReaderDocument | null = null;
-  let coworkController: CoworkController | null = null;
+  let quoteController: QuoteSelectionController | null = null;
   // relocate(split↔overlay) 시 현재 마운트 소유자의 콜백이 반영되도록 가변 참조로 유지
   let liveOpts = opts;
   const fileLinks = mountCodexFileLinks({
     container: readContainer,
-    secondaryContainer: opts.dockContainer,
     getTheaterId: () => liveOpts.fileTheaterId ?? liveOpts.theaterId,
     getNavigate: () => liveOpts.navigate,
   });
@@ -589,8 +586,8 @@ export function mountReadingInto(
 
   function cleanupReader(): void {
     fileLinks.close();
-    coworkController?.destroy();
-    coworkController = null;
+    quoteController?.destroy();
+    quoteController = null;
     cleanupSpy?.();
     cleanupSpy = null;
     spyContext = null;
@@ -616,7 +613,6 @@ export function mountReadingInto(
       if (!currentEntryId) return;
       if (scopes.has("queue")) void refreshPendingCount(currentEntryId);
       if (!scopes.has("wiki") && !scopes.has("index")) return;
-      void coworkController?.refresh();
       // updated 필드가 그대로인 외부 편집과 카탈로그에서 빠진 삭제도 실제 API로 확인한다.
       void noticeForOpenEntry(currentEntryId);
       return;
@@ -731,7 +727,7 @@ export function mountReadingInto(
     try {
       const entry = await fetchEntry(theaterId, entryId);
       if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
-      if (!coworkController?.engaged() && renderedEntryStamp !== null && entryStampOf(entry) !== renderedEntryStamp) showStaleNotice("updated");
+      if (renderedEntryStamp !== null && entryStampOf(entry) !== renderedEntryStamp) showStaleNotice("updated");
     } catch (error) {
       if (!destroyed && epoch === entryRequestEpoch && entryId === currentEntryId && theaterId === liveOpts.theaterId && error instanceof CodexRequestError && error.status === 404) showStaleNotice("deleted");
     }
@@ -743,7 +739,6 @@ export function mountReadingInto(
     staleKind = kind;
     if (kind === "deleted") {
       readContainer.querySelector<HTMLButtonElement>("[data-entry-stage-delete]")?.setAttribute("disabled", "");
-      coworkController?.setWriteBlocked(true);
     }
     const t = consoleT();
     const label = kind === "deleted" ? t("codex.reading.staleDeleted") : kind === "decided" ? t("codex.reading.staleDecided") : t("codex.reading.staleUpdated");
@@ -833,19 +828,16 @@ export function mountReadingInto(
       if (article && toc.length > 0) {
         installSpy(article, toc);
       }
-      // 별도 화면 전환 없이 리딩 뷰 자체를 Cowork로 증강한다(드래그 → Comment → 도크).
+      // 본문에서 문장을 고르면 지휘관·사령관 입력창에 인용으로 바로 붙인다(드래그 → 댓글·질문 → 받는 쪽 컴포저).
       const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
       if (body) void fileLinks.enhanceInlinePaths(body);
       if (article && body) {
-        coworkController = mountCoworkInline({
+        quoteController = mountQuoteSelection({
           theaterId: liveOpts.theaterId,
           entryId,
           title: entry.frontmatter.title,
           article,
           body,
-          dockHost: opts.dockContainer,
-          onApplied: () => { void renderEntryView(entryId); },
-          onBodyRendered: () => { void fileLinks.enhanceInlinePaths(body); },
         });
       }
       // 지금 그린 본문이 어느 판본인지 적어 둔다 — 이후 카탈로그의 같은 값과 비교해
@@ -1049,7 +1041,7 @@ export function mountReadingInto(
       linkPreview.destroy();
       fileLinks.destroy();
       cleanupReader();
-      coworkController?.destroy();
+      quoteController?.destroy();
     },
     async setEntry(entryId: string): Promise<void> {
       await renderEntryView(entryId);

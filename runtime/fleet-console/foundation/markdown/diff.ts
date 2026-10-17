@@ -1,4 +1,4 @@
-// 렌더 문서 관점의 순수 블록/라인 diff. DOM·Node 의존이 없어 브라우저(Cowork·Codex
+// 렌더 문서 관점의 순수 블록/라인 diff. DOM·Node 의존이 없어 브라우저(Codex
 // 리더)와 호스트(드라이독 diffstat)가 같은 구현을 공유한다 — 구현을 어느 한쪽에
 // 복제하지 말 것.
 export interface DraftLine {
@@ -51,7 +51,7 @@ export function diffSnippetLines(base: string, draft: string): readonly SnippetD
   return result;
 }
 
-/** 렌더된 Cowork 초안에 맞는 작은 브라우저 전용 LCS diff. */
+/** 렌더 문서에 맞는 작은 브라우저 전용 LCS diff. */
 export function diffDraftLines(base: string, draft: string): readonly DraftLine[] {
   const before = base.replace(/\r\n/g, "\n").split("\n");
   const after = draft.replace(/\r\n/g, "\n").split("\n");

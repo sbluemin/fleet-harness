@@ -140,7 +140,7 @@ if (deputies.length > 0) {
 }
 
 // Wiki entries are written only through the approval queue. The fixture stages one with the product's wiki_ingest
-// tool and approves it programmatically, as Cowork's final Apply does, in the knowledge root that Codex resolves
+// tool and approves it programmatically, in the knowledge root that Codex resolves
 // for this Theater. Reading it back through the Theater's Codex route proves the server serves the same root.
 let wiki: { entry: string; patch: string | null; reused: boolean } | null = null;
 if (wikiId) {

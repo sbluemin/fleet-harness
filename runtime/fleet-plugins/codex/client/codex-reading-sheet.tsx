@@ -61,7 +61,6 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const switcherInputRef = useRef<HTMLInputElement>(null);
 
@@ -147,7 +146,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
 
   // 콘텐츠 effect: reader 호스트 노드를 시트 슬롯으로 relocate
   useEffect(() => {
-    if (!isOpen || !readRef.current || !tocRef.current || !dockRef.current || !reader) return;
+    if (!isOpen || !readRef.current || !tocRef.current || !reader) return;
     // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
     // Theater id로 대신 부르면 /console/codex/w/ 라우터가 workspace_not_found로 거절한다.
     // 해석 전에는 아무것도 세우지 않고, 해석이 도착하면 이 effect가 다시 돈다.
@@ -157,7 +156,7 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
     const subId =
       kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
 
-    mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
+    mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
@@ -286,10 +285,9 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
       const mod = e.metaKey || e.ctrlKey;
 
       if (e.key === "Escape") {
-        // Cowork 턴이 도는 동안 컴포저의 Esc는 "중지"고, 열린 모델 메뉴(본문 밖 포털)의 Esc는
-        // "메뉴 닫기"다 — 둘 다 자기 핸들러가 처리하도록 시트는 비켜선다. 이 리스너는 window
-        // 캡처라 여기서 먹으면 그 핸들러가 도착하지 못한다.
-        if (target instanceof HTMLElement && target.closest(".cowork-composer-frame.is-working")) return;
+        // 인용 알약의 「붙일 곳」 메뉴에 초점이 있으면 Esc는 "메뉴 닫기"다 — 알약 핸들러가 처리하도록 시트는 비켜선다.
+        // 이 리스너는 window 캡처라 여기서 먹으면 그 핸들러가 도착하지 못한다.
+        if (target instanceof HTMLElement && target.closest(".codex-quote-pill")) return;
         e.preventDefault();
         e.stopPropagation();
         if (findOpen) {
@@ -555,7 +553,6 @@ export function CodexReadingSheet({ navigate }: { readonly navigate?: import("@f
               tabIndex={-1}
               aria-label={t("chrome.codexReading.documentAria")}
             />
-            <div ref={dockRef} className="codex-reader-composer" />
           </div>
         </div>
 

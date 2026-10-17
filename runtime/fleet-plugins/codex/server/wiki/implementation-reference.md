@@ -17,11 +17,7 @@ Wiki 도구 동작·저장 형식·스키마를 변경할 때 해당 절을 읽�
 - `wiki_schema_list` — Host-only catalog of the workspace schema and available templates.
 - `wiki_schema_read` — Host-only read of `schema/wiki-schema.md` or one named template.
 - `wiki_schema_create` — Host-only direct creation of a new custom schema template; never updates or overwrites an existing template.
-- `wiki_draft_read` — Cowork session-scoped draft snapshot reader; not globally registered and accepts no path or entry ID.
-- `wiki_draft_edit` — Cowork session-scoped CAS draft editor; not globally registered and accepts no path or entry ID.
-- `wiki_draft_write` — Cowork session-scoped draft replacement writer; not globally registered and accepts no path or entry ID.
-
-Wiki entry writes normally use the patch queue; the Cowork exception moves the approval gate to one final session Apply (`enqueuePatch` plus programmatic `approvePatch`) while retaining human approval and audit traceability. Schema template creation is separate: host-only `wiki_schema_create` is direct and create-only.
+Wiki entry writes use the human-approved patch queue without exception. Comments and questions picked in the Codex reader go to a commander's or the Commodore's composer as quote chips; a commander that revises an entry stages a patch like any other caller. Schema template creation is separate: host-only `wiki_schema_create` is direct and create-only.
 
 ## Key Modules
 
@@ -33,7 +29,6 @@ Wiki entry writes normally use the patch queue; the Cowork exception moves the a
 - `claims.ts` — Claim provenance sidecar at `wiki/.claims/{id}.json` with `ClaimSet`/`Claim`/`ClaimSourceRef` types. Exports `readClaims()`, `writeClaims()`, `listClaims()`. Optional — `wiki_resolve` falls back to summary if absent.
 - `search.ts` — Optional enhanced ranker for `wiki_briefing`. Inline BM25-style scoring with alias/type/status/freshness/graph boost, no new dependency. Default ranker remains the deterministic substring scorer in `briefing.ts`.
 - `drydock.ts` — Lint rules including canonical/legacy link checks, frontmatter validation, duplicate frontmatter detection with optional auto-cleanup, schema health, conflict surfacing, and Wave 13 semantic issues (orphan/stale/deprecated/superseded/duplicate alias/contradiction marker/claim orphan/claim malformed).
-- `runtime/fleet-plugins/codex/server/codex/cowork/draft-tools.ts` — Private Cowork draft-tool factory; closure-scoped to one session and intentionally absent from the global registry.
 - `prompts.ts` — Tool prompt snippets, guidelines, and TypeBox schemas. References `schema/wiki-schema.md` for workspace conventions.
 - `paths.ts` — Memory path resolution, `ensureMemoryRoot()` bootstraps schema files via `ensureWorkspaceSchema()`.
 

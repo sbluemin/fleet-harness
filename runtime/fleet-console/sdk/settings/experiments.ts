@@ -5,13 +5,11 @@
  * 서버·브라우저·플러그인이 나눠 쓰지 않으면 세 곳이 각자 다른 기본값을 갖게 되고, 그중 하나만 "꺼짐"을 "켜짐"으로 읽어도 옵트인 약속이 깨진다.
  *
  * 모델은 기능마다 고른다. 이미 자기 모델이 있는 표면 위의 기능(부관의 Console 읽기 —
- * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다.
- *
- * Cowork는 자기 컴포저에서 모델을 고르지 않는다 — 이 설정의 두 행(모델 + 강도)이
- * 유일한 좌표이고, 서버가 요청마다 여기서 읽어 세션에 싣는다.
+ * 부관단 카드가 모델을 갖는다)은 별도 모델 필드가 없다. Codex 문서의 댓글·질문은 전용 세션 없이
+ * 지휘관·사령관 입력창으로 가므로 자기 모델 좌표가 없다.
  */
 
-import { AGENT_EFFORTS, canonicalModelId, isAgentEffort, type AgentEffort } from "../models/index.js";
+import { AGENT_EFFORTS, isAgentEffort, type AgentEffort } from "../models/index.js";
 
 export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
 export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
@@ -22,9 +20,9 @@ export function isComputerUseBackendId(value: unknown): value is ComputerUseBack
  * 모델·강도 좌표를 가진 보조 AI 표면. 사령관의 자율 운영은 Theater 별로 켜고 끈다.
  * `analyst`는 옛 클라이언트·플러그인의 ID 호환만 남기며 활성 목록에는 싣지 않는다.
  */
-export type ExperimentAideId = "cowork" | "analyst" | "commodore";
+export type ExperimentAideId = "analyst" | "commodore";
 
-export const EXPERIMENT_AIDES: readonly ExperimentAideId[] = ["cowork", "commodore"];
+export const EXPERIMENT_AIDES: readonly ExperimentAideId[] = ["commodore"];
 
 /**
  * 보조 AI의 강도 어휘 — Agent SDK 세션이 받는 사다리 전체(low…max). 화면은 고른 모델의 사다리를 보이고, 실행은
@@ -42,9 +40,6 @@ export interface ConsoleExperimentSettings {
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
-  /** Wiki 초안 Cowork 대화의 모델·강도. 다음 턴부터 적용된다. */
-  readonly coworkModel: string;
-  readonly coworkEffort: ExperimentEffort;
   /** 옛 클라이언트·플러그인 응답 호환 필드. 기능은 퇴역했으며 저장값·요청값과 무관하게 기본 좌표다. */
   readonly analystModel: string;
   readonly analystEffort: ExperimentEffort;
@@ -66,8 +61,6 @@ const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ mod
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   computerUse: false,
   computerUseBackend: "sky-computer-use",
-  coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
-  coworkEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   commodore: true,
@@ -119,19 +112,9 @@ export function isExperimentEffort(value: unknown): value is ExperimentEffort {
 export function resolveExperimentSettings(value: unknown): ConsoleExperimentSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return DEFAULT_EXPERIMENT_SETTINGS;
   const record = value as Record<string, unknown>;
-  const aideModel = (aide: ExperimentAideId): string => {
-    const raw = record[`${aide}Model`];
-    return isExperimentModelId(raw) ? canonicalModelId(raw) : DEFAULT_EXPERIMENT_AIDE_SELECTION.model;
-  };
-  const aideEffort = (aide: ExperimentAideId): ExperimentEffort => {
-    const raw = record[`${aide}Effort`];
-    return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
-  };
   return {
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
-    coworkModel: aideModel("cowork"),
-    coworkEffort: aideEffort("cowork"),
     analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
     analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
     commodore: true,
@@ -142,8 +125,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
 }
 
 /** 한 보조 AI에 배정된 모델·강도. */
-export function experimentAideSelection(settings: ConsoleExperimentSettings, aide: ExperimentAideId): ExperimentAideSelection {
-  if (aide === "commodore") return COMMODORE_DEFAULT_SELECTION;
-  if (aide === "analyst") return DEFAULT_EXPERIMENT_AIDE_SELECTION;
-  return { model: settings[`${aide}Model`], effort: settings[`${aide}Effort`] };
+export function experimentAideSelection(_settings: ConsoleExperimentSettings, aide: ExperimentAideId): ExperimentAideSelection {
+  return aide === "commodore" ? COMMODORE_DEFAULT_SELECTION : DEFAULT_EXPERIMENT_AIDE_SELECTION;
 }

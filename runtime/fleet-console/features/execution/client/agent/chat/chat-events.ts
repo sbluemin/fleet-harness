@@ -6,6 +6,7 @@
  * tests/agent-chat-events.test.ts가 못 박는다.
  */
 
+import { normalizeComposerQuote, type ComposerQuote } from "@fleet-console/sdk/composer/quotes";
 import type { ConversationReference } from "@fleet-console/sdk/conversation";
 import type { ConsoleActionInput } from "@fleet-console/sdk/mcp";
 
@@ -53,7 +54,7 @@ export function chatOriginLabel(origin: AgentChatOrigin): string { return origin
  * 사용자가 함께 보낸 이미지 하나. 브라우저가 쥐는 것은 미리보기 라우트의 좌표뿐이다 — 호스트
  * 경로는 서버에 남는다. `lapsed`는 바이트가 이미 회수된 자리이며, 지난 프로세스의 재생이 여기로 온다.
  */
-export type AgentChatAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string };
+export type AgentChatAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
 
 function readChatAttachments(value: unknown): readonly AgentChatAttachment[] {
   if (!Array.isArray(value)) return [];
@@ -64,6 +65,10 @@ function readChatAttachments(value: unknown): readonly AgentChatAttachment[] {
     if (typeof record.id === "string" && record.id.length > 0) attachments.push({ id: record.id });
     else if (record.lapsed === true) attachments.push({ lapsed: true });
     else if (typeof record.reference === "string" && record.reference.length > 0) attachments.push({ reference: record.reference });
+    else if (record.quote !== undefined) {
+      const quote = normalizeComposerQuote(record.quote);
+      if (quote) attachments.push({ quote });
+    }
   }
   return attachments;
 }

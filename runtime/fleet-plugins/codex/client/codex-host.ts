@@ -49,8 +49,6 @@ let activeNavigatorWorkspaceId: string | null = null;
 // Reader 싱글톤 — split·오버레이 사이를 같은 노드로 relocate하여 콘텐츠·스크롤 보존
 let readerHostNode: HTMLDivElement | null = null;
 let tocHostNode: HTMLDivElement | null = null;
-// Cowork 도크 싱글톤 호스트 — 프레임 경계 슬롯(.codex-reader-composer)로 relocate된다.
-let dockHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
 let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null;
 let activeReaderEntryId: string | null = null;
@@ -60,7 +58,6 @@ let activeReaderSessionTheaterId: string | null = null;
 let activeEntryRequest: ((entryId: string) => void) | null = null;
 let lastReaderScrollTop = 0;
 let scrollRestoreCleanup: (() => void) | null = null;
-let composerSizeCleanup: (() => void) | null = null;
 let scrollSaveSlot: HTMLElement | null = null;
 let scrollSaveTimerId: ReturnType<typeof setTimeout> | null = null;
 let lastObservedScrollTop = 0;
@@ -220,13 +217,11 @@ export function refreshCodexHealth(): void {
 export function mountReaderInto(
   readSlot: HTMLElement,
   tocSlot: HTMLElement,
-  dockSlot: HTMLElement,
   opts: ReaderSlotOptions,
 ): void {
   scrollRestoreCleanup?.();
   const rNode = ensureReaderHostNode();
   const tNode = ensureTocHostNode();
-  const dNode = ensureDockHostNode();
   if (activeReaderKind === "entry" && rNode.parentElement) {
     persistCurrentReaderSession(rNode.parentElement.scrollTop);
   }
@@ -271,27 +266,6 @@ export function mountReaderInto(
   const relocated = rNode.parentElement !== readSlot;
   if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
   if (tNode.parentElement !== tocSlot) tocSlot.appendChild(tNode);
-  if (dNode.parentElement !== dockSlot) dockSlot.appendChild(dNode);
-  composerSizeCleanup?.();
-  let composerFrame = 0;
-  const syncComposerSize = () => {
-    const height = `${dockSlot.getBoundingClientRect().height}px`;
-    if (readSlot.style.getPropertyValue("--codex-composer-height") !== height) {
-      readSlot.style.setProperty("--codex-composer-height", height);
-    }
-  };
-  const composerObserver = new ResizeObserver(() => {
-    cancelAnimationFrame(composerFrame);
-    composerFrame = requestAnimationFrame(syncComposerSize);
-  });
-  composerObserver.observe(dockSlot);
-  syncComposerSize();
-  composerSizeCleanup = () => {
-    composerObserver.disconnect();
-    cancelAnimationFrame(composerFrame);
-    readSlot.style.removeProperty("--codex-composer-height");
-    composerSizeCleanup = null;
-  };
 
   const { sessionTheaterId: _sessionTheaterId, ...readingOpts } = opts;
   if (!readerController || activeReaderKind !== opts.kind || !sameTheater) {
@@ -299,7 +273,6 @@ export function mountReaderInto(
     readerController = mountReadingInto(rNode, {
       ...readingOpts,
       tocContainer: tNode,
-      dockContainer: dNode,
       onEntryRendered: handleEntryRendered,
       onTocChanged: handleTocChanged,
       onDocumentChanged: emitDocumentState,
@@ -364,7 +337,6 @@ export function teardownReaderNodes(): void {
   documentSnapshot = { entryId: null, title: "" };
   for (const listener of documentListeners) listener();
   scrollRestoreCleanup?.();
-  composerSizeCleanup?.();
   detachSessionScrollSaver();
   readerController?.destroy();
   readerController = null;
@@ -375,7 +347,6 @@ export function teardownReaderNodes(): void {
   activeEntryRequest = null;
   if (readerHostNode?.parentElement) readerHostNode.parentElement.removeChild(readerHostNode);
   if (tocHostNode?.parentElement) tocHostNode.parentElement.removeChild(tocHostNode);
-  if (dockHostNode?.parentElement) dockHostNode.parentElement.removeChild(dockHostNode);
 }
 
 export function teardownCodex(): void {
@@ -671,10 +642,4 @@ function ensureTocHostNode(): HTMLDivElement {
   return tocHostNode;
 }
 
-function ensureDockHostNode(): HTMLDivElement {
-  if (!dockHostNode) {
-    dockHostNode = document.createElement("div");
-    dockHostNode.className = "codex-dock-host";
-  }
-  return dockHostNode;
-}
+

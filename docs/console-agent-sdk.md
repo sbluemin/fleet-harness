@@ -59,4 +59,3 @@ await session.dispose();
 
 - Scuttlebutt: 대화 연속성, 웹 도구, grant로 허용하는 Console 관측·실행·자동 운영과 Wiki 읽기. 페르소나·제품 세션·SSE 표현은 플러그인 소유.
 - Objectives 사령관: Theater마다 `persist` 대화 하나(`commodore:<theaterId>`). Console 재시작·자율 운영 재개 뒤 같은 대화를 잇고, 턴 중 사람의 말은 `steer`로 그 턴에 건넨다. 교대(좌표·언어·이미지 예산)와 Clear는 `forget` 뒤 새 대화다.
-- Codex Cowork: 원샷 실행, 10분 watchdog, draft 3개와 Wiki 읽기 4개. draft 상태·주석·히스토리 구성·Apply 승인은 Codex 소유. scoped draft 도구는 전역 Admiral MCP에 등록하지 않는다.

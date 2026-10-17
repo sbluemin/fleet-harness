@@ -27,6 +27,18 @@ const en = {
   "composer.attach.next": "Next image",
   "composer.attach.commodoreBudget": "Images sent to the Commodore must total 8 MiB or less. Remove an image or choose smaller ones.",
   "composer.notice.dismiss": "Dismiss",
+  "composer.quote.list": "Attached quotes",
+  "composer.quote.comment": "Comment",
+  "composer.quote.question": "Question",
+  "composer.quote.kind": "Kind",
+  "composer.quote.edit": "Edit the note for “{excerpt}”",
+  "composer.quote.remove": "Remove quote “{excerpt}”",
+  "composer.quote.notePlaceholder": "A line for this quote only (optional)",
+  "composer.quote.save": "Save",
+  "composer.quote.editorHint": "Enter saves · Esc closes",
+  "composer.quote.placeholder": "{count} quotes attached. Write your instruction…",
+  "composer.quote.placeholderOne": "1 quote attached. Write your instruction…",
+  "composer.quote.from": "Quoted from {source}",
 } as const;
 
 export type ComposerMessageKey = keyof typeof en;
@@ -49,6 +61,18 @@ const ko: Record<ComposerMessageKey, string> = {
   "composer.attach.next": "다음 이미지",
   "composer.attach.commodoreBudget": "사령관에게 보내는 이미지의 합계는 8 MiB 이하여야 합니다. 이미지를 빼거나 작은 파일로 바꿔 주세요.",
   "composer.notice.dismiss": "닫기",
+  "composer.quote.list": "붙인 인용",
+  "composer.quote.comment": "댓글",
+  "composer.quote.question": "질문",
+  "composer.quote.kind": "종류",
+  "composer.quote.edit": "“{excerpt}” 메모 고치기",
+  "composer.quote.remove": "인용 “{excerpt}” 빼기",
+  "composer.quote.notePlaceholder": "이 인용에만 붙일 한 줄 (선택)",
+  "composer.quote.save": "저장",
+  "composer.quote.editorHint": "Enter 저장 · Esc 닫기",
+  "composer.quote.placeholder": "인용 {count}개가 붙었습니다. 지시를 쓰세요…",
+  "composer.quote.placeholderOne": "인용 1개가 붙었습니다. 지시를 쓰세요…",
+  "composer.quote.from": "{source}에서 인용",
 };
 
 const translators: Record<ConsoleLocale, Translate<ComposerMessageKey>> = {

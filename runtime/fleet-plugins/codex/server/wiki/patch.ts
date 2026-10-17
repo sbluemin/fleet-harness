@@ -474,54 +474,19 @@ export async function approvePatch(id: string, paths: MemoryPaths): Promise<Patc
     withApprovalLock(paths, patch, async () => {
       await validatePatchBase(patch, meta, paths);
       await applyPatch(patch, paths);
-    }), false));
-}
-
-// 최종 Apply의 임시 패치는 동일한 승인·편집 잠금 안에서 등록한다.
-// 오래된 초안은 등록 전에 막고, 적용 실패 시 이번 등록만 회수한다.
-export async function enqueueAndApprovePatch(patch: Patch, paths: MemoryPaths, metaOverrides?: Partial<PatchMeta>): Promise<PatchMeta> {
-  if (patch.frontmatter.op !== "update_wiki") throw new Error("immediate approval requires update_wiki");
-  await ensureMemoryRoot(paths);
-  const id = buildPatchId(patch.frontmatter.created, patch.frontmatter.summary, patch.frontmatter.target, patch.body);
-  return withPatchEditLock(paths, id, () => withApprovalLock(paths, patch, async () => {
-    await validatePatchBase(patch, metaOverrides, paths);
-    await validatePatch(patch, paths);
-    const targetPath = path.join(paths.root, patch.frontmatter.target);
-    const snapshot = await readPatchFile(targetPath);
-    await enqueuePatch(patch, paths, metaOverrides);
-    return approveQueuedPatch(id, paths, async (queued, meta) => {
-      let writtenHash: string | undefined;
-      try {
-        await validatePatchBase(queued, meta, paths);
-        await applyPatch(queued, paths, hash => { writtenHash = hash; });
-      } catch (error) {
-        // 이번 Apply가 쓴 본문만 복구한다 — 외부의 최신 변경을 되돌리면 안 된다.
-        if (writtenHash !== undefined && computeContentHash(await readPatchFile(targetPath)) === writtenHash) {
-          await writePatchFile(targetPath, snapshot, paths);
-          await rebuildIndex(paths);
-        }
-        throw error;
-      }
-    }, true);
-  }));
+    })));
 }
 
 async function approveQueuedPatch(
   id: string,
   paths: MemoryPaths,
   apply: (patch: Patch, meta: PatchMeta) => Promise<void>,
-  rollbackOnFailure: boolean,
 ): Promise<PatchMeta> {
   const { patch, meta } = await showQueue(id, paths);
   if (meta.status !== "pending") throw new Error("patch is not pending");
   try {
     await apply(patch, meta);
   } catch (error) {
-    if (rollbackOnFailure) {
-      await removePath(path.join(paths.queueDir, id));
-      await appendLog(paths, "patch apply rolled back", { patch_id: id, target: patch.frontmatter.target });
-      throw error;
-    }
     const reason = classifyPatchConflict(error);
     if (reason && !meta.conflictId) {
       const conflictId = await recordPatchConflict(patch, paths, reason, {

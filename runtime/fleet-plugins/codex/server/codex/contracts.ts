@@ -2,18 +2,6 @@
 // 런타임 코드 없이 타입만 둔다 — 클라이언트 tsconfig이 DOM 전용이므로
 // 이 파일에 Node 타입(NodeJS.* 등)을 참조하면 안 된다.
 
-// Cowork DTO의 단일 출처는 Codex Cowork 모듈이다(type-only라 브라우저 번들 무영향).
-export type { CoworkAnnotationDto, CoworkEventDto, CoworkSessionDto } from "./cowork/index.js";
-/** Cowork 모델 한 행 — id는 Gateway가 받는 모델 표기, label은 메뉴에 보이는 이름, provider는 공급자 밴드다. */
-export interface CoworkModelRow { readonly id: string; readonly label: string; readonly provider: string; }
-/** 콘솔 options 라우트 계약 — 모델 목록은 호스트가 큐레이션한 Claude 별칭 + Gateway 모델이다. */
-/**
- * 콘솔 options 라우트 계약 — 모델 목록은 Claude 별칭 + Settings › AI Gateway에서 켠 Gateway 모델이다.
- * `defaultModel`·`defaultEffort`는 Settings › 실험 기능 › AI 확장 › Cowork의 값이고 컴포저는 이 값으로만
- * 돈다. 그 모델이 목록에 없으면(꺼진 Gateway 모델) Sonnet으로 내려가고 `fallback`이 참이 된다.
- */
-export interface CoworkOptionsResponse { models: readonly string[]; efforts: readonly string[]; defaultModel?: string; defaultEffort?: string; rows?: readonly CoworkModelRow[]; fallback?: boolean; }
-
 // workspaces.ts 내부용 — /api/workspaces endpoint는 폐기됨, 타입만 유지
 export interface WorkspaceMetadata {
   id: string;

@@ -1,4 +1,4 @@
-import { ComposerAttachmentViewer, composerT } from "@fleet-console/sdk/composer";
+import { ComposerAttachmentViewer, ComposerQuoteList, composerT } from "@fleet-console/sdk/composer";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { agentChatAttachmentPreviewUrl } from "../api.js";
 import { getT } from "../i18n/index.js";
@@ -27,9 +27,12 @@ export function ChatDispatchAttachments({
     "id" in attachment && !lapsed.includes(attachment.id)
   ));
   const references = attachments.filter((attachment) => "reference" in attachment);
-  const lapsedCount = attachments.length - live.length - references.length;
+  // 인용은 바이트가 없는 글 첨부라 거둬질 일이 없다 — 입력창 칩과 같은 칩으로 선다.
+  const quotes = attachments.flatMap((attachment) => ("quote" in attachment ? [attachment.quote] : []));
+  const lapsedCount = attachments.length - live.length - references.length - quotes.length;
   return (
     <div className="agent-chat-dispatch-attachments">
+      <ComposerQuoteList quotes={quotes} t={ct} />
       {live.map((attachment, index) => (
         <button
           key={attachment.id}
