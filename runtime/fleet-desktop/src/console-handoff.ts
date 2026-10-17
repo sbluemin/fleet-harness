@@ -41,12 +41,14 @@ export async function handOffWindowToConsole(deps: ConsoleHandoffDeps, url: stri
   const origin = new URL(url).origin;
   const deadline = deps.waitForPublishDeadline ?? sleep;
   // 게시가 실패해도, 답하지 않아도 항해는 계속된다. 그 판단이 한 곳에서만 참이 되도록 여기서 막는다.
-  await Promise.race([
+  // 게시는 창보다 먼저 끝나야 한다. 화면을 붙잡는 일은 로컬이라 그 왕복을 기다리는 동안 같이 한다.
+  // 미리 돌리기(테마·ready 구독)는 적재 앞에 남아 있다 — 스트림을 적재 뒤에 열면 그 틈의 ready를 잃는다.
+  const published = Promise.race([
     deps.publishShellHome(origin).catch(() => undefined),
     deadline(PUBLISH_DEADLINE_MS),
   ]);
-  // 붙잡기와 미리 돌리기는 게시 뒤, 적재 앞이다. 어느 쪽이 실패해도 가는 길은 막지 않는다.
-  await deps.holdScreen?.().catch(() => undefined);
+  const held = deps.holdScreen?.().catch(() => undefined) ?? Promise.resolve();
+  await Promise.all([published, held]);
   await deps.prepare?.(origin).catch(() => undefined);
   try {
     await deps.loadUrl(url);

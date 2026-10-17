@@ -6,7 +6,8 @@ import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 
 import { ActiveCompanionShortcutsProvider, takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
-import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
+import { fetchGroups, fetchOperations, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
+import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
@@ -238,11 +239,23 @@ function ConnectedApp() {
   const railBindingsRef = useRef(railBindings);
   railBindingsRef.current = railBindings;
   useEffect(() => {
-    const capabilities = createHostCapabilities(() => {
-      void fetchOperations().then(hydrateOperations).catch(() => {});
-    }, { railBindings: () => railBindingsRef.current });
-    const cleanups = registry.providers.map((plugin) => plugin.install?.(capabilities)).filter((cleanup): cleanup is () => void => typeof cleanup === "function");
+    let cancelled = false;
+    const cleanups: Array<() => void> = [];
+    // 플러그인 설치가 여는 조회는 목록을 그리는 데 필요 없다. 데스크톱에서는 ready를 보낸 뒤에 세운다.
+    const install = (): void => {
+      if (cancelled) return;
+      const capabilities = createHostCapabilities(() => {
+        void fetchOperations().then(hydrateOperations).catch(() => {});
+      }, { railBindings: () => railBindingsRef.current });
+      for (const plugin of registry.providers) {
+        const cleanup = plugin.install?.(capabilities);
+        if (typeof cleanup === "function") cleanups.push(cleanup);
+      }
+    };
+    if (bootLanePending()) void afterBootLane().then(install);
+    else install();
     return () => {
+      cancelled = true;
       for (const cleanup of cleanups) cleanup();
     };
   }, [registry.providers]);
@@ -255,21 +268,29 @@ function ConnectedApp() {
 
 
   useEffect(() => {
-    const abort = new AbortController();
-    void fetchTheaterBootstrap(abort.signal)
-      .then((bootstrap) => {
-        hydrateTheaterBootstrap(bootstrap);
-        resolveOnboardingOnBootstrap();
-      })
-      .catch((error) => {
-        if (abort.signal.aborted) return;
-        setState({ theaterError: error instanceof Error ? error.message : String(error) });
-        resolveOnboardingOnBootstrap();
-      });
-    void fetchOperations(null, abort.signal).then((operations) => {
+    // 부팅이 설정·매니페스트와 함께 시작한 약속이다. 여기서 다시 열면 같은 목록을 두 번 받는다.
+    // 수화는 이 마운트 안에서만 한다 — 그리기 전에 플래그를 세우면 ready가 빈 프레임에 나간다.
+    let cancelled = false;
+    const snapshots = startBootSnapshots();
+    void snapshots.theaters.then((bootstrap) => {
+      if (cancelled) return;
+      hydrateTheaterBootstrap(bootstrap);
+      resolveOnboardingOnBootstrap();
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      setState({ theaterError: error instanceof Error ? error.message : String(error) });
+      resolveOnboardingOnBootstrap();
+    });
+    void snapshots.operations.then((operations) => {
+      if (cancelled) return;
       hydrateInitialOperations(operations);
-    }).catch(() => {});
-    void fetchGroups(null, abort.signal).then(hydrateGroups).catch(() => {});
+    }).catch(() => {
+      if (!cancelled) openBootLane();
+    });
+    void snapshots.groups.then((groups) => {
+      if (cancelled || groups === null) return;
+      hydrateGroups(groups);
+    });
     refreshObserverStatus();
     // 이 콘솔이 방금 재기동을 겪고 돌아온 것일 수 있다. 그 사실은 서버의 메모리가 아니라
     // 워커가 남긴 기록에만 있으므로, 부팅 때 한 번 물어봐야 결과를 말할 수 있다.
@@ -277,8 +298,8 @@ function ConnectedApp() {
     // cold-start 보정: 서버 백그라운드 refresh 완료를 기다렸다가 한 번 더 읽어 배지를 채운다.
     const recheckTimer = window.setTimeout(refreshObserverStatus, UPDATE_STATUS_RECHECK_DELAY_MS);
     return () => {
+      cancelled = true;
       window.clearTimeout(recheckTimer);
-      abort.abort();
     };
   }, []);
 

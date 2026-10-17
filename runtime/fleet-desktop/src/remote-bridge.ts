@@ -2,7 +2,7 @@ import type { WebContents } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import type { DesktopNotice } from "./desktop-notices.js";
-import { confirmRemoteIdentity, joinRemoteConsole, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
+import { confirmRemoteIdentity, joinRemoteConsole, releaseFetchBody, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
 import type { SwitchHold } from "./switch-hold.js";
 import type { WindowPolicy } from "./window-policy.js";
 
@@ -19,6 +19,12 @@ export interface RemoteBridgeDeps {
   readonly policy: () => WindowPolicy | null;
   /** 창이 쓰는 세션. 조인 쿠키는 반드시 이 항아리에 담겨야 한다. */
   readonly sessionFetch: SessionFetch;
+  /**
+   * 지문 대조가 끝난 뒤에만 부른다. Chromium이 그 호스트를 보기 전에 대조해야 어긋난 판정이
+   * 캐시에 남지 않으므로, 이 예열은 대조 앞으로 당길 수 없다. 소켓을 둘 데우면 조인 뒤의
+   * 확인·게시가 새 TLS를 또 열지 않는다.
+   */
+  readonly preconnect?: (origin: string) => void;
   /** 로컬 Console은 평문 루프백이라 Node의 fetch로 충분하다. */
   readonly localFetch?: typeof fetch;
   readonly localOrigin: () => string | null;
@@ -146,6 +152,8 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     if (!policy) throw new Error("remote_bridge_no_window");
     deps.pins.pin(handoff.hostname, handoff.fingerprint);
     policy.admitRemoteConsoleOrigin(handoff.origin);
+    // 대조와 핀이 끝난 뒤에만 Chromium이 이 호스트를 본다. 조인과 동시에 예열하면 그 소켓을 조인이 쓴다.
+    deps.preconnect?.(handoff.origin);
     const attempt = ++opening;
     policy.stageConsoleOrigin(handoff.origin);
     try {
@@ -180,8 +188,13 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     } catch (error) {
       throw new Error("remote_link_unreachable", { cause: error });
     }
-    if (response.status === 401) throw new Error("remote_host_session_expired");
-    if (!response.ok) throw new Error("remote_host_unavailable");
+    try {
+      if (response.status === 401) throw new Error("remote_host_session_expired");
+      if (!response.ok) throw new Error("remote_host_unavailable");
+    } finally {
+      // 본문을 들고 있으면 적재가 방금 연 연결을 재사용하지 못하고 문서를 새 TLS로 받는다.
+      await releaseFetchBody(response);
+    }
   }
 
   async function isDiscoveredLocally(origin: string): Promise<boolean> {
