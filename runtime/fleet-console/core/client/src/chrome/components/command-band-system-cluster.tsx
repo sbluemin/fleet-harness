@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -6,7 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
 import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
-import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
+import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type LocalConsoleState, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
@@ -64,6 +64,8 @@ export interface HostPickerContext {
   readonly at: string | null;
   /** 판을 매달 칩의 자리. 없거나 말이 안 되면 null이고, 판은 창 모서리에 선다. */
   readonly anchor: HostPickerAnchor | null;
+  /** 부른 자리가 메뉴 항목이면 판은 그 옆에 서브메뉴로 선다. 도구모음 칩이면 위·아래에 매달린다. */
+  readonly side: boolean;
 }
 
 /**
@@ -78,8 +80,73 @@ export function readHostPickerSurface(search: string): HostPickerContext | null 
   return {
     at: at !== null && isConsoleOriginShape(at) ? at : null,
     anchor: parsePickerAnchor(params.get(PICKER_ANCHOR_PARAM)),
+    side: params.get(PICKER_PLACE_PARAM) === PICKER_PLACE_SIDE,
   };
 }
+
+/** 서브메뉴 판이 항목 오른쪽 끝에서 띄우는 틈. 판은 부모 메뉴의 안쪽 여백 위에 살짝 걸친다. */
+const SUBMENU_GAP = 2;
+/** 판의 테두리와 안쪽 여백 — 첫 줄이 항목과 같은 높이에서 시작하도록 그만큼 올린다. */
+const SUBMENU_INSET = 7;
+/** 창 가장자리에서 판이 지키는 여백. */
+const SUBMENU_EDGE = 12;
+
+export interface SubmenuPlacement {
+  readonly left: number;
+  readonly top: number;
+  readonly maxHeight: number;
+  readonly side: "right" | "left";
+}
+
+/**
+ * 항목 옆에 서는 서브메뉴의 자리. 오른쪽에 들어가면 오른쪽, 아니면 더 넓은 쪽에 세우고, 창 밖으로는
+ * 내보내지 않는다. 세로로는 첫 줄을 항목에 맞추되, 아래가 모자라면 판째로 끌어올린다 — 독 메뉴는
+ * 화면 아래 모서리에 서므로 대개 위로 올라간다.
+ *
+ * 도구모음 안의 서브메뉴와 집이 얹는 덮개가 같은 자리를 써야 둘이 한 물건으로 읽힌다.
+ */
+export function placeSubmenu(
+  anchor: Pick<HostPickerAnchor, "left" | "top" | "right">,
+  panelWidth: number,
+  panelHeight: number,
+  width: number,
+  height: number,
+): SubmenuPlacement {
+  const roomRight = width - SUBMENU_EDGE - (anchor.right + SUBMENU_GAP);
+  const roomLeft = anchor.left - SUBMENU_GAP - SUBMENU_EDGE;
+  const side = panelWidth <= roomRight || roomRight >= roomLeft ? "right" : "left";
+  const preferred = side === "right" ? anchor.right + SUBMENU_GAP : anchor.left - SUBMENU_GAP - panelWidth;
+  const left = Math.max(SUBMENU_EDGE, Math.min(preferred, width - SUBMENU_EDGE - panelWidth));
+  const maxHeight = Math.max(0, height - 2 * SUBMENU_EDGE);
+  const shown = Math.min(panelHeight, maxHeight);
+  const top = Math.max(SUBMENU_EDGE, Math.min(anchor.top - SUBMENU_INSET, height - SUBMENU_EDGE - shown));
+  return { left, top, maxHeight, side };
+}
+
+/** 판의 내용 높이(테두리 포함). 높이 상한에 눌려 있어도 펼쳤을 때의 높이를 잰다. */
+export function submenuContentHeight(panel: HTMLElement): number {
+  return panel.scrollHeight + (panel.offsetHeight - panel.clientHeight);
+}
+
+/** 서브메뉴를 지켜 주는 삼각형 — 항목을 떠난 점과 판의 가까운 변 두 끝. 이 안을 지나는 포인터는 판으로 가는 중이다. */
+function inSafeTriangle(point: { x: number; y: number }, exit: { x: number; y: number }, panel: DOMRect): boolean {
+  const nearX = Math.abs(panel.left - exit.x) <= Math.abs(panel.right - exit.x) ? panel.left : panel.right;
+  const a = exit;
+  const b = { x: nearX, y: panel.top };
+  const c = { x: nearX, y: panel.bottom };
+  const cross = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = cross(a, b, point);
+  const d2 = cross(b, c, point);
+  const d3 = cross(c, a, point);
+  const negative = d1 < 0 || d2 < 0 || d3 < 0;
+  const positive = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(negative && positive);
+}
+
+/** 겨눈 채 잠시 머물러야 열린다 — 지나가는 포인터마다 판이 번쩍이지 않게. */
+const SUBMENU_OPEN_DELAY_MS = 90;
+/** 항목·판을 떠난 포인터가 돌아오거나 판에 닿기를 기다리는 시간. */
+const SUBMENU_CLOSE_DELAY_MS = 300;
 
 /** 정수 여섯 개(left,top,right,bottom,뷰포트 폭,높이)만 받는다. 칩이 뷰포트 안에 서지 않으면 버린다. */
 function parsePickerAnchor(value: string | null): HostPickerAnchor | null {
@@ -151,9 +218,42 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   const [addOpen, setAddOpen] = useState(false);
   const [local, setLocal] = useState<readonly LocalConsole[]>([]);
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
+  const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const menuItems = () => Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>(ENABLED_MENU_ITEM_SELECTOR) ?? []);
+  /**
+   * 메뉴 안의 한 항목으로 선 스위처는 옆으로 펼치는 서브메뉴다 — 겨누거나 누르면 항목 옆에 판이 서고,
+   * →·Enter로 들어가 ←·Esc로 나온다. 도구모음 칩은 그대로 아래로 매달리는 판이다.
+   */
+  const submenu = menuItem && !inPicker;
+  /** 열릴 때 판 안으로 포커스를 옮기는가. 겨눠서 연 판은 부모 메뉴의 포커스를 빼앗지 않는다. */
+  const focusOnOpenRef = useRef(true);
+  /** 겨눔으로 여닫는 타이머와, 항목을 떠난 점(판으로 가는 대각선을 지켜 줄 삼각형의 꼭짓점). */
+  const hoverRef = useRef<{ openTimer: number | null; closeTimer: number | null; exit: { x: number; y: number } | null }>({ openTimer: null, closeTimer: null, exit: null });
+  const focusInto = () => {
+    const items = menuItems();
+    (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+  };
+  const clearHoverTimers = () => {
+    const hover = hoverRef.current;
+    if (hover.openTimer !== null) window.clearTimeout(hover.openTimer);
+    if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
+    hover.openTimer = null;
+    hover.closeTimer = null;
+  };
+  /** 포인터가 항목에도 판에도 없으면 잠시 뒤 접는다. 판에 포커스가 있었다면 항목으로 돌려준다 — 사라진 줄에 포커스를 남기지 않는다. */
+  const scheduleHoverClose = () => {
+    const hover = hoverRef.current;
+    if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
+    hover.closeTimer = window.setTimeout(() => {
+      hover.closeTimer = null;
+      hover.exit = null;
+      const hadFocus = panelRef.current?.contains(document.activeElement) === true;
+      setOpen(false);
+      if (hadFocus) triggerRef.current?.focus();
+    }, SUBMENU_CLOSE_DELAY_MS);
+  };
   /**
    * 목록을 접는 일. 집이 펼친 판은 이 화면의 상태가 아니라 셸이 얹은 덮개라, 접겠다는 말도
    * 셸에게 가야 한다 — 여기서 state만 내리면 빈 덮개가 콘솔을 가린 채 남는다.
@@ -202,7 +302,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     if (!open || addOpen) return;
     const panel = panelRef.current;
     if (panel === null) return;
-    let initialFocusPending = true;
+    let initialFocusPending = focusOnOpenRef.current;
     let fallbackFocus: HTMLButtonElement | null = null;
     let focusedCurrent: HTMLButtonElement | null = null;
     const focusInitialItem = () => {
@@ -237,21 +337,48 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     };
     const onFocus = (event: FocusEvent) => {
       const target = event.target as Node;
+      // 서브메뉴는 포커스가 부모 메뉴의 다른 항목으로 옮겨 가면 접힌다 — 열린 채 남으면 부모의 방향키가 물러선다.
+      if (submenu && !rootRef.current?.contains(target)) {
+        setOpen(false);
+        return;
+      }
       if (target === fallbackFocus || target === focusedCurrent) return;
       initialFocusPending = false;
       fallbackFocus = null;
       focusedCurrent = null;
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      const inPanel = panel.contains(document.activeElement) || panel.contains(event.target as Node);
+      // 옆에 선 판(서브메뉴, 또는 메뉴 항목에서 부른 덮개)은 ←로도 접힌다 — 들어온 방향으로 나간다.
+      if (event.key === "Escape" || (event.key === "ArrowLeft" && (submenu || (inPanel && picker?.side === true)))) {
         event.preventDefault();
         event.stopPropagation();
+        clearHoverTimers();
         dismiss();
         triggerRef.current?.focus();
         return;
       }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
-      if (!panel.contains(document.activeElement) && !panel.contains(event.target as Node)) return;
+      if (!inPanel) {
+        /**
+         * 겨눠서 연 판 — 포커스는 아직 부모 메뉴에 있다. 부모의 방향키는 열린 자식이 있으면 물러서므로,
+         * 판을 접고 부모 메뉴에서 한 칸을 대신 옮긴다. 메뉴를 훑어 내려가던 손이 판 때문에 멈추지 않는다.
+         */
+        const parent = submenu ? triggerRef.current?.closest<HTMLElement>('[role="menu"]') : null;
+        if (!parent) return;
+        const siblings = Array.from(parent.querySelectorAll<HTMLElement>(ENABLED_MENU_ITEM_SELECTOR)).filter((item) => !panel.contains(item));
+        if (siblings.length === 0) return;
+        event.preventDefault();
+        const at = siblings.findIndex((item) => item === document.activeElement);
+        const to = event.key === "Home" ? 0
+          : event.key === "End" ? siblings.length - 1
+            : event.key === "ArrowDown" ? (at + 1) % siblings.length
+              : at <= 0 ? siblings.length - 1 : at - 1;
+        clearHoverTimers();
+        setOpen(false);
+        siblings[to]?.focus();
+        return;
+      }
       const items = menuItems();
       if (items.length === 0) return;
       event.preventDefault();
@@ -279,6 +406,47 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
       document.removeEventListener("keydown", onKey);
     };
   }, [addOpen, open]);
+
+  /**
+   * 서브메뉴의 자리. 사이드바는 넘치는 것을 잘라 내므로 판은 창에 고정해 세우고, 항목의 자리에서 매번 잰다 —
+   * 목록은 늦게 차고(높이가 바뀐다) 창은 늘고 준다.
+   */
+  useLayoutEffect(() => {
+    if (!open || !submenu) return;
+    const panel = panelRef.current;
+    const trigger = triggerRef.current;
+    if (panel === null || trigger === null) return;
+    const place = () => {
+      const placement = placeSubmenu(trigger.getBoundingClientRect(), panel.offsetWidth, submenuContentHeight(panel), window.innerWidth, window.innerHeight);
+      panel.style.left = `${placement.left}px`;
+      panel.style.top = `${placement.top}px`;
+      panel.style.maxHeight = `${placement.maxHeight}px`;
+      panel.dataset.side = placement.side;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(panel);
+    window.addEventListener("resize", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, [open, submenu]);
+
+  /** 항목을 떠나 판으로 가는 포인터는 삼각형 안을 지나는 동안 접는 시계를 다시 맞춘다 — 대각선으로 가도 판이 접히지 않는다. */
+  useEffect(() => {
+    if (!open || !submenu) return;
+    const onMove = (event: PointerEvent) => {
+      const hover = hoverRef.current;
+      const panel = panelRef.current;
+      if (hover.closeTimer === null || hover.exit === null || panel === null) return;
+      if (inSafeTriangle({ x: event.clientX, y: event.clientY }, hover.exit, panel.getBoundingClientRect())) scheduleHoverClose();
+    };
+    document.addEventListener("pointermove", onMove);
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [open, submenu]);
+
+  useEffect(() => () => clearHoverTimers(), []);
 
   /**
    * 어느 콘솔에 서 있는가. 집이 펼친 목록에서는 이 화면(집)이 아니라 목록을 부른 콘솔이
@@ -370,8 +538,8 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   useEffect(() => {
     if (pickerHome === null || !open) return;
     setOpen(false);
-    location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current)));
-  }, [pickerHome, open, currentOrigin]);
+    location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
+  }, [pickerHome, open, currentOrigin, menuItem]);
 
   // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
   if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;
@@ -392,13 +560,66 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     if (!inPicker) setOpen(false);
     setAddOpen(true);
   };
+  /**
+   * 집에게 목록을 청한다. 메뉴 항목에서 불렀다면 집의 판도 그 항목 옆에 서브메뉴로 선다.
+   * 겨눔만으로는 청하지 않는다 — 덮개는 창 전체를 덮으므로, 지나가는 포인터가 부르면 메뉴가 통째로 가려진다.
+   */
+  const openHomePicker = (home: string) => {
+    location.assign(desktopPickerUrl(home, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
+  };
+  const openByHand = () => {
+    clearHoverTimers();
+    if (pickerHome !== null) { openHomePicker(pickerHome); return; }
+    focusOnOpenRef.current = true;
+    // 서브메뉴는 누르면 열리기만 한다 — 겨눠서 이미 열린 판을 누름이 도로 접지 않고, 그 안으로 들어간다.
+    if (submenu) {
+      if (open) focusInto();
+      else setOpen(true);
+      return;
+    }
+    setOpen((previous) => !previous);
+  };
+  const onTriggerEnter = (event: ReactPointerEvent) => {
+    if (!submenu || pickerHome !== null || event.pointerType === "touch") return;
+    const hover = hoverRef.current;
+    if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
+    hover.closeTimer = null;
+    hover.exit = null;
+    if (open || hover.openTimer !== null) return;
+    hover.openTimer = window.setTimeout(() => {
+      hover.openTimer = null;
+      focusOnOpenRef.current = false;
+      setOpen(true);
+    }, SUBMENU_OPEN_DELAY_MS);
+  };
+  const onTriggerLeave = (event: ReactPointerEvent) => {
+    if (!submenu || event.pointerType === "touch") return;
+    const hover = hoverRef.current;
+    if (hover.openTimer !== null) window.clearTimeout(hover.openTimer);
+    hover.openTimer = null;
+    if (!open) return;
+    hover.exit = { x: event.clientX, y: event.clientY };
+    scheduleHoverClose();
+  };
+  const onPanelEnter = (event: ReactPointerEvent) => {
+    if (!submenu || event.pointerType === "touch") return;
+    const hover = hoverRef.current;
+    if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
+    hover.closeTimer = null;
+    hover.exit = null;
+  };
+  const onPanelLeave = (event: ReactPointerEvent) => {
+    if (!submenu || event.pointerType === "touch") return;
+    hoverRef.current.exit = null;
+    scheduleHoverClose();
+  };
   const go = (origin: string) => {
     setOpen(false);
     if (origin !== currentOrigin) location.assign(new URL("/console/", `${origin}/`).toString());
   };
 
   return (
-    <div className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
+    <div ref={rootRef} className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
       {inPicker ? null : (
         // 원격 — 도구모음의 글리프 한 칸(도움말 왼쪽). 어느 콘솔에 서 있는지는 이름표가 아니라 겨눌 때의
         // 말풍선(도구모음 말풍선의 data-tip)이 말한다. 집을 떠나 있으면 글리프 자체가 화면 속 전파로 바뀌어
@@ -413,9 +634,14 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
           data-open={pickerHome === null && open ? "true" : undefined}
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
           data-tip={chipLabel}
-          onClick={() => {
-            if (pickerHome !== null) { location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current))); return; }
-            setOpen((previous) => !previous);
+          onClick={openByHand}
+          onPointerEnter={onTriggerEnter}
+          onPointerLeave={onTriggerLeave}
+          onKeyDown={(event) => {
+            if (!menuItem || event.key !== "ArrowRight") return;
+            event.preventDefault();
+            event.stopPropagation();
+            openByHand();
           }}
         >
           {state.controlHolder === null && !standingAtHome ? <RemoteAwayGlyph /> : <RemoteGlyph />}
@@ -424,7 +650,14 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
         </button>
       )}
       {open ? (
-        <div ref={panelRef} className="host-switcher-panel" role="menu" aria-label={t("chrome.hosts.aria")}>
+        <div
+          ref={panelRef}
+          className={`host-switcher-panel${submenu ? " is-submenu" : ""}`}
+          role="menu"
+          aria-label={t("chrome.hosts.aria")}
+          onPointerEnter={onPanelEnter}
+          onPointerLeave={onPanelLeave}
+        >
           {nearby.length > 0 ? (
             <>
               <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>

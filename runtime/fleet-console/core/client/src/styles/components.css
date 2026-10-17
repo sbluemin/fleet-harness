@@ -1139,6 +1139,17 @@
   box-shadow: var(--popover-shadow);
 }
 
+/* 메뉴 항목에서 연 판은 그 항목 옆에 서는 서브메뉴다. 사이드바가 넘치는 것을 잘라 내므로 창에 고정해 세우고,
+   자리(left·top·max-height)는 HostSwitcher가 항목의 자리에서 잰다. 외피는 위와 같은 공통 팝업 표면이다. */
+.host-switcher-panel.is-submenu {
+  position: fixed;
+  z-index: 91;
+  right: auto;
+  bottom: auto;
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+}
+
 /* 구역 제목은 한국어로도 읽히는 문장체다 — 자간을 벌린 대문자는 "이 컴퓨터"를 낱자로 흩뜨린다. */
 .host-switcher-heading {
   display: flex;
@@ -1278,6 +1289,9 @@
   padding: calc(var(--chrome-band-height) + var(--space-2)) var(--space-3) var(--space-3);
   background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
 }
+
+/* 메뉴 항목 옆에 선 판은 서브메뉴다 — 아래에 깔린 부모 메뉴가 그대로 보여야 같은 메뉴의 한 단으로 읽힌다. */
+.host-picker-surface[data-place="side"] { background: transparent; }
 
 /* 칩이 없는 표면이라 판을 매달 기준점도 없다 — 흐름에 그대로 세운다. */
 .host-picker-surface .host-switcher.is-picker-surface { position: static; display: contents; }

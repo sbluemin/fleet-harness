@@ -116,9 +116,11 @@
 .conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
 .conversation-dock-divider { height: 1px; margin: 7px 4px; background: var(--popover-divider); }
 .conversation-dock :is(button, a):focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-/* 자식 메뉴도 위로 열린다. 사이드바 바깥은 스크롤 칸이 아니므로 목록에 잘리지 않는다.
+/* 호스트 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */
+.conversation-dock-menu > .host-switcher > button[aria-expanded="true"] { background: var(--wash-hover); }
+/* 나머지 자식 메뉴는 위로 열린다. 사이드바 바깥은 스크롤 칸이 아니므로 목록에 잘리지 않는다.
    재질과 라운드는 공통 팝업 표면이 이미 독 메뉴와 같으므로 여기서는 자리만 바꾼다. */
-.conversation-dock-menu :is(.host-switcher-panel, .command-band-system-menu, .command-band-environment-popover, .command-band-update-bubble) {
+.conversation-dock-menu :is(.command-band-system-menu, .command-band-environment-popover, .command-band-update-bubble) {
   top: auto;
   right: auto;
   bottom: calc(100% + 8px);

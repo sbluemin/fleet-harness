@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 
-import { HostSwitcher, type HostPickerAnchor, type HostPickerContext } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { HostSwitcher, placeSubmenu, submenuContentHeight, type HostPickerAnchor, type HostPickerContext } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
 
 /** 판과 칩 사이의 틈 — 도구모음 판(.host-switcher-panel)이 칩 아래·위에 두는 간격과 같다. */
 const GAP_BELOW = 8;
@@ -19,10 +19,12 @@ const EDGE = 12;
  * 콘솔이 통째로 떠오르면 사용자는 자기가 어디에 서 있는지를 잃는다.
  *
  * 판은 누른 칩에 매달린다 — 도구모음에서 연 판과 같은 자리여야 사용자가 누른 곳에서 목록을 찾는다.
+ * 메뉴 항목에서 불렀다면 그 항목 옆에 서브메뉴로 선다. 아래에 깔린 부모 메뉴가 그대로 비쳐야 하므로
+ * 그때는 바탕을 어둡히지 않는다.
  */
 export function HostPickerScreen({ surface }: { readonly surface: HostPickerContext }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { anchor } = surface;
+  const { anchor, side } = surface;
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -35,7 +37,9 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
      */
     const scaled = scaleAnchor(anchor, window.innerWidth / anchor.viewportWidth);
     const place = () => {
-      const style = placePanel(scaled, panel.offsetWidth, window.innerWidth, window.innerHeight);
+      const style = side
+        ? placeSide(scaled, panel, window.innerWidth, window.innerHeight)
+        : placePanel(scaled, panel.offsetWidth, window.innerWidth, window.innerHeight);
       for (const [name, value] of Object.entries(style)) root.style.setProperty(name, value);
     };
     place();
@@ -47,10 +51,10 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
       observer.disconnect();
       window.removeEventListener("resize", place);
     };
-  }, [anchor]);
+  }, [anchor, side]);
 
   return (
-    <div ref={rootRef} className="host-picker-surface" data-anchored={anchor === null ? undefined : "true"}>
+    <div ref={rootRef} className="host-picker-surface" data-anchored={anchor === null ? undefined : "true"} data-place={anchor !== null && side ? "side" : undefined}>
       <HostSwitcher picker={surface} />
     </div>
   );
@@ -66,6 +70,20 @@ function scaleAnchor(anchor: HostPickerAnchor, scale: number): HostPickerAnchor 
     viewportWidth: anchor.viewportWidth * scale,
     viewportHeight: anchor.viewportHeight * scale,
   };
+}
+
+/**
+ * 메뉴 항목 옆의 자리 — 부른 콘솔이 자기 판에 쓰는 것과 같은 규칙(placeSubmenu)이다.
+ *
+ * 부른 뒤 창이 바뀌면 항목은 자기에게 가까운 창 모서리와의 거리를 지키며 따라간다고 본다 — 대화 사이드바의
+ * 독처럼 아래 왼쪽에 붙은 메뉴는 창이 줄어도 아래 왼쪽에 남는다.
+ */
+function placeSide(anchor: HostPickerAnchor, panel: HTMLElement, width: number, height: number): Record<string, string> {
+  const dx = (anchor.left + anchor.right) / 2 < anchor.viewportWidth / 2 ? 0 : width - anchor.viewportWidth;
+  const dy = (anchor.top + anchor.bottom) / 2 < anchor.viewportHeight / 2 ? 0 : height - anchor.viewportHeight;
+  const item = { left: anchor.left + dx, top: anchor.top + dy, right: anchor.right + dx };
+  const placement = placeSubmenu(item, panel.offsetWidth, submenuContentHeight(panel), width, height);
+  return { "--picker-left": `${placement.left}px`, "--picker-top": `${placement.top}px`, "--picker-bottom": "auto", "--picker-max-height": `${placement.maxHeight}px` };
 }
 
 /**
