@@ -334,7 +334,8 @@
  * 그 아래 본문 한 칸. 본문만 세로·가로로 스크롤하고, 넓은 표는 마크다운 표 상자 안에서 가로로 흐른다(문서 자체는 넘치지 않는다).
  * 렌더·무력화는 데스크톱 보기 구성요소 그대로다 — 여기서는 모양만 바꾼다.
  */
-:root[data-view-mode="mobile"] .objectives-zoom-backdrop { padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
+/* 칸을 화면 크기로 못박는다 — 암묵 auto 칸이면 보기의 height: 100% 가 내용 높이로 풀려 긴 문서가 화면 밖으로 늘어나고 본문이 스크롤되지 않는다. */
+:root[data-view-mode="mobile"] .objectives-zoom-backdrop { grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 0; background: var(--m-scrim); font-family: var(--m-sans); }
 :root[data-view-mode="mobile"] .objectives-att-view { box-sizing: border-box; width: 100%; height: 100%; max-width: none; padding: calc(env(safe-area-inset-top, 0px) + 60px) 0 calc(env(safe-area-inset-bottom, 0px) + 12px); align-content: center; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); box-shadow: none; }
 :root[data-view-mode="mobile"] .objectives-att-view-close { top: calc(env(safe-area-inset-top, 0px) + 8px); right: 8px; width: 44px; height: 44px; border: 0; background: var(--m-chip); color: var(--m-text); }
 :root[data-view-mode="mobile"] .objectives-att-view-close svg { width: 16px; height: 16px; }

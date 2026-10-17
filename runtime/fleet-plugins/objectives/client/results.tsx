@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { renderMarkdown } from "@fleet-console/markdown/core";
@@ -355,12 +355,16 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
   const figureRef = useRef<HTMLElement | null>(null);
   const [rect, setRect] = useState<ResizeRect | null>(null);
   const [resizing, setResizing] = useState(false);
+  // 닫기 글리프가 틀 밖으로 걸치는 만큼 화면 안 여백이 모자라면 안으로 들인다 — 오른쪽 여백 계산에 뷰포트 폭이 필요하다.
+  const [viewW, setViewW] = useState(0);
   const sized = rect !== null;
   useEffect(() => {
     if (!sized) return;
     const onResize = () => {
       const view = backdropRef.current;
-      if (view) setRect((current) => current && fitRect(current, view.clientWidth, view.clientHeight));
+      if (!view) return;
+      setViewW(view.clientWidth);
+      setRect((current) => current && fitRect(current, view.clientWidth, view.clientHeight));
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -376,6 +380,7 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
     const box = figure.getBoundingClientRect();
     const start = { px: event.clientX, py: event.clientY, x: box.left - origin.left, y: box.top - origin.top, w: box.width, h: box.height };
     setRect({ x: start.x, y: start.y, w: start.w, h: start.h });
+    setViewW(view.clientWidth);
     setResizing(true);
     const move = (ev: PointerEvent) => {
       const vw = view.clientWidth, vh = view.clientHeight;
@@ -411,7 +416,7 @@ function EvidenceTextView({ t, src, name, caption, onClose }: { readonly t: T; r
   }, [t]);
   return (
     <div ref={backdropRef} className="objectives-zoom-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <figure ref={figureRef} className={`objectives-att-view objectives-result-textview${rect ? " is-sized" : ""}${resizing ? " is-resizing" : ""}`} role="dialog" aria-modal="true" aria-label={caption} style={rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined}>
+      <figure ref={figureRef} className={`objectives-att-view objectives-result-textview${rect ? " is-sized" : ""}${resizing ? " is-resizing" : ""}`} role="dialog" aria-modal="true" aria-label={caption} style={rect ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h, "--objectives-tv-room-top": `${rect.y}px`, "--objectives-tv-room-right": `${viewW - rect.x - rect.w}px` } as CSSProperties : undefined}>
         {RESIZE_DIRS.map((dir) => <span key={dir} className={`objectives-result-resize is-${dir}`} aria-hidden="true" onPointerDown={(event) => onResizeStart(event, dir)} />)}
         <button ref={closeRef} type="button" className="objectives-att-view-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={onClose}><CloseGlyph /></button>
         {loaded === null ? <div className="objectives-result-textstate" role="status">{t("objectives.results.loading")}</div>
