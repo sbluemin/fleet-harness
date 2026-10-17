@@ -960,29 +960,31 @@ class PlaygroundStage {
    */
   park(): void {
     if (this.held) return;
-    sceneHost?.classList.add("is-held");
     if (!this.frozen) this.pauseClock();
     else {
-      // 입력으로 멈춰 있던 클래스(is-frozen)는 전이를 계속 붙잡는다. 걷히기 전에 풀고, 아래 pause 가 다시 잡는다.
+      // 입력으로 멈춰 있던 얼음은 걷힌다. 시각은 아래 스냅샷이 남긴다.
       this.frozen = false;
       this.watching = false;
-      this.publish();
     }
-    this.pauseAnimations();
+    // 얼굴을 정적 SVG 로 바꾸기 전에 시각을 읽는다. 바꾸고 나면 애니메이션 객체가 사라진다.
     this.captureFaces();
+    this.pausedAnimations = [];
+    sceneHost?.classList.add("is-held");
     this.watching = false;
     this.held = true;
     this.animEpoch += 1;
     this.publish(true);
   }
 
-  /** 같은 창에서 다시 들어올 때. 멈춰 둔 애니메이션을 이어서 재생하고, 새 등장은 잠깐 미룬다. */
+  /** 같은 창에서 다시 들어올 때. 호출부는 장면을 슬롯에 붙인 뒤에 부른다. */
   resume(): void {
     if (!this.held) return;
     this.held = false;
     this.animEpoch += 1;
+    // 라이브 얼굴을 다시 세운 뒤, is-held 를 풀고 떠나기 직전 시각을 싣는다.
     this.publish(true);
     sceneHost?.classList.remove("is-held");
+    this.applyAnims(true);
     this.rearmClock(REENTRY_HOLD_MS);
   }
 
@@ -1187,10 +1189,10 @@ export function NewSessionPlayground() {
     const attach = () => {
       const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
       if (!layer) { frame = requestAnimationFrame(attach); return; }
-      // 슬롯에 붙이기 전에 시각을 되돌린다. 붙는 순간 관찰되는 currentTime 이 떠나기 직전과 같아야 한다.
-      stage.resume();
+      // 노드를 옮기면 CSS 애니메이션이 0 으로 다시 시작한다. 슬롯에 붙인 뒤에 시각을 되돌린다.
       host.classList.remove("is-parked");
       slot.appendChild(host);
+      stage.resume();
       cleanup = bindPlayground(layer, stage);
     };
     frame = requestAnimationFrame(attach);
