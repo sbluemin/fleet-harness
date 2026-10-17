@@ -342,6 +342,9 @@
   backdrop-filter: blur(14px);
 }
 
+/* 보기 캡슐의 칸이 모두 비면(휴면 세션처럼 전환이 서지 않는 때) 빈 테두리만 남기지 않는다. */
+.conversation-pill-actions:empty { display: none; }
+
 /* 공통 도구모음 — 대화 동작 묶음 오른쪽의 같은 캡슐이다(Theater 도구 │ Console 도구 ⋯). 글리프는 레일 도구(RailIcon) 그대로이고,
    켜짐은 대상 탭과 같은 문법(테두리 링 + 위치 채널 brass 글리프)이다. 넘치는 도구는 오른쪽 끝부터 「⋯」 메뉴로 걷힌다
    (ConversationToolbar 가 data-overflow 로 잰다). 묶음은 줄어들지 않는다 — 걷힘만이 폭을 줄인다. */
