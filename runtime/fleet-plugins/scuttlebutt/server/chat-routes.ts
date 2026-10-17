@@ -184,7 +184,6 @@ function handleStream(
   res.writeHead(200, securityHeaders({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
-    Connection: "keep-alive",
   }));
   write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
   const unsubscribe = registry.subscribe(chatId, (event) => write(`data: ${JSON.stringify(event)}\n\n`));

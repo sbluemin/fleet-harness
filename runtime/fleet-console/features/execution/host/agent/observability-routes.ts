@@ -14,7 +14,6 @@ export function writeAgentSessionEvents(
   res.writeHead(200, withAgentSecurityHeaders({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-store",
-    Connection: "keep-alive",
   }));
   res.write(": connected\n\n");
   // session:updated는 { session }만, session:attention은 reason까지 직렬화한다(event.type이 식별자).

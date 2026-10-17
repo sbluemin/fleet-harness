@@ -34,7 +34,7 @@ export function createBrowserDesktopRouter(deps: BrowserDesktopRouteDeps) {
     if (req.method !== "GET") { writeJson(res, 405, { error: "Method not allowed" }); return true; }
     const snapshotFor = () => owner === desktopEngine.currentHost ? desktopEngine.snapshot() : desktopEngine.emptySnapshot();
     if (pathname === DESKTOP_BROWSER_PATH) { writeJson(res, 200, snapshotFor()); return true; }
-    res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" }));
+    res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
     res.write(":connected\n\n");
     desktopEngine.subscriberOpened(owner);
     desktopBrowserSseSubscribers.set(res, owner);
