@@ -44,7 +44,7 @@ A standalone browser cannot establish Desktop behavior, so SPA checks requested 
 
 ## Execution and completion
 
-Before starting a run that includes paid provider calls or may outlast the runner's default background lifetime, complete [Paid or long-run preflight](references/setup.md#before-a-paid-or-long-run) during planning, before boot or agent launch. Short, no-provider screen checks need no additional preflight; the existing isolation and diagnostics still apply.
+Before starting a run that includes paid provider calls or may outlast the runner's default background lifetime, complete [Paid or long-run preflight](references/setup.md#before-a-paid-or-long-run) during planning, before boot or agent launch. That preflight is where you settle whether the turn needs the user's own Claude login: a Claude model that is not a `claude-gateway--` id, even in a gateway Operation, does, and takes its real-login route. Short, no-provider screen checks need no additional preflight; the existing isolation and diagnostics still apply.
 
 1. Build changed packages and the selected host in dependency order. Client changes require reload; host changes require an owned-server/app restart.
 2. Establish diagnostics before the scenario. First-load errors, rejections, and WebSocket lifecycle need pre-navigation instrumentation; post-load inspection misses them.

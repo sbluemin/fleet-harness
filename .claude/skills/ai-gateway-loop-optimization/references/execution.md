@@ -4,7 +4,7 @@
 
 Choose the smallest execution surface. For provider-loop, canonical, or router behavior only, use the standalone package runner below and do not start Console. If a bespoke request shape exceeds the runner, call the built adapter directly. If caller tools/transcripts, host-generated or auxiliary turns, process lifecycle, or operator view matter, use a real Operation: read `console-e2e` and its [live agent prompt testing reference](../../console-e2e/references/live-agent-prompt-testing.md) first; that reference owns isolated Console setup, credentials, PTY/browser choices, and cleanup.
 
-Between those sits a headless Claude Code turn through each worktree's built launcher, described in the same reference's **Headless Claude Code through the built launcher** section. Use it when the behavior depends on what the real client returns — its thinking signatures, real tool results, `--resume` — which the runner cannot express: its tool results are a fixed `ok` and its prompt is synthetic. For before/after runs, point both builds at the same slot, Claude config home, and fixed run directory so the system prompt and tool catalog stay identical, and alternate the order.
+Between those sits a headless Claude Code turn against each worktree's owned Console, described in the same reference's **Headless Claude Code against the owned Console** section. Use it when the behavior depends on what the real client returns — its thinking signatures, real tool results, `--resume` — which the runner cannot express: its tool results are a fixed `ok` and its prompt is synthetic. For before/after runs, point both builds at the same slot, Claude config home, and fixed run directory so the system prompt and tool catalog stay identical, and alternate the order.
 
 When the question is only whether a backend accepts a request variant, take a real request body from the wire log and send the modified body straight to the provider with the gateway's credential and header rules. Keep only allowlisted response headers, and record reasoning blobs, signatures, and server state headers such as `x-codex-turn-state` as length, sha256, and a short prefix — never the full value.
 
@@ -16,7 +16,7 @@ The runner starts no Console, PTY, Theater, or Operation. It uses the production
 pnpm --filter @fleet-console/ai-gateway build
 ```
 
-Before the live command, apply the [paid-run content gate](../../console-e2e/references/setup.md#before-a-paid-or-long-run) to the ESM artifact that `scripts/provider-loop-e2e.mjs` imports as `../dist/index.js`. Use the [launcher check's](../../console-e2e/references/live-agent-prompt-testing.md#headless-claude-code-through-the-built-launcher) change-specific identifier/literal selection and return-code rules, with this package path:
+Before the live command, apply the [paid-run content gate](../../console-e2e/references/setup.md#before-a-paid-or-long-run) to the ESM artifact that `scripts/provider-loop-e2e.mjs` imports as `../dist/index.js`. Use the [serve bundle check's](../../console-e2e/references/live-agent-prompt-testing.md#serve-bundle-freshness) change-specific identifier/literal selection and return-code rules, with this package path:
 
 ```sh
 OUT=$(grep -cF -- '<string the change adds>' runtime/fleet-console/features/ai-gateway/runtime/dist/index.js); rc=$?
