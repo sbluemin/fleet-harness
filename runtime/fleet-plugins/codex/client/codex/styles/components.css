@@ -3034,6 +3034,59 @@ button.chip:focus-visible {
 @keyframes codex-quote-rise { from { opacity: 0; transform: translateX(-50%) translateY(4px); } to { opacity: 1; transform: translateX(-50%); } }
 @media (prefers-reduced-motion: reduce) { .codex-quote-pill { animation: none; } }
 
+/* ─── 문서 안 인라인 변경 제안 (Quiet Line) ─────────────────────────────────────────
+   지휘관이 이 문서를 고친 대기 패치가 머리 아래에 선다. 면은 헤어라인 하나, 무장은 brass(위치 채널)가 아니라 positive/coral
+   상태로 말한다 — 적용은 positive, 버리기는 coral 잉크다. */
+.codex-inline-proposals { display: grid; gap: var(--space-3); margin: 0 0 var(--space-5); }
+.codex-proposal {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+}
+.codex-proposal-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); font-size: var(--t-xs); color: var(--text-tertiary); }
+.codex-proposal-who { color: var(--text-secondary); font-weight: var(--weight-medium); }
+.codex-proposal-summary { min-width: 0; overflow-wrap: anywhere; }
+.codex-proposal-diff { min-width: 0; font-family: var(--font-content); }
+.codex-proposal-diff > :first-child { margin-top: 0; }
+.codex-proposal-error { margin: 0; font-size: var(--t-xs); color: var(--coral-ink); }
+.codex-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.codex-proposal-spacer { flex: 1 1 auto; }
+.codex-proposal-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--t-xs);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.codex-proposal-link:hover { color: var(--text-secondary); }
+.codex-proposal-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.codex-proposal-btn:hover:not(:disabled) { color: var(--text-primary); background: var(--control-hover-fill); }
+.codex-proposal-btn.is-primary { color: var(--text-primary); }
+.codex-proposal-btn.is-armed { border-color: currentColor; }
+.codex-proposal-btn.is-primary.is-armed { color: var(--positive-ink); }
+.codex-proposal-btn.is-armed:not(.is-primary) { color: var(--coral-ink); }
+.codex-proposal-btn:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.codex-proposal-btn:focus-visible,
+.codex-proposal-link:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+
 /* 렌더드 diff 블록(검토 대기열) — 상태 채널(positive/coral)만 진다. */
 .cowork-block { border-left: 2px solid transparent; border-radius: 0 var(--radius-xs) var(--radius-xs) 0; padding: 2px var(--space-2); margin: 2px 0; }
 .cowork-block--added { border-left-color: var(--positive); background: color-mix(in oklch, var(--positive) 10%, transparent); }

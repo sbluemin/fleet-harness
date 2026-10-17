@@ -87,6 +87,20 @@ export interface EntryResponse {
   /** 본문에서 [[wiki:이 문서]]를 참조하는 다른 엔트리들(역링크). */
   backlinks?: EntryBacklink[];
   pendingPatchCount?: number;
+  /**
+   * 이 문서를 고치는 대기 갱신 패치(update_wiki) — 문서 안 인라인 변경 제안으로 선다. 제안 본문과 낡은 기준 여부만 싣고,
+   * 승인·반려는 검토 대기열과 같은 결정 라우트를 쓴다. 삭제·생성 제안은 여기 없고 `pendingPatchCount`에만 센다.
+   */
+  pendingProposals?: EntryPendingProposal[];
+}
+
+export interface EntryPendingProposal {
+  id: string;
+  summary: string;
+  proposer: string;
+  created: string;
+  proposedBody: string;
+  baseConflict?: DrydockBaseConflict;
 }
 
 export interface DrydockPatchSetMember {

@@ -31,6 +31,7 @@ import type {
   DrydockListResponse,
   DrydockMeta,
   EntryBacklink,
+  EntryPendingProposal,
   EntryResponse,
 } from "./api.js";
 import { installEntryLinkPreview } from "./components/link-preview.js";
@@ -176,6 +177,13 @@ export function mountReadingInto(
   let conflictError: string | null = null;
   let conflictNote = "";
   let pendingRequestEpoch = 0;
+  // 문서 안 인라인 변경 제안 — 지금 그린 문서를 고치는 대기 갱신 패치. 두 번 눌러 확정하는 무장 상태와 진행·오류를 패치별로 든다.
+  let currentProposals: readonly EntryPendingProposal[] = [];
+  let proposalBaseBody = "";
+  const proposalArmed = new Map<string, { readonly action: "apply" | "drop"; readonly at: number }>();
+  const proposalBusy = new Set<string>();
+  const proposalErrors = new Map<string, string>();
+  let proposalDisarmTimer: ReturnType<typeof setTimeout> | null = null;
   let renderedSchemaStamp: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
@@ -205,6 +213,18 @@ export function mountReadingInto(
       event.preventDefault();
       const entryId = decodeURIComponent(wikiLink.pathname.slice("/entry/".length));
       if (entryId) liveOpts.onRelatedClick(entryId);
+      return;
+    }
+
+    const proposalButton = target.closest<HTMLButtonElement>("[data-proposal-action]");
+    if (proposalButton && currentEntryId) {
+      event.preventDefault();
+      const card = proposalButton.closest<HTMLElement>("[data-proposal-id]");
+      const patchId = card?.dataset.proposalId;
+      const action = proposalButton.dataset.proposalAction;
+      if (!patchId) return;
+      if (action === "open") { liveOpts.onPatchOpen?.(patchId); return; }
+      if (action === "apply" || action === "drop") pressProposal(patchId, action);
       return;
     }
 
@@ -657,7 +677,85 @@ export function mountReadingInto(
       if (destroyed || entryEpoch !== entryRequestEpoch || epoch !== pendingRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
       const slot = readContainer.querySelector<HTMLElement>("[data-entry-pending]");
       if (slot) slot.innerHTML = pendingPatchLabel(entry.pendingPatchCount ?? 0);
+      // 지휘관이 이 문서에 새 패치를 올렸거나 밖에서 결정됐다 — 인라인 제안도 같은 조회로 맞춘다.
+      setProposals(entry.body, entry.pendingProposals ?? []);
     } catch { /* 조회 실패는 0건이라는 사실이 아니다. 기존 표식을 유지한다. */ }
+  }
+
+  /** 제안 목록을 바꾼다. 사라진 패치의 무장·오류는 버리고, 남은 패치의 상태는 지킨다. */
+  function setProposals(baseBody: string, proposals: readonly EntryPendingProposal[]): void {
+    currentProposals = proposals;
+    proposalBaseBody = baseBody;
+    const live = new Set(proposals.map((proposal) => proposal.id));
+    for (const id of [...proposalArmed.keys()]) if (!live.has(id)) proposalArmed.delete(id);
+    for (const id of [...proposalErrors.keys()]) if (!live.has(id)) proposalErrors.delete(id);
+    redrawProposals();
+  }
+
+  function redrawProposals(): void {
+    const slot = readContainer.querySelector<HTMLElement>("[data-entry-proposals]");
+    if (!slot) return;
+    const focusedId = (document.activeElement instanceof HTMLElement && slot.contains(document.activeElement))
+      ? `${document.activeElement.closest<HTMLElement>("[data-proposal-id]")?.dataset.proposalId ?? ""}:${document.activeElement.dataset.proposalAction ?? ""}`
+      : null;
+    slot.innerHTML = renderProposals(proposalBaseBody, currentProposals, { armed: proposalArmed, busy: proposalBusy, errors: proposalErrors });
+    slot.hidden = currentProposals.length === 0;
+    if (focusedId) {
+      const [id, action] = focusedId.split(":");
+      slot.querySelector<HTMLButtonElement>(`[data-proposal-id="${CSS.escape(id ?? "")}"] [data-proposal-action="${CSS.escape(action ?? "")}"]`)?.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * 두 번 눌러 확정한다 — 첫 누름은 무장, 같은 단추의 두 번째 누름이 결정이다. 무장 직후의 누름(누르고 있는 키의 반복·겹친 클릭)은
+   * 확정으로 세지 않는다. 무장은 잠시 뒤 스스로 풀린다.
+   */
+  function pressProposal(patchId: string, action: "apply" | "drop"): void {
+    if (proposalBusy.has(patchId)) return;
+    const armed = proposalArmed.get(patchId);
+    const now = Date.now();
+    if (armed?.action === action) {
+      if (now - armed.at < PROPOSAL_CONFIRM_GAP_MS) return;
+      proposalArmed.delete(patchId);
+      void decideProposal(patchId, action);
+      return;
+    }
+    proposalArmed.clear();
+    proposalArmed.set(patchId, { action, at: now });
+    proposalErrors.delete(patchId);
+    redrawProposals();
+    if (proposalDisarmTimer) clearTimeout(proposalDisarmTimer);
+    proposalDisarmTimer = setTimeout(() => {
+      proposalDisarmTimer = null;
+      if (destroyed || proposalArmed.size === 0) return;
+      proposalArmed.clear();
+      redrawProposals();
+    }, PROPOSAL_ARM_MS);
+  }
+
+  async function decideProposal(patchId: string, action: "apply" | "drop"): Promise<void> {
+    const entryId = currentEntryId, theaterId = liveOpts.theaterId, epoch = entryRequestEpoch;
+    proposalBusy.add(patchId);
+    redrawProposals();
+    try {
+      await decideDrydock(theaterId, patchId, action === "apply" ? "approve" : "reject", action === "drop" ? consoleT()("codex.proposal.dropReason") : undefined);
+      proposalBusy.delete(patchId);
+      if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      // 적용하면 본문이 바뀌었다 — 문서를 다시 그린다. 버리면 본문은 그대로이고 제안만 걷힌다.
+      if (action === "apply") await renderEntryView(entryId);
+      else await refreshPendingCount(entryId);
+    } catch (error) {
+      proposalBusy.delete(patchId);
+      if (destroyed || epoch !== entryRequestEpoch || entryId !== currentEntryId || theaterId !== liveOpts.theaterId) return;
+      if (error instanceof CodexRequestError && error.code === "stale_base") {
+        currentProposals = currentProposals.map((proposal) => proposal.id === patchId ? { ...proposal, baseConflict: error.baseConflict ?? proposal.baseConflict ?? { reason: "base_hash", currentVersion: null } } : proposal);
+        proposalErrors.set(patchId, patchBaseConflictMessage(error.baseConflict));
+      } else {
+        proposalErrors.set(patchId, patchActionMessage(error instanceof CodexRequestError ? error.code : "", "codex.proposal.failed"));
+        if (error instanceof CodexRequestError && (error.code === "patch_not_pending" || error.code === "patch_not_found")) void refreshPendingCount(entryId);
+      }
+      redrawProposals();
+    }
   }
 
   async function noticeForOpenPatch(patchId: string): Promise<void> {
@@ -782,6 +880,9 @@ export function mountReadingInto(
     const requestEpoch = ++entryRequestEpoch;
     currentEntryId = entryId;
     staleKind = null;
+    // 새로 그리는 문서의 제안은 처음 상태로 선다 — 앞 문서의 무장·오류가 따라오지 않는다.
+    proposalArmed.clear();
+    proposalErrors.clear();
     showLoading(readContainer, opts.tocContainer);
     opts.onTocChanged?.(0);
     cleanupReader();
@@ -813,6 +914,9 @@ export function mountReadingInto(
             <button type="button" class="queue-back-btn" data-entry-stage-delete>${escapeHtml(t("codex.reading.proposeDelete"))}</button>
             <span data-entry-delete-error role="alert"></span>
           </header>
+          <section class="codex-inline-proposals" data-entry-proposals aria-label="${escapeAttribute(t("codex.proposal.listAria"))}"${entry.pendingProposals?.length ? "" : " hidden"}>
+            ${renderProposals(entry.body, entry.pendingProposals ?? [], { armed: proposalArmed, busy: proposalBusy, errors: proposalErrors })}
+          </section>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
           </div>
@@ -822,6 +926,8 @@ export function mountReadingInto(
       `;
 
       currentDocument = { entryId, title: entry.frontmatter.title, markdown: entry.body };
+      currentProposals = entry.pendingProposals ?? [];
+      proposalBaseBody = entry.body;
       opts.tocContainer.innerHTML = renderTocSheet(toc);
       opts.onTocChanged?.(toc.length);
       const article = readContainer.querySelector<HTMLElement>("article");
@@ -1030,6 +1136,7 @@ export function mountReadingInto(
 
   return {
     destroy(): void {
+      if (proposalDisarmTimer) clearTimeout(proposalDisarmTimer);
       destroyed = true;
       entryRequestEpoch += 1;
       subRequestEpoch += 1;
@@ -1520,6 +1627,49 @@ function renderDecidedState(meta: DrydockMeta): string {
   const cls = isAccepted ? "queue-decision-decided--approve" : "queue-decision-decided--reject";
   const reason = meta.reason ? ` · ${escapeHtml(meta.reason)}` : "";
   return `<p class="queue-decision-decided ${cls}">${escapeHtml(label)}${reason}</p>`;
+}
+
+const PROPOSAL_ARM_MS = 4000;
+const PROPOSAL_CONFIRM_GAP_MS = 350;
+
+/** 제안자 표기 — `tool:wiki_patch_edit` 같은 기계 접두를 걷어 사람이 읽을 이름만 남긴다. */
+function proposerName(proposer: string): string {
+  const trimmed = proposer.trim();
+  return trimmed.replace(/^tool:/u, "") || trimmed;
+}
+
+/**
+ * 문서 안 인라인 변경 제안 — 지금 본문과 제안 본문의 바뀐 블록만 보이고(검토 대기열의 「변경만」과 같은 렌더), 적용·버리기는
+ * 두 번 눌러 확정한다. 결정은 검토 대기열과 같은 결정 라우트라 낡은 기준 검사와 감사 기록을 그대로 거친다.
+ */
+function renderProposals(
+  baseBody: string,
+  proposals: readonly EntryPendingProposal[],
+  state: { readonly armed: ReadonlyMap<string, { readonly action: "apply" | "drop" }>; readonly busy: ReadonlySet<string>; readonly errors: ReadonlyMap<string, string> },
+): string {
+  const t = consoleT();
+  return proposals.map((proposal) => {
+    const armed = state.armed.get(proposal.id)?.action ?? null;
+    const busy = state.busy.has(proposal.id);
+    const error = state.errors.get(proposal.id) ?? null;
+    const stale = proposal.baseConflict !== undefined;
+    const diff = renderDiffBlocks(diffDraftBlocks(baseBody, proposal.proposedBody), "changes");
+    return `<article class="codex-proposal${stale ? " is-stale" : ""}" data-proposal-id="${escapeAttribute(proposal.id)}" aria-label="${escapeAttribute(t("codex.proposal.aria", { who: proposerName(proposal.proposer), summary: proposal.summary }))}">
+      <header class="codex-proposal-head">
+        <span class="codex-proposal-who">${escapeHtml(t("codex.proposal.from", { who: proposerName(proposal.proposer) }))}</span>
+        <span class="codex-proposal-summary">${escapeHtml(proposal.summary)}</span>
+        ${stale ? `<span class="queue-row-stale" title="${escapeAttribute(patchBaseConflictMessage(proposal.baseConflict))}">${escapeHtml(t("codex.reading.staleBadge"))}</span>` : ""}
+      </header>
+      <div class="codex-proposal-diff">${diff}</div>
+      ${error ? `<p class="codex-proposal-error" role="alert">${escapeHtml(error)}</p>` : ""}
+      <div class="codex-proposal-actions">
+        <button type="button" class="codex-proposal-link" data-proposal-action="open">${escapeHtml(t("codex.proposal.openQueue"))}</button>
+        <span class="codex-proposal-spacer"></span>
+        <button type="button" class="codex-proposal-btn${armed === "drop" ? " is-armed" : ""}" data-proposal-action="drop"${busy ? " disabled" : ""}>${escapeHtml(t(armed === "drop" ? "codex.proposal.dropArm" : "codex.proposal.drop"))}</button>
+        <button type="button" class="codex-proposal-btn is-primary${armed === "apply" ? " is-armed" : ""}" data-proposal-action="apply"${busy || stale ? " disabled" : ""}>${escapeHtml(t(busy ? "codex.proposal.working" : armed === "apply" ? "codex.proposal.applyArm" : "codex.proposal.apply"))}</button>
+      </div>
+    </article>`;
+  }).join("");
 }
 
 function pendingPatchLabel(count: number): string {
