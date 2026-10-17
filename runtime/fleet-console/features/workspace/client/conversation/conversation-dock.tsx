@@ -4,7 +4,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { ConsoleHelpMenu, HostSwitcher } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { ConsoleHelpMenu, HostSwitcher, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
 import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
@@ -29,13 +29,17 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   const label = `${t("chrome.hosts.aria")}: ${name}`;
   useMenuButtonKeyboard(rootRef, triggerRef, menuRef, open, setOpen, true);
   const statusAxis = useSyncExternalStore(subscribeStatusAxis, getSideBarStatusAxis, getSideBarStatusAxis);
+  // 집에서 잘 붙어 있는 상태는 말할 것이 없다. 초록 점은 다른 호스트에 서 있을 때(호스트 칩의 is-away와 같은 판정)만,
+  // 끊김·재연결 점은 어디서든 그대로 낸다.
+  const standingAway = useStandingAway();
+  const showStatus = connection !== "live" || standingAway;
   return (
     <div className="conversation-dock" role="group" aria-label={t("conversation.side.systemAria")}>
       <div className="conversation-dock-host" ref={rootRef}>
         <button ref={triggerRef} type="button" className="conversation-dock-avatar" aria-label={label} title={label}
           aria-haspopup="menu" aria-expanded={open} aria-controls="conversation-host-menu" onClick={() => setOpen((value) => !value)}>
           <span aria-hidden="true">{Array.from(name.trim())[0]?.toLocaleUpperCase() || "F"}</span>
-          <span className="conversation-dock-status" data-connection={connection} aria-hidden="true" />
+          {showStatus ? <span className="conversation-dock-status" data-connection={connection} aria-hidden="true" /> : null}
         </button>
         {/* 설정의 aria-labelledby 닻은 닫혀 있을 때도 남긴다. 닫힌 닻은 열린 오버레이가 아니므로 메뉴 역할은 열렸을 때만 단다.
             다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}

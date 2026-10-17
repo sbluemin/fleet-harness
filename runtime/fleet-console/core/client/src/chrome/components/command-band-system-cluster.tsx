@@ -6,7 +6,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
 import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
-import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin } from "../../integration/desktop-shell.js";
+import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type LocalConsoleState, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
@@ -530,9 +530,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
    * 하면 손님 콘솔이 집 행세를 하게 되고, 사용자는 그 말을 믿고 누른다. 셸이 아예 없을 때만
    * 스캔에 든 사실로 대신한다 — 그때는 답이 늦는 것이 아니라 답할 셸이 없는 것이다.
    */
-  const standingAtHome = canOpenRemote && shellHome.pending
-    ? false
-    : homeOrigin === null ? nearbyCurrent : currentOrigin === homeOrigin;
+  const standingAtHome = isStandingAtHome(canOpenRemote, shellHome, currentOrigin, nearbyCurrent);
   const chipLabel = state.controlHolder !== null
     ? t("chrome.control.shared")
     : standingAtHome
@@ -802,6 +800,34 @@ function HostRow({
       ) : null}
     </button>
   );
+}
+
+/**
+ * 집에 서 있는가 — 호스트 칩과 독 아바타가 함께 쓰는 단 하나의 판정이다.
+ *
+ * 셸이 창을 들고 있는데 아직 집 주소를 못 받았다면 집이 아니다. 셸이 집을 말하지 않으면
+ * "이 컴퓨터" 목록에 지금 콘솔이 실렸는지(`nearbyCurrent`)로 대신한다.
+ */
+function isStandingAtHome(canOpenRemote: boolean, shellHome: DesktopShellHome, currentOrigin: string, nearbyCurrent: boolean): boolean {
+  return canOpenRemote && shellHome.pending
+    ? false
+    : shellHome.origin === null ? nearbyCurrent : currentOrigin === shellHome.origin;
+}
+
+/**
+ * 이 화면이 집을 떠나 다른 호스트에 서 있는가 — 호스트 칩의 `is-away`와 같은 규칙이다.
+ * 제어를 나눠 쓰는 동안은 칩이 공유 표시를 하므로 떠나 있다고 하지 않는다.
+ *
+ * 칩 밖(피커가 아닌 이 화면 자신)에서 묻는 자리라 서 있는 곳은 `location.origin`이다. 이때
+ * `nearbyCurrent`는 루프백 여부와 같다: 루프백이면 목록이 스캔에 없어도 지금 콘솔을 싣고,
+ * 루프백이 아니면 스캔 자체를 하지 않아 목록에는 (셸이 집을 말하지 않은) 이 분기에서 아무것도 없다.
+ */
+export function useStandingAway(): boolean {
+  const state = useConsoleState();
+  const shellHome = useDesktopHomeOrigin();
+  const currentOrigin = location.origin;
+  return state.controlHolder === null
+    && !isStandingAtHome(isDesktopShell(), shellHome, currentOrigin, isLoopbackOrigin(currentOrigin));
 }
 
 /**
