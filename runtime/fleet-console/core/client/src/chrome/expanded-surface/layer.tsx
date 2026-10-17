@@ -6,6 +6,7 @@ import type {
 } from "@fleet-console/sdk/expanded-surface";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { ConversationToolScope } from "@fleet-console/sdk/pane";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
 import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
@@ -49,6 +50,7 @@ export function useExpandedSurfaceContext({
   close,
   focus,
   replaceParams,
+  conversation,
 }: {
   readonly instance: ExpandedSurfaceInstance;
   readonly index: number;
@@ -63,6 +65,8 @@ export function useExpandedSurfaceContext({
   readonly close: () => void;
   readonly focus: () => void;
   readonly replaceParams: (next: Readonly<Record<string, string>>) => void;
+  /** 표면이 놓인 대화 — 데스크톱 대화의 도구 칸에서만 싣는다. */
+  readonly conversation?: ConversationToolScope | undefined;
 }): ExpandedSurfaceContext {
   const sideBarVisible = useHostSideBarVisible();
   const reportMinPaneWidth = useCallback((px: number | null) => onReportMinimum(instance.instanceId, px), [instance.instanceId, onReportMinimum]);
@@ -99,12 +103,13 @@ export function useExpandedSurfaceContext({
     language,
     theme,
     sideBarVisible,
+    ...(conversation === undefined ? {} : { conversation }),
     // 확대 표면의 http(s) 링크를 여는 길 — bubble 라우터가 닿지 않는 자리에서 명시 호출한다.
     openLink: (url, options) => openOtherSurfaceLink(url, options?.gesture ?? "click"),
     close: () => closeRef.current(),
     focus: () => focusRef.current(),
     replaceParams: (next) => replaceRef.current(next),
-  }), [reportMinPaneWidth, capabilities, focused, index, instance.instanceId, instance.params, instance.surfaceId, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
+  }), [reportMinPaneWidth, capabilities, conversation, focused, index, instance.instanceId, instance.params, instance.surfaceId, language, paneCount, paneWidth, sideBarVisible, theaterId, theme]);
 }
 
 export function SurfacePane({

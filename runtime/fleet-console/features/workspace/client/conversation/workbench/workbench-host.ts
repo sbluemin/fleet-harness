@@ -7,6 +7,8 @@ import {
   type ExpandedSurfaceHost,
 } from "../../../../../core/client/src/chrome/expanded-surface/store.js";
 import { adoptRailToolPanel, bindRailToolHost, type RailToolHost } from "../../../../../core/client/src/chrome/rail/rail-store.js";
+import { getPaneStoreSnapshot, openPane } from "../../../../../core/client/src/chrome/pane/pane-store.js";
+import { setActiveShellKey } from "../../../../execution/client/terminal/shell/shell-session-store.js";
 import {
   bindWorkbenchSurfaceCloseNotifier,
   closeAllWorkbenchSurfaces,
@@ -15,6 +17,7 @@ import {
   closeWorkbenchTile,
   flushWorkbenchSaves,
   focusWorkbenchTile,
+  getWorkbenchKey,
   getWorkbenchSurfaceSnapshot,
   isWorkbenchEntryOpen,
   loadWorkbenchLayouts,
@@ -42,7 +45,8 @@ const SURFACE_HOST: ExpandedSurfaceHost = {
   state: getWorkbenchSurfaceSnapshot,
   subscribe: subscribeWorkbench,
   open: openWorkbenchSurface,
-  close: closeWorkbenchTile,
+  // 표면이 스스로 부르는 닫기(`ctx.close()`·셸 종료)는 묻지 않는다. 사람이 닫는 길은 칸의 단추·도구 아이콘이다.
+  close: (instanceId) => closeWorkbenchTile(instanceId, { confirmed: true }),
   closeOf: closeWorkbenchSurfacesOf,
   closeAll: closeAllWorkbenchSurfaces,
   focus: focusWorkbenchTile,
@@ -58,9 +62,27 @@ const TOOL_HOST: RailToolHost = {
   isOpen: isWorkbenchEntryOpen,
 };
 
+/**
+ * 대화마다 열어 둔 문서(파일·Codex 의 문서 칸 같은 페인 인스턴스) — 페인 상태는 한 벌이라, 대화를 떠날 때 보이던 페인을
+ * 적어 두고 돌아올 때 다시 세운다. 떠나는 칸이 자기 문서를 닫는 정리(레일 표면의 departing sweep)가 끝난 뒤에 세운다.
+ * 화면 수명 동안만 기억한다.
+ */
+const panesByConversation = new Map<string, readonly { readonly paneId: string; readonly params: Readonly<Record<string, string>> }[]>();
+
 export function useConversationWorkbenchHost(conversationKey: string | null, toolEntryIds: readonly string[]): void {
   // 대화가 바뀌면 그 대화의 배치가 선다 — 칠하기 전에 바꿔 앞 대화의 칸이 한 프레임도 남지 않게 한다.
-  useLayoutEffect(() => { setWorkbenchConversation(conversationKey); }, [conversationKey]);
+  useLayoutEffect(() => {
+    const leaving = getWorkbenchKey();
+    if (leaving !== (conversationKey ?? "console")) {
+      panesByConversation.set(leaving, getPaneStoreSnapshot().rail.filter((pane) => pane.visible).map((pane) => ({ paneId: pane.paneId, params: pane.params })));
+    }
+    setActiveShellKey(conversationKey);
+    setWorkbenchConversation(conversationKey);
+  }, [conversationKey]);
+  useEffect(() => {
+    const saved = panesByConversation.get(conversationKey ?? "console");
+    for (const pane of saved ?? []) openPane({ paneId: pane.paneId, params: pane.params, focus: false });
+  }, [conversationKey]);
 
   const toolKey = toolEntryIds.join("\n");
   useLayoutEffect(() => {

@@ -90,7 +90,11 @@ function projectPanel(panel: RailPanelDescriptor, core = false): RailEntryBindin
         requestExtraWidth: ctx.requestExtraWidth,
         surfaces: ctx.legacySurfaces,
         launchOperation: ctx.legacyLaunchOperation,
-        pathContext: { kind: "root", relPath: null, label: "" },
+        // 옛 계약의 경로 문맥 — 대화의 도구 칸이면 그 대화의 작업 위치, 아니면 Theater 루트다.
+        pathContext: ctx.conversation
+          ? { kind: ctx.conversation.location.kind, relPath: ctx.conversation.location.relative === "" ? null : ctx.conversation.location.relative, label: ctx.conversation.location.label }
+          : { kind: "root", relPath: null, label: "" },
+        ...(ctx.conversation ? { conversation: ctx.conversation } : {}),
       }) ?? null;
     },
     // 옛 패널은 닫히면 사라지는 것을 전제로 쓰였다. keepAlive를 켜면 지금까지 없던 수명이

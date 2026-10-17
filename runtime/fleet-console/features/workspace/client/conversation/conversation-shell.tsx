@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -45,7 +45,9 @@ import { openDefaultNewSession } from "./new-session-entry.js";
 import { ConversationWorkbench, type WorkbenchConversation } from "./workbench/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
-import { closeWorkbenchBrowser, isWorkbenchEntryOpen, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserOpen, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
+import { useConversationWorkLocation } from "./workbench/work-location.js";
+import { useAgentState } from "../../../execution/client/agent/store.js";
+import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryOpen, subscribeWorkbench, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserOpen, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import "./conversation.css";
 
 /**
@@ -751,8 +753,32 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     return stageSubject ? { kind: "operation", operation: stageSubject } : { kind: "none" };
   }, [sessionAttach, sessionPluginId, sessionScopeId, sessionSubjectKey, stageSubject, surfaceDescriptor]);
 
+  // 도구가 놓인 대화와 그 작업 위치 — 사령관은 Theater 루트, 지휘관은 그 세션의 작업 폴더(호스트가 Theater 상대로 접어 준다).
+  // 도구 캡슐(Shell 열기)과 도구 칸이 모두 이 범위를 받는다. 사람은 다시 고르지 않는다.
+  const theaterLabelOf = (id: string | null) => (id === null ? "" : state.theaters.find((theater) => theater.id === id)?.label ?? "");
+  const scopeTheaterId = surfaceDescriptor ? surfaceTheaterId ?? toolContext.theaterId : stageSubject?.theaterId ?? null;
+  // 에이전트 세션이 알린 「지금 어디」(실험 기능이 켜진 동안만 실린다) — 세션이 옮겨 가면 작업 위치도 따라간다.
+  const agentWorkspace = useAgentState().sessions[stageSubject?.id ?? ""]?.workspace ?? null;
+  const workLocation = useConversationWorkLocation(
+    conversationKey === null || scopeTheaterId === null ? { kind: "none" }
+      : !surfaceDescriptor && stageSubject ? { kind: "operation", operationId: stageSubject.id, theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId), revision: stageSubject.ts.updatedAt, folder: agentWorkspace?.outside === false ? agentWorkspace.folder ?? "" : null }
+        : { kind: "theater", theaterId: scopeTheaterId, theaterLabel: theaterLabelOf(scopeTheaterId) },
+  );
+  const scopedToolContext = useMemo<RailToolContext>(
+    () => (conversationKey !== null && workLocation !== null ? { ...toolContext, conversation: { key: conversationKey, location: workLocation } } : toolContext),
+    [conversationKey, toolContext, workLocation],
+  );
+  // 칸들은 자기 대화의 범위만 받는다 — 대화가 바뀌는 렌더에서는 작업대가 아직 앞 대화의 칸을 들고 있으므로(배치는 layout effect
+  // 에서 바뀐다), 그 사이에는 앞 대화의 범위를 그대로 준다. 그러지 않으면 떠나는 칸이 새 대화의 Shell·문서로 착각한다.
+  const workbenchKey = useSyncExternalStore(subscribeWorkbench, getWorkbenchKey, getWorkbenchKey);
+  const workbenchScopeRef = useRef(scopedToolContext);
+  if (workbenchKey === (conversationKey ?? "console")) workbenchScopeRef.current = scopedToolContext;
+  const workbenchToolContext = workbenchScopeRef.current;
+  const workbenchConversationRef = useRef(workbenchConversation);
+  if (workbenchKey === (conversationKey ?? "console")) workbenchConversationRef.current = workbenchConversation;
+
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Operation·빈 칸)든 머리 줄 도구 캡슐은 같다. 지구본은 그 캡슐 맨 앞에 선다.
-  const tools = (lead: ReactNode = null) => <ConversationToolbar context={toolContext} lead={lead} />;
+  const tools = (lead: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} />;
 
   return (
     <>
@@ -808,11 +834,12 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       layout={layout}
       focusedTileId={focusedTileId}
       bindings={railBindings}
-      toolContext={toolContext}
-      conversation={workbenchConversation}
+      toolContext={workbenchToolContext}
+      conversation={workbenchConversationRef.current}
       state={state}
       language={language}
       operationKinds={operationKinds}
+      suspended={conversationKey !== null && workLocation === null}
     />
     </>
   );

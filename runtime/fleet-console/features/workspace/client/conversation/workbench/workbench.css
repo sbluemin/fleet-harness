@@ -70,7 +70,8 @@
 
 .workbench-tile-title {
   flex: 1;
-  min-width: 0;
+  /* 좁은 칸에서도 이름은 남는다 — 도구별 부속(위치 배지 등)이 먼저 줄어든다. */
+  min-width: min(72px, 30%);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -103,7 +104,9 @@
 .workbench-tile-title > .op-browser-cap { flex: 1; min-width: 0; }
 
 .workbench-tile-tools {
-  flex: none;
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -200,6 +203,36 @@
 .workbench-tile-menu-item:focus-visible { background: var(--control-rest-hover); outline: none; }
 .workbench-tile-menu-item:disabled { color: var(--text-tertiary); cursor: default; }
 .workbench-tile-menu-item kbd { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
+
+/* 닫기 전에 묻는 한 줄 — 머리 바로 아래에 선다(Shell 에서 명령이 돌고 있을 때). */
+.workbench-tile-confirm {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+
+.workbench-tile-confirm > span { flex: 1; min-width: 0; }
+
+.workbench-tile-confirm button {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.workbench-tile-confirm button.is-danger { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim)); color: var(--coral); }
+.workbench-tile-confirm button:hover { background: var(--control-rest-hover); }
+.workbench-tile-confirm button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 
 /* ── 칸 본문 ── */
 .workbench-tile-body {

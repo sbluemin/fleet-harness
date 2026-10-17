@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
@@ -17,11 +18,14 @@ type TicketBody = {
   readonly theaterId?: unknown;
   readonly colorScheme?: unknown;
   readonly role?: unknown;
+  /** 어느 Shell 인가 — 대화 키. 없으면 Console 기본 Shell(폰 배치·옛 호출). */
+  readonly shell?: unknown;
 };
 
 type OpenAtBody = {
   readonly theaterId?: unknown;
   readonly path?: unknown;
+  readonly shell?: unknown;
 };
 
 /**
@@ -29,6 +33,8 @@ type OpenAtBody = {
  * 루트)와 그 안의 상대 경로로만 말한다. 어느 Theater에도 속하지 않으면 둘 다 null이다.
  */
 export interface ShellSessionState {
+  /** 이 상태가 말하는 Shell 의 키(대화 키). 기본 Shell 은 `console`. */
+  readonly key: string;
   readonly open: boolean;
   readonly pinned: boolean;
   readonly cwd: { readonly theaterId: string | null; readonly relative: string | null } | null;
@@ -44,107 +50,169 @@ export interface ShellSessionState {
 export const SHELL_SESSION_EVENT_CHANNEL = "terminal:shell-session";
 
 /**
- * Shell은 Operation이 아니다 — 콘솔 하나에 하나뿐인 전역 표면이다.
+ * Shell은 Operation이 아니다 — 대화(사령관·지휘관·일반 Operation)마다 하나씩 붙는 Console 표면이다.
  *
- * 그래서 세션 키는 Operation id가 아니라 이 상수다. 티켓·소켓·write·terminate가
- * 전부 이 하나를 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도 죽고,
- * 복원할 휴면 상태라는 것 자체가 없다.
+ * 세션 키는 Operation id가 아니라 대화 키에서 지은 이름이다. 기본 키(`console`)는 옛 전역 Shell 과 같은 상수 세션을
+ * 쓰므로 폰 배치와 키 없는 옛 호출은 그대로 한 Shell 을 쓴다. durable state에 들어가지 않으므로 콘솔이 죽으면 셸도
+ * 죽고, 복원할 휴면 상태라는 것 자체가 없다 — 다시 열면 그 대화의 작업 위치에서 새로 선다.
  */
 const GLOBAL_SHELL_SESSION_ID = "console-shell";
+const DEFAULT_SHELL_KEY = "console";
 const GLOBAL_SHELL_OPERATION_TYPE = "shell";
 const SHELL_INTEGRATION_DIR = "shell-integration";
 /** 재시작이 옛 PTY 자식의 실제 종료를 기다리는 상한. 넘겨도 새 PTY는 세션 매니저의 옛-필자 관문이 막는다. */
 const SHELL_RESTART_EXIT_WAIT_MS = 5_000;
+/** 동시에 둘 수 있는 Shell 수 — 대화마다 하나지만 끝없이 늘지는 않게. */
+const MAX_SHELLS = 24;
+const SHELL_KEY_MAX_LENGTH = 320;
+
+/** 대화 키 → PTY 세션 id. 기본 키는 옛 상수 그대로, 나머지는 키의 해시로 짓는다(키에 든 글자가 세션 id 로 새지 않게). */
+export function shellSessionIdFor(key: string): string {
+  if (key === DEFAULT_SHELL_KEY) return GLOBAL_SHELL_SESSION_ID;
+  return `${GLOBAL_SHELL_SESSION_ID}-${createHash("sha256").update(key).digest("hex").slice(0, 24)}`;
+}
+
+function readShellKey(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return DEFAULT_SHELL_KEY;
+  if (typeof value !== "string" || value.length > SHELL_KEY_MAX_LENGTH || /[\u0000-\u001f]/.test(value)) return null;
+  return value;
+}
+
+interface ShellInstance {
+  readonly key: string;
+  readonly sessionId: string;
+  /**
+   * cwd는 첫 기동 때 호출자가 알려 준 그 대화의 작업 위치로 한 번 못 박고, 사용자가 셸을 명시적으로 끝낼 때까지
+   * 유지한다. 대화의 작업 위치가 바뀌어도 발밑이 바뀌면 반쯤 친 명령이 다른 저장소에서 실행된다 — 셸의 현재 위치는
+   * 사용자만 바꿀 수 있어야 한다. (`shell/open-at`은 사용자가 명시적으로 고른 이동이라 이 고정을 함께 옮긴다.)
+   */
+  pinnedCwd: string | null;
+  generation: number;
+  /** 셸이 마지막으로 보고한(또는 spawn한) 절대 cwd. 서버 밖으로 나가지 않는다. */
+  currentCwd: string | null;
+  cwdTracked: boolean;
+  shellName: string | null;
+  /** 지금 살아 있는 PTY의 세대. 종료 통지가 이 값을 가진 PTY의 것일 때만 고정을 푼다. */
+  liveGeneration: number | null;
+  /** 재시작이 옛 PTY를 끝내는 동안 참. 그 종료는 사용자의 `exit`가 아니므로 고정을 풀지 않는다. */
+  restarting: boolean;
+  lastPublished: string;
+  releaseCwd: (() => void) | null;
+}
 
 export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: TerminalRuntime): void {
-  /**
-   * cwd는 첫 기동 때 호출자가 알려 준 마지막 대화의 경로로 한 번 못 박고, 사용자가 셸을 명시적으로
-   * 끝낼 때까지 유지한다. Theater를 옮겨 다닌다고 발밑이 바뀌면 반쯤 친 명령이
-   * 다른 저장소에서 실행된다 — 셸의 현재 위치는 사용자만 바꿀 수 있어야 한다.
-   * (`shell/open-at`은 사용자가 명시적으로 고른 이동이라 이 고정을 함께 옮긴다.)
-   */
-  let pinnedCwd: string | null = null;
-  let generation = Date.now();
-  /** 셸이 마지막으로 보고한(또는 spawn한) 절대 cwd. 서버 밖으로 나가지 않는다. */
-  let currentCwd: string | null = null;
-  let cwdTracked = false;
-  let shellName: string | null = null;
-  /**
-   * 지금 살아 있는 PTY의 세대. 종료 통지가 이 값을 가진 PTY의 것일 때만 고정을 푼다 — 재시작이 이미
-   * 정리한 옛 PTY의 통지가 늦게 와도 새 고정을 지우지 못한다.
-   */
-  let liveGeneration: number | null = null;
-  /** 재시작이 옛 PTY를 끝내는 동안 참. 그 종료는 사용자의 `exit`가 아니므로 고정을 풀지 않는다. */
-  let restarting = false;
-  let lastPublished = "";
+  const shells = new Map<string, ShellInstance>();
+  const bySession = new Map<string, ShellInstance>();
+  let generationSeed = Date.now();
 
-  const release = () => {
-    pinnedCwd = null;
-    currentCwd = null;
-    cwdTracked = false;
-    shellName = null;
+  function instanceFor(key: string, create: boolean): ShellInstance | null {
+    const existing = shells.get(key);
+    if (existing || !create) return existing ?? null;
+    if (shells.size >= MAX_SHELLS) {
+      // 살아 있지 않은(끝났거나 아직 붙지 않은) Shell 부터 비운다. 모두 살아 있으면 더 만들지 않는다.
+      const idle = [...shells.values()].find((candidate) => !runtime.isLive(candidate.sessionId));
+      if (!idle) return null;
+      forget(idle);
+    }
+    const instance: ShellInstance = {
+      key,
+      sessionId: shellSessionIdFor(key),
+      pinnedCwd: null,
+      generation: generationSeed,
+      currentCwd: null,
+      cwdTracked: false,
+      shellName: null,
+      liveGeneration: null,
+      restarting: false,
+      lastPublished: "",
+      releaseCwd: null,
+    };
+    instance.releaseCwd = runtime.onCwd(instance.sessionId, (_sessionId, cwd) => {
+      instance.currentCwd = cwd;
+      // 셸은 프롬프트를 그리기 직전마다 보고하므로, 이 순간의 atPrompt도 함께 새로 나간다.
+      publish(instance);
+    });
+    shells.set(key, instance);
+    bySession.set(instance.sessionId, instance);
+    return instance;
+  }
+
+  function forget(instance: ShellInstance): void {
+    instance.releaseCwd?.();
+    shells.delete(instance.key);
+    bySession.delete(instance.sessionId);
+  }
+
+  const release = (instance: ShellInstance) => {
+    instance.pinnedCwd = null;
+    instance.currentCwd = null;
+    instance.cwdTracked = false;
+    instance.shellName = null;
   };
 
   const integrationDir = readIntegrationDir(ctx);
   const baseLaunch = createShellTerminalLaunchResolver();
-  // 전역 Shell의 PTY만 cwd 보고를 주입받는다. 같은 operationType을 쓰는 다른 셸은 기본 launch 그대로다.
+  // Console Shell 의 PTY만 cwd 보고를 주입받는다. 같은 operationType을 쓰는 다른 셸은 기본 launch 그대로다.
   ctx.host.lifecycle.registerCleanup(runtime.registerLaunchResolver(GLOBAL_SHELL_OPERATION_TYPE, async (cwd, context) => {
     const launch = await baseLaunch(cwd, { ...context, kind: "shell" });
-    if (context?.sessionId !== GLOBAL_SHELL_SESSION_ID) return launch;
+    // 티켓이 먼저 Shell 을 세운다. 기본 Shell 의 세션은 티켓 없이 붙는 옛 길도 있으므로 그 자리에서 세운다.
+    const instance = context?.sessionId === undefined ? undefined
+      : bySession.get(context.sessionId) ?? (context.sessionId === GLOBAL_SHELL_SESSION_ID ? instanceFor(DEFAULT_SHELL_KEY, true) ?? undefined : undefined);
+    if (!instance) return launch;
     const integrated = applyShellCwdIntegration(launch, integrationDir);
-    generation += 1;
-    liveGeneration = generation;
-    currentCwd = integrated.launch.cwd;
-    cwdTracked = integrated.tracked;
-    shellName = integrated.shellName;
+    generationSeed += 1;
+    instance.generation = generationSeed;
+    instance.liveGeneration = instance.generation;
+    instance.currentCwd = integrated.launch.cwd;
+    instance.cwdTracked = integrated.tracked;
+    instance.shellName = integrated.shellName;
     // 세션은 이 launch를 받은 뒤 같은 흐름에서 등록된다. 등록된 다음 상태(open)를 내보낸다 —
     // cwd를 보고하지 않는 셸은 이것이 유일한 알림이다.
-    setTimeout(publish, 0).unref?.();
+    setTimeout(() => publish(instance), 0).unref?.();
     return integrated.launch;
   }));
 
-  ctx.host.lifecycle.registerCleanup(runtime.onCwd(GLOBAL_SHELL_SESSION_ID, (_sessionId, cwd) => {
-    currentCwd = cwd;
-    // 셸은 프롬프트를 그리기 직전마다 보고하므로, 이 순간의 atPrompt도 함께 새로 나간다.
-    publish();
-  }));
-
   // PTY가 스스로 끝나면(exit, 사용자가 `exit` 입력) 고정도 함께 풀린다 —
-  // 다음 기동은 그때 마지막으로 본 대화의 경로에서 새로 시작한다.
+  // 다음 기동은 그때 그 대화의 작업 위치에서 새로 시작한다.
   const unsubscribeExit = runtime.onExit((sessionId) => {
-    if (sessionId !== GLOBAL_SHELL_SESSION_ID) return;
-    if (restarting || liveGeneration === null) {
+    const instance = bySession.get(sessionId);
+    if (!instance) return;
+    if (instance.restarting || instance.liveGeneration === null) {
       // 재시작이 끝낸 PTY거나 이미 정리한 PTY의 늦은 통지다. 새 고정은 그대로 둔다.
-      liveGeneration = null;
-      publish();
+      instance.liveGeneration = null;
+      publish(instance);
       return;
     }
-    liveGeneration = null;
-    release();
-    publish();
+    instance.liveGeneration = null;
+    release(instance);
+    publish(instance);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeExit);
+  ctx.host.lifecycle.registerCleanup(() => { for (const instance of [...shells.values()]) forget(instance); });
   ctx.host.lifecycle.registerCleanup(ctx.host.events.registerSseChannel(SHELL_SESSION_EVENT_CHANNEL));
 
-  function readState(): ShellSessionState {
-    const open = runtime.isLive(GLOBAL_SHELL_SESSION_ID);
-    const foreground = open ? runtime.getForegroundProcess(GLOBAL_SHELL_SESSION_ID) : null;
+  function readState(key: string): ShellSessionState {
+    const instance = shells.get(key) ?? null;
+    const sessionId = instance?.sessionId ?? shellSessionIdFor(key);
+    const open = runtime.isLive(sessionId);
+    const foreground = open ? runtime.getForegroundProcess(sessionId) : null;
     return {
+      key,
       open,
-      pinned: pinnedCwd !== null,
-      cwd: open && currentCwd ? locateInTheaters(ctx, currentCwd) : null,
-      cwdTracked: open && cwdTracked,
-      atPrompt: open && shellName !== null && foreground !== null && isShellProcess(foreground, shellName)
-        && (!cwdTracked || isPromptOpen(runtime.getShellLineState(GLOBAL_SHELL_SESSION_ID))),
-      generation,
+      pinned: instance?.pinnedCwd != null,
+      cwd: open && instance?.currentCwd ? locateInTheaters(ctx, instance.currentCwd) : null,
+      cwdTracked: open && instance?.cwdTracked === true,
+      atPrompt: open && instance !== null && instance.shellName !== null && foreground !== null && isShellProcess(foreground, instance.shellName)
+        && (!instance.cwdTracked || isPromptOpen(runtime.getShellLineState(sessionId))),
+      generation: instance?.generation ?? generationSeed,
     };
   }
 
-  function publish(): void {
-    const state = readState();
+  function publish(instance: ShellInstance): void {
+    const state = readState(instance.key);
     const serialized = JSON.stringify(state);
-    if (serialized === lastPublished) return;
-    lastPublished = serialized;
+    if (serialized === instance.lastPublished) return;
+    instance.lastPublished = serialized;
     ctx.host.events.publish(SHELL_SESSION_EVENT_CHANNEL, state);
   }
 
@@ -158,19 +226,29 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return true;
     }
     const body = await ctx.host.http.readJsonBody<TicketBody>(req);
+    const key = readShellKey(body?.shell);
+    if (key === null) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });
+      return true;
+    }
+    const instance = instanceFor(key, true);
+    if (!instance) {
+      ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
+      return true;
+    }
 
-    if (pinnedCwd === null) {
+    if (instance.pinnedCwd === null) {
       const hint = body?.cwd ?? (body?.theaterId !== undefined ? { theaterId: body.theaterId } : undefined);
       if (hint === undefined || hint === null) {
-        pinnedCwd = homedir();
+        instance.pinnedCwd = homedir();
       } else {
         const target = resolveCwdHint(hint, res);
         if (!target) return true;
-        pinnedCwd = target.directory;
+        instance.pinnedCwd = target.directory;
       }
     }
 
-    if (!runtime.canAttach(GLOBAL_SHELL_SESSION_ID)) {
+    if (!runtime.canAttach(instance.sessionId)) {
       ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
       return true;
     }
@@ -182,9 +260,9 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
 
     const ticket = runtime.issueTicket({
-      cwd: pinnedCwd,
-      sessionId: GLOBAL_SHELL_SESSION_ID,
-      operationId: GLOBAL_SHELL_SESSION_ID,
+      cwd: instance.pinnedCwd,
+      sessionId: instance.sessionId,
+      operationId: instance.sessionId,
       operationType: GLOBAL_SHELL_OPERATION_TYPE,
       pluginId: null,
       kind: "shell",
@@ -192,13 +270,13 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ...(role ? { role } : {}),
     });
     // 이 티켓이 붙을 PTY의 세대 — 살아 있으면 그것, 없으면 이 티켓의 부착이 만들 다음 것.
-    const ticketGeneration = runtime.isLive(GLOBAL_SHELL_SESSION_ID) ? generation : generation + 1;
+    const ticketGeneration = runtime.isLive(instance.sessionId) ? instance.generation : generationSeed + 1;
     ctx.host.http.writeJson(res, 200, { ...ticket, generation: ticketGeneration });
     return true;
   }, {
     method: "POST",
     path: "",
-    summary: "Issue a ticket for the console-global Shell.",
+    summary: "Issue a ticket for a conversation's Shell (the console default Shell when no key is given).",
     category: "Console Execution",
     gate: "origin-write",
     transport: "http",
@@ -213,26 +291,36 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    if (req.method === "GET") {
-      ctx.host.http.writeJson(res, 200, readState());
+    const key = readShellKey(readQueryShell(req));
+    if (key === null) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });
       return true;
     }
-    runtime.terminate(GLOBAL_SHELL_SESSION_ID);
-    release();
-    publish();
+    if (req.method === "GET") {
+      ctx.host.http.writeJson(res, 200, readState(key));
+      return true;
+    }
+    const instance = shells.get(key) ?? null;
+    runtime.terminate(instance?.sessionId ?? shellSessionIdFor(key));
+    if (instance) {
+      instance.liveGeneration = null;
+      release(instance);
+      publish(instance);
+      forget(instance);
+    }
     ctx.host.http.writeJson(res, 200, { ok: true });
     return true;
   }, [{
     method: "GET",
     path: "",
-    summary: "Read the console-global Shell state (Theater-relative cwd, prompt state, generation).",
+    summary: "Read a conversation's Shell state (Theater-relative cwd, prompt state, generation); ?shell=<key>.",
     category: "Console Execution",
     gate: "loopback",
     transport: "http",
   }, {
     method: "DELETE",
     path: "",
-    summary: "Terminate the console-global Shell session.",
+    summary: "Terminate a conversation's Shell session; ?shell=<key>.",
     category: "Console Execution",
     gate: "origin-write",
     transport: "http",
@@ -257,17 +345,18 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
     const target = await readMoveTarget(req, res);
     if (!target) return true;
+    const { instance } = target;
 
-    if (!runtime.isLive(GLOBAL_SHELL_SESSION_ID)) {
-      pinnedCwd = target.directory;
-      publish();
-      ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState() });
+    if (!runtime.isLive(instance.sessionId)) {
+      instance.pinnedCwd = target.directory;
+      publish(instance);
+      ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState(instance.key) });
       return true;
     }
     // 주입 조건: 셸이 전경이고, 프롬프트를 보고하는 셸이며, 첫 프롬프트를 이미 그렸고(rc 실행 중이 아님),
     // 마지막 프롬프트 뒤로 줄이 실행되지 않았고(명령 안의 `read` 등이 아님), 그 줄이 비어 있다.
-    const state = readState();
-    const line = runtime.getShellLineState(GLOBAL_SHELL_SESSION_ID);
+    const state = readState(instance.key);
+    const line = runtime.getShellLineState(instance.sessionId);
     if (!state.atPrompt || !state.cwdTracked || !isPromptOpen(line)) {
       ctx.host.http.writeJson(res, 409, { error: "shell_busy" });
       return true;
@@ -276,18 +365,18 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       ctx.host.http.writeJson(res, 409, { error: "shell_input_pending" });
       return true;
     }
-    if (!runtime.write(GLOBAL_SHELL_SESSION_ID, `cd -- ${quotePosixArgument(target.directory)}\r`)) {
+    if (!runtime.write(instance.sessionId, `cd -- ${quotePosixArgument(target.directory)}\r`)) {
       ctx.host.http.writeJson(res, 409, { error: "shell_busy" });
       return true;
     }
-    pinnedCwd = target.directory;
-    publish();
-    ctx.host.http.writeJson(res, 200, { ok: true, action: "cd", state: readState() });
+    instance.pinnedCwd = target.directory;
+    publish(instance);
+    ctx.host.http.writeJson(res, 200, { ok: true, action: "cd", state: readState(instance.key) });
     return true;
   }, {
     method: "POST",
     path: "",
-    summary: "Move the console-global Shell to a directory inside a Theater (cd at the prompt, or pin the next launch).",
+    summary: "Move a conversation's Shell to a directory inside a Theater (cd at the prompt, or pin the next launch).",
     category: "Console Execution",
     gate: "origin-write",
     transport: "http",
@@ -313,39 +402,52 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
     }
     const target = await readMoveTarget(req, res);
     if (!target) return true;
+    const { instance } = target;
 
     let exited: Promise<boolean>;
-    restarting = true;
+    instance.restarting = true;
     try {
-      exited = runtime.terminateAndWait(GLOBAL_SHELL_SESSION_ID, SHELL_RESTART_EXIT_WAIT_MS);
+      exited = runtime.terminateAndWait(instance.sessionId, SHELL_RESTART_EXIT_WAIT_MS);
     } finally {
-      restarting = false;
+      instance.restarting = false;
     }
-    liveGeneration = null;
-    release();
-    pinnedCwd = target.directory;
-    publish();
+    instance.liveGeneration = null;
+    release(instance);
+    instance.pinnedCwd = target.directory;
+    publish(instance);
     await exited.catch(() => false);
-    ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState() });
+    ctx.host.http.writeJson(res, 200, { ok: true, action: "pinned", state: readState(instance.key) });
     return true;
   }, {
     method: "POST",
     path: "",
-    summary: "End the console-global Shell (including a running program) and pin its next launch inside a Theater.",
+    summary: "End a conversation's Shell (including a running program) and pin its next launch inside a Theater.",
     category: "Console Execution",
     gate: "origin-write",
     transport: "http",
   });
 
-  /** 이동 요청의 공통 검사 — 등급·Theater·경로. 실패면 응답을 쓰고 null. */
-  async function readMoveTarget(req: Parameters<RouteHandler>[0]["req"], res: Parameters<RouteHandler>[0]["res"]): Promise<{ directory: string } | null> {
+  /** 이동 요청의 공통 검사 — 등급·Shell·Theater·경로. 실패면 응답을 쓰고 null. */
+  async function readMoveTarget(req: Parameters<RouteHandler>[0]["req"], res: Parameters<RouteHandler>[0]["res"]): Promise<{ directory: string; instance: ShellInstance } | null> {
     // 관전 등급은 PTY에 입력을 쓸 수 없다 — 티켓이 관전으로 내려가는 것과 같은 판정이다.
     if (ctx.host.security.resolveTerminalSocketRole(req) === "viewer") {
       ctx.host.http.writeJson(res, 403, { error: "shell_read_only" });
       return null;
     }
     const body = await ctx.host.http.readJsonBody<OpenAtBody>(req);
-    return resolveCwdHint(body, res);
+    const key = readShellKey(body?.shell ?? readQueryShell(req));
+    if (key === null) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_shell" });
+      return null;
+    }
+    const resolved = resolveCwdHint(body, res);
+    if (!resolved) return null;
+    const instance = instanceFor(key, true);
+    if (!instance) {
+      ctx.host.http.writeJson(res, 503, { error: "Terminal session capacity exhausted" });
+      return null;
+    }
+    return { directory: resolved.directory, instance };
   }
 
   /** 경로 좌표만 해석한다. 세션 수명과 정체성은 Theater에 종속되지 않는다. */
@@ -371,6 +473,14 @@ export function registerShellRoutes(ctx: ConsoleRuntimeContext, runtime: Termina
       return null;
     }
     return { directory: target.directory };
+  }
+}
+
+function readQueryShell(req: Parameters<RouteHandler>[0]["req"]): string | null {
+  try {
+    return new URL(req.url ?? "", "http://localhost").searchParams.get("shell");
+  } catch {
+    return null;
   }
 }
 
@@ -448,4 +558,4 @@ function readIntegrationDir(ctx: ConsoleRuntimeContext): string | null {
   return typeof consoleDataDir === "string" && consoleDataDir.length > 0 ? path.join(consoleDataDir, SHELL_INTEGRATION_DIR) : null;
 }
 
-export { GLOBAL_SHELL_SESSION_ID };
+export { DEFAULT_SHELL_KEY, GLOBAL_SHELL_SESSION_ID };

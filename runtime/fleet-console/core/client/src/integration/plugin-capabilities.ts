@@ -1,3 +1,5 @@
+import { requestShellOpenAt, requestShellRestartAt } from "@fleet-console/sdk/navigation/browser";
+import { getActiveShellKey } from "../../../../features/execution/client/terminal/shell/shell-session-store.js";
 import { openTheaterInbox, setTheaterInboxContext } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { setMobileListTheaterId } from "../chrome/mobile/mobile-store.js";
 import { getViewedTheaterId, subscribeViewedTheater } from "./viewed-theater.js";
@@ -278,8 +280,9 @@ export function createHostCapabilities(
       },
     },
     shell: {
-      openAt: async (request) => revealShellOnSuccess(await base.shell.openAt(request)),
-      restartAt: async (request) => revealShellOnSuccess(await base.shell.restartAt(request)),
+      // 옮기는 것은 지금 보이는 대화의 Shell 이다(대화마다 하나) — 대화 칸이 알린 키를 싣는다.
+      openAt: async (request) => revealShellOnSuccess(await requestShellOpenAt(request, { shell: getActiveShellKey() })),
+      restartAt: async (request) => revealShellOnSuccess(await requestShellRestartAt(request, { shell: getActiveShellKey() })),
     },
     navigation: {
       getSearchParam: (key) => new URLSearchParams(window.location.search).get(key),

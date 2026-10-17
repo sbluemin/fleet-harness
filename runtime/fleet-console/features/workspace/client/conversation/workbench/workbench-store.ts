@@ -99,6 +99,7 @@ export function setWorkbenchConversation(key: string | null): void {
   if (next === currentKey) return;
   currentKey = next;
   focusedTileId = null;
+  pendingClose = null;
   notify();
 }
 
@@ -363,7 +364,44 @@ export function bindWorkbenchSurfaceCloseNotifier(notifier: typeof surfaceClosed
   return () => { if (surfaceClosed === notifier) surfaceClosed = () => undefined; };
 }
 
-export function closeWorkbenchTile(tileId: string): void {
+/**
+ * 사람이 닫는 길(닫기 단추·도구 아이콘)에서 닫기 전에 물어볼 말 — 칸을 그리는 쪽이 서술자의 `confirmClose`로 답한다.
+ * null 이면 묻지 않는다.
+ */
+type CloseGuard = (tile: WorkbenchTile) => string | null;
+let closeGuard: CloseGuard = () => null;
+let pendingClose: { readonly tileId: string; readonly message: string } | null = null;
+
+export function bindWorkbenchCloseGuard(guard: CloseGuard): () => void {
+  closeGuard = guard;
+  return () => { if (closeGuard === guard) closeGuard = () => null; };
+}
+
+export function useWorkbenchPendingClose(): { readonly tileId: string; readonly message: string } | null {
+  return useSyncExternalStore(subscribeWorkbench, () => pendingClose, () => null);
+}
+
+export function cancelWorkbenchClose(): void {
+  if (pendingClose === null) return;
+  pendingClose = null;
+  notify();
+}
+
+/**
+ * 칸을 닫는다. 사람이 닫는 길이면 먼저 물을 말이 있는지 보고, 있으면 칸이 한 줄로 묻는다(`confirmed`로 다시 부르면 닫는다).
+ * 표면이 스스로 부르는 `close()`와 확인을 마친 닫기는 묻지 않는다.
+ */
+export function closeWorkbenchTile(tileId: string, options: { readonly confirmed?: boolean } = {}): void {
+  if (options.confirmed !== true) {
+    const found = findWorkbenchTile(getWorkbenchLayout(), tileId);
+    const message = found === null ? null : closeGuard(found.tile);
+    if (message !== null) {
+      pendingClose = { tileId, message };
+      notify();
+      return;
+    }
+  }
+  if (pendingClose?.tileId === tileId) pendingClose = null;
   const draft = thaw(getWorkbenchLayout());
   const removed = removeTile(draft, tileId);
   if (removed === null) return;

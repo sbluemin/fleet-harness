@@ -25,6 +25,8 @@ import { getT as getBrowserT } from "../../../../browser/client/i18n.js";
 import { PluginOperationRenderer } from "../../operation-renderer.js";
 import { resolveDropPreview, type DropPreview, type GutterGeometry, type Rect, type TileGeometry, type WorkbenchGeometry } from "./workbench-geometry.js";
 import {
+  bindWorkbenchCloseGuard,
+  cancelWorkbenchClose,
   closeWorkbenchTile,
   findWorkbenchTile,
   focusWorkbenchTile,
@@ -38,6 +40,7 @@ import {
   setWorkbenchExpanded,
   setWorkbenchSplitRatio,
   setWorkbenchWeights,
+  useWorkbenchPendingClose,
   type WorkbenchNudge,
 } from "./workbench-store.js";
 import "./workbench.css";
@@ -78,6 +81,8 @@ export interface ConversationWorkbenchProps {
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
+  /** 대화의 작업 위치를 아직 모른다 — 칸을 세우지 않는다(자리는 비켜 둔 채). 도구가 엉뚱한 자리에서 서지 않게. */
+  readonly suspended?: boolean;
 }
 
 const KEY_STEP = 16;
@@ -88,7 +93,7 @@ function rectStyle(rect: Rect): CSSProperties {
   return { left: rect.x, top: rect.y, width: rect.w, height: rect.h };
 }
 
-export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, operationKinds }: ConversationWorkbenchProps) {
+export function ConversationWorkbench({ layerRef, insets, geometry, layout, focusedTileId, bindings, toolContext, conversation, state, language, operationKinds, suspended = false }: ConversationWorkbenchProps) {
   const t = useT();
   const elementRef = useRef<HTMLDivElement | null>(null);
   const setRef = useCallback((element: HTMLDivElement | null) => {
@@ -98,9 +103,23 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
   const [resizing, setResizing] = useState(false);
   const [drag, setDrag] = useState<{ readonly tileId: string; readonly title: string; readonly x: number; readonly y: number; readonly preview: DropPreview | null } | null>(null);
   const [menuTileId, setMenuTileId] = useState<string | null>(null);
+  const descriptors = useExpandedSurfaceDescriptors();
+  const pendingClose = useWorkbenchPendingClose();
+
+  // 사람이 칸을 닫을 때 물을 말 — 표면이 `confirmClose`로 답한다(Shell: 명령이 돌고 있으면).
+  useEffect(() => bindWorkbenchCloseGuard((tile) => {
+    if (tile.kind !== "surface") return null;
+    const descriptor = descriptors.get(tile.surfaceId);
+    try {
+      const message = descriptor?.confirmClose?.({ surfaceId: tile.surfaceId, instanceId: tile.id, params: tile.params }) ?? null;
+      return message === null ? null : resolveLocalizedText(message, language);
+    } catch {
+      return null;
+    }
+  }), [descriptors, language]);
 
   // 끌기(경계·칸)와 ⋮ 메뉴가 열린 동안 네이티브 브라우저 뷰를 정지 화면 뒤로 물린다 — 뷰는 페이지 위를 덮어 포인터와 메뉴를 가린다.
-  const holdViews = resizing || drag !== null || menuTileId !== null;
+  const holdViews = resizing || drag !== null || menuTileId !== null || pendingClose !== null;
   useEffect(() => {
     const element = elementRef.current;
     if (!holdViews || element === null) return;
@@ -197,7 +216,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
       {expandedId === null ? geometry.gutters.map((gutter) => (
         <WorkbenchGutter key={gutterKey(gutter)} gutter={gutter} geometry={geometry} layout={layout} onResizingChange={setResizing} />
       )) : null}
-      {geometry.tiles.map((entry) => {
+      {(suspended ? [] : geometry.tiles).map((entry) => {
         const hidden = expandedId !== null && entry.tile.id !== expandedId;
         const rect = expandedId === entry.tile.id && geometry.expanded !== null ? geometry.expanded : entry.rect;
         return (
@@ -210,6 +229,7 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
             focused={focusedTileId === entry.tile.id}
             dragging={drag?.tileId === entry.tile.id}
             menuOpen={menuTileId === entry.tile.id}
+            pendingClose={pendingClose?.tileId === entry.tile.id ? pendingClose.message : null}
             onMenuOpenChange={(open) => setMenuTileId(open ? entry.tile.id : null)}
             layout={layout}
             geometry={geometry}
@@ -386,6 +406,8 @@ interface WorkbenchTileViewProps {
   readonly focused: boolean;
   readonly dragging: boolean;
   readonly menuOpen: boolean;
+  /** 이 칸을 닫기 전에 묻는 말 — 사람이 닫기를 눌렀고 표면이 물어야 한다고 답했을 때만. */
+  readonly pendingClose: string | null;
   readonly onMenuOpenChange: (open: boolean) => void;
   readonly layout: WorkbenchLayout;
   readonly geometry: WorkbenchGeometry;
@@ -416,7 +438,7 @@ interface FrameParts {
   readonly bodyRef?: (element: HTMLDivElement | null) => void;
 }
 
-function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen, onMenuOpenChange, layout, geometry, onBeginDrag, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
+function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen, pendingClose, onMenuOpenChange, layout, geometry, onBeginDrag, parts }: WorkbenchTileViewProps & { readonly parts: FrameParts }) {
   const t = useT();
   const tile = entry.tile;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -567,6 +589,13 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
           </button>
         </span>
       </header>
+      {pendingClose !== null ? (
+        <div className="workbench-tile-confirm" role="alertdialog" aria-label={pendingClose}>
+          <span>{pendingClose}</span>
+          <button type="button" className="is-danger" autoFocus onClick={() => closeWorkbenchTile(tile.id, { confirmed: true })}>{t("conversation.workbench.closeConfirm")}</button>
+          <button type="button" onClick={cancelWorkbenchClose}>{t("conversation.workbench.closeCancel")}</button>
+        </div>
+      ) : null}
       <div className="workbench-tile-body" ref={parts.bodyRef}>
         {parts.body}
       </div>
@@ -604,6 +633,7 @@ function EntryTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Work
             {...(toolContext.surfaces === undefined ? {} : { surfaces: toolContext.surfaces })}
             {...(toolContext.launchOperation === undefined ? {} : { onLaunchOperation: toolContext.launchOperation })}
             {...(toolContext.openLink === undefined ? {} : { openLink: toolContext.openLink })}
+            {...(toolContext.conversation === undefined ? {} : { conversation: toolContext.conversation })}
           />
         </div>
       );
@@ -630,9 +660,11 @@ function SurfaceTile(props: WorkbenchTileViewProps & { readonly tile: Extract<Wo
     language,
     capabilities,
     onReportMinimum: NO_MINIMUM,
-    close: () => closeWorkbenchTile(tile.id),
+    // 표면이 스스로 닫는 길(셸 종료 등)은 묻지 않는다.
+    close: () => closeWorkbenchTile(tile.id, { confirmed: true }),
     focus: () => focusWorkbenchTile(tile.id),
     replaceParams: (next) => replaceWorkbenchTileParams(tile.id, next),
+    conversation: toolContext.conversation,
   });
   const title = safeExpandedSurfaceTitle(descriptor, context, language, binding ? resolveLocalizedText(binding.entry.title, language) : tile.surfaceId);
   const body = (

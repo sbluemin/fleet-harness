@@ -2811,3 +2811,15 @@
 
 .history-commit-author-name, .history-commit-time { font-family: var(--font-ui); font-size: var(--t-xs); }
 .history-commit-sha, .history-detail-sha { font-family: var(--font-code); font-size: var(--font-code-size); }
+
+/* 대화의 작업 위치인 워크트리 — 위치를 말하므로 위치 채널(brass)이다. */
+.repository-ws-tree-mine {
+  flex: none;
+  margin-left: auto;
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-ink);
+  font-size: var(--t-xs);
+  font-style: normal;
+}

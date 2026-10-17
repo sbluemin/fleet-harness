@@ -36,6 +36,45 @@
   border-right: 1px solid var(--hairline-column);
 }
 
+/* 좁은 창 — 펼친 사이드바가 아바타만 남은 56px 열로 물러난다(시안 v2 규칙 h-3). 이름·상태 글자, 맨 위 줄 단추, Theater 머리의
+   조작과 폭 손잡이를 걷고 아바타를 열 가운데에 둔다. 창을 넓히면 사람이 정한 폭으로 돌아온다. */
+.console-body.is-conversation .operations-side-bar.is-compact :is(
+  .side-bar-top-strip,
+  .side-bar-chip-text,
+  .side-bar-chip-close,
+  .side-bar-chip-group-mark,
+  .side-bar-theater-text,
+  .side-bar-theater-row-controls,
+  .side-bar-theater-chevron,
+  .side-bar-status-header,
+  .operations-side-bar-resize-handle
+) {
+  display: none;
+}
+
+/* 아래 줄은 계정 아바타만 남긴다 — 보관함·보기 단추는 창을 넓히면 돌아온다. */
+.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock > :not(.conversation-dock-host) {
+  display: none;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
+  padding-top: var(--space-3);
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-row, li) {
+  padding-inline: 0;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-chip, .side-bar-theater-activate) {
+  justify-content: center;
+  padding-inline: 0;
+}
+
 .console-body.is-conversation .operations-side-bar::before {
   background: var(--conversation-side);
 }

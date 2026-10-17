@@ -170,6 +170,10 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const contextScope = theaterId ?? "";
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
   const label = useSyncExternalStore(ctx.consoleState.subscribe, () => ctx.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "", () => "");
+  // 트리의 루트 = 이 대화의 작업 위치(호스트가 파생한다 — 사람이 고르지 않는다). 대화 밖이면 Theater 루트다.
+  const location = ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
+  const rootPath = location?.relative ?? "";
+  const rootLabel = location?.label ?? "";
   const shellAction = useShellAction(ctx.shell, theaterId, selectedPath);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
@@ -329,16 +333,17 @@ function FileExplorerTreePane(ctx: PaneContext) {
     <div ref={rootRef} className="fexp-root" onKeyDown={handleRootKeyDown}>
       <div className="fexp-tree-pane">
         <div className="fexp-theater-head">
-          {label && <TheaterBadge label={label} initials={theaterInitials(label)} />}
+          {label && <TheaterBadge label={label} initials={theaterInitials(label)} {...(rootPath ? { detail: rootLabel } : {})} />}
           {navigationError && <span className="fexp-navigation-error">{t(`fileExplorer.navigation.${navigationError.reason}`)}</span>}
           <ShellActionNotice action={shellAction} t={t} />
         </div>
         <FileTree
-          key={contextScope}
+          key={`${contextScope}|${rootPath}`}
           ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
           contextKey={contextScope}
+          rootPath={rootPath}
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}

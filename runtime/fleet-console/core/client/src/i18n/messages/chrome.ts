@@ -543,6 +543,8 @@ export const chromeEn = {
   "conversation.workbench.desktopOnly": "This panel opens in Fleet Desktop.",
   "conversation.workbench.needsTheater": "Choose a Theater to use this tool.",
   "conversation.workbench.missingTool": "The plugin that provided this tool is no longer loaded.",
+  "conversation.workbench.closeConfirm": "End and close",
+  "conversation.workbench.closeCancel": "Keep open",
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
@@ -1075,4 +1077,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "conversation.workbench.desktopOnly": "이 패널은 Fleet Desktop에서 열립니다",
   "conversation.workbench.needsTheater": "Theater를 고르면 이 도구를 쓸 수 있습니다",
   "conversation.workbench.missingTool": "이 도구를 제공하던 플러그인이 더 이상 로드되어 있지 않습니다.",
+  "conversation.workbench.closeConfirm": "끝내고 닫기",
+  "conversation.workbench.closeCancel": "닫지 않기",
 };

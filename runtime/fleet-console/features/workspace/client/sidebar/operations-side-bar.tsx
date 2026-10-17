@@ -48,6 +48,7 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import {
   consumeStatusLandings,
   freshFoldKey,
+  COMPACT_SIDE_BAR_PX,
   setSideBarCollapsed,
   setSideBarFreshFoldExpanded,
   setSideBarPeeking,
@@ -364,7 +365,9 @@ export function OperationsSideBar({
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
   const { collapsed } = sideBar;
-  const width = widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
+  // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
+  const compact = sideBar.compact && !collapsed && topStripVariant === "compact";
+  const width = compact ? COMPACT_SIDE_BAR_PX : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const statusAxis = useSideBarStatusAxis();
   const freshFolds = useSideBarFreshFolds();
   const previousCollapsedRef = useRef(collapsed);
@@ -1003,7 +1006,7 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}`}
+      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${compact ? " is-compact" : ""}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}

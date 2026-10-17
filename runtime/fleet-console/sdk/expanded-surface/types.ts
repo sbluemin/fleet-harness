@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { OpenLinkHandler } from "../link/types.js";
+import type { ConversationToolScope } from "../pane/types.js";
 import type {
   ClientApiCapability,
   ClientLifecycleCapability,
@@ -68,6 +69,11 @@ export interface ExpandedSurfaceDescriptor {
    * 믿어, 축소 화면도 페인도 없는 막다른 골목이 된다. 여기서 다시 닫기를 부르지 말 것.
    */
   readonly onClose?: (ctx: ExpandedSurfaceCloseContext) => void;
+  /**
+   * 닫기 전에 사람에게 한 번 물어야 하면 그 말을 돌려준다(예: Shell 에서 명령이 돌고 있다). null 이면 묻지 않고 닫는다.
+   * 사람이 닫는 길(닫기 단추·도구 아이콘)에서만 묻고, 표면이 스스로 부르는 `close()`는 묻지 않는다. 부작용 없이 지금 상태를 읽는다.
+   */
+  readonly confirmClose?: (ctx: ExpandedSurfaceCloseContext) => LocalizedText | null;
   /** 페인 안쪽 좌측 열(문서 목차 등). 폭은 호스트가 정한다. */
   readonly aside?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
@@ -124,6 +130,8 @@ export interface ExpandedSurfaceContext {
    * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
    */
   readonly sideBarVisible?: boolean;
+  /** 이 표면이 놓인 대화와 그 작업 위치 — 데스크톱 대화의 도구 칸에서만 실린다(`ConversationToolScope`). */
+  readonly conversation?: ConversationToolScope;
   /** 이 페인을 닫는다. */
   readonly close: () => void;
   /** 이 페인으로 포커스를 옮긴다. */

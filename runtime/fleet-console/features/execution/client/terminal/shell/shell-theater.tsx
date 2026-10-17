@@ -3,13 +3,13 @@ import type { ExpandedSurfaceContext } from "@fleet-console/sdk/expanded-surface
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { getT } from "../../agent/i18n/index.js";
-import { useShellSession } from "./shell-session-store.js";
+import { DEFAULT_SHELL_KEY, useShellSession } from "./shell-session-store.js";
 
 /**
- * 전역 Shell의 현재 위치만 보여 준다. 보고 있는 대화와 위치가 달라도 경고하지 않는다.
+ * 그 대화 Shell 의 현재 위치만 보여 준다. 대화의 작업 위치와 달라진 것은 칸 본문 위 한 줄이 말한다.
  */
 export function ShellTheaterBadge({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
-  const session = useShellSession();
+  const session = useShellSession(ctx.conversation?.key ?? DEFAULT_SHELL_KEY);
   const theaters = useTheaters(ctx);
   const t = getT(ctx.language ?? "en");
   if (!session?.open || !session.cwd) return null;

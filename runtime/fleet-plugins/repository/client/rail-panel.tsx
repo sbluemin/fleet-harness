@@ -152,7 +152,14 @@ function mapSharedVerbError(code: string, t: T): string | null {
 }
 
 export function RepositoryPanel({ ctx }: RepositoryPanelProps) {
-  return <RepositoryPanelBody key={ctx.theaterId} ctx={ctx} />;
+  // 대화의 작업 위치가 바뀌면 그 위치의 작업 트리로 다시 선다(대화마다 선택이 따로다).
+  return <RepositoryPanelBody key={`${ctx.theaterId}|${conversationRelOf(ctx) ?? ""}`} ctx={ctx} />;
+}
+
+/** 이 화면이 놓인 대화의 작업 위치(Theater 상대) — 같은 Theater 의 대화일 때만. 없으면 null(저장된 선택을 쓴다). */
+function conversationRelOf(ctx: RepositoryContext): string | null {
+  const location = ctx.conversation?.location;
+  return location && location.theaterId === ctx.theaterId ? location.relative : null;
 }
 
 export type Source = "changes" | "history";
@@ -221,9 +228,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [worktreesPending, setWorktreesPending] = useState(false);
   // 마지막으로 성공한 워크트리 조회의 체크아웃 — 같은 체크아웃의 재조회는 목록을 비우지 않는다.
   const loadedWorktreesRepoRelRef = useRef<string | null>(null);
-  const [repoRel, setRepoRel] = useState(() => ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : "");
+  // 대화의 작업 위치가 곧 선택된 작업 트리다 — 사람이 다시 고르지 않는다. 대화 밖이면 Theater 마다 저장한 선택이다.
+  const conversationRel = conversationRelOf(ctx);
+  const [repoRel, setRepoRel] = useState(() => conversationRel ?? (ctx.theaterId ? readStoredRepositoryRel(ctx.theaterId) : ""));
   const [initialRepoViewState] = useState(() => ctx.theaterId ? readRepoViewState(ctx.theaterId, repoRel) : null);
   const repoRelRef = useRef(repoRel);
+  const conversationAppliedRef = useRef(false);
   const [source, setSourceState] = useState<Source>(readRepositorySource);
   const [treeWidth, setTreeWidth] = useState(readWorkspaceTreeWidth);
   const treeWidthRef = useRef(treeWidth);
@@ -492,9 +502,19 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   }, [ctx.api, ctx.theaterId, repoRel, transitionRepository, worktreesRetry]);
   useEffect(() => {
     if (!ctx.theaterId || !reposLoaded || worktreesForRepoRel !== repoRel) return;
+    // 대화의 작업 위치가 고를 수 있는 체크아웃(저장소·워크트리)이면 그것이 이긴다. 한 번만 — 사람이 그 뒤 다른 워크트리를
+    // 골라 보는 것은 막지 않는다.
+    if (conversationRel !== null && !conversationAppliedRef.current) {
+      conversationAppliedRef.current = true;
+      if (repos.some((repo) => repo.relPath === conversationRel) || worktrees.some((worktree) => worktree.relPath === conversationRel)) {
+        if (conversationRel !== repoRelRef.current) transitionRepository(conversationRel, false);
+        return;
+      }
+    }
+    if (conversationRel !== null && repoRelRef.current === conversationRel) return;
     const restoredRepoRel = readRepositoryRel(ctx.theaterId, repos, worktrees);
     if (restoredRepoRel !== repoRelRef.current) transitionRepository(restoredRepoRel, false);
-  }, [ctx.theaterId, repoRel, repos, reposLoaded, transitionRepository, worktrees, worktreesForRepoRel]);
+  }, [conversationRel, ctx.theaterId, repoRel, repos, reposLoaded, transitionRepository, worktrees, worktreesForRepoRel]);
   // refs는 재조회 시작에 비우지 않는다 — 비우면 브랜치·원격·태그·스태시 섹션이 "없음"으로 떨어졌다 다시 차며
   // 트리 전체가 깜빡이고 스크롤이 맨 위로 튄다. 체크아웃 전환은 transitionRepository가 명시적으로 비운다.
   useEffect(() => {
@@ -932,7 +952,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
             {stashPromptOpen && <StashSavePopover t={t} hostRef={verbClusterRef} onSave={handleStashSave} onClose={() => setStashPromptOpen(false)} />}
           </span>
         </div>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} contextSlot={sourceNavigation} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} conversationRel={conversationRel} contextSlot={sourceNavigation} worktrees={worktrees} worktreesError={worktreesError} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} selectedRel={repoRel} onRepository={handleSelectRepository} contextDisabled={verbBusy !== null || stagingBusy} refs={refs} refsError={refsError} source={source} refFilter={refFilter} onRetryRefs={() => setRefsRetry((value) => value + 1)} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} onPull={writeLocked ? undefined : handlePull} pullBusy={verbBusy?.verb === "pull"} pullDisabled={verbBusy !== null} />
         <SplitSeam orientation="vertical" className="repository-ws-tree-divider" label={t("repository.common.resizeSourceTree")} value={treeWidth} min={WORKSPACE_TREE_MIN_WIDTH} max={layoutWidth === undefined ? undefined : workspaceTreeMaxWidth(layoutWidth)} dragging={isTreeDragging} readout={isTreeDragging ? `${Math.round(treeWidth)}px` : null} onPointerDown={handleTreeDividerDown} onStep={stepTreeWidth} />
         <div className="repository-work-area">
           <div className="repository-work-panel" role="tabpanel" id={`${sourceTabsId}-panel`} aria-labelledby={`${sourceTabsId}-${source}`}>
@@ -958,6 +978,8 @@ interface WorkspaceTreeProps {
   readonly worktreesError: boolean;
   readonly onRetryWorktrees: () => void;
   readonly selectedRel: string;
+  /** 이 화면이 놓인 대화의 작업 위치 — 그 워크트리 행에 「이 대화」를 단다. */
+  readonly conversationRel?: string | null;
   readonly onRepository: (repo: { readonly relPath: string }) => void;
   readonly contextDisabled: boolean;
   readonly refs: Refs;
@@ -986,7 +1008,7 @@ function AheadBehind({ t, row }: { readonly t: T; readonly row: RepositoryRefRow
   </span>;
 }
 
-export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, onRepository, contextDisabled, refs, refsError, source, refFilter, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull, pullBusy = false, pullDisabled = false }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, worktreesError, onRetryWorktrees, selectedRel, conversationRel = null, onRepository, contextDisabled, refs, refsError, source, refFilter, onRetryRefs, onRef, onCompare, onStashInspect, onStashAction, onPull, pullBusy = false, pullDisabled = false }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -1113,7 +1135,7 @@ export function WorkspaceTree({ theaterId = "", t, contextSlot, worktrees, workt
     </div>
     <WorkspaceTreeScroll theaterId={theaterId} query={query} collapsedSections={collapsedSections} collapsedFolders={collapsedFolders} initialScrollTop={initialTreeState?.scrollTop ?? 0} contentVersion={`${refRowCount}:${remoteRowCount}:${collapsedSections.size}`} onKeyDown={handleTreeKeyDown}>
       {(worktrees.length > 0 || worktreesError) && section("worktrees", worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktreeRows.length ? worktreeRows.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row is-worktree${worktree.relPath === selectedRel ? " is-current" : ""}`} {...treeRowProps(`worktree:${worktree.relPath}`)} title={worktree.relPath} disabled={contextDisabled} onClick={() => onRepository(worktree)}>
-        <Icon name="folder" /><span>{worktree.name}</span>{worktree.branch && worktree.branch !== worktree.name && <i title={t("repository.refs.worktreeBranch")}>{worktree.branch}</i>}
+        <Icon name="folder" /><span>{worktree.name}</span>{worktree.branch && worktree.branch !== worktree.name && <i title={t("repository.refs.worktreeBranch")}>{worktree.branch}</i>}{conversationRel !== null && worktree.relPath === conversationRel && <em className="repository-ws-tree-mine">{t("repository.worktree.thisConversation")}</em>}
       </button>) : emptyRow)}
       {section("branches", refsError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadRefsFailed")} onRetry={onRetryRefs} /> : branchRows.length ? branchRows.map((row) => branchRow(row)) : emptyRow)}
       {section("remotes", refsError ? null : visibleRemoteGroups.length ? visibleRemoteGroups.map((group) => <div key={group.name} className="repository-ws-remote-group">

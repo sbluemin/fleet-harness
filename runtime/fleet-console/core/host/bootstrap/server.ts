@@ -5,7 +5,7 @@ import { createOperationArchiveStorage, archiveEvent, archiveSessionNodes, Opera
 import { createOperationArchiveCoordinator } from "../../../features/workspace/host/operation-archive.js";
 import { createOperationArchiveRouter, OPERATION_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/operation-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
-import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
+import { createConversationWorkbenchRouter, createConversationWorkbenchStore, resolveConversationWorkLocation } from "../../../features/workspace/host/conversation-workbench.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -1540,7 +1540,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/operations", async (context) => await operationArchiveRouter(context) || operationsRouter(context));
   const avatarRouter = createAvatarRouter({ store: avatarStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson });
   routeRegistry.register("/api/v1/avatars", avatarRouter);
-  routeRegistry.register("/api/v1/conversation-workbench", createConversationWorkbenchRouter({ store: conversationWorkbenchStore, isAuthorized: isTerminalAuthorized, readJsonBody, writeJson }));
+  routeRegistry.register("/api/v1/conversation-workbench", createConversationWorkbenchRouter({
+    store: conversationWorkbenchStore,
+    isAuthorized: isTerminalAuthorized,
+    readJsonBody,
+    writeJson,
+    locate: (operationId, folder) => {
+      const child = operations.getChild(operationId);
+      const node = child ? child.parent : operations.get(operationId);
+      if (!node) return null;
+      const theater = theaters.get(node.theaterId);
+      if (!theater?.realpath) return null;
+      const payload = child ? child.child.payload : node.payload;
+      // 세션이 옮겨 간 폴더(Theater 상대)가 오면 그것을, 아니면 세션의 실행 작업 폴더를 쓴다. 상대 폴더는 어휘로 루트 위로 오르지 못하고,
+      // 분류 함수가 realpath 포함 검사를 한 번 더 한다.
+      const relative = folder === null ? null : path.posix.normalize(folder.replaceAll("\\", "/"));
+      const cwd = relative !== null && relative !== ".." && !relative.startsWith("../") && !relative.startsWith("/") && !relative.includes("\0")
+        ? path.join(theater.realpath, ...relative.split("/"))
+        : typeof payload?.cwd === "string" ? payload.cwd : null;
+      return resolveConversationWorkLocation({ theaterId: node.theaterId, theaterRoot: theater.realpath, theaterLabel: theater.label ?? path.basename(theater.realpath), cwd });
+    },
+  }));
   routeRegistry.register("/api/v1/theaters", async (context) => {
     return false;
   });

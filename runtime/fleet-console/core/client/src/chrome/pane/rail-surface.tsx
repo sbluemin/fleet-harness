@@ -7,7 +7,7 @@ import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { onboardingWorkSurface } from "@fleet-console/sdk/onboarding/anchors";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
+import type { ConversationToolScope, PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
@@ -53,6 +53,8 @@ export interface RailSurfaceProps {
   readonly onRequestExtraWidth?: (px: number | null) => void;
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
+  /** 이 표면이 놓인 대화 — 데스크톱 대화의 도구 칸에서만 싣는다. 페인 컨텍스트로 그대로 흐른다. */
+  readonly conversation?: ConversationToolScope;
 }
 
 export const RailSurface = memo(function RailSurface({
@@ -67,6 +69,7 @@ export const RailSurface = memo(function RailSurface({
   onRequestExtraWidth,
   onLaunchOperation,
   openLink,
+  conversation,
 }: RailSurfaceProps) {
   const openInstances = useRailPanes();
   const focusedPaneId = useFocusedPaneId();
@@ -271,6 +274,7 @@ export const RailSurface = memo(function RailSurface({
       onRequestExtraWidth={onRequestExtraWidth}
       onLaunchOperation={onLaunchOperation}
       openLink={openLink}
+      conversation={conversation}
       {...(split ? { width: primaryWidth } : {})}
     />
   );
@@ -305,6 +309,7 @@ export const RailSurface = memo(function RailSurface({
           onRequestExtraWidth={onRequestExtraWidth}
           onLaunchOperation={onLaunchOperation}
           openLink={openLink}
+          conversation={conversation}
         />
       ))}
       {split ? (
@@ -336,6 +341,7 @@ interface PaneHostProps {
   readonly onRequestExtraWidth?: (px: number | null) => void;
   readonly onLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
+  readonly conversation?: ConversationToolScope | undefined;
   /** 표면이 정한 이 열의 폭(px). 생략하면 남는 자리를 채운다. */
   readonly width?: number;
   readonly overlay?: boolean;
@@ -367,6 +373,7 @@ function PaneHost({
   onRequestExtraWidth,
   onLaunchOperation,
   openLink,
+  conversation,
   width,
   overlay = false,
   singlePane = false,
@@ -472,6 +479,7 @@ function PaneHost({
     legacySurfaces: surfaces,
     legacyLaunchOperation: onLaunchOperation,
     ...(openLink === undefined ? {} : { openLink }),
+    ...(conversation === undefined ? {} : { conversation }),
   });
 
   const hasCaption = descriptor.role === "detail" && descriptor.hideCaption !== true;
