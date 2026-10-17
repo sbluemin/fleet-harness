@@ -887,6 +887,8 @@
   to { transform: rotate(360deg); }
 }
 
+/* 도는 줄도 완료 줄도 이 9px다. 비어 있든 ✓/✕/·이든 칸 폭이 같아야 동사 시작 x가 같다.
+   13px 글리프를 이 칸에 넣으면 완료되는 순간 4px가 줄고, 잎은 계열 글자까지 뒤에 붙어 더 밀린다. */
 .agent-chat-step-mark {
   flex: none;
   display: inline-flex;
@@ -894,11 +896,6 @@
   width: 9px;
   text-align: center;
   color: var(--positive);
-}
-
-.agent-chat-step-mark.is-running {
-  width: 13px;
-  color: var(--text-secondary);
 }
 
 .agent-chat-step.is-fail .agent-chat-step-mark { color: var(--coral); }

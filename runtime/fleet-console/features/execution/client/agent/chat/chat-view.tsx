@@ -2701,14 +2701,12 @@ function Step({
   const className = `agent-chat-step is-${item.state ?? "done"}${folded ? " is-leaf" : ""}`;
   const content = (
     <>
-      {running
-        // 상세 본문은 기록이다 — 라이브 상태와 애니메이션은 요약 줄 하나가 지고, 펼친 본문은
-        // 지금 하는 도구의 G2 글리프만 정적으로 보여 준다. 닫힌 details 안에서 링을 계속 돌리면
-        // 화면에는 안 보여도 브라우저가 영원히 애니메이션을 합성한다.
-        ? <span className="agent-chat-step-mark is-running" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(name)} /></span>
-        : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : unconfirmed ? "·" : "✓"}</span>}
-      {/* 잎의 계열 글자. 도는 줄은 이미 마크 자리에 같은 글자를 들고 있으므로 두 번 세우지 않는다. */}
-      {folded && !running ? (
+      {/* 도는 동안은 빈 9px다. 완료 마크와 같은 폭이라 동사 좌표가 안 튄다. 진행은 물결·동사가
+          말한다. 이 칸에 13px 글리프나 궤도 링을 넣으면 완료되는 순간 동사가 밀리고, 닫힌
+          details 안의 링은 화면 밖에서도 합성이 끝나지 않는다. */}
+      <span className="agent-chat-step-mark" aria-hidden="true">{running ? null : failed ? "✕" : unconfirmed ? "·" : "✓"}</span>
+      {/* 잎의 계열 글자. 마크 칸은 결말만 지므로, 도는 동안에도 같은 글자를 세워 동사 좌표를 지킨다. */}
+      {folded ? (
         <span className="agent-chat-step-family" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(name)} /></span>
       ) : null}
       <span
@@ -3350,15 +3348,14 @@ function JobExtra({
       <div className="agent-chat-trail">
         {value.steps.map((step, index) => {
           // 결말 없는 마지막 줄은 지금 도는 그 도구다. 끝난 스텝과 같은 ✓를 달면 화면이 아직
-          // 오지 않은 결과를 성공으로 적는다.
+          // 오지 않은 결과를 성공으로 적는다. 칸은 비우되 폭은 완료 마크와 같은 9px라 동사가
+          // 밀리지 않는다. 원장에서 뺀 궤도 링을 여기 되돌리지 않는다.
           const live = job.open && index === last && step.outcome === undefined && step.failed !== true;
           return (
             // 원장의 스텝과 같은 클래스를 쓴다 — 서브에이전트가 한 일이 이 세션이 한 일과 같은
             // 문법으로 읽혀야, 중첩된 것이 새 화면이 아니라 같은 화면의 한 겹으로 보인다.
             <div key={index} className={`agent-chat-step is-${step.failed === true ? "fail" : "ok"}${live ? " is-live" : ""}`}>
-              {live
-                ? <span className="agent-chat-step-orbit" aria-hidden="true" />
-                : <span className="agent-chat-step-mark" aria-hidden="true">{step.failed === true ? "✕" : "✓"}</span>}
+              <span className="agent-chat-step-mark" aria-hidden="true">{live ? null : step.failed === true ? "✕" : "✓"}</span>
               <span className="agent-chat-step-verb">{step.name}</span>
               {step.detail !== undefined ? <span className="agent-chat-step-object">{step.detail}</span> : null}
               {step.outcome !== undefined ? (
