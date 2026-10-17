@@ -167,11 +167,6 @@ class PlaygroundStage {
   private held = false;
   /** `pause` 해 둔 CSS 애니메이션·전이와, 멈추기 직전의 currentTime. */
   private pausedAnimations: { animation: Animation; time: number }[] = [];
-  /** 떠나기 직전 얼굴 SVG 와 애니메이션 시각. 몽글 스케줄러를 내려도 진행을 되돌릴 수 있다. */
-  faceHtml: Record<string, string> = {};
-  animEpoch = 0;
-  private restoredAnimations = new WeakSet<Animation>();
-  private animSnap: { id: string; name: string; time: number }[] = [];
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
   private readonly kindOrder = shuffle(ITEM_KINDS);
 
@@ -922,6 +917,8 @@ class PlaygroundStage {
 
   private playAnimations(): void {
     for (const paused of this.pausedAnimations) {
+      // 노드를 옮기며 취소된 객체(idle)는 다시 켜지 않는다 — 그 자리에는 CSS 가 새 객체를 이미 세웠다.
+      if (paused.animation.playState !== "paused") continue;
       try {
         paused.animation.currentTime = paused.time;
         paused.animation.play();
@@ -961,109 +958,27 @@ class PlaygroundStage {
    */
   park(): void {
     if (this.held) return;
-    if (!this.frozen) this.pauseClock();
-    else {
-      // 입력으로 멈춰 있던 얼음은 걷힌다. 시각은 아래 스냅샷이 남긴다.
-      this.frozen = false;
-      this.watching = false;
+    // 입력으로 멈춰 있던 얼음은 이미 시계와 애니메이션을 그 순간에 세워 두었다. 같은 목록을 그대로 들고 간다.
+    if (!this.frozen) {
+      this.pauseClock();
+      this.pauseAnimations();
     }
-    // 얼굴을 정적 SVG 로 바꾸기 전에 시각을 읽는다. 바꾸고 나면 애니메이션 객체가 사라진다.
-    this.captureFaces();
-    this.pausedAnimations = [];
-    sceneHost?.classList.add("is-held");
+    this.frozen = false;
     this.watching = false;
     this.held = true;
-    this.animEpoch += 1;
-    this.publish(true);
   }
 
-  /** 같은 창에서 다시 들어올 때. 호출부는 장면을 슬롯에 붙인 뒤에 부른다. */
+  /**
+   * 같은 창에서 다시 들어올 때. 호출부는 장면을 슬롯에 옮긴 뒤에 부른다.
+   * `moveBefore` 로 옮겼으면 멈춰 둔 애니메이션·전이 객체가 그대로 남아 있어 그 시각부터 이어 간다.
+   * 새 등장은 다시 들어온 직후에 끼어들지 않도록 조금 늦춘다.
+   */
   resume(): void {
     if (!this.held) return;
     this.held = false;
-    this.animEpoch += 1;
-    this.restoredAnimations = new WeakSet();
-    // 라이브 얼굴을 다시 세운 뒤 is-held 를 푼다. 큰 동작은 아바타 effect 다음에 생기므로 몇 프레임 더 맞춘다.
-    this.publish(true);
-    sceneHost?.classList.remove("is-held");
-    this.applyAnims(true);
+    this.playAnimations();
     this.rearmClock(REENTRY_HOLD_MS);
-    const token = this.animEpoch;
-    let frames = 8;
-    const later = () => {
-      if (this.held || this.animEpoch !== token) return;
-      this.applyAnims(true);
-      frames -= 1;
-      if (frames > 0) requestAnimationFrame(later);
-    };
-    requestAnimationFrame(later);
-  }
-
-  /** 배우 얼굴과 무대 안 모든 애니메이션 시각. 그네·시소 팔은 배우 밖에 있다. */
-  private captureFaces(): void {
-    const band = sceneHost?.querySelector(".pg-band");
-    if (!band) return;
-    this.animSnap = [];
-    this.faceHtml = {};
-    for (const actor of band.querySelectorAll<HTMLElement>(".pg-actor")) {
-      const id = actor.dataset.pgId;
-      const gait = actor.querySelector(".pg-gait");
-      if (id && gait) this.faceHtml[id] = gait.innerHTML;
-    }
-    for (const animation of band.getAnimations({ subtree: true })) {
-      const target = (animation.effect as KeyframeEffect | null)?.target;
-      if (!(target instanceof Element)) continue;
-      const id = this.animationOwner(band, target);
-      if (!id) continue;
-      const named = animation as Animation & { animationName?: string; transitionProperty?: string };
-      this.animSnap.push({ id, name: named.animationName || named.transitionProperty || "?", time: Number(animation.currentTime ?? 0) });
-    }
-  }
-
-  private animationOwner(band: Element, target: Element): string | null {
-    const actor = target.closest<HTMLElement>(".pg-actor");
-    if (actor?.dataset.pgId) return actor.dataset.pgId;
-    const item = target.closest(".pg-item");
-    if (!item) return null;
-    const index = [...band.querySelectorAll(".pg-item")].indexOf(item);
-    return index >= 0 ? `item:${index}` : null;
-  }
-
-  /** 스냅샷의 currentTime 을 지금 DOM 에 한 번만 싣는다. 스냅샷에 없는 등장은 끈다. */
-  applyAnims(play: boolean): void {
-    const band = sceneHost?.querySelector(".pg-band");
-    if (!band || this.animSnap.length === 0) return;
-    const queues = new Map<string, number[]>();
-    for (const snap of this.animSnap) {
-      const key = `${snap.id}\0${snap.name}`;
-      const list = queues.get(key) ?? [];
-      list.push(snap.time);
-      queues.set(key, list);
-    }
-    const roots = [
-      ...band.querySelectorAll<HTMLElement>(".pg-actor"),
-      ...band.querySelectorAll<HTMLElement>(".pg-item"),
-    ];
-    for (const root of roots) {
-      const id = root.classList.contains("pg-actor")
-        ? root.dataset.pgId ?? ""
-        : `item:${[...band.querySelectorAll(".pg-item")].indexOf(root)}`;
-      for (const animation of root.getAnimations({ subtree: true })) {
-        if (this.restoredAnimations.has(animation)) continue;
-        const target = (animation.effect as KeyframeEffect | null)?.target;
-        if (!(target instanceof Element) || this.animationOwner(band, target) !== id) continue;
-        const named = animation as Animation & { animationName?: string; transitionProperty?: string };
-        const list = queues.get(`${id}\0${named.animationName || named.transitionProperty || "?"}`);
-        const time = list?.shift();
-        this.restoredAnimations.add(animation);
-        if (time === undefined) {
-          try { animation.cancel(); } catch { /* 스냅샷에 없는 등장은 진행으로 세지 않는다. */ }
-          continue;
-        }
-        try { animation.currentTime = time; } catch { /* 끝난 전이는 건너뛴다. */ }
-        try { if (play) animation.play(); else animation.pause(); } catch { /* 이미 끝난 경우. */ }
-      }
-    }
+    this.publish();
   }
 
   setWatching(value: boolean): void {
@@ -1097,6 +1012,21 @@ function sceneParking(): HTMLElement {
   dock.className = "pg-scene-park";
   document.body.appendChild(dock);
   return dock;
+}
+
+/**
+ * 장면을 다른 부모로 옮긴다. `moveBefore` 는 노드를 떼지 않고 옮겨 CSS 애니메이션·전이 객체가 그대로 남는다
+ * (Chromium·Electron Desktop). 없는 엔진은 일반 이동으로 물러나며, 그때 CSS 애니메이션은 처음부터 다시 돈다.
+ */
+function moveScene(parent: HTMLElement, host: HTMLElement): void {
+  const atomic = (parent as HTMLElement & { moveBefore?: (node: Node, child: Node | null) => void }).moveBefore;
+  if (typeof atomic === "function" && parent.isConnected && host.isConnected) {
+    try {
+      atomic.call(parent, host, null);
+      return;
+    } catch { /* 문서가 다르면 일반 이동으로 물러난다. */ }
+  }
+  parent.appendChild(host);
 }
 
 function ensureSceneHost(): HTMLDivElement {
@@ -1222,9 +1152,8 @@ export function NewSessionPlayground() {
     const attach = () => {
       const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
       if (!layer) { frame = requestAnimationFrame(attach); return; }
-      // 노드를 옮기면 CSS 애니메이션이 0 으로 다시 시작한다. 슬롯에 붙인 뒤에 시각을 되돌린다.
       host.classList.remove("is-parked");
-      slot.appendChild(host);
+      moveScene(slot, host);
       stage.resume();
       cleanup = bindPlayground(layer, stage);
     };
@@ -1234,7 +1163,7 @@ export function NewSessionPlayground() {
       cleanup();
       stage.park();
       host.classList.add("is-parked");
-      sceneParking().appendChild(host);
+      moveScene(sceneParking(), host);
     };
   }, [stage]);
   return <div ref={slotRef} className="new-session-playground-slot" aria-hidden="true" />;
@@ -1245,15 +1174,6 @@ function PlaygroundScene() {
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
   const [, setVersion] = useState(0);
   const stage = acquireSessionStage();
-  const seenEpoch = useRef(0);
-  useLayoutEffect(() => {
-    if (stage.animEpoch === 0 || seenEpoch.current === stage.animEpoch) return;
-    seenEpoch.current = stage.animEpoch;
-    const play = !stage.isHeld;
-    stage.applyAnims(play);
-    // 정적 얼굴의 CSS 애니메이션은 이 효과 뒤에 생긴다. 한 프레임 뒤 같은 시각으로 다시 멈춘다.
-    if (!play) requestAnimationFrame(() => { if (stage.isHeld) stage.applyAnims(false); });
-  });
   // 그리기 알림은 첫 렌더에서 바로 연결한다. effect 까지 미루면 첫 setup 의 publish 가 버려지고 밴드가 안 선다.
   sessionPublish = (sync?: boolean) => {
     const run = () => setVersion((value) => value + 1);
@@ -1291,13 +1211,9 @@ function PlaygroundScene() {
               <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style} data-pg-id={actor.cast.id} data-pg-face={actor.cast.key} data-pg-flourish={actor.flourish ?? ""}>
                 <div key={actor.flourish === "slide-in" || ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={rideName}>
                   <div key={actor.flourish ?? "pop"} className={popName}>
-                    {stage.isHeld && stage.faceHtml[actor.cast.id] ? (
-                      <div key="held" className={`pg-gait${actor.walking ? " is-walking" : ""}`} dangerouslySetInnerHTML={{ __html: stage.faceHtml[actor.cast.id] ?? "" }} />
-                    ) : (
-                      <div key="live" className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
-                        <MongleAvatar base={actor.cast.base} tone={actor.cast.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
-                      </div>
-                    )}
+                    <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
+                      <MongleAvatar base={actor.cast.base} tone={actor.cast.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
+                    </div>
                   </div>
                 </div>
                 {actor.ride ? null : <div className="pg-shadow" />}
