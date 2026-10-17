@@ -1030,6 +1030,8 @@ function moveScene(parent: HTMLElement, host: HTMLElement): void {
 }
 
 function ensureSceneHost(): HTMLDivElement {
+  // 보관소는 장면과 함께 미리 세운다. 처음 떠나는 순간에 막 만든 보관소로 옮기면 걷던 전이가 끊긴다(실측).
+  sceneParking();
   if (!sceneHost || !sceneRoot) {
     const host = document.createElement("div");
     host.className = "pg-scene-host";
