@@ -39,14 +39,14 @@ Here `<e2e-dir>` means the **Console slot**, `<owned-run>/console`, not the pare
 
 ## Serve bundle freshness
 
-For a host-side change exercised by an Operation, apply the [paid-run content gate](setup.md#before-a-paid-or-long-run) to the `serve` bundle, not just the client asset name or the package build. Use the [launcher check's](#headless-claude-code-through-the-built-launcher) change-specific identifier/literal selection and return-code rules, but count in the host artifact from the target worktree root:
+For a host-side change exercised by an Operation or a [headless turn](#headless-claude-code-against-the-owned-console), apply the [paid-run content gate](setup.md#before-a-paid-or-long-run) to the `serve` bundle, not just the client asset name or the package build. From the target worktree root, count a string the change adds and the bundle keeps, an identifier or literal rather than a comment:
 
 ```bash
 OUT=$(grep -cF -- '<string the change adds>' runtime/fleet-console/dist/cli.mjs); rc=$?
 printf '%s\nrc=%s\n' "$OUT" "$rc"
 ```
 
-On failure, run `pnpm --filter @dotobokuri/fleet-console build` in that worktree and check again; if it still fails, stop before the paid call. Restart the owned server after the build and [confirm its absolute process path](#absolute-paths-or-you-test-the-wrong-build): checking the file does not update a running host. This check covers code included in `cli.mjs`, not a client asset or a separately emitted plugin bundle; check the artifact that actually contains the change instead.
+`rc=0` means the bundle has it. `rc=1` (count 0) or `rc=2` (no bundle) means it does not. On failure, run `pnpm --filter @dotobokuri/fleet-console build` in that worktree and check again; if it still fails, stop before the paid call. Restart the owned server after the build and [confirm its absolute process path](#absolute-paths-or-you-test-the-wrong-build): checking the file does not update a running host. This check covers code included in `cli.mjs`, not a client asset or a separately emitted plugin bundle; check the artifact that actually contains the change instead.
 
 ## Serve with the capture and model levers already set
 
@@ -251,55 +251,50 @@ gateway — so a single clean run proves nothing.
 Use the browser path when the question involves Console — launch wiring, PTY, plugin
 routes, what the operator actually sees.
 
-## Headless Claude Code through the built launcher
+## Headless Claude Code against the owned Console
 
-Between the runner and a real Operation sits a headless Claude Code turn through a worktree's
-own `fleet` launcher. Use it when the behavior depends on what the real client sends back —
-its own thinking blocks and signatures, real tool results, multi-turn `--resume` — but not on
-Console UI. It needs no Console process: the launcher starts its own gateway on a temporary
-loopback port.
+Between the runner and a real Operation sits a headless `claude -p` turn against the owned
+Console's in-process gateway. Use it when the behavior depends on what the real client sends
+back — its own thinking blocks and signatures, real tool results, multi-turn `--resume` — but
+not on Console UI. The shell `fleet` no longer runs Claude Code: `fleet.mjs -p` exits 1 with
+`Unknown fleet command: -p`, and `fleet gateway` only configures (`models`, `status`, `set`).
 
-For paid runs, apply the [runtime-content preflight](setup.md#before-a-paid-or-long-run):
-before the `fleet.mjs -p` command below, confirm that this worktree's
-`runtime/fleet-console/dist/fleet.mjs` contains the change under test; a green package
-build elsewhere does not show it. From the worktree root, count a string the change adds
-and the bundle keeps, an identifier or literal rather than a comment:
-
-```bash
-grep -cF -- '<string the change adds>' runtime/fleet-console/dist/fleet.mjs; echo "rc=$?"
-```
-
-`rc=0` means the bundle has it. `rc=1` (count 0) or `rc=2` (no bundle) means it does not:
-run `pnpm --filter @dotobokuri/fleet-console build` in this worktree and count again. If it
-is still absent, stop before the paid turn and report that.
-
-Start it from a clean environment, because an agent session inherits its parent Console's
-slot variables and pnpm's `INIT_CWD` (see **Isolated Development Data** in
-`docs/fleet-development-reference.md`), and the launcher otherwise writes the real
-`~/.claude` (`cache/gateway-models.json`, `projects/`):
+Boot the owned Console as in [Serve with the capture and model levers](#serve-with-the-capture-and-model-levers-already-set),
+setting any `FLEET_GATEWAY_WIRE_LOG` or `FLEET_AI_GATEWAY_MODEL` on that `serve`, and take
+`<port>` with the [fixed lock read](setup.md#read-the-lock-without-the-token). For paid runs,
+the change under test must be in that host: apply the [serve bundle check](#serve-bundle-freshness).
+The wrapper refuses `--set ANTHROPIC_BASE_URL`, so point Claude Code at the gateway with a
+settings file in the run directory, and start it through the wrapper from a clean environment,
+because an agent session inherits its parent Console's slot variables and pnpm's `INIT_CWD`
+(see **Isolated Development Data** in `docs/fleet-development-reference.md`):
 
 ```bash
+printf '{"env":{"ANTHROPIC_BASE_URL":"http://127.0.0.1:<port>/api/v1/ai-gateway"}}' > <owned-run>/gateway-settings.json
 cd <owned-theater> && node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
-  --run-dir <owned-run> --set CLAUDE_BIN=<claude-abs-path> --set ANTHROPIC_API_KEY=sk-ant-fleet-local \
-  -- node <worktree>/runtime/fleet-console/dist/fleet.mjs -p '<prompt>' \
+  --run-dir <owned-run> --bin <claude-abs-path> --set ANTHROPIC_API_KEY=sk-ant-fleet-local \
+  -- claude -p '<prompt>' --settings <owned-run>/gateway-settings.json \
   --model 'claude-gateway--<provider>--<model>' --effort <level> --output-format stream-json --verbose
 ```
+
+Before the paid turn, confirm the route at no cost with the same command and a model id the
+slot does not expose, such as `claude-gateway--nope--nope`: the turn's text must read
+`API Error: 400 Unknown AI gateway model: …`. `Invalid API key` means the request went to
+Anthropic instead, because the settings file did not apply.
 
 - Complete the same folder-trust review first: `-p` does not show the interactive trust
   dialog. Reuse the preflight's owned run directory and the `<claude-abs-path>` recorded for
   the serve route above, and add required platform variables through the
-  [wrapper](setup.md#keep-the-real-home-out), which runs the launcher in the current directory.
-- The placeholder key only has to carry the `sk-ant-` prefix for this headless launcher
+  [wrapper](setup.md#keep-the-real-home-out), which runs Claude Code in the current directory.
+- The placeholder key only has to carry the `sk-ant-` prefix for this headless
   path: the gateway uses its own authorized provider credentials for gateway models.
   It is not a real provider credential and does not make a fresh slot authenticated.
   Do not transplant this example into chat: the SDK launch helper removes
   `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`.
 - Pass `--effort` explicitly and confirm `reasoning.effort` in the request body. A slot's
   `efforts` list controls what the picker offers; it does not pin the effort on the wire.
-- The launcher's wire log is `<slot>/logs/fleet-cli-gateway-wire.jsonl` when the slot's
-  toggle is on — not the Console's `ai-gateway/wire-log.jsonl`. It rotates at 16 MB with one
-  `.1` backup, and one tool-heavy run can write several MB: record the file's size and inode
-  before a run and slice from that offset afterwards, joining the `.1` tail if the inode changed.
+- The wire log is the Console's, as `FLEET_GATEWAY_WIRE_LOG` above describes. One tool-heavy
+  run can write several MB of its 16 MB rotation: record the file's size and inode before a run
+  and slice from that offset afterwards, joining the `.1` tail if the inode changed.
 - Claude Code resends earlier thinking blocks only while the model is unchanged; after
   `--resume --model <other>` it drops them. A defect that needs one provider's reasoning
   metadata to reach another provider is therefore reproduced by keeping the Claude Code model
