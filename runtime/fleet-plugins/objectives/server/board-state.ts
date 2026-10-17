@@ -79,12 +79,35 @@ export function createdByCommodore(objective: OperatorFacts, find: (objectiveId:
 }
 
 /**
+ * 정체 판단의 시간 조건을 뺀 관문 — `stalledObjectives`와 에피소드 판별이 함께 쓴다.
+ * 관측할 수 없는 세션을 유휴라고 추측하지 않는다.
+ */
+export function stallGate(objective: Objective): boolean {
+  return !!objective.commenced && !objective.done && !objective.removed && !objective.planning && !objective.awaitingReview && !objective.awaitingHandoff && !objective.decisionRequest && !objective.criteriaProposals.length && objective.missions.some((mission) => !mission.done);
+}
+
+/**
+ * 정체 에피소드의 서명 — 통지한 에피소드가 같은 조건으로 다시 보여도 깨우지 않기 위한 것.
+ * 보드 시계와 일하는 구성원 명단으로만 삼는다: 통지 때문에 생긴 지휘관 턴은 서명을 바꾸지 않으므로
+ * 같은 에피소드의 되울림이 새 정체가 되지 않는다. 보드가 앞으로 가거나 일하는 명단이 바뀌면 새 에피소드다.
+ * 관문을 못 넘으면 null.
+ */
+export function stallEpisode(objective: Objective, observe: BoardObserver): string | null {
+  if (!stallGate(objective)) return null;
+  const workingIds = objective.members
+    .filter((member) => member.sessionName !== null && ((observation) => !!observation && working(observation))(observe(member.id)))
+    .map((member) => member.id)
+    .sort();
+  return `${objective.boardUpdatedAt ?? objective.createdAt}|${workingIds.join(",")}`;
+}
+
+/**
  * 임무가 남은 목표 중 정체 — 구성원이 일하는 동안 지휘관이 `COMMANDER_REST_MS` 이상 쉬었거나, 보드가 `STALL_MS` 넘게 그대로인데 모두 쉰다.
  * 관측할 수 없는 세션을 유휴라고 추측하지 않는다.
  */
 export function stalledObjectives(objectives: readonly Objective[], observe: BoardObserver, now = Date.now()): readonly string[] {
   return objectives.filter((objective) => {
-    if (!objective.commenced || objective.done || objective.removed || objective.planning || objective.awaitingReview || objective.awaitingHandoff || objective.decisionRequest || objective.criteriaProposals.length || !objective.missions.some((mission) => !mission.done)) return false;
+    if (!stallGate(objective)) return false;
     const commander = observe(objective.id);
     if (!commander || !resting(commander)) return false;
     const members = objective.members.filter((member) => member.sessionName !== null).map((member) => observe(member.id));

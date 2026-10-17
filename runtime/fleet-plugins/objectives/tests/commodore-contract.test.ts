@@ -899,6 +899,17 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent.at(-1)).toContain("1 stalled objective: Remote pairing");
       expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
       expect(restNotices).toEqual(["o1"]);
+      // 통지 때문에 생긴 지휘관 턴은 같은 에피소드다 — 15분을 다시 쉬어도 깨우지 않고 통지도 없다.
+      const sentAfterFirstStall = sessions[0]!.sent.length;
+      const tokensAfterFirstStall = tokens().length;
+      commanderActivity.set("o1", "running");
+      await vi.advanceTimersByTimeAsync(STALL_CHECK_MS);
+      commanderActivity.delete("o1");
+      await vi.advanceTimersByTimeAsync(COMMANDER_REST_MS + STALL_CHECK_MS + COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(sentAfterFirstStall);
+      expect(tokens()).toHaveLength(tokensAfterFirstStall);
+      expect(restNotices).toEqual(["o1"]);
+      expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
 
       // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
       await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS + COALESCE_MS + 10);
