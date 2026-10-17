@@ -41,6 +41,22 @@ export function hasGroupConversation(operationId: string): boolean {
   return isGroupConversationRoot(operationId) || getState().nestedOperations.some((operation) => operation.parentOperationId === operationId);
 }
 
+/**
+ * 턴 접기가 접을 구성원 말이 생길 수 있는가. `foldTimeline` 은 `speaker.kind === "member"` 인 말만 접으므로,
+ * 하위 Operation(살아 있는 구성원)이나 명부의 구성원이 있을 때 참이다. 말이 아직 없어도 참이다 — 접기는 다음 구성원 말에 걸린다.
+ * 지휘관만 있는 대화는 거짓이다. 눌러도 접히는 말이 없다.
+ */
+export function conversationHasFoldableMembers(operationId: string): boolean {
+  if (getState().nestedOperations.some((operation) => operation.parentOperationId === operationId)) return true;
+  const members = boundClusterSource.get().find((cluster) => cluster.conversation?.operationId === operationId)?.conversation?.members ?? [];
+  return members.some((member) => member.kind === "member");
+}
+
+export function useConversationHasFoldableMembers(operationId: string): boolean {
+  const read = () => conversationHasFoldableMembers(operationId);
+  return useSyncExternalStore(subscribeGroupConversation, read, read);
+}
+
 function subscribeGroupConversation(listener: () => void): () => void {
   const disposeClusters = subscribeGroupClusters(listener);
   const disposeConsole = subscribeConsole(listener);

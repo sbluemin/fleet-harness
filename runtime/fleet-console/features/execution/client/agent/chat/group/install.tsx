@@ -28,7 +28,7 @@ import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useOperationLinks } from "../../operation-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
-import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
@@ -144,9 +144,10 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+/** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 보기 캡슐 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
   if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
+  if (!conversationHasFoldableMembers(context.operation.id)) return null;
   return <GroupFoldToggle language={context.language} />;
 }
 

@@ -42,7 +42,7 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
-import { installGroupTimeline, useHasGroupConversation } from "./chat/group-timeline-store.js";
+import { installGroupTimeline, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
@@ -623,8 +623,8 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
   const computerUseEnabled = readComputerUseEnabled(context.operation.payload);
   const [usePending, setUsePending] = React.useState(false);
   const canSwitch = chatMode || session.status !== "dormant";
-  // 그룹 루트의 채팅이면 「턴 접기」를 ⋮ 스위치 행으로 둔다 — 상단 막대는 셸 몫이라 그룹 대화가 자기 머리를 그리지 않는다.
-  const groupChat = useHasGroupConversation(context.operationId) && chatMode;
+  // 「턴 접기」는 접힐 구성원 말이 있을 때만 — 데스크톱 머리 버튼과 같은 판정이다.
+  const canFoldTurns = useConversationHasFoldableMembers(context.operationId) && chatMode;
   const foldTurns = useFoldTurns();
 
   const toTerminal = async () => {
@@ -672,7 +672,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: () => { void (chatMode ? toTerminal() : toChat()); },
     });
   }
-  if (groupChat) {
+  if (canFoldTurns) {
     items.push({
       id: "agent-fold-turns",
       label: getGroupT(context.language ?? "en")("group.fold.toggle"),
@@ -691,7 +691,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: toggleComputerUse,
     });
   }
-  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${groupChat}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${canFoldTurns}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
   return null;
 }
 

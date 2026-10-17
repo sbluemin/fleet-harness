@@ -1388,14 +1388,10 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
             <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
           ) : null}
         </button>
+        {/* Operation 메뉴(「...」)는 이 줄에 세우지 않는다 — 같은 메뉴가 사이드바 줄의 우클릭으로 열린다.
+            자식 사이에 공백 텍스트가 있으면 칸이 모두 null 일 때도 :empty 가 빈 캡슐을 못 걷는다. */}
         {hasViewCapsule || shelf !== null ? (
-          <span className="conversation-pill-actions">
-            <OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />
-            {captionView}
-            {viewSwitch}
-            {shelf}
-            {/* Operation 메뉴(「...」)는 이 줄에 세우지 않는다 — 같은 메뉴가 사이드바 줄의 우클릭으로 열린다. */}
-          </span>
+          <span className="conversation-pill-actions"><OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />{captionView}{viewSwitch}{shelf}</span>
         ) : null}
         {tools(toolsLead)}
       </div>
