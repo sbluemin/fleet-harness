@@ -12,8 +12,10 @@ import {
   createMuseCodeOAuth,
   createXaiOAuth,
   MUSE_CODE_AUTH_PROVIDER_ID,
+  SUBSCRIPTION_SIGNED_OUT_ENTRY,
   XAI_AUTH_PROVIDER_ID,
 } from "../src/oauth/index.js";
+import { readBoundedFile, type CredentialResolverDeps } from "../src/transport/credentials.js";
 
 function jwt(payload: Record<string, unknown>): string {
   return `e30.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
@@ -255,6 +257,133 @@ describe("Fleet-owned subscription sign-in", () => {
     } finally {
       quotaSide.dispose();
       inferenceSide.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  // Fleet 항목이 있으면 CLI를 열지 않고, 없을 때만 읽는다. 로그아웃 표식과 만료·손상은 CLI로 계정을 바꾸지 않는다.
+  it("uses a Codex CLI token only when the Console entry is absent, and leaves that file unchanged", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-cli-fallback-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const codexHome = path.join(directory, "codex-cli");
+    fs.mkdirSync(codexHome);
+    const vendorPath = path.join(codexHome, "auth.json");
+    const vendorBody = `${JSON.stringify({ tokens: { access_token: "cli-access", account_id: "cli-acct" } })}\n`;
+    fs.writeFileSync(vendorPath, vendorBody);
+    let hold: Promise<void> | undefined;
+    let reads = 0;
+    const cliCredentials: CredentialResolverDeps = {
+      platform: "darwin",
+      homedir: () => path.join(directory, "no-home"),
+      env: { CODEX_HOME: codexHome },
+      readBounded: async (filePath, maxBytes) => {
+        reads += 1;
+        if (hold) await hold;
+        return readBoundedFile(filePath, maxBytes);
+      },
+      execFile: async () => { throw new Error("vendor lookup must not spawn"); },
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ error: "invalid_grant" }, { status: 400 }));
+    const oauth = createCodexOAuth({ authService, fetch: fetchImpl, cliCredentials, now: () => Date.parse("2026-10-17T00:00:00Z") });
+    try {
+      fs.writeFileSync(vendorPath, `${JSON.stringify({ tokens: { access_token: "cli-access" } })}\n`);
+      await expect(oauth.readSubscription()).resolves.toBeNull();
+      fs.writeFileSync(vendorPath, vendorBody);
+      await expect(oauth.readSubscription()).resolves.toEqual({ accessToken: "cli-access", accountId: "cli-acct" });
+      expect(fs.readFileSync(vendorPath, "utf8")).toBe(vendorBody);
+      expect(fs.existsSync(path.join(directory, "auth.json"))).toBe(false);
+      const readsAfterCli = reads;
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+        key: "fleet-access", type: "oauth", refreshToken: "fleet-refresh",
+        accessExpiresAt: Date.parse("2026-10-18T00:00:00Z"), accountId: "fleet-acct", version: 1,
+      });
+      await expect(oauth.readSubscription()).resolves.toEqual({ accessToken: "fleet-access", accountId: "fleet-acct" });
+      expect(reads).toBe(readsAfterCli);
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+        key: "fleet-access", type: "oauth", refreshToken: "fleet-refresh",
+        accessExpiresAt: Date.parse("2026-10-16T00:00:00Z"), accountId: "fleet-acct", version: 1,
+      });
+      await expect(oauth.readSubscription()).resolves.toBeNull();
+      expect(reads).toBe(readsAfterCli);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, { key: "broken", type: "not-oauth", version: 1 });
+      await expect(oauth.fetchUsage()).rejects.toThrow(/could not be used/);
+      expect(reads).toBe(readsAfterCli);
+      await authService.deleteApiKey(CODEX_AUTH_PROVIDER_ID);
+      let releaseLogin!: () => void;
+      hold = new Promise<void>((resolve) => { releaseLogin = resolve; });
+      const duringLogin = oauth.readSubscription();
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+        key: "fleet-new", type: "oauth", refreshToken: "fleet-new-refresh",
+        accessExpiresAt: Date.parse("2026-10-18T00:00:00Z"), accountId: "fleet-new", version: 1,
+      });
+      releaseLogin();
+      hold = undefined;
+      await expect(duringLogin).resolves.toEqual({ accessToken: "fleet-new", accountId: "fleet-new" });
+      expect(await authService.getEntry(CODEX_AUTH_PROVIDER_ID)).toMatchObject({ key: "fleet-new" });
+      await authService.deleteApiKey(CODEX_AUTH_PROVIDER_ID);
+      let release!: () => void;
+      hold = new Promise<void>((resolve) => { release = resolve; });
+      const pending = oauth.readSubscription();
+      await oauth.logout();
+      release();
+      hold = undefined;
+      await expect(pending).resolves.toBeNull();
+      expect(await authService.getEntry(CODEX_AUTH_PROVIDER_ID)).toEqual(SUBSCRIPTION_SIGNED_OUT_ENTRY);
+      expect(await authService.getApiKey(CODEX_AUTH_PROVIDER_ID)).toBe("");
+      await expect(oauth.readSubscription()).resolves.toBeNull();
+      expect(fs.readFileSync(vendorPath, "utf8")).toBe(vendorBody);
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  // 첫 xAI 프로필이 만료면 다음 프로필로 바꾸지 않고, 401이어도 벤더 refresh를 부르지 않는다.
+  it("does not refresh or rewrite a Grok CLI file, or switch to a later profile", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xai-cli-fallback-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const grokHome = path.join(directory, "grok-cli");
+    fs.mkdirSync(grokHome);
+    const vendorPath = path.join(grokHome, "auth.json");
+    const expiredFirst = {
+      "https://auth.x.ai::first": {
+        oidc_issuer: "https://auth.x.ai", key: "expired-access", expires_at: "2020-01-01T00:00:00.000Z",
+      },
+      "https://auth.x.ai::second": {
+        oidc_issuer: "https://auth.x.ai", key: "other-access", expires_at: "2099-01-01T00:00:00.000Z", user_id: "user-2",
+      },
+    };
+    const vendorBody = `${JSON.stringify(expiredFirst, null, 2)}\n`;
+    fs.writeFileSync(vendorPath, vendorBody);
+    const cliCredentials: CredentialResolverDeps = {
+      platform: "darwin",
+      homedir: () => path.join(directory, "no-home"),
+      env: { GROK_HOME: grokHome },
+      readBounded: readBoundedFile,
+      execFile: async () => { throw new Error("vendor lookup must not spawn"); },
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response("{}", { status: 401 }));
+    const oauth = createXaiOAuth({ authService, fetch: fetchImpl, cliCredentials, now: () => Date.parse("2026-10-17T00:00:00Z") });
+    try {
+      await expect(oauth.readSubscriptionToken()).resolves.toBeNull();
+      expect(fetchImpl).not.toHaveBeenCalled();
+      const usable = {
+        "https://auth.x.ai::only": {
+          oidc_issuer: "https://auth.x.ai", key: "cli-access", expires_at: "2099-01-01T00:00:00.000Z", user_id: "user-1",
+        },
+      };
+      const usableBody = `${JSON.stringify(usable, null, 2)}\n`;
+      fs.writeFileSync(vendorPath, usableBody);
+      await expect(oauth.readSubscriptionToken()).resolves.toBe("cli-access");
+      await expect(oauth.fetchUsage()).resolves.toEqual({ status: "not_connected" });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("/v1/billing");
+      await expect(oauth.readSubscriptionToken()).resolves.toBeNull();
+      expect(fs.readFileSync(vendorPath, "utf8")).toBe(usableBody);
+      expect(fs.existsSync(path.join(directory, "auth.json"))).toBe(false);
+    } finally {
+      oauth.dispose();
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });

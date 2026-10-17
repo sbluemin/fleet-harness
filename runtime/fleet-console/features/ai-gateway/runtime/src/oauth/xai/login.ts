@@ -1,4 +1,6 @@
 import type { AuthStorageEntry } from "../../auth/types.js";
+import type { CredentialResolverDeps } from "../../transport/credentials.js";
+import { resolveXaiCliAuth } from "../../upstream/xai/credentials.js";
 import { fetchXaiUsage } from "../../upstream/xai/quota.js";
 import {
   createDeviceCodeClient,
@@ -22,10 +24,15 @@ import {
   XAI_OAUTH_TOKEN_URL,
 } from "./config.js";
 
-export type XaiAuthEntry = SubscriptionOAuthEntry & { readonly refreshToken: string };
+export type XaiAuthEntry = SubscriptionOAuthEntry & {
+  readonly refreshToken?: string;
+  readonly userId?: string;
+};
 
 export interface XaiOAuthDeps extends SubscriptionOAuthDeps {
   readonly fetch?: typeof fetch;
+  /** 있으면 Fleet 항목이 없을 때만 Grok CLI `auth.json`을 읽는다. 갱신하거나 쓰지 않는다. */
+  readonly cliCredentials?: CredentialResolverDeps;
 }
 
 /** 승인 페이지는 xAI의 https 페이지여야 한다. 다른 호스트로 사용자를 보내지 않는다. */
@@ -46,7 +53,8 @@ export function parseXaiAuthEntry(entry: AuthStorageEntry): XaiAuthEntry | undef
 /**
  * xAI(SuperGrok) Console 로그인. RFC 8628 device 흐름이며, 갱신 토큰은 회전될 수 있다 —
  * 응답이 새 값을 주면 그것으로 바꾸고, 없으면 요청에 쓴 값을 유지한다. 벤더 `~/.grok`
- * 파일은 읽지도 쓰지도 않는다. `x-grok-client-version`의 CLI 버전 탐색은 자격과 별개다.
+ * 파일은 Fleet 항목이 없을 때만 읽고, 갱신하거나 쓰지 않는다. `x-grok-client-version`의
+ * CLI 버전 탐색은 자격과 별개다.
  */
 export function createXaiOAuth(deps: XaiOAuthDeps) {
   const now = deps.now ?? Date.now;
@@ -58,7 +66,7 @@ export function createXaiOAuth(deps: XaiOAuthDeps) {
       ? now() + expiresIn * 1000
       : jwtExpiresAt(accessToken) ?? now() + XAI_FALLBACK_ACCESS_TTL_MS;
 
-  async function refresh(entry: XaiAuthEntry, signal: AbortSignal): Promise<SubscriptionRefreshOutcome> {
+  async function refresh(entry: XaiAuthEntry & { readonly refreshToken: string }, signal: AbortSignal): Promise<SubscriptionRefreshOutcome> {
     const { status, body } = await requestOAuthJson(fetchImpl, XAI_OAUTH_TOKEN_URL, {
       method: "POST", signal,
       headers: { Accept: "application/json", "Content-Type": "application/x-www-form-urlencoded" },
@@ -74,6 +82,7 @@ export function createXaiOAuth(deps: XaiOAuthDeps) {
     };
   }
 
+  const cli = deps.cliCredentials;
   const oauth = createSubscriptionOAuth<XaiAuthEntry>({
     provider: "xai",
     label: "xAI",
@@ -99,8 +108,24 @@ export function createXaiOAuth(deps: XaiOAuthDeps) {
       };
     },
     parseEntry: parseXaiAuthEntry,
+    rememberSignOut: true,
+    readAbsent: cli === undefined ? undefined : async () => {
+      const result = await resolveXaiCliAuth(cli, { now });
+      if (result.status !== "ok") return undefined;
+      const { accessToken, expiresAt, userId } = result.credentials;
+      return {
+        key: accessToken,
+        type: "oauth",
+        accessExpiresAt: expiresAt ?? Number.MAX_SAFE_INTEGER,
+        version: 1,
+        ...(userId === undefined ? {} : { userId }),
+      };
+    },
     refresh,
-    fetchQuota: (entry) => fetchXaiUsage({ accessToken: entry.key }, { fetch: fetchImpl, now }),
+    fetchQuota: (entry) => fetchXaiUsage(
+      { accessToken: entry.key, ...(entry.userId === undefined ? {} : { userId: entry.userId }) },
+      { fetch: fetchImpl, now },
+    ),
   }, deps);
 
   return {

@@ -24,6 +24,7 @@ import {
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
   createProviderAuthService,
+  defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
   setWireLogTarget,
   wireLogEnabled,
@@ -132,10 +133,10 @@ export function startAiGateway(ctx: GatewayStartContext) {
   ctx.host.lifecycle.registerCleanup(() => museCode.dispose());
   registerConsoleOAuthRoutes(ctx, "muse-code", "Muse Code", museCode);
   // 추론과 quota가 같은 인스턴스를 써야 갱신이 한 번으로 묶인다.
-  const codex = createCodexOAuth({ authService, onQuota: (value) => quota.record("codex", value) });
+  const codex = createCodexOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("codex", value) });
   ctx.host.lifecycle.registerCleanup(() => codex.dispose());
   registerConsoleOAuthRoutes(ctx, "codex", "Codex", codex);
-  const xai = createXaiOAuth({ authService, onQuota: (value) => quota.record("xai", value) });
+  const xai = createXaiOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
   const cursor = createCursorOAuth({ authService, onQuota: (value) => quota.record("cursor", value) });

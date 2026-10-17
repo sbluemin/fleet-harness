@@ -1,4 +1,6 @@
 import type { AuthStorageEntry } from "../../auth/types.js";
+import type { CredentialResolverDeps } from "../../transport/credentials.js";
+import { resolveCodexCredentials } from "../../upstream/codex/credentials.js";
 import { fetchCodexUsage } from "../../upstream/codex/quota.js";
 import {
   jwtPayload,
@@ -30,12 +32,14 @@ import {
 
 /** `accountId`는 ChatGPT 워크스페이스(구독 풀)다. 바꾸려면 다시 로그인한다. */
 export interface CodexAuthEntry extends SubscriptionOAuthEntry {
-  readonly refreshToken: string;
+  readonly refreshToken?: string;
   readonly accountId: string;
 }
 
 export interface CodexOAuthDeps extends SubscriptionOAuthDeps {
   readonly fetch?: typeof fetch;
+  /** 있으면 Fleet 항목이 없을 때만 Codex CLI `auth.json`을 읽는다. 쓰지 않는다. */
+  readonly cliCredentials?: CredentialResolverDeps;
 }
 
 const JSON_HEADERS = { Accept: "application/json", "Content-Type": "application/json" };
@@ -96,7 +100,7 @@ export function createCodexOAuth(deps: CodexOAuthDeps) {
     return { state: "authorized", ...grant, accountId };
   }
 
-  async function refresh(entry: CodexAuthEntry, signal: AbortSignal): Promise<SubscriptionRefreshOutcome> {
+  async function refresh(entry: CodexAuthEntry & { readonly refreshToken: string }, signal: AbortSignal): Promise<SubscriptionRefreshOutcome> {
     const { status, body } = await requestOAuthJson(fetchImpl, CODEX_OAUTH_TOKEN_URL, {
       method: "POST", headers: FORM_HEADERS, signal,
       body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: entry.refreshToken, client_id: CODEX_OAUTH_CLIENT_ID }),
@@ -105,6 +109,7 @@ export function createCodexOAuth(deps: CodexOAuthDeps) {
     return { status: "ok", grant: tokenGrant(status, body, now()) };
   }
 
+  const cli = deps.cliCredentials;
   const oauth = createSubscriptionOAuth<CodexAuthEntry>({
     provider: "codex",
     label: "Codex",
@@ -144,6 +149,19 @@ export function createCodexOAuth(deps: CodexOAuthDeps) {
       };
     },
     parseEntry: parseCodexAuthEntry,
+    rememberSignOut: true,
+    readAbsent: cli === undefined ? undefined : async () => {
+      const credentials = await resolveCodexCredentials(cli);
+      // account id가 없으면 추론과 quota의 선택이 갈라진다. 둘 다 쓰지 않는다.
+      if (credentials?.accountId === undefined) return undefined;
+      return {
+        key: credentials.accessToken,
+        type: "oauth",
+        accessExpiresAt: Number.MAX_SAFE_INTEGER,
+        accountId: credentials.accountId,
+        version: 1,
+      };
+    },
     refresh,
     fetchQuota: (entry) => fetchCodexUsage(
       { accessToken: entry.key, accountId: entry.accountId },

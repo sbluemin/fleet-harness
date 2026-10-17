@@ -587,7 +587,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       credential = cursorToken;
     } else if (target?.provider === "codex") {
-      // ChatGPT 구독 토큰은 Codex CLI가 저장해 둔 것을 읽는다. 자식에게는 넘기지 않는다.
+      // 호스트가 넘긴 reader가 Console 로그인 또는, 그 항목이 없을 때만, Codex CLI 파일을 고른다.
       const auth = await readAuth();
       if (!auth) {
         refuseProviderSignIn("No Codex sign-in was found. Sign in to Codex in Console first.");
