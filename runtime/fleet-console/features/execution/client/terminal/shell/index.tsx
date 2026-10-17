@@ -13,7 +13,6 @@ import { TerminalSurface, type TerminalCarryOver, type TerminalExitInfo } from "
 import type { TerminalFileLinks } from "../shared/terminal-file-links.js";
 import { DEFAULT_SHELL_KEY, endShellSession, getShellSessionSnapshot, readShellSession, useShellSession } from "./shell-session-store.js";
 import { requestShellOpenAt, requestShellRestartAt } from "@fleet-console/sdk/navigation/browser";
-import { ShellTheaterBadge } from "./shell-theater.js";
 import "./shell.css";
 
 /**
@@ -184,7 +183,6 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
   title: (ctx) => getT(ctx.language ?? "en")("terminal.kind.shell"),
   minPaneWidth: SHELL_MIN_PANE_WIDTH,
   render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
-  tools: (ctx) => React.createElement(ShellTheaterBadge, { ctx }),
   // 명령이 돌고 있는지는 닫는 그 순간 서버에 묻는다 — 서버는 어느 길(키·붙여넣기·IME·프로그램 입력)로 들어간 줄이든 실행된 것을
   // 알고, 프롬프트로 돌아올 때만 알리므로 브라우저의 스냅숏은 늦을 수 있다. 읽지 못하면 모르는 것이니 한 번 묻는다.
   confirmClose: async (closed) => {

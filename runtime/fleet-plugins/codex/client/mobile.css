@@ -30,4 +30,3 @@ html[data-mobile-scheme="light"] .codex-m-field { background: var(--m-surface); 
 .codex-m-sg::after { content: ""; position: absolute; left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 
 /* 리더 열이 모바일 화면에 설 때 — Theater 표식은 막대 부제가 대신한다. */
-[data-host-surface="mobile-screen"] .codex-doc-pane > .codex-theater-context { display: none; }
