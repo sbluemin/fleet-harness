@@ -79,11 +79,17 @@
   --handoff-duration: 420ms;
   /* 넘겨줄 때 마크·워드마크가 도착하는 자리. 대화 중심 화면 맨 위 줄(52px)의 세로 중심에 맞춘다.
      그 줄에는 브랜드가 없으므로 빈 자리에 내려앉는다. 기본 왼쪽은 space-3(12px). macOS는 Console이
-     비우는 신호등 76px에 space-3 12px를 더해 88px에서 시작한다. */
-  --brand-glyph-left: 12px;
+     비우는 신호등 76 DIP에 space-3 12px를 더한 자리(배율 1에서 88px)에서 시작한다.
+     배율: main이 스냅샷 zoom으로 알린다(entry-page.ts EntryZoom). --handoff-scale은 Console 문서 배율 ÷ 이 문서 배율이라
+     Console CSS px 값(맨 위 줄·글리프·space-3·간격)에 곱한다. 신호등 예약은 네이티브 DIP라 이 문서 배율(--entry-page-zoom)로만
+     나눈다 — Console의 calc(76px / var(--desktop-zoom) + var(--space-3))와 같은 DIP에 내려앉는다. 모르면 둘 다 1이다. */
+  --handoff-scale: 1;
+  --entry-page-zoom: 1;
+  --native-inset-left: 0px;
+  --brand-glyph-left: calc(var(--native-inset-left) / var(--entry-page-zoom) + 12px * var(--handoff-scale));
   --brand-mark-size: 72px;
 }
-:root[data-platform="darwin"] { --brand-glyph-left: 88px; }
+:root[data-platform="darwin"] { --native-inset-left: 76px; }
 /* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
 :root[data-scheme="light"] { color-scheme: light; }
 /* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console 라이트 테마의 값으로 바꿔 판독성을 지킨다. */
@@ -94,7 +100,7 @@ html, body { height: 100%; margin: 0; }
 body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
 
 /* 창을 끌 수 있는 자리. 높이는 대화 중심 화면 맨 위 줄(52px)과 같다. 그 줄(사이드바 컴팩트 줄)은 투명 오버레이라 아랫선이 없다. */
-.drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); -webkit-app-region: drag; }
+.drag-strip { position: fixed; inset: 0 0 auto; height: calc(var(--chrome-band-height) * var(--handoff-scale)); -webkit-app-region: drag; }
 
 .brand-mark {
   position: fixed;
@@ -160,9 +166,10 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .dev-tag.is-visible { display: inline-block; }
 
 /* 넘겨주기: 마크와 워드마크가 대화 중심 화면 맨 위 줄(52px)의 세로 중심으로 줄어들고, 나머지는 먼저 사라진다.
-   16px 마크의 중심은 y26(top 18), 13px 워드마크의 중심도 y26(top 19.5). 워드마크는 글리프에서 23px 떨어진다. */
-.is-handoff .brand-mark { top: 18px; left: var(--brand-glyph-left); width: 16px; height: 16px; }
-.is-handoff .wordmark { top: 19.5px; left: calc(var(--brand-glyph-left) + 23px); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14); letter-spacing: 0.01em; }
+   16px 마크의 중심은 y26(top 18), 13px 워드마크의 중심도 y26(top 19.5). 워드마크는 글리프에서 23px 떨어진다.
+   모두 Console CSS px 값이라 --handoff-scale을 곱한다 — 배율 1에서는 그대로다. */
+.is-handoff .brand-mark { top: calc(18px * var(--handoff-scale)); left: var(--brand-glyph-left); width: calc(16px * var(--handoff-scale)); height: calc(16px * var(--handoff-scale)); }
+.is-handoff .wordmark { top: calc(19.5px * var(--handoff-scale)); left: calc(var(--brand-glyph-left) + 23px * var(--handoff-scale)); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14 * var(--handoff-scale)); letter-spacing: 0.01em; }
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
 .is-handoff .brand-mark-beacon { animation: none; }
 

@@ -46,7 +46,7 @@ import type { DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
-import { createZoomState } from "./zoom-state.js";
+import { createZoomState, zoomFactorForLevel } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
 
@@ -626,6 +626,11 @@ async function boot(): Promise<void> {
       desktopVersion: app.getVersion(),
       consoleVersion: () => isPackaged ? readInstalledVersion(runtimePaths.latest) : null,
       palette: () => entryPalette,
+      // 진입 화면은 제 배율(대개 1)로 그려지고 Console 배율은 넘겨받은 뒤에야 적용된다(controls.onConsoleLoaded) —
+      // 그래서 넘겨받을 배율은 지금 창이 아니라 저장된 줌에서 읽는다.
+      zoom: () => window && !window.isDestroyed()
+        ? { page: window.consoleContents.getZoomFactor(), console: zoomFactorForLevel(zoomState.load()) }
+        : undefined,
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
