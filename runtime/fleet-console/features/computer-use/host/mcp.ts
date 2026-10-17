@@ -32,6 +32,8 @@ export interface ComputerUseMcpDeps {
    * 뜻이고, 그때만 기기 소유자를 루트 하나로 정규화해 참가자들이 직렬로 나눠 쓴다. 없으면 호출한 Operation 자신이다.
    */
   readonly useContext?: (operationId: string) => ComputerUseScope | null;
+  /** 공유 묶음에서 기기를 쓰는 참가자가 바뀌었다 — 호스트가 사용 스냅숏(조작자)을 다시 흘린다. */
+  readonly onActorChange?: () => void;
 }
 
 export interface ComputerUseScope {
@@ -284,7 +286,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const mine = AbortSignal.any([call.signal, controller.signal, ...(context.signal ? [context.signal] : [])]);
         const run = shared.tail.then(() => {
           if (mine.aborted || shared.lifetime.signal.aborted) return cancelled();
-          ownerActors.set(shared.label, scope.participantId);
+          if (ownerActors.get(shared.label) !== scope.participantId) { ownerActors.set(shared.label, scope.participantId); deps.onActorChange?.(); }
           return spec.execute(args, { ...context, sessionLabel: shared.label, signal: AbortSignal.any([shared.lifetime.signal, controller.signal]) });
         });
         shared.tail = run.then(() => undefined, () => undefined);

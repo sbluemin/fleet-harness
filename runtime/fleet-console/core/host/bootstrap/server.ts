@@ -863,6 +863,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     operations: () => operations.list(),
     resolveOperation: operations.get,
     useContext: useContext.resolve,
+    onActorChange: () => scheduleOperationUseBroadcast(),
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -931,8 +932,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const owner = computerUse.activeOwner();
     const computerOperation = owner && experiments.computerUse ? computerUseMcp.operationIdForOwner(owner) : null;
+    // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
+    const computerActor = owner && computerOperation ? computerUseMcp.actorForOwner(owner) : null;
     const browserOperations = browserService.status().operations.filter((id) => !!operations.get(id) && browserService.state(id).driving);
-    return { console: consoleOperations, computer: computerOperation, browser: browserOperations };
+    return { console: consoleOperations, computer: computerOperation, computerActor, browser: browserOperations };
   };
   /**
    * Console Use 확장면 중 서버가 소유하는 묶음 — Operation 저장소(이름·액센트·그룹), 삭제 유예(닫기), 사용 목록,
@@ -2269,6 +2272,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return {
       console: using.console,
       computer: using.computer ? [using.computer] : [],
+      computerActor: using.computerActor,
       browser: using.browser,
       requests: requests.filter((request) => live.has(request.operationId)),
       grants: { console: grants.console.filter((id) => live.has(id)), computer: grants.computer.filter((id) => live.has(id)) },

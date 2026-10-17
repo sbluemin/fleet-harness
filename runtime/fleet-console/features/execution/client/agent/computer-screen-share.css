@@ -58,3 +58,5 @@
 .computer-screen-share-retry { margin: 0 .75rem .75rem; padding: .35rem .6rem; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel-raised); color: var(--text-primary); cursor: pointer; font: inherit; }
 .computer-screen-share-retry:hover { border-color: var(--brass); }
 .computer-screen-share-retry:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+/* 조작자 칩 자리 — 그리는 쪽(그룹채팅)이 칩을 준다. 끌기를 가로채지 않는다. */
+.computer-screen-share-actor { position: absolute; left: 6px; top: 6px; z-index: 2; pointer-events: none; }

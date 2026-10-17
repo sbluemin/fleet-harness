@@ -201,12 +201,13 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
 }
 
 /**
- * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 원래 요청한 Operation 으로, 거절 · 이번 작업만 · 계속 허용, 만료 시계,
- * 반복 키 무시, 초점 미이동)에 요청한 참여자의 표식과 이름만 더한다. 답 보내기는 기존 `useUseRequestAnswer` 가 진다.
+ * 허용 요청 카드 — 기존 패널 카드와 같은 계약(답은 요청이 선 Operation 으로, 거절 · 이번 작업만 · 계속 허용, 만료 시계,
+ * 반복 키 무시, 초점 미이동)에 요청한 참여자들의 표식과 이름을 더한다. 허용은 목표(루트)의 것이라 카드는 하나이고, 머리에는
+ * 지금 그 답을 기다리는 참여자를 모두 겹쳐 세운다(세 명까지 이름을 잇고, 넘으면 「구현 외 2명」). 답 보내기는 `useUseRequestAnswer` 가 진다.
  */
-export function UseRequestGroupCard({ request, speaker, language }: {
+export function UseRequestGroupCard({ request, speakers, language }: {
   readonly request: OperationUseRequest;
-  readonly speaker: ConversationSpeaker | null;
+  readonly speakers: readonly ConversationSpeaker[];
   readonly language: ConsoleLocale | undefined;
 }) {
   const tt = getT(language ?? "en");
@@ -217,14 +218,19 @@ export function UseRequestGroupCard({ request, speaker, language }: {
   const isConsole = request.capability === "console";
   const title = tt(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   const titleId = `group-use-request-${request.id}`;
+  const names = speakers.length > 3
+    ? t("group.use.names.others", { name: speakers[0]!.name, count: String(speakers.length - 1) })
+    : speakers.map((speaker) => speaker.name).join("·");
   return (
     <div className="group-card is-use" role="group" aria-labelledby={titleId} onKeyDown={onKeyDown}>
       <div className="group-card-head">
-        {speaker ? <SpeakerMark speaker={speaker} size="sm" /> : <span className="group-card-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>}
-        <span className="group-card-who" id={titleId}>{speaker ? t("group.use.from", { name: speaker.name, title }) : title}</span>
+        {speakers.length > 0
+          ? <span className="group-card-stack">{speakers.slice(0, 3).map((speaker) => <SpeakerMark key={speaker.operationId ?? speaker.name} speaker={speaker} size="sm" />)}</span>
+          : <span className="group-card-glyph" aria-hidden="true"><UseRequestGlyph capability={request.capability} /></span>}
+        <span className="group-card-who" id={titleId}>{speakers.length > 0 ? t("group.use.from", { name: names, title }) : title}</span>
         <span className={`group-card-timer${left <= 60 ? " is-soon" : ""}`} aria-hidden="true">{tt("terminal.useRequest.waiting", { time: formatUseRequestTime(left) })}</span>
       </div>
-      <p className="group-card-lead">{tt(isConsole ? "terminal.useRequest.consoleLead" : "terminal.useRequest.computerLead")}</p>
+      <p className="group-card-lead">{t(isConsole ? "group.use.consoleLead" : "group.use.computerLead")}</p>
       {request.tools.length > 0 ? <p className="group-card-tools">{request.tools.join(" · ")}</p> : null}
       <div className="group-card-foot">
         <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("deny")}>{tt("terminal.useRequest.deny")}</button>
@@ -232,7 +238,7 @@ export function UseRequestGroupCard({ request, speaker, language }: {
         <button type="button" className="group-card-send is-quiet" disabled={pending} onClick={answer("always")}>{tt("terminal.useRequest.always")}</button>
         <button type="button" className="group-card-send" disabled={pending} onClick={answer("turn")}>{tt("terminal.useRequest.turn")}</button>
       </div>
-      <p className="group-card-fine">{tt("terminal.useRequest.fine")}</p>
+      <p className="group-card-fine">{t("group.use.fine")}</p>
       {failed ? <p className="group-card-error" role="alert">{tt("terminal.useRequest.failed")}</p> : null}
     </div>
   );

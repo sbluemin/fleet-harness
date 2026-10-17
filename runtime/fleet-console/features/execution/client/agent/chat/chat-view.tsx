@@ -943,7 +943,8 @@ export function AgentChatView({
           />
         ) : null}
         {/* 패널 안 허용 요청 — 대화 면 바닥, 컴포저 바로 위에 선다. 초점은 가져가지 않는다. */}
-        <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={language} placement="chat" />
+        {/* 그룹 루트의 허용 요청은 그룹채팅의 카드 하나가 답한다 — 지휘관 원장 틀 안에서는 다시 그리지 않는다. */}
+        {commanderLedger ? null : <UseRequestCards operationId={context.operationId} childSessionIds={context.operation.childSessions?.map((child) => child.id)} language={language} placement="chat" />}
         </div>
 
         {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문

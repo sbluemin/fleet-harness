@@ -118,6 +118,15 @@ const en = {
   "group.decision.giveBackFailed": "Couldn't return the request. It is still yours to answer.",
   "group.hold.giveBackFailed": "Couldn't return it. It is still yours to answer.",
   "group.use.from": "{name} · {title}",
+  "group.use.names.others": "{name} and {count} others",
+  "group.use.consoleLead": "The AI in this objective wants to use the Console. If you allow it, the commander and members use it together.",
+  "group.use.computerLead": "The AI in this objective wants to operate apps on this computer. If you allow it, the commander and members use it together.",
+  "group.use.fine": "“Allow for this task” ends when every participant finishes their task, or after 5 idle minutes. “Keep allowing” turns on the switch in the commander's ··· menu.",
+  "group.working.computer": "· Computer Use",
+  "group.working.computerBy": "· {name} on Computer Use",
+  "group.share.actor": "{name} operating",
+  "group.share.ledger": "Sharing the computer screen · {name} operating",
+  "group.share.ledgerOpen": "View in conversation",
 } as const;
 
 export type GroupChatMessageKey = keyof typeof en;
@@ -235,6 +244,15 @@ const ko: Record<GroupChatMessageKey, string> = {
   "group.decision.giveBackFailed": "요청을 돌려주지 못했습니다. 아직 내가 답할 요청입니다.",
   "group.hold.giveBackFailed": "돌려주지 못했습니다. 아직 내가 답할 차례입니다.",
   "group.use.from": "{name} · {title}",
+  "group.use.names.others": "{name} 외 {count}명",
+  "group.use.consoleLead": "이 목표의 AI가 Console을 쓰려고 합니다. 허용하면 지휘관과 구성원이 함께 씁니다.",
+  "group.use.computerLead": "이 목표의 AI가 이 컴퓨터의 앱을 조작하려고 합니다. 허용하면 지휘관과 구성원이 함께 씁니다.",
+  "group.use.fine": "‘이번 작업만’은 참여자 모두의 작업이 끝나거나 5분 동안 쓰지 않으면 풀립니다. ‘계속 허용’은 지휘관 ··· 메뉴의 스위치를 켭니다.",
+  "group.working.computer": "· 컴퓨터 사용",
+  "group.working.computerBy": "· {name} 컴퓨터 사용",
+  "group.share.actor": "{name} 조작 중",
+  "group.share.ledger": "컴퓨터 화면을 공유하는 중 · {name} 조작",
+  "group.share.ledgerOpen": "대화에서 보기",
 };
 
 const translators: Record<ConsoleLocale, Translate<GroupChatMessageKey>> = {

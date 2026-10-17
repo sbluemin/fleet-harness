@@ -22,6 +22,7 @@ import {
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
+import { ComputerScreenShare, useComputerActor } from "../../../../../computer-use/client/computer-screen-share.js";
 import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useOperationLinks } from "../../operation-links.js";
@@ -34,7 +35,7 @@ import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
-import { useLocalizedSnapshot } from "./speaker-mark.js";
+import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 
 /**
  * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
@@ -222,6 +223,10 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const [answered, setAnswered] = React.useState<readonly string[]>([]);
   React.useEffect(() => setAnswered([]), [root.id]);
   const speakerOf = (operationId: string) => snapshot.participants.find((participant) => participant.speaker.operationId === operationId)?.speaker ?? null;
+  // 지휘관과 구성원은 컴퓨터 하나를 함께 쓴다(호스트의 공유 컨텍스트) — 화면공유는 원장이 아니라 이 대화에 서고, 누가 조작하는지는
+  // 미리보기 위 칩과 진행 줄 꼬리가 같은 이름으로 말한다.
+  const computerActor = useComputerActor(root.id);
+  const t = getGroupT(language);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
   const decision = snapshot.decision && !answered.includes(snapshot.decision.id) ? snapshot.decision : null;
   const cards = (
@@ -236,7 +241,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
       ) : null}
-      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speaker={speakerOf(request.operationId)} language={language} />)}
+      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} speakers={request.requestedBy.flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
       {!phone ? snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
@@ -249,6 +254,17 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       onOpenCommodoreRecord={openRecord}
       cards={cards}
       fold={fold}
+      computerActor={computerActor}
+      overlay={phone ? null : (
+        <ComputerScreenShare
+          operationId={root.id}
+          className="is-group"
+          actor={(id) => {
+            const speaker = speakerOf(id);
+            return speaker ? <span className="group-share-actor"><span className="group-share-actor-dot" aria-hidden="true" /><SpeakerMark speaker={speaker} size="sm" />{t("group.share.actor", { name: speaker.name })}</span> : null;
+          }}
+        />
+      )}
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );
@@ -284,8 +300,19 @@ function MemberLedger({ root, member, language, children }: {
     ?? { kind: commander ? "commander" : "member", name: member.title, operationId: member.id };
   // 지휘관 본문은 평소 입력 틀을 가진 채팅이다 — 이 틀 안에 선 동안만 구성원 원장처럼 입력 틀을 뺀다(commander-ledger).
   React.useLayoutEffect(() => (commander ? frameCommanderLedger(root.id) : undefined), [commander, root.id]);
+  // 컴퓨터는 목표가 함께 쓰고 그 화면은 대화에만 선다 — 원장을 보는 동안 공유 중이면 머리 아래 한 줄이 대화로 데려간다.
+  const actorId = useComputerActor(root.id);
+  const actor = actorId ? snapshot.participants.find((participant) => participant.speaker.operationId === actorId)?.speaker ?? null : null;
+  const t = getGroupT(language);
+  const notice = actor ? (
+    <div className="group-ledger-share" role="status">
+      <SpeakerMark speaker={actor} size="sm" />
+      <span>{t("group.share.ledger", { name: actor.name })}</span>
+      <button type="button" className="group-chat-link" onClick={() => openLedger(root.id, null)}>{t("group.share.ledgerOpen")}</button>
+    </div>
+  ) : null;
   return (
-    <GroupLedgerFrame speaker={speaker} language={language} onBack={() => openLedger(root.id, null)}>
+    <GroupLedgerFrame speaker={speaker} language={language} notice={notice} onBack={() => openLedger(root.id, null)}>
       {children}
     </GroupLedgerFrame>
   );

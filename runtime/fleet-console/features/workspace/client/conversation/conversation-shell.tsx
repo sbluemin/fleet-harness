@@ -1233,9 +1233,11 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
 
   // ── 브라우저 — 이 대화의 Operation 브라우저는 오른쪽 분할 칸에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
+  // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Operation 이 아니라 루트의 브라우저를 함께 쓰므로,
+  // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
   const openOperationBrowser = useCallback(() => {
-    openOperationBrowserSplit({ subjectId: operation.id, operationId: bodyOwner.id });
-  }, [operation.id, bodyOwner.id]);
+    openOperationBrowserSplit({ subjectId: operation.id, operationId: operation.id });
+  }, [operation.id]);
   const closeBrowserSplit = useCallback(() => {
     closeOperationBrowserSplit();
   }, []);
