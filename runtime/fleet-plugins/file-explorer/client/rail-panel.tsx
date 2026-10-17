@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { PaneContext, PaneDescriptor, PaneSearchResult } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -28,6 +28,7 @@ import { FileTree, isFilterFocusShortcut, type FileTreeHandle } from "./tree.js"
 import { loadedMtimeOf, stalePathsAfterRefresh } from "./viewer/stale.js";
 import {
   activateStoredDocument,
+  claimFileExplorerView,
   getFileExplorerSnapshot,
   hydrateStoredSession,
   markDocStale,
@@ -193,6 +194,13 @@ function FileExplorerTreePane(ctx: PaneContext) {
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
 
+  // 이 칸이 놓인 대화가 이 Theater 의 보기 상태를 갖는다 — 같은 Theater 의 다른 대화(다른 워크트리)가 열어 둔 문서가 여기에 뜨지 않게.
+  // 칠하기 전에 세워, 아래 복원이 이 대화의 상태와 저장된 세션을 읽는다.
+  const conversationKey = ctx.conversation?.key ?? null;
+  useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
+  // 트리의 펼침 기억도 대화마다 따로다 — 다른 대화가 드러낸 폴더(다른 워크트리)가 이 대화의 트리에 펼쳐져 있지 않게.
+  const treeScope = conversationKey === null ? contextScope : `${contextScope}@${conversationKey}`;
+
   useEffect(() => {
     hydrateStoredSession(contextScope || null);
     const restored = getFileExplorerSnapshot(contextScope);
@@ -338,11 +346,11 @@ function FileExplorerTreePane(ctx: PaneContext) {
           <ShellActionNotice action={shellAction} t={t} />
         </div>
         <FileTree
-          key={`${contextScope}|${rootPath}`}
+          key={`${treeScope}|${rootPath}`}
           ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
-          contextKey={contextScope}
+          contextKey={treeScope}
           rootPath={rootPath}
           selectedPath={selectedPath}
           revealTarget={revealTarget}

@@ -7,7 +7,7 @@ import {
   type ExpandedSurfaceHost,
 } from "../../../../../core/client/src/chrome/expanded-surface/store.js";
 import { adoptRailToolPanel, bindRailToolHost, type RailToolHost } from "../../../../../core/client/src/chrome/rail/rail-store.js";
-import { getPaneStoreSnapshot, openPane } from "../../../../../core/client/src/chrome/pane/pane-store.js";
+import { closePane, getPaneStoreSnapshot, openPane } from "../../../../../core/client/src/chrome/pane/pane-store.js";
 import { setActiveShellKey } from "../../../../execution/client/terminal/shell/shell-session-store.js";
 import {
   bindWorkbenchSurfaceCloseNotifier,
@@ -74,7 +74,11 @@ export function useConversationWorkbenchHost(conversationKey: string | null, too
   useLayoutEffect(() => {
     const leaving = getWorkbenchKey();
     if (leaving !== (conversationKey ?? "console")) {
-      panesByConversation.set(leaving, getPaneStoreSnapshot().rail.filter((pane) => pane.visible).map((pane) => ({ paneId: pane.paneId, params: pane.params })));
+      const visible = getPaneStoreSnapshot().rail.filter((pane) => pane.visible);
+      panesByConversation.set(leaving, visible.map((pane) => ({ paneId: pane.paneId, params: pane.params })));
+      // 떠나는 대화의 칸은 주차한다 — keepAlive 문서처럼 칸이 사라져도 남는 페인이 도착하는 대화에 그대로 뜨지 않게. 닫힘 통보는 보내지
+      // 않는다(플러그인이 그 대화의 문서를 잊으면 돌아왔을 때 되살릴 수 없다). 도착하는 대화에는 아래에서 그 대화의 세트만 다시 세운다.
+      for (const pane of visible) closePane(pane.paneId, { keepAlive: true });
     }
     setActiveShellKey(conversationKey);
     setWorkbenchConversation(conversationKey);

@@ -23,7 +23,7 @@ import { getT } from "./i18n/index.js";
 import { CHIP_STRIP_GAP_PX, chipDirHints, overflowingChipIndices, tabLineGeometry } from "./layout.js";
 import { QuietMenu } from "./quiet-menu.js";
 import { DOCUMENT_PANE_ID, positiveCoordinate, resolveFilePath, FileNavigationError } from "./file-navigation.js";
-import { getFileExplorerSnapshot, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
+import { claimFileExplorerView, getFileExplorerSnapshot, setFileRevealTarget, showFileNavigationError } from "./view-store.js";
 import { ShellActionNotice, useShellAction } from "./shell-action.js";
 import {
   activateStoredDocument,
@@ -75,6 +75,9 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const { theaterId, params, panes, signal, language } = ctx;
   const t = getT(language);
   const contextScope = theaterId ?? "";
+  // 트리 칸과 같은 대화가 이 Theater 의 보기 상태를 갖는다(rail-panel 의 같은 규칙).
+  const conversationKey = ctx.conversation?.key ?? null;
+  useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
   const { openDocs, activePath, docStates, wrapLines, revealTarget, navigationError, discardedTabs } = useFileExplorerViewState(contextScope);
   const shellAction = useShellAction(ctx.shell, theaterId, activePath);
   const consumedRequestRef = useRef<string | null>(null);

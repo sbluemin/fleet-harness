@@ -105,7 +105,7 @@ describe("conversation Shell sessions", () => {
     process.env.SHELL = "/bin/zsh";
     try {
       const shell = { live: true, foreground: "vim" as string | null, line: { promptSeen: false, promptOpen: false, inputPending: false } };
-      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
+      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch, read } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
       const spawned = await launch(fixture.root);
 
       await openAt({ theaterId: "theater-a", path: "src" });
@@ -122,6 +122,9 @@ describe("conversation Shell sessions", () => {
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       expect(writes).toHaveLength(0);
+      // 닫기 확인의 근거 — 어느 길로 들어갔든 줄이 실행되면 그 Shell 은 프롬프트에 있지 않다고 답한다.
+      await read();
+      expect(responses.at(-1)).toMatchObject({ status: 200, body: { open: true, atPrompt: false } });
 
       // 프롬프트에 사용자가 치다 만 글자가 있으면 그 뒤에 `cd …`가 붙어 실행된다.
       shell.line = { promptSeen: true, promptOpen: true, inputPending: true };
@@ -130,6 +133,8 @@ describe("conversation Shell sessions", () => {
       expect(writes).toHaveLength(0);
 
       shell.line = { promptSeen: true, promptOpen: true, inputPending: false };
+      await read();
+      expect(responses.at(-1)).toMatchObject({ status: 200, body: { open: true, atPrompt: true } });
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "cd" } });
       expect(writes).toEqual([`cd -- '${path.join(fixture.root, "src")}'\r`]);
@@ -247,6 +252,7 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     openAt: (body: Record<string, unknown>) => invoke("shell/open-at", "POST", body),
     restartAt: (body: Record<string, unknown>) => invoke("shell/restart-at", "POST", body),
     call: (body: Record<string, unknown>) => invoke("shell/ticket", "POST", body),
+    read: (shell?: string) => invoke("shell/session", "GET", {}, shell === undefined ? "" : `?shell=${encodeURIComponent(shell)}`),
     del: (shell?: string) => invoke("shell/session", "DELETE", {}, shell === undefined ? "" : `?shell=${encodeURIComponent(shell)}`),
     exit: (sessionId: string) => { for (const listener of exitListeners) listener(sessionId); },
   };

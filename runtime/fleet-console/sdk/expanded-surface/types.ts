@@ -71,9 +71,10 @@ export interface ExpandedSurfaceDescriptor {
   readonly onClose?: (ctx: ExpandedSurfaceCloseContext) => void;
   /**
    * 닫기 전에 사람에게 한 번 물어야 하면 그 말을 돌려준다(예: Shell 에서 명령이 돌고 있다). null 이면 묻지 않고 닫는다.
-   * 사람이 닫는 길(닫기 단추·도구 아이콘)에서만 묻고, 표면이 스스로 부르는 `close()`는 묻지 않는다. 부작용 없이 지금 상태를 읽는다.
+   * 사람이 닫는 길(닫기 단추·도구 아이콘)에서만 묻고, 표면이 스스로 부르는 `close()`는 묻지 않는다. 판단의 근거를 서버에 물어야 하면
+   * Promise 를 돌려줘도 된다 — 호스트는 답을 기다린 뒤 묻거나 닫는다. 지금 상태를 읽기만 하고 부작용을 내지 않는다.
    */
-  readonly confirmClose?: (ctx: ExpandedSurfaceCloseContext) => LocalizedText | null;
+  readonly confirmClose?: (ctx: ExpandedSurfaceCloseContext) => LocalizedText | null | Promise<LocalizedText | null>;
   /** 페인 안쪽 좌측 열(문서 목차 등). 폭은 호스트가 정한다. */
   readonly aside?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**

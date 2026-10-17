@@ -110,9 +110,10 @@ export function ConversationWorkbench({ layerRef, insets, geometry, layout, focu
   useEffect(() => bindWorkbenchCloseGuard((tile) => {
     if (tile.kind !== "surface") return null;
     const descriptor = descriptors.get(tile.surfaceId);
+    const resolve = (message: Parameters<typeof resolveLocalizedText>[0] | null) => (message === null ? null : resolveLocalizedText(message, language));
     try {
-      const message = descriptor?.confirmClose?.({ surfaceId: tile.surfaceId, instanceId: tile.id, params: tile.params }) ?? null;
-      return message === null ? null : resolveLocalizedText(message, language);
+      const answer = descriptor?.confirmClose?.({ surfaceId: tile.surfaceId, instanceId: tile.id, params: tile.params }) ?? null;
+      return answer instanceof Promise ? answer.then(resolve, () => null) : resolve(answer);
     } catch {
       return null;
     }

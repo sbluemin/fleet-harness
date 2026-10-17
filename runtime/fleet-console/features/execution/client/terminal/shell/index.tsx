@@ -185,11 +185,13 @@ export const shellSurface: ExpandedSurfaceDescriptor = {
   minPaneWidth: SHELL_MIN_PANE_WIDTH,
   render: (ctx) => React.createElement(ShellSurfaceBody, { ctx }),
   tools: (ctx) => React.createElement(ShellTheaterBadge, { ctx }),
-  confirmClose: (closed) => {
+  // 명령이 돌고 있는지는 닫는 그 순간 서버에 묻는다 — 서버는 어느 길(키·붙여넣기·IME·프로그램 입력)로 들어간 줄이든 실행된 것을
+  // 알고, 프롬프트로 돌아올 때만 알리므로 브라우저의 스냅숏은 늦을 수 있다. 읽지 못하면 모르는 것이니 한 번 묻는다.
+  confirmClose: async (closed) => {
     const mount = mountOfInstance(closed.instanceId);
     if (!mount?.conversationScoped) return null;
-    const session = getShellSessionSnapshot(mount.key);
-    if (!session?.open || session.atPrompt) return null;
+    const session = await readShellSession(mount.key) ?? getShellSessionSnapshot(mount.key);
+    if (session !== null && (!session.open || session.atPrompt)) return null;
     return (locale) => getT(locale)("terminal.shell.closeBusy");
   },
   onClose: (closed) => {
@@ -304,19 +306,6 @@ function ShellInstanceHost({ mount, language, theme }: { readonly mount: ShellMo
     if (!mount.target || host.parentElement === mount.target) return;
     mount.target.append(host);
   }, [host, mount]);
-
-  // 줄을 실행하면 셸은 프롬프트를 떠난다 — 서버는 그 순간을 알리지 않고(프롬프트로 돌아올 때만 알린다) 물을 때 답하므로, Enter 직후
-  // 한 번 다시 읽는다. 칸을 닫을 때 「명령이 돌고 있는가」를 묻는 확인이 이 값을 본다.
-  React.useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Enter" || event.isComposing) return;
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => { timer = null; void readShellSession(mount.key); }, 150);
-    };
-    host.addEventListener("keydown", onKey, true);
-    return () => { host.removeEventListener("keydown", onKey, true); if (timer !== null) clearTimeout(timer); };
-  }, [host, mount.key]);
 
   // 모바일 Shell 화면(impl-spec S-45: 터미널 + 키 줄, CLI 확인 줄 없음). 표면 컨텍스트에는 모바일 표식이 없어
   // 호스트 계약의 공개 신호(모바일 화면·시트 컨테이너의 data-host-surface)로 가른다. 에이전트 본문과 같은

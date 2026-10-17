@@ -368,7 +368,7 @@ export function bindWorkbenchSurfaceCloseNotifier(notifier: typeof surfaceClosed
  * 사람이 닫는 길(닫기 단추·도구 아이콘)에서 닫기 전에 물어볼 말 — 칸을 그리는 쪽이 서술자의 `confirmClose`로 답한다.
  * null 이면 묻지 않는다.
  */
-type CloseGuard = (tile: WorkbenchTile) => string | null;
+type CloseGuard = (tile: WorkbenchTile) => string | null | Promise<string | null>;
 let closeGuard: CloseGuard = () => null;
 let pendingClose: { readonly tileId: string; readonly message: string } | null = null;
 
@@ -379,6 +379,11 @@ export function bindWorkbenchCloseGuard(guard: CloseGuard): () => void {
 
 export function useWorkbenchPendingClose(): { readonly tileId: string; readonly message: string } | null {
   return useSyncExternalStore(subscribeWorkbench, () => pendingClose, () => null);
+}
+
+function askBeforeClose(tileId: string, message: string): void {
+  pendingClose = { tileId, message };
+  notify();
 }
 
 export function cancelWorkbenchClose(): void {
@@ -394,10 +399,19 @@ export function cancelWorkbenchClose(): void {
 export function closeWorkbenchTile(tileId: string, options: { readonly confirmed?: boolean } = {}): void {
   if (options.confirmed !== true) {
     const found = findWorkbenchTile(getWorkbenchLayout(), tileId);
-    const message = found === null ? null : closeGuard(found.tile);
-    if (message !== null) {
-      pendingClose = { tileId, message };
-      notify();
+    const answer = found === null ? null : closeGuard(found.tile);
+    if (answer instanceof Promise) {
+      // 물을지는 표면이 서버에 물어 답한다 — 그 사이 대화가 바뀌었거나 칸이 이미 닫혔으면 아무것도 하지 않는다.
+      const key = currentKey;
+      void answer.catch(() => null).then((message) => {
+        if (currentKey !== key || findWorkbenchTile(getWorkbenchLayout(), tileId) === null) return;
+        if (message === null) closeWorkbenchTile(tileId, { confirmed: true });
+        else askBeforeClose(tileId, message);
+      });
+      return;
+    }
+    if (answer !== null) {
+      askBeforeClose(tileId, answer);
       return;
     }
   }
