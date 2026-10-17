@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { requestObjective } from "./request.js";
 
 import { OPERATION_PURGED_EVENT, accessOperation, describeOperation, readOperationLaunch } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, ConsoleOperationSummary, OperationRuntimeHydration, PluginInstallContext } from "@fleet-console/sdk/plugin";
@@ -479,37 +480,15 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
-  let response: Response;
   try {
-    response = await api.fetch("objectives", path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const payload = await requestObjective<T>(api, path, body);
+    noteAlive();
+    return payload;
   } catch (error) {
-    // 호스트가 !ok 응답을 먼저 ApiError 로 끊어 post 의 코드 추출에 닿지 않는다 —
-    // body 의 구조화 코드만 살려 띠·토스트가 사람의 말을 고르게 한다. 코드가 아니면 원본을 그대로 던진다.
-    // 상태는 함께 싣는다 — 부르는 쪽이 일시 거절(401·5xx)과 확정 거절을 가른다. 코드 비교(message)는 그대로다.
-    const code = apiErrorCode(error);
-    const failure = code === null ? error : Object.assign(new Error(code), { status: (error as { status: number }).status });
-    // 확정 거절도 서버가 인가한 뒤의 답이다 — 세션은 살아 있다. 게이트가 확정 실패한 탐침 뒤에 서 있지 않게 한다.
-    if (!isTransient(failure)) noteAlive();
-    throw failure;
+    // 로컬 재시도 게이트는 로컬 facade만 갱신한다. remote 요청은 이 singleton에 닿지 않는다.
+    if (!isTransient(error)) noteAlive();
+    throw error;
   }
-  const payload = await response.json().catch(() => null) as (T & { error?: string }) | null;
-  if (!response.ok) throw Object.assign(new Error(payload?.error ?? `http_${response.status}`), { status: response.status });
-  noteAlive();
-  return payload as T;
-}
-
-/**
- * ApiError 의 구조화 코드 판독 — 호스트와 플러그인 번들이 모듈을 따로 들고 있어도 되게
- * instanceof 가 아니라 모양으로 본다. 원시 본문·내부 메시지는 꺼내지 않고 안전 코드 패턴만 받는다.
- */
-function apiErrorCode(error: unknown): string | null {
-  if (typeof error !== "object" || error === null) return null;
-  const record = error as Record<string, unknown>;
-  if (record.name !== "ApiError" || typeof record.status !== "number") return null;
-  const body = record.body;
-  if (typeof body !== "object" || body === null) return null;
-  const code = (body as Record<string, unknown>).error;
-  return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : null;
 }
 
 /** `force` 는 읽은 여부와 일시 실패 기한을 무시하고 지금 묻는다 — 게이트의 탐침과 재연결 뒤 다시 읽기가 쓴다. */

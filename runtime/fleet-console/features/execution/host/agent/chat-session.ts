@@ -61,6 +61,7 @@ import {
   type ChatOrigin,
 } from "./chat-events.js";
 import { createChatStepReporter, type ChatStepReporter } from "./chat-step.js";
+import { EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationSnapshot } from "../../conversation-journal.js";
 import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
@@ -765,6 +766,24 @@ class AgentChatSession {
   private syncDirty = false;
   private journal: AgentChatJournalEvent[] = [];
   private seq = 0;
+  private readonly conversationGeneration = randomUUID();
+  private conversation = EMPTY_CONVERSATION_JOURNAL;
+  /** await 없이 같은 원천의 표시 원장과 cursor를 함께 읽는다. 읽기는 세션을 만들거나 실행하지 않는다. */
+  conversationSnapshot(): ConversationSnapshot {
+    const snapshot = { generation: this.conversationGeneration, cursor: this.seq, journal: this.conversation };
+    // 중계 JSON 상한(1MiB) 안에 envelope/escaping까지 남긴다. 누락은 항상 앞쪽 연속 구간이며 명시한다.
+    let bytes = 0;
+    let start = snapshot.journal.entries.length;
+    while (start > 0) {
+      const size = Buffer.byteLength(JSON.stringify(snapshot.journal.entries[start - 1]), "utf8") + 1;
+      if (bytes + size > 256 * 1024) break;
+      bytes += size;
+      start -= 1;
+    }
+    if (start === 0) return snapshot;
+    const entries = snapshot.journal.entries.slice(start);
+    return { ...snapshot, journal: { ...snapshot.journal, entries, truncated: true, draftId: entries.some((entry) => entry.id === snapshot.journal.draftId) ? snapshot.journal.draftId : null } };
+  }
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
   private turnFlight: Promise<void> = Promise.resolve();
   private pendingTurns = 0;
@@ -1069,7 +1088,8 @@ class AgentChatSession {
   }
 
   /** 저널 전체를 명시적인 재생 경계 안에서 되돌려준 뒤 라이브 이벤트를 흘린다. 반환값은 구독 해제다. */
-  subscribe(listener: (event: AgentChatJournalEvent) => void): () => void {
+  subscribe(receive: (event: AgentChatJournalEvent) => void): () => void {
+    const listener = (entry: AgentChatJournalEvent) => receive({ ...entry, generation: this.conversationGeneration });
     const snapshot = this.journal;
     const retainedStart = snapshot.findIndex((entry) => entry.event.kind === "replay-start");
     const retainedEnd = snapshot.findIndex((entry) => entry.event.kind === "replay-end");
@@ -2439,6 +2459,7 @@ class AgentChatSession {
 
   private push(event: AgentChatStreamEvent, at = Date.now()): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, at, event };
+    this.conversation = reduceConversationJournal(this.conversation, entry, this.operationId);
     // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
     // 리듀서도 통째로 갈아 끼운다. 저널에 겹겹이 쌓으면 재접속이 이미 지나간 트리를 수십 번
     // 되재생하고, 상한(JOURNAL_CAP)에 걸린 세션에서는 그 무게가 디스패치·응답·잡 시작 같은
@@ -2460,6 +2481,7 @@ class AgentChatSession {
    */
   private pushEphemeral(event: AgentChatStreamEvent): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, at: Date.now(), event };
+    this.conversation = reduceConversationJournal(this.conversation, entry, this.operationId);
     for (const listener of this.listeners) listener(entry);
   }
 

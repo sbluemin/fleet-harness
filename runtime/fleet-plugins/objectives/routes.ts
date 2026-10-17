@@ -137,7 +137,7 @@ export default definePlugin({
 
     const routes = createObjectiveRoutes(ctx, store, launch, prStatus);
     for (const route of routes) {
-      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
+      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http", ...(route.name === "state" || route.name === "finished" || route.name === "objective/get" || route.name === "attachment/file" || route.name === "result/file" ? { readOnly: true as const } : {}) });
     }
 
     // 사령관(자율 운영) — Theater 마다 하나. 상태는 보드 곁 `commodore/` 에 살고, 사건은 자기 채널로 나간다.
@@ -164,7 +164,7 @@ export default definePlugin({
     });
     ctx.host.lifecycle.registerCleanup(() => supervisor.dispose());
     for (const route of createCommodoreRoutes(ctx, commodore, { run: (theaterId) => supervisor.status(theaterId), retry: (theaterId) => supervisor.retry(theaterId), clear: (theaterId) => supervisor.clear(theaterId), objective: (objectiveId) => store.find(objectiveId) })) {
-      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http" });
+      registerRouter(ctx, route.name, route.handler, { method: route.method, path: "", summary: route.summary, category: "Objectives Plugin", gate: "origin-write", transport: "http", ...(route.name === "commodore/state" || route.name === "commodore/transcript" ? { readOnly: true as const } : {}) });
     }
     // 재시작 복원 — 실험 기능과 자율 운영이 켜진 Theater 의 사령관을 다시 열고 「Console 재시작」 턴을 보낸다.
     try { supervisor.sync("restart"); } catch (error) { console.warn(`[objectives] commodore restore failed: ${error instanceof Error ? error.message : String(error)}`); }

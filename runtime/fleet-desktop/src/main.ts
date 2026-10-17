@@ -24,6 +24,10 @@ import { createHostPickerView } from "./host-picker-view.js";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
+import { createCookieOrder } from "./cookie-order.js";
+import { createHostPartitionAdapter } from "./host-partition-adapter.js";
+import { createDesktopHostTransport } from "./host-transport.js";
+import { confirmRemoteIdentity, installRemoteCertificatePins } from "./remote-access.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
@@ -168,6 +172,22 @@ async function boot(): Promise<void> {
   });
   const remotePins = shellNetwork.pins;
   const consoleFetch = shellNetwork.fetch;
+  // 같은 origin의 쿠키를 싣는 요청(legacy join, inline pair·observe·activate)이 하나의 순서를 나눈다. 두 곳에 같은 인스턴스를 넘긴다.
+  const cookieOrder = createCookieOrder();
+  const hostTransport = createDesktopHostTransport({
+    cookieOrder,
+    fetch: consoleFetch,
+    confirmIdentity: confirmRemoteIdentity,
+    openPartition: (hostKey) => {
+      const partition = session.fromPartition(`fleet-host-${hostKey}`);
+      return createHostPartitionAdapter(partition, installRemoteCertificatePins(partition));
+    },
+    readWindowCookies: async (url) => consoleSession.cookies.get({ url }),
+    writeWindowCookie: (cookie) => consoleSession.cookies.set(cookie),
+    removeWindowCookie: (url, name) => consoleSession.cookies.remove(url, name),
+    deviceName: os.hostname().replace(/\.local$/iu, ""),
+    log: (message) => logger.error(message),
+  });
   let overlayRefresher: TitleBarOverlayRefresher | null = null;
   /**
    * 줌·모니터가 바뀌면 네이티브 크롬의 기하를 다시 맞춘다. Windows는 캡션 버튼 스트립의
@@ -387,6 +407,7 @@ async function boot(): Promise<void> {
     }
   };
   const bridge: RemoteBridge = createRemoteBridge({
+    cookieOrder,
     pins: remotePins,
     policy: () => policy,
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
@@ -537,6 +558,7 @@ async function boot(): Promise<void> {
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
         void publishShellHome(origin);
+        void hostTransport.start(origin);
       },
       synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
@@ -547,7 +569,7 @@ async function boot(): Promise<void> {
       startOrAdopt: (report) => supervisor.startOrAdopt(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
+  }, () => farewell.run(async () => { hostTransport.stop(); bridge.dispose(); await supervisor.stop(); }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",

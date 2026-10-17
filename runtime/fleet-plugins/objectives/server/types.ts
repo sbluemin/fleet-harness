@@ -581,6 +581,8 @@ export interface StoredObjective {
   /** 사람의 명시적인 구상 요청에서만 켜고, 스티어링·개시·중지·완료에서 끈다. */
   readonly criteriaOpen?: true;
   readonly attachments?: readonly ObjectiveAttachment[];
+  /** 서버 전용 멱등 영수증. 첨부와 한 번에 저장하고 삭제 뒤에도 남겨 재시도가 부활시키지 못하게 한다. */
+  readonly attachmentUploads?: readonly { readonly uploadId: string; readonly attachmentId: string; readonly sha256: string; readonly name: string }[];
   /** 지휘관이 붙인 결과물 — 브리핑 입력·임무 기록·완료 조건과 별개다. */
   readonly results?: readonly ObjectiveResult[];
   /** 서버 전용 bytes manifest. 브라우저에는 results의 공개 metadata만 보낸다. */

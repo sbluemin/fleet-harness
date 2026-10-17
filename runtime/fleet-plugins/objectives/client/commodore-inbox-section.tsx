@@ -20,6 +20,7 @@ import { openCommodoreConversation } from "./commodore-conversation.js";
 import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
+  editCommodoreIntel,
   clearCommodore,
   COMMODORE_INBOX_SECTION_ID,
   OBJECTIVES_ENTRY_ID,
@@ -243,6 +244,27 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 
 /** 「기본값 사용」 — 설정 줄 설명 끝의 글자 단추. 기본값을 쓰는 중이면 서지 않는다. */
+export interface CommodoreComposerProps {
+  readonly t: T;
+  readonly theaterId: string;
+  readonly active: boolean;
+  readonly context?: CommodoreRunStatus["context"];
+  readonly onFail: (error: unknown) => void;
+  readonly onClear: () => void;
+}
+
+export type CommodoreComponentPorts = Pick<typeof import("./commodore-state.js"),
+  "addCommodoreIntel" | "editCommodoreIntel" | "clearCommodore" | "commodoreTranscriptRenderer" | "loadTranscript" |
+  "messageCommodore" | "uploadCommodoreAttachment" | "discardCommodoreAttachment" | "removeCommodoreIntel" |
+  "saveCommodoreDirective" | "setCommodoreAutonomy" | "setCommodoreCommander" | "setCommodoreCoordinates" |
+  "setCommodorePatrol" | "setCommodoreStopAt"> & { readonly signal?: AbortSignal };
+
+/** 동일한 관리/입력 workflow와 확인 절차를, 주입한 전송과 독립 초안 메모리로 조립한다. */
+export function createCommodoreComponents(ports: CommodoreComponentPorts) {
+const { addCommodoreIntel, clearCommodore, commodoreTranscriptRenderer, loadTranscript, messageCommodore,
+  uploadCommodoreAttachment, discardCommodoreAttachment, removeCommodoreIntel, saveCommodoreDirective,
+  setCommodoreAutonomy, setCommodoreCommander, setCommodoreCoordinates, setCommodorePatrol, setCommodoreStopAt } = ports;
+
 function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => void }) {
   return <> <button type="button" className="objectives-commodore-default" onClick={onClick}>{t("objectives.commodore.settings.useDefault")}</button></>;
 }
@@ -252,7 +274,7 @@ function UseDefault({ t, onClick }: { readonly t: T; readonly onClick: () => voi
  * 설정 — Console 설정과 같은 줄(제목·설명·오른쪽 컨트롤). 모델·강도는 Console 공유 선택기 하나로 고른다(사령관은 Agent SDK
  * 로스터, 지휘관은 Agent CLI 로스터).
  */
-export function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreSettings({ t, language, theaterId, view, onFail, onClear }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const { state, defaults, run } = view;
   const on = state.autonomy === true;
   const modelOverridden = state.model !== undefined;
@@ -440,7 +462,7 @@ const FOLLOW_SLACK_PX = 48;
  * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
  * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
-export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
+function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
@@ -695,7 +717,7 @@ function useReleasedKey() {
  * `caption` — 대화 중심 화면 머리 pill 옆 대화 동작 묶음의 캡션 단추(호스트가 세우는 지구본과 같은 24px 평면 단추·말풍선 문법).
  * 기본은 시트 머리의 사각 단추다.
  */
-export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly variant?: "sheet" | "caption"; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly variant?: "sheet" | "caption"; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const key = useReleasedKey();
   if (variant === "caption") {
@@ -743,6 +765,7 @@ function createCommodoreDraft() {
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (patch: Partial<CommodoreComposerDraft>) => {
+      if (ports.signal?.aborted) return;
       current = { ...current, ...patch };
       for (const listener of listeners) listener();
     },
@@ -754,15 +777,7 @@ function commodoreDraft(theaterId: string) {
   return draft;
 }
 
-interface CommodoreComposerProps {
-  readonly t: T;
-  readonly theaterId: string;
-  readonly active: boolean;
-  readonly context?: CommodoreRunStatus["context"];
-  readonly onFail: (error: unknown) => void;
-  readonly onClear: () => void;
-}
-export function CommodoreComposer(props: CommodoreComposerProps) {
+function CommodoreComposer(props: CommodoreComposerProps) {
   // Theater가 바뀌면 /clear 확인·메뉴·조합 상태도 새 대화의 것이 된다. 초안만 외부 메모리에서 복원한다.
   return <CommodoreComposerBody key={props.theaterId} {...props} />;
 }
@@ -827,6 +842,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
       const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || t("objectives.commodore.composer.image"), previewUrl: URL.createObjectURL(file), uploading: true };
       publishAttachments([...draft.read().attachments, item]);
       void uploadCommodoreAttachment(file).then(({ id }) => {
+        if (ports.signal?.aborted) return;
         if (!draft.read().attachments.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
         publishAttachments(draft.read().attachments.map((known) => known.key === item.key ? { ...known, id, uploading: false } : known));
       }).catch(() => {
@@ -925,7 +941,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
 
 /* ── 지시 ─────────────────────────────────────────────────────────────── */
 
-export function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+function CommodoreDirective({ t, theaterId, directive, active, onOpenSystemPrompt, onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly directive: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly active: boolean; readonly onOpenSystemPrompt?: () => void; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).directive ?? directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -956,7 +972,7 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
         onChange={(event) => { setDraft(event.target.value); setSaved(false); }}
       />
       {/* 안내 끝의 「시스템 프롬프트」는 같은 Theater Inbox 의 그 칸으로 간다 — 받는 쪽과 적용 시점이 다른 두 지침을 오가는 길. */}
-      <p className="objectives-commodore-hint">{t("objectives.commodore.directive.hintBefore")}<button type="button" className="objectives-commodore-hint-link" onClick={onOpenSystemPrompt}>{t("objectives.commodore.directive.hintLink")}</button>{t("objectives.commodore.directive.hintAfter")}</p>
+      <p className="objectives-commodore-hint">{t("objectives.commodore.directive.hintBefore")}{onOpenSystemPrompt ? <button type="button" className="objectives-commodore-hint-link" onClick={onOpenSystemPrompt}>{t("objectives.commodore.directive.hintLink")}</button> : t("objectives.commodore.directive.hintLink")}{t("objectives.commodore.directive.hintAfter")}</p>
       <div className="objectives-commodore-section-foot">
         {directive.rev > 0 ? <span className="objectives-commodore-hint">{t("objectives.commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) })}</span> : <span />}
         <button type="button" className="objectives-btn" disabled={saving || !dirty} onClick={save}>{t("objectives.commodore.directive.save")}</button>
@@ -969,13 +985,13 @@ export function CommodoreDirective({ t, theaterId, directive, active, onOpenSyst
 /* ── 정보 ─────────────────────────────────────────────────────────────── */
 
 /** 자리 편집 입력이 열리면 커서를 글 끝에 둔다 — 고치기는 대개 덧붙이기다. 모듈 함수라 ref 는 붙을 때 한 번만 불린다. */
-export function focusAtEnd(element: HTMLTextAreaElement | null): void {
+function focusAtEnd(element: HTMLTextAreaElement | null): void {
   if (!element) return;
   element.focus();
   element.setSelectionRange(element.value.length, element.value.length);
 }
 
-export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
+function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
   readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string; readonly editedAt?: number | undefined }[];
@@ -983,7 +999,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
-  const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
+  const editing = useCommodoreIntelEdits(theaterId, intel, { onClear }, ports.editCommodoreIntel, ports.signal);
   const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
   useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
   const [adding, setAdding] = useState(false);
@@ -1077,3 +1093,16 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
     </>
   );
 }
+ports.signal?.addEventListener("abort", () => {
+  sheetDrafts.clear();
+  for (const draft of commodoreDrafts.values()) for (const item of draft.read().attachments) URL.revokeObjectURL(item.previewUrl);
+  commodoreDrafts.clear();
+}, { once: true });
+return { CommodoreSettings, CommodoreLog, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, focusAtEnd, stopTime };
+}
+
+const localComponents = createCommodoreComponents({ addCommodoreIntel, editCommodoreIntel, clearCommodore, commodoreTranscriptRenderer,
+  loadTranscript, messageCommodore, uploadCommodoreAttachment, discardCommodoreAttachment, removeCommodoreIntel,
+  saveCommodoreDirective, setCommodoreAutonomy, setCommodoreCommander, setCommodoreCoordinates, setCommodorePatrol, setCommodoreStopAt });
+const { stopTime } = localComponents;
+export const { CommodoreSettings, CommodoreLog, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, focusAtEnd } = localComponents;

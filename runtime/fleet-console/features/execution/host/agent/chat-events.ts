@@ -373,6 +373,8 @@ export interface AgentChatQueueEntry {
  */
 export interface AgentChatJournalEvent {
   readonly seq: number;
+  /** ChatSession이 생성한 공개 수명 좌표. provider session identity가 아니다. */
+  readonly generation?: string;
   readonly at?: number;
   readonly event: AgentChatStreamEvent;
 }

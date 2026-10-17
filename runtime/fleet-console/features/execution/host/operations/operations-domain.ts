@@ -527,15 +527,15 @@ type CreateGroupBody = Partial<OperationGroupCreateInput>;
 type PatchGroupBody = Partial<OperationGroupPatchInput>;
 
 export const OPERATIONS_API_CATALOG: readonly ApiCatalogEntry[] = [
-  { method: "GET", path: "/api/v1/operations", summary: "List Operations.", category: "Operations", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/operations", summary: "List Operations.", category: "Operations", gate: "loopback", transport: "http", readOnly: true },
   { method: "POST", path: "/api/v1/operations", summary: "Create an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "PUT", path: "/api/v1/operations/order", summary: "Reorder Operations in a Theater.", category: "Operations", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/operations/:operationId", summary: "Get an Operation.", category: "Operations", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/operations/:operationId", summary: "Get an Operation.", category: "Operations", gate: "loopback", transport: "http", readOnly: true },
   { method: "PATCH", path: "/api/v1/operations/:operationId", summary: "Update an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "DELETE", path: "/api/v1/operations/:operationId", summary: "Delete an Operation.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/operations/catalog", summary: "List available Operation launch kinds.", category: "Operations", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/operations/events", summary: "Stream Operation changes.", category: "Operations", gate: "loopback", transport: "sse" },
-  { method: "GET", path: "/api/v1/operations/groups", summary: "List Operation groups.", category: "Operations", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/operations/events", summary: "Stream Operation changes.", category: "Operations", gate: "loopback", transport: "sse", readOnly: true },
+  { method: "GET", path: "/api/v1/operations/groups", summary: "List Operation groups.", category: "Operations", gate: "loopback", transport: "http", readOnly: true },
   { method: "POST", path: "/api/v1/operations/groups", summary: "Create an Operation group.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "PATCH", path: "/api/v1/operations/groups/:groupId", summary: "Update an Operation group.", category: "Operations", gate: "origin-write", transport: "http" },
   { method: "DELETE", path: "/api/v1/operations/groups/:groupId", summary: "Delete an Operation group.", category: "Operations", gate: "origin-write", transport: "http" },

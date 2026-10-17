@@ -1,4 +1,5 @@
 import { isAbsolute, parseFileRef, type FileRef } from "@fleet-console/markdown/file-ref";
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { PaneTarget } from "@fleet-console/sdk/pane";
 import type { OpenFileRequest } from "@fleet-console/sdk/navigation";
 import type { FileResolveResult } from "../server/file-resolver.js";
@@ -22,13 +23,16 @@ export class FileNavigationError extends Error {
   constructor(readonly reason: "outside_theater" | "not_found") { super(reason); }
 }
 
-export async function resolveFilePath(theaterId: string, filePath: string, pathKind: OpenFileRequest["pathKind"], signal?: AbortSignal): Promise<FileResolveResult> {
-  const response = await fetch("/plugins/file-explorer/files/resolve", {
+export async function resolveFilePath(theaterId: string, filePath: string, pathKind: OpenFileRequest["pathKind"], signal?: AbortSignal, transport?: HostTransport): Promise<FileResolveResult> {
+  const response = await (transport?.request ?? fetch)("/plugins/file-explorer/files/resolve", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ theaterId, path: filePath, pathKind }), ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new FileNavigationError(response.status === 403 ? "outside_theater" : "not_found");
-  return response.json() as Promise<FileResolveResult>;
+  const result = await response.json() as FileResolveResult;
+  transport?.scope.signal.throwIfAborted();
+  signal?.throwIfAborted();
+  return result;
 }
 
 export function filePaneTarget(theaterId: string, resolved: FileResolveResult, location: Pick<FileRef, "line" | "column"> & { readonly anchor?: string } = {}): PaneTarget {
@@ -45,12 +49,12 @@ export function filePaneTarget(theaterId: string, resolved: FileResolveResult, l
   };
 }
 
-export async function findReferencedFile(theaterId: string, query: string, signal?: AbortSignal): Promise<{ readonly resolved: FileResolveResult; readonly ref: FileLocation } | null> {
+export async function findReferencedFile(theaterId: string, query: string, signal?: AbortSignal, transport?: HostTransport): Promise<{ readonly resolved: FileResolveResult; readonly ref: FileLocation } | null> {
   const ref = parseFileLocation(query);
   if (!ref) return null;
   const explicit = isAbsolute(ref) || ref.line !== undefined || ref.column !== undefined;
   try {
-    const resolved = await resolveFilePath(theaterId, ref.path, isAbsolute(ref) ? "absolute" : "theater-relative", signal);
+    const resolved = await resolveFilePath(theaterId, ref.path, isAbsolute(ref) ? "absolute" : "theater-relative", signal, transport);
     return { resolved, ref };
   } catch (error) {
     if (explicit || signal?.aborted) throw error;

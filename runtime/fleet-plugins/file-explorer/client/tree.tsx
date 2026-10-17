@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from "react";
 
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
@@ -39,6 +40,7 @@ export interface PluginFilesClient {
 }
 
 interface FileTreeProps {
+  readonly transport?: HostTransport;
   readonly contextKey: string;
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
@@ -870,7 +872,7 @@ function isPermanentFolderError(code: string): boolean {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t, transport },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -958,13 +960,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const requestId = ++gitStatusRequestRef.current;
     const requestContextKey = contextKey;
     try {
-      const response = await fetch("/plugins/file-explorer/files/git-status", {
+      const response = await (transport?.request ?? fetch)("/plugins/file-explorer/files/git-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId }),
       });
       if (!response.ok) return;
       const nextResult = await response.json() as GitStatusResult;
+      transport?.scope.signal.throwIfAborted();
       if (
         requestId !== gitStatusRequestRef.current
         || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
@@ -973,7 +976,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     } catch {
       // Git 상태는 보조 신호다. 조회 실패는 파일 탐색을 방해하거나 오류 UI를 만들지 않는다.
     }
-  }, [contextKey, theaterId]);
+  }, [contextKey, theaterId, transport]);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -993,7 +996,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setFilterOutcome(null);
     setExpandFailedDirs(new Map());
     setWatchDegraded(false);
-  }, [contextKey, theaterId]);
+  }, [contextKey, theaterId, transport]);
 
   // 저장된 펼침 상태 복원 — 위 리셋 효과 다음에 선언되어 리셋 후에 실행된다.
   // 자식을 가져온 뒤에만 expanded로 올려 빈 펼침 행을 만들지 않는다.
@@ -1019,7 +1022,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         // 복원 실패는 접힌 채 둔다 — 사용자가 다시 펼치면 인라인 오류 행이 붙는다.
       }
     });
-  }, [contextKey, theaterId]);
+  }, [contextKey, theaterId, transport]);
 
   // 펼침 상태 지속 — Theater별로 저장해 리로드 후 복원한다.
   useEffect(() => {
@@ -1134,7 +1137,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       void (async () => {
         try {
           if (searchScope === "files") {
-            const referenced = await findReferencedFile(theaterId, query, controller.signal);
+            const referenced = await findReferencedFile(theaterId, query, controller.signal, transport);
             if (referenced) {
               if (requestId !== filterRequestRef.current || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
               setFilterOutcome({ files: [{ relativePath: referenced.resolved.path, kind: referenced.resolved.kind, source: "path", exact: true, location: { line: referenced.ref.line, column: referenced.ref.column, anchor: referenced.ref.anchor } }], totalMatches: 1, complete: true, ignoredSkipped: false });
@@ -1143,7 +1146,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
               return;
             }
           }
-          const response = await fetch("/plugins/file-explorer/files/palette-search", {
+          const response = await (transport?.request ?? fetch)("/plugins/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current, searchScope)),
@@ -1154,6 +1157,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             throw new Error(payload.error ?? "search_failed");
           }
           const outcome = await response.json() as FileSearchResult;
+          transport?.scope.signal.throwIfAborted();
           if (
             requestId !== filterRequestRef.current
             || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
@@ -1177,7 +1181,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [contextKey, filterText, searchScope, showHidden, theaterId]);
+  }, [contextKey, filterText, searchScope, showHidden, theaterId, transport]);
 
   const attachTreeRef = useCallback((node: HTMLDivElement | null) => {
     treeResizeObserverRef.current?.disconnect();
@@ -1204,7 +1208,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     let isFirstOpen = true;
     let gitStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const url = `/plugins/file-explorer/files/watch?theaterId=${encodeURIComponent(theaterId)}`;
-    const es = new EventSource(url);
+    const es = transport ? transport.events(url) : new EventSource(url);
 
     // 루트 재조회 성공 시 stale error를 함께 걷어 에러 화면에서 회복한다
     const reloadRoot = () => {
@@ -1286,7 +1290,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (gitStatusTimer !== null) clearTimeout(gitStatusTimer);
       es.close();
     };
-  }, [contextKey, theaterId, files, refreshGitStatus, rootListed]);
+  }, [contextKey, theaterId, files, refreshGitStatus, rootListed, transport]);
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
@@ -1629,7 +1633,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [rowNote]);
 
   const handleRowAction = (row: EntryRow, action: TreeRowAction) => {
-    if (!theaterId) {
+    if (!theaterId || (transport && transport.scope.hostKey !== "local")) {
       onActionFailed?.();
       return;
     }
@@ -1868,7 +1872,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         onEntryDoubleClick={handleRowDoubleClick}
         onContextMenu={handleRowContextMenu}
         onKeyDown={handleTreeItemKeyDown}
-        onRowAction={handleRowAction}
+        onRowAction={transport && transport.scope.hostKey !== "local" ? undefined : handleRowAction}
         onPeek={handleRowPeek}
         t={t}
       />
@@ -2121,6 +2125,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           )}
           {peekRow && (
             <FilePeek
+              transport={transport}
               theaterId={theaterId}
               relativePath={peekRow.row.entry.relativePath}
               name={peekRow.row.entry.name}
@@ -2273,7 +2278,7 @@ interface FlatTreeRowProps {
   readonly onEntryDoubleClick: (row: EntryRow) => void;
   readonly onContextMenu: (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
-  readonly onRowAction: (row: EntryRow, action: TreeRowAction) => void;
+  readonly onRowAction?: (row: EntryRow, action: TreeRowAction) => void;
   readonly onPeek: (row: EntryRow) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
@@ -2377,7 +2382,8 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, no
               className="fexp-row-action"
               aria-label={t("fileExplorer.row.copyRelativePath")}
               title={t("fileExplorer.row.copyRelativePath")}
-              onClick={() => onRowAction(row, "copyRelativePath")}
+              disabled={!onRowAction}
+              onClick={() => onRowAction?.(row, "copyRelativePath")}
             >
               <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="5" y="5" width="8" height="8" rx="1.5" {...ACTION_STROKE} />
@@ -2390,7 +2396,8 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, no
               className="fexp-row-action"
               aria-label={t("fileExplorer.row.reveal")}
               title={t("fileExplorer.row.reveal")}
-              onClick={() => onRowAction(row, "reveal")}
+              disabled={!onRowAction}
+              onClick={() => onRowAction?.(row, "reveal")}
             >
               <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3 12 13 3" {...ACTION_STROKE} />

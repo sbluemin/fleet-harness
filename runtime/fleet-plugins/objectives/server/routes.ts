@@ -7,7 +7,7 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { z } from "zod";
 
 import { createObjectiveActions } from "./actions.js";
-import { attachmentName, imageInfo, MAX_ATTACHMENT_BYTES } from "./attachments.js";
+import { attachmentName, imageInfo, isAttachmentUploadId, MAX_ATTACHMENT_BYTES } from "./attachments.js";
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
@@ -70,6 +70,8 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     const params = query(req);
     const objectiveId = params.get("objectiveId");
+    const uploadId = params.get("uploadId");
+    if (params.getAll("uploadId").length > 1 || (uploadId !== null && !isAttachmentUploadId(uploadId))) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     if (!objectiveId || objectiveId.length > 128) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
       const data = await readBytes(req, MAX_ATTACHMENT_BYTES);
@@ -77,9 +79,9 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
       const info = imageInfo(data);
       if (!info) { ctx.host.http.writeJson(res, 415, { error: "attachment_type" }); return true; }
       // 첨부는 메모의 일부다 — 지휘관이 일하는 동안에도 받고, 지휘관이 있으면 「메모」 편집으로 쌓인다.
-      const add = steerable(() => true, ({ objectiveId: target }: { objectiveId: string }) => store.attachmentAdd(target, { name: attachmentName(params.get("name"), info.type), type: info.type, data, ...(info.width ? { width: info.width } : {}), ...(info.height ? { height: info.height } : {}) }));
+      const add = steerable(() => true, ({ objectiveId: target }: { objectiveId: string }) => store.attachmentAdd(target, { name: attachmentName(params.get("name"), info.type), type: info.type, data, ...(info.width ? { width: info.width } : {}), ...(info.height ? { height: info.height } : {}) }, uploadId ?? undefined));
       const result = await add({ objectiveId });
-      ctx.host.http.writeJson(res, 200, { objective: actions.markEdited(objectiveId, ["note"]), attachmentId: result.attachment.id });
+      ctx.host.http.writeJson(res, 200, { objective: result.replayed ? result.objective : actions.markEdited(objectiveId, ["note"]), attachmentId: result.attachment.id });
     } catch (error) { fail(res, error); }
     return true;
   };

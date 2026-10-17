@@ -8,7 +8,7 @@ import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, type OperationNode, type OperationDescription } from "@fleet-console/sdk/operations";
 import type { ConsoleTurnFailure } from "@fleet-console/sdk/mcp";
 
-import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
+import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_UPLOADS, MAX_ATTACHMENT_NAME, isAttachmentUploadId, attachmentName, imageInfo, type BriefAttachmentInput } from "./attachments.js";
 import { FOLLOWUPS_AT_REVIEW_HINT, followupsJudgeable, heldItemStands, objectiveOperator, type HoldSubject } from "./board-state.js";
 import { checkedResultInput, completionResultsSchema, patchedResultInput, prTarget, artifactTarget, resultIdentity, ResultValidationError, RESULT_LIMITS, storedResultsSchema, evidenceMetadataSchema, type CompletionResultInput, type EvidenceMetadata, type ObjectiveResult, type ResultInput, type ResultPatch, type PrObservation, prObservationSchema, storedEvidenceSchema } from "./results.js";
 import { EVIDENCE_EXTENSIONS, type EvidenceBytes } from "./evidence.js";
@@ -313,7 +313,7 @@ export interface ObjectiveStore {
   evidenceSeal(objectiveId: string, ownerOperationId: string, input: EvidenceBytes): EvidenceMetadata;
   evidenceRead(objectiveId: string, resultId: string): Promise<{ readonly data: Buffer; readonly metadata: EvidenceMetadata }>;
   evidenceCollect(): void;
-  attachmentAdd(objectiveId: string, input: BriefAttachmentInput): { readonly objective: Objective; readonly attachment: ObjectiveAttachment };
+  attachmentAdd(objectiveId: string, input: BriefAttachmentInput, uploadId?: string): { readonly objective: Objective; readonly attachment: ObjectiveAttachment; readonly replayed?: boolean };
   /** 브리핑·새 첨부·편집 귀속을 한 레코드 쓰기로 확정한다. 기존 첨부는 보존한다. */
   briefEdit(objectiveId: string, note: string, attachments: readonly BriefAttachmentInput[], by: ObjectiveActor): Objective;
   attachmentRemove(objectiveId: string, attachmentId: string): Objective;
@@ -461,6 +461,10 @@ function readObjective(dir: string, segment: string): StoredObjective | null {
     const parsed = JSON.parse(raw) as Partial<StoredObjective>;
     // 디렉터리 이름이 곧 그 목표의 id 다 — 어긋난 파일은 이 목표의 상태가 아니다.
     if (parsed && typeof parsed === "object" && typeof parsed.operationId === "string" && safeSegment(parsed.operationId) === segment) {
+      if (parsed.attachmentUploads !== undefined) {
+        const uploads = parsed.attachmentUploads;
+        if (!Array.isArray(uploads) || uploads.length > MAX_ATTACHMENT_UPLOADS || uploads.some((entry) => !entry || typeof entry !== "object" || !isAttachmentUploadId(entry.uploadId) || !isAttachmentUploadId(entry.attachmentId) || typeof entry.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(entry.sha256) || typeof entry.name !== "string" || !entry.name || entry.name.length > MAX_ATTACHMENT_NAME) || new Set(uploads.map((entry) => entry.uploadId)).size !== uploads.length) throw new ObjectiveStoreError("invalid_stored_uploads");
+      }
       if (parsed.boardUpdatedAt !== undefined && (!Number.isFinite(parsed.boardUpdatedAt) || parsed.boardUpdatedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (parsed.stoppedAt !== undefined && (typeof parsed.stoppedAt !== "number" || !Number.isFinite(parsed.stoppedAt) || parsed.stoppedAt < 0)) throw new ObjectiveStoreError("invalid_stored_board_time");
       if (Array.isArray(parsed.missions) && parsed.missions.some((mission) => { const row = mission as { assignmentTs?: unknown; quietWokenFor?: unknown }; const bad = (at: unknown) => at !== undefined && (typeof at !== "number" || !Number.isFinite(at) || at < 0); return bad(row.assignmentTs) || bad(row.quietWokenFor); })) throw new ObjectiveStoreError("invalid_stored_board_time");
@@ -1924,11 +1928,32 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
     evidenceCollect() { for (const objective of store.all()) cleanEvidence(objective.id); },
 
-    attachmentAdd(objectiveId, input) {
+    attachmentAdd(objectiveId, input, uploadId) {
       const { theaterId, stored } = locate(objectiveId);
       if (stored.done) throw new ObjectiveStoreError("objective_done");
+      if (uploadId !== undefined && !isAttachmentUploadId(uploadId)) throw new ObjectiveStoreError("invalid_request");
+      // 재시도도 크기·실제 바이트 형식 검증을 지난다. 이름/크기만으로 다른 첨부를 자기 성공이라고 추정하지 않는다.
+      if (input.data.length > MAX_ATTACHMENT_BYTES) throw new ObjectiveStoreError("attachment_too_large");
+      const info = imageInfo(input.data);
+      if (!info || info.type !== input.type) throw new ObjectiveStoreError("attachment_unsupported");
+      const name = attachmentName(input.name, info.type);
+      const sha256 = uploadId === undefined ? null : createHash("sha256").update(input.data).digest("hex");
+      const receipts = stored.attachmentUploads ?? [];
+      const receipt = uploadId === undefined ? undefined : receipts.find((entry) => entry.uploadId === uploadId);
+      if (receipt) {
+        if (receipt.sha256 !== sha256 || receipt.name !== name) throw new ObjectiveStoreError("attachment_upload_conflict");
+        const attachment = stored.attachments?.find((entry) => entry.id === receipt.attachmentId);
+        if (!attachment) throw new ObjectiveStoreError("attachment_upload_removed");
+        const data = fs.readFileSync(fileOf(theaterId, objectiveId, attachment));
+        if (createHash("sha256").update(data).digest("hex") !== sha256) throw new ObjectiveStoreError("attachment_upload_conflict");
+        return { objective: project(stored, operationNode(objectiveId)), attachment, replayed: true };
+      }
+      if (uploadId !== undefined && receipts.length >= MAX_ATTACHMENT_UPLOADS) throw new ObjectiveStoreError("attachment_upload_capacity");
+      // 이 구간은 await 없이 동기 실행된다. 파일 생성과 영수증/메타데이터의 atomic record 쓰기가 한 번에 정산된다.
       return withAttachmentFiles(theaterId, objectiveId, stored.attachments ?? [], [input], (attachments) => ({
-        objective: update(objectiveId, (current) => ({ ...current, attachments: [...attachments] })), attachment: attachments.at(-1)!,
+        objective: update(objectiveId, (current) => ({ ...current, attachments: [...attachments],
+          ...(uploadId !== undefined ? { attachmentUploads: [...receipts, { uploadId, attachmentId: attachments.at(-1)!.id, sha256: sha256!, name }] } : {}),
+        })), attachment: attachments.at(-1)!,
       }));
     },
 

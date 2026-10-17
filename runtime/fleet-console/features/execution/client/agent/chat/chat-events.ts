@@ -253,6 +253,7 @@ export interface AgentChatQueueEntry {
 
 export interface AgentChatJournalEvent {
   readonly seq: number;
+  readonly generation?: string;
   /** 서버 원장에 선 시각. 옛 서버의 부재는 스토어가 수신 시각으로 보완한다. */
   readonly at?: number;
   readonly event: AgentChatStreamEvent;
@@ -266,10 +267,10 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     return null;
   }
   if (!parsed || typeof parsed !== "object") return null;
-  const entry = parsed as { readonly seq?: unknown; readonly at?: unknown; readonly event?: unknown };
+  const entry = parsed as { readonly seq?: unknown; readonly at?: unknown; readonly event?: unknown; readonly generation?: unknown };
   if (typeof entry.seq !== "number" || !entry.event || typeof entry.event !== "object") return null;
   const at = typeof entry.at === "number" && Number.isFinite(entry.at) ? entry.at : undefined;
-  const journal = at === undefined ? { seq: entry.seq } : { seq: entry.seq, at };
+  const journal = { seq: entry.seq, ...(at === undefined ? {} : { at }), ...(typeof entry.generation === "string" ? { generation: entry.generation } : {}) };
   const event = entry.event as { readonly kind?: unknown } & Record<string, unknown>;
   switch (event.kind) {
     case "replay-start":

@@ -8,6 +8,7 @@ import { nonHumanEditors } from "./actors.js";
 import { commodoreLanguage } from "./commodore-state.js";
 import {
   clearSelection,
+  createFollowupState,
   discardedFollowups,
   isFollowupSelectable,
   newBatchId,
@@ -158,6 +159,28 @@ interface BoardLive {
 
 const shown = (activity: string | undefined): string => (activity === undefined ? "closed" : activity === "background" ? "running" : activity);
 
+export interface ObjectiveBoardPorts {
+  readonly operations: () => readonly { readonly id: string; readonly activity?: string; readonly ownActivity?: string }[];
+  readonly theater: (theaterId: string) => { readonly launchAvailable: boolean };
+  readonly find: typeof findAnyObjective;
+  readonly subscribe: typeof subscribeObjective;
+  readonly request: <R>(path: string, body: Record<string, unknown>) => Promise<R>;
+  readonly reveal: typeof revealObjective;
+  readonly open: typeof openObjectiveFromCluster;
+  readonly followups: Pick<ReturnType<typeof createFollowupState>, "clearSelection" | "pruneSelection" | "readSelectionRevs" | "setFollowupOpen" | "takeFollowupFocus" | "toggleFollowupSelection" | "useFollowupOpen" | "useFollowupSelection">;
+}
+
+/** 기존 보드 workflow를 그대로 쓰되 라우팅 칸·후속 초안·API는 주입한 host 수명에만 속한다. */
+export function createObjectiveBoardActions(ports: ObjectiveBoardPorts) {
+const listedOperationSummaries = ports.operations;
+const readTheater = ports.theater;
+const findAnyObjective = ports.find;
+const subscribeObjective = ports.subscribe;
+const subscribeObjectiveOrFinished = ports.subscribe;
+const revealObjective = ports.reveal;
+const openObjectiveFromCluster = ports.open;
+const { clearSelection, pruneSelection, readSelectionRevs, setFollowupOpen, takeFollowupFocus, toggleFollowupSelection, useFollowupOpen, useFollowupSelection } = ports.followups;
+
 function liveOf(objective: Objective): BoardLive {
   const summaries = listedOperationSummaries();
   const byId = new Map(summaries.map((summary) => [summary.id, summary]));
@@ -187,7 +210,7 @@ function choicesOf(objective: Objective, live: BoardLive) {
 }
 
 /** 넘김 카드와 완료 칩이 같은 보드·실행 상태로 후보 고르기를 연다. */
-export function followupPickable(objective: Objective): boolean {
+function followupPickable(objective: Objective): boolean {
   return choicesOf(objective, liveOf(objective)).followupAvailable;
 }
 
@@ -209,12 +232,7 @@ const sheetsSending = new Set<string>();
 
 // ── 계약 ──────────────────────────────────────────────────────────────────
 
-const language = (): "en" | "ko" => commodoreLanguage() ?? "en";
-const request = <R,>(path: string, body: Record<string, unknown>): Promise<R> => {
-  const api = objectivesApi();
-  if (!api) return Promise.reject(new Error("objectives_unavailable"));
-  return post<R>(api, path, { ...body, language: language() });
-};
+const request = ports.request;
 const failed = (error: unknown, talk: boolean): GroupBoardRunResult => ({ outcome: "failed", notice: { tone: "warn", text: (locale) => bandFailure(getT(locale), error, { message: false, talk }) } });
 /** 개시 응답의 failed — 띄우지 못한 구성원을 알린다(개시 자체는 이어졌다). */
 const started = (result: unknown): GroupBoardRunResult => {
@@ -279,7 +297,7 @@ const HINTS: Partial<Record<IntentKey, ObjectiveMessageKey>> = {
 };
 
 /** 보드 동작 계약 — 지금 상태로 칩을 세우고, 실행은 늘 지금 보드를 다시 읽어 보낸다(묶음 캐시가 옛 목표를 쥐어도 같다). */
-export function objectiveBoardActions(objective: Objective): GroupBoardActions {
+function objectiveBoardActions(objective: Objective): GroupBoardActions {
   const live = liveOf(objective);
   const objectiveId = objective.id;
   const choices = choicesOf(objective, live);
@@ -601,3 +619,17 @@ function RoutingPanel({ objective, t, intent, context, settle }: { readonly obje
 }
 
 const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>;
+return { objectiveBoardActions, followupPickable };
+}
+
+const localBoard = createObjectiveBoardActions({
+  operations: listedOperationSummaries, theater: readTheater, find: findAnyObjective,
+  subscribe: subscribeObjectiveOrFinished, reveal: revealObjective, open: openObjectiveFromCluster,
+  followups: { clearSelection, pruneSelection, readSelectionRevs, setFollowupOpen, takeFollowupFocus, toggleFollowupSelection, useFollowupOpen, useFollowupSelection },
+  request: <R,>(path: string, body: Record<string, unknown>): Promise<R> => {
+    const api = objectivesApi();
+    if (!api) return Promise.reject(new Error("objectives_unavailable"));
+    return post<R>(api, path, { ...body, language: commodoreLanguage() ?? "en" });
+  },
+});
+export const { objectiveBoardActions, followupPickable } = localBoard;

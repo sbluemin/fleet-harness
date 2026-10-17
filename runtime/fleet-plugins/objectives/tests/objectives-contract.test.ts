@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import type { ConsoleActionInput, PluginMcpTool } from "@fleet-console/sdk/mcp";
 import type { OperationGroupedEvent, OperationNode } from "@fleet-console/sdk/operations";
@@ -282,6 +283,15 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
     await handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> };
   };
+  const upload = async (objectiveId: string, data: Buffer, uploadId: string, loseResponse = false) => {
+    let result = { status: 0, value: {} as Record<string, unknown> };
+    const uploadContext = { ...ctx, host: { ...ctx.host, http: { ...ctx.host.http,
+      writeJson: (_res: unknown, status: number, value: unknown) => { if (loseResponse) throw new Error("response_lost"); result = { status, value: value as Record<string, unknown> }; },
+    } } } as unknown as FleetPluginServerContext;
+    const req = Object.assign(Readable.from([data]), { method: "POST", url: `/plugins/objectives/attachment/add?objectiveId=${objectiveId}&name=shot.png&uploadId=${uploadId}` });
+    await createObjectiveRoutes(uploadContext, store, launch).find((entry) => entry.name === "attachment/add")!.handler({ req: req as never, res: {} as never, pathname: "attachment/add" });
+    return result;
+  };
   const resultFile = async (objectiveId: string, resultId: string, allow = true) => {
     authorized = allow;
     routeResult = { status: 0, value: null };
@@ -297,7 +307,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   const objectiveFile = (objectiveId: string) => path.join(objectivesDir, objectiveId, "objective.json");
   const savedObjective = (objectiveId: string) => JSON.parse(fs.readFileSync(objectiveFile(objectiveId), "utf8")) as Saved;
   const savedIds = () => (fs.existsSync(objectivesDir) ? fs.readdirSync(objectivesDir, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name) : []);
-  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
+  return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, upload, resultFile, operations, archivedOperations, archiveCalls, accessCalls, operationsHost, add, sent, deliveries, launches, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ operationId: id, output });
   }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, keyed, deletedKeys, reservedKeys, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; },
@@ -764,7 +774,7 @@ describe("Objectives contract", () => {
   });
 
   it("creates a pending objective and launches its Commander once on demand", async () => {
-    const { store, events, launch, call, route, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
+    const { store, events, launch, call, route, upload, resultFile, operations, operationsHost, archivedOperations, archiveCalls, accessCalls, sent, launches, objectiveFile, savedObjective, savedIds, objectivesDir, workspace, activity, interrupted, resumed, hostFault, removedGroups } = harness();
     const objective = await launch.create({ theaterId: "t1", title: "Release", groupId: "g-ship", note: "brief", missions: [{ text: "a" }, { text: "b", prerequisites: [1] }, { text: "c", prerequisites: [2] }] });
     expect(launches).toEqual([]);
     expect(operations.has(objective.id)).toBe(false);
@@ -933,8 +943,22 @@ describe("Objectives contract", () => {
     // 메모 첨부 — 머리 바이트가 이미지가 아니면 받지 않는다; 목표를 지우면 지휘관 Operation 이 닫히고 구성원도 따라 닫히며,
     // 복원 불가로 확정될 때(purged) 레코드와 첨부가 사라진다.
     expect(imageInfo(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'))).toBeNull();
-    const attached = store.attachmentAdd(objective.id, { name: "shot.png", type: "image/png", data: PNG });
-    const file = store.attachmentPath(attached.objective, attached.attachment);
+    const uploadId = randomUUID();
+    await expect(upload(objective.id, PNG, uploadId, true)).rejects.toThrow("response_lost");
+    const storedUpload = store.find(objective.id)!.attachments[0]!;
+    const replay = await Promise.all([upload(objective.id, PNG, uploadId), upload(objective.id, PNG, uploadId)]);
+    expect(replay.map((entry) => entry.value.attachmentId)).toEqual([storedUpload.id, storedUpload.id]);
+    expect(store.find(objective.id)!.attachments).toHaveLength(1);
+    expect(replay[0]!.value.objective).not.toHaveProperty("attachmentUploads");
+    expect(await upload(objective.id, Buffer.concat([PNG, Buffer.from("changed")]), uploadId)).toMatchObject({ status: 409, value: { error: "attachment_upload_conflict" } });
+    const freshKey = randomUUID();
+    const freshUpload = await upload(objective.id, PNG, freshKey);
+    expect(freshUpload.value.attachmentId).not.toBe(storedUpload.id);
+    store.attachmentRemove(objective.id, freshUpload.value.attachmentId as string);
+    expect(await upload(objective.id, PNG, freshKey)).toMatchObject({ status: 409, value: { error: "attachment_upload_removed" } });
+    const uploadReload = createObjectiveStore({ dirOf: () => objectivesDir, operations: operationsHost, emit: () => undefined });
+    expect(uploadReload.attachmentAdd(objective.id, { name: "shot.png", type: "image/png", data: PNG }, uploadId)).toMatchObject({ attachment: { id: storedUpload.id }, replayed: true });
+    const file = store.attachmentPath(store.find(objective.id)!, storedUpload);
     // 첨부는 그 목표 디렉터리 안에 산다 — 경로는 store 가 정하고 바깥으로 새지 않는다.
     expect(path.dirname(file)).toBe(path.join(objectivesDir, objective.id, "attachments"));
     await launch.remove(objective.id);

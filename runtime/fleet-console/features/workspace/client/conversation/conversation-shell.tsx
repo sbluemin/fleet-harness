@@ -591,6 +591,7 @@ interface ConversationStageProps {
   readonly onClose: (operationId: string) => void;
   /** 머리 줄 공통 도구모음의 문맥 — 보이는 대화의 Theater(useViewedTheaterId)로 만든다. 오른쪽 패널 본문과 같은 Theater 다. */
   readonly toolContext: RailToolContext;
+  readonly hostContext?: ReactNode;
 }
 
 /**
@@ -608,7 +609,7 @@ function useStageSubject(state: ConsoleState): OperationNode | null {
   return subject;
 }
 
-export function ConversationStage({ state, insets, language, operationKinds, onClose, toolContext }: ConversationStageProps) {
+export function ConversationStage({ state, insets, language, operationKinds, onClose, toolContext, hostContext }: ConversationStageProps) {
   const t = useT();
   const quickLaunchShortcut = useQuickLaunchShortcutLabel();
   const subject = useStageSubject(state);
@@ -717,6 +718,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
       aria-label={t("conversation.stage.aria")}
     >
+      {hostContext && !newSession ? <div className="conversation-host-context">{hostContext}</div> : null}
       <ConversationQuota />
       {newSession ? (
         <NewSessionColumn state={state} target={newSession} tools={tools} />

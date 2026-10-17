@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
-import { act } from "react";
+import { act, createElement, Fragment } from "react";
+import type { HostSurfaceContext } from "@fleet-console/sdk/host-context";
+import { hostFileSurface } from "../client/host-surface.js";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -68,6 +70,28 @@ afterEach(() => {
   act(() => root.unmount());
   document.body.replaceChildren();
   vi.unstubAllGlobals();
+});
+
+describe("host별 문서 수명", () => {
+  it("같은 Theater와 경로라도 이전 host의 늦은 읽기를 다른 본문에 싣지 않는다", async () => {
+    let finishA: (response: Response) => void = () => undefined;
+    const abortA = new AbortController();
+    const file = (content: string) => new Response(JSON.stringify({ relativePath: "same.ts", content, lang: "typescript", binary: false, truncated: false, mtimeMs: 1 }));
+    const context = (hostKey: string, signal: AbortSignal, request: (path: string) => Promise<Response>) => ({
+      selection: { hostKey, theaterId: "same-theater", role: "commander", operationId: "same-operation" }, language: "en",
+      transport: { scope: { hostKey, epoch: 1, signal }, request, events: () => Object.assign(new EventTarget(), { close() {}, onmessage: null, onopen: null }), resourceUrl: (path: string) => `/host/${hostKey}${path}` },
+      state: { read: () => "same.ts", write: () => undefined },
+    } as unknown as HostSurfaceContext);
+    const a = context("a", abortA.signal, () => new Promise((resolve) => { finishA = resolve; }));
+    await act(async () => { root.render(createElement(Fragment, { key: "a" }, hostFileSurface.render(a))); });
+    abortA.abort();
+    const b = context("b", new AbortController().signal, async () => file("const hostB = true;"));
+    await act(async () => { root.render(createElement(Fragment, { key: "b" }, hostFileSurface.render(b))); });
+    await act(async () => { finishA(file("const hostA = true;")); await Promise.resolve(); });
+    expect(container.textContent).toContain("hostB");
+    expect(container.textContent).not.toContain("hostA");
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("미리보기 문서 세션", () => {

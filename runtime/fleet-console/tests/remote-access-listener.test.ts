@@ -120,9 +120,83 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     }
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
 
-    // 통과하는 것은 이 하나뿐이며, 자격이 없으면 401로 끝난다 — 열려 있다는 것과 들여보낸다는 것은 다르다.
+    // join과 pair만 세션 없이 자격 본문에 닿는다. pair는 자격이 없으면 세션을 열지 않는다.
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: "not-a-grant" })))
       .resolves.toMatchObject({ status: 401 });
+    const probe = await remoteRequest(fixture, "POST", "/api/v1/pair", "{}");
+    expect(probe.status).toBe(400);
+    expect(JSON.parse(probe.body)).toEqual({ error: "invalid_join", capability: "pair" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("stores a grant as a pairing without opening or displacing control", async () => {
+    const fixture = await startFixture({ remote: true });
+    const holder = await joinAs(fixture, "full", "holder");
+    const token = grantTokenOf(await createLink(fixture));
+    const misdirected = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, intent: "pair", device: "inline" }));
+    expect(misdirected.status).toBe(400);
+    expect(JSON.parse(misdirected.body)).toEqual({ error: "invalid_join" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+
+    const paired = await remoteRequest(fixture, "POST", "/api/v1/pair", JSON.stringify({ token, device: "inline" }));
+    expect(paired.status).toBe(204);
+    const cookies = paired.headers["set-cookie"] ?? [];
+    expect(cookies.some((cookie) => cookie.startsWith("fleet_console_session_"))).toBe(false);
+    expect(cookies.some((cookie) => cookie.includes("fleet_console_pairing_"))).toBe(true);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const status = await readRemoteStatus(fixture);
+    expect(status.devices.find((entry) => entry.device === "holder")?.sessionHandle).toBeTruthy();
+    expect(status.devices.find((entry) => entry.device === "inline")?.sessionHandle).toBeNull();
+
+    const pairing = cookiesOf(paired);
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toEqual({ capability: "host-session", mode: "observer", access: "full" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    expect((await remoteRequest(fixture, "POST", "/api/v1/pair", JSON.stringify({ token }))).status).toBe(401);
+
+    const pairedStatus = await readRemoteStatus(fixture);
+    const inline = pairedStatus.devices.find((entry) => entry.device === "inline");
+    expect(inline?.id).toBeTruthy();
+    expect(await revoke(fixture, `access-sessions/${inline?.sessionHandle}`)).toBe(204);
+    const sessionEnded = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(sessionEnded.status).toBe(200);
+    expect(JSON.parse(sessionEnded.body)).toEqual({ capability: "host-session", mode: "observer", access: "full" });
+    expect((sessionEnded.headers["set-cookie"] ?? []).join("\n")).not.toContain("Max-Age=0");
+    const stillPaired = await remoteRequest(fixture, "POST", "/api/v1/pair", "{}", pairing);
+    expect(stillPaired.status).toBe(204);
+    expect((stillPaired.headers["set-cookie"] ?? []).join("\n")).not.toContain("fleet_console_session_");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+
+    expect(await revoke(fixture, `paired-devices/${inline?.id}`)).toBe(204);
+    const rejectedObserve = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(rejectedObserve.status).toBe(401);
+    expect(JSON.parse(rejectedObserve.body)).toEqual({ error: "unauthorized" });
+    expect((rejectedObserve.headers["set-cookie"] ?? []).join("\n")).not.toContain("Max-Age=0");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const rejectedPair = await remoteRequest(fixture, "POST", "/api/v1/pair", "{}", pairing);
+    expect(rejectedPair.status).toBe(401);
+    expect(JSON.parse(rejectedPair.body)).toEqual({ error: "unauthorized", capability: "pair" });
+    expect((rejectedPair.headers["set-cookie"] ?? []).join("\n")).not.toContain("Max-Age=0");
+    expect((rejectedPair.headers["set-cookie"] ?? []).join("\n")).not.toContain("fleet_console_session_");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const fresh = grantTokenOf(await createLink(fixture));
+    const repaired = await remoteRequest(fixture, "POST", "/api/v1/pair", JSON.stringify({ token: fresh, device: "inline" }));
+    expect(repaired.status).toBe(204);
+    expect((repaired.headers["set-cookie"] ?? []).some((cookie) => cookie.startsWith("fleet_console_session_"))).toBe(false);
+    expect((repaired.headers["set-cookie"] ?? []).some((cookie) => cookie.includes("fleet_console_pairing_"))).toBe(true);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const repairedStatus = await readRemoteStatus(fixture);
+    expect(repairedStatus.devices.find((entry) => entry.device === "holder")?.sessionHandle).toBeTruthy();
+    expect(repairedStatus.devices.find((entry) => entry.device === "inline")?.sessionHandle).toBeNull();
+
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const loopback = await fetch(`${origin}/api/v1/pair`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: "{}",
+    });
+    expect(loopback.status).toBe(404);
   });
 
   /**
@@ -306,7 +380,196 @@ interface RemoteAccessStatus {
   readonly interfaces: readonly { readonly kind: string; readonly label: string; readonly address: string }[];
 }
 
-async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
+it("does not take control or permit writes when a paired device only observes", async () => {
+    const fixture = await startFixture({ remote: true });
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const holder = await joinAs(fixture, "full", "holder");
+    const pairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    expect(pairing).toBeTruthy();
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe", device: "watcher" }), pairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toEqual({ capability: "host-session", mode: "observer", access: "full" });
+    const observer = cookiesOf(observed);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    const denied = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), observer);
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(denied.body)).toEqual({ error: "read_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/models/roster?target=launch", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    const commodore = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/autonomy", JSON.stringify({ theaterId: "missing", autonomy: true }), observer);
+    expect(commodore.status).toBe(403);
+    expect(JSON.parse(commodore.body)).toEqual({ error: "read_only" });
+    const status = await readRemoteStatus(fixture);
+    expect(status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device).sort()).toEqual(["holder", "watcher"]);
+    const activated = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "activate" }), observer);
+    expect(activated.status).toBe(200);
+    expect(JSON.parse(activated.body).mode).toBe("controller");
+    const managed = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/sources", JSON.stringify({ theaterId: "missing", sources: [] }), observer);
+    expect(managed.status).not.toBe(403);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("refuses control to a monitoring pairing without displacing the controller", async () => {
+    const fixture = await startFixture({ remote: true });
+    const holder = await joinAs(fixture, "full", "holder");
+    const eye = await joinAs(fixture, "monitoring", "eye");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const denied = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "activate" }), eye);
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(denied.body)).toEqual({ error: "observer_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    const write = await remoteRequest(fixture, "POST", "/api/v1/operations", JSON.stringify({}), eye);
+    expect(write.status).toBe(403);
+    expect(JSON.parse(write.body)).toEqual({ error: "read_only" });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/models/roster?target=agent", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const commodore = await remoteRequest(fixture, "POST", "/plugins/objectives/commodore/directive", JSON.stringify({ theaterId: "missing", text: "keep" }), eye);
+    expect(commodore.status).toBe(403);
+    expect(JSON.parse(commodore.body)).toEqual({ error: "read_only" });
+  });
+
+  it("admits a host session only for an existing pairing and replaces that pairing's previous observation", async () => {
+    const fixture = await startFixture({ remote: true });
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const loopback = await fetch(`${origin}/api/v1/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: origin },
+      body: JSON.stringify({ intent: "observe" }),
+    });
+    expect(loopback.status).toBe(404);
+
+    const token = grantTokenOf(await createLink(fixture));
+    const before = await readRemoteStatus(fixture);
+    const grantOnly = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe", token }));
+    expect(grantOnly.status).toBe(401);
+    expect(JSON.parse(grantOnly.body)).toEqual({ error: "unauthorized" });
+    const kept = await readRemoteStatus(fixture);
+    expect(kept.links.map((entry) => entry.id)).toEqual(before.links.map((entry) => entry.id));
+    expect((await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token, device: "grant" }))).status).toBe(204);
+
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const holder = await joinAs(fixture, "full", "holder");
+    const pairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    expect(pairing).toBeTruthy();
+    const mismatched = await remoteRequestBody(fixture, "POST", "/api/v1/sessions", "evil.example", pairing);
+    expect(mismatched.status).toBe(403);
+    expect(JSON.parse(mismatched.body)).toEqual({ error: "host_mismatch" });
+
+    const sessionCookie = (cookies: string): string => cookies.split("; ").find((cookie) => cookie.startsWith("fleet_console_session_")) ?? "";
+    const first = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+    expect(first.status).toBe(200);
+    const firstSession = sessionCookie(cookiesOf(first));
+    let latest = firstSession;
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const again = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing);
+      expect(again.status).toBe(200);
+      latest = sessionCookie(cookiesOf(again));
+    }
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, firstSession)).resolves.toMatchObject({ status: 401 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, latest)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+
+    for (let index = 0; index < 7; index += 1) {
+      const eye = (await joinAs(fixture, "monitoring", `eye-${index}`)).split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+      expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), eye)).status).toBe(200);
+    }
+    const ninth = (await joinAs(fixture, "monitoring", "ninth")).split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"));
+    const capped = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), ninth);
+    expect(capped.status).toBe(409);
+    expect(JSON.parse(capped.body)).toEqual({ error: "observer_limit" });
+    expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), pairing)).status).toBe(200);
+    expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), ninth)).status).toBe(409);
+  });
+
+  it("releases only that pairing's control when it returns to observation", async () => {
+    const fixture = await startFixture({ remote: true });
+    const eye = await joinAs(fixture, "monitoring", "eye");
+    const watcher = await joinAs(fixture, "full", "watcher");
+    const watcherPairing = watcher.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_")) ?? "";
+    expect((await localInstall(fixture)).body).toContain("computer_use_local_only");
+    const observed = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), watcherPairing);
+    expect(observed.status).toBe(200);
+    expect(JSON.parse(observed.body)).toMatchObject({ capability: "host-session", mode: "observer", access: "full" });
+    expect((await localInstall(fixture)).body).toContain("computer_use_backend_mismatch");
+    const observer = cookiesOf(observed);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const holder = await joinAs(fixture, "full", "holder");
+    expect((await localInstall(fixture)).body).toContain("computer_use_local_only");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const holderPairing = holder.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_")) ?? "";
+    const holderObserved = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }), holderPairing);
+    expect(holderObserved.status).toBe(200);
+    expect((await localInstall(fixture)).body).toContain("computer_use_backend_mismatch");
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, observer)).resolves.toMatchObject({ status: 200 });
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, eye)).resolves.toMatchObject({ status: 200 });
+    const state = await remoteRequest(fixture, "GET", "/api/v1/agent/state", undefined, observer);
+    expect(state.status).toBe(200);
+    expect(errorOf(state.body)).not.toBe("read_only");
+    const attachment = await remoteRequest(fixture, "GET", "/plugins/objectives/attachment/file?objectiveId=missing&attachmentId=missing", undefined, observer);
+    const evidence = await remoteRequest(fixture, "GET", "/plugins/objectives/result/file?objectiveId=missing&resultId=missing", undefined, observer);
+    expect(errorOf(attachment.body)).not.toBe("read_only");
+    expect(errorOf(evidence.body)).not.toBe("read_only");
+  });
+
+  it("admits a same-origin host read without Origin and keeps foreign, cross-site, and write requests out", async () => {
+    const fixture = await startFixture({ remote: true });
+    const other = await startFixture({ remote: true });
+    const pageOrigin = new URL(fixture.loopbackEndpoint).origin;
+    const added = await fetch(`${fixture.loopbackEndpoint}api/v1/remote-hosts`, {
+      method: "POST",
+      headers: { Origin: pageOrigin, "Content-Type": "application/json" },
+      body: JSON.stringify({ link: await createLink(other) }),
+    });
+    expect(added.status).toBe(201);
+    const hostId = ((await added.json()) as { host: { id: string } }).host.id;
+    const presencePath = `/api/v1/hosts/${encodeURIComponent(hostId)}/presence`;
+    const browser = { "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" };
+    const presence = await loopbackCall(fixture, "GET", presencePath, browser);
+    expect(presence.status).toBe(200);
+    const current = JSON.parse(presence.body) as { hostKey: string; epoch: number; instanceId: string; mode: string };
+    expect(current).toMatchObject({ hostKey: hostId, mode: "off" });
+    const eventsPath = `/api/v1/hosts/${encodeURIComponent(hostId)}/events?${new URLSearchParams({ path: "/api/v1/operations/events", epoch: String(current.epoch), instanceId: current.instanceId })}`;
+    const events = await loopbackCall(fixture, "GET", eventsPath, { accept: "text/event-stream", "sec-fetch-site": "same-origin", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" });
+    expect(events.status).toBe(409);
+    // 공개 오류 본문: epoch는 stale_epoch에만 싣는다(브라우저 validator가 그 밖의 형태를 거절한다).
+    expect(JSON.parse(events.body)).toEqual({ error: "host_inactive" });
+    const resourcePath = `/api/v1/hosts/${encodeURIComponent(hostId)}/resources?${new URLSearchParams({ path: "/plugins/file-explorer/files/image?path=one.png", epoch: String(current.epoch), instanceId: current.instanceId })}`;
+    const image = await loopbackCall(fixture, "GET", resourcePath, { "sec-fetch-site": "same-origin", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" });
+    expect(image.status).toBe(409);
+    expect(JSON.parse(image.body)).toEqual({ error: "host_inactive" });
+    expect(await loopbackCall(fixture, "GET", presencePath, {})).toMatchObject({ status: 400, body: "{\"error\":\"invalid_host_request\"}" });
+    expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "https://evil.example" })).status).toBe(400);
+    expect((await loopbackCall(fixture, "GET", presencePath, { ...browser, origin: "null" })).status).toBe(400);
+    expect((await loopbackCall(fixture, "GET", presencePath, { "sec-fetch-site": "cross-site", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" })).status).toBe(400);
+    const posted = await loopbackCall(fixture, "POST", presencePath, { ...browser, "content-type": "application/json" }, JSON.stringify({ intent: "observe", expectedEpoch: current.epoch, expectedInstanceId: current.instanceId }));
+    expect(posted.status).toBe(400);
+    expect(JSON.parse(posted.body)).toEqual({ error: "invalid_host_request" });
+    const mismatched = await loopbackCall(fixture, "GET", presencePath, { ...browser, host: "evil.example" });
+    expect(mismatched.status).toBe(403);
+    expect(JSON.parse(mismatched.body)).toEqual({ error: "host_mismatch" });
+    const remote = await remoteRequest(fixture, "GET", presencePath, undefined, await joinAs(fixture, "full", "watcher"));
+    expect(remote.status).toBe(404);
+    expect(JSON.parse(remote.body)).toEqual({ error: "not_found" });
+    const upgrade = await loopbackCall(fixture, "GET", `/api/v1/hosts/${encodeURIComponent(hostId)}/socket?epoch=${current.epoch}&instanceId=${current.instanceId}&channel=terminal&operationId=op-1`, {
+      connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-fetch-site": "same-origin",
+    });
+    expect(upgrade.status).toBe(404);
+    expect(JSON.parse(upgrade.body)).toEqual({ error: "not_found" });
+  }, 20_000);
+
+  it("charges the remote join budget for an unauthenticated host session", async () => {
+    const fixture = await startFixture({ remote: true });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      expect((await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }))).status).toBe(401);
+    }
+    const throttled = await remoteRequest(fixture, "POST", "/api/v1/sessions", JSON.stringify({ intent: "observe" }));
+    expect(throttled.status).toBe(429);
+    expect(JSON.parse(throttled.body)).toEqual({ error: "too_many_attempts" });
+    expect((await readRemoteStatus(fixture)).rejectedJoins.count).toBe(1);
+  });
+
+  async function joinAs(fixture: Fixture, access: string, device: string): Promise<string> {
   const response = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links?access=${access}`, {
     method: "POST",
     headers: { Authorization: `Bearer ${fixture.lockToken}` },
@@ -484,6 +747,45 @@ function readPresentedCertificateFingerprint(port: number): Promise<string> {
       resolve((request.socket as import("node:tls").TLSSocket).getPeerCertificate().fingerprint256);
     });
     request.on("error", reject);
+    request.end();
+  });
+}
+
+async function localInstall(fixture: Fixture): Promise<{ status: number; body: string }> {
+  const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+  const response = await fetch(`${origin}/api/v1/computer-use/install`, {
+    method: "POST",
+    headers: { Origin: origin, "Content-Type": "application/json" },
+    body: "{}",
+  });
+  return { status: response.status, body: await response.text() };
+}
+
+function errorOf(body: string): string | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    return typeof parsed.error === "string" ? parsed.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function loopbackCall(fixture: Fixture, method: string, requestPath: string, headers: Record<string, string>, body?: string, headOnly = false): Promise<{ status: number; headers: import("node:http").IncomingHttpHeaders; body: string }> {
+  const url = new URL(fixture.loopbackEndpoint);
+  return new Promise((resolve, reject) => {
+    const request = http.request({ host: url.hostname, port: Number(url.port), path: requestPath, method, headers: { ...headers, ...(body ? { "content-length": Buffer.byteLength(body) } : {}) } }, (response) => {
+      if (headOnly) {
+        response.resume();
+        resolve({ status: response.statusCode ?? 0, headers: response.headers, body: "" });
+        response.destroy();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      response.on("data", (chunk: Buffer) => chunks.push(chunk));
+      response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") }));
+    });
+    request.on("error", reject);
+    if (body) request.write(body);
     request.end();
   });
 }

@@ -275,3 +275,6 @@ export function isDesktopWindowCommandSnapshot(value: unknown): value is Desktop
 }
 
 export { readDesktopEntryFonts, type DesktopEntryFonts, type DesktopFontAxis } from "./fonts.js";
+
+export { DESKTOP_HOST_FRAME_MAX_CHARS, DESKTOP_HOST_RELAY_ID_HEADER, DESKTOP_HOST_TRANSPORT_PATH, DESKTOP_HOST_TRANSPORT_EVENTS_PATH, DESKTOP_HOST_TRANSPORT_RELAY_PATH, DESKTOP_HOST_TRANSPORT_EVENT, DESKTOP_HOST_UPLOAD_CHUNK_CHARS, DESKTOP_HOST_UPLOAD_DEADLINE_MS, DESKTOP_HOST_UPLOAD_QUEUE, DESKTOP_HOST_UPLOAD_SLOTS, isDesktopHostCommand, isDesktopHostRelay, isDesktopHostSnapshot } from "./host-transport.js";
+export type { DesktopHostCommand, DesktopHostOp, DesktopHostRelay, DesktopHostSnapshot, DesktopHostTarget } from "./host-transport.js";

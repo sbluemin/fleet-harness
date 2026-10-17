@@ -1,3 +1,4 @@
+import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { FolderListResult } from "../server/types.js";
 import type { ListFolderOptions, PluginFilesClient } from "./tree.js";
 
@@ -14,7 +15,8 @@ export const LIST_TIMEOUT_MS = 10_000;
  * 트리 페인과 문서 로더가 함께 부르므로 어느 컴포넌트에도 속하지 않는다 — 문서 창은 이미지의
  * 기준 mtime을 얻으려 부모 폴더를 한 번 나열하고, 트리는 목록 그 자체를 그린다.
  */
-export function makeFilesClient(theaterId: string | null): PluginFilesClient {
+export function makeFilesClient(theaterId: string | null, transport?: HostTransport): PluginFilesClient {
+  const request = transport?.request ?? fetch;
   return {
     listFolder: async (relativePath?, options: ListFolderOptions = {}) => {
       if (!theaterId) throw new Error("no_theater");
@@ -26,7 +28,7 @@ export function makeFilesClient(theaterId: string | null): PluginFilesClient {
       else signal?.addEventListener("abort", forward, { once: true });
       const timer = timeoutMs === undefined ? null : setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
       try {
-        const res = await fetch("/plugins/file-explorer/files/list", {
+        const res = await request("/plugins/file-explorer/files/list", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ theaterId, relativePath: relativePath ?? "" }),
@@ -36,7 +38,10 @@ export function makeFilesClient(theaterId: string | null): PluginFilesClient {
           const payload = await res.json() as { error?: string };
           throw new Error(payload.error ?? "list_failed");
         }
-        return await res.json() as FolderListResult;
+        const result = await res.json() as FolderListResult;
+        transport?.scope.signal.throwIfAborted();
+        controller.signal.throwIfAborted();
+        return result;
       } catch (error) {
         // 대기열에 묶였다가 시간이 다 됐다 — 취소(언마운트)와 갈라 다시 시도할 수 있는 코드로 알린다.
         if (timedOut) throw new Error("list_timeout");

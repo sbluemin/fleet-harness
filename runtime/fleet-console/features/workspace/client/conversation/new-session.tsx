@@ -3,8 +3,8 @@ import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView }
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, openNewSession, requestQuickLaunch } from "../../../../core/client/src/integration/store.js";
+import type { ConsoleState, NewSessionState, TheaterInfo } from "../../../../core/client/src/integration/types.js";
+import { closeNewSession, keepNewSessionDraft, openNewSession, requestQuickLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../../../execution/client/quick-launch.js";
 import { readQuickLaunchSelection, writeQuickLaunchTheater } from "../../../execution/client/quick-launch-preferences.js";
@@ -28,7 +28,7 @@ import "./new-session.css";
  */
 export function NewSessionColumn({ state, target, tools }: {
   readonly state: ConsoleState;
-  readonly target: NewSessionTarget;
+  readonly target: NewSessionState;
   readonly tools: ReactNode;
 }) {
   const t = useT();
@@ -37,7 +37,11 @@ export function NewSessionColumn({ state, target, tools }: {
     ?? state.theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId())
     ?? null;
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[] | null>(null);
-  const [prompt, setPrompt] = useState("");
+  // 쓰던 문장은 열린 새 세션의 것이다 — 칸이 내려갈 때 세션 상태(store 의 newSession)에 맡기고, 다시 서면 거기서 잇는다.
+  // 타이핑마다 store 를 고치지 않고, 칸의 수명 끝에서 한 번만 맡긴다. 보낸 문장은 맡길 것이 없다.
+  const [prompt, setPrompt] = useState(() => target.draft ?? "");
+  const unsentRef = useRef(prompt);
+  useEffect(() => () => keepNewSessionDraft(unsentRef.current), []);
   const [startView, setStartView] = useState<OperationLaunchView>(readLaunchStartSurface);
   const [starting, setStarting] = useState(false);
   const [theaterMenuOpen, setTheaterMenuOpen] = useState<"chip" | "card" | null>(null);
@@ -109,6 +113,7 @@ export function NewSessionColumn({ state, target, tools }: {
     if (launchChoice.effort) variant.effort = launchChoice.effort;
     setStarting(true);
     writeQuickLaunchTheater(theater.id);
+    unsentRef.current = "";
     requestQuickLaunch({
       theaterId: theater.id,
       pluginId: variantTarget.pluginId,
@@ -208,7 +213,7 @@ export function NewSessionColumn({ state, target, tools }: {
             rows={1}
             value={prompt}
             disabled={starting}
-            onChange={(event) => setPrompt(event.target.value)}
+            onChange={(event) => { setPrompt(event.target.value); unsentRef.current = event.target.value; }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();

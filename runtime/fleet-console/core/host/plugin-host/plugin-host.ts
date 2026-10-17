@@ -926,7 +926,7 @@ function createScopedUpgradeRegistrar(
 }
 
 const API_CATALOG_METHODS = new Set<unknown>(["GET", "POST", "PUT", "PATCH", "DELETE", "*"]);
-const API_CATALOG_GATES = new Set<unknown>(["loopback", "origin-write", "origin-strict", "lock-token", "anthropic-credential", "one-use-ticket"]);
+const API_CATALOG_GATES = new Set<unknown>(["loopback", "origin-write", "origin-strict", "lock-token", "anthropic-credential", "one-use-ticket", "remote-cookie"]);
 const API_CATALOG_TRANSPORTS = new Set<unknown>(["http", "sse", "websocket", "proxy"]);
 
 function resolveCatalogEntries(prefix: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): ApiCatalogEntry[] {
@@ -951,6 +951,7 @@ function assertValidCatalogEntry(entry: unknown): asserts entry is ApiCatalogEnt
     || !API_CATALOG_GATES.has(candidate.gate)
     || !API_CATALOG_TRANSPORTS.has(candidate.transport)
     || !isValidCatalogPath(candidate.path)
+    || (candidate.readOnly !== undefined && candidate.readOnly !== true)
   ) {
     throw new Error("plugin_catalog_entry_invalid");
   }

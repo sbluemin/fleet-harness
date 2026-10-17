@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { onboardingBoundary } from "@fleet-console/sdk/onboarding/anchors";
 import { createPortal } from "react-dom";
 
@@ -51,6 +51,19 @@ export interface ObjectiveContext {
 
 type T = Translate<ObjectiveMessageKey>;
 
+/** 상세의 실행 경계. 원격 표면은 로컬 설치 상태를 읽지 않는 포트를 모두 채운다. */
+export interface ObjectiveDetailPorts {
+  readonly canWrite: () => boolean;
+  readonly useLedgerOperation: typeof useLedgerOperation;
+  readonly canOpenLedger: typeof canOpenLedger;
+  readonly toggleLedger: typeof toggleLedger;
+  readonly focusOperation: typeof focusOperation;
+  readonly resource?: { readonly url: (path: string) => string; readonly read: (path: string, signal?: AbortSignal) => Promise<Response> };
+  readonly upload?: { readonly request: (path: string, init: RequestInit) => Promise<Response>; readonly signal: AbortSignal; readonly canWrite: () => boolean };
+}
+const DetailPorts = createContext<ObjectiveDetailPorts>({ canWrite: () => true, useLedgerOperation, canOpenLedger, toggleLedger, focusOperation });
+export const ObjectiveDetailProvider = DetailPorts.Provider;
+
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 /** 브리핑 — 봉인된 작전 명령서. 문서 오른쪽 아래 모서리를 인장이 대신한다. */
 const BriefGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8.3 13.5H4.5A1.5 1.5 0 0 1 3 12V3.5A1.5 1.5 0 0 1 4.5 2h6A1.5 1.5 0 0 1 12 3.5v4.3" /><path d="M5.6 5.2h3.8M5.6 7.8h2.6" /><circle cx="11.4" cy="11.4" r="2.6" /><circle cx="11.4" cy="11.4" r="0.75" fill="currentColor" stroke="none" /></svg>;
@@ -86,7 +99,7 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
  * 임무 기록 — 구상 입력 줄과 같은 문법이다: 상자·배경 없이 임무 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
  * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간 이미 읽은 기록의 id 로 가른다(펼치면 읽음이 되어도 표시는 남는다; 상한에서 밀려나도 위치가 아니라 id 라 어긋나지 않는다).
  */
-function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
+export function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
   return (
     <div id={id} className={`objectives-records${open ? " is-open" : ""}`} hidden={!open}>
       <div className="objectives-records-inner">
@@ -406,6 +419,7 @@ function CommanderMark({ objective, operationState, size }: { objective: Objecti
  * 탭의 줄 누름과 같다. 아직 띄운 적 없는 참여자나 원장을 열 수 없는 호스트에서는 표식만 선다.
  */
 function LedgerMark({ rootId, operationId, name, open, available, t, children }: { rootId: string; operationId: string; name: string; open: boolean; available: boolean; t: T; children: ReactNode }) {
+  const { toggleLedger } = useContext(DetailPorts);
   if (!available) return <>{children}</>;
   const label = open ? t("objectives.members.closeLedger") : t("objectives.members.openLedger", { name });
   return <button type="button" className="objectives-member-ledger" aria-pressed={open} aria-label={label} title={label} onClick={() => toggleLedger(rootId, operationId)}>{children}</button>;
@@ -413,6 +427,7 @@ function LedgerMark({ rootId, operationId, name, open, available, t, children }:
 
 /** 구성원 탭의 명단 — 머리(셈·일괄 설정) 아래 첫 줄에 지휘관 실행 설정(lead)이 같은 줄 문법으로 서고, 이어서 구성원 줄이다. 탭이 접힘을 대신하므로 머리는 접지 않는다. */
 function MemberRoster({ objective, t, call, request, operationState, rows, touchable, lead }: { objective: Objective; t: T; call: DetailProps["call"]; request: DetailProps["request"]; operationState: DetailProps["operationState"]; rows: ReturnType<typeof useLaunchRows>; touchable: boolean; lead: ReactNode }) {
+  const { useLedgerOperation, canOpenLedger } = useContext(DetailPorts);
   const ledger = useLedgerOperation(objective.id);
   const ledgerReady = canOpenLedger();
   // 빼면 맡던 임무는 지휘관 직접으로 돌아간다 — 달성 기준처럼 되돌리기 없이 바로.
@@ -1132,11 +1147,13 @@ const BRIEF_LINES = 3;
 // 제목 초안은 제 칸에서만 산다 — 상세 전체가 글자마다 다시 그리지 않는다. 값은 SyncedTextarea가 DOM에 맞춘다(글자마다
 // React가 defaultValue를 다시 쓰면 문서의 :has() 무효화가 맵 전체의 스타일을 다시 계산한다).
 /** 브리핑 — 후속으로 태어난 목표면 원본 한 줄(origin)이 머리 바로 아래, 브리핑의 일부로 선다. */
-function BriefSection({ objective, t, language, touchable, call, origin }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; origin: ReactNode }) {
+export function BriefSection({ objective, t, language, touchable, call, origin, resourceUrl }: { objective: Objective; t: T; language: DetailProps["language"]; touchable: boolean; call: DetailProps["call"]; origin: ReactNode; resourceUrl?: (path: string) => string }) {
   const [note, setNote] = useState(objective.note);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { setNote(objective.note); }, [objective.note]);
-  const attachments = useAttachmentUpload(objective, t);
+  const ports = useContext(DetailPorts);
+  resourceUrl ??= ports.resource?.url;
+  const attachments = useAttachmentUpload(objective, t, ports.upload);
   const [dropping, setDropping] = useState(false);
   // 브리핑 — 쉴 때 3줄, 넘치면 「더 보기」. 쓰는 동안(초점)은 다 보인다(360px 뒤로는 안에서 스크롤).
   const noteRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1230,7 +1247,7 @@ function BriefSection({ objective, t, language, touchable, call, origin }: { obj
           {touchable ? <AttachButton objective={objective} t={t} upload={attachments.upload} sending={attachments.sending} /> : null}
         </> : null} />
         {origin}
-        <NoteAttachments objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
+        <NoteAttachments resourceUrl={resourceUrl} objective={objective} t={t} touchable={touchable} error={attachments.error} sending={attachments.sending} onRemove={(attachment) => void call("/attachment/remove", { objectiveId: objective.id, attachmentId: attachment.id })} />
         {briefEditing && touchable ? (
           <SyncedTextarea ref={noteRef} className={`objectives-note${noteClamped ? " is-clamped" : ""}${briefBlank && !briefCollapsed ? " is-writing" : ""}`} rows={1} aria-label={t("objectives.objective.memo")} placeholder={t("objectives.objective.memoPlaceholder")} value={note} onChange={(event) => saveNote(event.target.value)}
             onFocus={() => setNoteFocus(true)} onBlur={() => { setNoteFocus(false); setBriefEditing(false); }}
@@ -1266,7 +1283,8 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   return describeQuietMission(elapsed / 60_000, language);
 }
 
-function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective }: DetailProps) {
+export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, operationTitle, operationState, operationOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective }: DetailProps) {
+  const { canWrite, useLedgerOperation, canOpenLedger, focusOperation, resource } = useContext(DetailPorts);
   const launchRows = useLaunchRows();
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
@@ -1290,9 +1308,9 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
   const mergedFrom = criterionSources(objective);
   // 수동 재개로 초기화된 유휴 세션도 잠근다. 구성원의 활동이 아니라 지휘관 자신의 상태로 판단한다.
   const locked = objective.commander.started || ["idle", "running", "awaiting"].includes(operationOwnState(objective.id));
-  const editable = !objective.done && !busy;
+  const editable = canWrite() && !objective.done && !busy;
   // 지휘관이 일하는 동안에도 받는 편집 — 임무 추가, 끝나지 않은 임무의 문구·삭제·선행·담당, 메모. 구성원이 떠 있어도 임무는 끝나기 전까지 사람의 것이다. 서버가 같은 기준으로 가른다.
-  const touchable = !objective.done;
+  const touchable = canWrite() && !objective.done;
   const notStarted = (mission: ObjectiveMission) => !mission.done;
   const canEditMission = (missionId: string) => { if (editable) return true; const target = objective.missions.find((candidate) => candidate.id === missionId); return touchable && !!target && notStarted(target); };
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -1315,7 +1333,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
     for (const mission of objective.missions) {
       // 가장 최근 기록 id 로 거른다 — 기록 수는 상한(20)에 닿으면 더 늘지 않아, 그 뒤의 새 기록을 알리지 못한다.
       const key = `${mission.id}:${mission.records.at(-1)?.id ?? ""}`;
-      if (!(mission.id in openRecords) || unseenRecords(mission) === 0 || seenPending.current.has(key)) continue;
+      if (!canWrite() || !(mission.id in openRecords) || unseenRecords(mission) === 0 || seenPending.current.has(key)) continue;
       seenPending.current.add(key);
       void call("/mission/seen", { objectiveId: objective.id, missionId: mission.id });
     }
@@ -1525,7 +1543,7 @@ function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, state
           사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
       <div className="objectives-group objectives-results-group">
         <div className="objectives-row is-static objectives-tab-meta"><span className="objectives-tab-count">{t("objectives.results.title")} {objective.results.length > 0 ? objective.results.length : t("objectives.results.none")}</span></div>
-        {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
+        {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults resource={resource} objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
       </div>
   </>);
   const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {

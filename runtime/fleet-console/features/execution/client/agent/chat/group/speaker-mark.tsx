@@ -9,6 +9,8 @@ import type { ConsoleState } from "../../../../../../core/client/src/integration
 import { KeyedAvatar, operationMongleState } from "../../../../../workspace/client/avatars.js";
 import { useConversationClusters, useConversationSubject } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { getGroupT } from "./group-chat-i18n.js";
+import { useChatHost } from "../chat-host-context.js";
+import { hostStorageKey } from "@fleet-console/sdk/host-context/browser";
 
 /**
  * 발화자 표식 — 그룹 대화의 말풍선·위임 줄·진행 줄·구성원 탭이 같은 표식을 쓴다.
@@ -61,13 +63,14 @@ export function SpeakerMark({ speaker, size = "md", state = "idle", acting = fal
   readonly acting?: boolean;
 }) {
   const subject = useConversationSubject();
+  const host = useChatHost();
   const theater = React.useContext(ConversationTheaterContext);
   const sizeClass = size === "md" ? " group-chat-mark" : ` group-chat-mark is-${size}`;
   if (speaker.kind === "commodore" || (speaker.kind !== "human" && speaker.operationId)) {
     const key = speaker.kind === "commodore" ? theaterAvatarKey(theater ?? subject?.theaterId ?? "unknown") : operationAvatarKey(speaker.operationId!);
     const role: MongleRole = speaker.kind === "commodore" ? "commodore" : speaker.kind === "member" ? "member" : "commander";
-    const activityOperationId = acting && speaker.kind !== "commodore" ? speaker.operationId : null;
-    return <KeyedAvatar avatarKey={key} role={role} state={state} activityOperationId={activityOperationId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
+    const activityOperationId = !host && acting && speaker.kind !== "commodore" ? speaker.operationId : null;
+    return <KeyedAvatar avatarKey={host ? hostStorageKey(host.scope.hostKey, key) : key} role={role} state={state} activityOperationId={activityOperationId} size={MARK_PX[size]} label={speaker.name} decorative className={sizeClass.trim()} />;
   }
   const letter = Array.from(speaker.name.trim())[0] ?? "?";
   const tone = speakerTone(speaker);
@@ -96,10 +99,11 @@ export function participantMongleState(
  */
 export function LiveSpeakerMark({ speaker, participants }: { readonly speaker: ConversationSpeaker; readonly participants: readonly ConversationParticipant[] }) {
   const state = useConsoleState();
+  const host = useChatHost();
   const clusters = useConversationClusters();
   const key = speakerKey(speaker);
   const activity = participants.find((participant) => speakerKey(participant.speaker) === key)?.activity;
-  return <SpeakerMark speaker={speaker} state={participantMongleState(speaker, activity, state, clusters)} />;
+  return <SpeakerMark speaker={speaker} state={host ? mongleStateOf({ activity: activity === "unknown" ? null : activity ?? null }) : participantMongleState(speaker, activity, state, clusters)} />;
 }
 
 /** 발화자 이름 — 구성원은 표식과 같은 톤의 잉크로, 그 밖은 중립 잉크로 선다. */
