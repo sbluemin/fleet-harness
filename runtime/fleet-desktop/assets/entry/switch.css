@@ -1,0 +1,117 @@
+/*
+ * 호스트를 갈아타는 동안 옛 화면을 붙잡아 두는 판. 진입 화면과 같은 폴더의 글꼴을 쓰고, 스크립트는 main이
+ * executeJavaScript로 들여보내는 것뿐이다(switch-hold.ts). 판은 투명하게 시작해 옛 화면 한 장과 알약만 그린다.
+ */
+@font-face {
+  font-family: "Manrope Variable";
+  src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --band: 36px;
+  --pill-top: 46px;
+  --fade: 220ms;
+  --pill-bg: #232323f2;
+  --pill-fg: #e9e8e4;
+  --pill-rim: #3a3a3a;
+  --pill-warn-fg: #e9c27a;
+  --pill-warn-rim: #6b5323;
+  --pill-mark: #a7a7a7;
+}
+
+:root[data-scheme="light"] {
+  color-scheme: light;
+  --pill-bg: #fbfbf8f2;
+  --pill-fg: #2b2a26;
+  --pill-rim: #dcd9d1;
+  --pill-warn-fg: #8a6414;
+  --pill-warn-rim: #e2c98f;
+  --pill-mark: #6f6d66;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+
+body {
+  font-family: "Manrope Variable", "Pretendard Variable", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+  transition: opacity var(--fade) ease-out;
+}
+
+/* 걷을 때는 판 전체가 흐려진다 — 아래에서 이미 다 그린 새 콘솔이 그만큼 드러나 교차 전환이 된다. */
+:root.is-revealing body { opacity: 0; }
+
+.frame {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+
+/* 붙잡고 있는 동안에도 창은 옮길 수 있어야 한다 — 맨 위 줄만 끌기 자리로 둔다. */
+.drag-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--band);
+  -webkit-app-region: drag;
+}
+
+.pill {
+  position: fixed;
+  top: var(--pill-top);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, calc(100vw - 48px));
+  height: 30px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--pill-rim);
+  border-radius: 15px;
+  background: var(--pill-bg);
+  color: var(--pill-fg);
+  box-shadow: 0 10px 28px -14px #000000cc;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -4px);
+  transition: opacity 160ms ease-out, transform 160ms ease-out, color 160ms ease-out, border-color 160ms ease-out;
+}
+
+:root.has-pill .pill { opacity: 1; transform: translate(-50%, 0); }
+
+.pill-text { overflow: hidden; text-overflow: ellipsis; }
+
+/* 연결 중 — 도는 호. 경고 — 멈춘 점. 색은 판의 두 테마 값만 쓴다. */
+.pill-mark {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1.6px solid var(--pill-mark);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+:root[data-tone="warn"] .pill { color: var(--pill-warn-fg); border-color: var(--pill-warn-rim); }
+:root[data-tone="warn"] .pill-mark { border: none; background: var(--pill-warn-fg); width: 7px; height: 7px; margin: 0 2px; animation: none; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  body, .pill { transition: none; }
+  .pill-mark { animation: none; border-top-color: var(--pill-mark); }
+}

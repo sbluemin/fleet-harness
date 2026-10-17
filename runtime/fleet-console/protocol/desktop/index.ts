@@ -290,8 +290,12 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  * TCC는 Console 자식(osascript)을 띄운 앱 — 창을 든 Desktop — 을 기준으로 판정하므로 그 앱이 묻는다.
  * `open-screen-recording-settings`는 화면 기록 권한이 없어 공유가 실패했을 때 사람이 누른 요청이다.
  * Desktop은 고정된 화면 기록 설정 주소만 열고, OS 권한 안내를 새로 띄우지 않는다. 모르는 옛 셸은 프레임을 버린다.
+ *
+ * `console-ready`는 명령이라기보다 알림이다 — 막 적재된 화면이 첫 데이터를 반영해 한 번 그렸다는 사실. 호스트를 갈아타는 셸은
+ * 그때까지 옛 화면을 붙잡아 두었다가 걷는다. 걸어 두지 않는 채널이라 셸은 적재 *전에* 새 콘솔의 이 스트림을 연다.
+ * 모르는 옛 셸은 프레임을 버리고, 이 명령을 모르는 옛 Console은 400으로 답하므로 셸은 상한 타이머로 걷는다.
  */
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings"] as const;
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
 export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
 
