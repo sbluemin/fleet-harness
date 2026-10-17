@@ -338,7 +338,15 @@ export interface ConversationSurfaceTab {
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;
   /** 이 탭이 대신하는 Theater Inbox 칸(대화의 `theater().inboxSection` 안의 page id). 그 칸을 여는 요청이 이 탭을 연다. */
   readonly inboxPage?: string;
+  /**
+   * 오른쪽 패널에서 본문이 서는 꼴. 생략하면 `"read"` — 호스트가 패널 머리와 같은 축의 가운데 읽기 열에 본문을 세우고 세로 스크롤을
+   * 맡는다. 스크롤·폭을 스스로 가져야 하는 본문(바닥에 붙는 기록, 표·그래프)만 `"fill"` 로 칸 전체를 받는다. 구버전 호스트는 무시한다.
+   */
+  readonly layout?: ConversationPanelLayout;
 }
+
+/** 대화 중심 화면 오른쪽 패널의 본문 배치 — 기본 읽기 열(`read`) 또는 칸 전체(`fill`). */
+export type ConversationPanelLayout = "read" | "fill";
 
 export interface ConversationSurfaceDescriptor {
   /** `ctx.conversation.open` 이 부르는 이름. 플러그인 사이에서 고유해야 한다. */
