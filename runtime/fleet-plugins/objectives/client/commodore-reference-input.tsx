@@ -378,6 +378,14 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     setList(CLOSED);
   }, [value, t, scanTokens]);
 
+  // 잠긴 입력(보내는 중·지우는 중·오프라인)에서는 토큰 ✕도 탭 순서에서 빠진다 — 입력 자체가 tabIndex -1 인데 ✕만 남으면
+  // 잠긴 초안에 키보드로 들어가게 된다. 다시 세운 토큰까지 덮도록 값이 바뀔 때마다 맞춘다.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    for (const remove of root.querySelectorAll<HTMLElement>(`.${MENTION_CHIP_REMOVE_CLASS}`)) remove.tabIndex = disabled ? -1 : 0;
+  }, [disabled, value]);
+
   // 커서가 화살표·클릭으로 옮겨 가면 '@' 자리를 다시 읽는다.
   useEffect(() => {
     const onSelection = () => { const root = rootRef.current; if (root && document.activeElement === root) refreshList(); };
@@ -471,7 +479,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const root = rootRef.current;
-    if (!root) return;
+    // 잠긴 입력은 키로 초안을 바꾸지 않는다 — 초점이 ✕ 같은 자식에 남아 있어도 같다.
+    if (!root || latest.current.disabled) return;
     const imeKey = event.nativeEvent.isComposing || event.keyCode === 229;
     if (list.open && candidates.length > 0) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
