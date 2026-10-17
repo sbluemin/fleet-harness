@@ -213,7 +213,8 @@ describe("Computer Use authorization and lifecycle", () => {
     f.call.mockImplementationOnce(async () => { markStarted(); await gate; return { content: [{ type: "text", text: "<app_state>app state</app_state>" }] }; });
     const ts = { createdAt: 0, updatedAt: 0 };
     const root = { id: "op-root", theaterId: "t", type: "agent", pluginId: null, title: "Commander", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, childSessions: [{ id: "m-b", payload: {}, ts }], geometry: null, ts };
-    const get = (id: string) => id === root.id ? root : id === "m-b" ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentOperationId: root.id, payload: {} as Record<string, unknown>, geometry: null, ts } : null;
+    let memberDeleted = false;
+    const get = (id: string) => id === root.id ? root : id === "m-b" && !memberDeleted ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentOperationId: root.id, payload: {} as Record<string, unknown>, geometry: null, ts } : null;
     const useContext = createUseContext({ get, turnOpen: () => false });
     // 허용을 통과한 호출은 그 컨텍스트의 허가를 만진다 — 두 호출이 모두 호스트에 닿았는지를 여기서 본다.
     const touch = vi.fn();
@@ -244,7 +245,9 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(f.call).toHaveBeenCalledTimes(1);
       expect(host.operationIdForOwner(f.service.activeOwner()!)).toBe("op-root");
       expect(host.actorForOwner(f.service.activeOwner()!)).toBe("m-b");
-      // 마지막 참가자 B 가 빠지면 기기를 놓는다.
+      // 마지막 참가자 B 가 빠지면 기기를 놓는다. 구성원을 지우면 기록이 먼저 사라지고 그 세션의 턴 정리는 뒤따르므로,
+      // 기록이 없어진 뒤의 정리도 B 를 루트의 묶음에서 빼야 한다.
+      memberDeleted = true;
       host.endParticipant("m-b");
       await vi.waitFor(() => expect(f.stop).toHaveBeenCalledTimes(1));
       expect(f.service.activeOwner()).toBeNull();

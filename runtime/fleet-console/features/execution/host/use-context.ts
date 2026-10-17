@@ -42,13 +42,25 @@ export interface UseContext {
 }
 
 export function createUseContext(deps: UseContextDeps): UseContext {
+  /**
+   * 한 번 본 자식 → 루트. 자식 세션을 지우면 기록은 곧바로 사라지지만 그 세션의 정리(턴 종료·토큰 반납)는 비동기로 뒤따른다.
+   * 그때 계보를 잃으면 참가자가 루트의 묶음에서 빠지지 못해 기기·사용 표식이 남는다 — 루트가 살아 있는 동안은 기억한 계보로 푼다.
+   */
+  const lineage = new Map<string, string>();
   const resolve = (operationId: string): UseContextResolution | null => {
     if (!operationId) return null;
     const node = deps.get(operationId);
-    if (!node) return null;
+    if (!node) {
+      const parent = lineage.get(operationId);
+      if (parent && deps.get(parent)) return { contextId: parent, participantId: operationId, shared: true };
+      lineage.delete(operationId);
+      return null;
+    }
     if (node.parentOperationId) {
       // 손자는 만들 수 없다(operations-domain createChild) — 한 단계면 루트다.
-      return deps.get(node.parentOperationId) ? { contextId: node.parentOperationId, participantId: node.id, shared: true } : null;
+      if (!deps.get(node.parentOperationId)) return null;
+      lineage.set(node.id, node.parentOperationId);
+      return { contextId: node.parentOperationId, participantId: node.id, shared: true };
     }
     return { contextId: node.id, participantId: node.id, shared: (node.childSessions?.length ?? 0) > 0 };
   };
