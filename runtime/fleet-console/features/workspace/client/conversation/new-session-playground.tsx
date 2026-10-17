@@ -165,6 +165,9 @@ class PlaygroundStage {
   private companionResume: (() => void) | null = null;
   /** 새 세션 화면 밖에 무대를 치워 둔 상태. 닫혀 있던 시간은 장면에 더하지 않는다. */
   private held = false;
+  /** 화면을 떠나 있던 시간의 합과, 지금 떠나 있다면 그 시각. */
+  private awayMs = 0;
+  private awaySince: number | null = null;
   /** `pause` 해 둔 CSS 애니메이션·전이와, 멈추기 직전의 currentTime. */
   private pausedAnimations: { animation: Animation; time: number }[] = [];
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
@@ -190,7 +193,14 @@ class PlaygroundStage {
     const count = this.items.length;
     if (!layout || count === 0) return;
     this.items.forEach((item, index) => {
-      item.cx = (layout.width * (index + 0.5)) / count;
+      const cx = (layout.width * (index + 0.5)) / count;
+      const shift = cx - item.cx;
+      item.cx = cx;
+      if (shift === 0) return;
+      // 타고 있는 몽글이는 기구와 함께 옮긴다. 회전축(ox·oy)은 배우 기준이라 그대로 둔다.
+      for (const actor of this.actors) {
+        if (actor.ride?.item === index) actor.x += shift;
+      }
     });
   }
 
@@ -267,15 +277,26 @@ class PlaygroundStage {
       going: false,
     }));
     for (const actor of this.actors) {
+      // 옛 기구를 향한 예약(올라타기 등)은 새 기구 번호와 맞지 않는다. 버리고 처음부터 다시 고르게 한다.
+      this.cancel(actor);
       actor.ride = null;
       actor.flourish = null;
-      if (actor.mode === "ride") actor.mode = "rest";
+      if (actor.mode === "ride" || actor.mode === "walk") actor.mode = "rest";
+      actor.walking = false;
       actor.x = clamp(actor.x, 6, this.maxX);
       actor.y = this.standY;
       actor.dur = 0;
     }
     this.structureKey = key;
     this.publish();
+    // 빈 무대(null 레이아웃)에서 넘어온 경우에도 다시 돌게, 배우 예약과 연출을 새로 건다. 떠나 있거나 얼어 있으면 돌아올 때 건다.
+    if (!this.dynamic || this.held || this.frozen) return;
+    this.actors.forEach((actor, index) => {
+      if (!actor.present) return;
+      if (actor.exiting) this.walkOff(actor);
+      else this.schedule(actor, 300 + index * 220, () => this.tick(actor));
+    });
+    this.direct();
   }
 
   /** 베이스 15종 × 정체성 톤 8색. 이번 세션에 안 나온 조합을 먼저 돌리고, 지금 무대에 있는 얼굴은 건너뛴다. */
@@ -310,8 +331,13 @@ class PlaygroundStage {
   }
 
   /** 약 70초 주기로 2명과 폭 상한 사이를 오가는 목표 인원. */
+  /** 장면 시계 — 화면을 떠나 있던 시간을 뺀다. 인원 물결은 이 시계를 따라, 다시 들어와도 떠날 때의 위상에서 이어 간다. */
+  private sceneNow(): number {
+    return performance.now() - this.awayMs;
+  }
+
   private targetCount(): number {
-    const wave = 0.5 + 0.5 * Math.sin((2 * Math.PI * performance.now()) / WAVE_PERIOD_MS - Math.PI / 2);
+    const wave = 0.5 + 0.5 * Math.sin((2 * Math.PI * this.sceneNow()) / WAVE_PERIOD_MS - Math.PI / 2);
     return clamp(Math.round(2 + 4 * wave + this.jitter), 2, this.cap);
   }
 
@@ -966,6 +992,7 @@ class PlaygroundStage {
     this.frozen = false;
     this.watching = false;
     this.held = true;
+    this.awaySince = performance.now();
   }
 
   /**
@@ -976,6 +1003,8 @@ class PlaygroundStage {
   resume(): void {
     if (!this.held) return;
     this.held = false;
+    if (this.awaySince !== null) this.awayMs += Math.max(0, performance.now() - this.awaySince);
+    this.awaySince = null;
     this.playAnimations();
     this.rearmClock(REENTRY_HOLD_MS);
     this.publish();
