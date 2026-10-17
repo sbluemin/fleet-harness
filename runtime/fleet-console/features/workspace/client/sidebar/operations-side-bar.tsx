@@ -520,11 +520,15 @@ export function OperationsSideBar({
     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
     const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
     const ended = recovery === "ended";
+    // 종료 선반은 다시 시작하는 자리라 결정 요청 표식·검토 대기 얼굴은 싣지 않는다(묶음 장식을 통째로 빼던 자리).
+    // 단계 수만 살린다 — 집계는 다른 칩과 같은 clusterChipPropsFor.
+    const cluster = clusterPropsFor(entry);
+    const recoveryCluster = cluster?.progressLabel ? { strip: cluster.strip, progressLabel: cluster.progressLabel } : null;
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
         entry={entry}
-        cluster={recovery ? null : clusterPropsFor(entry)}
+        cluster={recovery ? recoveryCluster : cluster}
         index={globalIndex}
         accentValue={accentValue}
         groupMark={groupMark}
