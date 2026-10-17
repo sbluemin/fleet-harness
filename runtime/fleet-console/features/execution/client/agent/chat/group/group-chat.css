@@ -901,19 +901,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-chat-report-tag:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 1px; }
 .group-chat-report-detail { max-width: min(680px, 100%); margin-top: 0; font-size: var(--t-sm); }
 
-/* 대화 머리의 「턴 접기」 — pill 옆에 따로 선 캡슐. 면·테두리·여백은 옆 동작 묶음(.conversation-pill-actions)과 같고,
-   안의 칸은 캡션 동작(24px)이라 캡슐 높이가 30px로 맞는다. 켬/끔·겨눔·고대비는 그 칸의 기존 규칙이 지고, 캡슐 테두리는 바꾸지 않는다. */
-.group-chat-fold-capsule {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--conversation-surface, var(--surface-glass)) 88%, transparent);
-  backdrop-filter: blur(14px);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .group-chat-notes-chip,
   .group-chat-report-tag { transition: none; }

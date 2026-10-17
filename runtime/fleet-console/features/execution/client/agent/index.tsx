@@ -88,7 +88,10 @@ export const agentOperationKind = defineOperationKind({
   subtitle: () => "Claude Code",
   render: (context) => <AgentOperationView context={context} />,
   // 뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
-  captionActions: (context) => <AgentCaptionActions context={context} />,
+  // 대화 머리는 두 캡슐로 가른다: 전환은 보기 캡슐, 지구본은 도구 캡슐 맨 앞. 표식·말풍선은 동작 묶음에 남는다.
+  captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
+  captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
+  captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
   // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
   operationMenu: (context) => <AgentOperationMenu context={context} />,
@@ -407,12 +410,15 @@ function offersCompanion(context: OperationRenderContext, companionId: string): 
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
-function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
+/** 대화 머리가 요청하는 조각. shelf 는 표식·말풍선만, 전환과 지구본은 각 캡슐이 가져간다. */
+type AgentCaptionPart = "shelf" | "view-switch" | "tools-lead";
+
+function AgentCaptionActions({ context, part = "shelf" }: { readonly context: OperationRenderContext; readonly part?: AgentCaptionPart }) {
   if (mobileOperationOf(context)) return null;
-  return <AgentCaptionActionsBody context={context} />;
+  return <AgentCaptionActionsBody context={context} part={part} />;
 }
 
-function AgentCaptionActionsBody({ context }: { readonly context: OperationRenderContext }) {
+function AgentCaptionActionsBody({ context, part }: { readonly context: OperationRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -494,14 +500,16 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
       </span>
     : null;
 
+  if (part === "view-switch") return viewSwitch;
+  if (part === "tools-lead") return browser;
+  // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
+  if (!using.console && !using.computer && bubble === null) return null;
   return (
     <>
       <span className="agent-operation-marks">
         <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
         <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
-      {browser}
-      {viewSwitch}
       {bubble}
     </>
   );

@@ -333,7 +333,7 @@
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
   padding: 2px 3px;
   /* 밑으로 흐르는 말풍선과 갈리게 가장자리를 옅은 테두리로 닫는다 — 말풍선이 겹치면 상자가 늘어난 것처럼 읽혔다. */
   border: 1px solid var(--surface-rim);
@@ -467,8 +467,63 @@
   opacity: 0.42;
 }
 
-/* 플러그인 대화(사령관)의 브라우저 지구본 — 호스트가 대화 동작 맨 앞에 세운다. 단추는 Operation 대화의 지구본과 같은 캡션 동작이다. */
-.conversation-pill-browser { display: inline-flex; flex: none; }
+/* 도구 캡슐 맨 앞의 지구본. 측정이 걷는 .right-rail-ico 밖이라 「⋯」로 걷히지 않는다. */
+.conversation-pill-tools-lead,
+.conversation-pill-browser { display: inline-flex; flex: none; align-items: center; }
+
+/* 머리 줄 버튼(턴 접기·전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
+   공용 .fleet-caption-action(브라우저 패널·리더·문서 칸)은 그대로 둔다. */
+.conversation-column > .conversation-pill-row .fleet-caption-action {
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+}
+
+.conversation-column > .conversation-pill-row .fleet-caption-action:hover:not(:disabled),
+.conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible {
+  border-color: transparent;
+  background: var(--control-rest-hover);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: none;
+  color: var(--brass-ink);
+}
+
+.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
+.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"]:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  background: var(--control-rest-hover);
+  color: var(--brass-ink);
+  outline: none;
+}
+
+/* 에이전트가 브라우저를 쓰는 표식은 켜짐보다 급하다 — 머리 줄에서도 그 채움을 유지한다. */
+.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent,
+.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent[aria-pressed="true"],
+.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent:hover:not(:disabled) {
+  border-color: var(--agent-control-badge);
+  background: var(--agent-control-badge);
+  color: var(--agent-control-badge-ink);
+}
+
+@media (forced-colors: active) {
+  .conversation-column > .conversation-pill-row .fleet-caption-action:hover:not(:disabled),
+  .conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible {
+    outline: 1px solid Highlight;
+    background: transparent;
+    color: Highlight;
+  }
+
+  .conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"] {
+    background: SelectedItem;
+    color: SelectedItemText;
+    border-color: SelectedItem;
+    outline: none;
+  }
+}
 
 .conversation-round {
   flex: none;

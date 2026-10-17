@@ -166,7 +166,7 @@ function GroupFoldGlyph() {
 }
 
 /**
- * pill 옆의 글리프 캡슐 하나. 칸은 이웃 캡션 동작과 같은 클래스라 켬(워시 + 황동)·겨눔·고대비를 그대로 받는다.
+ * pill 옆 보기 캡슐의 칸. 호스트가 캡슐을 세우고, 이 칸은 그 안에 선다. 켬·겨눔·고대비는 머리 줄이 정한다.
  * 접근 이름은 「턴 접기」로 고정하고 상태는 aria-pressed가 전한다. 말풍선만 누르면 일어날 일을 말한다.
  * CaptionActionButton은 접근 이름과 말풍선을 한 문자열로 묶어, 이 둘을 가를 수 없다.
  */
@@ -174,20 +174,18 @@ function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
   const t = getGroupT(language);
   const folded = useFoldTurns();
   return (
-    <span className="group-chat-fold-capsule">
-      <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
-        <button
-          type="button"
-          className="fleet-caption-action"
-          aria-pressed={folded}
-          aria-label={t("group.fold.toggle")}
-          onPointerDown={(event) => { event.stopPropagation(); }}
-          onClick={() => setFoldTurns(!folded)}
-        >
-          <GroupFoldGlyph />
-        </button>
-      </CaptionTipHost>
-    </span>
+    <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
+      <button
+        type="button"
+        className="fleet-caption-action"
+        aria-pressed={folded}
+        aria-label={t("group.fold.toggle")}
+        onPointerDown={(event) => { event.stopPropagation(); }}
+        onClick={() => setFoldTurns(!folded)}
+      >
+        <GroupFoldGlyph />
+      </button>
+    </CaptionTipHost>
   );
 }
 

@@ -1015,8 +1015,17 @@ export interface OperationKindDescriptor {
    * The band stays host-owned exactly as it does for a companion panel's `caption`: the host
    * places the shelf, and paints the surface. Build the buttons with
    * `@fleet-console/sdk/components/caption-actions` so one band cannot carry two grammars.
+   *
+   * A conversation header splits that shelf into two capsules and reads these slots when they
+   * are set. `captionViewSwitch` stands with the conversation's view control (turn fold);
+   * `captionToolsLead` stands at the front of the tool capsule and is not collapsed into the
+   * overflow menu. Omit both and the host keeps the whole shelf in `captionActions`.
    */
   readonly captionActions?: (context: OperationRenderContext) => ReactNode;
+  /** Conversation header only — the view-switch button, beside the conversation's own view control. */
+  readonly captionViewSwitch?: (context: OperationRenderContext) => ReactNode;
+  /** Conversation header only — the leading tool-capsule button (the session browser). Never overflow-collapsed. */
+  readonly captionToolsLead?: (context: OperationRenderContext) => ReactNode;
   /**
    * Fills the top of the host's Operation menu — the same card the caption's ··· button and the
    * sidebar's right-click open. The host owns the card, its grouping and
