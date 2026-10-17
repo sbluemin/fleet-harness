@@ -229,6 +229,8 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   const submenu = menuItem && !inPicker;
   /** 열릴 때 판 안으로 포커스를 옮기는가. 겨눠서 연 판은 부모 메뉴의 포커스를 빼앗지 않는다. */
   const focusOnOpenRef = useRef(true);
+  /** 지금 목록의 주인이 집인가 — 겨눔 타이머가 터지는 순간의 값을 읽는다(그 사이 집 주소가 도착할 수 있다). */
+  const pickerHomeRef = useRef<string | null>(null);
   /** 겨눔으로 여닫는 타이머와, 항목을 떠난 점(판으로 가는 대각선을 지켜 줄 삼각형의 꼭짓점). */
   const hoverRef = useRef<{ openTimer: number | null; closeTimer: number | null; exit: { x: number; y: number } | null }>({ openTimer: null, closeTimer: null, exit: null });
   const focusInto = () => {
@@ -355,7 +357,9 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
         event.stopPropagation();
         clearHoverTimers();
         dismiss();
-        triggerRef.current?.focus();
+        // 겨눠서 연 서브메뉴에서는 포커스가 부모 메뉴의 다른 항목에 있을 수 있다. 판만 접고 그 자리는 건드리지 않는다 —
+        // 부모 메뉴는 다음 Esc에서 자기 문법대로 닫힌다.
+        if (inPanel || !submenu) triggerRef.current?.focus();
         return;
       }
       if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
@@ -442,8 +446,25 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
       if (hover.closeTimer === null || hover.exit === null || panel === null) return;
       if (inSafeTriangle({ x: event.clientX, y: event.clientY }, hover.exit, panel.getBoundingClientRect())) scheduleHoverClose();
     };
+    /**
+     * 포인터가 부모 메뉴의 다른 항목에 올라서면 그 항목으로 옮겨 간 것이다 — 손으로 연 판도 잠시 뒤 접는다.
+     * 판으로 가는 대각선 위의 항목을 지나는 동안은 위의 삼각형이 시계를 다시 맞추고, 판에 닿으면 취소된다.
+     */
+    const onOver = (event: PointerEvent) => {
+      if (event.pointerType === "touch" || hoverRef.current.closeTimer !== null) return;
+      const target = event.target;
+      const root = rootRef.current;
+      const parent = triggerRef.current?.closest<HTMLElement>('[role="menu"]');
+      if (!(target instanceof Element) || root === null || !parent || root.contains(target)) return;
+      const item = target.closest(ENABLED_MENU_ITEM_SELECTOR);
+      if (item !== null && parent.contains(item)) scheduleHoverClose();
+    };
     document.addEventListener("pointermove", onMove);
-    return () => document.removeEventListener("pointermove", onMove);
+    document.addEventListener("pointerover", onOver);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerover", onOver);
+    };
   }, [open, submenu]);
 
   useEffect(() => () => clearHoverTimers(), []);
@@ -526,6 +547,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
    * WSL처럼 스캔이 닿지 못하는 곳에서는 비어 있다 — 그 침묵이 돌아가는 길까지 지워서는 안 된다.
    */
   const pickerHome = !inPicker && canOpenRemote && awayFromHome ? homeOrigin : null;
+  pickerHomeRef.current = pickerHome;
 
   /**
    * 집 주소는 늦게 도착할 수 있고, 그 전에 누른 칩은 이 콘솔의 판을 편다. 주소가 도착해 이
@@ -538,6 +560,8 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   useEffect(() => {
     if (pickerHome === null || !open) return;
     setOpen(false);
+    // 겨눔만으로 연 판은 걷기만 한다 — 덮개는 창 전체를 덮으므로 손이 청한 때에만 부른다.
+    if (!focusOnOpenRef.current) return;
     location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
   }, [pickerHome, open, currentOrigin, menuItem]);
 
@@ -579,6 +603,11 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     }
     setOpen((previous) => !previous);
   };
+  /**
+   * 포인터가 떠나는 것만으로 접히는 판은 겨눠서 열었고 아직 포커스가 들어가지 않은 판뿐이다. 누르거나 키로 연 판은
+   * 바깥 누름·Esc·다른 항목으로 닫힌다 — 마우스가 비켜났다고 키보드로 훑던 목록이 사라지지 않는다.
+   */
+  const hoverClosable = () => !focusOnOpenRef.current && panelRef.current?.contains(document.activeElement) !== true;
   const onTriggerEnter = (event: ReactPointerEvent) => {
     if (!submenu || pickerHome !== null || event.pointerType === "touch") return;
     const hover = hoverRef.current;
@@ -588,6 +617,8 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     if (open || hover.openTimer !== null) return;
     hover.openTimer = window.setTimeout(() => {
       hover.openTimer = null;
+      // 기다리는 사이 집 주소가 도착했다면 이 콘솔의 판은 남의 목록이다 — 겨눔으로는 열지 않는다.
+      if (pickerHomeRef.current !== null) return;
       focusOnOpenRef.current = false;
       setOpen(true);
     }, SUBMENU_OPEN_DELAY_MS);
@@ -599,7 +630,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     hover.openTimer = null;
     if (!open) return;
     hover.exit = { x: event.clientX, y: event.clientY };
-    scheduleHoverClose();
+    if (hoverClosable()) scheduleHoverClose();
   };
   const onPanelEnter = (event: ReactPointerEvent) => {
     if (!submenu || event.pointerType === "touch") return;
@@ -611,7 +642,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   const onPanelLeave = (event: ReactPointerEvent) => {
     if (!submenu || event.pointerType === "touch") return;
     hoverRef.current.exit = null;
-    scheduleHoverClose();
+    if (hoverClosable()) scheduleHoverClose();
   };
   const go = (origin: string) => {
     setOpen(false);
