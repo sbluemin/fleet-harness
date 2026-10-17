@@ -5005,89 +5005,10 @@ button.status-glyph.is-actionable:focus-visible {
 /* 켜진 AI 확장의 마크 무리 — 이름 뒤, pill 앞. 캡션·메뉴와 같은 글리프를 12px로 줄여 싣고
    본문 잉크(--text-secondary)로 선다: 허용은 위치(brass)도 활동(signal)도 아닌 사실이다.
    검토 중인 관찰만 aurora 점을 단다(진행 채널). */
-/* ── 묶음(cluster) — 한 실행 구조에 묶인 Operation 들 ─────────────────────────────────────────────
-   사이드바에서는 뿌리(지휘관) 행 하나가 묶음을 대표하고, 이름 뒤에 단계 띠를 얹는다. 단계 행은 서지 않는다.
-   색 채널은 그대로: 띠의 사각은 진행(신호 토큰), 비콘은 세션 활동, 초점만 brass. */
-/* 단계 띠 — 뿌리 고리 + 깊이 눈금 + 구성원 사각. 어느 표면에서나 같은 크기. */
-.cluster-strip {
-  display: inline-flex;
-  flex: 0 1 auto;
-  min-width: 0;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 3px;
-  border-radius: var(--radius-pill);
-  color: var(--text-tertiary);
-}
-.cluster-strip.is-interactive { cursor: pointer; }
-.cluster-strip.is-interactive:hover,
-.cluster-strip.is-interactive:focus-visible,
-.cluster-strip.is-mission-navigation.is-count:hover,
-.cluster-strip.is-mission-navigation.is-count:focus-visible { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); outline: none; }
-.cluster-strip.is-mission-navigation.is-count { cursor: pointer; }
-.cluster-strip-cell.is-navigation { cursor: pointer; border-radius: var(--radius-xs); }
-.cluster-strip-cell.is-navigation:hover { background: color-mix(in oklch, var(--ink-spectral) 9%, transparent); }
-.cluster-strip-cell.is-navigation:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.cluster-strip.is-dense {
-  gap: 1px;
-}
-.cluster-strip.is-dense .cluster-strip-cell {
-  gap: 1px;
-}
-.cluster-strip.is-dense .cluster-strip-step {
-  width: 3px;
-  height: 7px;
-  border-radius: 1px;
-}
-.cluster-strip-count {
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-  color: var(--text-secondary);
-  padding: 0 2px;
-  white-space: nowrap;
-}
-.cluster-strip-count.is-done {
-  color: var(--positive);
-}
-.cluster-strip-root {
-  display: block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 1.5px solid var(--text-tertiary);
-  box-sizing: border-box;
-}
-.cluster-strip-root.is-running { border-color: var(--warn); }
-.cluster-strip-root.is-awaiting { border-color: var(--aurora); }
-.cluster-strip-root.is-idle { border-color: var(--positive); }
-.cluster-strip-cell { display: inline-flex; align-items: center; gap: 3px; }
-.cluster-strip-tick { display: block; width: 1px; height: 7px; background: var(--hairline-strong); margin: 0 1px; }
-.cluster-strip-step {
-  display: block;
-  width: 6px;
-  height: 6px;
-  border-radius: 1.5px;
-  background: var(--text-tertiary);
-  transition: background var(--duration-fast) var(--ease-spring);
-}
-.cluster-strip-step.is-blocked { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-.cluster-strip-step.is-running { background: var(--warn); }
-.cluster-strip-step.is-awaiting { background: var(--aurora); animation: cluster-strip-pulse 1.8s ease-in-out infinite; animation-name: var(--state-motion, cluster-strip-pulse); }
-.cluster-strip-step.is-done { background: var(--positive); }
-@keyframes cluster-strip-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .cluster-strip-step.is-awaiting { animation: none; }
-}
 @media (forced-colors: active) {
   .cluster-node-tab.is-awaiting:not(.is-current),
   .cluster-node-scroll.has-awaiting { border-color: Highlight; }
 }
-
-/* 사이드바 칩의 셋째 줄 — 이름·위치 줄 아래 왼쪽 정렬. 띠 자체의 안쪽 여백만큼 물려 사각의 왼끝이 글자 왼끝과 맞는다. */
-.side-bar-chip-cluster-strip { align-self: flex-start; margin: 1px 0 0 -3px; max-width: 100%; pointer-events: none; }
 
 .side-bar-chip-group-mark {
   display: block;
