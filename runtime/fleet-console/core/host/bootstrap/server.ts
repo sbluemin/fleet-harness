@@ -77,13 +77,13 @@ import type { TheaterRegistration } from "../../../features/workspace/host/theat
 import { TheaterFolderListError, TheaterRegistry, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "../plugin-host/plugin-host.js";
 import { createFleetPluginHost, createPluginClientAssets } from "../plugin-host/plugin-host.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopFullscreenRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopFullscreenSnapshot, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopThemeLayout, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
+import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createAgentProcessSpawner } from "./agent-process.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "../shell/system-fonts.js";
 import { buildApiCatalog, type ApiCatalogEntry } from "../transport/api-catalog.js";
-import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
+import type { ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterInfo } from "../transport/console-contract-types.js";
 import { CONSOLE_SECURITY_HEADERS, encodeSseData, isLoopbackRemoteAddress, startSseKeepaliveLifecycle, withSecurityHeaders } from "../transport/http-infra.js";
 import { RouteRegistry, UpgradeRegistry } from "../transport/route-registry/registry.js";
 import { createRemoteSessionBindings } from "../transport/remote-session-bindings.js";
@@ -771,7 +771,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     broadcastOperationChanged(operations.get(found.parent.id)!);
     return true;
   }
-  let desktopFullscreen = false;
   /**
    * 셸의 집 주소를 되돌려 받을 자격은 그것을 게시한 창에만 있다.
    *
@@ -1325,7 +1324,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "dark",
     getFonts: () => resolveConsoleFonts(consoleSettingsStore.load()),
-    getLayout: desktopThemeLayout,
     isAuthorized: isExactConsoleOrigin,
     writeJson,
     subscribe: (res, snapshot) => {
@@ -1416,17 +1414,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
   });
-  const desktopFullscreenRouter = createDesktopFullscreenRouter({
-    getFullscreen: () => desktopFullscreen,
-    isAuthorized: isExactConsoleOrigin,
-    readJsonBody,
-    setFullscreen: (fullscreen) => {
-      desktopFullscreen = fullscreen;
-      broadcastDesktopFullscreenChanged();
-    },
-    writeJson,
-    writeNoContent,
-  });
   const desktopWindowCommandRouter = createDesktopWindowCommandRouter({
     isAuthorized: isExactConsoleOrigin,
     readJsonBody,
@@ -1502,7 +1489,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         if (operationSseSubscribers.delete(subscriber)) browserService.reconcile();
       }, (data) => writeOperationSse(subscriber, data));
       writeOperationSse(subscriber, ":connected\n\n");
-      writeOperationSse(subscriber, encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen)));
       // 붙기 전에 시작된 콘솔·컴퓨터 사용과 허용 요청은 이벤트로 다시 오지 않는다 — 지금 스냅샷을 실어 보낸다.
       // 재연결도 이 자리를 지나므로 끊긴 사이의 변경은 여기서 한 번에 맞춰진다.
       writeOperationSse(subscriber, encodeSseData(OPERATION_USE_STATE_EVENT, operationUseSnapshot()));
@@ -1573,7 +1559,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellUpdateRouter(context)) return true;
     if (await desktopShellRouter(context)) return true;
-    if (await desktopFullscreenRouter(context)) return true;
     if (await desktopWindowCommandRouter(context)) return true;
     if (desktopUpdateRouter(context)) return true;
     return desktopThemeRouter(context);
@@ -1748,10 +1733,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function handleCoreRequest(req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void {
     if (pathname === "/api/v1/status") {
       handleStatus(req, res);
-      return;
-    }
-    if (pathname === "/api/v1/environment") {
-      handleEnvironmentDiagnostics(req, res);
       return;
     }
     if (pathname === "/api/v1/theaters") {
@@ -2027,34 +2008,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       return;
     }
     writeJson(res, 200, { version, routes: buildApiCatalog([...OPERATION_ARCHIVE_API_CATALOG, ...executionApiCatalog, ...pluginHost.apiCatalog]) });
-  }
-
-  function handleEnvironmentDiagnostics(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (channel !== "local") {
-      writeJson(res, 404, { error: "not_found" });
-      return;
-    }
-    if (req.method !== "GET") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    if (!isTerminalAuthorized(req)) {
-      writeJson(res, 401, { error: "unauthorized" });
-      return;
-    }
-    if (!activeLockFile) {
-      writeJson(res, 503, { error: "console_not_ready" });
-      return;
-    }
-    const payload: ConsoleEnvironmentDiagnostics = {
-      channel: "local",
-      version,
-      effectivePort: portState.effectivePort,
-      dataDir: durablePaths.dir,
-      lockFile: activeLockFile,
-    };
-    res.setHeader("Cache-Control", "no-store");
-    writeJson(res, 200, payload);
   }
 
   // 카탈로그 gate 레이블은 "origin-write"로 개명됐지만 이 함수 이름은 별도 정리 범위.
@@ -2449,12 +2402,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  function broadcastDesktopFullscreenChanged(): void {
-    if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot(desktopFullscreen));
-    for (const subscriber of operationSseSubscribers) writeOperationSse(subscriber, data);
-  }
-
   /**
    * 제어를 쥔 원격. full 등급 세션만 보유자가 된다 — monitoring은 명령을 실행하지 못하므로
    * 그 접속으로 화면을 덮으면 아무것도 못 하는 관전자 때문에 콘솔이 잠긴다.
@@ -2552,15 +2499,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { available: true, reason: null, host };
   }
 
-  /** Desktop 크롬이 따르는 배치 — 데스크톱은 대화 중심 화면이라 네이티브 컨트롤이 세 열의 맨 위 줄에 선다. 저장된 classicLayout 은 읽지 않는다. */
-  function desktopThemeLayout(): DesktopThemeLayout {
-    return { conversationLayout: true };
-  }
-
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {
     if (desktopThemeSseSubscribers.size === 0) return;
     settleRemoteExpiry();
-    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme, resolveConsoleFonts(consoleSettingsStore.load()), desktopThemeLayout()));
+    const data = encodeSseData(DESKTOP_THEME_EVENT, desktopThemeSnapshot(theme, resolveConsoleFonts(consoleSettingsStore.load())));
     for (const res of desktopThemeSseSubscribers) {
       if (!res.destroyed) res.write(data);
     }

@@ -2,7 +2,6 @@ import { ApiError, fetchGroups, fetchObserverStatus, fetchOperations, fetchTheat
 import { refreshOperationArchive } from "./operation-archive.js";
 import { OPERATION_CLUSTER_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 import type { SessionEndedReason } from "../../../../features/remote-access/client/control-session.js";
-import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyDesktopShellSnapshot } from "./desktop-shell.js";
 import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
 import { applyTheaterLifecycle } from "../../../../features/workspace/client/theater.js";
@@ -283,16 +282,6 @@ export function connectOperationsSse(): void {
     }
   });
 
-  source.addEventListener("desktop:fullscreen", (e) => {
-    if (!acceptFrame()) return;
-    const msg = e as MessageEvent<string>;
-    try {
-      applyDesktopFullscreenSnapshot(JSON.parse(msg.data));
-    } catch {
-      resetDesktopFullscreenSnapshot();
-    }
-  });
-
 
   source.addEventListener("control:changed", (e) => {
     if (!acceptFrame()) return;
@@ -338,7 +327,6 @@ export function connectOperationsSse(): void {
     source.close();
     activeSource = null;
     stopFreshnessWatch();
-    resetDesktopFullscreenSnapshot();
     // SSE 단절은 원격 제어 세션이 끝났다는 증거가 아니므로 holder는 마지막 권위 스냅샷을 유지한다.
     scheduleReconnect();
   };

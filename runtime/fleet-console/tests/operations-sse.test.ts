@@ -2,13 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   applyObserverStatus: vi.fn(),
-  applyDesktopFullscreenSnapshot: vi.fn(),
   applyOperationUpdate: vi.fn(),
   fetchObserverStatus: vi.fn(),
   fetchOperations: vi.fn(),
   getState: vi.fn(),
   hydrateOperations: vi.fn(),
-  resetDesktopFullscreenSnapshot: vi.fn(),
   resumeConsoleSession: vi.fn(),
   setConnectionState: vi.fn(),
 }));
@@ -33,11 +31,6 @@ vi.mock("../core/client/src/integration/store.js", async (importOriginal) => {
     setConnectionState: mocks.setConnectionState,
   };
 });
-
-vi.mock("../core/client/src/integration/desktop-fullscreen.js", () => ({
-  applyDesktopFullscreenSnapshot: mocks.applyDesktopFullscreenSnapshot,
-  resetDesktopFullscreenSnapshot: mocks.resetDesktopFullscreenSnapshot,
-}));
 
 import { connectOperationsSse, reconnectOperationsSseNow, resetConsoleChannelsForTest, subscribeConsoleReconnect } from "../core/client/src/integration/operations-sse.js";
 import { ApiError } from "../core/client/src/integration/api.js";
@@ -88,13 +81,11 @@ describe("operations SSE update availability", () => {
     TestEventSource.instances = [];
     resetConsoleChannelsForTest();
     mocks.applyObserverStatus.mockReset();
-    mocks.applyDesktopFullscreenSnapshot.mockReset();
     mocks.applyOperationUpdate.mockReset();
     mocks.fetchObserverStatus.mockReset();
     mocks.fetchOperations.mockReset();
     mocks.getState.mockReset();
     mocks.hydrateOperations.mockReset();
-    mocks.resetDesktopFullscreenSnapshot.mockReset();
     mocks.resumeConsoleSession.mockReset();
     mocks.setConnectionState.mockReset();
     vi.clearAllTimers();

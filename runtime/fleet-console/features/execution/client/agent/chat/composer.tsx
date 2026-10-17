@@ -665,7 +665,7 @@ export function AgentChatComposer({
             title로 옮겼다. */}
         <ComposerField className="agent-chat-composer-field">
           {/* 덱은 상자(field)에 걸린다 — 한 줄 컴포저에서 입력 래퍼는 동작 버튼만큼 좁으므로 상자가 기준이다.
-              `.canvas-operation-terminal`의 overflow:hidden 안에 살므로, 덱이 상자 위·아래에 남은 공간을
+              채팅을 담은 패널(대화 칸)의 overflow:hidden 안에 살므로, 덱이 상자 위·아래에 남은 공간을
               재서 높이를 맞추고 위가 모자라면 아래로 뒤집는다(Quick Launch는 fixed 오버레이로 피하는 일). */}
           {deckOpen ? (
             <ChatComposerDeck

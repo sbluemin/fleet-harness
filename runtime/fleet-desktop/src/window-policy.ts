@@ -9,7 +9,7 @@ export interface SecureWindowOptions {
   /** 지난 실행에 기억해 둔 사용자 테마. 없으면 다크 기본값으로 뜬다. */
   readonly backgroundColor?: string;
   readonly titleBarOverlay?: { readonly color: string; readonly symbolColor: string; readonly height: number };
-  /** 지난 실행에 기억해 둔 맨 위 줄 높이(chrome.band). 없으면 Command Band 36px 이다. */
+  /** 지난 실행에 기억해 둔 맨 위 줄 높이(chrome.band). 없으면 대화 중심 화면의 맨 위 줄 52px 이다. */
   readonly chromeBand?: number;
 }
 
@@ -66,39 +66,43 @@ const DESKTOP_WINDOW_TITLE = "Fleet Console";
 /** 다크 테마의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
 export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 /**
- * Windows 캡션 버튼 스트립도 Command Band와의 합의다 — 높이 35px + 밴드 하단 divider 1px가
- * 클라이언트 `--chrome-band-height: 36px`를 채우고, 폭 138 DIP(46×3)는 우측 클러스터가 비워
- * 두는 자리다. 폭은 Chromium이 정하므로 여기서 지정하지도, 되읽지도 못한다.
+ * Console 맨 위 줄의 높이 — Console 이 테마 스냅샷 `chrome.band`·`titleBarOverlay.height` 로 보내는 값
+ * (Console desktop-contract.ts `CONVERSATION_TOP_ROW`)과 같다. Desktop 은 Console 내부를 가져오지 않으므로 값을 맞춰 둔다.
+ */
+const CONVERSATION_TOP_ROW = 52;
+
+/**
+ * Windows 캡션 버튼 스트립의 첫 모습 — Console 이 테마 스냅샷(titleBarOverlay)을 보내기 전까지만 선다. 값은 Console 이
+ * 다크 테마에 보내는 대화 중심 화면 오버레이(desktop-contract.ts `DESKTOP_CONVERSATION_OVERLAYS.dark`)와 같아, 스냅샷이
+ * 와도 높이·색이 튀지 않는다. 폭 138 DIP(46×3)는 Console 맨 위 줄이 비워 두는 자리다. 폭은 Chromium이 정하므로 여기서 지정하지도, 되읽지도 못한다.
  *
  * 그 폭을 클라이언트에 알려 주던 길은 WCO 기하 env(titlebar-area-*)였는데, Console이
  * BaseWindow의 내장 webContents가 아니라 자식 WebContentsView로 그려지면서 끊겼다
  * (createSecureShellWindow). env의 fallback은 값이 없다는 말을 0으로 바꿔 놓으므로 예약이
- * 조용히 사라진다 — 그래서 layout.css가 이 138 DIP를 계약으로 함께 들고 큰 쪽을 쓴다.
+ * 조용히 사라진다 — 그래서 conversation.css가 이 138 DIP를 계약으로 함께 들고 큰 쪽을 쓴다.
  * 여기를 고치면 그쪽도 같이 고친다.
  */
-export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 35 } as const;
+export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW } as const;
 
 /**
- * macOS 신호등의 자리는 Command Band와의 합의다 — 클라이언트 `--chrome-band-height: 36px`,
- * 좌측 클러스터가 비워 두는 76px, 그리고 여기의 x·y가 한 좌표계를 나눠 갖는다.
+ * macOS 신호등의 자리는 Console 맨 위 줄과의 합의다 — 대화 중심 화면의 맨 위 줄(`--conversation-top-row: 52px`,
+ * Console 이 테마 스냅샷 `chrome.band` 로 알린다)과 여기의 x·y가 한 좌표계를 나눠 갖는다.
  *
- * 그런데 신호등은 네이티브라 페이지 줌을 타지 않는다. 밴드만 줌에 비례해 자라므로 y를
- * 생성 시점 상수로 굳히면 확대할수록 신호등이 밴드 천장에 붙고(실측 131%에서 7px 위),
- * 축소하면 아래로 처진다. 가로는 클라이언트가 예약 폭을 DIP로 되돌려 맡고, 세로는 줌이
- * 바뀔 때마다 여기서 다시 계산해 신호등을 밴드 한가운데로 옮긴다.
+ * 그런데 신호등은 네이티브라 페이지 줌을 타지 않는다. 그 줄만 줌에 비례해 자라므로 y를
+ * 생성 시점 상수로 굳히면 확대할수록 신호등이 줄 천장에 붙고(실측 131%에서 7px 위),
+ * 축소하면 아래로 처진다. 세로는 줌이 바뀔 때마다 여기서 다시 계산해 신호등을 줄 한가운데로 옮긴다.
  *
  * x는 줌과 무관한 고정값이다 — 신호등 자체가 줌을 타지 않으니 창 모서리와의 거리도
  * 변할 이유가 없고, 클라이언트의 예약 폭이 이 x에서 출발한 76px을 그대로 비워 둔다.
  */
 const TRAFFIC_LIGHT_INSET_X = 16;
 const TRAFFIC_LIGHT_HEIGHT = 14;
-export const COMMAND_BAND_HEIGHT = 36;
 
 /**
- * 맨 위 줄의 높이(`band`)는 Console 이 테마 스냅샷의 `chrome.band` 로 알린다 — 기본은 Command Band 36px, 실험 기능
- * 「대화 중심 화면」이면 세 열의 맨 위 줄 52px 이다. 신호등은 그 줄의 세로 가운데에 선다.
+ * 맨 위 줄의 높이(`band`)는 Console 이 테마 스냅샷의 `chrome.band` 로 알린다 — 지금 Console 은 늘 대화 중심 화면의
+ * 맨 위 줄 52px 을 보내므로, 스냅샷이 오기 전에도 같은 값에서 출발해 신호등이 튀지 않게 한다. 신호등은 그 줄의 세로 가운데에 선다.
  */
-export function trafficLightPosition(zoomFactor: number, band: number = COMMAND_BAND_HEIGHT): { x: number; y: number } {
+export function trafficLightPosition(zoomFactor: number, band: number = CONVERSATION_TOP_ROW): { x: number; y: number } {
   const factor = zoomFactor > 0 ? zoomFactor : 1;
   return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((band * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
 }
@@ -113,7 +117,7 @@ function secureShellWindowOptions(options: SecureWindowOptions): BaseWindowConst
     backgroundColor: options.backgroundColor ?? CANVAS_FAR_BACKGROUND_COLOR,
     minWidth: 900,
     minHeight: 560,
-    // Windows 오버레이 35px + Command Band 하단 divider 1px가 클라이언트 --chrome-band-height: 36px를 채운다. macOS 신호등 계약과 함께 변경 시 양쪽을 동기화한다.
+    // 두 플랫폼 모두 첫 기하는 Console 테마 스냅샷이 오면 그 값(chrome.band·titleBarOverlay)으로 바뀐다.
     ...(options.platform === "darwin" ? { titleBarStyle: "hiddenInset", trafficLightPosition: trafficLightPosition(1, options.chromeBand) } : {}),
     ...(options.platform === "win32" ? { titleBarStyle: "hidden", titleBarOverlay: options.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY } : {}),
   };

@@ -1,7 +1,5 @@
 import type { BaseWindow, Rectangle, TitleBarOverlayOptions, WebContents, WebContentsView } from "electron";
 
-import type { DesktopFullscreenWindow } from "./desktop-fullscreen-sync.js";
-
 /**
  * Fleet Desktop 의 창 골격 — BaseWindow 와 Console WebContentsView 를 한 몸으로 다룬다.
  *
@@ -185,16 +183,4 @@ export function parkedNativeBounds(viewport: ParkViewport, content: Rectangle): 
     width: Math.max(1, Math.min(Math.max(1, viewport.width), maxW)),
     height: Math.max(1, Math.min(Math.max(1, viewport.height), maxH)),
   };
-}
-
-/** 전체화면 동기화는 BaseWindow 이벤트와 Console contents 로드 신호를 함께 본다. */
-export function desktopFullscreenHost(shell: DesktopShellWindow): DesktopFullscreenWindow {
-  const base = shell.base;
-  const host: DesktopFullscreenWindow = {
-    isFullScreen: () => shell.isFullScreen(),
-    on: (event, listener) => { (base.on as (event: string, listener: () => void) => BaseWindow)(event, listener); return host; },
-    removeListener: (event, listener) => { (base.removeListener as (event: string, listener: () => void) => BaseWindow)(event, listener); return host; },
-    webContents: shell.consoleContents,
-  };
-  return host;
 }

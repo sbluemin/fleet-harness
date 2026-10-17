@@ -53,15 +53,12 @@ export function createThemeMemory(statePath: string, fileSystem: ThemeMemoryFile
 /**
  * Console이 퇴역시킨 다크 팔레트(maritime/carbon)의 기억은 그 색을 더 쓰지 않는다. 다음 동기화가 보낼 다크는 기본 판
  * (entry.css·CANVAS_FAR_BACKGROUND_COLOR)과 같은 색이라, 팔레트를 버리고 기본 판으로 떠야 첫 프레임에서 색이 튀지 않는다.
- * 제목 표시줄은 대화 중심 화면(높이 52)이면 다크가 모두 같은 색이라 그대로 두고, Command Band(높이 35)면 기본 판의 색으로
- * 돌린다. 크롬 기하는 테마와 무관하므로 남긴다.
+ * 제목 표시줄은 Console 이 다크에 보내는 대화 중심 화면 오버레이(첫 모습과 같은 값)로 돌린다 — 옛 Command Band 시절(높이 35)의
+ * 기억도 다음 동기화가 그 값으로 바꾸므로 첫 프레임부터 맞춘다. 크롬 기하는 테마와 무관하므로 남긴다.
  */
 const RETIRED_DARK_THEMES: ReadonlySet<string> = new Set(["maritime", "carbon"]);
 
 function retireDarkPalette(snapshot: DesktopThemeSnapshot): DesktopThemeSnapshot {
   if (!RETIRED_DARK_THEMES.has(snapshot.theme)) return snapshot;
-  const titleBarOverlay = snapshot.titleBarOverlay.height === INITIAL_WINDOWS_TITLE_BAR_OVERLAY.height
-    ? { ...INITIAL_WINDOWS_TITLE_BAR_OVERLAY }
-    : snapshot.titleBarOverlay;
-  return { theme: "dark", titleBarOverlay, ...(snapshot.chrome ? { chrome: snapshot.chrome } : {}) };
+  return { theme: "dark", titleBarOverlay: { ...INITIAL_WINDOWS_TITLE_BAR_OVERLAY }, ...(snapshot.chrome ? { chrome: snapshot.chrome } : {}) };
 }

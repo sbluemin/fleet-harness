@@ -26,7 +26,7 @@
 .settings-pane .settings-pane-sections { gap: 22px; }
 .settings-pane :is(.global-settings-card, .fc-settings-card) { min-width: 0; padding: 0; gap: 8px; border: 0; background: none; box-shadow: none; }
 .settings-pane :is(.global-settings-card-title, .fc-settings-card__title) { padding: 0 4px; font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: 0; text-transform: none; color: var(--text-secondary); flex-wrap: wrap; }
-.settings-pane :is(.global-settings-subsection-title, .global-settings-shortcut-group-title) { color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-size: var(--t-sm); }
+.settings-pane .global-settings-shortcut-group-title { color: var(--text-secondary); letter-spacing: 0; text-transform: none; font-size: var(--t-sm); }
 .settings-pane :is(.appearance-controls, .settings-group-surface, .fc-settings-card__body, .global-settings-shortcut-groups) { min-width: 0; display: grid; gap: 0; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); }
 .settings-pane .global-settings-shortcut-groups { padding: 12px 14px; gap: 18px; }
 .settings-pane :is(.global-settings-row, .fc-settings-row) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-width: 0; max-width: 100%; min-height: 50px; padding: 11px 14px; }

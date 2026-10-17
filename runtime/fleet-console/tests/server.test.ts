@@ -11,7 +11,6 @@ import WebSocket from "ws";
 import { deliverConsoleStop, readConsoleLockFile } from "@fleet-console/lifecycle";
 import { CONSOLE_STOP_REQUEST_REVISION } from "@fleet-console/protocol/lifecycle";
 import type { ConsoleLockPayload } from "../core/host/transport/console-contract-types.js";
-import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/shell/desktop-contract.js";
 import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/protocol/desktop";
 import { deriveOperationLabel } from "../features/execution/host/agent/auto-name.js";
@@ -119,25 +118,8 @@ afterEach(async () => {
 
 describe("console terminal observability", () => {
 
-  it("serves local environment diagnostics only through the loopback Host and allowed Origin", async () => {
+  it("reports the Operation browser as unavailable without an attached Desktop", async () => {
     const fixture = await startFixture({ release: { channel: "local", version: "test", packageRoot: CONSOLE_PACKAGE_ROOT } });
-    const url = new URL("api/v1/environment", fixture.endpoint);
-    const origin = new URL(fixture.endpoint).origin;
-
-    expect(await requestWithHost(url, origin, "localhost:1", "GET")).toBe(403);
-    const foreign = await fetch(url, { headers: { Origin: "http://127.0.0.1:9999" } });
-    expect(foreign.status).toBe(401);
-    const exact = await fetch(url, { headers: { Origin: origin } });
-    expect(exact.status).toBe(200);
-    expect(exact.headers.get("cache-control")).toBe("no-store");
-    await expect(exact.json()).resolves.toEqual({
-      channel: "local",
-      version: "test",
-      effectivePort: fixture.lock.port,
-      dataDir: path.join(fixture.fleetDataDir, "console"),
-      lockFile: fixture.lockFile,
-    });
-    expect((await fetch(url)).status).toBe(200);
 
     // Operation 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
@@ -1231,36 +1213,6 @@ function makeWikiEntryMd(id: string): string {
     "---",
     "Test content",
   ].join("\n");
-}
-
-function createDesktopFullscreenSseReader(reader: ReadableStreamDefaultReader<Uint8Array>): () => Promise<{ readonly fullscreen: boolean }> {
-  const decoder = new TextDecoder();
-  let buffered = "";
-  return async () => {
-    while (true) {
-      const frames = buffered.split(/\r?\n\r?\n/u);
-      buffered = frames.pop() ?? "";
-      for (const frame of frames) {
-        const event = new RegExp(`event: ${DESKTOP_FULLSCREEN_EVENT}\\ndata: (\\{[^\\n]+\\})`).exec(frame);
-        if (event?.[1]) return JSON.parse(event[1]) as { readonly fullscreen: boolean };
-      }
-      const result = await readSseChunk(reader);
-      if (result.done) throw new Error("desktop_fullscreen_sse_closed");
-      buffered += decoder.decode(result.value, { stream: true });
-    }
-  };
-}
-
-async function readSseChunk(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<ReadableStreamReadResult<Uint8Array>> {
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      reader.read(),
-      new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new Error("desktop_fullscreen_sse_timeout")), 1_000); }),
-    ]);
-  } finally {
-    if (timeout !== null) clearTimeout(timeout);
-  }
 }
 
 function putWithHost(url: URL, origin: string, host: string, body: unknown): Promise<number> {

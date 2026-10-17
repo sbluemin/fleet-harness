@@ -39,11 +39,6 @@ export interface ExperimentAideSelection {
 }
 
 export interface ConsoleExperimentSettings {
-  /**
-   * 옛 클라이언트·플러그인 응답 호환 필드. 데스크톱은 항상 대화 중심 화면이라 저장된 값과
-   * 무관하게 false다. true는 더 이상 캔버스 배치를 켜지 않는다.
-   */
-  readonly classicLayout: false;
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
   readonly computerUseBackend: ComputerUseBackendId;
@@ -69,7 +64,6 @@ export const DEFAULT_EXPERIMENT_AIDE_SELECTION: ExperimentAideSelection = { mode
 const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ model: "opus[1m]", effort: "high" });
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
-  classicLayout: false,
   computerUse: false,
   computerUseBackend: "sky-computer-use",
   coworkModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
@@ -134,8 +128,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     return isExperimentEffort(raw) ? raw : DEFAULT_EXPERIMENT_AIDE_SELECTION.effort;
   };
   return {
-    // 저장된 classicLayout 은 읽지 않는다. 필드는 v1 응답에 남기되 항상 false다.
-    classicLayout: false,
     computerUse: record.computerUse === true,
     computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     coworkModel: aideModel("cowork"),

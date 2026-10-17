@@ -27,7 +27,6 @@ import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
 import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
-import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import { createDesktopWindowCommandSynchronizer, createFullscreenController, type FullscreenController } from "./desktop-window-command.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
@@ -43,7 +42,7 @@ import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from ".
 import { installComputerCapture, requestAccessibilityPermission } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
-import { desktopFullscreenHost, type DesktopShellWindow } from "./shell-window.js";
+import type { DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState } from "./zoom-state.js";
@@ -174,7 +173,7 @@ async function boot(): Promise<void> {
    * 높이를, macOS는 신호등의 세로 자리를 — 둘 다 페이지 줌을 스스로 따라가지 못한다.
    * 한 창에서 둘 중 하나만 산다.
    */
-  // 맨 위 줄 높이 — Console 이 테마 스냅샷의 chrome.band 로 알린다(대화 중심 화면이면 52px). 신호등은 그 줄 가운데에 선다.
+  // 맨 위 줄 높이 — Console 이 테마 스냅샷의 chrome.band 로 알린다(대화 중심 화면의 52px). 신호등은 그 줄 가운데에 선다.
   let chromeBand: number | undefined;
   const refreshNativeChrome = (): void => {
     overlayRefresher?.refresh();
@@ -275,7 +274,6 @@ async function boot(): Promise<void> {
       consoleFullscreen?.perform(command);
     },
   });
-  let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   /**
    * Operation 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
@@ -402,7 +400,6 @@ async function boot(): Promise<void> {
       publishShellHome: async (origin) => { await publishShellHome(origin); },
       loadUrl: async (target) => { await window?.loadURL(target); },
       synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
-      synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
     closePicker: () => picker.close(),
@@ -444,7 +441,7 @@ async function boot(): Promise<void> {
       return view;
     },
     entryPagePath: desktopResources.entryPagePath,
-    snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette, "band"),
+    snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette),
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });
@@ -459,7 +456,6 @@ async function boot(): Promise<void> {
           ...(chromeBand !== undefined ? { chromeBand } : {}),
         });
         window = createdWindow;
-        fullscreenSynchronizer = createDesktopFullscreenSynchronizer(desktopFullscreenHost(createdWindow), { fetch: consoleFetch });
         consoleFullscreen = createFullscreenController(createdWindow.base);
         overlayRefresher = process.platform === "win32"
           ? createTitleBarOverlayRefresher(createdWindow.base, {
@@ -472,8 +468,6 @@ async function boot(): Promise<void> {
           themeSynchronizer.stop();
           updateSynchronizer.stop();
           browserViews.stop();
-          fullscreenSynchronizer?.stop();
-          fullscreenSynchronizer = null;
           consoleFullscreen?.stop();
           consoleFullscreen = null;
           windowCommands.stop();
@@ -545,7 +539,6 @@ async function boot(): Promise<void> {
         void publishShellHome(origin);
       },
       synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
-      synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },

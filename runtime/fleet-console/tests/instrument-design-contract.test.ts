@@ -70,7 +70,6 @@ const OWNED_SOURCES = [
   "../../../features/workspace/client/conversation/new-session.tsx",
   "../../../features/workspace/client/conversation/new-session.css",
   "../../../features/workspace/client/operations.tsx",
-  "chrome/components/command-band.tsx",
   "chrome/components/command-band-system-cluster.tsx",
   "../../../features/workspace/client/sidebar/operations-side-bar.tsx",
   "styles/theme.css",
@@ -151,14 +150,12 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
-  // Canvas injects each frame's identity accent through TSX inline styles.
+  // Sidebar chip and cluster-row TSX inject each Operation's identity accent through inline styles.
   "--user-accent",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
-  // Sidebar TSX injects transient drag offsets for chips and group headers; the fleet map's
-  // marker drag writes both axes on the dot element itself, without a re-render per frame.
+  // Sidebar TSX injects transient drag offsets for chips and group headers.
   "--drag-dy",
-  "--drag-dx",
   // Sidebar TSX injects the persisted group tone used by group-scoped surfaces.
   "--grp-color",
   // Sidebar chip TSX injects the group marker tone for each rendered mark.
@@ -175,15 +172,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
-  "--launch-menu-max-height",
   // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
   "--quick-launch-pop-max-height",
-  // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
-  "--zone-x",
-  "--zone-y",
-  "--zone-size",
-  "--zone-tint",
   // Chat context popover TSX injects the category-stack luminance step (0–5).
   "--agent-chat-ctx-step",
 ]);
@@ -567,7 +557,6 @@ describe("Instrument core design contract", () => {
     const fontPicker = externalSource(FONT_PICKER_CSS_PATH);
 
     for (const selector of [
-      '.global-settings-nav-item:hover:not([aria-pressed="true"])',
       ".segmented-option:hover:not(:disabled):not(.is-active)",
       '.fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"])',
       '.fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"])',
@@ -763,42 +752,6 @@ describe("Instrument core design contract", () => {
       "--canvas-on-bloom-brass",
     ]) {
       expect(theme).not.toContain(material);
-    }
-  });
-
-  // 밴드 유리 뒤로 본문을 흘리는 레이아웃은 라우트가 밴드에 붙어 있을 때만 성립한다. 그 조건을
-  // 바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나가 Reconnect·Dismiss·제어 되찾기의
-  // 히트 테스트를 라우트가 가로챈다(리뷰에서 두 번 적발). 그래서 흐름 바는 한 자리에 모으고,
-  // 게이트는 그 자리가 비었는지만 묻는다.
-  it("gates the band underflow on an empty shell-bar slot, not a list of bars", () => {
-    const layout = source("styles/layout.css");
-    const app = source("app/app.tsx");
-
-    // 래퍼는 상자를 만들지 않는다 — 있으나 없으나 레이아웃이 같아야 도입 비용이 0이다.
-    expect(layout).toMatch(/\.console-shell-bars \{[^}]*display: contents;/);
-
-    // 게이트 네 곳(마진·밴드 z·축소 투명도 되돌림 둘)이 모두 같은 구조 조건을 쓴다.
-    // :has()는 중첩할 수 없으므로 자식 결합자를 안에 두고 바깥에서 부정한다.
-    const gates = layout.match(/:not\(:has\(\.console-shell-bars > \*\)\)/g) ?? [];
-    expect(gates.length).toBe(4);
-    expect(layout).not.toContain(".console-shell-bars:not(:has(*))");
-
-    // 밴드와 라우트 사이에 흐름 바를 직접 두면 게이트를 우회한다. 그 구간에 남을 수 있는 것은
-    // 흐름 밖 오버레이 레이어와 바 자리뿐이다.
-    const between = app.slice(
-      app.indexOf("<CommandBand"),
-      app.indexOf('<main className="console-route-content"'),
-    );
-    expect(between).not.toBe("");
-    const elementsBetween = [...between.matchAll(/^\s{8}<([A-Za-z][\w.]*)/gm)].map((m) => m[1]);
-    // 바 자리는 한 곳(`shellBars`)에서 정의되고 데스크톱은 이 구간에, 모바일 배치는 상단 막대 아래에 같은 자리를 놓는다.
-    expect(elementsBetween).toEqual(["FloatingWidgetLayer"]);
-    expect(between).toContain("shellBars");
-    const slot = app.slice(app.indexOf("const shellBars"));
-    expect(slot).toContain('<div className="console-shell-bars">');
-    // 알려진 흐름 바 넷은 그 자리 안에 있어야 한다.
-    for (const bar of ["console-link-banner", "<UpdateCurtain />", "<ControlBar />"]) {
-      expect(slot.slice(slot.indexOf('<div className="console-shell-bars">'))).toContain(bar);
     }
   });
 
@@ -1070,7 +1023,6 @@ describe("Instrument core design contract", () => {
     expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
-    expect(source("chrome/components/command-band.tsx")).not.toContain("operation-provider-mark");
     expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-provider-mark");
     expect(quickLaunch).not.toContain("launchProviderGlyph(entry.launchProvider)");
     expect(quickLaunch).not.toContain("launchProviderGlyph(mentionTarget.entry.launchProvider)");
@@ -1309,7 +1261,6 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const theme = source("styles/theme.css");
     const activity = source("../../../features/execution/client/operation-activity.ts");
-    const commandBand = source("chrome/components/command-band.tsx");
 
     // 조합은 등록부가 정한다(기본 Alt+S, Settings에서 재배정 가능) — 리터럴 키 판정이 되돌아오면 안 된다.
     expect(operations).toContain('matchesShortcutCommand(event, "operations.sort-by-status")');
@@ -1414,8 +1365,6 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("      status: activity,");
     expect(sidebar).not.toContain("status: resolveOperationDisplayActivity({");
     expect(chip).toContain("const markVisual = mark ?? status;");
-    // 밴드는 브레드크럼 퇴역으로 활성 Operation을 그리지 않는다 — 마크 축 소비자에서 물러났다.
-    expect(commandBand).not.toContain("resolveOperationMarkVisual");
     expect(components).toContain(".side-bar-status-axis-live-tick {");
     // 대기 틱의 호스트는 Theater 정체성 표식이다 — 전역 스위치 위에서는 어느 Theater인지가 지워진다.
     expect(sidebar).toMatch(/side-bar-theater-anchor[\s\S]{0,400}side-bar-status-axis-live-tick/);
@@ -1519,16 +1468,14 @@ describe("Instrument core design contract", () => {
     expect(rightRail).not.toContain("HEAD_REVEAL");
     expect(rightRail).not.toMatch(/onPointerMove=\{(?:hasPanel \? )?handleSlotPointer/);
     // Doctrine: the gear is not a work tool — governing the console and choosing a work tool are
-    // different kinds of act — so it stands last in the toolbar's system run (search · remote ·
-    // help · settings), not in the plugin tool run. Tools group by scope (Theater-scoped first,
-    // Fleet-scoped after a divider), each scope in plugin composition order. The gear is the
-    // settings surface's one door: it toggles the core settings pane and never appears as a tab.
-    const toolbarSource = source("chrome/toolbar/console-toolbar.tsx");
+    // different kinds of act — so it stands last in the conversation dock's host menu, not in the
+    // plugin tool run. Tools group by scope (Theater-scoped first, Fleet-scoped after a divider),
+    // each scope in plugin composition order. The gear is the settings surface's one door: it opens
+    // the settings modal and never appears as a tab.
+    const settingsButtonSource = source("chrome/toolbar/settings-button.tsx");
     expect(rightRail).toMatch(/right-rail-tabs[\s\S]*renderRuns\(runsByScope\.theater\)[\s\S]*renderRuns\(runsByScope\.fleet\)/);
     expect(rightRail).not.toContain("right-rail-settings-btn");
-    expect(toolbarSource).toContain("<ConsoleHelpMenu />\n          <ToolbarSettingsButton />\n        </div>");
-    expect(toolbarSource).toContain('id="rail-settings-toggle"');
-    expect(toolbarSource).toContain("toggleRailPanel(SETTINGS_RAIL_ENTRY_ID)");
+    expect(settingsButtonSource).toContain('id="rail-settings-toggle"');
     expect(rightRail).toContain('binding.entry.scope ?? "theater"');
     expect(rightRail).toContain('binding.entry.id !== SETTINGS_RAIL_ENTRY_ID');
     expect(rail).toMatch(/\.right-rail-divider \{[^}]*background: var\(--surface-rim-strong\);/);
@@ -1597,13 +1544,10 @@ describe("Instrument core design contract", () => {
     // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
     for (const selector of [".onboarding-hint", ".feature-tour-card"]) paintsPopoverFace(onboardingCss, selector);
-    // 브레드크럼 스위처 메뉴는 브레드크럼과 함께 퇴역했다 — 밴드 앵커 메뉴는 시스템 메뉴와
-    // 환경 팝오버만 남는다.
+    // 브레드크럼 스위처 메뉴는 브레드크럼·밴드와 함께 퇴역했다.
     expect(layout).not.toContain(".command-band-menu");
     // Activity Rail의 설정 메뉴는 해체됐다 — 레일에는 포털 팝업 재질이 더는 없다.
     expect(source("styles/rail.css")).not.toContain(".right-rail-menu");
-    // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 다른 면으로 남던 누락의 재발 방지.
-    paintsPopoverFace(layout, ".command-band-environment-popover");
     // 내장 플러그인 팝업도 같은 면을 칠한다 — 스킬 읽기는 대화상자 면, 신호 토스트·소식은 신호색을 불투명 면에 섞는다.
     paintsPopoverFace(skillsCss, ".skills-overlay-dialog", "--dialog-face");
     expect(skillsCss).toMatch(/\.skills-toast \{[^}]*background: color-mix\(in srgb, var\(--aurora\) 15%, var\(--popover-face\)\);/);
@@ -1617,37 +1561,22 @@ describe("Instrument core design contract", () => {
     expect(scuttlebuttCss).toMatch(/\.scuttlebutt-notice-bubble \{[^}]*background: var\(--scuttlebutt-notice-wash, var\(--popover-face\)\);/);
   });
 
-  it("pins the Command Band and closed-chrome contracts", () => {
+  it("pins the closed-chrome contracts", () => {
     const app = source("app/app.tsx");
-    const commandBand = source("chrome/components/command-band.tsx");
     const theme = source("styles/theme.css");
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
-    expect(app).toContain("<CommandBand operationsViewVisible={operationsViewVisible} />");
     expect(app).not.toContain("FocusMode");
     expect(app).not.toContain("is-focus-mode");
     expect(app).not.toContain("GlobalNavigation");
     expect(layout).not.toContain("--console-gnb-height");
     expect(layout).not.toContain("is-focus-mode");
     expect(theme).toContain("--chrome-band-height: 36px;");
-    expect(commandBand).toContain("<BrandHome />");
-    expect(commandBand).not.toContain("CommandBandSystemCluster");
-    expect(commandBand).toContain('className="command-band-button command-band-viewmode"');
-    // 도구모음은 콘솔에 하나다 — 찾기·도움말은 밴드가 따로 세우지 않고, 밴드는 도구모음이 설 자리만 둔다.
-    const toolbar = source("chrome/toolbar/console-toolbar.tsx");
-    expect(commandBand).toContain('<span ref={setToolbarHost} className="command-band-toolbar" />');
-    expect(commandBand).not.toContain("command-band-search");
-    expect(toolbar).toContain("onClick={toggleOperationSearch}");
-    expect(toolbar).toContain("<HostSwitcher />\n          <ConsoleHelpMenu />");
-    expect(app).toContain("<ConsoleToolbar />");
     expect(app).not.toContain("warRoomActive");
-    // Periscope: 패널 접기 토글은 밴드에서 퇴역했다 — 좌측 사이드바의 접기는 패널 자신의 컨트롤이,
-    // 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 + 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역해
-    // 도구모음이 되었고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
-    expect(commandBand).not.toContain("command-band-sidebar-toggle");
-    expect(commandBand).not.toContain("command-band-rail-toggle");
-    expect(commandBand).not.toContain("panelTogglesVisible");
+    expect(app).not.toContain("WarRoomBar");
+    // Periscope: 좌측 사이드바의 접기는 패널 자신의 컨트롤이, 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 +
+    // 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역했고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
     const sidebarPanelSource = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     const railPanelSource = source("chrome/rail/right-rail.tsx");
     const edgeDocks = source("chrome/components/panel-edge-docks.tsx");
@@ -1661,15 +1590,7 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-side-bar.is-closed.is-peeking {");
     expect(rail).not.toContain(".is-peeking");
     expect(components).toContain(".panel-edge-dock-filament {");
-    // 도구모음이 중앙 트랙의 단독 승객이다. 캔버스 모드 스위치와 그 캡슐은 떠났다.
-    expect(commandBand).toContain(`      <div className="command-band-center">
-        <span ref={setToolbarHost} className="command-band-toolbar" />`);
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} />");
-    // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
-    // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
-    expect(commandBand).not.toContain("command-band-dock-divider");
-    // 중앙 트랙에는 도구모음만 남는다 — 찾기는 도구모음으로 옮겨 가 구분선도 함께 퇴역했다.
-    expect(commandBand).not.toContain("command-band-center-divider");
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");
@@ -1681,90 +1602,14 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("border: 1px dashed var(--ink-rim);");
     expect(components).not.toContain(".side-bar-formation-group {");
     expect(components).not.toContain(".side-bar-theater-add-btn {");
-    expect(layout).not.toContain(".command-band-mode-switch");
-    expect(layout).not.toContain(".command-band-mode-seg");
-    expect(layout).not.toContain(".command-band-mode-tray");
-    expect(layout).not.toContain(".command-band-center-divider {");
-    // 맵 컨트롤 클러스터는 컨테이너 플로우 배치다 — 개별 절대 위치 + 매직 오프셋(구 116px)은
-    // 버튼 추가 시 겹침으로 깨지므로 다시 도입하지 않는다.
-    expect(layout).not.toContain(".command-band-map-controls {");
-    // 전면 해도 개편: 사이드바-가장자리 추종 앵커는 캡 계약과 함께 퇴역했다 — 클러스터는
-    // 흐름 배치이고 하한은 좌·우 클러스터의 실측 콘텐츠 폭 중 큰 쪽에서 나온다. 앵커 변수가
-    // 되살아나면 모드 스위치가 존재하지 않는 열 경계에 다시 정박한다.
-    expect(layout).not.toContain("--command-band-map-anchor");
-    expect(commandBand).not.toContain("commandBandMapControlsAnchor");
-    expect(commandBand).toContain("const centerGutter = commandBandCenterGutter(leftContentEnd, rightContentWidth);");
-    expect(commandBand).toContain("commandBandCenterFits(bandWidth, centerGutter, centerContentWidth)");
-    expect(layout).not.toContain("command-band-dock-divider");
-    expect(layout).not.toContain(".command-band-mode-switch {\n  position: absolute;");
-    // 구 문법(모드 전용 도구를 밴드에 상시 노출)의 잔재는 남기지 않는다.
-    expect(layout).not.toContain(".command-band-formation-group {");
-    expect(layout).not.toContain(".command-band-triage-toggle {");
-    // 밴드는 한 판이다 — 사이드바 폭 미러 주입은 캡과 함께 퇴역했고, 브레드크럼 트랙은
-    // Console 전체 폭을 좌우 대칭으로 나눈다.
-    expect(commandBand).not.toContain("--command-band-left-width");
-    expect(layout).toContain("grid-template-columns: minmax(var(--command-band-center-gutter), 1fr) minmax(0, max-content) minmax(var(--command-band-center-gutter), 1fr);");
-    // is-center-flow 오버라이드 블록이 아니라 기본 블록을 잡아야 한다 — 행 시작 앵커로 좁힌다.
-    const commandBandCenterBlock = layout.match(/^\.command-band-center \{[^}]*\}/m)?.[0] ?? "";
-    const commandBandLeftBlocks = [...layout.matchAll(/\.command-band-left \{[^}]*\}/g)].map((match) => match[0]);
-    const commandBandRightBlocks = [...layout.matchAll(/\.command-band-right \{[^}]*\}/g)].map((match) => match[0]);
-    expect(layout).toContain(".command-band.is-utility {\n  grid-template-columns: minmax(0, 1fr) minmax(0, max-content) minmax(0, 1fr);\n}");
-    expect(layout).toContain("  --command-band-center-gutter: 44px;");
-    expect(layout).not.toContain("--command-band-stage-left");
-    expect(layout).not.toContain("--command-band-stage-right");
-    expect(commandBandLeftBlocks.some((block) => block.includes("grid-column: 1;"))).toBe(true);
-    expect(commandBandCenterBlock).toContain("grid-column: 2;");
-    expect(commandBandRightBlocks.some((block) => block.includes("grid-column: 3;"))).toBe(true);
-    expect(commandBand).not.toContain("stageLeftWidth");
-    expect(commandBand).not.toContain("stageRightWidth");
-    // 중앙 정렬을 포기한 뒤에도 여백 하한을 주입하면 고정 트랙 합이 밴드 폭을 넘어 우측 컨트롤이
-    // 화면 밖으로 밀린다. 주입값과 판정값을 분리해 고정한다.
-    expect(commandBand).toContain("const injectedCenterGutter = centerControlsCentered ? centerGutter : 0;");
-    expect(commandBand).toContain('"--command-band-center-gutter": `${injectedCenterGutter}px`,');
-    // 좁은 폭에서 중앙을 감추는 대신 좌측 플로우로 되돌린다. 클래스는 JS 실측 판정만 받아 입는다.
-    expect(commandBand).toContain('${centerControlsCentered ? "" : " is-center-flow"}');
-    expect(layout).toContain(".command-band.is-center-flow {\n  grid-template-columns: max-content max-content minmax(0, 1fr);\n}");
-    expect(layout).toContain(".command-band.is-center-flow .command-band-center {");
-    // 밴드 조상에 container-type을 걸면 contain:layout이 stacking context를 만들어 밴드 앵커
-    // 팝업(z-index:45)이 우현 레일 아래로 깔린다 — 판정은 JS 실측 전용.
-    expect(layout).not.toContain("container-type");
-    expect(layout).not.toContain("--command-band-left-width");
-    expect(commandBandCenterBlock).toContain("justify-content: center;");
-    expect(commandBandCenterBlock).not.toContain("overflow:");
-    expect(commandBandRightBlocks.some((block) => block.includes("justify-content: flex-end;"))).toBe(true);
     const rightRail = source("chrome/rail/right-rail.tsx");
     const railStore = source("chrome/rail/rail-store.ts");
-    for (const legacyRightRailCoupling of ["rightRailWidth", "setRightRailWidth", "useRightRailWidth", "--command-band-right-width"]) {
-      expect(commandBand).not.toContain(legacyRightRailCoupling);
+    for (const legacyRightRailCoupling of ["rightRailWidth", "setRightRailWidth", "useRightRailWidth"]) {
       expect(rightRail).not.toContain(legacyRightRailCoupling);
       expect(railStore).not.toContain(legacyRightRailCoupling);
     }
-    // K-05 오버레이 실측(RightRail의 ResizeObserver)은 확대 표면의 조작부 회피에만 쓴다 — 위 결합 금지가 Command Band 결합의 부활을 막는다.
-    expect(layout).toContain('html[data-desktop-shell="true"] .command-band {');
-    // 브랜드 홈(a)·rename(input)까지 no-drag — button만 겨냥하면 데스크톱 드래그 영역이 클릭을 삼킨다.
-    expect(layout).toContain('html[data-desktop-shell="true"] .command-band button,');
-    expect(layout).toContain('html[data-desktop-shell="true"] .command-band a,');
-    expect(layout).toContain('html[data-desktop-shell="true"] .command-band input {');
-    expect(layout).toContain('html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-left {');
-    expect(commandBand).not.toContain("shouldCloseCommandBandContextDeck");
-    expect(commandBand).not.toContain("data-carrier");
-    expect(commandBand).not.toContain("<PathContextDeck");
-    // 신호등이 차지한 76 DIP는 페이지 줌을 타지 않는다 — 예약분을 줌으로 나누지 않으면 확대에서
-    // 브랜드가 신호등과 멀어지고 축소에서 그 위로 올라탄다(셸의 trafficLightPosition과 한 계약).
-    expect(layout).toContain("padding-inline-start: calc(76px / var(--desktop-zoom, 1) + var(--space-3));");
-    expect(layout).toContain("max(0px, 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw))");
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(layout).toContain(".command-band-left {");
     expect(components).toContain(".operations-side-bar.is-closed");
-    // 밴드는 한 판이다(전면 해도 개편) — 구 "사이드바 상단 캡"의 전용 틴트·우측 경계선·인셋
-    // 그림자가 하나라도 되살아나면 밴드 안에 유령 이음선이 선다. 재질은 밴드 루트 ::before
-    // (--glass-tint-band) 한 장이 전부 진다.
-    const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
-    expect(commandBandLeftBlock).not.toContain("border-right");
-    expect(commandBandLeftBlock).not.toContain("box-shadow");
-    expect(commandBandLeftBlock).toContain("width: fit-content;");
-    expect(layout).not.toContain(".command-band-left::before");
-    expect(layout).not.toContain(".command-band-left.is-collapsed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
     // 투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.
@@ -1800,37 +1645,6 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain("focus-mode-reveal");
     // 도구 패널 카드는 켜진 도구가 없으면 폭 0으로 걷힌다 — 접힌 레일(is-closed) 상태는 오른쪽 사이드바와 함께 퇴역했다.
     expect(rail).toContain(".right-rail:not(.is-open) {");
-    expect(layout).not.toContain(".command-band-context-separator {");
-    // Theater›Operation 브레드크럼은 퇴역했다 — 사이드바가 이미 말하는 문장이고, 중앙 트랙은
-    // 캔버스 모드 컨트롤이 가져갔다.
-    expect(layout).not.toContain(".command-band-theater-cluster");
-    expect(layout).not.toContain("--command-band-carrier");
-    // 전체화면 자동 은닉은 원자적으로 퇴역했다 — 밴드를 오버레이로 띄우던 규칙, 그것을
-    // 되부르던 엣지 스트립, "계속 보이기" 도킹이 함께 사라져야 한다. 하나라도 남으면 스테이지
-    // 최상단에 클릭을 가로채는 투명 오버레이나 아무도 되돌릴 수 없는 숨김이 남는다.
-    expect(commandBand).not.toContain("useFullscreenCommandBand");
-    expect(commandBand).not.toContain("command-band-edge-reveal");
-    expect(commandBand).not.toContain("command-band-dock-toggle");
-    expect(layout).not.toContain(".command-band.is-fullscreen");
-    expect(layout).not.toContain(".command-band-edge-reveal");
-    expect(commandBand).not.toContain("commandBandHidden");
-    expect(commandBand).not.toContain("warRoom");
-    // 도구모음은 하나다. 대화 화면에서는 사이드바가 그 자리를 맡고, 설정 화면의 밴드는 같은 마운트를 쓴다.
-    const appShell = source("app/app.tsx");
-    const consoleToolbar = source("chrome/toolbar/console-toolbar.tsx");
-    expect(consoleToolbar).toContain("host.appendChild(mount);");
-    expect(consoleToolbar).toContain("<ToolbarBridge />");
-    expect(appShell).not.toContain("WarRoomBar");
-    // darwin 전체화면에서 신호등이 물러난 자리로 좌측 클러스터가 활주한다. transform이 아니라
-    // 패딩을 움직여야 중앙 여백 하한의 실측(offsetLeft)이 새 자리를 읽는다.
-    const darwinBandLeftBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band-left \{[^}]*\}/)?.[0] ?? "";
-    expect(darwinBandLeftBlock).toContain("padding-inline-start: calc(76px / var(--desktop-zoom, 1) + var(--space-3));");
-    // 전이는 전체화면 쪽에만 선다 — 창 모드 쪽에 두면 나올 때도 220ms 활주해, 이미 돌아온
-    // 신호등 아래에 브랜드가 그동안 깔린다.
-    expect(darwinBandLeftBlock).not.toContain("transition:");
-    const darwinFullscreenBlock = layout.match(/html\[data-desktop-shell="true"\]\[data-desktop-platform="darwin"\] \.command-band\.is-native-fullscreen \.command-band-left \{[^}]*\}/)?.[0] ?? "";
-    expect(darwinFullscreenBlock).toContain("padding-inline-start: var(--space-2);");
-    expect(darwinFullscreenBlock).toContain("transition: padding-inline-start var(--duration-base) var(--ease-glide);");
     // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 불리언 토글의 눌림은
     // 워시 + brass 글리프다.
     const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
@@ -1882,27 +1696,6 @@ describe("Instrument core design contract", () => {
     expect(navigatorScrollBlock).toContain("overflow-y: auto;");
   });
 
-  it("locks Command Band coordinate invariance to paint-only state changes", () => {
-    const layout = source("styles/layout.css");
-    const components = source("styles/components.css");
-    const rail = source("styles/rail.css");
-    // 캡 퇴역 후 밴드 좌측에는 상태 페인트 게이트 자체가 없다 — is-collapsed 변형이
-    // 되살아나면 사이드바 상태가 다시 밴드 기하·재질에 손을 대는 회귀다.
-    expect(layout).not.toContain(".command-band-left.is-collapsed");
-    // 어떤 상태 셀렉터도 밴드 버튼의 기하를 조건부로 겨냥하지 못한다.
-    const statefulBandButtonRule =
-      /(?:is-closed|is-collapsed|data-sidebar|data-rail)[^{]*\.command-band-(?:button|sidebar-toggle|search|rail-toggle)|\.command-band-(?:button|sidebar-toggle|search|rail-toggle)[^{]*(?:is-closed|is-collapsed)/;
-    expect(layout).not.toMatch(statefulBandButtonRule);
-    expect(components).not.toMatch(statefulBandButtonRule);
-    expect(rail).not.toMatch(statefulBandButtonRule);
-    // reduced-motion 단락이 미디어 블록 내부에서 크롬 전환을 실제로 끊는지 블록 스코프로 고정한다.
-    const reducedMotionBlock = layout.slice(layout.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reducedMotionBlock).toContain(".operations-side-bar,");
-    expect(reducedMotionBlock).toContain(".right-rail,");
-    expect(reducedMotionBlock).toContain(".command-band-left {");
-    expect(reducedMotionBlock).toContain("transition: none !important;");
-  });
-
   it("keeps the mobile palette a complete root overlay that no Console theme can leak into", () => {
     // 모바일 배치는 Console 테마와 독립된 다크/라이트를 루트 속성 쌍으로 얹는다. 데스크톱은
     // data-view-mode가 "mobile"이 아니므로 매치되지 않고, 속성 셋(0,3,0)이라 테마 블록·유리 게이트를
@@ -1937,8 +1730,8 @@ describe("Instrument core design contract", () => {
       for (const token of declared(block)) themeTuned.add(token);
     }
     // [doctrine] 유리 재료(--glass-on-*·--canvas-on-ambience)는 게이트를 거쳐서만 화면에 닿고, 모바일은
-    // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다. 지형 피치는 색이 아니다.
-    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$|canvas-weave-(?:major|minor)$)/.test(token);
+    // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다.
+    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$)/.test(token);
     for (const scheme of ["dark", "light"] as const) {
       const missing = [...themeTuned].filter((token) => !exempt(token) && !schemeTokens[scheme].has(token));
       expect(missing, `mobile ${scheme} leaves Console-theme tokens undefined`).toEqual([]);
@@ -2608,14 +2401,9 @@ describe("Instrument core design contract", () => {
 
   it("keeps real GNB producers aligned with the static CSS gates", () => {
     const components = source("styles/components.css");
-    const layout = source("styles/layout.css");
-    const commandBand = source("chrome/components/command-band.tsx");
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);
     const skillsCss = externalSource(SKILLS_CSS_PATH);
-    // 디스플레이 서체 생산자는 커맨드 밴드의 브랜드 워드마크 하나뿐이다 — layout.css 단독 소유.
     expect(components).not.toMatch(/font-family:\s*var\(--font-display\)/);
-    expect(layout.match(/font-family:\s*var\(--font-content\)/g)).toHaveLength(1);
-    expect(commandBand).toContain('className="command-band-brand-wordmark"');
     expect(components).not.toMatch(/data-sidebar-state="(?:rail|list|detail)"/);
     expect(components).not.toContain("global-navigation");
     expect(components).not.toContain("data-signature");
@@ -2683,14 +2471,13 @@ describe("Instrument core design contract", () => {
     const chip = source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx");
     const statusIcon = source("../../../features/execution/client/components/operation-status-icon.tsx");
     const nameMark = source("../../../features/execution/client/components/operation-name-mark.tsx");
-    const commandBand = source("chrome/components/command-band.tsx");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
 
     expect(systemCluster).toContain('className="command-band-system-menu" role="menu"');
-    // 설정의 문은 레일의 톱니 하나다 — 커맨드 밴드에는 설정 진입이 더는 없다.
+    // 설정의 문은 대화 독의 톱니 하나다 — 시스템 메뉴에는 설정 진입이 따로 없다.
     expect(systemCluster).not.toContain("command-band-settings");
-    expect(source("chrome/toolbar/console-toolbar.tsx")).toContain('t("settings.title")');
+    expect(source("chrome/toolbar/settings-button.tsx")).toContain('t("settings.title")');
     expect(systemCluster).toContain('t("chrome.system.keyboardShortcuts")');
     expect(systemCluster).toContain("openWhatsNew");
     expect(components).not.toContain(".command-band-system-cluster {");
@@ -2720,9 +2507,6 @@ describe("Instrument core design contract", () => {
     expect(source("styles/theme.css")).not.toContain("--uw-angle");
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-status");
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
-    expect(commandBand).not.toContain("command-band-operation-attribute");
-    expect(commandBand).not.toContain("command-band-operation-status");
-    expect(commandBand).not.toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).not.toContain(".right-rail-icons");
     expect(components).toContain("@keyframes caption-rail-travel");
     expect(components).not.toContain("@keyframes caption-rail-call");

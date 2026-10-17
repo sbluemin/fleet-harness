@@ -117,14 +117,9 @@ export function createHostPaneTargetPorts(bindings: readonly PaneTargetBinding[]
     openExpanded: revealExpandedSurface,
     requestId: () => crypto.randomUUID(),
     showTarget: (target) => {
-      if (getViewModeSnapshot().effective === "mobile" && target.paneId === SETTINGS_PANE_ID) {
-        const section = target.params?.section;
-        navigateConsoleRoute("/settings", section === undefined ? "" : `?section=${encodeURIComponent(section)}`);
-        return true;
-      }
-      // 대화 중심 화면의 설정은 레일 페인이 아니라 가운데 모달이다 — 팔레트 검색 결과·플러그인의 설정 목표도 같은 문으로 든다.
-      if (target.paneId === SETTINGS_PANE_ID && (getViewModeSnapshot().effective === "desktop")) {
-        navigateConsoleRoute("/operations");
+      // 설정은 레일 페인이 아니라 설정의 문이다(데스크톱 모달, 폰 /settings) — 팔레트 검색 결과·플러그인의 설정 목표도 같은 문으로 든다.
+      if (target.paneId === SETTINGS_PANE_ID) {
+        if (getViewModeSnapshot().effective !== "mobile") navigateConsoleRoute("/operations");
         openSettingsSurface(target.params?.section);
         return true;
       }

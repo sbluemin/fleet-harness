@@ -10,7 +10,6 @@ function createHarness(overrides: Partial<ConsoleHandoffDeps> = {}) {
     publishShellHome: async (origin) => { trace.push(`publish:${origin}`); },
     loadUrl: async (url) => { trace.push(`load:${url}`); },
     synchronizeTheme: async (origin) => { trace.push(`theme:${origin}`); },
-    synchronizeFullscreen: (origin) => { trace.push(`fullscreen:${origin}`); },
     ...overrides,
   };
   return { trace, deps };
@@ -30,7 +29,6 @@ describe("console handoff", () => {
       `publish:${TARGET}`,
       `load:${TARGET}/console/`,
       `theme:${TARGET}`,
-      `fullscreen:${TARGET}`,
     ]);
   });
 
@@ -58,7 +56,6 @@ describe("console handoff", () => {
       `publish:done:${TARGET}`,
       `load:${TARGET}/console/`,
       `theme:${TARGET}`,
-      `fullscreen:${TARGET}`,
     ]);
   });
 
@@ -70,7 +67,7 @@ describe("console handoff", () => {
 
     await handOffWindowToConsole(harness.deps, `${TARGET}/console/`);
 
-    expect(harness.trace).toEqual([`load:${TARGET}/console/`, `theme:${TARGET}`, `fullscreen:${TARGET}`]);
+    expect(harness.trace).toEqual([`load:${TARGET}/console/`, `theme:${TARGET}`]);
   });
 
   /**
@@ -89,7 +86,6 @@ describe("console handoff", () => {
       "deadline:2000",
       `load:${TARGET}/console/`,
       `theme:${TARGET}`,
-      `fullscreen:${TARGET}`,
     ]);
   });
 });

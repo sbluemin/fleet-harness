@@ -21,7 +21,7 @@ import { buildChips, hostSectionOf, type SettingsChip } from "./settings-pane.js
 import "./settings-modal.css";
 
 /**
- * 대화 중심 화면의 설정 — 화면 가운데 모달.
+ * 데스크톱 설정 — 대화 중심 화면 가운데 모달.
  *
  * 왼쪽은 범주 목록(글리프 + 이름, 고른 행은 은은한 면), 오른쪽은 범주 제목 아래 소제목별 둥근 묶음 카드다. 본문은
  * 레일 페인과 같은 섹션 렌더러를 쓴다 — 그릇만 다르다(settings-door.ts). 검색은 왼쪽 목록을 거른다: 찾는 동안에도
@@ -37,7 +37,8 @@ export function SettingsModalHost({ visible, mobile }: {
   const lastPanelRef = useRef<string | null>(null);
   if (railActive !== null && railActive !== SETTINGS_RAIL_ENTRY_ID) lastPanelRef.current = railActive;
 
-  // 모바일로 바뀌면 모달을 닫는다. 저장된 레일 설정은 데스크톱에서 같은 섹션의 모달로 옮겨 선다.
+  // 모바일로 바뀌면 모달을 닫는다. 설정의 문은 레일을 열지 않지만, 이전 릴리스가 저장한 레일 활성 패널(localStorage)이나
+  // 플러그인의 rail.open("settings")이 레일에 설정을 세우면 데스크톱에서 같은 섹션의 모달로 옮겨 선다.
   useLayoutEffect(() => {
     if (mobile && modal.open) {
       closeSettingsModal();

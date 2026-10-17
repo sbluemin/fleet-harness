@@ -1,7 +1,7 @@
 /**
  * 창을 다른 콘솔로 넘길 때의 순서.
  *
- * 네 가지 일이 일어나는데 그중 하나만 순서가 계약이다: **집 주소는 창보다 먼저 가야 한다.**
+ * 세 가지 일이 일어나는데 그중 하나만 순서가 계약이다: **집 주소는 창보다 먼저 가야 한다.**
  * 도착한 화면은 뜨자마자 "돌아갈 곳"을 한 번 묻고 다시 묻지 않으므로, 창이 먼저 도착하면
  * 그 물음은 빈손으로 끝나고 그 콘솔에는 돌아가는 줄이 서지 않는다. 적재가 끝난 뒤에 게시하면
  * 둘 중 무엇이 먼저인지는 그때그때 달라진다 — 돌아갈 길이 붙었다 떨어졌다 하는 이유가 그것이다.
@@ -16,7 +16,6 @@ export interface ConsoleHandoffDeps {
   readonly publishShellHome: (origin: string) => Promise<void>;
   readonly loadUrl: (url: string) => Promise<void>;
   readonly synchronizeTheme: (origin: string) => Promise<void>;
-  readonly synchronizeFullscreen: (origin: string) => void;
   /** 게시를 기다려 주는 시간. 테스트가 실제 시계를 기다리지 않도록 갈아 끼울 수 있게 둔다. */
   readonly waitForPublishDeadline?: (ms: number) => Promise<void>;
 }
@@ -33,9 +32,8 @@ export async function handOffWindowToConsole(deps: ConsoleHandoffDeps, url: stri
     deadline(PUBLISH_DEADLINE_MS),
   ]);
   await deps.loadUrl(url);
-  // 창이 옮겨 갔으면 타이틀바·전체화면 동기화도 그 콘솔을 따라가야 한다.
+  // 창이 옮겨 갔으면 타이틀바 동기화도 그 콘솔을 따라가야 한다.
   await deps.synchronizeTheme(origin);
-  deps.synchronizeFullscreen(origin);
 }
 
 /** 이 타이머 하나 때문에 앱이 종료를 미루지는 않는다. */

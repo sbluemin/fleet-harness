@@ -2,17 +2,17 @@ import { useT } from "../../i18n/index.js";
 import { cycleViewModePreference, useViewMode } from "../../integration/view-mode-store.js";
 
 /**
- * The one control that cycles auto / mobile / desktop. The command band carries it on a desktop
- * layout; the mobile layout carries it in its own header, because that layout hides the band.
+ * The one control that cycles auto / mobile / desktop. The conversation dock's host menu carries it in a
+ * desktop browser (a Desktop shell hides it); the mobile layout picks the mode in its settings page instead.
  */
 export function ViewModeToggle({ className, menuItem = false }: { readonly className?: string; readonly menuItem?: boolean }) {
   const t = useT();
   const viewMode = useViewMode();
   const label = t(viewMode.preference === "auto"
-    ? "chrome.commandBand.viewModeAuto"
+    ? "chrome.viewMode.auto"
     : viewMode.preference === "mobile"
-      ? "chrome.commandBand.viewModeMobile"
-      : "chrome.commandBand.viewModeDesktop");
+      ? "chrome.viewMode.mobile"
+      : "chrome.viewMode.desktop");
   return (
     <button
       type="button"

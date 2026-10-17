@@ -153,7 +153,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const doriChat = useStoreSnapshot(sessions[2]!.subscribe, sessions[2]!.snapshot);
   const chats = [toriChat, boriChat, doriChat] as const;
   const phases = chats.map((chat) => chat.state.phase);
-  // 저장된 「상단 바에 두기」는 글리프가 설 밴드 슬롯이 있을 때만 유효하다 — 모바일 배치처럼 밴드가
+  // 저장된 「도구모음에 두기」는 글리프가 설 호스트 슬롯이 있을 때만 유효하다 — 모바일 배치처럼 그 슬롯이
   // 없는 곳에서는 새로 남는다(글리프도 떼어내기도 없는 곳에 숨기면 되찾을 길이 없다).
   const dockHost = useStoreSnapshot(subscribeDock, readDockSnapshot).host;
   const docked = React.useMemo<Record<AdmiralId, boolean>>(() => ({
@@ -172,7 +172,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     if (!lost) return;
     setAnswering((current) => current.filter((admiral) => !settings.docked[admiral]));
   }, [dockHost, settings.docked]);
-  // 캔버스에 나는 부관만 편대에 든다 — 상단 바에 둔 부관은 근무 중이지만 새가 아니라 글리프다.
+  // 화면 위에 나는 부관만 편대에 든다 — 글리프로 둔 부관은 근무 중이지만 새가 아니라 글리프다.
   const activeIndices = React.useMemo(
     () => MORPHS.map((morph, index) => settings[morph] && !docked[morph] ? index : -1).filter((index) => index >= 0),
     [settings.bori, settings.dori, settings.tori, docked],
@@ -235,7 +235,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   // 근무 중인 첫 제독을 매 렌더 뒤 다시 짚는다 — 설정에서 켜고 끌 때마다 대상이 바뀐다.
   React.useLayoutEffect(() => {
     const index = activeIndices[0];
-    // 캔버스에 새가 없으면 상단 바의 첫 글리프가 소식을 전한다 — 말풍선은 그 아래로 내려온다.
+    // 화면 위에 새가 없으면 첫 글리프가 소식을 전한다 — 말풍선은 그 아래로 내려온다.
     const bird = index === undefined ? null : birdRefs.current[index];
     announcerRef.current = bird ?? firstDockGlyph();
   });
@@ -311,7 +311,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     // 그대로 성공으로 넘기면 컴포저가 초안을 지워 사용자의 문장이 사라진다 — 거절해서 초안을 지킨다.
     const phase = sessions[index]!.snapshot().state.phase;
     if (phase === "starting" || phase === "thinking") throw new Error("destination_busy");
-    // 상단 바에 둔 부관의 답도 말풍선(읽기 표면)이다 — 닻만 새가 아니라 글리프라 늘 같은 자리에
+    // 글리프로 둔 부관의 답도 말풍선(읽기 표면)이다 — 닻만 새가 아니라 글리프라 늘 같은 자리에
     // 선다. 정박은 새에게만 뜻이 있으므로 세우지 않는다.
     if (readDockSnapshot().host && getScuttlebuttSettings().docked[admiral]) {
       setAnswering((current) => (current.includes(admiral) ? current : [...current, admiral]));
@@ -375,7 +375,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [releaseMentionMoor]);
 
   /**
-   * 상단 바에 두기. 답을 위해 세운 정박과 말풍선은 거둔다 — 그 답은 시트가 이어받는다. 사용자의
+   * 도구모음에 두기. 답을 위해 세운 정박과 말풍선은 거둔다 — 그 답은 시트가 이어받는다. 사용자의
    * 「제자리에 두기」 좌표는 지우지 않는다: 떼어낼 때 그 자리로 돌아간다.
    */
   const dockAide = React.useCallback((admiral: AdmiralId) => {
@@ -837,7 +837,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     gesture.lastX = event.clientX;
     gesture.lastY = event.clientY;
     gesture.lastAt = now;
-    // 밴드까지 끌어올리면 내려놓을 자리를 보인다 — 「상단 바에 두기」의 손 제스처.
+    // 화면 위쪽까지 끌어올리면 내려놓을 자리를 보인다 — 「도구모음에 두기」의 손 제스처.
     const armed = readDockSnapshot().host && event.clientY < DOCK_DROP_Y;
     if (armed !== dropArmedRef.current) {
       dropArmedRef.current = armed;
@@ -886,7 +886,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [clearTimer, clickAction, dockAide]);
 
   const t = getT(context.language);
-  // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다. 상단 바에 둔 부관은 새가
+  // 근무 중인 제독이 하나도 없으면 레이어에 아무것도 남기지 않는다. 글리프로 둔 부관은 새가
   // 아니어도 시트·소식이 이 레이어에 서므로 남긴다.
   if (activeIndices.length === 0 && dockedAides.length === 0) return null;
   const quiet = !openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking");

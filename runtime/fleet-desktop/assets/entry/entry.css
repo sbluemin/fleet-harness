@@ -77,9 +77,9 @@
   --duration-fade: 200ms;
   /* launch-controller.ts HANDOFF_SETTLE_MS와 짝 — 이 전환이 끝난 뒤에 Console 문서로 바뀐다. */
   --handoff-duration: 420ms;
-  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. Console command band의 브랜드 위치를 그대로 옮겼다
-     (layout.css: .command-band-left 패딩 + .command-band-brand 패딩, 글리프 16px, 간격 7px).
-     macOS는 신호등 76px를 비운다. */
+  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. 퇴역한 Console Command Band(36px)의 브랜드 위치(좌측 패딩 +
+     브랜드 패딩, 글리프 16px, 간격 7px)를 그대로 쓴다. 대화 중심 화면에는 그 브랜드가 없다 — 맨 위 줄(52px)에 맞춘
+     재정렬은 시각 확인을 거칠 후속 과제다. macOS는 신호등 76px를 비운다. */
   --brand-glyph-left: 13px;
   --brand-mark-size: 72px;
 }
@@ -93,7 +93,7 @@
 html, body { height: 100%; margin: 0; }
 body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
 
-/* 창을 끌 수 있는 자리. Console의 command band와 같은 높이라, 넘겨줄 때 밑줄만 켜지면 그대로 이어진다. */
+/* 창을 끌 수 있는 자리. 높이는 옛 Console Command Band(36px)에서 이어졌다 — 대화 중심 화면 맨 위 줄(52px)과의 정합은 핸드오프 좌표 재정렬과 함께 다룰 후속 과제다. */
 .drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); border-bottom: 1px solid transparent; -webkit-app-region: drag; transition: border-color var(--handoff-duration) var(--ease-spring); }
 
 .brand-mark {
@@ -107,7 +107,7 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 }
 .brand-mark-tile { fill: var(--ink-deep); stroke: var(--hairline-strong); stroke-width: 2; }
 .brand-mark-ring { fill: none; stroke: var(--brass); stroke-width: 3.5; }
-/* 개발 빌드는 Console(BrandMarkIcon local)처럼 바깥 링을 열고 신호점을 뺀다. */
+/* 개발 빌드는 바깥 링을 열고 신호점을 뺀다(옛 Console 브랜드 마크의 개발 채널 표기와 같은 조형). */
 .brand-mark-ring-open { display: none; fill: none; stroke: var(--brass); stroke-width: 3.5; stroke-linecap: round; }
 .is-dev .brand-mark-ring, .is-dev .brand-mark-beacon { display: none; }
 .is-dev .brand-mark-ring-open { display: inline; }
@@ -133,7 +133,7 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
   transition: top var(--handoff-duration) var(--ease-spring), left var(--handoff-duration) var(--ease-spring), transform var(--handoff-duration) var(--ease-spring), font-size var(--handoff-duration) var(--ease-spring), letter-spacing var(--handoff-duration) var(--ease-spring);
 }
 
-/* 개발 빌드의 「Fleet·DEV」 — Console 워드마크(BrandWordmark)와 같은 조형·같은 em이라 넘겨주기에서 크기가 줄어도
+/* 개발 빌드의 「Fleet·DEV」 — 옛 Console 워드마크와 같은 조형·같은 em이라 넘겨주기에서 크기가 줄어도
    함께 줄어든다. 워드마크는 개발 잉크, 점은 황동, DEV는 개발 잉크를 3차 잉크 쪽으로 누른다. */
 .wordmark-sep, .wordmark-tag { display: none; }
 .is-dev .wordmark { color: var(--ink-brand-dev); }
@@ -172,15 +172,6 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .is-veiled body { background-color: transparent; }
 .is-farewell .tagline, .is-farewell .dev-tag { display: none; }
 .is-farewell .brand-mark, .is-farewell .wordmark { transition-delay: 60ms; }
-/* 트레이에서 종료하면 앰블럼은 작업 표시줄 오른쪽 끝에 앉아 있다 — 인사도 그 자리에서 출발한다.
-   세로 자리는 트레이 앰블럼(18px 마크 · 13px 워드마크)의 실측이다. Band가 없으므로 넘겨주기 밑줄도 긋지 않는다. */
-.is-handoff.is-from-tray .drag-strip { border-bottom-color: transparent; }
-/* 가로 자리: 워드마크 오른쪽 끝 = 100% − 8px, 워드마크 left = 그 끝 − 워드마크 폭, 마크 left = 워드마크 left − 7px − 마크 18px. */
-.is-handoff.is-from-tray .brand-mark { top: calc(100% - 27px); left: calc(100% - 8px - 31.7px - 7px - 18px); width: 18px; height: 18px; }
-.is-handoff.is-from-tray .wordmark { top: calc(100% - 24.5px); left: calc(100% - 8px - 31.7px); }
-/* 개발 빌드는 워드마크 폭만 「Fleet·DEV」 61.23px(JetBrains Mono DEV 포함)로 바뀐다. */
-.is-dev.is-handoff.is-from-tray .brand-mark { left: calc(100% - 8px - 61.23px - 7px - 18px); }
-.is-dev.is-handoff.is-from-tray .wordmark { left: calc(100% - 8px - 61.23px); }
 .is-instant, .is-instant * { transition: none !important; }
 
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }

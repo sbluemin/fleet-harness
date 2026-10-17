@@ -1,6 +1,6 @@
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
-import { DESKTOP_FULLSCREEN_API_CATALOG, DESKTOP_SHELL_API_CATALOG } from "../shell/desktop-contract.js";
+import { DESKTOP_SHELL_API_CATALOG } from "../shell/desktop-contract.js";
 import { DESKTOP_SHELL_UPDATE_API_CATALOG, DESKTOP_THEME_API_CATALOG, DESKTOP_UPDATE_API_CATALOG, DESKTOP_WINDOW_COMMAND_API_CATALOG } from "../shell/desktop-contract.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
@@ -20,7 +20,6 @@ const compareApiCatalogEntries = (left: ApiCatalogEntry, right: ApiCatalogEntry)
 export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): ApiCatalogEntry[] {
   const entries = [
     ...SERVER_API_CATALOG,
-    ...DESKTOP_FULLSCREEN_API_CATALOG,
     ...DESKTOP_SHELL_API_CATALOG,
     ...DESKTOP_SHELL_UPDATE_API_CATALOG,
     ...DESKTOP_THEME_API_CATALOG,

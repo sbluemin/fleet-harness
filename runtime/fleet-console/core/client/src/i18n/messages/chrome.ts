@@ -9,26 +9,9 @@ export const chromeEn = {
   "chrome.operationSearch.shell.failed": "Shell could not be opened. Try again.",
 
   // command-band
-  "chrome.commandBand.local": "Local",
-  "chrome.commandBand.localDesktop": "Local · Desktop",
-  "chrome.commandBand.searchSessions": "Search sessions",
-  "chrome.commandBand.searchSessionsTitle": "Search sessions (⌘K)",
-  "chrome.commandBand.viewModeAuto": "View mode: Auto",
-  "chrome.commandBand.viewModeMobile": "View mode: Mobile",
-  "chrome.commandBand.viewModeDesktop": "View mode: Desktop",
-  "chrome.commandBand.environment": "Environment",
-  "chrome.commandBand.loadingEnvironment": "Loading environment details…",
-  "chrome.commandBand.unableToLoadEnvironment": "Unable to load environment details.",
-  "chrome.commandBand.env.channel": "Channel",
-  "chrome.commandBand.env.version": "Version",
-  "chrome.commandBand.env.reachableOn": "Reachable on",
-  "chrome.commandBand.env.dataRoot": "Data root",
-  "chrome.commandBand.env.runtimeLock": "Runtime lock",
-  "chrome.commandBand.env.desktopData": "Desktop data",
-  "chrome.commandBand.env.copied": "Copied",
-  "chrome.commandBand.env.copyFailed": "Copy failed",
-  "chrome.commandBand.env.copy": "Copy",
-  "chrome.commandBand.env.footer": "Development and published channels keep separate data roots.",
+  "chrome.viewMode.auto": "View mode: Auto",
+  "chrome.viewMode.mobile": "View mode: Mobile",
+  "chrome.viewMode.desktop": "View mode: Desktop",
 
   // console link
   "chrome.link.offline": "Connection lost",
@@ -265,7 +248,6 @@ export const chromeEn = {
   "chrome.directoryBrowser.trustLocked": "Claude Code settings are locked by another process. Wait a moment and retry adding this Theater.",
 
   // command-band system cluster
-  "chrome.commandBand.operations": "Operations",
   "chrome.hosts.aria": "Hosts",
   "chrome.hosts.heading": "Hosts",
   "chrome.hosts.add": "Add console...",
@@ -486,7 +468,7 @@ export const chromeEn = {
   "chrome.backendApi.foot": "Core and loaded-plugin API routes, excluding Fleet Wiki.",
   "chrome.backendApi.uncategorized": "Uncategorized",
 
-  // expanded-surface — the canvas-anchored non-modal work surface
+  // expanded-surface — the non-modal work surface anchored to the conversation pane
   "chrome.expandedSurface.regionAria": "Expanded work surface",
   "chrome.expandedSurface.closeAria": "Close {title}",
   "chrome.expandedSurface.dividerAria": "Resize slot",
@@ -593,26 +575,9 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.operationSearch.shell.outside_theater": "이 폴더는 Theater 밖에 있습니다.",
   "chrome.operationSearch.shell.failed": "Shell을 열지 못했습니다. 다시 시도하세요.",
 
-  "chrome.commandBand.local": "로컬",
-  "chrome.commandBand.localDesktop": "로컬 · Desktop",
-  "chrome.commandBand.searchSessions": "세션 검색",
-  "chrome.commandBand.searchSessionsTitle": "세션 검색 (⌘K)",
-  "chrome.commandBand.viewModeAuto": "보기 모드: 자동",
-  "chrome.commandBand.viewModeMobile": "보기 모드: 모바일",
-  "chrome.commandBand.viewModeDesktop": "보기 모드: 데스크톱",
-  "chrome.commandBand.environment": "환경",
-  "chrome.commandBand.loadingEnvironment": "환경 정보를 불러오는 중…",
-  "chrome.commandBand.unableToLoadEnvironment": "환경 정보를 불러올 수 없습니다.",
-  "chrome.commandBand.env.channel": "채널",
-  "chrome.commandBand.env.version": "버전",
-  "chrome.commandBand.env.reachableOn": "접속 주소",
-  "chrome.commandBand.env.dataRoot": "데이터 루트",
-  "chrome.commandBand.env.runtimeLock": "런타임 잠금",
-  "chrome.commandBand.env.desktopData": "Desktop 데이터",
-  "chrome.commandBand.env.copied": "복사됨",
-  "chrome.commandBand.env.copyFailed": "복사 실패",
-  "chrome.commandBand.env.copy": "복사",
-  "chrome.commandBand.env.footer": "개발 채널과 배포 채널은 서로 다른 데이터 루트를 사용합니다.",
+  "chrome.viewMode.auto": "보기 모드: 자동",
+  "chrome.viewMode.mobile": "보기 모드: 모바일",
+  "chrome.viewMode.desktop": "보기 모드: 데스크톱",
 
   "chrome.link.offline": "연결 끊김",
   "chrome.runtime.degraded": "Operation 활동 상태를 지금 확인할 수 없습니다 — 화면의 표시가 최신이 아닐 수 있습니다.",
@@ -842,7 +807,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.directoryBrowser.trustFailure": "Claude Code 신뢰 설정을 저장하지 못했습니다. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 폴더 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 완료한 뒤 Theater 추가를 다시 시도하세요. 계속 실패하면 Claude Code 전역 설정 파일을 확인하세요.",
   "chrome.directoryBrowser.trustLocked": "다른 프로세스가 Claude Code 설정을 사용 중입니다. 잠시 뒤 Theater 추가를 다시 시도하세요.",
 
-  "chrome.commandBand.operations": "Operations",
   "chrome.hosts.aria": "호스트",
   "chrome.hosts.heading": "호스트",
   "chrome.hosts.add": "콘솔 추가...",

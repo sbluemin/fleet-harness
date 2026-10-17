@@ -6,7 +6,7 @@ import type { ConsoleState } from "../../../../core/client/src/integration/types
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { ConsoleHelpMenu, HostSwitcher } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
 import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
-import { ToolbarSettingsButton } from "../../../../core/client/src/chrome/toolbar/console-toolbar.js";
+import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
 import { SideBarStatusViewToggle } from "../sidebar/side-bar-collapse-control.js";
@@ -45,7 +45,7 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
           <div className="conversation-dock-divider" role="separator" />
           <ConsoleHelpMenu menuItem />
-          <div className="conversation-dock-settings" onClick={() => setOpen(false)}><ToolbarSettingsButton operationsViewVisible menuItem /></div>
+          <div className="conversation-dock-settings" onClick={() => setOpen(false)}><SettingsButton menuItem /></div>
         </div>
       </div>
       <ArchiveEntry compact />

@@ -23,7 +23,6 @@ export interface LaunchControllerDependencies {
   readonly createWindow: () => Promise<LaunchWindow>;
   readonly handoffOrigin: (origin: string) => void;
   readonly synchronizeTheme?: (origin: string) => Promise<void>;
-  readonly synchronizeFullscreen?: (origin: string) => void | Promise<void>;
   readonly onConsoleLoaded?: () => void;
   readonly pushEntry: (contents: EntryPageWebContents, snapshot: EntryPageSnapshot) => Promise<void>;
   readonly startOrAdopt: (report: { wait(wait: EntryWait): void }) => Promise<string>;
@@ -101,7 +100,6 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
         await window.loadURL(consoleUrl);
         if (!window.isDestroyed?.()) window.webContents.navigationHistory.clear();
       }
-      if (!window.isDestroyed?.()) await dependencies.synchronizeFullscreen?.(origin);
       if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
     },
