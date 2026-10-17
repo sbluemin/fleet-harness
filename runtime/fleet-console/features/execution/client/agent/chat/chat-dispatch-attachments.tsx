@@ -1,5 +1,5 @@
+import { ComposerAttachmentViewer, composerT } from "@fleet-console/sdk/composer";
 import { React } from "@fleet-console/sdk/plugin/browser";
-import { createPortal } from "react-dom";
 import { agentChatAttachmentPreviewUrl } from "../api.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatAttachment } from "./chat-events.js";
@@ -19,7 +19,8 @@ export function ChatDispatchAttachments({
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  const [opened, setOpened] = React.useState<string | null>(null);
+  const ct = composerT(language);
+  const [opened, setOpened] = React.useState<number | null>(null);
   // 404는 "없는 첨부"가 아니라 "거둬진 첨부"다 — 같은 자리에 lapsed와 같은 말을 세운다.
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
   const live = attachments.filter((attachment): attachment is { readonly id: string } => (
@@ -36,7 +37,7 @@ export function ChatDispatchAttachments({
           className="agent-chat-dispatch-attachment"
           aria-label={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
           title={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
-          onClick={() => setOpened(attachment.id)}
+          onClick={() => setOpened(index)}
         >
           <img
             src={agentChatAttachmentPreviewUrl(attachment.id)}
@@ -55,62 +56,25 @@ export function ChatDispatchAttachments({
           {t("terminal.chat.attachmentLapsed", { count: String(lapsedCount) })}
         </span>
       ) : null}
-      {opened !== null ? (
-        <ChatAttachmentViewer
-          id={opened}
-          index={live.findIndex((attachment) => attachment.id === opened) + 1}
-          language={language}
+      {opened !== null && live[opened] ? (
+        <ComposerAttachmentViewer
+          images={live.map((attachment, index) => ({
+            key: attachment.id,
+            src: agentChatAttachmentPreviewUrl(attachment.id),
+            name: t("terminal.chat.attachmentAlt", { index: String(index + 1) }),
+          }))}
+          index={opened}
+          onIndex={setOpened}
           onClose={() => setOpened(null)}
-          onLapsed={() => {
-            setLapsed((current) => (current.includes(opened) ? current : [...current, opened]));
+          closeLabel={ct("composer.attach.close")}
+          previousLabel={ct("composer.attach.previous")}
+          nextLabel={ct("composer.attach.next")}
+          onImageError={(key) => {
+            setLapsed((current) => (current.includes(key) ? current : [...current, key]));
             setOpened(null);
           }}
         />
       ) : null}
     </div>
-  );
-}
-
-/** 첨부 한 장을 크게 본다. 부유 모달의 공용 문법(스크림·Esc·바깥 클릭)을 그대로 쓴다. */
-function ChatAttachmentViewer({
-  id,
-  index,
-  language,
-  onClose,
-  onLapsed,
-}: {
-  readonly id: string;
-  readonly index: number;
-  readonly language: "en" | "ko";
-  readonly onClose: () => void;
-  readonly onLapsed: () => void;
-}) {
-  const t = getT(language);
-  const closeRef = React.useRef<HTMLButtonElement | null>(null);
-  // 포커스는 열릴 때 닫기로 가고 닫히면 부른 자리로 돌아간다 — 키보드 사용자가 원장의 제자리를
-  // 잃지 않게 하는 최소 계약이다.
-  React.useEffect(() => {
-    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeRef.current?.focus();
-    return () => returnTo?.focus();
-  }, []);
-  React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // 같은 키가 패널의 다른 닫힘(작업 시트)까지 함께 닫지 않게 여기서 멈춘다.
-      event.stopPropagation();
-      onClose();
-    };
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [onClose]);
-  return createPortal(
-    <div className="agent-chat-attachment-scrim" role="dialog" aria-modal="true" aria-label={t("terminal.chat.attachmentAlt", { index: String(index) })} onMouseDown={onClose}>
-      <div className="agent-chat-attachment-frame" onMouseDown={(event) => event.stopPropagation()}>
-        <button ref={closeRef} type="button" className="agent-chat-attachment-close" onClick={onClose} aria-label={t("terminal.chat.attachmentClose")}>✕</button>
-        <img src={agentChatAttachmentPreviewUrl(id)} alt={t("terminal.chat.attachmentAlt", { index: String(index) })} onError={onLapsed} />
-      </div>
-    </div>,
-    document.body,
   );
 }

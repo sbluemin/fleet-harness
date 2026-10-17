@@ -23,4 +23,5 @@ jobs:
           cache: pnpm
       - run: pnpm install --ignore-scripts --frozen-lockfile
       - run: pnpm check:core-boundary
+      - run: pnpm check:composer-attachments
       - run: pnpm check:windows-hidden-spawn

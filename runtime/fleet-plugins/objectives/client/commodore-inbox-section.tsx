@@ -4,16 +4,17 @@ import { createPortal } from "react-dom";
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import {
   AttachImageIcon,
-  COMPOSER_ATTACHMENT_MAX_BYTES,
-  COMPOSER_MAX_ATTACHMENTS,
   ComposerAttachmentTray,
   ComposerMenu,
   ComposerMenuItem,
   ComposerNotice,
   ComposerPlusButton,
   ComposerSendButton,
+  composerAttachmentNoticeText,
   composerT,
+  createComposerAttachments,
   isComposerAttachmentCandidate,
+  useComposerAttachmentSnapshot,
 } from "@fleet-console/sdk/composer";
 import { referencePlainText } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -730,30 +731,28 @@ export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, 
   </div>;
 }
 
-interface CommodoreDraftAttachment {
-  readonly key: string;
-  readonly id: string | null;
-  readonly name: string;
-  readonly previewUrl: string;
-  readonly uploading: boolean;
-}
 interface CommodoreComposerDraft {
   /** 본문 — 지휘관 참조 토큰 자리마다 표식 글자 하나(`commodore-reference-input.tsx`). */
   readonly text: string;
   /** 본문 속 지휘관 참조 — 표식 글자가 나온 순서. */
   readonly references: readonly CommodoreReference[];
   readonly textRevision: number;
-  readonly attachments: readonly CommodoreDraftAttachment[];
   readonly sending: boolean;
-  readonly attachmentNotice: string | null;
+  /** 사령관만의 거절(합계 8 MiB). 그 밖 첨부 안내는 공유 스토어가 가진다. */
+  readonly budgetNotice: string | null;
 }
 
 /** 플러그인 내부 페이지 메모리 — Inbox 시트와 대화 화면은 Theater별 사령관 초안 하나를 읽는다. */
 const commodoreDrafts = new Map<string, ReturnType<typeof createCommodoreDraft>>();
 function createCommodoreDraft() {
-  let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, attachments: [], sending: false, attachmentNotice: null };
+  const attachments = createComposerAttachments({
+    upload: (file) => uploadCommodoreAttachment(file),
+    discard: (id) => discardCommodoreAttachment(id),
+  });
+  let current: CommodoreComposerDraft = { text: "", references: [], textRevision: 0, sending: false, budgetNotice: null };
   const listeners = new Set<() => void>();
   return {
+    attachments,
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (patch: Partial<CommodoreComposerDraft>) => {
@@ -812,11 +811,13 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
 function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, onClear }: CommodoreComposerProps) {
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
-  const { text, references, attachments, sending, attachmentNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
+  const attachments = attachmentSnap.items;
   const value = useMemo(() => ({ text, references }), [text, references]);
   const setValue = (next: { readonly text: string; readonly references: readonly CommodoreReference[] }) => draft.update({ text: next.text, references: next.references, textRevision: draft.read().textRevision + 1 });
   const setSending = (value: boolean) => draft.update({ sending: value });
-  const setAttachmentNotice = (value: string | null) => draft.update({ attachmentNotice: value });
+  const setBudgetNotice = (value: string | null) => draft.update({ budgetNotice: value });
   const composing = useRef(false);
   const inputRef = useRef<CommodoreReferenceInputHandle | null>(null);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
@@ -831,18 +832,11 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
   const menuId = `commodore-composer-menu-${theaterId}`;
   // 폰은 연결이 끊겨도 잠근다. 데스크톱은 자율 운영이 꺼져도 /clear 를 받으므로 입력은 열어 둔다.
   const usable = active && (phone ? phone.online : true);
-  const publishAttachments = (next: readonly CommodoreDraftAttachment[]) => draft.update({ attachments: next });
-  const finishSentDraft = (sent: CommodoreComposerDraft, discard: boolean) => {
-    const keys = new Set(sent.attachments.map((item) => item.key));
+  const finishSentDraft = (sentKeys: readonly string[], sentRevision: number, discardSent: boolean) => {
     const current = draft.read();
-    for (const item of current.attachments) {
-      if (!keys.has(item.key)) continue;
-      URL.revokeObjectURL(item.previewUrl);
-      if (discard && item.id) void discardCommodoreAttachment(item.id).catch(() => {});
-    }
+    draft.attachments.releaseSent(sentKeys, discardSent);
     draft.update({
-      ...(current.textRevision === sent.textRevision ? { text: "", references: [] } : {}),
-      attachments: current.attachments.filter((item) => !keys.has(item.key)),
+      ...(current.textRevision === sentRevision ? { text: "", references: [] } : {}),
     });
   };
   useEffect(() => {
@@ -866,32 +860,8 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
   useEffect(() => { if (!usable) setMenuOpen(false); }, [usable]);
   const addFiles = (files: readonly File[]) => {
     if (!usable || draft.read().sending || clear.busy) return;
-    const images = files.filter(isComposerAttachmentCandidate);
-    // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
-    if (images.length === 0) return;
-    setAttachmentNotice(null);
-    for (const file of images) {
-      if (draft.read().attachments.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(ct("composer.attach.limit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
-      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) { setAttachmentNotice(ct("composer.attach.tooLarge", { mb: Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024)) })); continue; }
-      const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || ct("composer.attach.pasted"), previewUrl: URL.createObjectURL(file), uploading: true };
-      publishAttachments([...draft.read().attachments, item]);
-      void uploadCommodoreAttachment(file).then(({ id }) => {
-        if (!draft.read().attachments.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
-        publishAttachments(draft.read().attachments.map((known) => known.key === item.key ? { ...known, id, uploading: false } : known));
-      }).catch(() => {
-        if (!draft.read().attachments.some((known) => known.key === item.key)) return;
-        URL.revokeObjectURL(item.previewUrl);
-        publishAttachments(draft.read().attachments.filter((known) => known.key !== item.key));
-        setAttachmentNotice(ct("composer.attach.failed"));
-      });
-    }
-  };
-  const removeAttachment = (key: string) => {
-    const item = draft.read().attachments.find((known) => known.key === key);
-    if (!item || draft.read().sending) return;
-    if (item.id) void discardCommodoreAttachment(item.id).catch(() => {});
-    URL.revokeObjectURL(item.previewUrl); publishAttachments(draft.read().attachments.filter((known) => known.key !== key));
-    setAttachmentNotice(null); inputRef.current?.focus();
+    setBudgetNotice(null);
+    draft.attachments.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
   };
   const uploading = attachments.some((item) => item.uploading);
   // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
@@ -903,25 +873,28 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     if (phone && !message) { inputRef.current?.focus(); return; }
     if (draft.read().sending || uploading || clear.busy) return;
     const sent = draft.read();
+    const sentItems = draft.attachments.read().items;
+    const sentKeys = sentItems.map((item) => item.key);
     if (isClear) {
       if (clear.armed) setSending(true);
-      void clear.request().then((cleared) => { if (cleared) finishSentDraft(sent, true); }).finally(() => setSending(false));
+      void clear.request().then((cleared) => { if (cleared) finishSentDraft(sentKeys, sent.textRevision, true); }).finally(() => setSending(false));
       return;
     }
     if (!usable || !message) return;
-    onClear(); setAttachmentNotice(null); setMenuOpen(false);
+    onClear(); setBudgetNotice(null); setMenuOpen(false);
     setSending(true);
     // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
     phone?.onPending({
       key: Date.now(),
       text: referencePlainText(message, sent.references.map(({ id, title }) => ({ id, label: title }))),
       at: Date.now(),
-      images: sent.attachments.map((item) => ({ key: item.key, name: item.name, url: item.previewUrl })),
+      images: sentItems.map((item) => ({ key: item.key, name: item.name, url: item.previewUrl })),
     });
-    const ids = sent.attachments.flatMap((item) => item.id ? [item.id] : []);
-    // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다.
-    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sent, false)).catch((error) => {
-      if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(ct("composer.attach.commodoreBudget"));
+    const ids = draft.attachments.ids();
+    // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다. 만료만 칩을 걷는다.
+    void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sentKeys, sent.textRevision, false)).catch((error) => {
+      if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
+      if (error instanceof Error && error.message === "attachment_budget_exceeded") setBudgetNotice(ct("composer.attach.commodoreBudget"));
       else if (mounted.current) onFail(error);
     }).finally(() => {
       setSending(false);
@@ -934,15 +907,9 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
   return (
     <>
     {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
-      : attachmentNotice ? <ComposerNotice tone="warn" text={attachmentNotice} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setAttachmentNotice(null); inputRef.current?.focus(); }} /> : null}
+      : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
     <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
-      <ComposerAttachmentTray
-        items={attachments}
-        label={ct("composer.attach.list")}
-        removeLabel={(name) => ct("composer.attach.remove", { name })}
-        disabled={sending || clear.busy}
-        onRemove={removeAttachment}
-      />
+      <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
         {menuOpen ? <ComposerMenu ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" aria-label={ct("composer.more")}>
           <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
@@ -966,7 +933,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         placeholder={t("objectives.commodore.composer.placeholder")}
         ariaLabel={t("objectives.commodore.composer.aria")}
-        onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().attachmentNotice) setAttachmentNotice(null); }}
+        onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
         onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && !(phone && touchFirst())) { event.preventDefault(); send(); } }}

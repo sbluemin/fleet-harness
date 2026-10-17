@@ -162,6 +162,7 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 }
 .new-session-composer {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--space-2);
   min-height: 48px;
@@ -174,6 +175,13 @@ button.new-session-row:disabled { color: var(--text-tertiary); cursor: default; 
 }
 .new-session-composer:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
 .new-session-composer.is-starting { opacity: var(--control-disabled-opacity); }
+.new-session-plus-root { position: relative; flex: none; }
+.new-session-plus-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-2));
+}
+.new-session-composer .fc-composer-attachments { flex: 1 0 100%; padding-left: 0; }
 .new-session-input {
   flex: 1 1 auto;
   min-width: 0;

@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 
-import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, openNewSession, requestQuickLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
+import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
+import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, resolveSelection } from "../../../execution/client/quick-launch.js";
 import { readQuickLaunchSelection, writeQuickLaunchTheater } from "../../../execution/client/quick-launch-preferences.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
@@ -33,6 +36,7 @@ export function NewSessionColumn({ state, target, tools }: {
   readonly tools: ReactNode;
 }) {
   const t = useT();
+  const ct = composerT(useConsoleLocale());
   // 고른 Theater 가 사라졌거나(잊음) 처음부터 없으면 기본 규칙으로 다시 고른다 — Theater 가 하나도 없으면 null.
   const theater = state.theaters.find((candidate) => candidate.id === target.theaterId)
     ?? state.theaters.find((candidate) => candidate.id === resolveNewSessionTheaterId())
@@ -45,6 +49,24 @@ export function NewSessionColumn({ state, target, tools }: {
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [choice, setChoice] = useState<NewSessionLaunchChoice | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachmentStore = useMemo(() => createComposerAttachments({
+    upload: (file) => uploadLaunchAttachment(file),
+    discard: (id) => discardLaunchAttachment(id),
+  }), []);
+  // 시작하지 않고 칸을 닫으면(또는 프롬프트 없는 실행으로 넘어가면) 넘기지 않은 칩의 미리보기·서버 파일을 거둔다.
+  // dispose가 아니라 discardAll이다 — StrictMode의 재마운트가 같은 스토어를 다시 쓴다.
+  useEffect(() => () => attachmentStore.discardAll(), [attachmentStore]);
+  const attachmentSnap = useComposerAttachmentSnapshot(attachmentStore);
+  const attachmentInput = useComposerAttachmentInput(attachmentStore, {
+    disabled: starting,
+    pastedName: ct("composer.attach.pasted"),
+  });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const plusRootRef = useRef<HTMLSpanElement | null>(null);
+  const plusRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuId = useId();
+  useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
 
   // 열 때마다, 그리고 설정에서 모델을 켜고 끄면 카탈로그를 새로 읽는다(Quick Launch 와 같은 규칙).
   useEffect(() => {
@@ -84,7 +106,8 @@ export function NewSessionColumn({ state, target, tools }: {
 
   const text = prompt.trim();
   const tooLong = text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS;
-  const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && text.length > 0 && !tooLong && !starting;
+  const uploading = attachmentSnap.uploading;
+  const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && text.length > 0 && !tooLong && !starting && !uploading;
 
   const pickTheater = (theaterId: string) => {
     setTheaterMenuOpen(null);
@@ -108,6 +131,8 @@ export function NewSessionColumn({ state, target, tools }: {
     const variant: Record<string, string> = { prompt: text };
     if (launchChoice.model) variant.model = launchChoice.model;
     if (launchChoice.effort) variant.effort = launchChoice.effort;
+    const launched = attachmentStore.handoff();
+    if (launched.length > 0) variant.attachments = launched.map((item) => item.id).join(",");
     setStarting(true);
     writeQuickLaunchTheater(theater.id);
     requestQuickLaunch({
@@ -115,6 +140,7 @@ export function NewSessionColumn({ state, target, tools }: {
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
+      ...(launched.length > 0 ? { attachments: launched } : {}),
     });
     // 새 Operation 이 서면 그 포커스가 이 화면을 걷는다(store 의 focusOperation). 그동안은 시작하는 중으로 선다.
   };
@@ -203,7 +229,17 @@ export function NewSessionColumn({ state, target, tools }: {
         </div>
       </div>
       <div className="new-session-composer-zone">
-        <div className={`new-session-composer${starting ? " is-starting" : ""}`}>
+        <div className={`new-session-composer${starting ? " is-starting" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`} onDragOver={attachmentInput.onDragOver} onDragLeave={attachmentInput.onDragLeave} onDrop={attachmentInput.onDrop}>
+          <ComposerAttachmentTray store={attachmentStore} t={ct} disabled={starting} />
+          <span className="new-session-plus-root" ref={plusRootRef}>
+            {menuOpen ? (
+              <ComposerMenu ref={menuRef} id={menuId} className="new-session-plus-menu" aria-label={ct("composer.more")}>
+                <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setMenuOpen(false); attachmentInput.pick(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
+              </ComposerMenu>
+            ) : null}
+            <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={starting} onClick={() => setMenuOpen((open) => !open)} />
+            {attachmentInput.fileInput}
+          </span>
           <textarea
             ref={inputRef}
             className="new-session-input"
@@ -211,6 +247,7 @@ export function NewSessionColumn({ state, target, tools }: {
             value={prompt}
             disabled={starting}
             onChange={(event) => setPrompt(event.target.value)}
+            onPaste={attachmentInput.onPaste}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -253,6 +290,7 @@ export function NewSessionColumn({ state, target, tools }: {
             <span className="new-session-chips-trail">
               {starting ? <span className="new-session-status" role="status">{t("conversation.newSession.starting")}</span> : null}
               {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.quickLaunch.tooLong", { over: String(text.length - QUICK_LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
+              {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
               {/* 모델·강도 칸 — data-operation-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
               <span className="new-session-launch-slot" {...(variantTarget ? { "data-operation-launch-kind": variantTarget.kind.id } : {})}>
                 <NewSessionLaunchSlot groups={groups} value={launchChoice} onChange={setChoice} disabled={starting} />

@@ -4,6 +4,8 @@ import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type Chang
 import type { OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 
+import { ComposerAttachmentTray, type ComposerAttachments, type ComposerMessageKey } from "@fleet-console/sdk/composer";
+import type { Translate } from "@fleet-console/sdk/i18n";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { OperationSearchEntry } from "../../../../core/client/src/integration/operation-search.js";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
@@ -46,6 +48,8 @@ export interface MobileQuickLaunchProps {
   readonly hasUltracodeWord: boolean;
   readonly onUltracode: (on: boolean) => void;
   readonly attachments: readonly Attachment[];
+  readonly attachmentStore: ComposerAttachments;
+  readonly attachmentT: Translate<ComposerMessageKey>;
   readonly onAddFiles: (files: readonly File[]) => void;
   readonly onRemoveAttachment: (key: string) => void;
   readonly mentionDeckOpen: boolean;
@@ -279,16 +283,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
           onChange={(event) => props.onPromptChange(event.target.value, event.currentTarget)}
         />
       </div>
-      {props.attachments.length > 0 ? (
-        <div className="mql-thumbs">
-          {props.attachments.map((attachment) => (
-            <button key={attachment.key} type="button" className={`mql-thumb${attachment.uploading ? " is-uploading" : ""}`} aria-label={t("chrome.quickLaunch.attachmentRemove", { name: attachment.name })} onClick={() => props.onRemoveAttachment(attachment.key)}>
-              <img src={attachment.previewUrl} alt="" />
-              <span className="mql-thumb-x"><MobileIcon name="x" size={14} /></span>
-            </button>
-          ))}
-        </div>
-      ) : null}
+      <ComposerAttachmentTray store={props.attachmentStore} t={props.attachmentT} disabled={props.submitting} />
       {props.mentionTarget === null ? (
         <div className="mql-chips">
           <button type="button" className="mql-circ" data-press="r3" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>

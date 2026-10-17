@@ -1,3 +1,4 @@
+import { createComposerAttachments, type ComposerAttachmentNotice, type ComposerAttachmentRecord, type ComposerAttachments } from "@fleet-console/sdk/composer";
 import type { ClientConsoleStateCapability } from "@fleet-console/sdk/plugin";
 
 import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } from "./agent/api.js";
@@ -13,11 +14,11 @@ export interface ComposerDraftAttachment {
 interface ComposerDraft {
   readonly text: string;
   readonly revision: number;
-  readonly attachments: readonly ComposerDraftAttachment[];
+  readonly attachments: readonly ComposerAttachmentRecord[];
+  readonly attachmentNotice: ComposerAttachmentNotice | null;
   readonly sending: boolean;
   readonly sentEpoch: number;
   readonly failed: boolean;
-  readonly uploadFailed: boolean;
   readonly ultracodeIgnored: boolean;
 }
 
@@ -33,68 +34,55 @@ const drafts = new Map<string, ReturnType<typeof createComposerDraft>>();
 const terminalPositions = new Map<string, TerminalViewPosition>();
 let liveOperationIds: ReadonlySet<string> | null = null;
 
-function releaseAttachment(attachment: ComposerDraftAttachment, discard: boolean): void {
-  URL.revokeObjectURL(attachment.previewUrl);
-  if (discard && attachment.id !== null) void discardLaunchAttachment(attachment.id).catch(() => {});
-}
-
 function createComposerDraft(operationId: string) {
-  let current: ComposerDraft = { text: "", revision: 0, attachments: [], sending: false, sentEpoch: 0, failed: false, uploadFailed: false, ultracodeIgnored: false };
+  const attachments: ComposerAttachments = createComposerAttachments({
+    upload: (file) => uploadLaunchAttachment(file),
+    discard: (id) => discardLaunchAttachment(id),
+  });
+  let current: Omit<ComposerDraft, "attachments" | "attachmentNotice"> = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
   let disposed = false;
   const listeners = new Set<() => void>();
-  const update = (patch: Partial<ComposerDraft>): void => {
+  // useSyncExternalStore는 스냅샷 참조가 같으면 멈춘다. 매 읽기마다 새 객체를 만들면 렌더가 끝나지 않는다.
+  let view: ComposerDraft = { ...current, attachments: [], attachmentNotice: null };
+  const publish = (): void => {
     if (disposed) return;
-    current = { ...current, ...patch };
+    const snap = attachments.read();
+    view = { ...current, attachments: snap.items, attachmentNotice: snap.notice };
     for (const listener of listeners) listener();
   };
+  const update = (patch: Partial<typeof current>): void => {
+    if (disposed) return;
+    current = { ...current, ...patch };
+    publish();
+  };
+  attachments.subscribe(publish);
+  const read = (): ComposerDraft => view;
   return {
-    read: () => current,
+    attachments,
+    read,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     setText: (text: string) => update({ text, revision: current.revision + 1, failed: false }),
     setUltracodeIgnored: (ultracodeIgnored: boolean) => update({ ultracodeIgnored }),
-    clearUploadFailure: () => update({ uploadFailed: false }),
-    addFile: (file: File) => {
-      if (disposed) return;
-      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const previewUrl = URL.createObjectURL(file);
-      const attachment = { key, id: null, name: file.name || "pasted image", previewUrl, uploading: true };
-      update({ attachments: [...current.attachments, attachment], uploadFailed: false });
-      void uploadLaunchAttachment(file).then(({ id }) => {
-        if (disposed || !current.attachments.some((entry) => entry.key === key)) {
-          void discardLaunchAttachment(id).catch(() => {});
-          return;
-        }
-        update({ attachments: current.attachments.map((entry) => entry.key === key ? { ...entry, id, uploading: false } : entry) });
-      }).catch(() => {
-        if (disposed || !current.attachments.some((entry) => entry.key === key)) return;
-        releaseAttachment(attachment, false);
-        update({ attachments: current.attachments.filter((entry) => entry.key !== key), uploadFailed: true });
-      });
-    },
-    removeAttachment: (key: string) => {
-      const attachment = current.attachments.find((entry) => entry.key === key);
-      if (!attachment) return;
-      releaseAttachment(attachment, true);
-      update({ attachments: current.attachments.filter((entry) => entry.key !== key), uploadFailed: false });
-    },
+    addFile: (file: File) => { attachments.add([file]); },
+    removeAttachment: (key: string) => { attachments.remove(key); },
     send: async (text: string): Promise<boolean> => {
-      if (disposed || current.sending || current.attachments.some((entry) => entry.uploading)) return false;
+      if (disposed || current.sending || attachments.read().uploading) return false;
       const revision = current.revision;
-      const sentAttachments = current.attachments;
-      const ids = sentAttachments.flatMap((entry) => entry.id === null ? [] : [entry.id]);
+      const sent = attachments.read().items;
+      const sentKeys = sent.map((entry) => entry.key);
+      const ids = attachments.ids();
       update({ sending: true, failed: false });
       try {
         await messageAgentSession(operationId, text, ids.length > 0 ? ids : undefined);
         if (disposed) return true;
-        for (const attachment of sentAttachments) releaseAttachment(attachment, false);
+        attachments.releaseSent(sentKeys);
         update({
           ...(current.revision === revision ? { text: "", revision: revision + 1, ultracodeIgnored: false } : {}),
-          attachments: current.attachments.filter((entry) => !sentAttachments.includes(entry)),
           sentEpoch: current.sentEpoch + 1,
         });
         return true;
-      } catch {
-        update({ failed: true });
+      } catch (error) {
+        if (attachments.noteSendFailure(error, ids) !== "expired") update({ failed: true });
         return false;
       } finally {
         update({ sending: false });
@@ -102,8 +90,9 @@ function createComposerDraft(operationId: string) {
     },
     dispose: () => {
       disposed = true;
-      for (const attachment of current.attachments) releaseAttachment(attachment, true);
-      current = { text: "", revision: 0, attachments: [], sending: false, sentEpoch: 0, failed: false, uploadFailed: false, ultracodeIgnored: false };
+      attachments.dispose();
+      current = { text: "", revision: 0, sending: false, sentEpoch: 0, failed: false, ultracodeIgnored: false };
+      view = { ...current, attachments: [], attachmentNotice: null };
       listeners.clear();
     },
   };

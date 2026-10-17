@@ -25,32 +25,6 @@ import type { ConsoleState } from "../../../core/client/src/integration/types.js
 export const QUICK_LAUNCH_PROMPT_MAX_CHARS = 16000;
 export const QUICK_LAUNCH_DEFAULT_MODEL = "opus[1m]";
 
-/**
- * 이미지 첨부 정책은 컴포저 블록 패키지가 소유한다 — Quick Launch와 채팅 컴포저가 같은 입구를
- * 같은 규칙으로 열어야 한쪽에서 되는 붙여넣기가 다른 쪽에서 조용히 사라지지 않는다. 이 이름들은
- * 기존 호출부를 위한 별칭이고, 정의는 sdk/composer/attachments.ts 한 곳에 있다.
- */
-export {
-  COMPOSER_ATTACHMENT_MAX_BYTES as QUICK_LAUNCH_ATTACHMENT_MAX_BYTES,
-  COMPOSER_MAX_ATTACHMENTS as QUICK_LAUNCH_MAX_ATTACHMENTS,
-  isComposerAttachmentCandidate as isQuickLaunchAttachmentCandidate,
-} from "@fleet-console/sdk/composer";
-
-/**
- * 업로드 거절 코드를 문구 키로 옮긴다. 모르는 코드·네트워크 실패는 일반 업로드 실패 문구로
- * 떨어뜨려 아무 말도 못 하는 상태를 만들지 않는다.
- */
-export function quickLaunchAttachmentErrorMessageKey(code: string | null): string {
-  switch (code) {
-    case "attachment_too_large": return "chrome.quickLaunch.errorAttachmentTooLarge";
-    case "attachment_unsupported": return "chrome.quickLaunch.errorAttachmentUnsupported";
-    case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
-    // 미발사 총량 상한 — "다시 붙여넣으라"는 일반 문구로 떨어뜨리면 재시도가 같은 벽에 반복해 부딪힌다.
-    case "attachment_storage_exhausted": return "chrome.quickLaunch.errorAttachmentStorageExhausted";
-    default: return "chrome.quickLaunch.errorAttachmentUploadFailed";
-  }
-}
-
 export interface VariantKindTarget {
   readonly pluginId: string | null;
   readonly kind: OperationLaunchKind;
@@ -472,8 +446,6 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
     case "session_capacity": return "chrome.quickLaunch.mentionErrorCapacity";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
-    // 첨부가 만료·소실된 전달 거절 — 칩은 남았지만 그 서버 파일은 이미 없다(런치 거절과 같은 문구).
-    case "attachment_not_found": return "chrome.quickLaunch.errorAttachmentGone";
     case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
@@ -514,8 +486,8 @@ export function quickLaunchErrorMessageKey(code: string | null, shortenByChars: 
     case "agent_cli_not_executable": return "chrome.quickLaunch.errorCliNotExecutable";
     // 옛 서버는 두 원인을 이 하나로 보냈다. 그 조합에서도 문장이 나와야 하므로 어휘를 남긴다.
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
-    // 첨부가 만료·소실된 실행 거절 — 초안과 칩은 돌아오지만, 그 칩의 서버 파일은 이미 없다.
-    case "attachment_not_found": return "chrome.quickLaunch.errorAttachmentGone";
+    // 만료된 업로드 토큰은 첨부 스토어가 칩을 걷고 composerT로 말한다. 여기 두면 같은 말이 두 벌이 된다.
+    case "attachment_not_found": return null;
     case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
     default: return "chrome.quickLaunch.errorGeneric";
   }

@@ -1,4 +1,10 @@
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+import type { Translate } from "../i18n/types.js";
+import { useComposerAttachmentSnapshot } from "./attachment-input.js";
+import type { ComposerAttachments } from "./attachment-store.js";
+import type { ComposerMessageKey } from "./messages.js";
 
 /**
  * 캡슐 컴포저의 첨부 줄 · 안내 줄 · 「+」 메뉴 — 그룹 대화 입력창과 사령관 입력창이 같은 부품을 쓴다.
@@ -17,35 +23,129 @@ export interface ComposerAttachmentItem {
 }
 
 export interface ComposerAttachmentTrayProps {
-  readonly items: readonly ComposerAttachmentItem[];
-  /** 묶음 이름(스크린 리더). */
-  readonly label: string;
-  readonly removeLabel: (name: string) => string;
-  readonly onRemove: (key: string) => void;
+  readonly store: ComposerAttachments;
+  /** 첨부 문구. 썸네일·확대 보기·제거가 이 한 벌을 쓴다. */
+  readonly t: Translate<ComposerMessageKey>;
   /** 보내는 중처럼 초안을 바꿀 수 없을 때 제거 단추를 잠근다. */
   readonly disabled?: boolean;
 }
 
-/** 붙인 이미지 줄 — 캡슐 안 맨 위 줄에 썸네일과 모서리 × 가 선다. 비어 있으면 그리지 않는다. */
-export function ComposerAttachmentTray({ items, label, removeLabel, onRemove, disabled = false }: ComposerAttachmentTrayProps) {
+export interface ComposerAttachmentViewImage {
+  readonly key: string;
+  readonly src: string;
+  readonly name: string;
+}
+
+/**
+ * 첨부 한 장 이상을 크게 본다. 스크림 모달이고, ←/→ 로 넘기며 Esc 와 바깥 클릭이 닫는다.
+ * 포커스는 열릴 때 닫기 단추로 갔다가 닫히면 연 자리로 돌아간다.
+ */
+export function ComposerAttachmentViewer({
+  images,
+  index,
+  onIndex,
+  onClose,
+  closeLabel,
+  previousLabel,
+  nextLabel,
+  onImageError,
+}: {
+  readonly images: readonly ComposerAttachmentViewImage[];
+  readonly index: number;
+  readonly onIndex: (index: number) => void;
+  readonly onClose: () => void;
+  readonly closeLabel: string;
+  readonly previousLabel: string;
+  readonly nextLabel: string;
+  readonly onImageError?: (key: string) => void;
+}) {
+  const image = images[index] ?? null;
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    return () => returnTo?.focus();
+  }, []);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (images.length < 2) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        const delta = event.key === "ArrowRight" ? 1 : -1;
+        onIndex((index + delta + images.length) % images.length);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [images.length, index, onClose, onIndex]);
+  if (image === null || typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={onClose}>
+      <div className="fc-composer-viewer__frame" onMouseDown={(event) => event.stopPropagation()}>
+        {images.length > 1 ? (
+          <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}>‹</button>
+        ) : null}
+        <img src={image.src} alt={image.name} onError={() => onImageError?.(image.key)} />
+        {images.length > 1 ? (
+          <button type="button" className="fc-composer-viewer__nav is-next" aria-label={nextLabel} onClick={() => onIndex((index + 1) % images.length)}>›</button>
+        ) : null}
+        <button ref={closeRef} type="button" className="fc-composer-viewer__close" onClick={onClose} aria-label={closeLabel}>✕</button>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** 붙인 이미지 줄 — 썸네일은 단추이고, 누르면 확대 보기가 같이 온다. 비어 있으면 그리지 않는다. */
+export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerAttachmentTrayProps) {
+  const { items } = useComposerAttachmentSnapshot(store);
+  const [index, setIndex] = useState<number | null>(null);
   if (items.length === 0) return null;
+  const openAt = index !== null && index >= 0 && index < items.length ? index : null;
   return (
-    <div className="fc-composer-attachments" role="group" aria-label={label}>
-      {items.map((item) => (
+    <div className="fc-composer-attachments" role="group" aria-label={t("composer.attach.list")}>
+      {items.map((item, at) => (
         <span key={item.key} className={`fc-composer-attachment${item.uploading ? " is-uploading" : ""}`}>
-          <img src={item.previewUrl} alt={item.name} />
+          <button
+            type="button"
+            className="fc-composer-attachment__open"
+            disabled={item.uploading}
+            aria-label={t("composer.attach.open", { name: item.name })}
+            title={t("composer.attach.open", { name: item.name })}
+            onClick={() => setIndex(at)}
+          >
+            <img src={item.previewUrl} alt="" />
+          </button>
           <button
             type="button"
             className="fc-composer-attachment__remove"
             disabled={disabled}
-            aria-label={removeLabel(item.name)}
-            title={removeLabel(item.name)}
-            onClick={() => onRemove(item.key)}
+            aria-label={t("composer.attach.remove", { name: item.name })}
+            title={t("composer.attach.remove", { name: item.name })}
+            onClick={() => store.remove(item.key)}
           >
             ×
           </button>
         </span>
       ))}
+      {openAt !== null ? (
+        <ComposerAttachmentViewer
+          images={items.map((item) => ({ key: item.key, src: item.previewUrl, name: item.name }))}
+          index={openAt}
+          onIndex={setIndex}
+          onClose={() => setIndex(null)}
+          closeLabel={t("composer.attach.close")}
+          previousLabel={t("composer.attach.previous")}
+          nextLabel={t("composer.attach.next")}
+        />
+      ) : null}
     </div>
   );
 }

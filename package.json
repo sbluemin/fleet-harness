@@ -11,6 +11,7 @@
   "scripts": {
     "build": "pnpm -r --filter=\"!fleet-harness\" --filter=\"!@dotobokuri/fleet-desktop\" build",
     "check:claude-agent-sdk-boundary": "node scripts/check-claude-agent-sdk-boundary.mjs",
+    "check:composer-attachments": "node scripts/check-composer-attachments.mjs",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:localized-attributes": "node scripts/check-localized-attributes.mjs",
     "check:windows-hidden-spawn": "node scripts/check-windows-hidden-spawn.mjs",

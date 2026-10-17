@@ -1,8 +1,6 @@
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "@fleet-console/sdk/conversation";
 import {
   AttachImageIcon,
-  COMPOSER_ATTACHMENT_MAX_BYTES,
-  COMPOSER_MAX_ATTACHMENTS,
   ComposerAttachmentTray,
   ComposerMenu,
   ComposerMenuHeading,
@@ -11,8 +9,11 @@ import {
   ComposerNotice,
   ComposerPlusButton,
   ComposerSendButton,
+  composerAttachmentNoticeText,
   composerT,
-  isComposerAttachmentCandidate,
+  createComposerAttachments,
+  useComposerAttachmentInput,
+  useComposerAttachmentSnapshot,
 } from "@fleet-console/sdk/composer";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -52,14 +53,6 @@ type Candidate =
 type Notice = { readonly tone: "info" | "warn"; readonly text: string };
 
 /** 입력창에 붙은 이미지 — id 가 서기 전(업로드 중)에는 보내지 않는다. */
-interface DraftAttachment {
-  readonly key: string;
-  readonly id: string | null;
-  readonly name: string;
-  readonly previewUrl: string;
-  readonly uploading: boolean;
-}
-
 export interface GroupComposerProps {
   readonly rootOperationId: string;
   readonly snapshot: GroupTimelineSnapshot;
@@ -90,7 +83,6 @@ interface GroupComposerDraft {
   readonly text: string;
   readonly textRevision: number;
   readonly target: Candidate | null;
-  readonly attachments: readonly DraftAttachment[];
   readonly busy: boolean;
   readonly notice: Notice | null;
   /** 입력창에 앉은 보드 동작의 id — 보드의 제안에서 사라지면 걷힌다. */
@@ -108,9 +100,14 @@ interface BoardConsumed {
 /** 실행 기능이 소유하는 페이지 메모리 — 대화 본문이 내려가도 초안·업로드·전송은 같은 루트에 남는다. */
 const groupDrafts = new Map<string, ReturnType<typeof createGroupDraft>>();
 function createGroupDraft() {
-  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null, mode: null, held: null };
+  const attachments = createComposerAttachments({
+    upload: (file) => uploadLaunchAttachment(file),
+    discard: (id) => discardLaunchAttachment(id),
+  });
+  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, busy: false, notice: null, mode: null, held: null };
   const listeners = new Set<() => void>();
   return {
+    attachments,
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (patch: Partial<GroupComposerDraft>) => {
@@ -130,7 +127,13 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
   const draft = groupDraft(rootOperationId);
-  const { text, target, attachments, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const { text, target, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
+  const attachments = attachmentSnap.items;
+  const attachmentInput = useComposerAttachmentInput(draft.attachments, {
+    disabled: busy || !actions,
+    pastedName: ct("composer.attach.pasted"),
+  });
   const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
   const setTarget = (value: Candidate | null) => draft.update({ target: value });
   const setBusy = (value: boolean) => draft.update({ busy: value });
@@ -144,7 +147,6 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
   const plusRef = React.useRef<HTMLButtonElement | null>(null);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
-  const fileRef = React.useRef<HTMLInputElement | null>(null);
   useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
   const menuId = React.useId();
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
@@ -244,58 +246,9 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     return null;
   };
 
-  const addFiles = React.useCallback((files: readonly File[]) => {
-    const images = files.filter((file) => isComposerAttachmentCandidate(file));
-    // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
-    if (images.length === 0) return;
-    let rejected: Notice | null = null;
-    let count = draft.read().attachments.length;
-    for (const file of images) {
-      if (count >= COMPOSER_MAX_ATTACHMENTS) {
-        rejected = { tone: "warn", text: ct("composer.attach.limit", { count: String(COMPOSER_MAX_ATTACHMENTS) }) };
-        break;
-      }
-      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
-        rejected = { tone: "warn", text: ct("composer.attach.tooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) }) };
-        continue;
-      }
-      count += 1;
-      const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const previewUrl = URL.createObjectURL(file);
-      const name = file.name.length > 0 ? file.name : ct("composer.attach.pasted");
-      draft.update({ attachments: [...draft.read().attachments, { key, id: null, name, previewUrl, uploading: true }] });
-      void uploadLaunchAttachment(file)
-        .then(({ id }) => {
-          const current = draft.read().attachments;
-          if (!current.some((attachment) => attachment.key === key)) {
-            void discardLaunchAttachment(id).catch(() => {});
-            return;
-          }
-          draft.update({ attachments: current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)) });
-        })
-        .catch(() => {
-          const current = draft.read().attachments;
-          if (!current.some((attachment) => attachment.key === key)) return;
-          URL.revokeObjectURL(previewUrl);
-          draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: { tone: "warn", text: ct("composer.attach.failed") } });
-        });
-    }
-    setNotice(rejected);
-  }, [draft, ct]);
-
-  const removeAttachment = (key: string) => {
-    const current = draft.read().attachments;
-    const removed = current.find((attachment) => attachment.key === key);
-    if (!removed) return;
-    if (removed.id !== null) void discardLaunchAttachment(removed.id).catch(() => {});
-    URL.revokeObjectURL(removed.previewUrl);
-    draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: null });
-    inputRef.current?.focus();
-  };
-
   const pickImages = () => {
     setMenuOpen(false);
-    fileRef.current?.click();
+    attachmentInput.pick();
   };
 
   const pickTarget = () => {
@@ -410,9 +363,9 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
     const sentTo = target;
     const sentText = text;
     const sentRevision = draft.read().textRevision;
-    const sentAttachments = draft.read().attachments;
-    const sentKeys = new Set(sentAttachments.map((attachment) => attachment.key));
-    const ids = sentAttachments.map((attachment) => attachment.id).filter((id): id is string => id !== null);
+    const sentAttachments = draft.attachments.read().items;
+    const sentKeys = sentAttachments.map((attachment) => attachment.key);
+    const ids = draft.attachments.ids();
     if (ids.length > 0 && (sentTo?.kind === "all")) {
       setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
       return;
@@ -426,17 +379,14 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
       const result = await actions.send(groupTarget, sentText.trim(), ids.length > 0 ? ids : undefined);
       // 일부만 닿았어도 보낸 말이다 — 보낸 스냅샷만 걷고, 기다리는 동안 새로 쓴 말은 남긴다.
       const current = draft.read();
-      // 보낸 이미지는 받는 세션에 묶였다 — 그 미리보기만 놓고 새로 붙인 이미지는 남긴다.
-      for (const attachment of current.attachments) {
-        if (sentKeys.has(attachment.key)) URL.revokeObjectURL(attachment.previewUrl);
-      }
+      draft.attachments.releaseSent(sentKeys);
       draft.update({
         ...(current.textRevision === sentRevision ? { text: "" } : {}),
         target: current.target === sentTo ? null : current.target,
-        attachments: current.attachments.filter((attachment) => !sentKeys.has(attachment.key)),
         notice: describeSend(result, sentTo),
       });
     } catch (error) {
+      if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       const code = error instanceof Error ? error.message : "";
       setNotice({ tone: "warn", text: code === "attachment_budget_exceeded" ? ct("composer.attach.commodoreBudget") : /commodore_(?:inactive|disabled|stopping)/.test(code) ? t("group.notice.commodoreOff") : t("group.notice.failedSend") });
     } finally {
@@ -508,7 +458,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
 
   return (
     <div ref={wrapRef} className="group-composer-wrap">
-      {notice ? <ComposerNotice tone={notice.tone} text={notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} /> : null}
+      {notice ? <ComposerNotice tone={notice.tone} text={notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} />
+        : composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <ComposerNotice tone="warn" text={composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
       {popOpen ? (
         <div className="group-composer-pop" role="listbox" aria-label={t("group.mention.heading")}>
           {candidates.map((candidate, at) => {
@@ -627,13 +578,13 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           {showHint ? <span className="group-composer-suggest-hint">{local(board!.hint!)}</span> : null}
         </div>
       ) : null}
-      <div className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}`}>
-        <ComposerAttachmentTray
-          items={attachments}
-          label={ct("composer.attach.list")}
-          removeLabel={(name) => ct("composer.attach.remove", { name })}
-          onRemove={removeAttachment}
-        />
+      <div
+        className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`}
+        onDragOver={attachmentInput.onDragOver}
+        onDragLeave={attachmentInput.onDragLeave}
+        onDrop={attachmentInput.onDrop}
+      >
+        <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={busy} />
         <span className="group-composer-plus-root" ref={plusRootRef}>
           <ComposerPlusButton
             ref={plusRef}
@@ -644,19 +595,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
             disabled={!actions}
             onClick={() => setMenuOpen((open) => !open)}
           />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            hidden
-            onChange={(event) => {
-              addFiles(Array.from(event.target.files ?? []));
-              // 같은 파일을 연달아 고를 수 있게 값을 비운다 — 남기면 change 가 다시 오지 않는다.
-              event.target.value = "";
-              inputRef.current?.focus();
-            }}
-          />
+          {attachmentInput.fileInput}
         </span>
         {seated ? (
           <span className="group-composer-chip is-action">
@@ -683,13 +622,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
           placeholder={placeholder}
           aria-label={t("group.composer.aria")}
           onChange={(event) => edit(event.target.value)}
-          onPaste={(event) => {
-            const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
-            if (files.length === 0) return;
-            // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
-            event.preventDefault();
-            addFiles(files);
-          }}
+          onPaste={attachmentInput.onPaste}
           onKeyDown={onKeyDown}
           onCompositionEnd={() => {
             const pick = pendingPick.current;
