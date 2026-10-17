@@ -151,7 +151,7 @@ function HostCommodoreRail({ context }: { readonly context: HostSurfaceContext }
   const theaterId = context.selection.theaterId ?? "";
   const fail = (cause: unknown) => { if (!model.signal.aborted) setError(cause instanceof Error ? cause.message : "objectives_unavailable"); };
   const clear = () => setError(null);
-  return <LaunchRosterProvider value={model.models}>
+  return <LaunchRosterProvider value={model.models}><div className="objectives-host-commodore-rail">
     <Select value={tab} label={t("objectives.commodore.name")} onChange={setTab} options={[
       { value: "goals", label: t("objectives.commodore.conversation.goals") },
       { value: "directive", label: t("objectives.commodore.tabs.directive") },
@@ -159,12 +159,12 @@ function HostCommodoreRail({ context }: { readonly context: HostSurfaceContext }
       { value: "settings", label: t("objectives.commodore.tabs.settings") },
     ]} />
     {error ? <p role="alert">{error}</p> : null}
-    {tab === "goals" ? <HostObjectives context={context} /> : view ? <fieldset disabled={!context.canWrite()} className="objectives-commodore-body objectives-commodore-conversation-tab" style={{ border: 0, margin: 0, minWidth: 0 }}>
+    {tab === "goals" ? <HostObjectives context={context} /> : view ? <fieldset disabled={!context.canWrite()} className="objectives-host-commodore objectives-commodore-body objectives-commodore-conversation-tab" style={{ border: 0, margin: 0, minWidth: 0 }}>
       {tab === "directive" ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onFail={fail} onClear={clear} /> : null}
       {tab === "intel" ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} /> : null}
       {tab === "settings" ? <CommodoreSettings t={t} language={context.language} theaterId={theaterId} view={view} onFail={fail} onClear={clear} /> : null}
     </fieldset> : <p role="status">{snapshot.error ?? t("objectives.results.loading")}</p>}
-  </LaunchRosterProvider>;
+  </div></LaunchRosterProvider>;
 }
 
 export const objectiveHostSurfaces: readonly HostSurfaceDescriptor[] = [
