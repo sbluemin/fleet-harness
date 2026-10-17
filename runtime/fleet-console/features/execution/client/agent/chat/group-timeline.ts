@@ -14,10 +14,13 @@ export interface ConversationJournal {
    * 화면은 여기서 사람의 말만 대기 말풍선으로 세우고, 처리가 시작되거나 취소되면 이 목록에서 빠진다.
    */
   readonly queue: readonly AgentChatQueueEntry[];
-  /** 그 스냅샷이 도착한 시각. 대기 말의 자리다. 모르면 null. */
-  readonly queueAt: number | null;
+  /**
+   * 예약마다 처음 본 시각. 대기 말의 자리다. 다음 스냅샷이 와도 남은 예약은 처음 자리를 지킨다 —
+   * 스냅샷 시각을 통째로 다시 매기면 앞서 보낸 말이 그사이 선 다른 말 뒤로 건너뛴다. 모르면 없다.
+   */
+  readonly queueSeen: ReadonlyMap<string, number>;
 }
-export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueAt: null };
+export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map() };
 const operationSpeaker = (id: string): ConversationSpeaker => ({ kind: "operation", operationId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
@@ -113,15 +116,21 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       draftId = null;
       turn = null;
       break;
-    case "queue":
+    case "queue": {
       // 예약 전량 교체. 저널 줄은 건드리지 않는다 — 대기 말은 이 스냅샷에서만 서고, 확정 말과 섞어 세지 않는다.
-      return { ...state, queue: event.entries, queueAt: at };
+      const seen = new Map<string, number>();
+      event.entries.forEach((entry, index) => {
+        const first = state.queueSeen.get(entry.id) ?? (at === null ? undefined : at + index);
+        if (first !== undefined) seen.set(entry.id, first);
+      });
+      return { ...state, queue: event.entries, queueSeen: seen };
+    }
     default: return state;
   }
   // 수신/재생의 동일 좌표는 한 번만 세운다. 결과 갱신은 기존 자리를 유지한다.
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const unique = [...byId.values()];
-  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueAt: state.queueAt };
+  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen };
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);
@@ -130,34 +139,38 @@ const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slic
  * 큐 스냅샷의 사람 말을 대기 말풍선으로. 배열이 같을 때는 같은 객체를 돌려준다 — 다른 참여자의
  * 델타가 도착할 때마다 대기 말을 다시 만들면 그 말풍선이 매번 다시 그려진다.
  */
-const pendingPrompts = new WeakMap<readonly AgentChatQueueEntry[], readonly GroupTimelineEntry[]>();
+const pendingPrompts = new WeakMap<readonly AgentChatQueueEntry[], { readonly floor: number | null; readonly built: readonly GroupTimelineEntry[] }>();
 function queuedPrompts(operationId: string, journal: ConversationJournal): readonly GroupTimelineEntry[] {
+  // 앞선 예약이 처리되기 시작하면 그 확정 말은 집어간 시각에 선다. 남은 대기 말은 그보다 위로 올라가지 않는다 —
+  // 아직 처리 전인 말이 이미 처리된 앞 말보다 먼저 보낸 것처럼 읽히지 않게. 그 밖의 말 사이에서는 처음 자리를 지킨다.
+  const floor = journal.entries.reduce<number | null>((max, entry) => entry.kind === "message" && entry.speaker.kind === "human" && entry.at !== null && (max === null || entry.at > max) ? entry.at : max, null);
   const cached = pendingPrompts.get(journal.queue);
-  if (cached) return cached;
-  const base = journal.queueAt;
+  if (cached && cached.floor === floor) return cached.built;
   const built: GroupTimelineEntry[] = [];
-  journal.queue.forEach((entry, index) => {
-    if (!isPersonQueueEntry(entry)) return;
+  for (const entry of journal.queue) {
+    if (!isPersonQueueEntry(entry)) continue;
     const human = entry.by?.kind === "plugin" ? entry.by.humanInput : undefined;
     const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : undefined;
     built.push({
       kind: "message",
       // 사람이 보드로 보낸 말은 확정 말과 같은 id 다. 처리가 시작되면 그 말이 이 자리를 그대로 잇고, 둘은 동시에 서지 않는다.
       id: human ? `human:${human.id}` : `pending:${operationId}:${entry.id}`,
-      at: base === null ? null : base + index,
+      at: placeAfter(journal.queueSeen.get(entry.id) ?? null, floor),
       operationId,
       speaker: { kind: "human", name: "Human" },
-      text: entry.text,
+      // 보드 행위에 덧붙인 말은 인용으로 실려 온다 — 확정 말과 같은 문면이 되도록 같은 자리에서 걷는다.
+      text: human?.act ? unquote(entry.text) : entry.text,
       streaming: false,
       pending: true,
       ...(recipient ? { recipient } : {}),
       ...(human?.copy ? { copied: true } : {}),
       ...(human?.act ? { via: human.act } : {}),
     });
-  });
-  pendingPrompts.set(journal.queue, built);
+  }
+  pendingPrompts.set(journal.queue, { floor, built });
   return built;
 }
+const placeAfter = (at: number | null, floor: number | null): number | null => at === null || floor === null || at > floor ? at : floor + 0.5;
 
 /** 원장 줄과 표시 발화자가 같으면 확정 줄 객체를 재사용한다. 수명·연결 상태가 아닌 약한 투영 캐시다. */
 const resolvedEntries = new WeakMap<GroupTimelineEntry, { readonly key: string; readonly entry: GroupTimelineEntry }>();
