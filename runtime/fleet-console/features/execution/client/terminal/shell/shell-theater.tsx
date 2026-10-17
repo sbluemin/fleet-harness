@@ -15,11 +15,14 @@ export function ShellTheaterBadge({ ctx }: { readonly ctx: ExpandedSurfaceContex
   if (!session?.open || !session.cwd) return null;
   const theater = session.cwd.theaterId ? theaters.find((item) => item.id === session.cwd?.theaterId) : undefined;
   const label = theater?.label ?? t("terminal.shell.outsideTheaters");
+  // 좁으면 끝 폴더(워크트리 이름)가 먼저 보여야 한다 — 긴 상대 경로는 끝 폴더 이름만 싣고, 온 경로는 말풍선이 말한다.
+  const relative = session.cwdTracked ? session.cwd.relative ?? "" : "";
+  const segments = relative.split("/").filter(Boolean);
   const detail = !session.cwdTracked
     ? t("terminal.shell.untracked")
-    : session.cwd.relative ? session.cwd.relative : undefined;
+    : segments.length > 1 ? segments[segments.length - 1] : relative || undefined;
   return (
-    <span className="global-shell-badge" aria-label={t("terminal.shell.badgeAria")}>
+    <span className="global-shell-badge" aria-label={t("terminal.shell.badgeAria")} title={relative ? `${label} · ${relative}` : label}>
       <TheaterBadge label={label} initials={theater ? theaterInitials(theater.label) : "--"} {...(detail ? { detail } : {})} tone="normal" />
     </span>
   );

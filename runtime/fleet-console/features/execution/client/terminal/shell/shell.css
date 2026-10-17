@@ -38,6 +38,10 @@
   box-sizing: border-box;
 }
 
+/* 좁아지면 Theater 이름이 먼저 물러나고 끝 폴더(워크트리 이름)는 남는다. */
+.global-shell-badge .theater-badge-label { flex: 0 1000 auto; min-width: 0; }
+.global-shell-badge .theater-badge-detail { flex: 0 1 auto; min-width: 0; }
+
 /* 칸 본문 — 위치 안내 한 줄 아래로 터미널 자리가 남은 높이를 채운다. */
 .global-shell-surface {
   flex: 1;

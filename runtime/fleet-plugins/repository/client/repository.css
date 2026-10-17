@@ -1222,6 +1222,9 @@
 }
 
 .repository-ws-tree-scroll {
+  /* 워크트리 행이 좁아질 때 무엇부터 물러날지 이 열의 폭으로 정한다(아래 「이 대화」 규칙). */
+  container-type: inline-size;
+  container-name: repository-ws-tree;
   min-height: 0;
   padding: 4px 0 10px;
   overflow-y: auto;
@@ -2812,7 +2815,20 @@
 .history-commit-author-name, .history-commit-time { font-family: var(--font-ui); font-size: var(--t-xs); }
 .history-commit-sha, .history-detail-sha { font-family: var(--font-code); font-size: var(--font-code-size); }
 
-/* 대화의 작업 위치인 워크트리 — 위치를 말하므로 위치 채널(brass)이다. */
+/* 대화의 작업 위치인 워크트리 — 위치를 말하므로 위치 채널(brass)이다.
+   좁아질 때 물러나는 순서: 브랜치 꼬리표(아래 「브랜치」 구역에도 있다) → 「이 대화」가 점으로 → 마지막에 이름 말줄임. 이름은 늘 읽을
+   만큼의 폭을 지킨다 — 이 행에서 가장 중요한 것이 워크트리 이름이다. */
+.repository-ws-tree-row.is-worktree > span {
+  flex: 0 1 auto;
+  /* 아이콘·간격·「이 대화」 점 몫(40px)을 남긴 안에서 읽을 만큼의 폭 — 행 밖으로 밀어내지 않는다. */
+  min-width: min(7.5em, calc(100% - 40px));
+}
+
+.repository-ws-tree-row.is-worktree > i {
+  /* 이름보다 훨씬 먼저 줄어든다. */
+  flex-shrink: 1000;
+}
+
 .repository-ws-tree-mine {
   flex: none;
   margin-left: auto;
@@ -2822,4 +2838,26 @@
   color: var(--brass-ink);
   font-size: var(--t-xs);
   font-style: normal;
+  white-space: nowrap;
+}
+
+/* 브랜치 꼬리표가 있으면 그것이 오른쪽으로 밀고 「이 대화」는 바로 뒤에 붙는다. */
+.repository-ws-tree-row.is-worktree > i + .repository-ws-tree-mine { margin-left: 0; }
+
+@container repository-ws-tree (max-width: 280px) {
+  .repository-ws-tree-row.is-worktree > i { display: none; }
+  .repository-ws-tree-row.is-worktree > i + .repository-ws-tree-mine { margin-left: auto; }
+}
+
+@container repository-ws-tree (max-width: 220px) {
+  /* 「이 대화」는 brass 점으로 — 이름은 그대로 title·aria-label 이 말한다. */
+  .repository-ws-tree-mine {
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    overflow: hidden;
+    background: var(--brass);
+    color: transparent;
+    font-size: 0;
+  }
 }
