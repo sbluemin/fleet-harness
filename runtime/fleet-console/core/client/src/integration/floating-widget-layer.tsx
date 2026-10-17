@@ -309,6 +309,18 @@ function readKeepOutRects(): readonly FloatingWidgetRect[] {
   return rects;
 }
 
+// 스토어 밖에서 여닫히는 회피 표면(새 세션 컴포저의 '/'·'@' 목록처럼 화면의 로컬 상태로 서는 것)이 바뀌었다고 알릴 구독자.
+// 호스트 번들 안에서만 쓰인다 — 플러그인은 이 모듈이 아니라 capability 의 subscribe 를 받는다.
+const surfaceListeners = new Set<() => void>();
+
+/**
+ * 스토어를 거치지 않고 회피 표면이 열리거나 닫혔다 — 위젯이 주기 재측정(수백 ms)을 기다리지 않고 바로 다시 재게 한다.
+ * 기다리면 그사이 부관이 막 열린 목록 위에 그대로 서 있다.
+ */
+export function notifyKeepOutSurfaceChanged(): void {
+  for (const listener of [...surfaceListeners]) listener();
+}
+
 function createManagedKeepOutCapability(): ManagedKeepOutCapability {
   const activeSubscriptions = new Set<() => void>();
 
@@ -318,10 +330,12 @@ function createManagedKeepOutCapability(): ManagedKeepOutCapability {
     // 가지므로 여기서 잡히지 않고, 위젯의 주기 재측정이 그 지연을 메운다 — DOM 전체를 관찰하면
     // 위젯 자신의 자세 변화까지 알림이 되어 값보다 비용이 크다.
     const unsubscribeStore = subscribeStore(listener);
+    surfaceListeners.add(listener);
     const unsubscribe = () => {
       if (!active) return;
       active = false;
       unsubscribeStore();
+      surfaceListeners.delete(listener);
       activeSubscriptions.delete(unsubscribe);
     };
     activeSubscriptions.add(unsubscribe);

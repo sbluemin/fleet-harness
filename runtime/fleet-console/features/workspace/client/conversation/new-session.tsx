@@ -15,6 +15,7 @@ import { OperationNameMark } from "../../../execution/client/components/operatio
 import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { notifyKeepOutSurfaceChanged } from "../../../../core/client/src/integration/floating-widget-layer.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
 import { readCommandInput, type NewSessionCommandInput } from "./new-session-commands.js";
 import { deckOptionId, deckRows, markMatch, NewSessionDeck, type NewSessionDeckItem } from "./new-session-deck.js";
@@ -370,6 +371,9 @@ export function NewSessionColumn({ state, target, tools }: {
   const deckOpen = !deckDismissed && (command !== null || mentionToken !== null) && (command !== null || deckItems.length > 0);
   const selectableRows = deckRows(deckItems);
   const activeRow = selectableRows.find((row) => row.key === deckActiveKey) ?? selectableRows[0] ?? null;
+  // 목록은 떠다니는 위젯(부관)의 회피 영역이다. 화면의 로컬 상태로 여닫히므로 스토어 알림이 없다 — 열고 닫는 순간 직접 알려,
+  // 위젯이 주기 재측정을 기다리는 동안 막 열린 목록 위에 서 있지 않게 한다. 칠한 뒤에 알려야 새 상자를 잰다.
+  useEffect(() => { notifyKeepOutSurfaceChanged(); }, [deckOpen, deckItems.length]);
   // 행이 있는 목록만 Enter/Tab/제출을 가로챈다 — 매치가 없으면 "@3pm"·"/etc/hosts" 같은 문장이므로 Enter는 평소처럼 보낸다.
   const deckHasRows = deckOpen && selectableRows.length > 0;
 

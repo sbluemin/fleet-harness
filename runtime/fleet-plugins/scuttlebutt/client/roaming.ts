@@ -55,6 +55,8 @@ export interface KeepOutRect {
 }
 
 const KEEP_OUT_PADDING = 12;
+/** 표면이 부관 위에 열렸을 때 비켜서는 속도(px/s). */
+const SIDESTEP_SPEED = 640;
 
 /** 중심 (x, y)에 선 부관의 상자가 회피 영역과 겹치는가. */
 export function insideKeepOut(x: number, y: number, size: BirdSize, keepOut: readonly KeepOutRect[]): boolean {
@@ -358,7 +360,9 @@ export function stepFlock(
         const dx = outside.x - body.x;
         const dy = outside.y - body.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const step = Math.min(dist, Math.max(persona.max, 160) * dt);
+        // 비켜서기는 배회가 아니라 자리 내주기다 — 배회 속도(최대 160px/s)로 가면 막 열린 목록·대화상자 위에 1초 가까이 걸쳐 있다.
+        // 한 번에 짧게 날아올라(약 0.25초) 표면을 먼저 비운다.
+        const step = Math.min(dist, Math.max(persona.max, SIDESTEP_SPEED) * dt);
         body.x += (dx / dist) * step;
         body.y += (dy / dist) * step;
         body.vx = (dx / dist) * Math.min(dist * 2, 160);
