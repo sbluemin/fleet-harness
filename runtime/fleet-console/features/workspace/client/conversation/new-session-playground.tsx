@@ -281,7 +281,12 @@ class PlaygroundStage {
       this.cancel(actor);
       actor.ride = null;
       actor.flourish = null;
-      if (actor.mode === "ride" || actor.mode === "walk") actor.mode = "rest";
+      // 예약을 버렸으니 하던 일(타기·걷기·연기·대화)도 내려놓고 쉰다. 얼어 있던 무대는 녹을 때 쉬는 배우부터 다시 고른다.
+      if (!actor.exiting) {
+        actor.mode = "rest";
+        actor.running = false;
+        actor.act = null;
+      }
       actor.walking = false;
       actor.x = clamp(actor.x, 6, this.maxX);
       actor.y = this.standY;
@@ -927,6 +932,14 @@ class PlaygroundStage {
       const resume = this.companionResume;
       this.armCompanion(lead(this.companionRemaining), resume);
       this.companionRemaining = null;
+    }
+    // 연출 예약이 한 번도 없던 무대(빈 레이아웃으로 시작해 얼어 있는 동안 커진 경우 등)도 다시 돌게 한다.
+    if (this.dynamic && this.layout && this.directorTimer === null && this.directorRemaining === null) {
+      this.armDirector(minLeadMs, () => {
+        this.directorTimer = null;
+        this.directorResume = null;
+        this.direct();
+      });
     }
   }
 
