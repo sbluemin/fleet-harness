@@ -12258,6 +12258,65 @@ body[data-expanded-surface-resizing="true"] {
 }
 .fc-composer-input::placeholder { color: var(--text-tertiary); }
 
+/* 멘션 칩 — SDK `MentionChip` / `mentionChipHtml`. 그룹 수신자·사령관 참조 토큰·기록 말풍선이 한 벌이다.
+   아바타 슬롯은 16px(그룹 SpeakerMark sm). 라벨은 18em에서 말줄임되고, 전체는 title에 있다. */
+.fc-mention-chip {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: 2px var(--space-1) 2px 3px;
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+  color: var(--text-secondary);
+  vertical-align: baseline;
+  white-space: nowrap;
+  user-select: all;
+  cursor: default;
+}
+.fc-mention-chip-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+.fc-mention-chip-mark svg,
+.fc-mention-chip-mark .objectives-avatar { width: 16px; height: 16px; }
+.fc-mention-chip-label {
+  min-width: 0;
+  max-width: 18em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-mention-chip-x {
+  flex: none;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 1;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.fc-mention-chip-x:hover { color: var(--text-primary); }
+button.fc-mention-chip {
+  border: 0;
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+button.fc-mention-chip:hover { color: var(--brass-ink); }
+button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline-offset: 1px; }
+
 /* 「+」·보내기 원 — 같은 크기·면. 메뉴가 열려 있는 동안 「+」는 hover 와 같은 brass 워시로 선다. */
 .fc-composer-circle {
   flex: none;

@@ -78,7 +78,7 @@
 .objectives-cm-dock .objectives-commodore-composer-idle { max-width: none; margin: 0; padding: 0 8px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .objectives-cm-msg-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .objectives-cm-msg-images img { display: block; width: 64px; height: 64px; border: 1px solid var(--m-hairline); border-radius: 12px; object-fit: cover; }
-.objectives-cm .objectives-commodore-ref { background: var(--m-chip); box-shadow: inset 0 0 0 1px var(--m-hairline-strong); color: var(--m-text); }
+.objectives-cm .fc-mention-chip { background: var(--m-chip); color: var(--m-text); }
 .objectives-cm .objectives-commodore-ref-input.is-empty::before { color: var(--m-text-muted); }
 .objectives-cm .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--m-text-muted); }
 .objectives-commodore-ref-list.is-phone { left: -1px; right: -1px; max-height: 290px; padding: 6px; border-color: var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); box-shadow: var(--m-shadow); }

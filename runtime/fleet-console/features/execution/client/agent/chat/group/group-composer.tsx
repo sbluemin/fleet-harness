@@ -9,6 +9,7 @@ import {
   ComposerNotice,
   ComposerPlusButton,
   ComposerSendButton,
+  MentionChip,
   composerAttachmentNoticeText,
   composerT,
   createComposerAttachments,
@@ -611,13 +612,14 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
             {board?.fixed ? null : <button type="button" className="group-composer-chip-x" aria-label={t("group.board.release", { label: local(seated.label) })} onClick={() => { draft.update({ mode: null }); inputRef.current?.focus(); }}>×</button>}
           </span>
         ) : board?.actionsOnly ? (
-          <span className="group-composer-chip is-target"><span>@{commander?.name ?? t("group.commander")}</span></span>
+          <MentionChip label={commander?.name ?? t("group.commander")} />
         ) : target ? (
-          <span className="group-composer-chip">
-            {target.kind === "member" ? <SpeakerMark speaker={target.speaker} size="sm" /> : null}
-            <span>@{targetName(target)}</span>
-            <button type="button" className="group-composer-chip-x" aria-label={t("group.composer.removeTarget", { name: targetName(target) })} onClick={() => { setTarget(null); inputRef.current?.focus(); }}>×</button>
-          </span>
+          <MentionChip
+            label={targetName(target)}
+            mark={target.kind === "member" ? <SpeakerMark speaker={target.speaker} size="sm" /> : undefined}
+            removeLabel={t("group.composer.removeTarget", { name: targetName(target) })}
+            onRemove={() => { setTarget(null); inputRef.current?.focus(); }}
+          />
         ) : null}
         <textarea
           ref={inputRef}

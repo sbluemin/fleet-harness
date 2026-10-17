@@ -1,4 +1,5 @@
 import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
+import { MentionChip } from "@fleet-console/sdk/composer";
 import { splitReferenceText, type ConversationReference } from "@fleet-console/sdk/conversation";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
@@ -18,11 +19,16 @@ export function ChatReferenceText({ text, references }: { readonly text: string;
       {parts.map((part, index) => {
         if (typeof part === "string") return <React.Fragment key={index}>{part}</React.Fragment>;
         const name = host?.describe?.(part) ?? part.label;
-        const body = <>{host?.mark ? <span className="agent-chat-ref-mark" aria-hidden="true">{host.mark(part.id)}</span> : null}<span className="agent-chat-ref-label">{part.label}</span></>;
         const open = host?.open;
-        return open
-          ? <button key={index} type="button" className="agent-chat-ref" aria-label={name} title={name} onClick={(event) => { event.stopPropagation(); open(part.id); }}>{body}</button>
-          : <span key={index} className="agent-chat-ref" aria-label={name}>{body}</span>;
+        return (
+          <MentionChip
+            key={index}
+            label={part.label}
+            mark={host?.mark ? host.mark(part.id) : undefined}
+            ariaLabel={name}
+            {...(open ? { onActivate: () => open(part.id) } : {})}
+          />
+        );
       })}
     </>
   );
