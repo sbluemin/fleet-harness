@@ -522,12 +522,7 @@ export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup }: { r
           {hosts.length > 0 ? (
             <>
               {nearby.length > 0 ? <div className="host-switcher-divider" role="separator" /> : null}
-              {/* 실험 표시는 저장된 호스트에만 붙인다 — 위의 "이 컴퓨터" 목록은 원격 접속을 켜지
-                  않아도 늘 있는 로컬 콘솔이라 실험 기능이 아니다. */}
-              <p className="host-switcher-heading">
-                {t("chrome.hosts.saved")}
-                <span className="experimental-badge">{t("common.experimental")}</span>
-              </p>
+              <p className="host-switcher-heading">{t("chrome.hosts.saved")}</p>
               {hosts.map((host) => (
                 <HostRow
                   key={host.id}
