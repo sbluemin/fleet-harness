@@ -6,7 +6,7 @@ import { z } from "zod";
 import type { AdmiralMcpSession } from "@fleet-console/sdk/mcp";
 import type { OperationNode } from "@fleet-console/sdk/operations";
 import { GLOBAL_BROWSER_OWNER_ID, invalidTargetMessage, type BrowserService } from "./service.js";
-import { createBrowserToolSpecs, type BrowserToolDeps } from "./tools.js";
+import { createBrowserToolSpecs, type BrowserToolCtx, type BrowserToolDeps } from "./tools.js";
 import { operationIdFromSessionLabel } from "../../computer-use/host/mcp.js";
 
 export const FLEET_BROWSER_MCP_SERVER = "fleet-browser";
@@ -18,7 +18,17 @@ export interface BrowserMcpDeps extends BrowserToolDeps {
   readonly onFailure?: (kind: string, error: unknown) => void;
   readonly operations: () => readonly OperationNode[];
   readonly resolveOperation?: (id: string) => OperationNode | null;
+  /**
+   * 호출한 세션 → 사용 컨텍스트. 자식 세션은 루트(contextId)의 브라우저를 함께 쓰고, 턴 종료·중단은 그 세션(participantId)의
+   * 호출만 끊는다. 없으면 두 값이 호출한 Operation 자신이다. 실행 도메인이 계보로 풀고 부트스트랩이 주입한다.
+   */
+  readonly useContext?: (operationId: string) => { readonly contextId: string; readonly participantId: string } | null;
   readonly language?: () => "en" | "ko" | null;
+}
+
+/** 호출한 세션의 사용 범위 — 주인(contextId)과 참가자(participantId). */
+function scopeOf(deps: BrowserMcpDeps, operationId: string): { readonly contextId: string; readonly participantId: string } {
+  return deps.useContext?.(operationId) ?? { contextId: operationId, participantId: operationId };
 }
 
 type BrowserRefusal = "caller_unresolved" | "desktop_required" | "shared";
@@ -52,11 +62,13 @@ function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const fallback = deps.language?.() ?? "en";
   // 예약 id "global" 은 Operation으로 풀지 않는다 — 옛 전역 요청이 이 Session의 탭에 닿지 않게.
   const operation = id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) ? null : deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
-  if (!operation) return { denied: refuse("caller_unresolved", null, fallback), operationId: null };
+  if (!operation) return { denied: refuse("caller_unresolved", null, fallback), operationId: null, participantId: null };
+  // 자식 세션은 루트의 브라우저를 쓴다 — 같은 탭 집합·같은 세션.
+  const scope = scopeOf(deps, operation.id);
   // 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 있고 브라우저·모바일 화면이 없을 때만 열린다.
   const availability = deps.service.availability();
-  if (!availability.available) return { denied: refuse(availability.reason === "shared" ? "shared" : "desktop_required", operation.id, fallback), operationId: operation.id };
-  return { denied: null, operationId: operation.id };
+  if (!availability.available) return { denied: refuse(availability.reason === "shared" ? "shared" : "desktop_required", scope.contextId, fallback), operationId: scope.contextId, participantId: scope.participantId };
+  return { denied: null, operationId: scope.contextId, participantId: scope.participantId };
 }
 
 /**
@@ -120,11 +132,12 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         registry.registerAgentTool({ ...spec, execute: (args, context) => {
           const parsed = schema.safeParse(args);
           if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ error: "browser_arguments_invalid", issues: parsed.success ? [] : parsed.error.issues.map((issue) => describeArgumentIssue(args, issue)) }) }], isError: true });
-          const { denied, operationId } = deny(deps, context.sessionLabel);
-          if (denied || !operationId) return Promise.resolve(denied ?? refuse("caller_unresolved", null, "en"));
+          const { denied, operationId, participantId } = deny(deps, context.sessionLabel);
+          if (denied || !operationId || !participantId) return Promise.resolve(denied ?? refuse("caller_unresolved", null, "en"));
           const signals = [controller.signal, ...(context.signal ? [context.signal] : [])];
-          // 세션 라벨 자리에 Operation id 를 실어 보낸다 — 도구는 Operation 만 안다.
-          return spec.execute(parsed.data, { ...context, sessionLabel: operationId, signal: AbortSignal.any(signals) });
+          // 세션 라벨 자리에 브라우저의 주인(Operation id)을 실어 보낸다 — 도구는 Operation 만 안다. 부른 참가자는 따로 싣는다.
+          const toolContext: BrowserToolCtx = { ...context, sessionLabel: operationId, participantId, signal: AbortSignal.any(signals) };
+          return spec.execute(parsed.data, toolContext);
         } });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_BROWSER_MCP_SERVER }, toolSnapshotStore: snapshotStore });
@@ -134,8 +147,9 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       const connection: BrowserMcpConnection = {
         getEndpoint: async () => { if (closed) throw new Error("Browser MCP disposed"); return manager.getEndpoint(); },
         issueSessionToken: (request) => { if (closed) throw new Error("Browser MCP disposed"); return manager.issueSessionToken(request); },
-        cancelSession: (label) => { deps.service.interrupt(operationIdFromSessionLabel(label)); },
-        releaseSessionToken: (label) => { deps.service.interrupt(operationIdFromSessionLabel(label)); manager.releaseSessionToken(label); },
+        // 이 세션(참가자)의 턴이 끝났다 — 그 참가자의 호출만 끊는다. 같은 브라우저를 쓰는 다른 참가자의 호출은 그대로 간다.
+        cancelSession: (label) => { const scope = scopeOf(deps, operationIdFromSessionLabel(label)); deps.service.interrupt(scope.contextId, scope.participantId); },
+        releaseSessionToken: (label) => { const scope = scopeOf(deps, operationIdFromSessionLabel(label)); deps.service.interrupt(scope.contextId, scope.participantId); manager.releaseSessionToken(label); },
         cleanup: () => { manager.cleanup(); },
         dispose: () => {
           if (closing) return closing;
@@ -212,10 +226,10 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       deps.screenshots?.release(operationId);
       return closing;
     },
-    /** 턴이 끝났다 — 사용 중 표시를 내린다. 실행 런타임의 턴 종료 훅이 부른다. */
-    endAgentSession(operationId: string): void { deps.service.endAgentSession(operationId, "turn"); },
-    /** 사용자의 「중단」 — 허용은 남기고 진행 중 호출만 끊는다. */
-    interruptOperation(operationId: string): number { return deps.service.interrupt(operationId); },
+    /** 턴이 끝났다 — 그 참가자를 사용 세션에서 빼고, 남은 참가자가 없을 때만 표시를 내린다. 실행 런타임의 턴 종료 훅이 부른다. */
+    endAgentSession(operationId: string): void { const scope = scopeOf(deps, operationId); deps.service.endAgentSession(scope.contextId, "turn", scope.participantId); },
+    /** 사용자의 「중단」 — 허용은 남기고 진행 중 호출만 끊는다. 공유 브라우저면 모든 참가자의 호출을 끊는다. */
+    interruptOperation(operationId: string): number { return deps.service.interrupt(scopeOf(deps, operationId).contextId); },
     toolNames: specs.map((spec) => spec.id),
     async dispose(): Promise<void> {
       disposed = true;

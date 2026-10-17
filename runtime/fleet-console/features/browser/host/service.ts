@@ -186,7 +186,14 @@ interface OperationBrowser {
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
-  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null } | null;
+  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
+  /**
+   * 진행 중 호출을 부른 참가자(호출한 세션). 자식 세션들이 루트의 브라우저를 함께 쓰므로, 한 참가자의 턴 종료·중단은
+   * 그 참가자의 호출만 끊어야 한다. 일반 Operation 은 참가자가 늘 자기 자신이다.
+   */
+  callParticipants: Map<AbortController, string>;
+  /** 참가자 단위 「중단」 세대 — 배치가 자기 참가자의 중단만 이어 보도록 `interruptSerial` 에 더해진다. */
+  participantSerials: Map<string, number>;
   /** 「중단」이 눌린 횟수 — 배치처럼 여러 호출로 이어지는 실행이 중단을 건너뛰지 못하게 세대를 비교한다. */
   interruptSerial: number;
   /** 에이전트가 누르고 있는 포인터 버튼 — 드래그 동안 mouseMoved 가 버튼을 실어야 한다. */
@@ -349,7 +356,7 @@ export class BrowserService {
     this.emitAvailability();
     if (closing) {
       this.deps.log("browser paused: closing every tab");
-      for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); this.endAgentSession(op.operationId, "revoke"); }
+      for (const op of this.operations.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); op.callParticipants.clear(); this.endAgentSession(op.operationId, "revoke"); }
       void this.stopEngine();
       return;
     }
@@ -428,7 +435,7 @@ export class BrowserService {
     if (!op) {
       // 새로 열리는 Operation 은 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { operationId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
+      op = { operationId, contextId: "", resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: 1, preset: "responsive", setBy: null, colorScheme: null }, pane: null, viewportFollowsPane: true, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), agentSession: null, interruptSerial: 0, pointer: null, pendingTabs: 0 };
       this.operations.set(operationId, op);
     }
     return op;
@@ -526,6 +533,7 @@ export class BrowserService {
     op.resetGeneration += 1;
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
+    op.callParticipants.clear();
     await this.disposeContext(op);
     for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     op.tabs.clear();
@@ -540,24 +548,42 @@ export class BrowserService {
     op.contextId = "";
   }
 
-  /** 지금까지 「중단」이 눌린 횟수 — 여러 호출로 이어지는 실행(배치)이 시작 시점과 비교해 멈춘다. */
-  interruptSerial(operationId: string): number { return this.operations.get(operationId)?.interruptSerial ?? 0; }
-
-  /** 사용자의 「중단」 — 허용은 남기고 지금 도는 에이전트 호출만 끊는다. */
-  interrupt(operationId: string): number {
+  /**
+   * 지금까지 「중단」이 눌린 횟수 — 여러 호출로 이어지는 실행(배치)이 시작 시점과 비교해 멈춘다. 참가자를 주면 그 참가자를
+   * 겨눈 중단도 더한다(다른 참가자의 턴 종료는 이 배치를 멈추지 않는다).
+   */
+  interruptSerial(operationId: string, participantId?: string): number {
     const op = this.operations.get(operationId);
     if (!op) return 0;
+    return op.interruptSerial + (participantId ? op.participantSerials.get(participantId) ?? 0 : 0);
+  }
+
+  /**
+   * 「중단」 — 허용은 남기고 지금 도는 에이전트 호출만 끊는다. 참가자를 주면 그 참가자의 호출만 끊고 그를 사용 세션에서 뺀다 —
+   * 세션은 남은 참가자가 없을 때만 닫는다. 참가자 없이 부르면(사람의 중단 버튼) 이 브라우저의 모든 호출을 끊는다.
+   */
+  interrupt(operationId: string, participantId?: string): number {
+    const op = this.operations.get(operationId);
+    if (!op) return 0;
+    if (participantId !== undefined) {
+      const calls = [...op.agentCalls].filter((call) => op.callParticipants.get(call) === participantId);
+      op.participantSerials.set(participantId, (op.participantSerials.get(participantId) ?? 0) + 1);
+      for (const call of calls) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
+      if (!this.endAgentSession(operationId, "interrupt", participantId)) this.emitState(op);
+      return calls.length;
+    }
     const count = op.agentCalls.size;
     op.interruptSerial += 1;
     for (const call of op.agentCalls) call.abort();
     op.agentCalls.clear();
+    op.callParticipants.clear();
     this.endAgentSession(operationId, "interrupt");
     this.emitState(op);
     return count;
   }
 
-  /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. */
-  async agentCall<T>(operationId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. 참가자를 주지 않으면 Operation 자신이다. */
+  async agentCall<T>(operationId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, participantId: string = operationId): Promise<T> {
     const { available, reason } = this.availability();
     if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
     const op = this.operation(operationId);
@@ -565,7 +591,8 @@ export class BrowserService {
     const onAbort = () => call.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
     op.agentCalls.add(call);
-    this.touchAgentSession(op);
+    op.callParticipants.set(call, participantId);
+    this.touchAgentSession(op, participantId);
     try {
       const result = await run(call.signal);
       // 도중에 「중단」이 눌렸으면 끝난 결과도 내보내지 않는다 — 중단의 뜻이 호출 하나 안에서 새면 안 된다.
@@ -575,27 +602,36 @@ export class BrowserService {
     finally {
       signal?.removeEventListener("abort", onAbort);
       op.agentCalls.delete(call);
+      op.callParticipants.delete(call);
       // 중단으로 끝난 호출은 세션을 다시 열지 않는다 — 「중단」이 지운 세션이 호출의 뒷정리로 되살아나면 안 된다.
-      if (!call.signal.aborted) this.touchAgentSession(op);
+      if (!call.signal.aborted) this.touchAgentSession(op, participantId);
       else this.emitState(op);
       this.scheduleIdle();
     }
   }
 
   /** 세션을 열거나 마지막 호출 시각을 갱신한다. 턴 종료 훅이 오지 않는 CLI 를 위해 유휴 안전망을 함께 건다. */
-  private touchAgentSession(op: OperationBrowser): void {
+  private touchAgentSession(op: OperationBrowser, participantId: string): void {
     const now = Date.now();
-    if (!op.agentSession) { op.agentSession = { since: now, lastCallAt: now, idle: null }; this.deps.log(`agent session started for ${op.operationId}`); }
+    if (!op.agentSession) { op.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set() }; this.deps.log(`agent session started for ${op.operationId}`); }
+    op.agentSession.participants.add(participantId);
     op.agentSession.lastCallAt = now;
     if (op.agentSession.idle) clearTimeout(op.agentSession.idle);
     op.agentSession.idle = setTimeout(() => { if (op.agentSession && op.agentCalls.size === 0) this.endAgentSession(op.operationId, "idle"); }, AGENT_SESSION_IDLE_MS);
     this.emitState(op);
   }
 
-  /** 턴이 끝났거나 사람이 멈췄다 — 사용 중 표시를 내린다. 진행 중 호출은 interrupt 가 따로 끊는다. */
-  endAgentSession(operationId: string, reason: "turn" | "interrupt" | "revoke" | "idle" = "turn"): boolean {
+  /**
+   * 턴이 끝났거나 사람이 멈췄다 — 사용 중 표시를 내린다. 진행 중 호출은 interrupt 가 따로 끊는다. 참가자를 주면 그 참가자만
+   * 세션에서 빼고, 남은 참가자가 없을 때만 세션을 닫는다(닫았으면 true).
+   */
+  endAgentSession(operationId: string, reason: "turn" | "interrupt" | "revoke" | "idle" = "turn", participantId?: string): boolean {
     const op = this.operations.get(operationId);
     if (!op?.agentSession) return false;
+    if (participantId !== undefined) {
+      op.agentSession.participants.delete(participantId);
+      if (op.agentSession.participants.size > 0) return false;
+    }
     if (op.agentSession.idle) clearTimeout(op.agentSession.idle);
     op.agentSession = null;
     this.deps.log(`agent session ended for ${operationId} (${reason})`);

@@ -8,6 +8,7 @@ import { ComputerUseService } from "../../features/computer-use/host/computer-us
 import { ComputerUseInputError, type ComputerUseResult, type ComputerUseBackend } from "@fleet-console/computer-use";
 import { createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
+import { createUseContext } from "../../features/execution/host/use-context.js";
 
 const macOSComputerUsePlatform = createMacOSComputerUsePlatform({ resolveCodex: () => null, childEnv: () => ({}), spawnProcess: () => { throw new Error("unexpected spawn"); } });
 
@@ -198,6 +199,55 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(result.isError).toBe(true);
       expect(JSON.parse(result.content[0]!.text)).toMatchObject({ error: "computer_use_session_unavailable" });
       expect(service.status().state).toBe("idle");
+    } finally { await host.dispose(); }
+  });
+
+  it("keeps a group's shared device and another participant's call through one participant's turn end, and releases it with the last participant", async () => {
+    // 목표의 지휘관과 구성원(자식 세션)은 기기 하나를 함께 쓴다. 한 참가자의 턴 종료는 그 참가자의 호출만 끊고, 다른 참가자의
+    // 진행 중 호출과 기기 소유는 그대로 둔다. 기기는 마지막 참가자가 빠질 때 놓인다.
+    const f = setup();
+    let finishB!: () => void;
+    const gate = new Promise<void>((resolve) => { finishB = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    f.call.mockImplementationOnce(async () => { markStarted(); await gate; return { content: [{ type: "text", text: "<app_state>app state</app_state>" }] }; });
+    const ts = { createdAt: 0, updatedAt: 0 };
+    const root = { id: "op-root", theaterId: "t", type: "agent", pluginId: null, title: "Commander", payload: { computerUse: { enabled: true, language: "en" } } as Record<string, unknown>, childSessions: [{ id: "m-b", payload: {}, ts }], geometry: null, ts };
+    const get = (id: string) => id === root.id ? root : id === "m-b" ? { id, theaterId: "t", type: "agent", pluginId: null, title: "B", parentOperationId: root.id, payload: {} as Record<string, unknown>, geometry: null, ts } : null;
+    const useContext = createUseContext({ get, turnOpen: () => false });
+    // 허용을 통과한 호출은 그 컨텍스트의 허가를 만진다 — 두 호출이 모두 호스트에 닿았는지를 여기서 본다.
+    const touch = vi.fn();
+    const requests = { hold: vi.fn(async () => "stopped" as const), granted: () => false, touch };
+    const host = createComputerUseMcpHost({ service: f.service, operations: () => [root], resolveOperation: get, experimentEnabled: () => true, requests, useContext: useContext.resolve });
+    const connection = host.connect();
+    try {
+      const endpoint = (await connection.getEndpoint()).servers[0]!;
+      const call = async (label: string, name: string, args = {}) => {
+        const token = connection.issueSessionToken({ label, cwd: process.cwd() })[0]!.token;
+        const response = await fetch(endpoint.url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) });
+        return (await response.json()).result as { isError: boolean; content: { text: string }[] };
+      };
+      // 구성원 B 의 호출이 기기에서 도는 동안 지휘관 A 의 호출은 거부되지 않고 줄을 선다.
+      const b = call("chat:m-b", "computer_state", { app: "com.apple.TextEdit" });
+      await started;
+      const a = call("chat:op-root", "computer_state", { app: "com.apple.TextEdit" });
+      await vi.waitFor(() => expect(touch).toHaveBeenCalledTimes(2));
+      expect(touch).toHaveBeenLastCalledWith("op-root", "computer");
+      // A 의 턴이 끝난다 — A 에게만 취소가 돌아오고 B 의 호출과 기기는 그대로다.
+      connection.cancelSession("chat:op-root");
+      host.endParticipant("op-root");
+      expect(JSON.parse((await a).content[0]!.text)).toMatchObject({ error: "computer_use_call_cancelled" });
+      expect(f.stop).not.toHaveBeenCalled();
+      finishB();
+      const done = await b;
+      expect(done.isError).toBe(false);
+      expect(f.call).toHaveBeenCalledTimes(1);
+      expect(host.operationIdForOwner(f.service.activeOwner()!)).toBe("op-root");
+      expect(host.actorForOwner(f.service.activeOwner()!)).toBe("m-b");
+      // 마지막 참가자 B 가 빠지면 기기를 놓는다.
+      host.endParticipant("m-b");
+      await vi.waitFor(() => expect(f.stop).toHaveBeenCalledTimes(1));
+      expect(f.service.activeOwner()).toBeNull();
     } finally { await host.dispose(); }
   });
 

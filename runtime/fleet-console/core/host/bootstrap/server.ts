@@ -51,6 +51,7 @@ import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } fro
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
 import { createUseRequestBroker } from "../../../features/console-use/host/use-requests.js";
+import { createUseContext } from "../../../features/execution/host/use-context.js";
 import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { OperationNode } from "../../../features/execution/host/operations/operations-domain.js";
 import { createOperationStore, createOperationsRouter, createSanitizedOpDto } from "../../../features/execution/host/operations/operations-domain.js";
@@ -805,7 +806,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 플러그인이 등록한 서브에이전트 호출 판단(redirectAgentCalls). 플러그인 id마다 하나다.
   const agentCallRedirects = new Map<string, (operationId: string) => string | null>();
   const consoleControl = createConsoleControl({ pluginAvailable: (pluginId) => consoleAgentOwners.has(pluginId), launchKeys, directory: path.join(durablePaths.dir, "console-use"), operations: () => operations.list(), resolveOperation: operations.get, theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })) });
-  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string } | null = null;
+  /**
+   * 사용 컨텍스트 — 자식 세션은 루트의 브라우저·허용·기기·화면공유를 함께 쓴다. 세 사용 도구와 턴 종료 훅이 같은 객체를 포트로 받는다.
+   * 열린 턴은 Console 제어의 관측(활동 축)으로 읽는다: PTY·Chat 두 어댑터가 같은 축에 쓰는 유일한 자리이고, 입력을 기다리는 턴(awaiting)도
+   * 아직 끝나지 않은 턴이다. 관측을 모르면(unknown) 열린 턴으로 치지 않는다 — 허가는 더 일찍 걷히는 쪽으로 틀린다.
+   */
+  const useContext = createUseContext({
+    get: operations.get,
+    turnOpen: (operationId) => { const activity = consoleControl.observe(operationId)?.activity; return activity === "running" || activity === "awaiting"; },
+  });
+  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; operationId: string; actor: string } | null = null;
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
@@ -823,12 +833,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
-      if (!target || !operationId || !operations.get(operationId)) computerCaptureTarget = null;
+      // 공유 컨텍스트에서는 화면의 주인(operationId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다.
+      const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? operationId : null;
+      if (!target || !operationId || !actor || !operations.get(operationId)) computerCaptureTarget = null;
       else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
         && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
-        computerCaptureTarget = { ...computerCaptureTarget, title: target.title };
+        computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
       } else {
-        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, id: crypto.randomUUID() };
+        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, operationId, actor, id: crypto.randomUUID() };
       }
       broadcastComputerCapture();
       watchComputerCapture();
@@ -850,6 +862,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     requests: useRequests,
     operations: () => operations.list(),
     resolveOperation: operations.get,
+    useContext: useContext.resolve,
     experimentEnabled: () => readExperimentSettings(consoleSettingsStore).computerUse,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -895,6 +908,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     screenshots: browserScreenshots,
     operations: () => operations.list(),
     resolveOperation: operations.get,
+    useContext: useContext.resolve,
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
   const consoleUseActivity = new Map<string, number>();
@@ -943,6 +957,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     theaters: () => theaters.list().map((theater) => ({ id: theater.id, name: path.basename(theater.realpath) })),
     operations: () => operations.list(),
     resolveOperation: operations.get,
+    useContext: useContext.resolve,
     // `auto`는 브라우저가 푸는 값이라 호스트는 못박은 경우에만 답한다.
     language: () => { const value = consoleSettingsStore.load().general?.language; return value === "en" || value === "ko" ? value : null; },
   });
@@ -1541,7 +1556,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Operation 브라우저 API. 루프백과 원격 리스너 모두에서 열린다 — 원격 요청은 라우팅 전에 세션을 통과했고, 창을 든
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
-  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
+  routeRegistry.register("/api/v1/browser", createBrowserRouter({ browserService, browserMcp, operations, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders }));
   routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
@@ -2340,7 +2355,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const target = computerUse.status().enabled ? computerCaptureTarget : null;
     const unavailableOwner = computerUse.captureUnavailableOwner();
     return {
-      target: target ? { id: target.id, operationId: target.operationId, title: target.title } : null,
+      target: target ? { id: target.id, operationId: target.operationId, actor: target.actor, title: target.title } : null,
       unavailableOperationId: unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null,
     };
   }
@@ -2735,7 +2750,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           }
           return null;
         },
-        host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
+        host: { ...pluginHostCapabilities, computerUseMcp, browserMcp, useRequests, useContext, requestLifetime, lifecycle: { registerCleanup: (cleanup) => { executionCleanupCallbacks.add(cleanup); return () => executionCleanupCallbacks.delete(cleanup); } } },
         dataDir: durablePaths.dir,
         recordFailure,
         legacyDataDir: path.join(durablePaths.dir, "plugins", "terminal"),

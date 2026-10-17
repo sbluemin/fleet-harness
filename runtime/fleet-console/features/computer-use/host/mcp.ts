@@ -27,6 +27,21 @@ export interface ComputerUseMcpDeps {
    * 주어지면 허용받지 않은 Operation 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다.
    */
   readonly requests?: ComputerUseRequestPort;
+  /**
+   * 호출한 세션 → 사용 컨텍스트. 자식 세션은 루트(contextId)의 허용과 기기를 함께 쓴다. `shared` 는 자식 세션이 있는 묶음이라는
+   * 뜻이고, 그때만 기기 소유자를 루트 하나로 정규화해 참가자들이 직렬로 나눠 쓴다. 없으면 호출한 Operation 자신이다.
+   */
+  readonly useContext?: (operationId: string) => ComputerUseScope | null;
+}
+
+export interface ComputerUseScope {
+  readonly contextId: string;
+  readonly participantId: string;
+  readonly shared: boolean;
+}
+
+function scopeOf(deps: ComputerUseMcpDeps, operationId: string): ComputerUseScope {
+  return deps.useContext?.(operationId) ?? { contextId: operationId, participantId: operationId, shared: false };
 }
 
 /** Operation 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
@@ -36,6 +51,7 @@ const OPERATION_REQUEST_NOTE = "Permission: needs this Operation's Computer Use 
 export interface ComputerUseRequestPort {
   hold(input: {
     readonly operationId: string;
+    readonly participantId?: string;
     readonly capability: "computer";
     readonly tool: string;
     readonly signal?: AbortSignal;
@@ -125,7 +141,8 @@ function refuse(reason: ComputerUseRefusal, operationId: string | null, language
  */
 function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | undefined): { readonly reason: ComputerUseRefusal; readonly operationId: string | null; readonly language: "en" | "ko" } | null {
   if (!deps.operations) return null;
-  const id = operationIdFromSessionLabel(sessionLabel);
+  // 자식 세션의 허용은 루트의 것이다 — 판정은 루트 노드의 payload 와 루트 키의 허가로 한다.
+  const id = scopeOf(deps, operationIdFromSessionLabel(sessionLabel)).contextId;
   const fallback = deps.language?.() ?? "en";
   const operation = deps.resolveOperation?.(id) ?? deps.operations().find((op) => op.id === id);
   if (!operation) return { reason: "caller_unresolved", operationId: null, language: fallback };
@@ -153,6 +170,7 @@ async function holdComputerUse(deps: ComputerUseMcpDeps, sessionLabel: string, t
   if (!requests || !denial.operationId || denial.reason !== "operation_not_authorized") return refuse(denial.reason, denial.operationId, denial.language);
   const outcome = await requests.hold({
     operationId: denial.operationId,
+    participantId: scopeOf(deps, operationIdFromSessionLabel(sessionLabel)).participantId,
     capability: "computer",
     tool,
     signal,
@@ -192,9 +210,15 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
   const inFlight = new Map<string, Set<AbortController>>();
   const operationOwners = new Map<string, string>();
+  // 기기를 지금 쓰는(마지막으로 부른) 참가자 — 공유 소유자에서는 루트와 다르다. 캡처 스냅숏의 actor 가 읽는다.
+  const ownerActors = new Map<string, string>();
+  // 연결마다 공유 묶음을 가진다 — 턴 종료·허용 회수가 모든 연결의 묶음에 닿도록 호스트가 이 고리를 돈다.
+  const groupHooks = new Set<{ leave(contextId: string, participantId: string): boolean; revoke(contextId: string): void }>();
   let disposed = false;
   return {
     operationIdForOwner: (owner: string) => operationOwners.get(owner) ?? null,
+    /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Operation 자신이다. */
+    actorForOwner: (owner: string) => ownerActors.get(owner) ?? operationOwners.get(owner) ?? null,
     connect(): ComputerUseMcpConnection {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
       const prefix = randomUUID();
@@ -203,6 +227,76 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const controller = new AbortController();
       const registry = createMcpToolRegistry();
       const snapshotStore = createMcpToolSnapshotStore();
+      /**
+       * 공유 묶음 — 자식 세션이 있는 컨텍스트의 참가자들이 기기 하나를 나눠 쓴다. 소유자 라벨은 루트 하나(`${prefix}:${contextId}`)라
+       * 서비스의 단일 점유 규칙은 묶음 밖과의 경계로만 남는다. 묶음 안에서는:
+       * - 호출은 거부 대신 줄을 서 한 번에 하나씩 기기에 닿는다(`tail`).
+       * - 한 참가자의 취소(턴 종료·중단)는 그 참가자에게만 곧바로 「취소됨」을 돌려준다. 서비스에 넘기는 신호는 묶음의 수명뿐이라
+       *   기기를 놓지 않는다 — 네이티브 호출은 취소 신호를 받지 못하므로(브로커를 멈추는 것만이 취소다) 이미 보낸 조작은 끝까지
+       *   돌고 그 결과는 버려지며, 다음 호출은 그것이 끝난 뒤에야 시작한다. 동시에 두 조작이 기기에 닿는 일은 없다.
+       * - 기기는 마지막 참가자가 빠질 때(턴 종료·computer_end) 놓는다.
+       */
+      interface SharedGroup { readonly label: string; readonly lifetime: AbortController; readonly participants: Set<string>; readonly calls: Map<AbortController, string>; tail: Promise<unknown> }
+      const groups = new Map<string, SharedGroup>();
+      const releaseGroup = (contextId: string) => {
+        const group = groups.get(contextId);
+        if (!group) return;
+        groups.delete(contextId);
+        for (const call of group.calls.keys()) call.abort();
+        group.calls.clear();
+        group.participants.clear();
+        group.lifetime.abort();
+        deps.service.release(group.label);
+        owners.delete(group.label);
+        operationOwners.delete(group.label);
+        ownerActors.delete(group.label);
+      };
+      /** 한 참가자가 묶음에서 빠진다 — 그 참가자의 호출만 끊고, 남은 참가자가 없으면 기기를 놓는다. 묶음이 있었으면 true. */
+      const leaveGroup = (contextId: string, participantId: string): boolean => {
+        const group = groups.get(contextId);
+        if (!group) return false;
+        for (const [call, participant] of group.calls) if (participant === participantId) { call.abort(); group.calls.delete(call); }
+        group.participants.delete(participantId);
+        if (group.participants.size === 0) releaseGroup(contextId);
+        return true;
+      };
+      const groupHook = { leave: leaveGroup, revoke: releaseGroup };
+      groupHooks.add(groupHook);
+      const cancelled = () => ({ content: [{ type: "text", text: JSON.stringify({ error: "computer_use_call_cancelled", hint: "Your turn ended or was stopped, so this call was cancelled for you. The shared Computer Use session stays with the other participants. An action already sent to the app may still complete; read the window again before acting." }) }], isError: true });
+      const runShared = async (spec: ReturnType<ComputerUseService["specs"]>[number], args: unknown, context: Parameters<ReturnType<ComputerUseService["specs"]>[number]["execute"]>[1], scope: ComputerUseScope) => {
+        let group = groups.get(scope.contextId);
+        if (!group) {
+          group = { label: owner(scope.contextId), lifetime: new AbortController(), participants: new Set(), calls: new Map(), tail: Promise.resolve() };
+          groups.set(scope.contextId, group);
+        }
+        const shared = group;
+        owners.add(shared.label);
+        operationOwners.set(shared.label, scope.contextId);
+        if (spec.id === "computer_end") {
+          // 부른 참가자의 참여만 끝낸다 — 기기는 마지막 참가자가 빠질 때 놓는다.
+          leaveGroup(scope.contextId, scope.participantId);
+          const deviceReleased = !groups.has(scope.contextId);
+          return { content: [{ type: "text", text: JSON.stringify({ ended: true, scope: "participant", deviceReleased, reconnect: "on_next_use", hint: deviceReleased ? "You were the last participant, so the device was released." : "Only your participation ended. Other participants of this conversation keep the shared Computer Use session." }) }], isError: false };
+        }
+        shared.participants.add(scope.participantId);
+        const call = new AbortController();
+        shared.calls.set(call, scope.participantId);
+        const mine = AbortSignal.any([call.signal, controller.signal, ...(context.signal ? [context.signal] : [])]);
+        const run = shared.tail.then(() => {
+          if (mine.aborted || shared.lifetime.signal.aborted) return cancelled();
+          ownerActors.set(shared.label, scope.participantId);
+          return spec.execute(args, { ...context, sessionLabel: shared.label, signal: AbortSignal.any([shared.lifetime.signal, controller.signal]) });
+        });
+        shared.tail = run.then(() => undefined, () => undefined);
+        try {
+          return await new Promise<Awaited<typeof run>>((resolve, reject) => {
+            const onAbort = () => resolve(cancelled());
+            if (mine.aborted) { onAbort(); return; }
+            mine.addEventListener("abort", onAbort, { once: true });
+            run.then((value) => { mine.removeEventListener("abort", onAbort); resolve(mine.aborted ? cancelled() : value); }, (error) => { mine.removeEventListener("abort", onAbort); reject(error); });
+          });
+        } finally { shared.calls.delete(call); }
+      };
       for (const spec of deps.service.specs()) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
         registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OPERATION_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
@@ -213,7 +307,9 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
           if (denied) return denied;
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
-          deps.requests?.touch(operationIdFromSessionLabel(context.sessionLabel), "computer");
+          const scope = scopeOf(deps, operationIdFromSessionLabel(context.sessionLabel));
+          deps.requests?.touch(scope.contextId, "computer");
+          if (scope.shared) return runShared(spec, parsed.data, context, scope);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
           const operationId = operationIdFromSessionLabel(context.sessionLabel);
@@ -231,8 +327,19 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
       let closed = false;
       let closing: Promise<void> | null = null;
-      const release = (label: string) => { const id = owner(label); deps.service.release(id); owners.delete(id); operationOwners.delete(id); };
-      const cleanup = () => { for (const id of owners) { deps.service.release(id); operationOwners.delete(id); } owners.clear(); manager.cleanup(); };
+      const release = (label: string) => {
+        const id = owner(label);
+        // 터미널(PTY) 루트의 라벨은 루트 id 그대로라 공유 묶음의 소유자 라벨과 같아진다 — 그 기기는 묶음이 마지막 참가자와 함께 놓는다.
+        if (![...groups.values()].some((group) => group.label === id)) { deps.service.release(id); owners.delete(id); operationOwners.delete(id); ownerActors.delete(id); }
+        // 공유 묶음의 참가자라면 그 참가자만 묶음에서 뺀다 — 같은 기기를 쓰는 다른 참가자의 호출은 그대로 간다.
+        const scope = scopeOf(deps, operationIdFromSessionLabel(label));
+        leaveGroup(scope.contextId, scope.participantId);
+      };
+      const cleanup = () => {
+        for (const contextId of [...groups.keys()]) releaseGroup(contextId);
+        for (const id of owners) { deps.service.release(id); operationOwners.delete(id); ownerActors.delete(id); }
+        owners.clear(); manager.cleanup();
+      };
       const connection: ComputerUseMcpConnection = {
         getEndpoint: async () => { if (closed) throw new Error("Computer Use MCP disposed"); return manager.getEndpoint(); },
         issueSessionToken: (request) => {
@@ -252,6 +359,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           closed = true;
           controller.abort();
           cleanup();
+          groupHooks.delete(groupHook);
           connections.delete(connection);
           closing = server.stop();
           return closing;
@@ -323,6 +431,19 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
      * 통과해 대상을 풀고 있는 호출이나 진행 중인 조작이 멈추지 않는다.
      */
     revokeOperation(operationId: string): void {
+      // 자식 세션의 허용은 루트의 것이라 거두는 것도 루트 전체다(묶음의 모든 참가자 호출과 기기).
+      const contextId = scopeOf(deps, operationId).contextId;
+      for (const call of inFlight.get(contextId) ?? []) call.abort();
+      for (const hook of groupHooks) hook.revoke(contextId);
+      deps.service.releaseWhere((label) => label.endsWith(`:${contextId}`) || label.endsWith(`:chat:${contextId}`));
+    },
+    /**
+     * 한 참가자의 턴이 끝났다. 공유 묶음이면 그 참가자의 호출만 끊고 묶음에서 빼며, 기기는 마지막 참가자가 빠질 때 놓는다.
+     * 공유 묶음이 아니면 예전처럼 그 Operation 의 허용을 거둘 때와 같다(진행 중 호출을 끊고 기기를 놓는다).
+     */
+    endParticipant(operationId: string): void {
+      const scope = scopeOf(deps, operationId);
+      if (scope.shared) { for (const hook of groupHooks) hook.leave(scope.contextId, scope.participantId); return; }
       for (const call of inFlight.get(operationId) ?? []) call.abort();
       deps.service.releaseWhere((label) => label.endsWith(`:${operationId}`) || label.endsWith(`:chat:${operationId}`));
     },
