@@ -212,7 +212,9 @@ function occlusionProbe(targetPid) {
 }
 
 function listeners(port) {
-  const result = spawnSync('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpcn'], {
+  // -w drops lsof's warnings about unrelated mounts (a stale smbfs volume prints one on every call);
+  // a real failure still exits non-zero with output or an error message, and is still refused below.
+  const result = spawnSync('/usr/sbin/lsof', ['-w', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-Fpcn'], {
     encoding: 'utf8', timeout: 10_000, maxBuffer: 1024 * 1024,
   });
   if (result.error) throw result.error;
