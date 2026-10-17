@@ -24,7 +24,7 @@ Without Screen Recording, this lane observes whether a native Browser view moved
    pnpm desktop --remote-debugging-port=<cdp-port> --inspect=127.0.0.1:<inspector-port>
    ```
 
-   The inspector grants code execution in the main process. Bind it to `127.0.0.1` only, with no forwarding, tunnel, or exposure, and never use `--inspect-brk`. After start, confirm that the address and PID from `lsof -nP -iTCP:<inspector-port> -sTCP:LISTEN` are the owned Electron main before connecting. This endpoint is separate from the renderer CDP port.
+   That line is the command after the launch gate's `--`. Do not pass `--inspect` to `launch-owned-desktop.mjs`. The inspector grants code execution in the main process. Bind it to `127.0.0.1` only, with no forwarding, tunnel, or exposure, and never use `--inspect-brk`. After start, confirm that the address and PID from `lsof -nP -iTCP:<inspector-port> -sTCP:LISTEN` are the owned Electron main before connecting. This endpoint is separate from the renderer CDP port.
 2. Read the view composition with the read-only client, which refuses a non-loopback endpoint and writes its output only on the client side:
 
    ```bash
