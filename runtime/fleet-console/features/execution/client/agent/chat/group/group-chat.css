@@ -123,6 +123,8 @@
   max-width: 92%;
 }
 .group-chat-agent.is-continued { margin-top: calc(var(--space-2) * -1); }
+/* 상대가 하나뿐인 대화는 표식 칸이 없다 — 말풍선이 그 폭과 틈만큼 왼쪽으로 선다. */
+.group-chat-agent.is-solo { grid-template-columns: minmax(0, 1fr); }
 /* 표식은 묶음의 마지막 말풍선 옆(묶음 왼쪽 아래)에 서고, 이름은 첫 말풍선 위에 선다 — 표식 칸은 묶음 내내 같은 폭을 비워 둔다. */
 .group-chat-agent-mark { display: flex; align-self: end; padding-bottom: 2px; }
 .group-chat-agent-box { display: flex; flex-direction: column; gap: 3px; min-width: 0; }

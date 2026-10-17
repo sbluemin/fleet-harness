@@ -62,8 +62,9 @@ export interface GroupConversationProps {
   /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
   /**
-   * 턴 접기(「턴 접기」 스위치) — 한 턴에서 이어지는 짧은 진행 말을 진행 칩 하나로 접고, 긴 말풍선에 높이 상한을 두고,
-   * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
+   * 턴 접기(「턴 접기」 스위치) — 구성원 턴에서 이어지는 짧은 진행 말을 진행 칩 하나로 접고, 구성원 말풍선에 높이 상한을 두고,
+   * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 지휘관 말은 접지 않고 상한도 두지 않는다.
+   * 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
    */
   readonly fold?: boolean;
   /** 대화 칸 위에 떠 있는 것(공유 화면 미리보기). 이 칸(`.group-chat`)이 배치의 부모다. */
@@ -162,6 +163,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   // 시각 줄은 같은 발화자의 말도 두 묶음으로 가른다.
   const breaks = React.useMemo(() => timeBreaks(anchors), [anchors]);
   const runTails = React.useMemo(() => bubbleRunTails(flow, breaks), [flow, breaks]);
+  // 상대가 하나뿐이면(사령관 채팅, 구성원 없는 지휘관) 말풍선 옆 아바타를 두지 않는다. 구성원이 명부에 서면 다시 붙는다.
+  const showMark = showsSpeakerMarks(snapshot.participants);
   const now = Date.now();
 
   const unavailableNames = snapshot.unavailableOperationIds
@@ -237,6 +240,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
                   boardActionLabel={boardActionLabel}
                   capped={fold}
                   report={item.report}
+                  showMark={showMark}
                 />
               </React.Fragment>
             );
@@ -338,26 +342,28 @@ type TimelineItem =
 const NOTE_MAX_CHARS = 200;
 
 /**
- * 턴 접기 — 1:1 채팅·모바일 원장의 「최종 답 하나 + 작업 접힘」 문법을 그룹 대화에 옮긴다.
+ * 턴 접기 — 1:1 채팅·모바일 원장의 「최종 답 하나 + 작업 접힘」 문법을 구성원 턴에 옮긴다. 지휘관 말은 대상이 아니다.
  *
- * - 한 발화자의 한 턴(`turn`)에서 뒤에 말이 더 이어지는 200자 미만의 말은 칩 하나로 모인다. 칩은 그 턴의 가장 최근 접힌 말(흐르는
+ * - 구성원 한 명의 한 턴(`turn`)에서 뒤에 말이 더 이어지는 200자 미만의 말은 칩 하나로 모인다. 칩은 그 턴의 가장 최근 접힌 말(흐르는
  *   말이 있으면 그 말) 자리에 서서 진행을 따라 내려온다 — 오래 도는 턴에서도 지금 진행이 대화 바닥 근처에 보인다. 그 사이에 완성된
  *   200자 이상의 말풍선은 제자리에 남아 칩 위로 쌓인다. 턴이 끝나면 칩은 마지막 접힌 말 자리, 곧 그 턴의 답 바로 위에 남는다
  *   (「접힌 진행 → 최종 답」). 턴이 아직 열려 있으면(원장이 연 턴이 이 턴이고 그 참여자가 살아 있다) 마지막 말도
  *   아직 진행 말이다 — 턴이 끝나야 마지막 말이 그 턴의 답으로 말풍선이 된다. 열린 턴은 원장의 좌표로 판정하므로, 같은 발화자가
  *   새 턴을 열고 아직 말이 없는 동안에도 지난 턴의 답은 말풍선으로 남는다.
- * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 말은 길이와 무관하게 칩의 최신 한 줄로만 보인다 —
+ * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 구성원 말은 길이와 무관하게 칩의 최신 한 줄로만 보인다 —
  *   완성되어 200자 이상이면 그때 그 자리에 말풍선으로 선다. 흐르는 동안 칩과 말풍선을 오가지 않는다.
+ *   흐르는 중인 지휘관 말은 칩이 아니라 말풍선으로 선다(접기를 껐을 때와 같다).
  * - 구성원이 지휘관에게 보낸 보고 줄은 같은 턴에 말풍선이 있으면 빠지고, 그 턴의 마지막 말풍선 머리에 꼬리표로 붙는다(누르면
  *   보고 전문). 그 턴이 아직 열려 있거나 흐르는 말이 있으면 말풍선이 정해지지 않았으므로 줄을 세우지 않는다 — 턴이 끝나도 말풍선이
  *   없으면 그때 줄로 선다. 받는 이가 아직 풀리지 않은 구성원의 전언(도구 결과 전)도 열린 턴 동안은 같은 이유로 기다린다.
  *   전달에 실패한 줄은 늘 남는다.
- * 턴 좌표가 없는 말(사람·사령관·플러그인 대화의 말)과 그 밖의 줄은 그대로다.
+ * 턴 좌표가 없는 말(사람·사령관·플러그인 대화의 말), 지휘관의 말, 그 밖의 줄은 그대로다. 지휘관은 턴이 있어도 칩으로 접지 않는다.
  */
 function foldTimeline(entries: readonly AgentConversationEntry[], participants: readonly ConversationParticipant[], rootOperationId: string | null): readonly TimelineItem[] {
   const turns = new Map<string, MessageEntry[]>();
   for (const entry of entries) {
-    if (entry.kind !== "message" || entry.speaker.kind === "human" || !entry.turn || !bubbleShown(entry)) continue;
+    // 사람·지휘관은 접지 않는다. 지휘관은 턴이 있어도, 흐르는 중에도 말풍선으로 남긴다.
+    if (entry.kind !== "message" || entry.speaker.kind === "human" || entry.speaker.kind === "commander" || !entry.turn || !bubbleShown(entry)) continue;
     const list = turns.get(entry.turn);
     if (list) list.push(entry); else turns.set(entry.turn, [entry]);
   }
@@ -561,7 +567,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -575,9 +581,11 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly boardActionLabel: string | undefined;
   readonly capped?: boolean;
   readonly report?: DelegationEntry | undefined;
+  /** 말풍선 옆 아바타. 상대가 하나뿐인 대화에서는 끄고, 그 칸은 말풍선이 쓴다. */
+  readonly showMark?: boolean;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -588,7 +596,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   }
 }, (before, after) => {
   if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel) return false;
-  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report) return false;
+  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
     const commander = (participants: readonly ConversationParticipant[]) => participants.find((participant) => participant.speaker.kind === "commander")?.speaker;
@@ -616,7 +624,21 @@ function NoteLine({ entry, language }: {
   );
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report }: {
+/**
+ * 말풍선 옆 아바타를 둘 대화인가. 스냅숏 참여자는 지금 명부다 — 루트(지휘관)·구성원·아직 기동하지 않은 명부.
+ * 떠난 구성원은 여기에 없다. 사람 말고 상대가 둘 이상이면 아바타가 선다. 하나뿐이면(사령관 채팅, 구성원 없는 지휘관) 끈다.
+ */
+function showsSpeakerMarks(participants: readonly ConversationParticipant[]): boolean {
+  let agents = 0;
+  for (const participant of participants) {
+    if (participant.speaker.kind === "human") continue;
+    agents += 1;
+    if (agents > 1) return true;
+  }
+  return false;
+}
+
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report, showMark = true }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -624,13 +646,16 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
-  /** 턴 접기 — 지휘관·구성원 말풍선에 높이 상한을 두고 넘치면 「전체 보기」로 펼친다. */
+  /** 턴 접기 — 구성원 말풍선에 높이 상한을 두고 넘치면 「전체 보기」로 펼친다. 지휘관 말에는 걸지 않는다. */
   readonly capped?: boolean;
   /** 턴 접기 — 이 말풍선으로 옮긴 보고 줄. 머리의 꼬리표가 되고 누르면 보고 전문이 펼쳐진다. */
   readonly report?: DelegationEntry | undefined;
+  /** 말풍선 옆 아바타. 상대가 하나뿐이면 끄고 이름만 남긴다. 원장을 여는 이름 단추는 그대로다. */
+  readonly showMark?: boolean;
 }) {
   const t = getGroupT(language);
-  const clip = useBubbleClip(capped && entry.speaker.kind !== "human");
+  // 높이 상한은 구성원 말풍선만. 지휘관 말은 접기를 켜도 상한 없이 선다.
+  const clip = useBubbleClip(capped && entry.speaker.kind !== "human" && entry.speaker.kind !== "commander");
   const [reportOpen, setReportOpen] = React.useState(false);
   const reportId = React.useId();
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
@@ -680,10 +705,12 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     </button>
   ) : null;
   return (
-    <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id}>
-      <span className="group-chat-agent-mark">
-        {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
-      </span>
+    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
+      {showMark ? (
+        <span className="group-chat-agent-mark">
+          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+        </span>
+      ) : null}
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (
           <span className="group-chat-agent-name group-chat-agent-via">
@@ -717,7 +744,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
 /**
  * 말풍선 높이 상한(시안 B, 상한 값은 CSS 의 본문 칸 max-height) — 글자 수가 아니라 그려진 높이로 넘침을 잰다(표·코드는 짧은 글로도 길다).
  * 늦게 그려지는 마크다운(표·그림)으로 자라는 높이도 따라 잰다. 넘치는 본문 칸은 그 자리에서 스크롤되고(마우스 환경), 가려진 위·아래 가장자리만 흐린다.
- * 턴 접기에서 흐르는 말은 말풍선이 아니라 「쓰는 중」 칩으로 서므로(foldTimeline) 상한이 걸린 말풍선은 이미 완성된 말이다.
+ * 턴 접기에서 흐르는 구성원 말은 말풍선이 아니라 「쓰는 중」 칩으로 서므로(foldTimeline) 상한이 걸린 말풍선은 이미 완성된 구성원 말이다.
  * 펼친 말풍선은 이 화면을 보는 동안 펼친 채다(같은 말은 완성 때도 같은 key 라 펼침이 이어진다).
  */
 function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
