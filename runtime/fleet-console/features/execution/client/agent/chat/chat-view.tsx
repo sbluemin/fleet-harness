@@ -1015,7 +1015,7 @@ export function AgentChatView({
  * 누를 수 있게 그리면 "여기서 바꿀 수 있다"는 거짓 약속이 된다. 컴포저의 좌표는 같은 글자를
  * `SessionCoordinateMenu`로 세워 바꾸는 문을 겸한다.
  */
-function SessionCoordinate({
+export function SessionCoordinate({
   coordinates,
   t,
 }: {
@@ -1104,7 +1104,7 @@ function MemberChatFooter({
  * 함께 지는 하나의 문이라 입력 틀이 없어도 남는다. 같은 폭으로 접힌 단은 건너뛰고, 전부 접히면
  * 물러나 선다(컴포저와 같은 계약).
  */
-function MemberWidthButton({
+export function MemberWidthButton({
   hostRef,
   language,
 }: {

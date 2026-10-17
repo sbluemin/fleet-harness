@@ -21,7 +21,7 @@ import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSett
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
 import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationRuntimeActivity } from "../../../../features/execution/client/operation-activity.js";
-import { AgentChatTranscript, AgentConversation, AgentDecisionCard } from "../../../../features/execution/client/agent/index.js";
+import { AgentChatTranscript, AgentConversation, AgentDecisionCard, AgentLedger } from "../../../../features/execution/client/agent/index.js";
 import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
 import { clearOperationStatusDetail, setOperationStatusDetail } from "../../../../features/execution/client/operation-marks.js";
 import { subscribeConsoleChannel, subscribeConsoleReconnect } from "./operations-sse.js";
@@ -318,7 +318,7 @@ export function createHostCapabilities(
       subscribe: (channel, onEvent) => subscribeConsoleChannel(channel, onEvent),
       onReconnect: (listener) => subscribeConsoleReconnect(listener),
     },
-    chat: { Transcript: AgentChatTranscript, Conversation: AgentConversation, DecisionCard: AgentDecisionCard },
+    chat: { Transcript: AgentChatTranscript, Conversation: AgentConversation, DecisionCard: AgentDecisionCard, Ledger: AgentLedger },
     theaterInbox: theaterInboxCapability,
     // 대화 중심 화면 — 켜짐 여부와 가운데 칸의 플러그인 대화. 꺼져 있으면 open 은 아무것도 세우지 않는다.
     conversation: {

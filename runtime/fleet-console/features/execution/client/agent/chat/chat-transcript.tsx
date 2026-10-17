@@ -62,19 +62,8 @@ function turnStartedAt(turn: AgentChatTurn): number | undefined {
   return turn.dispatch?.at ?? turn.startedAt;
 }
 
-export function AgentChatTranscript({ entries, language, mobile = false, reveal = null, references }: AgentChatTranscriptProps) {
-  const segments = React.useMemo(() => segmentTranscript(entries), [entries]);
-  const [openedTools, setOpenedTools] = React.useState<ReadonlySet<string>>(() => new Set());
-  const toggleTool = React.useCallback((id: string) => setOpenedTools((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  }), []);
-  const openTool = React.useCallback((id: string) => setOpenedTools((current) => new Set(current).add(id)), []);
-  const timeFormat = React.useMemo(() => new Intl.DateTimeFormat(language === "ko" ? "ko" : "en", { hour: "2-digit", minute: "2-digit" }), [language]);
-  const rootRef = React.useRef<HTMLDivElement | null>(null);
-  const lastSegment = segments.length - 1;
-
+/** 그 시각에 돌던 턴으로 데려가 잠깐 표시한다 — 기록 면과 원장 면이 같은 규칙을 쓴다. 표시는 그 턴의 줄 하나에만 선다. */
+export function useTranscriptReveal(rootRef: React.RefObject<HTMLElement | null>, reveal: AgentChatTranscriptProps["reveal"], onReveal?: () => void): void {
   React.useEffect(() => {
     if (!reveal) return;
     const nodes = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("[data-transcript-at]") ?? []);
@@ -85,6 +74,7 @@ export function AgentChatTranscript({ entries, language, mobile = false, reveal 
     }
     target ??= nodes[0];
     if (!target) return;
+    onReveal?.();
     target.scrollIntoView({ block: "center", behavior: "smooth" });
     target.classList.remove("is-revealed");
     void target.offsetWidth;
@@ -92,44 +82,70 @@ export function AgentChatTranscript({ entries, language, mobile = false, reveal 
     const node = target;
     const timer = window.setTimeout(() => node.classList.remove("is-revealed"), 1_600);
     return () => window.clearTimeout(timer);
-  }, [reveal]);
+  }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(reveal)에만 움직인다.
+}
 
+/**
+ * 기록의 줄들 — 구분선과 턴. 담는 쪽의 흐름에 그대로 선다(기록 면은 자기 상자 안에, 원장 면은 로그 컬럼 안에). 구분선은 턴 사이를
+ * 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다(Operation 채팅의 「이전 대화」 띠와 같은 자리).
+ */
+export function TranscriptLines({ entries, language }: { readonly entries: AgentChatTranscriptProps["entries"]; readonly language: AgentChatTranscriptProps["language"] }) {
+  const segments = React.useMemo(() => segmentTranscript(entries), [entries]);
+  const [openedTools, setOpenedTools] = React.useState<ReadonlySet<string>>(() => new Set());
+  const toggleTool = React.useCallback((id: string) => setOpenedTools((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  }), []);
+  const openTool = React.useCallback((id: string) => setOpenedTools((current) => new Set(current).add(id)), []);
+  const timeFormat = React.useMemo(() => new Intl.DateTimeFormat(language === "ko" ? "ko" : "en", { hour: "2-digit", minute: "2-digit" }), [language]);
+  const lastSegment = segments.length - 1;
+  return (
+    <>
+      {segments.map((segment, segmentIndex) => {
+        if (segment.kind === "note") {
+          return (
+            <div key={segment.key} className={`agent-chat-sys agent-chat-transcript-note${segment.tone === "warn" ? " agent-chat-sys--warn" : ""}`}>
+              {segment.at !== undefined ? `${timeFormat.format(new Date(segment.at))} · ${segment.text}` : segment.text}
+            </div>
+          );
+        }
+        let lastAt: number | undefined;
+        return segment.turns.map((turn, index) => {
+          lastAt = turnStartedAt(turn) ?? lastAt;
+          const live = segmentIndex === lastSegment && index === segment.turns.length - 1;
+          return (
+            <div key={`${segment.key}:${index}`} className="agent-chat-transcript-turn" {...(lastAt !== undefined ? { "data-transcript-at": String(lastAt) } : {})}>
+              <ChatTurn
+                operationId="transcript"
+                turn={turn}
+                nextContextBefore={undefined}
+                language={language}
+                timeFormat={timeFormat}
+                streaming={live && turn.state === "working"}
+                jobsByToolUse={NO_JOBS}
+                onOpenJob={noop}
+                onAnswer={noAnswer}
+                openedTools={openedTools}
+                onToggleTool={toggleTool}
+                onOpenTool={openTool}
+              />
+            </div>
+          );
+        });
+      })}
+    </>
+  );
+}
+
+export function AgentChatTranscript({ entries, language, mobile = false, reveal = null, references }: AgentChatTranscriptProps) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  useTranscriptReveal(rootRef, reveal);
   return (
     <MobileSurfaceProvider mobile={mobile}>
       <ChatReferenceContext.Provider value={references ?? null}>
       <div ref={rootRef} className="agent-chat agent-chat-transcript" {...(mobile ? { "data-mobile-surface": "" } : {})}>
-        {segments.map((segment, segmentIndex) => {
-          if (segment.kind === "note") {
-            return (
-              <div key={segment.key} className={`agent-chat-sys${segment.tone === "warn" ? " agent-chat-sys--warn" : ""}`}>
-                {segment.at !== undefined ? `${timeFormat.format(new Date(segment.at))} · ${segment.text}` : segment.text}
-              </div>
-            );
-          }
-          let lastAt: number | undefined;
-          return segment.turns.map((turn, index) => {
-            lastAt = turnStartedAt(turn) ?? lastAt;
-            const live = segmentIndex === lastSegment && index === segment.turns.length - 1;
-            return (
-              <div key={`${segment.key}:${index}`} className="agent-chat-transcript-turn" {...(lastAt !== undefined ? { "data-transcript-at": String(lastAt) } : {})}>
-                <ChatTurn
-                  operationId="transcript"
-                  turn={turn}
-                  nextContextBefore={undefined}
-                  language={language}
-                  timeFormat={timeFormat}
-                  streaming={live && turn.state === "working"}
-                  jobsByToolUse={NO_JOBS}
-                  onOpenJob={noop}
-                  onAnswer={noAnswer}
-                  openedTools={openedTools}
-                  onToggleTool={toggleTool}
-                  onOpenTool={openTool}
-                />
-              </div>
-            );
-          });
-        })}
+        <TranscriptLines entries={entries} language={language} />
       </div>
       </ChatReferenceContext.Provider>
     </MobileSurfaceProvider>

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { uploadComposerAttachment, discardComposerAttachment } from "@fleet-console/sdk/composer";
 import { createConversationStream } from "@fleet-console/sdk/conversation";
 
-import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentChatTranscriptProps, AgentConversationProps, AgentDecisionCardProps, AgentLedgerProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
@@ -328,6 +328,11 @@ export async function loadTranscript(theaterId: string, options: { readonly olde
 /** 호스트의 채팅 턴 렌더러 — Operation 채팅과 같은 컴포넌트다. 설치 전이면 null. */
 export function commodoreTranscriptRenderer(): ComponentType<AgentChatTranscriptProps> | null {
   return installed?.chat.Transcript ?? null;
+}
+
+/** 사령관 원장 — 그룹 대화의 지휘관 원장과 같은 틀·본문·바닥 줄(호스트 `ctx.chat.Ledger`). 설치 전이면 null. */
+export function commodoreLedgerRenderer(): ComponentType<AgentLedgerProps> | null {
+  return installed?.chat.Ledger ?? null;
 }
 
 /** 대화 중심 화면의 대화 렌더러 — Operation 대화와 같은 말풍선 화면(호스트 `ctx.chat.Conversation`). */

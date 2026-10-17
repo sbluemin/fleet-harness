@@ -99,7 +99,7 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         break;
       // 사람이 답했다 — 사람의 말처럼 선다(턴 중이면 그 턴 안).
       case "ask-answered": {
-        const text = answeredText(t, entry);
+        const text = answeredText(entry);
         if (turnAt !== null) push({ kind: "turn-inject", text, at: entry.at }, entry.at);
         else {
           push({ kind: "dispatch", text, at: entry.at }, entry.at);
@@ -411,8 +411,13 @@ function askMarkdown(t: T, entry: AskEntry, asks: readonly CommodoreAsk[] | unde
   return [head, `> ${entry.reason.replaceAll("\n", "\n> ")}`, ...lines].join("\n\n");
 }
 
-function answeredText(t: T, entry: AnsweredEntry): string {
-  return [t("objectives.ask.answered"), ...entry.answers.map((answer) => `${answer.question}\n→ ${answerWords(answer)}`)].join("\n");
+/**
+ * 사람의 답 — 질문은 사령관 쪽 줄(물음)에 이미 서 있으므로 사람의 말풍선에는 고른 답과 쓴 말만 둔다. 지휘관 원장이 사람의 말과
+ * 지휘관의 말을 양쪽으로 가르는 것과 같다. 질문이 여럿이면 물음의 번호를 그대로 붙인다.
+ */
+function answeredText(entry: AnsweredEntry): string {
+  const many = entry.answers.length > 1;
+  return entry.answers.map((answer, index) => `${many ? `${index + 1}. ` : ""}${answerWords(answer) || "—"}`).join("\n");
 }
 
 export function errorWord(t: T, code: string): string {
