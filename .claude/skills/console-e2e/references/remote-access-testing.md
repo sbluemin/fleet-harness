@@ -246,7 +246,7 @@ Away on Desktop: `origin` is `http://127.0.0.1:<neighbor port>`, `home` is the h
 
 Return by the same menu. Activate the radio whose detail line is `127.0.0.1:<home port>`. Its name is "Managed console" / "관리형 콘솔". After it, `origin` is the home origin, `dot` is `null`, `chip` has no `is-away`, and `tip` is `Local`.
 
-Stop the neighbor with the same wrapper flags, and only when `$SLOT/console.lock` still names the pid this run recorded. Prove that pid is this run's `cli.mjs serve` the way [Restart after a forced kill](setup.md#restart-after-a-forced-kill) does, without printing the command line. Then:
+Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
@@ -256,7 +256,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
 
 Remove `$SLOT` only when this run created it and the lock is gone. If the directory existed before the run, delete only what this run added and say what you left. Leaving another session's slot, or a live lock, in place is the stop condition. The home Console stops through its own run directory, with no `--canonical-console-dir`.
 
-The browser half of this section was run against an isolated listener. The menu values above (neighbor `is-away`, `data-tip` the host name, home `Local` with no dot) are the Desktop measurement's. This revision's `--canonical-console-dir` was checked by `GET /api/v1/local-consoles` (the slot port listed, the hidden run ports absent) and by `cli.mjs stop` of that slot. Desktop was not launched again for this revision.
+The browser half of this section was run against an isolated listener. The menu values above (neighbor `is-away`, `data-tip` the host name, home `Local` with no dot) are the Desktop measurement's. `--canonical-console-dir` listing and its own `stop` were checked on a worktree slot. The main-checkout refusal and a `stop` with no pid record were checked with `--check` and did not start a Console. Desktop was not launched for those checks.
 
 ## Administration stays on loopback
 

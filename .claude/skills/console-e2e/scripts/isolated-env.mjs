@@ -8,9 +8,10 @@
  * (<checkout>/.fleet/console). listLocalConsoles reads that lock and no other isolated data dir
  * (core/host/bootstrap/local-consoles.ts, canonicalLockFiles). Omit it for the default
  * <run-dir>/console, which the scan does not list. --set still cannot override the variable.
- * A live lock there is refused except for `cli.mjs stop` with the same flags, and that stop
- * is only for the pid this run recorded. A dead lock is refused until that stop. An
- * unreadable lock is always refused. Do not delete the lock by hand.
+ * The main checkout is refused, by the same mainCheckoutOf test as desktop-preflight.mjs.
+ * cli.mjs serve writes <run-dir>/canonical-console.pid. cli.mjs stop is allowed only when the
+ * lock pid equals that record; no record, or a different pid, is refused. Any other command
+ * against a live or dead lock is allowed only for that same pid. Do not delete the lock by hand.
  *
  * The child gets a fresh environment, not the caller's: HOME, TMPDIR, FLEET_DATA_DIR, FLEET_CONSOLE_DATA_DIR,
  * FLEET_DESKTOP_DATA_DIR and CLAUDE_CONFIG_DIR point under <run-dir> (home, tmp, root, console, desktop, claude),
@@ -43,6 +44,7 @@ import { createHash } from 'node:crypto';
 import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { constants, userInfo } from 'node:os';
 import path from 'node:path';
+import { mainCheckoutOf } from './stop-owned-desktop.mjs';
 
 // State and credential stores only: executables legitimately live under ~/.local or a version manager's directory.
 const PROTECTED_HOME_ENTRIES = [
@@ -106,6 +108,15 @@ function callerHash() {
 }
 
 /** Lock state from its port and pid only (references/setup.md#read-the-lock-without-the-token) and a signal-0 probe. */
+function readRecordedSlotPid(runDir) {
+  try {
+    const pid = Number(readFileSync(path.join(runDir, 'canonical-console.pid'), 'utf8').trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 function lockState(lockPath) {
   if (!existsSync(lockPath)) return { state: 'none' };
   let pid;
@@ -120,7 +131,7 @@ function lockState(lockPath) {
     process.kill(pid, 0);
     return { state: 'live', pid };
   } catch (error) {
-    return error.code === 'ESRCH' ? { state: 'dead' } : { state: 'live', pid };
+    return error.code === 'ESRCH' ? { state: 'dead', pid } : { state: 'live', pid };
   }
 }
 
@@ -183,11 +194,27 @@ function main() {
         || !existsSync(path.join(checkout, 'runtime', 'fleet-console', 'package.json'))) {
       fail('--canonical-console-dir must be <checkout>/.fleet/console, the local slot listLocalConsoles reads for that checkout (references/remote-access-testing.md#desktop-shell)');
     }
+    let checkoutReal;
+    try { checkoutReal = realpathSync(checkout); } catch { fail('--canonical-console-dir checkout is not readable'); }
+    let mainCheckout = null;
+    try { mainCheckout = mainCheckoutOf(checkoutReal); } catch { fail('--canonical-console-dir: cannot resolve the main checkout; refusing'); }
+    if (mainCheckout === checkoutReal) fail('--canonical-console-dir is the main checkout; that slot belongs to the user (references/remote-access-testing.md#desktop-shell)');
     const slot = lockState(path.join(consoleDataDir, 'console.lock'));
-    const stopping = command.some((arg, index) => path.basename(arg) === 'cli.mjs' && command[index + 1] === 'stop');
+    const cliArg = (name) => command.some((arg, index) => path.basename(arg) === 'cli.mjs' && command[index + 1] === name);
+    const startingServe = cliArg('serve');
+    const stopping = cliArg('stop');
+    const recorded = readRecordedSlotPid(runDir);
     if (slot.state === 'unreadable') fail('--canonical-console-dir lock is unreadable; leave it');
-    if (slot.state === 'live' && !stopping) fail(`--canonical-console-dir has a live Console (pid ${slot.pid}); do not stop a Console this run did not start`);
-    if (slot.state === 'dead' && !stopping) fail('--canonical-console-dir has a dead lock. Run cli.mjs stop with the same --run-dir and --canonical-console-dir; do not delete the lock by hand (references/setup.md#restart-after-a-forced-kill)');
+    if (startingServe) {
+      if (slot.state === 'live') fail(`--canonical-console-dir has a live Console (pid ${slot.pid}); do not stop a Console this run did not start`);
+      if (slot.state === 'dead') fail('--canonical-console-dir has a dead lock. Run cli.mjs stop with the same --run-dir and --canonical-console-dir; do not delete the lock by hand (references/setup.md#restart-after-a-forced-kill)');
+    } else if (stopping) {
+      if (recorded === null || slot.pid !== recorded) fail('--canonical-console-dir stop refused: this run-dir has no matching pid record. Do not stop a Console this run did not start');
+    } else if ((slot.state === 'live' || slot.state === 'dead') && (recorded === null || slot.pid !== recorded)) {
+      fail('--canonical-console-dir is not the Console this run-dir started; refusing');
+    } else if (slot.state === 'dead') {
+      fail('--canonical-console-dir has a dead lock. Run cli.mjs stop with the same --run-dir and --canonical-console-dir; do not delete the lock by hand (references/setup.md#restart-after-a-forced-kill)');
+    }
   }
   // tsx listens on $TMPDIR/tsx-<uid>/<pid>.pipe; past sun_path the kernel truncates silently and concurrent tsx collide.
   const sunPath = { darwin: 103, linux: 107 }[process.platform];
@@ -289,6 +316,9 @@ function main() {
   const before = new Set(readdirSync(owned.home));
   process.stderr.write(`isolated-env: HOME=${owned.home} bins=[${Object.keys(links).join(',')}] set=[${setNames.join(',')}] running ${plan.command}\n`);
   const child = spawn(command[0], command.slice(1), { env, stdio: 'inherit' });
+  if (options.canonicalConsoleDir && command.some((arg, index) => path.basename(arg) === 'cli.mjs' && command[index + 1] === 'serve') && child.pid) {
+    writeFileSync(path.join(runDir, 'canonical-console.pid'), `${child.pid}\n`, { mode: 0o600 });
+  }
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
   const dropCallBin = () => rmSync(callBin, { recursive: true, force: true });
   child.on('error', (error) => { dropCallBin(); fail(`cannot start ${plan.command}: ${error.message}`); });
