@@ -1678,3 +1678,18 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
 @media (prefers-reduced-motion: reduce) {
   .conversation-stage { transition: none; }
 }
+
+/* ── 브라우저 칸 자리 없음 안내: 머리 줄 바로 밑 오른쪽 끝 ─────────────────────────────
+   대화 열 안에 떠 있어 네이티브 브라우저 뷰와 겹치지 않는다. 대화 위에 뜨므로 사용량 캡슐처럼 칸 면을 깔고 흐린다. */
+.conversation-split-no-room {
+  position: absolute;
+  top: var(--conversation-top-row);
+  right: calc(var(--space-3) + var(--conversation-caption-reserve));
+  z-index: 4;
+  width: min(340px, calc(100% - 2 * var(--space-3)));
+}
+
+.conversation-split-no-room .fc-failure {
+  background: color-mix(in oklch, var(--conversation-surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
