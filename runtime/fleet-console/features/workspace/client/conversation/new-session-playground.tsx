@@ -960,6 +960,7 @@ class PlaygroundStage {
    */
   park(): void {
     if (this.held) return;
+    sceneHost?.classList.add("is-held");
     if (!this.frozen) this.pauseClock();
     else {
       // 입력으로 멈춰 있던 클래스(is-frozen)는 전이를 계속 붙잡는다. 걷히기 전에 풀고, 아래 pause 가 다시 잡는다.
@@ -981,6 +982,7 @@ class PlaygroundStage {
     this.held = false;
     this.animEpoch += 1;
     this.publish(true);
+    sceneHost?.classList.remove("is-held");
     this.rearmClock(REENTRY_HOLD_MS);
   }
 

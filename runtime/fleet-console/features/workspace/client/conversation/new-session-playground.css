@@ -26,6 +26,11 @@
   inset: 0;
 }
 /* 화면 밖에 치워 둔 장면. display 를 끄면 CSS 애니메이션 객체가 사라져 currentTime 이 0 이 된다. */
+/* 떠나 있는 동안 키프레임을 그 시각에 고정한다. WAAPI pause 가 노드를 옮길 때 풀려도 이 규칙이 붙잡는다. */
+.pg-scene-host.is-held,
+.pg-scene-host.is-held * {
+  animation-play-state: paused !important;
+}
 .pg-scene-host.is-parked,
 .pg-scene-park {
   position: fixed;
