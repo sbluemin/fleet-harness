@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.241.0] - 2026-10-17
+
+### fleet-console
+
+#### Added
+- Show Antigravity's separate Gemini 4 Argon weekly allowance in Quota when available.
+
+#### Changed
+- Use Gemini 4 Argon with low, medium, or high effort through your Antigravity subscription, replacing Gemini 3.1 Pro.
+
 ## [1.240.0] - 2026-10-17
 
 ### fleet-console

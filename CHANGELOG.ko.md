@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.241.0] - 2026-10-17
+
+### fleet-console
+
+#### Added
+- Antigravity가 별도로 제공하는 Gemini 4 Argon 주간 한도를 Quota에서 확인할 수 있습니다.
+
+#### Changed
+- Antigravity 구독으로 Gemini 3.1 Pro 대신 Gemini 4 Argon을 low, medium, high effort로 사용할 수 있습니다.
+
 ## [1.240.0] - 2026-10-17
 
 ### fleet-console
