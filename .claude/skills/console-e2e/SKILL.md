@@ -38,7 +38,7 @@ Read references only when starting the corresponding activity.
 | Real Agent CLI, model pinning, wire/transcript | [Live agent prompt testing](references/live-agent-prompt-testing.md) |
 | Remote access, pairing, guest TLS, or standing away from home | [Remote access testing](references/remote-access-testing.md) |
 | Windows ARM64 host or platform-specific browser input claim | [Browser platform automation](references/platform-automation.md) |
-| Fleet Mobile shell on an Android emulator or iOS simulator, including cold-start link delivery and briefing a counter/state reproduction | [Mobile shell reproduction](references/mobile-shell.md) |
+| Fleet Mobile shell on an Android emulator or iOS simulator, including cold-start link delivery, simulator language, the xcodebuild cache, the phone conversation fixture, and briefing a counter/state reproduction | [Mobile shell reproduction](references/mobile-shell.md) |
 
 A standalone browser cannot establish Desktop behavior, so SPA checks requested in Desktop stay in its owned Electron renderer.
 

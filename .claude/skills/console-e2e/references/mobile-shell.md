@@ -46,6 +46,16 @@ BIND="$BIND" node <worktree>/.claude/skills/console-e2e/scripts/issue-access-lin
 
 A link is single-use. Run it again for every launch attempt. Each run overwrites `link.txt`, so when two devices share one `E2E_DIR`, use the link right after issuing it. A Console serves one paired device at a time; after a Console restart the first device to reconnect takes the session, so stop the other device's app before reconnecting the one under test.
 
+
+## Phone conversation fixture
+
+The access link only pairs the phone. What stands on the screen is Console state. Both of the following are absent until a throwaway Theater is registered ([Isolate the Console](setup.md#isolate-the-console)).
+
+- No Theater: the phone home is the empty first-run, not a conversation (`MobileEmptyHome` in `runtime/fleet-console/core/client/src/chrome/mobile/mobile-shell.tsx`). The Commodore screen stays an empty pane until it has that Theater id (`commodore-mobile.tsx`). Its no-cost host is [No-cost fake Commodore](setup.md#no-cost-fake-commodore); do not start the real SDK.
+- The group composer (`.group-composer` / `.fc-composer-capsule`) is not the 1:1 composer (`.agent-chat-composer`). `showsMobileGroupConversation` in `runtime/fleet-console/features/execution/client/agent/chat/group-timeline-store.ts` requires all of: the phone operation surface, fold-turns on, a live chat (`chatMode` and `chatActive`), and a group root. The fold-turns switch defaults off. It is the WebView's `localStorage` key `fleet-console.groupConversation.foldTurns` (`on`), toggled from the ⋮ item "Fold turns" / "턴 접기". A fresh simulator is off, so a commander still shows the 1:1 composer. A dormant restored commander does not qualify: the [child-session fixture](setup.md#objective-member-child-session-fixture) is that dormant case. The root is an objective commander (`isGroupConversationRoot`) or a chat that already has nested members.
+
+The group composer is up when the phone shows `.group-composer` inside the operation. The first-run home and `.agent-chat-composer` are not that screen.
+
 ## 3. Android
 
 **Your AVD** (never reuse one from the preflight's `avd` note that you did not create). Use the package id the preflight's `system-image` line prints (`arm64-v8a` on Apple silicon, `x86_64` elsewhere):
@@ -85,20 +95,31 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 
 ## 4. iOS simulator
 
-Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so build an unsigned simulator app using the path in `.github/workflows/mobile-ios-verify.yml`, then install it separately. Use `-configuration Release` so the JS bundle is embedded; a Debug build without a running Metro shows the React Native red error screen. Generate `ios/` in your worktree and set `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` for `pod install`. Do not use `expo run:ios`: its host GUI side effects can open Simulator.app; the build/install path below starts neither Metro nor Simulator.app:
+Same Console and link as above; the simulator needs no address change. There is no promoted debug-build script for iOS (`ios:build:release` needs signing material), so build an unsigned simulator app using the path in `.github/workflows/mobile-ios-verify.yml`, then install it separately. Use `-configuration Release` so the JS bundle is embedded; a Debug build without a running Metro shows the React Native red error screen. Generate `ios/` in your worktree. Export `LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` once for the `pod install` and `xcodebuild` subshell below; a prefix on the `pod` line alone leaves `xcodebuild` on the host locale. The simulator's language is a separate setting ([Simulator language](#simulator-language)). Do not use `expo run:ios`: its host GUI side effects can open Simulator.app; the build/install path below starts neither Metro nor Simulator.app:
 
 ```bash
 xcrun simctl list runtimes available; xcrun simctl list devicetypes iPhone   # pick an installed iOS runtime id and iPhone device type id
 xcrun simctl create "$SIM_NAME" "<device type id>" "<runtime id>"   # prints your UDID
 xcrun simctl boot "$UDID"
+xcrun simctl bootstatus "$UDID"   # wait until this boot finishes; usage from simctl help bootstatus
+# Shell LANG does not change the simulator. Set its language, then boot again, before any UI. This UDID only.
+xcrun simctl spawn "$UDID" defaults write "Apple Global Domain" AppleLanguages -array en
+xcrun simctl spawn "$UDID" defaults write "Apple Global Domain" AppleLocale -string en_US
+xcrun simctl shutdown "$UDID"
+xcrun simctl boot "$UDID"
+xcrun simctl bootstatus "$UDID"
+xcrun simctl spawn "$UDID" defaults read "Apple Global Domain" AppleLocale   # expect en_US
 pnpm --dir <worktree>/runtime/fleet-mobile exec expo prebuild --platform ios --clean --no-install --non-interactive
 (
   set -e
   cd <worktree>/runtime/fleet-mobile/ios
-  LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+  export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
+  pod install
   workspace=$(ls -d *.xcworkspace | head -n 1)
   [ -n "$workspace" ] || { echo 'Expo prebuild produced no .xcworkspace' >&2; exit 1; }
   scheme="${workspace%.xcworkspace}"
+  # Reusing this derived data keeps the previous main.jsbundle or a stale Pods input. See Incremental xcodebuild.
+  rm -rf "$E2E_DIR/ios-build"
   xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
     -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "$E2E_DIR/ios-build" CODE_SIGNING_ALLOWED=NO build
@@ -110,7 +131,19 @@ xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile
 xcrun simctl openurl "$UDID" "$(cat "$E2E_DIR/link.txt")"
 ```
 
-The Xcode workspace and build scheme come from `ios/*.xcworkspace`, as in CI and `scripts/lib/ios-promote.mjs`; the URL scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). The system shows an "Open in Fleet?" confirmation on every `openurl`, and it must be accepted. `simctl` has no tap or input command: drive the app headlessly with a scratch UI-test bundle that launches the installed app by bundle id (`XCUIApplication(bundleIdentifier:)`) and runs through `xcodebuild test -destination "id=$UDID"`; the Console WebView exposes its controls by their accessible labels. Keep that project outside the repository, and do not take over the user's foreground with desktop clicks or keystrokes. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. CI exercises the Release simulator build and embedded-bundle check; only the local `simctl install` step remains unverified in this repository's docs. Record the actual install command used and its result.
+### Simulator language
+
+On a Mac whose language is not English, a simulator from `simctl create` boots in the Mac's language. SpringBoard and the "Open in Fleet?" alert are then not the English strings this page names, and the app's own shell strings follow the device locale (`shellStrings` in `runtime/fleet-mobile/shell/strings.ts`). A driver looking for the English label finds nothing or taps the wrong control. The shell `LANG` exported for CocoaPods does not write the simulator's preferences. The `defaults write` commands above set `AppleLanguages` and `AppleLocale`, and the second `simctl boot` is the one that picks them up. Stop when `defaults read` prints `en_US`. `simctl help spawn` and `simctl help bootstatus` were read; the `defaults` commands and a simulator boot were not run when this section was written. Do not spawn on a UDID this run did not create.
+
+### Incremental xcodebuild
+
+A later `xcodebuild build` into the same `$E2E_DIR/ios-build` can exit 0 while the installed app still runs the previous `main.jsbundle`. The existence check above still passes, because the old bundle is present. After `expo prebuild --clean`, that leftover directory can instead fail on a stale Pods or module input. Xcode's incremental build treats the bundle phase as already done. Delete `$E2E_DIR/ios-build` before the build that must include new JS or a new prebuild, as the script does. A fast `BUILD SUCCEEDED` against a leftover derived-data directory is not evidence the bundle changed. This stale-bundle failure was not reproduced when this section was written.
+
+### UTF-8 for pod and xcodebuild
+
+CocoaPods stops when the process locale is not UTF-8. The `export` in the subshell covers both `pod install` and `xcodebuild`. Do not put `LANG` only on the `pod` line.
+
+The Xcode workspace and build scheme come from `ios/*.xcworkspace`, as in CI and `scripts/lib/ios-promote.mjs`; the URL scheme is `fleet`, registered by `plugins/withFleetIos.ts`. On a cold start the link reaches the app through `willFinishLaunching` (`FleetLinkAppDelegateSubscriber`). Once `AppleLocale` is `en_US`, the system shows an "Open in Fleet?" confirmation on every `openurl`, and it must be accepted. `simctl` has no tap or input command: drive the app headlessly with a scratch UI-test bundle that launches the installed app by bundle id (`XCUIApplication(bundleIdentifier:)`) and runs through `xcodebuild test -destination "id=$UDID"`; the Console WebView exposes its controls by their accessible labels. Keep that project outside the repository, and do not take over the user's foreground with desktop clicks or keystrokes. Screenshots: `xcrun simctl io "$UDID" screenshot <evidence>/shot.png`. CI exercises the Release simulator build and embedded-bundle check; only the local `simctl install` step remains unverified in this repository's docs. Record the actual install command used and its result.
 
 ## 5. Stay apart from other sessions
 
