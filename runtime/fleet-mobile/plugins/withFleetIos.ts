@@ -102,7 +102,14 @@ function sceneContractHolds(contents: string): boolean {
   if (/launchOptions:\s*launchOptions/.test(call)) return false;
   const startedAt = contents.indexOf("appDelegate.fleetReactNativeStarted = true");
   const contextsAt = contents.indexOf("connectionOptions.urlContexts");
-  if (startedAt < 0 || contextsAt < 0 || contextsAt > startedAt || startedAt > start.index) return false;
+  const reattachAt = contents.indexOf("window.windowScene = windowScene");
+  const keyAt = contents.indexOf("window.makeKeyAndVisible()");
+  const alreadyStarted = contents.indexOf("if appDelegate.fleetReactNativeStarted");
+  if (startedAt < 0 || contextsAt < 0 || contextsAt > alreadyStarted || alreadyStarted < 0) return false;
+  if (reattachAt < alreadyStarted || keyAt < reattachAt || startedAt < keyAt || startedAt > start.index) return false;
+  const reconnectBranch = contents.slice(alreadyStarted, startedAt);
+  if (!reconnectBranch.includes("return")) return false;
+  if (reconnectBranch.includes("startReactNative")) return false;
   if (!contents.includes("class SceneDelegate: UIResponder, UIWindowSceneDelegate")) return false;
   if (!contents.includes("UIWindow(windowScene:")) return false;
   if (!contents.includes(`Notification.Name("${SCENE_URL_NOTIFICATION}")`)) return false;
@@ -177,9 +184,15 @@ function sceneDelegateSource(startCall: string): string {
       deliverFleetURLToInbox(context.url)
     }
     guard let windowScene = scene as? UIWindowScene,
-          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
-          let factory = appDelegate.reactNativeFactory,
-          !appDelegate.fleetReactNativeStarted else { return }
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    // The process can outlive a scene. Reattach the existing window; do not start React Native again.
+    if appDelegate.fleetReactNativeStarted {
+      guard let window = appDelegate.window else { return }
+      window.windowScene = windowScene
+      window.makeKeyAndVisible()
+      return
+    }
+    guard let factory = appDelegate.reactNativeFactory else { return }
     let window = UIWindow(windowScene: windowScene)
     appDelegate.window = window
     appDelegate.fleetReactNativeStarted = true

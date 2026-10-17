@@ -124,11 +124,17 @@ jobs:
           const start = source.indexOf('factory.startReactNative', superOptions);
           const startOptions = source.indexOf('launchOptions: appDelegate.fleetSanitizedLaunchOptions', start);
           const contexts = source.indexOf('connectionOptions.urlContexts');
+          const reattach = source.indexOf('window.windowScene = windowScene');
+          const key = source.indexOf('window.makeKeyAndVisible()');
+          const started = source.indexOf('appDelegate.fleetReactNativeStarted = true');
           const plist = fs.readFileSync(path.join(path.dirname(file), 'Info.plist'), 'utf8');
           const fleetBranches = [...source.matchAll(/if url\.scheme == "fleet" \{([\s\S]*?)\n\s*\}/g)];
           const linkingCalls = [...source.matchAll(/RCTLinkingManager\.application\([^)]*open:/g)].length;
+          const reconnect = source.indexOf('if appDelegate.fleetReactNativeStarted');
           const sceneOk = source.includes('class SceneDelegate:') && source.includes('UIWindow(windowScene:') &&
-            !source.includes('UIWindow(frame:') && contexts >= 0 && contexts < start &&
+            !source.includes('UIWindow(frame:') && contexts >= 0 && contexts < reconnect &&
+            reattach > reconnect && key > reattach && started > key && started < start &&
+            !source.slice(reconnect, started).includes('startReactNative') &&
             plist.includes('UIApplicationSceneManifest') && plist.includes('.SceneDelegate') &&
             linkingCalls === 2 && fleetBranches.length === 2 &&
             fleetBranches.every((branch) => !branch[1].includes('RCTLinkingManager'));

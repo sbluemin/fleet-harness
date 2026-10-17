@@ -107,7 +107,16 @@ describe("Fleet Mobile iOS build contract", () => {
     expect(out).toContain("UIWindow(windowScene:");
     expect(out).toContain('Notification.Name("fleet.mobile.link-url")');
     expect(out).toContain("connectionOptions.urlContexts");
-    expect(out.indexOf("connectionOptions.urlContexts")).toBeLessThan(start);
+    const reconnect = out.indexOf("if appDelegate.fleetReactNativeStarted");
+    const reattach = out.indexOf("window.windowScene = windowScene");
+    const key = out.indexOf("window.makeKeyAndVisible()");
+    const started = out.indexOf("appDelegate.fleetReactNativeStarted = true");
+    expect(out.indexOf("connectionOptions.urlContexts")).toBeLessThan(reconnect);
+    expect(reattach).toBeGreaterThan(reconnect);
+    expect(key).toBeGreaterThan(reattach);
+    expect(started).toBeGreaterThan(key);
+    expect(start).toBeGreaterThan(started);
+    expect(out.slice(reconnect, started)).not.toContain("startReactNative");
     const fleetBranches = [...out.matchAll(/if url\.scheme == "fleet" \{([\s\S]*?)\n\s*\}/g)];
     expect(fleetBranches).toHaveLength(2);
     for (const branch of fleetBranches) expect(branch[1]).not.toContain("RCTLinkingManager");
