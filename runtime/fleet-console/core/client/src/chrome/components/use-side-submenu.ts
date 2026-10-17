@@ -12,6 +12,11 @@ const SUBMENU_EDGE = 12;
 const SUBMENU_OPEN_DELAY_MS = 90;
 /** 항목·판을 떠난 포인터가 돌아오거나 판에 닿기를 기다리는 시간. */
 const SUBMENU_CLOSE_DELAY_MS = 300;
+/**
+ * 안전 삼각형 안에서 이만큼보다 더 움직이면 아직 열린 판으로 가는 중이다.
+ * 그보다 가만히 있으면 지나가던 것이 아니라 그 형제 항목을 고른 것이다.
+ */
+const SUBMENU_TRIANGLE_SETTLE_PX = 2;
 
 export interface SubmenuPlacement {
   readonly left: number;
@@ -69,6 +74,58 @@ interface HoverTimers {
   openTimer: number | null;
   closeTimer: number | null;
   exit: { x: number; y: number } | null;
+  /** 안전 삼각형 때문에 열기를 미룬 직전의 포인터. */
+  triangleDeferPoint: { x: number; y: number } | null;
+}
+
+/** 같은 부모 메뉴의 서브메뉴 하나. 그룹이 부르는 동작은 항상 최신 상태를 본다. */
+export interface SideSubmenuMember {
+  /** 포인터가 이 열린 판으로 가는 안전 삼각형 안에 있는가. 판이 닫혀 있거나 떠난 점이 없으면 거짓. */
+  inSafeTriangle(point: { readonly x: number; readonly y: number }): boolean;
+  /** 다른 판이 열리는 순간, 접기 지연 없이 바로 접는다. */
+  closeNow(): void;
+}
+
+/**
+ * 한 부모 메뉴 안의 옆 서브메뉴가 판을 하나만 세우도록 나누는 상태.
+ * 메뉴를 그리는 부모가 만들어 각 항목에 넘긴다 — 모듈 전역 등록이 아니다.
+ */
+export interface SideSubmenuGroup {
+  register(member: SideSubmenuMember): () => void;
+  notePointer(point: { readonly x: number; readonly y: number }): void;
+  pointer(): { readonly x: number; readonly y: number } | null;
+  /** 이 멤버가 아닌 열린 판의 안전 삼각형이 점을 품는가. */
+  foreignSafeTriangle(self: SideSubmenuMember, point: { readonly x: number; readonly y: number }): boolean;
+  /** 이 멤버의 판이 열렸으니 나머지는 바로 접는다. */
+  opened(self: SideSubmenuMember): void;
+}
+
+export function useSideSubmenuGroup(): SideSubmenuGroup {
+  const group = useRef<SideSubmenuGroup | null>(null);
+  if (group.current === null) {
+    const members = new Set<SideSubmenuMember>();
+    let point: { x: number; y: number } | null = null;
+    group.current = {
+      register(member) {
+        members.add(member);
+        return () => { members.delete(member); };
+      },
+      notePointer(next) { point = next; },
+      pointer() { return point; },
+      foreignSafeTriangle(self, at) {
+        for (const member of members) {
+          if (member !== self && member.inSafeTriangle(at)) return true;
+        }
+        return false;
+      },
+      opened(self) {
+        for (const member of members) {
+          if (member !== self) member.closeNow();
+        }
+      },
+    };
+  }
+  return group.current;
 }
 
 export interface SideSubmenuOptions {
@@ -94,6 +151,12 @@ export interface SideSubmenuOptions {
   /** 판 안에서 방향키로 옮긴 직후. 호스트 목록이 늦게 도착한 현재 행으로 포커스를 되돌리지 않게 한다. */
   readonly onPanelArrow?: () => void;
   /**
+   * 같은 부모 메뉴의 형제와 나누는 상태. 있으면 이 판이 열리는 순간 나머지는 바로 접고,
+   * 열린 판의 안전 삼각형을 지나가는 포인터는 형제 판을 열지 않는다.
+   * 없으면 이 훅만의 타이머로 동작한다 — 도구모음 칩이 이 경우다.
+   */
+  readonly group?: SideSubmenuGroup;
+  /**
    * 열릴 때 이 훅이 판 안으로 포커스를 옮기는가. 호출자가 늦은 목록까지 포함해 최초 포커스를 맡으면 false.
    * 기본은 true — 도움말처럼 항목이 바로 있는 메뉴.
    */
@@ -103,11 +166,19 @@ export interface SideSubmenuOptions {
 /**
  * 메뉴 항목 옆에 펴는 서브메뉴. 겨눔 열기/접기, 안전 삼각형, →·Enter / ←·Esc, 가장자리를 피한 고정 배치를
  * 호스트와 도움말이 같이 쓴다. `enabled`가 아니면 트리거 핸들러는 통과시키고 감시도 붙이지 않는다.
+ * `group`이 있으면 그 부모에서는 판이 하나만 선다.
  */
-export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, panelRef, allowHoverOpen, suspended = false, activate, onPanelArrow, manageInitialFocus = true }: SideSubmenuOptions) {
+export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, panelRef, allowHoverOpen, suspended = false, activate, onPanelArrow, manageInitialFocus = true, group }: SideSubmenuOptions) {
   /** 열릴 때 판 안으로 포커스를 옮기는가. 겨눠서 연 판은 부모 메뉴의 포커스를 빼앗지 않는다. */
   const focusOnOpenRef = useRef(true);
-  const hoverRef = useRef<HoverTimers>({ openTimer: null, closeTimer: null, exit: null });
+  const hoverRef = useRef<HoverTimers>({ openTimer: null, closeTimer: null, exit: null, triangleDeferPoint: null });
+  const groupRef = useRef(group);
+  const openRef = useRef(open);
+  /** 포인터가 이 항목 위에 있는가. 떠날 때 걸려 있던 열기 타이머는 지우고, 삼각형 안에서 미룬 열기도 여기서 멈춘다. */
+  const hoveringRef = useRef(false);
+  const memberRef = useRef<SideSubmenuMember | null>(null);
+  groupRef.current = group;
+  openRef.current = open;
   const allowHoverOpenRef = useRef(allowHoverOpen);
   const activateRef = useRef(activate);
   const onPanelArrowRef = useRef(onPanelArrow);
@@ -121,6 +192,7 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
     if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
     hover.openTimer = null;
     hover.closeTimer = null;
+    hover.triangleDeferPoint = null;
   };
 
   const hoverClosable = () => !focusOnOpenRef.current && panelRef.current?.contains(document.activeElement) !== true;
@@ -143,6 +215,16 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
     (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
   };
 
+  // 열기 함수보다 먼저 둔다. 타이머는 이 참조로 최신 동작을 부른다.
+  const behaviorRef = useRef({
+    clearHoverTimers,
+    scheduleHoverClose,
+    hoverClosable,
+    focusInto,
+    openByHand: (): boolean => false,
+    armHoverOpen: () => {},
+  });
+
   /**
    * 누르거나 → 로 연다. 이미 열려 있으면 판 안으로 들어간다 — 겨눠서 열린 판을 누름이 도로 접지 않는다.
    * 서브메뉴가 아니면 false. 호출자가 자기 토글을 한다.
@@ -151,16 +233,77 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
     if (!enabled) return false;
     clearHoverTimers();
     focusOnOpenRef.current = true;
+    const shared = groupRef.current;
+    const member = memberRef.current;
+    // 누르거나 키로 연 판도 형제와 겹치지 않는다. 이미 열린 판으로 들어가는 때도 나머지는 접는다.
+    if (shared !== undefined && member !== null) shared.opened(member);
     // 이미 열린 판으로 들어가는 포커스도 최초 포커스와 같은 주체가 옮긴다.
     if (open) { if (manageInitialFocus) focusInto(); }
     else setOpen(true);
     return true;
   };
 
-  const behaviorRef = useRef({ clearHoverTimers, scheduleHoverClose, hoverClosable, focusInto, openByHand });
-  behaviorRef.current = { clearHoverTimers, scheduleHoverClose, hoverClosable, focusInto, openByHand };
+  /**
+   * 겨눔 열기. 다른 판의 안전 삼각형 안에서 포인터가 움직이는 동안은 열지 않는다 —
+   * 그 판으로 가는 대각선이 형제 항목 위를 지나는 것이지, 그 형제를 고른 것이 아니다.
+   * 삼각형 안에서 멈추면 그때는 이 항목을 고른 것으로 보고 연다.
+   */
+  const armHoverOpen = () => {
+    const hover = hoverRef.current;
+    if (hover.openTimer !== null) return;
+    hover.openTimer = window.setTimeout(() => {
+      hover.openTimer = null;
+      if (!hoveringRef.current) return;
+      if (allowHoverOpenRef.current && !allowHoverOpenRef.current()) return;
+      const shared = groupRef.current;
+      const member = memberRef.current;
+      const point = shared?.pointer() ?? null;
+      if (shared !== undefined && member !== null && point !== null && shared.foreignSafeTriangle(member, point)) {
+        const previous = hover.triangleDeferPoint;
+        const moved = previous === null || Math.hypot(point.x - previous.x, point.y - previous.y) > SUBMENU_TRIANGLE_SETTLE_PX;
+        if (moved) {
+          hover.triangleDeferPoint = point;
+          behaviorRef.current.armHoverOpen();
+          return;
+        }
+      }
+      hover.triangleDeferPoint = null;
+      focusOnOpenRef.current = false;
+      // 이 판이 서는 순간 형제는 접기 지연을 기다리지 않는다.
+      if (shared !== undefined && member !== null) shared.opened(member);
+      setOpen(true);
+    }, SUBMENU_OPEN_DELAY_MS);
+  };
+
+  behaviorRef.current = { clearHoverTimers, scheduleHoverClose, hoverClosable, focusInto, openByHand, armHoverOpen };
+
+  if (memberRef.current === null) {
+    memberRef.current = {
+      inSafeTriangle(point) {
+        const hover = hoverRef.current;
+        const panel = panelRef.current;
+        if (!openRef.current || hover.exit === null || panel === null) return false;
+        return inSafeTriangle(point, hover.exit, panel.getBoundingClientRect());
+      },
+      closeNow() {
+        behaviorRef.current.clearHoverTimers();
+        hoverRef.current.exit = null;
+        const hadFocus = panelRef.current?.contains(document.activeElement) === true;
+        setOpen(false);
+        // 판 안에 포커스가 있었을 때만 항목으로 돌려준다. 겨눠 연 판은 포커스를 가지고 있지 않다.
+        if (hadFocus) triggerRef.current?.focus();
+      },
+    };
+  }
 
   useEffect(() => () => clearHoverTimers(), []);
+
+  useEffect(() => {
+    const shared = groupRef.current;
+    const member = memberRef.current;
+    if (!enabled || shared === undefined || member === null) return;
+    return shared.register(member);
+  }, [enabled, group]);
 
   useEffect(() => {
     if (!manageInitialFocus || !enabled || !open || suspended) return;
@@ -200,10 +343,13 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
   useEffect(() => {
     if (!enabled || !open || suspended) return;
     const onMove = (event: PointerEvent) => {
+      const point = { x: event.clientX, y: event.clientY };
+      // 형제 항목의 열기 판단이 같은 점을 보게, 이 판이 열려 있는 동안의 포인터를 그룹에 남긴다.
+      groupRef.current?.notePointer(point);
       const hover = hoverRef.current;
       const panel = panelRef.current;
       if (hover.closeTimer === null || hover.exit === null || panel === null) return;
-      if (inSafeTriangle({ x: event.clientX, y: event.clientY }, hover.exit, panel.getBoundingClientRect())) behaviorRef.current.scheduleHoverClose();
+      if (inSafeTriangle(point, hover.exit, panel.getBoundingClientRect())) behaviorRef.current.scheduleHoverClose();
     };
     /**
      * 포인터가 부모 메뉴의 다른 항목에 올라서면 그 항목으로 옮겨 간 것이다 — 손으로 연 판도 잠시 뒤 접는다.
@@ -296,24 +442,23 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
   const onTriggerPointerEnter = (event: ReactPointerEvent) => {
     if (!enabled || event.pointerType === "touch") return;
     if (allowHoverOpenRef.current && !allowHoverOpenRef.current()) return;
+    hoveringRef.current = true;
+    groupRef.current?.notePointer({ x: event.clientX, y: event.clientY });
     const hover = hoverRef.current;
     if (hover.closeTimer !== null) window.clearTimeout(hover.closeTimer);
     hover.closeTimer = null;
     hover.exit = null;
     if (open || hover.openTimer !== null) return;
-    hover.openTimer = window.setTimeout(() => {
-      hover.openTimer = null;
-      if (allowHoverOpenRef.current && !allowHoverOpenRef.current()) return;
-      focusOnOpenRef.current = false;
-      setOpen(true);
-    }, SUBMENU_OPEN_DELAY_MS);
+    behaviorRef.current.armHoverOpen();
   };
 
   const onTriggerPointerLeave = (event: ReactPointerEvent) => {
     if (!enabled || event.pointerType === "touch") return;
+    hoveringRef.current = false;
     const hover = hoverRef.current;
     if (hover.openTimer !== null) window.clearTimeout(hover.openTimer);
     hover.openTimer = null;
+    hover.triangleDeferPoint = null;
     if (!open) return;
     hover.exit = { x: event.clientX, y: event.clientY };
     if (behaviorRef.current.hoverClosable()) behaviorRef.current.scheduleHoverClose();

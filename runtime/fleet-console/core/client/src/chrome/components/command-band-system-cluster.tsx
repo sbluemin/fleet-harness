@@ -19,9 +19,9 @@ import { forgetReplayableOnboarding } from "../../../../../features/onboarding/c
 import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/onboarding/client/seen-store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
-import { useSideSubmenu } from "./use-side-submenu.js";
+import { useSideSubmenu, type SideSubmenuGroup } from "./use-side-submenu.js";
 
-export { placeSubmenu, submenuContentHeight, type SubmenuPlacement } from "./use-side-submenu.js";
+export { placeSubmenu, submenuContentHeight, useSideSubmenuGroup, type SideSubmenuGroup, type SubmenuPlacement } from "./use-side-submenu.js";
 
 type UpdateApplyState = "idle" | "armed" | "blocked" | "error";
 
@@ -116,11 +116,12 @@ function isConsoleOriginShape(origin: string): boolean {
 }
 
 /** 도움말 메뉴 — 도구모음의 한 칸이다. 상단 바에서는 아래로, 독의 메뉴 항목에서는 호스트와 같이 옆으로 열린다. */
-export function ConsoleHelpMenu({ menuItem = false }: { readonly menuItem?: boolean } = {}) {
+export function ConsoleHelpMenu({ menuItem = false, sideSubmenuGroup }: { readonly menuItem?: boolean; readonly sideSubmenuGroup?: SideSubmenuGroup } = {}) {
   const state = useConsoleState();
   return (
     <HelpMenu
       menuItem={menuItem}
+      sideSubmenuGroup={sideSubmenuGroup}
       version={state.version}
       latestVersion={state.latestVersion}
       updateAvailable={state.updateAvailable}
@@ -142,7 +143,7 @@ export function ConsoleHelpMenu({ menuItem = false }: { readonly menuItem?: bool
  * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
  * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
  */
-export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean } = {}) {
+export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean; readonly sideSubmenuGroup?: SideSubmenuGroup } = {}) {
   const t = useT();
   const state = useConsoleState();
   const hosts = useRemoteHosts();
@@ -185,6 +186,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     onPanelArrow: () => panelArrowRef.current(),
     // 늦은 현재 행까지 이 스위처의 포커스 effect가 맡는다. 훅이 먼저 첫 행에 포커스를 주면 그 대기가 끊긴다.
     manageInitialFocus: false,
+    group: submenu ? sideSubmenuGroup : undefined,
   });
   const focusOnOpenRef = side.focusOnOpenRef;
   /**
@@ -747,8 +749,9 @@ function forgetAllOnboarding(seen: readonly string[]): readonly string[] {
   return next.length === afterOnboarding.length ? afterOnboarding : next;
 }
 
-function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version, menuItem }: {
+function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, latestVersion, version, menuItem, sideSubmenuGroup }: {
   readonly menuItem?: boolean;
+  readonly sideSubmenuGroup?: SideSubmenuGroup;
   readonly releaseDisabled: boolean;
   readonly updateAvailable: boolean;
   /** 새 Console이 있지만 이 셸이 먼저 바뀌어야 받을 수 있다. Console 쪽에서 누를 것은 없다. */
@@ -768,6 +771,7 @@ function HelpMenu({ releaseDisabled, updateAvailable, shellUpdateRequired, lates
     rootRef,
     triggerRef,
     panelRef: menuRef,
+    group: menuItem === true ? sideSubmenuGroup : undefined,
   });
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const globalSettings = useGlobalSettingsStore();
