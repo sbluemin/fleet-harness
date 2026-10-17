@@ -36,8 +36,8 @@ const isCommodore = (actor: unknown): boolean => typeof actor === "object" && ac
 
 /**
  * 목표를 운영하는 쪽 — 사령관 깨움(보드 사건·inbox 집계), 조회의 `operator`, 목표 보기의 `operator`(화면)가 이 하나를 쓴다.
- * 정해 둔 값이 있으면 그것, 없으면 사령관이 만든 목표(직접 추가했거나 사령관이 고른 후속)만 사령관이다. 개시한 손(`commencedBy`)은
- * 기준이 아니다. `find` 는 후속의 원본을 찾는 데만 쓴다.
+ * 정해 둔 값이 있으면 그것(사령관이 고른 후속은 태어날 때 false)이고, 없으면 필드가 없는 옛 레코드만 사령관이 만든 목표(직접 추가했거나
+ * 사령관이 고른 후속)를 사령관으로 본다. 개시한 손(`commencedBy`)은 기준이 아니다. `find` 는 후속의 원본을 찾는 데만 쓴다.
  */
 export function objectiveOperator(objective: OperatorFacts, find: (objectiveId: string) => OperatorSource | null | undefined): ObjectiveOperator {
   if (typeof objective.commodoreOperated === "boolean") return objective.commodoreOperated ? "commodore" : "human";
