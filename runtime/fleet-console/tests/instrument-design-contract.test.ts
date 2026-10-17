@@ -2271,14 +2271,13 @@ describe("Instrument core design contract", () => {
     expect(chat).not.toContain(".agent-chat-stop");
     expect(chatView).not.toContain('className="agent-chat-stop"');
     const composerStopBlock = chat.match(/^\.agent-chat-composer-stop \{[^}]*\}/m)?.[0] ?? "";
-    // 중지는 첨부와 같은 글리프 자리를 쓴다 — 같은 잉크·같은 패딩·테두리 없는 투명 바탕이라
-    // 바에 선 컨트롤들이 한 문법으로 읽힌다. 라벨을 두르면 도는 동안에만 서는 문 하나가 바에서
+    // 중지는 폭 글리프와 같은 자리를 쓴다 — 같은 잉크·같은 패딩·테두리 없는 투명 바탕이라
+    // 바에 선 컨트롤들이 한 문법으로 읽힌다. 첨부 입구는 그 행을 떠나 공유 「+」 원
+    // (fc-composer-plus)이 입력 왼쪽에 선다. 라벨을 두르면 도는 동안에만 서는 문 하나가 바에서
     // 가장 큰 물건이 되어, 상시로 읽어야 할 좌표와 계기를 밀어낸다.
-    const composerAttachBlock = chat.match(/^\.agent-chat-composer-attach \{[^}]*\}/m)?.[0] ?? "";
     // 한 행에 선 글리프 버튼들은 한 문법을 쓴다. 백그라운드 작업 글리프는 이 행을 떠났다 —
     // 그 몫은 컴포저 위 선반(.agent-chat-ledge)이 말로 진다.
     for (const glyph of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;"]) {
-      expect(composerAttachBlock, glyph).toContain(glyph);
       expect(composerStopBlock, glyph).toContain(glyph);
     }
     // 상자는 표식이 아니라 글리프 규격을 따른다 — 이웃이 16px svg를 싣고 있어, 표식 크기를 그대로

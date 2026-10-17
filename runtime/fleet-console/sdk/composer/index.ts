@@ -14,6 +14,21 @@ export {
   discardComposerAttachment,
 } from "./attachments.js";
 export {
+  createComposerAttachments,
+  isComposerAttachmentExpired,
+} from "./attachment-store.js";
+export type {
+  ComposerAttachmentDraftItem,
+  ComposerAttachmentLimits,
+  ComposerAttachmentNotice,
+  ComposerAttachmentNoticeKind,
+  ComposerAttachmentPort,
+  ComposerAttachmentRecord,
+  ComposerAttachments,
+  ComposerAttachmentsSnapshot,
+} from "./attachment-store.js";
+export { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "./attachment-input.js";
+export {
   EffortGaugeGlyph,
   EffortTrack,
   effortLadderPosition,
@@ -39,6 +54,7 @@ export type {
 export { AttachImageIcon, SubmitArrowIcon } from "./icons.js";
 export {
   ComposerAttachmentTray,
+  ComposerAttachmentViewer,
   ComposerMenu,
   ComposerMenuHeading,
   ComposerMenuItem,
@@ -50,10 +66,11 @@ export {
 export type {
   ComposerAttachmentItem,
   ComposerAttachmentTrayProps,
+  ComposerAttachmentViewImage,
   ComposerMenuItemProps,
   ComposerNoticeProps,
 } from "./attachment-surface.js";
-export { composerT } from "./messages.js";
+export { composerAttachmentNoticeText, composerT } from "./messages.js";
 export type { ComposerMessageKey } from "./messages.js";
 export {
   isUltracodeDisarmCaret,

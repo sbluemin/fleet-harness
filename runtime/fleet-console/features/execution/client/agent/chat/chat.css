@@ -373,60 +373,6 @@
   background: repeating-linear-gradient(135deg, var(--hairline) 0 4px, var(--surface-panel-raised) 4px 8px);
 }
 
-/* 크게 보기 — 부유 모달의 공용 판독 계약(스크림·유리 틴트·블러)을 그대로 쓴다. */
-.agent-chat-attachment-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
-  display: grid;
-  place-items: center;
-  padding: var(--space-6);
-  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
-}
-
-.agent-chat-attachment-frame {
-  position: relative;
-  display: flex;
-  max-width: min(960px, 100%);
-  max-height: 100%;
-  padding: var(--space-2);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--float-underlay);
-  box-shadow: var(--shadow-floating);
-}
-
-.agent-chat-attachment-frame img {
-  display: block;
-  max-width: 100%;
-  max-height: calc(100dvh - var(--space-6) * 2 - var(--space-2) * 2);
-  object-fit: contain;
-  border-radius: var(--radius-xs);
-}
-
-.agent-chat-attachment-close {
-  position: absolute;
-  top: calc(var(--space-2) * -1 - 10px);
-  right: calc(var(--space-2) * -1 - 10px);
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: 50%;
-  background: var(--glass-tint-panel);
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.agent-chat-attachment-close:hover {
-  color: var(--text-primary);
-}
-
 /* 에이전트 턴 — 단일 열. 좌측 스파인·노드 띠는 퇴역했다: 상태는 본문의 시계·접힘 줄·결말 문구가
    이미 말하고, 14px 띠는 그 말을 한 번 더 하면서 읽는 폭만 먹었다. */
 .agent-chat-turn {
@@ -1726,59 +1672,6 @@
   outline: none;
 }
 
-.agent-chat-composer-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding-top: 4px;
-}
-
-.agent-chat-composer-attachment {
-  position: relative;
-  width: 52px;
-  height: 52px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-}
-
-.agent-chat-composer-attachment img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  border-radius: calc(var(--radius-xs) - 1px);
-}
-
-.agent-chat-composer-attachment.is-uploading img {
-  opacity: 0.45;
-}
-
-/* 제거 칩은 썸네일 밖 모서리에 걸린다 — Quick Launch 첨부 칩과 같은 문법. 면은 패널 면
-   토큰이 진다(스크림 예외를 늘리지 않는다). */
-.agent-chat-composer-attachment-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: 50%;
-  background: var(--glass-tint-panel);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-  line-height: 1;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* 제거는 파괴 동작 — coral은 상태 채널이라 hover에만 오른다(Quick Launch와 같은 계약). */
-.agent-chat-composer-attachment-remove:hover {
-  color: var(--coral);
-}
-
 /* 예약 목록 — field 위 자기 자리에 선다.
 
    바에 두지 않는 이유는 폭이다: 좌표 배지와 계기가 이미 그 행을 쓰고 있어 예약은 한 줄로
@@ -1896,24 +1789,12 @@
   white-space: nowrap;
 }
 
-.agent-chat-composer-attach {
-  border: 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  padding: 7px;
-  border-radius: var(--radius-pill);
-  display: inline-flex;
-}
-
-.agent-chat-composer-attach svg {
-  width: 16px;
-  height: 16px;
-}
-
-.agent-chat-composer-attach:hover {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
+/* 첨부 입구는 공유 「+」 원(fc-composer-plus)이다. 메뉴는 입력 줄 위로 뜬다. */
+.agent-chat-composer-plus-root { position: relative; flex: none; }
+.agent-chat-composer-plus-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + var(--space-2));
 }
 
 /* 채팅 폭 글리프 — 첨부와 같은 또래이고 같은 문법을 쓴다(투명 바탕·tertiary 잉크·hover는
@@ -4071,7 +3952,6 @@
    ctx-chip 기본 규칙보다 뒤에 둔다: 같은 특정도라 순서가 이긴다. */
 @container (max-width: 470px) {
   .agent-chat-composer-actions { height: 40px; }
-  .agent-chat-composer-attach,
   .agent-chat-ctx-chip,
   .agent-chat-composer-stop { padding: 12px; }
   .agent-chat-composer-send { width: 40px; height: 40px; }
@@ -4755,7 +4635,7 @@
 
 .agent-chat-composer-tools .agent-chat-composer-gap { flex: 1; }
 
-[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-attach,
+[data-mobile-surface] .agent-chat-composer-tools .fc-composer-plus,
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop,
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send {
   display: grid;
@@ -4772,7 +4652,7 @@
   opacity: 1;
 }
 
-[data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-attach svg,
+[data-mobile-surface] .agent-chat-composer-tools .fc-composer-plus svg,
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-stop svg,
 [data-mobile-surface] .agent-chat-composer-tools .agent-chat-composer-send svg {
   width: 20px;

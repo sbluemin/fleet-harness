@@ -1,6 +1,6 @@
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { isRosterFallbackGroup, RosterFallbackNotice } from "../../../ai-gateway/client/roster-fallback.js";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent as ReactClipboardEvent, type DragEvent as ReactDragEvent, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type CSSProperties } from "react";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -8,11 +8,12 @@ import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { useT } from "../../../../core/client/src/i18n/index.js";
+import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchRecentPluginTarget, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
-import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
+import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { ONBOARDING_TOUR_LAYER_SELECTOR } from "@fleet-console/sdk/onboarding/anchors";
 import { chordLabel, resolveShortcutChords, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import type { QuickLaunchDraftAttachment } from "../../../../core/client/src/integration/types.js";
@@ -24,7 +25,7 @@ import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGly
 import { resolveRowEffort } from "./effort-track.js";
 import { LaunchModelEffort } from "./launch-model-effort.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "./start-view-glyphs.js";
-import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
+import { AttachImageIcon, ComposerAttachmentTray, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerMenu, ComposerMenuItem, ComposerPlusButton, ComposerRestStrip, ComposerSubmitButton, composerAttachmentNoticeText, composerT, createComposerAttachments, renderUltracodeHighlight, syncComposerHighlight, useComposerAttachmentInput, useComposerAttachmentSnapshot, type ComposerAttachments } from "./composer-blocks.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { MobileQuickLaunch } from "./mobile-quick-launch.js";
 
@@ -149,14 +150,28 @@ export function QuickLaunch() {
   // 접힌 상태로 돌아간다 — 게이트는 "이번에 열었다"이지 기억되는 설정이 아니다(트랙도 그렇다).
   const [commandGateOpen, setCommandGateOpen] = useState(false);
   // 이미지 첨부: 붙여넣기·드롭 즉시 업로드가 시작되고, 칩은 업로드가 끝나야 발사 가능해진다.
-  const [attachments, setAttachments] = useState<readonly ComposerAttachment[]>([]);
+  // 포트는 실행 대상 플러그인 능력을 호출 시점에 읽는다 — 열림 전이는 플러그인을 의존성에 올리지 않는다.
+  const attachmentPluginRef = useRef<{ uploadLaunchAttachment?: (file: Blob) => Promise<{ readonly id: string }>; discardLaunchAttachment?: (id: string) => Promise<void> } | undefined>(undefined);
+  const attachmentStoreRef = useRef<ComposerAttachments | null>(null);
+  if (attachmentStoreRef.current === null) {
+    attachmentStoreRef.current = createComposerAttachments({
+      upload: (file) => {
+        const upload = attachmentPluginRef.current?.uploadLaunchAttachment;
+        if (!upload) return Promise.reject(new Error("attachment_unsupported"));
+        return upload(file);
+      },
+      discard: (id) => attachmentPluginRef.current?.discardLaunchAttachment?.(id) ?? Promise.resolve(),
+    });
+  }
+  const attachmentStore = attachmentStoreRef.current;
+  const attachmentSnap = useComposerAttachmentSnapshot(attachmentStore);
+  const attachments = attachmentSnap.items;
   const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | null>(null);
   // `ultracode` 인식은 단어의 존재에서 파생하고, 상태로 남는 것은 "이 초안에서 껐다"뿐이다 —
   // 무장을 상태로 들면 문면과 어긋난 무장이 남는다.
   const [ultracodeIgnored, setUltracodeIgnored] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  // 확대 보기 중인 칩의 key. 파생(zoomedAttachment)이 칩 소멸을 스스로 따라간다.
-  const [zoomedKey, setZoomedKey] = useState<string | null>(null);
+  const locale = useConsoleLocale();
+  const ct = composerT(locale);
   // 접힘은 상태로 소유하되 실제 포커스에서만 파생시킨다 — 포커스와 별도로 관리하면 둘이 어긋나
   // "보이는데 못 쓰는" 바가 생긴다. 고정된 채로 화면을 열면 접힌 채 상주한다(포커스를 훔치지 않는다).
   const [collapsed, setCollapsed] = useState(() => state.quickLaunchPinned);
@@ -166,11 +181,6 @@ export function QuickLaunch() {
   promptRef.current = prompt;
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
-  // 업로드가 끝나기 전에 칩이 사라진 key들. 완료 콜백이 여기서 자신을 발견하면 방금 받은 id를
-  // 서버에서 도로 거둔다 — 안 거두면 보이지 않는 파일이 미발사 슬롯을 30분간 차지한다.
-  const canceledUploadKeysRef = useRef(new Set<string>());
-  // 실제로 떠 있는 확대 레이어 — 칩이 사라지면 스스로 null이 된다(Escape 판정의 원천).
-  const zoomedAttachment = zoomedKey === null ? null : attachments.find((attachment) => attachment.key === zoomedKey) ?? null;
   const submittedRef = useRef(false);
 
   // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
@@ -245,6 +255,45 @@ export function QuickLaunch() {
   }, [mentionPick, allPluginMentionRows]);
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
+  const attachmentInput = useComposerAttachmentInput(attachmentStore, {
+    pastedName: ct("composer.attach.pasted"),
+    accept: () => {
+      if (mentionTargetRef.current?.kind === "plugin") {
+        setAttachmentErrorKey("chrome.quickLaunch.attachmentNotSupported");
+        return false;
+      }
+      if (!attachmentPluginRef.current?.uploadLaunchAttachment) {
+        setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentUploadFailed");
+        return false;
+      }
+      setAttachmentErrorKey(null);
+      return true;
+    },
+  });
+  const dragOver = attachmentInput.dragOver;
+  const addAttachmentFiles = (files: readonly File[]) => {
+    if (mentionTargetRef.current?.kind === "plugin") {
+      setAttachmentErrorKey("chrome.quickLaunch.attachmentNotSupported");
+      return;
+    }
+    if (!attachmentPluginRef.current?.uploadLaunchAttachment) {
+      setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentUploadFailed");
+      return;
+    }
+    setAttachmentErrorKey(null);
+    attachmentStore.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
+  };
+  const removeAttachment = (key: string) => {
+    attachmentStore.remove(key);
+    setAttachmentErrorKey(null);
+    inputRef.current?.focus();
+  };
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const attachmentPlusRootRef = useRef<HTMLSpanElement | null>(null);
+  const attachmentPlusRef = useRef<HTMLButtonElement | null>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
+  const attachmentMenuId = useId();
+  useMenuButtonKeyboard(attachmentPlusRootRef, attachmentPlusRef, attachmentMenuRef, attachmentMenuOpen, setAttachmentMenuOpen);
   const laneRows = useMemo(() => allPluginMentionRows.filter((row) => row.quickLaunch), [allPluginMentionRows]);
   const laneRowsRef = useRef(laneRows);
   laneRowsRef.current = laneRows;
@@ -292,25 +341,9 @@ export function QuickLaunch() {
   // 회신 시드가 열면 남은 초안·첨부를 거둔다. 미리보기 URL과 서버 미발사분은 슬롯을 비우기
   // 전에 회수한다 — store에서 먼저 지우면 회수할 자취가 사라진다.
   const discardComposerContents = useCallback(() => {
-    const slot = getState().quickLaunchDraftAttachments ?? [];
-    const discarded: readonly ComposerAttachment[] = [
-      ...slot.map((attachment) => ({
-        key: attachment.id,
-        id: attachment.id,
-        name: attachment.name,
-        previewUrl: attachment.previewUrl,
-        uploading: false,
-      })),
-      ...attachmentsRef.current.filter((attachment) => !slot.some((kept) => kept.previewUrl === attachment.previewUrl)),
-    ];
-    for (const attachment of discarded) {
-      URL.revokeObjectURL(attachment.previewUrl);
-      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
-      else canceledUploadKeysRef.current.add(attachment.key);
-    }
+    attachmentStore.discardAll(getState().quickLaunchDraftAttachments ?? []);
     attachmentsRef.current = [];
     promptRef.current = "";
-    setAttachments([]);
     setPrompt("");
     consumeQuickLaunchDraft();
     // 시드 오픈은 새 회차다 — 이전 전달의 성공 콜백이 방금 비운 자리를 finishSubmission으로
@@ -438,18 +471,11 @@ export function QuickLaunch() {
     // 시점에 업로드 중이던 칩과 그 뒤 완료된 칩)을 병합해 되살린다 — 텍스트 초안은 살아남는데
     // 늦게 끝난 이미지만 조용히 사라지면 보존 계약이 반쪽이 된다. 제출은 finishSubmission이
     // 상태를 비우므로 여기로 이월되지 않는다. 시드 오픈은 복원하지 않는다.
-    const restoredPreviews = new Set((discardDraft ? [] : (state.quickLaunchDraftAttachments ?? [])).map((attachment) => attachment.previewUrl));
-    const carried = discardDraft ? [] : attachmentsRef.current.filter((attachment) => !restoredPreviews.has(attachment.previewUrl));
-    setAttachments(discardDraft ? [] : [
-      ...(state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
-        key: attachment.id,
-        id: attachment.id,
-        name: attachment.name,
-        previewUrl: attachment.previewUrl,
-        uploading: false,
-      })),
-      ...carried,
-    ]);
+    const slot = discardDraft ? [] : (state.quickLaunchDraftAttachments ?? []);
+    const carried = discardDraft ? [] : attachmentsRef.current.filter((attachment) => !slot.some((kept) => kept.previewUrl === attachment.previewUrl));
+    if (discardDraft) attachmentStore.discardAll(state.quickLaunchDraftAttachments ?? []);
+    else if (state.quickLaunchError === "attachment_not_found") attachmentStore.replaceFromSlot(slot, state.quickLaunchError);
+    else attachmentStore.restore(slot);
     if (!discardDraft) consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
@@ -473,8 +499,6 @@ export function QuickLaunch() {
     setCommandInput(openingMention ? null : readCommand(restoredPrompt, restoredPrompt.length));
     setCommandActiveIndex(0);
     setAttachmentErrorKey(null);
-    setDragOver(false);
-    setZoomedKey(null);
     setTheaterId(rememberedTheater ?? getViewedTheaterId());
     setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
@@ -519,9 +543,7 @@ export function QuickLaunch() {
     // 업로드가 끝난 첨부는 초안 슬롯으로 보존한다. 진행 중이던 칩은 id가 없어 슬롯에 실을 수
     // 없지만 버려지지 않는다 — 컴포저 상태에 남아 완료 콜백이 ready로 승급시키고, 다음 열림
     // 전이가 슬롯 보존분과 병합해 되살린다.
-    const preservedAttachments = attachmentsRef.current
-      .filter((attachment) => attachment.id !== null)
-      .map((attachment) => ({ id: attachment.id as string, name: attachment.name, previewUrl: attachment.previewUrl }));
+    const preservedAttachments = submittedRef.current ? [] : attachmentStore.detach();
     if (!submittedRef.current && (promptRef.current.trim().length > 0 || preservedAttachments.length > 0)) {
       preserveQuickLaunchDraft(promptRef.current, preservedAttachments.length > 0 ? preservedAttachments : null);
     }
@@ -619,27 +641,8 @@ export function QuickLaunch() {
     // 방금 복원된 초안을 finishSubmission으로 지워 버린다(모달의 열림 전이와 같은 계약).
     composerEpochRef.current += 1;
     setPrompt(state.quickLaunchDraft);
-    // 복원은 교체다(텍스트와 같은 의미론) — 발사 후 새로 붙인 칩은 물러나되, 그 URL·서버 파일을
-    // 조용히 버리지 않고 거둔다. 고정 컴포저는 열림 전이(에포크 승급)가 없어 진행 중 업로드는
-    // 취소 집합으로만 회수된다.
-    const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
-    for (const attachment of attachmentsRef.current) {
-      if (restoredPreviews.has(attachment.previewUrl)) continue;
-      if (attachment.uploading) {
-        canceledUploadKeysRef.current.add(attachment.key);
-        continue;
-      }
-      URL.revokeObjectURL(attachment.previewUrl);
-      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
-    }
-    // 거절과 함께 돌아온 첨부 칩도 같은 슬롯에서 되살린다(열림 전이 복원과 같은 계약).
-    setAttachments((state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
-      key: attachment.id,
-      id: attachment.id,
-      name: attachment.name,
-      previewUrl: attachment.previewUrl,
-      uploading: false,
-    })));
+    // 복원은 교체다(텍스트와 같은 의미론). 만료된 토큰은 칩을 되살리지 않고 안내만 남긴다.
+    attachmentStore.replaceFromSlot(state.quickLaunchDraftAttachments ?? [], state.quickLaunchError);
     consumeQuickLaunchDraft();
     expandAndFocus();
   }, [expandAndFocus, pinned, state.quickLaunchDraft, state.quickLaunchDraftAttachments]);
@@ -958,110 +961,7 @@ export function QuickLaunch() {
     [registry.providers, target],
   );
   // 열림 전이 효과는 의존성에 플러그인을 올리지 않는다(열림에만 반응하는 계약) — 회수 호출은 ref로 읽는다.
-  const attachmentPluginRef = useRef(attachmentPlugin);
   attachmentPluginRef.current = attachmentPlugin;
-
-  const addAttachmentFiles = useCallback((files: readonly File[]) => {
-    const images = files.filter((file) => isQuickLaunchAttachmentCandidate(file));
-    // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 텍스트 붙여넣기·비이미지 드롭은 조용히 지나간다.
-    if (images.length === 0) return;
-    if (mentionTargetRef.current?.kind === "plugin") {
-      // 파일 픽커를 연 뒤 레인을 바꿔도 현재 주소의 한계를 따른다. 칩·업로드는 만들지 않는다.
-      setAttachmentErrorKey("chrome.quickLaunch.attachmentNotSupported");
-      return;
-    }
-    const upload = attachmentPlugin?.uploadLaunchAttachment;
-    if (!upload) {
-      // 카탈로그가 아직 도착하지 않은 창(또는 능력 미선언 대상) — 삼키지 않고 재시도를 청한다.
-      setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentUploadFailed");
-      return;
-    }
-    setAttachmentErrorKey(null);
-    // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다 — ref만 보면 같은 드롭의 앞 장이 안 보인다.
-    let count = attachmentsRef.current.length;
-    for (const file of images) {
-      if (count >= QUICK_LAUNCH_MAX_ATTACHMENTS) {
-        setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentLimit");
-        break;
-      }
-      if (file.size > QUICK_LAUNCH_ATTACHMENT_MAX_BYTES) {
-        setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentTooLarge");
-        continue;
-      }
-      count += 1;
-      const key = crypto.randomUUID();
-      const previewUrl = URL.createObjectURL(file);
-      const name = file.name.length > 0 ? file.name : "pasted image";
-      setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
-      void upload(file)
-        .then(({ id }) => {
-          // 칩의 생사는 key로 판정한다 — 컴포저가 닫혀 있어도 칩은 상태에 살아 있으므로(초안
-          // 보존 계약) 완료를 그대로 승급시키고, 명시 취소(× 클릭·거절 복원 교체)나 칩이
-          // 사라진 완료만 방금 받은 id를 서버에서 도로 거둔다.
-          if (canceledUploadKeysRef.current.delete(key) || !attachmentsRef.current.some((attachment) => attachment.key === key)) {
-            URL.revokeObjectURL(previewUrl);
-            void attachmentPluginRef.current?.discardLaunchAttachment?.(id).catch(() => {});
-            return;
-          }
-          setAttachments((current) => current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)));
-        })
-        .catch((error: unknown) => {
-          URL.revokeObjectURL(previewUrl);
-          if (canceledUploadKeysRef.current.delete(key)) return;
-          if (!attachmentsRef.current.some((attachment) => attachment.key === key)) return;
-          setAttachments((current) => current.filter((attachment) => attachment.key !== key));
-          // 플러그인이 서버 거절 코드를 message로 실어 던진다(멘션 전달과 같은 형태).
-          setAttachmentErrorKey(quickLaunchAttachmentErrorMessageKey(error instanceof Error ? error.message : null));
-        });
-    }
-  }, [attachmentPlugin]);
-
-  const removeAttachment = useCallback((key: string) => {
-    const found = attachmentsRef.current.find((attachment) => attachment.key === key);
-    if (found) {
-      URL.revokeObjectURL(found.previewUrl);
-      // 서버의 미발사분도 함께 거둔다 — best-effort라 실패해도 TTL이 회수한다. 아직 업로드 중이면
-      // id가 없으므로 취소 집합에 남겨, 완료 콜백이 도착하는 id를 그 자리에서 거두게 한다.
-      if (found.id !== null) void attachmentPlugin?.discardLaunchAttachment?.(found.id).catch(() => {});
-      else canceledUploadKeysRef.current.add(key);
-    }
-    setAttachments((current) => current.filter((attachment) => attachment.key !== key));
-    setZoomedKey((current) => (current === key ? null : current));
-    setAttachmentErrorKey(null);
-    inputRef.current?.focus();
-  }, [attachmentPlugin]);
-
-  const handlePaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isQuickLaunchAttachmentCandidate(file));
-    if (files.length === 0) return;
-    // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
-    // 능력·멘션 판정은 addAttachmentFiles가 사유와 함께 말한다(조건 없는 삼킴을 만들지 않는다).
-    event.preventDefault();
-    addAttachmentFiles(files);
-  }, [addAttachmentFiles]);
-
-  const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
-    event.preventDefault();
-    setDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    // 자식 사이를 오가는 이동은 이탈이 아니다 — 카드 밖으로 나갈 때만 하이라이트를 내린다.
-    const next = event.relatedTarget;
-    if (next instanceof Node && cardRef.current?.contains(next)) return;
-    setDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    setDragOver(false);
-    const files = Array.from(event.dataTransfer?.files ?? []);
-    if (files.length === 0) return;
-    // 파일이 실린 드롭은 이미지가 아니어도, 능력 판정이 끝나기 전이어도 기본 동작을 막는다 —
-    // 막지 않으면 브라우저가 그 파일로 내비게이션해 SPA째로 떠난다(카탈로그 로딩 창 포함).
-    event.preventDefault();
-    addAttachmentFiles(files);
-  }, [addAttachmentFiles]);
 
   const closePopover = useCallback(() => setPopover(null), []);
 
@@ -1115,7 +1015,7 @@ export function QuickLaunch() {
     // 회수 루프가, 진행 중인 실행이 거절 복원용으로 들고 있는 previewUrl을 revoke해 버린다.
     // revoke는 하지 않는다: 그 URL의 소유권은 실행 의도(성공 시 Operations 화면이 회수)로 넘어갔다.
     // 멘션 전달은 전달된 칩을 스스로 정확히 걷어냈다 — 남은 칩(전달 중 새로 붙은 것)은 산 초안이다.
-    if (!options.keepAttachments) setAttachments([]);
+    if (!options.keepAttachments) attachmentStore.handoff();
     setAttachmentErrorKey(null);
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
@@ -1258,8 +1158,7 @@ export function QuickLaunch() {
           // 남기면 재제출 전체가 attachment_not_found로 굳는다. 상태에서 그 칩만 정확히 걷어내고
           // 미리보기를 거둔다(전달 중 새로 붙은 칩은 건드리지 않는다).
           const deliveredIds = new Set(deliveredAttachments.map((attachment) => attachment.id));
-          setAttachments((current) => current.filter((attachment) => attachment.id === null || !deliveredIds.has(attachment.id)));
-          for (const attachment of deliveredAttachments) URL.revokeObjectURL(attachment.previewUrl);
+          attachmentStore.releaseSent(attachmentStore.read().items.flatMap((attachment) => attachment.id !== null && deliveredIds.has(attachment.id) ? [attachment.key] : []));
           // 에포크가 지났으면(닫고 재연 세션) 여기까지만 — 텍스트 초안은 건드리지 않는다
           // (전달된 문장이 초안으로 남는 것은 텍스트 멘션의 기존 계약과 같다).
           if (composerEpochRef.current !== epoch) return;
@@ -1270,6 +1169,7 @@ export function QuickLaunch() {
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;
           setSubmitting(false);
+          if (attachmentStore.noteSendFailure(error) === "expired") return;
           setMentionErrorKey(quickLaunchMentionErrorMessageKey(error instanceof Error ? error.message : null));
         });
       return;
@@ -1282,12 +1182,6 @@ export function QuickLaunch() {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      // 확대 보기가 최상단 레이어다 — 컴포저를 닫기 전에 그것부터 접는다. 판정은 실제로 떠 있는
-      // 파생값으로 한다: 칩이 사라져 스테일해진 key가 Escape 한 번을 조용히 삼키면 안 된다.
-      if (zoomedAttachment !== null) {
-        setZoomedKey(null);
-        return;
-      }
       if (modelMenuOpen) {
         setDismissModelMenu((tick) => tick + 1);
         return;
@@ -1306,7 +1200,7 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-  }, [closePopover, modelMenuOpen, pinned, popover, zoomedAttachment]);
+  }, [closePopover, modelMenuOpen, pinned, popover]);
 
   // 모달일 때의 Tab 가둠은 문서 수준에서 건다 — 안내 카드는 이 컴포저 밖에 렌더되므로 카드에만
   // 건 핸들러로는 카드에서 나가는 Tab을 잡지 못해, 열려 있는 모달 뒤로 포커스가 샌다.
@@ -1570,10 +1464,11 @@ export function QuickLaunch() {
   // 업로드 중인 첨부도 같은 계약으로 잠근다(submit의 가드와 짝).
   const canSubmit = promptLength > 0 && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !commandDeckHasRows && !attachmentsUploading
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
-  const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
+  const attachmentNoticeText = composerAttachmentNoticeText(attachmentSnap.notice, ct);
+  const rejectionKey = state.quickLaunchError === "attachment_not_found" ? null : quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
   // 거절은 접힘보다 우선한다 — 사유를 실은 바가 시선을 뗐다고 접히면, 클릭 한 번으로 사라지는
   // 에러가 된다. 상한 초과 경고도 같은 이유로 바를 펼친 채 붙잡는다.
-  const holdsMessage = rejectionKey !== null || mentionErrorKey !== null || attachmentErrorKey !== null || overLimit;
+  const holdsMessage = rejectionKey !== null || mentionErrorKey !== null || attachmentErrorKey !== null || attachmentNoticeText !== null || overLimit;
   const showStrip = pinned && collapsed && !holdsMessage;
   const draftTrace = prompt.trim();
   // Prefer the selected model\'s provider mark. Falling back to the launch-kind
@@ -1623,6 +1518,8 @@ export function QuickLaunch() {
           promptRef.current = next;
         }}
         attachments={attachments}
+        attachmentStore={attachmentStore}
+        attachmentT={ct}
         onAddFiles={addAttachmentFiles}
         onRemoveAttachment={removeAttachment}
         mentionDeckOpen={mentionDeckOpen}
@@ -1634,6 +1531,7 @@ export function QuickLaunch() {
         // 바의 상태 줄과 같은 우선순위 — 상한 초과 · 첨부 · 멘션 전달 · 실행 거절.
         message={overLimit ? t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })
           : attachmentErrorKey ? t(attachmentErrorKey as Parameters<typeof t>[0])
+          : attachmentNoticeText ? attachmentNoticeText
           : mentionErrorKey ? t(mentionErrorKey as Parameters<typeof t>[0])
           : rejectionKey ? t(rejectionKey as Parameters<typeof t>[0], state.quickLaunchErrorShortenBy === null ? undefined : { over: String(state.quickLaunchErrorShortenBy) })
           : null}
@@ -1654,7 +1552,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || modelMenuOpen || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || modelMenuOpen ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart && mentionTarget === null ? " is-chat-start" : ""}${conversationRow ? " has-conversation" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1662,9 +1560,9 @@ export function QuickLaunch() {
         onKeyDown={handleKeyDown}
         onFocus={handleFocusIn}
         onBlur={handleFocusOut}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+        onDragOver={attachmentInput.onDragOver}
+        onDragLeave={attachmentInput.onDragLeave}
+        onDrop={attachmentInput.onDrop}
         style={{ maxWidth: CARD_WIDTH_FALLBACK }}
       >
         {/* 유리 재질 층 — 카드 루트에 두면 안쪽 팝오버의 blur가 죽는다(components.css 주석 참조). */}
@@ -1921,6 +1819,24 @@ export function QuickLaunch() {
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <ComposerField className="quick-launch-field" inert={showStrip || undefined}>
+          {attachmentPlugin?.uploadLaunchAttachment && mentionTarget?.kind !== "plugin" ? (
+            <span className="quick-launch-plus-root" ref={attachmentPlusRootRef}>
+              {attachmentMenuOpen ? (
+                <ComposerMenu ref={attachmentMenuRef} id={attachmentMenuId} className="quick-launch-plus-menu" aria-label={ct("composer.more")}>
+                  <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setAttachmentMenuOpen(false); attachmentInput.pick(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
+                </ComposerMenu>
+              ) : null}
+              <ComposerPlusButton
+                ref={attachmentPlusRef}
+                aria-label={ct("composer.more")}
+                title={ct("composer.more")}
+                aria-expanded={attachmentMenuOpen}
+                aria-controls={attachmentMenuOpen ? attachmentMenuId : undefined}
+                onClick={() => setAttachmentMenuOpen((open) => !open)}
+              />
+              {attachmentInput.fileInput}
+            </span>
+          ) : null}
           {mentionTarget && !conversationRow ? (
             <span className="quick-launch-mention" title={mentionTargetName(mentionTarget)}>
               {/* Operation은 선택 뒤에도 공급자 출처를 되살리지 않는다 — 이름과 하단 행선지 태그가
@@ -1946,7 +1862,7 @@ export function QuickLaunch() {
             value={prompt}
             onChange={(event) => updatePrompt(event.target.value, event.target)}
             onKeyDown={handleInputKeyDown}
-            onPaste={handlePaste}
+            onPaste={attachmentInput.onPaste}
             onScroll={syncUltracodeHighlight}
             placeholder={conversationRow?.quickLaunch?.placeholder ?? (mentionTarget
               ? t(mentionTarget.kind === "operation"
@@ -1960,70 +1876,19 @@ export function QuickLaunch() {
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
           />
-          {/* 파일 픽커 — 붙여넣기·드롭과 같은 입구의 명시적 형태. 능력 있는 대상에서만 선다.
-              입력 행에 사는 이유: 첨부는 초안에 붙는 내용이라 발사 좌표(하단 행)가 아니라 글이 있는 자리의
-              도구다. 하단 행은 전송이 한 줄을 지켜야 하는 고정 예산이기도 하다(components.css의
-              .quick-launch-bar 주석). */}
-          {attachmentPlugin?.uploadLaunchAttachment && mentionTarget?.kind !== "plugin" ? (
-            // 입구 폭은 paste·드롭과 같다(image/*, 블록 기본값) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
-            <ComposerAttachControl
-              className="quick-launch-attach"
-              label={t("chrome.quickLaunch.attachmentAdd")}
-              onFiles={(files) => addAttachmentFiles([...files])}
-            />
-          ) : null}
           </span>
-          {attachments.length > 0 ? (
-            <div className="quick-launch-attachments" role="group" aria-label={t("chrome.quickLaunch.attachments")}>
-              {attachments.map((attachment) => (
-                <span key={attachment.key} className={`quick-launch-attachment${attachment.uploading ? " is-uploading" : ""}`}>
-                  {/* 썸네일 클릭은 확대 보기 토글이다 — 52px 칩만으로는 무엇을 붙였는지 확신할 수 없다. */}
-                  <button
-                    type="button"
-                    className="quick-launch-attachment-thumb-button"
-                    onClick={() => setZoomedKey((current) => (current === attachment.key ? null : attachment.key))}
-                    aria-pressed={zoomedKey === attachment.key}
-                    aria-label={t("chrome.quickLaunch.attachmentZoom", { name: attachment.name })}
-                    title={t("chrome.quickLaunch.attachmentZoom", { name: attachment.name })}
-                  >
-                    <img className="quick-launch-attachment-thumb" src={attachment.previewUrl} alt={attachment.name} />
-                  </button>
-                  {attachment.uploading ? (
-                    <span className="quick-launch-attachment-wait" role="status" aria-label={t("chrome.quickLaunch.attachmentUploading", { name: attachment.name })} />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="quick-launch-attachment-remove"
-                    onClick={() => removeAttachment(attachment.key)}
-                    aria-label={t("chrome.quickLaunch.attachmentRemove", { name: attachment.name })}
-                    title={t("chrome.quickLaunch.attachmentRemove", { name: attachment.name })}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
-          {zoomedAttachment ? (
-            // 클릭·Escape로 닫히는 확대 레이어. 칩이 제거·소비되면 파생이 스스로 사라진다.
-            <div
-              className="quick-launch-attachment-zoom"
-              role="img"
-              aria-label={zoomedAttachment.name}
-              onClick={() => setZoomedKey(null)}
-            >
-              <img src={zoomedAttachment.previewUrl} alt={zoomedAttachment.name} />
-            </div>
-          ) : null}
+          <ComposerAttachmentTray store={attachmentStore} t={ct} disabled={submitting} />
         </ComposerField>
 
         {mentionErrorKey === "chrome.quickLaunch.mentionErrorTrustRequired" && !showStrip ? (
           <p className="quick-launch-trust-guidance" role="alert">{t("chrome.quickLaunch.mentionErrorTrustRequired")}</p>
         ) : null}
-        {conversationRow && !showStrip && (overLimit || attachmentErrorKey || (mentionErrorKey && mentionErrorKey !== "chrome.quickLaunch.mentionErrorTrustRequired") || rejectionKey) ? (
+        {conversationRow && !showStrip && (overLimit || attachmentErrorKey || attachmentNoticeText || (mentionErrorKey && mentionErrorKey !== "chrome.quickLaunch.mentionErrorTrustRequired") || rejectionKey) ? (
           <p className="quick-launch-feedback" role={attachmentErrorKey === "chrome.quickLaunch.attachmentNotSupported" ? "status" : "alert"}>
             {overLimit ? t("chrome.quickLaunch.tooLong", { over: String(promptLength - QUICK_LAUNCH_PROMPT_MAX_CHARS) })
-              : t((attachmentErrorKey ?? mentionErrorKey ?? rejectionKey) as Parameters<typeof t>[0], state.quickLaunchErrorShortenBy === null ? undefined : { over: String(state.quickLaunchErrorShortenBy) })}
+              : attachmentErrorKey ? t(attachmentErrorKey as Parameters<typeof t>[0])
+              : attachmentNoticeText ? attachmentNoticeText
+              : t((mentionErrorKey ?? rejectionKey) as Parameters<typeof t>[0], state.quickLaunchErrorShortenBy === null ? undefined : { over: String(state.quickLaunchErrorShortenBy) })}
           </p>
         ) : null}
         <ComposerBar className={`quick-launch-bar${conversationRow ? " is-conversation" : ""}`} ref={barRef} inert={showStrip || undefined}>
@@ -2094,6 +1959,8 @@ export function QuickLaunch() {
             <span className="quick-launch-rejection" role="alert">
               {t(attachmentErrorKey as Parameters<typeof t>[0])}
             </span>
+          ) : attachmentNoticeText ? (
+            <span className="quick-launch-rejection" role="alert">{attachmentNoticeText}</span>
           ) : mentionErrorKey && mentionErrorKey !== "chrome.quickLaunch.mentionErrorTrustRequired" ? (
             // 전달이 거절됐다. 초안·멘션은 그대로 남았고, 무엇이 문제인지 여기서 말한다.
             <span className="quick-launch-rejection" role="alert">

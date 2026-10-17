@@ -1,22 +1,27 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import {
-  COMPOSER_ATTACHMENT_MAX_BYTES,
-  COMPOSER_MAX_ATTACHMENTS,
-  ComposerAttachControl,
+  AttachImageIcon,
+  ComposerAttachmentTray,
   ComposerField,
   ComposerInput,
+  ComposerMenu,
+  ComposerMenuItem,
+  ComposerPlusButton,
   ComposerSubmitButton,
-  isComposerAttachmentCandidate,
+  composerAttachmentNoticeText,
+  composerT,
   isUltracodeDisarmCaret,
   nextUltracodeIgnored,
   readUltracodeTokens,
   renderUltracodeHighlight,
   syncComposerHighlight,
+  useComposerAttachmentInput,
 } from "@fleet-console/sdk/composer";
 
 import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "@fleet-console/sdk/components/caption-actions";
 
+import { useMenuButtonKeyboard } from "../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { getT } from "../i18n/index.js";
 import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import type { TerminalMessageKey } from "../i18n/index.js";
@@ -150,12 +155,6 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
  * 이 바에 직접 새긴 좌표와 계기는 읽히기만 한다.
  */
 
-/** 거절 사유는 문구 키와 인자를 함께 들고 다닌다 — 바에 서는 한 줄이 사유를 말해야 한다. */
-type AttachmentRejection =
-  | { readonly kind: "limit" }
-  | { readonly kind: "tooLarge" }
-  | { readonly kind: "failed" };
-
 /**
  * 취소 요청 하나의 결말.
  *
@@ -222,6 +221,7 @@ export function AgentChatComposer({
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
+  const ct = composerT(language);
   /* 채팅 폭 — 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, 이 글리프가 그 유일한 문이다
      (설정에도 같은 값을 고르는 Select가 선다). 글리프가 현재 값을 그리고, 누르면 다음 단으로
      간다 — 이 폭에서 같은 폭이 되는 단은 건너뛴다. */
@@ -231,9 +231,8 @@ export function AgentChatComposer({
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const draftState = getComposerDraft(context.operationId);
-  const { text: draft, attachments, sending, sentEpoch, failed, uploadFailed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
+  const { text: draft, attachments, attachmentNotice, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
   const setDraft = draftState.setText;
-  const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
   /**
    * Console이 자식 대신 답한 결과 한 줄. 그 명령들은 자식에게 가지 않으므로 원장에 남을 결말이
@@ -244,7 +243,14 @@ export function AgentChatComposer({
   const [clearArmed, setClearArmed] = React.useState(false);
   /** 응답을 기다리는 취소 좌표들 — 같은 칩의 두 번째 활성화를 삼킨다. */
   const cancelsInFlight = React.useRef(new Set<string>());
-  const [dragOver, setDragOver] = React.useState(false);
+  const attachmentInput = useComposerAttachmentInput(draftState.attachments);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
+  const plusRef = React.useRef<HTMLButtonElement | null>(null);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const menuId = React.useId();
+  useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
+  const { dragOver } = attachmentInput;
   // 카탈로그는 덱과 미러가 함께 읽는다 — 미러가 좌표를 칠하려면 이름이 실재하는지
   // 대조해야 하므로 덱 블록보다 앞에 선다.
   const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
@@ -443,25 +449,8 @@ export function AgentChatComposer({
   }, [deckToken, deckRows, draft]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
-    const images = files.filter((file) => isComposerAttachmentCandidate(file));
-    // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 텍스트 붙여넣기·비이미지 드롭은 조용히 지나간다.
-    if (images.length === 0) return;
-    setRejection(null);
-    draftState.clearUploadFailure();
-    let count = draftState.read().attachments.length;
-    for (const file of images) {
-      if (count >= COMPOSER_MAX_ATTACHMENTS) {
-        setRejection({ kind: "limit" });
-        break;
-      }
-      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
-        setRejection({ kind: "tooLarge" });
-        continue;
-      }
-      count += 1;
-      draftState.addFile(file);
-    }
-  }, [draftState]);
+    draftState.attachments.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
+  }, [ct, draftState]);
 
   // 수신함 — Operation Browser 가 맡긴 스크린샷을 붙여넣기와 같은 길로 이 컴포저에 세운다. 보내지는 않는다.
   React.useEffect(() => {
@@ -474,11 +463,6 @@ export function AgentChatComposer({
     take();
     return subscribeComposerInbox(context.operationId, take);
   }, [context.operationId, addFiles]);
-
-  const removeAttachment = React.useCallback((key: string) => {
-    draftState.removeAttachment(key);
-    setRejection(null);
-  }, [draftState]);
 
   const stop = React.useCallback(async () => {
     // ACK를 받은 중지만 focus를 돌려준다. 정상 완료는 작업 면이나 separator에서 사용자가 두고
@@ -520,13 +504,7 @@ export function AgentChatComposer({
       ? t(queueRejection.kind === "started"
         ? "terminal.chat.queueCancelFailed"
         : "terminal.chat.queueCancelUnreachable")
-      : rejection === null
-        ? uploadFailed ? t("terminal.chat.composerAttachFailed") : null
-        : rejection.kind === "limit"
-          ? t("terminal.chat.composerAttachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) })
-          : rejection.kind === "tooLarge"
-            ? t("terminal.chat.composerAttachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) })
-            : t("terminal.chat.composerAttachFailed");
+      : composerAttachmentNoticeText(attachmentNotice, ct);
 
   const hint = turnRunning
     ? `${t("terminal.chat.composerHintQueue")} · ${t("terminal.chat.composerHintStop")} · ${t("terminal.chat.composerHintNewline")}`
@@ -535,6 +513,25 @@ export function AgentChatComposer({
   // 모바일 독(impl-spec S-27): 좌표(모델·강도 알약)는 상자 안 아래 줄로 내려가고, 표시줄에는 알림과
   // 작업 선반만 남는다(없으면 표시줄 자체가 서지 않는다). 채팅 폭 글리프는 폰에서 뜻이 없어 서지 않는다.
   const mobileSurface = useMobileSurface();
+  const attachmentEntry = (
+    <span className="agent-chat-composer-plus-root" ref={plusRootRef}>
+      {menuOpen ? (
+        <ComposerMenu ref={menuRef} id={menuId} className="agent-chat-composer-plus-menu" aria-label={ct("composer.more")}>
+          <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setMenuOpen(false); attachmentInput.pick(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
+        </ComposerMenu>
+      ) : null}
+      <ComposerPlusButton
+        ref={plusRef}
+        aria-label={ct("composer.more")}
+        title={ct("composer.more")}
+        aria-expanded={menuOpen}
+        aria-controls={menuOpen ? menuId : undefined}
+        disabled={sending}
+        onClick={() => setMenuOpen((open) => !open)}
+      />
+      {attachmentInput.fileInput}
+    </span>
+  );
   const ledgeNode = ledge !== undefined ? ledge(notice !== null) : null;
   return (
     <div className="agent-chat-composer" ref={composerRef}>
@@ -601,26 +598,9 @@ export function AgentChatComposer({
           event.preventDefault();
           void stop();
         }}
-        onDragOver={(event) => {
-          if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
-          event.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={(event) => {
-          // 자식 사이를 오가는 이동은 이탈이 아니다 — 프레임 밖으로 나갈 때만 하이라이트를 내린다.
-          const next = event.relatedTarget;
-          if (next instanceof Node && event.currentTarget.contains(next)) return;
-          setDragOver(false);
-        }}
-        onDrop={(event) => {
-          setDragOver(false);
-          const files = Array.from(event.dataTransfer?.files ?? []);
-          if (files.length === 0) return;
-          // 파일이 실린 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가
-          // 그 파일로 내비게이션해 콘솔째로 떠난다.
-          event.preventDefault();
-          addFiles(files);
-        }}
+        onDragOver={attachmentInput.onDragOver}
+        onDragLeave={attachmentInput.onDragLeave}
+        onDrop={attachmentInput.onDrop}
       >
         {/* 무장 고지 — field 위 자기 줄에 상주한다(바 슬롯은 전송 실패 alert가 쓴다). */}
         {ultracodeArmed ? (
@@ -681,25 +661,9 @@ export function AgentChatComposer({
               onHover={setDeckIndex}
             />
           ) : null}
-          {attachments.length > 0 ? (
-            <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
-              {attachments.map((attachment) => (
-                <span key={attachment.key} className={`agent-chat-composer-attachment${attachment.uploading ? " is-uploading" : ""}`}>
-                  <img src={attachment.previewUrl} alt={attachment.name} />
-                  <button
-                    type="button"
-                    className="agent-chat-composer-attachment-remove"
-                    onClick={() => removeAttachment(attachment.key)}
-                    aria-label={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
-                    title={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          ) : null}
+          <ComposerAttachmentTray store={draftState.attachments} t={ct} disabled={sending} />
           <div className="agent-chat-composer-row">
+            {mobileSurface ? null : attachmentEntry}
             <span className="agent-chat-composer-input-wrap">
                 {highlightSpans.length > 0 ? (
                 <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
@@ -727,13 +691,7 @@ export function AgentChatComposer({
                   setClearArmed(false);
                 }}
                 onScroll={syncUltracodeHighlight}
-                onPaste={(event) => {
-                  const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
-                  if (files.length === 0) return;
-                  // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
-                  event.preventDefault();
-                  addFiles(files);
-                }}
+                onPaste={attachmentInput.onPaste}
                 onKeyDown={(event) => {
                   // caret이 인식된 `ultracode` 바로 뒤일 때의 수식 없는 Backspace 한 번은 글자가 아니라
                   // 무장을 지운다 — 다음 Backspace는 평소대로 지운다. 키 반복·수식 붙은 삭제는 손대지 않는다.
@@ -787,15 +745,6 @@ export function AgentChatComposer({
             </span>
             {mobileSurface ? null : (
             <span className="agent-chat-composer-actions">
-              {/* 첨부는 도는 동안 물러난다 — 다음 지시에만 실리므로 예약 전송과 함께 돌아오면 충분하고,
-                  좁은 패널의 오른쪽이 [계기][중지][예약]으로 숨 쉴 자리를 얻는다. */}
-              {turnRunning ? null : (
-                <ComposerAttachControl
-                  className="agent-chat-composer-attach"
-                  label={t("terminal.chat.composerAttach")}
-                  onFiles={addFiles}
-                />
-              )}
               {meter}
               {turnRunning ? (
                 // 중지와 다음 지시는 서로 배타적이지 않다. 현재 턴을 끊는 문과 그 뒤에 실행할 지시를
@@ -835,13 +784,7 @@ export function AgentChatComposer({
             // 아래 줄: [+ 첨부] [모델·강도 알약] · · · [멈춤] [보내기]. 진행 중에는 멈춤이 서고, 그 사이 친
             // 다음 지시는 보내기(예약)로 나간다 — 두 문은 서로 배타적이지 않다(데스크톱과 같은 계약).
             <div className="agent-chat-composer-tools">
-              <ComposerAttachControl
-                className="agent-chat-composer-attach"
-                label={t("terminal.mobile.attach")}
-                onFiles={addFiles}
-              >
-                <MobileGlyph name="plus" />
-              </ComposerAttachControl>
+              {attachmentEntry}
               {coordinate}
               <span className="agent-chat-composer-gap" aria-hidden="true" />
               {turnRunning ? (
