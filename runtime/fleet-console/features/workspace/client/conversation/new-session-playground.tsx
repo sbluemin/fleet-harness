@@ -170,6 +170,7 @@ class PlaygroundStage {
   /** 떠나기 직전 얼굴 SVG 와 애니메이션 시각. 몽글 스케줄러를 내려도 진행을 되돌릴 수 있다. */
   faceHtml: Record<string, string> = {};
   animEpoch = 0;
+  private restoredAnimations = new WeakSet<Animation>();
   private animSnap: { id: string; name: string; time: number }[] = [];
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
   private readonly kindOrder = shuffle(ITEM_KINDS);
@@ -981,14 +982,24 @@ class PlaygroundStage {
     if (!this.held) return;
     this.held = false;
     this.animEpoch += 1;
-    // 라이브 얼굴을 다시 세운 뒤, is-held 를 풀고 떠나기 직전 시각을 싣는다.
+    this.restoredAnimations = new WeakSet();
+    // 라이브 얼굴을 다시 세운 뒤 is-held 를 푼다. 큰 동작은 아바타 effect 다음에 생기므로 몇 프레임 더 맞춘다.
     this.publish(true);
     sceneHost?.classList.remove("is-held");
     this.applyAnims(true);
     this.rearmClock(REENTRY_HOLD_MS);
+    const token = this.animEpoch;
+    let frames = 8;
+    const later = () => {
+      if (this.held || this.animEpoch !== token) return;
+      this.applyAnims(true);
+      frames -= 1;
+      if (frames > 0) requestAnimationFrame(later);
+    };
+    requestAnimationFrame(later);
   }
 
-  /** 지금 배우 DOM 의 얼굴과 애니메이션 시각을 남긴다. */
+  /** 배우 얼굴과 무대 안 모든 애니메이션 시각. 그네·시소 팔은 배우 밖에 있다. */
   private captureFaces(): void {
     const band = sceneHost?.querySelector(".pg-band");
     if (!band) return;
@@ -996,17 +1007,29 @@ class PlaygroundStage {
     this.faceHtml = {};
     for (const actor of band.querySelectorAll<HTMLElement>(".pg-actor")) {
       const id = actor.dataset.pgId;
-      if (!id) continue;
       const gait = actor.querySelector(".pg-gait");
-      if (gait) this.faceHtml[id] = gait.innerHTML;
-      for (const animation of actor.getAnimations({ subtree: true })) {
-        const named = animation as Animation & { animationName?: string; transitionProperty?: string };
-        this.animSnap.push({ id, name: named.animationName || named.transitionProperty || "?", time: Number(animation.currentTime ?? 0) });
-      }
+      if (id && gait) this.faceHtml[id] = gait.innerHTML;
+    }
+    for (const animation of band.getAnimations({ subtree: true })) {
+      const target = (animation.effect as KeyframeEffect | null)?.target;
+      if (!(target instanceof Element)) continue;
+      const id = this.animationOwner(band, target);
+      if (!id) continue;
+      const named = animation as Animation & { animationName?: string; transitionProperty?: string };
+      this.animSnap.push({ id, name: named.animationName || named.transitionProperty || "?", time: Number(animation.currentTime ?? 0) });
     }
   }
 
-  /** 스냅샷의 currentTime 을 지금 DOM 에 싣는다. 스냅샷에 없는 등장은 끈다. */
+  private animationOwner(band: Element, target: Element): string | null {
+    const actor = target.closest<HTMLElement>(".pg-actor");
+    if (actor?.dataset.pgId) return actor.dataset.pgId;
+    const item = target.closest(".pg-item");
+    if (!item) return null;
+    const index = [...band.querySelectorAll(".pg-item")].indexOf(item);
+    return index >= 0 ? `item:${index}` : null;
+  }
+
+  /** 스냅샷의 currentTime 을 지금 DOM 에 한 번만 싣는다. 스냅샷에 없는 등장은 끈다. */
   applyAnims(play: boolean): void {
     const band = sceneHost?.querySelector(".pg-band");
     if (!band || this.animSnap.length === 0) return;
@@ -1017,12 +1040,22 @@ class PlaygroundStage {
       list.push(snap.time);
       queues.set(key, list);
     }
-    for (const actor of band.querySelectorAll<HTMLElement>(".pg-actor")) {
-      const id = actor.dataset.pgId ?? "";
-      for (const animation of actor.getAnimations({ subtree: true })) {
+    const roots = [
+      ...band.querySelectorAll<HTMLElement>(".pg-actor"),
+      ...band.querySelectorAll<HTMLElement>(".pg-item"),
+    ];
+    for (const root of roots) {
+      const id = root.classList.contains("pg-actor")
+        ? root.dataset.pgId ?? ""
+        : `item:${[...band.querySelectorAll(".pg-item")].indexOf(root)}`;
+      for (const animation of root.getAnimations({ subtree: true })) {
+        if (this.restoredAnimations.has(animation)) continue;
+        const target = (animation.effect as KeyframeEffect | null)?.target;
+        if (!(target instanceof Element) || this.animationOwner(band, target) !== id) continue;
         const named = animation as Animation & { animationName?: string; transitionProperty?: string };
         const list = queues.get(`${id}\0${named.animationName || named.transitionProperty || "?"}`);
         const time = list?.shift();
+        this.restoredAnimations.add(animation);
         if (time === undefined) {
           try { animation.cancel(); } catch { /* 스냅샷에 없는 등장은 진행으로 세지 않는다. */ }
           continue;
