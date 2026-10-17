@@ -120,7 +120,7 @@ function hasCopyableSelection(): boolean {
  * Chat Mode의 Operation 본문 — 지휘 로그.
  *
  * 지시는 패널 하단의 귀속 컴포저에서 쓴다(sdk/composer 블록의 축약 조립 — 쉬는 한 줄로
- * 물러나 있다가 인터랙션에만 펼쳐진다). Quick Launch 멘션 전달은 여전히 살아 있는 별도
+ * 물러나 있다가 인터랙션에만 펼쳐진다). 새 세션 멘션 전달은 여전히 살아 있는 별도
  * 경로다. 모델이 멈춰 서서 물으면 그 자리에 카드가 서고, 카드 안에서 답한다 — 카드의 입력은
  * 새 턴을 만들지 않고 지금 그 질문에만 살며, 답하면 사라진다.
  *
@@ -954,7 +954,7 @@ export function AgentChatView({
         </div>
 
         {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
-            (Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch 멘션
+            (새 세션으로 가는 회신 버튼)은 이 컴포저가 대체했다 — 새 세션 멘션
             전달은 여전히 살아 있는 별도 경로다.
 
             선반은 잡이 하나라도 태어난 세션에서만 넘긴다 — 컴포저 표시줄의 가운데 칸이 그
@@ -1396,7 +1396,7 @@ export const ChatTurn = React.memo(function ChatTurn({
       ) : turn.dispatch ? (
         <div className="agent-chat-dispatch">
           <div className="agent-chat-dispatch-meta">
-            {/* "Quick Launch로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
+            {/* "새 세션으로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
                 더는 특기 사항이 아니고, 경로를 가르는 origin 와이어는 배지 하나 값이 아니다. */}
             {turn.dispatch.by ? <span className="chat-by-agent">{chatOriginLabel(turn.dispatch.by)}</span> : null}
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
@@ -2300,7 +2300,7 @@ function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): stri
  * 모델이 멈춰 서서 물은 자리.
  *
  * 이 카드의 입력은 대화 입력창이 아니다 — 새 턴을 만들지 않고, 지금 이 질문에만 살며, 답하면
- * 사라진다. 지시를 보내는 경로는 그대로 Quick Launch 하나다.
+ * 사라진다. 지시를 보내는 경로는 그대로 새 세션 하나다.
  *
  * 대기에는 만료가 없다(제품 결정). 그래서 나가는 문이 언제나 하나 있어야 한다: 질문에는
  * "답하지 않기", 계획에는 "수정 요청". 후자는 되돌림이 아니라 되묻기라, 모델이 계획을 고쳐 다시 낸다.

@@ -8,7 +8,7 @@ import type { ChatDeckSection, ChatDeckToken } from "./composer-deck.js";
 /**
  * 컴포저 위에 서는 능력 덱.
  *
- * Quick Launch의 덱과 **같은 문법**을 쓰되 클래스는 새로 짓는다. 코어의 `.quick-launch-*`는
+ * 새 세션의 덱과 **같은 문법**을 쓰되 클래스는 새로 짓는다. 코어의 `.launch-*`는
  * 전역 규칙이라 플러그인 마크업에도 먹지만, 그것을 빌려 쓰면 코어 크롬의 CSS가 이 번들의
  * 계약이 되어 버린다("선언된 export만 소비한다"는 경계 원칙). 물려받는 것은 토큰과 문법이다.
  *

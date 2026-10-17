@@ -11,9 +11,9 @@ import { ComposerChip } from "./composer-blocks.js";
 const POPOVER_GAP = 8;
 
 /**
- * Quick Launch 바의 모델 칩·216px 공급자 메뉴·강도 트랙.
- * 새 세션 화면은 같은 부품을 칩 줄 오른쪽에 두고, 게이트만 늘 펼친다(apexPinnedOpen).
- * 메뉴는 잘라내는 조상(Quick Launch 선택 줄) 밖 — menuRoot — 으로 보낸다.
+ * 새 세션의 모델 칩·216px 공급자 메뉴·강도 트랙.
+ * 새 세션 화면은 같은 부품을 칩 줄 오른쪽에 두고, 게이트 펼침을 `/effort` 목록과 나눠 쥔다(apexOpen).
+ * 메뉴는 잘라내는 조상 밖 — menuRoot — 으로 보낼 수 있다.
  */
 export function LaunchModelEffort({
   groups,
@@ -22,6 +22,8 @@ export function LaunchModelEffort({
   onChange,
   disabled = false,
   apexPinnedOpen = false,
+  apexOpen,
+  onApexOpenChange,
   placement = "below",
   menuRoot = null,
   dismissSignal = 0,
@@ -34,6 +36,9 @@ export function LaunchModelEffort({
   readonly onChange: (model: string | null, effort: string | null) => void;
   readonly disabled?: boolean;
   readonly apexPinnedOpen?: boolean;
+  /** 게이트 펼침을 바깥이 쥘 때(EffortTrack `apexOpen`). */
+  readonly apexOpen?: boolean;
+  readonly onApexOpenChange?: (open: boolean) => void;
   readonly placement?: "above" | "below";
   readonly menuRoot?: RefObject<HTMLElement | null> | null;
   readonly dismissSignal?: number;
@@ -53,7 +58,7 @@ export function LaunchModelEffort({
   const fallbackBadge = t("settings.models.fallback");
   const modelLabel = selectedRow
     ? (onFallbackRow ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label)
-    : t("chrome.quickLaunch.modelUnset");
+    : t("chrome.launch.modelUnset");
   const selectedProvider = selectedRow
     ? (launchProviderFromGroupId(groups.find((group) => group.rows.some((row) => row.id === selectedRow.id))?.id ?? "")
       ?? launchProviderFromModelId(selectedRow.launch.model ?? selectedRow.id))
@@ -169,17 +174,17 @@ export function LaunchModelEffort({
   const menu = open ? (
     <div
       ref={menuRef}
-      className="quick-launch-pop quick-launch-pop--model theater-menu"
+      className="launch-pop launch-pop--model theater-menu"
       role="menu"
-      aria-label={t("chrome.quickLaunch.modelMenu")}
+      aria-label={t("chrome.launch.modelMenu")}
       onKeyDown={onMenuKeyDown}
     >
       {groups.map((group) => (
-        <div key={group.id} className="quick-launch-pop-group">
+        <div key={group.id} className="launch-pop-group">
           {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice onOpened={() => setOpenAndTell(false)} /> : (() => {
             const provider = launchProviderFromGroupId(group.id);
             return (
-              <p className={`quick-launch-pop-band${provider ? ` is-${provider}` : ""}`}>
+              <p className={`launch-pop-band${provider ? ` is-${provider}` : ""}`}>
                 {provider ? (
                   <span className="operation-launch-provider-glyph" aria-hidden="true">
                     {launchProviderGlyph(provider)}
@@ -203,18 +208,18 @@ export function LaunchModelEffort({
       <span className="launch-model-effort-anchor" ref={anchorRef}>
         <ComposerChip
           ref={chipRef}
-          className="quick-launch-chip quick-launch-chip--model"
+          className="launch-chip launch-chip--model"
           aria-expanded={open}
           disabled={disabled || groups.length === 0}
           onClick={() => setOpenAndTell(!open)}
         >
           {kindIcon ? (
-            <span className={`quick-launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`} aria-hidden="true">
+            <span className={`launch-kind-icon${selectedProvider ? ` is-${selectedProvider}` : ""}`} aria-hidden="true">
               {kindIcon}
             </span>
           ) : null}
-          <span className="quick-launch-chip-label">{modelLabel}</span>
-          <span className="quick-launch-caret" aria-hidden="true">▾</span>
+          <span className="launch-chip-label">{modelLabel}</span>
+          <span className="launch-caret" aria-hidden="true">▾</span>
         </ComposerChip>
         {hosted ? null : menu}
       </span>
@@ -223,13 +228,15 @@ export function LaunchModelEffort({
           row={selectedRow}
           value={effort}
           apexPinnedOpen={apexPinnedOpen}
+          apexOpen={apexOpen}
+          onApexOpenChange={onApexOpenChange}
           onChange={(nextEffort) => onChange(model, nextEffort)}
           autoLabel={t("launchVariants.effort.auto")}
           ariaLabel={t("launchVariants.effort.track")}
           autoValueText={t("launchVariants.effort.autoValue")}
           apexToggleLabel={t("launchVariants.effort.apexToggle", { tiers: gatedEffortNames(selectedRow) })}
           apexCollapseLabel={t("launchVariants.effort.apexCollapse", { tiers: gatedEffortNames(selectedRow) })}
-          className="quick-launch-effort-track"
+          className="launch-effort-track"
         />
       ) : null}
       {hosted && menu ? createPortal(menu, hosted) : null}
@@ -244,10 +251,10 @@ function ModelRow({ row, selectedModel, onPick }: {
 }) {
   const rowModel = row.launch.model ?? null;
   return (
-    <div className="quick-launch-variant-row">
+    <div className="launch-variant-row">
       <button
         type="button"
-        className="quick-launch-variant-name"
+        className="launch-variant-name"
         role="menuitemradio"
         aria-checked={rowModel === selectedModel}
         tabIndex={-1}
@@ -255,9 +262,9 @@ function ModelRow({ row, selectedModel, onPick }: {
         title={row.label}
         onClick={onPick}
       >
-        <span className="quick-launch-variant-label">{row.label}</span>
-        {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
-        {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
+        <span className="launch-variant-label">{row.label}</span>
+        {row.starred ? <span className="launch-variant-star" aria-hidden="true">★</span> : null}
+        {rowModel === selectedModel ? <span className="launch-pop-check" aria-hidden="true">✓</span> : null}
       </button>
     </div>
   );

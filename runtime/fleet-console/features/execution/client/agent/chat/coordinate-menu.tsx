@@ -110,7 +110,7 @@ export function SessionCoordinateMenu({
   }, [openRequest]);
 
   // 열려 있는 동안 카탈로그가 바뀌면(이 탭의 Gateway 저장, 다른 탭·기기의 로스터 브로드캐스트) 다시 읽는다 —
-  // Quick Launch·Settings·Objectives 선택기처럼 열린 채로 따라간다.
+  // 새 세션·Settings·Objectives 선택기처럼 열린 채로 따라간다.
   const [catalogEpoch, setCatalogEpoch] = React.useState(0);
   React.useEffect(() => {
     if (!open) return;

@@ -24,7 +24,8 @@ import { resolveOperationActivity } from "../../../../features/execution/client/
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
-import { focusOperation, getState, openQuickLaunch, openQuickLaunchWithDraft, subscribe as subscribeStore } from "./store.js";
+import { focusOperation, getState, subscribe as subscribeStore } from "./store.js";
+import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 
 export function FloatingWidgetLayer() {
   const { floatingWidgets } = usePluginRegistry();
@@ -42,10 +43,7 @@ export function FloatingWidgetLayer() {
   useEffect(() => () => keepOut.dispose(), [keepOut]);
   useEffect(() => () => signals.dispose(), [signals]);
   const composer = useMemo<FloatingWidgetComposerCapability>(() => ({
-    open: (options) => {
-      if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
-      else openQuickLaunch();
-    },
+    open: (options) => openNewSessionComposer(typeof options?.draft === "string" ? { draft: options.draft } : undefined),
   }), []);
   // 스토어 갱신만으로는 /operations 밖(설정 등)에서 아무 일도 보이지 않는다 —
   // pendingOperationFocus는 operations 페이지가 소비하므로 rail 알림·검색과 같은 순서로 이동을 동반한다.
@@ -267,16 +265,17 @@ interface ManagedKeepOutCapability {
 }
 
 /**
- * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), Quick Launch 카드와 그 덱, 모달
+ * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), 새 세션 컴포저와 그 위로 자란 '/'·'@' 목록(목록은 컴포저 상자 밖에
+ * absolute 로 서므로 따로 잰다), 모달
  * 대화상자의 본문이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
  * 곳이 없고, 그런 표면은 이미 위젯의 포인터 입력을 막는다(layout.css 계약).
  */
 const KEEP_OUT_SELECTOR = [
   ".rail-pane:not(.is-parked)",
-  ".quick-launch-card",
-  ".quick-launch-overlay [role=\"listbox\"]",
+  ".new-session-composer",
+  ".new-session-deck",
   "[aria-modal=\"true\"]",
-  "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.quick-launch-overlay):not(.floating-widget-layer *)",
+  "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.floating-widget-layer *)",
 ].join(", ");
 const KEEP_OUT_CURTAIN_FRACTION = 0.85;
 
@@ -310,19 +309,33 @@ function readKeepOutRects(): readonly FloatingWidgetRect[] {
   return rects;
 }
 
+// 스토어 밖에서 여닫히는 회피 표면(새 세션 컴포저의 '/'·'@' 목록처럼 화면의 로컬 상태로 서는 것)이 바뀌었다고 알릴 구독자.
+// 호스트 번들 안에서만 쓰인다 — 플러그인은 이 모듈이 아니라 capability 의 subscribe 를 받는다.
+const surfaceListeners = new Set<() => void>();
+
+/**
+ * 스토어를 거치지 않고 회피 표면이 열리거나 닫혔다 — 위젯이 주기 재측정(수백 ms)을 기다리지 않고 바로 다시 재게 한다.
+ * 기다리면 그사이 부관이 막 열린 목록 위에 그대로 서 있다.
+ */
+export function notifyKeepOutSurfaceChanged(): void {
+  for (const listener of [...surfaceListeners]) listener();
+}
+
 function createManagedKeepOutCapability(): ManagedKeepOutCapability {
   const activeSubscriptions = new Set<() => void>();
 
   const subscribe: FloatingWidgetKeepOutCapability["subscribe"] = (listener) => {
     let active = true;
-    // 스토어가 여닫는 표면(Quick Launch·검색·대화상자)만 즉시 알린다. 레일 페인은 자기 스토어를
+    // 스토어가 여닫는 표면(검색·대화상자)만 즉시 알린다. 레일 페인은 자기 스토어를
     // 가지므로 여기서 잡히지 않고, 위젯의 주기 재측정이 그 지연을 메운다 — DOM 전체를 관찰하면
     // 위젯 자신의 자세 변화까지 알림이 되어 값보다 비용이 크다.
     const unsubscribeStore = subscribeStore(listener);
+    surfaceListeners.add(listener);
     const unsubscribe = () => {
       if (!active) return;
       active = false;
       unsubscribeStore();
+      surfaceListeners.delete(listener);
       activeSubscriptions.delete(unsubscribe);
     };
     activeSubscriptions.add(unsubscribe);

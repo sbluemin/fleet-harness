@@ -212,7 +212,7 @@ export function ObjectiveSwitcher({ t, language, theaterId, objectives, groups, 
               {section(null, ungrouped)}
             </ul>
           )}
-          {/* 닫히는 목록의 버튼 대신 ⌄ 가 초점을 쥔 채 연다 — Quick Launch 를 닫으면 초점이 ⌄ 로 돌아온다. */}
+          {/* 닫히는 목록의 버튼 대신 ⌄ 가 초점을 쥔 채 연다 — 목록을 닫으면 초점이 ⌄ 로 돌아온다. */}
           {none ? (
             <div className="objectives-pop-none">
               <p>{t("objectives.none.title")} {t("objectives.none.body")}</p>

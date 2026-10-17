@@ -132,7 +132,7 @@ export interface AgentChatSessionSeed {
   readonly compactCeiling?: CompactCeiling | null;
   readonly effort?: ClaudeGatewayEffort;
   /**
-   * 세션 설정 `ultracode`. 퀵런치 트랙의 ULTRACODE가 채팅으로 태어날 때 CLI `--effort ultracode`와
+   * 세션 설정 `ultracode`. 새 세션 트랙의 ULTRACODE가 채팅으로 태어날 때 CLI `--effort ultracode`와
    * 같은 자리로 옮긴다. `effort`와 별개다 — SDK는 강도를 `xhigh`로 받고, 오케스트레이션은 이 플래그가 켠다.
    */
   readonly ultracode?: true;
@@ -1076,7 +1076,7 @@ class AgentChatSession {
     const boundaryCoversSnapshot = retainedStart === 0 && retainedEnd === snapshot.length - 1;
     if (!boundaryCoversSnapshot) {
       // 원래 경계가 상한에 밀렸거나 그 뒤로 live 턴이 쌓였더라도, 이 접속에서 되쓰는 snapshot은
-      // 과거다 — 단 하나, 지금 도는 턴만은 예외다. Quick Launch 관찰자는 첫 턴이 이미 시작된 뒤에야
+      // 과거다 — 단 하나, 지금 도는 턴만은 예외다. 새 세션 관찰자는 첫 턴이 이미 시작된 뒤에야
       // 붙으므로, 그 진행 중 턴까지 경계 안에 넣으면 클라이언트가 그것을 재생된 과거로 읽어
       // "작업 중"이 아니라 "작업함"으로 굳힌다(재생 turn-start는 done으로 세운다). 진행 중 턴의
       // 시작부터는 경계 밖으로 흘려, 그 turn-start가 live로 도착해 working으로 서게 한다.

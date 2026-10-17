@@ -3,17 +3,17 @@ import { useState } from "react";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { buildQuickLaunchEffortDeck } from "../quick-launch.js";
-import "./mobile-quick-launch.css";
+import { buildEffortDeck } from "../launch-selection.js";
+import "./mobile-launch-sheet.css";
 
-// 새 작업 시트와 Operation 입력창 모델 시트가 함께 쓰는 강도 게이트. 새 작업 시트 모듈은 아바타(플러그인 레지스트리)를
-// 끌어오므로, 실행 본문이 쓰는 이 조각은 따로 산다. 모양(.mql-efft·.mql-gr·.mql-toggle)은 새 작업 시트 CSS 에 함께 있다.
+// 새 대화 시트와 Operation 입력창 모델 시트가 함께 쓰는 강도 게이트. 새 대화 시트 모듈은 아바타(플러그인 레지스트리)를
+// 끌어오므로, 실행 본문이 쓰는 이 조각은 따로 산다. 모양(.mls-efft·.mls-gr·.mls-toggle)은 두 시트가 함께 쓰는 mobile-launch-sheet.css 에 있다.
 
 export function Toggle({ on }: { readonly on: boolean }) {
-  return <span className={`mql-toggle${on ? " is-on" : ""}`} aria-hidden="true" />;
+  return <span className={`mls-toggle${on ? " is-on" : ""}`} aria-hidden="true" />;
 }
 
-type EffortDeck = ReturnType<typeof buildQuickLaunchEffortDeck>;
+type EffortDeck = ReturnType<typeof buildEffortDeck>;
 
 /**
  * 모델 시트의 강도 게이트(S-11e ①) — 새 작업 시트와 Operation 입력창 모델 시트가 같은 규칙을 쓴다.
@@ -27,7 +27,7 @@ export function useMobileEffortGate(
   onEffort: (effort: string | null) => void,
 ): { readonly deck: EffortDeck; readonly toggleGate: () => void } {
   const [opened, setOpened] = useState(false);
-  const deck = buildQuickLaunchEffortDeck(row, effort, autoLabel, "", opened);
+  const deck = buildEffortDeck(row, effort, autoLabel, "", opened);
   const toggleGate = () => {
     if (!deck.gateOpen) { setOpened(true); return; }
     if (deck.gateHeldByValue && row) {
@@ -47,7 +47,7 @@ export function MobileEffortTabs({ deck, label, onPick }: {
   readonly onPick: (effort: string | null) => void;
 }) {
   return (
-    <div className="mql-efft" role="radiogroup" aria-label={label}>
+    <div className="mls-efft" role="radiogroup" aria-label={label}>
       {deck.options.map((option) => (
         <button key={option.id ?? "auto"} type="button" role="radio" aria-checked={option.checked} className={option.checked ? "is-on" : ""} onClick={() => onPick(option.id)}>{option.label}</button>
       ))}
@@ -60,8 +60,8 @@ export function MobileEffortGateRow({ deck, onToggle }: { readonly deck: EffortD
   const t = useT();
   if (!deck.hasGate) return null;
   return (
-    <button type="button" role="switch" aria-checked={deck.gateOpen} className="mql-gr" onClick={onToggle}>
-      <span className="mql-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
+    <button type="button" role="switch" aria-checked={deck.gateOpen} className="mls-gr" onClick={onToggle}>
+      <span className="mls-gr-tx">{t("launchVariants.effort.apexToggle", { tiers: deck.gatedNames })}</span>
       <Toggle on={deck.gateOpen} />
     </button>
   );

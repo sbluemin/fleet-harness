@@ -67,7 +67,7 @@ export interface TerminalTicket {
 }
 
 /**
- * Operation이 아닌 Quick Launch 행선지 하나.
+ * Operation이 아닌 새 세션 컴포저 '@' 행선지 하나.
  *
  * '@' 덱은 Operation 카테고리 아래에 이 기여를 `categoryLabel`별로 세운다. 호스트는 라벨의 뜻을
  * 해석하지 않는다 — 어느 플러그인의 무엇인지만 알고, 이름과 능력 문구는 그 표면을 가진 플러그인만
@@ -81,17 +81,6 @@ export interface TerminalTicket {
 export interface PluginMentionTargetAddress {
   readonly pluginId: string;
   readonly targetId: string;
-}
-
-/** 호스트 입력 위에 서는 대화 슬롯. 마운트 수명은 세션 수명이 아니다. */
-export interface QuickLaunchConversationDescriptor {
-  /** 기존 테마 정체색 토큰 이름(--로 시작). 호스트가 선택 밑줄에만 쓴다. */
-  readonly identityColorToken?: string;
-  /** 대화 레인의 입력 안내문. 생략하면 호스트의 행선지 안내문을 쓴다. */
-  readonly placeholder?: string;
-  readonly renderConversation: () => ReactNode;
-  /** 실행 좌표 대신 표시할 권한 표면. */
-  readonly renderCapabilities?: () => ReactNode;
 }
 
 export interface MentionTargetDescriptor {
@@ -113,8 +102,6 @@ export interface MentionTargetDescriptor {
   readonly keywords?: readonly string[];
   /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
   readonly renderMark?: () => ReactNode;
-  /** 선언한 대상만 퀵런치 레인에 서며, 전송 뒤 컴포저를 열어 둔다. */
-  readonly quickLaunch?: QuickLaunchConversationDescriptor;
 }
 
 /**
@@ -226,7 +213,7 @@ export interface ClientExecutionProvider {
   readonly resumeOperation?: (operationId: string) => void | Promise<void>;
   /**
    * Operation types (OperationNode.type) this plugin accepts host-forwarded user
-   * messages for. Quick Launch mentions list only Operations whose plugin declares
+   * messages for. New session `@` mentions list only Operations whose plugin declares
    * their type here alongside `messageOperation`.
    */
   readonly messageableOperationTypes?: readonly string[];
@@ -251,12 +238,11 @@ export interface ClientExecutionProvider {
    * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
    * forwarded — the host refuses that combination before calling. Rejects with an Error
    * whose `message` is the server rejection code when one is available.
-   * `options.surface`는 선언한 대화 슬롯에서 답을 보여 주겠다는 호스트의 표시다. 세션은 계속
-   * 플러그인이 소유하며, 컴포저 마운트나 이 전달 promise의 수명에 매이지 않는다.
+   * 답은 플러그인이 자기 표면에서 보여 준다 — 세션은 계속 플러그인이 소유하며, 컴포저 마운트나 이 전달 promise의 수명에 매이지 않는다.
    */
-  readonly messageMentionTarget?: (targetId: string, text: string, options?: { readonly surface: "quick-launch" }) => Promise<void>;
+  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
   /**
-   * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
+   * Host→plugin upload of a new session image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the
    * browser. The returned id rides the launch variant (`attachments`, comma-joined) and
    * the plugin's launch path forwards it to the server. Rejects with an Error whose
@@ -543,8 +529,8 @@ export interface ClientOperationStatusDetailCapability {
 
 export interface ClientComposerCapability {
   /**
-   * Brings up the host composer and puts the caret in it. Whether that is the modal or the docked
-   * bar is the host's business, not the plugin's.
+   * Brings up the host's new session composer and puts the caret in it. Whether that is the desktop
+   * new session screen or the phone's new conversation sheet is the host's business, not the plugin's.
    *
    * `mentionOperationId` addresses the composer at that Operation, exactly as typing an `@` mention
    * does. The host still applies its own addressing rules — an Operation that cannot be messaged,
@@ -554,7 +540,7 @@ export interface ClientComposerCapability {
    * `draft` seeds the prompt text instead — used to hand a plugin's text (an aide's answer, a
    * snippet) to the composer. It replaces any unsent draft; it never submits.
    */
-  // 플러그인 행선지는 레인 전환이다 — draft를 명시하지 않으면 쓰던 초안을 보존한다.
+  // 플러그인 행선지(`mentionTarget`)는 draft를 명시하지 않으면 쓰던 초안을 보존한다.
   open(options?: { readonly mentionOperationId?: string; readonly mentionTarget?: PluginMentionTargetAddress; readonly draft?: string }): void;
 }
 

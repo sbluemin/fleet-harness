@@ -41,7 +41,7 @@ export interface ComposerInputProps extends TextareaHTMLAttributes<HTMLTextAreaE
 
 /**
  * 컴포저 입력 — 자동 높이 textarea. 문면이 바뀐 프레임에서 scrollHeight만큼 자라고,
- * 줄 상한은 CSS max-height가 소유한다(Quick Launch 컴포저와 같은 clamp 정책).
+ * 줄 상한은 CSS max-height가 소유한다(새 세션 컴포저와 같은 clamp 정책).
  * 그 밖의 모든 동작(키·붙여넣기·aria)은 호출부 소유라 그대로 통과시킨다 — 블록은
  * 동작 문법을 공유하고 상태·정책은 조립이 가진다.
  */

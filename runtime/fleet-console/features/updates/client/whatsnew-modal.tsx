@@ -79,7 +79,7 @@ export function WhatsNewModal({ state }: WhatsNewModalProps) {
     state.onboardingOpen ||
     state.operationSearchOpen ||
     (state.controlHolder !== null && !state.controlCurtainDismissed) ||
-    state.quickLaunchOpen ||
+    state.mobileNewSessionOpen ||
     state.keyboardShortcutsOpen;
   if (state.whatsNewOpen && !whatsNewSuppressed && returnFocusRef.current === null) {
     returnFocusRef.current = document.activeElement as HTMLElement | null;

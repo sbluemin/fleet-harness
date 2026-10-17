@@ -172,8 +172,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
-  "--quick-launch-pop-max-height",
   // Chat context popover TSX injects the category-stack luminance step (0–5).
   "--agent-chat-ctx-step",
 ]);
@@ -1013,27 +1011,26 @@ describe("Instrument core design contract", () => {
 
   it("pins the Operation list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
     // 공급자 마크는 새 Operation의 실행 좌표를 고르는 표면에만 남는다 — 이미 존재하는 Operation을
-    // 고르는 목록(사이드바 칩·커맨드 밴드·검색 팔레트·Quick Launch 멘션)의 이름 왼쪽 슬롯은
+    // 고르는 목록(사이드바 칩·커맨드 밴드·검색 팔레트·새 세션 '@' 멘션)의 이름 왼쪽 슬롯은
     // 활동 상태가 소유한다. 목록에서 먼저 읽혀야 하는 것은 무엇으로 띄웠는지가 아니라 지금 무엇을
     // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .operation-provider-mark 대조표는
     // 퇴역했다 — 실행 좌표의 톤은 --launch-provider-tone 축이 맡는다(아래 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
-    const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
+    const mentionSheet = source("../../../features/workspace/client/conversation/mobile-new-session-sheet.tsx");
     // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
     expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
     expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-provider-mark");
-    expect(quickLaunch).not.toContain("launchProviderGlyph(entry.launchProvider)");
-    expect(quickLaunch).not.toContain("launchProviderGlyph(mentionTarget.entry.launchProvider)");
-    // 팔레트와 Quick Launch 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
+    expect(mentionSheet).not.toContain("launchProviderGlyph(entry.launchProvider)");
+    // 팔레트와 새 세션 '@' 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
     // 뱃지를 되살리면 같은 사실이 한 행에서 두 번 발화된다.
     expect(source("chrome/components/operation-search.tsx")).toContain("<OperationNameMark");
     expect(source("chrome/components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
     expect(source("chrome/components/operation-search.tsx")).not.toContain("operation-search-status--");
-    expect(quickLaunch).toContain("<OperationNameMark");
-    expect(quickLaunch).toContain("resolveOperationMarkVisual");
-    expect(quickLaunch).not.toContain("operation-search-status--");
+    expect(mentionSheet).toContain("<OperationNameMark");
+    expect(mentionSheet).toContain("resolveOperationMarkVisual");
+    expect(mentionSheet).not.toContain("operation-search-status--");
   });
 
   it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {
@@ -1525,8 +1522,6 @@ describe("Instrument core design contract", () => {
       ".theater-menu",
       ".operation-search-card",
       ".app-toast",
-      // Quick Launch의 재질은 전용 요소가 진다.
-      ".quick-launch-glass",
     ]) paintsPopoverFace(components, selector);
     for (const selector of [
       ".whatsnew-card",
@@ -1536,9 +1531,6 @@ describe("Instrument core design contract", () => {
       ".directory-browser-card",
       ".add-host-card",
     ]) paintsPopoverFace(components, selector, "--dialog-face");
-    // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
-    // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.quick-launch-overlay \{\s*animation: none;\s*\}/);
     // 온보딩 엔진의 두 표면(엔트리 힌트·투어 카드)은 엔진 시트가 소유하고 같은 채널 계약을 진다.
     const onboardingCss = externalSource(ONBOARDING_CSS_PATH);
     for (const selector of [".onboarding-hint", ".feature-tour-card"]) paintsPopoverFace(onboardingCss, selector);
@@ -2591,12 +2583,12 @@ describe("Effort track interaction grammar", () => {
     // 물결은 끊기지 않고 되풀이해야 한다. 배경 위치 퍼센트는 (상자 폭 - 이미지 폭)을 기준으로
     // 재므로 한 바퀴의 이동량 |dP|/100 x (이미지 폭 - 상자 폭)이 타일 한 폭의 정수배여야
     // 마지막 프레임이 첫 프레임과 같다. 200%/dP 200 = 2W = 타일 한 폭이다. 이 물결을 쓰는
-    // 자리는 넷(강도 트랙 값·QL 토큰·QL 멘션 이름·Chat 좌표 칩)이고 값이 갈라지면 안 된다.
+    // 자리는 둘(강도 트랙 값·Chat 좌표 칩)이고 값이 갈라지면 안 된다.
     expect(components).toMatch(
       /@keyframes effort-ultracode-wave \{\s*to \{ background-position: -200% 0; \}\s*\}/,
     );
     expect(components).not.toContain("effort-ultracode-wave 2.6s");
-    expect(components.match(/animation: effort-ultracode-wave 1\.9s linear infinite;/g)?.length).toBe(3);
+    expect(components.match(/animation: effort-ultracode-wave 1\.9s linear infinite;/g)?.length).toBe(1);
     expect(components).toMatch(/\.effort-track-value\[data-effort-level="ultra"\] \{\s*animation: none;/);
 
     // 티어 모션은 전부 티어 채널(crest/apex) 안에서만 놀고, 감속 모션에서 정적 상태로 남는다.
@@ -2686,74 +2678,11 @@ describe("Effort track interaction grammar", () => {
     expect(bar).toContain("border: 1px solid var(--gauge-rim);");
   });
 
-  it("pins the Quick Launch ultracode recognition grammar", () => {
-    const components = source("styles/components.css");
-    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
-
-    // 바에는 인식 칩을 두지 않는다 — 90px 알약이 실행 버튼을 둘째 줄로 떨어뜨렸다.
-    // 상태는 고지 줄·단어 하이라이트·테두리 링이 말한다.
-    expect(components).not.toMatch(/\.quick-launch-ultracode \{/);
-    expect(composer).not.toContain('className="quick-launch-ultracode"');
-
-    // 인식은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치 채널(brass)도
-    // 빌리지 않는다. 점화·순항 호와 고지 줄이 그 채널을 쓴다.
-    const rimRule = components.slice(components.indexOf(".quick-launch-card.is-ultracode {"));
-    const rimBlock = rimRule.slice(0, rimRule.indexOf("@keyframes quick-launch-ultracode-rim"));
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
-      expect(rimBlock, signal).not.toContain(signal);
-    }
-
-    // 단어 하이라이트는 강도 트랙 ULTRACODE 값과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
-    const tokenRule = components.slice(components.indexOf(".quick-launch-ultracode-token {"));
-    const tokenBlock = tokenRule.slice(0, tokenRule.indexOf("}"));
-    expect(tokenBlock).toContain("animation: effort-ultracode-wave 1.9s linear infinite;");
-    expect(tokenBlock).toContain("background-size: 200% 100%;");
-    // 미러 층이라 자족 폭을 바꾸는 속성은 못 쓴다 — 쓰면 보이는 글자와 캐럿이 어긋난다.
-    for (const metric of ["font-weight", "letter-spacing", "word-spacing", "font-size", "font-stretch", "text-transform"]) {
-      expect(tokenBlock, metric).not.toContain(`${metric}:`);
-    }
-
-    // 도는 호는 @property로 등록된 각도와 폭을 쓴다(미등록이면 커스텀 속성이 계단으로 튄다).
-    expect(components).toContain("@property --quick-launch-rim-angle");
-    expect(components).toContain("@property --quick-launch-rim-spread");
-    expect(components).toContain("@keyframes quick-launch-ultracode-ignite");
-    expect(components).toContain("@keyframes quick-launch-ultracode-bead");
-    // 순항 키프레임은 시작 각도를 스스로 적어야 한다. `to`만 두면 시작점을 밑에 깔린 값에서
-    // 빌리는데, 앞 순번 점화가 `both`로 채워 둔 끝값 360deg가 거기 앉아 있어 순항이 360deg에서
-    // 360deg로 돌았다 — 재생은 running인 채 링만 정지했다. 조성만 고정하던 이 계약이 그 정지를
-    // 초록으로 통과시켰으므로, 여기서는 시작점 자체를 고정한다.
-    expect(components).toMatch(
-      /@keyframes quick-launch-ultracode-rim \{\s*from \{ --quick-launch-rim-angle: 0deg; \}\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/,
-    );
-    // 점화가 끝난 뒤에야 순항에 올라탄다 — 완성된 호가 갑자기 붙으면 이질감이 난다.
-    expect(components).toMatch(/quick-launch-ultracode-ignite 900ms[\s\S]*quick-launch-ultracode-rim 2\.8s linear 900ms infinite/);
-    // 무한 애니메이션은 규약의 예외이므로 근거가 규칙 옆에 남아 있어야 한다.
-    expect(components).toContain("[doctrine]");
-
-    // 감속 모션: 점화·구슬·순항은 세우되 상태는 남긴다 — 정지한 링과 단색 apex 단어.
-    const quickLaunchReduced = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce) {\n  .quick-launch-overlay {"));
-    expect(quickLaunchReduced).toContain(".quick-launch-card.is-ultracode::before,");
-    expect(quickLaunchReduced).toContain(".quick-launch-card.is-ultracode::after,");
-    expect(quickLaunchReduced).toMatch(/\.quick-launch-card\.is-ultracode::before \{\s*content: none;\s*\}/);
-    expect(quickLaunchReduced).toMatch(/\.quick-launch-ultracode-token \{\s*background-image: none;\s*color: var\(--apex-ink\);\s*\}/);
-
-    // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
-    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다.
-    expect(composer).toContain('event.key === "Backspace" && !event.repeat && ultracodeArmed');
-    expect(composer).toContain("&& !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey");
-    // 무장은 문면과 해제 여부에서만 나온다 — 멘션 행선지는 이 판정에 들어가지 않는다.
-    // 이 단어는 실행 좌표가 아니라 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
-    expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
-    // 고지 줄은 무장 동안 상주한다. 접히는 field·bar 밖에 살기 때문에, 물러난 바에서는
-    // 컴포넌트가 직접 내려야 한다 — 남겨 두면 한 줄로 물러났다는 도킹이 상태 줄 하나를 더 이고 선다.
-    expect(composer).toContain("{ultracodeArmed && !showStrip ? (");
-  });
-
   it("pins the chat composer ultracode grammar — same recognition, apex frame, static border", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const composer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
 
-    // 인식·미러·해제 문법은 Quick Launch와 같은 부품(sdk/composer)에서 온다 — 이 조립은
+    // 인식·미러·해제 문법은 공용 부품(sdk/composer)에서 온다 — 이 조립은
     // 상태와 표식만 진다. 무장은 초안과 해제 여부에서만 나온다.
     expect(composer).toContain('} from "@fleet-console/sdk/composer";');
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
@@ -2765,7 +2694,7 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain('<p className="agent-chat-composer-ultracode-notice" role="status">');
 
     // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
-    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다(Quick Launch와 같은 계약).
+    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다.
     expect(composer).toContain('event.key === "Backspace" && !event.repeat && ultracodeArmed');
     expect(composer).toContain("&& !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey");
 
@@ -2776,7 +2705,7 @@ describe("Effort track interaction grammar", () => {
     };
 
     // 무장 프레임은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치
-    // 채널(brass)도 빌리지 않는다. Quick Launch의 도는 conic 링과 달리 여기는 정지한 테두리다
+    // 채널(brass)도 빌리지 않는다. 도는 conic 링이 아니라 정지한 테두리다
     // (좌표의 is-ultracode가 이 면에서 이미 내린 결정). apex×중립 혼합은 oklab이다(hue 호 관통 방지).
     // 완성된 좌표는 위치 채널(brass)이고 무장 표식은 apex다. 둘이 한 줄에 함께 설 수 있으므로
     // 색이 갈라져 있어야 구분된다 — 좌표가 apex를 빌리면 무장한 것으로 읽힌다.
@@ -2862,39 +2791,6 @@ describe("Effort track interaction grammar", () => {
     // 퇴역한 표면이 되살아나지 않게 못박는다 — 명령 결과는 Answer 옆이 아니라 자기 줄에 선다.
     expect(chat).not.toMatch(/^\.agent-chat-command-result \{/m);
     expect(chat).not.toMatch(/^\.agent-chat-reset-seam \{/m);
-  });
-
-  it("pins the chat start-view arming grammar", () => {
-    const components = source("styles/components.css");
-    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
-
-    // 바 첫 줄의 여유가 0이라 이 상태는 **칩을 두지 않는다** — 칩 하나가 서면 바가 두 줄로 접힌다.
-    // 무장은 카드 외곽선과 입력 위 안내줄이 함께 진다.
-    expect(composer).not.toMatch(/quick-launch-start-view-chip/);
-    expect(composer).toContain('${chatStart && mentionTarget === null ? " is-chat-start" : ""}');
-    expect(composer).toContain('<p className="quick-launch-start-view-notice" role="status">');
-
-    // 채널은 ultracode와 같은 apex다 — 둘 다 신호(상태)도 위치(brass)도 아닌 "기본 밖의 선택"이다.
-    // 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링, 여기는 정지한 테두리.
-    const armed = components.slice(components.indexOf(".quick-launch-card.is-chat-start {"));
-    const armedBlock = armed.slice(0, armed.indexOf("}"));
-    expect(armedBlock).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
-      expect(armedBlock, signal).not.toContain(signal);
-    }
-    expect(armedBlock).not.toContain("animation:");
-
-    // 되돌리기는 문장의 일부다 — 알약으로 세우면 두지 않기로 한 배지가 안내줄로 옮겨 앉는다.
-    const undo = components.slice(components.indexOf(".quick-launch-start-view-undo {"));
-    const undoBlock = undo.slice(0, undo.indexOf("}"));
-    expect(undoBlock).toContain("background: none;");
-    expect(undoBlock).toContain("border: 0;");
-    expect(undoBlock).not.toContain("border-radius: var(--radius-pill);");
-
-    // 시작 뷰 선택은 실행 종류가 스스로 선언했을 때만 선다 — core가 어느 플러그인이 채팅을
-    // 아는지 알면 안 된다.
-    expect(composer).toContain('const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;');
-    expect(composer).not.toMatch(/pluginId === "terminal"/);
   });
 
   it("pins the chat question-card grammar — aurora carries the wait, brass stays on location", () => {
@@ -3087,122 +2983,14 @@ describe("Effort track interaction grammar", () => {
     expect(ramp).toContain('[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }');
   });
 
-  it("pins the Quick Launch effort row grammar — value tone yields to the location channel", () => {
-    const components = source("styles/components.css");
-    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
-
-    // 덱 행은 트랙과 같은 좌표(data-effort-level)로 색을 읽는다 — 라벨 문자열은 번역·모델마다
-    // 달라 색의 기준이 될 수 없다.
-    expect(composer).toContain("data-effort-level={row.effortLevel}");
-    expect(composer).toContain("data-apex={row.apex ? true : undefined}");
-
-    // 값 톤은 활성 행에 올라가지 않는다. 활성 행은 고른 행의 중립 워시가 말하므로, 값 톤이 그 자리에
-    // 남으면 "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다.
-    expect(components).toMatch(
-      /\.quick-launch-command-row\[data-effort-level\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*color: var\(--effort-tone\);/,
-    );
-    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \{\s*background: var\(--wash-selected\);/);
-
-    // 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 공유한다.
-    expect(components).toMatch(
-      /\.quick-launch-command-row\[data-effort-level="auto"\] \.quick-launch-mention-name \{[^}]*text-decoration: underline dashed;/,
-    );
-
-    // 문구는 실제로 열리는 단에서 유도한다 — max만 내놓는 모델(Codex Luna 계열 등)에서
-    // 고정 문구는 열리지 않는 단을 약속한다. 두 표면(덱 문 행·바 트랙)이 같은 유도를
-    // 쓰므로 문구가 갈라지지 않는다.
-    const common = source("i18n/messages/common.ts");
-    expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
-    expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
-    // 바 트랙은 Quick Launch와 새 세션이 같은 부품을 쓴다. 문구 유도는 그 부품에 있다.
-    const track = source("../../../features/execution/client/components/launch-model-effort.tsx");
-    expect(composer).toContain("<LaunchModelEffort");
-    expect(track).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
-    expect(track).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
-
-    // 두 표면은 여는 것이 다르므로 이름의 원천도 다르다. 트랙은 사다리에서 문을 세우니 사다리
-    // 기준(gatedEffortNames)을, 덱은 chips에 실린 단만 행으로 내니 자기 판정과 같은 원천
-    // (deck.gatedNames)을 쓴다. 한쪽 기준을 다른 쪽에 빌려 주면 열리지 않는 단이 이름에 실린다.
-    expect(composer).toMatch(/\{ tiers: deck\.gatedNames \}/u);
-    expect(composer).not.toMatch(/const tiers = gatedEffortNames\(selectedRow\);/u);
-    expect(source("../../../features/execution/client/quick-launch.ts")).toMatch(/gatedNames: offeredGated\.map\(\(chip\) => chip\.label\)\.join\("·"\),/u);
-
-    // 문 행은 listbox 안에 산다. option role이 지원하지 않는 aria-expanded를 달면 무시되거나
-    // 무효로 읽히므로, 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔ "… 접기").
-    expect(composer).not.toContain("aria-expanded={row.gate");
-
-    // 문 행은 apex 채널로만 말한다(트랙의 ✦ 토글과 같은 어휘). 신호 토큰도 위치 채널도 빌리지 않는다.
-    const gateRule = components.match(/\.quick-launch-command-row\.is-gate \.quick-launch-mention-name \{[^}]*\}/)?.[0] ?? "";
-    const gateGlyph = components.match(/\.quick-launch-command-gate-glyph \{[^}]*\}/)?.[0] ?? "";
-    expect(gateRule).toContain("var(--apex-ink)");
-    expect(gateGlyph).toContain("var(--apex-ink)");
-    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass)"]) {
-      expect(gateRule, signal).not.toContain(signal);
-      expect(gateGlyph, signal).not.toContain(signal);
-    }
-  });
-
-  it("holds the deck's apex motion to the track's condition and reduced-motion cutoff", () => {
-    const components = source("styles/components.css");
-
-    // 덱은 트랙과 같은 키프레임을 쓴다 — 같은 능력이면 같은 어휘다. MAX의 이글거림은 트랙과
-    // 똑같이 data-apex(게이트 뒤 티어)에만 붙어, 게이트 없는 모델의 max는 정적 글로우에 머문다.
-    expect(components).toMatch(
-      /\.quick-launch-command-row\[data-apex="true"\]\[data-effort-level="max"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation:\s*\n?\s*effort-max-ember-wave 2\.1s linear infinite,\s*\n?\s*effort-max-ember-flicker 1\.7s linear infinite;/,
-    );
-    expect(components).toMatch(
-      /\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation: effort-ultracode-wave 1\.9s linear infinite;/,
-    );
-
-    // 덱은 트랙과 달리 여러 행이 동시에 보인다 — 모션은 게이트 뒤 두 단으로 끝나고, 일상 5단은
-    // 정적 톤만 가진다. 여섯 줄이 동시에 일렁이면 목록이 아니라 배경이 된다.
-    for (const rung of ["low", "medium", "high", "xhigh", "auto"]) {
-      expect(components, rung).not.toMatch(
-        new RegExp(`\\.quick-launch-command-row\\[data-effort-level="${rung}"\\][^{]*\\{[^}]*animation:`),
-      );
-    }
-
-    // 감속 모션에서는 트랙과 같은 자리로 돌아간다 — MAX는 정적 crest 글로우, ULTRACODE는 apex ink.
-    const reduced = components.slice(components.indexOf(".quick-launch-command-row[data-effort-level]"));
-    expect(reduced).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.quick-launch-command-row\[data-apex="true"\]\[data-effort-level="max"\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*animation: none;[\s\S]*?color: var\(--crest-ink\);/,
-    );
-    expect(reduced).toMatch(
-      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*animation: none;[\s\S]*?color: var\(--apex-ink\);/,
-    );
-  });
-
-  it("pins the provider band as the sole supplier mark in the command deck", () => {
-    const components = source("styles/components.css");
-    const composer = source("../../../features/execution/client/components/quick-launch.tsx");
-
-    // 밴드가 스크롤을 따라 붙기 때문에 행 마크를 걷어낼 수 있다. 두 규칙은 한 쌍이다 —
-    // sticky를 잃으면 스크롤한 목록에서 모델 이름만 남고 공급자를 잃는다.
-    const bandRule = components.match(/\.quick-launch-command-deck \.quick-launch-pop-band \{[^}]*\}/)?.[0] ?? "";
-    expect(bandRule).toContain("position: sticky");
-    expect(bandRule).toContain("background: var(--popover-face);");
-    expect(composer).not.toMatch(/id: `model-\$\{row\.id\}`,[\s\S]{0,200}?quick-launch-kind-icon/);
-
-    // 행은 밴드 라벨 자리(패딩 12px + 글리프 16px + 간격 8px)에서 시작한다 — 항목이 자기 머리글보다
-    // 바깥에서 시작하면 소속이 역전돼 읽힌다.
-    expect(components).toMatch(
-      /\.quick-launch-command-group\.is-banded \.quick-launch-command-row \{\s*padding-left: calc\(12px \+ 24px\);/,
-    );
-
-    // '@' 멘션 덱은 실행 좌표가 아니라 기존 Operation 목록이다. 공급자 밴드가 없는 대신
-    // Cmd+K와 같은 활동 상태 마크가 이름 왼쪽 슬롯을 소유한다.
-    expect(composer).not.toContain("launchProviderGlyph(entry.launchProvider)");
-    expect(composer).toContain("<OperationNameMark");
-  });
-
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
-    const quickLaunch = source("../../../features/execution/client/components/quick-launch.tsx");
+    const launchSlot = source("../../../features/workspace/client/conversation/new-session-launch-slot.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
-    // 한 공유 계기가 Quick Launch 트랙의 hover 문법을 소유한다.
-    expect(quickLaunch).toContain("<LaunchModelEffort");
+    // 한 공유 계기가 새 세션 트랙의 hover 문법을 소유한다.
+    expect(launchSlot).toContain("<LaunchModelEffort");
     expect(source("../../../features/execution/client/components/launch-model-effort.tsx")).toContain("<EffortTrack");
     expect(preview).toContain("background: var(--brass)");
     expect(preview).toContain("transform: scale(3)");

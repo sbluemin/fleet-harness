@@ -165,10 +165,10 @@ describe("launch prompt namespace reclaim", () => {
 
     // 같은 pid를 썼던 이전 프로세스(pid가 고정된 컨테이너 재시작)가 남긴 항목 — 지금 pid와 같아도 잔재다.
     const previous = createLaunchPromptNamespace({ lockFile, tmpDir, log });
-    const samePidLeftover = previous.allocateDir("fleet-quick-launch-");
+    const samePidLeftover = previous.allocateDir("fleet-launch-prompt-");
     const root = path.dirname(samePidLeftover);
     // 아직 살아 있는 다른 프로세스가 만든 항목(lock 독점이 깨진 동시 Console 등).
-    const liveEntry = path.join(root, `fleet-quick-launch-${process.ppid}-LiVe01`);
+    const liveEntry = path.join(root, `fleet-launch-prompt-${process.ppid}-LiVe01`);
     mkdirSync(liveEntry, { mode: 0o700 });
     // 정리 없이 죽은 프로세스가 남긴 항목.
     const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;

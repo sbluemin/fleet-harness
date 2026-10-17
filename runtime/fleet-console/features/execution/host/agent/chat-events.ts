@@ -458,7 +458,7 @@ interface TranscriptLine {
    * kind가 붙을 이유가 없으므로, **필드가 있는데 human이 아니면** 주입으로 읽는다.
    *
    * 반대로 **부재는 아무것도 뜻하지 않는다.** 이 필드가 없는 사람 발화가 실제로 있다(구버전 CLI가
-   * 남긴 줄, Quick Launch가 보낸 `promptSource:"sdk"` 줄). 부재를 "사람 아님"으로 읽으면 지시가
+   * 남긴 줄, 새 세션이 보낸 `promptSource:"sdk"` 줄). 부재를 "사람 아님"으로 읽으면 지시가
    * 조용히 사라진다.
    */
   readonly origin?: { readonly kind?: unknown };

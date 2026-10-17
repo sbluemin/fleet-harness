@@ -27,12 +27,12 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, rejectNewSession, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeLaunch, rejectNewSession, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../../../core/client/src/chrome/mobile/operation-body-pool.js";
-import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
+import { getViewModeSnapshot, useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationSideBarDeputies, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
@@ -236,29 +236,28 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }, [handleSideBarLaunchKind]);
   const toolsContext = useRailPanelContext(viewedTheaterId, STABLE_RAIL_API, handleRailLaunchOperation);
 
-  // Quick Launch 요청이 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
+  // 새 세션 컴포저가 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
   useEffect(() => {
-    const request = state.pendingQuickLaunch;
+    const request = state.pendingLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
-    consumeQuickLaunch();
+    consumeLaunch();
     void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
       .catch((error: unknown) => {
-        const draft = request.variant.prompt;
-        const errorCode = error instanceof Error ? error.message : null;
-        const shortenByChars = readShortenByChars(error);
-        const attachments = request.attachments ?? null;
-        // 새 세션 화면에서 온 거절만 그 컴포저로 간다. ⌘J·고정 바는 아래 시트를 그대로 연다.
-        if (request.fromNewSession === true && getState().newSession !== null) {
-          rejectNewSession(draft ?? "", errorCode, shortenByChars, attachments);
-          return;
-        }
-        if (!draft) return;
-        reopenQuickLaunchWithDraft(draft, errorCode, shortenByChars, attachments);
+        const draft = request.variant.prompt ?? "";
+        // 거절은 보낸 표면으로 돌아간다 — 폰은 새 대화 시트, 데스크톱은 새 세션 화면이다.
+        rejectNewSession({
+          theaterId: request.theaterId,
+          mobile: getViewModeSnapshot().effective === "mobile",
+          draft: draft.length > 0 ? draft : null,
+          attachments: request.attachments ?? null,
+          errorCode: error instanceof Error ? error.message : null,
+          shortenByChars: readShortenByChars(error),
+        });
       });
-  }, [registry.providers, state.theaters, state.pendingQuickLaunch]);
+  }, [registry.providers, state.theaters, state.pendingLaunch]);
 
   const handleFocus = useCallback((operationId: string) => {
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);

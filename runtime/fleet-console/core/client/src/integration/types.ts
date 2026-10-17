@@ -9,13 +9,13 @@ import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRunt
 export type ThemeId = "dark" | "light";
 
 /**
- * Quick Launch 컴포저가 확정한 실행 의도.
+ * 새 세션 컴포저(데스크톱 화면·모바일 시트)가 확정한 실행 의도.
  *
  * `variant`는 사이드바 실행 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
  * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Operation
  * payload로 되돌아오지 않는다.
  */
-export interface QuickLaunchRequest {
+export interface LaunchRequest {
   readonly theaterId: string;
   readonly pluginId: string | null;
   readonly kind: OperationLaunchKind;
@@ -25,12 +25,7 @@ export interface QuickLaunchRequest {
    * 이름·미리보기(object URL)는 실행이 거절됐을 때 칩을 되살리기 위한 브라우저 전용 값이다 —
    * 저장 경로는 어디에도 없다.
    */
-  readonly attachments?: readonly QuickLaunchDraftAttachment[];
-  /**
-   * 새 세션 화면에서 보낸 실행. 거절은 그 컴포저로 돌아가고 Quick Launch 시트·고정 바의 초안 슬롯은 건드리지 않는다.
-   * 화면이 이미 닫혀 있으면 초안이 있는 거절만 시트로 넘어간다.
-   */
-  readonly fromNewSession?: true;
+  readonly attachments?: readonly LaunchDraftAttachment[];
 }
 
 /** 본문 「새 세션 화면」의 대상. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다. */
@@ -40,19 +35,28 @@ export interface NewSessionTarget {
 }
 
 /**
- * 새 세션 화면에서 시작한 실행의 거절. Quick Launch 초안 슬롯과 나눈다 — 고정 바는
- * `quickLaunchDraft`가 도착하면 열림 전이 없이 가져가므로, 같은 필드를 쓰면 둘 중 하나가 빈다.
+ * 새 세션 컴포저(데스크톱 화면·모바일 시트)에서 시작한 실행의 거절.
  * `draft`가 null이면 문면을 덮지 않는다(프롬프트 없는 직접 실행). `attachments`가 null이면 칩을 건드리지 않는다.
  */
 export interface NewSessionRejection {
   readonly draft: string | null;
-  readonly attachments: readonly QuickLaunchDraftAttachment[] | null;
+  readonly attachments: readonly LaunchDraftAttachment[] | null;
   readonly errorCode: string | null;
   readonly shortenByChars: number | null;
 }
 
-/** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
-export interface QuickLaunchDraftAttachment {
+/**
+ * `composer.open`이 새 세션 컴포저에 건네는 시드. `draft`는 문면을 갈아치우고(보내지 않는다), 행선지는 '@'로 고른 것과 같다.
+ * 컴포저가 자기 규칙(메시지를 받는 타입인가, 입력 대기 중인가)으로 다시 판정한다.
+ */
+export interface NewSessionSeed {
+  readonly draft: string | null;
+  readonly mentionOperationId: string | null;
+  readonly mentionTarget: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress | null;
+}
+
+/** 컴포저 밖(거절 칸·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
+export interface LaunchDraftAttachment {
   readonly id: string;
   readonly name: string;
   readonly previewUrl: string;
@@ -330,40 +334,13 @@ export interface ConsoleState {
   readonly operationSearchSeedNonce: number;
   /** 팔레트가 지금 서 있는 모드. 전역 단축키가 ⌘K를 「닫기」로 볼지 「검색으로 복귀」로 볼지 가른다. */
   readonly operationSearchMode: "operations" | "commands" | null;
-  readonly quickLaunchOpen: boolean;
-  // 컴포저를 화면 하단에 도킹해 두는 옵트인 상태. 고정 중에는 컴포저가 상주하므로 quickLaunchOpen과
-  // 무관하게 떠 있고, 모달 계약(스크림·포커스 트랩·스크롤 잠금)을 내려놓는다 — 공존이 목적이다.
-  readonly quickLaunchPinned: boolean;
-  // 고정 중 Mod+J가 보내는 포커스 왕복 요청. 접힘 여부는 실제 포커스에서 파생되므로 상태로 두지
-  // 않고, 단축키는 "뒤집어 달라"는 요청만 남긴다(양방향 동기화로 인한 루프를 만들지 않는다).
-  readonly quickLaunchFocusToggle: number;
-  // 고정 중 "열어 달라"는 명시 요청(모바일 새 Operation 버튼 등). 단축키의 왕복과 달리 언제나
-  // 펼쳐 포커스한다 — 펼쳐진 바에서 열기를 누른 사용자를 물러나게 하면 버튼이 거꾸로 동작한다.
-  readonly quickLaunchExpandRequest: number;
-  // 컴포저 진입 의도. Operation id는 새 회신으로 초안을 교체하고, 플러그인 좌표는 초안을 보존하며
-  // 레인만 바꾼다. launch는 이미 열린 대화에서도 답을 새 Operation 초안으로 넘긴다.
-  // 모달 열림·도킹 펼침·열린 컴포저의 요청에서 한 번 소비한다 — 지난 주소를 다음 열림에 되쓰지 않는다.
-  readonly quickLaunchMentionSeed: string | { readonly kind: "plugin"; readonly target: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress | null; readonly cycle: boolean } | { readonly kind: "launch" } | null;
-  /** 멘션 시드와 함께 실리는 초안 — 시드가 주소를 잡은 직후 문면으로 들어간다(브라우저 첨부 등 플러그인 인용). */
-  readonly quickLaunchMentionDraft: string | null;
-  // 고정을 잠시 접어 두는 화면(설정처럼 실행이 할 일이 아닌 표면). 고정 자체는 유지되므로 화면을
-  // 벗어나면 도킹이 그대로 돌아오고, 그동안 컴포저는 예전처럼 모달로만 열린다.
-  readonly quickLaunchDockSuppressed: boolean;
-  // 실행이 거절되면 컴포저를 이 초안과 함께 다시 연다 — 서버 거절(모델 비활성·CLI 미가용·
-  // 프롬프트 전달 불가)은 컴포저가 결과를 기다리지 않는 구조라 이 경로로만 사용자에게 돌아온다.
-  readonly quickLaunchDraft: string | null;
-  // 초안과 함께 살아남는 첨부 자취. 텍스트만 보존하면 거절·닫힘이 방금 붙여넣은 이미지를
-  // 조용히 버린다 — 파일 자체는 서버에 미발사분으로 남아 있으므로 id로 다시 실을 수 있다.
-  readonly quickLaunchDraftAttachments: readonly QuickLaunchDraftAttachment[] | null;
-  // 거절 사유의 서버 코드. 초안만 되살리면 결정적 실패(Windows shim 문자·FLEET_TERMINAL_CMD)는
-  // 무엇을 고쳐야 하는지 모른 채 같은 Run을 반복하게 된다.
-  readonly quickLaunchError: string | null;
-  // 거절이 "몇 글자 줄이라"고 말할 때 그 수. 상한이 서버 쪽 argv 전체에 달려 있어 브라우저가
-  // 되계산할 수 없으므로, 서버가 준 값만 싣는다.
-  readonly quickLaunchErrorShortenBy: number | null;
+  /** 모바일 「새 대화」 시트가 떠 있는가. 데스크톱 새 세션 화면(`newSession`)과 같은 실행 경로를 쓴다. */
+  readonly mobileNewSessionOpen: boolean;
+  /** `composer.open`이 남긴 초안·행선지. 새 세션 화면·시트가 열리며 한 번 소비한다. */
+  readonly newSessionSeed: NewSessionSeed | null;
   // 컴포저가 넘긴 실행 의도. Operations 화면이 자기 지오메트리·포커스 규율로 소비한다
   // (pendingOperationFocus와 같은 request/consume 계약).
-  readonly pendingQuickLaunch: QuickLaunchRequest | null;
+  readonly pendingLaunch: LaunchRequest | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
   /** 적용된 릴리스 노트의 요청 로케일. 개별 노트는 번역 누락 시 영어로 fallback할 수 있다. */
@@ -381,7 +358,9 @@ export interface ConsoleState {
   readonly pendingSideBarAddTheater: boolean;
   /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
   readonly newSession: NewSessionTarget | null;
-  /** 새 세션 화면이 소비하는 거절. Quick Launch 시트·고정 바의 초안과는 다른 칸이다. */
+  /** 이미 열린 새 세션 화면에 「컴포저로 돌아오라」는 요청 번호. 단축키를 다시 누르면 오른다 — 화면이 이 값이 바뀔 때 포커스한다. */
+  readonly newSessionFocusRequest: number;
+  /** 새 세션 화면·모바일 시트가 소비하는 거절. */
   readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;

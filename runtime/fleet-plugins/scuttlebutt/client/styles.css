@@ -564,7 +564,7 @@
   background: var(--ink-veil);
 }
 
-/* ── Quick Launch 답변 말풍선 ────────────────────────────────────────────────
+/* ── '@' 답변 말풍선 ────────────────────────────────────────────────
    봉투는 도착 알림의 것을 그대로 입는다(최대 360px·줄바꿈·닫기 버튼·좌표 추적). 지저귐
    말풍선은 nowrap 한 줄이라 문단을 담지 못해 재사용할 수 없다.
    색만 다르다: 도착의 positive는 "끝났다"는 상태를 말하는 신호 채널이고, 답변은 상태가 아니다.
@@ -740,24 +740,6 @@
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }
 
-/* 퀵런치가 봉투·배치·입력을 소유한다. 기존 카드의 로그·출처·Live line만 같은 면에서 이어진다. */
-.scuttlebutt-chat-card.is-embedded {
-  position: relative;
-  width: 100%;
-  max-height: min(42dvh, 380px);
-  border: 0;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  animation: none;
-  overflow: visible;
-}
-/* 카드 자신은 사라진 조작의 포커스를 받아 두는 자리라 Tab 정지점이 아니다. 마우스로 지운 뒤의 프로그램
-   포커스에는 고리를 그리지 않고, 키보드로 지웠을 때는 :focus-visible 휴리스틱대로 위치 표시를 남긴다. */
-.scuttlebutt-chat-card.is-embedded:focus:not(:focus-visible) { outline: none; }
-.scuttlebutt-chat-card.is-embedded .scuttlebutt-chat-log { overflow-wrap: anywhere; }
-.scuttlebutt-chat-card.is-embedded .scuttlebutt-menu { position: absolute; }
-
 .scuttlebutt-chat-head {
   display: flex;
   flex-shrink: 0;
@@ -778,10 +760,6 @@
   color: var(--text-primary);
   font-size: var(--t-sm);
 }
-
-.scuttlebutt-chat-sigil.is-persona { border: 0; background: none; }
-.scuttlebutt-chat-sigil.is-persona svg { width: 100%; height: 100%; }
-.scuttlebutt-chat-who.is-quiet { color: var(--text-tertiary); font-size: var(--t-sm); font-weight: var(--weight-regular); }
 
 .scuttlebutt-chat-who {
   flex: 1;
@@ -999,7 +977,7 @@
   opacity: 0.6;
 }
 
-/* 보내기 — 원형 brass(Quick Launch·Cowork와 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
+/* 보내기 — 원형 brass(새 세션·Cowork와 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
 .scuttlebutt-send {
   flex: none;
   display: grid;
@@ -1572,16 +1550,6 @@
   min-width: 0;
 }
 
-/* 컴포저에는 권한을 한 번만 둔다. 좁은 폭·터치에서는 이름 대신 같은 글리프·툴팁·접근 이름을 쓴다. */
-.scuttlebutt-grants.is-responsive { flex-wrap: nowrap; }
-.scuttlebutt-grants.is-responsive .scuttlebutt-grants-label { display: none; }
-:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
-:root[data-view-mode="mobile"] .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
-@media (max-width: 767px), (pointer: coarse) {
-  .scuttlebutt-grants.is-responsive .scuttlebutt-grant-text { display: none; }
-  .scuttlebutt-grants.is-responsive .scuttlebutt-grant { justify-content: center; width: 28px; height: 28px; padding: 0; }
-}
-
 .scuttlebutt-grants.is-compact {
   flex-wrap: nowrap;
   justify-content: flex-end;
@@ -1760,9 +1728,3 @@
   }
 }
 
-/* 레인 정체성은 탭이 말한다. 빈 로그는 높이도 경계도 남기지 않는다. */
-.scuttlebutt-chat-log[hidden] { display: none; }
-.scuttlebutt-quick-launch-grants { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.scuttlebutt-quick-launch-grants .scuttlebutt-menu.is-upward { position: absolute; top: auto; bottom: calc(100% + var(--space-2)); right: 0; }
-.scuttlebutt-grant.is-off { border-style: dashed; background: transparent; color: var(--text-tertiary); cursor: pointer; font-family: inherit; }
-.scuttlebutt-grant.is-off:hover { color: var(--text-primary); }

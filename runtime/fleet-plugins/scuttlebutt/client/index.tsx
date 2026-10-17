@@ -6,7 +6,6 @@ import { grantCapabilityLabel, grantDescription } from "./grant-chips.js";
 import { getScuttlebuttSettings } from "./settings-store.js";
 
 import type { AdmiralId } from "./chat-session.js";
-import { QuickLaunchConversation, QuickLaunchGrants } from "./quick-launch-conversation.js";
 import { DockGlyphs } from "./dock-glyphs.js";
 import { ScuttlebuttFlock } from "./flock.js";
 import { readScuttlebuttMentionBridge, subscribeScuttlebuttMentions } from "./mention-bridge.js";
@@ -18,7 +17,7 @@ import "@fleet-console/markdown/styles.css";
 import "./styles.css";
 
 /**
- * Quick Launch '@' 덱에 서는 부관들.
+ * 새 세션 컴포저 '@' 덱에 서는 부관들. 답은 부관 자기 카드에 선다.
  *
  * 근무 중인 부관만 낸다 — 꺼 둔 부관을 흐리게라도 세우면 덱에 고를 수 없는 줄이 생기고, 고르는
  * 순간 켜 준다면 사용자가 꺼 둔 설정을 제품이 뒤집는다. 셋 다 꺼져 있으면 카테고리 자체가 서지
@@ -39,23 +38,17 @@ function mentionTargets(): readonly MentionTargetDescriptor[] {
       capabilityLabel: grantCapabilityLabel(grants, locale),
       description: grantDescription(bridge.label(admiral), grants, locale),
       renderMark: () => <QuakerFigure morph={admiral} viewBox={QUAKER_HEAD_VIEW_BOX} />,
-      quickLaunch: {
-        identityColorToken: `--scuttlebutt-qk-id-${{ tori: "moss", bori: "crimson", dori: "cerulean" }[admiral]}`,
-        placeholder: t(`chat.greeting.${admiral}`),
-        renderConversation: () => <QuickLaunchConversation admiral={admiral} />,
-        renderCapabilities: () => <QuickLaunchGrants admiral={admiral} />,
-      },
     };
   });
 }
 
-async function messageMentionTarget(targetId: string, text: string, options?: { readonly surface: "quick-launch" }): Promise<void> {
+async function messageMentionTarget(targetId: string, text: string): Promise<void> {
   const bridge = readScuttlebuttMentionBridge();
   // 덱을 연 뒤 부관이 퇴근했을 수 있다 — 없는 대상에 보내는 것은 조용히 삼키지 않고 거절한다.
   if (!bridge || !bridge.onDuty().includes(targetId as AdmiralId)) {
     throw new Error("mention_target_gone");
   }
-  await bridge.ask(targetId as AdmiralId, text, options?.surface === "quick-launch");
+  await bridge.ask(targetId as AdmiralId, text);
 }
 
 const scuttlebuttPlugin = definePlugin({

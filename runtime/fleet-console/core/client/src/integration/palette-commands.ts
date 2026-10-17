@@ -162,7 +162,7 @@ export function buildPaletteCommands(
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
-    push({ commandId: "new-operation", label: t("palette.newOperation", { label: activeTheater.label }), aliasLabel: alias("palette.newOperation", { label: activeTheater.label }), action: { kind: "new-operation" }, group: "theater", glyph: "operation-new", shortcut: "console.quick-launch" });
+    push({ commandId: "new-operation", label: t("palette.newOperation", { label: activeTheater.label }), aliasLabel: alias("palette.newOperation", { label: activeTheater.label }), action: { kind: "new-operation" }, group: "theater", glyph: "operation-new", shortcut: "console.new-session" });
     const theaterOperations = current.operations.filter((operation) => operation.theaterId === activeTheater.id);
     if (theaterOperations.length > 0) {
       push({ commandId: "toggle-status-axis", label: t("palette.toggleStatusAxis"), aliasLabel: alias("palette.toggleStatusAxis"), action: { kind: "toggle-status-axis" }, group: "view", glyph: "view-status-axis", shortcut: "operations.sort-by-status" });

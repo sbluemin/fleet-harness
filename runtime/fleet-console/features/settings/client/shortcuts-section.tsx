@@ -132,7 +132,7 @@ export function ShortcutsCard({ state, saving }: {
         setNote(row.commandId, { kind: "reject", text: t(verdict.reason === "blocked" ? "settings.shortcuts.rejectBlocked" : verdict.reason === "reserved" ? "settings.shortcuts.rejectReserved" : "settings.shortcuts.rejectNoModifier", { chord: chordLabel(chord) }) });
         return;
       }
-      // 같은 명령의 다른 자리(Quick Launch의 대안 조합)와 겹치면 두 문이 하나가 된다 — 거부.
+      // 같은 명령의 다른 자리(새 세션의 대안 조합)와 겹치면 두 문이 하나가 된다 — 거부.
       if (chordsOf(row).some((current, at) => at !== slot.index && chordsEquivalent(current, chord))) {
         setNote(row.commandId, { kind: "reject", text: t("settings.shortcuts.rejectSameCommand", { chord: chordLabel(chord) }) });
         return;

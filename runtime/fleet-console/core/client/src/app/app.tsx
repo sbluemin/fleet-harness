@@ -12,7 +12,6 @@ import { CommissioningOverlay } from "../chrome/components/commissioning-overlay
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "../chrome/components/operation-search.js";
-import { QuickLaunch } from "../../../../features/execution/client/components/quick-launch.js";
 import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
@@ -40,13 +39,14 @@ import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { Operations } from "../../../../features/workspace/client/operations.js";
+import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
 import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { ArchiveSheet } from "../../../../features/workspace/client/archive/archive-sheet.js";
 import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from "../../../../features/settings/client/theater-system-prompt-sheet.js";
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
@@ -453,21 +453,11 @@ function ConnectedApp() {
       openOperationSearch,
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,
-      toggleQuickLaunch,
       // 새 세션 화면은 데스크톱 대화 배치의 본문이다 — 모바일 셸에는 그릴 자리가 없으므로 키를 두고 간다.
       openNewSession: () => {
         if (getViewModeSnapshot().effective === "mobile") return false;
         if (!operationsViewVisibleRef.current) navigate("/operations");
         openDefaultNewSession();
-        return true;
-      },
-      openPluginQuickLaunch: () => {
-        const available = registry.providers.some((plugin) => {
-          try { return !!plugin.messageMentionTarget && plugin.mentionTargets?.().some((target) => target.quickLaunch); }
-          catch { return false; }
-        });
-        if (!available) return false;
-        openQuickLaunchForPluginTarget();
         return true;
       },
       toggleRailSurface: (entryId) => {
@@ -613,7 +603,7 @@ function ConnectedApp() {
           lastUndoKind={lastUndoKind}
           onUndoLastClose={undoLastClose}
         />
-        <QuickLaunch />
+        <MobileNewSession />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheet />
         <TheaterSystemPromptSheet />

@@ -11,7 +11,7 @@ import { openTheaterSystemPrompt } from "../../../../../features/settings/client
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { usePluginRegistry } from "../../integration/plugin-registry.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, openQuickLaunch } from "../../integration/store.js";
+import { getState, openMobileNewSession } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { globalShellEntry } from "../../../../../features/execution/client/terminal/global-shell/rail-panel.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -410,7 +410,7 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
   const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
-      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openQuickLaunch)}>
+      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(openMobileNewSession)}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
       </button>

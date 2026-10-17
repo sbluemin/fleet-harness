@@ -27,7 +27,7 @@ export interface EffortTrackProps {
   /**
    * 이미 고른 단에 다시 눌렀을 때. 드래그로 다른 단을 거쳐 돌아온 경우는 호출하지 않는다 —
    * 값을 고르는 제스처와 "이 값으로 확정" 제스처를 갈라야 한다. 생략하면 같은 단 재클릭은
-   * 아무 일도 없다(Quick Launch처럼 제출이 다른 자리인 표면).
+   * 아무 일도 없다(새 세션처럼 제출이 다른 자리인 표면).
    */
   readonly onConfirmCurrent?: () => void;
   /**
@@ -54,6 +54,12 @@ export interface EffortTrackProps {
    * 확인 흐름을 다른 자리(메뉴 밖의 시작 버튼)가 지는 표면이 쓴다. apex 의 톤·모션은 그대로다.
    */
   readonly apexPinnedOpen?: boolean;
+  /**
+   * 게이트 펼침을 바깥이 쥘 때 넘긴다 — 같은 표면의 다른 컨트롤(새 세션 `/effort` 목록의 ✦ 문 행)이 같은 상태를 읽고 쓴다.
+   * 생략하면 트랙이 스스로 쥔다. 넘기면 트랙의 열고 닫음은 `onApexOpenChange`로만 나간다.
+   */
+  readonly apexOpen?: boolean;
+  readonly onApexOpenChange?: (open: boolean) => void;
   readonly className?: string;
 }
 
@@ -75,6 +81,8 @@ export function EffortTrack({
   apexToggleLabel,
   apexCollapseLabel,
   apexPinnedOpen = false,
+  apexOpen: apexOpenProp,
+  onApexOpenChange,
   className,
 }: EffortTrackProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -90,7 +98,15 @@ export function EffortTrack({
     () => ladder.filter((id) => !gatedRungs.includes(id)),
     [gatedRungs, ladder],
   );
-  const [apexOpen, setApexOpen] = useState(() => apexPinnedOpen || (value !== null && gatedRungs.includes(value)));
+  const [ownApexOpen, setOwnApexOpen] = useState(() => apexPinnedOpen || (value !== null && gatedRungs.includes(value)));
+  const apexOpen = apexPinnedOpen || (apexOpenProp ?? ownApexOpen);
+  const onApexOpenChangeRef = useRef(onApexOpenChange);
+  onApexOpenChangeRef.current = onApexOpenChange;
+  const apexControlled = apexOpenProp !== undefined;
+  const setApexOpen = useCallback((open: boolean) => {
+    if (!apexControlled) setOwnApexOpen(open);
+    onApexOpenChangeRef.current?.(open);
+  }, [apexControlled]);
   const [burstKey, setBurstKey] = useState(0);
   const [burstLeft, setBurstLeft] = useState("50%");
   // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
@@ -110,8 +126,8 @@ export function EffortTrack({
   useEffect(() => {
     if (value === null || !gatedRungs.includes(value)) return;
     clearCollapseTimer();
-    setApexOpen(true);
-  }, [clearCollapseTimer, gatedRungs, value]);
+    if (!apexOpen) setApexOpen(true);
+  }, [apexOpen, clearCollapseTimer, gatedRungs, setApexOpen, value]);
 
   const slots = useMemo<readonly EffortSlot[]>(() => {
     const byId = new Map<string, OperationLaunchVariantChip>((row.chips ?? []).map((chip) => [chip.id, chip]));
@@ -173,7 +189,7 @@ export function EffortTrack({
     }
     onChange(slot.id);
     return true;
-  }, [apexOpen, apexPinnedOpen, clearCollapseTimer, gatedRungs, last, onChange, slots]);
+  }, [apexOpen, apexPinnedOpen, clearCollapseTimer, gatedRungs, last, onChange, setApexOpen, slots]);
 
   const indexFromPointer = useCallback((clientX: number): number | null => {
     const track = trackRef.current;

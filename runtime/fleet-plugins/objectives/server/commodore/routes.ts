@@ -146,7 +146,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if (objective && objective.theaterId !== theaterId) throw new ObjectiveStoreError("objective_theater_mismatch");
       // 본문 속 참조 — 참조가 있으면 표식 글자 수와 참조 수가 같아야 하고, 한 목표는 한 번만, 그리고 같은 Theater 의 지운 적 없는 목표만이다.
       // 하나라도 어긋나면 기록에 남기지 않는다. 참조가 없으면 본문의 표식 글자는 지운다 — 브라우저가 이미지 섞인 서식 글을 복사할 때 만들어
-      // 내는 글자라(Quick Launch·그룹 대화에서 붙여 보낸 말) 거절하지 않고, 지운 뒤 비면 빈 메시지와 같이 거절한다. 어느 쪽이든 검증하지
+      // 내는 글자라(새 세션·그룹 대화에서 붙여 보낸 말) 거절하지 않고, 지운 뒤 비면 빈 메시지와 같이 거절한다. 어느 쪽이든 검증하지
       // 않은 참조는 서지 않는다.
       const text = referenceIds.length ? raw : raw.split(CONVERSATION_REFERENCE_MARK).join("").trim();
       if (!text) throw new ObjectiveStoreError("invalid_request");

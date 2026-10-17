@@ -23,16 +23,14 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly closeOperationSearch: () => void;
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
-  readonly toggleQuickLaunch: () => void;
-  /** 새 세션 화면을 연다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
+  /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly openNewSession?: () => boolean;
-  readonly openPluginQuickLaunch?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
 }
 
-// 가운데 Quick Launch와 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
+// 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
 // 열기만 하고 닫히지 않는다(⌘K가 팔레트를 못 닫던 실측). 자기 표면이 아닌 다른 차단
 // 다이얼로그가 떠 있을 때만 막는다.
 function isForeignBlockingDialogOpen(documentFor: Document, ownSelector: string): boolean {
@@ -48,26 +46,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // 설정 카드가 조합을 기록하는 동안은 어떤 명령도 발화하지 않는다 — 기록기가 그 키를 받는다.
     if (isShortcutRecording(windowFor.document)) return;
     const matches = (commandId: string) => matchesShortcutCommand(event, commandId);
-    // Quick Launch: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
-    // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
-    // 조합은 등록부가 정한다(기본 Mod+J 또는 Ctrl+Space). 수식키는 정확히 맞아야 하므로
-    // Ctrl+Shift+Space나 IME/Spotlight 코드를 삼키지 않는다.
-    // 토글은 자기 모달 가드보다 먼저 본다 — 가운데 컴포저가 aria-modal이라 닫힘이 막히면 안 된다.
-    if (matches("console.quick-launch")) {
-      if (isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.toggleQuickLaunch();
-      return;
-    }
-    if (matches("console.plugin-quick-launch")) {
-      if (event.isComposing || isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
-      if (event.repeat || dependencies.openPluginQuickLaunch?.()) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-      return;
-    }
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
     if (matches("console.search-operations")) {
@@ -91,6 +69,9 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
+    // 새 세션: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로, 터미널을 보고 있다가
+    // 떠오른 지시를 그 자리에서 쓰는 것이 이 단축키의 목적이다. 조합은 등록부가 정한다(기본 Mod+J·Ctrl+Space·⇧⌘O).
+    // 수식키는 정확히 맞아야 하므로 Ctrl+Shift+Space나 IME/Spotlight 코드를 삼키지 않는다.
     if (matches("console.new-session")) {
       // 길게 눌러도 한 번만 연다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
       if (event.repeat || dependencies.openNewSession?.()) {

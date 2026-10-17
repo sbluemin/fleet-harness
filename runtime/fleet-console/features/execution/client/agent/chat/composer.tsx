@@ -124,7 +124,7 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
 }
 
 /**
- * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 Quick Launch).
+ * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 새 세션).
  *
  * 언제나 서 있다: 접힘도, 되돌아오는 한 줄도 없다. 읽던 자리에서 바로 쓰는 것이 이 패널의
  * 기본 동작이고, 매 턴 앞에 붙던 "펼치는 클릭" 하나가 그 기본을 가리고 있었다. 대신 크롬을
@@ -150,7 +150,7 @@ export function useDistinctChatWidths(hostRef: React.RefObject<HTMLDivElement | 
  * 자기 취소를 진다. 권위는 서버다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이
  * 따로 말하게 되고, 그 어긋남은 사용자가 취소되지 않은 지시를 취소된 것으로 읽는 자리가 된다.
  *
- * 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
+ * 전송은 새 세션 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
  * 모델·강도는 컨트롤이 아니라 사실 표시다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이라
  * 이 바에 직접 새긴 좌표와 계기는 읽히기만 한다.
  */
@@ -255,7 +255,7 @@ export function AgentChatComposer({
   // 대조해야 하므로 덱 블록보다 앞에 선다.
   const [catalog, setCatalog] = React.useState<AgentChatCatalog | null>(null);
   const [catalogTried, setCatalogTried] = React.useState(false);
-  // `ultracode` 무장 — Quick Launch와 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
+  // `ultracode` 무장 — 새 세션과 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
   // 상태(해제)와 표식만 이 조립이 진다. 무장은 초안에서 파생하고, 남는 것은 "이 초안에서 껐다"뿐이다.
   const highlightRef = React.useRef<HTMLDivElement | null>(null);
   const setUltracodeIgnored = draftState.setUltracodeIgnored;
@@ -646,7 +646,7 @@ export function AgentChatComposer({
         <ComposerField className="agent-chat-composer-field">
           {/* 덱은 상자(field)에 걸린다 — 한 줄 컴포저에서 입력 래퍼는 동작 버튼만큼 좁으므로 상자가 기준이다.
               채팅을 담은 패널(대화 칸)의 overflow:hidden 안에 살므로, 덱이 상자 위·아래에 남은 공간을
-              재서 높이를 맞추고 위가 모자라면 아래로 뒤집는다(Quick Launch는 fixed 오버레이로 피하는 일). */}
+              재서 높이를 맞추고 위가 모자라면 아래로 뒤집는다. */}
           {deckOpen ? (
             <ChatComposerDeck
               deckId={deckId}

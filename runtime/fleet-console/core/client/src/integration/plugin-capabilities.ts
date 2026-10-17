@@ -28,8 +28,9 @@ import { getArenaInsets, subscribeArenaInsets } from "../../../../features/works
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
-import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, openQuickLaunch, openQuickLaunchForOperation, openQuickLaunchForPluginTarget, ownOperationRuntime,
-  openQuickLaunchWithDraft, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
+import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
+import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, ownOperationRuntime,
+  raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
 function viewTheaterInbox(theaterId: string): void {
   if (!getState().theaters.some((theater) => theater.id === theaterId)) return;
@@ -339,13 +340,7 @@ export function createHostCapabilities(
       subscribeLedger: (listener) => subscribeLedger(listener),
     },
     composer: {
-      open: (options) => {
-        const mentionOperationId = options?.mentionOperationId;
-        if (mentionOperationId) openQuickLaunchForOperation(mentionOperationId, typeof options?.draft === "string" ? options.draft : null);
-        else if (options?.mentionTarget) openQuickLaunchForPluginTarget(options.mentionTarget, typeof options.draft === "string" ? options.draft : null);
-        else if (typeof options?.draft === "string") openQuickLaunchWithDraft(options.draft);
-        else openQuickLaunch();
-      },
+      open: (options) => openNewSessionComposer(options),
     },
   };
   return capabilities;

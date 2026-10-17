@@ -36,7 +36,7 @@ export function inputIssues(issues: readonly ArgumentIssue[]): { path: readonly 
 export type { ConsoleCaller, ConsoleActionInput, ConsoleActionKind, ConsoleHumanInput, ConsoleHumanInputAct, ConsoleActionResult, ConsoleActivity, ConsoleAutomation, ConsoleAutomationInput, ConsoleControlState, ConsoleCoordinates, ConsoleCoordinatesFailureCause, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleTranscriptPage, ConsoleSessionMessage, ConsoleTurnFailure, ConsoleTurnEnd, ConsoleTurnReport } from "./control.js";
 
 /**
- * Console Use 호스트 코어 도구. 이름은 `console_<화면>[_<하위 화면>]` — 사이드바, Quick Launch(launcher),
+ * Console Use 호스트 코어 도구. 이름은 `console_<화면>[_<하위 화면>]` — 사이드바, 새 세션(launcher),
  * Operation 패널. 화면 하나의 여러 동사는 도구 하나의 `action` 이다(`./actions` 의 `defineConsoleTool`).
  * 읽기 전용 연결은 도구 목록이 아니라 action 필터다 — `allowControl` 이 없는 연결에는 read action 만 실린다.
  * 호출 하나는 사용자 화면 위의 제스처 하나이며, 호스트가 `console-use:call` 사건으로 알린다.

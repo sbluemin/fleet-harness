@@ -8,7 +8,7 @@ import { isComputerUseExperimentEnabled, isConsoleReadEnabled, readConsoleSnapsh
 import { connectDockActivate, firstDockGlyph, readDockGlyph, readDockSnapshot, subscribeDock, writeDock } from "./dock-store.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { IntroBubble } from "./intro-bubble.js";
-import { connectScuttlebuttMentions, notifyScuttlebuttMentions, readScuttlebuttConversationVisibility, subscribeScuttlebuttConversationVisibility } from "./mention-bridge.js";
+import { connectScuttlebuttMentions, notifyScuttlebuttMentions } from "./mention-bridge.js";
 import { NoticeBubble } from "./notice-bubble.js";
 import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
@@ -248,7 +248,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
   // 보조 기술에 읽어 줄 지저귐. 보이는 말풍선은 aria-hidden이라 여기서 한 번 알린다.
   const [announcedLine, setAnnouncedLine] = React.useState("");
-  // Quick Launch에서 물은 답이 떠 있는 부관들. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
+  // '@'로 물은 답이 떠 있는 부관들. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
   // 한 자리로 두면 뒤에 물은 부관이 앞 부관의 답을 덮어써, 도착한 답이 어디에도 서지 못한다.
   const [answering, setAnswering] = React.useState<readonly AdmiralId[]>([]);
   // 답을 세우려고 우리가 정박시킨 부관들. 사용자가 직접 세운 정박과 구분해야 되돌릴 때 남의 것을 내리지 않는다.
@@ -298,7 +298,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [applyMoored]);
 
   /**
-   * Quick Launch에서 온 질문 하나.
+   * 새 세션 컴포저의 '@'로 온 질문 하나.
    *
    * 답하는 동안 정박시킨다 — 말풍선은 새 좌표를 매 프레임 따라가므로, 순항하는 새 위의 360px
    * 상자를 읽게 두면 멘션이 없앤 추격을 읽기 단계에서 되살린다. 정박은 이미 있는 상태를 그대로
@@ -385,7 +385,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, [closeAnswer]);
 
   const undockAide = React.useCallback((admiral: AdmiralId) => {
-    // 시트 뒤에 숨어 있던 Quick Launch 말풍선은 거둔다 — 시트가 이미 그 답을 보였고, 새로 돌아간
+    // 시트 뒤에 숨어 있던 '@' 답 말풍선은 거둔다 — 시트가 이미 그 답을 보였고, 새로 돌아간
     // 부관은 정박이 없어 말풍선이 나는 새를 따라다니게 된다.
     closeAnswer(admiral);
     const body = bodiesRef.current?.[MORPHS.indexOf(admiral)];
@@ -408,7 +408,6 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
 
   // 글리프가 그릴 상태: 열림·답하는 중·읽지 않은 답. 읽지 않음은 시트가 닫힌 채 답이 정착한
   // 부관에게만 서고, 그 시트를 여는 순간 걷힌다.
-  const visibleConversations = useStoreSnapshot(subscribeScuttlebuttConversationVisibility, readScuttlebuttConversationVisibility);
   const unreadRef = React.useRef(new Set<AdmiralId>());
   const phaseKey = phases.join("|");
   React.useEffect(() => {
@@ -421,7 +420,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       }
       const settled = phases[index] === "ready" && (previous[index] === "starting" || previous[index] === "thinking");
       // 말풍선이나 시트가 이미 답을 보이고 있으면 읽지 않은 것이 아니다.
-      const showing = openAdmiral === admiral || answering.includes(admiral) || visibleConversations.includes(admiral);
+      const showing = openAdmiral === admiral || answering.includes(admiral);
       if (settled && !showing) unreadRef.current.add(admiral);
       if (showing) unreadRef.current.delete(admiral);
     }
@@ -431,7 +430,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       unread: MORPHS.filter((admiral) => unreadRef.current.has(admiral)),
     });
     // 완료 만세 효과와 같은 순서로 이전 단계를 갱신한다 — 여기서 먼저 갱신하면 그 효과가 전이를 놓친다.
-  }, [answering, openAdmiral, phaseKey, docked, visibleConversations]);
+  }, [answering, openAdmiral, phaseKey, docked]);
 
   // 밴드 아래 말풍선은 오른쪽부터 나란히 선다 — 화면 폭을 넘기면 가장 오래된 답부터 접어 글리프의
   // 점으로 남긴다(글리프를 누르면 시트에서 읽는다). 세로로 쌓이면 둘째 답이 화면 밖으로 밀린다.
@@ -468,16 +467,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     onDuty: () => MORPHS.filter((morph) => settingsRef.current[morph]),
     label: (admiral) => getT(localeRef.current)(`bird.${admiral}`),
     locale: () => localeRef.current,
-    ask: (admiral, text, inline) => {
-      if (!inline) return askFromMentionRef.current(admiral, text);
-      const session = sessions[MORPHS.indexOf(admiral)]!;
-      const phase = session.snapshot().state.phase;
-      if (phase === "starting" || phase === "thinking") return Promise.reject(new Error("destination_busy"));
-      // 대화는 퀵런치 슬롯에서 이어진다. 카드·독과 같은 세션이며 새를 답 위치로 정박시키지 않는다.
-      void session.ask(text);
-      return Promise.resolve();
-    },
-    session: (admiral) => sessions[MORPHS.indexOf(admiral)]!,
+    ask: (admiral, text) => askFromMentionRef.current(admiral, text),
     handoff: (text) => context.composer.open({ draft: text }),
   }), [context.composer, sessions]);
   React.useEffect(() => notifyScuttlebuttMentions(), [settings, context.language]);
@@ -1025,7 +1015,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           }}
         />
       ) : null}
-      {/* Quick Launch 답변. 카드가 열리면 카드가 전문을 맡으므로 그 부관의 말풍선만 물러난다. */}
+      {/* '@' 답변. 카드가 열리면 카드가 전문을 맡으므로 그 부관의 말풍선만 물러난다. */}
       {answering.filter((admiral) => admiral !== openAdmiral).map((admiral) => (
         <AnswerBubble
           key={admiral}

@@ -186,7 +186,7 @@ const SIDEBAR_TOOL = defineConsoleTool({
 
 const LAUNCHER_TOOL = defineConsoleTool({
   name: "console_launcher",
-  description: "Quick Launch: starts a new Operation in a Theater, captioned with your name. Answers once it has started, not when its turn completes; each call starts another Operation.",
+  description: "New session: starts a new Operation in a Theater, captioned with your name. Answers once it has started, not when its turn completes; each call starts another Operation.",
   kind: "write",
   input: z.object({ theaterId: ids, text: z.string().min(1).max(32000), model: ids.optional().describe("A model the person named, in their spelling; otherwise Fleet assigns one at start."), effort: z.string().max(32).optional(), viewMode: z.enum(["chat", "terminal"]).optional(), groupId: ids.optional(), title: TITLE.optional() }),
 });
@@ -623,7 +623,7 @@ function consoleSpecs(deps: ConsoleUseDeps, snapshot: () => ConsoleUseSnapshot |
     }
   }));
   // ---------------------------------------------------------------------------------------------
-  // Quick Launch
+  // 새 세션
   // ---------------------------------------------------------------------------------------------
   entries.push(define(LAUNCHER_TOOL, async (args, ctx) => {
     const me = requireCaller(ctx);

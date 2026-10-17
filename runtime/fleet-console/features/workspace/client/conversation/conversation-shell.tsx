@@ -12,7 +12,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
-import { useNewSessionShortcutLabel, useQuickLaunchShortcutLabel, useSideBarShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useNewSessionShortcutLabel, useSideBarShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -612,7 +612,7 @@ function useStageSubject(state: ConsoleState): OperationNode | null {
 
 export function ConversationStage({ state, insets, language, operationKinds, onClose, toolContext }: ConversationStageProps) {
   const t = useT();
-  const quickLaunchShortcut = useQuickLaunchShortcutLabel();
+  const newSessionShortcut = useNewSessionShortcutLabel();
   const subject = useStageSubject(state);
   // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Operation 대신 선다.
   const surface = useConversationSurface();
@@ -766,7 +766,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           <div className="conversation-pill-row">{tools(null)}</div>
           <div className="conversation-empty">
             <strong>{t("conversation.empty.title")}</strong>
-            <span>{t("conversation.empty.body", { shortcut: quickLaunchShortcut })}</span>
+            <span>{t("conversation.empty.body", { shortcut: newSessionShortcut })}</span>
           </div>
         </div>
       )}

@@ -20,9 +20,9 @@ const clientRoots = [
 const composerSurfaces = new Set([
   "composer.tsx",
   "group-composer.tsx",
-  "quick-launch.tsx",
-  "mobile-quick-launch.tsx",
   "new-session.tsx",
+  "mobile-new-session.tsx",
+  "mobile-new-session-sheet.tsx",
   "commodore-inbox-section.tsx",
   "operation-view-state.ts",
   "chat-dispatch-attachments.tsx",

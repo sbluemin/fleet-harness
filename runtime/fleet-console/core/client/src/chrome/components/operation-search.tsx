@@ -361,7 +361,7 @@ export function OperationSearch({
       case "new-operation": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // 사이드바 맨 위 「+」와 같은 길 — 새 세션 화면을 본문에 연다(Theater 는 Quick Launch 와 같은 기본 규칙).
+        // 사이드바 맨 위 「+」와 같은 길 — 새 세션 화면을 본문에 연다(Theater 기본 규칙은 new-session-entry).
         openDefaultNewSession();
         break;
       }

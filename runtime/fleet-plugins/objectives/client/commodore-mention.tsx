@@ -9,12 +9,12 @@ import { useObjectiveTheater } from "./objectives-state.js";
 const TARGET_PREFIX = "commodore:";
 
 /**
- * Quick Launch '@' 덱에 서는 등록된 모든 Theater의 사령관.
+ * 새 세션 '@' 덱에 서는 등록된 모든 Theater의 사령관.
  *
  * 실험 기능 「자율 운영」과 그 Theater 의 자율 운영이 모두 켜져 있을 때만 낸다. 어느 하나라도 꺼져 있으면 서버가 메시지를
  * 거절한다(`commodore_disabled`·`commodore_inactive`) — 보내도 닿지 않는 행선지를 고를 수 있게 둘 이유가 없으므로
  * 흐리게도 세우지 않는다(꺼진 실험 기능에서 머리의 사령관 글리프가 사라지는 것과 같은 관례). 덱을 연 뒤 꺼진 경합은 아래 선검사나
- * 서버 거절로 실패하고, Quick Launch 는 초안과 행선지를 그대로 둔 채 전달 실패를 말한다.
+ * 서버 거절로 실패하고, 새 세션은 초안과 행선지를 그대로 둔 채 전달 실패를 말한다.
  *
  * 밴드가 이미 「사령관」을 말하므로 행 이름은 사이드바 Theater 머리와 같은 이름이다 — 별칭이 있으면 별칭, 없으면 Theater 이름이라
  * 행선지 태그가 「사령관 · fleet-harness」로 읽힌다. 별칭이 있으면 설명문이 원래 Theater 이름을 함께 말하고, 검색어(keywords)에도

@@ -49,7 +49,7 @@ export function buildShortcutGroups(
       entries: [
         { combos: bound("console.search-operations"), description: t("shortcuts.console.searchOps") },
         { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
-        { combos: bound("console.quick-launch"), description: t("shortcuts.console.quickLaunch") },
+        { combos: bound("console.new-session"), description: t("shortcuts.console.newSession") },
         { combos: bound("console.toggle-sidebar"), description: t("shortcuts.console.toggleSidebar") },
         { combos: bound("console.toggle-global-shell"), description: t("shortcuts.console.toggleGlobalShell") },
         { combos: bound("console.toggle-repository"), description: t("shortcuts.console.toggleRepository") },
@@ -244,11 +244,6 @@ export function useSideBarShortcutLabel(): string {
 export function useSearchShortcutLabel(): string {
   useShortcutOverrides();
   return shortcutCommandLabel("console.search-operations");
-}
-
-export function useQuickLaunchShortcutLabel(): string {
-  useShortcutOverrides();
-  return shortcutCommandLabel("console.quick-launch");
 }
 
 export function useNewSessionShortcutLabel(): string {

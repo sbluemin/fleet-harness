@@ -46,7 +46,7 @@ export interface Viewport {
   readonly height: number;
 }
 
-/** 부관이 서면 안 되는 화면 영역(열린 페인·Quick Launch·대화상자). 호스트가 실측해 준다. */
+/** 부관이 서면 안 되는 화면 영역(열린 페인·대화상자). 호스트가 실측해 준다. */
 export interface KeepOutRect {
   readonly left: number;
   readonly top: number;
@@ -55,6 +55,8 @@ export interface KeepOutRect {
 }
 
 const KEEP_OUT_PADDING = 12;
+/** 표면이 부관 위에 열렸을 때 비켜서는 속도(px/s). */
+const SIDESTEP_SPEED = 640;
 
 /** 중심 (x, y)에 선 부관의 상자가 회피 영역과 겹치는가. */
 export function insideKeepOut(x: number, y: number, size: BirdSize, keepOut: readonly KeepOutRect[]): boolean {
@@ -309,7 +311,7 @@ export function parkedLayout(
     : 0;
   const runWidth = totalWidth + spacing * (sizes.length - 1);
   const tallest = Math.max(...sizes.map((size) => size.height));
-  // 주차 줄은 오른쪽 아래가 기본이다. 그 자리를 덮는 표면(도킹된 Quick Launch·오른쪽 페인)이
+  // 주차 줄은 오른쪽 아래가 기본이다. 그 자리를 덮는 표면(오른쪽 페인)이
   // 있으면 줄 전체를 그 위 또는 왼쪽으로 옮긴다 — 부관 하나만 옮기면 줄이 깨진다.
   let right = viewport.width - 16;
   let bottom = viewport.height - 16;
@@ -358,7 +360,9 @@ export function stepFlock(
         const dx = outside.x - body.x;
         const dy = outside.y - body.y;
         const dist = Math.hypot(dx, dy) || 1;
-        const step = Math.min(dist, Math.max(persona.max, 160) * dt);
+        // 비켜서기는 배회가 아니라 자리 내주기다 — 배회 속도(최대 160px/s)로 가면 막 열린 목록·대화상자 위에 1초 가까이 걸쳐 있다.
+        // 한 번에 짧게 날아올라(약 0.25초) 표면을 먼저 비운다.
+        const step = Math.min(dist, Math.max(persona.max, SIDESTEP_SPEED) * dt);
         body.x += (dx / dist) * step;
         body.y += (dy / dist) * step;
         body.vx = (dx / dist) * Math.min(dist * 2, 160);

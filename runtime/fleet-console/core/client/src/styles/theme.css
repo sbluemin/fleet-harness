@@ -220,7 +220,7 @@
   --surface-capsule-rim: var(--hairline-strong);
   /* 사이드바의 열린 행 면. 기본은 brass 위치 채널의 면 워시이고, 대화 다크는 레퍼런스대로 중립 회색 면이다. */
   --surface-row-selected: color-mix(in oklch, var(--brass) 14%, transparent);
-  /* 부유 카드(⌘K/⌘P 검색·Quick Launch)의 pillar 티어. 유리가 꺼진 순간 --glass-tint-pillar가
+  /* 부유 카드(⌘K/⌘P 검색)의 pillar 티어. 유리가 꺼진 순간 --glass-tint-pillar가
      이 값으로 떨어지므로, 유리 ON(ink-veil α52% + 블러 → 실측 L≈18%)과 같은 자리에 서야 한다.
      ink-veil(L 23.5%) 불투명을 그대로 두면 크롬(ink-deep L 16.5%)보다 7단 밝은
      슬레이트 판이 되어 테마와 동떨어진다 — deep 바로 위의 반투명 리터럴로 둔다. */
