@@ -60,11 +60,11 @@ export function ChatCard({
   readonly mascot: React.RefObject<HTMLButtonElement | null>;
   readonly moored: boolean;
   /**
-   * 상단 바에 둔 부관의 시트로 선다. 닻은 새가 아니라 밴드의 글리프이고, 봉투는 글리프 아래
+   * 글리프로 둔 부관의 시트로 선다. 닻은 새가 아니라 그 글리프이고, 봉투는 글리프 아래
    * 우측 정렬 480px — 새의 위치와 무관하게 늘 같은 자리에 답이 선다.
    */
   readonly docked: boolean;
-  /** 글리프가 설 밴드 슬롯이 있는가. 없으면(모바일 배치) 「상단 바에 두기」를 내지 않는다. */
+  /** 글리프가 설 호스트 슬롯이 있는가. 없으면(모바일 배치) 「도구모음에 두기」를 내지 않는다. */
   readonly canDock: boolean;
   /** 이 부관의 AI 확장 허용 — 헤더 표식·인사말·메뉴 행의 상태. */
   readonly grants: AideGrants;
@@ -151,7 +151,7 @@ export function ChatCard({
     return () => observer.disconnect();
   }, [position, positionRevision]);
 
-  // 상단 바의 글리프는 밴드의 다른 칩(호스트·연결 상태)이 늘고 줄 때 옆으로 밀린다 — 시트는 그
+  // 글리프는 같은 줄의 다른 항목이 늘고 줄 때 옆으로 밀린다 — 시트는 그
   // 닻을 프레임마다 따라간다(말풍선이 새를 따르는 것과 같다). 자리가 같으면 위에서 걸러진다.
   React.useLayoutEffect(() => {
     if (!docked) return;
@@ -297,7 +297,7 @@ export function ChatCard({
           {embedded ? null : <GrantMarks grants={grants} locale={locale} />}
         </span>
         {/* 자리 조작은 그 부관에게만 걸린다 — 전역 설정으로 빼지 않고 헤더에 아이콘으로만 둔다.
-            시트(상단 바)에서는 정박이 의미가 없으므로 떼어내기 하나만 선다. */}
+            시트(글리프)에서는 정박이 의미가 없으므로 떼어내기 하나만 선다. */}
         {embedded ? null : docked ? (
           <HeadAction
             id={`scuttlebutt-undock-${admiral}`}

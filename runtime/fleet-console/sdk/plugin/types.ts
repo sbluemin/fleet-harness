@@ -118,10 +118,10 @@ export interface MentionTargetDescriptor {
 }
 
 /**
- * 커맨드 밴드 우측 클러스터 앞에 서는 플러그인 항목. 밴드의 24×24 버튼 문법을 따르는 것은
- * 플러그인의 책임이고, 호스트는 등록 순서대로 나란히 세울 뿐이다. 항목을 더 큰 자리에 세우는
- * 호스트 슬롯(대화 배치의 사이드바 맨 위 줄 가운데 — 가용 폭에 따라 40·32·28px)은 그 크기를 `--command-band-entry-size` 로 알린다 —
- * 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 두 자리에 모두 맞는다.
+ * 호스트 크롬에 서는 작은 플러그인 항목(이름은 옛 Command Band 에서 이어진 SDK 계약이다). 대화 중심 화면에서 부관 항목은
+ * 사이드바 맨 위 줄 가운데에, 그 밖의 항목(사용량 요약 등)은 가운데 칸 맨 위 줄 오른쪽 끝 캡슐에 선다. 호스트는 등록 순서대로
+ * 세울 뿐이고, 버튼 문법은 플러그인의 책임이다. 사이드바 자리는 가용 폭에 따라 40·32·28px 이며 그 크기를
+ * `--command-band-entry-size` 로 알린다 — 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 어느 자리에도 맞는다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;
@@ -272,8 +272,7 @@ export interface ClientExecutionProvider {
    */
   readonly experimentModelOptions?: () => Promise<readonly ExperimentModelOption[]>;
   /**
-   * 사이드바 묶음 줄 선택과 「더블클릭으로 열기」 사이드바의 한 번 클릭(열지 않는 선택) 시 호출된다.
-   * Cruise의 frame·Fleet Map 점 선택과 War Room의 무대 변경(수동·자동)은 그 화면이 제거되어 더 이상 호출하지 않는다.
+   * 사이드바 묶음 줄 선택과 「더블클릭으로 열기」 사이드바의 한 번 클릭(열지 않는 선택) 시 호출된다(이름은 옛 맵 화면에서 이어진 계약이다).
    * 이 알림은 키보드 포커스 이동을 뜻하지 않는다.
    */
   readonly onMapOperationSelected?: (operationId: string) => void;
@@ -827,7 +826,7 @@ export interface OperationClusterMember {
   readonly progress: OperationClusterProgress;
   /** 살아 있는 구성원 세션의 입력·결정 대기. 임무 진행(done/blocked)과 별개이며, 생략 시 옛 progress awaiting만 사용한다. */
   readonly awaitingInput?: boolean;
-  /** 끝난 구성원이 남긴 산출 요약 한 줄. War Room 무대는 제거되어 이 줄을 더 이상 보여 주지 않는다. */
+  /** 끝난 구성원이 남긴 산출 요약 한 줄. */
   readonly result?: string;
 }
 
@@ -835,11 +834,11 @@ export interface OperationCluster {
   /** 플러그인 안에서 유일한 id. 호스트가 `<pluginId>:` 를 앞에 붙인다. */
   readonly id: string;
   readonly theaterId: string;
-  /** 묶음의 제목(목표 제목) — 툴팁에 선다. War Room 위치 표시는 그 화면이 제거되어 더 이상 쓰지 않는다. */
+  /** 묶음의 제목(목표 제목) — 툴팁에 선다. */
   readonly title: string;
   /**
    * 뿌리(조율자) operationId. 뿌리는 구성원 목록에 들지 않는다. 아직 Operation 이 없는 묶음(시작 전 목표)은 뿌리가 없다 —
-   * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄에는 서지 않는다. 선별 표식은 War Room과 함께 제거되었다.
+   * 그런 묶음은 `row` 로만 서고, 캡션 띠·노드 줄에는 서지 않는다.
    */
   readonly root?: string;
   /**
@@ -852,7 +851,7 @@ export interface OperationCluster {
   readonly open?: (operationId?: string) => void;
   /**
    * 뿌리가 사람에게 답을 청한 결정 요청이 있고 사람이 답할 차례다(플러그인이 정한 맡은 이가 다루는 요청은 아니다) — 호스트는 뿌리
-   * 행·칩·얼굴에 전용 표식을 세운다. 선별 대기열은 War Room과 함께 제거되었다. 도구 허용 대기(활동
+   * 행·칩·얼굴에 전용 표식을 세운다. 도구 허용 대기(활동
    * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
    */
   readonly decisionRequest?: boolean;
@@ -1013,14 +1012,13 @@ export interface OperationKindDescriptor {
   /**
    * Fills the caption band's action shelf, left of the host's own menu and window controls.
    * The band stays host-owned exactly as it does for a companion panel's `caption`: the host
-   * places the shelf, and paints the surface. War Room was removed, so the host no longer drops
-   * the shelf on a deck tile. Build the buttons with
+   * places the shelf, and paints the surface. Build the buttons with
    * `@fleet-console/sdk/components/caption-actions` so one band cannot carry two grammars.
    */
   readonly captionActions?: (context: OperationRenderContext) => ReactNode;
   /**
    * Fills the top of the host's Operation menu — the same card the caption's ··· button and the
-   * sidebar's right-click open. War Room cards were removed and no longer open this menu. The host owns the card, its grouping and
+   * sidebar's right-click open. The host owns the card, its grouping and
    * accent sections and keyboard travel; this section stands first, above them, and is followed by
    * the host's divider. Rows are `button.group-context-menu-item` with a `menuitem*` role so the
    * host's arrow-key travel and Escape reach them. Keep it to per-Operation switches and readouts
@@ -1099,7 +1097,6 @@ export interface OperationMenuContext {
 export interface OperationRenderContext extends OperationContext {
   /**
    * 모바일 Operation 화면에서만 실린다. 없다는 것이 「호스트가 ⋮을 그려 주지 않는다」는 말이다(데스크톱 대화 화면·확대 표면).
-   * 캔버스와 War Room은 제거되어 이 창구를 싣지 않는다.
    */
   readonly mobileOperation?: ClientMobileOperationCapability;
   readonly navigate: ClientNavigateCapability;
@@ -1108,7 +1105,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly active: boolean;
   /**
    * Requests DOM keyboard focus for the current Operation's primary body.
-   * This is not canvas position, active state, or persistent state: a changed value means a new focus request.
+   * This is not a layout position, active state, or persistent state: a changed value means a new focus request.
    * `undefined` denotes an older host and `0` denotes no request; consumers must only detect change, not compare order.
    * Plugins cannot increment this host-owned value themselves.
    */
@@ -1137,14 +1134,13 @@ export interface OperationRenderContext extends OperationContext {
   /**
    * Whether this body is on a surface the user can read. `undefined` is an older
    * host and must be treated as live. `false` is a parked or hidden
-   * body: the plugin must not hold a dedicated HTTP stream for it. War Room
-   * was removed; a deck tile is no longer a live body.
+   * body: the plugin must not hold a dedicated HTTP stream for it.
    */
   readonly bodyLive?: boolean;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
-  /** Requests host-owned companion panels without exposing Canvas implementation to plugins. */
+  /** Requests host-owned companion panels without exposing the host layout to plugins. */
   readonly onRequestCompanions?: (open: boolean) => void;
   readonly companionsOpen?: boolean;
   /** Host-owned effective companion visibility; `undefined` denotes a host without per-panel visibility support. */

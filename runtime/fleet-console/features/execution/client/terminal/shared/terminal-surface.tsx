@@ -1133,7 +1133,7 @@ function baseTerminalThemeFor(theme: TerminalPaletteId): ITheme {
 /* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
    필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
    - 다크 + 게이트 열림: xterm 배경은 알파 0으로 비우고(RGB는 아래 glassFieldClearColor 참조),
-     Agent Operation은 .canvas-operation 루트의 panel tint를, 독립 Shell은 .terminal-shell/expanded
+     Agent Operation은 그 Operation을 담은 패널의 panel tint를, 독립 Shell은 .terminal-shell/expanded
      slot의 terminal tint를 필드·거터 한 겹으로 공유한다. 다크는 minimumContrastRatio=1이라
      투명 배경이 대비 보정에 관여하지 않는다.
    - 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값(불투명 --surface-panel)을

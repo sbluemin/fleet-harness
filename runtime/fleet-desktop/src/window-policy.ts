@@ -66,9 +66,15 @@ const DESKTOP_WINDOW_TITLE = "Fleet Console";
 /** 다크 테마의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
 export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 /**
- * Windows 캡션 버튼 스트립의 첫 모습 — Console 이 테마 스냅샷(titleBarOverlay)을 보내기 전까지만 선다. 스냅샷이
- * 오면 대화 중심 화면의 맨 위 줄(52px)과 그 바탕색으로 바뀐다. 폭 138 DIP(46×3)는 Console 맨 위 줄이 비워
- * 두는 자리다. 폭은 Chromium이 정하므로 여기서 지정하지도, 되읽지도 못한다.
+ * Console 맨 위 줄의 높이 — Console 이 테마 스냅샷 `chrome.band`·`titleBarOverlay.height` 로 보내는 값
+ * (Console desktop-contract.ts `CONVERSATION_TOP_ROW`)과 같다. Desktop 은 Console 내부를 가져오지 않으므로 값을 맞춰 둔다.
+ */
+const CONVERSATION_TOP_ROW = 52;
+
+/**
+ * Windows 캡션 버튼 스트립의 첫 모습 — Console 이 테마 스냅샷(titleBarOverlay)을 보내기 전까지만 선다. 값은 Console 이
+ * 다크 테마에 보내는 대화 중심 화면 오버레이(desktop-contract.ts `DESKTOP_CONVERSATION_OVERLAYS.dark`)와 같아, 스냅샷이
+ * 와도 높이·색이 튀지 않는다. 폭 138 DIP(46×3)는 Console 맨 위 줄이 비워 두는 자리다. 폭은 Chromium이 정하므로 여기서 지정하지도, 되읽지도 못한다.
  *
  * 그 폭을 클라이언트에 알려 주던 길은 WCO 기하 env(titlebar-area-*)였는데, Console이
  * BaseWindow의 내장 webContents가 아니라 자식 WebContentsView로 그려지면서 끊겼다
@@ -76,7 +82,7 @@ export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
  * 조용히 사라진다 — 그래서 conversation.css가 이 138 DIP를 계약으로 함께 들고 큰 쪽을 쓴다.
  * 여기를 고치면 그쪽도 같이 고친다.
  */
-export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 35 } as const;
+export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW } as const;
 
 /**
  * macOS 신호등의 자리는 Console 맨 위 줄과의 합의다 — 대화 중심 화면의 맨 위 줄(`--conversation-top-row: 52px`,
@@ -91,7 +97,6 @@ export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor
  */
 const TRAFFIC_LIGHT_INSET_X = 16;
 const TRAFFIC_LIGHT_HEIGHT = 14;
-const CONVERSATION_TOP_ROW = 52;
 
 /**
  * 맨 위 줄의 높이(`band`)는 Console 이 테마 스냅샷의 `chrome.band` 로 알린다 — 지금 Console 은 늘 대화 중심 화면의

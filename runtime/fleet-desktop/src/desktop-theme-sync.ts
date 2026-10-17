@@ -8,7 +8,7 @@ interface DesktopTitleBarOverlay {
   readonly height: number;
 }
 
-/** 네이티브 컨트롤이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이. 싣지 않는 Console이면 Command Band 36px 계약이다. */
+/** 네이티브 컨트롤이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이. 싣지 않는 옛 Console이면 셸의 기본값(52px)을 쓴다. */
 export interface DesktopChromeGeometry {
   readonly band: number;
 }

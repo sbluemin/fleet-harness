@@ -240,6 +240,7 @@ const CONVERSATION_TOP_ROW = 52;
  * 대화 중심 화면의 캡션 버튼 띠 — 오른쪽 위 열(세부 정보 또는 대화)의 바탕과 같은 색으로, 맨 위 줄 높이만큼 선다. 두 열은 같은
  * 바탕(`--canvas-abyss`)이라 세부 정보가 열려 있든 닫혀 있든 한 색이다. 이 화면의 다크는 「대화 다크」 한 벌이므로(theme.css)
  * #121212(L 18.2%)·보조 글자 회색(#a7a7a7, `--ink-muted` L 72.8%) 기호를 쓴다. 라이트는 그 테마의 `--canvas-abyss` sRGB 다.
+ * 다크 값과 맨 위 줄 높이는 Desktop 의 첫 모습(window-policy.ts `INITIAL_WINDOWS_TITLE_BAR_OVERLAY`)과 같다 — 바꾸면 함께 바꾼다.
  */
 const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
   dark: { color: "#121212", symbolColor: "#a7a7a7", height: CONVERSATION_TOP_ROW },

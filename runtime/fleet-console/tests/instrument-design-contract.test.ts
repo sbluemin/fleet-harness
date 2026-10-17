@@ -150,14 +150,12 @@ const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const TEXT_BASE_BRASS = /var\(\s*--brass\s*\)/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
-  // Canvas injects each frame's identity accent through TSX inline styles.
+  // Sidebar chip and cluster-row TSX inject each Operation's identity accent through inline styles.
   "--user-accent",
   // Sidebar TSX injects its measured width for the shell layout.
   "--side-bar-width",
-  // Sidebar TSX injects transient drag offsets for chips and group headers; the fleet map's
-  // marker drag writes both axes on the dot element itself, without a re-render per frame.
+  // Sidebar TSX injects transient drag offsets for chips and group headers.
   "--drag-dy",
-  "--drag-dx",
   // Sidebar TSX injects the persisted group tone used by group-scoped surfaces.
   "--grp-color",
   // Sidebar chip TSX injects the group marker tone for each rendered mark.
@@ -174,15 +172,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--ws-tree-width",
   // Repository commit/compare inspector TSX injects the user-resized dock file-list width.
   "--ws-dock-files-width",
-  // Canvas context menu TSX injects the viewport-derived height ceiling for its own box.
-  "--launch-menu-max-height",
   // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
   "--quick-launch-pop-max-height",
-  // Fleet map TSX injects each theater zone's circle position/diameter and identity tint.
-  "--zone-x",
-  "--zone-y",
-  "--zone-size",
-  "--zone-tint",
   // Chat context popover TSX injects the category-stack luminance step (0–5).
   "--agent-chat-ctx-step",
 ]);
@@ -566,7 +557,6 @@ describe("Instrument core design contract", () => {
     const fontPicker = externalSource(FONT_PICKER_CSS_PATH);
 
     for (const selector of [
-      '.global-settings-nav-item:hover:not([aria-pressed="true"])',
       ".segmented-option:hover:not(:disabled):not(.is-active)",
       '.fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"])',
       '.fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"])',
@@ -1740,8 +1730,8 @@ describe("Instrument core design contract", () => {
       for (const token of declared(block)) themeTuned.add(token);
     }
     // [doctrine] 유리 재료(--glass-on-*·--canvas-on-ambience)는 게이트를 거쳐서만 화면에 닿고, 모바일은
-    // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다. 지형 피치는 색이 아니다.
-    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$|canvas-weave-(?:major|minor)$)/.test(token);
+    // 틴트 채널을 불투명 면에 직접 실어 게이트를 건너뛴다.
+    const exempt = (token: string) => /^--(?:glass-on-|canvas-on-ambience$)/.test(token);
     for (const scheme of ["dark", "light"] as const) {
       const missing = [...themeTuned].filter((token) => !exempt(token) && !schemeTokens[scheme].has(token));
       expect(missing, `mobile ${scheme} leaves Console-theme tokens undefined`).toEqual([]);

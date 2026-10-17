@@ -2083,7 +2083,7 @@
    번들의 계약이 된다.
 
    자리: field(상자)가 기준면이다. QL은 fixed 오버레이라 패널을 벗어나지만 이 표면은
-   `.canvas-operation-terminal`의 overflow:hidden 안에 산다. 그래서 높이는 여기의 상한일 뿐이고,
+   채팅을 담은 패널(대화 칸)의 overflow:hidden 안에 산다. 그래서 높이는 여기의 상한일 뿐이고,
    실제 높이는 뷰가 상자 위·아래에 남은 공간을 재서 인라인으로 준다. 위가 모자라면(새 채팅
    히어로) `.is-below`로 상자 아래에 뒤집어 연다. */
 .agent-chat-deck {

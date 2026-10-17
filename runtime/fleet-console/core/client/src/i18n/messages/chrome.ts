@@ -9,9 +9,9 @@ export const chromeEn = {
   "chrome.operationSearch.shell.failed": "Shell could not be opened. Try again.",
 
   // command-band
-  "chrome.commandBand.viewModeAuto": "View mode: Auto",
-  "chrome.commandBand.viewModeMobile": "View mode: Mobile",
-  "chrome.commandBand.viewModeDesktop": "View mode: Desktop",
+  "chrome.viewMode.auto": "View mode: Auto",
+  "chrome.viewMode.mobile": "View mode: Mobile",
+  "chrome.viewMode.desktop": "View mode: Desktop",
 
   // console link
   "chrome.link.offline": "Connection lost",
@@ -468,7 +468,7 @@ export const chromeEn = {
   "chrome.backendApi.foot": "Core and loaded-plugin API routes, excluding Fleet Wiki.",
   "chrome.backendApi.uncategorized": "Uncategorized",
 
-  // expanded-surface — the canvas-anchored non-modal work surface
+  // expanded-surface — the non-modal work surface anchored to the conversation pane
   "chrome.expandedSurface.regionAria": "Expanded work surface",
   "chrome.expandedSurface.closeAria": "Close {title}",
   "chrome.expandedSurface.dividerAria": "Resize slot",
@@ -575,9 +575,9 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.operationSearch.shell.outside_theater": "이 폴더는 Theater 밖에 있습니다.",
   "chrome.operationSearch.shell.failed": "Shell을 열지 못했습니다. 다시 시도하세요.",
 
-  "chrome.commandBand.viewModeAuto": "보기 모드: 자동",
-  "chrome.commandBand.viewModeMobile": "보기 모드: 모바일",
-  "chrome.commandBand.viewModeDesktop": "보기 모드: 데스크톱",
+  "chrome.viewMode.auto": "보기 모드: 자동",
+  "chrome.viewMode.mobile": "보기 모드: 모바일",
+  "chrome.viewMode.desktop": "보기 모드: 데스크톱",
 
   "chrome.link.offline": "연결 끊김",
   "chrome.runtime.degraded": "Operation 활동 상태를 지금 확인할 수 없습니다 — 화면의 표시가 최신이 아닐 수 있습니다.",

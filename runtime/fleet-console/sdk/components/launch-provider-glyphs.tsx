@@ -45,7 +45,7 @@ export type LaunchProviderModelGroup<T> = {
 };
 
 /**
- * Group a flat catalog the way the canvas launch menu bands providers.
+ * Group a flat catalog by launch provider, the way the launch menu lists providers.
  *
  * `providerOf` overrides the id-format lookup for catalogs whose ids carry no provider
  * prefix (a raw Gateway catalog keyed per provider); a `null` return falls back to the id.

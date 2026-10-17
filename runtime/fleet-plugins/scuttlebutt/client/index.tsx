@@ -61,7 +61,7 @@ async function messageMentionTarget(targetId: string, text: string, options?: { 
 const scuttlebuttPlugin = definePlugin({
   id: "scuttlebutt",
   floatingWidgets: [{ id: "mascot", render: (context) => <ScuttlebuttFlock context={context} /> }],
-  // 상단 바에 둔 부관의 글리프. 로케일은 무리가 독 스토어에 반응적으로 싣는다 — 밴드 슬롯은 문맥을 주지 않는다.
+  // 「도구모음에 두기」로 둔 부관의 글리프. 로케일은 무리가 독 스토어에 반응적으로 싣는다 — 호스트 슬롯은 문맥을 주지 않는다.
   commandBandEntries: [{ id: "dock", render: () => <DockGlyphs /> }],
   settingsSections: [scuttlebuttSettingsSection],
   mentionTargets,

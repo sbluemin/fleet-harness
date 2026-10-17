@@ -93,7 +93,7 @@
 html, body { height: 100%; margin: 0; }
 body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
 
-/* 창을 끌 수 있는 자리. Console의 command band와 같은 높이라, 넘겨줄 때 밑줄만 켜지면 그대로 이어진다. */
+/* 창을 끌 수 있는 자리. 높이는 옛 Console Command Band(36px)에서 이어졌다 — 대화 중심 화면 맨 위 줄(52px)과의 정합은 핸드오프 좌표 재정렬과 함께 다룰 후속 과제다. */
 .drag-strip { position: fixed; inset: 0 0 auto; height: var(--chrome-band-height); border-bottom: 1px solid transparent; -webkit-app-region: drag; transition: border-color var(--handoff-duration) var(--ease-spring); }
 
 .brand-mark {

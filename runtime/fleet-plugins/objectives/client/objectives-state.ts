@@ -825,7 +825,7 @@ export function useObjectiveDisplayTheater(contextTheaterId: string | null): str
 }
 
 /**
- * 사이드바에서 Operation을 고르면 열린 목표 레일에 반영한다. Cruise의 frame·Fleet Map 선택과 War Room의 수동·자동 등단은 그 화면이 제거되어 더 이상 오지 않는다.
+ * 사이드바에서 Operation을 고르면 열린 목표 레일에 반영한다.
  * 레일이 닫혀 있거나 확장 전용 표면일 때는 자동 열기/전환 없이 조용히 무시하고, 미연결 Operation 은 기존 선택을 보존한다.
  */
 export function handleMapOperationSelected(operationId: string): void {
