@@ -77,7 +77,9 @@
   will-change: transform;
 }
 .pg-ride,
-.pg-gait { width: 100%; height: 100%; }
+.pg-gait,
+.pg-pop { width: 100%; height: 100%; }
+.pg-pop { transform-origin: 50% 100%; }
 .pg-ride { position: relative; z-index: 1; transform-origin: var(--pg-ox, 50%) var(--pg-oy, 100%); }
 .pg-shadow {
   position: absolute;
@@ -109,6 +111,10 @@
 }
 /* 미끄럼틀 한 번 — 사다리를 오르고 위에서 잠깐 쉰 뒤 내려온다. 끝 좌표(142px)는 스케줄러가 몸을 옮기는 거리와 짝이다. */
 .pg-ride.is-sliding { animation: pg-slide 5.2s linear 1 forwards; }
+/* 등장 — 꼭대기에서 내려오기, 모래에서 쏙, 끝에서 두리번. 한 번만 돈다. */
+.pg-ride.is-slide-in { animation: pg-slide-in 2.6s linear 1 forwards; }
+.pg-pop.is-rise { animation: pg-rise 0.62s cubic-bezier(0.2, 1.5, 0.4, 1) 1 backwards; }
+.pg-pop.is-peek { animation: pg-peek 1.4s ease-in-out 1; }
 
 /* 얼음 — 입력하는 동안 모두 그 자리에서 멈추고, 아래 입력창 쪽을 본다. */
 .new-session-playground.is-frozen,
@@ -152,4 +158,17 @@
   70% { transform: translate(52px, -84px); animation-timing-function: linear; }
   88% { transform: translate(122px, -10px); animation-timing-function: ease-out; }
   100% { transform: translate(142px, 0); }
+}
+@keyframes pg-slide-in {
+  0% { transform: translate(30px, -104px); opacity: 0; }
+  18% { transform: translate(30px, -104px); opacity: 1; animation-timing-function: ease-in; }
+  40% { transform: translate(52px, -84px); }
+  76% { transform: translate(122px, -10px); animation-timing-function: ease-out; }
+  100% { transform: translate(142px, 0); opacity: 1; }
+}
+@keyframes pg-rise { from { transform: translateY(34px); } }
+@keyframes pg-peek {
+  0%, 100% { transform: rotate(0deg); }
+  30% { transform: rotate(-8deg); }
+  60% { transform: rotate(6deg); }
 }

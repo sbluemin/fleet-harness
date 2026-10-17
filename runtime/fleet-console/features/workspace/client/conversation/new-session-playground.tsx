@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { MONGLE_BASES, type MongleActivity, type MongleRole } from "@fleet-console/sdk/avatars";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
+import { IDENTITY_TONES, isIdentityTone, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
 
 import "./new-session-playground.css";
 
 /**
  * 새 세션 화면의 「몽글 놀이터」 — 「어디서」 카드 아래 바닥선에서 몽글이들이 걷고(산책로), 그네·시소·모래밭·미끄럼틀에서 논다(놀이기구).
  * 승인안(목표 b4f89230): A 산책로 + C 놀이기구를 한 무대에 두고, 누가 언제 어느 기구로 가서 놀지·걷기·멈춰 연기하기를 랜덤으로 고른다.
- * 출연진은 Theater 와 무관하게 몽글 베이스 15종 전체다(사람의 지시로 「사령관 + 내 Operation」을 대체). 15종을 섞은 덱에서 뽑아 한 바퀴를
- * 돌기 전에는 같은 캐릭터가 다시 나오지 않고, 역할(안테나·구성원·별)은 등장할 때마다 랜덤이다. 오래 머문 몽글이는 가끔 가까운 끝으로 걸어
- * 나가고, 잠시 뒤 덱의 다음 캐릭터가 랜덤한 쪽에서 들어온다. 무대 위 동시 인원은 폭 상한을 넘지 않는다.
+ * 출연진은 Theater 와 무관하게 몽글 베이스 15종 × 정체성 톤 8색이다. 이번 세션에 아직 안 나온 조합이 먼저 나오고,
+ * 역할(안테나·구성원·별)은 등장할 때마다 랜덤이다. 등장은 걷기·미끄럼틀·모래밭·두리번 중 하나고, 인원은 약 70초 주기로
+ * 2명과 폭 상한 사이를 오간다. 셋 중 하나꼴로 둘이 함께 들고 나며, 가끔은 미끄럼틀을 타고 나간다.
  *
  * - 배경 층이다: pointer-events 없음·aria-hidden. 카드와 컴포저 위로 오지 않고 클릭·포커스를 가져가지 않는다.
  * - 부르는 상태(대기·결정·검토의 발밑 빛, 안 본 답·오류·휴면 배지)는 놀이에 쓰지 않는다 — 쉼(idle)과 작업 중 연기(running+activity)만 쓴다.
@@ -29,11 +30,18 @@ const BAND_WALK = 86;
 const MIN_SCALE = 0.62;
 /** 바닥선이 띠 아래에서 떨어진 거리. */
 const FLOOR = 12;
-/** 무대 위 동시 인원 — 폭이 넓을 때. 좁으면 4·3명. */
+/** 무대 위 동시 인원 — 폭이 넓을 때. 좁으면 4·3명. 물결의 천장이다. */
 const STAGE_CAP = 6;
-/** 이만큼 머문 뒤부터 틱마다 이 확률로 퇴장한다. */
-const EXIT_AFTER_MS = 20_000;
-const EXIT_CHANCE = 0.08;
+/** 인원 목표가 조용(2명)과 상한 사이를 한 바퀴 도는 시간. */
+const WAVE_PERIOD_MS = 70_000;
+/** 연출이 인원을 목표에 맞추는 간격. */
+const DIRECTOR_MS = 2_000;
+/** 이보다 짧게 닫혔으면 인원을 바꾸지 않는다 — 다시 그리기만으로는 장면이 점프하지 않는다. */
+const CATCH_UP_MIN_MS = 500;
+/** 미끄럼틀 등장 — 꼭대기에서 나타나 내려온다. CSS pg-slide-in 과 짝이다. */
+const SLIDE_IN_MS = 2600;
+const PEEK_MS = 1500;
+const RISE_MS = 1600;
 /** 역할 확률 — 지휘관 안테나 45%, 구성원 45%, 사령관 별 10%. */
 const ROLE_COMMODORE = 0.1;
 const ROLE_COMMANDER = 0.55;
@@ -66,11 +74,17 @@ function shuffle<T>(list: readonly T[]): T[] {
 }
 
 interface CastMember {
-  /** 등장마다 새 값 — 같은 베이스가 다음 바퀴에 다시 나와도 다른 배우다. */
+  /** 등장마다 새 값 — 같은 얼굴이 나중에 다시 나와도 다른 배우다. */
   readonly id: string;
   readonly base: number;
+  readonly tone: IdentityTone;
   readonly role: MongleRole;
+  /** `${base}:${tone}` — 이번 세션에 본 얼굴과 지금 무대에 있는 얼굴을 가른다. */
+  readonly key: string;
 }
+
+type Flourish = "slide-in" | "rise" | "peek";
+type EntryStyle = "walk" | "peek" | "slide" | "sand";
 
 function randomRole(): MongleRole {
   const r = Math.random();
@@ -96,6 +110,9 @@ interface Actor {
   act: MongleActivity | null;
   ride: Ride | null;
   slideRun: number;
+  flourish: Flourish | null;
+  /** 퇴장 중이면 연출이 다시 고르지 않고, 미끄럼틀이 끝나면 걸어 나간다. */
+  exiting: boolean;
   timer: ReturnType<typeof setTimeout> | null;
   deadline: number;
   task: (() => void) | null;
@@ -125,9 +142,19 @@ class PlaygroundStage {
   private entryDeadline = 0;
   private disposed = false;
   private cap = STAGE_CAP;
-  private deck: number[] = [];
+  private deck: string[] = [];
+  private readonly seen = new Set<string>();
   private serial = 0;
-  private entered = false;
+  /** 물결에 얹는 작은 흔들림. 연출이 가끔 ±1 로 바꾼다. */
+  private jitter = 0;
+  private directorTimer: ReturnType<typeof setTimeout> | null = null;
+  private directorRemaining: number | null = null;
+  private directorDeadline = 0;
+  private directorResume: (() => void) | null = null;
+  private companionTimer: ReturnType<typeof setTimeout> | null = null;
+  private companionRemaining: number | null = null;
+  private companionDeadline = 0;
+  private companionResume: (() => void) | null = null;
   /** 화면을 닫아 타이머를 멈춰 둔 시각. null 이면 무대가 열려 있거나 아직 한 번도 닫히지 않았다. */
   private parkedAt: number | null = null;
   /** 다시 열린 뒤 다음 setup 이 한 번에 반영할 닫힌 시간. 타이머로 흘리지 않는다. */
@@ -167,7 +194,7 @@ class PlaygroundStage {
     // 이미 무대에 선 배우는 남기고(상한까지) 기구에서 내려 바닥에 세운다. 퇴장하던 배우도 그 자리에 선다.
     this.actors = this.actors.filter((actor) => actor.present).slice(0, this.cap);
     for (const actor of this.actors) {
-      Object.assign(actor, { mode: "rest", x: clamp(actor.x, 6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, remaining: null });
+      Object.assign(actor, { mode: "rest", x: clamp(actor.x, 6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, flourish: null, exiting: false, remaining: null });
     }
     if (!dynamic) {
       // 정지 장면은 시계가 없다. 닫혀 있던 시간을 인원 변화로 바꾸지 않는다.
@@ -177,47 +204,105 @@ class PlaygroundStage {
       this.publish();
       return;
     }
-    if (this.pendingClosedMs > 0) {
+    if (this.pendingClosedMs >= CATCH_UP_MIN_MS) {
       const elapsed = this.pendingClosedMs;
       this.pendingClosedMs = 0;
       this.advanceClosed(elapsed);
+    } else {
+      this.pendingClosedMs = 0;
     }
-    if (this.actors.length > 0) this.entered = true;
     for (const actor of this.actors) this.schedule(actor, rand(300, 1400), () => this.tick(actor));
     this.publish();
-    this.fillEntries();
+    this.direct();
   }
 
-  /** 덱의 다음 캐릭터 — 15종을 섞어 한 바퀴를 돈다. 새 바퀴의 앞머리가 지금 무대에 있으면 건너뛴다. */
+  /** 베이스 15종 × 정체성 톤 8색. 이번 세션에 안 나온 조합을 먼저 돌리고, 지금 무대에 있는 얼굴은 건너뛴다. */
   private cast(): Actor {
-    const onStage = new Set(this.actors.map((actor) => actor.cast.base));
-    let index = this.deck.findIndex((base) => !onStage.has(base));
-    if (index < 0) {
-      this.deck = shuffle(MONGLE_BASES.map((base) => base.id));
-      index = this.deck.findIndex((base) => !onStage.has(base));
+    const onStage = new Set(this.actors.map((actor) => actor.cast.key));
+    const all = MONGLE_BASES.flatMap((base) => IDENTITY_TONES.map((tone) => `${base.id}:${tone}`));
+    const open = (keys: readonly string[]) => keys.filter((key) => !onStage.has(key));
+    if (this.deck.length === 0 || this.deck.every((key) => onStage.has(key))) {
+      const fresh = open(all.filter((key) => !this.seen.has(key)));
+      const pool = fresh.length >= 6 ? fresh : open(all);
+      this.deck = shuffle(pool.length > 0 ? pool : all);
     }
-    const [base] = this.deck.splice(Math.max(0, index), 1);
+    let index = this.deck.findIndex((key) => !onStage.has(key));
+    if (index < 0) index = 0;
+    const [picked] = this.deck.splice(index, 1);
+    const [baseText, toneText] = (picked ?? "1:cerulean").split(":");
+    const base = Number(baseText);
+    const tone: IdentityTone = isIdentityTone(toneText) ? toneText : "cerulean";
+    const key = `${base}:${tone}`;
+    this.seen.add(key);
     this.serial += 1;
     return {
-      cast: { id: `pg-${this.serial}`, base: base ?? 1, role: randomRole() },
+      cast: { id: `pg-${this.serial}`, base: Number.isFinite(base) ? base : 1, tone, role: randomRole(), key },
       present: true, enteredAt: performance.now(), mode: "rest", x: -SIZE - 12, y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null,
-      ride: null, slideRun: 0, timer: null, deadline: 0, task: null, remaining: null,
+      ride: null, slideRun: 0, flourish: null, exiting: false, timer: null, deadline: 0, task: null, remaining: null,
     };
   }
 
-  /** 빈자리가 있으면 다음 등장을 하나 예약한다 — 첫 등장은 금방, 그 뒤로는 1.5–6초 간격. 등장 타이머는 하나뿐이라 상한을 넘지 않는다. */
-  private fillEntries(): void {
-    if (this.disposed || !this.dynamic || !this.layout || this.entryTimer || this.entryRemaining !== null) return;
-    if (this.actors.length >= this.cap) return;
-    const first = !this.entered;
-    this.entered = true;
-    this.armEntry(first ? rand(400, 1800) : rand(1500, 6000), () => {
-      this.entryTimer = null;
-      this.entryResume = null;
-      if (this.disposed || this.actors.length >= this.cap) return;
-      this.enter(this.cast());
-      this.fillEntries();
-    });
+  /** 지금 무대에 서 있는 인원. 나가는 중인 배우는 빠진다. */
+  private presentCount(): number {
+    return this.actors.filter((actor) => actor.present && !actor.exiting).length;
+  }
+
+  /** 약 70초 주기로 2명과 폭 상한 사이를 오가는 목표 인원. */
+  private targetCount(): number {
+    const wave = 0.5 + 0.5 * Math.sin((2 * Math.PI * performance.now()) / WAVE_PERIOD_MS - Math.PI / 2);
+    return clamp(Math.round(2 + 4 * wave + this.jitter), 2, this.cap);
+  }
+
+  /**
+   * 인원 물결 — 목표보다 많으면 오래 머문 몽글이부터 내보내고, 적으면 들인다.
+   * 셋 중 하나꼴로 둘이 같은 쪽에서 함께 오가며 서로를 본다.
+   */
+  private direct(): void {
+    if (this.disposed || !this.dynamic || !this.layout || this.frozen) return;
+    if (Math.random() < 0.15) this.jitter = pick([-1, 0, 0, 1] as const);
+    const want = this.targetCount();
+    const here = this.actors.filter((actor) => actor.present && !actor.exiting);
+    if (here.length > want) {
+      const free = here.filter((actor) => actor.ride === null && actor.mode !== "walk").sort((a, b) => a.enteredAt - b.enteredAt);
+      const count = Math.min(here.length - want, Math.random() < 0.35 ? 2 : 1, free.length);
+      const leavers = free.slice(0, count);
+      if (leavers.length > 1) {
+        const [first, second] = leavers;
+        if (first && second) {
+          first.look = second.x >= first.x ? 1 : -1;
+          second.look = first.look === 1 ? -1 : 1;
+          this.publish();
+        }
+      }
+      leavers.forEach((actor, index) => {
+        this.cancel(actor);
+        this.schedule(actor, index * 380, () => this.leave(actor, leavers.length > 1));
+      });
+    } else if (here.length < want && this.entryTimer === null && this.entryRemaining === null) {
+      const room = this.cap - here.length;
+      const together = room >= 2 && want - here.length >= 2 && Math.random() < 0.35;
+      const fromLeft = Math.random() < 0.5;
+      this.armEntry(rand(700, 2400), () => {
+        this.entryTimer = null;
+        this.entryResume = null;
+        if (this.disposed || this.frozen || this.presentCount() >= this.cap) return;
+        this.enter(this.cast(), fromLeft, false);
+        if (!together || this.companionTimer !== null) return;
+        this.armCompanion(rand(450, 900), () => {
+          this.companionTimer = null;
+          this.companionResume = null;
+          if (this.disposed || this.frozen || this.presentCount() >= this.cap) return;
+          this.enter(this.cast(), fromLeft, true);
+        });
+      });
+    }
+    if (this.directorTimer === null && this.directorRemaining === null) {
+      this.armDirector(DIRECTOR_MS, () => {
+        this.directorTimer = null;
+        this.directorResume = null;
+        this.direct();
+      });
+    }
   }
 
   private armEntry(ms: number, fn: () => void): void {
@@ -231,32 +316,187 @@ class PlaygroundStage {
   }
   private entryResume: (() => void) | null = null;
 
-  private enter(actor: Actor): void {
-    const fromLeft = Math.random() < 0.5;
+  private armDirector(ms: number, fn: () => void): void {
+    this.directorDeadline = performance.now() + ms;
+    this.directorTimer = setTimeout(() => {
+      this.directorTimer = null;
+      this.directorRemaining = null;
+      if (!this.disposed && !this.frozen) fn();
+    }, ms);
+    this.directorResume = fn;
+  }
+
+  private armCompanion(ms: number, fn: () => void): void {
+    this.companionDeadline = performance.now() + ms;
+    this.companionTimer = setTimeout(() => {
+      this.companionTimer = null;
+      this.companionRemaining = null;
+      if (!this.disposed && !this.frozen) fn();
+    }, ms);
+    this.companionResume = fn;
+  }
+
+  /** 미끄럼틀·모래밭이 없으면 걷기와 두리번만 쓴다. 같이 올 때는 걷기가 한 번 더 들어간다. */
+  private entryStyle(companion: boolean): EntryStyle {
+    const options: EntryStyle[] = ["walk", "peek"];
+    if (this.items.some((item) => item.kind === "slide" && item.seats[0]!.id === null)) options.push("slide", "slide");
+    if (this.items.some((item) => item.kind === "sand" && item.seats.some((seat) => seat.id === null))) options.push("sand", "sand");
+    if (companion) options.unshift("walk");
+    return pick(options);
+  }
+
+  private enter(actor: Actor, fromLeft = Math.random() < 0.5, companion = false): void {
     this.actors.push(actor);
     actor.enteredAt = performance.now();
+    actor.exiting = false;
+    const style = this.entryStyle(companion);
+    if (style === "slide" && this.enterBySlide(actor)) return;
+    if (style === "sand" && this.enterBySand(actor)) return;
+    if (style === "peek") { this.enterByPeek(actor, fromLeft); return; }
+    this.enterByWalk(actor, fromLeft, companion);
+  }
+
+  /** 화면 밖 자리가 한 번 그려진 뒤 걸어 들어온다. 같이 온 둘은 닿으면 서로를 본다. */
+  private enterByWalk(actor: Actor, fromLeft: boolean, companion: boolean): void {
     actor.mode = "walk";
+    actor.flourish = null;
     actor.x = fromLeft ? -SIZE - 8 : (this.layout?.width ?? 0) + 8;
     actor.y = this.standY;
     actor.dur = 0;
     this.publish();
-    // 화면 밖 자리가 한 번 그려진 뒤 걸어 들어온다(전이 시작점).
     this.schedule(actor, 80, () => {
       const target = fromLeft ? rand(10, Math.min(this.maxX, 260)) : rand(Math.max(10, this.maxX - 260), this.maxX);
+      this.walkTo(actor, target, () => this.greetOrRest(actor, companion));
+    });
+  }
+
+  private greetOrRest(actor: Actor, companion: boolean): void {
+    if (!companion) { this.rest(actor, rand(300, 900)); return; }
+    const buddy = this.actors.find((other) => other !== actor && other.present && !other.exiting && other.mode === "rest" && Math.abs(other.x - actor.x) < 160);
+    if (!buddy) { this.rest(actor, rand(300, 900)); return; }
+    this.cancel(buddy);
+    actor.look = buddy.x >= actor.x ? 1 : -1;
+    buddy.look = actor.look === 1 ? -1 : 1;
+    actor.mode = "chat";
+    buddy.mode = "chat";
+    actor.running = true;
+    buddy.running = true;
+    actor.act = "text";
+    buddy.act = "delegate";
+    this.publish();
+    this.schedule(actor, 2400, () => this.rest(actor, 600));
+    this.schedule(buddy, 2400, () => this.rest(buddy, 600));
+  }
+
+  /** 꼭대기에서 나타나 미끄럼틀을 타고 내려온다. 자리가 없으면 걷기로 넘긴다. */
+  private enterBySlide(actor: Actor): boolean {
+    const index = this.items.findIndex((item) => item.kind === "slide" && item.seats[0]!.id === null);
+    if (index < 0) return false;
+    const item = this.items[index]!;
+    item.seats[0] = { id: actor.cast.id, seated: true };
+    actor.mode = "ride";
+    actor.x = item.cx - ITEM_WIDTH.slide / 2 + 20 - SIZE / 2;
+    actor.y = this.standY;
+    actor.dur = 0;
+    actor.running = true;
+    actor.act = "run";
+    actor.flourish = "slide-in";
+    actor.slideRun += 1;
+    actor.ride = null;
+    this.publish();
+    this.schedule(actor, SLIDE_IN_MS, () => {
+      actor.flourish = null;
+      actor.dur = 0;
+      actor.running = false;
+      actor.act = null;
+      actor.x += SLIDE_RUN_X;
+      item.seats[0] = { id: null, seated: false };
+      this.rest(actor, rand(400, 900));
+    });
+    return true;
+  }
+
+  /** 모래에 반쯤 잠긴 자리에서 쏙 올라온 뒤 옆으로 걸어 나온다. */
+  private enterBySand(actor: Actor): boolean {
+    const index = this.items.findIndex((item) => item.kind === "sand" && item.seats.some((seat) => seat.id === null));
+    if (index < 0) return false;
+    const item = this.items[index]!;
+    const seat = item.seats.findIndex((candidate) => candidate.id === null);
+    item.seats[seat] = { id: actor.cast.id, seated: true };
+    actor.mode = "ride";
+    actor.x = this.seatX(item, seat);
+    actor.y = this.ground - SIZE + 7;
+    actor.dur = 0;
+    actor.running = true;
+    actor.act = "read";
+    actor.flourish = "rise";
+    actor.ride = { item: index, seat, ox: actor.x + SIZE / 2, oy: actor.y + SIZE };
+    this.publish();
+    this.schedule(actor, RISE_MS, () => {
+      actor.flourish = null;
+      actor.ride = null;
+      actor.running = false;
+      actor.act = null;
+      item.seats[seat] = { id: null, seated: false };
+      actor.dur = 360;
+      actor.y = this.standY;
+      actor.x = clamp(actor.x + (seat === 0 ? -50 : 50), 6, this.maxX);
+      this.rest(actor, rand(400, 900));
+    });
+    return true;
+  }
+
+  /** 끝에서 고개만 내밀고 두리번거린 뒤 걸어 들어온다. */
+  private enterByPeek(actor: Actor, fromLeft: boolean): void {
+    const width = this.layout?.width ?? 0;
+    actor.mode = "rest";
+    actor.flourish = "peek";
+    actor.x = fromLeft ? -SIZE * 0.45 : width - SIZE * 0.55;
+    actor.y = this.standY;
+    actor.dur = 0;
+    actor.look = fromLeft ? 1 : -1;
+    this.publish();
+    this.schedule(actor, PEEK_MS, () => {
+      actor.flourish = null;
+      const target = fromLeft ? rand(20, Math.min(this.maxX, 240)) : rand(Math.max(20, this.maxX - 240), this.maxX);
       this.walkTo(actor, target, () => this.rest(actor, rand(300, 900)));
     });
   }
 
-  /** 퇴장 — 가까운 끝 너머로 걸어 나가고, 닿으면 무대에서 빠진 뒤 다음 등장을 예약한다. */
-  private leave(actor: Actor): void {
+  /** 퇴장 — 가끔 미끄럼틀을 한 번 타고, 아니면 가까운 끝으로 걸어 나간다. 둘이 함께 나갈 때는 미끄럼틀을 쓰지 않는다. */
+  private leave(actor: Actor, together = false): void {
+    if (actor.exiting) return;
+    actor.exiting = true;
+    actor.flourish = null;
+    if (actor.ride) this.releaseRide(actor);
+    const slide = !together ? this.items.findIndex((item) => item.kind === "slide" && item.seats[0]!.id === null) : -1;
+    if (slide >= 0 && Math.random() < 0.3) {
+      this.goRide(actor, slide, 0);
+      return;
+    }
+    this.walkOff(actor);
+  }
+
+  private walkOff(actor: Actor): void {
     const width = this.layout?.width ?? 0;
     const target = actor.x + SIZE / 2 < width / 2 ? -SIZE - 8 : width + 8;
     this.walkTo(actor, target, () => {
       this.cancel(actor);
+      this.releaseRide(actor);
       this.actors = this.actors.filter((candidate) => candidate !== actor);
       this.publish();
-      this.fillEntries();
     });
+  }
+
+  private releaseRide(actor: Actor): void {
+    const ride = actor.ride;
+    if (!ride) return;
+    const item = this.items[ride.item];
+    if (item) {
+      item.seats[ride.seat] = { id: null, seated: false };
+      if (item.kind !== "seesaw" || item.seats.every((seat) => seat.id === null)) item.going = false;
+    }
+    actor.ride = null;
   }
 
   /** 정지 장면 — 모두 한꺼번에 서고, 기구 자리를 먼저 채운 뒤 나머지는 소품 포즈로 선다. */
@@ -314,13 +554,19 @@ class PlaygroundStage {
     this.entryTimer = null;
     this.entryRemaining = null;
     this.entryResume = null;
+    if (this.directorTimer) clearTimeout(this.directorTimer);
+    this.directorTimer = null;
+    this.directorRemaining = null;
+    this.directorResume = null;
+    if (this.companionTimer) clearTimeout(this.companionTimer);
+    this.companionTimer = null;
+    this.companionRemaining = null;
+    this.companionResume = null;
   }
 
   // ── 행동 ──
   private tick(actor: Actor): void {
-    if (this.frozen || !this.layout) return;
-    // 기구를 타지 않을 때만 틱이 돈다 — 오래 머문 몽글이는 가끔 퇴장한다.
-    if (performance.now() - actor.enteredAt >= EXIT_AFTER_MS && Math.random() < EXIT_CHANCE) { this.leave(actor); return; }
+    if (this.frozen || !this.layout || actor.exiting) return;
     const waiting = this.items.findIndex((item) => item.kind === "seesaw" && item.seats[0]!.id !== null && item.seats[1]!.id === null);
     const r = Math.random();
     if (waiting >= 0 && r < 0.5) { this.goRide(actor, waiting, 1); return; }
@@ -407,7 +653,11 @@ class PlaygroundStage {
   /** 자리를 먼저 맡고 기구 앞까지 걸어간 뒤 앉는다. */
   private goRide(actor: Actor, index: number, seatIndex: number): void {
     const item = this.items[index];
-    if (!item || seatIndex < 0 || item.seats[seatIndex]!.id !== null) { this.wander(actor); return; }
+    if (!item || seatIndex < 0 || item.seats[seatIndex]!.id !== null) {
+      if (actor.exiting) this.walkOff(actor);
+      else this.wander(actor);
+      return;
+    }
     item.seats[seatIndex] = { id: actor.cast.id, seated: false };
     const approach = clamp(this.seatX(item, seatIndex), 6, this.maxX);
     this.walkTo(actor, approach, () => this.mount(actor, index, seatIndex));
@@ -499,6 +749,7 @@ class PlaygroundStage {
             actor.dur = 0;
             actor.x += SLIDE_RUN_X;
             item.seats[0] = { id: null, seated: false };
+            if (actor.exiting) { this.walkOff(actor); return; }
             this.rest(actor, rand(500, 1200));
           });
         });
@@ -528,6 +779,7 @@ class PlaygroundStage {
     actor.dur = 300;
     actor.y = this.standY;
     actor.x = clamp(actor.x + (Math.random() < 0.5 ? -1 : 1) * rand(20, 44), 6, this.maxX);
+    if (actor.exiting) { this.walkOff(actor); return; }
     this.rest(actor, rand(400, 1200));
   }
 
@@ -566,6 +818,16 @@ class PlaygroundStage {
       this.entryTimer = null;
       this.entryRemaining = Math.max(0, this.entryDeadline - now);
     }
+    if (this.directorTimer) {
+      clearTimeout(this.directorTimer);
+      this.directorTimer = null;
+      this.directorRemaining = Math.max(0, this.directorDeadline - now);
+    }
+    if (this.companionTimer) {
+      clearTimeout(this.companionTimer);
+      this.companionTimer = null;
+      this.companionRemaining = Math.max(0, this.companionDeadline - now);
+    }
     this.publish();
   }
 
@@ -575,6 +837,7 @@ class PlaygroundStage {
     this.actors.forEach((actor, index) => {
       if (!actor.present) return;
       const task = actor.task;
+      if (actor.exiting && (actor.remaining === -1 || !task)) { this.walkOff(actor); return; }
       if (actor.remaining === -1 || !task) {
         if (actor.mode === "rest" || actor.mode === "walk") this.schedule(actor, 200 + index * 260, () => this.tick(actor));
         return;
@@ -585,6 +848,16 @@ class PlaygroundStage {
       const resume = this.entryResume;
       this.armEntry(this.entryRemaining, resume);
       this.entryRemaining = null;
+    }
+    if (this.directorRemaining !== null && this.directorResume) {
+      const resume = this.directorResume;
+      this.armDirector(this.directorRemaining, resume);
+      this.directorRemaining = null;
+    }
+    if (this.companionRemaining !== null && this.companionResume) {
+      const resume = this.companionResume;
+      this.armCompanion(this.companionRemaining, resume);
+      this.companionRemaining = null;
     }
     this.publish();
   }
@@ -616,37 +889,44 @@ class PlaygroundStage {
   }
 
   /**
-   * 닫혀 있던 시간만큼 퇴장·등장을 한 번에 반영한다. 타이머는 켜지 않는다.
-   * 20초를 넘긴 몽글이는 열려 있을 때와 같은 확률(틱당 8%, 틱 2.6초)로 떠나고,
-   * 빈자리는 평소 등장 간격(1.5–6초의 가운데)만큼 새 몽글이가 채워 선다.
+   * 닫혀 있던 시간만큼 인원 물결을 한 번에 반영한다. 타이머는 켜지 않는다.
+   * 목표보다 많은 인원은 오래 머문 순으로 떠나고, 약 9초마다 한 명씩 더 교체된다.
+   * 빈자리는 아직 안 나온 얼굴로 채운다.
    */
   private advanceClosed(elapsedMs: number): void {
     if (elapsedMs <= 0 || !this.layout) return;
     const now = performance.now();
-    const tickMs = 2600;
-    const arriveMs = (1500 + 6000) / 2;
-    const ticks = elapsedMs / tickMs;
-    const staying: Actor[] = [];
-    for (const actor of this.actors) {
-      if (!actor.present) continue;
-      const overdueTicks = Math.max(0, now - actor.enteredAt - EXIT_AFTER_MS) / tickMs;
-      const leaveP = 1 - Math.pow(1 - EXIT_CHANCE, Math.min(ticks, overdueTicks));
-      if (leaveP > 0 && Math.random() < leaveP) continue;
-      actor.x = clamp(actor.x, 6, this.maxX);
-      actor.y = this.standY;
-      staying.push(actor);
-    }
+    const want = this.targetCount();
+    const present = this.actors.filter((actor) => actor.present).sort((a, b) => a.enteredAt - b.enteredAt);
+    const surplus = Math.max(0, present.length - want);
+    const churn = Math.min(present.length, Math.floor(elapsedMs / 9000));
+    const leave = Math.min(present.length, surplus + Math.max(0, churn - surplus));
+    const staying = present.slice(leave);
+    const add = Math.max(0, want - staying.length);
+    // 떠나는 얼굴을 덱에서 다시 뽑을 수 있게 먼저 빼고, 새로 뽑은 얼굴은 바로 무대에 올려 같은 조합이 겹치지 않게 한다.
     this.actors = staying;
-    const room = Math.max(0, this.cap - this.actors.length);
-    const arrivals = Math.min(room, Math.floor(elapsedMs / arriveMs + Math.random()));
-    for (let index = 0; index < arrivals; index += 1) {
+    for (let index = 0; index < add; index += 1) {
       const actor = this.cast();
-      actor.enteredAt = now - rand(0, Math.min(elapsedMs, 15_000));
-      actor.x = rand(6, Math.max(6, this.maxX));
-      actor.y = this.standY;
-      actor.mode = "rest";
+      actor.enteredAt = now - rand(0, Math.min(elapsedMs, 20_000));
       this.actors.push(actor);
     }
+    const count = this.actors.length;
+    this.actors.forEach((actor, index) => {
+      actor.mode = "rest";
+      actor.ride = null;
+      actor.flourish = null;
+      actor.exiting = false;
+      actor.running = false;
+      actor.act = null;
+      actor.look = 0;
+      actor.walking = false;
+      actor.dur = 0;
+      actor.timer = null;
+      actor.task = null;
+      actor.remaining = null;
+      actor.y = this.standY;
+      actor.x = clamp(((index + 0.5) / Math.max(1, count)) * (this.layout?.width ?? 0) - SIZE / 2 + rand(-40, 40), 6, this.maxX);
+    });
   }
 }
 
@@ -807,11 +1087,15 @@ export function NewSessionPlayground() {
               "--pg-oy": actor.ride ? `${actor.ride.oy}px` : "100%",
             } as CSSProperties;
             const actorClass = ["pg-actor", actor.look < 0 ? "is-look-left" : actor.look > 0 ? "is-look-right" : null, item?.kind === "sand" ? "is-in-sand" : null].filter(Boolean).join(" ");
+            const rideName = ["pg-ride", ride, actor.flourish === "slide-in" ? "is-slide-in" : null].filter(Boolean).join(" ");
+            const popName = ["pg-pop", actor.flourish === "rise" ? "is-rise" : null, actor.flourish === "peek" ? "is-peek" : null].filter(Boolean).join(" ");
             return (
-              <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style}>
-                <div key={ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={`pg-ride${ride ? ` ${ride}` : ""}`}>
-                  <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
-                    <MongleAvatar base={actor.cast.base} tone={null} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
+              <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style} data-pg-face={actor.cast.key} data-pg-flourish={actor.flourish ?? ""}>
+                <div key={actor.flourish === "slide-in" || ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={rideName}>
+                  <div key={actor.flourish ?? "pop"} className={popName}>
+                    <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
+                      <MongleAvatar base={actor.cast.base} tone={actor.cast.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
+                    </div>
                   </div>
                 </div>
                 {actor.ride ? null : <div className="pg-shadow" />}
