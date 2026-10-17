@@ -167,6 +167,10 @@ class PlaygroundStage {
   private held = false;
   /** `pause` 해 둔 CSS 애니메이션·전이와, 멈추기 직전의 currentTime. */
   private pausedAnimations: { animation: Animation; time: number }[] = [];
+  /** 떠나기 직전 얼굴 SVG 와 애니메이션 시각. 몽글 스케줄러를 내려도 진행을 되돌릴 수 있다. */
+  faceHtml: Record<string, string> = {};
+  animEpoch = 0;
+  private animSnap: { id: string; name: string; time: number }[] = [];
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
   private readonly kindOrder = shuffle(ITEM_KINDS);
 
@@ -964,16 +968,65 @@ class PlaygroundStage {
       this.publish();
     }
     this.pauseAnimations();
+    this.captureFaces();
     this.watching = false;
     this.held = true;
+    this.animEpoch += 1;
+    this.publish();
   }
 
   /** 같은 창에서 다시 들어올 때. 멈춰 둔 애니메이션을 이어서 재생하고, 새 등장은 잠깐 미룬다. */
   resume(): void {
     if (!this.held) return;
     this.held = false;
-    this.playAnimations();
+    this.animEpoch += 1;
+    this.publish();
     this.rearmClock(REENTRY_HOLD_MS);
+  }
+
+  /** 지금 배우 DOM 의 얼굴과 애니메이션 시각을 남긴다. */
+  private captureFaces(): void {
+    const band = sceneHost?.querySelector(".pg-band");
+    if (!band) return;
+    this.animSnap = [];
+    this.faceHtml = {};
+    for (const actor of band.querySelectorAll<HTMLElement>(".pg-actor")) {
+      const id = actor.dataset.pgId;
+      if (!id) continue;
+      const gait = actor.querySelector(".pg-gait");
+      if (gait) this.faceHtml[id] = gait.innerHTML;
+      for (const animation of actor.getAnimations({ subtree: true })) {
+        const named = animation as Animation & { animationName?: string; transitionProperty?: string };
+        this.animSnap.push({ id, name: named.animationName || named.transitionProperty || "?", time: Number(animation.currentTime ?? 0) });
+      }
+    }
+  }
+
+  /** 스냅샷의 currentTime 을 지금 DOM 에 싣는다. 스냅샷에 없는 등장은 끈다. */
+  applyAnims(play: boolean): void {
+    const band = sceneHost?.querySelector(".pg-band");
+    if (!band || this.animSnap.length === 0) return;
+    const queues = new Map<string, number[]>();
+    for (const snap of this.animSnap) {
+      const key = `${snap.id}\0${snap.name}`;
+      const list = queues.get(key) ?? [];
+      list.push(snap.time);
+      queues.set(key, list);
+    }
+    for (const actor of band.querySelectorAll<HTMLElement>(".pg-actor")) {
+      const id = actor.dataset.pgId ?? "";
+      for (const animation of actor.getAnimations({ subtree: true })) {
+        const named = animation as Animation & { animationName?: string; transitionProperty?: string };
+        const list = queues.get(`${id}\0${named.animationName || named.transitionProperty || "?"}`);
+        const time = list?.shift();
+        if (time === undefined) {
+          try { animation.cancel(); } catch { /* 스냅샷에 없는 등장은 진행으로 세지 않는다. */ }
+          continue;
+        }
+        try { animation.currentTime = time; } catch { /* 끝난 전이는 건너뛴다. */ }
+        try { if (play) animation.play(); else animation.pause(); } catch { /* 이미 끝난 경우. */ }
+      }
+    }
   }
 
   setWatching(value: boolean): void {
@@ -1154,6 +1207,12 @@ function PlaygroundScene() {
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
   const [, setVersion] = useState(0);
   const stage = acquireSessionStage();
+  const seenEpoch = useRef(0);
+  useLayoutEffect(() => {
+    if (stage.animEpoch === 0 || seenEpoch.current === stage.animEpoch) return;
+    seenEpoch.current = stage.animEpoch;
+    stage.applyAnims(!stage.isHeld);
+  });
   // 그리기 알림은 첫 렌더에서 바로 연결한다. effect 까지 미루면 첫 setup 의 publish 가 버려지고 밴드가 안 선다.
   sessionPublish = () => setVersion((value) => value + 1);
   sessionPinX = (id) => {
@@ -1187,9 +1246,13 @@ function PlaygroundScene() {
               <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style} data-pg-id={actor.cast.id} data-pg-face={actor.cast.key} data-pg-flourish={actor.flourish ?? ""}>
                 <div key={actor.flourish === "slide-in" || ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={rideName}>
                   <div key={actor.flourish ?? "pop"} className={popName}>
-                    <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
-                      <MongleAvatar base={actor.cast.base} tone={actor.cast.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
-                    </div>
+                    {stage.isHeld && stage.faceHtml[actor.cast.id] ? (
+                      <div key="held" className={`pg-gait${actor.walking ? " is-walking" : ""}`} dangerouslySetInnerHTML={{ __html: stage.faceHtml[actor.cast.id] ?? "" }} />
+                    ) : (
+                      <div key="live" className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
+                        <MongleAvatar base={actor.cast.base} tone={actor.cast.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
+                      </div>
+                    )}
                   </div>
                 </div>
                 {actor.ride ? null : <div className="pg-shadow" />}
