@@ -5,6 +5,11 @@ export const DEFAULT_ZOOM_LEVEL = 0;
 export const MIN_ZOOM_LEVEL = -3;
 export const MAX_ZOOM_LEVEL = 3;
 
+/** Chromium 줌 레벨을 배율로 바꾼다 — 레벨 한 칸이 1.2배다(webContents.setZoomLevel과 같은 식). */
+export function zoomFactorForLevel(zoomLevel: number): number {
+  return 1.2 ** clampZoomLevel(zoomLevel);
+}
+
 interface ZoomStateFileSystem {
   readFileSync(path: string, encoding: "utf8"): string;
   mkdirSync(path: string, options: { recursive: true }): string | undefined;

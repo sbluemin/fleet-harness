@@ -1,6 +1,6 @@
 import type { WebContentsView } from "electron";
 
-import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette } from "./entry-page.js";
+import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryZoom } from "./entry-page.js";
 import type { EntryLanguage } from "./launch-controller.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -89,17 +89,24 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
         layout();
         await contents.loadFile(deps.entryPagePath);
         if (gone()) return null;
-        // Console과 같은 배율로 그려야 상단 브랜드 자리가 정확히 겹친다.
-        try { contents.setZoomFactor(shell.consoleContents.getZoomFactor()); } catch { /* 배율은 부가 정보다. */ }
+        // Console과 같은 배율로 그려 가운데 모습도 Console 크기로 맞춘다. 맨 위 줄 자리는 배율을 스냅샷으로도 알린다 —
+        // 신호등 예약(76 DIP)은 네이티브라 배율을 타지 않으므로 진입 CSS가 그 몫만 이 배율로 나눈다(entry.css --brand-glyph-left).
+        let zoom: EntryZoom | undefined;
+        try {
+          const factor = shell.consoleContents.getZoomFactor();
+          contents.setZoomFactor(factor);
+          zoom = { page: factor, console: factor };
+        } catch { /* 배율은 부가 정보다 — 모르면 배율 1 좌표로 그린다. */ }
+        const snapshot = (phase: EntryFarewell): EntryPageSnapshot => ({ ...deps.snapshot(phase), ...(zoom ? { zoom } : {}) });
         let reduced = false;
         try { reduced = await contents.executeJavaScript("matchMedia('(prefers-reduced-motion: reduce)').matches") === true; } catch { /* 모르면 전환이 도는 쪽 */ }
-        await deps.pushEntry(contents, deps.snapshot("veiled"));
+        await deps.pushEntry(contents, snapshot("veiled"));
         if (gone()) return null;
         shell.stack.presentVeil(view);
         shell.base.on("resize", layout);
         await sleep(FAREWELL_FIRST_FRAME_MS);
         if (gone()) return null;
-        await deps.pushEntry(contents, deps.snapshot("shown"));
+        await deps.pushEntry(contents, snapshot("shown"));
         return gone() ? null : { reduced, shownAt: now() };
       } catch (error) {
         deps.log?.(`quit farewell could not be shown: ${error instanceof Error ? error.message : String(error)}`);

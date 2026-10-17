@@ -57,6 +57,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 넘겨주기·종료 인사의 도착 자리를 Console 배율에 맞추는 두 배율. page는 진입 화면 문서 자신의 배율, console은
+ * 넘겨받을(또는 떠나는) Console 문서의 배율이다. 맨 위 줄·글리프·간격은 Console CSS px라 console/page 비로 키우고,
+ * macOS 신호등 예약(76 DIP)은 네이티브라 page 배율로만 나눈다. 모르면 둘 다 1로 본다(PR #1901의 배율 1 좌표).
+ */
+export interface EntryZoom {
+  readonly page: number;
+  readonly console: number;
+}
+
 export interface EntryPageSnapshot {
   readonly platform: string;
   readonly lang: "ko" | "en";
@@ -73,6 +83,7 @@ export interface EntryPageSnapshot {
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
   readonly palette?: EntryPalette;
+  readonly zoom?: EntryZoom;
 }
 
 export interface EntryPageWebContents {
@@ -108,6 +119,11 @@ const ENTRY_RENDERER = String.raw`(() => {
       root.style.setProperty("--font-" + axis + "-size", font.size + "px");
     }
   }
+  // 배율도 앞의 style 초기화로 함께 걷힌다 — 모르면 entry.css 기본값(1)이 PR #1901의 배율 1 좌표를 그린다.
+  if (snapshot.zoom) {
+    root.style.setProperty("--entry-page-zoom", String(snapshot.zoom.page));
+    root.style.setProperty("--handoff-scale", String(snapshot.zoom.console / snapshot.zoom.page));
+  }
   tagline.textContent = snapshot.tagline;
   title.textContent = snapshot.title;
   detail.textContent = snapshot.detail || "";
@@ -137,10 +153,16 @@ export function createEntrySnapshotScript(snapshot: EntryPageSnapshot): string {
 }
 
 export function normalizeEntrySnapshot(snapshot: EntryPageSnapshot): EntryPageSnapshot {
-  const { palette, ...rest } = snapshot;
+  const { palette, zoom, ...rest } = snapshot;
   const accepted = palette === undefined ? null : readEntryPalette(palette);
-  const normalized: EntryPageSnapshot = accepted ? { ...rest, palette: accepted } : rest;
+  const scaled = zoom !== undefined && isZoomFactor(zoom.page) && isZoomFactor(zoom.console) ? { zoom: { page: zoom.page, console: zoom.console } } : {};
+  const normalized: EntryPageSnapshot = accepted ? { ...rest, palette: accepted, ...scaled } : { ...rest, ...scaled };
   return typeof normalized.progress === "number" ? { ...normalized, progress: clampProgress(normalized.progress) } : normalized;
+}
+
+// 렌더러의 CSS 변수로 들어가는 값이다 — 0.1–10 사이의 유한한 배율만 받는다. 그 밖이면 배율 1 좌표로 물러난다.
+function isZoomFactor(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0.1 && value <= 10;
 }
 
 export function clampProgress(progress: number): number {

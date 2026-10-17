@@ -1,7 +1,7 @@
 import { LIFECYCLE_WAIT_NOTICE_MS } from "@fleet-console/protocol/lifecycle";
 import { describeConsoleLifecycleWait, parseConsoleLifecycleWait, type ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 
-import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone } from "./entry-page.js";
+import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone, EntryZoom } from "./entry-page.js";
 
 export type RuntimeEntryState = "checking" | "node" | "installing" | "offline" | "firstfail" | "starting" | "waiting" | "dev";
 
@@ -33,6 +33,8 @@ export interface LaunchControllerDependencies {
   readonly consoleVersion?: () => string | null;
   /** 사용자 테마의 색 — 기억해 둔 것이든 Console이 방금 알린 것이든 지금 아는 최신 값. 모르면 기본 판. */
   readonly palette?: () => EntryPalette | undefined;
+  /** 진입 화면과 넘겨받을 Console의 배율 — 넘겨주기 도착 자리를 Console 배율의 맨 위 줄에 맞춘다. 모르면 배율 1 좌표. */
+  readonly zoom?: () => EntryZoom | undefined;
   /** 넘겨주기 전 브랜드가 상단 자리로 줄어드는 전환을 기다린다. 기본은 settleEntryHandoff. */
   readonly settleHandoff?: (contents: EntryPageWebContents) => Promise<void>;
   readonly onFirstRunFailure?: () => Promise<boolean>;
@@ -68,6 +70,7 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
         desktopVersion: dependencies.desktopVersion,
         consoleVersion: dependencies.consoleVersion ?? (() => null),
         palette: dependencies.palette ?? (() => undefined),
+        zoom: dependencies.zoom ?? (() => undefined),
       };
       const push = async (state: RuntimeEntryState, detail?: string, progress?: number): Promise<void> => {
         if (window.isDestroyed?.()) return;
@@ -143,6 +146,7 @@ interface EntryContext {
   readonly desktopVersion?: string;
   readonly consoleVersion: () => string | null;
   readonly palette: () => EntryPalette | undefined;
+  readonly zoom: () => EntryZoom | undefined;
 }
 
 interface EntryLine {
@@ -204,6 +208,7 @@ function snapshotFor(context: EntryContext, state: RuntimeEntryState, detail?: s
   const copy = COPY[context.lang];
   const line = lineFor(copy, state, detail, progress);
   const palette = context.palette();
+  const zoom = context.zoom();
   return {
     platform: process.platform,
     lang: context.lang,
@@ -212,6 +217,7 @@ function snapshotFor(context: EntryContext, state: RuntimeEntryState, detail?: s
     versions: versionLine(context),
     ...line,
     ...(palette ? { palette } : {}),
+    ...(zoom ? { zoom } : {}),
   };
 }
 
