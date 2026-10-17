@@ -128,6 +128,15 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
 }
 
 /**
+ * 정체 통지(초안 — 사령관 승인 전) — 구성원이 일하는 동안 지휘관이 오래 쉬었다는 사실만 싣는다. 무엇을 할지는 지휘관이 정한다.
+ */
+export function commanderRestTurn(objective: Objective, facts: { readonly roles: readonly string[]; readonly minutes: number }, language: PromptLanguage): string {
+  return language === "ko"
+    ? `목표 \`${objective.id}\`: 구성원 ${facts.roles.map((role) => `「${role}」`).join(", ")}이 작업 중인 동안 지휘관은 ${facts.minutes}분째 쉬고 있습니다. 예상한 흐름이면 조치는 필요 없고, 아니면 판단대로 조치하세요.`
+    : `Objective \`${objective.id}\`: member ${facts.roles.map((role) => `"${role}"`).join(", ")} has been working while you have rested for ${facts.minutes} min. If this is expected, no action is needed; otherwise act as you judge.`;
+}
+
+/**
  * 개시 — 한 줄: 목표 id 와 「임무를 개시하세요」. 무엇을 어떻게 할지는 지휘관이 정한다.
  * 지휘관이 마지막으로 읽은 뒤 사람이 바꾼 것이 있으면 무엇이 바뀌었는지만 짧게 붙이고 다시 읽게 한다 — 바뀐 내용 자체는 보드가 말한다.
  */

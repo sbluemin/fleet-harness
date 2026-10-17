@@ -18,7 +18,8 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../server/commodore/routes.js";
 import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
-import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS, STALL_MS } from "../server/commodore/supervisor.js";
+import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS } from "../server/commodore/supervisor.js";
+import { COMMANDER_REST_MS, restClock } from "../server/board-state.js";
 import type { CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 import type { CommodoreAttachmentReader } from "../server/console-tools.js";
@@ -733,6 +734,7 @@ describe("commodore supervisor", () => {
       const boardListeners: ((event: ObjectiveEvent) => void)[] = [];
       const commanderActivity = new Map<string, "running" | "background">();
       const runs: CommodoreEvent[] = [];
+      const restNotices: string[] = [];
       const supervisor = createCommodoreSupervisor({
         store: h.store, agent, experiments: () => h.experiments(), models, theater: () => ({ label: "fleet-harness", root: theaterRoot }),
         objectives: () => objectives, subscribeObjectives: (listener) => { boardListeners.push(listener); return () => undefined; },
@@ -743,7 +745,8 @@ describe("commodore supervisor", () => {
           if (target && commanderActivity.has(target.id)) return { content: [], structuredContent: { error: "objective_busy", retryWhen: "commander_turn_end" }, isError: true };
           if (target) { (target as unknown as { commenced: boolean }).commenced = true; for (const listener of boardListeners) listener({ op: "upsert", theaterId: "t1", objectiveId: target.id }); }
           return { content: [] };
-        } }], observe: (id) => ({ lifecycle: "live", activity: commanderActivity.get(id) ?? "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never),
+        } }], observe: restClock((id) => ({ lifecycle: "live", activity: commanderActivity.get(id) ?? "idle", surface: "chat", supportedActions: [], attention: { kind: "none" }, output: { revision: 0, outcome: "none" } } as never)),
+        notifyCommanderRest: async (id) => { restNotices.push(id); return true; },
         emit: (event) => { if (event.op === "run") runs.push(event); },
       });
       const tokens = () => h.store.transcriptRead("t1").entries.flatMap((entry) => entry.kind === "wake" ? [entry.reasons] : []);
@@ -879,12 +882,23 @@ describe("commodore supervisor", () => {
       (objectives[0] as { awaitingReview: boolean }).awaitingReview = false;
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
 
-      // 정체 — 임무가 남았는데 지휘관이 30분 넘게 쉬면 한 번 깨우고, 상태에 그 목표 id 가 선다.
+      // 정체 — 구성원이 일하는 동안 지휘관이 15분 쉬면 한 번 깨우고 지휘관에게 사실을 보낸다. 15분 안에 움직인 지휘관은 정체가 아니다.
       (objectives[0] as { decisionRequest: unknown }).decisionRequest = null;
-      await vi.advanceTimersByTimeAsync(STALL_MS + STALL_CHECK_MS + COALESCE_MS + 10);
+      (objectives[0] as unknown as { members: unknown[] }).members.push({ id: "w1", role: "implementer", sessionName: "objective-o1-member-1" });
+      commanderActivity.set("w1", "running");
+      commanderActivity.set("o1", "running");
+      await vi.advanceTimersByTimeAsync(STALL_CHECK_MS);
+      commanderActivity.delete("o1");
+      await vi.advanceTimersByTimeAsync(STALL_CHECK_MS);
+      const beforeRest = sessions[0]!.sent.length;
+      await vi.advanceTimersByTimeAsync(COMMANDER_REST_MS - STALL_CHECK_MS);
+      expect(sessions[0]!.sent).toHaveLength(beforeRest);
+      expect(restNotices).toEqual([]);
+      await vi.advanceTimersByTimeAsync(STALL_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["stalled:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("1 stalled objective: Remote pairing");
       expect(supervisor.status("t1")).toMatchObject({ stalled: ["o1"] });
+      expect(restNotices).toEqual(["o1"]);
 
       // 순찰 — 사령관의 next_wake 가 없으면 60분 상한에서 깨운다.
       await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS + COALESCE_MS + 10);

@@ -90,8 +90,11 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   evidence the person did not state, including in a plan request.
 - A decision answer chooses among what was asked and says why.
 - Missions done, awaiting hand-off, is the Commander's step: it gathers the
-  retrospective and hands off, and review wakes you. hand_off is for a
-  Commander the board reports stalled.
+  retrospective and hands off, and review wakes you.
+- An objective is stalled when its Commander has rested 15 minutes while a
+  member works, or when every session has rested 30 minutes with the board
+  unchanged. In the first case the board tells the Commander those facts and
+  leaves the response to it. hand_off is for the second.
 - Follow-up candidates only collect while an objective works; nothing about
   them waits on you then. They wait with review, and you judge them all at
   once: complete with followups picks the ones to open, followup_discard

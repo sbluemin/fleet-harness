@@ -2,8 +2,34 @@ import type { ConsoleOperationObservation } from "@fleet-console/sdk/mcp";
 import type { Objective, ObjectiveOperator, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 
 export const STALL_MS = 30 * 60_000;
-export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle">;
+/** 구성원이 일하는 동안 지휘관이 이만큼 쉬면 정체다. */
+export const COMMANDER_REST_MS = 15 * 60_000;
+export type BoardObservation = Pick<ConsoleOperationObservation, "activity" | "lifecycle"> & {
+  /** 쉬기 시작한 시각(ms) — `restClock` 이 얹는다. 없으면 오래 쉬었다고 추측하지 않는다. */
+  readonly restingSince?: number;
+};
 export type BoardObserver = (operationId: string) => BoardObservation | null | undefined;
+const resting = (observation: BoardObservation): boolean => observation.lifecycle === "dormant" || observation.activity === "idle";
+const working = (observation: BoardObservation): boolean => observation.lifecycle === "live" && (observation.activity === "running" || observation.activity === "background");
+
+/**
+ * 호스트 관측 위에 쉬기 시작한 시각을 얹는다. 처음 본 휴식은 본 시각부터 세고, 쉬는 동안 턴이 하나라도 닫혔으면(live 의 세대·revision 이
+ * 바뀜) 그때부터 다시 센다 — 관측 사이에 지나간 턴을 휴식으로 잇지 않는다. 휴면으로 들어가도 그 휴식은 이어지고, 휴면에서 깨어나면 새로 센다.
+ */
+export function restClock<T extends Pick<ConsoleOperationObservation, "activity" | "lifecycle" | "generation"> & { readonly output?: { readonly revision?: number } }>(
+  observe: (operationId: string) => T | null | undefined, now: () => number = () => Date.now(),
+): (operationId: string) => (T & { readonly restingSince?: number }) | null {
+  const seen = new Map<string, { readonly turn: string | null; readonly since: number }>();
+  return (operationId) => {
+    const observation = observe(operationId) ?? null;
+    if (!observation || !resting(observation)) { seen.delete(operationId); return observation; }
+    const turn = observation.lifecycle === "live" ? `${observation.generation ?? ""}:${observation.output?.revision ?? ""}` : null;
+    const previous = seen.get(operationId);
+    const since = previous && (turn === null || previous.turn === turn) ? previous.since : now();
+    seen.set(operationId, { turn: turn ?? previous?.turn ?? null, since });
+    return { ...observation, restingSince: since };
+  };
+}
 export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled" | "member-failed";
 
 /**
@@ -52,17 +78,30 @@ export function createdByCommodore(objective: OperatorFacts, find: (objectiveId:
   return !!find(origin.objectiveId)?.followupBatches?.some((batch) => isCommodore(batch.by) && batch.items.some((item) => item.candidateId === origin.candidateId));
 }
 
-/** 임무가 남고 보드가 오래 그대로인 목표. 관측할 수 없는 세션을 유휴라고 추측하지 않는다. */
+/**
+ * 임무가 남은 목표 중 정체 — 구성원이 일하는 동안 지휘관이 `COMMANDER_REST_MS` 이상 쉬었거나, 보드가 `STALL_MS` 넘게 그대로인데 모두 쉰다.
+ * 관측할 수 없는 세션을 유휴라고 추측하지 않는다.
+ */
 export function stalledObjectives(objectives: readonly Objective[], observe: BoardObserver, now = Date.now()): readonly string[] {
   return objectives.filter((objective) => {
     if (!objective.commenced || objective.done || objective.removed || objective.planning || objective.awaitingReview || objective.awaitingHandoff || objective.decisionRequest || objective.criteriaProposals.length || !objective.missions.some((mission) => !mission.done)) return false;
-    if (now - (objective.boardUpdatedAt ?? objective.createdAt) < STALL_MS) return false;
-    const ids = [objective.id, ...objective.members.filter((member) => member.sessionName !== null).map((member) => member.id)];
-    return ids.every((id) => {
-      const observation = observe(id);
-      return !!observation && (observation.lifecycle === "dormant" || observation.activity === "idle");
-    });
+    const commander = observe(objective.id);
+    if (!commander || !resting(commander)) return false;
+    const members = objective.members.filter((member) => member.sessionName !== null).map((member) => observe(member.id));
+    if (workingWhileCommanderRests(commander, members, now)) return true;
+    return now - (objective.boardUpdatedAt ?? objective.createdAt) >= STALL_MS && members.every((observation) => !!observation && resting(observation));
   }).map((objective) => objective.id);
+}
+const workingWhileCommanderRests = (commander: BoardObservation, members: readonly (BoardObservation | null | undefined)[], now: number): boolean =>
+  commander.restingSince !== undefined && now - commander.restingSince >= COMMANDER_REST_MS && members.some((observation) => !!observation && working(observation));
+
+/** 지휘관이 쉬는 동안 일하는 구성원과 그 휴식의 분 — 정체 통지가 싣는 사실. 그 갈래의 정체가 아니면 null. */
+export function commanderRestFacts(objective: Objective, observe: BoardObserver, now = Date.now()): { readonly roles: readonly string[]; readonly minutes: number } | null {
+  const commander = observe(objective.id);
+  if (!commander || !resting(commander) || commander.restingSince === undefined) return null;
+  const busy = objective.members.filter((member) => member.sessionName !== null && ((observation) => !!observation && working(observation))(observe(member.id)));
+  if (!workingWhileCommanderRests(commander, busy.map((member) => observe(member.id)), now)) return null;
+  return { roles: busy.map((member) => member.role), minutes: Math.floor((now - commander.restingSince) / 60_000) };
 }
 
 /**

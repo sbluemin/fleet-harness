@@ -65,6 +65,8 @@ export interface CommodoreSupervisorDeps {
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader) => readonly PluginMcpTool[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
+  /** 정체가 구성원이 일하는 동안의 지휘관 휴식이면 그 사실을 지휘관에게 보낸다 — 사령관을 깨우는 같은 순간에 한 번. */
+  readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -880,8 +882,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
 
-  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남고 보드가 오래 그대로인데 지휘관·구성원이 모두 쉰다. 새로 정체된
-  // 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
+  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남았는데 구성원이 일하는 동안 지휘관이 오래 쉬거나, 보드가 오래 그대로인데
+  // 모두 쉰다. 새로 정체된 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
   const stallTimer = setInterval(() => {
     if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
@@ -898,6 +900,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const title = objectives.find((objective) => objective.id === id)?.title ?? id;
         wake(runner, "stalled", { bump: true, detail: title });
         noteIds(runner, "stalled", id, title);
+        void deps.notifyCommanderRest?.(id).catch(() => false);
       }
       if (changed) publish(runner);
     }

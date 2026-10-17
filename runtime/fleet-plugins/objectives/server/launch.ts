@@ -5,7 +5,8 @@ import { canonicalModelId } from "@fleet-console/sdk/models";
 import { readOperationLaunch, withOperationChatSurface, withOperationLaunchPreset, type OperationGroupedEvent } from "@fleet-console/sdk/operations";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
-import { decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { commanderRestFacts, restClock } from "./board-state.js";
+import { commanderRestTurn, decisionTurn, humanWords, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "./signals.js";
@@ -151,6 +152,10 @@ export interface LaunchService {
   watchLiveOutcomes(): void;
   /** 배정된 준비 임무가 무보고로 남아 있으면 지휘관에게 한 번 알린다. 대상이 없으면 타이머를 걸지 않는다. */
   watchReportQuiet(): void;
+  /** 보드 판정의 관측 — 호스트 관측에 쉬기 시작한 시각(`restingSince`)을 얹는다. 정체를 세는 쪽(감독자·보드 도구)이 이 하나를 쓴다. */
+  observeBoard(operationId: string): (ConsoleOperationObservation & { readonly restingSince?: number }) | null;
+  /** 구성원이 일하는 동안 지휘관이 오래 쉬었으면 그 사실을 지휘관에게 한 번 보낸다. 그 정체가 아니거나 못 닿으면 false. */
+  notifyCommanderRest(objectiveId: string): Promise<boolean>;
   dispose(): void;
 }
 
@@ -212,6 +217,8 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   // 기동·재개·전달 뒤에 채운다. 그 전에 불리거나, 세션이 live 가 아니면 아무것도 하지 않는다.
   let touchLive: (operationId: string) => void = () => {};
+  // 실패 감시가 live 세션을 약 1초마다 읽으므로 휴식 시각도 그 간격으로 맞는다. 정체를 세는 쪽(감독자·보드 도구)과 같은 벽시계를 쓴다.
+  const observeBoard = restClock((operationId: string) => ctx.host.consoleControl?.observe(operationId) ?? null);
   const objective = (objectiveId: string) => {
     const found = store.find(objectiveId);
     if (!found) throw new ObjectiveStoreError("unknown_objective");
@@ -1017,7 +1024,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     }
   };
   const syncOutcome = (objectiveId: string, operationId: string, snapshot?: ConsoleOperationObservation): boolean => {
-    const observation = snapshot ?? ctx.host.consoleControl?.observe(operationId) ?? null;
+    const observation = snapshot ?? observeBoard(operationId);
     const live = !!observation && observation.lifecycle === "live";
     if (!live) {
       const removeFailed = lastOutcomes.has(operationId) && lastOutcomes.get(operationId) === "failed";
@@ -1794,6 +1801,15 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     watchLiveOutcomes() { scanLiveOutcomes(); },
     watchReportQuiet() { armQuietWatch(); },
+    observeBoard,
+    async notifyCommanderRest(objectiveId) {
+      const current = store.find(objectiveId);
+      const facts = current && !current.done ? commanderRestFacts(current, observeBoard) : null;
+      if (!current || !facts) return false;
+      const language: PromptLanguage = ctx.host.operations.get(objectiveId)?.payload.objectiveLanguage === "ko" ? "ko" : "en";
+      const notice = commanderRestTurn(current, facts, language);
+      return send(objectiveId, notice, notice);
+    },
 
     operationChanged(operationId) {
       const current = store.find(operationId) ?? store.findMember(operationId)?.objective;
