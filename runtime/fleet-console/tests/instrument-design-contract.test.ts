@@ -2030,9 +2030,9 @@ describe("Instrument core design contract", () => {
     // 증거였고, 실측하면 그 행들이 로그 가시 영역의 58%를 먹었다 — 읽는 자리를 도구 목록이
     // 밀어냈다. 지금은 이 한 줄이 같은 말을 하므로, 라이브 창이 되살아나지 않는 것이 계약이다.
     expect(chatView0).not.toContain("LIVE_STEP_WINDOW");
-    // [doctrine] 진행은 이미 링(aurora)이 말한다. 물결은 "이 줄이 아직 자라고 있다"를 말하므로
+    // [doctrine] 물결은 "이 줄이 아직 자라고 있다"를 말하므로
     // 색 채널을 하나도 빌리지 않는 명도 스윕이다 — 같은 기법을 쓰는 ULTRACODE 물결이 apex를
-    // 쓰는 것과 갈리는 지점이 바로 이것이고, 신호를 빌리면 링과 두 번 말하게 된다.
+    // 쓰는 것과 갈리는 지점이 바로 이것이고, 신호를 빌리면 자라는 줄이 상태색을 지게 된다.
     const chatLiveTextBlock = chat.match(/^\.agent-chat-live-text \{[^}]*\}/m)?.[0] ?? "";
     expect(chatLiveTextBlock).toContain("background-clip: text;");
     expect(chatLiveTextBlock).toContain("color: transparent;");
@@ -2085,10 +2085,10 @@ describe("Instrument core design contract", () => {
     expect(chatView0).not.toContain('<span className="agent-chat-live-text" aria-hidden="true">');
     expect(chat).not.toContain(".agent-chat-turn-head .agent-chat-live-text");
     // "생각 중…"은 상자가 아니라 라이브 줄의 꼬리다 — 상자는 동사·대상·결과의 그릇이고 생각에는
-    // 둘 다 없다. 링은 꼬리가 무엇인가를 말할 때(도는 도구든 생각이든)만 산다.
+    // 둘 다 없다. 라이브 집계는 앞 링을 달지 않는다. 진행은 물결·동사·생각 표식이 말한다.
     expect(chatView0).not.toContain('<div className="agent-chat-step is-running">\n          <span className="agent-chat-step-orbit"');
     expect(chatView0).toContain("const alive = live && (tails.length > 0 || thinking);");
-    expect(chatView0).toContain('{alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}');
+    expect(chatView0).not.toContain('{alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}');
     // 생각의 점은 한 칸씩 차오르고 되돌아간다. 바깥 폭은 3칸으로 고정해 줄이 흔들리지 않고,
     // 장식 점은 라이브 리전의 매 박자 재낭독을 막기 위해 접근성 트리에서 빠진다.
     expect(chatView0).toContain('className="agent-chat-thinking-dots" aria-hidden="true"');
