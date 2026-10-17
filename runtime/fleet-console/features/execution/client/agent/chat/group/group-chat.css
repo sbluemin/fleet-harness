@@ -943,10 +943,16 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-chat-notes-count { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .group-chat-notes-count .group-chat-name { font-weight: var(--weight-medium); }
 .group-chat-notes-count .group-chat-name:is(.is-commander, .is-commodore) { color: var(--text-secondary); }
-.group-chat-notes-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+/* 꼬리 줄은 끝에 붙여 앞쪽을 자른다 — 넘치는 글은 시작 쪽으로 밀려나 지금 쓰는 끝이 남는다. 잘렸을 때만 앞 가장자리를 흐린다. */
+.group-chat-notes-excerpt { display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; color: var(--text-secondary); }
+.group-chat-notes-excerpt-text { flex: none; white-space: nowrap; }
+.group-chat-notes-excerpt[data-clipped] {
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 24px, black);
+  mask-image: linear-gradient(90deg, transparent, black 24px, black);
+}
 .group-chat-notes-chip .group-chat-line-chev { margin-left: 0; padding-left: 0; }
 .group-chat-notes-chip[aria-expanded="true"] .group-chat-line-chev { transform: rotate(180deg); }
-/* 흐르는 중인 메모가 있으면 개수 앞에 작업 중 점이 숨 쉰다 — 신호 토큰(positive)은 상태를 말하는 이 자리에만 쓴다. */
+/* 흐르는 중인 말이 있으면 이름 앞에 작업 중 점이 숨 쉰다 — 신호 토큰(positive)은 상태를 말하는 이 자리에만 쓴다. */
 .group-chat-notes-chip.is-live .group-chat-notes-count::before {
   content: "";
   flex: none;
