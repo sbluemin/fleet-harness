@@ -56,6 +56,17 @@ The access link only pairs the phone. What stands on the screen is Console state
 
 The group composer is up when the phone shows `.group-composer` inside the operation. The first-run home and `.agent-chat-composer` are not that screen.
 
+`POST /api/v1/agent/sessions` with `parentOperationId` does not create that nested member. `childSessionId` is accepted only when the caller is a plugin (`features/execution/host/agent/routes.ts`), so the same POST from the page creates a second top-level operation. Use the stopped-state edit in the [child-session fixture](setup.md#objective-member-child-session-fixture), on a chat that fake Claude already started:
+
+1. Boot with [No-cost fake Claude](setup.md#no-cost-fake-claude). Register a throwaway Theater with `POST /api/v1/theaters/folder-grants` then `POST /api/v1/theaters`, and do not send `claudeTrustConsent`.
+2. `POST /api/v1/agent/sessions` with `{ "cliId": "claude", "theaterId", "viewMode": "chat" }` and the page `Origin`. Record `sessionId`. `chatActive` becomes true.
+3. Stop that Console. In its `state.json`, add one `childSessions` entry on that operation, using the fixture's shape and the operation's own `payload.cwd`. Do not change the operation id.
+4. Start again with the same wrapper flags. The restored session is dormant and `chatActive` is false. `POST /api/v1/agent/sessions/<sessionId>/resume` with `{}` and the page `Origin`. `chatActive` is true again, and `childSessions` is still there.
+5. Phone layout is a viewport at `max-width: 767px` (`view-mode-store.ts`), which sets `documentElement.dataset.viewMode` to `mobile`. After the origin has loaded, set `localStorage["fleet-console.groupConversation.foldTurns"]` to `on` and reload. Setting it before any page has loaded does not stick.
+
+Checked in a browser at 390×844, not on a phone: `viewMode` was `mobile`, `.group-composer` was present, `.agent-chat-composer` was absent, and the fold key was `on`.
+
+
 ## 3. Android
 
 **Your AVD** (never reuse one from the preflight's `avd` note that you did not create). Use the package id the preflight's `system-image` line prints (`arm64-v8a` on Apple silicon, `x86_64` elsewhere):
@@ -127,13 +138,19 @@ pnpm --dir <worktree>/runtime/fleet-mobile exec expo prebuild --platform ios --c
   [ -n "$app" ] && [ -f "$app/main.jsbundle" ] || { echo 'Simulator app or embedded main.jsbundle missing' >&2; exit 1; }
   xcrun simctl install "$UDID" "$app"   # installs com.dotobokuri.fleet.mobile only
 )
-xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile
+xcrun simctl terminate "$UDID" com.dotobokuri.fleet.mobile || true   # exit 3, "found nothing to terminate", when the app has never launched
 xcrun simctl openurl "$UDID" "$(cat "$E2E_DIR/link.txt")"
+node <worktree>/.claude/skills/console-e2e/scripts/accept-ios-open.mjs "$UDID" <absolute scratch dir>
 ```
+
+`simctl terminate` exits 3 with `found nothing to terminate` when the app is not running. That is the state right after install. It is not a failed install. Continue to `openurl`.
+
+`openurl` raises the system alert and does not tap it. [`accept-ios-open.mjs`](../scripts/accept-ios-open.mjs) writes a host app and a UI test under the scratch directory, outside the repository, and runs `xcodebuild test -destination id=$UDID`. The test taps the SpringBoard button named `Open`. It does not boot, install, or delete a simulator, and it does not open Simulator.app. Exit 0 is `** TEST SUCCEEDED **`. The link was consumed when `GET /api/v1/access-links` on the owner reports `devices` length 1 and that device has a `sessionHandle`. Count only. This path was run on a simulator this session created (iOS 26.5): install exit 0, terminate exit 3, openurl exit 0, the test exit 0, and `devices` length 1.
+
 
 ### Simulator language
 
-On a Mac whose language is not English, a simulator from `simctl create` boots in the Mac's language. SpringBoard and the "Open in Fleet?" alert are then not the English strings this page names, and the app's own shell strings follow the device locale (`shellStrings` in `runtime/fleet-mobile/shell/strings.ts`). A driver looking for the English label finds nothing or taps the wrong control. The shell `LANG` exported for CocoaPods does not write the simulator's preferences. The `defaults write` commands above set `AppleLanguages` and `AppleLocale`, and the second `simctl boot` is the one that picks them up. Stop when `defaults read` prints `en_US`. `simctl help spawn` and `simctl help bootstatus` were read; the `defaults` commands and a simulator boot were not run when this section was written. Do not spawn on a UDID this run did not create.
+On a Mac whose language is not English, a simulator from `simctl create` boots in the Mac's language. SpringBoard and the "Open in Fleet?" alert are then not the English strings this page names, and the app's own shell strings follow the device locale (`shellStrings` in `runtime/fleet-mobile/shell/strings.ts`). A driver looking for the English label finds nothing or taps the wrong control. The shell `LANG` exported for CocoaPods does not write the simulator's preferences. The `defaults write` commands above set `AppleLanguages` and `AppleLocale`, and the second `simctl boot` is the one that picks them up. Stop when `defaults read` prints `en_US`. On a simulator created for this check, that read printed `en_US` after the second boot. Do not spawn on a UDID this run did not create.
 
 ### Incremental xcodebuild
 
@@ -164,4 +181,4 @@ rm -rf "$E2E_DIR"                                  # only after the Consoles sto
 
 The adb server that your first `adb -s` call started may outlive the run. Run `adb kill-server` only if the step-0 preflight said `adb server not running`, `lsof -nP -iTCP:5037 -sTCP:LISTEN` still shows a listener, **and** a fresh Android preflight's `in-use` line says `adb devices: none` (it queries devices only after detecting a listener). Otherwise leave it, since someone else's device may depend on it. If there is no listener, do not run any adb command for cleanup or confirmation; if listener state or device ownership is unknown, leave the server alone.
 
-Confirm: `lsof -nP -iTCP:<console port> -sTCP:LISTEN` is empty for every Console you started; check port `5037` with the same listener-only command, and only if it listens use `adb -s "$SERIAL" get-state` to confirm your serial is no longer connected. `emulator -list-avds` and `xcrun simctl list devices` no longer list yours, and the preflight's `in-use` line shows only what was there before. Keep the AVD and `E2E_DIR` only when the run is being handed on, and say so in the report. Leave `runtime/fleet-mobile/android/` and `dist/` (build output) in the worktree unless the user asked for the checkout to be clean.
+Confirm: `lsof -nP -iTCP:<console port> -sTCP:LISTEN` is empty for every Console you started; check port `5037` with the same listener-only command, and only if it listens use `adb -s "$SERIAL" get-state` to confirm your serial is no longer connected. `emulator -list-avds` and `xcrun simctl list devices` no longer list yours, and the preflight's `in-use` line shows only what was there before. Keep the AVD and `E2E_DIR` only when the run is being handed on, and say so in the report. Leave `runtime/fleet-mobile/android/`, `runtime/fleet-mobile/ios/` (created by `expo prebuild`, gitignored), and `dist/` in the worktree unless the user asked for the checkout to be clean.
