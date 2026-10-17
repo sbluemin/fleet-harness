@@ -4,7 +4,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { ConsoleHelpMenu, HostSwitcher, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { ConsoleHelpMenu, HostSwitcher, useSideSubmenuGroup, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
 import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
@@ -33,6 +33,8 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
   // 끊김·재연결 점은 어디서든 그대로 낸다.
   const standingAway = useStandingAway();
   const showStatus = connection !== "live" || standingAway;
+  // 계정 전환·도움말처럼 옆 판은 한 번에 하나만. 부모가 이 상태를 갖고 두 항목에 넘긴다.
+  const sideSubmenus = useSideSubmenuGroup();
   return (
     <div className="conversation-dock" role="group" aria-label={t("conversation.side.systemAria")}>
       <div className="conversation-dock-host" ref={rootRef}>
@@ -45,11 +47,11 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
             다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}
         <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <div className="conversation-dock-heading">{name}</div>
-          <HostSwitcher menuItem />
+          <HostSwitcher menuItem sideSubmenuGroup={sideSubmenus} />
           {/* Desktop은 보기 모드를 데스크톱으로 고정한다(#1189). 전환은 여기에도 두지 않는다. */}
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
           <div className="conversation-dock-divider" role="separator" />
-          <ConsoleHelpMenu menuItem />
+          <ConsoleHelpMenu menuItem sideSubmenuGroup={sideSubmenus} />
           <div className="conversation-dock-settings" onClick={() => setOpen(false)}><SettingsButton menuItem /></div>
         </div>
       </div>
