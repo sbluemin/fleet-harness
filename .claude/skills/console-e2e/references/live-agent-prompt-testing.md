@@ -282,7 +282,10 @@ slot does not expose, such as `claude-gateway--nope--nope`: the turn's text must
 unset — restart the owned `serve` without the pin if you set one above — because a pin
 replaces the requested model before the alias check (`requested = modelOverride ?? body.model`
 in `runtime/fleet-console/features/ai-gateway/runtime/src/router/router.ts`), so the probe
-would dispatch a real request to the pinned provider instead of returning 400. `Invalid API key` means the request went to
+would dispatch a real request to the pinned provider instead of returning 400. When the paid
+scenario relies on the pin, restart the owned `serve` with `FLEET_AI_GATEWAY_MODEL` set again
+after the probe succeeds, and re-take `<port>` with the fixed lock read before the paid turn;
+otherwise the paid call follows the requested alias instead of the forced provider. `Invalid API key` means the request went to
 Anthropic instead, because the settings file did not apply.
 
 - Complete the same folder-trust review first: `-p` does not show the interactive trust
