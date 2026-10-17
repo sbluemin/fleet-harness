@@ -94,7 +94,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   title: (language) => getT(language)("objectives.commodore.name"),
   icon: () => <CommodoreMentionGlyph className="objectives-commodore-inbox-glyph" />,
   pages: [
-    { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log") },
+    // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
+    { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log"), layout: "fill" },
     { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive") },
     { id: "intel", title: (language) => getT(language)("objectives.commodore.tabs.intel"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.intel") },
     { id: "settings", title: (language) => getT(language)("objectives.commodore.tabs.settings"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.settings") },

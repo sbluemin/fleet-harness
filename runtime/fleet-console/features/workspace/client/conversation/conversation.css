@@ -714,14 +714,65 @@
 /* ── 오른쪽 세부 정보 머리: Grok Bot 세부 정보와 같은 구성 ─────────────────────────────
    맨 위 줄(52px, Desktop 에서 창을 끄는 자리)에 작전구역 도구 글리프와 닫기 원형 단추, 그 아래 가운데에 지금 대상의 표식·이름,
    그 아래 대상의 글자 탭(Grok 의 세부 정보 세그먼트 자리). 바탕은 대화와 같은 면이고 경계·그라디언트를 두지 않는다. */
+/* 열은 슬롯 폭 그대로다(minmax(0, 1fr)) — 암묵 auto 열은 자식의 하한·내용 폭만큼 커져 슬롯을 가로로 넘친다.
+   자식의 하한은 레일 카드 하한(MIN_PANEL_WIDTH 240)에서 이 열의 왼쪽 경계 1px 를 뺀 슬롯 하한이다. core 의 240px 하한
+   (.right-rail-section·.right-rail-panel-body)은 카드 테두리를 빼지 않아, 하한 폭에서 슬롯(239)보다 1px 넓게 서 넘쳤다.
+   하한을 0 으로 풀지 않는 것은 열림 폭 전이 동안 본문이 0 부터 다시 흐르지 않게 하는 core 하한의 몫을 지키기 위해서다. */
 .right-rail-panel-slot.has-header {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.right-rail-panel-slot.has-header :is(.right-rail-panel-header, .right-rail-section, .right-rail-panel-body) {
+  min-width: calc(240px - 1px);
 }
 
 .right-rail-panel-header {
   position: relative;
   z-index: 2;
-  min-width: 240px;
+}
+
+/* ── 오른쪽 패널 본문 틀(ConversationPanelFrame) ─────────────────────────────────
+   머리가 슬롯 전폭 가운데에 서므로 본문 축의 기본값도 같은 자리(이 틀)가 진다. 판정은 창이 아니라 이 칸의 폭이다 — 패널 폭은
+   사용자 조절·사이드바 점유로 정해져 창 폭과 따로 논다. 읽기 열(read)이 기본이고, 스크롤을 스스로 갖는 본문만 fill 이다.
+   읽기 열의 시작 여백은 (칸 − 열)/2 이고 끝 여백은 거터뿐이다 — 100cqi 는 스크롤바를 포함한 칸 폭이라, 열 중심이 스크롤바 유무와
+   무관하게 머리 중심과 맞는다. 좁으면 열이 줄고 양쪽 거터만 남는다. 「적용」 줄도 같은 시작선을 쓴다. */
+.conversation-panel-page {
+  container: conversation-panel / inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.conversation-panel-page > * {
+  --conversation-panel-measure: 640px;
+  --conversation-panel-gutter: clamp(var(--space-4), 6cqi, 28px);
+  --conversation-panel-inset: max(var(--conversation-panel-gutter), (100cqi - var(--conversation-panel-measure)) / 2);
+}
+
+.conversation-panel-frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 낱말 사이가 없는 긴 글(경로·토큰)도 열 안에서 줄을 바꾼다 — CSS 없는 새 칸이 가로로 넘치지 않는 기본값이다. */
+.conversation-panel-frame[data-layout="read"] {
+  display: grid;
+  grid-template-columns: minmax(0, var(--conversation-panel-measure));
+  align-content: start;
+  padding: var(--space-4) var(--conversation-panel-gutter) var(--space-6) var(--conversation-panel-inset);
+  overflow-wrap: anywhere;
+}
+
+.conversation-panel-frame[data-layout="fill"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .conversation-panel-head {

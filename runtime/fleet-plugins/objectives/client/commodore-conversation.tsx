@@ -353,6 +353,8 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
     inboxPage: TAB_INBOX_PAGES[tab],
+    // 「행위 기록」의 목표 흔적은 스스로 스크롤하며 바닥에 붙는다 — 칸 전체를 받는다. 나머지 탭은 호스트 읽기 열에 선다.
+    ...(tab === "goals" ? { layout: "fill" as const } : {}),
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
     render: (ctx) => {
       const params = readParams(ctx.params);

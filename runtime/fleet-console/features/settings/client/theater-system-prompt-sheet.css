@@ -1,9 +1,8 @@
-/* Theater Inbox 「Theater 설정」의 본문. 시트 틀(머리·닫기·크기)은 호스트 Theater Inbox 가 그리고, 여기는 칸 안의 글만. */
-.theater-prompt-page { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 28px 24px; }
+/* Theater Inbox 「Theater 설정」의 본문. 틀(머리·닫기·읽기 열·스크롤)은 호스트의 오른쪽 패널 틀이 지고, 여기는 칸 안의 글만. */
 .theater-prompt-page[hidden] { display: none; }
-.theater-prompt-body { display: grid; gap: 13px; max-width: 640px; font-size: var(--t-md); }
+.theater-prompt-body { display: grid; gap: 13px; font-size: var(--t-md); }
 .theater-prompt-page button { cursor: pointer; }
-.theater-prompt-page .theater-subagents { padding-top: 0; border-top: 0; max-width: 640px; }
+.theater-prompt-page .theater-subagents { padding-top: 0; border-top: 0; }
 /* 안 B — 머리(제목·정한 값 표식·도움말), 결과 문장을 단 모드 목록, 맨 아래 되돌리기와 사령관 지시. 테두리는 목록 한 겹만 진다. */
 /* 좁은 패널(대화 중심 화면 오른쪽 칸, 스크롤바가 선 경우)에서는 제목이 글자 단위로 끊기지 않고 표식이 다음 줄로 내려간다. */
 .theater-prompt-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-width: 0; }

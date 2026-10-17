@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale } from "../i18n/types.js";
-import type { ConsoleTheaterSummary } from "../plugin/types.js";
+import type { ConsoleTheaterSummary, ConversationPanelLayout } from "../plugin/types.js";
 
 /**
  * Theater Inbox — one Theater's sheet where the host's Theater settings and plugin-owned Theater sections sit
@@ -89,6 +89,12 @@ export interface TheaterInboxPageDescriptor {
   title(language: ConsoleLocale): string;
   /** When this page's changes take effect — the host shows it in the shared 「Applies」 line under the page. */
   applies?(language: ConsoleLocale): string;
+  /**
+   * How the side panel places this page's body. Omitted means `"read"`: the host centers the body in a reading column on
+   * the panel head's axis and owns vertical scrolling. Only a body that must own its scroll and width (a log pinned to its
+   * bottom, a table or graph) declares `"fill"` to receive the whole panel. Older hosts ignore it.
+   */
+  readonly layout?: ConversationPanelLayout;
 }
 
 export interface TheaterInboxSectionDescriptor {

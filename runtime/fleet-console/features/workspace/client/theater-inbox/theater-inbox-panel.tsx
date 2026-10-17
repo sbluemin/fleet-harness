@@ -12,6 +12,7 @@ import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/c
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "../conversation/conversation-surface-store.js";
 import { useConversationSubject } from "../conversation/conversation-slots.js";
+import { ConversationPanelFrame } from "../conversation/conversation-panel-frame.js";
 import { useSectionStates, type ResolvedTheaterInboxSection } from "./section-states.js";
 import { useTheaterInboxState, type TheaterInboxOpenState } from "./store.js";
 import "./theater-inbox-panel.css";
@@ -204,7 +205,7 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
   return null;
 }
 
-/** 오른쪽 패널의 Inbox 칸 하나 — 섹션 본문과 「적용」 한 줄. 본문은 시트와 같은 섹션 계약으로 그린다. */
+/** 오른쪽 패널의 Inbox 칸 하나 — 섹션 본문과 「적용」 한 줄. 본문은 시트와 같은 섹션 계약으로 그리고, 배치는 칸의 `layout` 을 따르는 공통 틀이 진다. */
 function TheaterInboxPanelPage({ theater, language, section, pageId, navigation, fallback, sections }: {
   readonly theater: ConsoleTheaterSummary;
   readonly language: ConsoleLocale;
@@ -229,13 +230,13 @@ function TheaterInboxPanelPage({ theater, language, section, pageId, navigation,
   const page = section.descriptor.pages.find((candidate) => candidate.id === pageId);
   const applies = page?.applies?.(language);
   return (
-    <div className="theater-inbox-panel-page">
-      <div className="theater-inbox-panel-body">
-        <PluginErrorBoundary>
-          {section.descriptor.render({ theater, language, pageId, visible: true, focusRequest, links, navigation })}
-        </PluginErrorBoundary>
-      </div>
-      {applies ? <p className="theater-inbox-applies"><span>{t("theaterInbox.applies")}</span>{applies}</p> : null}
-    </div>
+    <ConversationPanelFrame
+      layout={page?.layout}
+      footer={applies ? <p className="theater-inbox-applies"><span>{t("theaterInbox.applies")}</span>{applies}</p> : null}
+    >
+      <PluginErrorBoundary>
+        {section.descriptor.render({ theater, language, pageId, visible: true, focusRequest, links, navigation })}
+      </PluginErrorBoundary>
+    </ConversationPanelFrame>
   );
 }

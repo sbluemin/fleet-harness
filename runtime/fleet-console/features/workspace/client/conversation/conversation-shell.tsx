@@ -44,6 +44,7 @@ import { PluginOperationRenderer } from "../operation-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
+import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession } from "./new-session-entry.js";
 import "./conversation.css";
@@ -1120,7 +1121,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       order,
       ...(tab.defaultWidth === undefined ? {} : { defaultWidth: tab.defaultWidth }),
       ...(section ? { section } : {}),
-      render: () => <PluginErrorBoundary fallback={null}>{tab.render(context)}</PluginErrorBoundary>,
+      // 본문 배치는 패널 머리와 같은 축의 공통 틀이 진다 — 탭이 `fill` 을 선언하지 않으면 가운데 읽기 열이다.
+      render: () => <ConversationPanelFrame layout={tab.layout}><PluginErrorBoundary fallback={null}>{tab.render(context)}</PluginErrorBoundary></ConversationPanelFrame>,
     }));
     return () => {
       for (const dispose of disposers) dispose();
