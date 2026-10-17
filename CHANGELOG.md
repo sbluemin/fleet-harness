@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.239.0] - 2026-10-17
+
+### fleet-console
+
+#### Added
+- Codex and Grok use an existing CLI sign-in when Console has none, and ask you to sign in when that sign-in is missing or the Codex one has expired. Signing out stays signed out, and `fleet gateway status` shows that same state.
+- Attach images in a new session the same way as in chat, and open any attached thumbnail, before or after sending, to look through the images.
+- On a phone, the Commodore screen's message box now works like the Commander conversation box: attach images from the + menu or by pasting, preview and remove them before sending, and reference a Commander from the same menu or by typing @.
+- The New Session screen now has a little playground where all the mongle characters take turns wandering in at random, walking around, and playing on swings, a seesaw, a sandbox, and a slide; they pause while you type and stay still when motion is reduced.
+
+#### Changed
+- Objectives whose decision the Commodore is answering now stay in place in the sidebar and the objective switcher, with "Commodore answering" shimmering on the row instead of being tucked into a collapsed "Commodore handling" section.
+- In the conversation layout, Help in the menu at the bottom of the sidebar now opens beside that item, the same way Hosts does. Settings and the view-mode row in that menu no longer show a submenu arrow: Settings opens settings directly, and view mode switches in place.
+- In the conversation layout, Hosts in the menu at the bottom of the sidebar now opens as a submenu beside the item when you point at or click it, and you can enter it with Right Arrow or Enter and leave with Left Arrow or Esc.
+- A prompt you send while a turn is still running appears immediately in the Commodore conversation, group chat, and operation chat, marked as waiting. The turn still handles it at the same time as before.
+- In an objective, the commander and every member now share one Fleet Browser, one Console Use and Computer Use permission, and one computer, and the screen preview appears in the group conversation with the name of whoever is operating. One participant finishing or stopping no longer cuts off another participant's work, and Use switches live only in the commander's menu.
+- With Fold turns on, a long-running turn's folded progress now follows the latest message down the group conversation and previews the line being written, instead of staying at the turn's first note under a "Work notes" count.
+- Fold turns now collapses only a member's turn. The commander's messages stay uncapped bubbles, including while they are still being written.
+- In a one-to-one conversation (the commodore, or a group that has only the commander), speaker avatars no longer sit beside each bubble, so the bubble uses that space. Names stay, and avatars return when a member joins.
+- A follow-up the Commodore opens while completing an objective no longer starts marked as Commodore-operated; you hand it over when you want. Follow-ups opened earlier keep their current operator.
+
+#### Fixed
+- An attached image that expires before you send it is removed, with a note to paste it again, instead of failing the whole message. The text you wrote stays.
+- When Computer Use screen sharing cannot identify the window because Fleet lacks macOS Accessibility permission, the preview now says so and offers a button to request that permission, instead of a generic message that also pointed at Screen Recording.
+- Opening Console, or an old Settings link, no longer briefly flashes the retired top toolbar before the conversation view appears.
+- In the conversation layout's side panel, Theater settings and the Commodore's directive, intel and settings pages now stay centered under the panel header at a readable width when the panel is widened, instead of hugging the left edge.
+- Usage limits keep the last reading when a provider reports no open window, and show it again after Console restarts until that window resets. Signing out clears the saved reading.
+- If a new session cannot start, you stay on that screen with what you wrote and why it was declined, instead of being moved to another composer.
+- When Computer Use cannot share a window because macOS Screen Recording permission is off, the preview explains that, can open Screen Recording settings, and notes that Fleet may need to be opened again.
+
+### fleet-desktop
+
+#### Changed
+- Switching to another host no longer flashes a blank screen: the current screen stays in place until the other console has finished drawing, then fades across, and a slow connection shows which host it is connecting to.
+- If the other host cannot be opened, the window goes back without a second flash and tells you why.
+
+### fleet-mobile
+
+#### Fixed
+- On Android, tapping an image attachment button in a conversation no longer closes the app; it opens the photo picker so you can attach images.
+
 ## [1.238.0] - 2026-10-17
 
 ### fleet-cli
