@@ -128,7 +128,7 @@ export function memberUnreportedTurn(objective: Objective, member: ObjectiveMemb
 }
 
 /**
- * 정체 통지(초안 — 사령관 승인 전) — 구성원이 일하는 동안 지휘관이 오래 쉬었다는 사실만 싣는다. 무엇을 할지는 지휘관이 정한다.
+ * 정체 통지 — 구성원이 일하는 동안 지휘관이 오래 쉬었다는 사실만 싣는다. 무엇을 할지는 지휘관이 정한다.
  */
 export function commanderRestTurn(objective: Objective, facts: { readonly roles: readonly string[]; readonly minutes: number }, language: PromptLanguage): string {
   return language === "ko"
