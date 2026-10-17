@@ -226,6 +226,8 @@ consoles.map((entry) => new URL(entry.origin).port);
 
 The neighbor's port is in that list. The home run's own port is not, because its data dir is not a canonical lock. The user's own Console is often in the list too, commonly `127.0.0.1:50000`, with status "discovered" / "발견됨". Do not select, probe, or stop any row whose port this run did not record.
 
+After that check, stop the home `serve` with `cli.mjs stop` through the same wrapper and `--run-dir`, and without `--canonical-console-dir`. The seeded settings stay in the directory; Desktop then uses it. A gate dry-run that exits 20 with `Console lock: live` means this stop was skipped. Do not launch until that lock is not live.
+
 Launch Desktop once, under its own authorization, as in [Desktop setup](desktop/setup.md#preflight-and-ownership). `FLEET_CONSOLE_DATA_DIR` for that launch is the **home** run's `console` directory, not `$SLOT`. The shell's `homeOrigin` is that home.
 
 In the window, open the dock avatar (accessible name starts with "Hosts" / "호스트"). Activate the host item whose name ends with `Local` ("Hosts: Local" / "호스트: Local"). Then activate the radio whose detail line is `127.0.0.1:<neighbor port>`. Its status reads "discovered" / "발견됨" and its name is "Fleet Console" unless that row is already current. Matching the port is the check. A row for any other port, including the user's Console, is not the neighbor.
@@ -244,7 +246,7 @@ Do not assign `location` to the neighbor. The menu selection is the navigation t
 
 Away on Desktop: `origin` is `http://127.0.0.1:<neighbor port>`, `home` is the home origin, `dot` is `"live"`, `chip` contains `is-away`, and `tip` is the host name rather than `Local`.
 
-Return by the same menu. Activate the radio whose detail line is `127.0.0.1:<home port>`. Its name is "Managed console" / "관리형 콘솔". After it, `origin` is the home origin, `dot` is `null`, `chip` has no `is-away`, and `tip` is `Local`.
+Return by the same menu, opened again from the avatar and then the item that ends with `Local`. Activate the radio whose detail line is `127.0.0.1:<home port>`. Its name is "Managed console" / "관리형 콘솔". After it, `origin` is the home origin, `dot` is `null`, `chip` has no `is-away`, and `tip` is `Local`.
 
 Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
 
