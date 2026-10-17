@@ -562,6 +562,89 @@ describe("commodore supervisor", () => {
       expect(sessions.at(-1)!.sent).toHaveLength(1);
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
+  it("hands messages to the running turn, returns unread ones to the queue, and resumes the same conversation across restarts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-17T12:00:00Z"));
+    try {
+      const h = harness(Date.now);
+      h.setExperiments({ commodore: true });
+      h.store.setAutonomy("t1", true);
+      const theaterRoot = path.join(h.objectivesDir, "..", "..", "..", "theater");
+      fs.mkdirSync(theaterRoot, { recursive: true });
+      // 남는 대화를 흉내 내는 호스트 — key 마다 대화가 남고, 같은 key 로 다시 열면 이어 받는다. 도는 턴은 건넨 말을 받는다.
+      const kept = new Set<string>(); const forgotten: string[] = [];
+      const sessions: { sent: string[]; steered: { text: string; id: string }[]; resumed: boolean; emit: (event: AgentEvent) => void; finish: () => void }[] = [];
+      const agent: AgentHost = {
+        createSession: async (options) => {
+          const key = options.persist!.key; const resumed = kept.has(key); kept.add(key);
+          let finish = () => {};
+          const entry = { sent: [] as string[], steered: [] as { text: string; id: string }[], resumed, emit: (event: AgentEvent) => options.onEvent?.(event), finish: () => finish() };
+          sessions.push(entry);
+          let turning = false; let cancelled = false;
+          return {
+            resumed,
+            send: async (text) => { entry.sent.push(text as string); turning = true; cancelled = false; await new Promise<void>((resolve) => { finish = resolve; }); turning = false; options.onEvent?.(cancelled ? { kind: "cancelled" } : { kind: "result", isError: false, source: "message" }); },
+            steer: (text, id) => { if (!turning) return false; entry.steered.push({ text: text as string, id }); return true; },
+            cancel: () => { for (const { id } of entry.steered) options.onEvent?.({ kind: "input-cancelled", id }); cancelled = true; finish(); },
+            dispose: async () => undefined,
+          };
+        },
+        forget: async (key) => { kept.delete(key); forgotten.push(key); },
+      };
+      const make = () => createCommodoreSupervisor({ store: h.store, agent, experiments: () => h.experiments(), theater: () => ({ label: "x", root: theaterRoot }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+      let supervisor = make();
+      supervisor.sync("autonomy");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.sent).toHaveLength(1);
+      // 턴 중의 말 — 다음 턴을 기다리지 않고 도는 턴에 건넨다. 그 턴이 집으면 「전달됨」이 남고 다음 턴은 서지 않는다.
+      const read = h.store.transcriptAppend("t1", { kind: "message", text: "Use Muse Spark for new commanders." });
+      expect(sessions[0]!.steered).toEqual([{ text: expect.stringContaining("Use Muse Spark for new commanders."), id: `m${read.seq}` }]);
+      sessions[0]!.emit({ kind: "input-started", id: `m${read.seq}` });
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "delivered", seqs: [read.seq] });
+      // 집히지 못한 말은 대기열로 돌아와 다음 턴에 실린다 — 잃지 않는다.
+      const unread = h.store.transcriptAppend("t1", { kind: "message", text: "And check the roster." });
+      sessions[0]!.emit({ kind: "input-cancelled", id: `m${unread.seq}` });
+      sessions[0]!.finish();
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions[0]!.sent).toHaveLength(2);
+      expect(sessions[0]!.sent[1]).toContain("And check the roster.");
+      expect(sessions[0]!.sent[1]).not.toContain("Use Muse Spark");
+      sessions[0]!.finish();
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Console 재시작 — 같은 대화를 이어 받는다. 재시작만으로는 깨우지 않고 「이어 받음」 줄만 남는다.
+      await supervisor.dispose();
+      supervisor = make();
+      supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions).toHaveLength(2);
+      expect(sessions[1]!.resumed).toBe(true);
+      expect(sessions[1]!.sent).toHaveLength(0);
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "session", event: "resumed" });
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      // 남는 대화라도 끊긴 턴의 말이 닿았는지는 모른다 — 성공을 듣기 전에 끄면 「전달되지 않음」이고 다시 실린다.
+      const cut = h.store.transcriptAppend("t1", { kind: "message", text: "Recheck the roster." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(sessions.at(-1)!.sent.at(-1)).toContain("Recheck the roster.");
+      h.store.setAutonomy("t1", false); await vi.advanceTimersByTimeAsync(10);
+      const lines = () => h.store.transcriptRead("t1").entries.flatMap((entry) => (entry.kind === "undelivered" || entry.kind === "requeued" ? [`${entry.kind}:${entry.seqs.join(",")}`] : []));
+      expect(lines().at(-1)).toBe(`undelivered:${cut.seq}`);
+      // 다시 실었다가 전달 전에 또 끊기면 다시 「전달되지 않음」이고, 다음에 서면 그 말이 또 실린다 — 가장 늦은 행방이 이긴다.
+      h.store.setAutonomy("t1", true); await vi.advanceTimersByTimeAsync(10);
+      h.store.setAutonomy("t1", false); await vi.advanceTimersByTimeAsync(10);
+      expect(lines().slice(-2)).toEqual([`requeued:${cut.seq}`, `undelivered:${cut.seq}`]);
+      h.store.setAutonomy("t1", true); await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
+      expect(lines().at(-1)).toBe(`requeued:${cut.seq}`);
+      expect(sessions.at(-1)!.sent.at(-1)).toContain("Recheck the roster.");
+      sessions.at(-1)!.finish(); await vi.advanceTimersByTimeAsync(10);
+      // Clear 는 남은 대화를 버린다 — 다음 세션은 새 대화다.
+      await supervisor.clear("t1");
+      expect(forgotten).toEqual(["commodore:t1"]);
+      await supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("disposes a session that finishes opening after autonomy is turned off", async () => {
     const h = harness();
     h.setExperiments({ commodore: true });
@@ -882,7 +965,7 @@ describe("commodore supervisor", () => {
       expect(await useTool("withdraw_ask", { askId: ask.id })).toMatchObject({ error: "ask_already_answered" });
       expect(h.store.read("t1")!.asks!.find((entry) => entry.id === ask.id)!.settled).toMatchObject({ outcome: "answered", answers: [{ selectedOptionIds: [ask.questions[0]!.options[1]!.id] }] });
 
-      // 끔 — 진행 중 턴에 실린 메시지와 다음 턴 대기 메시지를 모두 표시하고 다시 보내지 않는다.
+      // 끔 — 진행 중 턴에 실린 메시지와 다음 턴 대기 메시지를 모두 「전달되지 않음」으로 표시한다.
       holdTurn = true;
       const activeMessage = h.store.transcriptAppend("t1", { kind: "message", text: "Cancel this instruction." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
@@ -902,15 +985,17 @@ describe("commodore supervisor", () => {
       h.store.addIntel("t1", { text: "f" });
       await vi.advanceTimersByTimeAsync(DEFAULT_PATROL_MS);
       expect(sessions).toHaveLength(2);
-      // 다시 켜도 취소된 메시지는 재전달하지 않는다. stop과 겹쳐도 성공 결말이면 전달 실패로 바꾸지 않는다.
+      // 다시 켜면 「전달되지 않음」 메시지를 다시 싣는다 — 대화를 남기지 않는 세션은 끊긴 턴의 말도 읽지 못했으므로 둘 다다.
+      // stop과 겹쳐도 성공 결말이면 전달 실패로 바꾸지 않는다.
       completeOnCancel = true;
       h.store.setAutonomy("t1", true);
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "requeued", seqs: [activeMessage.seq, pendingMessage.seq] });
       const delivered = await h.route("commodore/message", { theaterId: "t1", text: "Already received." }, { run: (id) => supervisor.status(id) });
       expect(delivered.status).toBe(200);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions).toHaveLength(3);
       expect(sessions[2]!.sent[0]).toContain("Already received.");
-      expect(sessions[2]!.sent[0]).not.toMatch(/Cancel this instruction|Hold the release/);
+      expect(sessions[2]!.sent[0]).toMatch(/Cancel this instruction[\s\S]*Hold the release/);
       h.store.setAutonomy("t1", false);
       await vi.advanceTimersByTimeAsync(10);
       expect(h.store.transcriptRead("t1").entries.slice(-2)).toMatchObject([{ kind: "result", outcome: "ok" }, { kind: "session", event: "stopped" }]);

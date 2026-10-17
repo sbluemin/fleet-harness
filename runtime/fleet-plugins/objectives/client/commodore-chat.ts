@@ -2,6 +2,7 @@ import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversat
 import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
+import { undeliveredMessageSeqs } from "../server/commodore/delivery.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import type { Objective } from "../server/types.js";
 import { clockTime } from "./commodore-header.js";
@@ -18,8 +19,11 @@ type T = Translate<ObjectiveMessageKey>;
 export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
-  const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
+  const undelivered = undeliveredMessageSeqs(entries);
+  const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
+  // 턴 중에 왔지만 그 턴이 집지 않은 말 — 다음 턴이 읽는다. 턴이 닫힌 뒤 말풍선으로 선다(턴 안에 두면 읽힌 것처럼 보인다).
+  let heldMessages: { readonly event: AgentChatTranscriptEvent; readonly at: number }[] = [];
   // 턴 안의 압축은 그 턴이 닫힌 뒤 구분선으로 선다 — 턴 한가운데의 구분선은 턴을 둘로 가른다(턴 묶음은 구분선에서 끊긴다).
   let heldNotes: { readonly text: string; readonly at: number }[] = [];
   // 읽어 온 기록 창은 아무 줄에서나 시작한다(쪽·보관 상한) — 깨움이 창 밖인 턴의 내용·결말이 먼저 오면 그 자리에서 턴을 연다.
@@ -35,6 +39,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
     turnAt = null;
     for (const note of heldNotes) push({ kind: "note", text: note.text, at: note.at }, note.at);
     heldNotes = [];
+    for (const held of heldMessages) { push(held.event, held.at); push({ kind: "turn-end", ok: true }, held.at); }
+    heldMessages = [];
   };
   for (const entry of entries) {
     switch (entry.kind) {
@@ -47,7 +53,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
       case "message": {
         const { text, references } = messageWords(entry);
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
-        if (turnAt !== null) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
+        if (turnAt !== null && delivered.has(entry.seq)) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
+        else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, at: entry.at });
         else {
           // 쉬는 동안 받은 말은 말풍선 하나다 — 그 말이 깨운 턴은 뒤따르는 깨움 줄이 연다. 열린 채 두면 빈 턴이 「작업 중」으로 선다.
           push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
@@ -102,6 +109,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
       }
       case "thinking":
       case "undelivered":
+      case "delivered":
+      case "requeued":
         break;
     }
   }
@@ -135,9 +144,12 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
 export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[]): readonly AgentConversationEntry[] {
   const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
-  const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
+  const undelivered = undeliveredMessageSeqs(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
+  // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
+  const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
+  const requeuedWaiting = new Set(entries.flatMap((entry) => (entry.kind === "requeued" && entry.seq > lastWakeSeq ? entry.seqs : [])));
   const out: AgentConversationEntry[] = [];
   for (const entry of entries) {
     switch (entry.kind) {
@@ -151,7 +163,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
-          ...(entry.seq > lastWakeSeq && !undelivered.has(entry.seq) ? { pending: true as const } : {}) });
+          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "text":
@@ -193,6 +205,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       case "thinking":
       case "undelivered":
+      case "delivered":
+      case "requeued":
       case "wake-scope":
         break;
     }

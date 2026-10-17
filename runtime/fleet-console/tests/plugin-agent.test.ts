@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@fleet-console/agent-runtime/claude";
 import { createPluginAgentHost } from "../features/execution/host/agent/plugin-agent.js";
@@ -83,6 +85,82 @@ describe("Console-owned plugin Agent", () => {
     expect(events).toEqual([{ kind: "cancelled" }]);
     await session.send("two"); expect(events.at(-1)).toMatchObject({ kind: "result", isError: false });
     await host.dispose();
+  });
+
+  it("keeps a persisted resident conversation: steers a running turn, resumes after host restart, and forgets on request", async () => {
+    const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-plugin-persist-")); roots.push(dataRoot);
+    const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
+    // 자식 하나 — 보낸 말마다 스크립트가 답한다. 트랜스크립트는 Claude Code처럼 홈의 projects 아래에 쌓인다.
+    let reply: (text: string, messageId?: string) => void = () => undefined;
+    // 실제 SDK처럼 한 인스턴스의 슬롯은 하나이고 `close()`로만 돌아온다 — 스스로 끝난 자식도 닫지 않으면 다음 자식이 막힌다.
+    const engine = (configDir: string) => { let slot = false; return { configDir, dispose: vi.fn(async () => undefined), openSession: vi.fn(async (request: Record<string, unknown>) => {
+      if (slot) throw new Error("A turn or session is already running on this instance.");
+      slot = true;
+      opened.push(request);
+      const id = (request.resume ?? request.sessionId) as string;
+      await fs.mkdir(path.join(configDir, "projects", "-cwd"), { recursive: true }); await fs.writeFile(path.join(configDir, "projects", "-cwd", `${id}.jsonl`), "{}\n");
+      const queue: ClaudeGatewayMessage[] = []; let wake: (() => void) | null = null; let done = false;
+      push = (message) => { queue.push(message); wake?.(); }; closeChild = () => { done = true; slot = false; wake?.(); }; dieChild = () => { done = true; wake?.(); };
+      return { send: (input: unknown, options?: { messageId?: string }) => reply(typeof input === "string" ? input : JSON.stringify(input), options?.messageId), close: () => closeChild(),
+        async *[Symbol.asyncIterator]() { for (;;) { while (queue.length) yield queue.shift()!; if (done) return; await new Promise<void>((r) => { wake = r; }); wake = null; } } };
+    }) } as unknown as ClaudeGatewaySdk; };
+    const hostFor = () => createPluginAgentHost({ baseUrl: () => "http://127.0.0.1:1", consoleUse, persistRoot: () => dataRoot, createSdk: async (sdkOptions) => { homes.push(sdkOptions.home); return engine((sdkOptions.home as { configDir: string }).configDir); } });
+    const persist = { key: "commodore:t1" };
+    const events: AgentEvent[] = [];
+    const host = hostFor();
+    const session = await host.createSession({ ...options, persist, onEvent: (event) => events.push(event) });
+    await expect(host.createSession({ ...options, persist })).rejects.toThrow("agent_persist_busy");
+    expect(session.resumed).toBe(false);
+    expect(homes[0]).toMatchObject({ kind: "persistent", configDir: expect.stringContaining(dataRoot) });
+
+    // 턴 중 건넨 말 — 턴이 그 말을 집기 전에 닫히려 하면 결말을 쥐고, 집힌 뒤의 결말과 합쳐 한 턴으로 낸다.
+    let steered: string | undefined;
+    reply = (text, messageId) => {
+      if (messageId) { steered = messageId; return; }
+      push({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: `on ${text}` } } });
+      queueMicrotask(() => {
+        expect(session.steer!("also this", "m1")).toBe(true);
+        push({ type: "result", is_error: false, total_cost_usd: 0.1, usage: { input_tokens: 10, output_tokens: 1 } });
+        queueMicrotask(() => {
+          push({ type: "command_lifecycle", command_uuid: steered, state: "started" });
+          push({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "and that" } } });
+          push({ type: "result", is_error: false, total_cost_usd: 0.25, usage: { input_tokens: 20, output_tokens: 2 } });
+        });
+      });
+    };
+    await session.send("first");
+    expect(session.steer!("late", "m2")).toBe(false);
+    expect(events.filter((event) => event.kind === "result")).toEqual([expect.objectContaining({ isError: false, usage: expect.objectContaining({ inputTokens: 30, outputTokens: 3, costUsd: 0.25 }) })]);
+    expect(events.findIndex((event) => event.kind === "input-started" && event.id === "m1")).toBeLessThan(events.findIndex((event) => event.kind === "text" && event.text === "and that"));
+    expect(opened[0]).toMatchObject({ sessionId: expect.any(String) });
+    expect(opened[0]).not.toHaveProperty("resume");
+    expect(JSON.stringify(events)).not.toContain(dataRoot);
+
+    // 중지는 자식을 접고, 집히지 않은 말은 호출자에게 돌려준다.
+    reply = (_text, messageId) => { if (!messageId) queueMicrotask(() => expect(session.steer!("never read", "m3")).toBe(true)); };
+    const stopped = session.send("second"); await new Promise((r) => setTimeout(r, 0)); session.cancel(); await stopped;
+    expect(events.at(-1)).toEqual({ kind: "cancelled" });
+    expect(events).toContainEqual({ kind: "input-cancelled", id: "m3" });
+
+    // Console 재시작 — 같은 key는 같은 대화를 resume한다. 자리는 폐기가 지우지 않는다.
+    await host.dispose();
+    const restarted = hostFor();
+    const resumed = await restarted.createSession({ ...options, persist, onEvent: () => undefined });
+    expect(resumed.resumed).toBe(true);
+    reply = () => push({ type: "result", is_error: false });
+    await resumed.send("third");
+    expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
+    // 자식이 스스로 죽었다(close 없이 스트림이 끝남) — 다음 턴은 슬롯을 되찾아 같은 대화를 다시 resume한다.
+    dieChild(); await new Promise((r) => setTimeout(r, 0));
+    const before = opened.length;
+    await resumed.send("after a crash");
+    expect(opened).toHaveLength(before + 1);
+    expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
+    // 버리기 — 열린 세션을 닫고 자리를 지운다. 다음은 새 대화다.
+    await restarted.forget!(persist.key);
+    const fresh = await restarted.createSession({ ...options, persist });
+    expect(fresh.resumed).toBe(false);
+    await restarted.dispose();
   });
 
   it("rejects unavailable gateways and rolls back SDK creation racing host disposal", async () => {

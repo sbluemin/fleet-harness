@@ -9,20 +9,22 @@ import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objecti
 import type { Objective, ObjectiveEvent } from "../types.js";
 import type { CommodoreAttachmentReader } from "../console-tools.js";
 import { ObjectiveStoreError } from "../store.js";
-import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
+import { commodorePersistKey, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
+import { undeliveredMessageSeqs } from "./delivery.js";
 import { MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "./attachment-budget.js";
-import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus } from "./types.js";
+import { commodoreCompactAt, DEFAULT_PATROL_MINUTES, EMPTY_RUN_TOTALS, MAX_TRANSCRIPT_PAGE, patrolIntervalMs, type CommodoreEvent, type CommodoreRunStatus, type CommodoreTranscriptEntry } from "./types.js";
 
 /**
  * 감독자 — Theater 마다 하나. 사령관 세션은 턴이 끝나면 쉬고, 끝없이 도는 것은 이 감독자가 보장한다.
  *
  * 깨울 이유(보드 사건·지시·정보·사람의 메시지·정체·순찰·빈 보드·재시작)를 모아 몇 초 뒤 한 턴으로 보내고, 턴 중에 온 이유는
- * 다음 턴 하나로 합친다. 순찰은 사령관이 `next_wake` 로 예약하되 사람이 고른 순찰 간격(기본 60분)을 넘지 않고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분
- * 간격으로 계속한다(자율 운영은 꺼지지 않는다). 문맥이 길어지면 다음 깨움에서 세션을 교대하고(새 세션 + 최근 행위 요약),
- * 플러그인 등록 때 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
+ * 다음 턴 하나로 합친다. 턴 중에 온 사람의 말은 예외다 — 도는 턴에 건네 같은 턴이 읽는다(채팅·지휘관과 같다). 순찰은 사령관이
+ * `next_wake` 로 예약하되 사람이 고른 순찰 간격(기본 60분)을 넘지 않고, 턴 오류는 1·5·15분 뒤 재시도한 뒤 60분 간격으로 계속한다
+ * (자율 운영은 꺼지지 않는다). 문맥이 길어지면 같은 세션이 압축해 잇고, 대화는 호스트에 남아 Console 재시작·자율 운영 재개 뒤에도
+ * 같은 대화를 이어 받는다. 좌표·언어·이미지 예산이 바뀔 때만 교대한다(새 세션 + 최근 행위 요약). 플러그인 등록 때 켜진 Theater 를 복원한다. 자율 운영·실험 기능 끔은 바로 멈추고, 종료 예정 시각에는 알림 턴 하나 뒤 멈춘다.
  *
  * 순찰 간격만 사람의 노브다(서랍). 재시도 간격·모으는 시간·교대 비율은 감독자 내부 값이다.
  */
@@ -188,6 +190,8 @@ interface Runner {
   pending: Map<WakeCode, PendingReason>;
   /** 사람의 메시지 — 다음 턴에 그대로 실린다. seq 는 기록의 그 줄이다(끌 때 싣지 못한 것을 「전달되지 않음」으로 가리킨다). */
   messages: QueuedMessage[];
+  /** 도는 턴에 건넸고 아직 집히지 않은 메시지 — 건넨 id 로. 집히면 「전달됨」, 닿지 못하면 `messages` 로 돌아온다. */
+  hosted: Map<string, QueuedMessage>;
   /** 이번 턴에 실은 메시지만 보드 도구가 복사할 수 있다. 대기·과거 메시지는 권한이 아니다. */
   turnMessages: readonly QueuedMessage[];
   sessionImageBytes: number;
@@ -356,6 +360,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       objective: (objectiveId) => deps.objectives(runner.theaterId).find((objective) => objective.id === objectiveId && !objective.removed) ?? null,
       onNextWake: (at, reason) => { runner.patrolSet = true; runner.patrolRequest = { at, reason }; schedulePatrol(runner, at, reason); },
       onLive: (live) => deps.emit({ op: "live", theaterId: runner.theaterId, live }),
+      onInput: ({ id, state }) => {
+        const message = runner.hosted.get(id);
+        if (!message) return;
+        runner.hosted.delete(id);
+        if (state === "started") { record(runner, { kind: "delivered", seqs: [message.seq] }); return; }
+        // 모델에 닿지 못했다 — 받은 순서대로 대기열에 돌려놓는다. 끄는 중이면 stop() 이 「전달되지 않음」으로 남긴다.
+        const at = runner.messages.findIndex((queued) => queued.seq > message.seq);
+        runner.messages.splice(at < 0 ? runner.messages.length : at, 0, message);
+        wake(runner, "message");
+      },
       ...(deps.execute ? { execute: deps.execute } : {}),
     });
     await session.start();
@@ -367,8 +381,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.lastInputTokens = 0;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
-    deps.store.addRunTotals(runner.theaterId, { session: 1 });
-    record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
+    // 이어 받은 대화는 새 세션이 아니다 — 세션 번호를 올리지 않고 「이어 받음」 줄만 남긴다.
+    if (!session.resumed) deps.store.addRunTotals(runner.theaterId, { session: 1 });
+    record(runner, { kind: "session", event: session.resumed ? "resumed" : event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
     return session;
   };
@@ -430,7 +445,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.stopping || runner.ending || disposed) return;
     if (deadlineReached(runner)) { endScheduled(runner); return; }
     if (runner.inflight) return runner.inflight;
-    if (!runner.pending.size) return;
+    // 재시작 직후에는 이유가 없어도 세션을 연다 — 같은 대화를 이어 받으면 조용히 쉬고, 못 받으면 재시작으로 깨운다.
+    if (!runner.pending.size && runner.rotateNext !== "restarted") return;
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
@@ -461,9 +477,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
         if (!session) {
           const event = rotate ?? "opened";
-          if (event !== "opened") { replacementSummary = runner.recentActions.slice(-RECENT_ACTIONS); wake(runner, event === "restarted" ? "restart" : "rotated"); }
-          runner.rotateNext = null;
+          // 교대는 지난 대화를 버린다 — 남겨 둔 대화를 지워야 새 세션이 그것을 이어 받지 않는다.
+          if (event === "replaced") await deps.agent.forget?.(commodorePersistKey(runner.theaterId));
           session = await openSession(runner, event);
+          runner.rotateNext = null;
+          // 같은 대화를 이어 받았으면 요약도 깨움도 없다(채팅이 재시작 뒤 같은 세션으로 돌아오는 것과 같다).
+          if (event !== "opened" && !session.resumed) {
+            replacementSummary = runner.recentActions.slice(-RECENT_ACTIONS);
+            wake(runner, event === "restarted" ? "restart" : "rotated");
+            if (event === "restarted" && !runner.emptyReported && !hasOpenOperated(deps.objectives(runner.theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+          }
         }
       } catch (error) {
         if (runner.stopping || runner.ending) return;
@@ -500,8 +523,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (outcome.outcome === "ok") releaseMessages(runner, messages);
       noteOutcome(runner, outcome);
       if (runner.stopping || runner.ending) {
-        // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다.
-        // 이 runner는 이미 제거됐고 다시 깨우지 않는다 — 재전달·재시도용으로 돌려놓는 것이 아니다.
+        // 끄기로 끝나지 못한 턴의 메시지도 stop()이 표시한다. 성공한 턴은 이미 전달됐으므로 제외한다. 남는 대화라도 끊긴 턴의 말이 그
+        // 대화에 닿았는지는 모른다(자식이 기록하기 전에 접혔을 수 있다) — 성공을 듣기 전까지는 다시 보낼 수 있게 둔다. 겹쳐 읽는 쪽이 잃는 쪽보다 낫다.
         if (outcome.outcome !== "ok") runner.messages.unshift(...messages);
         return;
       }
@@ -555,16 +578,38 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
     // Clear 직후는 빈 기록을 유지한다. 다음 메시지·사건·순찰에서 새 세션을 연다.
     if (!wakeImmediately) { schedulePatrol(runner, now() + patrolInterval(theaterId), ""); return; }
-    wake(runner, reason);
-    if (!hasOpenOperated(deps.objectives(theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+    requeueUndelivered(runner);
+    if (reason === "restart") {
+      // 재시작은 그 자체로 깨울 일이 아니다 — 세션을 열어 같은 대화를 이어 받으면 쉬고, 못 받을 때만 재시작·빈 보드로 깨운다(runTurn).
+      schedule(runner, "coalesce", COALESCE_MS, () => void runTurn(runner));
+    } else {
+      wake(runner, reason);
+      if (!hasOpenOperated(deps.objectives(theaterId))) { runner.emptyReported = true; wake(runner, "empty"); }
+    }
     // 자율 운영이 꺼진 동안 사람이 답한 질문 — 사령관이 아직 읽지 않았다.
     for (const ask of deps.store.read(theaterId)?.asks ?? []) if (ask.settled?.outcome === "answered" && ask.readAt === undefined) wake(runner, "answered", { bump: true, detail: askDetail(ask.questions[0]?.text ?? ask.id) });
+  };
+
+  /**
+   * 지난번 끌 때 「전달되지 않음」으로 남은 사람의 메시지를 대기열에 다시 싣는다 — 같은 대화가 이어지므로 그 말을 잃지 않는다.
+   * 이미지가 붙은 말은 끌 때 보관이 풀려 다시 싣지 못한다(그대로 「전달되지 않음」이다).
+   */
+  const requeueUndelivered = (runner: Runner) => {
+    let entries: readonly CommodoreTranscriptEntry[];
+    try { entries = deps.store.transcriptRead(runner.theaterId, { limit: MAX_TRANSCRIPT_PAGE }).entries; }
+    catch { return; }
+    const waiting = undeliveredMessageSeqs(entries);
+    const messages = entries.flatMap((entry) => (entry.kind === "message" && waiting.has(entry.seq) && !entry.attachments?.length ? [entry] : []));
+    if (!messages.length) return;
+    for (const entry of messages) runner.messages.push({ seq: entry.seq, text: messagePromptText(entry) });
+    record(runner, { kind: "requeued", seqs: messages.map((entry) => entry.seq) });
+    wake(runner, "message");
   };
 
   const stop = (theaterId: string, reason: string): Promise<void> => {
@@ -577,7 +622,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     clearTimer(runner, "coalesce"); clearTimer(runner, "patrol"); clearTimer(runner, "retry");
     runner.pending.clear();
     // 모으는 중·재시도 대기뿐 아니라 취소된 진행 중 턴도, 결말을 기다린 뒤 아래에서 함께 표시한다.
-    // 새 사령관은 지난 메시지를 읽지 않는다 — 다시 보내지는 않는다.
+    // 표시한 메시지는 다음에 자율 운영이 설 때 다시 실린다(requeueUndelivered) — 이어 받는 대화가 그 말을 잃지 않는다.
     runner.nextWakeAt = undefined;
     runner.session?.cancel();
     setPhase(runner, "off", reason);
@@ -654,7 +699,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (event.op === "transcript" && event.entry.kind === "message" && runner) {
       const { entry } = event;
       const text = messagePromptText(entry);
-      runner.messages.push({ seq: entry.seq, text, ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) }); wake(runner, "message");
+      const message: QueuedMessage = { seq: entry.seq, text, ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) };
+      // 턴이 돌고 있으면 그 턴에 건넨다 — 다음 도구 경계에서 같은 턴이 읽는다. 이미지가 붙은 말은 보관·예산을 지는 다음 턴에 싣는다.
+      const id = `m${entry.seq}`;
+      if (!message.messageId && runner.phase === "turn" && !runner.ending && !runner.stopping && runner.session?.steer(text, id)) { runner.hosted.set(id, message); return; }
+      runner.messages.push(message); wake(runner, "message");
     }
   }));
 
@@ -876,6 +925,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (disposed) return Promise.reject(new Error("commodore_inactive"));
       const work = (async () => {
         await stop(theaterId, "cleared");
+        // 새 문맥 — 남겨 둔 대화도 지운다. 다음 세션은 요약 없이 처음부터다.
+        await deps.agent.forget?.(commodorePersistKey(theaterId));
         deps.store.transcriptClear(theaterId);
       })().finally(() => {
         clears.delete(theaterId);

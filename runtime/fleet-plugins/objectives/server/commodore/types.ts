@@ -207,12 +207,17 @@ export type CommodoreTranscriptEntry =
   | CommodoreTranscriptBase & { readonly kind: "thinking"; readonly text: string }
   | CommodoreTranscriptBase & { readonly kind: "tool"; readonly name: string; readonly summary?: string; readonly ok?: boolean; readonly action?: string; readonly objectiveId?: string; readonly title?: string; readonly error?: string }
   | CommodoreTranscriptBase & { readonly kind: "result"; readonly outcome: "ok" | "error" | "cancelled"; readonly costUsd?: number; readonly inputTokens?: number; readonly outputTokens?: number; readonly error?: string }
-  | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
+  /** `resumed` — 남아 있던 같은 대화를 이어 받아 열렸다(Console 재시작·자율 운영 재개 뒤). 요약도 재시작 깨움도 없다. */
+  | CommodoreTranscriptBase & { readonly kind: "session"; readonly event: "opened" | "resumed" | "replaced" | "restarted" | "stopped"; readonly reason?: string }
   /** 세션이 대화를 요약해 같은 세션으로 이어 갔다 — 압축 전후의 문맥 토큰(실행기가 말한 그대로). */
   | CommodoreTranscriptBase & { readonly kind: "compacted"; readonly trigger: "auto" | "manual"; readonly preTokens: number; readonly postTokens?: number }
   | CommodoreTranscriptBase & { readonly kind: "message"; readonly text: string; readonly messageId?: string; readonly attachments?: readonly { readonly id: string }[]; readonly imageBytes?: number; readonly objective?: { readonly id: string; readonly title: string }; readonly references?: readonly { readonly id: string; readonly title: string }[] }
   /** 자율 운영이 꺼질 때 아직 턴에 싣지 못한 사람의 메시지 — 기록의 그 `message` 줄 seq. 서랍이 그 메시지에 「전달되지 않음」을 단다. */
   | CommodoreTranscriptBase & { readonly kind: "undelivered"; readonly seqs: readonly number[] }
+  /** 도는 턴이 사람의 메시지를 집어갔다 — 그 `message` 줄 seq. 그 말은 이 턴 안에서 읽혔다(채팅의 턴 중 주입과 같다). */
+  | CommodoreTranscriptBase & { readonly kind: "delivered"; readonly seqs: readonly number[] }
+  /** 「전달되지 않음」이었던 메시지를 다시 대기열에 실었다 — 자율 운영이 다시 서면 다음 턴이 읽는다. */
+  | CommodoreTranscriptBase & { readonly kind: "requeued"; readonly seqs: readonly number[] }
   | CommodoreTranscriptBase & { readonly kind: "error"; readonly code: string; readonly retryAt?: number }
   /** 사령관이 사람에게 물었다 — 질문·선택지 이름·사유·가리킨 목표. 답은 `ask-answered` 줄이 잇는다. */
   | CommodoreTranscriptBase & { readonly kind: "ask"; readonly askId: string; readonly reason: string; readonly questions: readonly CommodoreAskLine[]; readonly objective?: { readonly id: string; readonly title: string } }
@@ -255,7 +260,7 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
   // 거절은 코드 한 낱말만(`error`) — 도구 결과의 나머지(입력·힌트)는 싣지 않는다.
   z.object({ ...transcriptBase, kind: z.literal("tool"), name: z.string().max(128), summary: z.string().max(1_000).optional(), ok: z.boolean().optional(), action: z.string().max(64).optional(), objectiveId: z.string().max(128).optional(), title: z.string().max(200).optional(), error: z.string().max(64).optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("result"), outcome: z.enum(["ok", "error", "cancelled"]), costUsd: z.number().nonnegative().optional(), inputTokens: z.number().int().nonnegative().optional(), outputTokens: z.number().int().nonnegative().optional(), error: z.string().max(200).optional() }).strict(),
-  z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("session"), event: z.enum(["opened", "resumed", "replaced", "restarted", "stopped"]), reason: z.string().max(200).optional() }).strict(),
   // 압축 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("compacted"), trigger: z.enum(["auto", "manual"]), preTokens: z.number().int().nonnegative(), postTokens: z.number().int().nonnegative().optional() }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("message"), text, messageId: ids.optional(), attachments: z.array(z.object({ id: ids }).strict()).max(4).optional(), imageBytes: z.number().int().nonnegative().optional(), objective: z.object({ id: ids, title: z.string().max(200) }).strict().optional(),
@@ -263,6 +268,8 @@ export const commodoreTranscriptEntrySchema = z.discriminatedUnion("kind", [
     references: z.array(z.object({ id: ids, title: z.string().max(200) }).strict()).min(1).max(MAX_COMMODORE_REFERENCES).optional() }).strict(),
   // 기록은 덧붙이기만 한다 — 지난 message 줄을 고쳐 쓰지 않고 이 줄이 가리킨다. 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("undelivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("delivered"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
+  z.object({ ...transcriptBase, kind: z.literal("requeued"), seqs: z.array(z.number().int().nonnegative()).min(1).max(MAX_TRANSCRIPT_PAGE) }).strict(),
   z.object({ ...transcriptBase, kind: z.literal("error"), code: z.string().max(64), retryAt: z.number().int().nonnegative().optional() }).strict(),
   // 질문과 답 — 이 낱말을 모르는 옛 판은 깨진 줄처럼 건너뛴다.
   z.object({ ...transcriptBase, kind: z.literal("ask"), askId: ids, reason: z.string().max(MAX_ASK_REASON),
