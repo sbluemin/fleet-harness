@@ -138,6 +138,13 @@ metadata). They record only text character counts, image counts/decoded bytes,
 timing, outcome and paste's effective activation permission—not screen text,
 image data, input text or reasons. These are
 payload measurements, not billed tokens; compare provider usage separately.
+Screen-share target decisions log reason codes only: `window identity` lines
+(macOS backend's before/after window read and `verdict`), `scope: "capture"`
+(service decision with `captureReason`), and `scope: "capture_host"` (target
+release, the `preview` state sent to Desktop, and whether an Accessibility
+permission request was forwarded to the local Desktop). Desktop's `computer capture`
+lines add the screen-recording permission status. None of them carry window
+titles, paths or app names.
 
 ## Security Notes
 

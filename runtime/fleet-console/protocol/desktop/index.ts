@@ -262,7 +262,11 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
 export const DESKTOP_WINDOW_COMMAND_PATH = "/api/v1/desktop/window/command";
 export const DESKTOP_WINDOW_COMMAND_EVENTS_PATH = "/api/v1/desktop/window/command/events";
 export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen"] as const;
+/**
+ * `request-accessibility-permission`은 화면공유 창 식별이 손쉬운 사용 권한 부족으로 실패했을 때 사람이 미리보기에서 누른 요청이다.
+ * TCC는 Console 자식(osascript)을 띄운 앱 — 창을 든 Desktop — 을 기준으로 판정하므로 그 앱이 묻는다. 모르는 옛 셸은 프레임을 버린다.
+ */
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
 export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
 

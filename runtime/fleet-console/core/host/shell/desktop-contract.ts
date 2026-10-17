@@ -71,7 +71,7 @@ export const DESKTOP_WINDOW_COMMAND_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "POST",
     path: DESKTOP_WINDOW_COMMAND_PATH,
-    summary: "Ask the shell that owns this window to enter or leave native fullscreen.",
+    summary: "Ask the shell that owns this window to enter or leave native fullscreen, or to request macOS Accessibility permission for screen sharing.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "http",

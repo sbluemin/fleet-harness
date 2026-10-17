@@ -132,16 +132,17 @@ function run(args) {
     var item=apps.objectAtIndex(i);
     if (ObjC.unwrap(item.bundleIdentifier)===target || ObjC.unwrap(item.bundleURL.path)===target.replace(/\\/$/,'') || ObjC.unwrap(item.localizedName)===target) matches.push(item);
   }
-  if (matches.length!==1) return 'null';
+  if (matches.length!==1) return JSON.stringify({reason:matches.length?'app_ambiguous':'app_unmatched',matches:matches.length});
   var running=matches[0], pid=Number(running.processIdentifier);
   var app=$.AXUIElementCreateApplication(pid), focused=Ref();
   var axError=$.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused);
-  if (axError!==0) throw Error('window_accessibility_'+axError);
+  if (axError!==0) return JSON.stringify({reason:axError===-25211?'accessibility_permission_required':'ax_focused_window_error',axError:axError,pid:pid});
   var id=Ref();
-  if ($._AXUIElementGetWindow(focused[0],id)!==0) return 'null';
+  var idError=$._AXUIElementGetWindow(focused[0],id);
+  if (idError!==0) return JSON.stringify({reason:'ax_window_id_unavailable',axError:idError,pid:pid});
   var rows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
   var row=rows.find(w=>w.kCGWindowNumber===id[0]&&w.kCGWindowOwnerPID===pid);
-  if (!row) return 'null';
+  if (!row) return JSON.stringify({reason:'cg_window_missing',pid:pid,windowId:Number(id[0])});
   return JSON.stringify({pid:pid,windowId:id[0],processStartedAt:Number(running.launchDate.timeIntervalSince1970),title:row.kCGWindowName||''});
 }`;
 
@@ -151,15 +152,36 @@ export function verifyMacWindowIdentity(target: ComputerUseWindowIdentity): Prom
   });
 }
 
-export function readMacWindowIdentity(app: string): Promise<ComputerUseWindowIdentity | null> {
+/**
+ * 창 식별 실패의 사유 코드. 진단 로그에만 실리고 판정은 바꾸지 않는다 — 식별자가 없으면 여전히 공유하지 않는다.
+ * 경로·창 제목·앱 이름은 싣지 않고, 비민감 수치(pid·windowId·AX 오류 번호·일치 개수)만 남긴다.
+ */
+export interface MacWindowIdentityRead {
+  readonly identity: ComputerUseWindowIdentity | null;
+  readonly reason: "identified" | "app_unmatched" | "app_ambiguous" | "accessibility_permission_required" | "ax_focused_window_error" | "ax_window_id_unavailable" | "cg_window_missing" | "identity_invalid" | "identity_unparsable" | "window_lookup_failed";
+  readonly detail?: { readonly matches?: number; readonly axError?: number; readonly pid?: number; readonly windowId?: number };
+}
+
+const IDENTITY_FAILURES = new Set(["app_unmatched", "app_ambiguous", "accessibility_permission_required", "ax_focused_window_error", "ax_window_id_unavailable", "cg_window_missing"]);
+const finiteOrUndefined = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+export function readMacWindowIdentity(app: string): Promise<MacWindowIdentityRead> {
   return new Promise((resolve) => {
     execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, app], { timeout: 3000, maxBuffer: 64 * 1024, windowsHide: true }, (error, stdout) => {
-      if (error) { process.stderr.write(`[fleet-computer-use] window identity unavailable: ${/window_accessibility_-25211/.test(error.message) ? "accessibility_permission_required" : "window_lookup_failed"}\n`); resolve(null); return; }
-      try {
-        const value = JSON.parse(stdout) as ComputerUseWindowIdentity | null;
-        resolve(value && Number.isSafeInteger(value.pid) && value.pid > 0 && Number.isSafeInteger(value.windowId) && value.windowId > 0
-          && Number.isFinite(value.processStartedAt) && value.processStartedAt > 0 && typeof value.title === "string" ? value : null);
-      } catch { resolve(null); }
+      // 시간 초과·JXA 예외. 오류 문구에는 스크립트 원문이 실리므로 사유 코드만 남긴다.
+      if (error) { resolve({ identity: null, reason: "window_lookup_failed" }); return; }
+      let value: unknown;
+      try { value = JSON.parse(stdout); } catch { resolve({ identity: null, reason: "identity_unparsable" }); return; }
+      const record = value !== null && typeof value === "object" ? value as Record<string, unknown> : null;
+      if (record && typeof record.reason === "string" && IDENTITY_FAILURES.has(record.reason)) {
+        const detail = { matches: finiteOrUndefined(record.matches), axError: finiteOrUndefined(record.axError), pid: finiteOrUndefined(record.pid), windowId: finiteOrUndefined(record.windowId) };
+        resolve({ identity: null, reason: record.reason as MacWindowIdentityRead["reason"], detail: Object.fromEntries(Object.entries(detail).filter(([, v]) => v !== undefined)) });
+        return;
+      }
+      const identity = record as ComputerUseWindowIdentity | null;
+      resolve(identity && Number.isSafeInteger(identity.pid) && identity.pid > 0 && Number.isSafeInteger(identity.windowId) && identity.windowId > 0
+        && Number.isFinite(identity.processStartedAt) && identity.processStartedAt > 0 && typeof identity.title === "string"
+        ? { identity, reason: "identified" } : { identity: null, reason: "identity_invalid" });
     });
   });
 }

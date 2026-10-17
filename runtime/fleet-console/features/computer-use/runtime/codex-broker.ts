@@ -143,15 +143,26 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
 
   private async callNative(tool: string, args: Record<string, unknown>, beforeDispatch?: () => Promise<void>): Promise<ComputerUseResult> {
     const app = typeof args.app === "string" ? args.app : null;
-    const before = app ? await readMacWindowIdentity(app) : null;
+    const beforeRead = app ? await readMacWindowIdentity(app) : null;
     await beforeDispatch?.();
     const value = await this.request("mcpServer/tool/call", { threadId: this.threadId, server: "computer-use", tool, arguments: args });
     if (!isRecord(value) || !Array.isArray(value.content) || value.content.some((block) => !isRecord(block))) throw new Error("computer_use_invalid_result");
-    const after = app && value.isError !== true ? await readMacWindowIdentity(app) : null;
-    if (app) process.stdout.write(`[fleet-computer-use] window identity ${JSON.stringify({ before: before ? { pid: before.pid, windowId: before.windowId } : null, after: after ? { pid: after.pid, windowId: after.windowId } : null })}\n`);
+    const afterRead = app && value.isError !== true ? await readMacWindowIdentity(app) : null;
+    const before = beforeRead?.identity ?? null;
+    const after = afterRead?.identity ?? null;
     const captureWindow = before && after && before.pid === after.pid && before.windowId === after.windowId
       && before.processStartedAt === after.processStartedAt ? after : null;
-    return { content: value.content, isError: value.isError === true, ...(app ? { captureWindow } : {}) } as ComputerUseResult;
+    if (app) {
+      // 한 줄로 공유 판정과 그 사유를 가른다. 경로·창 제목은 싣지 않는다.
+      const verdict = value.isError === true ? "native_error" : !before ? "before_unavailable" : !after ? "after_unavailable"
+        : before.pid !== after.pid ? "pid_changed" : before.windowId !== after.windowId ? "window_changed"
+          : before.processStartedAt !== after.processStartedAt ? "process_restarted" : "identified";
+      const side = (read: typeof beforeRead) => read ? { reason: read.reason, ...(read.identity ? { pid: read.identity.pid, windowId: read.identity.windowId } : read.detail ?? {}) } : { reason: "not_read" };
+      process.stdout.write(`[fleet-computer-use] window identity ${JSON.stringify({ ts: new Date().toISOString(), tool, verdict, before: side(beforeRead), after: side(afterRead) })}\n`);
+    }
+    // Console(osascript)이 AX 신뢰를 받지 못하면 네이티브 읽기는 성공해도 창은 식별되지 않는다. 그 사실만 위로 올린다.
+    const accessibilityDenied = !captureWindow && (beforeRead?.reason === "accessibility_permission_required" || afterRead?.reason === "accessibility_permission_required");
+    return { content: value.content, isError: value.isError === true, ...(app ? { captureWindow } : {}), ...(accessibilityDenied ? { captureFailure: "accessibility_permission_required" as const } : {}) } as ComputerUseResult;
   }
 
   private request(method: string, params: unknown, timeoutMs = RPC_TIMEOUT_MS): Promise<unknown> {

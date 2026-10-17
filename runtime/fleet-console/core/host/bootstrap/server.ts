@@ -835,8 +835,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const operationId = target ? computerUseMcp.operationIdForOwner(target.owner) : null;
       // 공유 컨텍스트에서는 화면의 주인(operationId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다.
       const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? operationId : null;
-      if (!target || !operationId || !actor || !operations.get(operationId)) computerCaptureTarget = null;
-      else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
+      if (!target || !operationId || !actor || !operations.get(operationId)) {
+        if (target) logComputerCapture({ captureReason: "operation_unresolved", operationResolved: Boolean(operationId && operations.get(operationId)), actorResolved: Boolean(actor) });
+        computerCaptureTarget = null;
+      } else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
         && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.operationId === operationId) {
         computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
       } else {
@@ -1431,6 +1433,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     requestCommand: (req, command) => {
       const owner = shellOwnerOf(req);
       if (owner === null) return;
+      // 권한 요청은 Computer Use가 조작하는 이 기계의 셸에만, 실제로 그 사유로 공유가 막혀 있을 때만 보낸다.
+      if (command === "request-accessibility-permission") {
+        const admitted = owner === "local" && computerUse.captureUnavailableReason() === "accessibility_permission_required";
+        logComputerCapture({ captureReason: "accessibility_request", admitted });
+        if (!admitted) return;
+      }
       publishDesktopWindowCommand(owner, command);
     },
     subscribe: (req, res) => {
@@ -2358,9 +2366,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function computerCaptureSnapshot() {
     const target = computerUse.status().enabled ? computerCaptureTarget : null;
     const unavailableOwner = computerUse.captureUnavailableOwner();
+    const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     return {
       target: target ? { id: target.id, operationId: target.operationId, actor: target.actor, title: target.title } : null,
       unavailableOperationId: unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null,
+      // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
+      ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
 
@@ -2369,6 +2380,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const encoded = JSON.stringify(snapshot);
     if (encoded === lastComputerCaptureSnapshot) return;
     lastComputerCaptureSnapshot = encoded;
+    // 미리보기가 받는 상태 그대로. "unavailable"이 「관측한 창을 식별하지 못했습니다」 문구의 유일한 근거다.
+    logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableOperationId ? "unavailable" : "none", enabled: computerUse.status().enabled, ...(snapshot.unavailableReason ? { unavailableReason: snapshot.unavailableReason } : {}) });
     const data = encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, snapshot);
     // Computer Use는 로컬 기계만 조작한다. 원격 Desktop의 셸 소유자에게 로컬 창을 넘기지 않는다.
     for (const subscriber of operationSseSubscribers) {
@@ -2378,6 +2391,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   let computerCaptureVerification: Promise<void> | null = null;
 
+  /** 화면공유 대상의 호스트 쪽 판정. 사유 코드와 불리언만 싣는다 — 창 제목·경로·Operation 식별자는 남기지 않는다. */
+  function logComputerCapture(event: Record<string, string | boolean>): void {
+    process.stdout.write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), scope: "capture_host", ...event })}\n`);
+  }
+
   async function verifyComputerCapture(): Promise<void> {
     const candidate = computerCaptureTarget;
     if (!candidate) return;
@@ -2385,6 +2403,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const verification = computerCaptureVerification ??= computerUse.verifyCaptureTarget(candidate)
       .then((valid) => {
         if (valid === false && computerCaptureTarget?.id === candidate.id) {
+          logComputerCapture({ captureReason: "verify_failed" });
           computerCaptureTarget = null;
           broadcastComputerCapture();
           watchComputerCapture();
