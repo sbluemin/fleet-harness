@@ -21,7 +21,7 @@ const CMD_UNSAFE_PROMPT_PATTERN = /["&<>()@^|%]/;
 const CMD_LINE_BREAK_PATTERN = /[\n\r]/;
 const LAUNCH_PROMPT_FILE_MODE = 0o600;
 
-export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-quick-launch-";
+export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-launch-prompt-";
 export const LAUNCH_PROMPT_FILE_NAME = "prompt.md";
 export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch prompt file: ";
 
@@ -232,7 +232,7 @@ export function formatLaunchPromptFileInstruction(filePath: string): string {
 }
 
 /**
- * Quick Launch 원문을 OS temp의 고유 디렉터리에 쓰고, argv에 실을 짧은 지시를 반환한다.
+ * 새 세션 프롬프트 원문을 OS temp의 고유 디렉터리에 쓰고, argv에 실을 짧은 지시를 반환한다.
  * 지시(경로 포함)가 cmd shim에서 재해석되면 방금 만든 파일을 지우고 거절한다.
  */
 export function writeLaunchPromptPointer(

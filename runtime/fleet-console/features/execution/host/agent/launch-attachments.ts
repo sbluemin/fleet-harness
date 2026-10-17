@@ -8,7 +8,7 @@ import path from "node:path";
 import { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "@fleet-console/lifecycle";
 
 /**
- * Quick Launch 이미지 첨부의 서버측 보관소.
+ * 새 세션 이미지 첨부의 서버측 보관소.
  *
  * 이미지는 argv에도 PTY에도 실을 수 없으므로 업로드 즉시 OS temp의 고유 디렉터리에 파일로
  * 내려놓고, 브라우저에는 불투명 id만 돌려준다 — 절대 경로는 브라우저 DTO에 오르지 못한다
@@ -229,7 +229,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     // TTL 회수는 조용한 데이터 소멸이라 운영 로그에 남긴다 — "붙여넣은 이미지가 사라졌다"는
     // 문의에 서버가 답할 수 있는 유일한 흔적이다(회수가 없으면 침묵).
     if (reclaimed > 0) {
-      process.stderr.write(`[fleet-console] quick-launch attachments: reclaimed ${reclaimed} expired unsent image(s)\n`);
+      process.stderr.write(`[fleet-console] launch attachments: reclaimed ${reclaimed} expired unsent image(s)\n`);
     }
   }
 
@@ -430,7 +430,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
       }
       // TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
       if (removed > 0) {
-        process.stderr.write(`[fleet-console] quick-launch attachments: cleared ${removed} leftover attachment(s) from a previous run\n`);
+        process.stderr.write(`[fleet-console] launch attachments: cleared ${removed} leftover attachment(s) from a previous run\n`);
       }
       return removed;
     },

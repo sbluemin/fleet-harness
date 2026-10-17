@@ -384,7 +384,7 @@ const idFraction = (id: string): number => {
 const virtualRank = (node: Pick<OperationNode, "id" | "ts">): number => -(node.ts.createdAt + idFraction(node.id));
 
 /** 따로 만든 Operation 처럼 아직 목표 고유값이 없는 목표 — 저장하지 않고, 첫 편집 때 지금 자리를 그대로 받아 레코드가 된다. */
-// 레코드 없는 목표(새 Operation·우클릭·Quick Launch 로 만든 세션)의 빈 모양 — 만들어진 순간부터 목표다.
+// 레코드 없는 목표(새 Operation·우클릭·새 세션으로 만든 세션)의 빈 모양 — 만들어진 순간부터 목표다.
 const bareRecord = (operationId: string): StoredObjective => ({ operationId, rank: 0, note: "", enlisted: true, missions: [] });
 /** 목표가 되는 Operation — Console 이 띄우는 에이전트 세션(플러그인 소유 Operation 은 아니다). */
 export const isObjectiveOperation = (node: Pick<OperationNode, "type" | "pluginId">): boolean => node.type === "agent" && node.pluginId === null;

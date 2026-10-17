@@ -5,12 +5,12 @@ import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-c
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import type { ConsoleState, NewSessionTarget, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, consumeNewSessionRejection, getState, openNewSession, requestQuickLaunch } from "../../../../core/client/src/integration/store.js";
+import { closeNewSession, consumeNewSessionRejection, consumeNewSessionSeed, getState, openNewSession, requestLaunch } from "../../../../core/client/src/integration/store.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../../../execution/client/quick-launch.js";
-import { readQuickLaunchSelection, writeQuickLaunchTheater } from "../../../execution/client/quick-launch-preferences.js";
+import { findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { readNewSessionSelection, writeNewSessionTheater } from "./new-session-preferences.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 import { TheaterAvatar } from "../theater-avatar.js";
@@ -23,7 +23,7 @@ import "./new-session.css";
 /**
  * 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다(승인안 ① A, v4).
  *
- * 여는 것만으로는 아무것도 만들지 않는다. 첫 메시지를 보내야 Quick Launch(⌘J)와 같은 실행 의도(requestQuickLaunch)로
+ * 여는 것만으로는 아무것도 만들지 않는다. 첫 메시지를 보내야 실행 의도(requestLaunch)로
  * 나가고, 실행은 Operations 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
  * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Operation 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
  *
@@ -56,7 +56,7 @@ export function NewSessionColumn({ state, target, tools }: {
   }), []);
   // 시작하지 않고 칸을 닫으면(또는 프롬프트 없는 실행으로 넘어가면) 넘기지 않은 칩의 미리보기·서버 파일을 거둔다.
   // dispose가 아니라 discardAll이다 — StrictMode의 재마운트가 같은 스토어를 다시 쓴다.
-  // 아직 소비하지 않은 거절 슬롯의 칩도 같이 거둔다. 화면이 사라진 뒤 그 슬롯을 고정 바가 읽지 않는다.
+  // 아직 소비하지 않은 거절 슬롯의 칩도 같이 거둔다. 화면이 사라진 뒤 그 슬롯을 읽는 표면은 없다.
   useEffect(() => () => {
     const pending = getState().newSessionRejection;
     attachmentStore.discardAll(pending?.attachments ?? undefined);
@@ -74,7 +74,7 @@ export function NewSessionColumn({ state, target, tools }: {
   const menuId = useId();
   useMenuButtonKeyboard(plusRootRef, plusRef, menuRef, menuOpen, setMenuOpen);
 
-  // 열 때마다, 그리고 설정에서 모델을 켜고 끄면 카탈로그를 새로 읽는다(Quick Launch 와 같은 규칙).
+  // 열 때마다, 그리고 설정에서 모델을 켜고 끄면 카탈로그를 새로 읽는다.
   useEffect(() => {
     let abort = new AbortController();
     const load = () => {
@@ -97,7 +97,16 @@ export function NewSessionColumn({ state, target, tools }: {
   // 이미 열린 화면에서 새 세션 단축키를 다시 누르면(newSessionFocusRequest) 컴포저로 돌아온다.
   useEffect(() => { inputRef.current?.focus(); }, [theater?.id, state.newSessionFocusRequest]);
 
-  // 거절은 이 화면의 컴포저로 돌아온다. 시트는 열리지 않고, 고정 바는 다른 슬롯을 본다.
+  // composer.open(플러그인·부유 위젯)이 건넨 초안은 열린 화면의 문면을 갈아치운다 — 보내지는 않는다.
+  // 행선지('@') 시드는 아직 이 컴포저가 받지 않는다: 문면만 싣고 행선지는 버린다.
+  useEffect(() => {
+    if (state.newSessionSeed === null) return;
+    const seed = consumeNewSessionSeed();
+    if (seed?.draft != null) setPrompt(seed.draft);
+    inputRef.current?.focus();
+  }, [state.newSessionSeed]);
+
+  // 거절은 이 화면의 컴포저로 돌아온다.
   useEffect(() => {
     const rejection = state.newSessionRejection;
     if (rejection === null) return;
@@ -107,7 +116,7 @@ export function NewSessionColumn({ state, target, tools }: {
       if (rejection.errorCode === "attachment_not_found") attachmentStore.replaceFromSlot(rejection.attachments, rejection.errorCode);
       else attachmentStore.restore(rejection.attachments);
     }
-    const key = rejection.errorCode === "attachment_not_found" ? null : quickLaunchErrorMessageKey(rejection.errorCode, rejection.shortenByChars);
+    const key = rejection.errorCode === "attachment_not_found" ? null : launchErrorMessageKey(rejection.errorCode, rejection.shortenByChars);
     setLaunchError(key === null ? null : { key, shortenBy: rejection.shortenByChars });
     setStarting(false);
     inputRef.current?.focus();
@@ -115,7 +124,7 @@ export function NewSessionColumn({ state, target, tools }: {
 
   const variantTarget = useMemo(() => (catalog ? findVariantLaunchKind(catalog) : null), [catalog]);
   const groups = variantTarget?.kind.variants ?? [];
-  const remembered = useMemo(() => resolveSelection(groups, readQuickLaunchSelection()), [groups]);
+  const remembered = useMemo(() => resolveSelection(groups, readNewSessionSelection()), [groups]);
   const launchChoice: NewSessionLaunchChoice = choice ?? { model: remembered.model, effort: remembered.effort };
   const chatAvailable = variantTarget !== null && supportsChatStart(variantTarget.kind);
   // 모델 밴드가 없는 실행 종류(설치 안 됨·로그인 필요 같은 사유 포함)는 「다른 시작」 카드에 선다 — 지운 '+' 메뉴의 직접 실행 칸을 잇는다.
@@ -125,14 +134,14 @@ export function NewSessionColumn({ state, target, tools }: {
     .map((kind) => ({ pluginId: plugin.id, kind }))), [catalog, variantTarget]);
 
   const text = prompt.trim();
-  const tooLong = text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS;
+  const tooLong = text.length > LAUNCH_PROMPT_MAX_CHARS;
   const uploading = attachmentSnap.uploading;
   const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && text.length > 0 && !tooLong && !starting && !uploading;
 
   const pickTheater = (theaterId: string) => {
     setTheaterMenuOpen(null);
-    // 고른 Theater 는 Quick Launch 와 같은 기억에 남는다 — 다음 새 세션·⌘J 가 같은 Theater 로 시작한다.
-    writeQuickLaunchTheater(theaterId);
+    // 고른 Theater 는 기억에 남는다 — 다음 새 세션(데스크톱·모바일)이 같은 Theater 로 시작한다.
+    writeNewSessionTheater(theaterId);
     openNewSession({ theaterId });
   };
 
@@ -156,14 +165,13 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    writeQuickLaunchTheater(theater.id);
-    requestQuickLaunch({
+    writeNewSessionTheater(theater.id);
+    requestLaunch({
       theaterId: theater.id,
       pluginId: variantTarget.pluginId,
       kind: variantTarget.kind,
       variant: withStartSurface(variant, variantTarget.kind, startView) ?? variant,
       ...(launched.length > 0 ? { attachments: launched } : {}),
-      fromNewSession: true,
     });
     // 새 Operation 이 서면 그 포커스가 이 화면을 걷는다(store 의 focusOperation). 그동안은 시작하는 중으로 선다.
   };
@@ -173,7 +181,7 @@ export function NewSessionColumn({ state, target, tools }: {
     setLaunchError(null);
     attachmentStore.clearNotice();
     setStarting(true);
-    requestQuickLaunch({ theaterId: theater.id, pluginId, kind, variant: {}, fromNewSession: true });
+    requestLaunch({ theaterId: theater.id, pluginId, kind, variant: {} });
   };
 
   // 거절은 starting 을 풀어 이 타이머를 취소한다. 응답이 전혀 없을 때만 닫아, 시작하는 중에 가두지 않는다.
@@ -315,7 +323,7 @@ export function NewSessionColumn({ state, target, tools }: {
             <span className="new-session-chips-trail">
               {starting ? <span className="new-session-status" role="status">{t("conversation.newSession.starting")}</span> : null}
               {launchError ? <span className="new-session-status is-alert" role="alert">{t(launchError.key as Parameters<typeof t>[0], launchError.shortenBy === null ? undefined : { over: String(launchError.shortenBy) })}</span> : null}
-              {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.quickLaunch.tooLong", { over: String(text.length - QUICK_LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
+              {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
               {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
               {/* 모델·강도 칸 — data-operation-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
               <span className="new-session-launch-slot" {...(variantTarget ? { "data-operation-launch-kind": variantTarget.kind.id } : {})}>

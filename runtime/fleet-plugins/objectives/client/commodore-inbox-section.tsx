@@ -952,7 +952,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
         <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!usable || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }} />
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; if (!phone) inputRef.current?.focus(); }} />
       </div>
-      {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·Quick Launch
+      {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·새 세션
           입력처럼 끈다. 한글 조합 중 Enter 는 보내지 않는다(조합 상태는 이 컴포저도 따로 센다). */}
       <CommodoreReferenceInput
         ref={inputRef}

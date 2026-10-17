@@ -31,7 +31,7 @@ describe("shortcut bindings", () => {
   });
 
   it("treats Ctrl and Mod as one physical key off Apple platforms when detecting conflicts", () => {
-    // Windows에서 Ctrl+Space를 기록하면 `Mod+Space`가 되고, Quick Launch의 기본 `Ctrl+Space`와 같은 키다.
+    // Windows에서 Ctrl+Space를 기록하면 `Mod+Space`가 되고, 새 세션의 기본 `Ctrl+Space`와 같은 키다.
     expect(chordsEquivalent("Mod+Space", "Ctrl+Space", false)).toBe(true);
     expect(chordsEquivalent("Mod+Space", "Ctrl+Space", true)).toBe(false);
     expect(chordsEquivalent("Mod+KeyK", "Mod+Shift+KeyK", false)).toBe(false);

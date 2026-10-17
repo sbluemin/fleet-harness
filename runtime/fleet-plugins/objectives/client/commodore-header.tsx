@@ -47,7 +47,7 @@ export const commodoreTheaterContribution: TheaterContribution = {
   header: {
     // 얼굴은 사령관 상태와 그 Theater 목표 보드를 함께 읽는다 — 어느 쪽이 바뀌어도 머리가 다시 읽는다.
     subscribe: subscribeCommodoreFace,
-    // 사이드바 밖에서 그 Theater 의 사령관 아바타를 그리는 표면(Quick Launch 칩·팔레트 행)이 머리 표식과 같은 얼굴을 읽는다.
+    // 사이드바 밖에서 그 Theater 의 사령관 아바타를 그리는 표면(새 세션 칩·팔레트 행)이 머리 표식과 같은 얼굴을 읽는다.
     face: (theaterId) => {
       if (!readCommodoreExperiment().enabled) return null;
       const view = readCommodore(theaterId).view;

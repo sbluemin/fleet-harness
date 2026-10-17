@@ -1,12 +1,12 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
-import type { AdmiralId, ChatSession } from "./chat-session.js";
+import type { AdmiralId } from "./chat-session.js";
 
 /**
  * 플러그인 객체(모듈 스코프)와 마운트된 무리를 잇는 다리.
  *
- * Quick Launch 덱은 리액트 밖에서 `mentionTargets()`를 부르는데, 근무표와 로케일과 세션은 전부
+ * 새 세션 컴포저의 '@' 덱은 리액트 밖에서 `mentionTargets()`를 부르는데, 근무표와 로케일과 세션은 전부
  * 마운트된 `ScuttlebuttFlock` 안에 있다. 그래서 무리가 자기 상태를 여기에 실어 두고, 플러그인
  * 객체는 그것만 읽는다 — 무리가 없으면 대상도 없다는 사실이 그대로 계약이 된다(대답할 새가
  * 화면에 없으면 답이 설 자리도 없다).
@@ -23,31 +23,8 @@ export interface ScuttlebuttMentionBridge {
    */
   readonly label: (admiral: AdmiralId) => string;
   readonly locale: () => ConsoleLocale | undefined;
-  readonly ask: (admiral: AdmiralId, text: string, inline?: boolean) => Promise<void>;
-  readonly session: (admiral: AdmiralId) => ChatSession;
+  readonly ask: (admiral: AdmiralId, text: string) => Promise<void>;
   readonly handoff: (text: string) => void;
-}
-
-// 표시 여부는 전송 약속이나 세션 단계와 별개다. 닫힘·레인 전환·도킹 접힘에서 즉시 해제된다.
-const visibleCounts = new Map<AdmiralId, number>();
-const visibilityListeners = new Set<() => void>();
-let visibleConversations: readonly AdmiralId[] = [];
-export function readScuttlebuttConversationVisibility(): readonly AdmiralId[] { return visibleConversations; }
-export function subscribeScuttlebuttConversationVisibility(listener: () => void): () => void {
-  visibilityListeners.add(listener);
-  return () => { visibilityListeners.delete(listener); };
-}
-export function showScuttlebuttConversation(admiral: AdmiralId): () => void {
-  const update = (delta: number) => {
-    const count = (visibleCounts.get(admiral) ?? 0) + delta;
-    if (count > 0) visibleCounts.set(admiral, count); else visibleCounts.delete(admiral);
-    const next = [...visibleCounts.keys()];
-    if (next.length === visibleConversations.length && next.every((id, i) => visibleConversations[i] === id)) return;
-    visibleConversations = next;
-    for (const listener of [...visibilityListeners]) listener();
-  };
-  update(1);
-  return () => update(-1);
 }
 
 let bridge: ScuttlebuttMentionBridge | null = null;

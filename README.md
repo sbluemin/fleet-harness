@@ -80,13 +80,13 @@ An objective's brief, criteria, members, mission graph, and results sit in the d
 
 ## Let the Commodore run a Theater
 
-Each Theater has a **Commodore**: a coordinator that can run the Theater's objectives on its own. Turn on autonomous operation with the Commodore glyph on the Theater's header. The Commodore then creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions. Decisions it should not make wait for you under **Your decisions**, and it can ask you directly. Click the Theater's header to open its **Theater Inbox**, with the Commodore's log, directive, and settings beside the Theater's system prompt. You can hand a single objective to the Commodore from its sidebar row, and while it runs the Theater you can message it from Quick Launch with `@`.
+Each Theater has a **Commodore**: a coordinator that can run the Theater's objectives on its own. Turn on autonomous operation with the Commodore glyph on the Theater's header. The Commodore then creates objectives from a title and brief, leaves the plan to each Commander, commences and reviews them, and answers Commanders' questions. Decisions it should not make wait for you under **Your decisions**, and it can ask you directly. Click the Theater's header to open its **Theater Inbox**, with the Commodore's log, directive, and settings beside the Theater's system prompt. You can hand a single objective to the Commodore from its sidebar row, and while it runs the Theater you can message it from a new session with `@`.
 
 ## One conversation at a time
 
 The desktop screen is a conversation. The sidebar lists each Theater's conversations, the middle holds the one you're in, and the details column on the right shows that conversation's objective or the tool you opened. <kbd>Alt</kbd><kbd>←</kbd> and <kbd>Alt</kbd><kbd>→</kbd> move between conversations in the active Theater. Every session has an avatar that acts out what it is doing, and you can pick another character or color for it.
 
-<kbd>⌘</kbd><kbd>K</kbd> jumps to any conversation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens Quick Launch, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> toggles Objectives, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
+<kbd>⌘</kbd><kbd>K</kbd> jumps to any conversation, file, or wiki page. <kbd>⌘</kbd><kbd>P</kbd> opens the command palette, <kbd>⌘</kbd><kbd>J</kbd> opens a new session, <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Y</kbd> toggles Objectives, and <kbd>Alt</kbd><kbd>S</kbd> sorts the sidebar by status. Every shortcut can be rebound. On Windows and Linux, <kbd>⌘</kbd> is <kbd>Ctrl</kbd>.
 
 ## The project, beside the conversation
 

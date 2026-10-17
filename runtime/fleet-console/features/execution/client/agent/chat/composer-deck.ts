@@ -3,7 +3,7 @@ import type { AgentChatCatalog, AgentChatCatalogEntry, ChatCommandConsoleTarget 
 /**
  * 채팅 컴포저의 두 덱이 쓰는 순수 판정.
  *
- * 컴포넌트에서 떼어 두는 이유는 Quick Launch가 `quick-launch.ts`를 떼어 둔 이유와 같다 —
+ * 컴포넌트에서 떼어 두는 이유는 새 세션이 `launch-selection.ts`를 떼어 둔 이유와 같다 —
  * 렌더러를 세우지 않고 웨이크 규칙과 선택 결과를 단위 테스트로 못박기 위해서다.
  *
  * 두 글자는 서로 다른 것을 부른다. `/`는 **세션의 능력**(내장 명령·스킬)이고 `@`는
@@ -26,7 +26,7 @@ export interface ChatDeckToken {
 /**
  * `/`는 프롬프트 **첫 글자**에서만 깨어난다.
  *
- * 단어 시작마다 깨우면 `/Users/…` 같은 경로를 치는 내내 덱이 명멸한다(Quick Launch가 같은
+ * 단어 시작마다 깨우면 `/Users/…` 같은 경로를 치는 내내 덱이 명멸한다(새 세션이 같은
  * 이유로 같은 규칙을 쓴다). 첫 단어 안의 두 번째 `/`나 공백은 즉시 리터럴로 눕힌다.
  */
 export function readSlashToken(value: string, caretIndex: number): ChatDeckToken | null {
@@ -43,7 +43,7 @@ export function readSlashToken(value: string, caretIndex: number): ChatDeckToken
 /**
  * `@`는 문두나 공백 뒤에서 깨어나고, caret까지 공백·`@`가 섞이면 눕는다.
  *
- * 문장 중간의 이메일과 리터럴 `@`가 덱을 깨우지 않는 유일한 근거가 이 규칙이다 — Quick Launch의
+ * 문장 중간의 이메일과 리터럴 `@`가 덱을 깨우지 않는 유일한 근거가 이 규칙이다 — 새 세션의
  * 멘션 토큰과 같은 계약을 쓴다(같은 글자에 두 규칙을 두면 표면마다 다르게 눕는다).
  */
 export function readAgentToken(value: string, caretIndex: number): ChatDeckToken | null {

@@ -27,7 +27,7 @@ export interface EffortTrackProps {
   /**
    * 이미 고른 단에 다시 눌렀을 때. 드래그로 다른 단을 거쳐 돌아온 경우는 호출하지 않는다 —
    * 값을 고르는 제스처와 "이 값으로 확정" 제스처를 갈라야 한다. 생략하면 같은 단 재클릭은
-   * 아무 일도 없다(Quick Launch처럼 제출이 다른 자리인 표면).
+   * 아무 일도 없다(새 세션처럼 제출이 다른 자리인 표면).
    */
   readonly onConfirmCurrent?: () => void;
   /**

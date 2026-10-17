@@ -834,7 +834,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
     addButtonRef.current?.focus();
   }, []);
 
-  // 폰의 모델 추가 시트 — 하드웨어·브라우저 뒤로는 화면을 떠나지 않고 시트만 닫는다(대화 시트 mobile-quick-launch와 같은 계약).
+  // 폰의 모델 추가 시트 — 하드웨어·브라우저 뒤로는 화면을 떠나지 않고 시트만 닫는다(새 대화 시트 mobile-new-session-sheet와 같은 계약).
   // 시트 한 겹마다 history 항목 하나와 겹침 레지스트리 한 칸을 올리고, 어느 길로 닫히든 둘 다 걷는다.
   const paletteSheetOpen = mobileDetail && paletteOpen;
   React.useEffect(() => {

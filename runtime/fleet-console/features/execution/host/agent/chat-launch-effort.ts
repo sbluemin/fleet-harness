@@ -3,7 +3,7 @@ import type { ClaudeGatewayEffort } from "@fleet-console/agent-runtime/claude";
 const WIRE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /**
- * 퀵런치 트랙의 launch sentinel을 Chat Mode SDK 시드로 옮긴다.
+ * 새 세션 트랙의 launch sentinel을 Chat Mode SDK 시드로 옮긴다.
  *
  * `ultra`는 wire effort가 아니다. CLI의 `--effort ultracode`와 같이 `xhigh` 강도에
  * 세션 설정 `ultracode`(standing dynamic-workflow orchestration)를 얹는다. SDK

@@ -1453,7 +1453,7 @@ async function openPluginChildren(run: LifecycleRun, endpoint: string): Promise<
 
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
-/** Uploads a Quick Launch attachment and returns the files it added under TMPDIR, wherever the Console keeps them. */
+/** Uploads a new session attachment and returns the files it added under TMPDIR, wherever the Console keeps them. */
 async function uploadAttachment(run: LifecycleRun, endpoint: string): Promise<string[]> {
   const before = new Set(listFiles(run.tmp));
   await consoleApi(endpoint, "/api/v1/agent/attachments", new Blob([new Uint8Array(ONE_PIXEL_PNG)]), "image/png");

@@ -13,17 +13,17 @@ import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sh
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { reportSheetChrome, reportShellChrome } from "../../../../core/client/src/chrome/mobile/mobile-chrome.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
-import { isMentionSelectable, mentionTargetName, type QuickLaunchMentionTarget, type QuickLaunchPluginMentionRow } from "../quick-launch.js";
-import { TheaterAvatar } from "../../../workspace/client/theater-avatar.js";
-import { resolveOperationMarkVisual } from "../operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
-import { OperationNameMark } from "./operation-name-mark.js";
-import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "./mobile-effort-gate.js";
-import "./mobile-quick-launch.css";
+import { isMentionSelectable, mentionTargetName, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
+import { TheaterAvatar } from "../theater-avatar.js";
+import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
+import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { MobileEffortGateRow, MobileEffortTabs, Toggle, useMobileEffortGate } from "../../../execution/client/components/mobile-effort-gate.js";
+import "../../../execution/client/components/mobile-launch-sheet.css";
 
 /**
- * 모바일 「새 작업」 시트(S-11a~e). 상태·효과·제출은 데스크톱 Quick Launch 컴포넌트가 그대로 소유하고, 이 화면은
- * 그 값과 콜백을 받아 모바일 문법으로만 그린다 — 로직 사본이 없다. 모델 시트는 현행 모델 그룹의 모델과 강도 글자 탭,
+ * 모바일 「새 작업」 시트(S-11a~e). 상태·효과·제출은 새 세션 컨테이너(mobile-new-session.tsx)가 소유하고, 이 화면은
+ * 그 값과 콜백을 받아 모바일 문법으로만 그린다. 모델 시트는 현행 모델 그룹의 모델과 강도 글자 탭,
  * 옵션 묶음은 게이트 펼치기 · 다이나믹 워크플로우다(D20·D41). 하네스·시작 보기 선택은 없다 — 폰의 새 작업은 늘
  * 채팅으로 열리고(실효값은 데스크톱 컴포넌트가 정한다), 실행 하네스는 그룹과 무관하게 같다(NT).
  */
@@ -32,7 +32,7 @@ type Sub = "theater" | "model" | "attach";
 
 interface Attachment { readonly key: string; readonly name: string; readonly previewUrl: string; readonly uploading: boolean }
 
-export interface MobileQuickLaunchProps {
+export interface MobileNewSessionSheetProps {
   readonly inputRef: MutableRefObject<HTMLTextAreaElement | null>;
   readonly prompt: string;
   readonly onPromptChange: (value: string, element: HTMLTextAreaElement) => void;
@@ -54,9 +54,9 @@ export interface MobileQuickLaunchProps {
   readonly onRemoveAttachment: (key: string) => void;
   readonly mentionDeckOpen: boolean;
   readonly mentionEntries: readonly OperationSearchEntry[];
-  readonly pluginMentionRows: readonly QuickLaunchPluginMentionRow[];
-  readonly mentionTarget: QuickLaunchMentionTarget | null;
-  readonly onPickMention: (target: QuickLaunchMentionTarget) => void;
+  readonly pluginMentionRows: readonly PluginMentionRow[];
+  readonly mentionTarget: MentionTarget | null;
+  readonly onPickMention: (target: MentionTarget) => void;
   readonly onClearMention: () => void;
   /** 바의 상태 줄과 같은 한 줄(상한 초과 · 첨부 · 멘션 전달 · 실행 거절). */
   readonly message: string | null;
@@ -73,10 +73,10 @@ const CameraIcon = () => (
 );
 
 function Radio({ on }: { readonly on: boolean }) {
-  return <span className={`mql-radio${on ? " is-on" : ""}`} aria-hidden="true" />;
+  return <span className={`mls-radio${on ? " is-on" : ""}`} aria-hidden="true" />;
 }
 
-export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
+export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
   const t = useT();
   const { inputRef, prompt, theaters, theaterId, groups, selectedRow, effort, onSubmit, onClose } = props;
   const [sub, setSub] = useState<Sub | null>(null);
@@ -166,7 +166,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
 
   if (sub === "theater") {
     return (
-      <MobileSheet key="theater" title={t("chrome.quickLaunch.mobile.theater")} onClose={() => setSub(null)} className="mql-sheet">
+      <MobileSheet key="theater" title={t("chrome.launch.mobile.theater")} onClose={() => setSub(null)} className="mls-sheet">
         {theaters.map((candidate) => (
           <button key={candidate.id} type="button" className="mobile-sheet-row" aria-current={candidate.id === theaterId ? "true" : undefined} onClick={() => { props.onTheater(candidate.id); setSub(null); }}>
             <TheaterAvatar theaterId={candidate.id} size={28} label={candidate.label} decorative />
@@ -180,14 +180,14 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
 
   if (sub === "model") {
     return (
-      <MobileSheet key="model" title={t("chrome.quickLaunch.mobile.model")} onClose={() => setSub(null)} className="mql-sheet">
+      <MobileSheet key="model" title={t("chrome.launch.mobile.model")} onClose={() => setSub(null)} className="mls-sheet">
         {modelGroups.map((candidate, index) => (
           <Fragment key={candidate.id}>
-            {isRosterFallbackGroup(candidate.id) ? <RosterFallbackNotice className="mql-glab" onFollow={leaveSheet} /> : grouped ? <h3 className={`mql-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
-            <div className="mql-grp" role="radiogroup" aria-label={grouped ? candidate.label : t("chrome.quickLaunch.mobile.model")}>
+            {isRosterFallbackGroup(candidate.id) ? <RosterFallbackNotice className="mls-glab" onFollow={leaveSheet} /> : grouped ? <h3 className={`mls-glab${index > 0 ? " is-next" : ""}`}>{candidate.label}</h3> : null}
+            <div className="mls-grp" role="radiogroup" aria-label={grouped ? candidate.label : t("chrome.launch.mobile.model")}>
               {candidate.rows.map((row) => (
-                <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mql-gr" onClick={() => props.onModelRow(row)}>
-                  <Radio on={row.id === selectedRow?.id} /><span className="mql-gr-tx">{row.label}</span>
+                <button key={row.id} type="button" role="radio" aria-checked={row.id === selectedRow?.id} className="mls-gr" onClick={() => props.onModelRow(row)}>
+                  <Radio on={row.id === selectedRow?.id} /><span className="mls-gr-tx">{row.label}</span>
                 </button>
               ))}
             </div>
@@ -195,17 +195,17 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
         ))}
         {selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? (
           <>
-            <h3 className="mql-glab">{t("chrome.quickLaunch.mobile.effort")}</h3>
-            <MobileEffortTabs deck={deck} label={t("chrome.quickLaunch.mobile.effort")} onPick={props.onEffort} />
+            <h3 className="mls-glab">{t("chrome.launch.mobile.effort")}</h3>
+            <MobileEffortTabs deck={deck} label={t("chrome.launch.mobile.effort")} onPick={props.onEffort} />
           </>
         ) : null}
-        <h3 className="mql-glab is-options">{t("chrome.quickLaunch.mobile.options")}</h3>
-        <div className="mql-grp">
+        <h3 className="mls-glab is-options">{t("chrome.launch.mobile.options")}</h3>
+        <div className="mls-grp">
           <MobileEffortGateRow deck={deck} onToggle={toggleGate} />
-          <button type="button" role="switch" aria-checked={props.ultracodeArmed} className="mql-gr is-two" onClick={() => props.onUltracode(!props.ultracodeArmed)}>
-            <span className="mql-gr-tx">
-              {t("chrome.quickLaunch.mobile.dynamic")}
-              <small>{props.ultracodeArmed ? t("chrome.quickLaunch.ultracodeNotice") : t("chrome.quickLaunch.mobile.dynamicOff")}</small>
+          <button type="button" role="switch" aria-checked={props.ultracodeArmed} className="mls-gr is-two" onClick={() => props.onUltracode(!props.ultracodeArmed)}>
+            <span className="mls-gr-tx">
+              {t("chrome.launch.mobile.dynamic")}
+              <small>{props.ultracodeArmed ? t("chrome.launch.ultracodeNotice") : t("chrome.launch.mobile.dynamicOff")}</small>
             </span>
             <Toggle on={props.ultracodeArmed} />
           </button>
@@ -216,16 +216,16 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
 
   if (sub === "attach") {
     return (
-      <MobileSheet key="attach" title={t("chrome.quickLaunch.mobile.attach")} onClose={() => setSub(null)} className="mql-sheet">
+      <MobileSheet key="attach" title={t("chrome.launch.mobile.attach")} onClose={() => setSub(null)} className="mls-sheet">
         <button type="button" className="mobile-sheet-row" disabled={inApp} onClick={() => cameraRef.current?.click()}>
           <span className="mobile-sheet-row-glyph"><CameraIcon /></span>
-          <span className="mobile-sheet-row-copy">{t("chrome.quickLaunch.mobile.takePhoto")}</span>
+          <span className="mobile-sheet-row-copy">{t("chrome.launch.mobile.takePhoto")}</span>
         </button>
         <button type="button" className="mobile-sheet-row" disabled={inApp} onClick={() => libraryRef.current?.click()}>
           <span className="mobile-sheet-row-glyph"><MobileIcon name="file" /></span>
-          <span className="mobile-sheet-row-copy">{t("chrome.quickLaunch.mobile.pickPhoto")}</span>
+          <span className="mobile-sheet-row-copy">{t("chrome.launch.mobile.pickPhoto")}</span>
         </button>
-        {inApp ? <p className="mql-secnote">{t("chrome.quickLaunch.mobile.attachUnavailable")}</p> : null}
+        {inApp ? <p className="mls-secnote">{t("chrome.launch.mobile.attachUnavailable")}</p> : null}
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onPickFiles} />
         <input ref={libraryRef} type="file" accept="image/*" multiple hidden onChange={onPickFiles} />
       </MobileSheet>
@@ -236,7 +236,7 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
     ...props.mentionEntries.map((entry) => {
       const selectable = isMentionSelectable(entry.activity);
       return (
-        <button key={`op-${entry.operationId}`} type="button" className="mql-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
+        <button key={`op-${entry.operationId}`} type="button" className="mls-mention-row" disabled={!selectable} onClick={() => props.onPickMention({ kind: "operation", entry })}>
           {/* 행의 주체는 Operation 하나다 — 그 아바타가 사이드바 칩과 같은 얼굴로 상태를 말한다. 이 목록은 Theater 머리 없이
               여러 Theater 를 섞으므로, 예전 이니셜이 하던 소속 구별은 이름 아래 Theater 이름이 잇는다(플러그인 행의 분류 줄과 같은 문법). */}
           <OperationNameMark
@@ -245,14 +245,14 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
             size={24}
            
           />
-          <span className="mql-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
+          <span className="mls-mention-name">{entry.operationName}<small>{entry.theaterLabel}</small></span>
         </button>
       );
     }),
     ...props.pluginMentionRows.map((row) => (
-      <button key={`plugin-${row.optionId}`} type="button" className="mql-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
-        <span className="mql-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
-        <span className="mql-mention-name">{row.label}<small>{row.categoryLabel}</small></span>
+      <button key={`plugin-${row.optionId}`} type="button" className="mls-mention-row" onClick={() => props.onPickMention({ kind: "plugin", row })}>
+        <span className="mls-mention-mark" aria-hidden="true">{row.renderMark?.() ?? "@"}</span>
+        <span className="mls-mention-name">{row.label}<small>{row.categoryLabel}</small></span>
       </button>
     )),
   ] : [];
@@ -261,42 +261,42 @@ export function MobileQuickLaunch(props: MobileQuickLaunchProps) {
     // 시트마다 key가 다르다 — 같은 자리의 시트 인스턴스를 재사용하면 앞 시트의 닫히는 중 상태가 다음 시트에 남는다.
     <MobileSheet
       key="main"
-      title={t("chrome.quickLaunch.mobile.title")}
+      title={t("chrome.launch.mobile.title")}
       onClose={onClose}
-      className="mql-sheet"
-      footer={<button type="button" className="mobile-pill" disabled={!props.canSubmit} onClick={start}><MobileIcon name="send" size={18} />{t("chrome.quickLaunch.mobile.start")}</button>}
+      className="mls-sheet"
+      footer={<button type="button" className="mobile-pill" disabled={!props.canSubmit} onClick={start}><MobileIcon name="send" size={18} />{t("chrome.launch.mobile.start")}</button>}
     >
-      <div className="mql-compose">
-        {mentionRows.length > 0 ? <div className="mql-mentions" role="listbox" aria-label={t("chrome.quickLaunch.mobile.inputLabel")}>{mentionRows}</div> : null}
+      <div className="mls-compose">
+        {mentionRows.length > 0 ? <div className="mls-mentions" role="listbox" aria-label={t("chrome.launch.mobile.inputLabel")}>{mentionRows}</div> : null}
         {props.mentionTarget ? (
-          <button type="button" className="mobile-pill-secondary mql-mention-chip" aria-label={t("chrome.quickLaunch.mobile.mentionClear")} onClick={props.onClearMention}>
+          <button type="button" className="mobile-pill-secondary mls-mention-chip" aria-label={t("chrome.launch.mobile.mentionClear")} onClick={props.onClearMention}>
             @{mentionTargetName(props.mentionTarget)}<MobileIcon name="x" size={16} />
           </button>
         ) : null}
         <textarea
           ref={inputRef}
-          className="mobile-field mql-input"
+          className="mobile-field mls-input"
           value={prompt}
-          placeholder={t("chrome.quickLaunch.mobile.placeholder")}
-          aria-label={t("chrome.quickLaunch.mobile.inputLabel")}
+          placeholder={t("chrome.launch.mobile.placeholder")}
+          aria-label={t("chrome.launch.mobile.inputLabel")}
           disabled={props.submitting}
           onChange={(event) => props.onPromptChange(event.target.value, event.currentTarget)}
         />
       </div>
       <ComposerAttachmentTray store={props.attachmentStore} t={props.attachmentT} disabled={props.submitting} />
       {props.mentionTarget === null ? (
-        <div className="mql-chips">
-          <button type="button" className="mql-circ" data-press="r3" aria-label={t("chrome.quickLaunch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
-          <button type="button" className="mobile-pill-secondary mql-theater-chip" aria-label={theater ? t("chrome.quickLaunch.mobile.theaterChip", { name: theater.label }) : t("chrome.quickLaunch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
+        <div className="mls-chips">
+          <button type="button" className="mls-circ" data-press="r3" aria-label={t("chrome.launch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
+          <button type="button" className="mobile-pill-secondary mls-theater-chip" aria-label={theater ? t("chrome.launch.mobile.theaterChip", { name: theater.label }) : t("chrome.launch.mobile.theater")} onClick={() => setSub("theater")} disabled={theaters.length === 0}>
             {theater ? <TheaterAvatar theaterId={theater.id} size={20} label={theater.label} decorative /> : null}
-            <span className="mql-chip-name">{theater?.label ?? t("chrome.quickLaunch.mobile.theater")}</span>
+            <span className="mls-chip-name">{theater?.label ?? t("chrome.launch.mobile.theater")}</span>
           </button>
-          <button type="button" className="mobile-pill-secondary mql-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
-            <span className="mql-chip-name">{selectedRow ? (groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow)) ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.quickLaunch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mql-chip-effort">{effortLabel}</span> : null}
+          <button type="button" className="mobile-pill-secondary mls-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
+            <span className="mls-chip-name">{selectedRow ? (groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow)) ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.launch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mls-chip-effort">{effortLabel}</span> : null}
           </button>
         </div>
       ) : null}
-      {props.message ? <p className="mql-message" role="alert">{props.message}</p> : <p className="mql-secnote">{t("chrome.quickLaunch.mobile.defaults")}</p>}
+      {props.message ? <p className="mls-message" role="alert">{props.message}</p> : <p className="mls-secnote">{t("chrome.launch.mobile.defaults")}</p>}
     </MobileSheet>
   );
 }

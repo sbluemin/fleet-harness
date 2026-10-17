@@ -89,7 +89,7 @@ const CHAT_HISTORY_ENTRY_LIMIT = 600;
 const CHAT_HISTORY_MAX_BYTES = 32 * 1024 * 1024;
 /**
  * 이 Operation이 **채팅으로 태어났다**는 표식 — 터미널을 한 번도 띄우지 않았다는 뜻이고,
- * Quick Launch가 그 자리에서 첫 메시지를 받는 근거다.
+ * 새 세션이 그 자리에서 첫 메시지를 받는 근거다.
  *
  * transcript 부재의 뜻을 가르는 데는 쓰지 않는다. 그것은 태생이 아니라 좌표가 한 번이라도
  * 심겼는지가 정하며(`resolveChatSeed`), 첫 턴 전이라면 어느 표면에서 태어났든 부재가 정상이다.
@@ -158,8 +158,8 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/attachments", summary: "Upload a new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
   return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
@@ -1326,7 +1326,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 새 세대는 좌표를 읽기 전에 — 이 기동은 아래에서 읽는 세션 좌표로 선다(패널 재개·휴면 중 전달 모두 이 코어를 지난다).
     observability.beginTerminalGeneration(sessionId);
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
-    // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
+    // 새 세션과 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
     const launchSession = readAgentSession(node.payload);
     // 이번 기동의 강제 차단은 진입 시점의 다음 기동 정책이다. 세션 스냅샷의 옛 true는 명시 정책이 있으면 지지 못한다.
     const blockSubagents = subagentSpawnBlocked(node.payload);
@@ -1426,7 +1426,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
   }
 
-  // Quick Launch 멘션 전달 라우트. 살아 있는 세션이면 PTY에 곧장 쓰고, dormant면 재기동(비-fresh
+  // 새 세션 멘션 전달 라우트. 살아 있는 세션이면 PTY에 곧장 쓰고, dormant면 재기동(비-fresh
   // resume) 후 같은 요청 안에서 전달한다 — 재기동 흐름은 handleResume의 비-fresh 경로와 행동
   // 쌍둥이로 유지한다(fresh 분기가 얽힌 handleResume를 쪼개면 그쪽 롤백 계약이 흔들린다).
   // 응답에는 프롬프트 원문·providerSession·경로를 싣지 않는다.

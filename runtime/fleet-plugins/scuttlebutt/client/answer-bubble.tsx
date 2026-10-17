@@ -14,7 +14,7 @@ import type { AideGrants } from "./settings-store.js";
 import { useStreamedHtml } from "./streamed-html.js";
 
 /**
- * Quick Launch에서 물은 답이 서는 자리.
+ * 새 세션 컴포저의 '@'로 물은 답이 서는 자리.
  *
  * 지저귐 말풍선(`.scuttlebutt-bird-say`)은 `white-space: nowrap` 한 줄이라 문단을 담지 못한다 —
  * 200자를 그리면 폭이 1,700px가 되어 화면을 넘는다. 그래서 봉투는 도착 알림 말풍선의 것

@@ -52,7 +52,7 @@
 :where(:root[data-view-mode="mobile"]) :where(
   [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
   .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
-  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .mobile-choice-tab, .mls-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 ) {
@@ -62,7 +62,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
   .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
-  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .mobile-choice-tab, .mls-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 )::before {
@@ -81,7 +81,7 @@
 :root[data-view-mode="mobile"] :is(.mobile-bar-button, .mobile-sheet-close, .agent-chat-answer-action) { --pr-r: 50%; }
 :root[data-view-mode="mobile"] :is(.mobile-menu button, .mobile-choice-row) { --pr-inset: 0 8px; }
 :root[data-view-mode="mobile"] [data-mobile-surface] .agent-chat-ask-option { --pr-inset: 0 -8px; }
-:root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mql-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
+:root[data-view-mode="mobile"] :is(.mobile-choice-tab, .mls-efft button) { --pr-inset: 0 -10px; --pr-r: 10px; }
 :root[data-view-mode="mobile"] :is(.app-toast-action, .app-toast-message .app-toast-link) { --pr-r: 18px; }
 /* 글자 단추(.tbtn) — 패딩 6/10 알약 면. 배치를 바꾸지 않게 면만 바깥으로 넓힌다. */
 :root[data-view-mode="mobile"] :is(.mobile-sheet-clear, .settings-mobile-textlink) { --pr-inset: -6px -6px; --pr-r: 16px; }
@@ -94,7 +94,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
   .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
-  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .mobile-choice-tab, .mls-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 ):active:not(:disabled, [aria-disabled="true"])::before {
@@ -104,7 +104,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
   .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
-  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .mobile-choice-tab, .mls-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 ):focus-visible {
@@ -113,7 +113,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r1"], .mobile-bar-button, .mobile-sheet-close,
   .mobile-sheet-row, .mobile-menu button, .mobile-choice-row,
-  .mobile-choice-tab, .mql-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
+  .mobile-choice-tab, .mls-efft button, .mobile-sheet-clear, .mobile-input-reveal, .mobile-folder-crumb, .mobile-folder-enter,
   .settings-mobile-textlink, .app-toast-action, .app-toast-message .app-toast-link,
   .agent-chat-answer-action, [data-mobile-surface] .agent-chat-ask-option
 ):focus-visible::before {
@@ -124,10 +124,10 @@
 }
 
 /* ── R2 면이 바뀜 ── */
-:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card, .fc-settings-row.is-mobile) {
+:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mls-gr, .mobile-console-card, .fc-settings-row.is-mobile) {
   transition: background-color var(--press-out) ease-out;
 }
-:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card, .fc-settings-row.is-mobile):active:not(:disabled, [aria-disabled="true"]) {
+:root[data-view-mode="mobile"] :is([data-press="r2"], button.mobile-group-row, label.mobile-group-row, .mls-gr, .mobile-console-card, .fc-settings-row.is-mobile):active:not(:disabled, [aria-disabled="true"]) {
   background: var(--m-selected);
   transition-duration: 0s;
 }
@@ -173,7 +173,7 @@
 
 /* ── R2·R3 키보드 포커스 — 요소 모서리를 따르는 안쪽 고리(모서리를 덮어쓰지 않는다) ── */
 :root[data-view-mode="mobile"] :is(
-  [data-press="r2"], [data-press="r3"], button.mobile-group-row, label.mobile-group-row, .mql-gr, .mobile-console-card,
+  [data-press="r2"], [data-press="r3"], button.mobile-group-row, label.mobile-group-row, .mls-gr, .mobile-console-card,
   .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
   .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
   .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,

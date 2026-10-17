@@ -11,7 +11,7 @@ import { resolveRowEffort } from "../../components/effort-track.js";
 import { MobileEffortGateRow, MobileEffortTabs, useMobileEffortGate } from "../../components/mobile-effort-gate.js";
 import { getT } from "../i18n/index.js";
 import type { AgentChatCoordinatePair } from "./chat-events.js";
-import "../../components/mobile-quick-launch.css";
+import "../../components/mobile-launch-sheet.css";
 
 export interface MobileCoordinateGroup {
   readonly id: string;
@@ -91,12 +91,12 @@ export function MobileCoordinateSheet({
   const anyBlocked = rows.some(tooLarge);
 
   return createPortal(
-    <MobileSheet title={t("terminal.chat.coordSheetTitle")} onClose={onClose} className="mql-sheet">
-      {groups === null ? <p className="mql-glab">{t("terminal.chat.coordMenuLoading")}</p> : null}
+    <MobileSheet title={t("terminal.chat.coordSheetTitle")} onClose={onClose} className="mls-sheet">
+      {groups === null ? <p className="mls-glab">{t("terminal.chat.coordMenuLoading")}</p> : null}
       {(groups ?? []).map((group) => (
         <React.Fragment key={group.id}>
-          {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="mql-glab" onFollow={leaveSheet} /> : (groups?.length ?? 0) > 1 ? <h3 className="mql-glab">{group.caption}</h3> : null}
-          <div className="mql-grp" role="radiogroup" aria-label={group.caption}>
+          {isRosterFallbackGroup(group.id) ? <RosterFallbackNotice className="mls-glab" onFollow={leaveSheet} /> : (groups?.length ?? 0) > 1 ? <h3 className="mls-glab">{group.caption}</h3> : null}
+          <div className="mls-grp" role="radiogroup" aria-label={group.caption}>
             {group.rows.map((row) => {
               const blocked = tooLarge(row);
               const active = row.launch.model === target?.model;
@@ -107,7 +107,7 @@ export function MobileCoordinateSheet({
                   role="radio"
                   aria-checked={active}
                   aria-disabled={blocked || undefined}
-                  className={`mql-gr${blocked ? " is-two" : ""}`}
+                  className={`mls-gr${blocked ? " is-two" : ""}`}
                   onClick={() => {
                     const model = row.launch.model;
                     if (blocked || active || !model) return;
@@ -115,8 +115,8 @@ export function MobileCoordinateSheet({
                     onApply({ model, effort: resolveRowEffort(row, target?.effort ?? null) });
                   }}
                 >
-                  <span className={`mql-radio${active ? " is-on" : ""}`} aria-hidden="true" />
-                  <span className="mql-gr-tx">
+                  <span className={`mls-radio${active ? " is-on" : ""}`} aria-hidden="true" />
+                  <span className="mls-gr-tx">
                     {row.label}
                     {blocked && occupied !== null && row.contextWindow !== undefined ? (
                       <small>{t("terminal.chat.coordMenuTooLarge", { used: formatTokens(occupied), window: formatTokens(row.contextWindow) })}</small>
@@ -130,12 +130,12 @@ export function MobileCoordinateSheet({
       ))}
       {targetRow && chips.length > 0 ? (
         <>
-          <h3 className="mql-glab">{t("terminal.chat.coordMenuEffortTrack")}</h3>
+          <h3 className="mls-glab">{t("terminal.chat.coordMenuEffortTrack")}</h3>
           <MobileEffortTabs deck={deck} label={t("terminal.chat.coordMenuEffortTrack")} onPick={pickEffort} />
           {/* 옵션은 펼치기 한 행뿐이다 — 다이나믹 워크플로우는 새 작업 전용이라 Operation 시트에 두지 않는다(S-56 NT-1d). */}
-          {deck.hasGate ? <h3 className="mql-glab is-options">{t("terminal.chat.coordSheetOptions")}</h3> : null}
+          {deck.hasGate ? <h3 className="mls-glab is-options">{t("terminal.chat.coordSheetOptions")}</h3> : null}
           {deck.hasGate ? (
-            <div className="mql-grp">
+            <div className="mls-grp">
               <MobileEffortGateRow deck={deck} onToggle={toggleGate} />
             </div>
           ) : null}
@@ -147,7 +147,7 @@ export function MobileCoordinateSheet({
         </div>
       ) : null}
       {failed || working ? (
-        <p className="mql-glab" role="status">{failed ? t("terminal.chat.coordMenuFailed") : t("terminal.chat.coordMenuNextTurn")}</p>
+        <p className="mls-glab" role="status">{failed ? t("terminal.chat.coordMenuFailed") : t("terminal.chat.coordMenuNextTurn")}</p>
       ) : null}
     </MobileSheet>,
     // 시트 골격은 absolute다 — 앱 틀(.mobile-frame, 화면 전체의 위치 기준) 위에 띄워 입력창 쪽 조상에 갇히지 않게 한다.

@@ -25,13 +25,12 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly getOperationSearchMode: () => "operations" | "commands" | null;
   /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly openNewSession?: () => boolean;
-  readonly openPluginQuickLaunch?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
 }
 
-// 가운데 Quick Launch와 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
+// 검색 팔레트는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이
 // 열기만 하고 닫히지 않는다(⌘K가 팔레트를 못 닫던 실측). 자기 표면이 아닌 다른 차단
 // 다이얼로그가 떠 있을 때만 막는다.
 function isForeignBlockingDialogOpen(documentFor: Document, ownSelector: string): boolean {
@@ -47,14 +46,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
     // 설정 카드가 조합을 기록하는 동안은 어떤 명령도 발화하지 않는다 — 기록기가 그 키를 받는다.
     if (isShortcutRecording(windowFor.document)) return;
     const matches = (commandId: string) => matchesShortcutCommand(event, commandId);
-    if (matches("console.plugin-quick-launch")) {
-      if (event.isComposing || isForeignBlockingDialogOpen(windowFor.document, ".quick-launch-overlay")) return;
-      if (event.repeat || dependencies.openPluginQuickLaunch?.()) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-      return;
-    }
     // ⌘K / ⌘P — 같은 창의 두 문. 닫힌 창은 열고, 열린 창에서는 ⌘K가 「검색 탭으로, 이미 검색이면
     // 닫기」, ⌘P가 「명령 탭으로」다. 자기 모달 가드보다 먼저 봐야 닫힘·전환이 막히지 않는다.
     if (matches("console.search-operations")) {

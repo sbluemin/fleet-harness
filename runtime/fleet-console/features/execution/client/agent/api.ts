@@ -85,7 +85,7 @@ export async function createAgentSession(
     body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}), ...(viewMode ? { viewMode } : {}), ...(options?.geometry ? { geometry: options.geometry } : {}) }),
     signal,
   });
-  // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지
+  // 거절 사유 코드를 그대로 실어 던진다 — 새 세션이 초안을 되살리면서 무엇을 고쳐야 하는지
   // 말해 주려면, 상태 코드만으로는 부족하고 서버가 붙인 error 코드가 필요하다.
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as {
@@ -128,7 +128,7 @@ export async function messageAgentSession(sessionId: string, text: string, attac
     signal,
   });
   if (!response.ok) {
-    // 서버 거절 코드를 그대로 실어 던진다 — Quick Launch 멘션 컴포저가 초안을 지키면서
+    // 서버 거절 코드를 그대로 실어 던진다 — 새 세션 멘션 컴포저가 초안을 지키면서
     // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다(resumeAgentSession과 같은 형태).
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(

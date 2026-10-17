@@ -63,7 +63,7 @@ export function refreshModelRoster(): void {
 function wire(): void {
   if (wired || typeof window === "undefined") return;
   wired = true;
-  // 다른 탭·기기에서 저장한 변경. 운영 카탈로그(Quick Launch·캔버스)도 같은 이벤트로 다시 읽게 창 이벤트로 넘긴다 —
+  // 다른 탭·기기에서 저장한 변경. 운영 카탈로그(새 세션·캔버스)도 같은 이벤트로 다시 읽게 창 이벤트로 넘긴다 —
   // 이 탭의 저장 경로가 이미 쓰는 신호라 받는 쪽은 출처를 가리지 않는다.
   subscribeConsoleChannel(MODEL_ROSTER_CHANGED_CHANNEL, () => window.dispatchEvent(new Event(OPERATION_CATALOG_CHANGED_EVENT)));
   window.addEventListener(OPERATION_CATALOG_CHANGED_EVENT, refreshModelRoster);
@@ -75,7 +75,7 @@ function wire(): void {
 
 /**
  * 앱 시작 때 한 번 — 다른 탭·기기에서 바꾼 로스터 브로드캐스트를 듣는다. 선택기가 하나도 열려 있지 않아도 운영 카탈로그
- * (Quick Launch·채팅 좌표·캔버스)가 같은 신호로 다시 읽어야 하기 때문이다.
+ * (새 세션·채팅 좌표·캔버스)가 같은 신호로 다시 읽어야 하기 때문이다.
  */
 export function installModelRosterSync(): void {
   wire();

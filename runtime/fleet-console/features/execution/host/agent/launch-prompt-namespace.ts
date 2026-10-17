@@ -6,7 +6,7 @@ import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtim
 import { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } from "@fleet-console/lifecycle";
 
 /**
- * launch 프롬프트 파일(Theater 시스템 프롬프트, Windows Quick Launch 지시)이 놓이는 OS temp의 자리와,
+ * launch 프롬프트 파일(Theater 시스템 프롬프트, Windows 새 세션 프롬프트 지시)이 놓이는 OS temp의 자리와,
  * 정리 없이 끝난(SIGKILL·crash·전원 차단) 이전 Console이 남긴 것의 회수.
  *
  * 무엇을 지워도 되는지가 이 모듈의 전부다. 지우는 항목은 세 조건을 **모두** 만족해야 한다.
@@ -17,7 +17,7 @@ import { consoleNamespaceKey, isReclaimableNamespaceEntry, resolveRealPath } fro
  *    모든 할당은 mkdtemp와 같은 동기 구간에서 소유 집합에 오르므로, 집합 밖이면 이 프로세스의 것이 아니다.
  * 3. 그 항목을 만든 프로세스가 죽었다 — 이름에 생성자 pid가 들어 있다. lock 독점은 회수의 충분조건이
  *    아니다: 신뢰 검증에 실패한 lock은 생존 확인 없이 지워질 수 있고, 그러면 살아 있는 Console 옆에서
- *    다른 Console이 같은 lock을 쓴다. Quick Launch 지시 파일은 모델이 나중에 읽으므로 "CLI가 기동 때
+ *    다른 Console이 같은 lock을 쓴다. 새 세션 지시 파일은 모델이 나중에 읽으므로 "CLI가 기동 때
  *    이미 읽었다"는 이유로 지울 수도 없다. 다른 pid가 살아 있으면 재사용일 수 있어도 남긴다(다음 기동이
  *    다시 본다). 생성자 pid가 이 프로세스의 pid인데 집합 밖이면, 같은 pid를 썼던 이전 프로세스의 잔재다 —
  *    pid가 고정된 컨테이너 재시작에서 이것을 남기면 영영 회수되지 않는다.

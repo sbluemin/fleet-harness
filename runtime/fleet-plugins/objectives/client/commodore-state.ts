@@ -79,7 +79,7 @@ export function noteCommodoreLanguage(next: "en" | "ko"): void {
   language = next;
 }
 
-/** 마지막으로 알려진 사람의 언어 — 리액트 밖에서 읽히는 Quick Launch '@' 행이 문구를 고른다. */
+/** 마지막으로 알려진 사람의 언어 — 리액트 밖에서 읽히는 새 세션 '@' 행이 문구를 고른다. */
 export function commodoreLanguage(): "en" | "ko" | undefined {
   return language ?? undefined;
 }

@@ -33,7 +33,7 @@ import {
 } from "@fleet-console/ai-gateway";
 
 /**
- * 모델 로스터 — Console의 모든 모델 선택지(Quick Launch·Objectives·Settings·플러그인)가 읽는 유일한 원천.
+ * 모델 로스터 — Console의 모든 모델 선택지(새 세션·Objectives·Settings·플러그인)가 읽는 유일한 원천.
  *
  * Settings › AI Gateway에서 켠 선별(`AiGatewaySelection.models`, Claude 공급자 항목 포함)을 런치 카탈로그와
  * 같은 `OperationLaunchVariantGroup[]` 모양으로 투영한다. 행의 `launch.model`은 정준 id(실행 id)다 — Claude는

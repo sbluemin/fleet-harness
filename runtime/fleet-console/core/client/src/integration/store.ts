@@ -8,7 +8,6 @@ import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-co
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { fetchOperations, putOperationOrder } from "./api.js";
 import { clearLegacyOperationOrder, readLegacyOperationOrder } from "./legacy-operation-order.js";
-import { readQuickLaunchSelection, writeQuickLaunchPinned } from "../../../../features/execution/client/quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "../../../../features/settings/client/global-settings-store.js";
 import { acknowledgeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
 import { noteOperationFocused } from "./palette-recent.js";
@@ -25,9 +24,10 @@ import type {
   OperationNotification,
   OperationNode,
   ObserverStatus,
-  QuickLaunchDraftAttachment,
   NewSessionTarget,
-  QuickLaunchRequest,
+  LaunchRequest,
+  NewSessionRejection,
+  NewSessionSeed,
   ReleaseNotesLocale,
   ReleaseNotesResponse,
   ThemeId,
@@ -106,18 +106,9 @@ let state: ConsoleState = {
   operationSearchSeed: null,
   operationSearchSeedNonce: 0,
   operationSearchMode: null,
-  quickLaunchOpen: false,
-  quickLaunchPinned: readQuickLaunchSelection().pinned,
-  quickLaunchFocusToggle: 0,
-  quickLaunchExpandRequest: 0,
-  quickLaunchMentionSeed: null,
-  quickLaunchMentionDraft: null,
-  quickLaunchDockSuppressed: false,
-  quickLaunchDraft: null,
-  quickLaunchDraftAttachments: null,
-  quickLaunchError: null,
-  quickLaunchErrorShortenBy: null,
-  pendingQuickLaunch: null,
+  mobileNewSessionOpen: false,
+  newSessionSeed: null,
+  pendingLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLocale: null,
@@ -789,7 +780,7 @@ export function requestOperationKeyboardFocus(operationId: string): void {
 
 /**
  * 본문에 「새 세션 화면」을 연다 — 사이드바 맨 위 「+」, 팔레트 「New Operation」, 새 세션 단축키. 여는 것만으로는 아무것도
- * 만들지 않고, 첫 메시지가 Quick Launch 와 같은 실행 의도(requestQuickLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
+ * 만들지 않고, 첫 메시지가 실행 의도(requestLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
  */
 export function openNewSession(target: NewSessionTarget): void {
   if (state.newSession?.theaterId === target.theaterId) return;
@@ -929,185 +920,63 @@ export function setOperationSearchMode(mode: ConsoleState["operationSearchMode"]
   setState({ operationSearchMode: mode });
 }
 
-export function openQuickLaunch(): void {
-  // 고정된 컴포저는 이미 떠 있다 — 여는 대신 펼쳐 포커스한다. 열림 플래그를 참으로 올려 두면
-  // 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서 모달로 되살아나고 열림을 보고 자기를
-  // 억제하는 What's New가 영영 뜨지 않는다(setQuickLaunchPinned가 막는 것과 같은 경로).
-  if (isQuickLaunchDocked()) {
-    setState({
-      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
-      quickLaunchError: null,
-      quickLaunchErrorShortenBy: null,
-    });
-    return;
-  }
-  setState({ quickLaunchOpen: true, quickLaunchError: null, quickLaunchErrorShortenBy: null });
+/**
+ * 모바일 「새 대화」 시트를 연다 — 모바일 홈의 새 대화 입구와 폰에서 부른 `composer.open`이 쓴다. 데스크톱의
+ * 새 세션 화면과 같은 실행 의도(requestLaunch)로 나가고, 쓰던 문장은 시트를 닫아도 시트 쪽이 지킨다.
+ */
+export function openMobileNewSession(): void {
+  if (state.mobileNewSessionOpen) return;
+  setState({ mobileNewSessionOpen: true });
+}
+
+export function closeMobileNewSession(): void {
+  if (!state.mobileNewSessionOpen) return;
+  setState({ mobileNewSessionOpen: false });
 }
 
 /**
- * 행선지를 들고 컴포저를 연다 — 패널 본문의 회신 버튼처럼 "이 Operation에게"라는 의도가 이미
- * 정해진 진입점이 쓴다. 시드는 의도일 뿐 결정이 아니다: 멘션 가능 여부·중복 부착 판정은
- * 컴포저가 자기 규칙으로 내린다. 남은 초안은 이 회차의 주소가 아니다 — 컴포저가 시드를 읽는
- * 순간 버리고 행선지만 심는다. 시드와 열림은 한 번의 전이다.
+ * 새 세션 컴포저에 실을 시드 — 플러그인·부유 위젯이 `composer.open`으로 건넨 초안과 행선지다. 화면(데스크톱)이나
+ * 시트(모바일)가 열리며 한 번 읽고 비운다. 남기면 다음 열림이 지난 문장을 되쓴다.
  */
-export function openQuickLaunchForOperation(operationId: string, draft: string | null = null): void {
-  // 시드와 열림을 한 번에 올린다. 두 번 emit하면 시드만 있는 중간 렌더가 생기고, 이미 열린
-  // 컴포저에서는 열림 전이가 없어 시드가 소비되지 않은 채 남을 수 있다.
-  if (isQuickLaunchDocked()) {
-    setState({
-      quickLaunchMentionSeed: operationId,
-      quickLaunchMentionDraft: draft,
-      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
-      quickLaunchError: null,
-      quickLaunchErrorShortenBy: null,
-    });
-    return;
-  }
-  setState({
-    quickLaunchMentionSeed: operationId,
-    quickLaunchMentionDraft: draft,
-    quickLaunchOpen: true,
-    quickLaunchError: null,
-    quickLaunchErrorShortenBy: null,
-  });
+export function seedNewSession(seed: NewSessionSeed): void {
+  setState({ newSessionSeed: seed });
+}
+
+export function consumeNewSessionSeed(): NewSessionSeed | null {
+  const seed = state.newSessionSeed;
+  if (seed !== null) setState({ newSessionSeed: null });
+  return seed;
 }
 
 /**
- * 초안을 들고 컴포저를 연다 — 플러그인이 자기 텍스트(부관의 답)를 Operation 지시로 넘기는
- * 진입점. 남은 초안은 교체된다: 이 호출은 "이 문장으로 시작하라"는 뜻이지 이어 쓰기가 아니다.
- * launch 시드를 통해 모달·도킹뿐 아니라 이미 열린 플러그인 대화에서도 런치로 전환한다.
+ * 새 세션 실행의 거절. 데스크톱은 새 세션 화면, 모바일은 새 대화 시트가 이 칸을 읽어 문면·칩·사유를 되살린다.
+ * 그 표면이 이미 닫혔으면 초안이 있는 거절만 표면을 그 초안과 함께 다시 연다 — 빈 직접 실행은 되돌릴 문면이 없다.
  */
-export function openQuickLaunchWithDraft(draft: string): void {
-  // 이미 열린 대화에서도 명시 런치 시드를 소비한다. 열림 전이만 기다리면 슬롯의 답 넘기기가 사라진다.
+export function rejectNewSession(rejection: NewSessionRejection & { readonly theaterId: string; readonly mobile: boolean }): void {
+  const { theaterId, mobile, ...slot } = rejection;
+  const open = mobile ? state.mobileNewSessionOpen : state.newSession !== null;
+  if (!open && slot.draft === null) return;
   setState({
-    quickLaunchMentionSeed: { kind: "launch" },
-    quickLaunchMentionDraft: draft,
-    ...(isQuickLaunchDocked() ? { quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1 } : { quickLaunchOpen: true }),
-    quickLaunchError: null,
-    quickLaunchErrorShortenBy: null,
+    newSessionRejection: slot,
+    ...(open ? {} : mobile ? { mobileNewSessionOpen: true } : { newSession: { theaterId } }),
   });
 }
 
-/** 플러그인 레인을 연다. null 좌표는 최근 레인, 열린 컴포저에서는 다음 레인을 뜻한다. */
-export function openQuickLaunchForPluginTarget(target: import("@fleet-console/sdk/plugin").PluginMentionTargetAddress | null = null, draft: string | null = null): void {
-  setState({
-    quickLaunchMentionSeed: { kind: "plugin", target, cycle: target === null && (state.quickLaunchOpen || isQuickLaunchDocked()) },
-    quickLaunchMentionDraft: draft,
-    ...(isQuickLaunchDocked() ? { quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1 } : { quickLaunchOpen: true }),
-    quickLaunchError: null,
-    quickLaunchErrorShortenBy: null,
-  });
-}
-
-export function consumeQuickLaunchMentionSeed(): void {
-  if (state.quickLaunchMentionSeed === null) return;
-  setState({ quickLaunchMentionSeed: null });
-}
-
-/** 시드에 실려 온 초안을 한 번 꺼낸다 — 시드가 주소를 잡은 자리에서만 부른다. */
-export function consumeQuickLaunchMentionDraft(): string | null {
-  const draft = state.quickLaunchMentionDraft;
-  if (draft !== null) setState({ quickLaunchMentionDraft: null });
-  return draft;
-}
-
-// 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
-export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null, shortenByChars: number | null = null, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
-  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchDraftAttachments: attachments, quickLaunchError: errorCode, quickLaunchErrorShortenBy: shortenByChars });
-}
-
-/**
- * 새 세션 화면에서 시작한 실행의 거절. 시트와 고정 바가 읽는 quickLaunchDraft에는 싣지 않는다.
- * 화면이 이미 닫혔으면 초안이 있는 경우만 시트로 넘긴다 — 빈 직접 실행은 되돌릴 문면이 없다.
- */
-export function rejectNewSession(draft: string, errorCode: string | null, shortenByChars: number | null = null, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
-  if (state.newSession === null) {
-    if (draft.length > 0) reopenQuickLaunchWithDraft(draft, errorCode, shortenByChars, attachments);
-    return;
-  }
-  setState({
-    newSessionRejection: {
-      draft: draft.length > 0 ? draft : null,
-      attachments,
-      errorCode,
-      shortenByChars,
-    },
-  });
-}
-
-/** 새 세션 화면이 거절을 문면·칩에 반영한 뒤 한 번 비운다. */
+/** 새 세션 화면·시트가 거절을 문면·칩에 반영한 뒤 한 번 비운다. */
 export function consumeNewSessionRejection(): void {
   if (state.newSessionRejection === null) return;
   setState({ newSessionRejection: null });
 }
 
-export function consumeQuickLaunchDraft(): void {
-  if (state.quickLaunchDraft === null && state.quickLaunchDraftAttachments === null) return;
-  setState({ quickLaunchDraft: null, quickLaunchDraftAttachments: null });
-}
-
-/**
- * 발사되지 않은 초안을 다음 열림까지 지킨다. 닫힘은 취소가 아니라 미룸이다 — Escape 한 번이
- * 문장을 지우면 컴포저가 키보드 사용자에게 유일한 데이터 손실 키를 쥐여 주는 셈이다.
- * 복원은 열림 전이의 기존 경로(quickLaunchDraft 읽기 + consume)가 그대로 맡는다.
- */
-export function preserveQuickLaunchDraft(draft: string, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
-  setState({ quickLaunchDraft: draft, quickLaunchDraftAttachments: attachments });
-}
-
-export function closeQuickLaunch(): void {
-  setState({ quickLaunchOpen: false, quickLaunchError: null, quickLaunchErrorShortenBy: null });
-}
-
-/**
- * 거절 사유만 내린다. 모달은 닫히면서 사유를 함께 버리지만, 고정된 컴포저는 닫히지 않으므로
- * 성공한 재시도 뒤에도 지난 거절이 바에 남아 — 사유가 붙어 있는 동안 접히지도 않는다.
- */
-export function clearQuickLaunchRejection(): void {
-  if (state.quickLaunchError === null && state.quickLaunchErrorShortenBy === null) return;
-  setState({ quickLaunchError: null, quickLaunchErrorShortenBy: null });
-}
-
-export function toggleQuickLaunch(): void {
-  // 고정 중에는 컴포저가 상주하므로 Mod+J가 여닫을 것이 없다 — 대신 포커스를 왕복시킨다
-  // (펼쳐 두고 쓰다가 같은 키로 물러나게 하는 것이 이 단축키의 고정판 계약).
-  // 도킹이 접힌 화면에서는 상주하는 바가 없으므로 예전처럼 모달로 여닫는다.
-  if (isQuickLaunchDocked()) {
-    setState({ quickLaunchFocusToggle: state.quickLaunchFocusToggle + 1 });
-    return;
-  }
-  setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null, quickLaunchErrorShortenBy: null });
-}
-
-/** 고정이 켜져 있고, 지금 화면이 그 도킹을 접어 두지 않았을 때만 참이다. */
-export function isQuickLaunchDocked(): boolean {
-  return state.quickLaunchPinned && !state.quickLaunchDockSuppressed;
-}
-
-export function setQuickLaunchDockSuppressed(suppressed: boolean): void {
-  if (state.quickLaunchDockSuppressed === suppressed) return;
-  setState({ quickLaunchDockSuppressed: suppressed });
-}
-
-export function setQuickLaunchPinned(pinned: boolean): void {
-  if (state.quickLaunchPinned === pinned) return;
-  writeQuickLaunchPinned(pinned);
-  // 고정을 풀면 그 자리에서 계속 쓰던 컴포저가 모달로 돌아온다 — 닫아 버리면 되돌리기가 아니라
-  // 취소가 된다. 반대로 고정을 켤 때는 모달 열림을 반드시 내린다: 고정된 컴포저는 배치가 존재를
-  // 결정하므로 이 값이 참으로 남으면 도킹을 접어 둔 화면(설정)에서 컴포저가 모달로 되살아나고,
-  // 열림을 보고 자기를 억제하는 What's New가 영영 뜨지 않는다.
-  setState({ quickLaunchOpen: !pinned, quickLaunchPinned: pinned });
-}
-
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
 // 실행 좌표·포커스 승계는 Operations 화면이 자기 규율로 처리한다.
-export function requestQuickLaunch(request: QuickLaunchRequest): void {
-  setState({ pendingQuickLaunch: request });
+export function requestLaunch(request: LaunchRequest): void {
+  setState({ pendingLaunch: request });
 }
 
-export function consumeQuickLaunch(): void {
-  if (state.pendingQuickLaunch === null) return;
-  setState({ pendingQuickLaunch: null });
+export function consumeLaunch(): void {
+  if (state.pendingLaunch === null) return;
+  setState({ pendingLaunch: null });
 }
 
 export function openWhatsNew(): void {
@@ -1208,11 +1077,11 @@ export function removeTheater(theaterId: string): void {
   const removedOperationIds = new Set(allOperations().filter((operation) => operation.theaterId === theaterId).map((operation) => operation.id));
   const activeOperationId = state.activeOperationId && removedOperationIds.has(state.activeOperationId) ? null : state.activeOperationId;
   const activeOperationAcknowledged = activeOperationId === null ? true : state.activeOperationAcknowledged;
-  // 사라진 Theater를 겨눈 Quick Launch 요청도 함께 버린다.
-  const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
+  // 사라진 Theater를 겨눈 실행 요청도 함께 버린다.
+  const pendingLaunch = state.pendingLaunch?.theaterId === theaterId ? null : state.pendingLaunch;
   // 잊은 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
   const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
-  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch, newSession });
+  setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingLaunch, newSession });
 }
 
 export function dismissNotificationsForOperation(operationId: string): void {

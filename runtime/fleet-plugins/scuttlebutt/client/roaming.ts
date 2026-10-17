@@ -46,7 +46,7 @@ export interface Viewport {
   readonly height: number;
 }
 
-/** 부관이 서면 안 되는 화면 영역(열린 페인·Quick Launch·대화상자). 호스트가 실측해 준다. */
+/** 부관이 서면 안 되는 화면 영역(열린 페인·대화상자). 호스트가 실측해 준다. */
 export interface KeepOutRect {
   readonly left: number;
   readonly top: number;
@@ -309,7 +309,7 @@ export function parkedLayout(
     : 0;
   const runWidth = totalWidth + spacing * (sizes.length - 1);
   const tallest = Math.max(...sizes.map((size) => size.height));
-  // 주차 줄은 오른쪽 아래가 기본이다. 그 자리를 덮는 표면(도킹된 Quick Launch·오른쪽 페인)이
+  // 주차 줄은 오른쪽 아래가 기본이다. 그 자리를 덮는 표면(오른쪽 페인)이
   // 있으면 줄 전체를 그 위 또는 왼쪽으로 옮긴다 — 부관 하나만 옮기면 줄이 깨진다.
   let right = viewport.width - 16;
   let bottom = viewport.height - 16;

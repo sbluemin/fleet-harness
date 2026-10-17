@@ -19,7 +19,7 @@ export const SHORTCUT_CHORD_PATTERN = /^(?=(?:Mod|Ctrl|Alt|Shift)\+)(?:Mod\+)?(?
 /** 명령 id는 등록부의 불투명한 키다 — 플러그인 id·companion id가 그대로 들어오므로 길이와 제어 문자만 본다. */
 const SHORTCUT_COMMAND_ID_PATTERN = /^[^\p{Cc}]{1,256}$/u;
 
-/** 한 명령이 가질 수 있는 조합 수 — Quick Launch처럼 대안 조합이 하나 더 있는 경우까지. */
+/** 한 명령이 가질 수 있는 조합 수 — 새 세션처럼 대안 조합이 하나 더 있는 경우까지. */
 export const SHORTCUT_CHORDS_PER_COMMAND_MAX = 2;
 const SHORTCUT_COMMANDS_MAX = 64;
 

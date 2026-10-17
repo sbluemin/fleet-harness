@@ -3,7 +3,7 @@ import { useMemo } from "react";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
 import { useT } from "../../i18n/index.js";
-import { focusOperation, openQuickLaunch } from "../../integration/store.js";
+import { focusOperation, openMobileNewSession } from "../../integration/store.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
@@ -103,7 +103,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
         {rest.length === 0 && attention.length === 0 ? (
           <div className="mobile-conv-empty">
             <p>{t("mobile.list.empty")}</p>
-            <button type="button" className="mobile-pill" onClick={openQuickLaunch}><MobileIcon name="plus" size={18} />{t("mobile.list.newConversation")}</button>
+            <button type="button" className="mobile-pill" onClick={openMobileNewSession}><MobileIcon name="plus" size={18} />{t("mobile.list.newConversation")}</button>
           </div>
         ) : rest.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.list.noMore")}</p> : rest.map((conversation) => (
           <ConversationRow key={conversation.operation.id} conversation={conversation} sub={<ConversationSummary conversation={conversation} />} onOpen={() => open(conversation)} />

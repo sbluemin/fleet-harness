@@ -21,7 +21,7 @@ Opened in this Operation's Fleet Browser.
 - <one line per interaction, in the order they make sense>
 
 ## To produce a new one yourself
-<the Quick Launch prompt that recreates the scenario>
+<the new session prompt that recreates the scenario>
 
 ## Environment
 - Theater: <path> (throwaway; the agent may edit these files)

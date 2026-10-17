@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 /**
- * `ultracode` 인식 문법 — 컴포저 블록의 순수 부품. Quick Launch(core client)와 채팅 컴포저
+ * `ultracode` 인식 문법 — 컴포저 블록의 순수 부품. 새 세션(core client)과 채팅 컴포저
  * (터미널 플러그인)가 같은 규칙을 조립한다. 단어를 어떻게 잡고, 해제가 언제 만료하며, 미러를
  * 어떻게 겹치는지는 블록이 한 벌로 소유하고, 무장·해제 **상태**는 언제나 조립이 가진다.
  */

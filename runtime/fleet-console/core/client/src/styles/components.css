@@ -6899,7 +6899,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   right: 0;
   z-index: 40;
   padding: 6px;
-  /* 공통 팝업 표면(theme.css --popover-*) — operation-launch·캔버스 컨텍스트 메뉴·Quick Launch 팝업이
+  /* 공통 팝업 표면(theme.css --popover-*) — operation-launch·캔버스 컨텍스트 메뉴·새 세션 모델 팝업이
      이 규칙을 상속한다. */
   border: 1px solid var(--popover-rim);
   border-radius: var(--radius-lg);
@@ -6998,15 +6998,15 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 .operation-launch-variant-caption.is-antigravity,
-.quick-launch-pop-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.launch-pop-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .operation-launch-variant-caption.is-claude,
-.quick-launch-pop-band.is-claude { --launch-provider-tone: var(--provider-claude); }
+.launch-pop-band.is-claude { --launch-provider-tone: var(--provider-claude); }
 .operation-launch-variant-caption.is-codex,
-.quick-launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
+.launch-pop-band.is-codex { --launch-provider-tone: var(--provider-codex); }
 .operation-launch-variant-caption.is-cursor,
-.quick-launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.launch-pop-band.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .operation-launch-variant-caption.is-xai,
-.quick-launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
+.launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 /* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
 .fc-model-picker__glyph.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
@@ -7037,22 +7037,22 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 10px;
 }
 
-.quick-launch-kind-icon.is-antigravity,
-.quick-launch-kind-icon.is-claude,
-.quick-launch-kind-icon.is-codex,
-.quick-launch-kind-icon.is-cursor,
-.quick-launch-kind-icon.is-xai {
+.launch-kind-icon.is-antigravity,
+.launch-kind-icon.is-claude,
+.launch-kind-icon.is-codex,
+.launch-kind-icon.is-cursor,
+.launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
-.quick-launch-kind-icon.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-.quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
-.quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
-.quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
-.quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
+.launch-kind-icon.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
+.launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
+.launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
+.launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* 라벨이 남는 폭을 전부 먹고 ★·꺾쇠는 그 뒤에 붙는다. 정렬을 표식 쪽 margin-left:auto로 만들면
    표식이 둘일 때 여백이 그 사이에서 나뉘어 ★가 행 한가운데 뜬다. */
-.quick-launch-variant-label {
+.launch-variant-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -7061,18 +7061,12 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 }
 
 /* 기본 모델 표식은 두 실행 메뉴에서 같은 별이어야 한다. 조판을 행에서 상속시키면 mono를 쓰는
-   캔버스 쪽 ★가 sans를 쓰는 Quick Launch 쪽의 절반 폭으로 가늘게 렌더돼, 같은 뜻의 표식이
+   캔버스 쪽 ★가 sans를 쓰는 새 세션 쪽의 절반 폭으로 가늘게 렌더돼, 같은 뜻의 표식이
    표면마다 다른 기호로 읽힌다. */
-.quick-launch-variant-star {
+.launch-variant-star {
   color: var(--brass-ink);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
-  line-height: 1;
-}
-
-.quick-launch-variant-chevron {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
   line-height: 1;
 }
 
@@ -7132,7 +7126,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   /* 폭은 픽셀 앵커다: 크롬(패딩 26px + 테두리 2px) + 닫힌 간격 × 현재 구간 수. 게이트가 열려도
      --effort-track-gap이 변하지 않아 기존 스톱·손잡이는 제자리에 남고 오른쪽 봉인만 늘어난다 —
      예전의 폭 비례 확대(116 × last / 닫힌 구간)는 크롬까지 비례시켜 간격 자체를 벌렸다.
-     Quick Launch와 캔버스 추론강도 트랙이 같은 값을 쓰고, TSX의 픽셀 산술(EDGE·TRACK_CHROME)과
+     새 세션과 캔버스 추론강도 트랙이 같은 값을 쓰고, TSX의 픽셀 산술(EDGE·TRACK_CHROME)과
      같은 상수여야 한다. */
   flex: 0 0 auto;
   --effort-closed-track-width: 116px;
@@ -7625,36 +7619,11 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 
 /* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 픽셀 앵커 규칙을
    그대로 쓰고, 셸은 트랙·토글·라벨만 품는 max-content다. */
-.quick-launch-effort-track {
+.launch-effort-track {
   flex: 0 0 auto;
   width: max-content;
   min-width: max-content;
   transition: width var(--duration-slow) var(--ease-spring);
-}
-
-/* QL 카드 안의 강도 값은 채팅 좌표와 같은 본문 문법으로 읽힌다 — 등폭·자간·대문자 격식을 걷는다.
-   영문 단계 이름(LOW·MED…)은 그대로 두므로 uppercase는 유지한다. */
-.quick-launch-card .effort-track-value {
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  letter-spacing: 0;
-}
-
-/* QL 카드 안의 강도 트랙 — 쉬는 컨트롤은 면만(Quiet Controls C′). 공용 .effort-track
-   기본 블록은 건드리지 않는다. */
-.quick-launch-card .effort-track {
-  border-color: transparent;
-  background: var(--control-rest);
-}
-
-/* apex 점선 토글 — 「더 펼칠 수 있음」의 어포던스는 ✦ 글리프가 맡고, 쉬는 테두리는 뺀다.
-   펼쳐진 상태의 기존 규칙과 hover의 apex 잉크·halo는 그대로 둔다. */
-.quick-launch-card .effort-track-apex-toggle {
-  border-color: transparent;
-}
-
-.quick-launch-card .effort-track-apex-toggle:hover {
-  border-color: transparent;
 }
 
 /* 고대비(forced-colors) — 면이 걷히는 환경에서는 쉬는 컨트롤의 테두리를 시스템색으로 되살린다
@@ -7710,7 +7679,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   .effort-track,
   .effort-track-apex-seam,
   .effort-track-apex-toggle,
-  .quick-launch-effort-track {
+  .launch-effort-track {
     transition: none;
   }
 }
@@ -12400,7 +12369,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   line-height: 1;
   cursor: pointer;
 }
-/* 제거는 파괴 동작 — coral 은 상태 채널이라 hover 에만 오른다(1:1 채팅 입력창·Quick Launch 와 같은 계약). */
+/* 제거는 파괴 동작 — coral 은 상태 채널이라 hover 에만 오른다(1:1 채팅 입력창·새 세션과 같은 계약). */
 @media (hover: hover) {
   .fc-composer-attachment__remove:hover:not(:disabled) { color: var(--coral); }
 }
@@ -12442,7 +12411,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-composer-capsule.is-dragover,
 .new-session-composer.is-dragover { border-color: var(--brass); }
 
-/* 크게 보기 — 스크림 모달. 퀵런치 오버레이(z-index 90)보다 위에 선다. */
+/* 크게 보기 — 스크림 모달. 부유 오버레이(z-index 90)보다 위에 선다. */
 .fc-composer-viewer {
   position: fixed;
   inset: 0;
@@ -12648,7 +12617,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-model-picker__select { flex: 1 1 24ch; min-width: 120px; max-width: 280px; }
 /* 저장 중 입력 잠금은 유지하되 실험 카드 전체를 흐렸다 되돌리지 않는다. */
 .global-settings-card[data-saving] { --control-disabled-opacity: 1; }
-/* 트리거는 Quick Launch의 모델 칩과 같은 알약 — 런치에서 고른 모델을 설정에서 같은 물건으로 알아보게 한다. */
+/* 트리거는 새 세션의 모델 칩과 같은 알약 — 런치에서 고른 모델을 설정에서 같은 물건으로 알아보게 한다. */
 .fc-model-picker__trigger {
   min-height: 34px;
   padding: 0 11px;
@@ -12687,7 +12656,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font-weight: var(--weight-regular);
   letter-spacing: 0.04em;
 }
-/* 밴드는 quick-launch-pop-band와 같은 자간·여백 — 두 메뉴가 같은 목록으로 읽혀야 한다. */
+/* 밴드는 launch-pop-band와 같은 자간·여백 — 두 메뉴가 같은 목록으로 읽혀야 한다. */
 .fc-model-picker__band {
   display: flex;
   align-items: center;
@@ -12819,7 +12788,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 .fc-coord-menu-provider.is-xai, .fc-coord-trigger-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
 .fc-coord-menu-provider.is-cursor, .fc-coord-trigger-provider.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
-/* 빈 로스터의 폴백 띠 머리 — Quick Launch·캔버스·채팅 좌표가 공급자 띠 대신 그린다. 폴백은 상태라 warn이 말하고, 길 안내는 brass 잉크다.
+/* 빈 로스터의 폴백 띠 머리 — 새 세션·캔버스·채팅 좌표가 공급자 띠 대신 그린다. 폴백은 상태라 warn이 말하고, 길 안내는 brass 잉크다.
    공급자 캡션(대문자·자간)을 물려받지 않는 문장이다 — 호출부는 캡션 클래스를 섞지 않는다. */
 .roster-fallback-note { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--space-2); margin: 0; padding: 6px var(--space-2) 4px; font-family: var(--font-ui); font-size: var(--t-xs); line-height: 1.45; letter-spacing: 0; text-transform: none; color: var(--text-tertiary); white-space: normal; }
 .roster-fallback-badge { flex: none; padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
@@ -12840,955 +12809,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   }
 }
 
-/* ── Quick Launch 컴포저 ──────────────────────────────────────────────
-   전역 단축키(Mod+J)로 열리는 프롬프트 컴포저. 화면 중앙에 서되 스크림과 z-index는
-   .operation-search-overlay의 계약을 승계한다 — 두 표면은 서로 배타적이다
-   (isBlockingDialogOpen이 aria-modal로 판정). */
-.quick-launch-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  padding: var(--space-5);
-  background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
-  animation: fleet-pop 280ms var(--ease-spring) both;
-  transition: background-color var(--duration-slow) var(--ease-glide);
-}
-
-/* 고정 중에는 스크림이 물러나고 오버레이가 클릭을 통과시킨다 — 뒤 화면을 계속 쓰는 것이 목적이다.
-   등장 pop도 끈다: 상주하는 바가 매 로드마다 화면 가운데에서 튀어나올 이유가 없다. */
-.quick-launch-overlay.is-pinned {
-  background-color: transparent;
-  animation: none;
-  pointer-events: none;
-}
-
-.quick-launch-card {
-  position: relative;
-  width: min(760px, 100%);
-  /* 그리드 아이템의 auto 최소폭은 min-content라, 긴 Theater 이름 하나가 100% 상한을 이기고 카드를
-     뷰포트 밖으로 밀어낸다(모바일 375px에서 실측). 0으로 눌러 상한을 실제 상한으로 만든다. */
-  min-width: 0;
-  max-width: 100%;
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
-  /* 면은 자식 없는 .quick-launch-glass가 진다(공통 팝업 면). ::before/::after는 ultracode 구슬·링이
-     쓰므로 전용 요소를 유지한다. */
-  background: none;
-  box-shadow: var(--popover-shadow);
-  /* 고정 시 언포커스가 물러나는 깊이. 접힘과 한 동작으로 걸린다. */
-  --quick-launch-idle-opacity: 0.55;
-  --quick-launch-idle-hover-opacity: 0.85;
-  transition:
-    transform var(--duration-slow) var(--ease-spring),
-    opacity var(--duration-base) var(--ease-glide);
-}
-
-.quick-launch-card:focus-visible {
-  outline: none;
-}
-
-/* 카드의 면 — 공통 팝업 면(--popover-face) 한 장이다.
-   z:-1이라 카드가 스택 컨텍스트가 아닐 때는 오버레이 스크림 위·카드 내용 아래에, 고정(transform)으로
-   스택 컨텍스트가 되면 카드 최하층에 깔린다 — 어느 쪽이든 테두리·글자 아래다. */
-.quick-launch-glass {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: var(--popover-face);
-  pointer-events: none;
-}
-
-/* 플러그인 레인: 정체색은 선택 밑줄만 맡고, 초점·호버는 brass 계약을 유지한다.
-   [doctrine] 플러그인 인물의 정체색 밑줄은 이 행선지 표면의 의도된 예외다. */
-.quick-launch-lanes {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3) 0;
-  border-bottom: 1px solid var(--surface-rim);
-  flex-wrap: wrap;
-}
-.quick-launch-lanes[hidden], .quick-launch-conversation[hidden] { display: none; }
-.quick-launch-lane {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: 36px;
-  padding: var(--space-1) var(--space-2);
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--t-sm);
-  cursor: pointer;
-}
-.quick-launch-lane.is-selected {
-  border-bottom-color: var(--quick-launch-lane-identity, var(--brass));
-  color: var(--text-primary);
-}
-.quick-launch-lane:hover { background: var(--brass-glow); }
-.quick-launch-lane:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.quick-launch-lane-mark { display: grid; width: 20px; height: 20px; place-items: center; }
-.quick-launch-lane-mark svg { width: 100%; height: 100%; }
-.quick-launch-lane-divider { height: 16px; border-inline-start: 1px solid var(--surface-rim-strong); }
-.quick-launch-lane-hint { margin-inline-start: auto; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.quick-launch-lane-hint kbd { font-family: var(--font-ui); }
-.quick-launch-feedback { margin: 0; padding: var(--space-2) var(--space-4); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.55; overflow-wrap: anywhere; flex-shrink: 0; }
-.quick-launch-capabilities { display: flex; align-items: center; min-width: 0; flex-shrink: 0; }
-:root[data-view-mode="mobile"] .quick-launch-lane-hint { display: none; }
-@media (max-width: 767px), (pointer: coarse) {
-  .quick-launch-lane-hint { display: none; }
-}
-.quick-launch-conversation { min-height: 0; border-bottom: 1px solid var(--surface-rim); }
-.quick-launch-conversation:has([aria-live="polite"][hidden]) { border-bottom: 0; }
-.quick-launch-card.has-conversation { display: flex; flex-direction: column; max-height: calc(100dvh - var(--space-5) * 2); }
-.quick-launch-card.has-conversation > .quick-launch-field,
-.quick-launch-card.has-conversation > .quick-launch-bar,
-.quick-launch-card.has-conversation > .quick-launch-lanes { flex-shrink: 0; }
-.quick-launch-clear-target { border: 0; padding: 0 var(--space-1); background: transparent; color: var(--text-tertiary); cursor: pointer; font: inherit; }
-.quick-launch-clear-target:focus-visible { outline: 2px solid var(--brass); }
-
-/* ── `ultracode` 무장 외곽 ───────────────────────────────────────────
-   프롬프트 안의 단어가 인식되면 카드 테두리를 apex 호(arc)가 한 방향으로 돈다. 각도와 호의 폭을
-   @property로 등록해야 커스텀 속성이 이산 점프 없이 보간된다(등록 없이는 각도가 계단으로 튄다).
-   무장이 켜지는 순간에는 완성된 호가 붙지 않는다 — 구슬이 테두리를 한 바퀴 그리고, 호가 열린 뒤에야
-   2.8s 순항에 올라탄다. 다시 무장하면 클래스가 붙으며 점화가 한 번 더 재생된다.
-   [doctrine] 이 저장소의 모션 규약에서 무한 애니메이션은 "진행 중 신호"에만 허용된다. 여기서의
-   신호는 발사 전 무장 상태다 — 사용자가 직접 켰고, Backspace 한 번으로 즉시 꺼진다.
-   감속 모션에서는 아래 봉인 블록이 점화·구슬·순항을 세우고 정지한 링만 남긴다. */
-@property --quick-launch-rim-angle {
-  syntax: "<angle>";
-  initial-value: 0deg;
-  inherits: false;
-}
-
-@property --quick-launch-rim-spread {
-  syntax: "<angle>";
-  initial-value: 108deg;
-  inherits: false;
-}
-
-.quick-launch-card.is-ultracode {
-  box-shadow:
-    var(--popover-shadow),
-    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
-    0 0 26px -6px var(--apex-glow);
-  animation: quick-launch-ultracode-glow 900ms var(--ease-glide) both;
-}
-
-.quick-launch-card.is-ultracode::before {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  margin: -5px;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 2;
-  background: radial-gradient(circle, color-mix(in oklab, var(--apex) 70%, var(--ink-pearl)) 0 28%, transparent 70%);
-  filter: drop-shadow(0 0 6px var(--apex-glow));
-  offset-path: inset(-1px round calc(var(--radius-lg) + 1px));
-  offset-anchor: center;
-  animation: quick-launch-ultracode-bead 900ms var(--ease-glide) both;
-}
-
-.quick-launch-card.is-ultracode::after {
-  content: "";
-  position: absolute;
-  inset: -1px;
-  border-radius: calc(var(--radius-lg) + 1px);
-  padding: 1px;
-  pointer-events: none;
-  background: conic-gradient(
-    from var(--quick-launch-rim-angle),
-    transparent 0deg,
-    color-mix(in oklch, var(--apex) 88%, transparent) calc(var(--quick-launch-rim-spread) * 0.31),
-    color-mix(in oklch, var(--apex) 40%, transparent) calc(var(--quick-launch-rim-spread) * 0.61),
-    transparent var(--quick-launch-rim-spread),
-    transparent 360deg
-  );
-  /* 테두리 1px만 남기는 mask 합성 — 안쪽(content-box)을 도려내 링만 칠한다.
-     [doctrine] `black`은 칠이 아니라 스텐실이다(알파 1만 쓴다). 색 채널을 타지 않으므로
-     테마 토큰으로 올리지 않는다 — 토큰으로 만들면 테마마다 마스크가 뚫린다. */
-  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
-  mask-composite: exclude;
-  animation:
-    quick-launch-ultracode-ignite 900ms var(--ease-glide) both,
-    quick-launch-ultracode-rim 2.8s linear 900ms infinite; animation-name: quick-launch-ultracode-ignite, var(--state-motion, quick-launch-ultracode-rim);
-}
-
-@keyframes quick-launch-ultracode-ignite {
-  0% {
-    --quick-launch-rim-angle: -20deg;
-    --quick-launch-rim-spread: 8deg;
-    opacity: 0;
-  }
-  18% {
-    opacity: 1;
-    --quick-launch-rim-spread: 28deg;
-  }
-  72% {
-    --quick-launch-rim-angle: 340deg;
-    --quick-launch-rim-spread: 156deg;
-  }
-  100% {
-    --quick-launch-rim-angle: 360deg;
-    --quick-launch-rim-spread: 108deg;
-    opacity: 1;
-  }
-}
-
-@keyframes quick-launch-ultracode-bead {
-  0% { offset-distance: 0%; opacity: 0; }
-  12% { opacity: 1; }
-  86% { opacity: 1; }
-  100% { offset-distance: 100%; opacity: 0; }
-}
-
-@keyframes quick-launch-ultracode-glow {
-  0% { box-shadow: var(--shadow-floating); }
-  40% {
-    box-shadow:
-      var(--shadow-floating),
-      0 0 0 1px color-mix(in oklch, var(--apex) 38%, transparent),
-      0 0 36px -4px var(--apex-glow);
-  }
-  100% {
-    box-shadow:
-      var(--shadow-floating),
-      0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
-      0 0 26px -6px var(--apex-glow);
-  }
-}
-
-/* 순항은 시작점을 스스로 말해야 한다. `to`만 두면 시작 각도를 **밑에 깔린 값**에서 빌리는데,
-   그 자리에는 앞 순번 점화가 `both`로 앞으로 채워 둔 끝값 360deg가 앉아 있다 — 그러면 순항은
-   360deg에서 360deg로 돌아 재생만 되고 링은 정지한다(실측: 4.0s 동안 360deg 고정, 그동안
-   animation은 running이었다). 360deg와 0deg는 conic에서 같은 자리라 점화→순항 인계는 이음매가
-   없다. 뒤에 어떤 전이가 더 붙어도 이 키프레임은 자기 시작점을 잃지 않는다. */
-@keyframes quick-launch-ultracode-rim {
-  from { --quick-launch-rim-angle: 0deg; }
-  to { --quick-launch-rim-angle: 360deg; }
-}
-
-/* ── 고지 줄 ─────────────────────────────────────────────────────────
-   바의 상태 슬롯은 거절·상한 초과가 role="alert"로 쓰고 있다. 정보 메시지를 그 자리에 얹으면
-   경고 채널이 흐려지므로 입력 **위**의 자기 줄에 선다. 무장 동안 유지한다 — 바의 칩을 빼었으므로
-   이 줄이 상태를 읽는 문장이다. */
-.quick-launch-ultracode-notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-2) var(--space-4) 0;
-  font-size: var(--t-md);
-  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
-}
-
-.quick-launch-ultracode-notice-hint {
-  color: var(--text-tertiary);
-}
-
-.quick-launch-ultracode-glyph {
-  font-size: var(--t-xs);
-  line-height: 1;
-}
-
-/* ── 시작 표면(채팅뷰) 무장 ────────────────────────────────────────────
-   바 첫 줄의 여유가 0이라(런치 좌표 묶음 + 우측 컨트롤이 폭을 다 쓴다) 이 상태는 바에 칩을
-   두지 않는다 — 칩 하나가 서면 바가 두 줄로 접힌다. 대신 카드 외곽선과 입력 위 안내줄이 함께
-   말한다. 두 표식이 이 상태의 전부이므로 `ultracode` 고지처럼 횟수로 물러나지 않는다: 기억된
-   선택이 숨은 모드가 되지 않으려면 무장한 동안 표식이 항상 서 있어야 한다.
-   [doctrine] 채널은 `ultracode`와 같은 apex를 쓴다 — 둘 다 신호(상태)도 위치도 아닌 "기본 밖의
-   선택"이라 같은 채널이 맞다. 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링,
-   여기는 정지한 테두리. 동시 무장이면 도는 링이 바깥을 잇고 이 줄이 자기 몫을 계속 말한다. */
-.quick-launch-card.is-chat-start {
-  border-color: color-mix(in oklab, var(--apex) 52%, var(--hairline-strong));
-}
-
-.quick-launch-start-view-notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-2) var(--space-4) 0;
-  font-size: var(--t-md);
-  color: color-mix(in oklab, var(--apex) 72%, var(--text-secondary));
-}
-
-.quick-launch-start-view-glyph {
-  display: inline-flex;
-  line-height: 1;
-}
-
-.quick-launch-start-view-glyph svg {
-  width: 13px;
-  height: 13px;
-}
-
-/* 되돌리기는 문장의 일부다 — 알약으로 세우면 바에 두지 않기로 한 배지가 안내줄로 옮겨 앉는다. */
-.quick-launch-start-view-undo {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-tertiary);
-  font: inherit;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.quick-launch-start-view-undo:hover {
-  color: var(--text-primary);
-}
-
-.quick-launch-start-view-undo:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
-  border-radius: var(--radius-xs);
-}
-
-/* ── 고정(도킹) ────────────────────────────────────────────────────────
-   옵트인 고정은 컴포저를 화면 하단에 상주시켜 실행 화면과 공존하게 한다. 이동은 카드 자신의
-   transform으로 그린다 — 오버레이의 place-items를 바꾸면 보간되지 않아 카드가 튄다.
-   translateY의 50%는 카드 자기 높이라, 접혀 높이가 줄어도 아래 모서리는 --space-4에 붙어 있는다
-   (계산: 중앙정렬 bottom (V+h)/2 + (V/2 - s - h/2) = V - s, h와 무관). */
-.quick-launch-card.is-pinned {
-  transform: translateY(calc(50vh - var(--space-4) - 50%));
-  /* 오버레이가 클릭을 통과시키는 동안에도 카드 자신은 받아야 한다. */
-  pointer-events: auto;
-}
-
-/* 물러남 — 접힘과 같은 상태다. 거절 사유를 싣고 있을 때는 이 상태로 내려가지 않는다(판독 우선). */
-.quick-launch-card.is-pinned.is-collapsed {
-  opacity: var(--quick-launch-idle-opacity);
-}
-
-.quick-launch-card.is-pinned.is-collapsed:hover {
-  opacity: var(--quick-launch-idle-hover-opacity);
-}
-
-.quick-launch-card.is-pinned .quick-launch-field,
-.quick-launch-card.is-pinned .quick-launch-bar {
-  max-height: 320px;
-  transition:
-    max-height var(--duration-base) var(--ease-glide),
-    padding var(--duration-base) var(--ease-glide),
-    opacity var(--duration-fast) var(--ease-glide);
-}
-
-/* 접힘은 넘치는 내용을 잘라야 성립하지만, 팝오버는 바 밖으로 서는 바의 자식이다 — 상시로 자르면
-   Theater·모델 목록이 통째로 사라진다. 팝오버가 열려 있는 동안만 자르기를 놓는다(그때 카드는
-   이미 완전히 펼쳐져 있어 잘릴 것이 없다). */
-.quick-launch-card.is-pinned:not(.has-popover) .quick-launch-field,
-.quick-launch-card.is-pinned:not(.has-popover) .quick-launch-bar {
-  overflow: hidden;
-}
-
-/* 접히는 두 층. 높이를 0으로 눌러 자리를 돌려주고, 포커스 차단은 JSX의 inert가 맡는다.
-   .is-pinned를 함께 물어 기저 규칙(펼친 높이)보다 특정도를 높인다 — 같은 특정도로 두면 뒤에 선
-   기저가 이겨 접힘이 조용히 무효가 된다(실브라우저에서 max-height가 320px로 남는 것으로 실측). */
-.quick-launch-card.is-pinned.is-collapsed .quick-launch-field,
-.quick-launch-card.is-pinned.is-collapsed .quick-launch-bar {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-top-color: transparent;
-  opacity: 0;
-}
-
-/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤. display:none이라 펼친 동안에는 접근성 트리와
-   탭 순서 어디에도 없다. */
-.quick-launch-strip {
-  display: none;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  padding: var(--space-3) var(--space-4);
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: var(--t-base);
-  text-align: left;
-}
-
-.quick-launch-card.is-collapsed .quick-launch-strip {
-  display: flex;
-}
-
-.quick-launch-strip-trace {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-/* 초안이 없을 때만 안내 문구가 대신 선다 — 자취가 있으면 그것이 이 줄의 내용이다. */
-.quick-launch-strip-trace.is-idle {
-  color: var(--text-tertiary);
-}
-
-/* 각 조합이 flex 아이템이라 번역문(" or "/" 또는 ")의 앞 공백이 줄 앞에서 사라진다.
-   간격을 번역 공백에 맡기면 ⌘Jor Ctrl+Space로 붙는다. */
-.quick-launch-strip-keys {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  gap: var(--space-1);
-  color: var(--brass-ink);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
-}
-
-.quick-launch-strip-key {
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-}
-
-.quick-launch-strip-or {
-  color: var(--text-tertiary);
-  letter-spacing: 0;
-}
-
-/* 고정·포커스 멘션 토글 — 켜지면 brass로 자기 상태를 말한다(위치/행선지 채널). */
-/* 두 옵트인 토글은 한 무리다 — 안쪽 간격을 바의 간격보다 좁혀 전송과 다른 종류임을 간격으로 말한다. */
-.quick-launch-bar-toggles {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  gap: 2px;
-}
-
-.quick-launch-pin,
-.quick-launch-mention-focus {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.quick-launch-pin svg,
-.quick-launch-mention-focus svg {
-  width: 16px;
-  height: 16px;
-}
-
-.quick-launch-pin:hover,
-.quick-launch-mention-focus:hover {
-  color: var(--text-secondary);
-}
-
-.quick-launch-pin[aria-pressed="true"],
-.quick-launch-mention-focus[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  color: var(--brass-ink);
-}
-
-/* 도킹된 바에서 팝오버는 위로 열린다 — 아래로 열면 바가 이미 화면 바닥이라 설 자리가 없다
-   (멘션 덱이 쓰는 방향과 같다). */
-.quick-launch-card.is-pinned .quick-launch-pop {
-  top: auto;
-  bottom: calc(100% + var(--space-2));
-}
-
-.quick-launch-field {
-  display: flex;
-  /* 첨부 트레이(flex-basis:100%)가 textarea 아래 줄로 내려서게 한다 — nowrap이면 트레이가
-     옆자리에 서며 textarea를 너비 0까지 짓누른다(실브라우저 실측). 멘션 칩+textarea는
-     textarea의 flex:1·min-width:0 덕에 여전히 한 줄을 지킨다. */
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-2);
-}
-
-/* textarea와 하이라이트 미러를 묶는 flex 아이템. flex:1·min-width:0은 여기로 올라왔다 —
-   미러가 겹칠 기준 박스가 하나여야 멘션 칩이 선 줄에서도 글자가 어긋나지 않는다. */
-.quick-launch-input-wrap {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: block;
-}
-
-.quick-launch-input {
-  display: block;
-  width: 100%;
-  min-height: 46px;
-  /* 6줄까지 자라고 그 뒤로는 스크롤한다. */
-  max-height: calc(1.55em * 6 + var(--space-2));
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  /* 세션 입력과 같은 값. 미러(.quick-launch-highlight)도 같은 메트릭으로 함께 간다. */
-  font-size: var(--font-body-size);
-  line-height: 1.55;
-  resize: none;
-  overflow-y: auto;
-}
-
-/* ── `ultracode` 하이라이트 미러 ─────────────────────────────────────
-   textarea는 자기 글자 일부만 다르게 칠할 수 없다. 그래서 무장 중에만 같은 문면을 같은 메트릭으로
-   그린 레이어를 뒤에 깔고 textarea의 글자를 투명하게 만든다. 캐럿·선택·IME는 여전히 textarea의
-   것이므로 caret-color만 되살린다. 미러는 그림이라 aria-hidden이고, 문면이 한 글자라도 달라지면
-   즉시 어긋나므로 원문을 그대로 복제한다. */
-.quick-launch-highlight {
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 0;
-  /* 폭·높이는 JS가 textarea의 **client** 박스로 맞춘다 — inset:0으로 두면 스크롤바가 선 순간
-     textarea의 줄바꿈 폭만 좁아져 미러가 다른 곳에서 접힌다(실브라우저에서 10px 차이 실측). */
-  overflow: hidden;
-  pointer-events: none;
-  padding: 0;
-  border: 0;
-  font-family: inherit;
-  /* 입력과 같은 메트릭 — 값이 다르면 미러가 글자와 어긋난다. */
-  font-size: var(--font-body-size);
-  line-height: 1.55;
-  /* textarea는 UA 기본값이라 조상의 자간을 물려받지 않는다. 미러만 물려받으면 긴 줄에서
-     글자가 조금씩 밀린다(-0.07px 실측). 같은 기준으로 눕힌다. */
-  letter-spacing: normal;
-  word-spacing: normal;
-  text-transform: none;
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: normal;
-  tab-size: 8;
-}
-
-.quick-launch-card.is-ultracode .quick-launch-input {
-  position: relative;
-  z-index: 1;
-  color: transparent;
-  caret-color: var(--text-primary);
-}
-
-/* 인식된 단어는 강도 트랙의 ULTRACODE 값과 **같은** 결로 흐른다 — 이 제품에서 apex 물결은
-   이미 ultracode를 뜻하고, 두 문(단어·사다리 단)이 같은 능력을 가리키므로 어휘를 나누지 않는다.
-   다만 트랙의 값 라벨과 달리 여기서는 굵기를 올리지 않는다: 이 층은 textarea 위에 겹치는 미러라
-   자간·굵기처럼 **자족 폭을 바꾸는 속성**을 쓰면 뒤따르는 글자가 밀려, 눈에 보이는 글자와
-   textarea가 그리는 캐럿·선택이 어긋난다(weight 600에서 2.95px 밀림 실측). 신호는 색이 싣는다. */
-.quick-launch-ultracode-token {
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
-}
-
-
-
-
-/* 「+」 첨부 입구 — 입력 줄 왼쪽. 메뉴는 위로 뜬다. */
-.quick-launch-plus-root { position: relative; flex: none; align-self: flex-start; }
-.quick-launch-plus-menu {
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + var(--space-2));
-}
-
-/* 드래그 중 카드 강조 — brass는 위치/포커스 채널이라 "여기 놓으라"는 지시에 맞는 색이다. */
-.quick-launch-card.is-dragover {
-  border-color: var(--brass);
-}
-
-.quick-launch-input:focus-visible {
-  outline: none;
-}
-
-.quick-launch-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-/* 멘션 행선지 — 배지가 아니라 글리프+이름 텍스트다. 테두리·배경·닫기 버튼 없음, 해제는 입력이 빈
-   상태의 Backspace가 전담한다. 이름은 brass(행선지 채널), 글리프는 공급자 톤 — 신호 토큰은 쓰지 않는다. */
-.quick-launch-mention {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  max-width: 45%;
-  color: var(--brass-ink);
-  font-size: var(--t-lg);
-  font-weight: var(--weight-medium);
-  line-height: 1.55;
-  white-space: nowrap;
-  animation: quick-launch-mention-in var(--duration-base) var(--ease-glide);
-}
-
-.quick-launch-mention-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-@keyframes quick-launch-mention-in {
-  from { opacity: 0; transform: translateY(3px); }
-  to { opacity: 1; transform: none; }
-}
-
-/* 멘션 덱 — 별도 팝업이 아니라 컴포저의 확장면: .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을
-   그대로 입고, 위치(입력창 위)와 전폭·스크롤만 덮는다(quick-launch-pop과 같은 상속 문법). */
-.quick-launch-mention-deck {
-  top: auto;
-  left: -1px;
-  right: -1px;
-  bottom: calc(100% + var(--space-2));
-  z-index: 41;
-  max-height: min(340px, 42vh);
-  overflow-y: auto;
-  padding: 6px;
-  animation: quick-launch-mention-in var(--duration-fast) var(--ease-glide);
-}
-
-/* 카테고리 밴드는 공통 팝업의 구역 머리다 — 12px 보조색 문장형, 오른쪽으로 구분선이 이어진다. */
-.quick-launch-mention-category {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding: var(--space-2) 12px 6px;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-}
-
-.quick-launch-mention-category-rule {
-  flex: 1;
-  height: 1px;
-  background: var(--popover-divider);
-}
-
-.quick-launch-mention-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: var(--popover-row-dense);
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: var(--t-base);
-  text-align: left;
-}
-
-.quick-launch-mention-row:hover:not(.is-dim) { background: var(--wash-hover); }
-
-/* 키보드 활성 행(aria-activedescendant)은 고른 행 워시 위에 메뉴 행 :focus-visible과 같은 2px 금색 링(행 안쪽)을 더한다 —
-   입력 포커스는 컴포저에 남아 있고, 이 덱의 활성 행은 키보드로만 옮겨진다(마우스 hover는 워시뿐). */
-.quick-launch-mention-row.is-active {
-  background: var(--wash-selected);
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
-}
-
-/* AWAITING은 dim + 선택 불가 + 방향키 스킵(제품 결정) — CLI가 응답 입력을 기다리는 중이라
-   임의 텍스트가 프롬프트 응답을 오염시킨다. 숨기면 "내 op가 왜 없지"가 된다. */
-.quick-launch-mention-row.is-dim {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 행의 주체인 Operation 의 아바타 칸 — Theater 칸(.quick-launch-mark)과 같은 17px 열이라 /theater 행과 이름 열이 맞는다.
-   Theater 는 위 밴드 머리가 말하므로 행에 두 번째 표식을 두지 않는다. */
-.quick-launch-mention-operation-mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 17px;
-  height: 17px;
-}
-
-.quick-launch-mention-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-primary);
-}
-
-/* 카테고리 머리 옆의 능력 문구. 밴드는 brass(위치 채널)를 쓰지만 능력은 위치가 아니므로
-   3티어 텍스트로 물러선다 — 같은 줄에서 두 색이 같은 세기로 서면 밴드가 무엇을 말하는지 흐려진다. */
-.quick-launch-mention-category-note {
-  color: var(--text-tertiary);
-}
-
-/* 플러그인 기여 행의 정체성 마크. Operation 행의 Theater 이니셜과 같은 자리·같은 크기다. */
-.quick-launch-mention-mark {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 17px;
-  height: 17px;
-}
-
-.quick-launch-mention-mark svg {
-  width: 100%;
-  height: 100%;
-}
-
-/* 능력 문구는 상태가 아니다 — 신호 토큰(aurora/warn/coral/positive)도, 상태 배지의 테두리 크롬도
-   쓰지 않는다. 활동 배지 옆에 나란히 서도 "이건 상태가 아니다"가 모양만으로 읽혀야 한다. */
-.quick-launch-mention-capability,
-.quick-launch-target-capability {
-  flex: none;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  white-space: nowrap;
-}
-
-.quick-launch-mention-empty {
-  margin: 0;
-  padding: var(--space-2) 12px;
-  color: var(--text-tertiary);
-  font-size: var(--t-base);
-}
-
-
-/* ── '/' 커맨드 덱 ──────────────────────────────────────────────────────
-   멘션 덱의 표면 문법(.quick-launch-mention-deck/-row)을 그대로 입고, 아래는 커맨드 행에만
-   있는 어휘다 — 리드 아이콘(16vb 스트로크), 현재 값, 타이핑 별칭 토큰. 활성은 멘션 행과 같은
-   중립 워시가 말하고, 리드·토큰은 한 단 밝아져 그 워시를 따라간다. */
-.quick-launch-command-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  color: var(--text-tertiary);
-}
-
-.quick-launch-command-icon svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
-.quick-launch-command-row.is-active .quick-launch-command-icon {
-  color: var(--text-secondary);
-}
-
-.quick-launch-command-value {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
-}
-
-.quick-launch-command-token {
-  flex: none;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-}
-
-.quick-launch-command-row.is-active .quick-launch-command-token {
-  color: var(--text-secondary);
-}
-
-/* 프로바이더 밴드는 이 덱에서만 스크롤을 따라 붙는다. 덱은 340px에서 스크롤을 시작하는데
-   6모델 선별이면 내용이 480px에 이르러, 붙지 않으면 밴드가 시야 밖으로 나간 채 모델 이름만
-   남는다 — 그 공백을 행마다 반복된 공급자 마크가 메우고 있었다. 밴드를 고정하면 마크는
-   순수한 중복이 되어 걷어낼 수 있다. 배경은 덱의 것을 다시 칠한다(투명이면 행이 밑으로 비친다). */
-.quick-launch-command-deck .quick-launch-pop-band {
-  position: sticky;
-  /* 덱 패딩(6px)만큼 위로 물려 스크롤 상단에 빈틈이 생기지 않게 한다. */
-  top: calc(6px * -1);
-  z-index: 1;
-  background: var(--popover-face);
-}
-
-/* 밴드가 선 섹션의 행은 밴드 라벨 자리(패딩 12px + 글리프 16px + 간격 8px)에 맞춰 들어간다.
-   행이 밴드보다 바깥에서 시작하면 항목이 자기 머리글 앞에 서서 소속이 역전돼 읽힌다. */
-.quick-launch-command-group.is-banded .quick-launch-command-row {
-  padding-left: calc(12px + 24px);
-}
-
-/* `/effort` 게이트의 문. 트랙 우측 ✦ 토글과 같은 어휘를 목록 문법으로 옮긴 것이라, 값 행과
-   달리 apex 채널로 말하고 고딕이 아닌 계기 글꼴을 쓴다 — 값이 아니라는 표시. */
-.quick-launch-command-row.is-gate .quick-launch-mention-name {
-  color: var(--apex-ink);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
-}
-
-.quick-launch-command-gate-glyph {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  color: var(--apex-ink);
-  font-size: var(--t-sm);
-  line-height: 1;
-}
-
-.quick-launch-command-row.is-gate.is-active .quick-launch-mention-name,
-.quick-launch-command-row.is-gate.is-active .quick-launch-command-gate-glyph {
-  color: var(--brass-ink);
-}
-
-/* 강도 행은 트랙과 같은 톤 사다리를 입는다 — 같은 축을 한 표면은 색으로, 다른 표면은 흑백으로
-   말하던 어긋남을 없앤다. 활성 행만 brass로 덮는다: brass는 위치 채널이라, 값 톤이 그 자리를
-   침범하면 "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다. */
-.quick-launch-command-row[data-effort-level]:not(.is-active) .quick-launch-mention-name {
-  color: var(--effort-tone);
-}
-
-/* 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 그대로 쓴다. */
-.quick-launch-command-row[data-effort-level="auto"] .quick-launch-mention-name {
-  text-decoration: underline dashed;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 3px;
-  text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
-}
-
-.quick-launch-command-row[data-effort-level="max"] .quick-launch-mention-name,
-.quick-launch-command-row[data-effort-level="ultra"] .quick-launch-mention-name {
-  font-weight: var(--weight-medium);
-}
-
-/* 게이트 뒤 MAX·ULTRACODE는 트랙의 모션을 그대로 쓴다. 조건도 같다 — data-apex 없는 max
-   (게이트 없는 모델의 최고 단)는 정적 crest 글로우에 머문다. 덱은 트랙과 달리 여러 행이
-   동시에 보이므로, 일렁이는 것은 이 두 단으로 끝난다. */
-.quick-launch-command-row[data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
-  text-shadow: 0 0 12px var(--crest-glow);
-}
-
-.quick-launch-command-row[data-apex="true"][data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
-  background-image: linear-gradient(
-    100deg,
-    var(--crest-ink) 0%,
-    color-mix(in oklch, var(--crest) 45%, white) 14%,
-    var(--crest-ink) 30%,
-    color-mix(in oklch, var(--crest) 60%, var(--brass)) 52%,
-    color-mix(in oklch, var(--crest) 40%, white) 72%,
-    var(--crest-ink) 100%
-  );
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow: none;
-  animation:
-    effort-max-ember-wave 2.1s linear infinite,
-    effort-max-ember-flicker 1.7s linear infinite; animation-name: var(--state-motion, effort-max-ember-wave, effort-max-ember-flicker);
-}
-
-.quick-launch-command-row[data-effort-level="ultra"]:not(.is-active) .quick-launch-mention-name {
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    /* Intentional: the oklch short hue arc from apex (~295) to brass (~78) passes through rose (~345); this warm glint is the wave's accent. oklab would collapse it to a grey lavender. */
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: effort-ultracode-wave 1.9s linear infinite; animation-name: var(--state-motion, effort-ultracode-wave);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .quick-launch-command-row[data-apex="true"][data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
-    animation: none;
-    background-image: none;
-    -webkit-background-clip: unset;
-    background-clip: unset;
-    color: var(--crest-ink);
-    text-shadow: 0 0 12px var(--crest-glow);
-  }
-
-  .quick-launch-command-row[data-effort-level="ultra"]:not(.is-active) .quick-launch-mention-name {
-    animation: none;
-    background-image: none;
-    -webkit-background-clip: unset;
-    background-clip: unset;
-    color: var(--apex-ink);
-  }
-}
-
-/* 멘션 확정 시 런치 3종은 접히고(가로 접힘 + 페이드) 행선지 태그가 나타난다. 접힌 컨트롤은
-   visibility로도 감춰 포커스 트랩·탭 순서에서 빠진다. */
-.quick-launch-launch-sel {
-  display: inline-flex;
-  align-items: center;
-  /* 한 줄에서는 줄을 바꾸지 않는다 — 모자라는 폭은 칩 라벨 말줄임이 받는다(.quick-launch-chip).
-     모바일 폭에서는 미디어 질의가 wrap으로 되돌린다: overflow: hidden은 접힘 애니메이션의 것이라,
-     그 폭에서 줄을 못 바꾸면 추론강도 트랙이 잘려 보이지도 만져지지도 않는다(375px에서 실측). */
-  flex-wrap: nowrap;
-  gap: var(--space-2);
-  overflow: hidden;
-  /* 접힘 클립이 전역 포커스 링(2px + offset 2px = 4px 돌출)을 자르면 칩의 링이 좌우 호 두 개로
-     남는다(실측). padding+음수 margin 짝은 콘텐츠 원점과 이웃 간격을 그대로 둔 채 클립 상자만
-     5px 부풀리는 레이아웃 중립 확장이다. */
-  padding: 5px;
-  margin: -5px;
-  max-width: min(640px, 100%);
-  /* inline-flex의 auto 최소폭은 min-content라, 0으로 눌러야 바가 nowrap일 때 이 묶음이 실제로
-     줄어들 수 있다. 줄어든 폭은 안쪽 칩(flex: 0 1 auto)이 나눠 받고, 트랙·토글·라벨은 고정이다. */
-  min-width: 0;
-  opacity: 1;
-  transition:
-    max-width var(--duration-slow) var(--ease-glide),
-    opacity var(--duration-base) var(--ease-glide),
-    visibility 0s linear 0s;
-}
-
 /* 모델 칩·추론강도 트랙 공유 부품(LaunchModelEffort)의 감싸개는 레이아웃에 끼지 않는다 — 칩과
-   트랙이 부모(Quick Launch 묶음, 새 세션 슬롯)의 한 줄 flex 항목으로 그대로 선다. 감싸개가 inline
+   트랙이 부모(새 세션 슬롯 등)의 한 줄 flex 항목으로 그대로 선다. 감싸개가 inline
    상자로 남으면 트랙이 익명 블록을 만들어 칩 아래 줄로 떨어진다(1440px에서 실측). */
 .launch-model-effort {
   display: contents;
@@ -13800,109 +12822,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   min-width: 0;
 }
 
-.quick-launch-launch-sel.is-hidden {
-  /* 접힐 때는 줄바꿈을 되돌린다 — 폭이 0으로 줄면 컨트롤이 저마다 줄을 차지해, 보이지 않는 채로
-     바 높이만 부풀린다(visibility: hidden은 레이아웃에서 빠지지 않는다). */
-  flex-wrap: nowrap;
-  /* 링용 수평 여백은 접힘에서 0이 된다 — 남기면 max-width: 0이어도 10px 유령 폭이 바에 남는다. */
-  padding-inline: 0;
-  margin-inline: 0;
-  max-width: 0;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    max-width var(--duration-slow) var(--ease-glide),
-    opacity var(--duration-base) var(--ease-glide),
-    visibility 0s linear var(--duration-slow);
-}
-
-/* 셸 안쪽 줄바꿈도 같은 이유로 되돌린다 — 좁은 화면 규칙이라 특정도로 덮는다. */
-.quick-launch-launch-sel.is-hidden .quick-launch-effort-track {
-  flex-wrap: nowrap;
-}
-
-.quick-launch-target-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  /* 한 줄 계약의 짝: nowrap 바에서 유일하게 늘어나는 글자 덩어리라, 긴 Theater 이름은 태그 안에서
-     말줄임되어야 한다. 그렇지 않으면 태그가 카드 밖으로 넘친다(96자 폴더명으로 실측). */
-  min-width: 0;
-  color: var(--brass-ink);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  white-space: nowrap;
-  animation: quick-launch-mention-in var(--duration-base) var(--ease-glide);
-}
-
-.quick-launch-target-label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.quick-launch-target-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--brass);
-  box-shadow: var(--brass-halo);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .quick-launch-mention,
-  .quick-launch-mention-deck,
-  .quick-launch-target-tag {
-    animation: none;
-  }
-
-  .quick-launch-launch-sel,
-  .quick-launch-launch-sel.is-hidden {
-    transition: none;
-  }
-}
-
-.quick-launch-bar {
-  position: relative;
-  display: flex;
-  /* 한 줄 계약: 전송은 언제나 첫 줄 오른쪽 끝이다. wrap으로 두면 flex가 줄 나눔을 **수축 전**
-     가정 폭(max-content)으로 먼저 정하므로, 왼쪽 묶음이 예산을 넘는 순간 뒤 아이템이 다음 줄로
-     내려가고 묶음의 min-width: 0은 발동할 기회를 얻지 못한다(760px 카드, ULTRACODE 게이트 열림,
-     14자 모델명에서 전송만 둘째 줄로 떨어지는 것으로 실측). nowrap이면 모자라는 폭은 묶음 안의
-     칩 라벨 말줄임이 받는다. 모바일 폭은 아래 미디어 질의가 wrap으로 되돌린다. */
-  flex-wrap: nowrap;
-  align-items: center;
-  /* 넘친 줄이 생기는 모바일에서 뒤쪽 무리(고정·Run)가 아랫줄 오른쪽 끝을 지키게 한다
-     (한 줄에서는 flex:1 spacer가 이미 다 먹어 이 정렬이 아무것도 바꾸지 않는다). */
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
-  border-top: 1px solid var(--surface-rim);
-}
-
-/* 대화 레인의 바는 권한과 전송만 담는다. 한 줄 예산과 불투명 언더레이를 독립적으로 지켜,
-   긴 대화·안내가 있어도 배경 문구나 오류 텍스트가 컨트롤 사이로 비치지 않는다. */
-.quick-launch-bar.is-conversation {
-  flex-wrap: nowrap;
-  background: var(--popover-face);
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-}
-.quick-launch-bar.is-conversation .quick-launch-spacer { display: none; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-submit { margin-inline-start: auto; }
-.quick-launch-bar.is-conversation .quick-launch-bar-toggles + .quick-launch-submit { margin-inline-start: 0; }
-
-.quick-launch-spacer {
-  flex: 1;
-  min-width: var(--space-2);
-}
-
-.quick-launch-chip {
+.launch-chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -13929,30 +12849,30 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 
 /* 모델 칩은 종류 글리프 슬롯(14px + 간격)이 하나 더 있어 하한도 그만큼 넓다. */
-.quick-launch-chip--model {
+.launch-chip--model {
   min-width: 108px;
 }
 
 /* 열림 상태는 상태가 소유하므로 hover에서 뺀다 — 빼지 않으면 열린 칩 위에서
    brass 테두리와 glow가 hover 면에 묻힌다. */
-.quick-launch-chip:hover:not(:disabled):not([aria-expanded="true"]) {
+.launch-chip:hover:not(:disabled):not([aria-expanded="true"]) {
   border-color: transparent;
   background: var(--control-rest-hover);
   color: var(--text-primary);
 }
 
-.quick-launch-chip:disabled {
+.launch-chip:disabled {
   opacity: 0.45;
 }
 
-.quick-launch-chip[aria-expanded="true"] {
+.launch-chip[aria-expanded="true"] {
   border-color: var(--brass);
   background: var(--brass-glow);
   color: var(--brass-ink);
 }
 
 /* 마크·캐럿은 고정 슬롯이고, 줄어드는 쪽은 이름뿐이다 — 잘릴 때는 말줄임으로 잘렸음을 말한다. */
-.quick-launch-chip-label {
+.launch-chip-label {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -13961,14 +12881,14 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font-weight: var(--weight-medium);
 }
 
-.quick-launch-caret {
+.launch-caret {
   flex: none;
   color: var(--text-tertiary);
   font-size: var(--t-2xs);
 }
 
 /* 실행 종류 글리프는 캔버스 메뉴의 아이콘 슬롯과 같은 치수·색을 쓴다. */
-.quick-launch-kind-icon {
+.launch-kind-icon {
   display: grid;
   place-items: center;
   flex: none;
@@ -13977,120 +12897,38 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   color: var(--brass-ink);
 }
 
-.quick-launch-kind-icon svg {
+.launch-kind-icon svg {
   display: block;
   width: 13px;
   height: 13px;
 }
 
-/* Theater 아이덴티티는 이 칸의 사령관 아바타가 든다 — 카드에 별도 스파인을 두지 않는다. 예전 이니셜 칩과 같은 17px 칸이라
-   칩·행 높이는 그대로다. 아바타는 캐릭터라 바탕 칩을 깔지 않는다. */
-.quick-launch-mark {
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  flex: none;
-}
-
-/* 단축키 힌트는 읽히되 만져지지 않아야 한다. 테두리를 두른 배지로 두면 바 위에서 칩·전송과
-   같은 액션 문법을 입어, 누를 수 있는 것으로 읽힌다. */
-
-/* 전송은 아이콘 하나짜리 원이다 — 컴포저의 유일한 확정 동작이라 이름을 글자로 되풀이하지 않고,
-   이름과 단축키는 접근 이름이 싣는다. */
-.quick-launch-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--brass);
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  color: var(--text-on-brass);
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring);
-}
-
-.quick-launch-submit svg {
-  width: 16px;
-  height: 16px;
-}
-
-/* 보낼 것이 없을 때는 흐린 brass가 아니라 조용한 표면이 된다 — 반투명하게만 두면 곧 눌릴 것처럼
-   보이는 채도가 남는다. 표면 값은 옆 칩과 같다: 테두리를 지우면 원이 카드 배경에 묻혀 누를
-   자리가 있다는 사실까지 사라진다. */
-.quick-launch-submit:disabled {
-  border-color: var(--surface-rim);
-  background: color-mix(in oklch, var(--surface-pillar) 40%, transparent);
-  color: var(--text-tertiary);
-}
-
-.quick-launch-submit:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--brass) 82%, var(--text-on-brass));
-  border-color: color-mix(in oklab, var(--brass) 82%, var(--text-on-brass));
-}
-
 /* 팝오버는 .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을 상속하고 위치·폭만 덮는다.
    카드는 뷰포트 중앙에 두고 팝오버는 아래로 열되, 카드 중심선부터 아래 여백을 계산해 화면 안에서 자른다. */
-.quick-launch-pop {
+.launch-pop {
   top: calc(100% + var(--space-2));
   right: auto;
   bottom: auto;
   left: var(--space-4);
   z-index: 41;
-  max-height: min(340px, var(--quick-launch-pop-max-height, 340px));
+  max-height: min(340px, var(--launch-pop-max-height, 340px));
   overflow-y: auto;
   /* 좌표는 JS가 바 안으로 클램프하지만 폭은 고정값이다 — 바보다 넓으면 클램프해도 오른쪽으로 샌다. */
   max-width: 100%;
 }
 
-.quick-launch-pop--theater {
-  width: 288px;
-}
-
 /* 모델 이름과 공급자 밴드만 담는 폭이다 — 실측 자연 폭(약 189px)에 여유만 얹는다. */
-.quick-launch-pop--model {
+.launch-pop--model {
   width: 216px;
 }
 
-.quick-launch-pop-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: var(--popover-row-dense);
-  padding: 0 12px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: var(--t-base);
-  text-align: left;
-}
-
-.quick-launch-pop-item:hover { background: var(--wash-hover); }
-.quick-launch-pop-item:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-
-.quick-launch-pop-item-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.quick-launch-pop-check {
+.launch-pop-check {
   color: var(--text-primary);
   font-size: var(--t-sm);
 }
 
 /* 공급자 밴드는 공통 팝업의 구역 머리다 — 12px 보조색 문장형. */
-.quick-launch-pop-band {
+.launch-pop-band {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -14101,12 +12939,12 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   font-size: var(--t-sm);
 }
 
-.quick-launch-variant-row {
+.launch-variant-row {
   position: relative;
   padding: 2px var(--space-1);
 }
 
-.quick-launch-variant-name {
+.launch-variant-name {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -14123,42 +12961,21 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   text-align: left;
 }
 
-.quick-launch-variant-name:hover,
-.quick-launch-variant-name[aria-expanded="true"] { background: var(--wash-hover); }
+.launch-variant-name:hover,
+.launch-variant-name[aria-expanded="true"] { background: var(--wash-hover); }
 /* 고른 행 — Theater·모델 팝업 모두 고른 행 워시 9% + 본문색 체크다. */
-.quick-launch-pop-item[aria-checked="true"],
-.quick-launch-variant-name[aria-checked="true"] { background: var(--wash-selected); }
-.quick-launch-variant-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
+
+.launch-variant-name[aria-checked="true"] { background: var(--wash-selected); }
+.launch-variant-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
 /* 모바일 셸과 같은 경계(view-mode-store의 narrow 질의)다. 이 폭에서 선택 줄은 전송 버튼과 한 줄을
    다투다 자기 폭 아래로 짜부라지고, 접힘용 overflow: hidden이 추론강도 트랙을 잘라 낸다.
    줄을 통째로 내주면 트랙이 온전히 서고 전송은 아래 줄로 내려간다. */
 @media (max-width: 767px) {
-  /* 한 줄 계약을 푼다 — 이 폭에서는 말줄임으로도 예산이 안 나와, 선택 줄이 한 줄을 통째로 갖고
-     전송이 아래 줄로 내려가는 것이 설계다. */
-  .quick-launch-bar,
-  .quick-launch-bar.is-conversation,
-  .quick-launch-launch-sel {
-    flex-wrap: wrap;
-  }
-
-  .quick-launch-launch-sel {
-    flex: 1 1 100%;
-  }
-
-  /* 스페이서가 같은 줄에 남으면 그 최소폭만큼 선택 줄을 다시 깎는다 — 전송을 오른쪽에 붙이는 일은
-     자동 여백이 대신한다. */
-  .quick-launch-spacer {
-    display: none;
-  }
-
-  .quick-launch-submit {
-    margin-left: auto;
-  }
 
   /* 트랙 폭은 TSX의 픽셀 산술과 묶인 앵커라 줄일 수 없다 — apex가 열려 줄을 넘칠 때는 셸이 줄을
      바꿔 라벨을 아래로 내린다. */
-  .quick-launch-effort-track {
+  .launch-effort-track {
     flex-wrap: wrap;
     max-width: 100%;
     min-width: 0;
@@ -14166,51 +12983,16 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quick-launch-overlay {
-    animation: none;
-  }
-
-  /* 도킹 이동과 접힘도 같은 규약을 따른다 — 전역 단락이 duration을 0.01ms로 눌러 주지만, 이 표면의
-     의도를 규칙 옆에 남긴다(.quick-launch-launch-sel 선례와 같은 형태). */
-  .quick-launch-overlay,
-  .quick-launch-card,
-  .quick-launch-card.is-pinned .quick-launch-field,
-  .quick-launch-card.is-pinned .quick-launch-bar {
-    transition: none;
-  }
 
   .effort-track-apex-burst {
     animation: none;
   }
 
-  /* `ultracode` 무장: 점화·구슬·순항·물결을 세우되 **상태는 남긴다** — 정지한 apex 링과
-     단색 apex 단어. 모션이 유일한 전달 수단이면 감속 모드에서 상태 자체가 사라진다. */
-  .quick-launch-card.is-ultracode,
-  .quick-launch-card.is-ultracode::before,
-  .quick-launch-card.is-ultracode::after,
-  .quick-launch-ultracode-token {
-    animation: none;
-  }
-
-  .quick-launch-card.is-ultracode::before {
-    content: none;
-  }
-
-  .quick-launch-card.is-ultracode::after {
-    background: color-mix(in oklch, var(--apex) 46%, transparent);
-  }
-
-  .quick-launch-ultracode-token {
-    background-image: none;
-    color: var(--apex-ink);
-  }
-
-  .quick-launch-chip,
-  .quick-launch-submit,
+  .launch-chip,
   .effort-track-apex-seam,
   .effort-track-stop[data-apex-rung="true"],
   .effort-track-apex-toggle,
-  .quick-launch-effort-track,
+  .launch-effort-track,
   .effort-track-fill,
   .effort-track-knob,
   .effort-track-stop,
@@ -14477,39 +13259,6 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   .control-bar button {
     transition: none;
   }
-}
-
-/* 상한 초과 안내 — 상태 신호이므로 warn 채널을 쓴다. */
-.quick-launch-overflow {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--warn);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
-}
-
-/* Trust 복구 지시는 한 줄 오류 행에서 말줄임하지 않고 별도 줄로 읽힌다. */
-.quick-launch-trust-guidance {
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--surface-rim);
-  color: var(--coral);
-  font-size: var(--t-sm);
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-/* 실행 거절 사유 — 상태 신호이므로 coral 채널을 쓴다. */
-.quick-launch-rejection {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--coral);
-  font-size: var(--t-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ── 실패 알림(SDK `components/failure-notice`)의 호스트 외양 ──────────────────
@@ -14996,9 +13745,7 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   .fc-settings-reset,
   .codex-reader-tool,
   .expanded-surface-pane-close,
-  .quick-launch-chip,
-  .quick-launch-card .effort-track,
-  .quick-launch-card .effort-track-apex-toggle { border-color: ButtonBorder; }
+  .launch-chip{ border-color: ButtonBorder; }
 }
 
 /* ── 보관함 ─────────────────────────────────────────────────────────────
@@ -15650,7 +14397,7 @@ kbd { font-variant-numeric: tabular-nums; }
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
   .new-session-send, .new-session-cancel,
-  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
 ) {
   transition:
@@ -15668,7 +14415,7 @@ kbd { font-variant-numeric: tabular-nums; }
   transition-timing-function: var(--ease-soft);
 }
 :root:not([data-view-mode="mobile"]) :is(
-  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
 ):active:not(:disabled) {
   transform: scale(0.985);
@@ -15679,7 +14426,7 @@ kbd { font-variant-numeric: tabular-nums; }
   :root:not([data-view-mode="mobile"]) :is(
     .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
     .new-session-send, .new-session-cancel,
-    .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .quick-launch-chip,
+    .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip
   ):active:not(:disabled) {
     /* 눌림 규칙과 같은 명시도여야 이긴다 — :not(:disabled) 가 빠지면 동작 줄이기에서도 축소가 남는다. */

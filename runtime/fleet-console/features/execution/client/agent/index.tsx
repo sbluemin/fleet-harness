@@ -203,12 +203,12 @@ export const agentExecution: ClientExecutionProvider = {
       throw error;
     }
   },
-  // Quick Launch 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
+  // 새 세션 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
   messageableOperationTypes: ["agent"],
   messageOperation: async (operationId, text, attachmentIds) => {
     await messageAgentSession(operationId, text, attachmentIds);
   },
-  // Quick Launch 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
+  // 새 세션 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
   uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),
   discardLaunchAttachment: async (id) => discardLaunchAttachment(id),
   launch: async ({ theaterId, kind, variant, geometry }) => {
@@ -714,7 +714,7 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   }, [context.operationId, sessionStatus, chatMode]);
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
   // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
-  // 떠버린다. "직접 연 순간에만"은 quick-launch-pin 투어와 같은 판정이다.
+  // 떠버린다. "직접 연 순간에만"이 이 투어의 판정이다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — CLI(터미널이 찾아낸 링크)와 채팅(마크다운 앵커)이 같은 카드를 쓴다.
