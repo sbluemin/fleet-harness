@@ -260,9 +260,13 @@ export interface ClaudeGatewaySdkOptions {
    * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트
    * 위치가 반대이고, 그 반대가 호출부에서 읽혀야 한다. 공유 홈이 무엇을 호스트에게 넘기는지는
    * `ClaudeConfigHome`에 적혀 있다.
+   *
+   * `persistent`는 격리 홈을 호출자가 정한 자리에 둔다 — 캐시는 이 인스턴스가 쓰고, 폐기는 지우지 않는다. 다음
+   * 인스턴스가 같은 자리에서 그 트랜스크립트를 resume하기 위한 것이며, 그 자리를 지우는 것은 호출자의 몫이다.
    */
   readonly home?:
     | { readonly kind: "isolated" }
+    | { readonly kind: "persistent"; readonly configDir: string }
     | { readonly kind: "shared"; readonly configDir: string };
   /** 자식이 상속할 기본 환경. 기본값은 이 프로세스의 `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;

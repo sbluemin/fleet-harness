@@ -40,6 +40,7 @@ await session.dispose();
 ## 계약
 
 - `conversation`은 SDK 자식 세션을 이어간다. `oneshot`은 매 턴 독립 실행하며 이전 대화가 필요하면 제품이 프롬프트를 구성한다. provider 세션 ID는 노출하지 않는다.
+- `persist: { key }`(`conversation` 전용, `timeoutMs` 없이)는 대화를 Console 데이터 루트(`plugins/<pluginId>/agent-sessions/`)에 남긴다. 같은 플러그인이 같은 key로 다시 열면(Console 재시작 뒤에도) 같은 대화를 resume하고 `session.resumed`가 참이다. 모델이 바뀌었거나 남은 트랜스크립트가 없으면 새 대화로 연다. 자식은 턴 사이에도 살아 있고, `session.steer(input, id)`는 도는 턴에 말을 건넨다(Claude Code CLI가 사람이 친 말에 쓰는 다음 도구 경계). 그 말의 행방은 `input-started`(턴이 집음)·`input-cancelled`(모델에 닿지 못함 — 다시 보낼 수 있다) 이벤트가 `id`로 말하며, 턴이 그 말을 집기 전에 닫히려 하면 호스트가 결말을 미뤄 같은 턴으로 잇는다. `cancel`은 자식을 접고 다음 턴이 같은 대화를 다시 resume한다. 남긴 대화는 `ctx.host.agent.forget(key)`로 지운다. 자리·세션 식별자는 호스트 소유이고 플러그인은 key만 안다. 같은 key의 세션은 한 번에 하나다(`agent_persist_busy`).
 - `send`는 세션별 직렬 실행이다. `cancel`은 현재 턴만 중단하고 다음 턴은 허용한다. `dispose`는 영구 종료이며 신규 실행을 거절하고 자원 정리를 기다린다.
 - `settlement: result`는 기존 실행 엔진의 결과 처리 의미를 유지한다. `result-required`는 결과 없는 종료를 `incomplete`로 보고하며 `timeoutMs`가 지정되면 watchdog을 사용한다.
 - SDK가 내장 도구를 명시적으로 제한한다. 플러그인 세션이 요청할 수 있는 내장 도구는 `WebSearch`, `WebFetch`이며 생략하면 없다. 파일·셸·하위 Agent는 기본 제공하지 않는다.
@@ -49,12 +50,13 @@ await session.dispose();
 - `ctx.host.consoleControl`(있는 호스트에서)은 `console_launcher`·`console_operation`의 `send`와 같은 서버 경로로 Operation을 시작하거나 그 입력창에 메시지를 넣고, `resume`으로 휴면 Operation을 본문 없이 세션째 재개한다(휴면이 아니면 `not_dormant`). 호출자는 그 플러그인 자신이며 시트를 거치지 않는다. `ctx.host.operations.groups`는 사이드바의 Operation 그룹을 플러그인 목록으로 연다. Operation의 그룹이 바뀌면(사람의 이동·Console Use·플러그인 `patch({ groupId })`·그룹 삭제) 서버 안 채널 `operation:grouped`가 한 번 나므로, 그룹을 목록으로 쓰는 플러그인은 이것을 구독해 연결 항목을 따라 옮긴다. 같은 식으로 Operation·자식 세션의 `readOperationLaunch` 투영(세션 이름·채팅/터미널 표면·모델·effort·개시)이 실제로 바뀌면(채팅 화면의 모델 적용·채팅↔터미널 전환·재개) `operation:launch-changed`가 `{ operationId, parentOperationId }` 힌트만 싣고 한 번 난다 — 구독자는 `operations.get`으로 지금 값을 다시 읽는다.
 - `consoleUse`는 Console 기본 도구(`CONSOLE_USE_TOOLS`: `console_context`·`console_sidebar`·`console_launcher`·`console_operation`)의 명시적 요청이며 `tools`를 생략하면 전부다. 읽기 전용은 도구 목록이 아니라 action 필터다. `allowControl: true`가 없으면 `read` action만 실리고 쓰기만 있는 `console_launcher`는 빠진다. `allowControl: true`를 요청하면 호스트가 플러그인 호출자를 바인딩하며, 실행은 Operation 토글 또는 부관 grant에 따른다. 플러그인은 다른 호출자나 Operation을 가장할 수 없다. `enabled`는 호출마다 평가하고 `snapshot`은 보조 관측만 제공한다. 전역 Admiral 도구는 자동 연결하지 않는다.
 - 실행 영수증과 자동 정책의 소유자는 Operation 또는 플러그인으로 구분한다. 부관단은 플러그인 단위로 정책을 공유하므로 대화를 닫아도 유지되지만, 호스트 재시작 시에는 일시 중지되고 플러그인이 해제되면 더 실행하지 않는다.
-- 임시 cwd·격리 SDK config·도구 연결은 Console 소유다. 플러그인 등록 실패와 Console 종료 시에도 정리한다. 정상 종료를 거치지 않은 프로세스의 디스크 잔재는 세션 재개 권한이 아니다.
-- `text`, `thinking`, `tool-start`, `tool-end`, `result`, `cancelled`, `compacted`, `compact-failed`는 서버 이벤트다. 사용량은 공급자가 보고한 경우에만 포함한다. `usage.inputTokens`는 턴의 호출 합이고, 대화 크기는 마지막 호출의 입력인 `usage.contextTokens`다. 브라우저에 원시 도구 입력·오류·파일 경로를 그대로 전달하지 않는다. 모르는 이벤트 종류는 무시한다.
+- 임시 cwd·격리 SDK config·도구 연결은 Console 소유다. 플러그인 등록 실패와 Console 종료 시에도 정리한다. 정상 종료를 거치지 않은 프로세스의 디스크 잔재는 세션 재개 권한이 아니다. `persist` 세션의 자리만은 폐기가 지우지 않으며, 그 재개는 같은 플러그인·같은 key로만 열린다.
+- `text`, `thinking`, `tool-start`, `tool-end`, `result`, `cancelled`, `compacted`, `compact-failed`, `input-started`, `input-cancelled`는 서버 이벤트다. 사용량은 공급자가 보고한 경우에만 포함한다. `usage.inputTokens`는 턴의 호출 합이고, 대화 크기는 마지막 호출의 입력인 `usage.contextTokens`다. 브라우저에 원시 도구 입력·오류·파일 경로를 그대로 전달하지 않는다. 모르는 이벤트 종류는 무시한다.
 - `conversation` 세션은 문맥이 차면 같은 세션 안에서 대화를 요약해 이어 가고 그때 `compacted`(압축 전후 토큰)를 낸다. 요약에 실패하면 `compact-failed`를 내고 대화는 줄지 않는다 — 창을 넘긴 세션이면 이어지는 턴이 오류로 끝나므로, 오래 가는 세션의 소유자는 그때 세션을 바꾼다. `compactAt`(토큰)은 그 지점을 정한다. 호스트가 실행기의 자동 압축 창으로 옮기며, 네이티브 Claude 모델에만 적용된다 — Gateway 모델(비-Claude)은 Gateway의 compact 정책을 따른다. 그런 세션에서 호스트는 `contextTokens`와 `compacted`의 토큰을 공급자의 실제 토큰으로 되돌리고, 같은 단위의 창과 실제 압축 지점을 `usage.context`로 싣는다(모르면 `null`). 생략하면 실행기의 기본 지점이다.
 - 이 SDK는 same-process 플러그인을 샌드박싱하지 않는다. 플러그인의 업무 권한과 사용자의 최종 승인 규칙은 바뀌지 않는다.
 
 ## 소비자
 
 - Scuttlebutt: 대화 연속성, 웹 도구, grant로 허용하는 Console 관측·실행·자동 운영과 Wiki 읽기. 페르소나·제품 세션·SSE 표현은 플러그인 소유.
+- Objectives 사령관: Theater마다 `persist` 대화 하나(`commodore:<theaterId>`). Console 재시작·자율 운영 재개 뒤 같은 대화를 잇고, 턴 중 사람의 말은 `steer`로 그 턴에 건넨다. 교대(좌표·언어·이미지 예산)와 Clear는 `forget` 뒤 새 대화다.
 - Codex Cowork: 원샷 실행, 10분 watchdog, draft 3개와 Wiki 읽기 4개. draft 상태·주석·히스토리 구성·Apply 승인은 Codex 소유. scoped draft 도구는 전역 Admiral MCP에 등록하지 않는다.

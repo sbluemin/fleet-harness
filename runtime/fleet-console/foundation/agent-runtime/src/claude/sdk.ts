@@ -19,7 +19,7 @@ import {
   type ClaudeGatewayTurn,
 } from "./contracts.js";
 
-import { createIsolatedClaudeConfigDir, createSharedClaudeConfigHome } from "./config-dir.js";
+import { createIsolatedClaudeConfigDir, createPersistentClaudeConfigHome, createSharedClaudeConfigHome } from "./config-dir.js";
 import { claudeGatewayLaunchEnv } from "./launch-env.js";
 import { runVendorQuery, runVendorSession } from "./vendor-sdk.js";
 import { toVendorProcessSpawner } from "./process-spawn.js";
@@ -50,7 +50,9 @@ export async function createClaudeGatewaySdk(
 
   const configDir = options.home?.kind === "shared"
     ? createSharedClaudeConfigHome(options.home.configDir)
-    : await createIsolatedClaudeConfigDir(options.tempRoot);
+    : options.home?.kind === "persistent"
+      ? await createPersistentClaudeConfigHome(options.home.configDir)
+      : await createIsolatedClaudeConfigDir(options.tempRoot);
   let disposed = false;
   // 슬롯 하나를 턴과 세션이 함께 쓴다. 담기는 것이 무엇이든 이 인스턴스가 접을 수 있어야 하므로
   // 필요한 능력만 붙들고, 나머지는 각자의 계약이 갖는다.

@@ -8,6 +8,7 @@
 export { createClaudeGatewaySdk } from "./sdk.js";
 export { createClaudeExecutionEventDecoder } from "./execution-events.js";
 export { createClaudeExecutionLoop } from "./execution-loop.js";
+export { createClaudeResidentLoop, forgetClaudeResidentState } from "./resident-loop.js";
 export { defineTool, createEmbeddedMcpServer } from "../mcp/embedded/server.js";
 export type {
   ClaudeProcessSpawner,
@@ -44,6 +45,7 @@ export type {
   ClaudeExecutionEventDecoder,
   ClaudeExecutionUsage,
 } from "./execution-events.js";
+export type { ClaudeResidentEvent, ClaudeResidentLoop, ClaudeResidentLoopOptions } from "./resident-loop.js";
 export type {
   ClaudeExecutionContinuation,
   ClaudeExecutionLoop,

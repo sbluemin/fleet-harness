@@ -13,7 +13,15 @@ import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type Com
  * `console_objectives_detail`, 행위자는 `{ kind: "commodore", theaterId }` 로 고정) + WebSearch·WebFetch 다. Console Use 연결은 쓰지 않는다 — 플러그인
  * 호출자는 Theater 를 모르므로 다른 Theater 의 보드에 손이 닿는다. 턴은 깨움 이유만 싣는다. 세션의 onEvent 는 여기서 정제돼 Theater 의 기록
  * (`transcript.jsonl`)에 쌓이고 같은 길로 방송된다 — 도구 입력 전체·원시 오류·경로는 기록에 들어가지 않는다.
+ *
+ * 세션은 Theater 마다 하나의 `persist` 대화다(`commodorePersistKey`). Console 이 다시 서거나 자율 운영이 다시 켜져도 같은 대화를
+ * 이어 받고(`resumed`), 턴이 도는 중에 온 사람의 말은 그 턴에 건넨다(`steer`) — 채팅·지휘관 세션과 같은 자리다.
  */
+
+/** 이 Theater 의 사령관 대화 — 호스트가 이 key 의 자리에 대화를 남긴다. 세션 id·경로는 플러그인이 모른다. */
+export function commodorePersistKey(theaterId: string): string {
+  return `commodore:${theaterId}`;
+}
 
 /** 세션이 여는 좌표 — `model`은 Agent SDK wire id다. 강도를 받지 않는 모델이면 강도가 없다. */
 export interface CommodoreSessionCoordinates {
@@ -39,6 +47,8 @@ export interface CommodoreSessionOptions {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly title: string } | null;
   /** 턴 중 라이브 사건 — 저장하지 않고 방송만 한다. */
   readonly onLive?: (event: CommodoreLiveEvent) => void;
+  /** `steer` 로 건넨 말의 행방 — 도는 턴이 집었다(started) 또는 모델에 닿지 못했다(cancelled). id 는 건넬 때 준 그대로다. */
+  readonly onInput?: (event: { readonly id: string; readonly state: "started" | "cancelled" }) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
 }
@@ -68,7 +78,13 @@ export interface CommodoreTurnOutcome {
 
 export interface CommodoreSession {
   readonly coordinates: CommodoreSessionCoordinates;
+  /** `start()` 뒤 — 남아 있던 같은 대화를 이어 받았는가. */
+  readonly resumed: boolean;
+  /** 이 세션의 대화가 호스트에 남는가 — 남으면 끊긴 턴에 실린 말도 다음에 이어 받는 대화 안에 있다. */
+  readonly persistent: boolean;
   start(): Promise<void>;
+  /** 도는 턴에 사람의 말을 건넨다. 도는 턴이 없거나 건넬 수 없으면 false — 부른 쪽이 다음 턴에 싣는다. */
+  steer(message: string, id: string): boolean;
   /** 한 턴 — 세션의 턴은 순서대로 돈다. 세션 오류는 결말로 돌아오고 던지지 않는다(폐기된 세션만 던진다). */
   turn(input: CommodoreTurnInput): Promise<CommodoreTurnOutcome>;
   /** 진행 중 턴만 멈춘다. */
@@ -158,6 +174,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         return;
       }
       case "compact-failed": compactionFailed = true; return;
+      case "input-started": options.onInput?.({ id: event.id, state: "started" }); return;
+      case "input-cancelled": options.onInput?.({ id: event.id, state: "cancelled" }); return;
       case "compacted":
         compactionFailed = false;
         flushText();
@@ -179,6 +197,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       systemPrompt: commodoreSystemPrompt(options.theaterLabel, options.language),
       continuation: "conversation",
       settlement: "result",
+      persist: { key: commodorePersistKey(options.theaterId) },
       ...(options.coordinates.compactAt ? { compactAt: options.coordinates.compactAt } : {}),
       tools: {
         builtins: ["WebSearch", "WebFetch"],
@@ -193,6 +212,13 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
 
   return {
     coordinates: options.coordinates,
+    get resumed() { return session?.resumed === true; },
+    get persistent() { return typeof session?.steer === "function"; },
+    steer(message, id) {
+      if (disposed || !turnActive || !session?.steer) return false;
+      // 깨움 턴의 메시지와 같은 머리로 건넨다 — 모델에게는 「사람의 말」 한 덩이로 읽힌다.
+      return session.steer(messageNote([message]), id);
+    },
     start() {
       if (disposed) return Promise.reject(new Error("session_disposed"));
       return starting ??= open();

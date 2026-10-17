@@ -1250,7 +1250,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         const executable = await resolveClaudeExecutable?.();
         if (!executable) throw new Error("agent_cli_unavailable");
         return executable;
-      }, compactCeiling: () => readGatewayCompactCeiling?.() });
+      }, compactCeiling: () => readGatewayCompactCeiling?.(),
+      // 플러그인이 `persist`로 남기는 대화는 그 플러그인의 Console 데이터 자리에 산다 — 채널마다 갈린 데이터 루트를 따른다.
+      persistRoot: () => path.join(durablePaths.dir, "plugins", pluginId, "agent-sessions") });
       consoleAgentOwners.add(pluginId);
       return { ...agent, dispose: async () => { consoleAgentOwners.delete(pluginId); await agent.dispose(); } };
     },

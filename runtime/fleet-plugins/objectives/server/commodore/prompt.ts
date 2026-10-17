@@ -2,13 +2,13 @@
  * 사령관의 시스템 프롬프트 — Objectives 제품이 소유하는 구조화된 베이스(정체성) 하나. 모든 Theater 에서 같고, 버전은
  * 이 파일의 이력이다. 사람의 「지시」와 「정보」는 여기 실리지 않는다 — 사령관 전용 도구에만 있고, 사령관이 스스로 읽는다.
  *
- * `mode: "replace"` 로 넘기므로 Claude Code 기본 지침은 실리지 않고, 작업 디렉터리가 매번 새 임시 폴더라 Theater 의
- * CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
+ * `mode: "replace"` 로 넘기므로 Claude Code 기본 지침은 실리지 않고, 작업 디렉터리는 Theater 밖의 호스트 소유 자리이며 설정 층을
+ * 읽지 않으므로 Theater 의 CLAUDE.md·설정도 실리지 않는다. 사령관이 받는 시스템 지침은 이것뿐이다.
  */
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
-export const COMMODORE_PROMPT_VERSION = 16;
+export const COMMODORE_PROMPT_VERSION = 17;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -121,8 +121,12 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   patrol sooner, not later, and without a schedule you are woken one interval
   after your turn.
   Intel sources do not push; patrols are when you read them.
-- Your session may be replaced when its context grows long or after a restart.
-  A replacement opens with a summary of your recent actions; everything else
+- A message the person sends while you are working reaches you in the same turn,
+  between tool calls. Read it and adjust what you are doing.
+- Your session continues across Console restarts and autonomy pauses: the same
+  conversation resumes, and a restart alone does not wake you. When your model
+  or language changes or the session cannot be resumed, it is replaced; a
+  replacement opens with a summary of your recent actions, and everything else
   you read again from the tools.
 
 # Record

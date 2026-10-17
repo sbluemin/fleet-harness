@@ -49,7 +49,8 @@ function settleLive(live: readonly CommodoreLiveEvent[], entry: CommodoreTranscr
     const index = live.findIndex((event) => event.kind === "tool-start" && event.name === entry.name);
     return index < 0 ? live : [...live.slice(0, index), ...live.slice(index + 1)];
   }
-  if (entry.kind === "message") return live;
+  // 사람의 말과 그 말의 행방(도는 턴이 집음·다시 실음)은 흐르는 답을 대신하지 않는다 — 턴 중에 와도 글자 흐름은 그대로다.
+  if (entry.kind === "message" || entry.kind === "delivered" || entry.kind === "requeued") return live;
   return [];
 }
 

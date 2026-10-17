@@ -1,8 +1,9 @@
 import { CLAUDE_COMPAT_CONTEXT_WINDOW, CLAUDE_DEFAULT_CONTEXT_WINDOW, claudeGatewayModelPolicy, compactThresholdTokens, findGatewayModel, unprojectClaudeContextInputTokens, type CompactCeiling } from "@fleet-console/ai-gateway";
+import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { createClaudeExecutionLoop, createClaudeGatewaySdk, createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
+import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, forgetClaudeResidentState, type ClaudeExecutionTurn, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentHost, AgentSession, AgentSessionOptions } from "@fleet-console/sdk/agent";
 import { CONSOLE_USE_TOOLS, FLEET_CONSOLE_USE_MCP_SERVER, type ConsoleUseMcpHost } from "@fleet-console/sdk/mcp";
 import { z } from "zod";
@@ -24,31 +25,57 @@ export interface PluginAgentDeps {
    * Gateway가 사용량을 투영할 때 읽는 그 값이어야 두 쪽이 같은 자를 쓴다. 없으면 Auto(창 − 16k)다.
    */
   readonly compactCeiling?: () => CompactCeiling | null | undefined;
+  /**
+   * 이 플러그인이 `persist`로 남기는 대화의 뿌리 — Console 데이터 루트 아래의 절대 경로. 대화마다 key 해시 이름의 자리에
+   * 홈(`claude/`)·작업 디렉터리(`cwd/`)·좌표 파일(`session.json`)을 둔다. 없는 호스트에서는 `persist`를 거절한다.
+   */
+  readonly persistRoot?: () => string | null;
 }
+
+const PERSIST_KEY = /^[A-Za-z0-9:_-]{1,128}$/;
 
 /** 플러그인 등록 단위로 생성한다. 시작 중인 세션도 이 소유자가 끝날 때 함께 회수한다. */
 export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { dispose(): Promise<void> } {
   const sessions = new Set<AgentSession>();
   const pending = new Set<Promise<AgentSession>>();
+  /** 열린 `persist` 세션 — 같은 대화에 자식 둘이 쓰면 트랜스크립트가 갈라진다. 열리는 중인 key도 자리를 잡는다. */
+  const persisted = new Map<string, { readonly token: object; readonly work: Promise<AgentSession> }>();
   let disposed = false;
   let disposal: Promise<void> | null = null;
 
+  const persistDirOf = (key: string): string => {
+    const root = deps.persistRoot?.();
+    if (!root || !path.isAbsolute(root)) throw new Error("agent_persist_unavailable");
+    return path.join(root, createHash("sha256").update(key).digest("hex").slice(0, 32));
+  };
+
   const createSession = (options: AgentSessionOptions): Promise<AgentSession> => {
     if (disposed) return Promise.reject(new Error("agent_host_disposed"));
-    const work = create(options);
+    const key = options?.persist?.key;
+    if (key !== undefined && persisted.has(key)) return Promise.reject(new Error("agent_persist_busy"));
+    const token = {};
+    const work = create(options, token);
+    if (key !== undefined) {
+      persisted.set(key, { token, work });
+      void work.catch(() => { if (persisted.get(key)?.token === token) persisted.delete(key); });
+    }
     pending.add(work);
     void work.then(() => pending.delete(work), () => pending.delete(work));
     return work;
   };
 
-  async function create(options: AgentSessionOptions): Promise<AgentSession> {
+  async function create(options: AgentSessionOptions, token: object): Promise<AgentSession> {
     validateOptions(options);
     const baseUrl = deps.baseUrl();
     if (!baseUrl) throw new Error("agent_gateway_unavailable");
     if (disposed) throw new Error("agent_host_disposed");
-    // 대화 연속성에 필요한 자식 상태만 임시로 둔다. Console 영속 데이터와 연결하지 않는다.
-    const cwd = await fs.mkdtemp(path.join(tmpdir(), "fleet-plugin-agent-"));
-    if (disposed) { await fs.rm(cwd, { recursive: true, force: true }); throw new Error("agent_host_disposed"); }
+    // 대화 연속성에 필요한 자식 상태만 둔다. `persist`가 없으면 임시 자리이고 Console 영속 데이터와 연결하지 않는다.
+    // `persist`면 Console 데이터 루트 아래의 대화 자리 — 폐기가 지우지 않고, 다음에 같은 key로 열면 같은 대화를 resume한다.
+    const persistDir = options.persist ? persistDirOf(options.persist.key) : null;
+    const cwd = persistDir ? path.join(persistDir, "cwd") : await fs.mkdtemp(path.join(tmpdir(), "fleet-plugin-agent-"));
+    if (persistDir) await fs.mkdir(cwd, { recursive: true, mode: 0o700 });
+    const releaseCwd = () => (persistDir ? Promise.resolve() : fs.rm(cwd, { recursive: true, force: true }));
+    if (disposed) { await releaseCwd(); throw new Error("agent_host_disposed"); }
     const lifetime = new AbortController();
     let turnController: AbortController | null = null;
     let closed = false;
@@ -62,44 +89,55 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
     const servers: Record<string, ClaudeGatewayMcpServer> = {};
     const builtins: string[] = [...(options.tools?.builtins ?? [])];
     const allowed: string[] = [...builtins];
+    // 대화 자리 전체(홈·작업 디렉터리)를 가린다. 홈 경로가 먼저 가려지도록 긴 뿌리부터 지운다.
+    const hidden = persistDir ? [cwd, persistDir] : [cwd];
+    const redactRoots = [...new Set(hidden.flatMap((root) => [root, root.replaceAll("\\", "/"), root.replaceAll("/", "\\")]))];
     const redact = (value: unknown): unknown => {
-      if (typeof value === "string") return [...new Set([cwd, cwd.replaceAll("\\", "/"), cwd.replaceAll("/", "\\")])].reduce((text, root) => text.split(root).join("[workspace]"), value);
+      if (typeof value === "string") return redactRoots.reduce((text, root) => text.split(root).join("[workspace]"), value);
       if (Array.isArray(value)) return value.map(redact);
       if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redact(item)]));
       return value;
     };
     const gateway = gatewayModelWindow(options.model);
     const emit = (event: AgentEvent) => {
-      if (closed || cancelled) return;
+      // 건넨 말의 행방은 중지 뒤에도 호출자에게 닿아야 한다 — 그래야 모델에 닿지 못한 말을 다시 보낼 수 있다.
+      if (closed || (cancelled && event.kind !== "input-cancelled" && event.kind !== "input-started")) return;
       // 좌표를 바꾸는 것은 압축과 사용량을 실은 결과뿐이다 — 스트림 delta마다 Gateway 설정을 읽지 않는다.
       const reframes = event.kind === "compacted" || (event.kind === "result" && event.usage !== undefined);
       const framed = gateway === undefined || !reframes ? event : inGatewayFrame(event, gateway, deps.compactCeiling?.() ?? null);
       options.onEvent?.(redact(framed) as typeof framed);
     };
-    const loop = createClaudeExecutionLoop({
-      createSdk: async () => {
-        const env = stripConsoleInternalEnv(process.env);
-        delete env.FLEET_CONSOLE_SESSION_ID;
-        const executablePath = await deps.resolveExecutablePath?.();
-        const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
-        return (deps.createSdk ?? createClaudeGatewaySdk)({ baseUrl, models: [options.model], tempRoot: cwd, env, modelPolicy: claudeGatewayModelPolicy, ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }) });
-      },
-      buildTurn: () => {
-        turnController = new AbortController();
-        return {
-          model: options.model,
-          ...(options.effort ? { effort: options.effort } : {}),
-          systemPrompt: { mode: "replace", text: options.systemPrompt },
-          cwd,
-          tools: [...builtins],
-          allowedTools: allowed,
-          mcpServers: servers,
-          permissionMode: "dontAsk",
-          includePartialMessages: true,
-          ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
-          ...(options.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
-        };
-      },
+    const createSdk = async () => {
+      const env = stripConsoleInternalEnv(process.env);
+      delete env.FLEET_CONSOLE_SESSION_ID;
+      const executablePath = await deps.resolveExecutablePath?.();
+      const autoCompactWindow = options.compactAt === undefined ? undefined : claudeAutoCompactWindow(options.model, options.compactAt);
+      return (deps.createSdk ?? createClaudeGatewaySdk)({
+        baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
+        // 남기는 대화는 홈도 그 자리에 둔다 — 격리 홈처럼 캐시를 이 인스턴스가 쓰되 폐기가 지우지 않는다.
+        ...(persistDir ? { home: { kind: "persistent" as const, configDir: path.join(persistDir, "claude") } } : { tempRoot: cwd }),
+        ...(executablePath === undefined ? {} : { executablePath }), ...(autoCompactWindow === undefined ? {} : { autoCompactWindow }),
+      });
+    };
+    const buildTurn = (): ClaudeExecutionTurn => ({
+      model: options.model,
+      ...(options.effort ? { effort: options.effort } : {}),
+      systemPrompt: { mode: "replace", text: options.systemPrompt },
+      cwd,
+      tools: [...builtins],
+      allowedTools: allowed,
+      mcpServers: servers,
+      permissionMode: "dontAsk",
+      includePartialMessages: true,
+      ...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
+      ...(options.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: options.maxBudgetUsd }),
+    });
+    const resident: ClaudeResidentLoop | null = persistDir
+      ? createClaudeResidentLoop({ createSdk, buildSession: buildTurn, stateFile: path.join(persistDir, "session.json"), settlement: options.settlement, onEvent: (event) => emit(event) })
+      : null;
+    const loop = resident ?? createClaudeExecutionLoop({
+      createSdk,
+      buildTurn: () => { turnController = new AbortController(); return buildTurn(); },
       continuation: { kind: options.continuation === "conversation" ? "resume-child" : "oneshot" },
       settlement: options.settlement === "result-required" ? { kind: "result-required", watchdogMs: options.timeoutMs } : { kind: "result" },
       onEvent: (event) => emit(event),
@@ -122,6 +160,8 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           if (skipped) return;
           active = true;
           cancelled = false;
+          // 상주 자식은 턴마다 조립되지 않는다 — 턴의 중지 신호는 여기서 턴마다 새로 세운다.
+          if (resident) turnController = new AbortController();
           try { await loop.run(text); }
           finally { active = false; browserConnection?.endTurn(); computerConnection?.revoke(); turnController?.abort(); turnController = null; }
         });
@@ -131,6 +171,15 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
       revokeComputerUse() {
         computerConnection?.revoke();
       },
+      ...(resident ? {
+        steer(input: Parameters<NonNullable<AgentSession["steer"]>>[0], id: string) {
+          if (closed || !active || cancelled) return false;
+          const text = typeof input === "string" ? input : input.map((block) => block.type === "text"
+            ? { type: "text" as const, text: block.text }
+            : { type: "image" as const, source: { ...block.source } });
+          return resident.steer(text, id);
+        },
+      } : {}),
       cancel() {
         if (closed || cancelled) return;
         if (!active) {
@@ -154,12 +203,18 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
           try { await loop.dispose(); await tail; }
           finally {
             try { await Promise.all([consoleConnection?.dispose(), computerConnection?.dispose(), browserConnection?.dispose()]); }
-            finally { sessions.delete(session); await fs.rm(cwd, { recursive: true, force: true }); }
+            finally {
+              sessions.delete(session);
+              if (options.persist && persisted.get(options.persist.key)?.token === token) persisted.delete(options.persist.key);
+              await releaseCwd();
+            }
           }
         })();
         return closing;
       },
     };
+    // 이어 받았는지는 자리를 읽은 뒤(`loop.start()`)에야 안다 — 값이 아니라 접근자로 단다(펼침은 접근자를 값으로 굳힌다).
+    if (resident) Object.defineProperty(session, "resumed", { enumerable: true, get: () => resident.resumed });
     sessions.add(session);
     try {
       for (const group of options.tools?.custom ?? []) {
@@ -217,6 +272,13 @@ export function createPluginAgentHost(deps: PluginAgentDeps): AgentHost & { disp
 
   return {
     createSession,
+    async forget(key) {
+      if (typeof key !== "string" || !PERSIST_KEY.test(key)) throw new Error("agent_persist_key_invalid");
+      const dir = persistDirOf(key);
+      const open = persisted.get(key);
+      if (open) await (await open.work.catch(() => null))?.dispose();
+      await forgetClaudeResidentState(dir);
+    },
     dispose() {
       if (disposal) return disposal;
       disposed = true;
@@ -301,6 +363,7 @@ function validateOptions(options: AgentSessionOptions): void {
   if (options.timeoutMs !== undefined && options.settlement !== "result-required") throw new Error("agent_timeout_requires_result_settlement");
   if (options.maxTurns !== undefined && !Number.isInteger(options.maxTurns)) throw new Error("agent_limit_invalid");
   if (options.compactAt !== undefined && (!Number.isSafeInteger(options.compactAt) || options.compactAt <= 0)) throw new Error("agent_limit_invalid");
+  if (options.persist !== undefined && (typeof options.persist?.key !== "string" || !PERSIST_KEY.test(options.persist.key) || options.continuation !== "conversation" || options.timeoutMs !== undefined)) throw new Error("agent_persist_invalid");
   if (options.tools?.builtins?.some((tool) => tool !== "WebSearch" && tool !== "WebFetch")) throw new Error("agent_builtin_not_allowed");
   if (options.tools?.browser && (typeof options.tools.browser.scopeId !== "string" || !options.tools.browser.scopeId.trim() || options.tools.browser.scopeId.length > 256)) throw new Error("agent_browser_scope_invalid");
   const groups = new Set<string>([FLEET_CONSOLE_USE_MCP_SERVER, FLEET_COMPUTER_USE_MCP_SERVER, FLEET_BROWSER_MCP_SERVER]);

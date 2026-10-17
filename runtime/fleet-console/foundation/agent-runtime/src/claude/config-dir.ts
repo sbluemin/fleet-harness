@@ -65,7 +65,23 @@ export function createSharedClaudeConfigHome(configDir: string): ClaudeConfigHom
 export async function createIsolatedClaudeConfigDir(
   tempRoot: string = tmpdir(),
 ): Promise<ClaudeConfigHome> {
-  const root = await mkdtemp(path.join(tempRoot, "core-agent-claude-"));
+  return isolatedHome(await mkdtemp(path.join(tempRoot, "core-agent-claude-")), true);
+}
+
+/**
+ * 호출자가 정한 자리에 남는 격리 홈. 격리 홈과 같이 캐시를 이 인스턴스가 쓰고 자식이 그 자리를 홈으로 삼지만,
+ * 폐기가 지우지 않는다 — 다음 인스턴스가 같은 자리에서 그 트랜스크립트를 resume한다. 지우는 것은 호출자의 몫이다.
+ * 공유 홈과 달리 사용자의 홈이 아니므로 캐시를 이 인스턴스의 모델로 덮어도 다른 자식이 잃는 것이 없다.
+ */
+export async function createPersistentClaudeConfigHome(configDir: string): Promise<ClaudeConfigHome> {
+  if (typeof configDir !== "string" || !path.isAbsolute(configDir)) {
+    throw new TypeError("A persistent Claude config home requires an absolute config directory path.");
+  }
+  await mkdir(configDir, { recursive: true, mode: 0o700 });
+  return isolatedHome(configDir, false);
+}
+
+async function isolatedHome(root: string, removeOnDispose: boolean): Promise<ClaudeConfigHome> {
   const cachePath = path.join(root, CLAUDE_GATEWAY_MODEL_CACHE_RELPATH);
   await mkdir(path.dirname(cachePath), { recursive: true, mode: 0o700 });
 
@@ -92,7 +108,7 @@ export async function createIsolatedClaudeConfigDir(
       if (disposed) return;
       disposed = true;
       await writing;
-      await rm(root, { recursive: true, force: true });
+      if (removeOnDispose) await rm(root, { recursive: true, force: true });
     },
   };
 }
