@@ -353,6 +353,8 @@ class PlaygroundStage {
     if (style === "slide" && this.enterBySlide(actor)) return;
     if (style === "sand" && this.enterBySand(actor)) return;
     if (style === "peek") { this.enterByPeek(actor, fromLeft); return; }
+    // 고른 기구가 그 사이에 찼으면 걷기로 들어온다. 다른 방식으로 바꾸지 않는다.
+    if (style === "slide" || style === "sand") { this.enterByWalk(actor, fromLeft, companion); return; }
     this.enterByWalk(actor, fromLeft, companion);
   }
 
@@ -878,6 +880,7 @@ class PlaygroundStage {
     for (const actor of this.actors) {
       actor.walking = false;
       actor.dur = 0;
+      actor.flourish = null;
     }
   }
 
@@ -943,7 +946,7 @@ function acquireSessionStage(): PlaygroundStage {
   return sessionStage;
 }
 
-/** 새 세션 화면의 놀이터 층. 출연진은 Theater 와 무관하게 몽글 베이스 15종에서 뽑는다. */
+/** 새 세션 화면의 놀이터 층. 출연진은 Theater 와 무관하게 베이스와 정체성 톤의 조합에서 뽑는다. */
 export function NewSessionPlayground() {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
