@@ -6,6 +6,9 @@ export const PICKER_SURFACE_OPEN = "host-picker";
 export const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 export const PICKER_AT_PARAM = "at";
 export const PICKER_ANCHOR_PARAM = "anchor";
+/** 판을 앵커 옆(서브메뉴)에 세우라는 표시. 없으면 칩 위·아래에 매단다. 셸은 해석하지 않고 그대로 넘긴다. */
+export const PICKER_PLACE_PARAM = "place";
+export const PICKER_PLACE_SIDE = "side";
 
 /**
  * 원격 Console 화면이 이 기기의 서체 목록을 셸에게 청하는 신호. 셸이 같은 리터럴로 가로채 항해를 막고
@@ -24,11 +27,12 @@ export function desktopAsksForLocalFonts(capabilities: readonly string[]): boole
   return capabilities.includes(LOCAL_FONTS_SURFACE);
 }
 
-export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SURFACE_OPEN, at?: string, anchor?: string): string {
+export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SURFACE_OPEN, at?: string, anchor?: string, side = false): string {
   const url = new URL("/console/", `${homeOrigin}/`);
   url.searchParams.set(PICKER_SURFACE_PARAM, surface);
   if (at !== undefined) url.searchParams.set(PICKER_AT_PARAM, at);
   if (anchor !== undefined) url.searchParams.set(PICKER_ANCHOR_PARAM, anchor);
+  if (side) url.searchParams.set(PICKER_PLACE_PARAM, PICKER_PLACE_SIDE);
   return url.toString();
 }
 
