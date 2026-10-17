@@ -11,12 +11,9 @@ const SERVER_SOURCE = fs.readFileSync(new URL("../core/host/bootstrap/server.ts"
  * 라우트를 추가하면서 선언을 빠뜨리면 표면은 조용히 넓어지고 게이트도 기록되지 않는다.
  * 그래서 디스패치가 아는 경로를 카탈로그가 모두 아는지 반대 방향으로도 고정한다.
  *
- * 예외는 선언 자체가 틀린 경우에만 둔다.
- * - `/api/v1/environment`: local 채널에서만 응답하고 그 외 채널에서는 404다(server.ts의
- *   handleEnvironmentDiagnostics). 발행 카탈로그가 이 경로를 선언하면 대부분의 설치에서
- *   존재하지 않는 라우트를 광고하게 되므로 의도적으로 비워 둔다.
+ * 예외는 선언 자체가 틀린 경우에만 둔다. 지금은 없다.
  */
-const UNDECLARED_BY_DESIGN = new Set(["/api/v1/environment"]);
+const UNDECLARED_BY_DESIGN = new Set<string>();
 
 describe("api catalog coverage", () => {
   const catalogPaths = buildApiCatalog().map((entry) => entry.path);

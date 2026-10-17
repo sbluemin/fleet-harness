@@ -6,65 +6,10 @@ import { DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesk
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { ConsoleThemeId } from "../../../features/settings/host/settings-domain.js";
 
-export const DESKTOP_FULLSCREEN_PATH = "/api/v1/desktop/fullscreen";
-export const DESKTOP_FULLSCREEN_EVENT = "desktop:fullscreen";
-
-export interface DesktopFullscreenSnapshot {
-  readonly fullscreen: boolean;
-}
-
-export const desktopFullscreenSnapshot = (fullscreen: boolean): DesktopFullscreenSnapshot => ({ fullscreen });
-
-export function isDesktopFullscreenSnapshot(value: unknown): value is DesktopFullscreenSnapshot {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const entry = value as Record<string, unknown>;
-  return Object.keys(entry).length === 1 && typeof entry.fullscreen === "boolean";
-}
-
-interface DesktopFullscreenRouteDeps {
-  readonly getFullscreen: () => boolean;
-  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
-  readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
-  readonly setFullscreen: (fullscreen: boolean) => void;
-  readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
-  readonly writeNoContent: (res: http.ServerResponse) => void;
-}
-
-interface DesktopFullscreenRouteContext {
+interface DesktopRouteContext {
   readonly req: http.IncomingMessage;
   readonly res: http.ServerResponse;
   readonly pathname: string;
-}
-
-export const DESKTOP_FULLSCREEN_API_CATALOG: readonly ApiCatalogEntry[] = [{
-  method: "PUT",
-  path: DESKTOP_FULLSCREEN_PATH,
-  summary: "Update the ephemeral Desktop native fullscreen snapshot.",
-  category: "Desktop",
-  gate: "origin-strict",
-  transport: "http",
-}];
-
-export function createDesktopFullscreenRouter(deps: DesktopFullscreenRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
-  return async ({ req, res, pathname }) => {
-    if (pathname !== DESKTOP_FULLSCREEN_PATH) return false;
-    if (req.method !== "PUT") {
-      deps.writeJson(res, 405, { error: "Method not allowed" });
-      return true;
-    }
-    if (!deps.isAuthorized(req)) {
-      deps.writeJson(res, 401, { error: "unauthorized" });
-      return true;
-    }
-    const body = await deps.readJsonBody<unknown>(req);
-    if (!isDesktopFullscreenSnapshot(body)) {
-      deps.writeJson(res, 400, { error: "invalid_desktop_fullscreen" });
-      return true;
-    }
-    if (deps.getFullscreen() !== body.fullscreen) deps.setFullscreen(body.fullscreen);
-    deps.writeNoContent(res);
-    return true;
-  };
 }
 
 export const DESKTOP_WINDOW_COMMAND_API_CATALOG: readonly ApiCatalogEntry[] = [
@@ -104,7 +49,7 @@ interface DesktopWindowCommandRouteDeps {
   readonly writeNoContent: (res: http.ServerResponse) => void;
 }
 
-export function createDesktopWindowCommandRouter(deps: DesktopWindowCommandRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
+export function createDesktopWindowCommandRouter(deps: DesktopWindowCommandRouteDeps): (context: DesktopRouteContext) => Promise<boolean> {
   return async ({ req, res, pathname }) => {
     if (pathname !== DESKTOP_WINDOW_COMMAND_PATH && pathname !== DESKTOP_WINDOW_COMMAND_EVENTS_PATH) return false;
     if (!deps.isAuthorized(req)) {
@@ -220,7 +165,7 @@ export const DESKTOP_SHELL_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
 ];
 
-export function createDesktopShellRouter(deps: DesktopShellRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
+export function createDesktopShellRouter(deps: DesktopShellRouteDeps): (context: DesktopRouteContext) => Promise<boolean> {
   return async ({ req, res, pathname }) => {
     if (pathname !== DESKTOP_SHELL_PATH) return false;
     if (req.method === "GET") {
@@ -270,8 +215,7 @@ export type DesktopEntryToken =
 
 /**
  * 창 맨 위 크롬의 기하 — 네이티브 컨트롤(macOS 신호등·Windows 캡션 버튼)이 세로 가운데를 맞출 웹 쪽 맨 위 줄의 CSS 높이다.
- * 기본 배치는 세 열의 맨 위 줄(52px)이고, 실험 기능 「이전 화면으로 돌아가기」가 켜지면 Command Band(36px)다.
- * 이 필드를 모르는 Desktop은 무시하고 36px 계약을 그대로 쓴다.
+ * 대화 중심 화면의 맨 위 줄(52px)이다. 이 필드를 모르는 옛 Desktop은 무시하고 자기 기본값을 쓴다.
  */
 export interface DesktopChromeGeometry {
   readonly band: number;
@@ -285,23 +229,12 @@ export interface DesktopThemeSnapshot {
   readonly chrome: DesktopChromeGeometry;
 }
 
-export interface DesktopThemeLayout {
-  /** 대화 중심 화면(기본)이다. 실험 기능 「이전 화면으로 돌아가기」가 켜지면 false. */
-  readonly conversationLayout: boolean;
-}
-
 export const DESKTOP_THEME_PATH = "/api/v1/desktop/theme";
 export const DESKTOP_THEME_EVENTS_PATH = "/api/v1/desktop/theme/events";
 export const DESKTOP_THEME_EVENT = "desktop:theme";
 
-const DESKTOP_TITLE_BAR_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThemeSnapshot["titleBarOverlay"]>> = {
-  dark: { color: "#03080e", symbolColor: "#989fa6", height: 35 },
-  light: { color: "#f1f0ec", symbolColor: "#424038", height: 35 },
-};
-
 /** 대화 중심 화면의 맨 위 줄 높이 — 클라이언트 `--conversation-top-row: 52px`(conversation.css)와 같다. */
 const CONVERSATION_TOP_ROW = 52;
-const COMMAND_BAND_HEIGHT = 36;
 
 /**
  * 대화 중심 화면의 캡션 버튼 띠 — 오른쪽 위 열(세부 정보 또는 대화)의 바탕과 같은 색으로, 맨 위 줄 높이만큼 선다. 두 열은 같은
@@ -338,17 +271,16 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
   },
 };
 
-export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS, layout: DesktopThemeLayout = { conversationLayout: true }): DesktopThemeSnapshot {
+export function desktopThemeSnapshot(theme: ConsoleThemeId, fonts: ConsoleFontSettings = DEFAULT_FONTS): DesktopThemeSnapshot {
   const entry = DESKTOP_ENTRY_PALETTES[theme];
-  const overlay = layout.conversationLayout ? DESKTOP_CONVERSATION_OVERLAYS[theme] : DESKTOP_TITLE_BAR_OVERLAYS[theme];
-  const chrome: DesktopChromeGeometry = { band: layout.conversationLayout ? CONVERSATION_TOP_ROW : COMMAND_BAND_HEIGHT };
+  const overlay = DESKTOP_CONVERSATION_OVERLAYS[theme];
+  const chrome: DesktopChromeGeometry = { band: CONVERSATION_TOP_ROW };
   return { theme, titleBarOverlay: { ...overlay }, chrome, entry: { ...entry, tokens: { ...entry.tokens }, fonts: { ui: { family: fontFamilyForAxis(fonts, "ui"), size: fonts.ui.size }, content: { family: fontFamilyForAxis(fonts, "content"), size: fonts.content.size }, code: { family: fontFamilyForAxis(fonts, "code"), size: fonts.code.size } } } };
 }
 
 interface DesktopThemeRouteDeps {
   readonly getTheme: () => ConsoleThemeId;
   readonly getFonts?: () => ConsoleFontSettings;
-  readonly getLayout?: () => DesktopThemeLayout;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly subscribe: (res: http.ServerResponse, snapshot: DesktopThemeSnapshot) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -390,7 +322,7 @@ export function createDesktopThemeRouter(deps: DesktopThemeRouteDeps): (context:
       deps.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const snapshot = desktopThemeSnapshot(deps.getTheme(), deps.getFonts?.(), deps.getLayout?.());
+    const snapshot = desktopThemeSnapshot(deps.getTheme(), deps.getFonts?.());
     if (pathname === DESKTOP_THEME_PATH) {
       deps.writeJson(res, 200, snapshot);
       return true;
@@ -448,7 +380,7 @@ export const DESKTOP_UPDATE_API_CATALOG: readonly ApiCatalogEntry[] = [
   },
 ];
 
-export function createDesktopUpdateRouter(deps: DesktopUpdateRouteDeps): (context: DesktopFullscreenRouteContext) => boolean {
+export function createDesktopUpdateRouter(deps: DesktopUpdateRouteDeps): (context: DesktopRouteContext) => boolean {
   return ({ req, res, pathname }) => {
     if (pathname !== DESKTOP_UPDATE_PATH && pathname !== DESKTOP_UPDATE_EVENTS_PATH) return false;
     if (req.method !== "GET") {
@@ -612,7 +544,7 @@ interface DesktopShellUpdateRouteDeps {
   readonly writeNoContent: (res: http.ServerResponse) => void;
 }
 
-export function createDesktopShellUpdateRouter(deps: DesktopShellUpdateRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
+export function createDesktopShellUpdateRouter(deps: DesktopShellUpdateRouteDeps): (context: DesktopRouteContext) => Promise<boolean> {
   const paths = new Set<string>([DESKTOP_SHELL_UPDATE_PATH, DESKTOP_SHELL_UPDATE_COMMAND_PATH, DESKTOP_SHELL_UPDATE_COMMAND_EVENTS_PATH]);
   return async ({ req, res, pathname }) => {
     if (!paths.has(pathname)) return false;

@@ -47,7 +47,7 @@ describe("secure window policy", () => {
       this.webContents = {};
     });
     const shell = createSecureShellWindow(baseCtor as never, viewCtor as never, { iconPath: "/assets/icon.png", platform: "darwin" });
-    expect(baseCtor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 11 } });
+    expect(baseCtor).toHaveBeenCalledWith({ show: false, title: "Fleet Console", icon: "/assets/icon.png", backgroundColor: "#010204", minWidth: 900, minHeight: 560, titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 19 } });
     expect(viewCtor).toHaveBeenCalledWith({ webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false } });
     expect(shell.consoleView.setBackgroundColor).toHaveBeenCalledWith("#010204");
   });
