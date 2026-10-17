@@ -80,11 +80,6 @@ export interface ConsoleGeneralSettings {
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
   /**
-   * 포커스하지 않은 패널의 본문이 물러나는 세기(백분율). 0은 물러나지 않음, 클수록 더 흐리다.
-   * 부재는 기본값이며, 상한은 곁을 훑는 일이 끊기지 않는 선에서 정한다.
-   */
-  readonly unfocusedPanelFade?: number;
-  /**
    * 사이드바에서 Operation 을 더블클릭해야 여는지. 켜면 한 번 클릭은 선택만 하고 목표 같은 문맥만 옮긴다.
    * 부재는 꺼짐(한 번 클릭으로 열기)이다 — 손에 익은 동작을 바꾸는 선호라 켜는 쪽이 사람의 선택이어야 한다.
    */
@@ -118,16 +113,6 @@ export type ArchiveRetentionDays = 7 | 30 | 90 | null;
 
 export function readArchiveRetentionDays(value: unknown): ArchiveRetentionDays {
   return value === 7 || value === 30 || value === 90 ? value : null;
-}
-
-/** 후퇴 세기의 허용 구간과 기본값 — 서버·클라이언트·화면이 같은 수를 본다. */
-export const UNFOCUSED_PANEL_FADE_MIN = 0;
-export const UNFOCUSED_PANEL_FADE_MAX = 70;
-export const UNFOCUSED_PANEL_FADE_DEFAULT = 50;
-
-export function isUnfocusedPanelFade(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value)
-    && value >= UNFOCUSED_PANEL_FADE_MIN && value <= UNFOCUSED_PANEL_FADE_MAX;
 }
 
 /** 바인드 주소는 IPv4 리터럴이거나 단순 호스트명만 허용한다. */
@@ -342,7 +327,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const theme = normalizeConsoleThemeId(value.theme);
   const uiFont = sanitizeUiFontSettings(value.uiFont);
   const fonts = readFontSettings(value.fonts);
-  const unfocusedPanelFade = isUnfocusedPanelFade(value.unfocusedPanelFade) ? value.unfocusedPanelFade : undefined;
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
   const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
@@ -359,7 +343,6 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(remoteAccess !== undefined ? { remoteAccess } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
-    ...(unfocusedPanelFade !== undefined ? { unfocusedPanelFade } : {}),
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(calmAvatars !== undefined ? { calmAvatars } : {}),
@@ -506,7 +489,6 @@ interface GlobalSettingsBody {
   readonly remoteAccess?: unknown;
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
-  readonly unfocusedPanelFade?: unknown;
   readonly sideBarDoubleClickOpen?: unknown;
   readonly reduceMotion?: unknown;
   readonly calmAvatars?: unknown;
@@ -633,10 +615,6 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
-  if (body.unfocusedPanelFade !== undefined && !isUnfocusedPanelFade(body.unfocusedPanelFade)) {
-    deps.writeJson(res, 400, { error: "invalid_unfocused_panel_fade" });
-    return;
-  }
   if (body.sideBarDoubleClickOpen !== undefined && typeof body.sideBarDoubleClickOpen !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_side_bar_double_click_open" });
     return;
@@ -704,7 +682,6 @@ async function mutateGlobalSettings(
       ...(body.remoteAccess !== undefined ? { remoteAccess: nextRemoteAccess } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
-      ...(isUnfocusedPanelFade(body.unfocusedPanelFade) ? { unfocusedPanelFade: body.unfocusedPanelFade } : {}),
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
@@ -779,7 +756,6 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "dark",
-    unfocusedPanelFade: general.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT,
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
     calmAvatars: general.calmAvatars ?? false,

@@ -179,8 +179,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     ...(payload.remoteAccess === undefined ? {} : { remoteAccess: payload.remoteAccess }),
     seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
-    // 같은 이유로 구서버 응답에는 세기가 없다 — 기본값으로 정규화한다.
-    unfocusedPanelFade: isUnfocusedPanelFade(payload.unfocusedPanelFade) ? payload.unfocusedPanelFade : 50,
     // 구서버 응답에는 없다 — 기본은 꺼짐(한 번 클릭으로 열기)이다.
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
@@ -197,10 +195,6 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     // 구서버 응답에는 없다 — 자동 영구 삭제는 고른 사람만 켜므로 부재·미지의 값은 꺼짐이다.
     archiveRetentionDays: payload.archiveRetentionDays === 7 || payload.archiveRetentionDays === 30 || payload.archiveRetentionDays === 90 ? payload.archiveRetentionDays : null,
   };
-}
-
-function isUnfocusedPanelFade(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 70;
 }
 
 function isValidConsoleStaticPort(value: unknown): value is number {

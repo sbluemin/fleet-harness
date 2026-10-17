@@ -1439,13 +1439,11 @@ describe("Instrument core design contract", () => {
     // turns transparent.
     expect(rail).toMatch(/\.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
-    // control communicates its filled range in either engine. The recipe is shared - the Settings
-    // fade strength and plugin sliders are one control grammar living in the settings sections;
-    // the rail keeps only its own layout.
+    // control communicates its filled range in either engine. The recipe is shared - the
+    // plugin sliders are one control grammar living in the settings SDK; the rail keeps only its own layout.
     expect(source("styles/components.css")).toContain(".fleet-slider::-moz-range-progress");
     // 연속값은 SDK 슬라이더 한 문법이다 — 코어 전용 슬라이더 클래스가 되살아나면 두 모양이 된다.
     // 그 문법은 트랙·값·기본값이다: −/+ 스테퍼가 되살아나면 행마다 Tab 정지점이 서너 개로 는다.
-    expect(source("../../../features/settings/client/sections.tsx")).toContain("<SettingsSlider");
     expect(source("styles/components.css")).not.toContain(".settings-slider-field");
     expect(source("styles/components.css")).not.toContain(".fc-settings-slider__stepper");
     // 전면 해도 개편: 설정 페인에서도 push/overlay 스위치는 퇴역했다 — 항상 부유 카드다.
@@ -2499,8 +2497,6 @@ describe("Instrument core design contract", () => {
     expect(source("../../../features/workspace/client/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).not.toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
-    expect(source("integration/store.ts")).toContain("--unfocused-panel-opacity");
-    expect(source("../../../features/settings/client/sections.tsx")).toContain("onPreview={previewPanelFade}");
     expect(components).not.toContain("--uw-tint");
     expect(components).not.toContain("--uw-glow");
     expect(source("styles/theme.css")).not.toContain("--uw-angle");

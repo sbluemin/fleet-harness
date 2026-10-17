@@ -22,7 +22,6 @@ const BASE: GlobalSettingsState = {
   consoleStaticPort: null,
   seenFeatureTours: [],
   theme: "dark",
-  unfocusedPanelFade: 50,
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
   calmAvatars: false,
