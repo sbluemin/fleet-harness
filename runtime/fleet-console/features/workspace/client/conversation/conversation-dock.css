@@ -8,11 +8,6 @@
   min-width: 0;
 }
 .operations-side-bar.is-closed .conversation-dock { display: none; }
-.conversation-dock.is-host-workspace { align-items: flex-start; border-top: 1px solid var(--surface-rim); }
-.conversation-dock-local-actions { display: flex; flex: none; align-items: center; gap: var(--space-2); }
-.conversation-dock-local-actions .side-bar-archive-label,
-.conversation-dock-local-actions .side-bar-archive-count { display: none; }
-.conversation-dock-local-actions .side-bar-archive-button { width: 36px; height: 36px; padding: var(--space-2); }
 .conversation-dock-host { position: relative; flex: none; }
 .conversation-dock-avatar {
   position: relative;

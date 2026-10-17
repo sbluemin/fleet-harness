@@ -1,6 +1,5 @@
 import type { ConversationSpeaker, GroupBoardAction, GroupBoardActionGlyph, GroupBoardRunResult, GroupConversationActions, GroupMessageTarget, GroupTimelineSnapshot, GroupWriteResult } from "@fleet-console/sdk/conversation";
-import type { HostSurfaceContext } from "@fleet-console/sdk/host-context";
-import { uploadComposerAttachment, discardComposerAttachment, AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate } from "@fleet-console/sdk/composer";
+import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate } from "@fleet-console/sdk/composer";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
@@ -48,7 +47,6 @@ interface DraftAttachment {
 }
 
 export interface GroupComposerProps {
-  readonly host?: HostSurfaceContext;
   readonly rootOperationId: string;
   readonly snapshot: GroupTimelineSnapshot;
   readonly actions: GroupConversationActions | null;
@@ -95,19 +93,13 @@ interface BoardConsumed {
 
 /** 실행 기능이 소유하는 페이지 메모리 — 대화 본문이 내려가도 초안·업로드·전송은 같은 루트에 남는다. */
 const groupDrafts = new Map<string, ReturnType<typeof createGroupDraft>>();
-function createGroupDraft(signal?: AbortSignal, previous?: GroupComposerDraft) {
-  let current: GroupComposerDraft = { text: previous?.text ?? "", textRevision: previous?.textRevision ?? 0, target: previous?.target ?? null, attachments: [], busy: false, notice: null, mode: null, held: null };
+function createGroupDraft() {
+  let current: GroupComposerDraft = { text: "", textRevision: 0, target: null, attachments: [], busy: false, notice: null, mode: null, held: null };
   const listeners = new Set<() => void>();
-  signal?.addEventListener("abort", () => {
-    for (const attachment of current.attachments) URL.revokeObjectURL(attachment.previewUrl);
-    current = { ...current, attachments: [], busy: false, held: null };
-    listeners.clear();
-  }, { once: true });
   return {
     read: () => current,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     update: (patch: Partial<GroupComposerDraft>) => {
-      if (signal?.aborted) return;
       current = { ...current, ...patch };
       for (const listener of listeners) listener();
     },
@@ -119,29 +111,9 @@ function groupDraft(rootOperationId: string) {
   return draft;
 }
 
-export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne, host }: GroupComposerProps) {
+export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne }: GroupComposerProps) {
   const t = getGroupT(language);
-  const draft = React.useMemo(() => {
-    if (!host) return groupDraft(rootOperationId);
-    const key = `group-composer:${rootOperationId}`;
-    const held = host.state.read<{ signal: AbortSignal; instanceId?: string; epoch: number; draft: ReturnType<typeof createGroupDraft> } | null>(key, null);
-    const scope = host.transport.scope;
-    if (held?.signal === scope.signal) return held.draft;
-    // 같은 연결 수명에서 다른 대화를 둘러봤다면 글만 복원한다. 진행 중 파일/전송/오류는 옮기지 않는다.
-    const previous = held?.instanceId === scope.instanceId && held?.epoch === scope.epoch ? held.draft.read() : undefined;
-    const next = { signal: scope.signal, instanceId: scope.instanceId, epoch: scope.epoch, draft: createGroupDraft(scope.signal, previous) };
-    host.state.write(key, next);
-    return next.draft;
-  }, [host, rootOperationId]);
-  const attachmentRequest = React.useCallback(async (path: string, init: RequestInit) => {
-    if (!host || host.transport.scope.signal.aborted || !host.canWrite()) throw new Error("read_only");
-    const response = await host.api.fetch(null, path, { ...init, signal: host.transport.scope.signal });
-    host.transport.scope.signal.throwIfAborted();
-    if (!host.canWrite()) throw new Error("read_only");
-    return response;
-  }, [host]);
-  const upload = React.useCallback((file: File) => host ? uploadComposerAttachment(file, attachmentRequest) : uploadLaunchAttachment(file), [host, attachmentRequest]);
-  const discard = React.useCallback((id: string) => host ? discardComposerAttachment(id, attachmentRequest) : discardLaunchAttachment(id), [host, attachmentRequest]);
+  const draft = groupDraft(rootOperationId);
   const { text, target, attachments, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const setText = (value: string) => draft.update({ text: value, textRevision: draft.read().textRevision + 1 });
   const setTarget = (value: Candidate | null) => draft.update({ target: value });
@@ -257,7 +229,6 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   };
 
   const addFiles = React.useCallback((files: readonly File[]) => {
-    if (host && (host.transport.scope.signal.aborted || !host.canWrite())) return;
     const images = files.filter((file) => isComposerAttachmentCandidate(file));
     // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
     if (images.length === 0) return;
@@ -277,12 +248,11 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
       const previewUrl = URL.createObjectURL(file);
       const name = file.name.length > 0 ? file.name : "pasted image";
       draft.update({ attachments: [...draft.read().attachments, { key, id: null, name, previewUrl, uploading: true }] });
-      void upload(file)
+      void uploadLaunchAttachment(file)
         .then(({ id }) => {
-          if (host?.transport.scope.signal.aborted) return;
           const current = draft.read().attachments;
           if (!current.some((attachment) => attachment.key === key)) {
-            void discard(id).catch(() => {});
+            void discardLaunchAttachment(id).catch(() => {});
             return;
           }
           draft.update({ attachments: current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)) });
@@ -295,13 +265,13 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         });
     }
     setNotice(rejected);
-  }, [draft, t, host, upload, discard]);
+  }, [draft, t]);
 
   const removeAttachment = (key: string) => {
     const current = draft.read().attachments;
     const removed = current.find((attachment) => attachment.key === key);
     if (!removed) return;
-    if (removed.id !== null) void discard(removed.id).catch(() => {});
+    if (removed.id !== null) void discardLaunchAttachment(removed.id).catch(() => {});
     URL.revokeObjectURL(removed.previewUrl);
     draft.update({ attachments: current.filter((attachment) => attachment.key !== key), notice: null });
     inputRef.current?.focus();

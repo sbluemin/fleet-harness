@@ -1,6 +1,4 @@
 import { requestShellOpenAt, requestShellRestartAt } from "../navigation/browser.js";
-import { assertHostScope, createBrowserLocalTransport, hostStorageKey, readHostJson } from "../host-context/browser.js";
-import type { HostTransport } from "../host-context/types.js";
 import * as React from "react";
 
 import { assertOperationNode, ApiError } from "../operations/browser.js";
@@ -46,27 +44,27 @@ export function defineOperationKind(descriptor: OperationKindDescriptor): Operat
   return descriptor;
 }
 
-export function createClientCapabilities(resync: () => void = () => undefined, transport: HostTransport = createBrowserLocalTransport()): PluginInstallContext {
-  const fetch = transport.request;
-  const scope = transport.scope;
-  const preferenceKey = (key: string) => hostStorageKey(scope.hostKey, key);
+export function createClientCapabilities(resync: () => void = () => undefined): PluginInstallContext {
+  const disposables = new Set<() => void>();
   return {
-    host: scope,
-    transport,
     api: {
       fetch: (pluginId, path, init) => fetch(resolvePluginPath(pluginId, path), init).then(assertSafeResponse),
       subscribe: (pluginId, path, onMessage) => {
-        const source = transport.events(resolvePluginPath(pluginId, path));
-        source.onmessage = (event) => { if (!scope.signal.aborted) onMessage(event); };
-        return () => source.close();
+        const source = new EventSource(resolvePluginPath(pluginId, path));
+        source.onmessage = onMessage;
+        const cleanup = () => source.close();
+        disposables.add(cleanup);
+        return () => {
+          cleanup();
+          disposables.delete(cleanup);
+        };
       },
-      resync: () => { assertHostScope(scope); resync(); },
+      resync,
     },
     lifecycle: {
       onDispose: (cleanup) => {
-        if (scope.signal.aborted) { cleanup(); return () => undefined; }
-        scope.signal.addEventListener("abort", cleanup, { once: true });
-        return () => scope.signal.removeEventListener("abort", cleanup);
+        disposables.add(cleanup);
+        return () => disposables.delete(cleanup);
       },
     },
     // 기본은 "아직 읽히지 않음"이다 — 실험 기능의 부재는 곧 꺼짐이므로 호스트가 덮어쓰기 전까지
@@ -89,7 +87,6 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
     chat: { Transcript: () => null, Conversation: () => null },
     terminal: {
       requestTicket: async (pluginId, path, operationId, signal) => {
-        if (scope.hostKey !== "local") throw new ApiError(403, "remote_ticket_forbidden");
         const response = await fetch(resolvePluginPath(pluginId, path), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -97,7 +94,7 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
           signal,
         });
         if (!response.ok) throw new ApiError(response.status, `Terminal ticket request failed: ${response.status}`);
-        const payload = await readHostJson<{ readonly ticket?: unknown; readonly ttlMs?: unknown }>(scope, response);
+        const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown };
         if (typeof payload.ticket !== "string" || typeof payload.ttlMs !== "number") throw new ApiError(response.status, "Invalid terminal ticket response");
         return { ticket: payload.ticket, ttlMs: payload.ttlMs };
       },
@@ -127,7 +124,7 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
       openFile: async () => ({ ok: false, reason: "no_handler" }),
       openWikiEntry: async () => ({ ok: false, reason: "no_handler" }),
     },
-    shell: { openAt: (request) => requestShellOpenAt(request, transport), restartAt: (request) => requestShellRestartAt(request, transport) },
+    shell: { openAt: requestShellOpenAt, restartAt: requestShellRestartAt },
     navigation: {
       getSearchParam: () => null,
       setSearchParams: () => undefined,
@@ -160,7 +157,7 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
           body: JSON.stringify(input),
         });
         if (!response.ok) throw new ApiError(response.status, `Operation create failed: ${response.status}`);
-        const payload = await readHostJson<{ readonly operation?: unknown }>(scope, response);
+        const payload = await response.json() as { readonly operation?: unknown };
         return assertOperationNode(payload.operation);
       },
       rename: async (operationId, title) => {
@@ -170,7 +167,7 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
           body: JSON.stringify({ title }),
         });
         if (!response.ok) throw new ApiError(response.status, `Operation rename failed: ${response.status}`);
-        const payload = await readHostJson<{ readonly operation?: unknown }>(scope, response);
+        const payload = await response.json() as { readonly operation?: unknown };
         return assertOperationNode(payload.operation);
       },
       remove: async (operationId) => {
@@ -180,18 +177,14 @@ export function createClientCapabilities(resync: () => void = () => undefined, t
       focus: () => undefined,
     },
     preferences: {
-      read: (key, fallback) => {
-        assertHostScope(scope);
-        // 구버전 무접두 선호는 local만 읽는다. 원격은 같은 key라도 별도 값이다.
-        return readPreference(preferenceKey(key), scope.hostKey === "local" ? readPreference(key, fallback) : fallback);
-      },
-      write: (key, value) => { assertHostScope(scope); writePreference(preferenceKey(key), value); },
+      read: (key, fallback) => readPreference(key, fallback),
+      write: (key, value) => writePreference(key, value),
     },
     settings: {
       read: async (pluginId) => {
         const response = await fetch(resolvePluginSettingsPath(pluginId));
         if (!response.ok) throw new ApiError(response.status, `Plugin settings read failed: ${response.status}`);
-        const payload = await readHostJson<{ readonly value?: unknown }>(scope, response);
+        const payload = await response.json() as { readonly value?: unknown };
         const value = payload.value;
         if (typeof value === "object" && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
         return null;

@@ -15,8 +15,6 @@ const WIKI_LINK_PREFIX = "#file-explorer-wiki:";
 export const resolveFileExplorerWikiLink = (id: string): string => WIKI_LINK_PREFIX + encodeURIComponent(id);
 
 interface MarkdownViewerProps {
-  readonly resourceUrl?: (path: string) => string;
-  readonly onNavigationError?: (reason: string) => void;
   readonly content: string;
   readonly navigate: ClientNavigateCapability;
   readonly resolveWikiLink: RenderMarkdownOptions["resolveWikiLink"];
@@ -28,14 +26,13 @@ interface MarkdownViewerProps {
 }
 
 interface NeutralizeOptions {
-  readonly resourceUrl?: (path: string) => string;
   readonly allowLocalImageMarkers: boolean;
   readonly currentRelativePath: string;
   readonly theaterId: string | null;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, truncated, language, target, resourceUrl, onNavigationError }: MarkdownViewerProps) {
+export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePath, theaterId, truncated, language, target }: MarkdownViewerProps) {
   const t = getT(language);
   const html = useMemo(() => {
     const rendered = renderMarkdown(content, {
@@ -56,21 +53,21 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
       },
     }).html;
     const doc = new DOMParser().parseFromString(rendered, "text/html");
-    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, t, resourceUrl });
+    neutralizeUntrustedDom(doc.body, { allowLocalImageMarkers: false, currentRelativePath: relativePath, theaterId, t });
     return doc.body.innerHTML;
-  }, [content, relativePath, resolveWikiLink, theaterId, t, resourceUrl]);
+  }, [content, relativePath, resolveWikiLink, theaterId, t]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     installDiagramHydrator(root, diagramHydratorLabels(t));
-    const neutralize = () => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, t, resourceUrl });
+    const neutralize = () => neutralizeUntrustedDom(root, { allowLocalImageMarkers: true, currentRelativePath: relativePath, theaterId, t });
     neutralize();
     const observer = new MutationObserver(neutralize);
     observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "src", "srcset"] });
     return () => observer.disconnect();
-  }, [html, relativePath, theaterId, t, resourceUrl]);
+  }, [html, relativePath, theaterId, t]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -83,10 +80,10 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
             theaterId, path: data.path + (data.anchor ? `#${encodeURIComponent(data.anchor)}` : ""),
             pathKind: "theater-relative", line: positiveCoordinate(data.line), column: positiveCoordinate(data.column), source: "files",
           }) : null;
-      void request?.then((result) => { if (!result.ok) { if (onNavigationError) onNavigationError(result.reason); else showFileNavigationError(result.reason); } })
-        .catch(() => { if (onNavigationError) onNavigationError("not_found"); else showFileNavigationError("not_found"); });
+      void request?.then((result) => { if (!result.ok) showFileNavigationError(result.reason); })
+        .catch(() => showFileNavigationError("not_found"));
     });
-  }, [navigate, theaterId, html, onNavigationError]);
+  }, [navigate, theaterId, html]);
 
   useEffect(() => {
     if (!target?.anchor || target.relativePath !== relativePath) return;
@@ -143,10 +140,6 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
 }
 
 function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): void {
-  const imageSrc = (theaterId: string, path: string) => {
-    const src = buildFileExplorerImageSrc(theaterId, path);
-    return options.resourceUrl ? options.resourceUrl(src) : src;
-  };
   for (const anchor of root.querySelectorAll("a[href]")) {
     if (anchor.hasAttribute("data-md-link-kind")) continue;
     const href = anchor.getAttribute("href") ?? "";
@@ -159,7 +152,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
   for (const element of root.querySelectorAll("img[src], img[srcset], source[src], source[srcset]")) {
     const src = element.getAttribute("src") ?? "";
     const localImagePath = element.getAttribute("data-fexp-local-image-path");
-    if (element.tagName === "IMG" && options.allowLocalImageMarkers && options.theaterId && localImagePath && src === imageSrc(options.theaterId, localImagePath)) {
+    if (element.tagName === "IMG" && options.allowLocalImageMarkers && options.theaterId && localImagePath && src === buildFileExplorerImageSrc(options.theaterId, localImagePath)) {
       element.removeAttribute("srcset");
       continue;
     }
@@ -172,7 +165,7 @@ function neutralizeUntrustedDom(root: ParentNode, options: NeutralizeOptions): v
     const local = resolveMarkdownFileRef(src, options.currentRelativePath);
     element.removeAttribute("srcset");
     if (element.tagName === "IMG" && options.theaterId && local && isSupportedMarkdownImagePath(local.path)) {
-      element.setAttribute("src", imageSrc(options.theaterId, local.path));
+      element.setAttribute("src", buildFileExplorerImageSrc(options.theaterId, local.path));
       element.setAttribute("data-fexp-local-image-path", local.path);
       element.removeAttribute("aria-hidden");
       continue;

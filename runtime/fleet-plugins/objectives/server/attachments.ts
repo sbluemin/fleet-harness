@@ -8,9 +8,6 @@ export type AttachmentType = keyof typeof ATTACHMENT_TYPES;
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS = 20;
 export const MAX_ATTACHMENT_NAME = 120;
-/** 목표 수명 동안 삭제된 첨부의 키도 남긴다. 재시도가 삭제를 되돌리거나 무한히 기록을 키우지 않는다. */
-export const MAX_ATTACHMENT_UPLOADS = 256;
-export const isAttachmentUploadId = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value);
 
 export interface BriefAttachmentInput {
   readonly name: string;

@@ -8,7 +8,6 @@ import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
 import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
-import { reduceConversationJournal } from "../../features/execution/conversation-journal.js";
 import { initialAgentChatLogState, reduceAgentChatLog, splitAgentChatTurn } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
@@ -273,43 +272,6 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
-  it("hydrates bounded conversation snapshots independently of the capped socket journal and catches up on the same cursor", async () => {
-    const transcript = writeTranscript("private-provider-session", [
-      { type: "user", message: { content: "Old question" } },
-      { type: "assistant", message: { content: [{ type: "text", text: "Old answer" }] } },
-      ...Array.from({ length: 2_050 }, (_, index) => ({ type: "assistant", message: { content: [{ type: "tool_use", id: `tool-${index}`, name: "Read", input: { file_path: "source.ts" } }] } })),
-      { type: "assistant", message: { content: [{ type: "text", text: "Recent answer" }] } },
-    ]);
-    const sdk = createFakeSdkFactory([{ messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 1 }] }]);
-    const registry = new AgentChatRegistry(sdk.factory);
-    try {
-      const session = await registry.ensure("op", () => seedFor(transcript));
-      const snapshot = session.conversationSnapshot();
-      const socket: AgentChatJournalEvent[] = [];
-      const off = session.subscribe((row) => socket.push(row));
-      expect(snapshot.journal.entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Old answer" }), expect.objectContaining({ text: "Recent answer" })]));
-      expect(socket.some(({ event }) => event.kind === "text" && event.text === "Old answer")).toBe(false);
-      expect(sdk.openSession).not.toHaveBeenCalled();
-      expect(socket.every((row) => row.generation === snapshot.generation)).toBe(true);
-      session.noteReceived({ id: "after-read", from: "commander", text: "After snapshot" });
-      const catchUp = socket.filter((row) => row.seq > snapshot.cursor && row.event.kind !== "snapshot-end")
-        .reduce((journal, row) => reduceConversationJournal(journal, row, "op"), snapshot.journal);
-      expect(catchUp).toEqual(session.conversationSnapshot().journal);
-      expect(JSON.stringify(snapshot)).not.toContain("private-provider-session");
-      expect(JSON.stringify(snapshot)).not.toContain(transcript);
-      off();
-      for (let index = 0; index < 10; index++) session.noteReceived({ id: `large-${index}`, from: "commander", text: "가".repeat(60_000) });
-      const bounded = session.conversationSnapshot();
-      expect(bounded.journal.truncated).toBe(true);
-      expect(Buffer.byteLength(JSON.stringify(bounded), "utf8")).toBeLessThan(270 * 1024);
-      expect(bounded.cursor).toBeGreaterThan(snapshot.cursor);
-      await registry.dispose("op");
-      const fresh = await registry.ensure("op", () => freshSeedFor(homeOf(transcript)));
-      expect(fresh.conversationSnapshot().generation).not.toBe(snapshot.generation);
-      expect(fresh.conversationSnapshot().journal.entries).toEqual([]);
-    } finally { await registry.disposeAll(); }
-  });
-
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends, liveSession } = createFakeSdkFactory([
@@ -326,11 +288,6 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     session.send("let us talk about the render path");
     await vi.waitFor(() => expect(events.some(({ event }) => event.kind === "tool")).toBe(true));
     session.noteReceived({ id: "during", from: "commander", text: "While working." });
-    liveSession()!.emit({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Live partial" } } });
-    await vi.waitFor(() => expect(session.conversationSnapshot().journal.entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Live partial", streaming: true })])));
-    const partial = session.conversationSnapshot();
-    expect(partial.cursor).toBe(events.at(-1)?.seq);
-    liveSession()!.emit({ type: "assistant", message: { content: [{ type: "text", text: "Live complete" }] } });
     liveSession()!.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 10 });
     await drainTurn(registry, "op-1");
     session.noteReceived({ id: "after", from: "commander", text: "After completion." });

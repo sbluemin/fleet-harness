@@ -2,8 +2,6 @@ import { EventEmitter } from "node:events";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createCookieOrder, type CookieOrder } from "../src/cookie-order.js";
-import { createHostTransportExecutor } from "../src/host-transport.js";
 import { consoleTarget, createRemoteBridge, pickerSurfaceOf } from "../src/remote-bridge.js";
 
 const LOCAL = "http://127.0.0.1:4310";
@@ -15,7 +13,7 @@ function handoff(overrides: Record<string, unknown> = {}): Response {
 }
 
 /** 무엇이 어떤 차례로 일어났는지가 이 다리의 계약이라, 호출을 한 줄로 기록해 둔다. */
-function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: (url: string) => Promise<void>; readonly verify?: () => Response; readonly picker?: () => Promise<void>; readonly cookieOrder?: CookieOrder; readonly join?: () => Promise<Response>; readonly handoffStalled?: { hold: boolean } } = {}) {
+function createHarness(options: { readonly responses?: (path: string) => Response; readonly confirm?: () => Promise<void>; readonly load?: (url: string) => Promise<void>; readonly verify?: () => Response; readonly picker?: () => Promise<void> } = {}) {
   const trace: string[] = [];
   const requests: Array<{ url: string; init: RequestInit }> = [];
   const notices: Array<{ title: string; body: string }> = [];
@@ -43,11 +41,10 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
       return options.verify ? options.verify() : new Response("<!doctype html>", { status: 200 });
     }
     trace.push(`join:${url}`);
-    return options.join ? options.join() : new Response(null, { status: 204 });
+    return new Response(null, { status: 204 });
   });
 
   const bridge = createRemoteBridge({
-    cookieOrder: options.cookieOrder ?? createCookieOrder(),
     pins,
     policy: () => policy,
     sessionFetch,
@@ -55,12 +52,6 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
       requests.push({ url, init });
       const path = new URL(url).pathname;
       trace.push(`ask:${path}`);
-      // 로컬 Console이 응답을 멈춘 상황: 신호가 꺼지면 요청이 거절된다.
-      if (options.handoffStalled?.hold) {
-        return new Promise<Response>((_resolve, reject) => {
-          init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-        });
-      }
       return options.responses ? options.responses(path) : handoff();
     }) as never,
     localOrigin: () => LOCAL,
@@ -200,159 +191,6 @@ describe("remote bridge", () => {
 
     expect(harness.trace.filter((entry) => entry === "commit")).toHaveLength(1);
     expect(harness.currentOrigin()).toBe(SECOND);
-  });
-
-  /**
-   * 창의 legacy join과 inline 인증은 같은 origin의 창 jar에 쿠키를 쓴다. 둘이 하나의 cookieOrder를 나눠 쓰는지는
-   * 실제 순서 객체·다리·실행기를 함께 세워 공개 동작으로 본다. 가짜 fetch가 응답 직전에 jar에 적용하는 것은
-   * N1의 관측을 흉내 낸 모델이며 실제 Electron 검증이 아니다.
-   */
-  it("shares one cookie order between a window join and inline pairing without blocking reads or other ports", async () => {
-    const order = createCookieOrder();
-    const pairing = "fleet_console_pairing_6768";
-    const windowJar = new Map<string, string>();
-    const partitionJar = new Map<string, string>();
-    const partitionRequests: string[] = [];
-    let joinsStarted = 0;
-    let settleJoin: () => void = () => undefined;
-    let joinValue = "JOIN-A";
-    // 로컬 IPC 지연 모델: 레인 밖 명령의 copy가 쓰는 파티션 jar 쓰기 Promise를 한 번 쥐고 있는다.
-    const partitionWrite: { armed: boolean; entered: boolean; release: () => void } = { armed: false, entered: false, release: () => undefined };
-    // 일반 HTTP 응답 하나를 쥐고 있는다. 응답이 어느 순서로 도착해도 창 jar를 다시 쓰지 않아야 한다.
-    const readGate: { hold: boolean; release: (() => void) | null } = { hold: false, release: null };
-    let holdObserve = false;
-    const observeGate: { release: (() => void) | null } = { release: null };
-    const harness = createHarness({
-      cookieOrder: order,
-      join: () => new Promise<Response>((resolve) => {
-        joinsStarted += 1;
-        settleJoin = () => { windowJar.set(pairing, joinValue); resolve(new Response(null, { status: 204 })); };
-      }),
-    });
-    const executor = createHostTransportExecutor({
-      cookieOrder: order,
-      confirmIdentity: async () => undefined,
-      openPartition: () => ({
-        fetch: async (url: string) => {
-          const parsed = new URL(url);
-          partitionRequests.push(`${parsed.port}${parsed.pathname}`);
-          if (parsed.pathname === "/api/v1/pair") return partitionJar.has(`fleet_console_pairing_${parsed.port}`) ? new Response(null, { status: 204 }) : Response.json({ error: "invalid_join", capability: "pair" }, { status: 400 });
-          if (parsed.pathname === "/api/v1/sessions") {
-            if (holdObserve) return new Promise<Response>((resolve) => { observeGate.release = () => resolve(Response.json({ capability: "host-session", mode: "observer", access: "full" })); });
-            return Response.json({ capability: "host-session", mode: "observer", access: "full" });
-          }
-          if (parsed.pathname === "/api/v1/theaters" && readGate.hold) {
-            readGate.hold = false;
-            return new Promise<Response>((resolve) => { readGate.release = () => resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } })); });
-          }
-          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-        },
-        readCookies: async () => [...partitionJar].map(([name, value]) => ({ name, value })),
-        writeCookie: async (cookie: { name: string; value: string }) => {
-          if (partitionWrite.armed) {
-            partitionWrite.armed = false;
-            partitionWrite.entered = true;
-            await new Promise<void>((resolve) => { partitionWrite.release = resolve; });
-          }
-          partitionJar.set(cookie.name, cookie.value);
-        },
-        removeCookie: async (_url: string, name: string) => { partitionJar.delete(name); },
-        pin() { return undefined; },
-        clear() { return undefined; },
-      }),
-      readWindowCookies: async () => [...windowJar].map(([name, value]) => ({ name, value })),
-      writeWindowCookie: async (cookie) => { windowJar.set(cookie.name, cookie.value); },
-      localOrigin: () => LOCAL,
-      localFetch: async () => Response.json({ origin: REMOTE, hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT, token: null }),
-    });
-    const target = { hostname: "100.84.12.7", port: 6768, fingerprint: FINGERPRINT };
-    const base = { hostKey: "host1", epoch: 1, target };
-    // 다른 port는 다른 등록 호스트다(hostKey가 다르다). 같은 hostKey의 대상이 바뀌는 것은 교체이며 따로 다룬다.
-    const pairCommand = (id: number, port = 6768) => ({ ...base, id, hostKey: port === 6768 ? "host1" : "host2", op: "pair" as const, routeId: "pair", target: { ...target, port }, params: {} });
-    const quiet = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
-
-    // join이 응답을 쥐고 있다. 같은 origin의 inline pair는 요청을 보내지 않고, 일반 읽기와 다른 port는 진행한다.
-    const opening = harness.bridge.open(REMOTE);
-    await vi.waitFor(() => expect(joinsStarted).toBe(1));
-    partitionJar.set(pairing, "OLD");
-    const pairing1 = executor.execute(pairCommand(1));
-    await quiet();
-    expect(partitionRequests.filter((entry) => entry.endsWith("/api/v1/pair"))).toHaveLength(0);
-    expect(await executor.execute({ ...base, id: 2, op: "http", routeId: "theaters", params: { method: "GET", path: "/api/v1/theaters" } })).toMatchObject({ status: 200 });
-    // 레인 밖 읽기의 늦은 응답이 낡은 파티션 값을 창 jar에 쓰지 않는다.
-    expect(windowJar.get(pairing)).toBeUndefined();
-    expect(await executor.execute(pairCommand(3, 9443))).toMatchObject({ error: "remote_link_required" });
-    settleJoin();
-    await opening;
-    expect(windowJar.get(pairing)).toBe("JOIN-A");
-    expect(await pairing1).toMatchObject({ capability: "supported", mode: "off" });
-    expect(partitionJar.get(pairing)).toBe("JOIN-A");
-
-    // 레인 밖 명령의 짧은 쿠키 준비(copy)도 순서를 쥔다. 그 쓰기 Promise가 settle되기 전에는 join이 요청을 보내지 못하고,
-    // 그 뒤에 시작한 join 응답이 최종 값이 된다 — "열려 있는지 읽고 나서 쓰는" 간격이 없다.
-    partitionWrite.armed = true;
-    const preparing = executor.execute({ ...base, id: 5, op: "http", routeId: "theaters", params: { method: "GET", path: "/api/v1/theaters" } });
-    await vi.waitFor(() => expect(partitionWrite.entered).toBe(true));
-    joinValue = "JOIN-B";
-    const joining = harness.bridge.open(REMOTE);
-    await quiet();
-    expect(joinsStarted).toBe(1);
-    partitionWrite.release();
-    await vi.waitFor(() => expect(joinsStarted).toBe(2));
-    settleJoin();
-    await joining;
-    await preparing;
-    expect(windowJar.get(pairing)).toBe("JOIN-B");
-
-    // 일반 HTTP는 쿠키를 발행하지 않으므로 응답이 늦게 도착해도 창 jar를 다시 쓰지 않는다. 옛 값으로 시작한 읽기가 응답을 쥔 채
-    // join이 창 jar를 새 값으로 바꾸고 끝난 뒤 그 옛 응답이 도착해도 창은 새 값 그대로다(순서가 비어 있어도 되돌리지 않는다).
-    readGate.hold = true;
-    const staleRead = executor.execute({ ...base, id: 6, op: "http", routeId: "theaters", params: { method: "GET", path: "/api/v1/theaters" } });
-    await vi.waitFor(() => expect(readGate.release).not.toBeNull());
-    joinValue = "JOIN-C";
-    const joiningAgain = harness.bridge.open(REMOTE);
-    await vi.waitFor(() => expect(joinsStarted).toBe(3));
-    settleJoin();
-    await joiningAgain;
-    expect(windowJar.get(pairing)).toBe("JOIN-C");
-    readGate.release?.();
-    expect(await staleRead).toMatchObject({ status: 200 });
-    expect(windowJar.get(pairing)).toBe("JOIN-C");
-
-    // 반대로 inline이 순서를 쥐고 있으면 join은 자격을 꺼내기 전에 기다리고, 다리가 닫히면 요청 없이 끝난다.
-    holdObserve = true;
-    const observing = executor.execute({ ...base, id: 4, op: "presence", routeId: "presence", params: { intent: "observe" } });
-    await vi.waitFor(() => expect(observeGate.release).not.toBeNull());
-    const asked = harness.trace.filter((entry) => entry.startsWith("ask:")).length;
-    const second = harness.bridge.open(REMOTE);
-    const settled = second.then(() => "opened", (error: Error) => error.message);
-    await quiet();
-    expect(harness.trace.filter((entry) => entry.startsWith("ask:")).length).toBe(asked);
-    expect(joinsStarted).toBe(3);
-    harness.bridge.dispose();
-    expect(await settled).toBe("remote_host_unavailable");
-    expect(harness.trace.filter((entry) => entry.startsWith("ask:")).length).toBe(asked);
-    expect(joinsStarted).toBe(3);
-    observeGate.release?.();
-    expect(await observing).toMatchObject({ capability: "supported", mode: "observer" });
-
-    // 순서를 쥔 다리가 로컬 Console의 핸드오프 응답을 기다리다 멈춰도 순서는 영원히 잡히지 않는다: 다리가 닫히면 요청이 끊기고
-    // 순서가 풀려 같은 origin의 inline 요청이 진행한다. 닫힌 뒤에는 핸드오프도 join도 새로 시작하지 않는다.
-    const stalled = { hold: true };
-    const stuck = createHarness({ cookieOrder: order, handoffStalled: stalled });
-    const stuckOpen = stuck.bridge.open(REMOTE);
-    const stuckResult = stuckOpen.then(() => "opened", (error: Error) => error.message);
-    await vi.waitFor(() => expect(stuck.trace).toContain("ask:/api/v1/desktop/handoff"));
-    const waitingPair = executor.execute(pairCommand(7));
-    await quiet();
-    const pairsBefore = partitionRequests.filter((entry) => entry.endsWith("/api/v1/pair")).length;
-    stuck.bridge.dispose();
-    expect(await stuckResult).toBe("remote_host_unavailable");
-    expect(await waitingPair).toMatchObject({ capability: "supported", mode: "off" });
-    expect(partitionRequests.filter((entry) => entry.endsWith("/api/v1/pair")).length).toBeGreaterThan(pairsBefore);
-    expect(stuck.trace.some((entry) => entry.startsWith("join:"))).toBe(false);
-    await expect(stuck.bridge.open(REMOTE)).rejects.toThrow("remote_host_unavailable");
-    expect(stuck.trace.filter((entry) => entry === "ask:/api/v1/desktop/handoff")).toHaveLength(1);
   });
 });
 

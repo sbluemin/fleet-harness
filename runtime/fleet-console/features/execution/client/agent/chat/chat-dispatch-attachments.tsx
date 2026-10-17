@@ -2,7 +2,6 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { createPortal } from "react-dom";
 import { agentChatAttachmentPreviewUrl } from "../api.js";
 import { getT } from "../i18n/index.js";
-import { useChatHost } from "./chat-host-context.js";
 import type { AgentChatAttachment } from "./chat-events.js";
 
 /**
@@ -20,8 +19,6 @@ export function ChatDispatchAttachments({
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  const host = useChatHost();
-  const resourceUrl = (path: string) => host ? host.resourceUrl(path) : path;
   const [opened, setOpened] = React.useState<string | null>(null);
   // 404는 "없는 첨부"가 아니라 "거둬진 첨부"다 — 같은 자리에 lapsed와 같은 말을 세운다.
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
@@ -42,7 +39,7 @@ export function ChatDispatchAttachments({
           onClick={() => setOpened(attachment.id)}
         >
           <img
-            src={resourceUrl(agentChatAttachmentPreviewUrl(attachment.id))}
+            src={agentChatAttachmentPreviewUrl(attachment.id)}
             alt={t("terminal.chat.attachmentAlt", { index: String(index + 1) })}
             onError={() => setLapsed((current) => (current.includes(attachment.id) ? current : [...current, attachment.id]))}
           />
@@ -89,8 +86,6 @@ function ChatAttachmentViewer({
   readonly onLapsed: () => void;
 }) {
   const t = getT(language);
-  const host = useChatHost();
-  const resourceUrl = (path: string) => host ? host.resourceUrl(path) : path;
   const closeRef = React.useRef<HTMLButtonElement | null>(null);
   // 포커스는 열릴 때 닫기로 가고 닫히면 부른 자리로 돌아간다 — 키보드 사용자가 원장의 제자리를
   // 잃지 않게 하는 최소 계약이다.
@@ -113,7 +108,7 @@ function ChatAttachmentViewer({
     <div className="agent-chat-attachment-scrim" role="dialog" aria-modal="true" aria-label={t("terminal.chat.attachmentAlt", { index: String(index) })} onMouseDown={onClose}>
       <div className="agent-chat-attachment-frame" onMouseDown={(event) => event.stopPropagation()}>
         <button ref={closeRef} type="button" className="agent-chat-attachment-close" onClick={onClose} aria-label={t("terminal.chat.attachmentClose")}>✕</button>
-        <img src={resourceUrl(agentChatAttachmentPreviewUrl(id))} alt={t("terminal.chat.attachmentAlt", { index: String(index) })} onError={onLapsed} />
+        <img src={agentChatAttachmentPreviewUrl(id)} alt={t("terminal.chat.attachmentAlt", { index: String(index) })} onError={onLapsed} />
       </div>
     </div>,
     document.body,

@@ -9,8 +9,6 @@ import { createPortal } from "react-dom";
 import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
-import type { HostWorkspacePort } from "@fleet-console/sdk/host-context";
-import { HostLocalTools, HostWorkspaceSidebar } from "./host-workspace-sidebar.js";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
@@ -68,7 +66,6 @@ import {
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 interface OperationsSideBarProps {
-  readonly hostWorkspace?: HostWorkspacePort;
   /** 대화 화면이 그리는 폭 상한(px). 저장된 폭 선호는 그대로 두고 그리는 폭만 깎는다. */
   readonly widthCap?: number;
   /** 맨 위 줄 오른쪽, 접기 컨트롤 앞에 끼우는 단추들(대화 중심 화면의 검색·새로 만들기). */
@@ -360,7 +357,6 @@ export function OperationsSideBar({
   topStripCenter,
   bottomAccessory,
   archiveInBottomAccessory = false,
-  hostWorkspace,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
@@ -393,12 +389,6 @@ export function OperationsSideBar({
   const contextMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
-  const localControls = !hostWorkspace || hostWorkspace.getSnapshot().selection.hostKey === "local";
-  useEffect(() => {
-    if (localControls) return;
-    setActiveContextMenu(null);
-    setBrowserOpen(false);
-  }, [localControls]);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
   const peekOverlayOpenRef = useRef(false);
   useLayoutEffect(() => {
@@ -932,7 +922,6 @@ export function OperationsSideBar({
   };
 
   const openTheaterBrowser = () => {
-    if (hostWorkspace && hostWorkspace.getSnapshot().selection.hostKey !== "local") return;
     setActiveContextMenu(null);
     setBrowserOpen(true);
   };
@@ -944,7 +933,6 @@ export function OperationsSideBar({
 
   const confirmTheaterBrowser = (path: string) => {
     setBrowserOpen(false);
-    if (hostWorkspace && hostWorkspace.getSnapshot().selection.hostKey !== "local") return;
     onAddTheater(path);
   };
 
@@ -1018,13 +1006,7 @@ export function OperationsSideBar({
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       inert={collapsed && !sideBar.peeking}
-      onContextMenu={(event) => {
-        if (hostWorkspace && (hostWorkspace.getSnapshot().selection.hostKey !== "local" || !hostWorkspace.getSnapshot().canWrite)) {
-          event.preventDefault();
-          return;
-        }
-        openNewSessionAtCursor(event);
-      }}
+      onContextMenu={openNewSessionAtCursor}
       onPointerLeave={(event) => {
         // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝난다. 엣지 독으로 되돌아가는
         // 이동만 픽의 연속으로 본다(독 쪽 이탈은 독이 대칭으로 판정한다).
@@ -1040,7 +1022,8 @@ export function OperationsSideBar({
       {topStripVariant === "compact" ? (
         <div className="side-bar-top-strip is-compact">
           <span className="side-bar-top-strip-spacer" aria-hidden="true" />
-          {hostWorkspace ? <HostLocalTools hosts={hostWorkspace} t={t}>{topStripCenter}{topStripTrailing}</HostLocalTools> : <>{topStripCenter}{topStripTrailing}</>}
+          {topStripCenter}
+          {topStripTrailing}
         </div>
       ) : (
       <div className="side-bar-top-strip">
@@ -1057,7 +1040,7 @@ export function OperationsSideBar({
       )}
 
       <div className="side-bar-wide">
-      {hostWorkspace ? <HostWorkspaceSidebar hosts={hostWorkspace} t={t} /> : <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
+      <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
           const isViewedTheater = theater.id === viewedTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
@@ -1285,7 +1268,7 @@ export function OperationsSideBar({
             </button>
           </li>
         )}
-      </ol>}
+      </ol>
       </div>
 
       {!archiveInBottomAccessory ? <ArchiveEntry /> : null}
@@ -1293,7 +1276,7 @@ export function OperationsSideBar({
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
 
-      {!localControls ? null : activeContextMenu?.kind === "chip" && contextMenuOperation ? (
+      {activeContextMenu?.kind === "chip" && contextMenuOperation ? (
         <GroupContextMenu
           kind="chip"
           operation={contextMenuOperation}
@@ -1368,7 +1351,7 @@ export function OperationsSideBar({
           onClose={closeActiveContextMenu}
         />
       ) : null}
-      <DirectoryBrowserModal open={localControls && browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
+      <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
     </aside>
   );
 }

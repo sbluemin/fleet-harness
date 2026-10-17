@@ -244,8 +244,6 @@ export function followupHoldRoute(objective: Objective): ObjectiveMessageKey {
 
 // ── 탭 안 편의 상태 (초안과 같은 규칙: 접어도, 다른 목표를 보다 와도 남는다) ──
 
-/** 로컬과 각 host 표면이 독립적으로 소유하는 후속 선택 초안이다. */
-export function createFollowupState() {
 const selections = new Map<string, Map<string, number>>();
 const selectionListeners = new Set<() => void>();
 const compOpens = new Map<string, boolean>();
@@ -269,12 +267,12 @@ function notifyComp(): void {
   for (const listener of compListeners) listener();
 }
 
-function readSelection(objectiveId: string): ReadonlySet<string> {
+export function readSelection(objectiveId: string): ReadonlySet<string> {
   return selectionSnapshots.get(objectiveId) ?? EMPTY_SELECTION;
 }
 
 /** 선택 순간의 rev — 보낼 때 이 값으로 보내 서버가 followup_changed 로 판정한다. */
-function readSelectionRevs(objectiveId: string): ReadonlyMap<string, number> {
+export function readSelectionRevs(objectiveId: string): ReadonlyMap<string, number> {
   return selectionRevSnapshots.get(objectiveId) ?? EMPTY_SELECTION_REVS;
 }
 
@@ -296,7 +294,7 @@ function commitSelection(objectiveId: string, next: Map<string, number> | null):
   notifySelections();
 }
 
-function toggleFollowupSelection(objectiveId: string, candidateId: string, checked: boolean, rev: number): void {
+export function toggleFollowupSelection(objectiveId: string, candidateId: string, checked: boolean, rev: number): void {
   const next = new Map(selections.get(objectiveId) ?? []);
   if (checked) next.set(candidateId, rev);
   else next.delete(candidateId);
@@ -308,7 +306,7 @@ function toggleFollowupSelection(objectiveId: string, candidateId: string, check
  * 사람이 rev1 을 보고 골랐는데 지휘관이 rev2 로 고쳤다면 rev2 를 묵시 승인해 만들지 않는다 —
  * 선택을 풀어 새로 고친 본문을 확인한 뒤 다시 고르게 한다. 다시 고르면 그때의 rev 로 기억된다.
  */
-function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string, number>): void {
+export function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string, number>): void {
   const current = selections.get(objectiveId);
   if (!current) return;
   const next = new Map<string, number>();
@@ -318,25 +316,25 @@ function pruneSelection(objectiveId: string, openRevs: ReadonlyMap<string, numbe
   commitSelection(objectiveId, next.size > 0 ? next : null);
 }
 
-function clearSelection(objectiveId: string): void {
+export function clearSelection(objectiveId: string): void {
   commitSelection(objectiveId, null);
 }
 
-function subscribeSelection(listener: () => void): () => void {
+export function subscribeSelection(listener: () => void): () => void {
   selectionListeners.add(listener);
   return () => { selectionListeners.delete(listener); };
 }
 
-function useFollowupSelection(objectiveId: string): ReadonlySet<string> {
+export function useFollowupSelection(objectiveId: string): ReadonlySet<string> {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독(기존 objectives-state 와 같은 문법)
   return useSyncExternalStore(subscribeSelection, () => readSelection(objectiveId), () => readSelection(objectiveId));
 }
 
-function isFollowupOpen(objectiveId: string): boolean {
+export function isFollowupOpen(objectiveId: string): boolean {
   return compOpens.get(objectiveId) ?? false;
 }
 
-function setFollowupOpen(objectiveId: string, open: boolean): void {
+export function setFollowupOpen(objectiveId: string, open: boolean): void {
   if ((compOpens.get(objectiveId) ?? false) === open) return;
   if (open) compOpens.set(objectiveId, true);
   else compOpens.delete(objectiveId);
@@ -350,23 +348,17 @@ function subscribeComp(listener: () => void): () => void {
 
 /** 후보 칸을 열면서 첫 체크상자로 초점을 줄 목표 — 칸이 마운트될 때 한 번 가져간다(입력창이 다른 대화에 있으면 그 대화가 서야 칸이 선다). */
 const focusRequests = new Set<string>();
-function requestFollowupFocus(objectiveId: string): void {
+export function requestFollowupFocus(objectiveId: string): void {
   focusRequests.add(objectiveId);
 }
-function takeFollowupFocus(objectiveId: string): boolean {
+export function takeFollowupFocus(objectiveId: string): boolean {
   return focusRequests.delete(objectiveId);
 }
 
-function useFollowupOpen(objectiveId: string): boolean {
+export function useFollowupOpen(objectiveId: string): boolean {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독
   return useSyncExternalStore(subscribeComp, () => isFollowupOpen(objectiveId), () => isFollowupOpen(objectiveId));
 }
-
-return { readSelection, readSelectionRevs, toggleFollowupSelection, pruneSelection, clearSelection, subscribeSelection, useFollowupSelection, isFollowupOpen, setFollowupOpen, requestFollowupFocus, takeFollowupFocus, useFollowupOpen };
-}
-
-const localFollowups = createFollowupState();
-export const { readSelection, readSelectionRevs, toggleFollowupSelection, pruneSelection, clearSelection, subscribeSelection, useFollowupSelection, isFollowupOpen, setFollowupOpen, requestFollowupFocus, takeFollowupFocus, useFollowupOpen } = localFollowups;
 
 /** 완료 멱등 키 — 서버가 UUID 로 받는다. 같은 batchId 를 다시 보내면 멱등이다. */
 export function newBatchId(): string {

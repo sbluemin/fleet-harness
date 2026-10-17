@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
-import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { FileReadResult } from "../server/types.js";
@@ -34,7 +33,6 @@ type PeekState =
   | { readonly kind: "error"; readonly message: string };
 
 interface FilePeekProps {
-  readonly transport?: HostTransport;
   readonly theaterId: string;
   readonly relativePath: string;
   readonly name: string;
@@ -62,7 +60,7 @@ export function resolvePeekTop(
   return Math.max(margin, Math.min(below, boundaryHeight - cardHeight - margin));
 }
 
-export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t, transport }: FilePeekProps) {
+export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBottom, boundaryRef, language, t }: FilePeekProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<PeekState>({ kind: "loading" });
   const [top, setTop] = useState<number | null>(null);
@@ -72,16 +70,16 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
     if (IMAGE_EXTS.has(ext)) {
       const src = cacheBustedImageSrc(
         `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,
-        transport ? undefined : knownMtime(theaterId, relativePath),
+        knownMtime(theaterId, relativePath),
       );
-      setState({ kind: "image", src: transport ? transport.resourceUrl(src) : src });
+      setState({ kind: "image", src });
       return;
     }
     const controller = new AbortController();
     setState({ kind: "loading" });
     void (async () => {
       try {
-        const res = await (transport?.request ?? fetch)("/plugins/file-explorer/files/read", {
+        const res = await fetch("/plugins/file-explorer/files/read", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ theaterId, relativePath, maxLines: PEEK_LINES }),
@@ -92,7 +90,7 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
           throw new Error(payload.error ?? "read_failed");
         }
         const result = await res.json() as FileReadResult;
-        if (controller.signal.aborted || transport?.scope.signal.aborted) return;
+        if (controller.signal.aborted) return;
         if (result.binary) {
           setState({ kind: "binary" });
           return;
@@ -108,14 +106,14 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
           mtimeMs: result.mtimeMs,
         });
       } catch (error: unknown) {
-        if (controller.signal.aborted || transport?.scope.signal.aborted) return;
+        if (controller.signal.aborted) return;
         const raw = error instanceof Error ? error.message : "read_failed";
         if (raw === "binary_file") setState({ kind: "binary" });
         else setState({ kind: "error", message: translateServerError(raw, t) });
       }
     })();
     return () => controller.abort();
-  }, [name, relativePath, t, theaterId, transport]);
+  }, [name, relativePath, t, theaterId]);
 
   useLayoutEffect(() => {
     const card = cardRef.current;

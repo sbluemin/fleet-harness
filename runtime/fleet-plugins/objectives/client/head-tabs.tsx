@@ -81,19 +81,16 @@ function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonl
   const objective = useSyncExternalStore(subscribeHead, read, read);
   const readActivity = () => (objective ? operationSummaries().find((operation) => operation.id === objective.id)?.activity ?? null : null);
   const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
-  if (!objective) return null;
-  return <ObjectiveScheduleTools objective={objective} language={language} editable={!objective.done && activity !== "running" && activity !== "background"}
-    patch={(next) => { const api = objectivesApi(); if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language }).catch(() => undefined); }} />;
-}
-
-/** 오늘·기한의 공용 UI. host 표면은 자기 권한과 목표 patch를 명시적으로 주입한다. */
-export function ObjectiveScheduleTools({ objective, language, editable, patch }: {
-  readonly objective: Objective; readonly language: ConsoleLocale; readonly editable: boolean;
-  readonly patch: (next: Record<string, unknown>) => void;
-}) {
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  if (!objective) return null;
   const lang = language === "ko" ? "ko" : "en";
   const t = getT(lang);
+  // 지휘관이 일하는 동안에는 잠긴다 — 상세의 편집 잠금과 같은 기준이다(서버도 같은 기준으로 거절한다).
+  const editable = !objective.done && activity !== "running" && activity !== "background";
+  const patch = (next: Record<string, unknown>) => {
+    const api = objectivesApi();
+    if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
+  };
   const overdue = !!objective.dueDate && objective.dueDate < todayIso() && !objective.done;
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, lang) }) : t("objectives.schedule.setDue");

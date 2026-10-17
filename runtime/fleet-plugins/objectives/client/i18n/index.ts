@@ -3,8 +3,6 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 export const objectivesEn = {
   "objectives.panel.title": "Objectives",
-  "objectives.host.uploadUnsupported": "Image upload is unavailable on this remote surface. Existing attachments remain readable.",
-  "objectives.host.managementReadOnly": "Board management and decision submission are read-only on this surface. Conversation messages remain available with control.",
   "objectives.view.label": "Start view",
   "objectives.view.terminal": "Terminal view",
   "objectives.view.chat": "Chat view",
@@ -908,8 +906,6 @@ export const objectivesEn = {
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.panel.title": "목표",
-  "objectives.host.uploadUnsupported": "이 원격 표면에서는 이미지 업로드를 지원하지 않습니다. 기존 첨부는 볼 수 있습니다.",
-  "objectives.host.managementReadOnly": "이 표면의 보드 관리와 결정 제출은 조회 전용입니다. 제어권이 있으면 대화 메시지는 보낼 수 있습니다.",
   "objectives.view.label": "시작 뷰",
   "objectives.view.terminal": "터미널뷰",
   "objectives.view.chat": "채팅뷰",

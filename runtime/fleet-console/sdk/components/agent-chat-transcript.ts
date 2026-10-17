@@ -97,8 +97,6 @@ export interface AgentConversationProps {
   readonly theaterId?: string;
   /** Still reading the first page — the empty line says so instead of `empty`. */
   readonly loading?: boolean;
-  /** Earlier entries were omitted by the bounded history projection. */
-  readonly truncated?: boolean;
   /** The line shown when there are no entries. */
   readonly empty?: string;
   /** Older entries exist above the first one — a text button at the top reads them. The view keeps its place as they arrive. */

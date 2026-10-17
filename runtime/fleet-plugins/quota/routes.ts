@@ -76,7 +76,7 @@ export default definePlugin({
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);
       return true;
-    }, { method: "GET", path: "", summary: "Read provider quota summary.", category: "Quota Plugin", gate: "origin-write", transport: "http", readOnly: true });
+    }, { method: "GET", path: "", summary: "Read provider quota summary.", category: "Quota Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "connect", async ({ req, res }) => {
       await handleConnect(req, res, ctx, service, serializeSettings);
       return true;

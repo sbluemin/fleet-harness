@@ -34,11 +34,6 @@ export interface NewSessionTarget {
   readonly theaterId: string | null;
 }
 
-/** 열린 새 세션 — 대상과, 화면 칸이 잠시 내려간 동안(다른 컴퓨터를 보는 등) 맡겨 둔 미발사 입력. 세션이 닫히면 함께 사라진다. */
-export interface NewSessionState extends NewSessionTarget {
-  readonly draft?: string;
-}
-
 /** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
 export interface QuickLaunchDraftAttachment {
   readonly id: string;
@@ -378,7 +373,7 @@ export interface ConsoleState {
   readonly keyboardFocusRequest: { readonly operationId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: boolean;
   /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
-  readonly newSession: NewSessionState | null;
+  readonly newSession: NewSessionTarget | null;
   readonly keyboardShortcutsOpen: boolean;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly notificationPreferences: NotificationPreferences;

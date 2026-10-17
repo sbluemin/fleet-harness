@@ -1,10 +1,9 @@
 import { getViewedTheaterId, useViewedTheaterId } from "../../../core/client/src/integration/viewed-theater.js";
 import { useHostCapabilities } from "../../../core/client/src/integration/use-host-capabilities.js";
 import { pluginRuntimeState } from "../../execution/client/operation-activity.js";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { HostWorkspacePort } from "@fleet-console/sdk/host-context";
 import type { ClientApiCapability, ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterAlias, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../../../core/client/src/integration/api.js";
@@ -20,7 +19,6 @@ import { usePluginRegistry } from "../../../core/client/src/integration/plugin-r
 import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
-import { HostWorkspaceLocation, HostWorkspaceState } from "./sidebar/host-workspace-sidebar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
@@ -49,34 +47,14 @@ const DEFAULT_SHELL_HEIGHT = 360;
 // 아레나 인셋이 된다 — CSS의 카드 인셋(var(--space-3))과 한 값이어야 한다.
 const CHROME_FLOAT_GUTTER = 24;
 
-const subscribeWithoutHostWorkspace = () => () => {};
-const snapshotWithoutHostWorkspace = () => null;
-
 interface OperationsProps {
   readonly state: ConsoleState;
   readonly onDeferredDeletion: (deletion: DeferredDeletionReceipt | null) => void;
   readonly onArchived: (outcome: ArchiveOutcome) => void;
   readonly deletionToast?: ReactNode;
-  readonly hostWorkspace?: HostWorkspacePort;
-  readonly renderHostContent?: (insets: ArenaInsets) => ReactNode;
 }
 
-export function Operations({ state, onDeferredDeletion, onArchived, deletionToast, hostWorkspace, renderHostContent }: OperationsProps) {
-  const hostState = useSyncExternalStore(hostWorkspace?.subscribe ?? subscribeWithoutHostWorkspace, hostWorkspace?.getSnapshot ?? snapshotWithoutHostWorkspace, hostWorkspace?.getSnapshot ?? snapshotWithoutHostWorkspace);
-  const localContent = hostState === null || (hostState.selection.hostKey === "local" && hostState.foreground !== null);
-  const localCanWrite = hostState === null || (localContent && hostState.canWrite);
-  const localGeneration = hostState?.selectionGeneration;
-  const allowLocalWrite = useCallback(() => {
-    const current = hostWorkspace?.getSnapshot();
-    return !current || (current.selection.hostKey === "local" && current.selectionGeneration === localGeneration && current.foreground !== null && current.canWrite);
-  }, [hostWorkspace, localGeneration]);
-  const captureLocalGeneration = useCallback(() => {
-    const started = hostWorkspace?.getSnapshot();
-    return () => {
-      const current = hostWorkspace?.getSnapshot();
-      return !current || (started?.selection.hostKey === "local" && current.selection.hostKey === "local" && current.selectionGeneration === started.selectionGeneration);
-    };
-  }, [hostWorkspace]);
+export function Operations({ state, onDeferredDeletion, onArchived, deletionToast }: OperationsProps) {
   const viewedTheaterId = useViewedTheaterId();
   const registry = usePluginRegistry();
   const viewMode = useViewMode();
@@ -130,20 +108,15 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   // 프레임의 Resume 는 그대로 있어 사용자가 직접 누를 수 있다.
   const deferredOpenResumeRef = useRef<Set<string>>(new Set());
   const resumeIfDormant = useCallback((operationId: string) => {
-    if (!allowLocalWrite()) return;
     const hydration = getState().operationRuntimeHydration;
     if (hydration !== "ready") {
       if (hydration === "pending") deferredOpenResumeRef.current.add(operationId);
       return;
     }
     resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
-  }, [allowLocalWrite, registry.providers]);
+  }, [registry.providers]);
 
   useEffect(() => {
-    if (!localCanWrite) {
-      deferredOpenResumeRef.current.clear();
-      return;
-    }
     // degraded 는 "모른다"는 뜻이다 — 붙들어 둔 제스처를 사실로 승격하지 않고 버린다.
     if (state.operationRuntimeHydration === "degraded") {
       deferredOpenResumeRef.current.clear();
@@ -157,7 +130,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       if (!operation) continue;
       resumeDormantOnOpen(operationId, stateRef.current.operations, registry.providers);
     }
-  }, [localCanWrite, registry.providers, state.operationRuntimeHydration]);
+  }, [registry.providers, state.operationRuntimeHydration]);
 
   useEffect(() => {
     if (!state.operationsHydrated) return;
@@ -167,7 +140,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 상태별 보기다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (hostWorkspace && hostWorkspace.getSnapshot().selection.hostKey !== "local") return;
       if (viewMode.effective === "mobile") return;
       if (!shouldHandleOperationsKeyboardShortcut()) return;
       if (isShortcutRecording()) return;
@@ -205,11 +177,11 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [hostWorkspace, resumeIfDormant, viewMode.effective]);
+  }, [resumeIfDormant, viewMode.effective]);
 
-  // 호스트 탐색의 펼침·필터는 현재 대화를 풀지 않는다. 기존 단일 호스트 화면만 바깥 클릭으로 해제한다.
+  // 사이드바·레일·커맨드 밴드 밖을 누르면 패널 활성화를 푼다.
   useEffect(() => {
-    if (hostWorkspace || viewMode.effective === "mobile") return;
+    if (viewMode.effective === "mobile") return;
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if (stateRef.current.activeOperationId === null) return;
@@ -218,14 +190,10 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [hostWorkspace, viewMode.effective]);
+  }, [viewMode.effective]);
 
   // 검색·ALERTS 등에서 들어온 일회성 이동 요청을 처리한다.
   useEffect(() => {
-    if (!localContent) {
-      if (state.pendingOperationFocus !== null) consumeOperationFocus();
-      return;
-    }
     const operationId = state.pendingOperationFocus;
     if (operationId === null) return;
     if (viewMode.effective === "mobile") {
@@ -248,7 +216,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     const operation = state.operations.find((candidate) => candidate.id === operationId);
     if (operation) focusConversationOperation(operation);
     consumeOperationFocus();
-  }, [localContent, viewedTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
+  }, [viewedTheaterId, state.operations, state.pendingOperationFocus, viewMode.effective]);
 
   const theaterOperations = state.operations;
   const pooledOperations = useMemo(() => [...state.operations, ...state.nestedOperations], [state.operations, state.nestedOperations]);
@@ -259,9 +227,9 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     groupId?: string | null,
     launchTheaterId: string | null = getViewedTheaterId(),
   ) => {
-    if (!allowLocalWrite() || !launchTheaterId) return;
-    void launchViaPlugin(pluginId, kind, defaultLaunchGeometry(), launchTheaterId, registry.providers, variant, groupId, captureLocalGeneration());
-  }, [allowLocalWrite, captureLocalGeneration, registry.providers]);
+    if (!launchTheaterId) return;
+    void launchViaPlugin(pluginId, kind, defaultLaunchGeometry(), launchTheaterId, registry.providers, variant, groupId);
+  }, [registry.providers]);
 
   const handleRailLaunchOperation = useCallback((pluginId: string | null, kind: OperationLaunchKind) => {
     handleSideBarLaunchKind(pluginId, kind);
@@ -270,26 +238,14 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
 
   // Quick Launch 요청이 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
   useEffect(() => {
-    if (!localCanWrite) {
-      if (state.pendingQuickLaunch) {
-        for (const attachment of state.pendingQuickLaunch.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
-        consumeQuickLaunch();
-      }
-      return;
-    }
     const request = state.pendingQuickLaunch;
     if (!request || !state.theaters.some((theater) => theater.id === request.theaterId)) return;
     consumeQuickLaunch();
-    const isCurrent = captureLocalGeneration();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, isCurrent)
+    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant)
       .then(() => {
         for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
       })
       .catch((error: unknown) => {
-        if (!isCurrent()) {
-          for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
-          return;
-        }
         const draft = request.variant.prompt;
         if (!draft) return;
         reopenQuickLaunchWithDraft(
@@ -299,41 +255,32 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
           request.attachments ?? null,
         );
       });
-  }, [captureLocalGeneration, localCanWrite, registry.providers, state.theaters, state.pendingQuickLaunch]);
+  }, [registry.providers, state.theaters, state.pendingQuickLaunch]);
 
   const handleFocus = useCallback((operationId: string) => {
-    const current = hostWorkspace?.getSnapshot();
-    if (current && (current.selection.hostKey !== "local" || current.selectionGeneration !== localGeneration)) return;
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
     focusConversationOperation(operation);
     resumeIfDormant(operationId);
-  }, [hostWorkspace, localGeneration, resumeIfDormant]);
+  }, [resumeIfDormant]);
 
   const handleResume = useCallback((operationId: string) => {
-    if (!allowLocalWrite()) return;
     const operation = stateRef.current.operations.find((candidate) => candidate.id === operationId);
     if (!operation) return;
-    const isCurrent = captureLocalGeneration();
-    const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.providers, (id) => {
-      if (isCurrent()) handleFocus(id);
-    });
+    const resume = () => resumeOperationInPlace(operationId, stateRef.current.operations, registry.providers, handleFocus);
     resume();
-  }, [allowLocalWrite, captureLocalGeneration, handleFocus, registry.providers]);
+  }, [handleFocus, registry.providers]);
 
   const runMutation = useCallback((task: () => Promise<void>, rollback: () => Promise<void>) => {
-    const isCurrent = captureLocalGeneration();
     const attempt = () => {
-      if (!allowLocalWrite() || !isCurrent()) return;
       void task()
-        .then(() => { if (isCurrent()) setMutationError(null); })
+        .then(() => setMutationError(null))
         .catch(() => {
-          if (!isCurrent()) return;
-          void rollback().finally(() => { if (isCurrent()) setMutationError({ retry: attempt }); });
+          void rollback().finally(() => setMutationError({ retry: attempt }));
         });
     };
     attempt();
-  }, [allowLocalWrite, captureLocalGeneration]);
+  }, []);
 
   const refreshOperations = useCallback(
     () => fetchOperations(null).then(hydrateOperations),
@@ -366,9 +313,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     );
   }, [refreshOperations, runMutation]);
 
-  useEffect(() => {
-    if (localCanWrite) return setConversationOperationRename(handleRename);
-  }, [handleRename, localCanWrite]);
+  useEffect(() => setConversationOperationRename(handleRename), [handleRename]);
 
   const handleSetGroupId = useCallback((operationId: string, groupId: string | null) => {
     runMutation(
@@ -398,8 +343,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }, []);
   useEffect(() => {
     setOperationMenu(null);
-    if (!localContent) setMutationError(null);
-  }, [localContent, viewedTheaterId]);
+  }, [viewedTheaterId]);
   const menuOperation = operationMenu
     ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
@@ -477,10 +421,8 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
   }, [refreshOperationsAndGroups, runMutation]);
 
   const handleClose = useCallback((operationId: string) => {
-    if (!allowLocalWrite()) return;
-    // 보관 영수증은 전환 뒤에도 보존한다. 복구 경로를 버리지 않으며 본문 선택은 이 callback이 바꾸지 않는다.
-    void archiveOperationFromUi(operationId, { isCurrent: captureLocalGeneration() }).then((outcome) => { if (outcome) onArchived(outcome); });
-  }, [allowLocalWrite, captureLocalGeneration, onArchived]);
+    void archiveOperationFromUi(operationId).then((outcome) => { if (outcome) onArchived(outcome); });
+  }, [onArchived]);
 
   const poolCapabilities = useHostCapabilities(() => {
     void fetchOperations(null).then(hydrateOperations).catch(() => {});
@@ -494,28 +436,25 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     theme: state.activeTheme,
     language,
     zoom: 1,
-    onActivate: () => { if (allowLocalWrite()) setActiveOperation(operation.id); },
+    onActivate: () => setActiveOperation(operation.id),
     onClose: () => handleClose(operation.id),
     onGeometryChange: () => {},
     onRequestCompanions: () => {},
     companionsOpen: false,
     hiddenCompanionPanelIds: [],
     onSetCompanionPanelVisible: () => {},
-  }), [allowLocalWrite, handleClose, language, state.activeOperationId, state.activeTheme]);
+  }), [handleClose, language, state.activeOperationId, state.activeTheme]);
 
   const handleAddTheater = useCallback(async (path: string) => {
-    if (!allowLocalWrite()) return;
-    await registerTheaterFromPath(path, { isCurrent: captureLocalGeneration() });
-  }, [allowLocalWrite, captureLocalGeneration]);
+    await registerTheaterFromPath(path);
+  }, []);
 
   const handleForgetTheater = useCallback(async (theaterId: string) => {
-    if (!allowLocalWrite()) return;
     onDeferredDeletion(await forgetTheaterCompletely(theaterId));
-  }, [allowLocalWrite, onDeferredDeletion]);
+  }, [onDeferredDeletion]);
 
   const sideBarChrome = (
     <OperationsSideBar
-      hostWorkspace={hostWorkspace}
       theaters={state.theaters}
       operations={state.operations}
       groups={state.groups}
@@ -543,7 +482,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       topStripTrailing={<ConversationSideBarActions />}
       topStripCenter={<ConversationSideBarDeputies />}
       archiveInBottomAccessory
-      bottomAccessory={<ConversationSideBarBottom connection={state.connection} hostWorkspace={hostWorkspace} />}
+      bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}
     />
   );
   const mutationErrorBanner = mutationError ? (
@@ -579,7 +518,27 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       onClose={closeOperationMenu}
     />
   ) : null;
-  const localShell = viewMode.effective === "mobile" ? (
+  const conversationShell = (
+    <div className="console-body is-conversation">
+      <ConversationShellHost />
+      {mutationErrorBanner}
+      {sideBarChrome}
+      <ConversationStage
+        state={state}
+        insets={conversationInsets}
+        language={language}
+        operationKinds={registry.operationKinds}
+        onClose={handleClose}
+        toolContext={toolsContext}
+      />
+      {toastRegion}
+      <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+      <SideBarEdgeDock />
+      {operationMenuLayer}
+      <ExpandedSurfaceLayer />
+    </div>
+  );
+  const shell = viewMode.effective === "mobile" ? (
     <MobileShell
       operations={theaterOperations}
       activeOperationId={state.activeOperationId}
@@ -593,46 +552,18 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       onSelectOperation={setActiveOperation}
       onCloseOperation={handleClose}
     />
-  ) : <>
-    <ConversationShellHost />
-    {mutationErrorBanner}
-    <ConversationStage
-      state={state}
-      insets={conversationInsets}
-      language={language}
+  ) : conversationShell;
+  return (
+    <OperationBodyPool
+      releaseParkedBodies={viewMode.effective !== "mobile"}
+      operations={pooledOperations}
       operationKinds={registry.operationKinds}
-      onClose={handleClose}
-      toolContext={toolsContext}
-      hostContext={hostWorkspace ? <HostWorkspaceLocation hosts={hostWorkspace} t={t} conversationTitle={false} /> : undefined}
-    />
-    {toastRegion}
-    <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<><ConversationPanelHeader context={toolsContext} />{hostWorkspace ? <HostWorkspaceLocation hosts={hostWorkspace} t={t} rail /> : null}</>} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
-    {operationMenuLayer}
-    <ExpandedSurfaceLayer />
-  </>;
-  const localPool = localContent ? <OperationBodyPool
-    releaseParkedBodies={viewMode.effective !== "mobile"}
-    operations={pooledOperations}
-    operationKinds={registry.operationKinds}
-    capabilities={poolCapabilities}
-    defaultConfig={defaultBodyConfig}
-  >{localShell}</OperationBodyPool> : null;
-  // 원격 slot은 host-bound 중앙 본문과 레일을 함께 소유한다. 준비 전 로컬 본문을 재사용하지 않는다.
-  const hostContent = hostWorkspace && !localContent ? (
-    hostState?.foreground && renderHostContent ? renderHostContent(conversationInsets) :
-      <section className="host-workspace-content" style={{ left: conversationInsets.left, right: conversationInsets.right }}>
-        <HostWorkspaceLocation hosts={hostWorkspace} t={t} />
-        <HostWorkspaceState hosts={hostWorkspace} t={t} />
-        {hostState?.foreground ? <p className="host-workspace-note">{t("hosts.workspace.loadFailed")}</p> : null}
-      </section>
-  ) : null;
-  if (viewMode.effective === "mobile" && localContent) return localPool;
-  return <div className="console-body is-conversation">
-    {sideBarChrome}
-    {localPool}
-    {hostContent}
-    <SideBarEdgeDock />
-  </div>;
+      capabilities={poolCapabilities}
+      defaultConfig={defaultBodyConfig}
+    >
+      {shell}
+    </OperationBodyPool>
+  );
 }
 
 function focusConversationOperation(operation: OperationNode): void {
@@ -670,9 +601,8 @@ async function launchViaPlugin(
   plugins: readonly ClientExecutionProvider[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
-  isCurrent: () => boolean = () => true,
 ): Promise<void> {
-  await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant, groupId, isCurrent);
+  await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant, groupId);
 }
 
 async function createLaunchedOperation(
@@ -683,7 +613,6 @@ async function createLaunchedOperation(
   plugins: readonly ClientExecutionProvider[],
   variant?: Readonly<Record<string, string>>,
   groupId?: string | null,
-  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   const plugin = plugins.find((p) => p.id === pluginId);
   const resync = () => { void fetchOperations(null).then(hydrateOperations).catch(() => {}); };
@@ -704,7 +633,7 @@ async function createLaunchedOperation(
   }
   if (newOperationId && groupId) await patchOperation(newOperationId, { groupId }).catch(() => {});
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
-  if (!newOperationId || !isCurrent()) return;
+  if (!newOperationId) return;
   const operationHydrated = getState().operations.some((operation) => operation.id === newOperationId);
   if (operationHydrated) focusOperation(newOperationId);
 }

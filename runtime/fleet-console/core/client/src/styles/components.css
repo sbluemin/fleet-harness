@@ -13090,26 +13090,6 @@ body[data-expanded-surface-resizing="true"] {
   line-height: 1;
 }
 
-/* 원격 회차의 대상 고지 — 어느 컴퓨터인지는 위치 정보라 brass 한 줄 표식만 쓴다. 상태 색은 쓰지 않는다. */
-.quick-launch-host-target {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-1) var(--space-2);
-  margin: 0;
-  padding: var(--space-3) var(--space-4) 0;
-  font-size: var(--t-md);
-  color: var(--text-secondary);
-}
-
-.quick-launch-host-target strong {
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
-  border-left: 2px solid var(--brass);
-  padding-left: var(--space-2);
-}
-
 .quick-launch-start-view-glyph svg {
   width: 13px;
   height: 13px;

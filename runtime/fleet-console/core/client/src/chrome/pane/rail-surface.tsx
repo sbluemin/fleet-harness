@@ -10,7 +10,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { PaneDescriptor, PaneOpenRequest } from "@fleet-console/sdk/pane";
 import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
 
-import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
+import { createHostCapabilities } from "../../integration/plugin-capabilities.js";
 import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
 import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
@@ -32,6 +32,10 @@ import { closePane, focusPane, getPaneStoreSnapshot, openPane, replacePaneParams
  * primary는 엔트리가 열리면 자동으로 선다. detail은 `panes.open`이 부를 때 선다 — 그래서
  * 등록은 독립이고 전이는 호출이라는 계약이 여기서 실제로 성립한다.
  */
+
+// 능력 객체를 렌더마다 새로 만들면 컨텍스트가 매번 바뀌어 본문이 재마운트된다 —
+// keepAlive가 지키려는 것을 정작 호스트가 깨뜨리는 자리다.
+const HOST_CAPABILITIES = createHostCapabilities();
 
 // 렌더마다 새 `{}`를 만들면 ctx의 useMemo가 매번 깨져 본문이 다시 그려진다.
 const EMPTY_PARAMS: Readonly<Record<string, string>> = Object.freeze({});
@@ -368,7 +372,6 @@ function PaneHost({
   singlePane = false,
   returnFocus,
 }: PaneHostProps) {
-  const capabilities = useHostCapabilities();
   const bodyRef = useRef<HTMLDivElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   // ctx.panes는 params가 바뀌어도 안정적이라 비동기 작업이 오래 쥘 수 있다. 호스트가 헐린 뒤
@@ -457,8 +460,8 @@ function PaneHost({
     width: width ?? (descriptor.defaultWidth ?? (descriptor.widthClass === undefined ? 0 : resolvePaneDefaultWidth(descriptor))),
     theaterId,
     api,
-    lifecycle: capabilities.lifecycle,
-    preferences: capabilities.preferences,
+    lifecycle: HOST_CAPABILITIES.lifecycle,
+    preferences: HOST_CAPABILITIES.preferences,
     language,
     theme,
     onClose: handleClose,

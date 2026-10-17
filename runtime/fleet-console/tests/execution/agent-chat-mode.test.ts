@@ -503,16 +503,6 @@ describe("agent chat mode routes", () => {
     expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-1")).toMatchObject({ recipientOperationId: verifier });
     expect(replayed.find((event) => event?.kind === "tool-result" && event.id === "send-address")).not.toHaveProperty("recipientOperationId");
     expect(arrivalReports).not.toHaveBeenCalled();
-    const activeSdkCalls = harness.openSession.mock.calls.length;
-    await harness.get(sessionId, "chat-history");
-    const active = harness.responses.at(-1) as { status: number; body: { conversation: { generation: string; cursor: number; journal: { entries: unknown[] } } } };
-    expect(active.status).toBe(200);
-    expect(active.body.conversation.journal.entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Sent." })]));
-    expect(active.body.conversation.generation).toBe(JSON.parse(replay[0]!.raw).generation);
-    expect(active.body.conversation.cursor).toBeGreaterThan(0);
-    expect(JSON.stringify(active.body)).not.toContain(harness.fleetDataDir);
-    expect(JSON.stringify(active.body)).not.toContain("sid-live");
-    expect(harness.openSession.mock.calls).toHaveLength(activeSdkCalls);
   });
 
   it.each(["pending", "missed"])("preserves first-turn identity after a %s transcript lookup at disposal", async (lookup) => {

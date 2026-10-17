@@ -22,15 +22,15 @@ import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { resolveOperationActivity } from "../../../../features/execution/client/operation-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/operation-marks.js";
-import { useHostCapabilities } from "./use-host-capabilities.js";
+import { createHostCapabilities } from "./plugin-capabilities.js";
 import { usePluginRegistry } from "./plugin-registry.js";
 import { focusOperation, getState, openQuickLaunch, openQuickLaunchWithDraft, subscribe as subscribeStore } from "./store.js";
 
-export function FloatingWidgetLayer({ enabled = true }: { readonly enabled?: boolean }) {
+export function FloatingWidgetLayer() {
   const { floatingWidgets } = usePluginRegistry();
   const language = useConsoleLocale();
   const navigate = useNavigate();
-  const capabilities = useHostCapabilities();
+  const capabilities = useMemo(() => createHostCapabilities(), []);
   const arrivals = useMemo(() => createManagedArrivalsCapability(), []);
   const departures = useMemo(() => createManagedDeparturesCapability(), []);
   const awaitings = useMemo(() => createManagedAwaitingsCapability(), []);
@@ -69,8 +69,7 @@ export function FloatingWidgetLayer({ enabled = true }: { readonly enabled?: boo
     language,
   }), [arrivals, awaitings, capabilities, composer, departures, keepOut, language, operations, signals]);
 
-  // 이 전역 위젯의 신호·실행은 로컬 소유다. 원격 표면에 로컬 활동을 섞지 않는다.
-  if (!enabled || capabilities.host?.hostKey !== "local" || floatingWidgets.length === 0) return null;
+  if (floatingWidgets.length === 0) return null;
 
   return (
     <div className="floating-widget-layer">

@@ -1,5 +1,4 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
-import { objectiveHostSurfaces } from "./host-surfaces.js";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
 
@@ -172,7 +171,6 @@ const objectivesPlugin = definePlugin({
   persistentComponents: [{ id: "commodore-language", render: ({ language }) => { if (language) noteCommodoreLanguage(language); return null; } }],
   // 대화 중심 화면에서는 같은 사령관이 Inbox 시트 대신 가운데 칸(기록)과 오른쪽 패널(행위 기록·지시·정보·설정)에 선다.
   conversationSurfaces: [commodoreConversationSurface, freshConversationSurface],
-  hostSurfaces: objectiveHostSurfaces,
 });
 
 export const plugins = [objectivesPlugin] as const;

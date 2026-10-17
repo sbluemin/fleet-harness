@@ -13,7 +13,6 @@ import {
 } from "../../../core/client/src/integration/api.js";
 import {
   beginAddTheater,
-  cancelAddTheater,
   completeAddTheater,
   failAddTheater,
   getState,
@@ -32,16 +31,13 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 // ─── register and forget ───────────────────────────────────────────────────────
 
 // Theater 등록의 단일 경로: 폴더 grant 발급 → host POST → 서버 순서로 재수화.
-// Operations 사이드바·새 세션 화면·모바일 Theater 페이지가 공유한다. 등록한 Theater 의 id 를 돌려준다(실패·지난 선택이면 null —
-// 등록 실패 사유는 failAddTheater 가 이미 사이드바에 실었다).
-export async function registerTheaterFromPath(path: string, options?: { readonly isCurrent?: () => boolean }): Promise<string | null> {
-  if (options?.isCurrent?.() === false) return null;
+// Operations 사이드바·새 세션 화면·모바일 Theater 페이지가 공유한다. 등록한 Theater 의 id 를 돌려준다(실패면 null —
+// 사유는 failAddTheater 가 이미 사이드바에 실었다).
+export async function registerTheaterFromPath(path: string): Promise<string | null> {
   beginAddTheater();
   try {
     const folderGrantId = await issueTheaterFolderGrant(path);
-    if (options?.isCurrent?.() === false) { cancelAddTheater(); return null; }
     const result = await addTheater(folderGrantId, true);
-    if (options?.isCurrent?.() === false) { cancelAddTheater(); return null; }
     completeAddTheater(result);
     // 서버 register()는 기존 order를 보존하므로, 이미 수동 정렬된 Theater를 재-오픈하면
     // completeAddTheater의 낙관적 prepend가 저장된 위치와 어긋난다(Codex P2). 서버 순서로 재수화해
@@ -49,7 +45,6 @@ export async function registerTheaterFromPath(path: string, options?: { readonly
     void fetchTheaters(null).then(hydrateTheaters).catch(() => {});
     return result.id;
   } catch (error) {
-    if (options?.isCurrent?.() === false) { cancelAddTheater(); return null; }
     const t = getT(resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto"));
     failAddTheater(describeTheaterRegistrationError(error, t));
     return null;

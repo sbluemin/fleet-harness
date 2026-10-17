@@ -1,5 +1,5 @@
 import type * as http from "node:http";
-import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, readSessionCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
+import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
 import { PAIRED_DEVICE_LIMIT, type createPairedDeviceStore } from "./paired-devices.js";
 import { normalizeRemoteJoinSource, type createRemoteJoinGuard } from "./remote-join-guard.js";
 interface PairingRouteDeps {
@@ -12,7 +12,6 @@ interface PairingRouteDeps {
   readonly withSecurityHeaders: (extra: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
   readonly broadcastControlChanged: () => void;
 }
-const OBSERVER_SESSION_LIMIT = 8;
 export function createPairingRoutes(deps: PairingRouteDeps) {
   const { access, pairedDeviceStore, remoteJoinGuard, listenerForRequest, readJsonBody, writeJson, withSecurityHeaders, broadcastControlChanged } = deps;
   async function handleAccessJoin(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
@@ -49,14 +48,9 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
 
   /** 조인 본체. 반환값은 "페어링에 성공했는가"이며, 응답은 이 안에서 끝난다. */
   async function performAccessJoin(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
-    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown; readonly intent?: unknown }>(req);
+    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
-    // pair로 표시된 본문을 제어 join으로 흘리지 않는다. 옛 서버는 모르는 필드를 무시하고 컨트롤러를 연다.
-    if (isPlainObject(body) && body.intent !== undefined) {
-      writeJson(res, 400, { error: "invalid_join" });
-      return false;
-    }
     const joined = token === null
       ? resumePairedDevice(req, listener, device)
       : pairFromGrant(listener, token, device);
@@ -77,8 +71,11 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       writeJson(res, joined.status, { error: joined.error });
       return false;
     }
-    // 제어 조인만 보유자 변화를 알린다. 관찰은 이 함수를 타지 않는다.
-    if (listener.audience === "remote" && joined.session.disposition === "control" && joined.session.access === "full") broadcastControlChanged();
+    /**
+     * 등급을 가리지 않고 알린다. 원격 접속이 하나뿐이므로 monitoring 조인도 앞선 보유자를
+     * 대신하고, 그때 커튼은 걷혀야 한다. 실제로 바뀌지 않은 사실은 브로드캐스트가 걸러낸다.
+     */
+    if (listener.audience === "remote") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
     const cookies = [formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port })];
     if (joined.pairingSecret !== null) cookies.push(formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }));
@@ -120,8 +117,8 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     }
     const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
     if (!paired) return { status: 409, error: "paired_device_limit" };
-    // 제어 등급만 앞선 제어를 대신한다. monitoring 조인이 제어를 빼앗으면 안 된다.
-    if (grant.access === "full") supersedeRemoteControllers(null);
+    // 거절이 끝난 뒤에 자리를 비운다 — 받지도 못할 조인이 앞사람을 내보내서는 안 된다.
+    supersedeRemoteSessions(null);
     return {
       session: access.openSession(listener.audience, grant.access, device, paired.device.id),
       pairingSecret: paired.secret,
@@ -136,7 +133,7 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
      * 자기 페어링이 두고 간 접속은 축출이 아니라 자기 자신의 잔상이므로 안내 없이 걷는다 —
      * 창을 다시 여는 것만으로 "다른 기기가 이어받았습니다"를 자기 화면에 띄울 수는 없다.
      */
-    if (paired.access === "full") supersedeRemoteControllers(paired.id);
+    supersedeRemoteSessions(paired.id);
     return {
       // 등급은 페어링이 정한다 — 재개가 monitoring을 full로 올릴 수 없어야 한다.
       session: access.openSession(listener.audience, paired.access, device ?? paired.device, paired.id),
@@ -146,15 +143,19 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
   }
 
   /**
-   * 제어 접속은 한 번에 하나다. 새 제어 조인은 앞선 제어만 대신하고, 관찰 접속은 남긴다.
-   * 거절하지 않는 이유는, 거절이 자기 기기를 되찾는 길까지 막기 때문이다.
+   * 원격 접속은 한 번에 하나다. 이 콘솔은 하나의 화면이고 하나의 터미널이므로, 둘이 동시에
+   * 붙으면 커튼은 "누가" 몰고 있는지 하나로 말하지 못하고 회수 버튼의 대상도 갈라진다.
+   *
+   * 그래서 새 조인이 앞선 접속을 대신한다. 거절하지 않는 이유는, 거절이 자기 기기를 되찾는
+   * 길까지 막기 때문이다 — 앞의 접속이 유휴로 남아 있거나 셸이 두고 간 잔상일 때 주인은
+   * 자기 콘솔 앞에 가서 그 줄을 끊기 전에는 돌아올 수 없었다. 페어링은 이미 주인이 승인한
+   * 자격이고, 그 자격을 거둘 자리는 여전히 기기 목록의 회수 버튼이다.
    *
    * 세션을 열기 전에 부른다 — 열고 나서 걷으면 방금 연 접속이 자기 자신에 걸린다.
    * `ownPairingId`가 두고 간 접속은 축출이 아니므로 안내 없이 걷는다.
    */
-  function supersedeRemoteControllers(ownPairingId: string | null): void {
+  function supersedeRemoteSessions(ownPairingId: string | null): void {
     for (const session of access.listSessions("remote")) {
-      if (session.access !== "full" || session.disposition !== "control") continue;
       const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
       /**
        * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
@@ -168,200 +169,7 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
     }
   }
 
-
-  async function handleHostSession(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return true;
-    }
-    const listener = listenerForRequest(req);
-    if (!listener || listener.audience !== "remote") {
-      writeJson(res, 404, { error: "not_found" });
-      return true;
-    }
-    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
-    const verdict = remoteJoinGuard.begin(source);
-    if (verdict !== "ok") {
-      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
-        "Content-Type": "application/json",
-        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
-      }));
-      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
-      return true;
-    }
-    let paired = false;
-    try {
-      paired = await performHostSession(req, res, listener);
-    } finally {
-      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
-    }
-    return true;
-  }
-
-  async function performHostSession(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
-    const body = await readJsonBody<{ readonly intent?: unknown; readonly device?: unknown }>(req);
-    const intent = isPlainObject(body) ? body.intent : null;
-    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
-    if (intent !== "observe" && intent !== "activate" && intent !== "release") {
-      writeJson(res, 400, { error: "invalid_host_session" });
-      return false;
-    }
-    if (intent === "release") {
-      const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
-      if (!session) {
-        writeJson(res, 401, { error: "unauthorized" });
-        return false;
-      }
-      const wasController = session.access === "full" && session.disposition === "control";
-      access.revokeSessionByHandle(session.handle, null);
-      if (wasController) broadcastControlChanged();
-      writeSessionJson(res, 200, listener, null, { capability: "host-session", mode: "off", access: null });
-      return true;
-    }
-    const secret = readPairingCookie(req.headers, listener.port);
-    const pairedDevice = secret === null ? null : pairedDeviceStore.resolve(secret, listener.audience);
-    if (!pairedDevice || secret === null) {
-      // 이름 단위 Set-Cookie 만료는 늦게 도착하면 그 사이 받은 새 쿠키까지 지운다. 삭제는 셸이 보낸 값과 비교해 한다.
-      writeJson(res, 401, { error: "unauthorized" });
-      return false;
-    }
-    if (intent === "activate" && pairedDevice.access !== "full") {
-      writeJson(res, 403, { error: "observer_only" });
-      return false;
-    }
-    if (intent === "observe") {
-      // 이 페어링이 잡고 있던 제어만 놓는다. 다른 기기의 제어·관찰은 그대로다.
-      if (releaseOwnControl(pairedDevice.id)) broadcastControlChanged();
-      const presented = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
-      if (presented?.pairingId === pairedDevice.id && presented.disposition === "observe") {
-        writeSessionJson(res, 200, listener, { session: presented, pairingSecret: secret }, { capability: "host-session", mode: "observer", access: pairedDevice.access });
-        return true;
-      }
-      // 같은 페어링의 이전 관찰은 재연결이다. 남기면 그 기기만으로 관찰 상한을 채운다.
-      for (const session of access.listSessions("remote")) {
-        if (session.pairingId === pairedDevice.id && session.disposition === "observe") access.revokeSessionByHandle(session.handle, null);
-      }
-      const observers = access.listSessions("remote").filter((session) => session.disposition === "observe").length;
-      if (observers >= OBSERVER_SESSION_LIMIT) {
-        writeJson(res, 409, { error: "observer_limit" });
-        return false;
-      }
-      const session = access.openSession(listener.audience, pairedDevice.access, device ?? pairedDevice.device, pairedDevice.id, "observe");
-      writeSessionJson(res, 200, listener, { session, pairingSecret: secret }, { capability: "host-session", mode: "observer", access: pairedDevice.access });
-      return true;
-    }
-    supersedeRemoteControllers(pairedDevice.id);
-    for (const session of access.listSessions("remote")) {
-      if (session.pairingId === pairedDevice.id && session.disposition === "observe") access.revokeSessionByHandle(session.handle, null);
-    }
-    const session = access.openSession(listener.audience, pairedDevice.access, device ?? pairedDevice.device, pairedDevice.id, "control");
-    broadcastControlChanged();
-    writeSessionJson(res, 200, listener, { session, pairingSecret: secret }, { capability: "host-session", mode: "controller", access: pairedDevice.access });
-    return true;
-  }
-
-  function releaseOwnControl(pairingId: string): boolean {
-    let released = false;
-    for (const session of access.listSessions("remote")) {
-      if (session.pairingId === pairingId && session.access === "full" && session.disposition === "control") {
-        access.revokeSessionByHandle(session.handle, null);
-        released = true;
-      }
-    }
-    return released;
-  }
-
-  function writeSessionJson(res: http.ServerResponse, status: number, listener: ListenerIdentity, joined: { readonly session: AccessSession; readonly pairingSecret: string } | null, body: unknown): void {
-    const headers: http.OutgoingHttpHeaders = { "Content-Type": "application/json" };
-    if (joined) {
-      headers["Set-Cookie"] = [
-        formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port }),
-        formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }),
-      ];
-    }
-    res.writeHead(status, withSecurityHeaders(headers));
-    res.end(JSON.stringify(body));
-  }
-
-  async function handleAccessPair(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
-    if (req.method !== "POST") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return true;
-    }
-    const listener = listenerForRequest(req);
-    if (!listener || listener.audience !== "remote") {
-      writeJson(res, 404, { error: "not_found" });
-      return true;
-    }
-    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
-    const verdict = remoteJoinGuard.begin(source);
-    if (verdict !== "ok") {
-      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
-        "Content-Type": "application/json",
-        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
-      }));
-      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
-      return true;
-    }
-    let paired = false;
-    try {
-      paired = await performAccessPair(req, res, listener);
-    } finally {
-      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
-    }
-    return true;
-  }
-
-  /** 자격으로 페어링 쿠키만 만든다. 세션을 열지 않고 제어를 축출하지 않는다. */
-  async function performAccessPair(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
-    const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
-    const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
-    const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
-    if (token === null) {
-      const secret = readPairingCookie(req.headers, listener.port);
-      if (secret === null) {
-        writeJson(res, 400, { error: "invalid_join", capability: "pair" });
-        return false;
-      }
-      const paired = pairedDeviceStore.resolve(secret, listener.audience);
-      if (!paired) {
-        // capability가 없는 일반 401은 옛 서버의 미인증 응답이다. 이 표식이 있을 때만 그 쿠키의 거절이다.
-        writeJson(res, 401, { error: "unauthorized", capability: "pair" });
-        return false;
-      }
-      // 아직 유효한 페어링이다. 세션을 열거나 제어를 옮기지 않고 쿠키만 다시 준다.
-      res.writeHead(204, withSecurityHeaders({
-        "Set-Cookie": formatPairingCookie(secret, { secure: listener.secure, port: listener.port }),
-      }));
-      res.end();
-      return true;
-    }
-    const accepted = acceptPairingGrant(listener, token, device);
-    if ("error" in accepted) {
-      writeJson(res, accepted.status, { error: accepted.error });
-      return false;
-    }
-    res.writeHead(204, withSecurityHeaders({
-      "Set-Cookie": formatPairingCookie(accepted.pairingSecret, { secure: listener.secure, port: listener.port }),
-    }));
-    res.end();
-    return true;
-  }
-
-  function acceptPairingGrant(listener: ListenerIdentity, token: string, device: string | null): { readonly pairingSecret: string } | JoinRejected {
-    const pending = access.peekGrant(token, listener.audience);
-    if (pending !== null && listener.audience === "remote" && pairedDeviceStore.list("remote").length >= PAIRED_DEVICE_LIMIT) {
-      return { status: 409, error: "paired_device_limit" };
-    }
-    const grant = access.consumeGrant(token, listener.audience);
-    if (!grant) return { status: 401, error: "unauthorized" };
-    if (listener.audience !== "remote") return { status: 404, error: "not_found" };
-    const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
-    if (!paired) return { status: 409, error: "paired_device_limit" };
-    return { pairingSecret: paired.secret };
-  }
-
-  return { handleAccessJoin, handleAccessPair, handleHostSession };
+  return { handleAccessJoin };
 }
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

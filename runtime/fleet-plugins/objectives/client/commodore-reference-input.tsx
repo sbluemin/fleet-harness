@@ -1,4 +1,4 @@
-import { createContext, useContext, forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent } from "react";
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ClipboardEvent, type CompositionEvent, type KeyboardEvent, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 
 import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
@@ -260,14 +260,6 @@ function candidatesOf(objectives: readonly Objective[], query: string): readonly
   return [...rows.filter((row) => row.status !== "done"), ...rows.filter((row) => row.status === "done")].slice(0, MAX_ROWS);
 }
 
-export interface CommodoreReferencePorts {
-  readonly useObjectives: (theaterId: string) => readonly Objective[];
-  readonly useOperations: () => readonly { readonly id: string; readonly activity?: string }[];
-  readonly loadFinished: (theaterId: string) => void;
-  readonly openObjective: (theaterId: string, objectiveId: string) => void;
-}
-const ReferencePorts = createContext<CommodoreReferencePorts | null>(null);
-export const CommodoreReferenceProvider = ReferencePorts.Provider;
 const NO_OBJECTIVES: readonly Objective[] = [];
 /** 완료로 지휘관이 보관된 목표(`/finished`) — 보드 상태(`/state`)에서 빠지므로 따로 읽어 「완료됨」 묶음에 세운다. */
 function useFinishedObjectives(theaterId: string): readonly Objective[] {
@@ -277,10 +269,6 @@ function useFinishedObjectives(theaterId: string): readonly Objective[] {
 
 /** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). */
 function useTheaterObjectives(theaterId: string): readonly Objective[] {
-  const ports = useContext(ReferencePorts);
-  return (ports?.useObjectives ?? useLocalTheaterObjectives)(theaterId);
-}
-function useLocalTheaterObjectives(theaterId: string): readonly Objective[] {
   const { objectives } = useObjectiveTheater(theaterId);
   const finished = useFinishedObjectives(theaterId);
   return useMemo(() => {
@@ -314,9 +302,8 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   latest.current = props;
 
   const objectives = useTheaterObjectives(theaterId);
-  const loadFinished = useContext(ReferencePorts)?.loadFinished ?? loadFinishedObjectives;
   // 목록을 열 때마다 보관된 완료 목표를 다시 읽는다 — 방금 완료로 보관된 목표도 서게(같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다).
-  useEffect(() => { if (list.open) loadFinished(theaterId); }, [list.open, theaterId, loadFinished]);
+  useEffect(() => { if (list.open) loadFinishedObjectives(theaterId); }, [list.open, theaterId]);
   const candidates = useMemo(() => (list.open ? candidatesOf(objectives, list.query) : []), [list.open, list.query, objectives]);
   const taken = useMemo(() => new Set(value.references.map((reference) => reference.id)), [value.references]);
   const full = value.references.length >= MAX_COMMODORE_REFERENCES;
@@ -673,8 +660,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
  */
 export function ReferenceMark({ theaterId, objectiveId, size }: { readonly theaterId: string; readonly objectiveId: string; readonly size: number }) {
   const objectives = useTheaterObjectives(theaterId);
-  const ports = useContext(ReferencePorts);
-  const operations = (ports?.useOperations ?? useOperationSummaries)();
+  const operations = useOperationSummaries();
   const objective = objectives.find((candidate) => candidate.id === objectiveId);
   if (!objective) return null;
   const activity = operations.find((operation) => operation.id === objectiveId)?.activity ?? "closed";
@@ -695,11 +681,10 @@ export function openReferencedObjective(theaterId: string, objectiveId: string):
  * 호스트 렌더러(`ctx.chat.Transcript`·`Conversation`)가 받는 모양이다. 보관된 완료 목표의 얼굴도 서도록 끝난 목표를 한 번 읽어 둔다.
  */
 export function useCommodoreReferenceHost(t: T, theaterId: string, openOnPhone?: (objectiveId: string) => void): AgentChatReferenceHost {
-  const ports = useContext(ReferencePorts);
-  useEffect(() => { if (ports) ports.loadFinished(theaterId); else if (!finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId, ports]);
+  useEffect(() => { if (!finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   return useMemo(() => ({
-    open: openOnPhone ?? ((objectiveId: string) => (ports?.openObjective ?? openReferencedObjective)(theaterId, objectiveId)),
+    open: openOnPhone ?? ((objectiveId: string) => openReferencedObjective(theaterId, objectiveId)),
     mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={14} />,
     describe: (reference: { readonly label: string }) => t("objectives.commodore.reference.open", { title: reference.label }),
-  }), [t, theaterId, openOnPhone, ports]);
+  }), [t, theaterId, openOnPhone]);
 }

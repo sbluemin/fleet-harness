@@ -5,7 +5,7 @@ import { isAgentEffort, type ModelRosterTarget } from "@fleet-console/sdk/models
 import type { CommodorePatrolMinutes } from "../server/commodore/types.js";
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
-import { DEFAULT_LAUNCH, useScopedModels } from "./launch-control.js";
+import { DEFAULT_LAUNCH } from "./launch-control.js";
 
 /**
  * 사령관 설정의 값과 선택기 — 데스크톱 Theater Inbox 의 사령관 「설정」 칸과 폰 사령관 화면이 함께 쓴다.
@@ -33,7 +33,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly reset?: { readonly label: string; readonly onSelect: () => void };
   readonly onChange: (next: { readonly model?: string; readonly effort?: string }) => void;
 }) {
-  const roster = useCommodoreRoster(target, useScopedModels());
+  const roster = useCommodoreRoster(target);
   const auto = t("objectives.commander.effortAuto");
   const fallbackWords = rosterCoordinateWords(roster, fallback, auto);
   return (

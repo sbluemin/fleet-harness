@@ -1,4 +1,3 @@
-import type { HostTransport } from "@fleet-console/sdk/host-context";
 import type { OperationGeometry, OperationNode } from "@fleet-console/sdk/operations";
 import {
   readAgentChatCatalogPayload,
@@ -44,12 +43,10 @@ export async function fetchAgentState(signal?: AbortSignal): Promise<readonly Ag
   return payload.agentClis.map((cli) => assertAgentCliMetadata(cli, response.status));
 }
 
-export async function fetchSessions(signal?: AbortSignal, transport?: HostTransport): Promise<readonly SessionInfo[]> {
-  const response = await (transport?.request ?? fetch)("/api/v1/agent/sessions", { signal });
+export async function fetchSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
+  const response = await fetch("/api/v1/agent/sessions", { signal });
   await assertOk(response);
   const payload = await response.json() as { readonly sessions?: unknown };
-  transport?.scope.signal.throwIfAborted();
-  signal?.throwIfAborted();
   if (!Array.isArray(payload.sessions)) throw new AgentApiError(response.status, "Invalid agent sessions response");
   return payload.sessions.map((session) => assertSessionInfo(session, response.status));
 }
@@ -123,8 +120,8 @@ export async function resumeAgentSession(sessionId: string, options?: { readonly
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal, transport?: HostTransport): Promise<void> {
-  const response = await (transport?.request ?? fetch)(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
+export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, ...(attachmentIds?.length ? { attachmentIds } : {}) }),
@@ -173,8 +170,8 @@ export async function answerAgentChatAsk(
  * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살며, 그것을 멈추는 문은
  * `stopAgentChatJob`이 따로 연다.
  */
-export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal, transport?: Pick<HostTransport, "request">): Promise<void> {
-  const response = await (transport?.request ?? fetch)(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
+export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);

@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { ModelCoordinatePicker, modelCoordinateDisplay } from "@fleet-console/sdk/components/model-coordinate-picker";
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "@fleet-console/sdk/models";
@@ -26,11 +26,6 @@ export interface LaunchGroup { readonly provider: LaunchProviderGlyphId | null; 
  * 모델을 켜고 끄면(다른 탭·기기 포함) 열려 있는 메뉴도 곧 다시 그린다. 플러그인이 설치될 때 능력을 받는다.
  */
 let models: ClientModelsCapability | null = null;
-const LaunchRosterContext = createContext<ClientModelsCapability | null>(null);
-/** 원격 표면은 자기 host의 로스터 능력을 명시 주입한다. 로컬 install을 갈아 끼우지 않는다. */
-export const LaunchRosterProvider = LaunchRosterContext.Provider;
-export const useScopedModels = () => useContext(LaunchRosterContext);
-const rowGroups = new WeakMap<OperationLaunchVariantRow, LaunchGroup>();
 /** 마지막으로 투영한 띠 — 리액트 밖의 이름 조회(modelFullName)가 쓴다. */
 let lastGroups: readonly LaunchGroup[] = [];
 let lastRoster: ModelRoster | null = null;
@@ -56,25 +51,18 @@ export function subscribeLaunchRoster(listener: () => void): () => void {
   return () => { rosterListeners.delete(listener); };
 }
 
-function projectLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
-  return (roster ?? []).map((group) => {
-    const provider = launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(group.rows[0]?.launch.model);
-    const projected = { provider, caption: provider ? launchProviderCaption(provider) : group.label, rows: group.rows };
-    for (const row of group.rows) rowGroups.set(row, projected);
-    return projected;
-  });
-}
 function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
   if (roster === lastRoster) return lastGroups;
   lastRoster = roster;
-  lastGroups = projectLaunchGroups(roster);
+  lastGroups = (roster ?? []).map((group) => {
+    const provider = launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(group.rows[0]?.launch.model);
+    return { provider, caption: provider ? launchProviderCaption(provider) : group.label, rows: group.rows };
+  });
   return lastGroups;
 }
 
 export function useLaunchGroups(): readonly LaunchGroup[] {
-  const scoped = useContext(LaunchRosterContext);
-  const roster = useModelRoster(scoped ?? models, "launch");
-  return useMemo(() => scoped ? projectLaunchGroups(roster) : toLaunchGroups(roster), [scoped, roster]);
+  return toLaunchGroups(useModelRoster(models, "launch"));
 }
 export const useLaunchRows = (): readonly OperationLaunchVariantRow[] => useLaunchGroups().flatMap((group) => group.rows);
 
@@ -153,7 +141,7 @@ export function modelFullName(rows: readonly OperationLaunchVariantRow[], model:
   // 라우팅은 "codex/gpt-…", 카탈로그는 "codex--gpt-…" — 같은 모델의 두 표기.
   const id = canonicalModelId(model);
   const row = findLaunchRow(rows, model);
-  const group = row ? rowGroups.get(row) : undefined;
+  const group = row ? lastGroups.find((candidate) => candidate.rows.includes(row)) : undefined;
   const provider = group?.provider ?? launchProviderFromModelId(id);
   const caption = group?.caption ?? (provider ? launchProviderCaption(provider) : null);
   const name = row?.label ?? prettyModelId(id.includes("--") ? id.slice(id.indexOf("--") + 2) : id);
@@ -202,7 +190,7 @@ interface LaunchControlProps {
 
 /** 선택기의 로스터 — 아직 읽기 전이면 null(메뉴가 「읽는 중」을 보인다). */
 function useLaunchRoster(): ModelRoster | null {
-  return useModelRoster(useContext(LaunchRosterContext) ?? models, "launch");
+  return useModelRoster(models, "launch");
 }
 
 export function LaunchControl({ t, model, effort, locked, onChange, viewMode, onViewChange, trigger, triggerLabel, triggerText, triggerTitle, extras, startAtList = false, subagents, head, extrasCaption, reconfirm = false }: LaunchControlProps) {

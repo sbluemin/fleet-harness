@@ -21,7 +21,6 @@ export {
   resolveRowEffort,
 } from "./effort-track.js";
 export type { EffortTrackProps } from "./effort-track.js";
-export { HostMessageComposer } from "./host-message.js";
 export { ComposerInput, SyncedTextarea, useTextareaValue } from "./input.js";
 export type { ComposerInputProps, SyncedTextareaProps } from "./input.js";
 export {

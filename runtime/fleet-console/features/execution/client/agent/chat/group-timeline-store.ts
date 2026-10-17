@@ -7,7 +7,6 @@ import { useT } from "../../../../../core/client/src/i18n/index.js";
 import { getAgentState, subscribe as subscribeAgent } from "../store.js";
 import { readChatJournalEvent } from "./chat-events.js";
 import { createChatSocketSession } from "./chat-store.js";
-import { fetchConversationHistory as fetchHistory } from "./conversation-history.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal, type ConversationJournal } from "./group-timeline.js";
 import { readFoldTurns, subscribeFoldTurns } from "./group/fold-turns.js";
 
@@ -73,6 +72,21 @@ const held = new Map<string, Held>();
 /** 지난 대화를 읽을 그룹 루트들. 그룹 화면이 실제로 그 루트를 볼 때만 들어온다 — 휴면 원장 전부를 미리 읽지 않는다. */
 const demanded = new Set<string>();
 let resync: (() => void) | null = null;
+const HISTORY_PATH = (operationId: string) => `/api/v1/agent/sessions/${encodeURIComponent(operationId)}/chat-history`;
+
+/** 서버가 트랜스크립트에서 투영한 지난 대화. 응답 줄은 소켓 저널과 같은 모양이라 같은 해석기를 지난다. */
+async function fetchHistory(operationId: string, signal: AbortSignal): Promise<ConversationJournal | null> {
+  const response = await fetch(HISTORY_PATH(operationId), { signal });
+  if (!response.ok) return null;
+  const payload = await response.json() as { readonly entries?: unknown; readonly truncated?: unknown };
+  if (!Array.isArray(payload.entries)) return null;
+  let journal = EMPTY_CONVERSATION_JOURNAL;
+  for (const entry of payload.entries) {
+    const row = readChatJournalEvent(JSON.stringify(entry));
+    if (row) journal = reduceConversationJournal(journal, row, operationId);
+  }
+  return payload.truncated === true ? { ...journal, truncated: true } : journal;
+}
 
 function stopHistory(record: Held): void {
   record.historyAbort?.abort();

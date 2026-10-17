@@ -804,19 +804,7 @@ export function requestOperationKeyboardFocus(operationId: string): void {
  */
 export function openNewSession(target: NewSessionTarget): void {
   if (state.newSession?.theaterId === target.theaterId) return;
-  // 열린 세션의 Theater 바꾸기는 맡겨 둔 입력을 잇는다. 닫힌 뒤 새로 열면 초안 없이 시작한다.
-  const draft = state.newSession?.draft;
-  setState({ newSession: { theaterId: target.theaterId, ...(draft ? { draft } : {}) } });
-}
-
-/**
- * 새 세션 화면 칸이 내려갈 때 미발사 입력을 그 세션 상태에 맡긴다 — 같은 열린 세션으로 돌아오면 칸이 그대로 잇는다.
- * 닫힌 세션에는 남기지 않는다(닫힘·Operation 포커스가 newSession 을 비우면 초안도 함께 사라진다). 서버로 보내지 않는다.
- */
-export function keepNewSessionDraft(draft: string): void {
-  const current = state.newSession;
-  if (current === null || (current.draft ?? "") === draft) return;
-  setState({ newSession: { theaterId: current.theaterId, ...(draft ? { draft } : {}) } });
+  setState({ newSession: target });
 }
 
 export function closeNewSession(): void {
@@ -1203,7 +1191,7 @@ export function removeTheater(theaterId: string): void {
   // 사라진 Theater를 겨눈 Quick Launch 요청도 함께 버린다.
   const pendingQuickLaunch = state.pendingQuickLaunch?.theaterId === theaterId ? null : state.pendingQuickLaunch;
   // 잊은 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
-  const newSession = state.newSession?.theaterId === theaterId ? { ...state.newSession, theaterId: null } : state.newSession;
+  const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
   setState({ theaters, activeOperationId, activeOperationAcknowledged, operationNotifications, pendingQuickLaunch, newSession });
 }
 

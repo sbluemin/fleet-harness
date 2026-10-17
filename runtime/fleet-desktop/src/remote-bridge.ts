@@ -1,7 +1,6 @@
 import type { WebContents } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import type { CookieOrder } from "./cookie-order.js";
 import type { DesktopNotice } from "./desktop-notices.js";
 import { confirmRemoteIdentity, joinRemoteConsole, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
 import type { WindowPolicy } from "./window-policy.js";
@@ -34,8 +33,6 @@ export interface RemoteBridgeDeps {
   readonly notify: (notice: DesktopNotice) => void;
   readonly log?: (message: string) => void;
   readonly confirmIdentity?: (hostname: string, port: number, fingerprint: string) => Promise<void>;
-  /** main이 하나만 만들어 inline 호스트 전송과 나눠 쓴다. 따로 만들면 쿠키 순서가 갈라지므로 기본값을 두지 않는다. */
-  readonly cookieOrder: CookieOrder;
 }
 
 export interface RemoteBridge {
@@ -77,16 +74,8 @@ const PICKER_SURFACE_PARAM = "desktop-surface";
 const PICKER_SURFACE_OPEN = "host-picker";
 const PICKER_SURFACE_DISMISS = "host-picker-dismiss";
 
-/**
- * 같은 origin의 쿠키 순서를 기다리는 시간. join 요청의 제한 시간(8초)과 따로 센다 — 기다린 시간이 join의 시간을 깎지 않고,
- * 이 신호가 만료되면 요청도 자격 소비도 시작하지 않는다.
- */
-const JOIN_ORDER_WAIT_MS = 8_000;
-
 export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   const localFetch = deps.localFetch ?? globalThis.fetch;
-  /** dispose가 줄 선 join과 진행 중인 join을 함께 취소한다. */
-  const lifetime = new AbortController();
   const confirmIdentity = deps.confirmIdentity ?? confirmRemoteIdentity;
   /**
    * 몇 번째 여는 시도인가. 예약한 origin은 정책에 한 자리뿐이라, 앞선 시도가 늦게 끝나면서
@@ -96,7 +85,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
   let opening = 0;
   const attached: Array<{ readonly contents: Pick<WebContents, "on" | "removeListener">; readonly listener: (...args: never[]) => void; readonly event?: "did-navigate" }> = [];
 
-  async function askLocalConsole(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  async function askLocalConsole(path: string, body: unknown): Promise<Response> {
     const origin = deps.localOrigin();
     if (!origin) throw new Error("remote_bridge_no_local_console");
     return localFetch(`${origin}${path}`, {
@@ -104,7 +93,6 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       // 로컬 Console의 쓰기 경로는 Origin을 본다. 메인 프로세스 요청에는 문서 출처가 없으므로 직접 싣는다.
       headers: { "Content-Type": "application/json", Origin: origin },
       body: JSON.stringify(body),
-      ...(signal ? { signal } : {}),
     });
   }
 
@@ -124,79 +112,36 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       if (!(await isDiscoveredLocally(origin))) throw new Error("remote_host_unknown");
       return openLocal(origin, url);
     }
-    /**
-     * 같은 origin의 쿠키를 싣는 요청과 순서를 나눈다. 1회용 자격을 꺼내기 *전에* 얻는다 — 얻지 못하면(대기 가득, 대기 시간
-     * 만료, 닫힘) 자격은 그대로 남아 같은 링크를 다시 쓸 수 있다. 기다리는 시간과 join 요청의 시간은 따로 센다:
-     * 대기 신호가 만료되면 요청은 시작하지 않고, 얻은 뒤의 join은 자기 제한 시간을 새로 받는다.
-     * 순서의 키는 이미 등록된 호스트를 가리키는 origin뿐이며, 이 단계는 핸드오프의 호스트 검증을 건너뛰지 않는다.
-     */
-    let orderOrigin: string;
-    try {
-      orderOrigin = new URL(origin).origin;
-    } catch {
-      throw new Error("remote_host_unknown");
-    }
-    const release = await deps.cookieOrder.hold(orderOrigin, AbortSignal.any([AbortSignal.timeout(JOIN_ORDER_WAIT_MS), lifetime.signal]));
-    if (release === null) throw new Error("remote_host_unavailable");
-    try {
-      // 순서를 쥔 채 로컬 Console 응답을 무한정 기다리지 않는다: 요청과 본문 읽기는 제한 시간과 다리의 수명에 묶인다.
-      // 이미 닫혔으면 자격을 꺼내는 요청을 새로 시작하지 않는다.
-      if (lifetime.signal.aborted) throw new Error("remote_host_unavailable");
-      const handoffSignal = AbortSignal.any([AbortSignal.timeout(JOIN_ORDER_WAIT_MS), lifetime.signal]);
-      let handoff: Handoff;
-      try {
-        const response = await askLocalConsole(HANDOFF_PATH, { origin }, handoffSignal);
-        if (response.status === 404) throw new Error("remote_host_unknown");
-        if (!response.ok) throw new Error("remote_host_unavailable");
-        handoff = await response.json() as Handoff;
-      } catch (error) {
-        // 제한 시간·닫힘으로 끊긴 요청은 도달 실패다. 로컬 Console이 이미 자격을 내줬을 수 있어 링크를 다시 넣어야 할 수 있다.
-        if (handoffSignal.aborted) throw new Error("remote_host_unavailable", { cause: error });
-        throw error;
-      }
-      // 순서를 잡은 origin과 다른 곳으로 가는 핸드오프는 이 순서가 지키지 못한다.
-      if (handoffOrigin(handoff.origin) !== orderOrigin) throw new Error("remote_host_unknown");
+    const response = await askLocalConsole(HANDOFF_PATH, { origin });
+    if (response.status === 404) throw new Error("remote_host_unknown");
+    if (!response.ok) throw new Error("remote_host_unavailable");
+    const handoff = await response.json() as Handoff;
 
-      // Chromium이 이 호스트를 처음 보기 전에 대조한다 — 어긋난 판정은 캐시에 눌어붙어 재시작 전까지 살아남는다.
-      // 기본 확인은 자기 제한 시간(8초)을 가진다. 그동안 다리가 닫히면 그 뒤의 핀·join은 시작하지 않는다.
-      await confirmIdentity(handoff.hostname, handoff.port, handoff.fingerprint);
-      if (lifetime.signal.aborted) throw new Error("remote_host_unavailable");
+    // Chromium이 이 호스트를 처음 보기 전에 대조한다 — 어긋난 판정은 캐시에 눌어붙어 재시작 전까지 살아남는다.
+    await confirmIdentity(handoff.hostname, handoff.port, handoff.fingerprint);
 
-      const policy = deps.policy();
-      if (!policy) throw new Error("remote_bridge_no_window");
-      deps.pins.pin(handoff.hostname, handoff.fingerprint);
-      policy.admitRemoteConsoleOrigin(handoff.origin);
-      const attempt = ++opening;
-      policy.stageConsoleOrigin(handoff.origin);
-      try {
-        /**
-         * 링크의 1회용 자격은 처음 한 번만 실려 온다. 그 뒤로는 token이 비어 오지만 조인을
-         * 건너뛰지는 않는다 — 그 요청이 페어링 쿠키를 세션으로 바꾸는 유일한 자리이고,
-         * 제어권을 회수당했거나 접속이 만료된 뒤 돌아오는 길이 바로 이것이다.
-         */
-        await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null, undefined, lifetime.signal);
-        // 응답의 쿠키는 fetch가 돌아오기 전에 창 jar에 적용됐다. 이 뒤의 확인과 적재는 쿠키를 발행하지 않으므로 순서를 놓는다.
-        release();
-        await verifyConsoleReachable(handoff.origin);
-        await deps.loadConsole(remoteConsoleEntry(handoff.origin));
-        if (attempt === opening) policy.commitConsoleOrigin();
-      } catch (error) {
-        if (attempt === opening) policy.cancelPendingConsoleOrigin();
-        // 열지 못한 원격은 최신 시도가 아니어도 허용 목록에서 빼야 한다 — 지문 대조를 통과한 적이 없다.
-        policy.withdrawRemoteConsoleOrigin(handoff.origin);
-        deps.pins.unpin(handoff.hostname);
-        throw error;
-      }
-    } finally {
-      release();
-    }
-  }
-
-  function handoffOrigin(value: unknown): string | null {
+    const policy = deps.policy();
+    if (!policy) throw new Error("remote_bridge_no_window");
+    deps.pins.pin(handoff.hostname, handoff.fingerprint);
+    policy.admitRemoteConsoleOrigin(handoff.origin);
+    const attempt = ++opening;
+    policy.stageConsoleOrigin(handoff.origin);
     try {
-      return typeof value === "string" ? new URL(value).origin : null;
-    } catch {
-      return null;
+      /**
+       * 링크의 1회용 자격은 처음 한 번만 실려 온다. 그 뒤로는 token이 비어 오지만 조인을
+       * 건너뛰지는 않는다 — 그 요청이 페어링 쿠키를 세션으로 바꾸는 유일한 자리이고,
+       * 제어권을 회수당했거나 접속이 만료된 뒤 돌아오는 길이 바로 이것이다.
+       */
+      await joinRemoteConsole(deps.sessionFetch, `${handoff.origin}${JOIN_PATH}`, handoff.token, deps.deviceName ?? null);
+      await verifyConsoleReachable(handoff.origin);
+      await deps.loadConsole(remoteConsoleEntry(handoff.origin));
+      if (attempt === opening) policy.commitConsoleOrigin();
+    } catch (error) {
+      if (attempt === opening) policy.cancelPendingConsoleOrigin();
+      // 열지 못한 원격은 최신 시도가 아니어도 허용 목록에서 빼야 한다 — 지문 대조를 통과한 적이 없다.
+      policy.withdrawRemoteConsoleOrigin(handoff.origin);
+      deps.pins.unpin(handoff.hostname);
+      throw error;
     }
   }
 
@@ -350,7 +295,6 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     receiveLink,
     report,
     dispose() {
-      lifetime.abort();
       while (attached.length > 0) {
         const entry = attached.pop();
         if (!entry) continue;

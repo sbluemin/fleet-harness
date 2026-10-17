@@ -577,11 +577,7 @@ function ProviderCard({
   api,
   connect,
   logout,
-  readOnly = false,
-  stale = false,
 }: {
-  readonly readOnly?: boolean;
-  readonly stale?: boolean;
   readonly id: ProviderId;
   readonly provider: ProviderDto;
   readonly now: number;
@@ -592,7 +588,7 @@ function ProviderCard({
   readonly logout: (provider: LoginProvider) => void;
 }) {
   const name = PROVIDER_NAME[id];
-  if (!readOnly && needsConsoleLogin(id, provider.status)) {
+  if (needsConsoleLogin(id, provider.status)) {
     return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
   }
   if (isConnectable(id) && provider.status === "not_connected") {
@@ -602,28 +598,26 @@ function ProviderCard({
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
           <h3>{t("quota.connect.title")}</h3>
         </header>
-        <p>{t(readOnly ? "quota.host.manageLogin" : "quota.connect.body")}</p>
-        {!readOnly && provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        {!readOnly ? <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button> : null}
+        <p>{t("quota.connect.body")}</p>
+        {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
+        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
       </section>
     );
   }
   return (
-    <section className="quota-provider" data-provider={id} data-fetched-at={provider.fetchedAt} data-stale={stale || provider.status === "stale"}>
+    <section className="quota-provider" data-provider={id}>
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
-        {isConnectable(id) && !readOnly ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
-        {isLoginProvider(id) && !readOnly ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
+        {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
+        {isLoginProvider(id) ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
         {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
       </header>
-      {readOnly && provider.fetchedAt ? <time className="quota-head__when" dateTime={new Date(provider.fetchedAt).toISOString()}>{new Date(provider.fetchedAt).toISOString()}</time> : null}
-      {readOnly && isLoginProvider(id) && provider.status === "not_connected" ? <div className="quota-signed-out">{t("quota.host.manageLogin")}</div> : null}
-      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(readOnly && isLoginProvider(id) ? "quota.host.manageLogin" : SIGNED_OUT_KEY[id])}</div> : null}
+      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
       {isIdle(id, provider) ? <div className="quota-signed-out">{t("quota.museCode.idle")}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(readOnly && isLoginProvider(id) ? "quota.host.manageLogin" : EXPIRED_KEY[id])}</StatusStrip> : null}
-      {stale || provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
+      {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
+      {provider.status === "stale" ? <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip> : null}
       {provider.status === "error" ? (() => {
         const match = provider.message?.match(/^Certificate verification failed \(([A-Za-z0-9_]+)\)$/);
         if (match?.[1] !== undefined) {
@@ -657,7 +651,7 @@ function ProviderCard({
  */
 type SummaryResponse = QuotaSummaryDto & { readonly revalidating?: boolean };
 
-export interface RememberedPanel {
+interface RememberedPanel {
   readonly data: QuotaSummaryDto;
   readonly checkedAt: number;
 }
@@ -673,44 +667,28 @@ let rememberedPanel: RememberedPanel | null = null;
  * 사용 한도 요약의 읽기 상태 — 팝업 패널(데스크톱)과 폰의 설정 상세가 같은 원천·같은 폴링·같은 연결 동작을 쓴다.
  * 마운트되어 있는 동안 폴링은 이 훅의 소유자 몫이다(holdQuotaPanel).
  */
-export interface QuotaDataScope {
-  readonly signal: AbortSignal;
-  readonly read: () => RememberedPanel | null;
-  readonly write: (value: RememberedPanel) => void;
-}
-
-const REMOTE_IDLE_LOGIN: LoginState = Object.freeze({ phase: "idle" });
-const REMOTE_LOGIN_STATES: ReturnType<typeof getLoginStates> = Object.freeze({
-  codex: REMOTE_IDLE_LOGIN, cursor: REMOTE_IDLE_LOGIN, xai: REMOTE_IDLE_LOGIN, "muse-code": REMOTE_IDLE_LOGIN,
-});
-const subscribeRemoteLogins = (_listener: () => void): (() => void) => () => undefined;
-const getRemoteLoginStates = (): ReturnType<typeof getLoginStates> => REMOTE_LOGIN_STATES;
-
-export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
-  const [restored] = useState(() => scope ? scope.read() : rememberedPanel);
+export function useQuotaData(api: ClientApiCapability) {
+  const [restored] = useState(() => rememberedPanel);
   // 처음 여는 순간에도 도구모음 요약이 이미 읽어 둔 값이 있으면 그것부터 그린다(같은 원천).
-  const [shared] = useState(() => scope ? { data: null, checkedAt: 0 } : getQuotaSummarySnapshot());
+  const [shared] = useState(() => getQuotaSummarySnapshot());
   const [data, setData] = useState<QuotaSummaryDto | null>(restored?.data ?? shared.data);
   const [checkedAt, setCheckedAt] = useState(restored?.checkedAt ?? shared.checkedAt);
   const [requestError, setRequestError] = useState(false);
-  const [validated, setValidated] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
   /** 다음 요청의 강제 범위 — 모두(true), 한 공급자(id), 또는 캐시 허용(false). */
   const forceRef = useRef<boolean | ProviderId>(false);
   const requestGenerationRef = useRef(0);
-  const isCurrent = (generation: number) => !scope?.signal.aborted && isLatestRequestGeneration(requestGenerationRef, generation);
 
   const refresh = useCallback((forceRequest: boolean | ProviderId = false) => {
     forceRef.current = forceRequest;
     setRefreshNonce((value) => value + 1);
   }, []);
 
-  /** 설정을 바꾸는 POST — 원격 표면은 자격 상태를 읽거나 바꾸는 로컬 로그인 흐름에 참여하지 않는다. */
+  /** 설정을 바꾸는 POST — 응답에 실린 요약을 곧바로 그린다(연결·로그아웃). */
   const postForSummary = useCallback((path: string, body: Readonly<Record<string, unknown>>) => {
-    if (scope) return;
     const generation = beginRequestGeneration(requestGenerationRef);
-    if (isCurrent(generation)) setRequestError(false);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     api.fetch("quota", path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -721,9 +699,8 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
         return response.json() as Promise<SummaryResponse>;
       })
       .then((result) => {
-        if (isCurrent(generation)) {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
-          setValidated(result.revalidating !== true);
           setRequestError(false);
           const adoptedAt = Date.now();
           setNow(adoptedAt);
@@ -731,23 +708,22 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
         }
       })
       .catch(() => {
-        if (isCurrent(generation)) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
       });
-  }, [api, scope]);
+  }, [api]);
 
   const connect = useCallback((provider: ConnectableProviderId, connected: boolean) => {
     postForSummary("connect", { provider, connected });
   }, [postForSummary]);
 
   const logout = useCallback((provider: LoginProvider) => {
-    if (scope) return;
     resetLogin(provider);
     postForSummary(`${provider}/logout`, {});
-  }, [postForSummary, scope]);
+  }, [postForSummary]);
 
   useEffect(() => {
     const generation = beginRequestGeneration(requestGenerationRef);
-    if (isCurrent(generation)) setRequestError(false);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
     const force = forceRef.current;
     forceRef.current = false;
     // 그릴 것이 하나도 없을 때만 만료된 캐시라도 먼저 받는다. 이미 그린 화면이 있으면
@@ -763,9 +739,8 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
         return response.json() as Promise<SummaryResponse>;
       })
       .then((result) => {
-        if (isCurrent(generation)) {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
-          setValidated(result.revalidating !== true);
           setRequestError(false);
           const adoptedAt = Date.now();
           setNow(adoptedAt);
@@ -776,14 +751,14 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
         }
       })
       .catch(() => {
-        if (isCurrent(generation)) setRequestError(true);
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(true);
       });
     return () => {
-      if (isCurrent(generation)) {
+      if (isLatestRequestGeneration(requestGenerationRef, generation)) {
         beginRequestGeneration(requestGenerationRef);
       }
     };
-  }, [api, refresh, refreshNonce, scope]);
+  }, [api, refresh, refreshNonce]);
 
   useEffect(() => () => {
     beginRequestGeneration(requestGenerationRef);
@@ -792,33 +767,28 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
   // 화면에 선 그대로를 남긴다. 도구모음 요약도 같은 값을 읽는다.
   useEffect(() => {
     if (data === null) return;
-    if (scope) { if (!scope.signal.aborted) scope.write({ data, checkedAt }); }
-    else { rememberedPanel = { data, checkedAt }; publishQuotaSummary(data, checkedAt); }
-  }, [data, checkedAt, scope]);
+    rememberedPanel = { data, checkedAt };
+    publishQuotaSummary(data, checkedAt);
+  }, [data, checkedAt]);
 
   // 팝업이 서 있는 동안은 폴링이 패널 몫이다 — 도구모음 요약은 그동안 따로 묻지 않는다.
-  useEffect(() => scope ? undefined : holdQuotaPanel(), [scope]);
+  useEffect(() => holdQuotaPanel(), []);
 
-  // 원격 표면은 로컬 공급자의 로그인 코드·상태를 읽거나 구독하지 않는다.
-  const logins = useStoreSnapshot(
-    scope ? subscribeRemoteLogins : subscribeLogins,
-    scope ? getRemoteLoginStates : getLoginStates,
-  );
+  // 로그인이 끝나면 그 공급자만 다시 읽는다. 로그인 직후의 캐시는 아직 미로그인일 수 있다.
+  const logins = useStoreSnapshot(subscribeLogins, getLoginStates);
   const signedInKey = LOGIN_PROVIDERS.filter((provider) => logins[provider].phase === "signed_in").join(",");
   useEffect(() => {
-    if (scope) return;
     for (const provider of LOGIN_PROVIDERS) {
       if (signedInKey.split(",").includes(provider)) refresh(provider);
     }
-  }, [signedInKey, refresh, scope]);
-  // 로컬 요약만 로컬 로그인 완료 표시를 걷을 수 있다.
+  }, [signedInKey, refresh]);
+  // 새 요약이 로그인된 상태를 말하면 카드의 완료 표시를 걷는다.
   useEffect(() => {
-    if (scope) return;
     for (const provider of LOGIN_PROVIDERS) {
       const status = data?.providers[provider]?.status;
       if (logins[provider].phase === "signed_in" && status !== undefined && !needsConsoleLogin(provider, status)) resetLogin(provider);
     }
-  }, [logins, data, scope]);
+  }, [logins, data]);
 
   useEffect(() => {
     const poll = setInterval(() => {
@@ -831,35 +801,20 @@ export function useQuotaData(api: ClientApiCapability, scope?: QuotaDataScope) {
     };
   }, [refresh]);
 
-  return { data, checkedAt, now, requestError, refresh, connect, logout, validated };
+  return { data, checkedAt, now, requestError, refresh, connect, logout };
 }
 
 /**
  * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(고정 순서), 바닥의
  * 「도구모음에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
  */
-export function QuotaPanel({ api, locale, labelId, scope, source }: {
+export function QuotaPanel({ api, locale, labelId }: {
   readonly api: ClientApiCapability;
   readonly locale: ConsoleLocale;
   readonly labelId: string;
-  readonly scope?: QuotaDataScope;
-  readonly source?: { readonly hostKey: string; readonly label: string; readonly caption: string };
-}) {
-  const state = useQuotaData(api, scope);
-  return <QuotaPanelView api={api} locale={locale} labelId={labelId} scope={scope} source={source} state={state} />;
-}
-
-/** 수집 hook의 결과만 그린다. host 헤더와 popup이 같은 한 요청/폴링 수명을 공유한다. */
-export function QuotaPanelView({ api, locale, labelId, scope, source, state }: {
-  readonly api: ClientApiCapability;
-  readonly locale: ConsoleLocale;
-  readonly labelId: string;
-  readonly scope?: QuotaDataScope;
-  readonly source?: { readonly hostKey: string; readonly label: string; readonly caption: string };
-  readonly state: ReturnType<typeof useQuotaData>;
 }) {
   const t = useMemo(() => getT(locale), [locale]);
-  const { data, checkedAt, now, requestError, refresh, connect, logout, validated } = state;
+  const { data, checkedAt, now, requestError, refresh, connect, logout } = useQuotaData(api);
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
@@ -877,8 +832,7 @@ export function QuotaPanelView({ api, locale, labelId, scope, source, state }: {
         <BarLegend t={t} />
         <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
       </header>
-      <div className="quota-body" data-host-key={source?.hostKey}>
-        {source ? <p className="quota-state">{source.label} · {source.caption}</p> : null}
+      <div className="quota-body">
         {requestError ? <div className="quota-error">{t("quota.error.summary")}</div> : null}
         {!data && !requestError ? (
           <div className="quota-state" role="status">
@@ -898,14 +852,12 @@ export function QuotaPanelView({ api, locale, labelId, scope, source, state }: {
             api={api}
             connect={connect}
             logout={logout}
-            readOnly={scope !== undefined}
-            stale={scope !== undefined && (!validated || requestError || (data as SummaryResponse).revalidating === true)}
           />
         )) : null}
       </div>
-      {scope ? null : <footer className="quota-footer">
+      <footer className="quota-footer">
         <ToolbarProviderPicker t={t} />
-      </footer>}
+      </footer>
     </div>
   );
 }

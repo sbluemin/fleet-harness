@@ -1,5 +1,0 @@
-.fexp-host-surface { display: flex; flex-direction: column; min-height: 0; height: 100%; overflow: hidden; }
-.fexp-host-surface > :last-child { flex: 1; min-height: 0; }
-.fexp-host-caption { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-bottom: 1px solid var(--surface-rim); }
-.fexp-host-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fexp-host-caption button { color: var(--text-secondary); background: transparent; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); cursor: pointer; }

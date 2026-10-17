@@ -281,14 +281,9 @@ export interface ClientExecutionProvider {
 
 export interface FleetClientPlugin extends ClientExecutionProvider {
   readonly id: string;
-  /** 명시 scope/state를 받아 그리는 표면만 원격에 선다. 기존 install을 원격에 다시 실행하지 않는다. */
-  readonly hostSurfaces?: readonly import("../host-context/types.js").HostSurfaceDescriptor[];
 }
 
 export interface PluginInstallContext {
-  /** 구버전 호스트에는 없다. 부재를 원격 지원으로 해석하지 않는다. */
-  readonly host?: import("../host-context/types.js").HostScope;
-  readonly transport?: import("../host-context/types.js").HostTransport;
   readonly navigate: ClientNavigateCapability;
   readonly shell: ClientShellCapability;
   readonly api: ClientApiCapability;
@@ -1203,7 +1198,7 @@ export type FleetPluginRouteExport =
   | { readonly register?: (ctx: FleetPluginServerContext) => void | Promise<void> };
 
 export type ApiCatalogMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
-export type ApiCatalogGate = "loopback" | "origin-write" | "origin-strict" | "lock-token" | "anthropic-credential" | "one-use-ticket" | "remote-cookie";
+export type ApiCatalogGate = "loopback" | "origin-write" | "origin-strict" | "lock-token" | "anthropic-credential" | "one-use-ticket";
 export type ApiCatalogTransport = "http" | "sse" | "websocket" | "proxy";
 
 export interface ApiCatalogEntry {
@@ -1213,8 +1208,6 @@ export interface ApiCatalogEntry {
   readonly category: string;
   readonly gate: ApiCatalogGate;
   readonly transport: ApiCatalogTransport;
-  /** 관찰 세션에 열리는 읽기. 빠지면 관찰은 거절한다. GET도 선언 없이는 읽기가 아니다. */
-  readonly readOnly?: true;
 }
 
 export interface FleetPluginServerContext {

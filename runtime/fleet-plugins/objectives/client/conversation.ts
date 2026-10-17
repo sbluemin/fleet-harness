@@ -20,21 +20,7 @@ export interface ConversationCrew {
  * Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다.
  * `commodoreActive` — 이 Theater 의 자율 운영이 실제로 도는가. 결정 카드의 차례(사령관이 답하는 중·넘긴 이유)를 정한다.
  */
-export interface ObjectiveConversationViewPorts {
-  readonly returnPersonHold: typeof returnPersonHold;
-  readonly revealCriteria: (objective: Objective) => void;
-  readonly followupPickable: typeof followupPickable;
-  readonly setFollowupOpen: typeof setFollowupOpen;
-}
-const localViewPorts: ObjectiveConversationViewPorts = {
-  returnPersonHold, followupPickable, setFollowupOpen,
-  revealCriteria: (objective) => {
-    patchObjectiveView(objective.theaterId, () => ({ detailTab: "goal" }));
-    revealObjective({ objectiveId: objective.id });
-    openObjectiveFromCluster(objective.theaterId);
-  },
-};
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew, commodoreActive = false, ports: ObjectiveConversationViewPorts = localViewPorts): OperationClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew, commodoreActive = false): OperationClusterConversation {
   const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", operationId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
@@ -73,7 +59,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { operationId: objective.id, holds: conversationHolds(objective, ports), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
+  return { operationId: objective.id, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: request ? {
     id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
     questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
     answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
@@ -81,7 +67,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     ...(handler ? { handler: localized((t) => t("objectives.commodore.note.answering")) } : {}),
     ...(handedHold ? { handed: {
       label: localized((t) => t("objectives.decision.handed")), reason: handedHold.reason,
-      giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => ports.returnPersonHold(objective.id, "decision") },
+      giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, "decision") },
     } } : {}),
     route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
   } : null };
@@ -97,25 +83,30 @@ function boardAct(kind: string) {
 /** 대화에 세울 넘김 대상은 이 한 곳에서 정한다. 결정 요청은 자체 카드의 handed 를 쓴다. */
 const HOLD_TARGETS = ["criteria", "review", "followup"] as const;
 
-function conversationHolds(objective: Objective, ports: ObjectiveConversationViewPorts): readonly ConversationHold[] {
+function conversationHolds(objective: Objective): readonly ConversationHold[] {
   return HOLD_TARGETS.flatMap((target): ConversationHold[] => {
     const hold = livePersonHold(objective, target);
     if (!hold) return [];
-    const pickable = target === "followup" && ports.followupPickable(objective);
+    const pickable = target === "followup" && followupPickable(objective);
     const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria"
       : target === "review" ? "objectives.hold.route.review"
         : pickable && !objective.done ? "objectives.followup.sub"
           : followupHoldRoute(objective);
     const reveal = target === "criteria"
-      ? { label: localized((t) => t("objectives.composer.reveal")), run: () => ports.revealCriteria(objective) }
-      : pickable ? { label: localized((t) => t("objectives.hold.pick")), run: () => ports.setFollowupOpen(objective.id, true) } : undefined;
+      ? { label: localized((t) => t("objectives.composer.reveal")), run: () => {
+          // 구성원·결과물 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
+          patchObjectiveView(objective.theaterId, () => ({ detailTab: "goal" }));
+          revealObjective({ objectiveId: objective.id });
+          openObjectiveFromCluster(objective.theaterId);
+        } }
+      : pickable ? { label: localized((t) => t("objectives.hold.pick")), run: () => setFollowupOpen(objective.id, true) } : undefined;
     return [{
       id: `hold:${objective.id}:${target}:${hold.at}`,
       title: localized((t) => t(target === "criteria" ? "objectives.criteria.title" : target === "review" ? "objectives.objectives.review" : "objectives.followup.title")),
       createdAt: hold.at,
       handed: {
         label: localized((t) => t("objectives.decision.handed")), reason: hold.reason,
-        giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => ports.returnPersonHold(objective.id, target) },
+        giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, target) },
       },
       route: localized((t) => t(routeKey, { n: openFollowups(objective).length })),
       ...(reveal ? { reveal } : {}),

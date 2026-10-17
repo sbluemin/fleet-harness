@@ -28,17 +28,7 @@ type T = Translate<ObjectiveMessageKey>;
 export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "ask_already_answered"]);
 
 /** `onEnded` — 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로. */
-export interface CommodoreAskPorts {
-  readonly useCommodore: typeof useCommodore;
-  readonly useBoard: (theaterId: string) => Pick<ReturnType<typeof useObjectiveTheater>, "objectives" | "loaded">;
-  readonly openAsks: typeof openAsks;
-  readonly answer: typeof answerCommodoreAsk;
-  readonly openObjective: (theaterId: string, objectiveId: string, phone: boolean) => void;
-  readonly signal?: AbortSignal;
-}
-export function createCommodoreAskCards(ports: CommodoreAskPorts) {
-const { useCommodore, useBoard: useObjectiveTheater, openAsks, answer: answerCommodoreAsk } = ports;
-function CommodoreAskCards({ theaterId, t, phone = false, onEnded }: { readonly theaterId: string; readonly t: T; readonly phone?: boolean; readonly onEnded?: (error: unknown) => void }) {
+export function CommodoreAskCards({ theaterId, t, phone = false, onEnded }: { readonly theaterId: string; readonly t: T; readonly phone?: boolean; readonly onEnded?: (error: unknown) => void }) {
   const { view } = useCommodore(theaterId);
   const board = useObjectiveTheater(theaterId);
   const asks = openAsks(theaterId);
@@ -83,23 +73,22 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
   const many = total > 1;
   const done = ask.questions.filter((question) => of(question.id).picked.length > 0 || of(question.id).text.trim().length > 0).length;
   const submit = async () => {
-    if (ports.signal?.aborted || sending || done !== total) return;
+    if (sending || done !== total) return;
     setSending(true);
     setFault(null);
     try {
       await answerCommodoreAsk(theaterId, ask.id, ask.questions.map((question) => ({ questionId: question.id, selectedOptionIds: of(question.id).picked, text: of(question.id).text.trim() })));
-      if (!ports.signal?.aborted) drafts.delete(ask.id);
+      drafts.delete(ask.id);
     } catch (error) {
-      if (ports.signal?.aborted) return;
       // 아는 거절(이미 답함·거둠·어긋난 답)은 그 사유로, 그 밖은 일반 실패로 — 고른 것과 쓴 답은 그대로 둔다.
       const code = error instanceof Error ? error.message : "";
       if (onEnded && ENDED_ASK_CODES.has(code)) { onEnded(error); return; }
       const word = errorWord(t, code);
       setFault(code && word !== code ? word : t("objectives.decision.failed"));
-    } finally { if (!ports.signal?.aborted) setSending(false); }
+    } finally { setSending(false); }
   };
   const objective = ask.objectiveId ? (
-    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => ports.openObjective(theaterId, ask.objectiveId!, phone)}>
+    <button type="button" className={phone ? "objectives-cm-ask-objective" : "objectives-ask-objective"} disabled={objectiveTitle === null} onClick={() => { if (phone) { openObjectiveOnPhone(ask.objectiveId!, theaterId); return; } revealObjective({ objectiveId: ask.objectiveId! }); openObjectiveFromCluster(theaterId, ask.objectiveId!); }}>
       {objectiveTitle ?? t("objectives.ask.objectiveGone")}
     </button>
   ) : null;
@@ -162,9 +151,3 @@ function AskCard({ ask, theaterId, objectiveTitle, t, phone, onEnded }: {
     </section>
   );
 }
-ports.signal?.addEventListener("abort", () => drafts.clear(), { once: true });
-return CommodoreAskCards;
-}
-export const CommodoreAskCards = createCommodoreAskCards({ useCommodore, useBoard: useObjectiveTheater, openAsks, answer: answerCommodoreAsk,
-  openObjective: (theaterId, objectiveId, phone) => { if (phone) { openObjectiveOnPhone(objectiveId, theaterId); return; } revealObjective({ objectiveId }); openObjectiveFromCluster(theaterId, objectiveId); },
-});

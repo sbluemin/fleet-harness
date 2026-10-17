@@ -8,11 +8,10 @@ import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/s
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
 import type { CommodoreStateView } from "../server/commodore/routes.js";
-import type { CommodoreAsk, CommodoreEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
+import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { followupsJudgeable, livePersonHold, reasonAwaits } from "../server/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../server/types.js";
 import { post } from "./objectives-state.js";
-import { EMPTY_COMMODORE as EMPTY, applyCommodoreJournal, patchCommodoreJournal, type TheaterCommodore } from "./commodore-journal.js";
 
 /**
  * 사령관(Commodore)의 브라우저 쪽 상태 — Theater 마다 서버의 `commodore/state` 한 건과 「사령관 기록」 한 쪽.
@@ -27,6 +26,38 @@ export type CommodoreTab = "log" | "directive" | "intel" | "settings";
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */
 export type CommodoreMobileTab = CommodoreTab | "goals";
 
+interface TheaterCommodore {
+  readonly view: CommodoreStateView | null;
+  readonly entries: readonly CommodoreTranscriptEntry[];
+  readonly hasMore: boolean;
+  /** 기록을 한 번이라도 읽었는가 — 서랍이 처음 열릴 때만 읽는다. */
+  readonly transcriptLoaded: boolean;
+  readonly clearedThrough: number;
+  /** 마지막 확정 줄 뒤의 라이브 사건(글자 흐름·진행 중 도구) — 저장되지 않고, 확정 줄이 오면 그 몫을 걷는다. */
+  readonly live: readonly CommodoreLiveEvent[];
+}
+
+const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, clearedThrough: 0, live: [] };
+/** 라이브 글자는 한 덩어리로 잇는다 — 확정 줄이 늦어도 사건 배열이 델타 수만큼 자라지 않게. */
+const MAX_LIVE_TEXT = 60_000;
+
+/** 확정 줄이 도착하면 그 줄이 대신하는 라이브 몫을 걷는다 — 글은 글자 흐름을, 도구는 같은 이름의 첫 진행 줄을, 그 밖의 줄은 전부. */
+function settleLive(live: readonly CommodoreLiveEvent[], entry: CommodoreTranscriptEntry): readonly CommodoreLiveEvent[] {
+  if (live.length === 0) return live;
+  if (entry.kind === "text" || entry.kind === "thinking") return live.filter((event) => event.kind !== "text-delta");
+  if (entry.kind === "tool") {
+    const index = live.findIndex((event) => event.kind === "tool-start" && event.name === entry.name);
+    return index < 0 ? live : [...live.slice(0, index), ...live.slice(index + 1)];
+  }
+  if (entry.kind === "message") return live;
+  return [];
+}
+
+function appendLive(live: readonly CommodoreLiveEvent[], event: CommodoreLiveEvent): readonly CommodoreLiveEvent[] {
+  const last = live.at(-1);
+  if (event.kind === "text-delta" && last?.kind === "text-delta") return [...live.slice(0, -1), { kind: "text-delta", text: (last.text + event.text).slice(0, MAX_LIVE_TEXT) }];
+  return [...live, event];
+}
 const TRANSCRIPT_PAGE = 200;
 /** 기록은 화면에 보이는 만큼만 붙들고 있다 — 오래 켜 둔 서랍이 끝없이 자라지 않게. */
 const MAX_HELD_ENTRIES = 2_000;
@@ -111,8 +142,12 @@ function boardSnapshot(theaterId: string): { readonly active: boolean; readonly 
 
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>, announce = true): void {
   const current = theaters.get(theaterId) ?? EMPTY;
-  const next = patchCommodoreJournal(current, patch);
-  if (next === current) return;
+  if (patch.view && (patch.view.state.transcriptClearedThrough ?? 0) < current.clearedThrough) return;
+  const clearedThrough = Math.max(current.clearedThrough, patch.clearedThrough ?? 0, patch.view?.state.transcriptClearedThrough ?? 0);
+  const cleared = clearedThrough > current.clearedThrough;
+  const next = { ...current, ...patch, clearedThrough };
+  if (cleared) { next.entries = []; next.live = []; next.hasMore = false; }
+  if (patch.entries || cleared) next.entries = (patch.entries ?? next.entries).filter((entry) => entry.seq > clearedThrough);
   theaters.set(theaterId, next);
   if (announce) notify();
 }
@@ -173,10 +208,31 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     notify();
   });
   const applyEvent = (event: CommodoreEvent) => {
-    const current = theaters.get(event.theaterId) ?? EMPTY;
-    const next = applyCommodoreJournal(current, event);
-    if (next !== current) theaters.set(event.theaterId, next);
-    if (!current.view && event.op !== "transcript" && event.op !== "live") void loadCommodore(event.theaterId, true);
+    if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
+    const current = theaters.get(event.theaterId);
+    if (event.op === "transcript") {
+      // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.
+      if (!current?.transcriptLoaded) return;
+      if (current.entries.some((entry) => entry.seq === event.entry.seq)) return;
+      setTheater(event.theaterId, { entries: [...current.entries, event.entry].slice(-MAX_HELD_ENTRIES), live: settleLive(current.live, event.entry) }, false);
+      return;
+    }
+    if (event.op === "live") {
+      // 기록을 열지 않은 Theater 의 흐름은 버린다 — 그릴 화면이 없고, 열 때는 확정 줄을 읽는다.
+      if (!current?.transcriptLoaded) return;
+      setTheater(event.theaterId, { live: appendLive(current.live, event.live) }, false);
+      return;
+    }
+    if (!current?.view) {
+      void loadCommodore(event.theaterId, true);
+      return;
+    }
+    if (event.op === "state") {
+      const autonomy = event.state.autonomy;
+      setTheater(event.theaterId, { view: { ...current.view, state: event.state, active: current.view.enabled && autonomy } }, false);
+      return;
+    }
+    if (event.op === "run") setTheater(event.theaterId, { view: { ...current.view, run: event.run } }, false);
   };
   const stream = createConversationStream<CommodoreEvent>({
     delta: (event) => event.op === "live" && event.live.kind === "text-delta" ? { key: event.theaterId, text: event.live.text } : null,
@@ -382,7 +438,7 @@ export const INTEL_EDIT_ATTRIBUTE = "data-intel-edit";
  * 다른 곳에서 지운 항목의 편집은 버린다. 본문이 그대로면 요청 없이 닫는다. 저장·취소로 닫히면 그 항목의 「수정」 단추로
  * 포커스를 돌려준다 — 그새 사람이 다른 곳에 포커스를 두었으면 건드리지 않는다. `listRef` 는 목록 요소에 붙인다.
  */
-export function useCommodoreIntelEdits(theaterId: string, intel: readonly { readonly id: string; readonly text: string }[], handlers: { readonly onClear: () => void }, saveEdit = editCommodoreIntel, signal?: AbortSignal) {
+export function useCommodoreIntelEdits(theaterId: string, intel: readonly { readonly id: string; readonly text: string }[], handlers: { readonly onClear: () => void }) {
   const [edits, setEdits] = useState<Readonly<Record<string, CommodoreIntelEdit>>>({});
   const latest = useRef({ edits, intel, handlers });
   latest.current = { edits, intel, handlers };
@@ -429,10 +485,9 @@ export function useCommodoreIntelEdits(theaterId: string, intel: readonly { read
       if (text === item.text) { close(intelId); return; }
       latest.current.handlers.onClear();
       patch(intelId, { saving: true, error: undefined });
-      if (signal?.aborted) return;
-      void saveEdit(theaterId, intelId, text)
-        .then(() => { if (!signal?.aborted) close(intelId); })
-        .catch((error: unknown) => { if (!signal?.aborted) patch(intelId, { saving: false, error: error instanceof Error ? error.message : "failed" }); });
+      void editCommodoreIntel(theaterId, intelId, text)
+        .then(() => close(intelId))
+        .catch((error: unknown) => patch(intelId, { saving: false, error: error instanceof Error ? error.message : "failed" }));
     },
   };
 }
@@ -584,8 +639,8 @@ export function useCommodoreOnline(): boolean {
  * 목표의 지휘관은 `launch`(Agent CLI) 대상이다. Settings › AI Gateway에서 모델을 켜고 끄면(다른 탭·기기 포함) 다시 그린다.
  * 마운트가 로스터 읽기를 시작하고(렌더 밖), 아직이면 null이다.
  */
-export function useCommodoreRoster(target: ModelRosterTarget, models?: PluginInstallContext["models"] | null): ModelRoster | null {
-  return useModelRoster(models ?? installed?.models, target);
+export function useCommodoreRoster(target: ModelRosterTarget): ModelRoster | null {
+  return useModelRoster(installed?.models, target);
 }
 
 /** Theater 의 표시 이름을 React 로 — Theater 목록이 늦게 읽혀도 따라온다. */

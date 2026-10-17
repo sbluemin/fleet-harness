@@ -1,6 +1,5 @@
 import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
-import { hostQuotaSurface } from "./host-surface.js";
 import { quotaSettingsSection } from "./mobile-settings.js";
 import { disposeLogins } from "./provider-login.js";
 import { connectQuotaSummaryApi } from "./summary-store.js";
@@ -10,7 +9,6 @@ import "./quota.css";
 
 const quotaPlugin = definePlugin({
   id: "quota",
-  hostSurfaces: [hostQuotaSurface],
   // 도구모음 Bridge의 사용 한도 요약 — 누르면 바로 아래에 상세 팝업이 열린다. 부관 앞에 선다.
   // 폰의 「설정 › 사용량」 — 데스크톱에는 서지 않는다(mobile.only).
   settingsSections: [quotaSettingsSection],

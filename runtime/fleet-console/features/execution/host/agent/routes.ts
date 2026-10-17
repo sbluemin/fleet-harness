@@ -131,9 +131,9 @@ export async function registerAgentRoutes(
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle, [
-    { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http", readOnly: true },
-    { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse", readOnly: true },
-    { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
+    { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
+    { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -146,9 +146,9 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat-sleep", summary: "Put an Agent chat session dormant.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-coordinates", summary: "Change an Agent chat session's model and effort.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat-coordinates", summary: "Cancel a scheduled Agent chat model and effort change.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
-    { method: "GET", path: "/sessions/:sessionId/chat-history", summary: "Read an Agent session's saved conversation as a read-only group-chat projection without resuming it.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
-    { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
+    { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-history", summary: "Read an Agent session's saved conversation as a read-only group-chat projection without resuming it.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/links", summary: "Confirm which links in displayed terminal text appear in an Agent session's transcript.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -160,7 +160,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http", readOnly: true },
+    { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
   return { launchKinds: api.launchKinds, actions: api.actions, stopForArchive: api.stopForArchive, purgeOperation: api.purgeOperation, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
@@ -2037,8 +2037,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   /**
    * 그룹 대화의 지난 대화 — 저장된 트랜스크립트를 재개 재생과 같은 해석으로 읽기 전용 투영한다.
-   * 이미 수화된 채팅은 같은 원천의 표시 snapshot/cursor를 읽고, 휴면은 트랜스크립트를 투영한다.
-   * 세션 생성·시드 해석(`resolveChatSeed`)·ticket·재개·payload 변경은 없다.
+   * 트랜스크립트·대상 신원을 읽기 전용으로 조회할 뿐이다: 채팅 세션을 세우지도 찾지도 않고(`chatRegistry`),
+   * 시드를 풀지 않으며(`resolveChatSeed`의 게이트웨이 캐시·MCP 토큰), ticket·재개·payload 변경도 없다.
    * 그래서 휴면 세션을 읽어도 휴면은 그대로이고 모델 호출이 생기지 않는다. 언제 부를지는 클라이언트가 정한다.
    * Chat과 터미널은 같은 Claude 트랜스크립트를 쓰므로 chatMode를 가리지 않는다. 응답에는 경로·세션 id가 없다.
    */
@@ -2048,12 +2048,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const node = ctx.host.operations.get(sessionId);
     if (!node || node.pluginId !== null || node.type !== AGENT_OPERATION_TYPE) {
       ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const active = chatRegistry.get(sessionId);
-    if (active) {
-      const conversation = active.conversationSnapshot();
-      ctx.host.http.writeJson(res, 200, { conversation, truncated: conversation.journal.truncated });
       return true;
     }
     if (!readAgentSession(node.payload)) {

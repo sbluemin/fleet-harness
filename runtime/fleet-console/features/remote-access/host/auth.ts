@@ -14,9 +14,6 @@ export type AccessAudience = "local" | "remote";
  */
 export type AccessClass = "full" | "monitoring";
 
-/** 접속이 제어를 쥐는지, 읽기만 하는지. 페어링 등급과 별개다. */
-export type SessionDisposition = "control" | "observe";
-
 const SESSION_COOKIE_NAME = "fleet_console_session";
 /** 페어링 자격이 담기는 쿠키. 세션과 달리 회수 전까지 살아 남는다. */
 const PAIRING_COOKIE_NAME = "fleet_console_pairing";
@@ -56,7 +53,6 @@ export interface AccessSession {
    * 열려 있던 접속까지 함께 끊으려면 둘을 잇는 이름이 필요하다. 루프백 세션에는 없다.
    */
   readonly pairingId: string | null;
-  readonly disposition: SessionDisposition;
   readonly expiresAt: number;
 }
 
@@ -66,7 +62,6 @@ export interface AccessSessionSummary {
   readonly device: string | null;
   readonly access: AccessClass;
   readonly pairingId: string | null;
-  readonly disposition: SessionDisposition;
   readonly openedAt: number;
   readonly expiresAt: number;
   readonly lastSeenAt: number;
@@ -118,7 +113,7 @@ export interface AccessRegistry {
    */
   consumeGrant(token: string | null, audience: AccessAudience): AccessGrant | null;
   /** 자격이 이미 확인된 뒤 접속을 연다. 등급은 부르는 쪽이 정하고 조인이 올릴 수 없다. */
-  openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null, disposition?: SessionDisposition): AccessSession;
+  openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null): AccessSession;
   /**
    * 소모하지 않고 등급만 본다. 조인을 거절해야 하는 경우 자격을 태우기 전에 판정하기 위한 것이다 —
    * redeemGrant는 거절할 때도 토큰을 지우므로, 그 뒤에서 막으면 1회용 링크만 소멸하고 아무도
@@ -137,8 +132,6 @@ export interface AccessRegistry {
    * 그 판정을 조인 이전에 내려야 자격이 소모된 뒤 거절하는 일이 없다.
    */
   hasSession(audience: AccessAudience, access: AccessClass): boolean;
-  /** full 등급이면서 제어 접속인 세션이 있는지. 관찰은 제어가 아니다. */
-  hasController(audience: AccessAudience): boolean;
   revokeSession(id: string): boolean;
   /** 이미 열린 세션 하나를 끊는다. 회수·대체 사유는 그 페어링의 다음 성공한 join까지 남긴다. */
   revokeSessionByHandle(handle: string, reason?: ControlReclaimedReason | null): boolean;
@@ -167,7 +160,6 @@ interface StoredSession {
   readonly audience: AccessAudience;
   readonly access: AccessClass;
   readonly pairingId: string | null;
-  readonly disposition: SessionDisposition;
   readonly openedAt: number;
   readonly absoluteExpiresAt: number;
   idleExpiresAt: number;
@@ -288,16 +280,16 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     return { id: grant.id, access: grant.access, issuedAt: grant.issuedAt, expiresAt: grant.expiresAt };
   }
 
-  function openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null, disposition: SessionDisposition = "control"): AccessSession {
+  function openSession(audience: AccessAudience, access: AccessClass, device: string | null, pairingId: string | null): AccessSession {
     const id = randomToken();
     const handle = randomHandle();
     const current = now();
     const absoluteExpiresAt = current + sessionTtlMs;
     // 새 세션을 연 페어링은 더 이상 "끝난" 상태가 아니다 — 회수·대체된 사유를 이 자리에서 걷는다.
     if (pairingId !== null) clearSessionEnd(pairingId);
-    sessions.set(id, { handle, device, audience, access, pairingId, disposition, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
+    sessions.set(id, { handle, device, audience, access, pairingId, openedAt: current, absoluteExpiresAt, idleExpiresAt: current + sessionIdleTtlMs, lastSeenAt: current });
     armExpiry();
-    return { id, handle, audience, access, pairingId, disposition, expiresAt: absoluteExpiresAt };
+    return { id, handle, audience, access, pairingId, expiresAt: absoluteExpiresAt };
   }
 
   function resolveSession(id: string | null, audience: AccessAudience): AccessSession | null {
@@ -309,7 +301,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     // 유휴 만료는 접근할 때마다 밀리되 절대 만료를 넘기지 못한다.
     stored.idleExpiresAt = Math.min(current + sessionIdleTtlMs, stored.absoluteExpiresAt);
     stored.lastSeenAt = current;
-    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, pairingId: stored.pairingId, disposition: stored.disposition, expiresAt: stored.absoluteExpiresAt };
+    return { id, handle: stored.handle, audience: stored.audience, access: stored.access, pairingId: stored.pairingId, expiresAt: stored.absoluteExpiresAt };
   }
 
   function listGrants(audience: AccessAudience): readonly AccessGrantSummary[] {
@@ -337,7 +329,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     prune();
     return [...sessions.values()]
       .filter((stored) => stored.audience === audience)
-      .map((stored) => ({ handle: stored.handle, device: stored.device, access: stored.access, pairingId: stored.pairingId, disposition: stored.disposition, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
+      .map((stored) => ({ handle: stored.handle, device: stored.device, access: stored.access, pairingId: stored.pairingId, openedAt: stored.openedAt, expiresAt: stored.absoluteExpiresAt, lastSeenAt: stored.lastSeenAt }))
       .sort((left, right) => right.openedAt - left.openedAt);
   }
 
@@ -345,14 +337,6 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     prune();
     for (const stored of sessions.values()) {
       if (stored.audience === audience && stored.access === access) return true;
-    }
-    return false;
-  }
-
-  function hasController(audience: AccessAudience): boolean {
-    prune();
-    for (const stored of sessions.values()) {
-      if (stored.audience === audience && stored.access === "full" && stored.disposition === "control") return true;
     }
     return false;
   }
@@ -421,7 +405,7 @@ export function createAccessRegistry(deps: AccessRegistryDeps = {}): AccessRegis
     sessionEnds.delete(pairingId);
   }
 
-  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, hasController, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, isSessionLive, touchSession, revokeSessions, revokeAllSessions, lookupSessionEnd, clearSessionEnd, prune };
+  return { grantTtlMs, issueGrant, redeemGrant, consumeGrant, openSession, peekGrant, resolveSession, listGrants, revokeGrant, revokeGrants, listSessions, hasSession, revokeSession, revokeSessionByHandle, revokeSessionsByPairing, isSessionLive, touchSession, revokeSessions, revokeAllSessions, lookupSessionEnd, clearSessionEnd, prune };
 }
 
 /**

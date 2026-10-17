@@ -117,12 +117,9 @@ function readPresentedFingerprint(hostname: string, port: number, timeoutMs: num
  * 기기 이름은 자격이 아니라 상대편 운영자를 위한 표식이다. 그것이 없으면 원격 콘솔의 기기
  * 목록에서 어느 줄을 끊어야 하는지 알 수 없다.
  */
-export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string | null, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS, signal?: AbortSignal): Promise<void> {
+export async function joinRemoteConsole(sessionFetch: SessionFetch, joinUrl: string, token: string | null, device: string | null = null, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-  // 호출자의 취소(다리가 닫힘)도 같은 요청을 끊는다. 이미 꺼진 신호로는 요청을 시작하지 않는다.
-  if (signal?.aborted) controller.abort();
-  else signal?.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     const response = await sessionFetch(joinUrl, {
       method: "POST",

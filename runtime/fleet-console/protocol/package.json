@@ -9,11 +9,6 @@
       "import": "./remote/index.ts",
       "default": "./remote/index.ts"
     },
-    "./remote/host-transport": {
-      "types": "./remote/host-transport.ts",
-      "import": "./remote/host-transport.ts",
-      "default": "./remote/host-transport.ts"
-    },
     "./desktop": {
       "types": "./desktop/index.ts",
       "import": "./desktop/index.ts",

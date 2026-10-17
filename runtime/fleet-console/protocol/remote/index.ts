@@ -37,8 +37,6 @@ export const ACCESS_LINK_HOST = "join";
 export const ACCESS_LINK_PREFIX = "fleet://join?code=";
 export const ACCESS_LINK_VERSION = 1;
 export const ACCESS_JOIN_PATH = "/api/v1/join";
-/** 자격을 페어링 쿠키로만 바꾼다. 제어 세션을 열거나 기존 컨트롤러를 밀어 내지 않는다. */
-export const ACCESS_PAIR_PATH = "/api/v1/pair";
 
 export const MAX_ACCESS_LABEL_LENGTH = 48;
 

@@ -239,6 +239,6 @@ export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: 
     if (!isModelRosterTarget(target)) { ctx.host.http.writeJson(res, 400, { error: "invalid_target" }); return true; }
     ctx.host.http.writeJson(res, 200, { target, roster: models.roster(target) });
     return true;
-  }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" , readOnly: true }]);
+  }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   return { notify: () => ctx.host.events.publish(MODEL_ROSTER_CHANGED_CHANNEL, {}) };
 }
