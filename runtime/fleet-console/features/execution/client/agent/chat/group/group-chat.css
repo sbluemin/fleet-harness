@@ -490,33 +490,11 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   box-sizing: border-box;
   font-family: var(--font-ui);
 }
-/* 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 사령관 입력창과 한 벌이다 — SDK 부품(`fc-composer-*`)을 호스트 components.css 가 그린다.
-   여기에는 그룹 입력창에만 있는 것(받는 이 칩·멘션·정지 목록·제안 줄)과 자리만 둔다. */
+/* 캡슐·원·첨부 줄·안내 줄·「+」 메뉴·받는 이 멘션 칩(`fc-mention-chip`)의 외양은 호스트 components.css 가 그린다.
+   여기에는 그룹 입력창에만 있는 것(동작 칩·멘션 목록·정지 목록·제안 줄)과 자리만 둔다. */
 .group-composer-input { field-sizing: content; }
 .group-composer-plus-root { flex: none; display: inline-flex; }
 .group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-.group-composer-chip {
-  flex: none;
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 2px var(--space-1) 2px 3px;
-  border-radius: var(--radius-pill);
-  background: var(--control-rest);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
-}
-.group-composer-chip-x {
-  padding: 0 2px;
-  border: 0;
-  background: none;
-  font: inherit;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.group-composer-chip-x:hover { color: var(--text-primary); }
 
 /* 멘션 목록과 정지 목록 — 입력창 위로 뜬다. 행은 글자형, 고른 행은 배경 워시. */
 .group-composer-pop {
@@ -627,10 +605,30 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-action.is-armed { border-color: var(--coral); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 .group-composer-action[aria-disabled="true"] { opacity: var(--control-disabled-opacity); cursor: default; }
 .group-composer-action-detail { font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
-/* 입력창 안에 앉은 동작 칩 — 받는 이 칩 자리에 brass 면으로 선다. 시작 전 받는 이(@지휘관)는 중립 면이다. */
-.group-composer-chip.is-action { padding: 2px var(--space-1) 2px var(--space-2); background: var(--brass-glow); color: var(--brass-ink); }
+/* 입력창 안에 앉은 동작 칩 — 받는 이 멘션 자리에 brass 면으로 선다. 멘션 칩 자체는 fc-mention-chip. */
+.group-composer-chip.is-action {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-1) 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--brass-glow);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--brass-ink);
+}
 .group-composer-chip.is-action svg { flex: none; width: 12px; height: 12px; }
-.group-composer-chip.is-target { padding: 2px var(--space-2); }
+.group-composer-chip.is-action .group-composer-chip-x {
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.group-composer-chip.is-action .group-composer-chip-x:hover { color: var(--text-primary); }
 .fc-composer-send.group-composer-send-action { background: var(--brass); color: var(--text-on-brass); }
 .fc-composer-send.group-composer-send-action:hover:not(:disabled),
 .fc-composer-send.group-composer-send-action:focus-visible { background: var(--brass); color: var(--text-on-brass); filter: brightness(1.05); }

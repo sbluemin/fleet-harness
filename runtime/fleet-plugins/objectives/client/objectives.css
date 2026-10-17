@@ -1384,25 +1384,15 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer-idle { max-width: 880px; margin-top: 6px; }
 
 /*
- * 지휘관 참조('@') — 본문 속 원자 토큰과 그 목록(목표 8d9a400b 시안 A). 입력은 contenteditable 이라 textarea 의 자리표·자동 높이를
- * 직접 세운다: 자리표는 ::before(높이 0으로 띄워 커서를 밀지 않는다), 높이는 내용만큼 자라고 각 입력의 max-height 에서 스크롤한다.
- * 토큰은 문장 안의 낮은 면이다 — 테두리는 헤어라인, 색은 중립. 목록은 그룹 대화 '@' 목록(.group-composer-pop)과 같은 문법이고,
- * 고른 행은 배경 워시로만 말한다(왼쪽 띠를 두지 않는다). 결정 요청·검토 대기만 신호 잉크다.
+ * 지휘관 참조('@') — 본문 속 원자 토큰은 호스트 `.fc-mention-chip`이고, 여기에는 입력과 목록만 둔다. 입력은 contenteditable 이라
+ * textarea 의 자리표·자동 높이를 직접 세운다: 자리표는 ::before(높이 0으로 띄워 커서를 밀지 않는다), 높이는 내용만큼 자라고 각 입력의
+ * max-height 에서 스크롤한다. 목록은 그룹 대화 '@' 목록(.group-composer-pop)과 같은 문법이고, 고른 행은 배경 워시로만 말한다
+ * (왼쪽 띠를 두지 않는다). 결정 요청·검토 대기만 신호 잉크다.
  */
 .objectives-commodore-composer { position: relative; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
 .objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
 .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
-.objectives-commodore-ref {
-  display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
-  margin: 0 1px; padding: 0 6px 0 3px; border-radius: 5px;
-  background: var(--control-wash); box-shadow: inset 0 0 0 1px var(--hairline-strong);
-  color: var(--text-primary); font-size: 0.93em; line-height: 1.5; vertical-align: baseline; white-space: nowrap;
-  user-select: all; cursor: default;
-}
-.objectives-commodore-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.objectives-commodore-ref-mark { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; }
-.objectives-commodore-ref-mark .objectives-avatar { width: 14px; height: 14px; }
 .objectives-commodore-ref-list {
   position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 5;
   display: flex; flex-direction: column; gap: 1px; max-height: 300px; overflow-y: auto;

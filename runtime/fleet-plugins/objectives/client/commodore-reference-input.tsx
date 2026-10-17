@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayo
 import { createPortal } from "react-dom";
 
 import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
+import { MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "@fleet-console/sdk/composer";
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -23,7 +24,7 @@ type T = Translate<ObjectiveMessageKey>;
  *
  * 입력은 contenteditable 이다 — textarea 는 문장 속 토큰을 품지 못한다. 그래서 브라우저가 고르는 편집 모양을 좁힌다: 붙여넣기·끌어
  * 놓기는 평문만, 서식 명령은 받지 않고, 문단 나눔은 줄바꿈(`<br>`) 하나로 바꾼다. 토큰은 `contenteditable=false` 라 커서가 안에 들지
- * 않고(누르면 커서가 가까운 쪽 끝에 선다), 토큰 바로 뒤(앞)의 Backspace(Delete)는 토큰을 통째로 지운다. 토큰을 넣고 지우는 일은
+ * 않고(누르면 커서가 가까운 쪽 끝에 선다), 토큰 바로 뒤(앞)의 Backspace(Delete)와 토큰의 ✕는 토큰을 통째로 지운다. 토큰을 넣고 지우는 일은
  * 편집 명령(`execCommand`)으로 해서 브라우저의 실행 취소 기록에 함께 든다 — 기록 밖에서 DOM 을 고치면 실행 취소가 지난 DOM 과 섞여 같은
  * 토큰이 둘 서기도 한다. 그래도 어떤 경로로든 같은 지휘관이 두 번이거나 상한을 넘는 토큰이 서면 값을 내기 전에 뒤의 것을 걷어 낸다
  * (서버가 거절할 값을 사람에게 보내게 두지 않는다). DOM 이 값의 원본이고, 바깥 값이 우리가 낸 값과 다를 때만
@@ -95,7 +96,7 @@ const sameValue = (a: CommodoreReferenceValue, b: CommodoreReferenceValue) =>
 
 const stripMarks = (text: string) => text.split(CONVERSATION_REFERENCE_MARK).join("");
 
-const TOKEN_CLASS = "objectives-commodore-ref";
+const TOKEN_CLASS = MENTION_CHIP_CLASS;
 
 function isToken(node: Node | null | undefined): boolean {
   return !!node && node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).dataset.refId !== undefined;
@@ -127,29 +128,44 @@ function serialize(root: HTMLElement): CommodoreReferenceValue {
   return { text, references };
 }
 
-function tokenNode(t: T, reference: CommodoreReference): HTMLElement {
-  const token = document.createElement("span");
-  token.className = TOKEN_CLASS;
-  token.contentEditable = "false";
-  token.dataset.refId = reference.id;
-  token.dataset.refTitle = reference.title;
-  token.setAttribute("aria-label", t("objectives.commodore.reference.token", { title: reference.title }));
-  const mark = document.createElement("span");
-  mark.className = `${TOKEN_CLASS}-mark`;
-  mark.setAttribute("aria-hidden", "true");
-  const label = document.createElement("span");
-  label.className = `${TOKEN_CLASS}-label`;
-  label.textContent = reference.title;
-  token.append(mark, label);
-  return token;
+/** 입력 토큰과 편집 명령이 같은 칩을 그리게 하는 한 스펙. 제목은 데이터 그대로고, `@`·✕는 칩이 붙인다. */
+function tokenSpec(t: T, reference: CommodoreReference): MentionChipMarkup {
+  return {
+    label: reference.title,
+    removeLabel: t("objectives.commodore.reference.remove", { title: reference.title }),
+    attributes: {
+      contenteditable: "false",
+      "data-ref-id": reference.id,
+      "data-ref-title": reference.title,
+      "aria-label": t("objectives.commodore.reference.token", { title: reference.title }),
+    },
+  };
 }
 
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[char]!);
+function tokenNode(t: T, reference: CommodoreReference): HTMLElement {
+  return mentionChipElement(document, tokenSpec(t, reference));
+}
 
-/** 편집 명령(insertHTML)으로 넣는 토큰 — `tokenNode` 와 같은 모양. 아바타 칸의 자리표 글자는 아바타가 서면서 비워진다(빈 칸은 명령이 버린다). */
+/** 토큰을 골라 지우는 편집 명령 — Backspace·Delete·✕가 같은 길이라 실행 취소가 토큰을 그 자리에 되살린다. */
+function deleteToken(root: HTMLElement, token: HTMLElement): void {
+  root.focus({ preventScroll: true });
+  const range = document.createRange();
+  range.selectNode(token);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  if (!document.execCommand("delete")) {
+    range.collapse(true);
+    token.remove();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    root.normalize();
+  }
+}
+
+/** 편집 명령(insertHTML)으로 넣는 토큰 — `tokenNode` 와 같은 마크업. 아바타 칸의 자리표 글자는 아바타가 서면서 비워진다(빈 칸은 명령이 버린다). */
 function tokenHtml(t: T, reference: CommodoreReference): string {
-  const label = t("objectives.commodore.reference.token", { title: reference.title });
-  return `<span class="${TOKEN_CLASS}" contenteditable="false" data-ref-id="${escapeHtml(reference.id)}" data-ref-title="${escapeHtml(reference.title)}" aria-label="${escapeHtml(label)}"><span class="${TOKEN_CLASS}-mark" aria-hidden="true">\u200b</span><span class="${TOKEN_CLASS}-label">${escapeHtml(reference.title)}</span></span>`;
+  return mentionChipHtml(tokenSpec(t, reference));
 }
 
 /** 같은 지휘관의 두 번째 토큰과 상한을 넘는 토큰을 걷는다 — 앞의 것이 남는다. 걷었으면 참. */
@@ -314,7 +330,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const scanTokens = useCallback(() => {
     const root = rootRef.current;
     if (!root) return;
-    const next = Array.from(root.querySelectorAll<HTMLElement>(`.${TOKEN_CLASS}-mark`)).map((node) => ({ node, id: (node.parentElement as HTMLElement).dataset.refId ?? "" }));
+    const next = Array.from(root.querySelectorAll<HTMLElement>(`.${MENTION_CHIP_MARK_CLASS}`)).map((node) => ({ node, id: (node.parentElement as HTMLElement).dataset.refId ?? "" }));
     const current = slotsRef.current;
     if (current.length === next.length && current.every((slot, at) => slot.node === next[at]!.node)) return;
     // 처음 보는 자리에 이미 든 것은 브라우저가 복제한 지난 아바타다(실행 취소) — 비우고 새로 그린다. 아는 자리는 React 가 그리는 중이다.
@@ -486,23 +502,21 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
       setList(CLOSED);
       return;
     }
+    const removeHit = event.target instanceof Element ? event.target.closest(`.${MENTION_CHIP_REMOVE_CLASS}`) : null;
+    if (removeHit && (event.key === "Enter" || event.key === " " || event.key === "Backspace" || event.key === "Delete")) {
+      const token = removeHit.closest(`.${TOKEN_CLASS}`);
+      if (token instanceof HTMLElement && root.contains(token)) {
+        event.preventDefault();
+        deleteToken(root, token);
+        emit();
+        return;
+      }
+    }
     if (!imeKey && (event.key === "Backspace" || event.key === "Delete") && !event.altKey && !event.metaKey && !event.ctrlKey) {
       const token = tokenBesideCaret(root, event.key === "Delete");
       if (token) {
         event.preventDefault();
-        // 토큰을 골라 지우는 편집 명령 — 실행 취소가 토큰을 그 자리에 되살린다.
-        const range = document.createRange();
-        range.selectNode(token);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        if (!document.execCommand("delete")) {
-          range.collapse(true);
-          token.remove();
-          selection?.removeAllRanges();
-          selection?.addRange(range);
-          root.normalize();
-        }
+        deleteToken(root, token);
         emit();
         return;
       }
@@ -532,12 +546,18 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     if (text) insertText(text);
   };
 
-  /** 토큰을 누르면 토큰을 통째로 고르지 않고 커서를 가까운 쪽 끝에 둔다 — 고른 채 두면 다음 글자가 토큰을 지운다. */
+  /** 토큰을 누르면 토큰을 통째로 고르지 않고 커서를 가까운 쪽 끝에 둔다 — 고른 채 두면 다음 글자가 토큰을 지운다. ✕만 토큰을 지운다. */
   const onMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     const root = rootRef.current;
     const target = event.target instanceof Element ? event.target.closest(`.${TOKEN_CLASS}`) : null;
     if (!root || !target || !root.contains(target) || latest.current.disabled || event.button !== 0) return;
     event.preventDefault();
+    const remove = event.target instanceof Element ? event.target.closest(`.${MENTION_CHIP_REMOVE_CLASS}`) : null;
+    if (remove && target instanceof HTMLElement && target.contains(remove)) {
+      deleteToken(root, target);
+      emit();
+      return;
+    }
     const rect = target.getBoundingClientRect();
     const range = document.createRange();
     if (event.clientX < rect.left + rect.width / 2) range.setStartBefore(target);
@@ -613,7 +633,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
         onFocus={refreshList}
         onBlur={() => { setList(CLOSED); latest.current.onBlur?.(); }}
       />
-      {slots.map((slot, at) => createPortal(<ReferenceMark theaterId={theaterId} objectiveId={slot.id} size={14} />, slot.node, `${slot.id}:${at}`))}
+      {slots.map((slot, at) => createPortal(<ReferenceMark theaterId={theaterId} objectiveId={slot.id} size={16} />, slot.node, `${slot.id}:${at}`))}
       {list.open ? (
         <div id={listId} className={`objectives-commodore-ref-list${phone ? " is-phone" : ""}`} role="listbox" aria-label={t("objectives.commodore.reference.list")} onMouseDown={(event) => event.preventDefault()}>
           {full ? <p className="objectives-commodore-ref-note" role="status">{t("objectives.commodore.reference.limit", { count: MAX_COMMODORE_REFERENCES })}</p> : null}
@@ -684,7 +704,7 @@ export function useCommodoreReferenceHost(t: T, theaterId: string, openOnPhone?:
   useEffect(() => { if (!finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   return useMemo(() => ({
     open: openOnPhone ?? ((objectiveId: string) => openReferencedObjective(theaterId, objectiveId)),
-    mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={14} />,
+    mark: (id: string) => <ReferenceMark theaterId={theaterId} objectiveId={id} size={16} />,
     describe: (reference: { readonly label: string }) => t("objectives.commodore.reference.open", { title: reference.label }),
   }), [t, theaterId, openOnPhone]);
 }

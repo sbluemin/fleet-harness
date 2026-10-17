@@ -51,6 +51,16 @@ export type {
   ComposerChipProps,
   ComposerSubmitButtonProps,
 } from "./primitives.js";
+export {
+  MENTION_CHIP_CLASS,
+  MENTION_CHIP_LABEL_CLASS,
+  MENTION_CHIP_MARK_CLASS,
+  MENTION_CHIP_REMOVE_CLASS,
+  MentionChip,
+  mentionChipElement,
+  mentionChipHtml,
+} from "./mention-chip.js";
+export type { MentionChipMarkup, MentionChipProps } from "./mention-chip.js";
 export { AttachImageIcon, SubmitArrowIcon } from "./icons.js";
 export {
   ComposerAttachmentTray,
