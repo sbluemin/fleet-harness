@@ -12,7 +12,7 @@ export interface AideStayPut {
 }
 
 export type StayPutMap = Record<ScuttlebuttAideId, AideStayPut>;
-/** 부관별 「도구모음에 두기」. 켜진 부관은 화면 위의 새가 아니라 대화 사이드바 맨 위 줄의 글리프로 선다. */
+/** 부관별 「사이드바에 두기」. 켜진 부관은 화면 위의 새가 아니라 대화 사이드바 맨 위 줄의 글리프로 선다. */
 export type DockedMap = Record<ScuttlebuttAideId, boolean>;
 /** 부관별 렌더 폭(px). 범위와 격자는 roaming.ts 가 소유한다. */
 export type SizeMap = Record<ScuttlebuttAideId, number>;
@@ -38,7 +38,7 @@ export interface ScuttlebuttSettings {
   readonly departureBell: boolean;
   readonly stayPut: StayPutMap;
   /**
-   * 「도구모음에 두기」 고정. 설정 화면에는 노출하지 않는다 — 전환은 부관 자신의 카드·시트 헤더에서만 한다.
+   * 「사이드바에 두기」 고정. 설정 화면에는 노출하지 않는다 — 전환은 부관 자신의 카드·시트 헤더에서만 한다.
    * `stayPut`과 따로 두는 이유: 떼어내면 고정 직전의 정박 좌표로 돌아가야 하므로 그 값을 지우지
    * 않는다.
    */

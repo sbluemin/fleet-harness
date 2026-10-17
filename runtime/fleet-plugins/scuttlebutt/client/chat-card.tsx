@@ -64,7 +64,7 @@ export function ChatCard({
    * 우측 정렬 480px — 새의 위치와 무관하게 늘 같은 자리에 답이 선다.
    */
   readonly docked: boolean;
-  /** 글리프가 설 호스트 슬롯이 있는가. 없으면(모바일 배치) 「도구모음에 두기」를 내지 않는다. */
+  /** 글리프가 설 호스트 슬롯이 있는가. 없으면(모바일 배치) 「사이드바에 두기」를 내지 않는다. */
   readonly canDock: boolean;
   /** 이 부관의 AI 확장 허용 — 헤더 표식·인사말·메뉴 행의 상태. */
   readonly grants: AideGrants;
