@@ -792,24 +792,7 @@ function ConversationQuota() {
     const stage = box?.closest<HTMLElement>(".conversation-stage") ?? null;
     if (!box || !stage) return;
     let frame = 0;
-    const widthAt = (tier: QuotaTier) => {
-      box.dataset.tier = tier;
-      return box.offsetWidth;
-    };
-    const measure = () => {
-      frame = 0;
-      const widths: Record<QuotaTier, number> = { full: widthAt("full"), marks: widthAt("marks"), single: widthAt("single") };
-      const center = pillGroupNaturalWidth(stage);
-      // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
-      const right = Number.parseFloat(getComputedStyle(box).right) || 0;
-      // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
-      const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
-      // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
-      const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
-      const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
-      box.dataset.tier = tier;
-      stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
-    };
+    const measure = () => { frame = 0; applyConversationQuotaTier(stage); };
     const schedule = () => { if (frame === 0) frame = requestAnimationFrame(measure); };
     measure();
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
@@ -857,26 +840,77 @@ function pillGroupNaturalWidth(stage: HTMLElement): number {
 }
 
 /**
- * pill 줄 한 줄의 원래 폭. 공통 도구모음은 「⋯」로 걷힌 도구까지 센 폭(data-natural-width, ConversationToolbar 가 잰다)으로
- * 센다 — 사용량 캡슐이 먼저 단계를 낮추고, 그래도 모자랄 때 도구가 걷힌다.
+ * 사용량 단계를 지금 줄의 원래 폭으로 고른다. 도구모음 측정이 이 함수를 먼저 부르므로, 걷힘 판정은 이미 갱신된 예약 폭을 본다.
+ * 단계 공식은 한 곳이다 — 칸 폭과 원래 폭만으로 정해지고, 도구가 걷혀 있는지와는 무관하다.
+ */
+function applyConversationQuotaTier(stage: HTMLElement): void {
+  const box = stage.querySelector<HTMLElement>(":scope > .conversation-quota");
+  if (box === null) return;
+  const widthAt = (tier: QuotaTier) => {
+    box.dataset.tier = tier;
+    return box.offsetWidth;
+  };
+  const widths: Record<QuotaTier, number> = { full: widthAt("full"), marks: widthAt("marks"), single: widthAt("single") };
+  const center = pillGroupNaturalWidth(stage);
+  // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
+  const right = Number.parseFloat(getComputedStyle(box).right) || 0;
+  // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
+  const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
+  // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
+  const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
+  const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
+  box.dataset.tier = tier;
+  stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
+}
+
+/**
+ * pill 줄 한 줄의 원래 폭. 도구모음은 걷힌 상태를 풀고 센다 — 지금 보이는 폭을 쓰면 한 번에 줄인 창이
+ * 그 걷힘에 묶여 사용량 단계가 내려가지 않는다. 사용량 캡슐이 이 폭으로 단계를 먼저 낮추고, 그래도 모자랄 때 도구가 걷힌다.
  */
 function pillRowNaturalWidth(row: HTMLElement): number {
   const items = [...row.children].filter((child): child is HTMLElement => child instanceof HTMLElement);
   const gap = Number.parseFloat(getComputedStyle(row).columnGap) || 0;
   let total = Math.max(0, items.length - 1) * gap;
   for (const item of items) {
-    if (item.classList.contains("conversation-pill")) {
-      // 말줄임으로 줄어든 이름·부제의 몫을 되돌려 센다.
-      let natural = item.offsetWidth;
-      for (const text of item.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub")) natural += text.scrollWidth - text.clientWidth;
-      total += Math.min(natural, PILL_TITLE_CAP);
-    } else if (item.classList.contains("conversation-pill-tools")) {
-      total += Number.parseFloat(item.dataset.naturalWidth ?? "") || item.offsetWidth;
-    } else {
-      total += item.offsetWidth;
-    }
+    if (item.classList.contains("conversation-pill")) total += pillNaturalWidth(item);
+    else if (item.classList.contains("conversation-pill-tools")) total += uncollapsedToolsWidth(item);
+    else total += item.offsetWidth;
   }
   return total;
+}
+
+/**
+ * 이름 pill 의 원래 폭. 말줄임으로 준 글자는 scrollWidth 로 되돌린다.
+ * 창을 한 번에 좁히면 pill 의 max-width: 100% 가 상자를 누르고, 이름 min-width 는 글자 상자만 유지한다.
+ * 그때 글자는 pill 에 잘려 scrollWidth 차이가 0 이다 — 상자 밖으로 나간 만큼을 더한다. 상한(620)은 그대로다.
+ */
+function pillNaturalWidth(pill: HTMLElement): number {
+  const style = getComputedStyle(pill);
+  const contentRight = pill.getBoundingClientRect().right
+    - (Number.parseFloat(style.borderRightWidth) || 0)
+    - (Number.parseFloat(style.paddingRight) || 0);
+  let natural = pill.offsetWidth;
+  for (const text of pill.querySelectorAll<HTMLElement>(".conversation-pill-title, .conversation-pill-sub")) {
+    if (text.getClientRects().length === 0) continue;
+    natural += Math.max(0, text.scrollWidth - text.clientWidth);
+    const past = text.getBoundingClientRect().right - contentRight;
+    if (past > 1) natural += past;
+  }
+  return Math.min(natural, PILL_TITLE_CAP);
+}
+
+/** 도구 캡슐의 걷히지 않은 폭. 「⋯」는 빼고, 측정이 끝나면 걷힘을 그대로 되돌린다. */
+function uncollapsedToolsWidth(tools: HTMLElement): number {
+  const overflowed = [...tools.querySelectorAll<HTMLElement>("[data-overflow]")];
+  const hadMore = tools.hasAttribute("data-more");
+  const more = tools.dataset.more ?? "";
+  for (const item of overflowed) item.removeAttribute("data-overflow");
+  tools.dataset.more = "hidden";
+  const width = tools.offsetWidth;
+  for (const item of overflowed) item.setAttribute("data-overflow", "true");
+  if (hadMore) tools.dataset.more = more;
+  else delete tools.dataset.more;
+  return width;
 }
 
 /**
@@ -948,11 +982,15 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     const measure = () => {
       frame = 0;
+      // 사용량 단계를 먼저 고친다. 한 번에 좁히면 눌린 pill 폭으로 단계를 고르면 marks 에 남고, 그 예약이 도구를 걷어 그 상태가 유지된다.
+      const stage = row.closest<HTMLElement>(".conversation-stage");
+      if (stage) applyConversationQuotaTier(stage);
       const items = [...itemsBox.querySelectorAll<HTMLElement>(".right-rail-ico, .right-rail-divider")];
       for (const item of items) item.removeAttribute("data-overflow");
       tools.dataset.more = "hidden";
       if (resize !== null) {
-        resize.observe(row);
+        // 줄의 내용 상자 — 사용량 예약은 테두리 폭이 아니라 안쪽 여백을 바꾼다. 여백이 줄면 걷힌 도구를 다시 세운다.
+        resize.observe(row, { box: "content-box" });
         // 테두리 상자로 본다 — 내용 상자만 보면 안쪽 여백·테두리만 바뀐 요소의 폭 변화를 놓친다.
         for (const child of row.children) if (child !== tools) resize.observe(child, { box: "border-box" });
         const titleElement = row.querySelector(":scope > .conversation-pill .conversation-pill-title");
