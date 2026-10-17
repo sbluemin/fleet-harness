@@ -12191,6 +12191,8 @@ body[data-codex-side="true"] .command-card {
 .fc-composer-capsule:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
 .fc-composer-capsule.is-disabled { opacity: var(--control-disabled-opacity); }
 .fc-composer-capsule.has-attachments { flex-wrap: wrap; }
+/* 인용 칩 줄도 첨부 줄처럼 캡슐 맨 위 한 줄을 차지한다 — 입력·원은 그 아래 줄에 남는다. */
+.fc-composer-capsule:has(> .fc-composer-quotes) { flex-wrap: wrap; }
 .fc-composer-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -12371,7 +12373,9 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   padding: 4px 4px 2px;
   min-width: 0;
 }
-.fc-composer-quotes.is-sent { flex: none; padding: 0; }
+/* 보낸 말풍선 안에서는 말풍선 폭을 채우고 그 안에서 줄을 바꾼다 — 칩 합이 말풍선을 밀어내지 않는다. */
+.fc-composer-quotes.is-sent { flex: 1 1 100%; padding: 0; }
+.fc-composer-quote.is-sent .fc-composer-quote__body { min-width: 0; }
 .fc-composer-quote {
   position: relative;
   display: inline-flex;

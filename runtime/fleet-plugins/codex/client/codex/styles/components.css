@@ -2956,6 +2956,7 @@ button.chip:focus-visible {
   box-shadow: 0 10px 28px -10px oklch(0% 0 0 / 45%);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
+  max-width: calc(100% - var(--space-4));
   white-space: nowrap;
   animation: codex-quote-rise var(--duration-fast) var(--ease-spring) both;
 }
@@ -2976,17 +2977,20 @@ button.chip:focus-visible {
 .codex-quote-pill > button svg { width: 14px; height: 14px; flex: none; color: var(--text-tertiary); }
 .codex-quote-pill > button:hover { background: var(--control-hover-fill); }
 .codex-quote-pill > button:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
-.codex-quote-pill > .codex-quote-to { color: var(--text-secondary); font-weight: var(--weight-regular); padding-inline: 8px 10px; }
+.codex-quote-pill > .codex-quote-to { flex: 1 1 auto; min-width: 0; color: var(--text-secondary); font-weight: var(--weight-regular); padding-inline: 8px 10px; }
+.codex-quote-to-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.codex-quote-pill > button:not(.codex-quote-to) { flex: none; }
 .codex-quote-chev { margin-left: 4px; font-size: var(--t-2xs); color: var(--text-tertiary); }
 .codex-quote-sep { width: 1px; height: 16px; background: var(--hairline-strong); }
 .codex-quote-menu {
   position: absolute;
   top: calc(100% + 6px);
+  /* 알약과 같은 폭으로 펼친다 — 알약은 이미 문서 안에 맞춰져 있으므로 메뉴도 경계를 넘지 않는다. 긴 이름은 말줄임이다. */
+  left: 0;
   right: 0;
   z-index: 6;
   display: grid;
   gap: 2px;
-  min-width: 240px;
   padding: 6px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
@@ -3010,7 +3014,8 @@ button.chip:focus-visible {
 .codex-quote-menu > button:hover,
 .codex-quote-menu > button[aria-checked="true"] { background: var(--control-hover-fill); }
 .codex-quote-menu > button:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
-.codex-quote-menu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.codex-quote-menu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.codex-quote-menu-note { flex: none; }
 .codex-quote-menu-note { margin-left: auto; font-size: var(--t-xs); color: var(--text-tertiary); }
 .codex-quote-toast {
   position: sticky;

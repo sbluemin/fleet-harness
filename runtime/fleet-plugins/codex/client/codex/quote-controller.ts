@@ -91,10 +91,8 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
     const tr = t();
     const list = targets();
     const target = resolveTarget(list);
-    const hostWidth = options.article.getBoundingClientRect().width || 0;
-    const half = 150;
-    const left = Math.min(Math.max(selection.left, half), Math.max(hostWidth - half, half));
-    const at = `style="top:${selection.top}px;left:${left}px"`;
+    // 위치는 그린 뒤 알약의 실제 폭으로 문서 안에 맞춘다(placePill). 좁은 패널에서도 가로로 넘치지 않는다.
+    const at = `style="top:${selection.top}px;left:${selection.left}px"`;
     if (!target) {
       anchor.innerHTML = `<div class="codex-quote-pill is-empty" ${at} role="note">${escapeHtml(tr("codex.quote.noTarget"))}</div>`;
       return;
@@ -113,10 +111,20 @@ export function mountQuoteSelection(options: MountQuoteSelectionOptions): QuoteS
       <button type="button" data-quote-kind="comment">${ICON_COMMENT}<span>${escapeHtml(tr("codex.quote.comment"))}</span></button>
       <span class="codex-quote-sep" aria-hidden="true"></span>
       <button type="button" data-quote-kind="question">${ICON_QUESTION}<span>${escapeHtml(tr("codex.quote.question"))}</span></button>
-      <button type="button" class="codex-quote-to" data-quote-menu aria-haspopup="menu" aria-expanded="${menuOpen}" title="${escapeAttribute(tr("codex.quote.targetMenu"))}">→ ${escapeHtml(targetName(target))}<span aria-hidden="true" class="codex-quote-chev">▾</span></button>
+      <button type="button" class="codex-quote-to" data-quote-menu aria-haspopup="menu" aria-expanded="${menuOpen}" title="${escapeAttribute(`${tr("codex.quote.targetMenu")} · ${targetName(target)}`)}"><span class="codex-quote-to-name">→ ${escapeHtml(targetName(target))}</span><span aria-hidden="true" class="codex-quote-chev">▾</span></button>
       ${menu}
     </div>`;
+    placePill();
     if (menuOpen) anchor.querySelector<HTMLButtonElement>('.codex-quote-menu [aria-checked="true"]')?.focus({ preventScroll: true });
+  };
+
+  /** 알약 중심을 선택 아래에 두되, 실제 폭의 절반만큼 안쪽으로 당겨 문서 좌우 경계 안에 둔다. */
+  const placePill = () => {
+    const pill = anchor.querySelector<HTMLElement>(".codex-quote-pill");
+    if (!pill || !selection) return;
+    const hostWidth = options.article.clientWidth;
+    const half = pill.offsetWidth / 2 + 8;
+    pill.style.left = `${Math.min(Math.max(selection.left, half), Math.max(hostWidth - half, half))}px`;
   };
 
   const clearSelection = () => {
