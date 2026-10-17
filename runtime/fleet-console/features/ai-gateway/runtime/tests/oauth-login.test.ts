@@ -339,6 +339,73 @@ describe("Fleet-owned subscription sign-in", () => {
     }
   });
 
+  // 로그아웃 플래그가 같은 저장소의 이후 로그인을 가리면 안 된다.
+  it("sees a Fleet sign-in written to the same store after this instance logged out", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-relogin-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const oauth = createCodexOAuth({
+      authService,
+      fetch: vi.fn<typeof fetch>(async () => new Response(null, { status: 500 })),
+      cliCredentials: {
+        platform: "darwin",
+        homedir: () => path.join(directory, "no-home"),
+        env: { CODEX_HOME: path.join(directory, "empty-codex") },
+        readBounded: async () => null,
+        execFile: async () => { throw new Error("vendor lookup must not spawn"); },
+      },
+      now: () => Date.parse("2026-10-17T00:00:00Z"),
+    });
+    try {
+      await oauth.logout();
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+        key: "relogin-access", type: "oauth", refreshToken: "relogin-refresh",
+        accessExpiresAt: Date.parse("2026-10-18T00:00:00Z"), accountId: "relogin-acct", version: 1,
+      });
+      await expect(oauth.readSubscription()).resolves.toEqual({ accessToken: "relogin-access", accountId: "relogin-acct" });
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  // CLI를 읽는 동안 만료된 Fleet 항목이 생기면 그 토큰을 그대로 쓰지 않고 갱신 수명을 탄다.
+  it("refreshes an expired Fleet entry that lands while a CLI read is in flight", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-stale-race-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => { release = resolve; });
+    let entered!: () => void;
+    const reading = new Promise<void>((resolve) => { entered = resolve; });
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ error: "invalid_grant" }, { status: 400 }));
+    const oauth = createCodexOAuth({
+      authService,
+      fetch: fetchImpl,
+      cliCredentials: {
+        platform: "darwin",
+        homedir: () => path.join(directory, "no-home"),
+        env: { CODEX_HOME: path.join(directory, "empty-codex") },
+        readBounded: async () => { entered(); await hold; return null; },
+        execFile: async () => { throw new Error("vendor lookup must not spawn"); },
+      },
+      now: () => Date.parse("2026-10-17T00:00:00Z"),
+    });
+    try {
+      const pending = oauth.readSubscription();
+      await reading;
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, {
+        key: "stale-access", type: "oauth", refreshToken: "stale-refresh",
+        accessExpiresAt: Date.parse("2026-10-16T00:00:00Z"), accountId: "stale-acct", version: 1,
+      });
+      release();
+      await expect(pending).resolves.toBeNull();
+      expect(fetchImpl).toHaveBeenCalled();
+      expect(String(fetchImpl.mock.calls[0]?.[0])).toBe("https://auth.openai.com/oauth/token");
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   // 첫 xAI 프로필이 만료면 다음 프로필로 바꾸지 않고, 401이어도 벤더 refresh를 부르지 않는다.
   it("does not refresh or rewrite a Grok CLI file, or switch to a later profile", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xai-cli-fallback-"));
