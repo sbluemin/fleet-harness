@@ -6,8 +6,8 @@ import { useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { getViewModeSnapshot } from "../../integration/view-mode-store.js";
 
-// 설정의 문(팔레트의 「설정 열기」와 같은 길) — 기존 배치는 레일, 대화 중심 화면은 모달이다. 폰에는 키보드 단축키도
-// 레일도 없어 이 링크를 세우지 않는다.
+// 설정의 문(팔레트의 「설정 열기」와 같은 길) — 데스크톱은 가운데 모달이다. 폰에는 키보드 단축키가 없어
+// 이 링크를 세우지 않는다.
 function openShortcutSettings(): void {
   openSettingsSurface("shortcuts");
 }

@@ -54,7 +54,6 @@ import { stashCommissioningReturnFocus, stashKeyboardShortcutsReturnFocus } from
 import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcutOverrides } from "../../integration/shortcut-bindings.js";
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
-import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-entry.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
@@ -419,26 +418,17 @@ export function OperationSearch({
         break;
       }
       case "open-settings": {
-        // 폰에는 레일이 없다 — 설정의 모바일 표현은 여전히 /settings 페이지다. 레일 스토어를
-        // 열면 보이지 않는 표면만 켜지고 화면은 아무 일도 없던 것처럼 남는다.
+        // 폰의 설정은 /settings 페이지다.
         if (getViewModeSnapshot().effective === "mobile") {
           previousFocusRef.current = null;
           navigate("/settings");
           break;
         }
-        // 설정은 라우트가 아니라 레일 표면이다 — 포커스는 표면이 받으므로 복원을 억제한다.
+        // 데스크톱 설정은 라우트가 아니라 가운데 모달이다 — 모달이 마운트하며 포커스를 가져가므로 복원을 억제한다.
         previousFocusRef.current = null;
-        // 레일은 /operations에만 마운트된다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
+        // 모달은 /operations에만 선다. 주소 쿼리는 selectRailResult와 같은 이유로 지킨다.
         if (!location.pathname.startsWith("/operations")) navigate({ pathname: "/operations", search: window.location.search });
-        // 대화 중심 화면에서는 같은 문이 가운데 모달을 연다 — 모달은 마운트하며 자기 검색 입력으로 포커스를 가져간다.
         openSettingsSurface();
-            // 복원을 억제했으면 도착지가 받아야 한다 — 페인은 이 커밋의 재렌더 뒤에야 서므로
-        // 프레임을 하나 넘겨 검색 입력(첫 컨트롤)으로 보낸다. 실패 시 표면 본문이 받는다.
-        window.requestAnimationFrame(() => {
-          const landing = document.querySelector<HTMLElement>(".settings-pane .settings-search input")
-            ?? document.querySelector<HTMLElement>(`#rail-panel-${SETTINGS_RAIL_ENTRY_ID}`);
-          landing?.focus();
-        });
         break;
       }
       case "open-keyboard-shortcuts": {

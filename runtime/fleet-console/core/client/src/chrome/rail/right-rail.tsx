@@ -66,9 +66,8 @@ function declaredWidthOf(binding: RailEntryBinding | null): number {
 }
 
 /**
- * 도구 패널 카드 — 도구모음의 도구가 여는 표면. 화면 오른쪽에 뜨는 부유 카드다.
- * 도구 아이콘은 여기 없다: 콘솔 도구모음이 하나뿐인
- * 도구 줄이고(console-toolbar.tsx), 카드는 켜진 도구가 있을 때만 선다.
+ * 도구 패널 카드 — 화면 오른쪽에 뜨는 부유 카드. 도구 아이콘은 여기 없다: 대화 중심 화면이 패널 머리에
+ * 도구 탭(RailToolIcons)을 세우고, 카드는 켜진 도구가 있을 때만 선다.
  */
 // 부모(Operations)는 운영 상태가 바뀔 때마다 다시 그린다 — 받는 값이 그대로면 레일(과 열린 패널 본문)은 따라 그리지 않는다.
 export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOperation, header, reservedArenaWidth = 148 }: RightRailProps) {
@@ -462,8 +461,8 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
       {scope === "core" ? null : renderRuns(runsByScope.theater)}
       {scope !== "core" && runsByScope.theater.length > 0 && runsByScope.fleet.length > 0 ? divider : null}
       {scope === "core" ? null : renderRuns(runsByScope.fleet)}
-      {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 도구모음의
-          시스템 칸 맨 끝(console-toolbar.tsx)에 선다. */}
+      {/* 설정은 여기 없다 — 콘솔을 다스리는 일은 작업 도구를 고르는 일과 다른 종류라, 톱니는 대화 독의
+          호스트 메뉴 맨 끝(settings-button.tsx)에 선다. */}
     </>
   );
 
@@ -665,7 +664,7 @@ function RailIcon({ entry, context, language, isActive, text = false }: RailIcon
       aria-pressed={pressed}
       aria-label={named}
       disabled={context.theaterId === null && entry.scope !== "fleet"}
-      // 이름은 도구모음 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
+      // 이름은 도구 말풍선이 말한다(toolbar-tip.tsx) — 단축키와 Console Use 안내도 같은 말풍선에 싣는다.
       data-tip={wrap ? consoleUseWrapLabel(wrap) : shortcut ? `${named} (${shortcut})` : named}
       // 선언한 도구만 활성 해제 가드를 넘는다(active-operation-surface 유지 표식) — 나머지 도구는 누르면 활성이 풀린다.
       data-keep-operation-active={entry.keepsOperationActive ? "" : undefined}

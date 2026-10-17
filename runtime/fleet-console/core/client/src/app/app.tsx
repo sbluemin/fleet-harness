@@ -7,7 +7,6 @@ import { SDK_API_VERSION } from "@fleet-console/sdk/version";
 import { ActiveCompanionShortcutsProvider, takeKeyboardShortcutsReturnFocus } from "../integration/shortcuts.js";
 import { shortcutCommandLabel } from "../integration/shortcut-bindings.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "../integration/api.js";
-import { CommandBand } from "../chrome/components/command-band.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
 import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
@@ -57,7 +56,6 @@ import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
-import { ConsoleToolbar } from "../chrome/toolbar/console-toolbar.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -561,25 +559,14 @@ function ConnectedApp() {
     <ComputerScreenShareProvider>
     <ActiveCompanionShortcutsProvider value={[]}>
       <div className={`console-shell${desktopOperationsVisible ? " is-operations-view" : ""}`}>
-        {/* The mobile layout carries its own header and tab bar, so the band would be a second,
-            taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
-            mobile header and its settings entry becomes a tab, so nothing is stranded. */}
-        {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다.
-            밴드와 라우트 사이(흐름 바 자리)에 두지 않는다: 그 구간은 언더플로 게이트가
-            지키는 화이트리스트라, 그리지 않는 것이라도 끼면 계약이 헐거워진다. */}
+        {/* 화면 없는 상주 기여 — 아무것도 그리지 않지만 콘솔 수명 동안 살아 있어야 한다. */}
         <PersistentPluginComponents />
-        {/* 대화 중심 화면에는 밴드가 없다 — 찾기·새 Operation·호스트·사용량·도움말·설정은 사이드바 위·아래 줄로, 도구는
-            오른쪽 패널 머리의 글자 탭으로 옮겨 갔다(features/workspace/client/conversation). */}
-        {mobileLayout || operationsViewVisible ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
-        {/* 도구모음은 설정 화면의 밴드에만 선다. 모바일 셸은 자기 탭 막대를 쓴다. */}
-        {mobileLayout || operationsViewVisible ? null : <ConsoleToolbar />}
+        {/* 상단 크롬은 없다 — 데스크톱은 대화 중심 화면이 찾기·새 Operation·호스트·사용량·도움말·설정을 사이드바 위·아래 줄로,
+            도구를 오른쪽 패널 머리의 글자 탭으로 든다(features/workspace/client/conversation). 모바일 셸은 자기 머리와 탭 막대를 쓴다.
+            `/`·`/settings`처럼 /operations로 갈아 끼우는 주소도 그 한 프레임 동안 빈 셸만 보인다. */}
         <FloatingWidgetLayer />
-        {/* 밴드와 라우트 사이의 흐름 바는 전부 이 자리에 모은다. 밴드 유리 뒤로 본문을 흘리는
-            레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만 성립하는데, 그 조건을
-            바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나간다(연결·저하 배너와 제어 반납
-            바를 열거한 뒤 업데이트 결과 바가 남아 있었다). 이 자리를 한 곳으로 만들면 CSS가
-            :has(*) 하나로 "지금 흐름 바가 서 있는가"를 직접 물을 수 있고, 앞으로 여기에 무엇을
-            더 넣든 게이트가 저절로 닫힌다. 상자는 만들지 않는다(display: contents). */}
+        {/* 흐름 바(연결·저하 배너, 업데이트 결과 바, 제어 반납 바)는 전부 이 한 자리에 모은다. 모바일 배치는 같은 자리를
+            상단 막대 아래에 놓는다. 상자는 만들지 않는다(display: contents). */}
         {mobileLayout ? null : shellBars}
         {(() => {
           const routeContent = (

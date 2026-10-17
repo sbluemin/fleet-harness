@@ -291,7 +291,6 @@
      완전히 비운 값의 RGB가 그대로 칠해진다. RGB를 유리 톤으로 채워 두면 그 사각형이 필드와
      같은 색이 되어 보이지 않는다 — 알파는 terminal-surface가 0으로 눕혀 유리를 그대로 통과시킨다. */
   --glass-tint-terminal-floor: var(--glass-tint-terminal);
-  --glass-tint-band: var(--surface-band);
   /* 패널 광원(pane-light) — 유리 뒤가 앱에서 가장 어두운 캔버스라 뒤로 비칠 빛이 적다.
      그래서 다크 유리는 자기 위쪽에 광원을 하나 얹어 재질을 명도가 아니라 기울기로 말한다.
      이 채널은 광원의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다. */
@@ -338,7 +337,6 @@
   --glass-on-tint-caption: oklch(17% 0.018 245 / 64%);
   --glass-on-tint-terminal: var(--glass-on-tint-panel);
   --glass-on-tint-terminal-floor: oklch(17.5% 0.026 245);
-  --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-rim: oklch(96% 0.01 90 / 16%);
 
   /* 파일 종류는 정체성이지 상태가 아니다 — 신호색(aurora·warn·positive·coral)을 빌리면 트리가
@@ -845,7 +843,6 @@
   --canvas-on-ambience: oklch(18% 0 0);
   --glass-on-tint-caption: oklch(19% 0 0 / 64%);
   --glass-on-tint-terminal-floor: oklch(19.8% 0 0);
-  --glass-on-tint-band: oklch(17% 0 0 / 50%);
   --glass-on-rim: oklch(95% 0 0 / 16%);
 
   --hairline: oklch(28.5% 0 0);
@@ -900,7 +897,6 @@
   --glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);
   --glass-pane-light: var(--glass-on-pane-light);
   --canvas-ambience: var(--canvas-on-ambience);
-  --glass-tint-band: var(--glass-on-tint-band);
   --glass-rim: var(--glass-on-rim);
   /* 베벨·부양·워시·블룸 채널은 여기서 싣지 않는다 — 재료를 가진 테마가 라이트뿐이었고,
      라이트가 게이트에서 빠지면서 재료가 사라졌다. 채널 자체는 base에 그대로 살아 있으니
@@ -926,7 +922,6 @@
     --glass-tint-terminal-floor: var(--surface-panel);
     --glass-pane-light: transparent;
     --canvas-ambience: var(--canvas-sea-core);
-    --glass-tint-band: var(--surface-band);
     --glass-rim: transparent;
   }
 }
@@ -1168,7 +1163,6 @@
   --glass-tint-field: var(--m-term-bg);
   --glass-tint-terminal: var(--m-term-bg);
   --glass-tint-terminal-floor: var(--m-term-bg);
-  --glass-tint-band: var(--m-bg);
   --glass-pane-light: transparent;
   --canvas-ambience: var(--m-bg);
   --canvas-wash-near: var(--m-bg);

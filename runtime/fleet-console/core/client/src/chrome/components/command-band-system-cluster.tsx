@@ -575,7 +575,7 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
       return;
     }
     setOpen(false);
-    // 레일은 /operations에만 마운트된다 — 표면을 부르기 전에 대화 화면으로 돌아간다.
+    // 설정 모달은 /operations에만 선다 — 표면을 부르기 전에 대화 화면으로 돌아간다.
     navigate("/operations");
     openSettingsSurface("connectivity");
   };

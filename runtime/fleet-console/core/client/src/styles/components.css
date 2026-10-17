@@ -104,23 +104,6 @@
   outline-offset: 2px;
 }
 /* ===== Global Settings — 전역 옵션(시스템 프롬프트 주입 + 메타포) 표면 ===== */
-.global-settings-page {
-  display: grid;
-  align-content: start;
-  gap: var(--space-4);
-  width: min(1440px, calc(100vw - 48px));
-  min-height: 0;
-  height: 100%;
-  margin: 0 auto;
-  /* --band-underflow는 스크롤포트가 밴드 유리 뒤까지 올라간 만큼이다(layout.css가 켠다).
-     첫 카드가 밴드에 가리지 않도록 같은 값을 위 패딩으로 돌려주고, 키보드 이동의 착지점도
-     같이 민다. 그 레이아웃이 아니면 0px이라 오늘의 여백 그대로다. */
-  padding: calc(var(--space-4) + var(--band-underflow, 0px)) 0 var(--space-10);
-  scroll-padding-top: var(--band-underflow, 0px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
 /* 제목은 자리를 알려 주는 한 줄이면 된다. 예전에는 72px 표제와 킥커가 뷰포트의 23%를 먹고
    첫 컨트롤이 218px 아래에서 시작했다 — 이미 톱니바퀴를 눌러 들어온 사람에게 파는 값이 아니다. */
 .global-settings-hero {
@@ -161,10 +144,7 @@
 
 .global-settings-list {
   position: sticky;
-  /* 스크롤포트가 밴드 뒤까지 올라가면 sticky의 원점도 함께 올라간다 — 오프셋을 같이 밀지 않으면
-     상시 노출되어야 할 섹션 내비의 첫 그룹이 밴드 뒤에 붙어 잘리고 클릭까지 가로챈다.
-     --band-underflow가 꺼진 레이아웃에서는 0px이라 오늘의 위치 그대로다. */
-  top: calc(var(--space-2) + var(--band-underflow, 0px));
+  top: var(--space-2);
   align-self: start;
   display: flex;
   flex-direction: column;
@@ -738,10 +718,6 @@
 /* 767px는 모바일 셸이 시작하는 폭이다 — 두 경계가 어긋나면 그 사이 띠에서 도움말이
    65px 리본으로 눌린다(mobile-settings-drilldown 계약). */
 @media (max-width: 767px) {
-  .global-settings-page {
-    width: calc(100vw - 24px);
-  }
-
   .global-settings-hero,
   .global-settings-row {
     flex-direction: column;
@@ -1093,8 +1069,8 @@
   color: var(--brass-bright);
 }
 
-/* 호스트 스위처 — 도구모음의 원격 글리프(도움말 왼쪽). 모양·겨눔·열림은 이웃 도구 칸(.console-toolbar
-   .command-band-button)과 같은 문법을 입고, 여기서는 상태 잉크와 공유 점만 더한다. */
+/* 호스트 스위처 — 원격 글리프. 모양·겨눔·열림은 작은 아이콘 칸(.command-band-button)과 같은 문법을 입고,
+   여기서는 상태 잉크와 공유 점만 더한다. */
 .host-switcher { position: relative; display: flex; }
 
 .host-switcher-chip.is-away { color: var(--aurora-ink); }
@@ -1121,7 +1097,7 @@
 
 .host-switcher-dot.is-shared { border-color: var(--warn); background: var(--warn); box-shadow: 0 0 10px var(--warn-glow); }
 
-/* 판 외피는 옆 도움말 메뉴(.command-band-system-menu)와 같다 — 도구모음의 두 메뉴는 같은 물건으로 읽혀야 한다. */
+/* 판 외피는 옆 도움말 메뉴(.command-band-system-menu)와 같다 — 호스트·도움말 두 메뉴는 같은 물건으로 읽혀야 한다. */
 .host-switcher-panel {
   position: absolute;
   z-index: 40;

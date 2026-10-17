@@ -110,14 +110,6 @@ export interface ObserverStatus {
   readonly wikiServerStatus: "available" | "unavailable" | "unknown";
 }
 
-export interface ConsoleEnvironmentDiagnostics {
-  readonly channel: "local";
-  readonly version: string;
-  readonly effectivePort: number;
-  readonly dataDir: string;
-  readonly lockFile: string;
-}
-
 export type ConsoleUpdateApplyError =
   | "checksum_mismatch"
   | "console_not_ready"

@@ -2,11 +2,11 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } f
 import { createPortal } from "react-dom";
 
 /**
- * 도구모음 말풍선 — 도구모음의 모든 칸이 쓰는 한 장. 칸마다 말풍선을 들지 않고 도구모음 루트가 겨눔·포커스를
- * 위임받아, 겨눈 칸의 이름을 한 장의 말풍선에 싣는다. 그래서 접기·레일 도구·설정·찾기·원격·도움말과
- * 플러그인이 둔 항목(부관 글리프)이 같은 모양·같은 지연·같은 모션으로 말한다.
+ * 도구 말풍선 — 도구 줄(대화 중심 화면의 패널 머리 도구 탭 등)의 모든 칸이 쓰는 한 장. 칸마다 말풍선을 들지 않고
+ * 줄의 루트가 겨눔·포커스를 위임받아, 겨눈 칸의 이름을 한 장의 말풍선에 싣는다. 그래서 레일 도구와
+ * 플러그인이 둔 항목이 같은 모양·같은 지연·같은 모션으로 말한다.
  *
- * - 이름은 `data-tip` → (칸이 든 네이티브 title) → aria-label 순으로 읽는다. 네이티브 title은 도구모음이
+ * - 이름은 `data-tip` → (칸이 든 네이티브 title) → aria-label 순으로 읽는다. 네이티브 title은 말풍선이
  *   보는 즉시 걷어 보관한다 — 남겨 두면 브라우저 말풍선이 한 번 더 뜬다. 플러그인은 코드를 고치지 않아도
  *   title이나 aria-label만으로 이 말풍선을 입는다.
  * - 칸 가운데에 서되 뷰포트 끝에서는
@@ -22,7 +22,7 @@ const TIP_GAP = 10;
 const VIEWPORT_MARGIN = 8;
 const ARROW_INSET = 12;
 
-const ITEM_SELECTOR = ".console-toolbar-fold, .right-rail-ico, .command-band-button, .console-toolbar-bridge button";
+const ITEM_SELECTOR = ".right-rail-ico, .command-band-button";
 const POPUP_SELECTOR = '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]';
 const STASHED_TITLE = "data-toolbar-tip-title";
 

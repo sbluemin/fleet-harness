@@ -403,10 +403,6 @@ export const pagesEn = {
   "palette.openPanel": "Open panel: {title}",
 
   "palette.toggleSidebar": "Toggle sidebar",
-  "toolbar.aria": "Toolbar",
-  "toolbar.fold": "Collapse tools",
-  "toolbar.expand": "Show tools",
-  "toolbar.bridge": "Bridge",
   "operations.addTheaterFailed": "Couldn't add the Theater",
   "palette.switchTheme": "Switch theme: {label}",
   "palette.openSettings": "Open Settings",
@@ -1050,10 +1046,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.openPanel": "패널 열기: {title}",
 
   "palette.toggleSidebar": "사이드바 전환",
-  "toolbar.aria": "도구모음",
-  "toolbar.fold": "도구 접기",
-  "toolbar.expand": "도구 펼치기",
-  "toolbar.bridge": "함교",
   "operations.addTheaterFailed": "Theater를 추가하지 못했습니다",
   "palette.switchTheme": "테마 전환: {label}",
   "palette.openSettings": "설정 열기",

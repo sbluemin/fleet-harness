@@ -1,8 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { openPane } from "../../../core/client/src/chrome/pane/pane-store.js";
-import { openRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
-import { SETTINGS_PANE_ID, SETTINGS_RAIL_ENTRY_ID } from "./settings-entry.js";
+import { navigateConsoleRoute } from "../../../core/client/src/integration/console-location.js";
 import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 
 /**
@@ -56,14 +54,13 @@ export function setSettingsModalSection(section: string): void {
 }
 
 /**
- * 설정을 연다 — 대화 중심 화면이면 모달, 아니면 레일 페인. 섹션은 두 그릇이 같은 주소 id 로 받는다.
- * 레일은 /operations 에만 서므로 다른 화면에서 부르는 쪽은 먼저 그 화면으로 간다(지금까지와 같은 계약).
+ * 설정을 연다 — 데스크톱은 가운데 모달, 모바일은 /settings 페이지. 섹션은 두 그릇이 같은 주소 id 로 받는다.
+ * 모달은 /operations 에만 서므로 다른 화면에서 부르는 데스크톱 쪽은 먼저 그 화면으로 간다.
  */
 export function openSettingsSurface(section?: string): void {
-  if (getViewModeSnapshot().effective === "desktop") {
-    openSettingsModal(section ?? null);
+  if (getViewModeSnapshot().effective === "mobile") {
+    navigateConsoleRoute("/settings", section === undefined ? "" : `?section=${encodeURIComponent(section)}`);
     return;
   }
-  openRailPanel(SETTINGS_RAIL_ENTRY_ID);
-  if (section !== undefined) openPane({ paneId: SETTINGS_PANE_ID, params: { section } });
+  openSettingsModal(section ?? null);
 }

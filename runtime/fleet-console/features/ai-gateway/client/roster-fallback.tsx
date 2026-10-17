@@ -1,8 +1,6 @@
 import { isRosterFallbackGroup } from "@fleet-console/sdk/models";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { navigateConsoleRoute } from "../../../core/client/src/integration/console-location.js";
-import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { pluginSettingsSectionId } from "../../settings/client/settings-entry.js";
 import { openSettingsSurface } from "../../settings/client/settings-door.js";
 import { aiGatewaySettingsSection } from "./settings.js";
@@ -15,12 +13,8 @@ export { isRosterFallbackGroup };
  */
 const AI_GATEWAY_SETTINGS_SECTION = pluginSettingsSectionId(null, aiGatewaySettingsSection.id);
 
-/** Settings › AI Gateway — 데스크톱은 설정 표면(기존 배치는 레일, 대화 중심 화면은 모달), 폰은 설정 화면의 그 섹션. */
+/** Settings › AI Gateway — 데스크톱은 설정 모달, 폰은 설정 화면의 그 섹션(settings-door.ts). */
 export function openAiGatewaySettings(): void {
-  if (getViewModeSnapshot().effective === "mobile") {
-    navigateConsoleRoute("/settings", `?section=${encodeURIComponent(AI_GATEWAY_SETTINGS_SECTION)}`);
-    return;
-  }
   openSettingsSurface(AI_GATEWAY_SETTINGS_SECTION);
 }
 
