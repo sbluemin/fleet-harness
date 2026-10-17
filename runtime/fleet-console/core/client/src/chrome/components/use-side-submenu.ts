@@ -93,13 +93,18 @@ export interface SideSubmenuOptions {
   readonly activate?: () => void;
   /** 판 안에서 방향키로 옮긴 직후. 호스트 목록이 늦게 도착한 현재 행으로 포커스를 되돌리지 않게 한다. */
   readonly onPanelArrow?: () => void;
+  /**
+   * 열릴 때 이 훅이 판 안으로 포커스를 옮기는가. 호출자가 늦은 목록까지 포함해 최초 포커스를 맡으면 false.
+   * 기본은 true — 도움말처럼 항목이 바로 있는 메뉴.
+   */
+  readonly manageInitialFocus?: boolean;
 }
 
 /**
  * 메뉴 항목 옆에 펴는 서브메뉴. 겨눔 열기/접기, 안전 삼각형, →·Enter / ←·Esc, 가장자리를 피한 고정 배치를
  * 호스트와 도움말이 같이 쓴다. `enabled`가 아니면 트리거 핸들러는 통과시키고 감시도 붙이지 않는다.
  */
-export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, panelRef, allowHoverOpen, suspended = false, activate, onPanelArrow }: SideSubmenuOptions) {
+export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, panelRef, allowHoverOpen, suspended = false, activate, onPanelArrow, manageInitialFocus = true }: SideSubmenuOptions) {
   /** 열릴 때 판 안으로 포커스를 옮기는가. 겨눠서 연 판은 부모 메뉴의 포커스를 빼앗지 않는다. */
   const focusOnOpenRef = useRef(true);
   const hoverRef = useRef<HoverTimers>({ openTimer: null, closeTimer: null, exit: null });
@@ -146,7 +151,8 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
     if (!enabled) return false;
     clearHoverTimers();
     focusOnOpenRef.current = true;
-    if (open) focusInto();
+    // 이미 열린 판으로 들어가는 포커스도 최초 포커스와 같은 주체가 옮긴다.
+    if (open) { if (manageInitialFocus) focusInto(); }
     else setOpen(true);
     return true;
   };
@@ -157,11 +163,11 @@ export function useSideSubmenu({ enabled, open, setOpen, rootRef, triggerRef, pa
   useEffect(() => () => clearHoverTimers(), []);
 
   useEffect(() => {
-    if (!enabled || !open || suspended) return;
+    if (!manageInitialFocus || !enabled || !open || suspended) return;
     if (!focusOnOpenRef.current) return;
     const frame = window.requestAnimationFrame(() => behaviorRef.current.focusInto());
     return () => window.cancelAnimationFrame(frame);
-  }, [enabled, open, suspended]);
+  }, [manageInitialFocus, enabled, open, suspended]);
 
   useLayoutEffect(() => {
     if (!enabled || !open) return;

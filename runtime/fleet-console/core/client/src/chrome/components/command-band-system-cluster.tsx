@@ -183,6 +183,8 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
     suspended: addOpen,
     activate: () => activateRef.current(),
     onPanelArrow: () => panelArrowRef.current(),
+    // 늦은 현재 행까지 이 스위처의 포커스 effect가 맡는다. 훅이 먼저 첫 행에 포커스를 주면 그 대기가 끊긴다.
+    manageInitialFocus: false,
   });
   const focusOnOpenRef = side.focusOnOpenRef;
   /**
@@ -446,6 +448,10 @@ export function HostSwitcher({ picker, menuItem = false }: { readonly picker?: H
   const openByHand = () => {
     // 서브메뉴는 누르면 열리기만 한다 — 겨눠서 이미 열린 판을 누름이 도로 접지 않고, 그 안으로 들어간다.
     if (pickerHome !== null) { side.clearHoverTimers(); openHomePicker(pickerHome); return; }
+    if (submenu && open) {
+      const items = menuItems();
+      (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+    }
     if (side.openByHand()) return;
     focusOnOpenRef.current = true;
     setOpen((previous) => !previous);
