@@ -2,10 +2,20 @@
 /**
  * Run one command with an owned HOME and Fleet/Claude state, never the real user's (references/setup.md#keep-the-real-home-out).
  *
- *   node isolated-env.mjs --run-dir <abs-owned-dir> [--bin <name|abs-path>]... [--set NAME=VALUE]... [--check] -- <command> [args...]
+ *   node isolated-env.mjs --run-dir <abs-owned-dir> [--canonical-console-dir <checkout>/.fleet/console] [--bin <name|abs-path>]... [--set NAME=VALUE]... [--check] -- <command> [args...]
+ *
+ * --canonical-console-dir sets only FLEET_CONSOLE_DATA_DIR, to that checkout's local slot
+ * (<checkout>/.fleet/console). listLocalConsoles reads that lock and no other isolated data dir
+ * (core/host/bootstrap/local-consoles.ts, canonicalLockFiles). Omit it for the default
+ * <run-dir>/console, which the scan does not list. --set still cannot override the variable.
+ * The main checkout is refused, by the same mainCheckoutOf test as desktop-preflight.mjs.
+ * cli.mjs serve writes <run-dir>/canonical-console.pid. cli.mjs stop is allowed only when the
+ * lock pid equals that record; no record, or a different pid, is refused. Any other command
+ * against a live or dead lock is allowed only for that same pid. Do not delete the lock by hand.
  *
  * The child gets a fresh environment, not the caller's: HOME, TMPDIR, FLEET_DATA_DIR, FLEET_CONSOLE_DATA_DIR,
- * FLEET_DESKTOP_DATA_DIR and CLAUDE_CONFIG_DIR all point under <run-dir> (home, tmp, root, console, desktop, claude),
+ * FLEET_DESKTOP_DATA_DIR and CLAUDE_CONFIG_DIR point under <run-dir> (home, tmp, root, console, desktop, claude),
+ * except FLEET_CONSOLE_DATA_DIR when --canonical-console-dir is set,
  * plus USER/LOGNAME, LANG, SHELL, TERM and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1. PATH is a fresh per-call
  * <run-dir>/pathbin/call-*, which links only this Node and this call's --bin (resolved on the caller's PATH), then the
  * system directories; another call on the same run dir never changes it. A Node version
@@ -34,6 +44,7 @@ import { createHash } from 'node:crypto';
 import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { constants, userInfo } from 'node:os';
 import path from 'node:path';
+import { mainCheckoutOf } from './stop-owned-desktop.mjs';
 
 // State and credential stores only: executables legitimately live under ~/.local or a version manager's directory.
 const PROTECTED_HOME_ENTRIES = [
@@ -97,6 +108,15 @@ function callerHash() {
 }
 
 /** Lock state from its port and pid only (references/setup.md#read-the-lock-without-the-token) and a signal-0 probe. */
+function readRecordedSlotPid(runDir) {
+  try {
+    const pid = Number(readFileSync(path.join(runDir, 'canonical-console.pid'), 'utf8').trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
 function lockState(lockPath) {
   if (!existsSync(lockPath)) return { state: 'none' };
   let pid;
@@ -111,7 +131,7 @@ function lockState(lockPath) {
     process.kill(pid, 0);
     return { state: 'live', pid };
   } catch (error) {
-    return error.code === 'ESRCH' ? { state: 'dead' } : { state: 'live', pid };
+    return error.code === 'ESRCH' ? { state: 'dead', pid } : { state: 'live', pid };
   }
 }
 
@@ -119,13 +139,14 @@ function parseArgs(argv) {
   const separator = argv.indexOf('--');
   const flags = separator === -1 ? argv : argv.slice(0, separator);
   const command = separator === -1 ? [] : argv.slice(separator + 1);
-  const options = { bins: [], sets: [], check: false };
+  const options = { bins: [], sets: [], check: false, canonicalConsoleDir: null };
   for (let i = 0; i < flags.length; i += 1) {
     const flag = flags[i];
     if (flag === '--check') { options.check = true; continue; }
     const value = flags[i + 1];
     if (value === undefined) fail(`${flag} needs a value`);
     if (flag === '--run-dir') options.runDir = value;
+    else if (flag === '--canonical-console-dir') options.canonicalConsoleDir = value;
     else if (flag === '--bin') options.bins.push(value);
     else if (flag === '--set') options.sets.push(value);
     else fail(`unknown flag ${JSON.stringify(flag)}`);
@@ -164,6 +185,37 @@ function main() {
   const runDir = checkPath('--run-dir', options.runDir);
   if (inside(realHome, runDir)) fail('--run-dir must not be the real home or one of its ancestors');
   const owned = Object.fromEntries(OWNED_DIRS.map((name) => [name, path.join(runDir, name)]));
+  let consoleDataDir = owned.console;
+  if (options.canonicalConsoleDir) {
+    consoleDataDir = checkPath('--canonical-console-dir', options.canonicalConsoleDir);
+    const fleetDir = path.dirname(consoleDataDir);
+    const checkout = path.dirname(fleetDir);
+    if (path.basename(consoleDataDir) !== 'console' || path.basename(fleetDir) !== '.fleet'
+        || !existsSync(path.join(checkout, 'runtime', 'fleet-console', 'package.json'))) {
+      fail('--canonical-console-dir must be <checkout>/.fleet/console, the local slot listLocalConsoles reads for that checkout (references/remote-access-testing.md#desktop-shell)');
+    }
+    let checkoutReal;
+    try { checkoutReal = realpathSync(checkout); } catch { fail('--canonical-console-dir checkout is not readable'); }
+    let mainCheckout = null;
+    try { mainCheckout = mainCheckoutOf(checkoutReal); } catch { fail('--canonical-console-dir: cannot resolve the main checkout; refusing'); }
+    if (mainCheckout === checkoutReal) fail('--canonical-console-dir is the main checkout; that slot belongs to the user (references/remote-access-testing.md#desktop-shell)');
+    const slot = lockState(path.join(consoleDataDir, 'console.lock'));
+    const cliArg = (name) => command.some((arg, index) => path.basename(arg) === 'cli.mjs' && command[index + 1] === name);
+    const startingServe = cliArg('serve');
+    const stopping = cliArg('stop');
+    const recorded = readRecordedSlotPid(runDir);
+    if (slot.state === 'unreadable') fail('--canonical-console-dir lock is unreadable; leave it');
+    if (startingServe) {
+      if (slot.state === 'live') fail(`--canonical-console-dir has a live Console (pid ${slot.pid}); do not stop a Console this run did not start`);
+      if (slot.state === 'dead') fail('--canonical-console-dir has a dead lock. Run cli.mjs stop with the same --run-dir and --canonical-console-dir; do not delete the lock by hand (references/setup.md#restart-after-a-forced-kill)');
+    } else if (stopping) {
+      if (recorded === null || slot.pid !== recorded) fail('--canonical-console-dir stop refused: this run-dir has no matching pid record. Do not stop a Console this run did not start');
+    } else if ((slot.state === 'live' || slot.state === 'dead') && (recorded === null || slot.pid !== recorded)) {
+      fail('--canonical-console-dir is not the Console this run-dir started; refusing');
+    } else if (slot.state === 'dead') {
+      fail('--canonical-console-dir has a dead lock. Run cli.mjs stop with the same --run-dir and --canonical-console-dir; do not delete the lock by hand (references/setup.md#restart-after-a-forced-kill)');
+    }
+  }
   // tsx listens on $TMPDIR/tsx-<uid>/<pid>.pipe; past sun_path the kernel truncates silently and concurrent tsx collide.
   const sunPath = { darwin: 103, linux: 107 }[process.platform];
   const socket = path.join(owned.tmp, `tsx-${userInfo().uid}`, '9999999.pipe');
@@ -191,7 +243,7 @@ function main() {
     TERM: process.env.TERM || 'xterm-256color',
     PATH: [path.join(owned.pathbin, 'call-<per-call>'), ...SYSTEM_PATH].join(path.delimiter),
     FLEET_DATA_DIR: owned.root,
-    FLEET_CONSOLE_DATA_DIR: owned.console,
+    FLEET_CONSOLE_DATA_DIR: consoleDataDir,
     FLEET_DESKTOP_DATA_DIR: owned.desktop,
     CLAUDE_CONFIG_DIR: owned.claude,
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
@@ -237,6 +289,7 @@ function main() {
     shell: env.SHELL,
     set: setNames,
     command: command.length ? path.basename(command[0]) : null,
+    consoleDataDir,
   };
   if (options.check) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -244,6 +297,7 @@ function main() {
   }
 
   for (const dir of Object.values(owned)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (consoleDataDir !== owned.console) mkdirSync(consoleDataDir, { recursive: true, mode: 0o700 });
   // Claim exclusively, so of two sessions entering an ownerless run dir together exactly one owns it; the loser
   // re-judges and is refused.
   if (verdict === 'claim') {
@@ -262,6 +316,9 @@ function main() {
   const before = new Set(readdirSync(owned.home));
   process.stderr.write(`isolated-env: HOME=${owned.home} bins=[${Object.keys(links).join(',')}] set=[${setNames.join(',')}] running ${plan.command}\n`);
   const child = spawn(command[0], command.slice(1), { env, stdio: 'inherit' });
+  if (options.canonicalConsoleDir && command.some((arg, index) => path.basename(arg) === 'cli.mjs' && command[index + 1] === 'serve') && child.pid) {
+    writeFileSync(path.join(runDir, 'canonical-console.pid'), `${child.pid}\n`, { mode: 0o600 });
+  }
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
   const dropCallBin = () => rmSync(callBin, { recursive: true, force: true });
   child.on('error', (error) => { dropCallBin(); fail(`cannot start ${plan.command}: ${error.message}`); });
