@@ -62,7 +62,7 @@ export interface GroupConversationProps {
   /** 이 줄을 보이는 자리로 데려와 잠깐 표시한다. 같은 줄을 다시 부르면 nonce 가 오른다. */
   readonly reveal?: { readonly entryId: string; readonly nonce: number } | null;
   /**
-   * 턴 접기(「턴 접기」 스위치) — 한 턴에서 이어지는 짧은 진행 말을 「작업 메모」 칩으로 접고, 긴 말풍선에 높이 상한을 두고,
+   * 턴 접기(「턴 접기」 스위치) — 한 턴에서 이어지는 짧은 진행 말을 진행 칩 하나로 접고, 긴 말풍선에 높이 상한을 두고,
    * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
    */
   readonly fold?: boolean;
@@ -319,7 +319,7 @@ function bubbleRunTails(entries: readonly (AgentConversationEntry | null)[], bre
 type MessageEntry = Extract<GroupTimelineEntry, { kind: "message" }>;
 type DelegationEntry = Extract<GroupTimelineEntry, { kind: "delegation" }>;
 /**
- * 화면의 한 줄 — 원장 줄 하나, 또는 턴 접기의 「작업 메모」 칩 하나. `report` 는 그 말풍선 머리로 옮긴 구성원 보고 줄이다.
+ * 화면의 한 줄 — 원장 줄 하나, 또는 턴 접기의 진행 칩 하나. `report` 는 그 말풍선 머리로 옮긴 구성원 보고 줄이다.
  * 칩은 줄이 아니므로 앞뒤 말풍선의 이어짐(머리 생략)을 끊는다.
  */
 type TimelineItem =
@@ -332,11 +332,13 @@ const NOTE_MAX_CHARS = 200;
 /**
  * 턴 접기 — 1:1 채팅·모바일 원장의 「최종 답 하나 + 작업 접힘」 문법을 그룹 대화에 옮긴다.
  *
- * - 한 발화자의 한 턴(`turn`)에서 뒤에 말이 더 이어지는 200자 미만의 말은 그 턴의 첫 접힌 말 자리에 선 칩 하나로 모인다. 칩은
- *   제자리에서 개수와 최신 한 줄을 바꾼다. 턴이 아직 열려 있으면(원장이 연 턴이 이 턴이고 그 참여자가 살아 있다) 마지막 말도
+ * - 한 발화자의 한 턴(`turn`)에서 뒤에 말이 더 이어지는 200자 미만의 말은 칩 하나로 모인다. 칩은 그 턴의 가장 최근 접힌 말(흐르는
+ *   말이 있으면 그 말) 자리에 서서 진행을 따라 내려온다 — 오래 도는 턴에서도 지금 진행이 대화 바닥 근처에 보인다. 그 사이에 완성된
+ *   200자 이상의 말풍선은 제자리에 남아 칩 위로 쌓인다. 턴이 끝나면 칩은 마지막 접힌 말 자리, 곧 그 턴의 답 바로 위에 남는다
+ *   (「접힌 진행 → 최종 답」). 턴이 아직 열려 있으면(원장이 연 턴이 이 턴이고 그 참여자가 살아 있다) 마지막 말도
  *   아직 진행 말이다 — 턴이 끝나야 마지막 말이 그 턴의 답으로 말풍선이 된다. 열린 턴은 원장의 좌표로 판정하므로, 같은 발화자가
  *   새 턴을 열고 아직 말이 없는 동안에도 지난 턴의 답은 말풍선으로 남는다.
- * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 말은 길이와 무관하게 칩의 최신 한 줄로만 보이고 개수에 들지 않는다 —
+ * - 접을지는 말이 완성될 때 한 번 정한다. 흐르는 중인 말은 길이와 무관하게 칩의 최신 한 줄로만 보인다 —
  *   완성되어 200자 이상이면 그때 그 자리에 말풍선으로 선다. 흐르는 동안 칩과 말풍선을 오가지 않는다.
  * - 구성원이 지휘관에게 보낸 보고 줄은 같은 턴에 말풍선이 있으면 빠지고, 그 턴의 마지막 말풍선 머리에 꼬리표로 붙는다(누르면
  *   보고 전문). 그 턴이 아직 열려 있거나 흐르는 말이 있으면 말풍선이 정해지지 않았으므로 줄을 세우지 않는다 — 턴이 끝나도 말풍선이
@@ -386,13 +388,16 @@ function foldTimeline(entries: readonly AgentConversationEntry[], participants: 
     // 그 턴의 말풍선이 아직 정해지지 않았다 — 섰다가 꼬리표로 옮겨 가지 않도록 기다린다.
     if (!answer && pending) moved.add(entry.id);
   }
+  // 칩이 설 자리 — 턴마다 칩에 드는 말(접힌 말·흐르는 말) 가운데 원장에서 가장 뒤의 말이다.
+  const inChip = (entry: AgentConversationEntry): entry is MessageEntry =>
+    entry.kind === "message" && !!entry.turn && (folded.has(entry.id) || writing.get(entry.turn) === entry);
+  const chipAt = new Map<string, string>();
+  for (const entry of entries) if (inChip(entry)) chipAt.set(entry.turn!, entry.id);
   const items: TimelineItem[] = [];
-  const placed = new Set<string>();
   for (const entry of entries) {
     if (moved.has(entry.id)) continue;
-    if (entry.kind === "message" && entry.turn && (folded.has(entry.id) || writing.get(entry.turn) === entry)) {
-      if (placed.has(entry.turn)) continue;
-      placed.add(entry.turn);
+    if (inChip(entry) && entry.turn) {
+      if (chipAt.get(entry.turn) !== entry.id) continue;
       items.push({ kind: "notes", id: `notes:${entry.turn}`, speaker: entry.speaker, notes: turns.get(entry.turn)!.filter((note) => folded.has(note.id)), writing: writing.get(entry.turn) ?? null, anchor: entry });
       continue;
     }
@@ -403,8 +408,8 @@ function foldTimeline(entries: readonly AgentConversationEntry[], participants: 
 }
 
 /**
- * 「작업 메모」 칩 — 접힌 진행 말의 개수와 최신 한 줄. 누르면 그 자리에서 전부 펼친다. 흐르는 중인 말은 개수에 들지 않고 최신 한
- * 줄로만 보이며, 그동안 점이 숨 쉰다(접힌 메모가 아직 없으면 개수 자리에 「쓰는 중」).
+ * 진행 칩 — 발화자 이름과 최신 말의 마지막 줄. 누르면 그 자리에서 전부 펼친다. 흐르는 중이면 그 말이 최신이고 그동안 점이 숨
+ * 쉰다(접힌 말이 아직 없으면 이름 뒤에 「쓰는 중」). 개수는 화면 글자에 두지 않는다 — 접근성 이름과 툴팁만 진행 말 개수를 말한다.
  * 칩이 그 턴의 유일한 자취일 수 있으므로(아직 도는 턴) 펼친 칸에 그 발화자의 원장 링크를 둔다 — 머리의 원장 열기와 같은 길이다.
  */
 function TurnNotes({ item, participants, language, onOpenLedger }: {
@@ -420,8 +425,9 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
   const live = item.writing !== null;
   const speaker = item.speaker.kind === "commodore" ? { ...item.speaker, name: t("group.commodore") } : item.speaker;
   const ledger = onOpenLedger ? ledgerTarget(speaker, participants) : null;
-  const preview = latest ? excerpt(latest.text, 80) : "";
+  const preview = latest ? tailExcerpt(latest.text, 80) : "";
   const shown = item.writing ? [...item.notes, item.writing] : item.notes;
+  const count = shown.length;
   return (
     <div className="group-chat-notes" data-entry-id={item.id}>
       <button
@@ -429,10 +435,12 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
         className={`group-chat-notes-chip${live ? " is-live" : ""}`}
         aria-expanded={open}
         aria-controls={open ? detailId : undefined}
+        aria-label={t(open ? "group.notes.collapse" : "group.notes.expand", { name: speaker.name, count })}
+        title={t("group.notes.count", { count })}
         onClick={() => setOpen((current) => !current)}
       >
         <SpeakerMark speaker={speaker} size="sm" />
-        <span className="group-chat-notes-count"><SpeakerName speaker={speaker} /><span className="group-chat-line-sep" aria-hidden="true">·</span>{item.notes.length > 0 ? t("group.notes.count", { count: item.notes.length }) : t("group.streaming")}</span>
+        <span className="group-chat-notes-count"><SpeakerName speaker={speaker} />{item.notes.length > 0 ? null : <><span className="group-chat-line-sep" aria-hidden="true">·</span>{t("group.streaming")}</>}</span>
         {preview ? <span className="group-chat-notes-excerpt">{preview}</span> : null}
         <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
       </button>
@@ -500,10 +508,21 @@ function breakLabel(at: number, now: number, language: ConsoleLocale | undefined
   return t("group.time.dated", { date: DATE_FORMATS[language ?? "en"].format(new Date(at)), time });
 }
 
+/** 줄마다 마크다운 표식을 걷은 글자 줄 — 빈 줄은 뺀다. */
+const plainLines = (text: string): string[] =>
+  text.split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s?|#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/, "").replace(/\*\*|[*`]/g, "").trim()).filter((line) => line.length > 0);
+
 /** 본문 첫 줄 조각 — 접힌 줄에 선다. 마크다운 표식은 걷는다. */
 function excerpt(text: string, max = 120): string {
-  const first = text.split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s?|#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/, "").replace(/\*\*|[*`]/g, "").trim()).find((line) => line.length > 0) ?? "";
+  const first = plainLines(text)[0] ?? "";
   return first.length > max ? `${first.slice(0, max)}…` : first;
+}
+
+/** 본문 마지막 줄의 끝 조각 — 진행 칩에 선다. 흐르는 말이면 지금 쓰는 줄이고, 길면 앞을 줄여 끝을 보인다. */
+function tailExcerpt(text: string, max: number): string {
+  const lines = plainLines(text);
+  const last = lines[lines.length - 1] ?? "";
+  return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
 const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {

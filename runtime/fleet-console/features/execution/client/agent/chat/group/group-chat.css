@@ -946,7 +946,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-chat-notes-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .group-chat-notes-chip .group-chat-line-chev { margin-left: 0; padding-left: 0; }
 .group-chat-notes-chip[aria-expanded="true"] .group-chat-line-chev { transform: rotate(180deg); }
-/* 흐르는 중인 메모가 있으면 개수 앞에 작업 중 점이 숨 쉰다 — 신호 토큰(positive)은 상태를 말하는 이 자리에만 쓴다. */
+/* 흐르는 중인 말이 있으면 이름 앞에 작업 중 점이 숨 쉰다 — 신호 토큰(positive)은 상태를 말하는 이 자리에만 쓴다. */
 .group-chat-notes-chip.is-live .group-chat-notes-count::before {
   content: "";
   flex: none;

@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /**
- * 그룹 대화의 「턴 접기」 스위치 — 켜면 한 발화자의 한 턴에서 이어지는 짧은 진행 말을 「작업 메모」 칩 하나로 접고, 긴 말풍선에
+ * 그룹 대화의 「턴 접기」 스위치 — 켜면 한 발화자의 한 턴에서 이어지는 짧은 진행 말을 진행 칩 하나로 접고, 긴 말풍선에
  * 높이 상한을 두고, 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 끄면 지금까지의 그룹 대화 그대로다.
  *
  * 서버 durable state가 아니라 localStorage인 이유는 `quick-launch-preferences.ts`·`launch-start-surface.ts`와 같다 — 이 값은
