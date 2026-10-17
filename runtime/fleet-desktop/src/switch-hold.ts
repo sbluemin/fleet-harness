@@ -74,8 +74,12 @@ export const SWITCH_READY_CAP_MS = 1_500;
 export const SWITCH_FADE_MS = 220;
 /** 경고 알약을 읽을 수 있을 만큼은 둔다 — 집이 금방 다 그려도 이보다 먼저 걷지 않는다. */
 export const SWITCH_WARN_MIN_MS = 1_400;
-/** 붙잡는 데 이보다 오래 걸리면 붙잡지 않고 항해한다. */
-const SWITCH_FREEZE_BUDGET_MS = 500;
+/**
+ * 붙잡는 데 이보다 오래 걸리면 붙잡지 않고 항해한다. 실측(1800×1200): 판 문서 적재는 시작 뒤 약 90ms, capturePage
+ * 5–18ms, JPEG 7–11ms에 판이 두 프레임 합성되는 시간을 더한 값의 두 배 남짓이다. 붙잡기가 *실패*하면 이 예산을
+ * 기다리지 않고 곧바로 항해한다 — 예산은 끝나지 않는 단계에만 쓰인다.
+ */
+const SWITCH_FREEZE_BUDGET_MS = 250;
 /** 무슨 일이 있어도 판이 이보다 오래 서 있지 않는다. */
 const SWITCH_HOLD_CEILING_MS = 15_000;
 /** 수백 밀리초 동안만 보이는 판이다 — 무손실보다 빨리 만드는 쪽을 고른다. */
@@ -97,12 +101,15 @@ interface Held {
   readonly shell: DesktopShellWindow;
   readonly layout: () => void;
   /** 판의 문서가 적재됐는가. 전환이 시작되자마자 미리 띄워 둔다 — 렌더러를 띄우는 시간을 붙잡는 시간에서 뺀다. */
-  readonly page: Promise<boolean>;
+  page: Promise<boolean>;
   frozen: Promise<boolean> | null;
   presented: boolean;
   revealing: boolean;
   disposed: boolean;
   frozenAt: number;
+  /** 판이 만들어진 시각과 붙잡기가 지금 머물러 있는 단계 — 예산을 넘겼을 때 어디서 막혔는지 남긴다. */
+  readonly raisedAt: number;
+  stage: string;
   /** 판에 들여보내는 갱신은 보낸 차례대로 적용돼야 한다. */
   chain: Promise<unknown>;
 }
@@ -163,8 +170,14 @@ const HOLD_RENDERER = String.raw`(() => {
   if (typeof update.frame !== "string") return true;
   const frame = document.getElementById("frame");
   if (!frame) return false;
-  frame.src = update.frame;
-  return frame.decode().then(() => true, () => false);
+  // decode()는 컴포지터 프레임에 묶여 있어 판이 가려지면 끝나지 않을 수 있다. 적재(load)만 기다리고, 칠할 때
+  // 동기로 풀게 해 첫 프레임에 빈 판이 서지 않게 한다.
+  frame.decoding = "sync";
+  return new Promise((resolve) => {
+    frame.onload = () => resolve(true);
+    frame.onerror = () => resolve(false);
+    frame.src = update.frame;
+  });
 })();`;
 
 /** 판이 한 번 합성된 뒤에 항해해야 커밋 순간의 빈 프레임이 판 아래로 숨는다. */
@@ -241,31 +254,58 @@ export function createSwitchHold(deps: SwitchHoldDeps): SwitchHold {
     }
     const layout = (): void => { try { view.setBounds(shell.stack.layoutConsole()); } catch { /* 창이 먼저 닫혔다. */ } };
     layout();
+    // Console 뒤에 미리 붙인다 — 창에 붙지 않은 뷰는 숨은 위젯이라 그 위의 이미지 적재·프레임 대기가 끝나지 않는다.
+    try {
+      shell.stack.parkHold(view);
+      shell.base.on("resize", layout);
+    } catch (error) {
+      log(`skipped reason=park_failed detail=${describe(error)}`);
+      try { view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
+      return null;
+    }
+    const raisedAt = now();
+    const held: Held = { view, shell, layout, page: Promise.resolve(false), frozen: null, presented: false, revealing: false, disposed: false, frozenAt: 0, raisedAt, stage: "page", chain: Promise.resolve() };
     const page = view.webContents.loadFile(deps.pagePath).then(() => true, (error: unknown) => {
-      log(`skipped reason=page_failed detail=${describe(error)}`);
+      // 판을 걷으면서 적재 중인 문서를 닫은 경우도 여기로 온다 — 그때는 실패가 아니다.
+      if (!held.disposed) log(`skipped reason=page_failed detail=${describe(error)}`);
       return false;
     });
-    return { view, shell, layout, page, frozen: null, presented: false, revealing: false, disposed: false, frozenAt: 0, chain: page };
+    held.page = page;
+    held.chain = page;
+    return held;
   }
 
   function freezeHeld(held: Held, attemptId: number): Promise<boolean> {
     if (held.frozen) return held.frozen;
     const started = now();
     held.frozen = (async (): Promise<boolean> => {
+      // 단계별 소요(ms). 미션 재측정은 이 한 줄로 어느 단계가 늦는지 가린다.
+      const spent: Record<string, number> = {};
+      let mark = now();
+      const step = (name: string, next: string): void => {
+        const at = now();
+        spent[name] = at - mark;
+        mark = at;
+        held.stage = next;
+      };
       try {
+        held.stage = "page";
         if (!(await held.page) || held.disposed) return false;
+        step("page", "capture");
         const image = await held.shell.consoleContents.capturePage();
         if (held.disposed) return false;
         if (image.isEmpty()) throw new Error("capture_empty");
-        const captured = now();
+        step("capture", "encode");
         const frame = `data:image/jpeg;base64,${image.toJPEG(FRAME_JPEG_QUALITY).toString("base64")}`;
-        const decoded = await push(held, { lang: deps.lang, scheme: deps.scheme(), band: deps.band(), frame });
+        step("encode", "frame");
+        const loaded = await push(held, { lang: deps.lang, scheme: deps.scheme(), band: deps.band(), frame });
         if (held.disposed) return false;
-        if (decoded !== true) throw new Error("frame_decode_failed");
+        if (loaded !== true) throw new Error("frame_load_failed");
+        step("frame", "present");
         held.shell.stack.presentHold(held.view);
         held.presented = true;
-        held.shell.base.on("resize", held.layout);
-        // 가려진 창에서는 프레임이 돌지 않는다 — 기다림에 끝을 둔다.
+        step("present", "frames");
+        // 판이 Console 앞으로 나온 뒤 두 프레임 합성되기를 기다린다. 가려진 창에서는 프레임이 돌지 않으므로 끝을 둔다.
         let settle: ReturnType<typeof setTimeout> | null = null;
         await Promise.race([
           held.view.webContents.executeJavaScript(TWO_FRAMES).catch(() => false),
@@ -273,13 +313,15 @@ export function createSwitchHold(deps: SwitchHoldDeps): SwitchHold {
         ]);
         cancel(settle);
         if (held.disposed) return false;
+        step("frames", "frozen");
         held.frozenAt = now();
         ceilingTimer = cancel(ceilingTimer);
         ceilingTimer = setTimer(() => reveal("ceiling"), SWITCH_HOLD_CEILING_MS);
-        log(`frozen attempt=${attemptId} captureMs=${captured - started} totalMs=${held.frozenAt - started}`);
+        log(`stage attempt=${attemptId} pageReady=${started - held.raisedAt + (spent.page ?? 0)} page=${spent.page} capture=${spent.capture} encode=${spent.encode} frame=${spent.frame} present=${spent.present} frames=${spent.frames} total=${held.frozenAt - started}`);
+        log(`frozen attempt=${attemptId} totalMs=${held.frozenAt - started}`);
         return true;
       } catch (error) {
-        log(`skipped reason=freeze_failed detail=${describe(error)}`);
+        log(`skipped reason=freeze_failed attempt=${attemptId} stage=${held.stage} detail=${describe(error)}`);
         dispose(held, "freeze_failed");
         return false;
       }
@@ -372,7 +414,7 @@ export function createSwitchHold(deps: SwitchHoldDeps): SwitchHold {
       ]);
       cancel(budget);
       if (frozen === null) {
-        log(`skipped reason=freeze_timeout attempt=${pending.id}`);
+        log(`skipped reason=freeze_timeout attempt=${pending.id} stage=${held.stage} elapsedMs=${SWITCH_FREEZE_BUDGET_MS} sinceRaiseMs=${now() - held.raisedAt}`);
         dispose(held, "freeze_timeout");
       }
     },

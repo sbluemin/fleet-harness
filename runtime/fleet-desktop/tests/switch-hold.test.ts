@@ -15,7 +15,7 @@ const FINGERPRINT = "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476C
  * 그래서 이 파일은 판이 서는 길 하나와, 판이 반드시 걷히는 길들을 다리(remote-bridge)와 판(switch-hold)을
  * 실제로 이어 붙인 채 확인한다.
  */
-function createHarness(options: { readonly load?: (url: string) => Promise<void>; readonly label?: string } = {}) {
+function createHarness(options: { readonly load?: (url: string) => Promise<void>; readonly label?: string; readonly blankCapture?: boolean } = {}) {
   const scripts: string[] = [];
   const presented: unknown[] = [];
   const removed: unknown[] = [];
@@ -25,11 +25,12 @@ function createHarness(options: { readonly load?: (url: string) => Promise<void>
     base: { isVisible: () => true, isMinimized: () => false, on: () => undefined, off: () => undefined },
     stack: {
       layoutConsole: () => ({ x: 0, y: 0, width: 1200, height: 800 }),
+      parkHold: () => undefined,
       presentHold: (view: unknown) => { presented.push(view); },
       removeHold: (view: unknown) => { removed.push(view); },
     },
     consoleContents: {
-      capturePage: async () => ({ isEmpty: () => false, toJPEG: () => Buffer.from("frame") }),
+      capturePage: async () => ({ isEmpty: () => options.blankCapture === true, toJPEG: () => Buffer.from("frame") }),
     },
   } as unknown as DesktopShellWindow;
   const hold: SwitchHold = createSwitchHold({
@@ -122,6 +123,15 @@ describe("switch hold", () => {
     await silent.bridge.open(REMOTE);
     await vi.advanceTimersByTimeAsync(SWITCH_READY_CAP_MS + SWITCH_FADE_MS + 100);
     expect(silent.removed).toHaveLength(1);
+
+    // 붙잡지 못했다 — 판 없이, 예산을 기다리지도 않고 곧바로 항해한다.
+    const blind = createHarness({ blankCapture: true });
+    let navigated = false;
+    void blind.bridge.open(REMOTE).then(() => { navigated = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(navigated).toBe(true);
+    expect(blind.presented).toHaveLength(0);
+    expect(blind.removed).toHaveLength(1);
 
     // 아래의 렌더러가 죽었다 — 기다리지 않는다.
     const gone = createHarness();
