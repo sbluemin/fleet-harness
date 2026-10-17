@@ -215,6 +215,8 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const working = snapshot.working;
   const empty = text.trim().length === 0;
   const uploading = attachments.some((attachment) => attachment.uploading);
+  // 문면이 비어도 첨부가 있으면 보낼 말이다. 다만 「모두」 방송은 첨부를 싣지 않고 사령관은 말을 기록으로 남기므로 둘에게는 문면이 있어야 한다.
+  const blank = empty && (attachments.length === 0 || target?.kind === "all" || target?.kind === "commodore");
   const stopMode = empty && attachments.length === 0 && working.length > 0 && seated === null;
 
   // 결과 안내는 다음 행동까지 남는다 — 새로 쓰기 시작하면 걷는다.
@@ -367,13 +369,14 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const submit = async () => {
     if (seated) { submitBoard(seated); return; }
     if (board?.actionsOnly) { setNotice({ tone: "info", text: t("group.board.pick") }); return; }
-    if (draft.read().busy || !actions || empty || uploading) return;
+    if (draft.read().busy || !actions || blank || uploading) return;
     const sentTo = target;
     const sentText = text;
     const sentRevision = draft.read().textRevision;
     const sentAttachments = draft.attachments.read().items;
     const sentKeys = sentAttachments.map((attachment) => attachment.key);
     const ids = draft.attachments.ids();
+    if (empty && ids.length === 0) return;
     if (ids.length > 0 && (sentTo?.kind === "all")) {
       setNotice({ tone: "warn", text: t("group.notice.attachOneTarget", { name: targetName(sentTo) }) });
       return;
@@ -648,7 +651,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
             className={seated ? "group-composer-send-action" : undefined}
             aria-label={seated ? local(seated.label) : t("group.composer.send")}
             title={seated ? local(seated.label) : t("group.composer.send")}
-            disabled={!actions || busy || uploading || (seated ? !!seated.unavailable : empty || !!board?.actionsOnly)}
+            disabled={!actions || busy || uploading || (seated ? !!seated.unavailable : blank || !!board?.actionsOnly)}
             onClick={() => { void submit(); }}
           />
         )}

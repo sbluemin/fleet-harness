@@ -158,7 +158,9 @@ export function NewSessionColumn({ state, target, tools }: {
   const text = prompt.trim();
   const tooLong = text.length > LAUNCH_PROMPT_MAX_CHARS;
   const uploading = attachmentSnap.uploading;
-  const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && text.length > 0 && !tooLong && !starting && !uploading;
+  // 문면이 비어도 첨부가 있으면 보낼 것이 있다 — 자식은 첨부 지시 줄만 받고, 말풍선에는 첨부만 선다.
+  const hasContent = text.length > 0 || attachmentSnap.items.length > 0;
+  const canStart = theater !== null && variantTarget !== null && launchChoice.model !== null && hasContent && !tooLong && !starting && !uploading;
 
   const pickTheater = (theaterId: string) => {
     setTheaterMenuOpen(null);
@@ -411,7 +413,7 @@ export function NewSessionColumn({ state, target, tools }: {
 
   // 보낼 곳으로 전달한다. 성공하면 화면을 닫는다(보던 대화로 돌아간다). 실패는 문장·보낼 곳·칩을 지킨 채 사유만 싣는다.
   const deliver = (target: MentionTarget) => {
-    if (sending || text.length === 0 || tooLong || uploading) return;
+    if (sending || !hasContent || tooLong || uploading) return;
     if (target.kind === "plugin") {
       const plugin = registry.providers.find((candidate) => candidate.id === target.row.pluginId);
       if (!plugin?.messageMentionTarget) return;
@@ -462,7 +464,7 @@ export function NewSessionColumn({ state, target, tools }: {
   };
 
   const canSubmit = mentionTarget
-    ? text.length > 0 && !tooLong && !uploading && !sending && !targetGone && !deckHasRows
+    ? hasContent && !tooLong && !uploading && !sending && !targetGone && !deckHasRows
     : canStart && !deckHasRows;
 
   const submit = () => {

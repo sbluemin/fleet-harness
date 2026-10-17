@@ -228,8 +228,10 @@ export function MobileNewSession() {
   const uploading = attachments.some((attachment) => attachment.uploading);
   const text = prompt.trim();
   const overLimit = text.length > LAUNCH_PROMPT_MAX_CHARS;
+  // 문면이 비어도 첨부가 있으면 보낼 것이 있다 — 데스크톱 새 세션과 같은 규칙이다.
+  const hasContent = text.length > 0 || attachments.length > 0;
   // 멘션 제출은 실행 좌표가 필요 없다 — 행선지가 그 자리를 대신한다.
-  const canSubmit = text.length > 0 && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !uploading
+  const canSubmit = hasContent && !overLimit && !submitting && !pluginAddressUnavailable && !deckHasRows && !uploading
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
 
   const submit = () => {

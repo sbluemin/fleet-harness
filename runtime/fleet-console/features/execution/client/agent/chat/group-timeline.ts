@@ -150,7 +150,8 @@ function queuedPrompts(operationId: string, journal: ConversationJournal): reado
   // 큐 순서가 보낸 순서다. 바닥으로 끌어올린 말끼리도 그 순서를 지키도록, 앞 대기 말보다 늦은 자리에만 둔다.
   let last = floor;
   for (const entry of journal.queue) {
-    if (!isPersonQueueEntry(entry)) continue;
+    // 문면 없이 첨부만 예약된 말은 대기 말풍선에 그릴 것이 없다(예약에는 첨부 좌표가 없다) — 처리가 시작되면 확정 말이 첨부와 함께 선다.
+    if (!isPersonQueueEntry(entry) || entry.text.trim().length === 0) continue;
     const seen = journal.queueSeen.get(entry.id) ?? null;
     const at = seen === null ? null : last !== null && seen <= last ? last + 0.001 : seen;
     if (at !== null) last = at;

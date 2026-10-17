@@ -904,8 +904,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
         // 첨부가 붙으면 자식에게 갈 프롬프트와 원장에 설 문면이 갈린다 — 후자는 사용자가 실제로
-        // 친 문장이며, 첨부는 좌표로만 따라간다.
-        ...(prompt ? { displayPrompt: prompt } : {}),
+        // 친 문장이며, 첨부는 좌표로만 따라간다. 문면 없이 첨부만 왔으면 표시 문면은 ""다 — 비워 두면
+        // 원장이 합성 프롬프트로 대체되어 호스트 절대 경로가 말풍선과 브라우저 DTO에 선다.
+        ...(prompt ? { displayPrompt: prompt } : attachmentIds.length > 0 ? { displayPrompt: "" } : {}),
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         ...(chatBorn ? { chatBorn: true as const } : {}),
         ...(geometry ? { geometry } : {}),
@@ -1078,7 +1079,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       chat.send(
         launchOptions.prompt,
         {
-          display: launchOptions.displayPrompt ?? launchOptions.prompt,
+          // 첨부가 실린 런치는 합성 프롬프트에 경로가 있다 — 표시 문면이 없으면 ""로 세워 경로가 원장에 서지 않게 한다.
+          display: launchOptions.displayPrompt ?? (launchOptions.attachmentIds?.length ? "" : launchOptions.prompt),
           ...(launchOptions.displayFormat ? { format: launchOptions.displayFormat } : {}),
           attachments: (launchOptions.attachmentIds ?? []).map((id) => ({ id })),
         },
@@ -1454,7 +1456,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   async function deliverMessage(sessionId: string, text: string, attachmentIds: readonly string[], reply: (status: number, value: unknown) => void, assertCurrent: () => void = () => {}, onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void, by?: ChatOrigin, presentation?: { readonly display?: string; readonly format?: "markdown" | "text" }): Promise<boolean> {
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
-    if (sanitized.trim().length === 0) {
+    // 문면이 비어도 첨부가 있으면 보낸다 — 자식은 첨부 지시 줄만 받고, 화면 문면(display)은 ""로 남아
+    // 말풍선에는 첨부만 선다. 둘 다 없을 때만 빈 메시지다.
+    if (sanitized.trim().length === 0 && attachmentIds.length === 0) {
       reply(400, { error: "message_empty" });
       return true;
     }

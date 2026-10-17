@@ -1265,7 +1265,7 @@ function PendingPrompts({ queue, language }: { readonly queue: readonly AgentCha
             <span>{t("terminal.chat.queuePending")}</span>
           </div>
           <div className="agent-chat-dispatch-bubble">
-            <span className="agent-chat-dispatch-text">{entry.text}</span>
+            <span className="agent-chat-dispatch-text">{entry.text.trim().length > 0 ? entry.text : t("terminal.chat.queueAttachments", { count: String(entry.attachments ?? 0) })}</span>
           </div>
         </div>
       ))}
@@ -1989,7 +1989,7 @@ function InjectLine({
       {item.attachments?.length ? <ChatDispatchAttachments attachments={item.attachments} language={language} /> : null}
       {item.format === "markdown"
         ? <StreamedMarkdown text={item.text ?? ""} streaming={false} className="agent-chat-turn-inject-body agent-chat-dispatch-md" language={language} />
-        : <div className="agent-chat-turn-inject-body"><ChatReferenceText text={item.text ?? ""} references={item.references} /></div>}
+        : item.text ? <div className="agent-chat-turn-inject-body"><ChatReferenceText text={item.text} references={item.references} /></div> : null}
     </div>
   );
 }

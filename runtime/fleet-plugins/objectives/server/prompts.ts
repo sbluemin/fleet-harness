@@ -82,11 +82,15 @@ export function steerTurn(objective: Objective, language: PromptLanguage, contex
  * 사람이 구성원에게 직접 한 말 — 구성원에게는 말 그대로 가고, 지휘관에게는 누구에게 말했는지 한 줄과 그 말의 인용이 간다.
  * 무엇을 할지는 지휘관이 정한다.
  */
-export function memberMessageTurn(objective: Objective, role: string, text: string, language: PromptLanguage, by: ObjectiveActor = "human"): string {
+export function memberMessageTurn(objective: Objective, role: string, text: string, language: PromptLanguage, by: ObjectiveActor = "human", attachments = 0): string {
   const word = language === "ko"
     ? `${actorName(by, language)}이 목표 \`${objective.id}\` 의 구성원 「${role}」 에게 직접 말했습니다.`
     : `${actorName(by, language)} spoke directly to member "${role}" of objective \`${objective.id}\`.`;
-  return `${word}${quoted(text)}`;
+  // 문면 없이 첨부만 보낸 말은 인용이 통째로 빠진다 — 무엇을 보냈는지는 한 구절로 남긴다(첨부 경로는 구성원만 받는다).
+  const only = !text.trim() && attachments > 0
+    ? language === "ko" ? ` 문면 없이 이미지 ${attachments}장만 보냈습니다.` : ` They sent only ${attachments} image${attachments === 1 ? "" : "s"}, with no message.`
+    : "";
+  return `${word}${only}${quoted(text)}`;
 }
 
 /** 실패 원문은 자르거나 인용 접두사를 붙이지 않는다 — 경계 표지만 본문 밖에 둔다. */
