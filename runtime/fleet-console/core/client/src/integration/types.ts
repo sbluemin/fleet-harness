@@ -381,6 +381,8 @@ export interface ConsoleState {
   readonly pendingSideBarAddTheater: boolean;
   /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
   readonly newSession: NewSessionTarget | null;
+  /** 이미 열린 새 세션 화면에 「컴포저로 돌아오라」는 요청 번호. 단축키를 다시 누르면 오른다 — 화면이 이 값이 바뀔 때 포커스한다. */
+  readonly newSessionFocusRequest: number;
   /** 새 세션 화면이 소비하는 거절. Quick Launch 시트·고정 바의 초안과는 다른 칸이다. */
   readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;

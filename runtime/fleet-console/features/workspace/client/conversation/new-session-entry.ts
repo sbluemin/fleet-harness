@@ -1,4 +1,4 @@
-import { getState, openNewSession } from "../../../../core/client/src/integration/store.js";
+import { getState, openNewSession, requestNewSessionFocus } from "../../../../core/client/src/integration/store.js";
 import { getViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { readQuickLaunchSelection } from "../../../execution/client/quick-launch-preferences.js";
 
@@ -16,7 +16,14 @@ export function resolveNewSessionTheaterId(): string | null {
   return ids[0] ?? null;
 }
 
-/** 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다. */
+/**
+ * 사이드바 맨 위 「+」·팔레트 「New Operation」·새 세션 단축키가 함께 쓰는 입구. 여는 것만으로는 아무것도 만들지 않는다.
+ * 이미 열려 있으면 고른 Theater 를 그대로 두고 컴포저로 돌아간다 — 쓰던 문장과 고른 자리를 단축키가 갈아치우지 않는다.
+ */
 export function openDefaultNewSession(): void {
+  if (getState().newSession !== null) {
+    requestNewSessionFocus();
+    return;
+  }
   openNewSession({ theaterId: resolveNewSessionTheaterId() });
 }

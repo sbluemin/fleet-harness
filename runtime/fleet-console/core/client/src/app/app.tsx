@@ -46,7 +46,7 @@ import { TheaterSystemPromptSheet, subscribeTheaterSystemPromptForgotten } from 
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
-import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleQuickLaunch, openQuickLaunchForPluginTarget } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, openQuickLaunchForPluginTarget } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
@@ -453,7 +453,6 @@ function ConnectedApp() {
       openOperationSearch,
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,
-      toggleQuickLaunch,
       // 새 세션 화면은 데스크톱 대화 배치의 본문이다 — 모바일 셸에는 그릴 자리가 없으므로 키를 두고 간다.
       openNewSession: () => {
         if (getViewModeSnapshot().effective === "mobile") return false;

@@ -94,7 +94,8 @@ export function NewSessionColumn({ state, target, tools }: {
   }, []);
 
   // Theater 가 바뀌면 입력으로 돌아간다 — 다른 Theater 로 옮겨도 쓰던 문장은 그대로다.
-  useEffect(() => { inputRef.current?.focus(); }, [theater?.id]);
+  // 이미 열린 화면에서 새 세션 단축키를 다시 누르면(newSessionFocusRequest) 컴포저로 돌아온다.
+  useEffect(() => { inputRef.current?.focus(); }, [theater?.id, state.newSessionFocusRequest]);
 
   // 거절은 이 화면의 컴포저로 돌아온다. 시트는 열리지 않고, 고정 바는 다른 슬롯을 본다.
   useEffect(() => {

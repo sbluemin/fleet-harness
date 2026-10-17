@@ -133,6 +133,7 @@ let state: ConsoleState = {
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: false,
   newSession: null,
+  newSessionFocusRequest: 0,
   newSessionRejection: null,
   keyboardShortcutsOpen: false,
   operationNotifications: {},
@@ -793,6 +794,12 @@ export function requestOperationKeyboardFocus(operationId: string): void {
 export function openNewSession(target: NewSessionTarget): void {
   if (state.newSession?.theaterId === target.theaterId) return;
   setState({ newSession: target });
+}
+
+/** 열린 새 세션 화면의 컴포저로 포커스를 돌려 달라는 요청. 화면이 닫혀 있으면 아무 일도 없다. */
+export function requestNewSessionFocus(): void {
+  if (state.newSession === null) return;
+  setState({ newSessionFocusRequest: state.newSessionFocusRequest + 1 });
 }
 
 export function closeNewSession(): void {
