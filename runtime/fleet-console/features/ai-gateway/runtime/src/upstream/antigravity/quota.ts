@@ -49,14 +49,13 @@ const SESSION_MS = 5 * HOUR_MS;
  * Remaining") and `window` ("5h") are presentation, and a build that relabels
  * them must not silently move a reading onto the wrong pool.
  *
- * The two pools never share headroom — the response's own description says
- * "Within each group, models share a weekly limit and a 5-hour limit" — so this
- * table is also the reason `reported: false` exists. Fleet exposes Gemini models
- * only, and a pool none of them can spend is not this provider's headroom: a
- * host reading an exhausted `3p` window would route away from an Antigravity
- * allowance that is in fact untouched. Exposing a Claude or GPT model here is
- * what flips that flag, and the entries stay listed so that stays a one-word
- * change rather than a re-derivation.
+ * Gemini and third-party pools never share headroom; Argon has its own weekly
+ * pool too. This table is also the reason `reported: false` exists. Fleet exposes
+ * Gemini models only, and a pool none of them can spend is not this provider's
+ * headroom: a host reading an exhausted `3p` window would route away from an
+ * Antigravity allowance that is in fact untouched. Exposing a Claude or GPT model
+ * here is what flips that flag, and the entries stay listed so that stays a
+ * one-word change rather than a re-derivation.
  */
 const BUCKETS: Readonly<Record<string, {
   readonly id: WindowId;
@@ -66,11 +65,12 @@ const BUCKETS: Readonly<Record<string, {
 }>> = Object.freeze({
   "gemini-5h": { id: "session", label: "Gemini", durationMs: SESSION_MS, reported: true },
   "gemini-weekly": { id: "weekly", label: "Gemini", durationMs: WEEK_MS, reported: true },
+  "gemini-argon-wtu-weekly": { id: "weekly", label: "Gemini 4 Argon", durationMs: WEEK_MS, reported: true },
   "3p-5h": { id: "session", label: "Claude & GPT", durationMs: SESSION_MS, reported: false },
   "3p-weekly": { id: "weekly", label: "Claude & GPT", durationMs: WEEK_MS, reported: false },
 });
 
-/** Order the panel reads: both cadences of the spent pool, shortest first. */
+/** Order the panel reads: within each spent pool, shorter cadences first. */
 const BUCKET_ORDER: readonly string[] = Object.freeze(
   Object.keys(BUCKETS).filter((bucketId) => BUCKETS[bucketId]?.reported === true),
 );

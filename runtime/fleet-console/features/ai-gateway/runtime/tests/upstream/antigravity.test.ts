@@ -111,7 +111,7 @@ describe("antigravity quota", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("keeps Windows quota collection working when one installation hint exists", async () => {
+  it("collects separate Gemini pools when a Windows installation hint exists", async () => {
     const home = "C:\\Users\\tester";
     const cliDirectory = path.win32.join(home, ".gemini", "antigravity-cli");
     const execFile = vi.fn<CredentialResolverDeps["execFile"]>().mockResolvedValue(
@@ -119,26 +119,60 @@ describe("antigravity quota", () => {
     );
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (url) => new Response(JSON.stringify(
       url === ANTIGRAVITY_QUOTA_SUMMARY_URLS[0]
-        ? { groups: [{ buckets: [{ bucketId: "gemini-5h", remainingFraction: 0.75 }] }] }
+        ? { groups: [
+          { displayName: "Gemini 4 Argon", buckets: [{
+            bucketId: "gemini-argon-wtu-weekly",
+            remainingFraction: 0.98970413,
+            resetTime: "2026-10-24T22:20:43Z",
+          }] },
+          { displayName: "Claude and GPT models", buckets: [
+            { bucketId: "3p-5h", remainingFraction: 0 },
+            { bucketId: "3p-weekly", remainingFraction: 0 },
+          ] },
+          { displayName: "Gemini Models", buckets: [
+            { bucketId: "gemini-weekly", remainingFraction: 0.5 },
+            { bucketId: "gemini-5h", remainingFraction: 0.75 },
+          ] },
+        ] }
         : {},
     )));
-    const result = await fetchAntigravityUsage({
+    const deps = {
       credentials: credentialDeps({ platform: "win32", homedir: () => home, execFile }),
-      stat: async (filePath) => {
+      stat: async (filePath: string) => {
         if (filePath === cliDirectory) return {};
         throw Object.assign(new Error("missing"), { code: "ENOENT" });
       },
       fetch: fetchImpl,
-    });
+    };
+    const result = await fetchAntigravityUsage(deps);
     expect(result).toMatchObject({
       status: "ok",
       method: "keychain",
-      windows: [{ id: "session", label: "Gemini", usedPercent: 25 }],
+      windows: [
+        { id: "session", label: "Gemini", usedPercent: 25 },
+        { id: "weekly", label: "Gemini", usedPercent: 50 },
+        {
+          id: "weekly",
+          label: "Gemini 4 Argon",
+          usedPercent: 1,
+          resetsAt: Date.parse("2026-10-24T22:20:43Z"),
+          period: { durationMs: 604_800_000, durationBasis: "catalog" },
+        },
+      ],
     });
     expect(execFile).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledWith(ANTIGRAVITY_QUOTA_SUMMARY_URLS[0], expect.objectContaining({
       headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS}` }),
     }));
+
+    // A host without the Argon pool still reports its available Gemini window.
+    fetchImpl.mockResolvedValue(new Response(JSON.stringify({
+      groups: [{ buckets: [{ bucketId: "gemini-5h", remainingFraction: 0.75 }] }],
+    })));
+    expect(await fetchAntigravityUsage(deps)).toMatchObject({
+      status: "ok",
+      windows: [{ id: "session", label: "Gemini", usedPercent: 25 }],
+    });
   });
 });
 
