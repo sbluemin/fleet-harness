@@ -1695,7 +1695,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       store.setStopped(objectiveId, false);
       touchLive(target);
       if (!member) return { objective: objective(objectiveId), notified: null };
-      const notice = memberMessageTurn(current, member.role, text, languageOf(options), options?.actor);
+      const notice = memberMessageTurn(current, member.role, text, languageOf(options), options?.actor, attached.attachmentIds?.length ?? 0);
       const notified = await accessOperation(current.id).then(() => send(current.id, notice, notice, false, humanInput ? { ...humanInput, copy: true } : undefined), () => false);
       return { objective: objective(objectiveId), notified };
     }),

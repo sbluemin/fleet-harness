@@ -404,7 +404,14 @@ export function AgentChatComposer({
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
   const send = React.useCallback((override?: string) => {
     const text = (override ?? draft).trim();
-    if (text.length === 0 || sending) return;
+    if (sending) return;
+    // 문면이 비어도 첨부가 있으면 나간다 — 자식은 첨부 지시 줄만 받고, 말풍선은 첨부만 선다.
+    // 업로드가 끝나지 않은 첨부는 아직 보낼 것이 아니므로 둘 다 없을 때와 같이 멈춘다.
+    if (text.length === 0) {
+      if (attachments.length === 0 || attachments.some((attachment) => attachment.uploading)) return;
+      void draftState.send("");
+      return;
+    }
     // Console이 소유한 축은 여기서 갈라진다. 판정을 보내기 직전에 두는 이유는 `readConsoleCommand`에
     // 적혀 있다 — 덱으로 고르든 손으로 치든 같은 문면은 같은 곳으로 가야 한다.
     const routed = readConsoleCommand(text, catalog);
@@ -424,7 +431,7 @@ export function AgentChatComposer({
     // 초안 저장소가 중복 발사·첨부 준비·성공/실패를 판정한다. 레이아웃 전환으로 이 입력창이
     // 내려가도 요청은 한 번만 끝나고, 돌아온 입력창이 같은 결말을 구독한다.
     void draftState.send(text);
-  }, [draft, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
+  }, [draft, attachments, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -489,10 +496,10 @@ export function AgentChatComposer({
     }
   }, [onCancelQueued]);
 
-  // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과
-  // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
+  // 발사 조건은 전송 경로와 같아야 한다 — 서버는 문면이나 첨부 중 하나라도 있으면 받으므로 버튼도
+  // 같은 규칙으로 켠다. 둘 다 없으면(또는 첨부가 아직 올라가는 중이면) 눌러도 나갈 것이 없다.
   const uploading = attachments.some((attachment) => attachment.uploading);
-  const canSend = draft.trim().length > 0 && !sending && !uploading;
+  const canSend = (draft.trim().length > 0 || attachments.length > 0) && !sending && !uploading;
   // 안내는 고정 문구다 — 세션 제목을 넣으면 긴 제목이 두 줄로 접혀 한 줄 상자에서 잘린다.
   // 실제 제목은 캡션이 이미 온전히 보여 준다.
   const placeholder = t("terminal.chat.composerPlaceholder");
@@ -625,7 +632,7 @@ export function AgentChatComposer({
                         <OriginMark by={entry.by} language={language} className="agent-chat-tally-clause agent-chat-origin-source" />
                         {originExcerpt(entry.text) ? <><span className="agent-chat-tally-sep" aria-hidden="true">·</span><span className="agent-chat-composer-queue-excerpt">{originExcerpt(entry.text)}</span></> : null}
                       </span>
-                    : <span className="agent-chat-composer-queue-text">{entry.text}</span>}
+                    : <span className="agent-chat-composer-queue-text">{entry.text.trim().length > 0 || !entry.attachments ? entry.text : t("terminal.chat.queueAttachments", { count: String(entry.attachments) })}</span>}
                   <button
                     type="button"
                     className="agent-chat-composer-queue-cancel"

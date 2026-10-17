@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, promises as fs, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 
 import { readOperationLaunch, withSubagentSpawn, type OperationCreateInput, type OperationNode, type OperationPatchInput } from "@fleet-console/sdk/operations";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
@@ -16,6 +17,7 @@ import { registerAgentRoutes } from "../../features/execution/host/agent/routes.
 import { attachAgentChatSocket } from "../../features/execution/host/agent/chat-ws.js";
 import { createConsoleControl } from "../../features/console-use/host/console-control.js";
 import { resolveAgentCliBinary } from "../../features/execution/host/agent/agent-cli-paths.js";
+import { LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX, resolveLaunchAttachmentNamespaceRoot } from "../../features/execution/host/agent/launch-attachments.js";
 import type { TerminalRuntime, TerminalSocket } from "../../features/execution/host/terminal/index.js";
 import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
 
@@ -345,6 +347,34 @@ describe("agent chat mode routes", () => {
     await vi.waitFor(() => expect(harness.consoleControl.observe(owned)?.output.outcome).toBe("succeeded"));
     expect(harness.consoleControl.observe(owned)?.output).not.toHaveProperty("failure");
   });
+  it("delivers an attachment-only message as instruction lines while the ledger shows only the attachment", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+    // 1x1 투명 PNG — 업로드의 매직 바이트 판정을 실제 바이트로 통과한다.
+    await harness.postAttachment(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    const id = (harness.responses.at(-1)?.body as { readonly id: string }).id;
+    const frames = await harness.openChatSocket(sessionId);
+    const replayed = frames.length;
+
+    await harness.post(sessionId, "message", { text: "", attachmentIds: [id] });
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
+    // 자식은 첨부 지시 줄만 받는다 — Console이 지어낸 문장은 없다.
+    await vi.waitFor(() => expect(harness.sends.at(-1)).toMatch(new RegExp(`^${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}\\S+image\\.png$`)));
+    const hostPath = harness.sends.at(-1)!.slice(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX.length);
+    // 원장의 말은 문면 없이 첨부 좌표만 싣고, 브라우저로 가는 프레임 어디에도 호스트 경로가 없다.
+    const dispatch = await vi.waitFor(() => {
+      const frame = frames.slice(replayed).find(({ event }) => event.kind === "dispatch");
+      expect(frame).toBeDefined();
+      return frame!;
+    });
+    expect(readChatJournalEvent(dispatch.raw)?.event).toMatchObject({ kind: "dispatch", text: "", attachments: [{ id }] });
+    expect(frames.map(({ raw }) => raw).join("\n")).not.toContain(hostPath);
+  });
+
   it("converts an idle live claude-gateway session: marks payload, invalidates tickets, terminates the pty", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -581,7 +611,7 @@ describe("agent chat mode routes", () => {
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly theaterPrompt?: { readonly mode: "on" | "append" | "off"; readonly body: string } } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
-  temporaryDirectories.push(fleetDataDir);
+  temporaryDirectories.push(fleetDataDir, resolveLaunchAttachmentNamespaceRoot(fleetDataDir));
   vi.stubEnv("CLAUDE_CONFIG_DIR", fleetDataDir);
   // 실제 Chat 런치의 cwd로 쓸 Theater 루트를 준비한다.
   mkdirSync(path.join(fleetDataDir, "theater"), { recursive: true });
@@ -865,6 +895,11 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       return body?.sessions ?? [];
     },
     post: (sessionId: string, action: string, body?: Record<string, unknown>) => dispatch("POST", sessionId, action, body),
+    postAttachment: async (bytes: Buffer): Promise<void> => {
+      if (!route) throw new Error("Agent route was not registered");
+      const req = Object.assign(Readable.from([bytes]), { method: "POST", url: "/api/v1/agent/attachments" }) as unknown as http.IncomingMessage;
+      await route({ req, res: {} as http.ServerResponse, pathname: "/api/v1/agent/attachments" });
+    },
     del: (sessionId: string, action: string) => dispatch("DELETE", sessionId, action),
     get: (sessionId: string, action: string) => dispatch("GET", sessionId, action),
     tickets,

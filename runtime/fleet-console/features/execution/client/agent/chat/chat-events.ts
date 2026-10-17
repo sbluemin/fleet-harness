@@ -247,6 +247,8 @@ export interface AgentChatCoordinatePair {
 export interface AgentChatQueueEntry {
   readonly id: string;
   readonly text: string;
+  /** 함께 예약된 첨부 수. 문면 없이 첨부만 보낸 예약은 칩이 이 수로 선다. */
+  readonly attachments?: number;
   /** 대신 보낸 발신자 — 플러그인 출처면 칩이 원장 줄과 같은 출처 표식으로 선다. */
   readonly by?: AgentChatOrigin;
 }
@@ -256,7 +258,7 @@ export interface AgentChatQueueEntry {
  * 대화에 사용자 말로 세우지 않는다 — 그 말은 처리가 시작될 때 출처 줄로 선다.
  */
 export function isPersonQueueEntry(entry: AgentChatQueueEntry): boolean {
-  if (entry.text.trim().length === 0) return false;
+  if (entry.text.trim().length === 0 && !entry.attachments) return false;
   const by = entry.by;
   if (!by) return true;
   return by.kind === "plugin" && !!by.humanInput && by.humanInput.author !== "commodore";
@@ -510,11 +512,12 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
       const entries: AgentChatQueueEntry[] = [];
       for (const raw of event.entries) {
         if (!raw || typeof raw !== "object") continue;
-        const candidate = raw as { readonly id?: unknown; readonly text?: unknown; readonly by?: unknown };
+        const candidate = raw as { readonly id?: unknown; readonly text?: unknown; readonly attachments?: unknown; readonly by?: unknown };
         if (typeof candidate.id !== "string" || candidate.id.length === 0) continue;
         if (typeof candidate.text !== "string") continue;
         const by = readChatOrigin(candidate.by);
-        entries.push({ id: candidate.id, text: candidate.text, ...(by ? { by } : {}) });
+        const attachments = typeof candidate.attachments === "number" && Number.isInteger(candidate.attachments) && candidate.attachments > 0 ? candidate.attachments : undefined;
+        entries.push({ id: candidate.id, text: candidate.text, ...(attachments ? { attachments } : {}), ...(by ? { by } : {}) });
       }
       return { ...journal, event: { kind: "queue", entries } };
     }

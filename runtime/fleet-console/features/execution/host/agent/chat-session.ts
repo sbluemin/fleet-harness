@@ -1391,7 +1391,8 @@ class AgentChatSession {
    * 브라우저 DTO에 실리지 않는다는 것이 이 저장소의 규약이다. 길이는 한 줄에 들어갈 만큼만 자른다.
    */
   private queueEntries(): readonly AgentChatQueueEntry[] {
-    return [...this.queuedDispatches].map(([id, queued]) => ({ id, text: queued.display.slice(0, QUEUE_PREVIEW_CHARS), ...(queued.by ? { by: queued.by } : {}) }));
+    // 첨부는 개수만 싣는다 — 문면 없이 첨부만 예약된 칩이 빈칸으로 서지 않게 하는 근거이고, 좌표·경로는 싣지 않는다.
+    return [...this.queuedDispatches].map(([id, queued]) => ({ id, text: queued.display.slice(0, QUEUE_PREVIEW_CHARS), ...(queued.attachments.length > 0 ? { attachments: queued.attachments.length } : {}), ...(queued.by ? { by: queued.by } : {}) }));
   }
 
   /**
