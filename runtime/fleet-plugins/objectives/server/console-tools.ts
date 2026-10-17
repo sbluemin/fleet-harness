@@ -20,8 +20,9 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
  * 같은 정의·같은 action 을 쓴다 — 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
  * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
- * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·메시지·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
- * 제목·브리핑·기한 편집뿐이다. 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
+ * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
+ * 제목·브리핑·기한 편집뿐이다. 메시지는 사람·Operation·플러그인 호출자의 발화이고, 사령관의 첨언은 스티어링이다.
+ * 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
 /** 감독자가 이번 턴에 전달한 메시지만 읽는다 — 모델 입력으로 메시지나 Theater를 고르지 않는다. */
@@ -38,7 +39,7 @@ const TRANSCRIPT_DEFAULT_LIMIT = 30;
 const MAX_TIDY_IDS = 20;
 const MAX_TIDY_PER_TURN = 20;
 const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
-/** 지휘관에게 건네는 말(구상·개시·스티어링·확장의 context, 메시지)의 상한 — 첨언이 업무 지시서로 자라지 않게 한다. */
+/** 지휘관에게 건네는 말(구상·개시·스티어링·확장의 context, Operation·플러그인의 메시지)의 상한 — 첨언이 업무 지시서로 자라지 않게 한다. */
 export const MAX_REMARK = 600;
 const REMARK = "A remark: what you judged and why. The Commander decides missions, method and evidence.";
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe(REMARK);
@@ -111,7 +112,8 @@ const detailTool = defineConsoleTool({
     plan: write({ context }),
     commence: write({ context }),
     steer: write({ context }),
-    message: write({ memberId: ids.nullable().optional(), text: remark }),
+    // 사람·Operation·플러그인의 발화. 사령관의 첨언은 steer 이고, 사령관 스키마에는 이 액션이 없다.
+    message: { kind: "write", callers: ["operation", "plugin"], input: z.object({ ...target, memberId: ids.nullable().optional(), text: remark }) },
     stop: write({}),
     compact: write({}),
     hand_off: write({}),

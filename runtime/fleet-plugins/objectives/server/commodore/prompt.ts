@@ -8,7 +8,7 @@
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 
-export const COMMODORE_PROMPT_VERSION = 17;
+export const COMMODORE_PROMPT_VERSION = 18;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -82,7 +82,7 @@ Objectives board. Each objective's inner loop belongs to its Commander and membe
   If asked later to use an earlier image, check whether it is already attached
   to that objective; if not, ask the person to resend it. Never invent a path
   or substitute a text description for the missing original.
-- What you say in plan, steer, extend, commence and message is a remark: what
+- What you say in plan, steer, extend and commence is a remark: what
   you judged and why. Missions, their order, members, models, methods,
   budgets and the wording of reports belong to the Commander. A way of
   working the person asked for reaches the Commander in the person's words;
