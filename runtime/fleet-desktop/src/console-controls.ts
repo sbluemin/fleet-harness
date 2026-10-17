@@ -19,7 +19,10 @@ export interface ConsoleControlsDependencies {
 export interface ConsoleControls {
   attachWindow(window: ConsoleControlsWindow): void;
   handoffStarted(): void;
+  onConsoleCommitted(contents: ConsoleControlsWebContents): void;
   onConsoleLoaded(): void;
+  /** 넘겨주기 중이면 곧 적용될 저장 줌 레벨, 아니면 null — 그때는 창의 현재 줌이 곧 Console 줌이다. */
+  pendingZoomLevel(): number | null;
   zoomChanged(contents: ConsoleControlsWebContents, zoomDirection: "in" | "out"): void;
   zoomIn(): void;
   zoomOut(): void;
@@ -48,6 +51,12 @@ export function createConsoleControls(dependencies: ConsoleControlsDependencies)
     handoffStarted(): void {
       if (activeContents()) handoffPending = true;
     },
+    onConsoleCommitted(contents): void {
+      // 넘겨주기 적재가 커밋된 자리 — 진입 배율(대개 1)로 첫 프레임을 그리기 전에 저장 줌을 건다.
+      // 넘겨주기 완료(zoom-changed·메뉴 줌을 받기 시작하는 시점)는 여전히 onConsoleLoaded가 정한다.
+      if (!handoffPending || activeContents() !== contents) return;
+      contents.setZoomLevel(dependencies.zoomState.load());
+    },
     onConsoleLoaded(): void {
       const contents = handoffPending ? activeContents() : null;
       if (!contents) return;
@@ -66,6 +75,7 @@ export function createConsoleControls(dependencies: ConsoleControlsDependencies)
     actualSize: () => runWhenReady((contents) => setAndSaveZoom(contents, 0, dependencies.zoomState)),
     reloadConsole: () => runWhenReady((contents) => contents.reload()),
     consoleReady: () => handoffComplete && activeContents() !== null,
+    pendingZoomLevel: () => handoffPending && activeContents() ? dependencies.zoomState.load() : null,
   };
 }
 
