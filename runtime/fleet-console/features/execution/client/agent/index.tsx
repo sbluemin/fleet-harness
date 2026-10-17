@@ -45,6 +45,7 @@ import { AgentChatView } from "./chat/chat-view.js";
 import { installGroupTimeline, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
+import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
 import { getGroupT } from "./chat/group/group-chat-i18n.js";
 import { startAgentConnection } from "./connection.js";
 import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
@@ -433,7 +434,8 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
   }, [context]);
 
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
-  const using = useOperationUse(context.operationId);
+  // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
+  const using = useOperationUse(context.operation.parentOperationId ?? context.operationId);
   const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
   // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
@@ -722,6 +724,8 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
   // 모바일에서 「턴 접기」를 켠 그룹 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면). 끄면 지금 그대로다.
   const groupConversation = useHasGroupConversation(context.operationId);
   const foldTurns = useFoldTurns();
+  // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
+  const commanderLedger = useCommanderLedgerFramed(context.operationId);
 
   if (chatMode) {
     // 채팅에도 휴면이 있다 — 자식과 원장이 거둬진 자리에는 대화 대신 재개 카드가 선다.
@@ -743,7 +747,7 @@ function AgentOperationBody({ context }: { readonly context: OperationRenderCont
         {mobileSurface && foldTurns && groupConversation && observed?.chatActive === true
           ? <MobileGroupConversation root={context.operation} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
           : chatView}
-        <ComputerScreenShare operationId={context.operationId} />
+        {commanderLedger ? null : <ComputerScreenShare operationId={context.operationId} />}
         {links.card}
       </MarkdownLinkBoundary>
     );
@@ -803,7 +807,8 @@ function AgentOperationMenu({ context }: { readonly context: OperationMenuContex
   const experiments = useExperimentsSnapshot();
   const payload = context.operation.payload;
   const [pending, setPending] = React.useState<"console" | "computer" | null>(null);
-  if (!experiments || !installedApi) return null;
+  // 자식 세션(목표 구성원)에는 사용 스위치가 없다 — 허용은 루트(지휘관)의 것이고 호스트도 자식 스위치를 거부한다.
+  if (!experiments || !installedApi || context.operation.parentOperationId) return null;
   const api = installedApi;
   const language = context.language;
   const toggle = (kind: "console" | "computer", next: boolean) => {

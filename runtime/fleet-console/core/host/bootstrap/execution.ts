@@ -85,7 +85,16 @@ export async function startConsoleExecution(ctx: ConsoleRuntimeContext, organize
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
     // 「이번 작업만」 허가도 턴과 함께 풀린다.
-    onTurnSettled: (operationId) => { ctx.host.useRequests?.settle(operationId); ctx.host.browserMcp?.endAgentSession(operationId); ctx.host.computerUseMcp?.revokeOperation(operationId); ctx.host.consoleUse.endOperationUse?.(operationId); },
+    // 자식 세션은 루트의 사용 컨텍스트를 함께 쓴다 — 한 참가자의 턴 종료는 그 참가자의 호출·세션만 닫고, 브라우저 표식·기기는
+    // 마지막 참가자가 빠질 때 내려간다(각 호스트가 참가자 수를 센다). 「이번 작업만」 허가를 걷을 때인지는 `turnGrantEnds` 한 곳이 정한다.
+    onTurnSettled: (operationId) => {
+      const scope = ctx.host.useContext?.resolve(operationId) ?? { contextId: operationId, participantId: operationId };
+      ctx.host.useRequests?.leave(scope.contextId, scope.participantId);
+      if (!ctx.host.useContext || ctx.host.useContext.turnGrantEnds(scope.contextId, scope.participantId)) ctx.host.useRequests?.settle(scope.contextId);
+      ctx.host.browserMcp?.endAgentSession(operationId);
+      ctx.host.computerUseMcp?.endParticipant(operationId);
+      ctx.host.consoleUse.endOperationUse?.(operationId);
+    },
   });
   return {
     launchKinds: agent.launchKinds,

@@ -16,6 +16,8 @@ interface BrowserRouteDeps {
     isSessionOwner?(id: string): boolean;
   };
   readonly operations: { get(id: string): { id: string; payload: Record<string, unknown> } | null };
+  /** 자식 세션 → 브라우저의 주인(루트). 자식 세션은 자기 브라우저를 갖지 않고 루트의 것을 함께 쓴다. 없으면 자기 자신이다. */
+  readonly browserOwnerOf?: (operationId: string) => string | null;
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
   readonly writeJson: (res: ServerResponse, status: number, body: unknown) => void;
@@ -69,10 +71,13 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     const match = /^\/api\/v1\/browser\/operations\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|interrupt|inspect|paste|favicon|place|import|profile|clear-profile)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
-    const operationId = decodeURIComponent(match[1] ?? "");
+    const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
     // 예약 id "global" 은 Operation 경로로도 열리지 않는다. 옛 전역 요청이 Session 에 붙지 않게 한다.
-    const operation = operationId === GLOBAL_BROWSER_OWNER_ID ? null : operations.get(operationId);
+    const requested = requestedId === GLOBAL_BROWSER_OWNER_ID ? null : operations.get(requestedId);
+    // 자식 세션의 경로는 루트의 브라우저로 간다 — 상태·탭·중단이 모두 그 하나에 선다.
+    const operationId = requested ? deps.browserOwnerOf?.(requested.id) ?? requested.id : requestedId;
+    const operation = requested ? operations.get(operationId) : null;
     const sessionOwner = operationId !== GLOBAL_BROWSER_OWNER_ID && browserMcp.isSessionOwner?.(operationId) === true;
     if (!operation && !sessionOwner) { writeJson(res, 404, { error: "operation_not_found" }); return true; }
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.

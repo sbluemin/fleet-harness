@@ -5,7 +5,8 @@ import { useSyncExternalStore } from "react";
  * Session 브라우저는 둘 중 하나다: Operation 대화의 companion(OperationBrowserSplit), 또는 사령관 같은 플러그인 대화의 에이전트
  * 세션이 쓰는 브라우저(SessionBrowserSplit — 호스트가 owner 로 찾아 그린다). 둘은 서로를 걷는다.
  *
- * subjectId 는 가운데 칸에 선 대화(묶음의 뿌리), operationId 는 브라우저를 가진 Operation(구성원 본문을 고르면 그 구성원)이다.
+ * subjectId 는 가운데 칸에 선 대화(묶음의 뿌리), operationId 는 브라우저를 가진 Operation 이다. 구성원(자식 세션)은 루트의 브라우저를
+ * 함께 쓰므로 구성원 본문을 고른 동안에도 루트다.
  * 가운데 칸의 대상이 바뀌면 칸은 접힌다 — 다른 대화 옆에 앞 대화의 브라우저를 두지 않는다.
  */
 export interface OperationBrowserSplit {

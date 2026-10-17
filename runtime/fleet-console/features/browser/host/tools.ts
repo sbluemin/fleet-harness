@@ -1,4 +1,4 @@
-import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
+import type { AgentToolCtx, AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { BrowserPolicyError, type BrowserService } from "./service.js";
 import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
@@ -16,8 +16,15 @@ export interface BrowserToolDeps {
  * 폼 입력·콘솔·네트워크·자바스크립트·뷰포트·배치를 한 벌로 묶고, 정책(호출자 Operation 판정, 로컬 전용)은
  * 도구가 아니라 MCP 호스트가 감싼다.
  *
- * 세션 라벨은 MCP 호스트가 Operation id 로 바꿔서 넘긴다.
+ * 세션 라벨은 MCP 호스트가 Operation id(브라우저의 주인)로 바꿔서 넘긴다.
  */
+
+/**
+ * MCP 호스트가 도구에 싣는 문맥 — 브라우저의 주인(`sessionLabel`)과 별개로 실제로 부른 참가자를 함께 싣는다. 자식 세션이
+ * 루트의 브라우저를 함께 쓰므로, 턴 종료·중단은 이 참가자의 호출만 끊는다. 없으면 주인 자신이다.
+ */
+export type BrowserToolCtx = AgentToolCtx & { readonly participantId?: string };
+const participantOf = (context: AgentToolCtx): string | undefined => (context as BrowserToolCtx).participantId;
 
 type TextBlock = { type: "text"; text: string };
 type BrowserContent = TextBlock | { type: "image"; data: string; mimeType: "image/jpeg" };
@@ -43,7 +50,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     execute: async (args, context) => {
       const operationId = context.sessionLabel ?? "";
       if (!operationId) return text({ error: "browser_caller_unresolved" }, true);
-      try { return await service.agentCall(operationId, context.signal, (signal) => run((args ?? {}) as Record<string, any>, operationId, signal)); }
+      try { return await service.agentCall(operationId, context.signal, (signal) => run((args ?? {}) as Record<string, any>, operationId, signal), participantOf(context) ?? operationId); }
       catch (error) { return failure(error); }
     },
   });
@@ -258,9 +265,10 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       const content: BrowserContent[] = [];
       // 스텝마다 새 호출이 열리므로 「중단」은 세대로 이어 본다 — 한 번 눌렸으면 남은 스텝은 시작하지 않는다.
       const operationId = context.sessionLabel ?? "";
-      const serial = service.interruptSerial(operationId);
+      const participantId = participantOf(context) ?? operationId;
+      const serial = service.interruptSerial(operationId, participantId);
       for (const [index, action] of actions.entries()) {
-        if (service.interruptSerial(operationId) !== serial) { content.push({ type: "text", text: `Step ${index + 1}: batch stopped — the user interrupted the browser. Do not retry automatically; read the page again if you continue.` }); return { content, isError: true }; }
+        if (service.interruptSerial(operationId, participantId) !== serial) { content.push({ type: "text", text: `Step ${index + 1}: batch stopped — the user interrupted the browser. Do not retry automatically; read the page again if you continue.` }); return { content, isError: true }; }
         const tool = byName.get(action.name);
         if (!tool || action.name === "browser_batch") { content.push({ type: "text", text: `Step ${index + 1}: unknown tool ${action.name}; batch stopped.` }); return { content, isError: true }; }
         const result = await tool.execute(action.input ?? {}, context) as ToolResult;

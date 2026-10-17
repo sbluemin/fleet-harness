@@ -1098,3 +1098,20 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 
 /* 보관된 지휘관 자리에서도 넘김은 입력창 바로 위에 선다. */
 .group-standin-holds { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3) var(--space-2); }
+
+/* ── 공유 컨텍스트 — 지휘관과 구성원이 함께 쓰는 컴퓨터의 화면은 이 대화 칸에 선다 ── */
+/* 떠 있는 화면공유 미리보기의 배치 부모. 처음 자리는 진행 줄·입력창 위다(끌어서 옮길 수 있다). */
+.group-chat { position: relative; }
+.group-chat .computer-screen-share.is-group { bottom: 7.5rem; }
+/* 미리보기 왼쪽 위의 조작자 칩 — 표식·이름·「조작 중」. 점은 컴퓨터 사용 배지와 같은 상태 색이다. */
+.group-share-actor { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: color-mix(in oklab, var(--surface-panel-raised) 86%, transparent); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-primary); white-space: nowrap; }
+.group-share-actor-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--agent-control-badge); animation: group-share-blink 1.4s ease-in-out infinite; animation-name: var(--state-motion, group-share-blink); }
+@keyframes group-share-blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .group-share-actor-dot { animation: none; } }
+/* 진행 줄의 도구 꼬리 — 「구현 작업하는 중 · 컴퓨터 사용」. */
+.group-chat-working-tool { flex: none; color: var(--text-tertiary); white-space: nowrap; }
+/* 허용 요청 카드 머리 — 요청한 참여자를 겹친 표식으로. */
+.group-card-stack { display: inline-flex; flex: none; }
+.group-card-stack > * + * { margin-left: -5px; }
+/* 원장 머리 아래 한 줄 — 공유 화면은 대화에 서 있다고 알리고 그리로 데려간다. */
+.group-ledger-share { flex: none; display: flex; align-items: center; gap: var(--space-2); max-width: 720px; width: 100%; margin: var(--space-2) auto 0; padding: 0 var(--space-3); box-sizing: border-box; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-secondary); }

@@ -66,6 +66,10 @@ export interface GroupConversationProps {
    * 말풍선과 겹치는 구성원 보고 줄을 그 말풍선 머리의 꼬리표로 옮긴다. 주지 않으면 지금까지의 모양 그대로다(플러그인 대화).
    */
   readonly fold?: boolean;
+  /** 대화 칸 위에 떠 있는 것(공유 화면 미리보기). 이 칸(`.group-chat`)이 배치의 부모다. */
+  readonly overlay?: React.ReactNode;
+  /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
+  readonly computerActor?: string | null;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -80,7 +84,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
@@ -240,8 +244,9 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
           {cards}
         </div>
       </div>
-      <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} />
+      <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} />
       {composer}
+      {overlay}
     </div>
   );
 }
@@ -254,11 +259,13 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
  * 본문은 셸의 기존 구성원 본문 경로가 그리므로 이 틀은 연결을 만들지 않는다. 사람 입력창은 서지 않는다 — 구성원 본문에는
  * 처음부터 입력 틀이 없다.
  */
-export function GroupLedgerFrame({ speaker, language, onBack, children }: {
+export function GroupLedgerFrame({ speaker, language, onBack, notice, children }: {
   readonly speaker: ConversationSpeaker;
   readonly language: ConsoleLocale | undefined;
   /** 원장을 닫고 그룹 대화로 돌아간다. */
   readonly onBack?: () => void;
+  /** 머리 아래 한 줄 — 공유 화면처럼 이 원장에 서지 않고 대화에 서는 것을 알리고 그리로 데려간다. */
+  readonly notice?: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
   const t = getGroupT(language);
@@ -269,6 +276,7 @@ export function GroupLedgerFrame({ speaker, language, onBack, children }: {
         <span className="group-ledger-banner" role="status">{t("group.ledger.banner", { name: speaker.name })}</span>
         {onBack ? <button type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}
       </div>
+      {notice}
       <div className="group-ledger-body">{children}</div>
     </div>
   );
@@ -976,11 +984,13 @@ const WORKING_NAME_SLOT = "\u0000";
  * (정지는 입력창과 「구성원」 탭의 몫이다). 표식은 32px 로 서서 사이드바처럼 지금 하는 일(생각·읽기·편집…)을 연기한다.
  * 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
  */
-export function GroupWorkingLine({ working, participants, language, onOpenLedger }: {
+export function GroupWorkingLine({ working, participants, language, onOpenLedger, computerActor = null }: {
   readonly working: readonly ConversationSpeaker[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger?: (operationId: string) => void;
+  /** 컴퓨터를 지금 조작하는 참여자. 일하는 사람 중에 있으면 낱말 뒤에 도구 꼬리가 붙는다. */
+  readonly computerActor?: string | null;
 }) {
   const t = getGroupT(language);
   if (working.length === 0) return <div className="group-chat-working is-empty" aria-hidden="true" />;
@@ -999,8 +1009,16 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
     <div className="group-chat-working" role="status">
       <span className="group-chat-working-stack">{marks}</span>
       <WorkingText working={working} targets={targets} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />
+      {toolTail(working, computerActor, t)}
     </div>
   );
+}
+
+/** 진행 줄의 도구 꼬리 — 조작자가 일하는 사람 중에 있을 때만. 한 명이면 「· 컴퓨터 사용」, 여럿이면 누구인지 밝힌다. */
+function toolTail(working: readonly ConversationSpeaker[], actor: string | null, t: ReturnType<typeof getGroupT>): React.ReactNode {
+  const speaker = actor ? working.find((candidate) => candidate.operationId === actor) : undefined;
+  if (!speaker) return null;
+  return <span className="group-chat-working-tool">{working.length === 1 ? t("group.working.computer") : t("group.working.computerBy", { name: speaker.name })}</span>;
 }
 
 /**

@@ -62,6 +62,11 @@ export interface ConsoleUseDeps {
   /** ID로 대상을 찾을 때는 부모 목록에 없는 자식 세션도 해석한다. */
   readonly resolveOperation?: (id: string) => OperationNode | null;
   /**
+   * 호출한 세션 → 사용 컨텍스트. 자식 세션이면 허용·사용 표식의 주인은 루트(contextId)이고 호출자는 그 세션(participantId)이다.
+   * 없으면(테스트·플러그인 없는 구성) 두 값이 호출한 Operation 자신이다. 실행 도메인이 계보로 풀고 부트스트랩이 주입한다.
+   */
+  readonly useContext?: (operationId: string) => { readonly contextId: string; readonly participantId: string } | null;
+  /**
    * 패널 안 허용 요청. 주어지면 허용받지 않은 Operation 호출자의 호출은 거부되는 대신 붙잡혀 그 패널에
    * 허용/거절 카드를 띄우고, 「이번 작업만」 허가도 허용으로 친다. 없으면(테스트·플러그인 없는 구성) 곧바로 거부한다.
    */
@@ -233,9 +238,14 @@ function refuse(reason: ConsoleUseRefusal, operationId: string | null, language:
  * 호출자 Operation 단위 판정. 그 Operation의 콘솔 사용 토글이 켜져 있어야 통과한다.
  * 신원이 풀리지 않으면 거부한다(fail-closed).
  */
+/** 세션 라벨 → { 허용의 주인, 호출한 세션 }. 자식 세션의 허용은 루트의 것이다. */
+function useScope(deps: ConsoleUseDeps, label: string | undefined): { readonly contextId: string; readonly participantId: string } {
+  const id = (label ?? "").startsWith("chat:") ? (label ?? "").slice(5) : label ?? "";
+  return deps.useContext?.(id) ?? { contextId: id, participantId: id };
+}
+
 function denyConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx) {
-  const label = ctx.sessionLabel ?? "";
-  const id = label.startsWith("chat:") ? label.slice(5) : label;
+  const id = useScope(deps, ctx.sessionLabel).contextId;
   const fallback = deps.language?.() ?? "en";
   const operation = deps.resolveOperation?.(id) ?? deps.operations?.().find((op) => op.id === id);
   if (!operation) return refuse("caller_unresolved", null, fallback);
@@ -253,7 +263,7 @@ async function holdConsoleUse(deps: ConsoleUseDeps, ctx: AgentToolCtx, tool: str
   const requests = deps.requests;
   const operationId = denied.remedy && "operationId" in denied.remedy ? denied.remedy.operationId : undefined;
   if (!requests || denied.reason !== "operation_not_authorized" || !operationId) return denied;
-  const outcome: UseHoldOutcome = await requests.hold({ operationId, capability: "console", tool, signal, authorized: () => denyConsoleUse(deps, ctx) === null });
+  const outcome: UseHoldOutcome = await requests.hold({ operationId, participantId: useScope(deps, ctx.sessionLabel).participantId, capability: "console", tool, signal, authorized: () => denyConsoleUse(deps, ctx) === null });
   // 허용받지 않은 Operation 은 payload 에 언어가 없다 — 거부 문구와 같은 폴백을 쓴다.
   const language = deps.language?.() ?? "en";
   if (outcome === "declined") return refuse("declined_by_user", operationId, language);
@@ -687,7 +697,8 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
       const snapshotStore = createMcpToolSnapshotStore();
       let closed = false;
       const controller = new AbortController();
-      const uses = new Map<string, { operationId?: string; controller: AbortController; calls: number; timer?: ReturnType<typeof setTimeout> }>();
+      // operationId 는 호출한 세션(참가자) — 턴 종료는 그 참가자의 세션만 닫는다. contextId 는 사용 표식의 주인(공유 컨텍스트면 루트).
+      const uses = new Map<string, { operationId?: string; contextId?: string; controller: AbortController; calls: number; timer?: ReturnType<typeof setTimeout> }>();
       const endUse = (label: string) => {
         const use = uses.get(label);
         budgets.delete(label);
@@ -695,7 +706,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
         uses.delete(label);
         clearTimeout(use.timer);
         use.controller.abort();
-        if (use.operationId) deps.onOperationUse?.(use.operationId, false);
+        if (use.contextId) deps.onOperationUse?.(use.contextId, false);
       };
       const endAll = () => { for (const label of uses.keys()) endUse(label); };
       const endForOperation = (operationId: string) => { for (const [label, use] of uses) if (use.operationId === operationId) endUse(label); };
@@ -731,10 +742,7 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
             if (denied && parsed.ok) denied = await holdConsoleUse(deps, ctx, entry.id, denied, AbortSignal.any([controller.signal, ...(ctx.signal ? [ctx.signal] : [])]));
             if (closed || options.enabled?.() === false) return { ...text({ error: "console_read_disabled" }), isError: true };
             if (denied) { if (ctx.sessionLabel) endUse(ctx.sessionLabel); return { ...text(denied), isError: true }; }
-            if (options.operationCallers === true) {
-              const label = ctx.sessionLabel ?? "";
-              deps.requests?.touch(label.startsWith("chat:") ? label.slice(5) : label, "console");
-            }
+            if (options.operationCallers === true) deps.requests?.touch(useScope(deps, ctx.sessionLabel).contextId, "console");
             if (!parsed.ok) {
               return parsed.error === "invalid_arguments"
                 ? { ...text({ error: "invalid_arguments", issues: parsed.issues ?? [] }), isError: true }
@@ -744,10 +752,10 @@ export function createConsoleUseMcpHost(deps: ConsoleUseDeps): ConsoleUseMcpHost
             if (ctx.signal?.aborted) return { ...text({ error: "console_use_stopped" }), isError: true };
             let use = uses.get(label);
             if (!use) {
-              const operationId = options.operationCallers === true ? (label.startsWith("chat:") ? label.slice(5) : label) : undefined;
-              use = { operationId, controller: new AbortController(), calls: 0 };
+              const scope = options.operationCallers === true ? useScope(deps, label) : undefined;
+              use = { operationId: scope?.participantId, contextId: scope?.contextId, controller: new AbortController(), calls: 0 };
               uses.set(label, use);
-              if (operationId) deps.onOperationUse?.(operationId, true);
+              if (scope) deps.onOperationUse?.(scope.contextId, true);
             }
             clearTimeout(use.timer);
             use.calls++;

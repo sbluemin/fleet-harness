@@ -24,11 +24,16 @@ export interface UseRequestView {
   readonly capability: UseCapability;
   /** 이 요청에 합쳐진 도구 이름(중복 없이, 들어온 순서). 인자·내용은 싣지 않는다. */
   readonly tools: readonly string[];
+  /** 지금 이 요청을 기다리는 참가자(호출한 세션) id — 중복 없이, 들어온 순서. 공유 컨텍스트에서는 루트와 다를 수 있다. */
+  readonly requestedBy: readonly string[];
   readonly expiresAt: number;
 }
 
 export interface UseHoldInput {
+  /** 허용의 주인(공유 컨텍스트면 루트). 요청·허가는 이 키에 선다. */
   readonly operationId: string;
+  /** 실제로 호출한 세션. 없으면 `operationId` 와 같다. */
+  readonly participantId?: string;
   readonly capability: UseCapability;
   readonly tool: string;
   readonly signal?: AbortSignal;
@@ -47,6 +52,11 @@ export interface UseRequestBroker {
   touch(operationId: string, capability: UseCapability): void;
   /** 턴이 끝났다 — 그 Operation 의 요청은 `stopped`, 허가는 모두 풀린다. */
   settle(operationId: string): void;
+  /**
+   * 한 참가자만 턴을 닫았다 — 그 참가자의 붙잡힌 호출만 `stopped` 로 끝내고, 남은 waiter 가 없으면 카드를 내린다.
+   * 허가는 건드리지 않는다(다른 참가자가 아직 쓰는 중일 수 있다). 걷을 때인지는 호출자가 판정해 `settle` 을 부른다.
+   */
+  leave(operationId: string, participantId: string): void;
   /** 스위치를 거두었다 — 그 도구군의 요청과 허가만 걷는다. */
   revoke(operationId: string, capability: UseCapability): void;
   list(): { readonly requests: readonly UseRequestView[]; readonly grants: { readonly console: readonly string[]; readonly computer: readonly string[] } };
@@ -165,6 +175,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         changed = true;
       }
       if (!request.tools.includes(input.tool)) { request.tools.push(input.tool); changed = true; }
+      // 새 참가자가 같은 카드에 합쳐지면 requestedBy 가 바뀐다 — 스냅숏을 다시 흘린다.
+      if (![...request.waiters].some((waiter) => (waiter.input.participantId ?? request.operationId) === (input.participantId ?? input.operationId))) changed = true;
       if (changed) options.onChange?.();
       const current = request;
       return new Promise<UseHoldOutcome>((resolve) => {
@@ -208,6 +220,17 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       }
       syncRecheck();
     },
+    leave(operationId, participantId) {
+      for (const capability of ["console", "computer"] as const) {
+        const request = pending.get(key(operationId, capability));
+        if (!request) continue;
+        const leaving = [...request.waiters].filter((waiter) => (waiter.input.participantId ?? operationId) === participantId);
+        if (!leaving.length) continue;
+        if (leaving.length === request.waiters.size) { finish(request, "stopped"); continue; }
+        for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
+        options.onChange?.();
+      }
+    },
     revoke(operationId, capability) {
       const k = key(operationId, capability);
       const hadGrant = grants.delete(k);
@@ -223,6 +246,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         operationId: request.operationId,
         capability: request.capability,
         tools: [...request.tools],
+        requestedBy: [...new Set([...request.waiters].map((waiter) => waiter.input.participantId ?? request.operationId))],
         expiresAt: request.expiresAt,
       }));
       const active = { console: [] as string[], computer: [] as string[] };

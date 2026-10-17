@@ -5,7 +5,8 @@ import { subscribeConsoleChannel } from "../../../core/client/src/integration/op
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
-type CaptureTarget = { id: string; operationId: string; title: string };
+/** 화면의 주인(operationId — 공유 컨텍스트면 루트)과 지금 조작하는 참가자(actor). */
+type CaptureTarget = { id: string; operationId: string; actor: string | null; title: string };
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void };
 const CaptureContext = createContext<Capture | null>(null);
 /** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·시한). 인자·내용은 없다. */
@@ -14,16 +15,20 @@ export interface OperationUseRequest {
   readonly operationId: string;
   readonly capability: "console" | "computer";
   readonly tools: readonly string[];
+  /** 이 요청을 기다리는 참가자(호출한 세션). 공유 컨텍스트에서는 루트(operationId)와 다를 수 있다. */
+  readonly requestedBy: readonly string[];
   readonly expiresAt: number;
 }
 type OperationUseActivity = {
   console: string[];
   computer: string[];
+  /** 컴퓨터를 지금 조작하는 참가자 — 공유 컨텍스트에서는 기기의 주인(computer, 루트)과 다르다. */
+  computerActor: string | null;
   browser: string[];
   requests: OperationUseRequest[];
   grants: { console: string[]; computer: string[] };
 };
-const EMPTY_ACTIVITY: OperationUseActivity = { console: [], computer: [], browser: [], requests: [], grants: { console: [], computer: [] } };
+const EMPTY_ACTIVITY: OperationUseActivity = { console: [], computer: [], computerActor: null, browser: [], requests: [], grants: { console: [], computer: [] } };
 const OperationUseContext = createContext<OperationUseActivity>(EMPTY_ACTIVITY);
 export function useOperationUse(operationId: string) {
   const activity = useContext(OperationUseContext);
@@ -41,6 +46,11 @@ export function useOperationUseRequests(operationId: string, childSessionIds: re
   const represented = new Set([operationId, ...childSessionIds]);
   return activity.requests.filter((request) => represented.has(request.operationId));
 }
+/** 이 Operation(공유 컨텍스트면 루트)의 컴퓨터를 지금 조작하는 참가자. 쓰지 않으면 null. */
+export function useComputerActor(operationId: string): string | null {
+  const activity = useContext(OperationUseContext);
+  return activity.computer.includes(operationId) ? activity.computerActor ?? operationId : null;
+}
 /** 이 Console 이 답을 기다리는 허용 요청 전부 — Map 우하단 더미가 Operation 을 가리지 않고 모은다. */
 export function useAllOperationUseRequests(): readonly OperationUseRequest[] {
   return useContext(OperationUseContext).requests;
@@ -53,7 +63,8 @@ function readRequests(value: unknown): OperationUseRequest[] {
     const record = item as Record<string, unknown>;
     if (typeof record.id !== "string" || typeof record.operationId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
     const tools = Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [];
-    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, expiresAt: record.expiresAt }];
+    const requestedBy = Array.isArray(record.requestedBy) ? record.requestedBy.filter((id): id is string => typeof id === "string") : [];
+    return [{ id: record.id, operationId: record.operationId, capability: record.capability, tools, requestedBy: requestedBy.length > 0 ? requestedBy : [record.operationId], expiresAt: record.expiresAt }];
   });
 }
 
@@ -64,7 +75,7 @@ function readActivity(value: unknown): OperationUseActivity {
   const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
   const requests = readRequests(record.requests);
   const grants = record.grants as { console?: unknown; computer?: unknown } | undefined;
-  return { console: ids(record.console), computer: ids(record.computer), browser: ids(record.browser), requests, grants: { console: ids(grants?.console), computer: ids(grants?.computer) } };
+  return { console: ids(record.console), computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), requests, grants: { console: ids(grants?.console), computer: ids(grants?.computer) } };
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Operation이 소유한다. */
@@ -139,13 +150,15 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     };
     const apply = (value: unknown) => {
       if (disposed || !value || typeof value !== "object") return;
-      const { target, unavailableOperationId } = value as { target: CaptureTarget | null; unavailableOperationId?: string | null };
+      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableOperationId?: string | null };
+      const target: CaptureTarget | null = raw.target ? { ...raw.target, actor: typeof raw.target.actor === "string" ? raw.target.actor : null } : null;
+      const unavailableOperationId = raw.unavailableOperationId;
       desiredTarget = target;
       if (!target && unavailableOperationId) {
         stop();
         currentId = null;
         attemptedId = null;
-        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, title: "" }, stream: null, failed: true });
+        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, actor: null, title: "" }, stream: null, failed: true });
         return;
       }
       if (!target) setCapture(null);
@@ -188,9 +201,19 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
   return <OperationUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></OperationUseContext.Provider>;
 }
 
-export function ComputerScreenShare({ operationId }: { operationId: string }) {
+/** 이 Operation(공유 컨텍스트면 루트)의 화면을 지금 공유하는 중인가 — 영상 수명은 Desktop 셸만 가진다. */
+export function useComputerShareActive(operationId: string): boolean {
+  return useContext(CaptureContext)?.target.operationId === operationId;
+}
+
+/**
+ * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
+ * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
+ */
+export function ComputerScreenShare({ operationId, actor, className }: { operationId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
+  const actorId = useComputerActor(operationId) ?? capture?.target.actor ?? null;
   const video = useRef<HTMLVideoElement | null>(null);
   const own = capture?.target.operationId === operationId ? capture : null;
   const card = useRef<HTMLElement | null>(null);
@@ -229,7 +252,7 @@ export function ComputerScreenShare({ operationId }: { operationId: string }) {
     return () => { element.srcObject = null; };
   }, [own?.stream]);
   if (!own) return null;
-  return <aside ref={card} className={`computer-screen-share${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
+  return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
     style={maximized && own.stream ? { inset: 0, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%" } : { width: own.stream ? size.width : 256, height: own.stream ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
     onPointerDown={(event) => {
       const resizing = event.target instanceof Element && Boolean(event.target.closest(".computer-screen-share-resize"));
@@ -277,6 +300,7 @@ export function ComputerScreenShare({ operationId }: { operationId: string }) {
     }}
     onLostPointerCapture={() => { drag.current = null; setDragging(false); }}
     onClick={(event) => event.stopPropagation()}>
+    {actor && actorId ? <span className="computer-screen-share-actor">{actor(actorId)}</span> : null}
     {own.stream ? <><video ref={video} muted playsInline aria-label={t("settings.computerUse.sharePreview")} />
       <button type="button" className="computer-screen-share-maximize" aria-label={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} title={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} onClick={() => setMaximized((value) => !value)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">{maximized ? <><path d="M5 5V2h9v9h-3" /><rect x="2" y="5" width="9" height="9" rx="1" /></> : <path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" />}</svg>

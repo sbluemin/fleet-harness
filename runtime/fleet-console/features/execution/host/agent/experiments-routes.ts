@@ -21,6 +21,16 @@ function getAgentOperation(ctx: ConsoleRuntimeContext, operationId: string): Ope
   return operation?.pluginId === null && operation.type === AGENT_OPERATION_TYPE ? operation : null;
 }
 
+/**
+ * 자식 세션에는 사용 스위치가 없다 — 허용은 루트의 것이다(`use-context.ts`). 루트로 돌려 쓰지 않고 거부한다: 구성원 자리의 스위치가
+ * 묶음 전체(지휘관·다른 구성원)의 허용을 조용히 넓히거나 걷으면, 사람이 본 범위와 실제로 바뀐 범위가 달라진다. 거부 답이 루트를 알려 준다.
+ */
+function refuseChildSwitch(ctx: ConsoleRuntimeContext, res: http.ServerResponse, operation: OperationNode): boolean {
+  if (!operation.parentOperationId) return false;
+  ctx.host.http.writeJson(res, 409, { error: "use_context_shared", contextOperationId: operation.parentOperationId });
+  return true;
+}
+
 export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
   registerRouter(ctx, "experiments", async ({ req, res, pathname }) => {
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) {
@@ -55,6 +65,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     const language = body.language === "ko" ? "ko" : "en";
     const operation = getAgentOperation(ctx, operationId);
     if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    if (refuseChildSwitch(ctx, res, operation)) return true;
     const payload = { ...(operation.payload ?? {}) };
     if (body.enabled) payload.consoleUse = { enabled: true, language };
     else { delete payload.consoleUse; ctx.host.useRequests?.revoke(operation.id, "console"); }
@@ -75,6 +86,7 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
     const language = body.language === "ko" ? "ko" : "en";
     const operation = getAgentOperation(ctx, operationId);
     if (!operation) { ctx.host.http.writeJson(res, 404, { error: "operation_not_found" }); return true; }
+    if (refuseChildSwitch(ctx, res, operation)) return true;
     const payload = { ...(operation.payload ?? {}) };
     if (body.enabled) payload.computerUse = { enabled: true, language };
     else { delete payload.computerUse; ctx.host.useRequests?.revoke(operation.id, "computer"); ctx.host.computerUseMcp?.revokeOperation(operation.id); }
