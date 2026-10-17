@@ -153,6 +153,7 @@ export function NewSessionColumn({ state, target, tools }: {
     const launched = attachmentStore.handoff();
     if (launched.length > 0) variant.attachments = launched.map((item) => item.id).join(",");
     setLaunchError(null);
+    attachmentStore.clearNotice();
     setStarting(true);
     writeQuickLaunchTheater(theater.id);
     requestQuickLaunch({
@@ -169,6 +170,7 @@ export function NewSessionColumn({ state, target, tools }: {
   const launchDirect = (pluginId: string | null, kind: OperationLaunchKind) => {
     if (!theater || kind.disabled) return;
     setLaunchError(null);
+    attachmentStore.clearNotice();
     setStarting(true);
     requestQuickLaunch({ theaterId: theater.id, pluginId, kind, variant: {}, fromNewSession: true });
   };
