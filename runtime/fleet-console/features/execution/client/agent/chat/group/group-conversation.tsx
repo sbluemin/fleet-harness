@@ -441,7 +441,7 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
       >
         <SpeakerMark speaker={speaker} size="sm" />
         <span className="group-chat-notes-count"><SpeakerName speaker={speaker} />{item.notes.length > 0 ? null : <><span className="group-chat-line-sep" aria-hidden="true">·</span>{t("group.streaming")}</>}</span>
-        {preview ? <span className="group-chat-notes-excerpt">{preview}</span> : null}
+        {preview ? <TailExcerpt text={preview} /> : null}
         <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
       </button>
       {open ? (
@@ -461,6 +461,34 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * 진행 칩의 꼬리 줄 — 칩이 좁아도 줄의 끝(지금 쓰는 자리)이 보이도록 오른쪽 끝에 붙여 앞쪽을 자른다. 글자 순서와 방향은 그대로다
+ * (자르기는 배치로만 한다). 잘렸을 때만 앞 가장자리를 흐려 앞이 더 있음을 보인다 — 글이 자라거나 칩 폭이 바뀌면 다시 잰다.
+ */
+function TailExcerpt({ text }: { readonly text: string }) {
+  const boxRef = React.useRef<HTMLSpanElement | null>(null);
+  const textRef = React.useRef<HTMLSpanElement | null>(null);
+  const [clipped, setClipped] = React.useState(false);
+  React.useLayoutEffect(() => {
+    const box = boxRef.current;
+    const line = textRef.current;
+    if (!box || !line) return;
+    // 소수 폭의 반올림 차이로 잘림을 오인하지 않게 반 픽셀 여유를 둔다.
+    const measure = () => setClipped(line.getBoundingClientRect().width - box.getBoundingClientRect().width > 0.5);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    observer.observe(line);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <span ref={boxRef} className="group-chat-notes-excerpt" data-clipped={clipped || undefined}>
+      <span ref={textRef} className="group-chat-notes-excerpt-text">{text}</span>
+    </span>
   );
 }
 
