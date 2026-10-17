@@ -155,7 +155,10 @@ export interface AgentLedgerProps {
   /** Older entries exist above the first one — a text button at the top of the log reads them. */
   readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
   readonly references?: AgentChatReferenceHost;
-  /** The session's model and effort as the runtime names them (for example `sonnet[1m]`, `medium`). Missing parts read as the default. */
+  /**
+   * The model and effort the session actually runs, as the runtime names them (for example `sonnet[1m]`, `medium`) — not a setting
+   * that applies later. A missing effort reads as the model default; `null` when the session is unknown, and no coordinate is shown.
+   */
   readonly coordinates?: { readonly model: string | null; readonly effort: string | null } | null;
 }
 

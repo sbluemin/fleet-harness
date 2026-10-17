@@ -288,7 +288,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.theaterId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", theaterId: runner.theaterId, run: { ...statusOf(runner), totals } });
@@ -387,7 +387,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.sessionImageBase64Bytes = 0;
     // 이어 받은 대화는 새 세션이 아니다 — 세션 번호를 올리지 않고 「이어 받음」 줄만 남긴다.
     if (!session.resumed) deps.store.addRunTotals(runner.theaterId, { session: 1 });
-    record(runner, { kind: "session", event: session.resumed ? "resumed" : event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}) });
+    record(runner, { kind: "session", event: session.resumed ? "resumed" : event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) });
     if (coordinates.fallback) console.warn(`[objectives] commodore ${coordinates.fallback}`);
     return session;
   };

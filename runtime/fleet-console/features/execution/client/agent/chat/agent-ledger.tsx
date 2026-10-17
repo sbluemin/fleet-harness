@@ -32,9 +32,10 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
   // 사령관·사람은 화면 언어의 이름으로 부른다 — 대화 화면(`useLocalizedSnapshot`)과 같은 이름이다.
   const groupT = getGroupT(language);
   const shown = speaker.kind === "commodore" ? { ...speaker, name: groupT("group.commodore") } : speaker;
-  const session = React.useMemo(() => readAgentChatSessionCoordinates({
-    session: { ...(coordinates?.model ? { model: coordinates.model } : {}), ...(coordinates?.effort ? { effort: coordinates.effort } : {}) },
-  }), [coordinates?.model, coordinates?.effort]);
+  // 세션이 실제로 도는 좌표만 그린다 — 모르는 세션에 「기본」을 지어 세우면 다른 모델로 도는 세션을 잘못 말한다.
+  const session = React.useMemo(() => (coordinates?.model ? readAgentChatSessionCoordinates({
+    session: { model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) },
+  }) : null), [coordinates?.model, coordinates?.effort]);
 
   // 처음 열면 가장 최근 턴이 보인다. 바닥에 있는 동안은 흐르는 턴을 따라 내려가고, 위로 읽고 있으면 자리를 지킨다.
   React.useLayoutEffect(() => {
@@ -71,7 +72,8 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
               </div>
               <div className="agent-chat-member-foot" ref={footRef}>
                 <div className="agent-chat-composer-meta">
-                  <SessionCoordinate coordinates={session} t={t} />
+                  {/* 세 칸 그리드(좌표 · 가운데 · 도구)라 좌표가 없어도 첫 칸은 비워 둔다 — 도구가 오른쪽 끝을 지킨다. */}
+                  {session ? <SessionCoordinate coordinates={session} t={t} /> : <span aria-hidden="true" />}
                   <span className="agent-chat-composer-gap" aria-hidden="true" />
                   <span className="agent-chat-member-tools">
                     <MemberWidthButton hostRef={footRef} language={language} />

@@ -260,9 +260,14 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
   const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, entries, live, view?.state.asks) : []), [ledgerOpen, t, entries, live, view?.state.asks]);
-  // 원장 바닥 줄의 좌표 — 이 Theater 의 사령관 모델·강도, 고르지 않았으면 실험 기능의 기본 좌표(다음 턴부터 쓰는 값).
-  const ledgerCoordinates = useMemo(() => ({ model: view?.state.model ?? view?.defaults.model ?? null, effort: view?.state.effort ?? view?.defaults.effort ?? null }),
-    [view?.state.model, view?.state.effort, view?.defaults.model, view?.defaults.effort]);
+  // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Operation 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
+  // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
+  const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);
+  const ledgerCoordinates = useMemo(() => {
+    const live = run?.session;
+    if (live) return { model: live.model, effort: live.effort ?? null };
+    return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
+  }, [run?.session, lastSession]);
 
   // 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 입력 대신 돌아가기가 서고, pill 의 부제가 그 사실을 말한다.
   const composer = (
