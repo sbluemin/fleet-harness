@@ -12286,8 +12286,12 @@ body[data-expanded-surface-resizing="true"] {
   width: 16px;
   height: 16px;
 }
-.fc-mention-chip-mark svg,
-.fc-mention-chip-mark .objectives-avatar { width: 16px; height: 16px; }
+/* 슬롯의 직계 자식만 16px. 호스트는 어떤 플러그인 클래스인지는 모른다. */
+.fc-mention-chip-mark > svg,
+.fc-mention-chip-mark > * { width: 16px; height: 16px; }
+/* 표식이 없으면 왼쪽을, ✕가 없으면 오른쪽을 space-2로 — canary 그룹 @지휘관 칩(좌우 space-2)과 같다. */
+.fc-mention-chip.is-bare { padding-left: var(--space-2); }
+.fc-mention-chip:not(:has(> .fc-mention-chip-x)) { padding-right: var(--space-2); }
 .fc-mention-chip-label {
   min-width: 0;
   max-width: 18em;

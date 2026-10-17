@@ -40,14 +40,16 @@ function extraAttributes(attributes: MentionChipMarkup["attributes"]): string {
 export function mentionChipHtml(spec: MentionChipMarkup): string {
   const shown = `@${spec.label}`;
   const tip = spec.title ?? shown;
-  const mark = spec.markSlot === false
+  const bare = spec.markSlot === false;
+  const rootClass = bare ? `${MENTION_CHIP_CLASS} is-bare` : MENTION_CHIP_CLASS;
+  const mark = bare
     ? ""
     : `<span class="${MENTION_CHIP_MARK_CLASS}" aria-hidden="true">&#8203;</span>`;
   // ✕는 button이 아니다. contenteditable의 insertHTML이 폼 컨트롤을 버리는 브라우저가 있어, 같은 클래스의 span으로 둔다.
   const remove = spec.removeLabel
     ? `<span role="button" tabindex="0" class="${MENTION_CHIP_REMOVE_CLASS}" aria-label="${escapeHtml(spec.removeLabel)}">×</span>`
     : "";
-  return `<span class="${MENTION_CHIP_CLASS}" title="${escapeHtml(tip)}"${extraAttributes(spec.attributes)}>${mark}<span class="${MENTION_CHIP_LABEL_CLASS}">${escapeHtml(shown)}</span>${remove}</span>`;
+  return `<span class="${rootClass}" title="${escapeHtml(tip)}"${extraAttributes(spec.attributes)}>${mark}<span class="${MENTION_CHIP_LABEL_CLASS}">${escapeHtml(shown)}</span>${remove}</span>`;
 }
 
 /** `mentionChipHtml`과 같은 마크업의 원소. 초안 복원처럼 DOM을 직접 세울 때 쓴다. */
@@ -74,6 +76,7 @@ export interface MentionChipProps {
 export function MentionChip({ label, title, mark, removeLabel, onRemove, onActivate, ariaLabel }: MentionChipProps) {
   const shown = `@${label}`;
   const tip = title ?? shown;
+  const className = mark === undefined ? `${MENTION_CHIP_CLASS} is-bare` : MENTION_CHIP_CLASS;
   const body = (
     <>
       {mark !== undefined ? <span className={MENTION_CHIP_MARK_CLASS} aria-hidden="true">{mark}</span> : null}
@@ -100,13 +103,13 @@ export function MentionChip({ label, title, mark, removeLabel, onRemove, onActiv
   );
   if (onActivate) {
     return (
-      <button type="button" className={MENTION_CHIP_CLASS} title={tip} aria-label={ariaLabel ?? shown} onClick={(event) => { event.stopPropagation(); onActivate(); }}>
+      <button type="button" className={className} title={tip} aria-label={ariaLabel ?? shown} onClick={(event) => { event.stopPropagation(); onActivate(); }}>
         {body}
       </button>
     );
   }
   return (
-    <span className={MENTION_CHIP_CLASS} title={tip} {...(ariaLabel ? { "aria-label": ariaLabel } : {})}>
+    <span className={className} title={tip} {...(ariaLabel ? { "aria-label": ariaLabel } : {})}>
       {body}
     </span>
   );
