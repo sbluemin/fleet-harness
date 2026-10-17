@@ -406,6 +406,35 @@ describe("Fleet-owned subscription sign-in", () => {
     }
   });
 
+  it("does not treat an expired Codex CLI access token as signed in", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-expired-cli-"));
+    const authService = createProviderAuthService({ dataDir: directory });
+    const codexHome = path.join(directory, "codex");
+    fs.mkdirSync(codexHome);
+    const expired = jwt({ exp: Math.floor(Date.parse("2020-01-01T00:00:00Z") / 1000), "https://api.openai.com/auth": { chatgpt_account_id: "acct-old" } });
+    fs.writeFileSync(path.join(codexHome, "auth.json"), `${JSON.stringify({ tokens: { access_token: expired, account_id: "acct-old" } })}\n`);
+    const fetchImpl = vi.fn<typeof fetch>(async () => { throw new Error("expired CLI token must not refresh"); });
+    const oauth = createCodexOAuth({
+      authService,
+      fetch: fetchImpl,
+      now: () => Date.parse("2026-10-17T00:00:00Z"),
+      cliCredentials: {
+        platform: "darwin",
+        homedir: () => path.join(directory, "no-home"),
+        env: { CODEX_HOME: codexHome },
+        readBounded: readBoundedFile,
+        execFile: async () => { throw new Error("vendor lookup must not spawn"); },
+      },
+    });
+    try {
+      await expect(oauth.readSubscription()).resolves.toBeNull();
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      oauth.dispose();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   // 첫 xAI 프로필이 만료면 다음 프로필로 바꾸지 않고, 401이어도 벤더 refresh를 부르지 않는다.
   it("does not refresh or rewrite a Grok CLI file, or switch to a later profile", async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "xai-cli-fallback-"));

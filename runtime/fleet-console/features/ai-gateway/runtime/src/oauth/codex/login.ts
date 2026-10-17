@@ -3,6 +3,7 @@ import type { CredentialResolverDeps } from "../../transport/credentials.js";
 import { resolveCodexCredentials } from "../../upstream/codex/credentials.js";
 import { fetchCodexUsage } from "../../upstream/codex/quota.js";
 import {
+  jwtExpiresAt,
   jwtPayload,
   oauthRecord,
   OAuthRequestError,
@@ -69,6 +70,14 @@ function tokenGrant(status: number, body: Record<string, unknown>, now: number):
   if (status !== 200 || !accessToken || !refreshToken
     || typeof expiresIn !== "number" || !Number.isFinite(expiresIn) || expiresIn <= 0) throw new OAuthRequestError(status);
   return { accessToken, refreshToken, accessExpiresAt: now + expiresIn * 1000 };
+}
+
+/** Fleet 항목이 없을 때 status·추론이 같이 보는 읽기 전용 판정. 네트워크를 부르지 않는다. */
+export async function codexCliSubscriptionPresent(deps: CredentialResolverDeps, now = Date.now()): Promise<boolean> {
+  const credentials = await resolveCodexCredentials(deps);
+  if (credentials?.accountId === undefined) return false;
+  const expiresAt = jwtExpiresAt(credentials.accessToken);
+  return expiresAt === undefined || expiresAt > now;
 }
 
 export function parseCodexAuthEntry(entry: AuthStorageEntry): CodexAuthEntry | undefined {
@@ -157,7 +166,8 @@ export function createCodexOAuth(deps: CodexOAuthDeps) {
       return {
         key: credentials.accessToken,
         type: "oauth",
-        accessExpiresAt: Number.MAX_SAFE_INTEGER,
+        // exp가 없으면 기존처럼 만료를 걸지 않는다. 지난 exp는 갱신 없이 거절한다.
+        accessExpiresAt: jwtExpiresAt(credentials.accessToken) ?? Number.MAX_SAFE_INTEGER,
         accountId: credentials.accountId,
         version: 1,
       };

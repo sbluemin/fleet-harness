@@ -1,11 +1,17 @@
 import {
   createAiGatewaySettingsStore,
   createProviderAuthService,
+  codexCliSubscriptionPresent,
+  defaultCredentialDeps,
+  isSubscriptionSignedOutEntry,
+  xaiCliSubscriptionPresent,
   CODEX_AUTH_PROVIDER_ID,
   XAI_AUTH_PROVIDER_ID,
   CURSOR_AUTH_PROVIDER_ID,
   type AiGatewaySettingsStore,
   type AuthService,
+  type AuthStorageEntry,
+  type CredentialResolverDeps,
 } from "@fleet-console/ai-gateway";
 import { getFleetDataDir } from "@fleet-console/infra";
 
@@ -134,16 +140,40 @@ export async function dispatchGatewayCommand(
 
 async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly GatewayCredentialReport[]> {
   const readers = deps.readSubscriptions ?? {
-    // Console 로그인 항목의 유무만 본다. 상태 조회가 토큰을 갱신하지 않는다.
-    codex: async () => (await resolveAuthService(deps).getEntry(CODEX_AUTH_PROVIDER_ID)) ?? null,
-    cursor: async () => (await resolveAuthService(deps).getEntry(CURSOR_AUTH_PROVIDER_ID)) ?? null,
-    xai: async () => (await resolveAuthService(deps).getEntry(XAI_AUTH_PROVIDER_ID)) ?? null,
+    // 저장 항목이 있으면 그것만 본다. 없을 때만 CLI 파일을 읽고, 어느 쪽도 갱신하지 않는다.
+    codex: () => readSubscriptionPresence(deps, CODEX_AUTH_PROVIDER_ID, codexCliPresent),
+    cursor: () => readSubscriptionPresence(deps, CURSOR_AUTH_PROVIDER_ID),
+    xai: () => readSubscriptionPresence(deps, XAI_AUTH_PROVIDER_ID, xaiCliPresent),
   };
   return [
     { provider: "codex", source: "subscription", state: await probe(readers.codex) },
     { provider: "xai", source: "subscription", state: await probe(readers.xai) },
     { provider: "cursor", source: "subscription", state: await probe(readers.cursor) },
   ];
+}
+
+function credentialDeps(env: NodeJS.ProcessEnv): CredentialResolverDeps {
+  return { ...defaultCredentialDeps, env };
+}
+
+/** 로그아웃 표식은 없는 상태다. Fleet 항목이 없을 때만 CLI를 읽기 전용으로 확인한다. */
+async function readSubscriptionPresence(
+  deps: GatewayCommandDeps,
+  providerId: string,
+  cliPresent?: (env: NodeJS.ProcessEnv) => Promise<boolean>,
+): Promise<AuthStorageEntry | { readonly source: "cli" } | null> {
+  const entry = await resolveAuthService(deps).getEntry(providerId);
+  if (entry !== undefined) return isSubscriptionSignedOutEntry(entry) ? null : entry;
+  if (cliPresent === undefined) return null;
+  return (await cliPresent(deps.env ?? process.env)) ? { source: "cli" } : null;
+}
+
+async function codexCliPresent(env: NodeJS.ProcessEnv): Promise<boolean> {
+  return codexCliSubscriptionPresent(credentialDeps(env));
+}
+
+async function xaiCliPresent(env: NodeJS.ProcessEnv): Promise<boolean> {
+  return xaiCliSubscriptionPresent(credentialDeps(env));
 }
 
 async function probe(read: () => Promise<unknown>): Promise<"present" | "absent"> {

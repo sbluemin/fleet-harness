@@ -1,5 +1,16 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  createAiGatewaySettingsStore,
+  createProviderAuthService,
+  SUBSCRIPTION_SIGNED_OUT_ENTRY,
+  CODEX_AUTH_PROVIDER_ID,
+  XAI_AUTH_PROVIDER_ID,
+} from "@fleet-console/ai-gateway";
 
+import { dispatchGatewayCommand } from "../cli/gateway/dispatcher.js";
 import { classifyFleetArgv, dispatchFleetArgv } from "../cli/fleet-dispatch.js";
 
 function createIo() {
@@ -79,5 +90,52 @@ describe("dual-entry dispatch", () => {
     expect(source).not.toContain("basename");
     expect(source).toContain("process.exitCode = status");
     expect(source).not.toContain("process.exit(status)");
+  });
+});
+
+describe("fleet gateway status credentials", () => {
+  it("reports a CLI-only Codex or Grok sign-in and not a signed-out marker", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-gateway-status-"));
+    const codexHome = path.join(directory, "codex");
+    const grokHome = path.join(directory, "grok");
+    const dataDir = path.join(directory, "console");
+    fs.mkdirSync(codexHome);
+    fs.mkdirSync(grokHome);
+    fs.mkdirSync(dataDir);
+    fs.writeFileSync(path.join(codexHome, "auth.json"), `${JSON.stringify({
+      tokens: { access_token: "cli-access", account_id: "acct-cli" },
+    })}\n`);
+    fs.writeFileSync(path.join(grokHome, "auth.json"), `${JSON.stringify({
+      "https://auth.x.ai::client": {
+        oidc_issuer: "https://auth.x.ai",
+        key: "grok-access",
+        expires_at: "2099-01-01T00:00:00.000Z",
+      },
+    })}\n`);
+    const authService = createProviderAuthService({ dataDir });
+    const store = createAiGatewaySettingsStore({ dataDir });
+    const env = { CODEX_HOME: codexHome, GROK_HOME: grokHome };
+    async function states(): Promise<Record<string, string>> {
+      const io = createIo();
+      const status = await dispatchGatewayCommand(["status", "--json"], io, {
+        env,
+        dataDir,
+        createAuthService: () => authService,
+        createStore: () => store,
+      });
+      expect(status).toBe(0);
+      const report = JSON.parse(io.stdout.toString()) as { credentials: Array<{ provider: string; state: string }> };
+      return Object.fromEntries(report.credentials.map((item) => [item.provider, item.state]));
+    }
+    try {
+      await expect(states()).resolves.toEqual({ codex: "present", xai: "present", cursor: "absent" });
+      await authService.setEntry(CODEX_AUTH_PROVIDER_ID, { ...SUBSCRIPTION_SIGNED_OUT_ENTRY });
+      await authService.setEntry(XAI_AUTH_PROVIDER_ID, { ...SUBSCRIPTION_SIGNED_OUT_ENTRY });
+      await expect(states()).resolves.toEqual({ codex: "absent", xai: "absent", cursor: "absent" });
+      expect(fs.readFileSync(path.join(codexHome, "auth.json"), "utf8")).toContain("cli-access");
+      expect(fs.readFileSync(path.join(grokHome, "auth.json"), "utf8")).toContain("grok-access");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

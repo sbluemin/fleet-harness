@@ -232,7 +232,8 @@ export function createSubscriptionOAuth<E extends SubscriptionOAuthEntry>(
     // 오래 걸린 읽기가 그 사이 로그인·로그아웃을 덮거나 되살리지 않는다.
     if (revision !== generation || signal.aborted || explicitSignOut) return { status: "signed_out" };
     if (!candidate || cliRejected.has(candidate.key)) return { status: "signed_out" };
-    return { status: "ok", entry: candidate, origin: "cli" };
+    // CLI 토큰도 만료 시각을 따른다. refresh 토큰이 없으면 네트워크 갱신은 없다.
+    return finish({ status: "ok", entry: candidate, origin: "cli" }, {});
   }
 
   /**
