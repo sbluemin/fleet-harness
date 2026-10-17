@@ -5,7 +5,7 @@
     "antigravity": {
       "name": "Antigravity",
       "defaultModel": "gemini-3.8-flash",
-      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. fetchAvailableModels does not list Argon; its context window remains unverified and is deliberately omitted rather than copied from Cursor. providerModelId selects the low rung as Fleet catalog policy, following the previous Pro entry, not an upstream default claim; omitted request effort still follows the existing resolver default. The codename-suffixed Gemini 4 Argon resolves downward to standard under the naming grammar, consistently with the same vendor model on Cursor. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
+      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. The backend gates Argon on client identity: the same fetch read with Fleet's previous antigravity/ide/2.5.5 User-Agent omits Argon and its turns 404, while agy 1.4.1's antigravity/cli/1.4.1 identity (which Fleet now sends) lists all three Argon rungs with a 1,048,576-token window, thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-argon-medium. providerModelId selects the medium rung following that upstream default; omitted request effort still follows the existing resolver default. The codename-suffixed Gemini 4 Argon resolves downward to standard under the naming grammar, consistently with the same vendor model on Cursor. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
       "models": [
         {
           "modelId": "gemini-3.8-flash",
@@ -31,7 +31,8 @@
           "modelId": "gemini-4-argon",
           "name": "Gemini-4-Argon",
           "capabilityClass": "standard",
-          "providerModelId": "gemini-4-argon-low",
+          "providerModelId": "gemini-4-argon-medium",
+          "contextWindow": 1048576,
           "effort": {
             "supported": true,
             "levels": [
