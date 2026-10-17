@@ -1,6 +1,6 @@
 # Execution
 
-Agent and Terminal are one execution feature, not plugins. AI Gateway is a separate Console feature. Shell is a non-durable global surface, not an Operation.
+Agent and Terminal are one execution feature, not plugins. AI Gateway is a separate Console feature. Shell is a non-durable per-conversation surface, not an Operation: one PTY per conversation key, with a Console default key for keyless callers; closing a conversation's Shell ends only that PTY.
 
 ## Constraints
 
