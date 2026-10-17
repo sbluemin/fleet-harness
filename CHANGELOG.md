@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.238.0] - 2026-10-17
+
+### fleet-cli
+
+#### Removed
+- The shell `fleet` command no longer runs Claude Code. It manages Console and configures the AI Gateway; `gateway serve`, `gateway auth`, `fleet auth`, and `doctor` are gone. Claude Code inside a Console CLI Operation is unchanged.
+- `fleet gateway` no longer offers OpenCode Go sign-in or reports its key in `fleet gateway status`; Providers now signs in only TypeSafe.
+
+### fleet-console
+
+#### Added
+- Choose a retention period in the desktop archive to automatically and permanently delete archived session groups across this Console's Theaters. Auto-delete is off by default and does not include plugin archive sections.
+
+#### Changed
+- Sign in to Codex, xAI, and Cursor from the Usage limits panel in Console, including from your phone. Fleet no longer reads the codex, grok, or Cursor CLI sign-ins, so sign in once there to keep using those models.
+- Sign in to Muse Code from the Usage limits panel in Console. Fleet no longer reads the muse CLI sign-in, so sign in once there to keep using Muse Code.
+- The + at the top of the sidebar now opens a new session screen: pick the Theater, chat or terminal, and the AI Gateway model and effort, then start with your first message. Nothing is created until you send it, and you can add a Theater from the same screen.
+- Open a new session from anywhere with Shift+Cmd+O (Ctrl+Shift+O on Windows).
+- Deputies now sit in the sidebar's top row beside search and new session, shrinking to fit instead of taking a row of their own.
+- Buttons, rows and chips respond to a press with a short, subtle shrink, and stay still when reduced motion is on.
+- Steering an objective lets its commander propose success-criterion changes for your approval without replacing the missions.
+- The browser beside a conversation is Fleet Browser. The extra browser, its chooser, and its shortcut are gone; the globe opens this conversation's browser, and links still open there or in your own browser.
+- Follow-up candidates now collect quietly while an objective is in progress and are decided all together once it is handed off for review, so the Commodore no longer stops mid-work to judge them.
+
+#### Fixed
+- Mermaid diagrams in agent chat, group conversations, and decision cards render instead of staying as empty placeholders.
+- A gateway model you are not signed in to now ends the turn with a sign-in message instead of staying busy.
+- Mermaid diagrams in objective Markdown results render instead of staying as empty placeholders.
+- Objectives action labels in member chat now follow the Console language without changing user-written messages.
+- Follow-up candidates of an in-progress objective appear again under Follow-up objectives in the Results tab.
+
+#### Removed
+- The model menu on Theater and group headers is gone; start new sessions from the + at the top of the sidebar or Cmd+J.
+- OpenCode Go is no longer an AI Gateway provider: its models, API key sign-in, and usage meter are gone from Console. Saved OpenCode Go models drop out of the roster, and a stored key is left in place but no longer used.
+
 ## [1.237.0] - 2026-10-16
 
 ### fleet-console
