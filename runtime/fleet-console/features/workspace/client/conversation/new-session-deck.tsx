@@ -1,18 +1,15 @@
-import { useEffect, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { ComposerDeck, ComposerDeckBand, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow } from "@fleet-console/sdk/composer";
 
 /**
- * 새 세션 캡슐 안 목록 — '/' 명령·값과 '@' 보낼 곳이 같은 목록 하나에 선다(승인안 S3: 떠 있는 팝오버 없이 목록이 입력 줄 위에
- * 서고 캡슐이 위로 자란다).
+ * 새 세션 컴포저의 '/' 명령·값과 '@' 보낼 곳 목록 — SDK 컴포저 덱(`ComposerDeck`, 퀵 런치바 문법)에 싣는다. 덱은 캡슐 위에
+ * 떠서 열리고, 위가 모자라면 아래로 뒤집는다. 여기는 목록의 모양(묶음·띠·행)을 SDK 부품으로 옮기는 일만 한다.
  *
- * 행은 채팅 컴포저 덱과 같은 문법이다: [아이콘][이름][지금 값][토큰]. 섹션 라벨은 조용한 글자 한 줄이고, 활성 행은 테두리 없이
- * 중립 채움(--wash-selected)으로만 선다 — 위치 채널(brass)은 캡슐의 포커스 링이 이미 쥐고 있다.
- *
- * 포커스는 입력에 남는다. 목록은 listbox 이고 입력이 aria-activedescendant 로 활성 행을 가리킨다. 행을 누르는 마우스는
- * 포커스를 빼앗지 않는다(mousedown 기본 동작을 막는다).
+ * 포커스는 입력에 남는다. 목록은 listbox 이고 입력이 aria-activedescendant 로 활성 행을 가리킨다.
  */
 export type NewSessionDeckItem =
   | { readonly kind: "section"; readonly key: string; readonly label: string; readonly note?: string | null }
-  | { readonly kind: "band"; readonly key: string; readonly label: ReactNode }
+  | { readonly kind: "band"; readonly key: string; readonly label: ReactNode; readonly lead?: ReactNode; readonly sticky?: boolean; readonly className?: string }
   | NewSessionDeckRow;
 
 export interface NewSessionDeckRow {
@@ -35,12 +32,25 @@ export interface NewSessionDeckRow {
   readonly pick: () => void;
 }
 
+/** 목록의 모든 행(흐린 행 포함) — 덱 키 문법(`composerDeckKeyDown`)이 흐린 행을 건너뛴다. */
 export function deckRows(items: readonly NewSessionDeckItem[]): readonly NewSessionDeckRow[] {
-  return items.filter((item): item is NewSessionDeckRow => item.kind === "row" && item.disabled !== true);
+  return items.filter((item): item is NewSessionDeckRow => item.kind === "row");
 }
 
 export function deckOptionId(deckId: string, row: NewSessionDeckRow): string {
   return `${deckId}-${row.key}`;
+}
+
+/** 묶음 머리(section)부터 다음 머리 앞까지가 한 묶음이다. 머리 없이 시작한 행은 이름 없는 묶음 없이 그대로 선다. */
+function groupItems(items: readonly NewSessionDeckItem[]): readonly { readonly head: Extract<NewSessionDeckItem, { kind: "section" }> | null; readonly items: readonly NewSessionDeckItem[] }[] {
+  const groups: { head: Extract<NewSessionDeckItem, { kind: "section" }> | null; items: NewSessionDeckItem[] }[] = [];
+  for (const item of items) {
+    if (item.kind === "section") { groups.push({ head: item, items: [] }); continue; }
+    if (groups.length === 0) groups.push({ head: null, items: [] });
+    groups[groups.length - 1]!.items.push(item);
+  }
+  // 행이 하나도 없는 묶음은 머리를 세우지 않는다 — 빈 머리만 남기면 덱에 죽은 줄이 생긴다.
+  return groups.filter((group) => group.items.some((item) => item.kind === "row"));
 }
 
 export function NewSessionDeck({ id, label, items, activeKey, emptyText, onHover }: {
@@ -51,54 +61,37 @@ export function NewSessionDeck({ id, label, items, activeKey, emptyText, onHover
   readonly emptyText: string;
   readonly onHover: (key: string) => void;
 }) {
-  // 잘린 목록에서 하이라이트만 움직이면 활성 행이 보이지 않는다 — 방향키 인덱스와 짝으로 nearest 스크롤한다.
-  useEffect(() => {
-    if (activeKey === null) return;
-    document.getElementById(`${id}-${activeKey}`)?.scrollIntoView({ block: "nearest" });
-  }, [activeKey, id]);
-  const hasRows = items.some((item) => item.kind === "row");
+  const groups = groupItems(items);
+  const rowCount = groups.reduce((count, group) => count + group.items.filter((item) => item.kind === "row").length, 0);
+  const renderItem = (item: NewSessionDeckItem) => {
+    if (item.kind === "section") return null;
+    if (item.kind === "band") return <ComposerDeckBand key={item.key} label={item.label} lead={item.lead} sticky={item.sticky} className={item.className} />;
+    return (
+      <ComposerDeckRow
+        key={item.key}
+        id={deckOptionId(id, item)}
+        active={item.key === activeKey}
+        disabled={item.disabled}
+        lead={item.icon}
+        name={item.name}
+        value={item.value}
+        token={item.token}
+        checked={item.checked}
+        className={item.gate ? "is-gate" : undefined}
+        data-effort-level={item.level}
+        data-apex={item.apex ? true : undefined}
+        onPick={item.pick}
+        onHover={() => onHover(item.key)}
+      />
+    );
+  };
   return (
-    <div className="new-session-deck" id={id} role="listbox" aria-label={label}>
-      {hasRows ? null : <p className="new-session-deck-empty">{emptyText}</p>}
-      {items.map((item) => {
-        if (item.kind === "section") {
-          return (
-            <p key={item.key} className="new-session-deck-section" role="presentation">
-              {item.label}
-              {item.note ? <span className="new-session-deck-note">{item.note}</span> : null}
-            </p>
-          );
-        }
-        if (item.kind === "band") return <p key={item.key} className="new-session-deck-band" role="presentation">{item.label}</p>;
-        const active = item.key === activeKey;
-        return (
-          <button
-            key={item.key}
-            id={deckOptionId(id, item)}
-            type="button"
-            role="option"
-            tabIndex={-1}
-            aria-selected={active}
-            aria-disabled={item.disabled ? true : undefined}
-            className={`new-session-deck-row${active ? " is-active" : ""}${item.gate ? " is-gate" : ""}`}
-            data-effort-level={item.level}
-            data-apex={item.apex ? true : undefined}
-            disabled={item.disabled}
-            onMouseDown={(event) => event.preventDefault()}
-            onMouseMove={() => { if (!active && !item.disabled) onHover(item.key); }}
-            onClick={() => { if (!item.disabled) item.pick(); }}
-          >
-            <span className="new-session-deck-icon" aria-hidden="true">{item.icon ?? null}</span>
-            <span className="new-session-deck-name">{item.name}</span>
-            <span className="new-session-deck-value">{item.value ?? null}</span>
-            <span className="new-session-deck-meta">
-              {item.token ? <span className="new-session-deck-token">{item.token}</span> : null}
-              {item.checked ? <span className="new-session-deck-check" aria-hidden="true">✓</span> : null}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <ComposerDeck id={id} label={label} listbox={rowCount > 0} contentKey={`${rowCount}:${groups.map((group) => group.head?.key ?? "").join(",")}`} className="new-session-deck">
+      {rowCount === 0 ? <ComposerDeckEmpty>{emptyText}</ComposerDeckEmpty> : null}
+      {groups.map((group, at) => group.head
+        ? <ComposerDeckGroup key={group.head.key} label={group.head.label} note={group.head.note ?? undefined}>{group.items.map(renderItem)}</ComposerDeckGroup>
+        : <div key={`lead-${at}`} className="fc-composer-deck-group" role="group">{group.items.map(renderItem)}</div>)}
+    </ComposerDeck>
   );
 }
 

@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useLayo
 import { createPortal } from "react-dom";
 
 import type { AgentChatReferenceHost } from "@fleet-console/sdk/components/agent-chat-transcript";
-import { MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "@fleet-console/sdk/composer";
+import { ComposerDeck, ComposerDeckEmpty, ComposerDeckGroup, ComposerDeckRow, MENTION_CHIP_CLASS, MENTION_CHIP_MARK_CLASS, MENTION_CHIP_REMOVE_CLASS, composerDeckActiveIndex, composerDeckKeyDown, mentionChipElement, mentionChipHtml, type MentionChipMarkup } from "@fleet-console/sdk/composer";
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -31,8 +31,9 @@ type T = Translate<ObjectiveMessageKey>;
  * (보낸 뒤 비우기·초안 복원) DOM 을 다시 세운다 — 조합 중인 글자와 커서를 건드리지 않기 위해서다.
  *
  * '@' 는 채팅 컴포저 덱(`composer-deck.ts` readAgentToken)과 같은 규칙으로 깬다: 문두나 공백(토큰·줄바꿈 뒤 포함) 뒤의 '@' 이고, 커서까지
- * 공백·'@' 가 섞이면 눕는다. 목록은 같은 Theater 의 목표 전부(완료는 「완료됨」 묶음)이고 질의로 좁힌다. 한 메시지의 참조는 셋까지이고,
- * 이미 붙은 지휘관은 다시 붙지 않는다. 선택 행은 배경 워시로만 말한다(왼쪽 띠 없음).
+ * 공백·'@' 가 섞이면 눕는다. 목록은 네 컴포저가 같이 쓰는 SDK 덱(`ComposerDeck`, 묶음 머리 옆 구분선)이고, 후보는 보드에 선 같은 Theater 의
+ * 목표다 — 「진행 중」 → 「시작 전」 → 「완료됨」 묶음이며 보관함(완료로 보관된 목표)은 서지 않는다. 질의로 좁힌다. 한 메시지의 참조는
+ * 셋까지이고, 이미 붙은 지휘관은 다시 붙지 않는다(그 행은 흐리게 서고 방향키가 건너뛴다).
  */
 
 /** 한 메시지의 참조 상한 — 서버 `MAX_COMMODORE_REFERENCES` 와 같은 값이다(서버가 넘는 요청을 거절한다). */
@@ -268,22 +269,38 @@ function rowStatus(objective: Objective): RowStatus {
   return "running";
 }
 
-/** 같은 Theater 의 목표 전부 — 진행 중 묶음이 먼저, 완료는 뒤 「완료됨」 묶음. 질의는 제목(대소문자 무시)이나 id 머리로 좁힌다. */
+type CandidateGroup = "active" | "pending" | "done";
+const GROUP_ORDER: readonly CandidateGroup[] = ["active", "pending", "done"];
+const GROUP_LABEL = {
+  active: "objectives.commodore.reference.groupActive",
+  pending: "objectives.commodore.reference.groupPending",
+  done: "objectives.commodore.reference.groupDone",
+} as const satisfies Record<CandidateGroup, ObjectiveMessageKey>;
+
+/** 묶음 — 시작 전(`pending`)과 완료(`done`)만 따로 서고 나머지(진행·결정·검토·임무 완료)는 「진행 중」이다. 판정 순서는 `rowStatus` 그대로다. */
+function groupOf(status: RowStatus): CandidateGroup {
+  return status === "done" ? "done" : status === "pending" ? "pending" : "active";
+}
+
+/**
+ * '@' 후보 — 보드에 선 같은 Theater 의 목표(보드가 이미 보관·닫힌 목표를 거른다). 「진행 중」 → 「시작 전」 → 「완료됨」 순서로 세운 뒤
+ * 상한으로 자른다. 질의는 제목(대소문자 무시)이나 id 머리로 좁힌다.
+ */
 function candidatesOf(objectives: readonly Objective[], query: string): readonly Candidate[] {
   const needle = query.trim().toLowerCase();
   const matched = objectives.filter((objective) => !objective.removed && (!needle || objective.title.toLowerCase().includes(needle) || objective.id.toLowerCase().startsWith(needle)));
   const rows = matched.map((objective) => ({ objective, status: rowStatus(objective) }));
-  return [...rows.filter((row) => row.status !== "done"), ...rows.filter((row) => row.status === "done")].slice(0, MAX_ROWS);
+  return GROUP_ORDER.flatMap((group) => rows.filter((row) => groupOf(row.status) === group)).slice(0, MAX_ROWS);
 }
 
 const NO_OBJECTIVES: readonly Objective[] = [];
-/** 완료로 지휘관이 보관된 목표(`/finished`) — 보드 상태(`/state`)에서 빠지므로 따로 읽어 「완료됨」 묶음에 세운다. */
+/** 완료로 지휘관이 보관된 목표(`/finished`) — 보드 상태(`/state`)에서 빠지므로 따로 읽는다. '@' 후보는 아니고(보관함은 숨긴다) 토큰 얼굴의 원천이다. */
 function useFinishedObjectives(theaterId: string): readonly Objective[] {
   const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_OBJECTIVES);
   return useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
 }
 
-/** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). */
+/** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). 기록·초안 토큰의 얼굴(`ReferenceMark`)이 읽는다. */
 function useTheaterObjectives(theaterId: string): readonly Objective[] {
   const { objectives } = useObjectiveTheater(theaterId);
   const finished = useFinishedObjectives(theaterId);
@@ -317,13 +334,17 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
   const latest = useRef(props);
   latest.current = props;
 
-  const objectives = useTheaterObjectives(theaterId);
-  // 목록을 열 때마다 보관된 완료 목표를 다시 읽는다 — 방금 완료로 보관된 목표도 서게(같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다).
+  // 후보는 보드의 목표뿐이다 — 보관함(완료로 보관된 목표, `/finished`)은 '@'에 서지 않는다.
+  const { objectives } = useObjectiveTheater(theaterId);
+  // 보관된 완료 목표는 후보가 아니라 얼굴의 원천이다 — 기록·초안 토큰의 아바타(`ReferenceMark`)가 그 목표를 찾는다. 목록을 열 때마다
+  // 다시 읽어 방금 보관된 목표의 토큰 얼굴도 서게 한다(같은 Theater 를 읽는 중이면 겹쳐 보내지 않는다).
   useEffect(() => { if (list.open) loadFinishedObjectives(theaterId); }, [list.open, theaterId]);
   const candidates = useMemo(() => (list.open ? candidatesOf(objectives, list.query) : []), [list.open, list.query, objectives]);
   const taken = useMemo(() => new Set(value.references.map((reference) => reference.id)), [value.references]);
   const full = value.references.length >= MAX_COMMODORE_REFERENCES;
-  const index = Math.min(list.index, Math.max(0, candidates.length - 1));
+  // 이미 붙었거나 상한에 닿은 행은 흐리게 서고 방향키가 건너뛴다(덱 키 문법).
+  const keyRows = useMemo(() => candidates.map((candidate) => ({ disabled: full || taken.has(candidate.objective.id) })), [candidates, full, taken]);
+  const index = composerDeckActiveIndex(keyRows, list.index);
 
   /** 토큰 아바타 자리 — DOM 을 다시 읽어 바뀐 경우에만 다시 그린다(실행 취소가 토큰 노드를 되살려도 그 자리에 아바타가 선다). */
   const slotsRef = useRef<readonly { readonly node: HTMLElement; readonly id: string }[]>([]);
@@ -482,35 +503,29 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     // 잠긴 입력은 키로 초안을 바꾸지 않는다 — 초점이 ✕ 같은 자식에 남아 있어도 같다.
     if (!root || latest.current.disabled) return;
     const imeKey = event.nativeEvent.isComposing || event.keyCode === 229;
-    if (list.open && candidates.length > 0) {
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        if (imeKey) return;
-        const step = event.key === "ArrowDown" ? 1 : candidates.length - 1;
-        setList((current) => ({ ...current, index: (index + step) % candidates.length }));
-        return;
-      }
+    if (list.open && imeKey && index >= 0) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); return; }
       if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
         event.preventDefault();
         const candidate = candidates[index];
         // 한글 조합 중 Enter 는 조합을 끝낸 뒤 고른다 — 조합이 이미 끝난 브라우저(Safari: compositionend 가 먼저)는 다음 틱에 고른다.
-        if (imeKey) {
-          if (composing.current) pendingPick.current = candidate?.objective ?? null;
-          else if (candidate) setTimeout(() => choose(candidate), 0);
-          return;
-        }
-        choose(candidate);
+        if (composing.current) pendingPick.current = candidate?.objective ?? null;
+        else if (candidate) setTimeout(() => choose(candidate), 0);
         return;
       }
     }
-    if (list.open && event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      const token = caretToken(root);
-      dismissed.current = token ? { node: token.node, at: token.at } : null;
-      setList(CLOSED);
-      return;
-    }
+    // 덱 키 문법(SDK) — ↑↓ 는 고를 수 있는 행만 돌고, Enter·Tab 은 고르기, Esc 는 목록만 닫는다(그 '@' 자리에서는 다시 열지 않는다).
+    if (list.open && composerDeckKeyDown(event, {
+      rows: keyRows,
+      activeIndex: index,
+      setActive: (at) => setList((current) => ({ ...current, index: at })),
+      pick: (at) => choose(candidates[at]),
+      dismiss: () => {
+        const token = caretToken(root);
+        dismissed.current = token ? { node: token.node, at: token.at } : null;
+        setList(CLOSED);
+      },
+    })) return;
     const removeHit = event.target instanceof Element ? event.target.closest(`.${MENTION_CHIP_REMOVE_CLASS}`) : null;
     if (removeHit && (event.key === "Enter" || event.key === " " || event.key === "Backspace" || event.key === "Delete")) {
       const token = removeHit.closest(`.${TOKEN_CLASS}`);
@@ -586,7 +601,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     if (objective) setTimeout(() => pick(objective), 0);
   };
 
-  const activeId = list.open && candidates[index] ? `${listId}-${candidates[index]!.objective.id}` : undefined;
+  const activeId = list.open && index >= 0 && candidates[index] ? `${listId}-${candidates[index]!.objective.id}` : undefined;
   return (
     <>
       <div
@@ -644,40 +659,46 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
       />
       {slots.map((slot, at) => createPortal(<ReferenceMark theaterId={theaterId} objectiveId={slot.id} size={16} />, slot.node, `${slot.id}:${at}`))}
       {list.open ? (
-        <div id={listId} className={`objectives-commodore-ref-list${phone ? " is-phone" : ""}`} role="listbox" aria-label={t("objectives.commodore.reference.list")} onMouseDown={(event) => event.preventDefault()}>
+        <ComposerDeck id={listId} label={t("objectives.commodore.reference.list")} listbox={candidates.length > 0} contentKey={`${list.query}:${candidates.length}:${full}`} className={`objectives-commodore-ref-list${phone ? " is-phone" : ""}`}>
           {full ? <p className="objectives-commodore-ref-note" role="status">{t("objectives.commodore.reference.limit", { count: MAX_COMMODORE_REFERENCES })}</p> : null}
-          {candidates.map((candidate, at) => {
-            const heading = at === 0 || (candidate.status === "done") !== (candidates[at - 1]!.status === "done");
-            const isTaken = taken.has(candidate.objective.id);
-            const unavailable = isTaken || full;
-            const { objective } = candidate;
-            const missions = objective.missions.length;
-            const doneMissions = objective.missions.filter((mission) => mission.done).length;
-            return [
-              heading ? <p key={`h:${candidate.status === "done"}`} className="objectives-commodore-ref-heading" role="presentation">{t(candidate.status === "done" ? "objectives.commodore.reference.groupDone" : "objectives.commodore.reference.groupActive")}</p> : null,
-              <div
-                key={objective.id}
-                id={`${listId}-${objective.id}`}
-                role="option"
-                aria-selected={at === index}
-                aria-disabled={unavailable || undefined}
-                className="objectives-commodore-ref-row"
-                onMouseEnter={() => setList((current) => (current.index === at ? current : { ...current, index: at }))}
-                onClick={() => choose(candidate)}
-              >
-                <ReferenceMark theaterId={theaterId} objectiveId={objective.id} size={phone ? 24 : 20} />
-                <span className="objectives-commodore-ref-name">{objective.title}</span>
-                <span className="objectives-commodore-ref-sub">
-                  {isTaken ? <span>{`✓ ${t("objectives.commodore.reference.taken")}`}</span> : <>
-                    <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`objectives.commodore.reference.status.${candidate.status}`)}</span>
-                    {missions ? <span>{t("objectives.commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
-                  </>}
-                </span>
-              </div>,
-            ];
+          {GROUP_ORDER.map((group) => {
+            const rows = candidates.flatMap((candidate, at) => (groupOf(candidate.status) === group ? [{ candidate, at }] : []));
+            if (!rows.length) return null;
+            return (
+              <ComposerDeckGroup key={group} label={t(GROUP_LABEL[group])}>
+                {rows.map(({ candidate, at }) => {
+                  const { objective } = candidate;
+                  const isTaken = taken.has(objective.id);
+                  const missions = objective.missions.length;
+                  const doneMissions = objective.missions.filter((mission) => mission.done).length;
+                  return (
+                    <ComposerDeckRow
+                      key={objective.id}
+                      id={`${listId}-${objective.id}`}
+                      active={at === index}
+                      disabled={isTaken || full}
+                      lead={<ReferenceMark theaterId={theaterId} objectiveId={objective.id} size={phone ? 24 : 16} />}
+                      name={objective.title}
+                      title={objective.title}
+                      // 시작 전 묶음의 행은 머리가 이미 「시작 전」이라 그 낱말을 다시 적지 않고 임무 수만 둔다.
+                      meta={(
+                        <span className="objectives-commodore-ref-sub">
+                          {isTaken ? <span>{`✓ ${t("objectives.commodore.reference.taken")}`}</span> : <>
+                            {group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`objectives.commodore.reference.status.${candidate.status}`)}</span>}
+                            {missions ? <span>{t("objectives.commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
+                          </>}
+                        </span>
+                      )}
+                      onPick={() => choose(candidate)}
+                      onHover={() => setList((current) => (current.index === at ? current : { ...current, index: at }))}
+                    />
+                  );
+                })}
+              </ComposerDeckGroup>
+            );
           })}
-          {candidates.length === 0 ? <p className="objectives-commodore-ref-empty">{list.query ? t("objectives.commodore.reference.empty", { query: list.query }) : t("objectives.commodore.reference.none")}</p> : null}
-        </div>
+          {candidates.length === 0 ? <ComposerDeckEmpty>{list.query ? t("objectives.commodore.reference.empty", { query: list.query }) : t("objectives.commodore.reference.none")}</ComposerDeckEmpty> : null}
+        </ComposerDeck>
       ) : null}
     </>
   );

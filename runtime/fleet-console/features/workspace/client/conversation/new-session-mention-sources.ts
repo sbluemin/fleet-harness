@@ -3,7 +3,8 @@ import type { ClientExecutionProvider } from "@fleet-console/sdk/plugin";
 
 import type { OperationSearchGroup } from "../../../../core/client/src/integration/operation-search.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
-import { buildMentionGroups, buildPluginMentionCategories, type MentionCategory, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
+import { useClusterIndex } from "../operation-clusters.js";
+import { buildMentionGroups, buildPluginMentionCategories, splitNotStartedGroups, type MentionCategory, type MentionTarget, type PluginMentionRow } from "./new-session-mention.js";
 
 /**
  * 새 세션 컴포저의 '@' 원천 — 데스크톱 화면과 모바일 새 대화 시트가 같은 목록을 읽는다.
@@ -17,6 +18,8 @@ export interface MentionSources {
   /** 질의 없는 플러그인 행 전체 — 시드 주소(composer.open)와 고른 행의 최신 이름을 찾는 데 쓴다. */
   readonly allPluginRows: readonly PluginMentionRow[];
   readonly operationGroups: readonly OperationSearchGroup[];
+  /** 「시작 전」 Operation — 사이드바 「시작 전」과 같은 원천(`splitNotStartedGroups`)으로 Operations 에서 갈라낸 묶음. */
+  readonly pendingGroups: readonly OperationSearchGroup[];
   readonly pluginCategories: readonly MentionCategory[];
   /** 고른 행선지를 지금 목록의 같은 행으로 읽는다. 목록에서 사라졌으면 고른 그대로 둔다(보내면 플러그인이 거절한다). */
   readonly latest: (picked: MentionTarget | null) => MentionTarget | null;
@@ -46,9 +49,12 @@ export function useMentionSources(state: ConsoleState, providers: readonly Clien
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [providers, rosterEpoch, opened],
   );
-  const operationGroups = useMemo(
-    () => (query === null ? [] : buildMentionGroups(state, messageableTypesByPlugin, query)),
-    [messageableTypesByPlugin, query, state],
+  const clusterIndex = useClusterIndex();
+  const { operationGroups, pendingGroups } = useMemo(
+    () => (query === null
+      ? { operationGroups: [], pendingGroups: [] }
+      : splitNotStartedGroups(buildMentionGroups(state, messageableTypesByPlugin, query), (operationId) => clusterIndex.rowOf.get(operationId)?.cluster.row)),
+    [clusterIndex, messageableTypesByPlugin, query, state],
   );
   const pluginCategories = useMemo(
     () => (query === null ? [] : buildPluginMentionCategories(providers, query)),
@@ -60,5 +66,5 @@ export function useMentionSources(state: ConsoleState, providers: readonly Clien
     const row = allPluginRows.find((candidate) => candidate.optionId === picked.row.optionId);
     return row && row !== picked.row ? { kind: "plugin", row } : picked;
   }, [allPluginRows]);
-  return { messageableTypesByPlugin, allPluginRows, operationGroups, pluginCategories, latest };
+  return { messageableTypesByPlugin, allPluginRows, operationGroups, pendingGroups, pluginCategories, latest };
 }
