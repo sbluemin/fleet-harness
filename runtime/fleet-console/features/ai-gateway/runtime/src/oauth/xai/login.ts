@@ -46,6 +46,12 @@ function nonEmpty(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
+/** Fleet 항목이 없을 때 status·추론이 같이 보는 읽기 전용 판정. 갱신하거나 파일을 쓰지 않는다. */
+export async function xaiCliSubscriptionPresent(deps: CredentialResolverDeps, now = Date.now()): Promise<boolean> {
+  const result = await resolveXaiCliAuth(deps, { now: () => now });
+  return result.status === "ok";
+}
+
 export function parseXaiAuthEntry(entry: AuthStorageEntry): XaiAuthEntry | undefined {
   return isRefreshableOAuthEntry(entry) ? entry : undefined;
 }
