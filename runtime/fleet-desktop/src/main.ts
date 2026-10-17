@@ -176,10 +176,17 @@ async function boot(): Promise<void> {
    */
   // 맨 위 줄 높이 — Console 이 테마 스냅샷의 chrome.band 로 알린다(대화 중심 화면의 52px). 신호등은 그 줄 가운데에 선다.
   let chromeBand: number | undefined;
+  const placeTrafficLights = (): void => {
+    if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
+    // 넘겨주기 중에는 창이 아직 진입 화면 배율이다 — 곧 적용될 저장 줌 자리에 미리 세워, 진입 마크가 Console 배율의
+    // 맨 위 줄에 내려앉는 순간부터 Console 적재 뒤까지 신호등이 한 자리에 머문다.
+    const pendingZoomLevel = controls.pendingZoomLevel();
+    const zoomFactor = pendingZoomLevel === null ? window.consoleContents.getZoomFactor() : zoomFactorForLevel(pendingZoomLevel);
+    window.setWindowButtonPosition(trafficLightPosition(zoomFactor, chromeBand));
+  };
   const refreshNativeChrome = (): void => {
     overlayRefresher?.refresh();
-    if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
-    window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor(), chromeBand));
+    placeTrafficLights();
   };
   const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
   /**
@@ -593,6 +600,7 @@ async function boot(): Promise<void> {
           let origin: string;
           try { origin = new URL(url).origin; } catch { return; }
           if (!isConsoleOrigin(origin) || policy?.currentConsoleOrigin() !== origin) return;
+          controls.onConsoleCommitted(createdWindow.consoleContents);
           void republishShellHomeOnArrival({
             publish: publishShellHome,
             stillAt: (at) => !createdWindow.isDestroyed() && policy?.currentConsoleOrigin() === at,
@@ -635,10 +643,12 @@ async function boot(): Promise<void> {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);
         controls.handoffStarted();
+        placeTrafficLights();
         void publishShellHome(origin);
       },
       synchronizeTheme: (origin) => followConsole(origin, () => true, true),
-      onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
+      // 프로그램이 건 줌은 zoom-changed를 내지 않는다 — 저장 줌을 건 뒤 신호등을 실제 줌에 다시 맞춘다(Windows 오버레이는 손대지 않는다).
+      onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); placeTrafficLights(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
