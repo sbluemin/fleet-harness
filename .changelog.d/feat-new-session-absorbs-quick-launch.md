@@ -12,5 +12,5 @@ branch: feat/new-session-absorbs-quick-launch
   ko: 새 세션 놀이터는 다시 열면 이어서 움직이고, 아바타가 여러 방식으로 드나들며 새 얼굴이 나오고 인원이 늘었다 줄었다 합니다.
 
 #### Removed
-- Removed the Quick Launch bar, including its pin-to-bottom and mention-the-open-Operation options and the deputy chat lane; `@` a deputy from the new session to get its reply on the deputy's card.
-  ko: Quick Launch 막대를 제거했습니다. 하단 고정과 '열 때 보고 있는 Operation 멘션' 옵션, 부관 대화 칸도 함께 없어졌으며, 부관에게는 새 세션에서 `@`로 보내면 부관 카드에서 답합니다.
+- Removed the Quick Launch bar, including its pin-to-bottom and mention-the-open-Operation options and the deputy chat lane; `@` a deputy from the new session to get its reply on the deputy's card. Custom key bindings for Quick Launch or the new session return to the defaults, so set them again in Settings if you had changed them.
+  ko: Quick Launch 막대를 제거했습니다. 하단 고정과 '열 때 보고 있는 Operation 멘션' 옵션, 부관 대화 칸도 함께 없어졌으며, 부관에게는 새 세션에서 `@`로 보내면 부관 카드에서 답합니다. Quick Launch나 새 세션의 단축키를 바꿔 두었다면 기본값으로 돌아가므로 설정에서 다시 지정해 주세요.
