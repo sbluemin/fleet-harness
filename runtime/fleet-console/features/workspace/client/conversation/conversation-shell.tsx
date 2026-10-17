@@ -634,10 +634,13 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 플러그인 대화의 에이전트 세션이 Session 브라우저를 쓰면(사령관) 머리 지구본과 분할 칸이 그 세션의 scope 로 브라우저를 찾는다.
   // 플러그인 id 는 호스트가 붙인 등록 id 다 — 대화가 다른 플러그인의 scope 를 가리킬 수 없다.
   let sessionScopeId: string | null = null;
+  let sessionAttach: ((files: readonly File[]) => void) | null = null;
   if (surfaceDescriptor?.sessionBrowser && surfaceDescriptor.pluginId && surface) {
     try {
       const scope = surfaceDescriptor.sessionBrowser({ params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(surfaceDescriptor.id) });
       sessionScopeId = scope !== null && typeof scope.scopeId === "string" && scope.scopeId !== "" ? scope.scopeId : null;
+      // 칸 브라우저의 주석·스크린샷이 붙을 이 대화의 입력창 — 플러그인이 준 손잡이 그대로다(옛 원장 채팅이 아니다).
+      sessionAttach = sessionScopeId !== null && typeof scope?.attach === "function" ? scope.attach : null;
     } catch {
       sessionScopeId = null;
     }
@@ -761,6 +764,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
       fallbackRight={insets.right}
       operation={splitOperation}
       sessionOwnerId={splitKind === "session" ? sessionSplit?.ownerId ?? null : null}
+      sessionAttach={splitKind === "session" ? sessionAttach : null}
       state={state}
       language={language}
       operationKinds={operationKinds}
@@ -1405,13 +1409,15 @@ function useViewportWidth(): number {
  * 대화 열 오른쪽 칸. 늘 마운트되어 있고(닫히면 폭 0), 폭 전이로 펼쳐지고 접힌다 — 대화 칸의 right 전이와 같은 시간·곡선이다.
  * 펼쳐지는 동안은 고요한 면만 보이고, 정착한 뒤에 Session 브라우저(Operation 의 companion · 플러그인 세션의 것)가 칸 안에 선다.
  */
-function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, state, language, operationKinds, resizing, onResizingChange }: {
+function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerId, sessionAttach, state, language, operationKinds, resizing, onResizingChange }: {
   readonly kind: SplitKind | null;
   readonly seat: SplitSeat | null;
   readonly fallbackRight: number;
   readonly operation: OperationNode | null;
   /** 플러그인 대화의 Session 브라우저 owner — kind 가 "session" 일 때만. */
   readonly sessionOwnerId: string | null;
+  /** 그 Session 브라우저의 첨부가 붙을 플러그인 대화의 입력창(`sessionBrowser().attach`). 없으면 그 칸에서 첨부할 곳이 없다. */
+  readonly sessionAttach: ((files: readonly File[]) => void) | null;
   readonly state: ConsoleState;
   readonly language: "en" | "ko";
   readonly operationKinds: readonly OperationKindDescriptor[];
@@ -1467,7 +1473,7 @@ function ConversationSplit({ kind, seat, fallbackRight, operation, sessionOwnerI
       aria-hidden={open ? undefined : true}
     >
       {open && settled && kind === "session" && sessionOwnerId !== null ? (
-        <SessionBrowserSplitPane key={sessionOwnerId} ownerId={sessionOwnerId} theme={state.activeTheme} language={language} />
+        <SessionBrowserSplitPane key={sessionOwnerId} ownerId={sessionOwnerId} theme={state.activeTheme} language={language} onAttach={sessionAttach} />
       ) : null}
       {open && settled && kind === "operation" && operation !== null ? (
         <OperationBrowserSplitPane operation={operation} state={state} language={language} operationKinds={operationKinds} />
@@ -1607,7 +1613,7 @@ interface SurfaceSessionBrowser {
   readonly subjectKey: string;
 }
 
-/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. 붙여넣기 경로(onAttach)는 없다. */
+/** 칸 안의 Session 브라우저가 쓰는 호스트 손잡이 — Operation companion 과 같은 값이다. 첨부 경로(onAttach)는 대화가 따로 준다. */
 const SESSION_BROWSER_SERVICES = { isDesktopShell, themePolarity, subscribeConsoleChannel } as const;
 
 /**
@@ -1668,8 +1674,9 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
 }
 
 /** 칸 안의 플러그인 세션 Session 브라우저 — 캡션(탭 줄)과 본문을 그 owner 로 그린다. */
-function SessionBrowserSplitPane({ ownerId, theme, language }: {
+function SessionBrowserSplitPane({ ownerId, theme, language, onAttach }: {
   readonly ownerId: string;
+  readonly onAttach: ((files: readonly File[]) => void) | null;
   readonly theme: ConsoleState["activeTheme"];
   readonly language: "en" | "ko";
 }) {
@@ -1683,7 +1690,7 @@ function SessionBrowserSplitPane({ ownerId, theme, language }: {
         </button>
       </header>
       <div className="conversation-split-body">
-        <SessionBrowserPanel ownerId={ownerId} language={language} theme={theme} bodyLive services={SESSION_BROWSER_SERVICES} />
+        <SessionBrowserPanel ownerId={ownerId} language={language} theme={theme} bodyLive services={SESSION_BROWSER_SERVICES} {...(onAttach ? { onAttach } : {})} />
       </div>
     </div>
   );
