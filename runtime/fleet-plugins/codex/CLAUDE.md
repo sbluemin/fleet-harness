@@ -1,10 +1,8 @@
 # Codex Plugin
 
-Codex owns Wiki storage, retrieval, schemas, patch approval, UI, Admiral Wiki MCP registration, and the Cowork session, draft, and session-scoped tool definitions. Wiki implementation lives in `server/wiki/`; its `CLAUDE.md` owns storage and tool trust boundaries. The standalone Fleet CLI does not register Codex Wiki tools.
+Codex owns Wiki storage, retrieval, schemas, patch approval, UI, and Admiral Wiki MCP registration. Wiki implementation lives in `server/wiki/`; its `CLAUDE.md` owns storage and tool trust boundaries. The standalone Fleet CLI does not register Codex Wiki tools.
 
 ## Boundaries
 
-- Cowork remains terminal-free; the structural `CoworkConnector` consumes the Console Agent SDK. Console owns execution and MCP resources; Codex owns draft tool closures and Apply approval.
-- `wiki_draft_read`, `wiki_draft_edit`, and `wiki_draft_write` are session closure-injected tools, never global registrations. They accept no path or entry ID that could reach another entry.
-- Cowork exposes only those three draft tools and the pure-read `wiki_briefing`, `wiki_orient`, `wiki_read`, and `wiki_resolve` tools. Global Admiral tools remain separate.
-- Applying a draft requires the user's final Apply action and uses the Wiki patch queue with stale-base checks and an audit trail. Moving the engine does not grant automatic approval.
+- Codex runs no agent session of its own. A reader comment or question attaches as a quote chip to a commander's or the Commodore's composer through the host composer capability; attaching never sends.
+- Every Wiki entry write, including a commander's revision, goes through the human-approved patch queue with stale-base checks and an audit trail.
