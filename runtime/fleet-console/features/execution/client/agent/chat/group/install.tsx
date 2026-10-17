@@ -28,7 +28,7 @@ import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useOperationLinks } from "../../operation-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
-import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
@@ -144,9 +144,10 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 — 그룹 대화가 서는 대화에만, pill 옆에 따로 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+/** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 보기 캡슐 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
   if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
+  if (!conversationHasFoldableMembers(context.operation.id)) return null;
   return <GroupFoldToggle language={context.language} />;
 }
 
@@ -166,7 +167,7 @@ function GroupFoldGlyph() {
 }
 
 /**
- * pill 옆의 글리프 캡슐 하나. 칸은 이웃 캡션 동작과 같은 클래스라 켬(워시 + 황동)·겨눔·고대비를 그대로 받는다.
+ * pill 옆 보기 캡슐의 칸. 호스트가 캡슐을 세우고, 이 칸은 그 안에 선다. 켬·겨눔·고대비는 머리 줄이 정한다.
  * 접근 이름은 「턴 접기」로 고정하고 상태는 aria-pressed가 전한다. 말풍선만 누르면 일어날 일을 말한다.
  * CaptionActionButton은 접근 이름과 말풍선을 한 문자열로 묶어, 이 둘을 가를 수 없다.
  */
@@ -174,20 +175,18 @@ function GroupFoldToggle({ language }: { readonly language: "en" | "ko" }) {
   const t = getGroupT(language);
   const folded = useFoldTurns();
   return (
-    <span className="group-chat-fold-capsule">
-      <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
-        <button
-          type="button"
-          className="fleet-caption-action"
-          aria-pressed={folded}
-          aria-label={t("group.fold.toggle")}
-          onPointerDown={(event) => { event.stopPropagation(); }}
-          onClick={() => setFoldTurns(!folded)}
-        >
-          <GroupFoldGlyph />
-        </button>
-      </CaptionTipHost>
-    </span>
+    <CaptionTipHost label={t(folded ? "group.fold.expand" : "group.fold.toggle")}>
+      <button
+        type="button"
+        className="fleet-caption-action"
+        aria-pressed={folded}
+        aria-label={t("group.fold.toggle")}
+        onPointerDown={(event) => { event.stopPropagation(); }}
+        onClick={() => setFoldTurns(!folded)}
+      >
+        <GroupFoldGlyph />
+      </button>
+    </CaptionTipHost>
   );
 }
 

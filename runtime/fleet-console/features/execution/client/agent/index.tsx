@@ -42,7 +42,7 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
-import { installGroupTimeline, useHasGroupConversation } from "./chat/group-timeline-store.js";
+import { installGroupTimeline, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
@@ -88,7 +88,10 @@ export const agentOperationKind = defineOperationKind({
   subtitle: () => "Claude Code",
   render: (context) => <AgentOperationView context={context} />,
   // 뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
-  captionActions: (context) => <AgentCaptionActions context={context} />,
+  // 대화 머리는 두 캡슐로 가른다: 전환은 보기 캡슐, 지구본은 도구 캡슐 맨 앞. 표식·말풍선은 동작 묶음에 남는다.
+  captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
+  captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
+  captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
   // 이 Operation에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
   operationMenu: (context) => <AgentOperationMenu context={context} />,
@@ -407,12 +410,15 @@ function offersCompanion(context: OperationRenderContext, companionId: string): 
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
-function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
+/** 대화 머리가 요청하는 조각. shelf 는 표식·말풍선만, 전환과 지구본은 각 캡슐이 가져간다. */
+type AgentCaptionPart = "shelf" | "view-switch" | "tools-lead";
+
+function AgentCaptionActions({ context, part = "shelf" }: { readonly context: OperationRenderContext; readonly part?: AgentCaptionPart }) {
   if (mobileOperationOf(context)) return null;
-  return <AgentCaptionActionsBody context={context} />;
+  return <AgentCaptionActionsBody context={context} part={part} />;
 }
 
-function AgentCaptionActionsBody({ context }: { readonly context: OperationRenderContext }) {
+function AgentCaptionActionsBody({ context, part }: { readonly context: OperationRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
@@ -494,14 +500,16 @@ function AgentCaptionActionsBody({ context }: { readonly context: OperationRende
       </span>
     : null;
 
+  if (part === "view-switch") return viewSwitch;
+  if (part === "tools-lead") return browser;
+  // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
+  if (!using.console && !using.computer && bubble === null) return null;
   return (
     <>
       <span className="agent-operation-marks">
         <OperationUseBadge active={using.console} kind="console" label={using.turnOnly.console ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuConsoleUse") }) : t("terminal.experiments.menuConsoleUse")} />
         <OperationUseBadge active={using.computer} kind="computer" label={using.turnOnly.computer ? t("terminal.experiments.useTurnOnly", { name: t("terminal.experiments.menuComputerUse") }) : t("terminal.experiments.menuComputerUse")} />
       </span>
-      {browser}
-      {viewSwitch}
       {bubble}
     </>
   );
@@ -615,8 +623,8 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
   const computerUseEnabled = readComputerUseEnabled(context.operation.payload);
   const [usePending, setUsePending] = React.useState(false);
   const canSwitch = chatMode || session.status !== "dormant";
-  // 그룹 루트의 채팅이면 「턴 접기」를 ⋮ 스위치 행으로 둔다 — 상단 막대는 셸 몫이라 그룹 대화가 자기 머리를 그리지 않는다.
-  const groupChat = useHasGroupConversation(context.operationId) && chatMode;
+  // 「턴 접기」는 접힐 구성원 말이 있을 때만 — 데스크톱 머리 버튼과 같은 판정이다.
+  const canFoldTurns = useConversationHasFoldableMembers(context.operationId) && chatMode;
   const foldTurns = useFoldTurns();
 
   const toTerminal = async () => {
@@ -664,7 +672,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: () => { void (chatMode ? toTerminal() : toChat()); },
     });
   }
-  if (groupChat) {
+  if (canFoldTurns) {
     items.push({
       id: "agent-fold-turns",
       label: getGroupT(context.language ?? "en")("group.fold.toggle"),
@@ -683,7 +691,7 @@ function AgentMobileMenu({ context, mobile }: { readonly context: OperationRende
       run: toggleComputerUse,
     });
   }
-  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${groupChat}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
+  useMobileMenuItems(mobile, items, `${canSwitch}|${chatMode}|${terminalPending}|${canFoldTurns}|${foldTurns}|${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
   return null;
 }
 

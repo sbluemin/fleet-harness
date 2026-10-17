@@ -20,7 +20,7 @@ export {
  *    대신하는 아직 서지 않은 Operation 을 읽는다.
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
  * 4. 대화 머리 보기 스위치 — `setConversationCaptionRenderer`. 본문 렌더러가 세운 화면의 보기 스위치(그룹 대화의 「턴 접기」)가
- *    pill 바로 옆, 도구 단추 묶음 앞에 따로 선다. `null` 이면 아무것도 서지 않는다.
+ *    pill 바로 옆 보기 캡슐(전환과 한 묶음)에 선다. `null` 이면 그 칸은 서지 않는다.
  * 5. 대신하는 Operation 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Operation 을 대신하면
  *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
  *

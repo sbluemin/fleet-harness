@@ -41,6 +41,24 @@ export function hasGroupConversation(operationId: string): boolean {
   return isGroupConversationRoot(operationId) || getState().nestedOperations.some((operation) => operation.parentOperationId === operationId);
 }
 
+/**
+ * 턴 접기가 접을 구성원 말이 생길 수 있는가. `foldTimeline` 은 `speaker.kind === "member"` 인 말만 접으므로,
+ * 하위 Operation(살아 있는 구성원)이나 명부의 구성원이 있을 때 참이다. 말이 아직 없어도 참이다 — 접기는 다음 구성원 말에 걸린다.
+ * 제거된 구성원(`member-left`)의 지난 말도 타임라인에 남아 접히므로(`snapshot` 의 historical), 그런 구성원이 있어도 참이다 —
+ * 마지막 구성원이 떠난 뒤에도 접힌 말을 펼칠 수 있어야 한다. 지휘관만 있는 대화는 거짓이다. 눌러도 접히는 말이 없다.
+ */
+export function conversationHasFoldableMembers(operationId: string): boolean {
+  if (getState().nestedOperations.some((operation) => operation.parentOperationId === operationId)) return true;
+  const board = boundClusterSource.get().find((cluster) => cluster.conversation?.operationId === operationId)?.conversation;
+  if ((board?.members ?? []).some((member) => member.kind === "member")) return true;
+  return (board?.events ?? []).some((event) => event.kind === "member-left" && event.speaker.operationId !== undefined);
+}
+
+export function useConversationHasFoldableMembers(operationId: string): boolean {
+  const read = () => conversationHasFoldableMembers(operationId);
+  return useSyncExternalStore(subscribeGroupConversation, read, read);
+}
+
 function subscribeGroupConversation(listener: () => void): () => void {
   const disposeClusters = subscribeGroupClusters(listener);
   const disposeConsole = subscribeConsole(listener);
