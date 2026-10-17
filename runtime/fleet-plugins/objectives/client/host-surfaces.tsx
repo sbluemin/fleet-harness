@@ -116,8 +116,9 @@ function HostObjectives({ context }: { readonly context: HostSurfaceContext }) {
     <section className="objectives-host-panel" data-host-key={context.selection.hostKey} data-objective-id={current?.id}>
       {error || snapshot.error ? <p role="alert">{error ?? snapshot.error}</p> : null}
       <Select label={t("objectives.panel.title")} value={current?.id ?? ""} options={snapshot.objectives.map((objective) => ({ value: objective.id, label: objective.title }))} onChange={open} />
-      <div className="objectives-pick-shortcuts">
-        {current ? <button type="button" onClick={() => open(current.id)}>{current.title}</button> : null}
+      {/* 고른 목록 값과 같은 제목을 다시 세우지 않는다 — 지금 보는 Operation 이 이 목표가 아닐 때만 그 목표로 가는 입구가 선다. */}
+      <div className="objectives-pick-shortcuts objectives-host-shortcuts">
+        {current && current.id !== context.selection.operationId ? <button type="button" onClick={() => open(current.id)}>{current.title}</button> : null}
         <button type="button" disabled={!context.canWrite()} onClick={context.navigation.openNewOperation}>{t("objectives.none.newOperation")}</button>
       </div>
       {current ? <>
