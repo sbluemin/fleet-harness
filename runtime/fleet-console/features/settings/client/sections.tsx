@@ -10,7 +10,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary, SegmentedThumb } from "@fleet-console/sdk/react/browser";
 import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "@fleet-console/sdk/settings";
-import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSlider, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
+import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
 export { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -20,11 +20,11 @@ import { desktopAsksForLocalFonts, isDesktopShell, useDesktopShellHome } from ".
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
-import { setActiveTheme, setUnfocusedPanelFade } from "../../../core/client/src/integration/store.js";
+import { setActiveTheme } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
 import { loadDeviceFonts, requestDesktopDeviceFonts, useDeviceFonts, useDeviceFontsPermission, usePageVisible } from "./device-fonts.js";
 import { ExperimentsSection } from "./experiments-section.js";
-import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
+import { isSavingGlobalSettingsField, setGlobalSettingsField, type GlobalSettingsField } from "./global-settings-store.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { ShortcutsCard } from "./shortcuts-section.js";
 import { pluginSettingsSectionId } from "./settings-entry.js";
@@ -152,7 +152,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.panelFade"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -206,15 +206,6 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
 
 const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
-
-/**
- * 비포커스 패널 흐리기 세기의 구간과 기본값. 브라우저 코드는 호스트를 import하지 않으므로
- * 정적 포트 상·하한과 같은 관례로 여기에 적는다 — 서버는 settings-domain에서 같은 수로
- * 검증한다. 상한이 70인 이유는 CSS 쪽 주석에 있다: 그 아래로 내려가면 곁을 훑는 일까지 끊긴다.
- */
-const UNFOCUSED_PANEL_FADE_MIN = 0;
-const UNFOCUSED_PANEL_FADE_MAX = 70;
-const UNFOCUSED_PANEL_FADE_DEFAULT = 50;
 
 // 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 PluginErrorBoundary에 잡힌다.
 export function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
@@ -327,43 +318,6 @@ export function ThemeCard({
       if (!saved) setActiveTheme(previousTheme);
     });
   };
-  const savedPanelFade = state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT;
-  // 끄는 동안의 값은 화면이 들고, 서버 값은 손을 뗄 때 따라온다. 저장 왕복마다 손잡이가
-  // 서버 값으로 되튀면 연속 조작이 끊긴다.
-  const [draftPanelFade, setDraftPanelFade] = useState<number | null>(null);
-  const panelFade = draftPanelFade ?? savedPanelFade;
-  const previewPanelFade = (next: number) => {
-    setDraftPanelFade(next);
-    setUnfocusedPanelFade(next);
-  };
-  // 슬라이더는 저장 중에도 켜 둔다 — 끄면 키보드 포커스가 빠져 방향키 한 번마다 Tab으로 다시 들어가야
-  // 한다. 전역 설정 스토어는 같은 필드의 겹친 저장을 거절(false)하므로, 도는 저장이 있으면 마지막 값만
-  // 맡겨 두었다가 그 저장이 끝나는 대로 이어 보낸다. 마지막 값이 이긴다.
-  const pendingPanelFadeRef = useRef<number | null>(null);
-  const savePanelFade = (next: number) => {
-    if (isSavingGlobalSettingsField("unfocusedPanelFade")) {
-      pendingPanelFadeRef.current = next;
-      return;
-    }
-    void setGlobalSettingsField("unfocusedPanelFade", next).then((saved) => {
-      const pending = pendingPanelFadeRef.current;
-      pendingPanelFadeRef.current = null;
-      if (pending !== null && pending !== next) {
-        savePanelFade(pending);
-        return;
-      }
-      setDraftPanelFade(null);
-      // 실패하면 스토어가 이 필드를 직전 값으로 되감는다 — 화면도 그 값으로 맞춘다.
-      if (!saved) setUnfocusedPanelFade(getGlobalSettingsStoreState().state?.unfocusedPanelFade ?? UNFOCUSED_PANEL_FADE_DEFAULT);
-    });
-  };
-  const commitPanelFade = (next: number) => {
-    if (next === savedPanelFade && !isSavingGlobalSettingsField("unfocusedPanelFade")) {
-      setDraftPanelFade(null);
-      return;
-    }
-    savePanelFade(next);
-  };
   return (
     <section className="global-settings-card appearance-card" aria-label={t("settings.theme.aria")}>
       {/* CLI 테마 각주는 카드 전체의 이야기라 카드 제목 팁이 진다 — 행 팁은 자기 줄만 말한다. */}
@@ -403,33 +357,6 @@ export function ThemeCard({
                 );
               })}
             </div>
-          </div>
-
-          <div className="global-settings-row">
-            <div className="global-settings-row-text">
-              <p className="global-settings-resp-title">
-                {t("settings.theme.panelFade")}
-                <SettingsHelp title={t("settings.theme.panelFade")}>{t("settings.theme.panelFadeHelp")}</SettingsHelp>
-              </p>
-            </div>
-            {/* 값은 끌리는 동안 화면에 즉시 적용된다 — 세기는 숫자가 아니라 화면으로 고르는
-                것이라, 손을 뗀 뒤에야 보이면 고를 수가 없다. 저장은 손을 뗄 때 한 번만 나간다.
-                연속값은 SDK 슬라이더 한 문법이다(트랙·값·기본값 버튼) — 백분율 표기는 두 로케일에서
-                같은 문자열이라 메시지 키 없이 여기서 조립한다. */}
-            <SettingsSlider
-              value={panelFade}
-              min={UNFOCUSED_PANEL_FADE_MIN}
-              max={UNFOCUSED_PANEL_FADE_MAX}
-              step={5}
-              disabled={state === null}
-              label={t("settings.theme.panelFade")}
-              formatValue={(value) => `${value}%`}
-              onPreview={previewPanelFade}
-              onCommit={commitPanelFade}
-              defaultValue={UNFOCUSED_PANEL_FADE_DEFAULT}
-              resetLabel={t("settings.slider.reset")}
-              resetAriaLabel={t("settings.slider.resetAria", { title: t("settings.theme.panelFade") })}
-            />
           </div>
 
           <div className="global-settings-row">

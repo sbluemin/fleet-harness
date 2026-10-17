@@ -292,19 +292,6 @@ export function setActiveTheme(theme: ThemeId): void {
   setState({ activeTheme: theme });
 }
 
-/**
- * 포커스하지 않은 패널 본문이 물러나는 세기 — 화면은 백분율로 말하고 CSS는 불투명도로 그린다.
- * 0%는 물러나지 않음(1.0), 클수록 더 흐리다. 값 하나만 루트에 실어 두면 규칙은 그대로 두고
- * 세기만 바뀐다. CSS 쪽에 같은 기본값이 폴백으로 적혀 있어, 이 함수가 아직 불리지 않은
- * 첫 페인트에서도 패널이 제자리를 지킨다.
- */
-export function setUnfocusedPanelFade(fadePercent: number): void {
-  if (typeof document === "undefined") return;
-  const clamped = Math.min(70, Math.max(0, Math.round(fadePercent)));
-  document.documentElement.style.setProperty("--unfocused-panel-opacity", String((100 - clamped) / 100));
-}
-
-
 export function applyObserverStatus(status: ObserverStatus): void {
   // 서버가 이 문서와 다른 버전이 됐다면 화면은 옛 번들이다 — 상태를 옛 화면에 그리는 대신 새로 받는다.
   if (observeConsoleVersion(status.version)) return;

@@ -45,7 +45,7 @@ import { announceDesktopReady } from "../integration/desktop-ready.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setUnfocusedPanelFade } from "../integration/store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 
 interface FleetConsoleRuntime {
@@ -96,7 +96,6 @@ installModalOpenMarker();
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
-  setUnfocusedPanelFade(settings.unfocusedPanelFade);
 
   hydrateGlobalSettings(settings);
   await migrateStoredCommissioningSeen();
