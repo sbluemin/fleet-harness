@@ -24,7 +24,7 @@ export function ViewModeToggle({ className, menuItem = false }: { readonly class
       title={label}
     >
       {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
-      {menuItem ? <><span className="conversation-dock-label">{label}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
+      {menuItem ? <span className="conversation-dock-label">{label}</span> : null}
     </button>
   );
 }
