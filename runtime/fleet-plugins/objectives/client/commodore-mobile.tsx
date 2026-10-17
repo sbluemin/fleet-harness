@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { referencePlainText } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
@@ -13,16 +12,15 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
-import { CommodoreReferenceInput, EMPTY_REFERENCE_VALUE, useCommodoreReferenceHost, type CommodoreReferenceInputHandle, type CommodoreReferenceValue } from "./commodore-reference-input.js";
+import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
-import { focusAtEnd } from "./commodore-inbox-section.js";
+import { CommodoreComposer, focusAtEnd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   addCommodoreIntel,
   commodoreLanguage,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,
-  messageCommodore,
   noteCommodoreLanguage,
   readCommodore,
   removeCommodoreIntel,
@@ -70,7 +68,6 @@ const SparkIcon = () => <Icon><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.
 const ClockIcon = () => <Icon><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5V13l2.6 1.7M9.5 2.8h5" /></Icon>;
 const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></Icon>;
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
-const SendIcon = () => <Icon size={20} strokeWidth={2.2}><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
 
 function failWord(t: T, error: unknown): string {
   const code = error instanceof Error ? error.message : "failed";
@@ -239,8 +236,6 @@ function AutonomyRow({ t, theaterId, view, online, onFail, onClear }: { readonly
 
 /* ── 기록 탭(CM-2b) ───────────────────────────────────────────────────── */
 
-interface Pending { readonly key: number; readonly text: string; readonly at: number }
-
 function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear }: {
   readonly t: T;
   readonly language: "en" | "ko";
@@ -262,7 +257,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const [loadingOlder, setLoadingOlder] = useState(false);
-  const [pending, setPending] = useState<Pending | null>(null);
+  const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const pinned = useRef(true);
   const olderAnchor = useRef<number | null>(null);
@@ -307,6 +302,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
         {pending ? (
           <div className="objectives-cm-msg">
             <p className="objectives-cm-head"><b>{t("objectives.commodore.log.you")}</b><span className="objectives-cm-time">{clockTime(pending.at)}</span><span>{t("objectives.commodore.mobile.sending")}</span></p>
+            {pending.images.length > 0 ? <div className="objectives-cm-msg-images">{pending.images.map((image) => <img key={image.key} src={image.url} alt={image.name} />)}</div> : null}
             <p className="objectives-cm-bubble">{pending.text}</p>
           </div>
         ) : null}
@@ -319,65 +315,10 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 「사람이 답함」이 남는다. */}
       <CommodoreAskCards theaterId={theaterId} t={t} phone onEnded={onFail} />
       <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>{body}</div>
-      <CommodoreMobileComposer t={t} theaterId={theaterId} active={view ? view.active : false} online={online} failure={failure} onFail={onFail} onClear={onClear} onPending={setPending} />
-    </div>
-  );
-}
-
-/** 터치 기기의 화면 키보드에서는 Enter 가 줄바꿈이다 — 보내기는 원으로 한다. 하드웨어 키보드(정밀 포인터)는 채팅 입력창처럼 Enter 로 보낸다. */
-const touchFirst = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
-
-function CommodoreMobileComposer({ t, theaterId, active, online, failure, onFail, onClear, onPending }: {
-  readonly t: T;
-  readonly theaterId: string;
-  readonly active: boolean;
-  readonly online: boolean;
-  readonly failure: string | null;
-  readonly onFail: (error: unknown) => void;
-  readonly onClear: () => void;
-  readonly onPending: (pending: Pending | null) => void;
-}) {
-  const [value, setValue] = useState<CommodoreReferenceValue>(EMPTY_REFERENCE_VALUE);
-  const [sending, setSending] = useState(false);
-  const inputRef = useRef<CommodoreReferenceInputHandle | null>(null);
-  const usable = active && online;
-  const send = () => {
-    const text = value.text.trim();
-    // 빈 입력에서 원을 누르면 입력칸에 포커스만 간다(FD-19).
-    if (!text) { inputRef.current?.focus(); return; }
-    if (!usable || sending) return;
-    onClear();
-    setSending(true);
-    // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
-    onPending({ key: Date.now(), text: referencePlainText(text, value.references.map(({ id, title }) => ({ id, label: title }))), at: Date.now() });
-    // 실패하면 초안은 남는다 — 입력창 위 알림 줄이 이유를 말한다.
-    void messageCommodore(theaterId, text, undefined, value.references.map((reference) => reference.id)).then(() => setValue(EMPTY_REFERENCE_VALUE)).catch(onFail).finally(() => { setSending(false); onPending(null); });
-  };
-  return (
-    <div className="objectives-cm-dock">
-      {failure ? <p className="objectives-cm-note objectives-cm-dock-note" role="alert">{failure}</p> : null}
-      <div className={`objectives-cm-comp${usable ? "" : " is-off"}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
-        <CommodoreReferenceInput
-          ref={inputRef}
-          t={t}
-          theaterId={theaterId}
-          phone
-          className="objectives-cm-comp-input"
-          value={value}
-          disabled={!usable}
-          placeholder={t("objectives.commodore.composer.placeholder")}
-          ariaLabel={t("objectives.commodore.composer.aria")}
-          ariaDescribedBy={active ? undefined : `objectives-cm-idle-${theaterId}`}
-          onChange={setValue}
-          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && !touchFirst()) { event.preventDefault(); send(); } }}
-        />
-        <div className="objectives-cm-comp-bar">
-          {/* '@' 원 — 기호 키보드로 바꾸지 않고 지휘관 목록을 연다. 입력 바의 보조 원이라 보내기 원보다 물러선 면이다. */}
-          <button type="button" data-press="r3" className="objectives-cm-circ is-at" aria-label={t("objectives.commodore.reference.menu")} title={t("objectives.commodore.reference.menu")} disabled={!usable || sending} onMouseDown={(event) => event.preventDefault()} onClick={() => inputRef.current?.openReferences()}>@</button>
-          <button type="button" data-press="r3" className="objectives-cm-circ" aria-label={t("objectives.commodore.composer.send")} disabled={!usable || sending} onClick={send}><SendIcon /></button>
-        </div>
+      {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
+      <div className="objectives-cm-dock">
+        <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} onFail={onFail} onClear={onClear} />
       </div>
-      {active ? null : <p id={`objectives-cm-idle-${theaterId}`} className="objectives-cm-secnote is-dock">{t("objectives.commodore.composer.idle")}</p>}
     </div>
   );
 }

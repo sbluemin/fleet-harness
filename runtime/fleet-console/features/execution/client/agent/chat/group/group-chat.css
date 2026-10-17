@@ -485,38 +485,11 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   box-sizing: border-box;
   font-family: var(--font-ui);
 }
-.group-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-2);
-  min-height: 48px;
-  /* 양 끝에 같은 크기의 원(「+」·보내기)이 앉으므로 안쪽 여백도 양쪽이 같다. */
-  padding: 7px;
-  box-sizing: border-box;
-  border: 1px solid var(--surface-capsule-rim);
-  border-radius: 24px;
-  background: var(--surface-capsule);
-  transition: border-color var(--duration-fast);
-}
-.group-composer:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-capsule-rim)); }
-.group-composer.is-disabled { opacity: var(--control-disabled-opacity); }
-.group-composer-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 32px;
-  max-height: 160px;
-  padding: 6px 0;
-  border: 0;
-  outline: none;
-  resize: none;
-  background: transparent;
-  font: inherit;
-  font-size: var(--font-body-size);
-  line-height: 1.45;
-  color: var(--text-primary);
-  field-sizing: content;
-}
-.group-composer-input::placeholder { color: var(--text-tertiary); }
+/* 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 사령관 입력창과 한 벌이다 — SDK 부품(`fc-composer-*`)을 호스트 components.css 가 그린다.
+   여기에는 그룹 입력창에만 있는 것(받는 이 칩·멘션·정지 목록·제안 줄)과 자리만 둔다. */
+.group-composer-input { field-sizing: content; }
+.group-composer-plus-root { flex: none; display: inline-flex; }
+.group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
 .group-composer-chip {
   flex: none;
   align-self: center;
@@ -539,87 +512,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   cursor: pointer;
 }
 .group-composer-chip-x:hover { color: var(--text-primary); }
-.group-composer-send {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: var(--control-rest);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-.group-composer-send svg { width: 16px; height: 16px; }
-.group-composer-send:hover:not(:disabled),
-.group-composer-send:focus-visible { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
-.group-composer-send:disabled { color: var(--text-tertiary); cursor: default; }
-.group-composer-stop-mark { width: 10px; height: 10px; border-radius: 2px; background: currentColor; }
-
-/* 첨부 입구 — 캡슐 왼쪽의 「+」 원 하나. 보내기 원과 같은 크기·면이고, 메뉴가 열려 있는 동안은 hover 와 같은 brass 워시로 선다. */
-.group-composer-plus-root { flex: none; display: inline-flex; }
-.group-composer-plus {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: var(--control-rest);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.group-composer-plus svg { width: 16px; height: 16px; }
-.group-composer-plus:hover:not(:disabled),
-.group-composer-plus:focus-visible,
-.group-composer-plus[aria-expanded="true"] { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
-.group-composer-plus:disabled { color: var(--text-tertiary); cursor: default; }
-
-/* 붙인 이미지 — 캡슐 안 맨 위 줄. 썸네일과 모서리 제거 칩은 1:1 채팅 입력창과 같은 문법이다. */
-.group-composer.has-attachments { flex-wrap: wrap; }
-.group-composer-attachments {
-  flex: 1 0 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: 4px 4px 2px;
-}
-.group-composer-attachment {
-  position: relative;
-  width: 52px;
-  height: 52px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-xs);
-}
-.group-composer-attachment img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  border-radius: calc(var(--radius-xs) - 1px);
-}
-.group-composer-attachment.is-uploading img { opacity: 0.45; }
-.group-composer-attachment-remove {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: 50%;
-  background: var(--glass-tint-panel);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-  line-height: 1;
-  cursor: pointer;
-}
-/* 제거는 파괴 동작 — coral 은 상태 채널이라 hover 에만 오른다(1:1 채팅 입력창·Quick Launch 와 같은 계약). */
-.group-composer-attachment-remove:hover { color: var(--coral); }
-.group-composer-attachment-remove:focus-visible { color: var(--text-primary); outline: 1px solid var(--brass); }
 
 /* 멘션 목록과 정지 목록 — 입력창 위로 뜬다. 행은 글자형, 고른 행은 배경 워시. */
 .group-composer-pop {
@@ -640,23 +532,12 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   box-shadow: 0 12px 28px oklch(5% 0.01 245 / 35%);
 }
 .group-composer-pop.is-stop { left: auto; width: 260px; }
-/* 「+」 메뉴 — 캡슐 왼쪽 끝(감싼 칸의 안쪽 여백과 같은 자리)에 맞춰, 캡슐 테두리에 겹치지 않고 한 칸 띄워 위로 뜬다. */
-.group-composer-pop.is-plus {
+/* 「+」 메뉴(SDK 부품)의 자리 — 캡슐 왼쪽 끝(감싼 칸의 안쪽 여백과 같은 자리)에 맞춰, 캡슐 테두리에 겹치지 않고 한 칸 띄워 위로 뜬다. */
+.group-composer-plus-menu {
+  position: absolute;
   left: clamp(var(--space-4), 4cqi, 48px);
-  right: auto;
   bottom: calc(100% + var(--space-2));
-  width: 240px;
 }
-.group-composer-pop-glyph {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  display: inline-grid;
-  place-items: center;
-  color: var(--text-secondary);
-}
-.group-composer-pop-glyph svg { width: 16px; height: 16px; }
-.group-composer-pop-glyph.is-at { font-size: var(--t-sm); font-weight: var(--weight-bold); }
 .group-composer-pop-heading {
   padding: var(--space-2) var(--space-2) 2px;
   font-size: var(--t-2xs);
@@ -684,18 +565,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-pop-row:focus-visible { background: var(--control-wash-hover); outline: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-medium); }
 .group-composer-pop-sub { min-width: 0; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
-
-/* 결과 안내 — 입력창 바로 위 한 줄. 부분 실패는 warn 잉크, 그 밖은 중립. */
-.group-composer-notice {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-  padding: 0 var(--space-2) var(--space-2);
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-}
-.group-composer-notice.is-warn { color: var(--warn-ink); }
-.group-composer-notice > span { flex: 1 1 auto; min-width: 0; }
 
 /* 제안 줄 — 입력창 바로 위 한 줄. 보드가 고른 지금 할 일이 칩으로 선다(받는 이 칩과 같은 알약 문법). 할 일이 없으면 서지 않는다. */
 .group-composer-suggest {
@@ -757,12 +626,9 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-chip.is-action { padding: 2px var(--space-1) 2px var(--space-2); background: var(--brass-glow); color: var(--brass-ink); }
 .group-composer-chip.is-action svg { flex: none; width: 12px; height: 12px; }
 .group-composer-chip.is-target { padding: 2px var(--space-2); }
-.group-composer-send.is-action { background: var(--brass); color: var(--text-on-brass); }
-.group-composer-send.is-action:hover:not(:disabled),
-.group-composer-send.is-action:focus-visible { background: var(--brass); color: var(--text-on-brass); filter: brightness(1.05); }
-.group-composer-pop-sep { height: 1px; margin: 3px 6px; background: var(--hairline); }
-.group-composer-pop-row.is-armed .group-composer-pop-name { color: var(--coral-ink); }
-.group-composer-pop-row[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
+.fc-composer-send.group-composer-send-action { background: var(--brass); color: var(--text-on-brass); }
+.fc-composer-send.group-composer-send-action:hover:not(:disabled),
+.fc-composer-send.group-composer-send-action:focus-visible { background: var(--brass); color: var(--text-on-brass); filter: brightness(1.05); }
 /* 플러그인이 이어받는 칸(라우팅 확인·후속 후보) — 입력창 오른쪽 위로 뜬다. 안의 내용은 플러그인이 그린다. */
 .group-composer-panel {
   position: absolute;

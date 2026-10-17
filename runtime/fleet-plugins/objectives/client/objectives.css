@@ -1366,60 +1366,24 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 2px; }
 
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
-/* 입력 — 채팅 화면의 컴포저와 같은 상자(헤어라인·필드 면·md 모서리, 초점이면 brass)와 30px 원형 전송. 폭은 기록 칸과 같은 선. */
+/* 입력 — 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 지휘관 대화 입력창과 한 벌이다(SDK `fc-composer-*`, 호스트 components.css).
+   여기에는 사령관 입력창의 자리만 둔다: 폭은 기록 칸과 같은 선, 「+」 메뉴는 캡슐 왼쪽 끝에 맞춰 캡슐 위로 뜬다. */
 .objectives-commodore-foot { flex: none; padding: 12px 28px 16px; border-top: 1px solid var(--hairline); }
 .objectives-commodore-inbox.is-compact .objectives-commodore-foot { padding-inline: 20px; }
-.objectives-commodore-composer {
-  display: flex; align-items: flex-end; gap: 6px; max-width: 880px;
-  padding: 6px 6px 6px var(--space-3);
-  border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--control-field);
-  cursor: text;
-  transition: border-color var(--duration-base) var(--ease-spring), box-shadow var(--duration-base) var(--ease-spring);
-}
-.objectives-commodore-composer:focus-within { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass-glow); }
-.objectives-commodore-composer.has-attachments { flex-wrap: wrap; }
-.objectives-commodore-composer-attachments { flex: 1 0 100%; display: flex; flex-wrap: wrap; gap: var(--space-2); padding: 4px 4px 2px; }
-.objectives-commodore-composer-attachment { position: relative; width: 52px; height: 52px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
-.objectives-commodore-composer-attachment img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: calc(var(--radius-xs) - 1px); }
-.objectives-commodore-composer-attachment.is-uploading img { opacity: 0.45; }
-.objectives-commodore-composer-attachment button { position: absolute; top: -6px; right: -6px; display: inline-grid; place-items: center; width: 16px; height: 16px; padding: 0; border: 1px solid var(--surface-rim-strong); border-radius: 50%; background: var(--glass-tint-panel); color: var(--text-secondary); font-size: var(--t-xs); line-height: 1; cursor: pointer; }
-.objectives-commodore-composer-attachment button:hover:not(:disabled) { color: var(--brass-ink); }
-.objectives-commodore-composer-attachment button:focus-visible { outline: 1px solid var(--brass); }
-.objectives-commodore-composer-plus-root { position: relative; flex: none; display: inline-flex; }
-.objectives-commodore-composer-plus { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--control-rest); color: var(--text-secondary); cursor: pointer; }
-.objectives-commodore-composer-plus svg { width: 16px; height: 16px; }
-.objectives-commodore-composer-plus:hover:not(:disabled), .objectives-commodore-composer-plus:focus-visible, .objectives-commodore-composer-plus[aria-expanded="true"] { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
-.objectives-commodore-composer-plus:disabled { color: var(--text-tertiary); cursor: default; }
-.objectives-commodore-composer-menu { position: absolute; bottom: calc(100% + var(--space-2)); left: 0; z-index: 5; width: 220px; padding: var(--space-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel); box-shadow: var(--shadow-floating); }
-.objectives-commodore-composer-menu button { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
-.objectives-commodore-composer-menu button svg { flex: none; width: 16px; height: 16px; }
-.objectives-commodore-composer-menu button:hover, .objectives-commodore-composer-menu button:focus-visible { background: var(--brass-glow); outline: none; }
-.objectives-commodore-composer-notice { max-width: 880px; margin-top: var(--space-2); color: var(--warn-ink); font-size: var(--t-xs); }
+.objectives-commodore-composer { max-width: 880px; cursor: text; }
+.objectives-commodore-composer.is-inactive { cursor: default; }
+.objectives-commodore-composer-plus-root { flex: none; display: inline-flex; }
+.objectives-commodore-composer-menu { position: absolute; left: -1px; bottom: calc(100% + var(--space-2)); }
 .objectives-commodore-composer-input {
-  display: block; flex: 1 1 0; width: 100%; min-width: 0;
-  min-height: 30px; max-height: calc(1.5em * 6 + 10px); padding: 5px 0;
-  border: 0; background: transparent; resize: none;
-  color: var(--text-primary); font-family: inherit; font-size: var(--font-body-size); line-height: 1.5;
+  display: block;
   /* 높이는 내용만큼 자라고 max-height 에서 멈춘다 — JS 가 글자마다 높이를 다시 쓰지 않는다(IME 조합 중 입력 줄이 흔들리지 않게). */
   field-sizing: content;
   scrollbar-width: none;
 }
 .objectives-commodore-composer-input::-webkit-scrollbar { display: none; }
 .objectives-commodore-composer-input:placeholder-shown { overflow-y: hidden; }
-.objectives-commodore-composer-input::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-composer-input:focus { outline: none; }
-.objectives-commodore-composer-send {
-  display: inline-flex; align-items: center; justify-content: center; flex: none;
-  width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%;
-  background: var(--surface-panel-raised); color: var(--text-tertiary); cursor: pointer;
-}
-.objectives-commodore-composer-send svg { width: 16px; height: 16px; }
-.objectives-commodore-composer-send.is-armed { background: var(--brass); color: var(--text-on-brass); }
-.objectives-commodore-composer-send:disabled { cursor: default; }
-.objectives-commodore-composer.is-disabled { cursor: default; }
-.objectives-commodore-composer-input:disabled { color: var(--text-tertiary); cursor: default; }
 .objectives-commodore-composer-idle { max-width: 880px; margin-top: 6px; }
-.objectives-commodore-composer-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
 /*
  * 지휘관 참조('@') — 본문 속 원자 토큰과 그 목록(목표 8d9a400b 시안 A). 입력은 contenteditable 이라 textarea 의 자리표·자동 높이를
@@ -1441,8 +1405,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-ref-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .objectives-commodore-ref-mark { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; }
 .objectives-commodore-ref-mark .objectives-avatar { width: 14px; height: 14px; }
-.objectives-commodore-composer-menu-at { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--text-secondary); font-weight: var(--weight-bold); }
-.objectives-commodore-composer-menu-key { margin-left: auto; padding: 0 5px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); color: var(--text-tertiary); font: inherit; font-size: var(--t-2xs); line-height: 16px; }
 .objectives-commodore-ref-list {
   position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 5;
   display: flex; flex-direction: column; gap: 1px; max-height: 300px; overflow-y: auto;
@@ -1559,17 +1521,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-conversation .objectives-commodore-failure { margin: 0 0 var(--space-2); }
 .objectives-commodore-conversation .objectives-commodore-composer,
 .objectives-commodore-conversation .objectives-commodore-composer-idle { width: 100%; max-width: none; box-sizing: border-box; }
-/* 입력 캡슐은 지휘관 대화의 입력(그룹 대화 캡슐 .group-composer)과 같은 문법이다 — 24px 모서리·헤어라인 테두리·양 끝 34px 원(「+」·보내기)·
-   같은 안쪽 여백·같은 글줄. 초점이면 테두리 자체가 brass 쪽으로 물든다(그림자 고리 없음). 수치는 group-chat.css 의 캡슐과 함께 고친다. */
-.objectives-commodore-conversation .objectives-commodore-composer { gap: var(--space-2); min-height: 48px; padding: 7px; box-sizing: border-box; border-color: var(--hairline-strong); border-radius: 24px; background: var(--surface-panel-raised); transition: border-color var(--duration-fast); }
-.objectives-commodore-conversation .objectives-commodore-composer:focus-within { border-color: color-mix(in oklch, var(--brass) 60%, var(--hairline-strong)); box-shadow: none; }
-.objectives-commodore-conversation .objectives-commodore-composer-plus,
-.objectives-commodore-conversation .objectives-commodore-composer-send { width: 34px; height: 34px; background: var(--control-rest); }
-.objectives-commodore-conversation .objectives-commodore-composer-send { color: var(--text-primary); }
-.objectives-commodore-conversation .objectives-commodore-composer-send:hover:not(:disabled),
-.objectives-commodore-conversation .objectives-commodore-composer-send:focus-visible { background: var(--brass-glow); color: var(--brass-ink); outline: none; }
-.objectives-commodore-conversation .objectives-commodore-composer-send:disabled { color: var(--text-tertiary); }
-.objectives-commodore-conversation .objectives-commodore-composer-input { min-height: 32px; max-height: 160px; padding: 6px 0; font: inherit; font-size: var(--font-body-size); line-height: 1.45; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
 /* 사령관의 질문 — 대화 위에 고정된다. 머리 pill 오버레이 아래에서 시작하고, 대화 칸과 같은 가로 여백·최대 폭을 쓴다. */

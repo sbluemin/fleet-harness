@@ -38,6 +38,24 @@ export type {
 } from "./primitives.js";
 export { AttachImageIcon, SubmitArrowIcon } from "./icons.js";
 export {
+  ComposerAttachmentTray,
+  ComposerMenu,
+  ComposerMenuHeading,
+  ComposerMenuItem,
+  ComposerMenuSeparator,
+  ComposerNotice,
+  ComposerPlusButton,
+  ComposerSendButton,
+} from "./attachment-surface.js";
+export type {
+  ComposerAttachmentItem,
+  ComposerAttachmentTrayProps,
+  ComposerMenuItemProps,
+  ComposerNoticeProps,
+} from "./attachment-surface.js";
+export { composerT } from "./messages.js";
+export type { ComposerMessageKey } from "./messages.js";
+export {
   isUltracodeDisarmCaret,
   nextUltracodeIgnored,
   readUltracodeTokens,

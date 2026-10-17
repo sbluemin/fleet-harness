@@ -2,7 +2,20 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { createPortal } from "react-dom";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
-import { AttachImageIcon, COMPOSER_ATTACHMENT_MAX_BYTES, COMPOSER_MAX_ATTACHMENTS, isComposerAttachmentCandidate, ComposerSubmitButton } from "@fleet-console/sdk/composer";
+import {
+  AttachImageIcon,
+  COMPOSER_ATTACHMENT_MAX_BYTES,
+  COMPOSER_MAX_ATTACHMENTS,
+  ComposerAttachmentTray,
+  ComposerMenu,
+  ComposerMenuItem,
+  ComposerNotice,
+  ComposerPlusButton,
+  ComposerSendButton,
+  composerT,
+  isComposerAttachmentCandidate,
+} from "@fleet-console/sdk/composer";
+import { referencePlainText } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 import { SettingsRow, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInboxSectionState } from "@fleet-console/sdk/theater-inbox";
@@ -21,6 +34,7 @@ import { DatePicker, localDateTime } from "./date-picker.js";
 import {
   addCommodoreIntel,
   clearCommodore,
+  commodoreLanguage,
   COMMODORE_INBOX_SECTION_ID,
   OBJECTIVES_ENTRY_ID,
   commodoreTranscriptRenderer,
@@ -754,19 +768,49 @@ function commodoreDraft(theaterId: string) {
   return draft;
 }
 
+/** 폰 사령관 화면의 「보내는 중…」 말풍선 — 확정 줄이 오기 전까지 기록 맨 아래에 선다. 이미지는 보낸 썸네일 그대로다. */
+export interface CommodorePendingMessage {
+  readonly key: number;
+  readonly text: string;
+  readonly at: number;
+  readonly images: readonly { readonly key: string; readonly name: string; readonly url: string }[];
+}
+
+/**
+ * 폰 사령관 화면(바로가기 목적지)에서 쓸 때만 싣는다. 데스크톱과 같은 캡슐·초안·첨부 길이고, 폰에서 달라지는 것만 여기서 받는다:
+ * 연결이 끊기면 잠그고, 보내기 실패는 입력창 위 안내 줄이 말하고, 보내는 동안의 말풍선은 화면이 그린다.
+ */
+export interface CommodoreComposerPhone {
+  readonly online: boolean;
+  readonly failure: string | null;
+  readonly onPending: (pending: CommodorePendingMessage | null) => void;
+}
+
 interface CommodoreComposerProps {
   readonly t: T;
   readonly theaterId: string;
   readonly active: boolean;
   readonly context?: CommodoreRunStatus["context"];
+  readonly phone?: CommodoreComposerPhone;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }
+
+/** 터치 기기의 화면 키보드에서는 Enter 가 줄바꿈이다 — 보내기는 원으로 한다. 하드웨어 키보드(정밀 포인터)는 Enter 로 보낸다. */
+const touchFirst = () => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches === true;
+
 export function CommodoreComposer(props: CommodoreComposerProps) {
   // Theater가 바뀌면 /clear 확인·메뉴·조합 상태도 새 대화의 것이 된다. 초안만 외부 메모리에서 복원한다.
   return <CommodoreComposerBody key={props.theaterId} {...props} />;
 }
-function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear }: CommodoreComposerProps) {
+
+/**
+ * 캡슐은 지휘관 대화 입력창(그룹 입력창)과 같은 부품이다 — 왼쪽 「+」 원, 가운데 입력, 오른쪽 보내기 원, 캡슐 맨 위 첨부 줄,
+ * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`@fleet-console/sdk/composer`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
+ * (「지휘관 참조」)이다.
+ */
+function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, onClear }: CommodoreComposerProps) {
+  const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
   const { text, references, attachments, sending, attachmentNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const value = useMemo(() => ({ text, references }), [text, references]);
@@ -785,6 +829,8 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const menuId = `commodore-composer-menu-${theaterId}`;
+  // 폰은 연결이 끊겨도 잠근다. 데스크톱은 자율 운영이 꺼져도 /clear 를 받으므로 입력은 열어 둔다.
+  const usable = active && (phone ? phone.online : true);
   const publishAttachments = (next: readonly CommodoreDraftAttachment[]) => draft.update({ attachments: next });
   const finishSentDraft = (sent: CommodoreComposerDraft, discard: boolean) => {
     const keys = new Set(sent.attachments.map((item) => item.key));
@@ -817,14 +863,17 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
     document.addEventListener("pointerdown", pointer); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); };
   }, [menuOpen]);
-  useEffect(() => { if (!active) setMenuOpen(false); }, [active]);
+  useEffect(() => { if (!usable) setMenuOpen(false); }, [usable]);
   const addFiles = (files: readonly File[]) => {
-    if (!active || draft.read().sending || clear.busy) return;
+    if (!usable || draft.read().sending || clear.busy) return;
+    const images = files.filter(isComposerAttachmentCandidate);
+    // 이미지가 하나도 없으면 아무 말도 하지 않는다 — 텍스트 붙여넣기·비이미지 선택은 조용히 지나간다.
+    if (images.length === 0) return;
     setAttachmentNotice(null);
-    for (const file of files.filter(isComposerAttachmentCandidate)) {
-      if (draft.read().attachments.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(t("objectives.commodore.composer.attachLimit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
-      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) { setAttachmentNotice(t("objectives.commodore.composer.attachTooLarge")); continue; }
-      const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || t("objectives.commodore.composer.image"), previewUrl: URL.createObjectURL(file), uploading: true };
+    for (const file of images) {
+      if (draft.read().attachments.length >= COMPOSER_MAX_ATTACHMENTS) { setAttachmentNotice(ct("composer.attach.limit", { count: COMPOSER_MAX_ATTACHMENTS })); break; }
+      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) { setAttachmentNotice(ct("composer.attach.tooLarge", { mb: Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024)) })); continue; }
+      const item = { key: `${Date.now()}-${Math.random().toString(36).slice(2)}`, id: null as string | null, name: file.name || ct("composer.attach.pasted"), previewUrl: URL.createObjectURL(file), uploading: true };
       publishAttachments([...draft.read().attachments, item]);
       void uploadCommodoreAttachment(file).then(({ id }) => {
         if (!draft.read().attachments.some((known) => known.key === item.key)) { void discardCommodoreAttachment(id).catch(() => {}); return; }
@@ -833,7 +882,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
         if (!draft.read().attachments.some((known) => known.key === item.key)) return;
         URL.revokeObjectURL(item.previewUrl);
         publishAttachments(draft.read().attachments.filter((known) => known.key !== item.key));
-        setAttachmentNotice(t("objectives.commodore.composer.attachFailed"));
+        setAttachmentNotice(ct("composer.attach.failed"));
       });
     }
   };
@@ -845,10 +894,13 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
     setAttachmentNotice(null); inputRef.current?.focus();
   };
   const uploading = attachments.some((item) => item.uploading);
-  const isClear = text.trim() === "/clear";
-  const armed = (active || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
+  // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
+  const isClear = !phone && text.trim() === "/clear";
+  const armed = (usable || isClear) && !!text.trim() && !sending && !clear.busy && !uploading;
   const send = () => {
     const message = text.trim();
+    // 폰에서 빈 입력으로 원을 누르면 입력칸에 초점만 간다(FD-19).
+    if (phone && !message) { inputRef.current?.focus(); return; }
     if (draft.read().sending || uploading || clear.busy) return;
     const sent = draft.read();
     if (isClear) {
@@ -856,33 +908,48 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
       void clear.request().then((cleared) => { if (cleared) finishSentDraft(sent, true); }).finally(() => setSending(false));
       return;
     }
-    if (!active || !message) return;
+    if (!usable || !message) return;
     onClear(); setAttachmentNotice(null); setMenuOpen(false);
     setSending(true);
+    // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
+    phone?.onPending({
+      key: Date.now(),
+      text: referencePlainText(message, sent.references.map(({ id, title }) => ({ id, label: title }))),
+      at: Date.now(),
+      images: sent.attachments.map((item) => ({ key: item.key, name: item.name, url: item.previewUrl })),
+    });
     const ids = sent.attachments.flatMap((item) => item.id ? [item.id] : []);
+    // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다.
     void messageCommodore(theaterId, message, ids, sent.references.map((reference) => reference.id)).then(() => finishSentDraft(sent, false)).catch((error) => {
-      if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(t("objectives.commodore.composer.attachBudget"));
+      if (error instanceof Error && error.message === "attachment_budget_exceeded") setAttachmentNotice(ct("composer.attach.commodoreBudget"));
       else if (mounted.current) onFail(error);
-    }).finally(() => { setSending(false); if (mounted.current) inputRef.current?.focus({ preventScroll: true }); });
+    }).finally(() => {
+      setSending(false);
+      phone?.onPending(null);
+      // 폰은 화면 키보드를 다시 올리지 않는다 — 보낸 뒤 기록을 읽는 자리다.
+      if (mounted.current && !phone) inputRef.current?.focus({ preventScroll: true });
+    });
   };
+  const failure = phone?.failure ?? null;
   return (
     <>
-    <div className={`objectives-commodore-composer${active ? "" : " is-disabled"}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
-      {attachments.length ? <div className="objectives-commodore-composer-attachments" role="group" aria-label={t("objectives.commodore.composer.attachments")}>
-        {attachments.map((item) => <span key={item.key} className={`objectives-commodore-composer-attachment${item.uploading ? " is-uploading" : ""}`}>
-          <img src={item.previewUrl} alt={item.name} />
-          <button type="button" disabled={sending || clear.busy} aria-label={t("objectives.commodore.composer.removeAttachment", { name: item.name })} title={t("objectives.commodore.composer.removeAttachment", { name: item.name })} onClick={() => removeAttachment(item.key)}>×</button>
-        </span>)}
-      </div> : null}
+    {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
+      : attachmentNotice ? <ComposerNotice tone="warn" text={attachmentNotice} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setAttachmentNotice(null); inputRef.current?.focus(); }} /> : null}
+    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+      <ComposerAttachmentTray
+        items={attachments}
+        label={ct("composer.attach.list")}
+        removeLabel={(name) => ct("composer.attach.remove", { name })}
+        disabled={sending || clear.busy}
+        onRemove={removeAttachment}
+      />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
-        {menuOpen ? <div ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" role="menu" aria-label={t("objectives.commodore.composer.more")}>
-          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}><AttachImageIcon />{t("objectives.commodore.composer.attachImage")}</button>
-          <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); inputRef.current?.openReferences(); }}><span className="objectives-commodore-composer-menu-at" aria-hidden="true">@</span>{t("objectives.commodore.reference.menu")}<kbd className="objectives-commodore-composer-menu-key" aria-hidden="true">@</kbd></button>
-        </div> : null}
-        <button ref={plusRef} type="button" className="objectives-commodore-composer-plus" aria-label={t("objectives.commodore.composer.more")} title={t("objectives.commodore.composer.more")} aria-haspopup="menu" aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!active || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.25v9.5M3.25 8h9.5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" /></svg>
-        </button>
-        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; inputRef.current?.focus(); }} />
+        {menuOpen ? <ComposerMenu ref={menuRef} id={menuId} className="objectives-commodore-composer-menu" aria-label={ct("composer.more")}>
+          <ComposerMenuItem glyph={<AttachImageIcon />} onClick={() => { setMenuOpen(false); fileRef.current?.click(); }}>{ct("composer.attach.image")}</ComposerMenuItem>
+          <ComposerMenuItem glyph="@" keyHint="@" onClick={() => { setMenuOpen(false); inputRef.current?.openReferences(); }}>{t("objectives.commodore.reference.menu")}</ComposerMenuItem>
+        </ComposerMenu> : null}
+        <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!usable || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }} />
+        <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; if (!phone) inputRef.current?.focus(); }} />
       </div>
       {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·Quick Launch
           입력처럼 끈다. 한글 조합 중 Enter 는 보내지 않는다(조합 상태는 이 컴포저도 따로 센다). */}
@@ -890,33 +957,34 @@ function CommodoreComposerBody({ t, theaterId, active, context, onFail, onClear 
         ref={inputRef}
         t={t}
         theaterId={theaterId}
-        className="objectives-commodore-composer-input"
+        {...(phone ? { phone: true } : {})}
+        className="fc-composer-input objectives-commodore-composer-input"
         value={value}
-        disabled={clear.busy || sending}
+        disabled={clear.busy || sending || (phone ? !usable : false)}
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
         placeholder={t("objectives.commodore.composer.placeholder")}
         ariaLabel={t("objectives.commodore.composer.aria")}
-        onChange={(next) => { setValue(next); clear.disarm(); }}
+        onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().attachmentNotice) setAttachmentNotice(null); }}
         onCompositionStart={() => { composing.current = true; }}
         onCompositionEnd={() => { composing.current = false; }}
-        onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing) { event.preventDefault(); send(); } }}
+        onKeyDown={(event) => { if (isClear && !clearKey.down(event)) return; if (event.key === "Enter" && !event.shiftKey && !composing.current && !event.nativeEvent.isComposing && !(phone && touchFirst())) { event.preventDefault(); send(); } }}
         onKeyUp={clearKey.up}
         onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
       {context ? <CommodoreContextMeter t={t} context={context} /> : null}
-      <ComposerSubmitButton
-        className={`objectives-commodore-composer-send${armed ? " is-armed" : ""}`}
+      {/* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */}
+      <ComposerSendButton
+        className={armed ? undefined : "is-idle"}
         aria-label={t("objectives.commodore.composer.send")}
         title={t("objectives.commodore.composer.send")}
-        disabled={!armed}
+        disabled={phone ? !usable || sending || uploading || clear.busy : !armed}
         onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
         onKeyUp={clearKey.up}
         onClick={send}
       />
     </div>
-    {attachmentNotice ? <p className="objectives-commodore-composer-notice" role="status">{attachmentNotice}</p> : null}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("objectives.commodore.composer.idle")}</p>}
     </>
