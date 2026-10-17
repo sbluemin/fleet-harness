@@ -102,7 +102,6 @@ export function MarkdownView({ content, language }: MarkdownViewProps) {
       ref={rootRef}
       className="markdown-body"
       onClick={handleCopyClick}
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

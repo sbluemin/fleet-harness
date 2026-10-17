@@ -99,7 +99,6 @@ export function JobStatusDock({
       {isOpen && (
         <div ref={logRef} className="skills-dock-log">
           {lines.map((line, i) => (
-            // eslint-disable-next-line react/no-array-index-key
             <div key={i} className="skills-dock-log-line">{line}</div>
           ))}
           {status === "done" && (

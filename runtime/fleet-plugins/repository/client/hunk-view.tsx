@@ -136,21 +136,18 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
                   <td
                     colSpan={4}
                     className="repository-line-label"
-                    // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : line.kind === "meta" ? (
                   <td
                     colSpan={4}
                     className="repository-line-meta"
-                    // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : line.kind === "file-label" ? (
                   <td
                     colSpan={4}
                     className="repository-line-file-label"
-                    // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: escapeHtml(line.text) }}
                   />
                 ) : (
@@ -162,7 +159,6 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare, emptyDiffM
                     </td>
                     <td
                       className="repository-line-code"
-                      // eslint-disable-next-line react/no-danger
                     dangerouslySetInnerHTML={{ __html: highlightEscapedDiffCode(escapeHtml(line.text.length > 0 ? line.text.slice(1) : line.text)) }}
                     />
                   </>

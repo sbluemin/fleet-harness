@@ -9,7 +9,7 @@ import { StreamedMarkdown } from "../../streamed-markdown.js";
 import {
   formatUseRequestTime,
   UseRequestGlyph,
-  useRequestSecondsLeft,
+  requestSecondsLeft,
   useUseRequestAnswer,
   useUseRequestClock,
 } from "../../use-request-card.js";
@@ -219,7 +219,7 @@ export function UseRequestGroupCard({ request, speakers, shared, language }: {
   const t = getGroupT(language);
   const { pending, failed, answer, onKeyDown } = useUseRequestAnswer(request, language);
   const now = useUseRequestClock(true);
-  const left = useRequestSecondsLeft(request, now);
+  const left = requestSecondsLeft(request, now);
   const isConsole = request.capability === "console";
   const title = tt(isConsole ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   const titleId = `group-use-request-${request.id}`;
