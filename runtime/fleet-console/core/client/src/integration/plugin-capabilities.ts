@@ -31,6 +31,7 @@ import { theaterInboxCapability } from "../../../../features/workspace/client/th
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
 import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
+import { attachComposerQuoteTo, composerQuoteTargets, receiveComposerQuotes, subscribeComposerQuoteTargets } from "./composer-quotes.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, focusOperation, getState, ownOperationRuntime,
   raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration, subscribe } from "./store.js";
 
@@ -344,6 +345,10 @@ export function createHostCapabilities(
     },
     composer: {
       open: (options) => openNewSessionComposer(options),
+      attachQuote: (target, quote) => attachComposerQuoteTo(target, quote),
+      quoteTargets: (theaterId) => composerQuoteTargets(theaterId),
+      subscribeQuoteTargets: (listener) => subscribeComposerQuoteTargets(listener),
+      receiveQuotes: (pluginId, receiver) => receiveComposerQuotes(pluginId, receiver),
     },
   };
   return capabilities;

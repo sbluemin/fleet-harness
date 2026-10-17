@@ -60,7 +60,7 @@ interface WatchEntry {
 const DEBOUNCE_MS = 200;
 
 /**
- * 목록·상태에 영향을 주는 지점만 본다. raw/·cowork의 대량 쓰기는 제외한다.
+ * 목록·상태에 영향을 주는 지점만 본다. raw/의 대량 쓰기는 제외한다.
  * log.md는 drydock 결과의 출처라 health만 무효화하고 기존 디바운스로 합친다.
  */
 const DIRECTORY_SCOPES: ReadonlyMap<string, CodexKnowledgeScope> = new Map([

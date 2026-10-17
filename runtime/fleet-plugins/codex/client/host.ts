@@ -1,9 +1,9 @@
 import type {
+  ClientComposerCapability,
   ClientConsoleStateCapability,
   ClientExpandedSurfacesCapability,
-  ClientExperimentsCapability,
-  ClientModelsCapability,
   ClientNavigationCapability,
+  ClientOperationsCapability,
   ClientRailCapability,
   ConsoleTheme,
 } from "@fleet-console/sdk/plugin";
@@ -22,10 +22,10 @@ interface CodexHostCapabilities {
   readonly navigation: ClientNavigationCapability;
   readonly surfaces: ClientExpandedSurfacesCapability;
   readonly rail: ClientRailCapability;
-  /** 실험 설정 읽기·구독 — Cowork 좌표가 바뀌면 열려 있는 도크가 따라간다. */
-  readonly experiments: ClientExperimentsCapability;
-  /** 모델 로스터 구독 — Gateway에서 모델을 켜고 끄면 Cowork 목록과 폴백 표식이 따라간다. */
-  readonly models?: ClientModelsCapability;
+  /** 문서에서 고른 문장을 지휘관·사령관 입력창에 인용으로 붙인다 — 붙일 곳 목록과 붙이기를 호스트가 중개한다. */
+  readonly composer: ClientComposerCapability;
+  /** 붙인 곳이 지금 보이지 않는 지휘관이면 그 대화로 데려간다. */
+  readonly operations?: Pick<ClientOperationsCapability, "focus">;
 }
 
 let capabilities: CodexHostCapabilities | null = null;

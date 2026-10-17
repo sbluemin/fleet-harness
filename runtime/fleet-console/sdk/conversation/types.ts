@@ -1,3 +1,4 @@
+import type { ComposerQuote } from "../composer/quotes.js";
 import type { ReactNode } from "react";
 
 import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
@@ -123,7 +124,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * `turn` — 그 말을 한 발화자 원장의 턴 좌표. 같은 값이면 한 턴(지시 하나에 대한 응답)이다. 턴 접기가 읽고, 없으면 그 말은 접지 않는다.
    * `references` — 사람이 문면 속 자리에 둔 참조(`./references.ts`). 평문 말풍선만 그 자리에 토큰을 세운다.
    */
-  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly pending?: true; readonly turn?: string }
+  | { readonly kind: "message"; readonly operationId: string; readonly speaker: ConversationSpeaker; readonly text: string; readonly format?: "markdown"; readonly references?: readonly ConversationReference[]; readonly attachments?: readonly ({ readonly id: string } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote })[]; readonly streaming: boolean; readonly recipient?: ConversationSpeaker; readonly copied?: boolean; readonly via?: ConversationMessageVia; readonly undelivered?: true; readonly pending?: true; readonly turn?: string }
   /**
    * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패·미보고 알림 등). 발화자가 아니라 출처이므로 말풍선이 아닌
    * 가운데 줄로 선다. `pluginId` 는 출처 이름·표식을 고르는 열쇠일 뿐 화면에 그대로 쓰지 않는다.

@@ -63,8 +63,6 @@ export const pagesEn = {
   "settings.computerUse.stopping": "Stopping…",
   "settings.computerUse.error": "Last Computer Use issue: {code}. Check the local installation and permissions before retrying. A timed-out action may already have happened.",
   "settings.experiments.intro": "Optional features that may change or be removed.",
-  "settings.experiments.modelAria": "Model for {feature}",
-  "settings.experiments.effortAria": "Effort for {feature}",
   "settings.experiments.effort.low": "Low",
   "settings.experiments.effort.medium": "Medium",
   "settings.experiments.effort.high": "High",
@@ -77,8 +75,6 @@ export const pagesEn = {
   "settings.models.off": "Off",
   "settings.models.fallback": "Fallback",
   "settings.models.openGateway": "Open AI Gateway",
-  "settings.experiments.cowork.title": "Codex (Wiki) Cowork",
-  "settings.experiments.cowork.help": "Model and effort for the conversation that revises a Codex wiki entry with you. Applies from the next turn. A model turned off in Settings › AI Gateway runs as Sonnet instead.",
   "settings.core.appearance.label": "Appearance",
   "settings.core.appearance.keywords": "theme dark light color colour scheme font typeface type size",
   "settings.core.language.keywords": "language locale english korean translate region display",
@@ -460,8 +456,6 @@ export const pagesEn = {
   // Operation 종류 마크 — Shell은 활동 축을 발행하지 않으므로 그 자리를 종류가 채운다.
   "operation.kind.shell": "Shell",
 
-  // codex — cowork
-
   // codex — reading / drydock / conflicts / schema
 
   // codex — meta chips / toc / op-badge
@@ -706,8 +700,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.computerUse.stopping": "중지 중…",
   "settings.computerUse.error": "최근 컴퓨터 사용 결과: {code}. 재시도 전에 로컬 설치와 권한을 확인하세요. 시간 초과된 조작은 이미 실행되었을 수 있습니다.",
   "settings.experiments.intro": "선택해서 켜는 시험 기능이며, 변경되거나 제거될 수 있습니다.",
-  "settings.experiments.modelAria": "{feature} 모델",
-  "settings.experiments.effortAria": "{feature} 강도",
   "settings.experiments.effort.low": "낮음",
   "settings.experiments.effort.medium": "보통",
   "settings.experiments.effort.high": "높음",
@@ -720,8 +712,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.models.off": "꺼짐",
   "settings.models.fallback": "폴백",
   "settings.models.openGateway": "AI Gateway 열기",
-  "settings.experiments.cowork.title": "코덱스(위키) 코워크",
-  "settings.experiments.cowork.help": "Codex 위키 문서를 함께 고쳐 쓰는 대화의 모델과 강도입니다. 다음 턴부터 적용됩니다. Settings › AI Gateway에서 꺼진 모델을 고르면 Sonnet으로 실행됩니다.",
   "settings.core.appearance.label": "겉모습",
   "settings.core.appearance.keywords": "테마 다크 라이트 색 색상 배색 글꼴 서체 폰트 크기",
   "settings.core.language.keywords": "언어 로케일 영어 한국어 번역 지역 표시",

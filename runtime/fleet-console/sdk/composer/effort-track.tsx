@@ -39,7 +39,7 @@ export interface EffortTrackProps {
   /** 강도를 비운 상태를 트랙 맨 앞 자리로 노출한다. */
   readonly autoLabel: string;
   /**
-   * 자동(비움) 슬롯을 사다리 앞에 세울지. Cowork처럼 항상 구체 강도를 가지는 표면은 끈다 —
+   * 자동(비움) 슬롯을 사다리 앞에 세울지. 항상 구체 강도를 가지는 표면은 끈다 —
    * 그 표면에서 `value`는 null이 되지 않고, `onChange`도 null을 내보내지 않는다.
    */
   readonly autoSlot?: boolean;
@@ -309,7 +309,7 @@ export function EffortTrack({
         onPointerCancel={(event) => endGesture(event, { confirm: false })}
       >
         {/* 자동은 폭 0이다. 손잡이 여백(EDGE)만큼이라도 남기면 트랙 왼쪽 끝에 brass 조각이 비쳐,
-            비운 상태가 최소 강도를 고른 것처럼 보인다. 자동 슬롯이 없는 표면(Cowork)의
+            비운 상태가 최소 강도를 고른 것처럼 보인다. 자동 슬롯이 없는 표면의
             최소 단도 같은 이유로 0이다 — 첫 스톱이 곧 왼쪽 끝이라, EDGE 채움은 손잡이 뒤로
             비어져 나온 brass 초승달로만 남는다(2026-09-01 실측). */}
         <span

@@ -2,8 +2,7 @@
  * 새 세션이 마지막으로 고른 조합(Theater · 모델 · 추론 강도)을 브라우저에 기억한다 — 데스크톱 화면과 모바일 시트가 같은 기억을 쓴다.
  *
  * 서버 durable state가 아니라 localStorage인 이유: 이 값은 "이 브라우저에서 방금 뭘 골랐나"라는
- * 화면 상태이지 Console이 소유한 작전 상태가 아니다. Codex cowork 인라인 컨트롤이 cli/model/effort
- * 3종 조합을 같은 방식으로 기억하고 있고(fleet.codex.cowork.settings)와 같은 계층이다.
+ * 화면 상태이지 Console이 소유한 작전 상태가 아니다.
  * 시작 표면(터미널·채팅)은 따로 기억한다(launch-start-surface).
  */
 

@@ -977,7 +977,7 @@
   opacity: 0.6;
 }
 
-/* 보내기 — 원형 brass(새 세션·Cowork와 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
+/* 보내기 — 원형 brass(새 세션과 같은 얼굴). 중지는 진행 신호라 위치 채널을 빌리지 않는다. */
 .scuttlebutt-send {
   flex: none;
   display: grid;

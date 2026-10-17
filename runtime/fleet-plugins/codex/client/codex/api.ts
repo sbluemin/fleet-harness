@@ -1,11 +1,6 @@
 // 서버 응답 DTO는 api-types.ts(타입 전용 파일)를 단일 출처로 공유한다.
 // 같은 패키지 서버 코드의 type-only import이므로 Vite 번들에는 포함되지 않는다.
 import type {
-  CoworkAnnotationDto,
-  CoworkEventDto,
-  CoworkModelRow,
-  CoworkOptionsResponse,
-  CoworkSessionDto,
   CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
@@ -28,11 +23,6 @@ import type {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type {
-  CoworkAnnotationDto,
-  CoworkEventDto,
-  CoworkModelRow,
-  CoworkOptionsResponse,
-  CoworkSessionDto,
   CodexHealthResponse,
   ConflictDetailResponse,
   ConflictListItem,
@@ -72,12 +62,6 @@ export class CodexRequestError extends Error {
   }
 }
 
-export class CoworkRequestError extends Error {
-  constructor(readonly status: number, readonly code: string) {
-    super(code);
-    this.name = "CoworkRequestError";
-  }
-}
 
 export async function fetchFilePeek(theaterId: string, path: string, line?: number): Promise<import("../../server/codex/contracts.js").FilePeekResponse> {
   return postJson("/api/v1/plugins/codex/file-peek", { theaterId, path, line });
@@ -158,74 +142,6 @@ export async function decideConflict(theaterId: string | null, id: string, actio
   return postJson(apiPath(theaterId, `/conflicts/${encodeURIComponent(id)}/decision`), { action, note, expectedCurrentHash });
 }
 
-export async function fetchCoworkOptions(theaterId: string | null, model?: string): Promise<CoworkOptionsResponse> {
-  // 모델이 없으면 빈 `?`를 남기지 않는다 — 같은 자원에 두 개의 URL이 생긴다.
-  const query = model ? `?${new URLSearchParams({ model })}` : "";
-  return fetchCoworkJson<CoworkOptionsResponse>(apiPath(theaterId, `/cowork/options${query}`));
-}
-
-export interface CoworkAgentSettings { model?: string; effort?: string; }
-
-export async function createCoworkSession(theaterId: string | null, entryId: string, settings?: CoworkAgentSettings): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, "/cowork/sessions"), { entryId, ...settings });
-}
-
-/** 엔트리의 활성 세션을 세션 생성 없이 조회한다 — 없으면 null. */
-export async function peekCoworkEntrySession(theaterId: string | null, entryId: string): Promise<CoworkSessionDto | null> {
-  try {
-    return await fetchCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/entries/${encodeURIComponent(entryId)}/session`));
-  } catch (cause) {
-    if (cause instanceof CoworkRequestError && cause.status === 404) return null;
-    throw cause;
-  }
-}
-
-export async function updateCoworkSettings(theaterId: string | null, id: string, settings: CoworkAgentSettings): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/settings`), { ...settings });
-}
-
-export async function updateCoworkSelection(theaterId: string | null, id: string, selection: string | null): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/selection`), { selection });
-}
-
-export async function updateCoworkAnnotations(theaterId: string | null, id: string, annotations: readonly CoworkAnnotationDto[]): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/annotations`), { annotations });
-}
-
-export async function promptCowork(theaterId: string | null, id: string, prompt: string): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/prompt`), { prompt });
-}
-
-export async function cancelCowork(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/cancel`), {});
-}
-
-export async function applyCowork(theaterId: string | null, id: string, expectedRevision?: number): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/apply`), expectedRevision === undefined ? {} : { expectedRevision });
-}
-
-export async function rebaseCowork(theaterId: string | null, id: string, expectedRevision: number): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/rebase`), { expectedRevision });
-}
-
-export async function closeCowork(theaterId: string | null, id: string): Promise<CoworkSessionDto> {
-  return postCoworkJson<CoworkSessionDto>(apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/close`), {});
-}
-
-export function subscribeCoworkEvents(theaterId: string | null, id: string, after: number, onEvent: (event: CoworkEventDto, eventId: number) => void, onConnectionChange?: (connected: boolean) => void): () => void {
-  const source = new EventSource(`${apiPath(theaterId, `/cowork/sessions/${encodeURIComponent(id)}/events`)}?after=${encodeURIComponent(String(after))}`);
-  const receive = (event: MessageEvent<string>) => {
-    try {
-      const value: unknown = JSON.parse(event.data);
-      if (!isCoworkEvent(value)) return;
-      onEvent(value, Number(event.lastEventId) || 0);
-    } catch { /* malformed server event is ignored */ }
-  };
-  for (const type of ["session", "transcript", "tool", "done", "error"] as const) source.addEventListener(type, receive);
-  source.addEventListener("open", () => onConnectionChange?.(true));
-  source.addEventListener("error", event => { if (!(event instanceof MessageEvent)) onConnectionChange?.(false); });
-  return () => source.close();
-}
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -257,30 +173,6 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     throw await buildRequestError(url, response);
   }
   return response.json() as Promise<T>;
-}
-
-async function fetchCoworkJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: { accept: "application/json" } });
-  if (!response.ok) throw await coworkError(response);
-  return response.json() as Promise<T>;
-}
-
-async function postCoworkJson<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw await coworkError(response);
-  return response.json() as Promise<T>;
-}
-
-async function coworkError(response: Response): Promise<CoworkRequestError> {
-  const json = await response.json().catch(() => null) as { error?: unknown } | null;
-  return new CoworkRequestError(response.status, typeof json?.error === "string" ? json.error : `cowork_request_failed:${response.status}`);
-}
-
-function isCoworkEvent(value: unknown): value is CoworkEventDto {
-  if (!value || typeof value !== "object") return false;
-  const event = value as Partial<CoworkEventDto>;
-  return ["session", "transcript", "tool", "done", "error"].includes(event.type ?? "")
-    && (event.session === undefined || (event.session !== null && typeof event.session === "object"));
 }
 
 async function buildRequestError(url: string, response: Response): Promise<CodexRequestError> {

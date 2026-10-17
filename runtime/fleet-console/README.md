@@ -10,7 +10,7 @@ Fleet Console core owns HTTP, Agent execution, Chat, per-conversation Shell, PTY
 - Workspace hub sessions created through an in-console directory browser — no OS-native dialog.
 - Console-spawned Agent CLI PTYs with in-process observation.
 - Codex/Fleet Wiki browsing under the shared Console GNB at `/console/codex`.
-- Codex Cowork lets you open a Wiki entry in a focused AI editing session: compare its immutable current version with a live draft, give the assistant selected text or annotations as context, and Apply once when ready. Your draft and conversation survive refresh or restart, while knowledge remains unchanged until that final Apply; Cowork has no terminal or PTY access and keeps provider details, workspace paths, and credentials out of the browser.
+- Codex quotes: select a passage in a Wiki entry and attach it as a comment or question chip to a chat-mode commander's or the Theater Commodore's composer. Attaching never sends; the conversation continues in that chat, and any revision arrives as a Wiki patch that changes nothing until you approve it.
 - Browser observer snapshots and SSE streams backed by console-owned global observed ids.
 - Browser terminal access through short-lived tickets over WebSocket.
 

@@ -1,3 +1,4 @@
+import type { ComposerQuote } from "../composer/quotes.js";
 import type { ComponentType, ReactNode } from "react";
 
 import type { ConversationReference } from "../conversation/references.js";
@@ -19,7 +20,8 @@ export interface AgentChatTranscriptOrigin {
 }
 
 /** Reference-only attachments never open the Operation preview route. */
-export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string };
+/** `quote` — 다른 표면이 입력창에 붙여 보낸 인용(`@fleet-console/sdk/composer/quotes`). */
+export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
 
 /**
  * References the person placed inside their words. The text carries `CONVERSATION_REFERENCE_MARK` (`@fleet-console/sdk/conversation`)

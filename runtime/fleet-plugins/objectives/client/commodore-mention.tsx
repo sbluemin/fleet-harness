@@ -1,6 +1,8 @@
+import type { ComposerQuote, ComposerQuoteAttachResult } from "@fleet-console/sdk/composer/quotes";
 import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 
 import { CommodoreAvatar } from "./commodore-avatar.js";
+import { attachQuoteToCommodoreComposer } from "./commodore-inbox-section.js";
 import { commodoreMongleState } from "./commodore-header.js";
 import { commodoreAlias, commodoreTheaterIds, commodoreBoardOf, commodoreLanguage, commodoreTheaterLabel, messageCommodore, useCommodore } from "./commodore-state.js";
 import { getT } from "./i18n/index.js";
@@ -53,4 +55,20 @@ export async function messageCommodoreMention(targetId: string, text: string): P
   // 덱을 연 뒤 자율 운영이 꺼졌을 수 있다 — 아는 만큼 먼저 거절한다. 권위는 서버의 거절이다.
   if (!theaterId || !commodoreBoardOf(theaterId).active) throw new Error("mention_target_gone");
   await messageCommodore(theaterId, text);
+}
+
+/**
+ * 인용을 받을 수 있는 이 Theater 의 사령관 — 호스트의 「붙일 곳」 메뉴(Codex 문서의 선택 알약)에 선다. 새 세션 '@' 덱과 같은 조건
+ * (실험 기능과 이 Theater 의 자율 운영이 모두 켜짐)일 때만 낸다. 이름은 덱과 같다(별칭이 있으면 별칭).
+ */
+export function commodoreQuoteTargets(theaterId: string): readonly { readonly targetId: string; readonly label: string }[] {
+  if (!commodoreTheaterIds().includes(theaterId) || !commodoreBoardOf(theaterId).active) return [];
+  return [{ targetId: `${TARGET_PREFIX}${theaterId}`, label: commodoreAlias(theaterId) ?? (commodoreTheaterLabel(theaterId) || theaterId) }];
+}
+
+/** 붙이기 — 사령관 입력창(데스크톱·폰이 같은 초안)에 칩을 세운다. 보내지 않는다. */
+export function receiveCommodoreQuote(targetId: string, quote: ComposerQuote): ComposerQuoteAttachResult {
+  const theaterId = targetId.startsWith(TARGET_PREFIX) ? targetId.slice(TARGET_PREFIX.length) : "";
+  if (!theaterId || !commodoreBoardOf(theaterId).active) return "unavailable";
+  return attachQuoteToCommodoreComposer(theaterId, quote);
 }

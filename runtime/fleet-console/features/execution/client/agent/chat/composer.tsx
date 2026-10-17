@@ -4,6 +4,7 @@ import {
   AttachImageIcon,
   ComposerAttachmentTray,
   ComposerField,
+  ComposerQuoteTray,
   ComposerInput,
   ComposerMenu,
   ComposerMenuItem,
@@ -11,6 +12,7 @@ import {
   ComposerSubmitButton,
   composerAttachmentNoticeText,
   composerDeckKeyDown,
+  composerQuotePlaceholder,
   composerT,
   isUltracodeDisarmCaret,
   nextUltracodeIgnored,
@@ -232,7 +234,7 @@ export function AgentChatComposer({
   const widthCollapsed = widthChoices.length < 2;
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
   const draftState = getComposerDraft(context.operationId);
-  const { text: draft, attachments, attachmentNotice, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
+  const { text: draft, attachments, attachmentNotice, quotes, sending, sentEpoch, failed, ultracodeIgnored } = React.useSyncExternalStore(draftState.subscribe, draftState.read, draftState.read);
   const setDraft = draftState.setText;
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
   /**
@@ -409,7 +411,7 @@ export function AgentChatComposer({
     // 문면이 비어도 첨부가 있으면 나간다 — 자식은 첨부 지시 줄만 받고, 말풍선은 첨부만 선다.
     // 업로드가 끝나지 않은 첨부는 아직 보낼 것이 아니므로 둘 다 없을 때와 같이 멈춘다.
     if (text.length === 0) {
-      if (attachments.length === 0 || attachments.some((attachment) => attachment.uploading)) return;
+      if ((attachments.length === 0 && quotes.length === 0) || attachments.some((attachment) => attachment.uploading)) return;
       void draftState.send("");
       return;
     }
@@ -432,7 +434,7 @@ export function AgentChatComposer({
     // 초안 저장소가 중복 발사·첨부 준비·성공/실패를 판정한다. 레이아웃 전환으로 이 입력창이
     // 내려가도 요청은 한 번만 끝나고, 돌아온 입력창이 같은 결말을 구독한다.
     void draftState.send(text);
-  }, [draft, attachments, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
+  }, [draft, attachments, quotes, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -472,6 +474,14 @@ export function AgentChatComposer({
     return subscribeComposerInbox(context.operationId, take);
   }, [context.operationId, addFiles]);
 
+  // 다른 표면(Codex 문서)이 인용을 붙이면 커서가 이 입력창으로 온다 — 다음 할 일은 지시를 쓰는 것이다. 처음 서는 순간의
+  // 이미 있던 칩은 초점을 가져가지 않는다.
+  const quoteCount = React.useRef(quotes.length);
+  React.useEffect(() => {
+    if (quotes.length > quoteCount.current) inputRef.current?.focus({ preventScroll: true });
+    quoteCount.current = quotes.length;
+  }, [quotes.length]);
+
   const stop = React.useCallback(async () => {
     // ACK를 받은 중지만 focus를 돌려준다. 정상 완료는 작업 면이나 separator에서 사용자가 두고
     // 있던 초점을 빼앗지 않고, 실패는 false라 이 줄에서 멈춘다.
@@ -500,10 +510,11 @@ export function AgentChatComposer({
   // 발사 조건은 전송 경로와 같아야 한다 — 서버는 문면이나 첨부 중 하나라도 있으면 받으므로 버튼도
   // 같은 규칙으로 켠다. 둘 다 없으면(또는 첨부가 아직 올라가는 중이면) 눌러도 나갈 것이 없다.
   const uploading = attachments.some((attachment) => attachment.uploading);
-  const canSend = (draft.trim().length > 0 || attachments.length > 0) && !sending && !uploading;
+  const canSend = (draft.trim().length > 0 || attachments.length > 0 || quotes.length > 0) && !sending && !uploading;
   // 안내는 고정 문구다 — 세션 제목을 넣으면 긴 제목이 두 줄로 접혀 한 줄 상자에서 잘린다.
   // 실제 제목은 캡션이 이미 온전히 보여 준다.
-  const placeholder = t("terminal.chat.composerPlaceholder");
+  // 인용이 붙어 있으면 그 사실과 다음 할 일(지시 쓰기)을 빈 칸이 말한다.
+  const placeholder = composerQuotePlaceholder(quotes.length, ct) ?? t("terminal.chat.composerPlaceholder");
   const notice = consoleNotice !== null
     ? consoleNotice
     : failed
@@ -553,7 +564,7 @@ export function AgentChatComposer({
       ) : (
       <>
       {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
-          좌표 자리를 잠시 빌린다(Cowork의 「모델 · 강도 · Settings에서 변경」 줄과 같은 자리). */}
+          좌표 자리를 잠시 빌린다. */}
       {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 글리프 묶음(자동 접기·폭). 양 끝은 자기 크기만큼만 쓰고
           가운데가 남는 폭을 전부 가져간다 — 그래서 선반의 제목은 이 줄에서 가장 먼저 줄어드는
           글자이고, 좌표와 글리프의 과녁은 폭이 어떻든 움직이지 않는다. */}
@@ -669,6 +680,7 @@ export function AgentChatComposer({
               onHover={setDeckIndex}
             />
           ) : null}
+          <ComposerQuoteTray store={draftState.quotes} t={ct} disabled={sending} onDone={() => inputRef.current?.focus()} />
           <ComposerAttachmentTray store={draftState.attachments} t={ct} disabled={sending} />
           <div className="agent-chat-composer-row">
             {mobileSurface ? null : attachmentEntry}

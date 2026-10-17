@@ -1,4 +1,5 @@
 import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
+import { splitQuotedPrompt } from "@fleet-console/sdk/composer/quotes";
 import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -51,8 +52,8 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         turnAt = entry.at;
         break;
       case "message": {
-        const { text, references } = messageWords(entry);
-        const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
+        const { text, references, quotes } = quotedMessageWords(entry);
+        const attachments = [...(entry.attachments?.map(({ id }) => ({ reference: id })) ?? []), ...quotes.map((quote) => ({ quote }))];
         if (turnAt !== null && delivered.has(entry.seq)) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
         else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, at: entry.at });
         else {
@@ -134,6 +135,13 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
   return references.length ? { text, references } : { text };
 }
 
+/** 다른 표면(Codex 문서)이 입력창에 붙여 보낸 인용은 문면 끝 줄로 실려 있다 — 말풍선 문면에서 떼어 인용 칩으로 세운다. */
+function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) {
+  const words = messageWords(entry);
+  const split = splitQuotedPrompt(words.text);
+  return { ...words, text: split.text, quotes: split.quotes };
+}
+
 /**
  * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Operation 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
  * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 세션 교대·실패는
@@ -159,8 +167,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "message": {
-        const { text, references } = messageWords(entry);
-        const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
+        const { text, references, quotes } = quotedMessageWords(entry);
+        const attachments = [...(entry.attachments?.map(({ id }) => ({ reference: id })) ?? []), ...quotes.map((quote) => ({ quote }))];
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
           ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });

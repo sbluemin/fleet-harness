@@ -92,7 +92,6 @@ function CodexReaderPane(ctx: PaneContext) {
   const state = useReaderState();
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLDivElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
   const [outlineCollapsed, setOutlineCollapsed] = useState(readOutlineCollapsed);
   const [activeSection, setActiveSection] = useState("");
@@ -117,10 +116,10 @@ function CodexReaderPane(ctx: PaneContext) {
   // split reader mount — expanded=true면 읽기 시트가 처리 중이므로 건너뜀
   useEffect(() => {
     if (!workspaceId || !hasReader || expanded) return;
-    if (!readRef.current || !tocRef.current || !dockRef.current || !reader) return;
+    if (!readRef.current || !tocRef.current || !reader) return;
     const kind = reader.kind;
     const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
-    mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
+    mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
@@ -212,7 +211,6 @@ function CodexReaderPane(ctx: PaneContext) {
         <div ref={tocRef} className="codex-doc-toc-inline" />
       </section>
       <div ref={readRef} className="codex-doc-scroll" />
-      <div ref={dockRef} className="codex-reader-composer" />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import type { AgentHost } from "@fleet-console/sdk/agent";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import type { NetworkInterfaceInfo } from "node:os";
@@ -7,12 +6,6 @@ import net from "node:net";
 import type { MemoryPaths, WikiWorkspaceResolver } from "../wiki/index.js";
 
 import { handleApiRequest } from "./routes.js";
-import { CoworkService, CoworkStore } from "./cowork/index.js";
-import type { CoworkConnector } from "./cowork/index.js";
-import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
-import type { ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
-
-import { createCoworkGatewayConnector } from "./cowork/gateway-adapter.js";
 import type { AllowedAccessSets } from "./contracts.js";
 import type { TheaterPathResolver } from "./theater-paths.js";
 import { WorkspaceRegistry } from "./workspaces.js";
@@ -29,7 +22,6 @@ interface CodexGatewayDeps {
   readonly host: string;
   readonly version: string;
   readonly getPort: () => number;
-  readonly agent: AgentHost;
   /**
    * 요청이 도착한 리스너. Codex는 코어 Host 게이트보다 앞에서 분기하므로 자기 게이트가 유일한
    * 경계인데, 그 경계는 바인드 호스트가 아니라 리스너마다 다르다. 원격 리스너를 모르는 게이트는
@@ -58,13 +50,6 @@ interface CodexGatewayDeps {
    * 유일한 지점이다.
    */
   readonly whenRegistrationsSettle?: () => Promise<void>;
-  /**
-   * Console의 모델 로스터(Settings › AI Gateway에서 켠 모델)와 좌표 해석. Cowork 목록과 실행 좌표가 여기서 온다 —
-   * 요청마다 읽으므로 Gateway를 바꾼 직후부터 새 로스터를 본다. 생략하면 로스터가 빈 것으로 본다.
-   */
-  readonly models?: Pick<FleetPluginModelsHost, "roster" | "resolve">;
-  /** Settings › 실험 기능 읽기 — Cowork의 모델·강도 좌표. 요청마다 읽어 바꾼 직후부터 새 값을 본다. */
-  readonly readExperiments?: () => ConsoleExperimentSettings;
   readonly security: {
     readonly validateHost: (request: IncomingMessage) => boolean;
     readonly isWriteAdmitted: (request: IncomingMessage) => boolean;
@@ -114,12 +99,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
   const workspaceOwners = new Map<string, Set<string>>();
   let initialWorkspace: Promise<WorkspaceRegistration> | null = null;
   let initialWorkspaceId: string | null = null;
-  const coworkServices = new Map<string, CoworkService>();
-  // Console이 제공한 연결만 사용한다. 다른 플러그인의 마운트를 알지 않는다.
-  const coworkConnector: CoworkConnector = createCoworkGatewayConnector({
-    agent: deps.agent,
-    ...(deps.models ? { models: deps.models } : {}),
-  });
 
   /**
    * 주소가 가리키는 워크스페이스를 지금 연다. 이미 열려 있거나 뿌리를 못 찾으면 false.
@@ -206,8 +185,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       sendJson(response, 500, { error: "internal_error" });
       return true;
     }
-    const coworkService = coworkServices.get(workspace.id) ?? new CoworkService(new CoworkStore(), paths, workspace.cwd, coworkConnector, deps.wikiWorkspaceResolver);
-    coworkServices.set(workspace.id, coworkService);
     const handled = await handleApiRequest(request, response, {
       cwd: workspace.cwd,
       knowledgeRoot: paths.root,
@@ -220,9 +197,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
       allowedOrigins: new Set(deps.allowedOriginsFor(request)),
       externalMode: true,
       admitted: deps.security.isWriteAdmitted(request),
-      coworkService,
-      ...(deps.models ? { models: deps.models } : {}),
-      readExperiments: deps.readExperiments,
     });
     request.url = originalUrl;
     // 감시는 요청을 처리한 *뒤에* 시작한다 — 지식 루트를 만드는 것은 그 요청이고,
@@ -278,13 +252,6 @@ export function createCodexGateway(deps: CodexGatewayDeps): CodexGateway {
     if (initialWorkspaceId === id) {
       initialWorkspace = null;
       initialWorkspaceId = null;
-    }
-    // Cowork 캐시도 함께 해제 — 라우트가 사라진 뒤 라이브 provider 클라이언트가
-    // 취소 불가능한 상태로 잔존하면 안 된다.
-    const coworkService = coworkServices.get(id);
-    if (coworkService) {
-      coworkServices.delete(id);
-      void coworkService.dispose().catch(() => undefined);
     }
     deps.onWorkspaceReleased?.(id);
     return workspaces.remove(id);
