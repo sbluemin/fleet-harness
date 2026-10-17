@@ -12,7 +12,7 @@ const POPOVER_GAP = 8;
 
 /**
  * 새 세션의 모델 칩·216px 공급자 메뉴·강도 트랙.
- * 새 세션 화면은 같은 부품을 칩 줄 오른쪽에 두고, 게이트만 늘 펼친다(apexPinnedOpen).
+ * 새 세션 화면은 같은 부품을 칩 줄 오른쪽에 두고, 게이트 펼침을 `/effort` 목록과 나눠 쥔다(apexOpen).
  * 메뉴는 잘라내는 조상 밖 — menuRoot — 으로 보낼 수 있다.
  */
 export function LaunchModelEffort({
@@ -22,6 +22,8 @@ export function LaunchModelEffort({
   onChange,
   disabled = false,
   apexPinnedOpen = false,
+  apexOpen,
+  onApexOpenChange,
   placement = "below",
   menuRoot = null,
   dismissSignal = 0,
@@ -34,6 +36,9 @@ export function LaunchModelEffort({
   readonly onChange: (model: string | null, effort: string | null) => void;
   readonly disabled?: boolean;
   readonly apexPinnedOpen?: boolean;
+  /** 게이트 펼침을 바깥이 쥘 때(EffortTrack `apexOpen`). */
+  readonly apexOpen?: boolean;
+  readonly onApexOpenChange?: (open: boolean) => void;
   readonly placement?: "above" | "below";
   readonly menuRoot?: RefObject<HTMLElement | null> | null;
   readonly dismissSignal?: number;
@@ -223,6 +228,8 @@ export function LaunchModelEffort({
           row={selectedRow}
           value={effort}
           apexPinnedOpen={apexPinnedOpen}
+          apexOpen={apexOpen}
+          onApexOpenChange={onApexOpenChange}
           onChange={(nextEffort) => onChange(model, nextEffort)}
           autoLabel={t("launchVariants.effort.auto")}
           ariaLabel={t("launchVariants.effort.track")}

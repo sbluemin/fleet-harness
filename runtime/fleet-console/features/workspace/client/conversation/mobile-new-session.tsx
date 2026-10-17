@@ -16,7 +16,8 @@ import { resolveRowEffort } from "../../../execution/client/components/effort-tr
 import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
 import { resolveNewSessionTheaterId } from "./new-session-entry.js";
-import { buildMentionGroups, buildPluginMentionCategories, isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
+import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
+import { useMentionSources } from "./new-session-mention-sources.js";
 import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
 
 /**
@@ -69,46 +70,13 @@ export function MobileNewSession() {
   const selectedRow = rows.find((row) => row.launch.model === model) ?? null;
   const chatStart = target?.kind.launchViews?.includes("chat") === true;
 
-  // 멘션 가능 대상은 플러그인이 messageOperation과 함께 선언한 Operation 타입으로 한정된다.
-  const messageableTypesByPlugin = useMemo(() => {
-    const map = new Map<string | null, ReadonlySet<string>>();
-    for (const plugin of registry.providers) {
-      if (plugin.messageOperation && (plugin.messageableOperationTypes?.length ?? 0) > 0) map.set(plugin.id, new Set(plugin.messageableOperationTypes));
-    }
-    return map;
-  }, [registry.providers]);
-  // 플러그인 행선지는 설정에서 켜고 끈 결과가 그대로 반영되도록 로스터 변경을 구독한다.
-  const [rosterEpoch, setRosterEpoch] = useState(0);
-  useEffect(() => {
-    const changed = () => setRosterEpoch((epoch) => epoch + 1);
-    const cleanups = registry.providers.flatMap((plugin) => {
-      try { return plugin.subscribeMentionTargets ? [plugin.subscribeMentionTargets(changed)] : []; }
-      catch { return []; }
-    });
-    return () => { for (const cleanup of cleanups) cleanup(); };
-  }, [registry.providers]);
-  const allPluginRows = useMemo(
-    () => buildPluginMentionCategories(registry.providers, "").flatMap((category) => category.rows),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [registry.providers, rosterEpoch, open],
-  );
-  // 고른 플러그인 행선지는 지금 목록의 같은 행으로 읽는다 — 고른 뒤 이름이 바뀌어도 칩이 따라간다.
-  const mentionTarget = useMemo<MentionTarget | null>(() => {
-    if (mentionPick?.kind !== "plugin") return mentionPick;
-    const latest = allPluginRows.find((row) => row.optionId === mentionPick.row.optionId);
-    return latest && latest !== mentionPick.row ? { kind: "plugin", row: latest } : mentionPick;
-  }, [mentionPick, allPluginRows]);
+  const sources = useMentionSources(state, registry.providers, mentionToken === null ? null : mentionToken.query);
+  const { messageableTypesByPlugin, allPluginRows } = sources;
+  const mentionTarget = useMemo(() => sources.latest(mentionPick), [sources, mentionPick]);
   const mentionTargetRef = useRef(mentionTarget);
   mentionTargetRef.current = mentionTarget;
-  const mentionEntries = useMemo(
-    () => (mentionToken === null ? [] : buildMentionGroups(state, messageableTypesByPlugin, mentionToken.query).flatMap((group) => group.entries)),
-    [mentionToken, state, messageableTypesByPlugin],
-  );
-  const pluginMentionRows = useMemo(
-    () => (mentionToken === null ? [] : buildPluginMentionCategories(registry.providers, mentionToken.query).flatMap((category) => category.rows)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [mentionToken, registry.providers, rosterEpoch],
-  );
+  const mentionEntries = useMemo(() => sources.operationGroups.flatMap((group) => group.entries), [sources.operationGroups]);
+  const pluginMentionRows = useMemo(() => sources.pluginCategories.flatMap((category) => category.rows), [sources.pluginCategories]);
   const mentionDeckOpen = mentionToken !== null;
   // 행이 있는 덱만 제출을 막는다 — 매치가 없으면 "@3pm" 같은 프로즈 토큰이다.
   const deckHasRows = mentionDeckOpen && (mentionEntries.length + pluginMentionRows.length) > 0;

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog, OPERATION_CATALOG_CHANGED_EVENT } from "@fleet-console/sdk/operations/browser";
 
@@ -9,8 +9,17 @@ import { closeNewSession, consumeNewSessionRejection, consumeNewSessionSeed, get
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { AttachImageIcon, ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton, composerAttachmentNoticeText, composerT, createComposerAttachments, useComposerAttachmentInput, useComposerAttachmentSnapshot } from "@fleet-console/sdk/composer";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
-import { findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
-import { readNewSessionSelection, writeNewSessionTheater } from "./new-session-preferences.js";
+import { buildEffortDeck, findVariantLaunchKind, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { resolveRowEffort } from "../../../execution/client/components/effort-track.js";
+import { OperationNameMark } from "../../../execution/client/components/operation-name-mark.js";
+import { resolveOperationMarkVisual } from "../../../execution/client/operation-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
+import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
+import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionTheater } from "./new-session-preferences.js";
+import { readCommandInput, type NewSessionCommandInput } from "./new-session-commands.js";
+import { deckOptionId, deckRows, markMatch, NewSessionDeck, type NewSessionDeckItem } from "./new-session-deck.js";
+import { isMentionSelectable, mentionErrorMessageKey, mentionTargetName, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget } from "./new-session-mention.js";
+import { useMentionSources } from "./new-session-mention-sources.js";
 import { readLaunchStartSurface, supportsChatStart, withStartSurface, writeLaunchStartSurface } from "../../../execution/client/launch-start-surface.js";
 import { ChatBubbleIcon, TerminalViewIcon } from "../../../execution/client/components/start-view-glyphs.js";
 import { TheaterAvatar } from "../theater-avatar.js";
@@ -26,6 +35,10 @@ import "./new-session.css";
  * 여는 것만으로는 아무것도 만들지 않는다. 첫 메시지를 보내야 실행 의도(requestLaunch)로
  * 나가고, 실행은 Operations 화면이 맡는다 — 새 서버 계약은 없다. 가운데 「어디서」 카드와 아래 칩 줄 왼쪽은 Theater·시작 표면을,
  * 칩 줄 오른쪽은 모델·강도 칸(NewSessionLaunchSlot)을 둔다. 시작해 Operation 이 되면 그 컴포저는 지금 그대로다 — 이 칩들은 여기에만 선다.
+ *
+ * 컴포저는 '/'(첫 글자)로 실행 좌표 명령을, '@'로 보낼 곳(부관 같은 플러그인 행선지·기존 Operation)을 부른다. 목록은 떠 있는 팝오버가
+ * 아니라 캡슐 안 입력 줄 위에 서고 캡슐이 위로 자란다(승인안 S3, new-session-deck). 보낼 곳을 고르면 캡슐 앞에 알약이 서고, 그때 제출은
+ * 새 Operation 실행이 아니라 그곳으로의 전달이다 — 부관의 답은 부관 자기 카드에 선다.
  *
  * Theater 가 없거나 새로 더할 때는 이 화면에서 「Theater 추가…」로 폴더를 고른다(사이드바 폴더 대화상자와 같은 등록 길). 더한 Theater 가
  * 곧 이번 세션의 Theater 다. 시작 보기의 기억은 '+' 입구의 것(launch-start-surface)을 그대로 잇는다.
@@ -49,6 +62,22 @@ export function NewSessionColumn({ state, target, tools }: {
   const [theaterMenuOpen, setTheaterMenuOpen] = useState<"chip" | "card" | null>(null);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [choice, setChoice] = useState<NewSessionLaunchChoice | null>(null);
+  // '/'·'@' 목록 — 판정은 문면과 caret 에서 파생한다. 상태로 남는 것은 caret, 활성 행, 「이번 문면에서 Esc로 닫았다」뿐이다.
+  const [caret, setCaret] = useState(0);
+  const [deckActiveKey, setDeckActiveKey] = useState<string | null>(null);
+  const [deckDismissed, setDeckDismissed] = useState(false);
+  // 고른 보낼 곳(최대 하나). 고른 동안 '/'·'@'는 리터럴이다.
+  const [mentionPick, setMentionPick] = useState<MentionTarget | null>(null);
+  const [mentionError, setMentionError] = useState<string | null>(null);
+  const [targetGone, setTargetGone] = useState(false);
+  const [sending, setSending] = useState(false);
+  // 숨은 강도 게이트 — 트랙의 ✦와 `/effort` 목록의 문 행이 이 한 상태를 쓴다. "이번에 열었다"이지 기억되는 설정이 아니다.
+  const [apexOpen, setApexOpen] = useState(false);
+  const apexCollapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current); }, []);
+  const registry = usePluginRegistry();
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
+  const deckId = useId();
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentStore = useMemo(() => createComposerAttachments({
     upload: (file) => uploadLaunchAttachment(file),
@@ -97,14 +126,6 @@ export function NewSessionColumn({ state, target, tools }: {
   // 이미 열린 화면에서 새 세션 단축키를 다시 누르면(newSessionFocusRequest) 컴포저로 돌아온다.
   useEffect(() => { inputRef.current?.focus(); }, [theater?.id, state.newSessionFocusRequest]);
 
-  // composer.open(플러그인·부유 위젯)이 건넨 초안은 열린 화면의 문면을 갈아치운다 — 보내지는 않는다.
-  // 행선지('@') 시드는 아직 이 컴포저가 받지 않는다: 문면만 싣고 행선지는 버린다.
-  useEffect(() => {
-    if (state.newSessionSeed === null) return;
-    const seed = consumeNewSessionSeed();
-    if (seed?.draft != null) setPrompt(seed.draft);
-    inputRef.current?.focus();
-  }, [state.newSessionSeed]);
 
   // 거절은 이 화면의 컴포저로 돌아온다.
   useEffect(() => {
@@ -153,6 +174,335 @@ export function NewSessionColumn({ state, target, tools }: {
   const confirmFolder = (path: string) => {
     setFolderDialogOpen(false);
     void registerTheaterFromPath(path).then((theaterId) => { if (theaterId !== null) pickTheater(theaterId); });
+  };
+
+  // ── '/'·'@' ────────────────────────────────────────────────────────────────
+  const command: NewSessionCommandInput | null = mentionPick ? null : readCommandInput(prompt, caret);
+  const mentionToken = mentionPick || command ? null : readMentionToken(prompt, caret);
+  const sources = useMentionSources(state, registry.providers, mentionToken === null ? null : mentionToken.query);
+  const mentionTarget = sources.latest(mentionPick);
+  const rows = groups.flatMap((group) => group.rows);
+  const selectedRow = rows.find((row) => (row.launch.model ?? null) === launchChoice.model) ?? null;
+  const autoLabel = t("launchVariants.effort.auto");
+  const viewLabelOf = (view: OperationLaunchView) => t(view === "chat" ? "conversation.newSession.viewChat" : "conversation.newSession.viewTerminal");
+
+  const placeCaret = (next: string) => {
+    setPrompt(next);
+    setCaret(next.length);
+    setDeckActiveKey(null);
+    setDeckDismissed(false);
+    requestAnimationFrame(() => {
+      const element = inputRef.current;
+      if (!element) return;
+      element.focus();
+      element.setSelectionRange(next.length, next.length);
+    });
+  };
+  // 값을 골랐다 — 명령은 프롬프트가 아니므로 문면을 비운다.
+  const finishCommand = () => placeCaret("");
+
+  const setEffort = (effort: string | null) => {
+    setChoice({ model: launchChoice.model, effort });
+    writeNewSessionModelEffort(launchChoice.model, effort);
+    if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current);
+    const gated = new Set(selectedRow?.gatedEfforts ?? []);
+    if (effort !== null && gated.has(effort)) {
+      setApexOpen(true);
+    } else if (apexOpen) {
+      // 일상 단으로 내려오면 트랙과 같이 잠깐 뒤에 접는다 — 고른 단이 눈앞에서 사라지지 않게.
+      apexCollapseTimerRef.current = setTimeout(() => { apexCollapseTimerRef.current = null; setApexOpen(false); }, 600);
+    }
+  };
+
+  const deckItems: readonly NewSessionDeckItem[] = (() => {
+    if (deckDismissed) return [];
+    if (command?.kind === "commands") {
+      const query = command.query.trim().toLowerCase();
+      const all = [
+        { id: "theater" as const, label: t("conversation.newSession.commandTheater"), value: theater ? theater.alias || theater.label : null, icon: <TheaterCommandGlyph /> },
+        { id: "model" as const, label: t("conversation.newSession.commandModel"), value: selectedRow?.label ?? null, icon: <ModelCommandGlyph /> },
+        { id: "effort" as const, label: t("conversation.newSession.commandEffort"), value: selectedRow ? (selectedRow.chips?.find((chip) => chip.id === launchChoice.effort)?.label ?? autoLabel) : null, icon: <EffortCommandGlyph /> },
+        ...(chatAvailable ? [{ id: "view" as const, label: t("conversation.newSession.commandView"), value: viewLabelOf(startView), icon: startView === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon /> }] : []),
+      ];
+      const matches = all.filter((entry) => query.length === 0 || entry.id.startsWith(query) || entry.label.toLowerCase().includes(query));
+      return [
+        { kind: "section", key: "commands", label: t("conversation.newSession.deckCommands") },
+        ...matches.map((entry): NewSessionDeckItem => ({
+          kind: "row",
+          key: `cmd-${entry.id}`,
+          icon: entry.icon,
+          name: markMatch(entry.label, entry.id.startsWith(query) ? "" : query),
+          value: entry.value,
+          token: `/${entry.id}`,
+          pick: () => placeCaret(`/${entry.id} `),
+        })),
+      ];
+    }
+    if (command?.kind === "values") {
+      const query = command.query.trim().toLowerCase();
+      if (command.command === "theater") {
+        return [
+          { kind: "section", key: "theater", label: t("conversation.newSession.deckTheater") },
+          ...state.theaters
+            .filter((candidate) => (candidate.alias || candidate.label).toLowerCase().includes(query))
+            .map((candidate): NewSessionDeckItem => ({
+              kind: "row",
+              key: `theater-${candidate.id}`,
+              icon: <TheaterAvatar theaterId={candidate.id} size={16} label={candidate.alias || candidate.label} decorative />,
+              name: markMatch(candidate.alias || candidate.label, query),
+              checked: candidate.id === theater?.id,
+              pick: () => { pickTheater(candidate.id); finishCommand(); },
+            })),
+        ];
+      }
+      if (command.command === "model") {
+        return [
+          { kind: "section", key: "model", label: t("conversation.newSession.deckModel") },
+          ...groups.flatMap((group): NewSessionDeckItem[] => {
+            const matched = group.rows.filter((row) => row.label.toLowerCase().includes(query));
+            if (matched.length === 0) return [];
+            return [
+              { kind: "band", key: `band-${group.id}`, label: group.label },
+              ...matched.map((row): NewSessionDeckItem => ({
+                kind: "row",
+                key: `model-${group.id}-${row.id}`,
+                name: <>{markMatch(row.label, query)}{row.starred ? <span className="new-session-deck-star" aria-hidden="true"> ★</span> : null}</>,
+                checked: (row.launch.model ?? null) === launchChoice.model,
+                pick: () => {
+                  // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다(모델 칩과 같은 규칙).
+                  const model = row.launch.model ?? null;
+                  const effort = resolveRowEffort(row, launchChoice.effort);
+                  setChoice({ model, effort });
+                  writeNewSessionModelEffort(model, effort);
+                  finishCommand();
+                },
+              })),
+            ];
+          }),
+        ];
+      }
+      if (command.command === "effort") {
+        const deck = buildEffortDeck(selectedRow, launchChoice.effort, autoLabel, query, apexOpen);
+        return [
+          { kind: "section", key: "effort", label: t("conversation.newSession.deckEffort") },
+          ...deck.options.map((option): NewSessionDeckItem => ({
+            kind: "row",
+            key: `effort-${option.id ?? "auto"}`,
+            name: option.label,
+            checked: option.checked,
+            level: option.id ?? "auto",
+            apex: option.apex,
+            pick: () => { setEffort(option.id); finishCommand(); },
+          })),
+          // 문 행은 값이 아니라 트랙의 ✦다 — 골라도 목록과 문면이 그대로 남고, 트랙도 같이 펼쳐진다.
+          ...(deck.showGateRow ? [{
+            kind: "row" as const,
+            key: "effort-gate",
+            gate: true,
+            icon: <span className="new-session-deck-gate-glyph">{deck.gateOpen ? "‹" : "✦"}</span>,
+            name: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle", { tiers: deck.gatedNames }),
+            pick: () => {
+              if (apexCollapseTimerRef.current !== null) clearTimeout(apexCollapseTimerRef.current);
+              setApexOpen(!deck.gateOpen);
+              setDeckActiveKey("effort-gate");
+            },
+          }] : []),
+        ];
+      }
+      if (!chatAvailable) return [];
+      return [
+        { kind: "section", key: "view", label: t("conversation.newSession.deckView") },
+        ...(["terminal", "chat"] as const)
+          .map((view) => ({ view, label: viewLabelOf(view), hint: t(view === "chat" ? "conversation.newSession.viewChatHint" : "conversation.newSession.viewTerminalHint") }))
+          .filter((entry) => entry.view.startsWith(query) || entry.label.toLowerCase().includes(query))
+          .map((entry): NewSessionDeckItem => ({
+            kind: "row",
+            key: `view-${entry.view}`,
+            icon: entry.view === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon />,
+            name: entry.label,
+            value: entry.hint,
+            checked: entry.view === startView,
+            pick: () => { setStartView(entry.view); writeLaunchStartSurface(entry.view); finishCommand(); },
+          })),
+      ];
+    }
+    if (mentionToken) {
+      const query = mentionToken.query;
+      const pickMention = (picked: MentionTarget) => {
+        const stripped = stripMentionToken(prompt, mentionToken).replace(/^\s+/, "");
+        setMentionPick(picked);
+        setMentionError(null);
+        setTargetGone(false);
+        placeCaret(stripped);
+      };
+      // 부관(플러그인 행선지)이 먼저, 그다음 Operations 를 Theater 띠로 묶는다.
+      const pluginItems = sources.pluginCategories.flatMap((category): NewSessionDeckItem[] => [
+        { kind: "section", key: `plugin-${category.key}`, label: category.label, note: category.capabilityLabel },
+        ...category.rows.map((row): NewSessionDeckItem => ({
+          kind: "row",
+          key: `plugin-${row.optionId}`,
+          icon: row.renderMark?.() ?? null,
+          name: markMatch(row.label, query),
+          token: row.capabilityLabel,
+          pick: () => pickMention({ kind: "plugin", row }),
+        })),
+      ]);
+      const operationItems = sources.operationGroups.length === 0 ? [] : [
+        { kind: "section" as const, key: "operations", label: t("conversation.newSession.deckOperations") },
+        ...sources.operationGroups.flatMap((group): NewSessionDeckItem[] => [
+          { kind: "band", key: `band-${group.theaterId ?? "none"}`, label: group.theaterLabel },
+          ...group.entries.map((entry): NewSessionDeckItem => ({
+            kind: "row",
+            key: `op-${entry.operationId}`,
+            icon: <OperationNameMark operation={{ id: entry.operationId, parentOperationId: entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })} size={16} />,
+            name: markMatch(entry.operationName, query),
+            value: entry.activity === "running" ? t("conversation.newSession.mentionWorking") : null,
+            // 입력을 기다리는 Operation 은 임의 문장이 그 응답을 오염시키므로 고를 수 없다.
+            disabled: !isMentionSelectable(entry.activity),
+            pick: () => pickMention({ kind: "operation", entry }),
+          })),
+        ]),
+      ];
+      return [...pluginItems, ...operationItems];
+    }
+    return [];
+  })();
+  const deckOpen = !deckDismissed && (command !== null || mentionToken !== null) && (command !== null || deckItems.length > 0);
+  const selectableRows = deckRows(deckItems);
+  const activeRow = selectableRows.find((row) => row.key === deckActiveKey) ?? selectableRows[0] ?? null;
+  // 행이 있는 목록만 Enter/Tab/제출을 가로챈다 — 매치가 없으면 "@3pm"·"/etc/hosts" 같은 문장이므로 Enter는 평소처럼 보낸다.
+  const deckHasRows = deckOpen && selectableRows.length > 0;
+
+  // composer.open(플러그인·부유 위젯)이 건넨 시드. 초안은 문면을 갈아치우고(보내지 않는다), 행선지는 '@'로 고른 것과 같다.
+  useEffect(() => {
+    if (state.newSessionSeed === null) return;
+    const seed = consumeNewSessionSeed();
+    if (seed === null) return;
+    if (seed.draft !== null) placeCaret(seed.draft);
+    setMentionError(null);
+    setTargetGone(false);
+    if (seed.mentionOperationId !== null) {
+      const entry = resolveMentionEntry(getState(), sources.messageableTypesByPlugin, seed.mentionOperationId);
+      setMentionPick(entry ? { kind: "operation", entry } : null);
+    } else if (seed.mentionTarget !== null) {
+      const address = seed.mentionTarget;
+      const row = sources.allPluginRows.find((candidate) => candidate.pluginId === address.pluginId && candidate.targetId === address.targetId);
+      setMentionPick(row ? { kind: "plugin", row } : null);
+      // 사라진 행선지를 새 Operation 실행으로 조용히 바꾸지 않는다. 사람이 보낼 곳을 다시 고른다.
+      if (!row) {
+        setTargetGone(true);
+        setMentionError("chrome.launch.mentionErrorTargetGone");
+      }
+    }
+    inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.newSessionSeed]);
+
+  const clearMention = () => {
+    setMentionPick(null);
+    setMentionError(null);
+    setTargetGone(false);
+    inputRef.current?.focus();
+  };
+
+  // 보낼 곳으로 전달한다. 성공하면 화면을 닫는다(보던 대화로 돌아간다). 실패는 문장·보낼 곳·칩을 지킨 채 사유만 싣는다.
+  const deliver = (target: MentionTarget) => {
+    if (sending || text.length === 0 || tooLong || uploading) return;
+    if (target.kind === "plugin") {
+      const plugin = registry.providers.find((candidate) => candidate.id === target.row.pluginId);
+      if (!plugin?.messageMentionTarget) return;
+      // 비-Operation 행선지는 첨부를 받지 않는다 — 조용히 빼면 그 이미지를 본다고 믿은 채 답을 읽는다.
+      if (attachmentSnap.items.length > 0) {
+        setMentionError("chrome.launch.errorMentionAttachments");
+        return;
+      }
+      setSending(true);
+      setMentionError(null);
+      void plugin.messageMentionTarget(target.row.targetId, text)
+        .then(() => {
+          setSending(false);
+          setPrompt("");
+          setMentionPick(null);
+          closeNewSession();
+        })
+        .catch((error: unknown) => {
+          setSending(false);
+          setMentionError(mentionErrorMessageKey(error instanceof Error ? error.message : null));
+        });
+      return;
+    }
+    const entry = target.entry;
+    const plugin = registry.providers.find((candidate) => candidate.id === entry.pluginId);
+    if (!plugin?.messageOperation) return;
+    // 칩은 실행 대상 플러그인의 스토어에 올라갔다 — 다른 플러그인의 세션에는 실을 수 없다.
+    if (attachmentSnap.items.length > 0 && entry.pluginId !== variantTarget?.pluginId) {
+      setMentionError("chrome.launch.errorAttachmentUploadFailed");
+      return;
+    }
+    const delivered = attachmentSnap.items.flatMap((item) => item.id !== null ? [{ id: item.id, key: item.key }] : []);
+    setSending(true);
+    setMentionError(null);
+    void plugin.messageOperation(entry.operationId, text, delivered.map((item) => item.id))
+      .then(() => {
+        attachmentStore.releaseSent(delivered.map((item) => item.key));
+        setSending(false);
+        setPrompt("");
+        setMentionPick(null);
+        closeNewSession();
+      })
+      .catch((error: unknown) => {
+        setSending(false);
+        if (attachmentStore.noteSendFailure(error, delivered.map((item) => item.id)) === "expired") return;
+        setMentionError(mentionErrorMessageKey(error instanceof Error ? error.message : null));
+      });
+  };
+
+  const canSubmit = mentionTarget
+    ? text.length > 0 && !tooLong && !uploading && !sending && !targetGone && !deckHasRows
+    : canStart && !deckHasRows;
+
+  const submit = () => {
+    if (deckHasRows) return;
+    if (mentionTarget) {
+      if (!targetGone) deliver(mentionTarget);
+      return;
+    }
+    start();
+  };
+
+  const onInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (deckHasRows) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const at = activeRow ? selectableRows.indexOf(activeRow) : -1;
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        const next = selectableRows[(at + delta + selectableRows.length) % selectableRows.length];
+        if (next) setDeckActiveKey(next.key);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        event.preventDefault();
+        activeRow?.pick();
+        return;
+      }
+    }
+    // Esc 한 번은 목록만 닫고 문면은 남긴다. 목록이 없을 때의 Esc 는 화면 닫기(열의 처리기)로 올라간다.
+    if (event.key === "Escape" && deckOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setDeckDismissed(true);
+      return;
+    }
+    if (event.key === "Backspace" && mentionPick && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
+      event.preventDefault();
+      clearMention();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submit();
+    }
   };
 
   const start = () => {
@@ -262,7 +612,17 @@ export function NewSessionColumn({ state, target, tools }: {
         </div>
       </div>
       <div className="new-session-composer-zone">
-        <div className={`new-session-composer${starting ? " is-starting" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`} onDragOver={attachmentInput.onDragOver} onDragLeave={attachmentInput.onDragLeave} onDrop={attachmentInput.onDrop}>
+        <div className={`new-session-composer${starting ? " is-starting" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}${deckOpen ? " is-grown" : ""}`} onDragOver={attachmentInput.onDragOver} onDragLeave={attachmentInput.onDragLeave} onDrop={attachmentInput.onDrop}>
+          {deckOpen ? (
+            <NewSessionDeck
+              id={deckId}
+              label={t("conversation.newSession.deckAria")}
+              items={deckItems}
+              activeKey={activeRow?.key ?? null}
+              emptyText={t("conversation.newSession.deckNoMatch")}
+              onHover={setDeckActiveKey}
+            />
+          ) : null}
           <ComposerAttachmentTray store={attachmentStore} t={ct} disabled={starting} />
           <span className="new-session-plus-root" ref={plusRootRef}>
             {menuOpen ? (
@@ -273,25 +633,42 @@ export function NewSessionColumn({ state, target, tools }: {
             <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={starting} onClick={() => setMenuOpen((open) => !open)} />
             {attachmentInput.fileInput}
           </span>
+          {mentionTarget ? (
+            <span className="new-session-mention">
+              <span className="new-session-mention-mark" aria-hidden="true">{mentionTarget.kind === "plugin"
+                ? mentionTarget.row.renderMark?.() ?? "@"
+                : <OperationNameMark operation={{ id: mentionTarget.entry.operationId, parentOperationId: mentionTarget.entry.parentOperationId }} status={resolveOperationMarkVisual({ activity: mentionTarget.entry.activity, operationId: mentionTarget.entry.operationId, idleArrivalIds })} size={16} />}</span>
+              <span className="new-session-mention-name">{mentionTargetName(mentionTarget)}</span>
+              <button type="button" className="new-session-mention-clear" onClick={clearMention} disabled={sending} aria-label={t("conversation.newSession.mentionClear")} title={t("conversation.newSession.mentionClear")}>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 5l6 6M11 5l-6 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+              </button>
+            </span>
+          ) : null}
           <textarea
             ref={inputRef}
             className="new-session-input"
             rows={1}
             value={prompt}
-            disabled={starting}
-            onChange={(event) => setPrompt(event.target.value)}
-            onPaste={attachmentInput.onPaste}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                start();
-              }
+            disabled={starting || sending}
+            onChange={(event) => {
+              setPrompt(event.target.value);
+              setCaret(event.target.selectionStart ?? event.target.value.length);
+              setDeckDismissed(false);
+              setDeckActiveKey(null);
+              setMentionError(null);
             }}
-            placeholder={t("conversation.newSession.placeholder")}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
+            onPaste={attachmentInput.onPaste}
+            onKeyDown={onInputKeyDown}
+            placeholder={mentionTarget ? t("conversation.newSession.mentionPlaceholder", { name: mentionTargetName(mentionTarget) }) : t("conversation.newSession.placeholder")}
             aria-label={t("conversation.newSession.promptLabel")}
+            aria-autocomplete="list"
+            aria-controls={deckOpen ? deckId : undefined}
+            aria-expanded={deckOpen}
+            aria-activedescendant={deckOpen && activeRow ? deckOptionId(deckId, activeRow) : undefined}
             spellCheck={false}
           />
-          <button type="button" className="new-session-send" onClick={start} disabled={!canStart} aria-label={t("conversation.newSession.start")} title={t("conversation.newSession.start")}>
+          <button type="button" className="new-session-send" onClick={submit} disabled={!canSubmit} aria-label={t("conversation.newSession.start")} title={t("conversation.newSession.start")}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 12.5V3.8M4.2 7.4 8 3.6l3.8 3.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
@@ -323,11 +700,12 @@ export function NewSessionColumn({ state, target, tools }: {
             <span className="new-session-chips-trail">
               {starting ? <span className="new-session-status" role="status">{t("conversation.newSession.starting")}</span> : null}
               {launchError ? <span className="new-session-status is-alert" role="alert">{t(launchError.key as Parameters<typeof t>[0], launchError.shortenBy === null ? undefined : { over: String(launchError.shortenBy) })}</span> : null}
+              {mentionError ? <span className="new-session-status is-alert" role="alert">{t(mentionError as Parameters<typeof t>[0])}</span> : null}
               {tooLong ? <span className="new-session-status is-alert" role="alert">{t("chrome.launch.tooLong", { over: String(text.length - LAUNCH_PROMPT_MAX_CHARS) })}</span> : null}
               {composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <span className="new-session-status is-alert" role="alert">{composerAttachmentNoticeText(attachmentSnap.notice, ct)}</span> : null}
               {/* 모델·강도 칸 — data-operation-launch-kind 는 실행 기능 투어(「Claude, 하나의 Gateway」)의 앵커다. */}
               <span className="new-session-launch-slot" {...(variantTarget ? { "data-operation-launch-kind": variantTarget.kind.id } : {})}>
-                <NewSessionLaunchSlot groups={groups} value={launchChoice} onChange={setChoice} disabled={starting} />
+                <NewSessionLaunchSlot groups={groups} value={launchChoice} onChange={setChoice} disabled={starting} apexOpen={apexOpen} onApexOpenChange={setApexOpen} />
               </span>
             </span>
           </div>
@@ -403,4 +781,14 @@ const ChevronGlyph = () => (
 );
 const FolderPlusGlyph = () => (
   <svg className="new-session-row-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.3h5.8v6.7h-11z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" /><path d="M8 8v3M6.5 9.5h3" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>
+);
+
+const TheaterCommandGlyph = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5.5 8 2.5l5.5 3v5L8 13.5l-5.5-3v-5ZM8 8.5v5M2.5 5.5 8 8.5l5.5-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+);
+const ModelCommandGlyph = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="8" cy="8" r="1.6" fill="currentColor" /></svg>
+);
+const EffortCommandGlyph = () => (
+  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /><circle cx="5" cy="8" r="1.4" fill="currentColor" /><circle cx="11" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
 );

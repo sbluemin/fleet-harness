@@ -265,12 +265,15 @@ interface ManagedKeepOutCapability {
 }
 
 /**
- * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), 모달
+ * 위젯이 덮으면 안 되는 표면들. 열린 레일 페인(설정 포함), 새 세션 컴포저와 그 위로 자란 '/'·'@' 목록(목록은 컴포저 상자 밖에
+ * absolute 로 서므로 따로 잰다), 모달
  * 대화상자의 본문이다. 화면 대부분을 덮는 커튼(취역·제어권 인계)은 제외한다 — 그 안에 서 있을
  * 곳이 없고, 그런 표면은 이미 위젯의 포인터 입력을 막는다(layout.css 계약).
  */
 const KEEP_OUT_SELECTOR = [
   ".rail-pane:not(.is-parked)",
+  ".new-session-composer",
+  ".new-session-deck",
   "[aria-modal=\"true\"]",
   "[role=\"dialog\"]:not([aria-modal=\"true\"]):not(.floating-widget-layer *)",
 ].join(", ");
