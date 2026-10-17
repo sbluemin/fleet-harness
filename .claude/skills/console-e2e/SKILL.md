@@ -36,7 +36,7 @@ Read references only when starting the corresponding activity.
 | A claim about one real key press (Escape, Alt/⌘ shortcuts), actual macOS input-method composition display, or touch/coarse-pointer behavior | [Exact CDP input](references/cdp-input.md), including the [input-method limitation](references/cdp-input.md#macos-input-method-composition-display) |
 | Console in Electron, native shell, runtime ownership, packaging | [Desktop route](references/desktop.md), then only the required Desktop lane references |
 | Real Agent CLI, model pinning, wire/transcript | [Live agent prompt testing](references/live-agent-prompt-testing.md) |
-| Remote access, pairing, guest TLS | [Remote access testing](references/remote-access-testing.md) |
+| Remote access, pairing, guest TLS, or standing away from home | [Remote access testing](references/remote-access-testing.md) |
 | Windows ARM64 host or platform-specific browser input claim | [Browser platform automation](references/platform-automation.md) |
 | Fleet Mobile shell on an Android emulator or iOS simulator, including cold-start link delivery and briefing a counter/state reproduction | [Mobile shell reproduction](references/mobile-shell.md) |
 

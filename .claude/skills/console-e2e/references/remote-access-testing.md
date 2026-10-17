@@ -1,6 +1,6 @@
 # Remote access and pairing E2E
 
-Remote access is the one Console surface the browser cannot reach on its own. The remote listener speaks TLS with a self-signed certificate, refuses every request without a session, and hands out `fleet://join?code=…` links that no browser follows. So the browser drives only the **owner's side** — Settings, the control curtain, the standing bar — while the **guest device is simulated from Node** over real HTTPS.
+Remote access is the one Console surface the browser cannot reach on its own. The remote listener speaks TLS with a self-signed certificate, refuses every request without a session, and hands out `fleet://join?code=…` links that no browser follows. So the pairing checks below keep the browser on the **owner's side** — Settings, the control curtain, the standing bar — while the **guest device is simulated from Node** over real HTTPS. Standing away from home is the exception: the browser loads the remote origin itself, in [Standing away from home](#standing-away-from-home).
 
 Read the base workflow first. This file covers only what it does not describe.
 
@@ -138,6 +138,56 @@ const after = (await status()).origin;    // must still be `before`
 The remote listener keeps its own remembered port (`remoteAccess.listenPort`, persisted in `remote/listener.json`) rather than following the console port, so `origin` survives while the loopback port moves. A resume against the **old saved origin** with the pairing cookie alone must answer `204`; `ECONNREFUSED` means the listener followed the console port again, and `401` means the cookie name did.
 
 Confirm the wire, not the state: read the certificate the listener actually presents and compare it to the reported fingerprint. A rotation that changes state while the listener keeps the old key breaks every pin.
+
+
+## Standing away from home
+
+Away is which origin this window is standing on. It is not the public endpoint (`publicEndpointEnabled` does not enter the predicate; [Turn the listener on](#turn-the-listener-on) leaves it off) and it is not a second loopback Console. The host chip and the dock dot share `isStandingAtHome` in `runtime/fleet-console/core/client/src/chrome/components/command-band-system-cluster.tsx`:
+
+- With no Desktop shell, home is a loopback `http` origin (`127.0.0.1`, `localhost`, or `[::1]`). The remote listener's `https://<LAN>:<remotePort>` is away. Another isolated Console at `http://127.0.0.1:<other port>` is still home.
+- With a Desktop shell, home is `location.origin` equal to the shell's published `homeOrigin` (`GET /api/v1/desktop/shell`). Until that answer arrives the shell is pending and the window is not treated as home. A neighbor Console is away once the window origin differs, even when that neighbor is also loopback.
+
+On `/operations`, while the connection is live:
+
+| Where | `.conversation-dock-status` | `.host-switcher-chip` |
+|---|---|---|
+| Home, no guest holding control | absent | present, class `command-band-button host-switcher-chip`, `data-tip` `Local` |
+| Away, this browser on the remote listener | present, `data-connection="live"` | absent |
+| Owner loopback while a full guest holds control | absent | present with `is-shared`, not `is-away` |
+
+`data-connection="offline"` is the coral disconnect dot. It is not away. A throwaway Theater is not required for either element: with no Theater the sidebar is the starter (`[data-testid=side-bar-starter]`) and the dock still renders. The chip is omitted on a non-loopback page because the nearby scan and the saved-host list run only for a loopback origin, and without a shell home nothing keeps the chip as the way back. Registering a Theater does not put the chip back. The chip is in the DOM on the home page even while its menu is `hidden`, so a document-wide query is the check; opening the avatar is not.
+
+**A synthesized shell URL is not away.** `desktopPickerUrl` (`/console/?desktop-surface=host-picker`, including `place=side`) only asks the shell to draw the host picker over the home page. The window origin stays home, so the dot stays absent and the chip does not gain `is-away`. That places the overlay. It does not show the window standing on another console.
+
+### Browser: load the remote listener
+
+Seed onboarding before the first navigation ([First-load onboarding state](setup.md#first-load-onboarding-state)), or the commissioning card covers the dock in a screenshot. Turn the listener on with [`issue-access-link.mjs`](../scripts/issue-access-link.mjs) as in [Turn the listener on](#turn-the-listener-on). Its stdout line `link written to <path> (listener <origin>)` is the origin to open. Do not print `link.txt`.
+
+Join from one Node process, as in [Speak to the remote listener](#speak-to-the-remote-listener). Have that process write a mode-0600 JSON array of `{name,value}` for the `Set-Cookie` pairs, and print the status and the cookie names only (`fleet_console_session_<remotePort>` and `fleet_console_pairing_<remotePort>`). A `204` is the join. Never pass the cookie value or the lock token on a command line.
+
+```bash
+agent-browser --session <id> --headed false --ignore-https-errors open
+agent-browser --session <id> cookies set --curl "$E2E_DIR/away-cookies.json" --url "<listener origin>"
+agent-browser --session <id> open "<listener origin>/console/operations"
+```
+
+`--ignore-https-errors` is required: the listener certificate is self-signed, and a normal navigation stops on it. `--headed false` keeps the window from taking OS focus. Wait until the page has connected, then read:
+
+```js
+({
+  origin: location.origin,
+  dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
+  chip: document.querySelector(".host-switcher-chip")?.className ?? null,
+})
+```
+
+Away is reproduced when `origin` is the listener origin, `dot` is `"live"`, and `chip` is `null`. Then `DELETE /api/v1/access-sessions/:handle` from the owner side (the lock token stays inside the Node process) and read the same Console's loopback `/console/operations` in another browser session: `dot` is `null`, and the chip's class has neither `is-away` nor `is-shared`, with `data-tip` `Local`. While the full guest still holds control, the owner's chip is `is-shared` and is not a home reading.
+
+Delete the cookie file with the run directory. It holds the session secret.
+
+### Desktop shell
+
+The browser result above does not need Desktop. When the claim is the Desktop window itself, the shell's home is the Console it launched. Navigating that window to a second isolated Console's origin makes `currentOrigin !== homeOrigin`, so the dock dot is present and the chip gains `is-away` (the shell home keeps the chip on the page). Navigating back to the home origin removes both. Launching Desktop takes OS focus; do not launch it for the browser check. This Desktop path was not run when this section was written.
 
 ## Administration stays on loopback
 
