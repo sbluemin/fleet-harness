@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { operationAvatarKey, theaterAvatarKey, type MongleActivity, type MongleRole } from "@fleet-console/sdk/avatars";
-import { resolveMongleLook, useAvatarBook } from "@fleet-console/sdk/avatars/browser";
+import { MONGLE_BASES, type MongleActivity, type MongleRole } from "@fleet-console/sdk/avatars";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 
-import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
-import { operationAvatarRole } from "../avatars.js";
 import "./new-session-playground.css";
 
 /**
  * 새 세션 화면의 「몽글 놀이터」 — 「어디서」 카드 아래 바닥선에서 몽글이들이 걷고(산책로), 그네·시소·모래밭·미끄럼틀에서 논다(놀이기구).
  * 승인안(목표 b4f89230): A 산책로 + C 놀이기구를 한 무대에 두고, 누가 언제 어느 기구로 가서 놀지·걷기·멈춰 연기하기를 랜덤으로 고른다.
- * 출연진은 지금 Theater 사령관 + 그 Theater Operation 저장 모습 중 최대 5명을 랜덤으로 골라 랜덤 시점에 등장시킨다.
+ * 출연진은 Theater 와 무관하게 몽글 베이스 15종 전체다(사람의 지시로 「사령관 + 내 Operation」을 대체). 15종을 섞은 덱에서 뽑아 한 바퀴를
+ * 돌기 전에는 같은 캐릭터가 다시 나오지 않고, 역할(안테나·구성원·별)은 등장할 때마다 랜덤이다. 오래 머문 몽글이는 가끔 가까운 끝으로 걸어
+ * 나가고, 잠시 뒤 덱의 다음 캐릭터가 랜덤한 쪽에서 들어온다. 무대 위 동시 인원은 폭 상한을 넘지 않는다.
  *
  * - 배경 층이다: pointer-events 없음·aria-hidden. 카드와 컴포저 위로 오지 않고 클릭·포커스를 가져가지 않는다.
  * - 부르는 상태(대기·결정·검토의 발밑 빛, 안 본 답·오류·휴면 배지)는 놀이에 쓰지 않는다 — 쉼(idle)과 작업 중 연기(running+activity)만 쓴다.
@@ -28,7 +27,14 @@ const BAND_WALK = 86;
 const MIN_SCALE = 0.62;
 /** 바닥선이 띠 아래에서 떨어진 거리. */
 const FLOOR = 12;
-const OPERATION_CAST_MAX = 5;
+/** 무대 위 동시 인원 — 폭이 넓을 때. 좁으면 4·3명. */
+const STAGE_CAP = 6;
+/** 이만큼 머문 뒤부터 틱마다 이 확률로 퇴장한다. */
+const EXIT_AFTER_MS = 20_000;
+const EXIT_CHANCE = 0.08;
+/** 역할 확률 — 지휘관 안테나 45%, 구성원 45%, 사령관 별 10%. */
+const ROLE_COMMODORE = 0.1;
+const ROLE_COMMANDER = 0.55;
 const FREEZE_IDLE_MS = 1600;
 const SWING_PERIOD_MS = 3000;
 const SEESAW_PERIOD_MS = 3600;
@@ -58,25 +64,15 @@ function shuffle<T>(list: readonly T[]): T[] {
 }
 
 interface CastMember {
+  /** 등장마다 새 값 — 같은 베이스가 다음 바퀴에 다시 나와도 다른 배우다. */
   readonly id: string;
-  readonly avatarKey: string;
+  readonly base: number;
   readonly role: MongleRole;
 }
 
-/** 출연진 — 사령관은 늘 첫째, 그 Theater Operation(구성원 포함)에서 최대 5명을 랜덤으로. 뽑은 순서가 등장 순서다. */
-function pickCast(state: Pick<ConsoleState, "operations" | "nestedOperations">, theaterId: string): CastMember[] {
-  const seen = new Set<string>();
-  const operations = [...state.operations, ...state.nestedOperations].filter((operation) => {
-    if (operation.theaterId !== theaterId || seen.has(operation.id)) return false;
-    seen.add(operation.id);
-    return true;
-  });
-  const chosen = shuffle(operations).slice(0, OPERATION_CAST_MAX).map((operation) => ({
-    id: operation.id,
-    avatarKey: operationAvatarKey(operation.id),
-    role: operationAvatarRole(operation),
-  }));
-  return [{ id: `theater:${theaterId}`, avatarKey: theaterAvatarKey(theaterId), role: "commodore" }, ...chosen];
+function randomRole(): MongleRole {
+  const r = Math.random();
+  return r < ROLE_COMMODORE ? "commodore" : r < ROLE_COMMANDER ? "commander" : "member";
 }
 
 interface Seat { id: string | null; seated: boolean }
@@ -87,6 +83,7 @@ interface Ride { readonly item: number; readonly seat: number; readonly ox: numb
 interface Actor {
   readonly cast: CastMember;
   present: boolean;
+  enteredAt: number;
   mode: ActorMode;
   x: number;
   y: number;
@@ -124,8 +121,14 @@ class PlaygroundStage {
   private entryRemaining: number | null = null;
   private entryDeadline = 0;
   private disposed = false;
+  private cap = STAGE_CAP;
+  private deck: number[] = [];
+  private serial = 0;
+  private entered = false;
+  /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
+  private readonly kindOrder = shuffle(ITEM_KINDS);
 
-  constructor(private readonly cast: readonly CastMember[], private readonly publish: () => void, private readonly pinX: (id: string) => number | null) {}
+  constructor(private readonly publish: () => void, private readonly pinX: (id: string) => number | null) {}
 
   get ground(): number { return (this.layout?.band ?? BAND_FULL) - FLOOR; }
   private get standY(): number { return this.ground - SIZE; }
@@ -145,59 +148,78 @@ class PlaygroundStage {
       this.publish();
       return;
     }
-    const cap = layout.width < 520 ? 3 : layout.width < 820 ? 4 : this.cast.length;
-    const wasPresent = new Set(this.actors.filter((actor) => actor.present).map((actor) => actor.cast.id));
+    this.cap = layout.width < 520 ? 3 : layout.width < 820 ? 4 : STAGE_CAP;
     const itemCount = !layout.withItems ? 0 : layout.width >= 820 ? 4 : layout.width >= 470 ? 2 : layout.width >= 230 ? 1 : 0;
-    const kinds = shuffle(ITEM_KINDS).slice(0, itemCount);
+    const kinds = this.kindOrder.slice(0, itemCount);
     this.items = kinds.map((kind, index) => ({
       kind,
       cx: (layout.width * (index + 0.5)) / itemCount,
       seats: Array.from({ length: ITEM_SEATS[kind] }, () => ({ id: null, seated: false })),
       going: false,
     }));
-    this.actors = this.cast.slice(0, cap).map((cast) => ({
-      cast, present: false, mode: "out", x: -SIZE - 12, y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null,
-      ride: null, slideRun: 0, timer: null, deadline: 0, task: null, remaining: null,
-    }));
+    // 이미 무대에 선 배우는 남기고(상한까지) 기구에서 내려 바닥에 세운다. 퇴장하던 배우도 그 자리에 선다.
+    this.actors = this.actors.filter((actor) => actor.present).slice(0, this.cap);
+    for (const actor of this.actors) {
+      Object.assign(actor, { mode: "rest", x: clamp(actor.x, 6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, remaining: null });
+    }
     if (!dynamic) {
+      while (this.actors.length < this.cap) this.actors.push(this.cast());
       this.stillScene();
       this.publish();
       return;
     }
-    const pending: Actor[] = [];
-    for (const actor of this.actors) {
-      if (!wasPresent.has(actor.cast.id)) { pending.push(actor); continue; }
-      actor.present = true;
-      actor.mode = "rest";
-      actor.x = rand(6, this.maxX);
-      this.schedule(actor, rand(300, 1400), () => this.tick(actor));
-    }
+    for (const actor of this.actors) this.schedule(actor, rand(300, 1400), () => this.tick(actor));
     this.publish();
-    this.queueEntries(pending, wasPresent.size === 0);
+    this.fillEntries();
   }
 
-  /** 랜덤 등장 — 첫 배우는 금방, 나머지는 1.5–6초 간격으로 왼쪽 또는 오른쪽 끝에서 걸어 들어온다. */
-  private queueEntries(pending: Actor[], fresh: boolean): void {
-    const next = () => {
-      this.entryTimer = null;
-      const actor = pending.shift();
-      if (!actor || this.disposed) return;
-      this.enter(actor);
-      if (pending.length > 0) this.armEntry(rand(1500, 6000), next);
+  /** 덱의 다음 캐릭터 — 15종을 섞어 한 바퀴를 돈다. 새 바퀴의 앞머리가 지금 무대에 있으면 건너뛴다. */
+  private cast(): Actor {
+    const onStage = new Set(this.actors.map((actor) => actor.cast.base));
+    let index = this.deck.findIndex((base) => !onStage.has(base));
+    if (index < 0) {
+      this.deck = shuffle(MONGLE_BASES.map((base) => base.id));
+      index = this.deck.findIndex((base) => !onStage.has(base));
+    }
+    const [base] = this.deck.splice(Math.max(0, index), 1);
+    this.serial += 1;
+    return {
+      cast: { id: `pg-${this.serial}`, base: base ?? 1, role: randomRole() },
+      present: true, enteredAt: performance.now(), mode: "rest", x: -SIZE - 12, y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null,
+      ride: null, slideRun: 0, timer: null, deadline: 0, task: null, remaining: null,
     };
-    if (pending.length > 0) this.armEntry(fresh ? rand(400, 1800) : rand(800, 2400), next);
+  }
+
+  /** 빈자리가 있으면 다음 등장을 하나 예약한다 — 첫 등장은 금방, 그 뒤로는 1.5–6초 간격. 등장 타이머는 하나뿐이라 상한을 넘지 않는다. */
+  private fillEntries(): void {
+    if (this.disposed || !this.dynamic || !this.layout || this.entryTimer || this.entryRemaining !== null) return;
+    if (this.actors.length >= this.cap) return;
+    const first = !this.entered;
+    this.entered = true;
+    this.armEntry(first ? rand(400, 1800) : rand(1500, 6000), () => {
+      this.entryTimer = null;
+      this.entryResume = null;
+      if (this.disposed || this.actors.length >= this.cap) return;
+      this.enter(this.cast());
+      this.fillEntries();
+    });
   }
 
   private armEntry(ms: number, fn: () => void): void {
     this.entryDeadline = performance.now() + ms;
-    this.entryTimer = setTimeout(() => { this.entryRemaining = null; fn(); }, ms);
+    this.entryTimer = setTimeout(() => {
+      this.entryTimer = null;
+      this.entryRemaining = null;
+      if (!this.disposed && !this.frozen) fn();
+    }, ms);
     this.entryResume = fn;
   }
   private entryResume: (() => void) | null = null;
 
   private enter(actor: Actor): void {
     const fromLeft = Math.random() < 0.5;
-    actor.present = true;
+    this.actors.push(actor);
+    actor.enteredAt = performance.now();
     actor.mode = "walk";
     actor.x = fromLeft ? -SIZE - 8 : (this.layout?.width ?? 0) + 8;
     actor.y = this.standY;
@@ -207,6 +229,18 @@ class PlaygroundStage {
     this.schedule(actor, 80, () => {
       const target = fromLeft ? rand(10, Math.min(this.maxX, 260)) : rand(Math.max(10, this.maxX - 260), this.maxX);
       this.walkTo(actor, target, () => this.rest(actor, rand(300, 900)));
+    });
+  }
+
+  /** 퇴장 — 가까운 끝 너머로 걸어 나가고, 닿으면 무대에서 빠진 뒤 다음 등장을 예약한다. */
+  private leave(actor: Actor): void {
+    const width = this.layout?.width ?? 0;
+    const target = actor.x + SIZE / 2 < width / 2 ? -SIZE - 8 : width + 8;
+    this.walkTo(actor, target, () => {
+      this.cancel(actor);
+      this.actors = this.actors.filter((candidate) => candidate !== actor);
+      this.publish();
+      this.fillEntries();
     });
   }
 
@@ -270,6 +304,8 @@ class PlaygroundStage {
   // ── 행동 ──
   private tick(actor: Actor): void {
     if (this.frozen || !this.layout) return;
+    // 기구를 타지 않을 때만 틱이 돈다 — 오래 머문 몽글이는 가끔 퇴장한다.
+    if (performance.now() - actor.enteredAt >= EXIT_AFTER_MS && Math.random() < EXIT_CHANCE) { this.leave(actor); return; }
     const waiting = this.items.findIndex((item) => item.kind === "seesaw" && item.seats[0]!.id !== null && item.seats[1]!.id === null);
     const r = Math.random();
     if (waiting >= 0 && r < 0.5) { this.goRide(actor, waiting, 1); return; }
@@ -546,28 +582,15 @@ class PlaygroundStage {
   }
 }
 
-/** 새 세션 화면의 놀이터 층. Theater 가 바뀌면 출연진을 새로 뽑는다. */
-export function NewSessionPlayground({ state, theaterId }: {
-  readonly state: Pick<ConsoleState, "operations" | "nestedOperations">;
-  readonly theaterId: string | null;
-}) {
-  if (!theaterId) return null;
-  return <Playground key={theaterId} state={state} theaterId={theaterId} />;
-}
-
-function Playground({ state, theaterId }: {
-  readonly state: Pick<ConsoleState, "operations" | "nestedOperations">;
-  readonly theaterId: string;
-}) {
-  const [cast] = useState(() => pickCast(state, theaterId));
-  const book = useAvatarBook();
+/** 새 세션 화면의 놀이터 층. 출연진은 Theater 와 무관하게 몽글 베이스 15종에서 뽑는다. */
+export function NewSessionPlayground() {
   const layerRef = useRef<HTMLDivElement | null>(null);
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
   const [, setVersion] = useState(0);
   const [watching, setWatching] = useState(false);
   const stageRef = useRef<PlaygroundStage | null>(null);
   if (!stageRef.current) {
-    stageRef.current = new PlaygroundStage(cast, () => setVersion((value) => value + 1), (id) => {
+    stageRef.current = new PlaygroundStage(() => setVersion((value) => value + 1), (id) => {
       const element = actorRefs.current.get(id);
       if (!element) return null;
       const transform = getComputedStyle(element).transform;
@@ -607,15 +630,35 @@ function Playground({ state, theaterId }: {
       if (stage.isDynamic && (document.hidden || typing)) stage.freeze();
     };
     let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    // 첫 무대는 크기가 자리 잡은 뒤에 세운다 — 다른 화면(예: 오른쪽 패널이 있는 사령관 채팅)에서 넘어오면 열 폭이 전이하는 동안
+    // 첫 측정과 그 뒤 측정의 기구 수·좌표가 달라 배치가 한 번 바뀌어 보인다. 층·카드 크기가 10프레임 그대로이거나 1.2초가 지나면 세운다.
+    let settled = false;
+    let settleFrame = 0;
+    let settleKey = "";
+    let stableFrames = 0;
+    const settleStart = performance.now();
+    const settle = () => {
+      const box = layer.getBoundingClientRect();
+      const key = `${box.width}x${box.height}:${cards?.getBoundingClientRect().bottom ?? 0}`;
+      stableFrames = key === settleKey ? stableFrames + 1 : 0;
+      settleKey = key;
+      if (stableFrames >= 10 || performance.now() - settleStart > 1200) {
+        settled = true;
+        measure(true);
+        return;
+      }
+      settleFrame = requestAnimationFrame(settle);
+    };
     const observer = new ResizeObserver(() => {
+      if (!settled) return;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => measure(), 180);
     });
     observer.observe(layer);
     if (cards) observer.observe(cards);
-    measure(true);
+    settleFrame = requestAnimationFrame(settle);
 
-    const restage = () => measure(true);
+    const restage = () => { if (settled) measure(true); };
     reduced.addEventListener("change", restage);
     const calmObserver = new MutationObserver(restage);
     calmObserver.observe(root, { attributes: true, attributeFilter: ["data-avatar-motion"] });
@@ -646,6 +689,7 @@ function Playground({ state, theaterId }: {
     document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
+      cancelAnimationFrame(settleFrame);
       observer.disconnect();
       calmObserver.disconnect();
       reduced.removeEventListener("change", restage);
@@ -665,7 +709,6 @@ function Playground({ state, theaterId }: {
         <div className="pg-band" style={{ width: `${layout.width}px`, height: `${layout.band}px`, transform: `scale(${layout.scale})` }}>
           {stage.items.map((item, index) => <PlaygroundItem key={`${item.kind}:${index}`} item={item} ground={stage.ground} />)}
           {stage.actors.filter((actor) => actor.present).map((actor) => {
-            const look = resolveMongleLook(book, actor.cast.avatarKey);
             const item = actor.ride ? stage.items[actor.ride.item] : undefined;
             const ride = item ? rideClass(item, actor) : null;
             const style = {
@@ -679,7 +722,7 @@ function Playground({ state, theaterId }: {
               <div key={actor.cast.id} ref={(element) => { if (element) actorRefs.current.set(actor.cast.id, element); else actorRefs.current.delete(actor.cast.id); }} className={actorClass} style={style}>
                 <div key={ride === "is-sliding" ? `slide-${actor.slideRun}` : "ride"} className={`pg-ride${ride ? ` ${ride}` : ""}`}>
                   <div className={`pg-gait${actor.walking ? " is-walking" : ""}`}>
-                    <MongleAvatar base={look.base} tone={look.tone} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
+                    <MongleAvatar base={actor.cast.base} tone={null} role={actor.cast.role} state={actor.running ? "running" : "idle"} activity={actor.running ? actor.act : null} size={SIZE} label="" decorative />
                   </div>
                 </div>
                 {actor.ride ? null : <div className="pg-shadow" />}
