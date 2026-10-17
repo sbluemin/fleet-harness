@@ -169,7 +169,6 @@ export function FilePeek({ theaterId, relativePath, name, anchorTop, anchorBotto
               <span className="fexp-peek-ln" aria-hidden="true">{index + 1}</span>
               <span
                 className="fexp-peek-src"
-                // eslint-disable-next-line react/no-danger
                 dangerouslySetInnerHTML={{ __html: renderLine(line, state.lang) }}
               />
             </span>

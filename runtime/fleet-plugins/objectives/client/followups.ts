@@ -326,7 +326,6 @@ export function subscribeSelection(listener: () => void): () => void {
 }
 
 export function useFollowupSelection(objectiveId: string): ReadonlySet<string> {
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독(기존 objectives-state 와 같은 문법)
   return useSyncExternalStore(subscribeSelection, () => readSelection(objectiveId), () => readSelection(objectiveId));
 }
 
@@ -356,7 +355,6 @@ export function takeFollowupFocus(objectiveId: string): boolean {
 }
 
 export function useFollowupOpen(objectiveId: string): boolean {
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- 모듈 스토어 구독
   return useSyncExternalStore(subscribeComp, () => isFollowupOpen(objectiveId), () => isFollowupOpen(objectiveId));
 }
 

@@ -14,6 +14,7 @@
     "check:composer-attachments": "node scripts/check-composer-attachments.mjs",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:localized-attributes": "node scripts/check-localized-attributes.mjs",
+    "check:rules-of-hooks": "eslint runtime",
     "check:windows-hidden-spawn": "node scripts/check-windows-hidden-spawn.mjs",
     "cli": "node scripts/run-isolated.mjs cli",
     "console": "node scripts/run-isolated.mjs console",
@@ -50,6 +51,9 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@typescript-eslint/parser": "8.71.0",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
     "typescript": "^6.0.2"
   }
 }

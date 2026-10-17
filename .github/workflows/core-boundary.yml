@@ -25,3 +25,4 @@ jobs:
       - run: pnpm check:core-boundary
       - run: pnpm check:composer-attachments
       - run: pnpm check:windows-hidden-spawn
+      - run: pnpm check:rules-of-hooks

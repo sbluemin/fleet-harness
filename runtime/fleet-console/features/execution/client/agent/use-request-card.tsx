@@ -66,7 +66,7 @@ export function useUseRequestClock(active: boolean): number {
   return now;
 }
 
-export function useRequestSecondsLeft(request: OperationUseRequest, now: number): number {
+export function requestSecondsLeft(request: OperationUseRequest, now: number): number {
   return Math.max(0, Math.ceil((request.expiresAt - now) / 1000));
 }
 
@@ -130,7 +130,7 @@ export function UseRequestCards({ operationId, childSessionIds, language, placem
 /** 패널 바닥의 한 줄 알림 — 누르면 우하단 더미가 그 요청을 펴고 그 카드로 초점을 옮긴다(사람이 누른 이동). */
 function UseRequestStrip({ request, member, language, now }: { readonly request: OperationUseRequest; readonly member: boolean; readonly language: ConsoleLocale | undefined; readonly now: number }) {
   const t = getT(language ?? "en");
-  const left = useRequestSecondsLeft(request, now);
+  const left = requestSecondsLeft(request, now);
   const title = t(request.capability === "console" ? "terminal.useRequest.consoleTitle" : "terminal.useRequest.computerTitle");
   return (
     <button
@@ -151,7 +151,7 @@ function UseRequestStrip({ request, member, language, now }: { readonly request:
 function UseRequestCard({ request, member, language, now }: { readonly request: OperationUseRequest; readonly member: boolean; readonly language: ConsoleLocale | undefined; readonly now: number }) {
   const t = getT(language ?? "en");
   const { pending, failed, answer, onKeyDown } = useUseRequestAnswer(request, language);
-  const left = useRequestSecondsLeft(request, now);
+  const left = requestSecondsLeft(request, now);
   const time = formatUseRequestTime(left);
   const isConsole = request.capability === "console";
   const titleId = `use-request-${request.id}`;

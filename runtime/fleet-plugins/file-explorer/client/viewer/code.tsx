@@ -204,7 +204,6 @@ function CodeRow({
       <span className="fexp-line-num" aria-hidden="true">{lineNumber}</span>
       <span
         className="fexp-line-code"
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: highlighted }}
       />
     </div>

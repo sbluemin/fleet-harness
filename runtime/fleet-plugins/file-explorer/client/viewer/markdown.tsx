@@ -133,7 +133,6 @@ export function MarkdownViewer({ content, navigate, resolveWikiLink, relativePat
     <div className="fexp-md-wrap">
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div ref={rootRef} className="markdown-body" onClick={handleCopyClick}
-        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );

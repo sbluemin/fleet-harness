@@ -6,7 +6,7 @@ import { getT } from "./i18n/index.js";
 import {
   formatUseRequestTime,
   setUseRequestCornerState,
-  useRequestSecondsLeft,
+  requestSecondsLeft,
   UseRequestGlyph,
   useUseRequestAnswer,
   useUseRequestClock,
@@ -109,7 +109,7 @@ export function UseRequestCorner({ language, compact, describeSource }: {
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.repeat && (event.key === "Enter" || event.key === " ")) event.preventDefault();
   };
-  const soonest = hasRequests ? Math.min(...ordered.map((request) => useRequestSecondsLeft(request, now))) : 0;
+  const soonest = hasRequests ? Math.min(...ordered.map((request) => requestSecondsLeft(request, now))) : 0;
   const glyphOf = newest ?? ordered[0] ?? null;
   const open = hasRequests ? ordered.find((request) => request.id === corner.openId) ?? newest! : null;
   // 접힌 줄은 남은 시간이 짧은 것부터 — 가장 먼저 끝날 요청이 묻히지 않게.
@@ -166,7 +166,7 @@ export function UseRequestCorner({ language, compact, describeSource }: {
           {shown.length > 0 ? (
             <div className="use-corner-rows">
               {shown.map((request) => {
-                const left = useRequestSecondsLeft(request, now);
+                const left = requestSecondsLeft(request, now);
                 const source = describeSource(request.operationId);
                 return (
                   <button
@@ -213,7 +213,7 @@ function UseRequestCornerCard({ request, source, now, language, cardRef }: {
 }) {
   const t = getT(language ?? "en");
   const { pending, failed, answer, onKeyDown } = useUseRequestAnswer(request, language);
-  const left = useRequestSecondsLeft(request, now);
+  const left = requestSecondsLeft(request, now);
   const isConsole = request.capability === "console";
   const titleId = `use-corner-${request.id}`;
   const sourceName = source?.memberName ?? source?.operationTitle ?? "";
