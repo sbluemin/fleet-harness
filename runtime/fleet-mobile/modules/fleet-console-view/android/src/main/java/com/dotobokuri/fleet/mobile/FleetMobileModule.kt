@@ -8,6 +8,13 @@ class FleetMobileModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("FleetConsoleView")
 
+    OnActivityResult { activity, payload ->
+      FileChooserRelay.complete(payload.requestCode, payload.resultCode, payload.data) { uri ->
+        val provider = try { activity.packageManager.resolveContentProvider(uri.authority ?: "", 0) } catch (_: Exception) { null }
+        provider?.packageName != activity.packageName
+      }
+    }
+
     View(FleetConsoleView::class) {
       Events("onFleetEvent")
 

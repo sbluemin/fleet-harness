@@ -424,7 +424,9 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       domStorageEnabled = true
       databaseEnabled = false
       allowFileAccess = false
-      allowContentAccess = false
+      // WebView reads a picked image through its content URI, so an upload fails without this. The
+      // page still cannot load content: itself — shouldInterceptRequest denies every non-gateway URL.
+      allowContentAccess = true
       allowFileAccessFromFileURLs = false
       allowUniversalAccessFromFileURLs = false
       javaScriptCanOpenWindowsAutomatically = false
@@ -509,9 +511,18 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     webView.webChromeClient = object : WebChromeClient() {
       override fun onCreateWindow(view: WebView?, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message?): Boolean = false
       override fun onPermissionRequest(request: PermissionRequest) { request.deny() }
+      // Returning true promises exactly one answer: false would let WebView answer again and crash.
       override fun onShowFileChooser(webView: WebView?, filePathCallback: ValueCallback<Array<Uri>>?, fileChooserParams: FileChooserParams?): Boolean {
-        filePathCallback?.onReceiveValue(null)
-        return false
+        val callback = filePathCallback ?: return true
+        val view = webView ?: staged.view
+        val answer = FileChooserAnswer(view, fileChooserParams?.mode == FileChooserParams.MODE_OPEN_MULTIPLE, callback)
+        val pick = ImagePick.from(
+          fromActiveConsole = isActiveConsolePage(view),
+          mode = fileChooserParams?.mode ?: -1,
+          acceptTypes = fileChooserParams?.acceptTypes,
+        )
+        if (pick == null || !openImagePicker(pick, answer)) answer.deliver(null)
+        return true
       }
       override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean = true
     }
@@ -773,7 +784,29 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     }
   }
 
+  /** The chooser answers only the committed view while it shows a gateway-origin page. */
+  private fun isActiveConsolePage(view: WebView): Boolean {
+    val gateway = activeGateway ?: return false
+    if (view !== activeView) return false
+    val url = view.url ?: return false
+    return try { isLocalOrigin(Uri.parse(url), gateway) } catch (_: Exception) { false }
+  }
+
+  private fun openImagePicker(pick: ImagePick, answer: FileChooserAnswer): Boolean {
+    val activity = appContext.currentActivity ?: return false
+    if (!FileChooserRelay.begin(answer)) return false
+    return try {
+      activity.startActivityForResult(pick.intent(), FileChooserRelay.REQUEST_CODE)
+      true
+    } catch (_: Exception) {
+      FileChooserRelay.cancel(answer)
+      false
+    }
+  }
+
   private fun WebView.destroySafely() {
+    // A picker still open for this page must not answer a destroyed view later.
+    FileChooserRelay.cancelFor(this)
     stopLoading()
     clearHistory()
     removeAllViews()
