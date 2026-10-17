@@ -109,17 +109,27 @@ export function SpeakerName({ speaker, className = "" }: { readonly speaker: Con
 }
 
 /**
- * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 「사령관」으로 부른다.
- * 스냅숏 하나를 한 번 고쳐 대화·진행 줄·구성원 탭이 같은 이름을 쓰게 한다.
+ * 화면 언어로 발화자 이름을 고친다 — 사령관은 데이터가 주는 고정 이름 대신 이 화면의 「사령관」으로, 사람은 「나」로 부른다.
+ * 스냅숏 하나를 한 번 고쳐 대화·진행 줄·구성원 탭이 같은 이름을 쓰게 한다. 플러그인 대화(SDK `ctx.chat.Conversation`)의 줄도
+ * 같은 모양이라(노트 줄은 발화자가 없다) 같은 고침을 지난다.
  */
-export function useLocalizedSnapshot(snapshot: GroupTimelineSnapshot, language: ConsoleLocale | undefined): GroupTimelineSnapshot {
+type LocalizableEntry = GroupTimelineEntry | { readonly kind: "note" };
+type LocalizableSnapshot = Omit<GroupTimelineSnapshot, "entries"> & { readonly entries: readonly LocalizableEntry[] };
+
+export function useLocalizedSnapshot<S extends LocalizableSnapshot>(snapshot: S, language: ConsoleLocale | undefined): S {
   return React.useMemo(() => {
-    const commodore = getGroupT(language)("group.commodore");
-    const fix = (speaker: ConversationSpeaker): ConversationSpeaker => (speaker.kind === "commodore" && speaker.name !== commodore ? { ...speaker, name: commodore } : speaker);
-    const entries = snapshot.entries.map((entry): GroupTimelineEntry => {
+    const t = getGroupT(language);
+    const names = { commodore: t("group.commodore"), human: t("group.you") };
+    const localized = (speaker: ConversationSpeaker): boolean => speaker.kind === "commodore" || speaker.kind === "human";
+    const fix = (speaker: ConversationSpeaker): ConversationSpeaker => {
+      if (speaker.kind !== "commodore" && speaker.kind !== "human") return speaker;
+      const name = names[speaker.kind];
+      return speaker.name === name ? speaker : { ...speaker, name };
+    };
+    const entries = snapshot.entries.map((entry): LocalizableEntry => {
       switch (entry.kind) {
-        case "message": return entry.speaker.kind === "commodore" ? { ...entry, speaker: fix(entry.speaker) } : entry;
-        case "delegation": return entry.sender.kind === "commodore" || entry.recipients.some((recipient) => recipient.kind === "commodore")
+        case "message": return localized(entry.speaker) ? { ...entry, speaker: fix(entry.speaker) } : entry;
+        case "delegation": return localized(entry.sender) || entry.recipients.some(localized)
           ? { ...entry, sender: fix(entry.sender), recipients: entry.recipients.map(fix) } : entry;
         case "board-action": return { ...entry, speaker: fix(entry.speaker) };
         default: return entry;
@@ -128,7 +138,7 @@ export function useLocalizedSnapshot(snapshot: GroupTimelineSnapshot, language: 
     return {
       ...snapshot,
       entries,
-      participants: snapshot.participants.map((participant) => (participant.speaker.kind === "commodore" ? { ...participant, speaker: fix(participant.speaker) } : participant)),
+      participants: snapshot.participants.map((participant) => (localized(participant.speaker) ? { ...participant, speaker: fix(participant.speaker) } : participant)),
       working: snapshot.working.map(fix),
     };
   }, [snapshot, language]);

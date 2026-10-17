@@ -3,16 +3,16 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { ChatReferenceContext } from "./chat-reference.js";
 import { GroupConversation, type BoardActionRecordRequest, type ConversationLogSnapshot } from "./group/group-conversation.js";
-import { ConversationTheaterContext } from "./group/speaker-mark.js";
+import { ConversationTheaterContext, useLocalizedSnapshot } from "./group/speaker-mark.js";
 
 /**
  * 플러그인 소유 대화를 Operation 대화와 같은 화면으로 — SDK `ctx.chat.Conversation` 의 호스트 구현.
  *
  * 화면 문법(말풍선·발화자 표식·가운데 줄·진행 줄·입력 자리)은 그룹 대화(`GroupConversation`) 하나가 진다. 여기는 플러그인이 준
- * 줄을 스냅숏 모양으로 감싸고, 사령관 표식이 쓸 Theater 를 알려 주기만 한다. 결정 카드·원장·정지는 플러그인 대화에 없다.
+ * 줄을 스냅숏 모양으로 감싸 발화자 이름을 화면 언어로 고치고(그룹 대화와 같은 `useLocalizedSnapshot`), 사령관 표식이 쓸 Theater 를 알려 주기만 한다. 결정 카드·원장·정지는 플러그인 대화에 없다.
  */
 export function AgentConversation({ entries, participants, working, language, theaterId, loading = false, empty, older = null, reveal = null, openBoardAction = null, composer, references }: AgentConversationProps) {
-  const snapshot = React.useMemo<ConversationLogSnapshot>(() => ({
+  const snapshot = useLocalizedSnapshot(React.useMemo<ConversationLogSnapshot>(() => ({
     rootOperationId: null,
     entries,
     participants,
@@ -23,7 +23,7 @@ export function AgentConversation({ entries, participants, working, language, th
     loading,
     truncated: false,
     unavailableOperationIds: [],
-  }), [entries, participants, working, loading]);
+  }), [entries, participants, working, loading]), language);
   const openRecord = React.useMemo(() => {
     if (!openBoardAction) return undefined;
     return (request: BoardActionRecordRequest) => {
