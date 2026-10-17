@@ -141,10 +141,9 @@
 .pg-pop.is-rise { animation: pg-rise 0.62s cubic-bezier(0.2, 1.5, 0.4, 1) 1 backwards; }
 .pg-pop.is-peek { animation: pg-peek 1.4s ease-in-out 1; }
 
-/* 얼음 — 입력하는 동안 모두 그 자리에서 멈추고, 아래 입력창 쪽을 본다. */
+/* 얼음 — 숨은 창에서 모두 그 자리에서 멈춘다. 입력 중에는 멈추지 않는다. */
 .new-session-playground.is-frozen,
 .new-session-playground.is-frozen * { animation-play-state: paused !important; }
-.new-session-playground.is-watching .mongle-avatar-eyes { translate: 0 1.3px; }
 
 /* 정지 장면 — 「아바타 차분하게」·움직임 줄이기. 기구는 쉬는 자세로, 몽글이는 소품 포즈로 선다. */
 .new-session-playground.is-still *,

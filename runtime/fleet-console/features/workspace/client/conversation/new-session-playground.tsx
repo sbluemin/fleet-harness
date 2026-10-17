@@ -16,8 +16,9 @@ import "./new-session-playground.css";
  *
  * - 배경 층이다: pointer-events 없음·aria-hidden. 카드와 컴포저 위로 오지 않고 클릭·포커스를 가져가지 않는다.
  * - 부르는 상태(대기·결정·검토의 발밑 빛, 안 본 답·오류·휴면 배지)는 놀이에 쓰지 않는다 — 쉼(idle)과 작업 중 연기(running+activity)만 쓴다.
- * - 「얼음」: 열(column)로 올라오는 input 이벤트만 듣는다(컴포저 코드는 건드리지 않음). 글이 있는 동안 멈춰 입력창 쪽을 보고, 1.6초 손을 떼면 다시 논다.
- * - 정지 장면: OS 움직임 줄이기·「아바타 차분하게」에서는 스케줄러 없이 소품 포즈로 선다. 숨은 창에서는 스케줄러가 쉰다.
+ * - 입력은 놀이를 멈추지 않는다: 컴포저에 글을 쓰는 동안에도 무대는 그대로 논다. 「얼음」(그 자리 정지)은 숨은 창에서만 걸고,
+ *   창이 다시 보이면 같은 진행부터 이어 간다.
+ * - 정지 장면: OS 움직임 줄이기·「아바타 차분하게」에서는 스케줄러 없이 소품 포즈로 선다.
  * - 연속: 무대와 그 DOM 은 이 모듈이 쥐고, Console 이 켜져 있는 동안 남는다. 화면을 떠나면 그 순간의 배우·탈것·
  *   애니메이션을 멈추고, 어떤 길로 돌아오든 그 순간부터 이어 재생한다. 닫혀 있던 시간만큼 장면을 앞당기지 않는다.
  *   입퇴장과 새 얼굴은 화면을 보고 있는 동안에만 일어난다. 같은 창을 새로고침하면 빈 무대에서 다시 시작한다.
@@ -48,7 +49,6 @@ const RISE_MS = 1600;
 /** 역할 확률 — 지휘관 안테나 45%, 구성원 45%, 사령관 별 10%. */
 const ROLE_COMMODORE = 0.1;
 const ROLE_COMMANDER = 0.55;
-const FREEZE_IDLE_MS = 1600;
 const SWING_PERIOD_MS = 3000;
 const SEESAW_PERIOD_MS = 3600;
 const SLIDE_CLIMB_MS = 2700;
@@ -139,8 +139,6 @@ class PlaygroundStage {
   items: Item[] = [];
   layout: Layout | null = null;
   frozen = false;
-  /** 입력으로 멈춰 입력창을 보는 중. 그리기는 이 값으로 눈동자를 내린다. */
-  watching = false;
   private dynamic = true;
   /** 한 번이라도 장면을 세웠다. 이후 같은 폭에서는 배우·기구를 다시 만들지 않는다. */
   private booted = false;
@@ -974,7 +972,7 @@ class PlaygroundStage {
     this.pausedAnimations = [];
   }
 
-  /** 입력·숨은 창 — 그 자리에서 멈추고, 풀리면 같은 진행부터 이어 간다. 자리를 옮기거나 탈것에서 내리지 않는다. */
+  /** 숨은 창 — 그 자리에서 멈추고, 풀리면 같은 진행부터 이어 간다. 자리를 옮기거나 탈것에서 내리지 않는다. */
   freeze(): void {
     if (this.frozen || this.held) return;
     this.frozen = true;
@@ -1005,13 +1003,12 @@ class PlaygroundStage {
    */
   park(): void {
     if (this.held) return;
-    // 입력으로 멈춰 있던 얼음은 이미 시계와 애니메이션을 그 순간에 세워 두었다. 같은 목록을 그대로 들고 간다.
+    // 숨은 창으로 멈춰 있던 얼음은 이미 시계와 애니메이션을 그 순간에 세워 두었다. 같은 목록을 그대로 들고 간다.
     if (!this.frozen) {
       this.pauseClock();
       this.pauseAnimations();
     }
     this.frozen = false;
-    this.watching = false;
     this.held = true;
     this.awaySince = performance.now();
   }
@@ -1031,11 +1028,6 @@ class PlaygroundStage {
     this.publish();
   }
 
-  setWatching(value: boolean): void {
-    if (this.watching === value) return;
-    this.watching = value;
-    this.publish();
-  }
 }
 
 /**
@@ -1093,17 +1085,15 @@ function ensureSceneHost(): HTMLDivElement {
   return sceneHost;
 }
 
-/** 열려 있는 새 세션 칸에 측정·입력·창 가시기를 붙인다. 장면을 지우지는 않는다. */
+/** 열려 있는 새 세션 칸에 측정·창 가시기를 붙인다. 장면을 지우지는 않는다. */
 function bindPlayground(layer: HTMLElement, stage: PlaygroundStage): () => void {
   const body = layer.closest<HTMLElement>(".new-session-body");
-  const column = layer.closest<HTMLElement>(".new-session");
   if (!body) return () => {};
   const cards = body.querySelector<HTMLElement>(".new-session-cards");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
   const root = document.documentElement;
   const still = () => reduced.matches || root.dataset.avatarMotion === "calm";
 
-  let typing = false;
   let lastKey = "";
   const measure = (force = false) => {
     if (stage.isHeld) return;
@@ -1121,7 +1111,7 @@ function bindPlayground(layer: HTMLElement, stage: PlaygroundStage): () => void 
     if (!force && key === lastKey) return;
     lastKey = key;
     stage.setup(layout, !still());
-    if (stage.isDynamic && (document.hidden || typing)) stage.freeze();
+    if (stage.isDynamic && document.hidden) stage.freeze();
   };
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
   // 첫 무대는 크기가 자리 잡은 뒤에 세운다 — 다른 화면에서 넘어오면 열 폭이 전이하는 동안 기구 수가 달라 보이지 않게.
@@ -1156,27 +1146,10 @@ function bindPlayground(layer: HTMLElement, stage: PlaygroundStage): () => void 
   const calmObserver = new MutationObserver(restage);
   calmObserver.observe(root, { attributes: true, attributeFilter: ["data-avatar-motion"] });
 
-  let thawTimer: ReturnType<typeof setTimeout> | null = null;
-  const release = () => {
-    typing = false;
-    stage.setWatching(false);
-    if (!document.hidden && !stage.isHeld) stage.thaw();
-  };
-  const onInput = (event: Event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLTextAreaElement) || !stage.isDynamic || stage.isHeld) return;
-    if (thawTimer) clearTimeout(thawTimer);
-    if (target.value.trim().length === 0) { release(); return; }
-    typing = true;
-    stage.setWatching(true);
-    stage.freeze();
-    thawTimer = setTimeout(release, FREEZE_IDLE_MS);
-  };
-  column?.addEventListener("input", onInput);
   const onVisibility = () => {
     if (!stage.isDynamic || stage.isHeld) return;
     if (document.hidden) stage.freeze();
-    else if (!typing) stage.thaw();
+    else stage.thaw();
   };
   document.addEventListener("visibilitychange", onVisibility);
 
@@ -1185,10 +1158,8 @@ function bindPlayground(layer: HTMLElement, stage: PlaygroundStage): () => void 
     observer.disconnect();
     calmObserver.disconnect();
     reduced.removeEventListener("change", restage);
-    column?.removeEventListener("input", onInput);
     document.removeEventListener("visibilitychange", onVisibility);
     if (resizeTimer) clearTimeout(resizeTimer);
-    if (thawTimer) clearTimeout(thawTimer);
   };
 }
 
@@ -1241,7 +1212,7 @@ function PlaygroundScene() {
   };
 
   const layout = stage.layout;
-  const className = ["new-session-playground", stage.frozen ? "is-frozen" : null, stage.watching ? "is-watching" : null, stage.isDynamic ? null : "is-still"].filter(Boolean).join(" ");
+  const className = ["new-session-playground", stage.frozen ? "is-frozen" : null, stage.isDynamic ? null : "is-still"].filter(Boolean).join(" ");
   return (
     <div className={className} aria-hidden="true">
       {layout ? (
