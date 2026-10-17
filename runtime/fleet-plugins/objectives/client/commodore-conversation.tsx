@@ -9,7 +9,7 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 
 import { commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
-import { CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
 import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
@@ -335,7 +335,10 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   // 사령관 세션은 이 scope 로 Session 브라우저를 얻는다(server/commodore/session.ts 의 tools.browser). 호스트가 지구본·카드·칸을 그린다.
   sessionBrowser: (ctx) => {
     const params = readParams(ctx.params);
-    return params ? { scopeId: `commodore:${params.theaterId}` } : null;
+    if (!params) return null;
+    // 플릿 브라우저의 주석·스크린샷은 이 대화의 사령관 입력창에 붙는다 — 읽기 전용(보관) 대화에는 입력창이 없다.
+    const { theaterId } = params;
+    return { scopeId: `commodore:${theaterId}`, ...(params.readOnly ? {} : { attach: (files: readonly File[]) => attachToCommodoreComposer(theaterId, files) }) };
   },
   actions: (ctx) => {
     const params = readParams(ctx.params);

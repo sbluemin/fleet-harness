@@ -21,6 +21,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
+import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, speakerKey } from "./speaker-mark.js";
 
@@ -142,6 +143,12 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const [popDismissed, setPopDismissed] = React.useState(false);
   const [stopOpen, setStopOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
+  // 수신함 — 대화 중심 화면에서는 이 입력창이 지휘관(루트)의 입력 자리다. Operation Browser 가 맡긴 주석·스크린샷을 주차된 원장 채팅
+  // 대신 여기서 붙여넣기와 같은 길(업로드 → 칩)로 세운다. 보내지는 않는다.
+  React.useEffect(() => claimComposerInbox(rootOperationId, (entry) => {
+    draft.attachments.add(entry.files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
+    inputRef.current?.focus();
+  }), [rootOperationId, draft, ct]);
   const pendingPick = React.useRef<Candidate | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const plusRootRef = React.useRef<HTMLSpanElement | null>(null);

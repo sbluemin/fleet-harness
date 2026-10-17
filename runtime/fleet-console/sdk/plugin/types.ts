@@ -387,9 +387,10 @@ export interface ConversationSurfaceDescriptor {
    * 이 대화의 에이전트 세션이 쓰는 플릿 브라우저 — 서버에서 그 세션을 만들 때 `tools.browser` 로 준 `scopeId` 를 돌려준다.
    * 있으면 호스트가 머리 pill 바로 옆(대화 동작 맨 앞)에 Operation 대화와 같은 지구본을 세우고, 누르면 이 플러그인 id 와
    * scopeId 로 찾은 플릿 브라우저를 대화 옆 칸에 연다. 세션이 아직 한 번도 서지 않았으면 가짜 세션을 만들지 않고 까닭만 말한다.
-   * 없거나 null 이면 지구본을 세우지 않는다.
+   * 없거나 null 이면 지구본을 세우지 않는다. `attach` 를 주면 그 칸 브라우저의 「주석 첨부」·「스크린샷 첨부」가 이 대화의 입력창에
+   * 이미지를 붙인다(보내지는 않는다). 없으면 그 칸에서 첨부할 곳이 없다.
    */
-  readonly sessionBrowser?: (ctx: ConversationSurfaceContext) => { readonly scopeId: string } | null;
+  readonly sessionBrowser?: (ctx: ConversationSurfaceContext) => { readonly scopeId: string; readonly attach?: (files: readonly File[]) => void } | null;
 }
 
 export interface ClientConversationCapability {

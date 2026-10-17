@@ -767,6 +767,29 @@ function commodoreDraft(theaterId: string) {
   return draft;
 }
 
+/**
+ * 사령관 입력창 수신함 — 대화 옆 칸의 플릿 브라우저가 맡긴 주석·스크린샷. 입력창이 서 있고 받을 수 있으면 곧장 붙여넣기와 같은 길
+ * (업로드 → 칩)로 세우고, 아니면 받을 수 있게 될 때 꺼낸다. 보내지는 않는다 — 발사는 언제나 사람의 Enter 다.
+ */
+const commodoreInbox = new Map<string, File[]>();
+const commodoreInboxListeners = new Map<string, Set<() => void>>();
+export function attachToCommodoreComposer(theaterId: string, files: readonly File[]): void {
+  if (files.length === 0) return;
+  commodoreInbox.set(theaterId, [...(commodoreInbox.get(theaterId) ?? []), ...files]);
+  for (const listener of commodoreInboxListeners.get(theaterId) ?? []) listener();
+}
+function drainCommodoreInbox(theaterId: string): File[] {
+  const files = commodoreInbox.get(theaterId) ?? [];
+  commodoreInbox.delete(theaterId);
+  return files;
+}
+function subscribeCommodoreInbox(theaterId: string, listener: () => void): () => void {
+  const set = commodoreInboxListeners.get(theaterId) ?? new Set<() => void>();
+  set.add(listener);
+  commodoreInboxListeners.set(theaterId, set);
+  return () => { set.delete(listener); if (set.size === 0) commodoreInboxListeners.delete(theaterId); };
+}
+
 /** 폰 사령관 화면의 「보내는 중…」 말풍선 — 확정 줄이 오기 전까지 기록 맨 아래에 선다. 이미지는 보낸 썸네일 그대로다. */
 export interface CommodorePendingMessage {
   readonly key: number;
@@ -863,6 +886,17 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
     setBudgetNotice(null);
     draft.attachments.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
   };
+  // 수신함 — 받을 수 있을 때만 꺼낸다(잠긴 동안 맡겨진 것은 풀리면 선다). 최신 판정을 읽도록 ref 로 잇는다.
+  const takeInbox = useRef<() => void>(() => undefined);
+  takeInbox.current = () => {
+    if (!usable || draft.read().sending || clear.busy) return;
+    const files = drainCommodoreInbox(theaterId);
+    if (files.length === 0) return;
+    addFiles(files);
+    if (!phone) inputRef.current?.focus();
+  };
+  useEffect(() => subscribeCommodoreInbox(theaterId, () => takeInbox.current()), [theaterId]);
+  useEffect(() => { takeInbox.current(); }, [usable, sending, clear.busy]);
   const uploading = attachments.some((item) => item.uploading);
   // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
   const isClear = !phone && text.trim() === "/clear";
