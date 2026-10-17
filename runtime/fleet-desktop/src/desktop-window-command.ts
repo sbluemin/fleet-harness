@@ -126,6 +126,8 @@ export function createFullscreenController(
 
   return {
     perform(command) {
+      // 전체화면이 아닌 창 명령(권한 요청·ready)은 이 컨트롤러의 몫이 아니다 — 「끄기」로 읽지 않는다.
+      if (command !== "enter-fullscreen" && command !== "leave-fullscreen") return;
       if (stopped || window.isDestroyed()) return;
       if (command === "enter-fullscreen") {
         if (!owned) {

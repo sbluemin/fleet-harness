@@ -18,6 +18,14 @@ export interface DesktopViewStack {
   /** Console 앞, picker 아래 — 사용자가 보고 만지는 자리. */
   presentBrowser(view: WebContentsView): void;
   removeBrowser(view: WebContentsView): void;
+  /**
+   * 갈아타기용 판을 Console 뒤에 미리 붙여 둔다. 창에 붙지 않은 뷰는 숨은 위젯이라 컴포지터가 돌지 않고,
+   * 그 위의 이미지 decode·프레임 대기가 끝나지 않는다 — 브라우저 뷰의 parking과 같은 이유로 z-order로만 감춘다.
+   */
+  parkHold(view: WebContentsView): void;
+  /** 호스트를 갈아타는 동안 붙잡아 둔 옛 화면 — 브라우저 뷰 위, 호스트 목록 덮개 아래. */
+  presentHold(view: WebContentsView): void;
+  removeHold(view: WebContentsView): void;
   /** 호스트 목록 덮개 — 종료 인사 아래 최상단. */
   presentPicker(view: WebContentsView): void;
   removePicker(view: WebContentsView): void;
@@ -53,13 +61,16 @@ export interface DesktopShellWindow {
 export function createDesktopViewStack(base: BaseWindow, consoleView: WebContentsView): DesktopViewStack {
   const parked = new Set<WebContentsView>();
   const presented = new Set<WebContentsView>();
+  let hold: WebContentsView | null = null;
+  let holdRaised = false;
   let picker: WebContentsView | null = null;
   let veil: WebContentsView | null = null;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
   const relayout = (): void => {
     const root = base.contentView;
-    const ordered: WebContentsView[] = [...parked, consoleView, ...presented];
+    const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...presented];
+    if (hold && holdRaised) ordered.push(hold);
     if (picker) ordered.push(picker);
     if (veil) ordered.push(veil);
     for (let index = 0; index < ordered.length; index++) root.addChildView(ordered[index]!, index);
@@ -89,6 +100,25 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   const removeBrowser = (view: WebContentsView): void => {
     parked.delete(view);
     presented.delete(view);
+    try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
+  };
+
+  const parkHoldView = (view: WebContentsView): void => {
+    if (hold === view && !holdRaised) return;
+    hold = view;
+    holdRaised = false;
+    relayout();
+  };
+
+  const presentHoldView = (view: WebContentsView): void => {
+    if (hold === view && holdRaised) return;
+    hold = view;
+    holdRaised = true;
+    relayout();
+  };
+
+  const removeHoldView = (view: WebContentsView): void => {
+    if (hold === view) { hold = null; holdRaised = false; }
     try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
   };
 
@@ -124,6 +154,9 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     parkBrowser,
     presentBrowser,
     removeBrowser,
+    parkHold: parkHoldView,
+    presentHold: presentHoldView,
+    removeHold: removeHoldView,
     presentPicker: presentPickerView,
     removePicker: removePickerView,
     presentVeil: presentVeilView,

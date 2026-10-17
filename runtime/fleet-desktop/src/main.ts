@@ -43,7 +43,8 @@ import { installComputerCapture, openScreenRecordingSettings, requestAccessibili
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import type { DesktopShellWindow } from "./shell-window.js";
-import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, trafficLightPosition } from "./window-policy.js";
+import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
+import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createZoomState } from "./zoom-state.js";
 
@@ -180,6 +181,29 @@ async function boot(): Promise<void> {
     if (process.platform !== "darwin" || !window || window.isDestroyed()) return;
     window.setWindowButtonPosition(trafficLightPosition(window.consoleContents.getZoomFactor(), chromeBand));
   };
+  const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
+  /**
+   * 호스트를 갈아타는 동안 옛 화면을 붙잡아 두는 판. 진입 화면·종료 인사처럼 수동적인 로컬 뷰다 — 어디로도
+   * 항해하지 않고 창도 열지 않으며, 원격 콘솔의 렌더러와는 아무것도 나누지 않는다.
+   */
+  const switchHold = createSwitchHold({
+    shell: () => window,
+    createView: () => {
+      const view = new WebContentsView({
+        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+      });
+      // 판은 Console 위에 합성된다 — 옛 화면 한 장이 차기 전에는 아래가 그대로 비친다.
+      view.setBackgroundColor("#00000000");
+      view.webContents.on("will-navigate", (event) => event.preventDefault());
+      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      return view;
+    },
+    pagePath: desktopResources.switchPagePath,
+    lang: entryLanguage,
+    scheme: () => entryPalette?.scheme ?? "dark",
+    band: () => (chromeBand ?? CONVERSATION_TOP_ROW) * (window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1),
+    log: (message) => logger.info(message),
+  });
   /**
    * 사용자 테마는 Windows 제목 표시줄만의 일이 아니다 — 진입 화면·종료 인사·창 바탕도 따른다. 그래서
    * 구독은 모든 플랫폼에서 열고, 제목 표시줄 적용만 Windows 리프레셔(다른 OS에선 null)가 맡는다.
@@ -199,12 +223,16 @@ async function boot(): Promise<void> {
       const canvas = snapshot.entry?.canvas ?? CANVAS_FAR_BACKGROUND_COLOR;
       window.base.setBackgroundColor(canvas);
       window.consoleView.setBackgroundColor(canvas);
-      // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
-      overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
-      if (chromeBand !== snapshot.chrome?.band) {
-        chromeBand = snapshot.chrome?.band;
-        refreshNativeChrome();
-      }
+      // 판이 옛 화면을 쥐고 있는 동안 타이틀바·신호등은 그 화면에 맞춰 둔다 — 판이 흐려지는 순간 같이 바뀐다.
+      switchHold.atReveal(() => {
+        if (!window || window.isDestroyed()) return;
+        // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
+        overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
+        if (chromeBand !== snapshot.chrome?.band) {
+          chromeBand = snapshot.chrome?.band;
+          refreshNativeChrome();
+        }
+      });
     },
   });
   const synchronizeThemeAt = async (origin: string): Promise<void> => {
@@ -277,9 +305,26 @@ async function boot(): Promise<void> {
         else logger.info("computer capture screen recording settings ignored: remote console");
         return;
       }
+      // 막 적재된 화면이 첫 목록을 칠했다 — 붙잡아 둔 옛 화면을 걷는다. 이 스트림이 듣는 콘솔의 알림만 온다.
+      if (command === "console-ready") {
+        if (windowCommandOrigin !== null) switchHold.ready(windowCommandOrigin);
+        return;
+      }
       consoleFullscreen?.perform(command);
     },
   });
+  /** 창 명령을 듣고 있는 콘솔. */
+  let windowCommandOrigin: string | null = null;
+  /**
+   * 넘겨주기 안에서는 같은 콘솔이면 다시 열지 않는다. 이 채널은 명령을 걸어 두지 않으므로, 적재 전에 열어 둔
+   * 스트림을 적재 뒤에 다시 열면 그 틈에 도착한 ready를 잃는다. 기동·갱신 뒤 재연결(`restart`)은 예전처럼 다시 연다 —
+   * 그사이 콘솔이 이 채널을 새로 갖게 됐을 수 있다.
+   */
+  const listenWindowCommands = async (origin: string, restart = false): Promise<void> => {
+    if (!restart && windowCommandOrigin === origin) return;
+    windowCommandOrigin = origin;
+    await windowCommands.start(origin);
+  };
   /**
    * Operation 브라우저의 네이티브 뷰. 창이 어느 콘솔에 있든 그 콘솔의 탭을 이 창에 그린다 — 원격 콘솔로 건너가면
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
@@ -353,6 +398,32 @@ async function boot(): Promise<void> {
   const synchronizeBrowserViews = async (origin: string): Promise<void> => {
     try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
   };
+  /**
+   * 창이 서 있는 콘솔을 셸의 배관이 따라간다 — 테마, 감독하는 설치본의 갱신, 셸 갱신 명령, 창 명령, 브라우저 뷰.
+   * `stillCurrent`가 거짓이 되면 멈춘다: 원격이 오류 문서에 착지해 집으로 되돌아가는 동안, 늦게 끝난 원격 쪽 동기화가
+   * 집으로 옮겨 간 배관을 다시 원격으로 끌고 가지 않게 한다.
+   */
+  const followConsole = async (origin: string, stillCurrent: () => boolean = () => true, restart = false): Promise<void> => {
+    if (!stillCurrent()) return;
+    await synchronizeThemeAt(origin);
+    if (!stillCurrent()) return;
+    await subscribeSupervisedConsoleUpdates(origin);
+    await subscribeShellUpdates(origin);
+    await listenWindowCommands(origin, restart);
+    if (!stillCurrent()) return;
+    await synchronizeBrowserViews(origin);
+  };
+  /**
+   * 적재 전에 창을 새 콘솔 쪽으로 미리 돌린다(console-handoff). 판이 옛 화면을 쥔 뒤라 이 변화는 그 아래에서 일어난다.
+   * - 옛 콘솔의 네이티브 브라우저 뷰를 먼저 내린다 — 남겨 두면 새 콘솔이 그리는 동안 그 위에 옛 페이지가 떠 있다.
+   * - 새 콘솔의 테마로 창 바탕을 칠하고(타이틀바·신호등은 판이 걷히는 순간), 그 콘솔의 ready를 듣기 시작한다.
+   */
+  const prepareConsoleSwitch = async (origin: string): Promise<void> => {
+    browserViews.stop();
+    await Promise.all([synchronizeThemeAt(origin), listenWindowCommands(origin)]);
+  };
+  /** 몇 번째 넘겨주기인가. 뒤에 온 넘겨주기가 있으면 앞선 것의 동기화와 되돌리기는 손을 떼야 한다. */
+  let handoffGeneration = 0;
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.() });
@@ -402,11 +473,25 @@ async function boot(): Promise<void> {
     sessionFetch: (input, init) => consoleSession.fetch(input, init),
     localOrigin: () => localConsoleOrigin,
     deviceName: os.hostname().replace(/\.local$/iu, ""),
-    loadConsole: (url) => handOffWindowToConsole({
-      publishShellHome: async (origin) => { await publishShellHome(origin); },
-      loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
-    }, url),
+    loadConsole: (url) => {
+      const generation = ++handoffGeneration;
+      const current = (): boolean => generation === handoffGeneration;
+      return handOffWindowToConsole({
+        publishShellHome: async (origin) => { await publishShellHome(origin); },
+        holdScreen: () => switchHold.freeze(),
+        prepare: (origin) => prepareConsoleSwitch(origin),
+        loadUrl: async (target) => { await window?.loadURL(target); },
+        // 적재가 실패했으면 창은 아직 옛 콘솔에 서 있다(정책은 확정 전) — 미리 돌린 배관을 그리로 되돌린다.
+        restore: async () => {
+          const at = policy?.currentConsoleOrigin() ?? null;
+          if (at === null || !current()) return;
+          await followConsole(at, current);
+        },
+        loaded: (origin) => { if (current()) switchHold.loaded(origin); },
+        synchronizeTheme: (origin) => followConsole(origin, current),
+      }, url);
+    },
+    hold: switchHold,
     openPicker: (url) => picker.open(url),
     closePicker: () => picker.close(),
     notify: (notice) => notifier.show(notice),
@@ -430,7 +515,6 @@ async function boot(): Promise<void> {
     attachBridge: (contents) => bridge.attachPicker(contents),
     log: (message) => logger.error(message),
   });
-  const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
   const farewell = createQuitFarewell({
@@ -477,6 +561,8 @@ async function boot(): Promise<void> {
           consoleFullscreen?.stop();
           consoleFullscreen = null;
           windowCommands.stop();
+          windowCommandOrigin = null;
+          switchHold.release("window_closed");
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
@@ -497,6 +583,8 @@ async function boot(): Promise<void> {
         });
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         bridge.attach(createdWindow.consoleContents);
+        // 붙잡아 둔 옛 화면 아래의 렌더러가 죽었다 — 판만 남기지 않는다.
+        createdWindow.consoleContents.on("render-process-gone", () => switchHold.release("render_gone"));
         createdWindow.consoleContents.on("did-navigate", (_event, url) => {
           // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
           picker.close();
@@ -544,7 +632,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await synchronizeThemeAt(origin); await subscribeSupervisedConsoleUpdates(origin); await subscribeShellUpdates(origin); await windowCommands.start(origin); await synchronizeBrowserViews(origin); },
+      synchronizeTheme: (origin) => followConsole(origin, () => true, true),
       onConsoleLoaded: () => { consoleShown = true; controls.onConsoleLoaded(); },
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },

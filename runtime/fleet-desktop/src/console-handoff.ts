@@ -18,6 +18,20 @@ export interface ConsoleHandoffDeps {
   readonly synchronizeTheme: (origin: string) => Promise<void>;
   /** 게시를 기다려 주는 시간. 테스트가 실제 시계를 기다리지 않도록 갈아 끼울 수 있게 둔다. */
   readonly waitForPublishDeadline?: (ms: number) => Promise<void>;
+  /**
+   * 지금 화면을 붙잡는다(switch-hold). 커밋 순간의 빈 프레임과 새 콘솔의 부팅 셸이 그 판 아래로 숨는다.
+   * 붙잡지 못해도 항해는 막지 않는다.
+   */
+  readonly holdScreen?: () => Promise<void>;
+  /**
+   * 적재 전에 창을 새 콘솔 쪽으로 미리 돌린다 — 옛 콘솔의 브라우저 뷰를 내리고, 새 콘솔의 테마와 전체화면을 먼저
+   * 맞추고, 그 콘솔의 창 명령(ready)을 듣기 시작한다. 판을 붙잡은 뒤라 이 변화는 판 아래에서 일어난다.
+   */
+  readonly prepare?: (origin: string) => Promise<void>;
+  /** 적재가 실패했다 — 창이 아직 서 있는 콘솔로 그 동기화들을 되돌린다. */
+  readonly restore?: () => Promise<void>;
+  /** 창이 그 콘솔의 문서를 다 받았다. */
+  readonly loaded?: (origin: string) => void;
 }
 
 /** 루프백 한 번 왕복에 넉넉하고, 사용자가 창이 멈췄다고 느끼기에는 짧은 값. */
@@ -31,7 +45,16 @@ export async function handOffWindowToConsole(deps: ConsoleHandoffDeps, url: stri
     deps.publishShellHome(origin).catch(() => undefined),
     deadline(PUBLISH_DEADLINE_MS),
   ]);
-  await deps.loadUrl(url);
+  // 붙잡기와 미리 돌리기는 게시 뒤, 적재 앞이다. 어느 쪽이 실패해도 가는 길은 막지 않는다.
+  await deps.holdScreen?.().catch(() => undefined);
+  await deps.prepare?.(origin).catch(() => undefined);
+  try {
+    await deps.loadUrl(url);
+  } catch (error) {
+    await deps.restore?.().catch(() => undefined);
+    throw error;
+  }
+  deps.loaded?.(origin);
   // 창이 옮겨 갔으면 타이틀바 동기화도 그 콘솔을 따라가야 한다.
   await deps.synchronizeTheme(origin);
 }

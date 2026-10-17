@@ -156,6 +156,8 @@ export function createRemoteHostsRoutes(deps: RemoteHostsRouteDeps) {
     }
     writeJson(res, 200, {
       origin: handoff.host.origin,
+      // 셸이 전환 중에 「<이름>에 연결하는 중」을 말할 때 쓰는, 사용자가 목록에서 보는 이름이다.
+      label: handoff.host.label,
       hostname: handoff.host.hostname,
       port: handoff.host.port,
       fingerprint: handoff.host.fingerprint,

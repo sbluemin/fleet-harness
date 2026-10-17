@@ -3,6 +3,7 @@ import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import type { DesktopNotice } from "./desktop-notices.js";
 import { confirmRemoteIdentity, joinRemoteConsole, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
+import type { SwitchHold } from "./switch-hold.js";
 import type { WindowPolicy } from "./window-policy.js";
 
 /**
@@ -33,6 +34,11 @@ export interface RemoteBridgeDeps {
   readonly notify: (notice: DesktopNotice) => void;
   readonly log?: (message: string) => void;
   readonly confirmIdentity?: (hostname: string, port: number, fingerprint: string) => Promise<void>;
+  /**
+   * 갈아타는 동안 옛 화면을 붙잡는 판(switch-hold). 다리는 전환이 언제 시작했고 언제 실패했는지만 알린다 —
+   * 붙잡고 걷는 시점은 판이 정하고, 실패의 알림은 여전히 report()의 몫이다.
+   */
+  readonly hold?: Pick<SwitchHold, "begin" | "fail">;
 }
 
 export interface RemoteBridge {
@@ -53,6 +59,8 @@ export interface RemoteBridge {
 
 interface Handoff {
   readonly origin: string;
+  /** 사용자가 집의 목록에서 보는 이름. 이 필드를 싣지 않는 옛 Console이면 없다. */
+  readonly label?: unknown;
   readonly hostname: string;
   readonly port: number;
   readonly fingerprint: string;
@@ -116,7 +124,21 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     if (response.status === 404) throw new Error("remote_host_unknown");
     if (!response.ok) throw new Error("remote_host_unavailable");
     const handoff = await response.json() as Handoff;
+    const label = typeof handoff.label === "string" ? handoff.label : handoff.hostname;
+    return holding(deps.hold?.begin({ origin: handoff.origin, kind: "remote", label }), () => openRemote(handoff));
+  }
 
+  /** 시도가 어디서 실패하든 판에 알린다 — 판만 남는 상태를 만들지 않는다. */
+  async function holding(attempt: number | undefined, run: () => Promise<void>): Promise<void> {
+    try {
+      await run();
+    } catch (error) {
+      if (attempt !== undefined) deps.hold?.fail(attempt);
+      throw error;
+    }
+  }
+
+  async function openRemote(handoff: Handoff): Promise<void> {
     // Chromium이 이 호스트를 처음 보기 전에 대조한다 — 어긋난 판정은 캐시에 눌어붙어 재시작 전까지 살아남는다.
     await confirmIdentity(handoff.hostname, handoff.port, handoff.fingerprint);
 
@@ -185,7 +207,12 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     deps.closePicker?.();
   }
 
-  async function openLocal(origin: string, url?: string): Promise<void> {
+  async function openLocal(origin: string, url?: string, recovering = false): Promise<void> {
+    const kind = origin === deps.localOrigin() ? "home" : "local";
+    return holding(deps.hold?.begin({ origin, kind, recovering }), () => loadLocal(origin, url));
+  }
+
+  async function loadLocal(origin: string, url?: string): Promise<void> {
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
     // 정해져 온 화면이 있어도 그 콘솔의 `/console/` 안이어야 한다 — 아니면 기본 화면으로 연다.
@@ -220,7 +247,8 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     const policy = deps.policy();
     policy?.withdrawRemoteConsoleOrigin(origin);
     try {
-      await openLocal(home);
+      // 판은 이 길을 이어받는다 — 쥔 화면을 놓지 않고 알약만 경고로 바꾼 채 집을 다시 적재한다.
+      await openLocal(home, undefined, true);
     } catch (error) {
       deps.log?.(`recovery to the local console failed: ${error instanceof Error ? error.message : String(error)}`);
     }

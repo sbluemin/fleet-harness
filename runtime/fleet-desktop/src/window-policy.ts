@@ -69,7 +69,7 @@ export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
  * Console 맨 위 줄의 높이 — Console 이 테마 스냅샷 `chrome.band`·`titleBarOverlay.height` 로 보내는 값
  * (Console desktop-contract.ts `CONVERSATION_TOP_ROW`)과 같다. Desktop 은 Console 내부를 가져오지 않으므로 값을 맞춰 둔다.
  */
-const CONVERSATION_TOP_ROW = 52;
+export const CONVERSATION_TOP_ROW = 52;
 
 /**
  * Windows 캡션 버튼 스트립의 첫 모습 — Console 이 테마 스냅샷(titleBarOverlay)을 보내기 전까지만 선다. 값은 Console 이

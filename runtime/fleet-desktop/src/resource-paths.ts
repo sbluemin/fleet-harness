@@ -9,6 +9,8 @@ export interface DesktopResourcePaths {
   readonly iconPath: string;
   readonly trayTemplateIconPath: string;
   readonly entryPagePath: string;
+  /** 호스트를 갈아타는 동안 옛 화면을 붙잡아 두는 판(switch-hold). 진입 화면과 같은 폴더·글꼴을 쓴다. */
+  readonly switchPagePath: string;
 }
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
@@ -25,6 +27,7 @@ export function resolveDesktopResourcePaths(isPackaged: boolean, resourcesPath?:
     iconPath: path.join(sourceDir, "build", "icon.png"),
     trayTemplateIconPath: path.join(sourceDir, "build", "trayTemplate.png"),
     entryPagePath: path.join(sourceDir, "assets", "entry", "index.html"),
+    switchPagePath: path.join(sourceDir, "assets", "entry", "switch.html"),
   };
 }
 

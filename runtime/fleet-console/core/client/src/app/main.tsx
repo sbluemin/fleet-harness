@@ -41,6 +41,7 @@ import { connectOperationsSse, installOperationsSseWake } from "../integration/o
 import { installOperationArchive } from "../integration/operation-archive.js";
 import { installModelRosterSync } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
+import { announceDesktopReady } from "../integration/desktop-ready.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
@@ -131,6 +132,8 @@ if (app && hostPicker) {
   installModelRosterSync();
   connectOperationsSse();
   installOperationsSseWake();
+  // 호스트를 갈아타는 Desktop이 붙잡아 둔 옛 화면을 걷을 때를 알린다 — 첫 목록이 칠해진 뒤 한 번.
+  announceDesktopReady();
   createRoot(app).render(
     <StrictMode>
       <BrowserRouter basename="/console">

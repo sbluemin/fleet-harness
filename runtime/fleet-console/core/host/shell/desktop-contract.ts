@@ -16,7 +16,7 @@ export const DESKTOP_WINDOW_COMMAND_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "POST",
     path: DESKTOP_WINDOW_COMMAND_PATH,
-    summary: "Ask the shell that owns this window to enter or leave native fullscreen, request macOS Accessibility permission, or open Screen Recording settings.",
+    summary: "Ask the shell that owns this window to enter or leave native fullscreen, request macOS Accessibility permission, open Screen Recording settings, or tell it the freshly loaded screen has drawn its first data.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "http",
