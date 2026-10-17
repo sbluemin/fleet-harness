@@ -204,14 +204,20 @@ class PlaygroundStage {
       this.publish();
       return;
     }
+    let arrivals = 0;
     if (this.pendingClosedMs >= CATCH_UP_MIN_MS) {
       const elapsed = this.pendingClosedMs;
       this.pendingClosedMs = 0;
-      this.advanceClosed(elapsed);
+      arrivals = this.advanceClosed(elapsed);
     } else {
       this.pendingClosedMs = 0;
     }
     for (const actor of this.actors) this.schedule(actor, rand(300, 1400), () => this.tick(actor));
+    // 따라잡기로 새로 올 얼굴은 이미 서 있지 않고, 다시 열린 직후 등장 연출로 들어온다.
+    for (let index = 0; index < arrivals; index += 1) {
+      if (this.presentCount() >= this.cap) break;
+      this.enter(this.cast(), Math.random() < 0.5, false);
+    }
     this.publish();
     this.direct();
   }
@@ -893,28 +899,23 @@ class PlaygroundStage {
 
   /**
    * 닫혀 있던 시간만큼 인원 물결을 한 번에 반영한다. 타이머는 켜지 않는다.
-   * 목표보다 많은 인원은 오래 머문 순으로 떠나고, 약 9초마다 한 명씩 더 교체된다.
-   * 빈자리는 아직 안 나온 얼굴로 채운다.
+   * 목표보다 많은 인원은 오래 머문 순으로 떠나고, 그에 더해 한 명 이상은 새 얼굴로 바뀐다.
+   * 9초마다 교체가 한 명씩 늘어난다. 남는 인원은 물결 목표를 지키며, 목표는 2명 아래로 내려가지 않는다.
+   * 새로 올 수는 돌려주고, 얼굴은 호출부가 등장 연출로 들인다.
    */
-  private advanceClosed(elapsedMs: number): void {
-    if (elapsedMs <= 0 || !this.layout) return;
-    const now = performance.now();
+  private advanceClosed(elapsedMs: number): number {
+    if (elapsedMs <= 0 || !this.layout) return 0;
     const want = this.targetCount();
-    const present = this.actors.filter((actor) => actor.present).sort((a, b) => a.enteredAt - b.enteredAt);
+    const present = this.actors.filter((actor) => actor.present && !actor.exiting).sort((a, b) => a.enteredAt - b.enteredAt);
     const surplus = Math.max(0, present.length - want);
-    const churn = Math.min(present.length, Math.floor(elapsedMs / 9000));
-    const leave = Math.min(present.length, surplus + Math.max(0, churn - surplus));
+    const replace = present.length > 0 ? 1 + Math.floor(elapsedMs / 9_000) : 0;
+    const leave = Math.min(present.length, surplus + replace);
     const staying = present.slice(leave);
-    const add = Math.max(0, want - staying.length);
-    // 떠나는 얼굴을 덱에서 다시 뽑을 수 있게 먼저 빼고, 새로 뽑은 얼굴은 바로 무대에 올려 같은 조합이 겹치지 않게 한다.
-    this.actors = staying;
-    for (let index = 0; index < add; index += 1) {
-      const actor = this.cast();
-      actor.enteredAt = now - rand(0, Math.min(elapsedMs, 20_000));
-      this.actors.push(actor);
-    }
-    const count = this.actors.length;
-    this.actors.forEach((actor, index) => {
+    const kept = staying.length > want ? staying.slice(staying.length - want) : staying;
+    const add = Math.max(0, want - kept.length);
+    this.actors = kept;
+    const count = kept.length;
+    kept.forEach((actor, index) => {
       actor.mode = "rest";
       actor.ride = null;
       actor.flourish = null;
@@ -930,6 +931,7 @@ class PlaygroundStage {
       actor.y = this.standY;
       actor.x = clamp(((index + 0.5) / Math.max(1, count)) * (this.layout?.width ?? 0) - SIZE / 2 + rand(-40, 40), 6, this.maxX);
     });
+    return add;
   }
 }
 
