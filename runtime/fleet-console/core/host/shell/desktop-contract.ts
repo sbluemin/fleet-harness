@@ -87,9 +87,9 @@ export const DESKTOP_SCREEN_PERMISSION_API_CATALOG: readonly ApiCatalogEntry[] =
   {
     method: "GET",
     path: DESKTOP_SCREEN_PERMISSION_PATH,
-    summary: "Read the fixed screen-recording permission reason Desktop reported for this machine. Null means sharing is not blocked by that permission.",
+    summary: "Read the fixed screen-recording permission reason on the loopback listener. A same-origin page may omit Origin and prove itself with Sec-Fetch-Site; a cross-site read is refused.",
     category: "Desktop",
-    gate: "loopback",
+    gate: "origin-strict",
     transport: "http",
   },
   {
@@ -106,7 +106,7 @@ interface DesktopScreenPermissionRouteDeps {
   readonly getReason: () => DesktopScreenPermissionReason | null;
   readonly setReason: (reason: DesktopScreenPermissionReason | null) => void;
   readonly isLoopback: (req: http.IncomingMessage) => boolean;
-  /** 미리보기가 읽는 쪽. 루프백의 콘솔 출처만 통과한다. */
+  /** 미리보기가 읽는 쪽. 루프백 위에서 같은 출처임이 확인된 요청만 통과한다. */
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   /**
    * Desktop 메인 프로세스의 보고. 렌더러는 User-Agent를 바꾸지 못하고 Sec-Fetch-Site를 지우지 못한다.

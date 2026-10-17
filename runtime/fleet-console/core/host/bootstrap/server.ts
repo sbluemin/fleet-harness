@@ -1423,7 +1423,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       logComputerCapture({ captureReason: "screen_permission", unavailableReason: reason ?? "none" });
     },
     isLoopback: isLoopbackListener,
-    isAuthorized: isExactConsoleOrigin,
+    isAuthorized: isSameOriginConsoleRead,
     isShellReport: (req) => isExactConsoleOrigin(req) && req.headers["user-agent"] === DESKTOP_SCREEN_PERMISSION_REPORT_AGENT && req.headers["sec-fetch-site"] === undefined,
     readJsonBody,
     writeJson,
@@ -2049,6 +2049,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function isExactConsoleOrigin(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
     return listener !== null && req.headers.origin === listener.origin;
+  }
+
+  /**
+   * 같은 출처의 읽기. Chromium은 동일 출처 GET에 Origin을 싣지 않으므로, 그 요청은 Sec-Fetch-Site가
+   * same-origin일 때만 통과한다. Origin이 있으면 리스너 출처와 같아야 하고, 어긋나면 거절한다.
+   * 페이지는 Sec-Fetch-Site를 바꾸지 못하므로 크로스 사이트 읽기는 열리지 않는다.
+   */
+  function isSameOriginConsoleRead(req: http.IncomingMessage): boolean {
+    if (req.headers.origin !== undefined) return isExactConsoleOrigin(req);
+    return req.headers["sec-fetch-site"] === "same-origin";
   }
 
   function listTheaterInfos(): readonly ConsoleTheaterInfo[] {
