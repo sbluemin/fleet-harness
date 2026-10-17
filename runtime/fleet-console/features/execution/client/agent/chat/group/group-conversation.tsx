@@ -163,6 +163,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   // 시각 줄은 같은 발화자의 말도 두 묶음으로 가른다.
   const breaks = React.useMemo(() => timeBreaks(anchors), [anchors]);
   const runTails = React.useMemo(() => bubbleRunTails(flow, breaks), [flow, breaks]);
+  // 상대가 하나뿐이면(사령관 채팅, 구성원 없는 지휘관) 말풍선 옆 아바타를 두지 않는다. 구성원이 명부에 서면 다시 붙는다.
+  const showMark = showsSpeakerMarks(snapshot.participants);
   const now = Date.now();
 
   const unavailableNames = snapshot.unavailableOperationIds
@@ -238,6 +240,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
                   boardActionLabel={boardActionLabel}
                   capped={fold}
                   report={item.report}
+                  showMark={showMark}
                 />
               </React.Fragment>
             );
@@ -564,7 +567,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -578,9 +581,11 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly boardActionLabel: string | undefined;
   readonly capped?: boolean;
   readonly report?: DelegationEntry | undefined;
+  /** 말풍선 옆 아바타. 상대가 하나뿐인 대화에서는 끄고, 그 칸은 말풍선이 쓴다. */
+  readonly showMark?: boolean;
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} />;
     case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -591,7 +596,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   }
 }, (before, after) => {
   if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel) return false;
-  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report) return false;
+  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
     const commander = (participants: readonly ConversationParticipant[]) => participants.find((participant) => participant.speaker.kind === "commander")?.speaker;
@@ -619,7 +624,21 @@ function NoteLine({ entry, language }: {
   );
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report }: {
+/**
+ * 말풍선 옆 아바타를 둘 대화인가. 스냅숏 참여자는 지금 명부다 — 루트(지휘관)·구성원·아직 기동하지 않은 명부.
+ * 떠난 구성원은 여기에 없다. 사람 말고 상대가 둘 이상이면 아바타가 선다. 하나뿐이면(사령관 채팅, 구성원 없는 지휘관) 끈다.
+ */
+function showsSpeakerMarks(participants: readonly ConversationParticipant[]): boolean {
+  let agents = 0;
+  for (const participant of participants) {
+    if (participant.speaker.kind === "human") continue;
+    agents += 1;
+    if (agents > 1) return true;
+  }
+  return false;
+}
+
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report, showMark = true }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -631,6 +650,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly capped?: boolean;
   /** 턴 접기 — 이 말풍선으로 옮긴 보고 줄. 머리의 꼬리표가 되고 누르면 보고 전문이 펼쳐진다. */
   readonly report?: DelegationEntry | undefined;
+  /** 말풍선 옆 아바타. 상대가 하나뿐이면 끄고 이름만 남긴다. 원장을 여는 이름 단추는 그대로다. */
+  readonly showMark?: boolean;
 }) {
   const t = getGroupT(language);
   // 높이 상한은 구성원 말풍선만. 지휘관 말은 접기를 켜도 상한 없이 선다.
@@ -684,10 +705,12 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     </button>
   ) : null;
   return (
-    <div className={`group-chat-agent${continued ? " is-continued" : ""}`} data-entry-id={entry.id}>
-      <span className="group-chat-agent-mark">
-        {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
-      </span>
+    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
+      {showMark ? (
+        <span className="group-chat-agent-mark">
+          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+        </span>
+      ) : null}
       <div className="group-chat-agent-box">
         {continued ? null : via && entry.recipient ? (
           <span className="group-chat-agent-name group-chat-agent-via">
