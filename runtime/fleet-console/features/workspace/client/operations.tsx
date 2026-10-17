@@ -27,7 +27,7 @@ import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-s
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation } from "../../../core/client/src/integration/store.js";
+import { cancelAddTheater, consumeOperationFocus, consumeQuickLaunch, rejectNewSession, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, operationOrderFromNodes, requestOperationKeyboardFocus, revealOperationStage, setActiveOperation } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -247,13 +247,16 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       })
       .catch((error: unknown) => {
         const draft = request.variant.prompt;
+        const errorCode = error instanceof Error ? error.message : null;
+        const shortenByChars = readShortenByChars(error);
+        const attachments = request.attachments ?? null;
+        // 새 세션 화면에서 온 거절만 그 컴포저로 간다. ⌘J·고정 바는 아래 시트를 그대로 연다.
+        if (request.fromNewSession === true && getState().newSession !== null) {
+          rejectNewSession(draft ?? "", errorCode, shortenByChars, attachments);
+          return;
+        }
         if (!draft) return;
-        reopenQuickLaunchWithDraft(
-          draft,
-          error instanceof Error ? error.message : null,
-          readShortenByChars(error),
-          request.attachments ?? null,
-        );
+        reopenQuickLaunchWithDraft(draft, errorCode, shortenByChars, attachments);
       });
   }, [registry.providers, state.theaters, state.pendingQuickLaunch]);
 
