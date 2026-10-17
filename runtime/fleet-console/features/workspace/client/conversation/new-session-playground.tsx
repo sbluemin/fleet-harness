@@ -1147,16 +1147,15 @@ function PlaygroundScene() {
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
   const [, setVersion] = useState(0);
   const stage = acquireSessionStage();
-  useLayoutEffect(() => {
-    sessionPublish = () => setVersion((value) => value + 1);
-    sessionPinX = (id) => {
-      const element = actorRefs.current.get(id);
-      if (!element) return null;
-      const transform = getComputedStyle(element).transform;
-      if (!transform || transform === "none") return null;
-      return new DOMMatrixReadOnly(transform).m41;
-    };
-  }, []);
+  // 그리기 알림은 첫 렌더에서 바로 연결한다. effect 까지 미루면 첫 setup 의 publish 가 버려지고 밴드가 안 선다.
+  sessionPublish = () => setVersion((value) => value + 1);
+  sessionPinX = (id) => {
+    const element = actorRefs.current.get(id);
+    if (!element) return null;
+    const transform = getComputedStyle(element).transform;
+    if (!transform || transform === "none") return null;
+    return new DOMMatrixReadOnly(transform).m41;
+  };
 
   const layout = stage.layout;
   const className = ["new-session-playground", stage.frozen ? "is-frozen" : null, stage.watching ? "is-watching" : null, stage.isDynamic ? null : "is-still"].filter(Boolean).join(" ");
