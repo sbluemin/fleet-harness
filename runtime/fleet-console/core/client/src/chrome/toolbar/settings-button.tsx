@@ -26,7 +26,7 @@ export function SettingsButton({ menuItem = false }: { readonly menuItem?: boole
       }}
     >
       <GearGlyph />
-      {menuItem ? <><span className="conversation-dock-label">{t("settings.title")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
+      {menuItem ? <span className="conversation-dock-label">{t("settings.title")}</span> : null}
     </button>
   );
 }

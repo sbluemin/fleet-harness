@@ -46,6 +46,7 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
         <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <div className="conversation-dock-heading">{name}</div>
           <HostSwitcher menuItem />
+          {/* Desktop은 보기 모드를 데스크톱으로 고정한다(#1189). 전환은 여기에도 두지 않는다. */}
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
           <div className="conversation-dock-divider" role="separator" />
           <ConsoleHelpMenu menuItem />

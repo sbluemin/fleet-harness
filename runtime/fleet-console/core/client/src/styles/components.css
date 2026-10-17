@@ -933,15 +933,18 @@
 }
 
 /* 메뉴 항목에서 연 판은 그 항목 옆에 서는 서브메뉴다. 사이드바가 넘치는 것을 잘라 내므로 창에 고정해 세우고,
-   자리(left·top·max-height)는 HostSwitcher가 항목의 자리에서 잰다. 외피는 위와 같은 공통 팝업 표면이다. */
-.host-switcher-panel.is-submenu {
+   자리(left·top·max-height)는 useSideSubmenu가 항목의 자리에서 잰다. 도움말 판도 같은 클래스다.
+   외피는 위와 같은 공통 팝업 표면이다. */
+.host-switcher-panel.is-side-submenu,
+.command-band-system-menu.is-side-submenu {
   position: fixed;
   z-index: 91;
+  top: auto;
   right: auto;
   bottom: auto;
-  max-width: calc(100vw - 24px);
   overflow-y: auto;
 }
+.host-switcher-panel.is-side-submenu { max-width: calc(100vw - 24px); }
 
 /* 구역 제목은 한국어로도 읽히는 문장체다 — 자간을 벌린 대문자는 "이 컴퓨터"를 낱자로 흩뜨린다. */
 .host-switcher-heading {
