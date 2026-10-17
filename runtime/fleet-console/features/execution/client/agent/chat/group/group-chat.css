@@ -109,6 +109,9 @@
 .group-chat-md > :first-child { margin-top: 0; }
 .group-chat-md > :last-child { margin-bottom: 0; }
 
+/* 아직 집어가지 않은 말 — 같은 말풍선이되 흐리게. 처리가 시작되면 이 흐림만 걷힌다. */
+.group-chat-bubble.is-human.is-pending { opacity: 0.62; }
+.group-chat-pending { padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
 .group-chat-human { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .group-chat-human-to { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
 

@@ -42,6 +42,8 @@ import {
   type AgentChatTurn,
   type AgentChatTurnItem,
   chatOriginLabel,
+  isPersonQueueEntry,
+  type AgentChatQueueEntry,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
@@ -55,6 +57,7 @@ import { getState as getConsoleState, subscribe as subscribeConsoleState } from 
 import type { ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
+import "./chat-pending.css";
 
 /**
  * Ctrl+C 무장이 서 있는 시간. 이 창을 넘기면 다음 Ctrl+C는 다시 첫 번째 누름이다. 안내를 읽고
@@ -273,7 +276,7 @@ export function AgentChatView({
   const scrollSignal = state.turns.reduce(
     (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
     0,
-  );
+  ) + state.queue.reduce((count, entry) => count + entry.text.length, 0);
   const applyScrollTop = React.useCallback((next: number) => {
     const log = logRef.current;
     if (!log) return;
@@ -874,6 +877,9 @@ export function AgentChatView({
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
+      {/* 예약된 사람 말 — 컴포저 위 목록은 취소 자리로 남고, 대화에는 아직 처리 전인 말로 선다.
+          서버가 시작·취소 때 큐를 통째로 바꾸므로, 처리가 시작되면 이 자리는 걷히고 확정 말이 잇는다. */}
+      <PendingPrompts queue={state.queue} language={language} />
       {/* 모바일 끝 안내(impl-spec S-26, D22) — 대화 맨 아래 한 줄. 데스크톱 원장에는 서지 않는다. */}
       {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
       {state.errorCode === "chat_turn_failed"
@@ -1246,6 +1252,27 @@ function ChatCompactionRow({ item, language }: { readonly item: AgentChatTurnIte
 }
 
 // 턴은 props가 모두 안정적이다 — 패널 틀이 다시 그려질 때(모드 전환·정렬·줌) 수십 턴이 함께 다시 그려지지 않게 비교한다.
+/** 큐에 있는 사람 말. 처리 전이므로 흐린 말풍선이고, 큐에서 빠지면(시작·취소) 이 자리도 걷힌다. */
+function PendingPrompts({ queue, language }: { readonly queue: readonly AgentChatQueueEntry[]; readonly language: "en" | "ko" }) {
+  const t = getT(language);
+  const prompts = queue.filter(isPersonQueueEntry);
+  if (prompts.length === 0) return null;
+  return (
+    <>
+      {prompts.map((entry) => (
+        <div key={entry.id} className="agent-chat-dispatch is-pending">
+          <div className="agent-chat-dispatch-meta">
+            <span>{t("terminal.chat.queuePending")}</span>
+          </div>
+          <div className="agent-chat-dispatch-bubble">
+            <span className="agent-chat-dispatch-text">{entry.text}</span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export const ChatTurn = React.memo(function ChatTurn({
   operationId,
   turn,

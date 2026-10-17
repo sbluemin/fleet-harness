@@ -1,0 +1,4 @@
+/* 아직 집어가지 않은 예약 말. 확정 말풍선과 같은 자리이고, 흐림만 다르다.
+   chat.css 와 갈라 둔 이유는 그 파일을 크게 고치는 다른 작업과 부딪히지 않으려는 것이다. */
+.agent-chat-dispatch.is-pending .agent-chat-dispatch-bubble { opacity: 0.62; }
+.agent-chat-dispatch.is-pending .agent-chat-dispatch-meta { color: var(--text-tertiary); }

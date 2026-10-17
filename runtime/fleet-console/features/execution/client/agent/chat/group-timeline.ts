@@ -1,5 +1,5 @@
 import type { ConversationParticipant, ConversationPreview, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot, OperationClusterConversation } from "@fleet-console/sdk/conversation";
-import type { AgentChatJournalEvent } from "./chat-events.js";
+import { isPersonQueueEntry, type AgentChatJournalEvent, type AgentChatQueueEntry } from "./chat-events.js";
 
 const ENTRY_CAP = 600;
 const TEXT_CAP = 60_000;
@@ -9,8 +9,15 @@ export interface ConversationJournal {
   readonly truncated: boolean;
   /** 지금 열린 턴의 좌표 — 지시(dispatch)나 턴 시작이 열고 턴 끝이 닫는다. 말과 전언이 이 값을 `turn` 으로 단다. */
   readonly turn?: string | null;
+  /**
+   * 아직 시작하지 않은 예약의 전량. 서버 큐와 같은 REPLACE 이고 라이브 전용이라 재생·이력에는 없다.
+   * 화면은 여기서 사람의 말만 대기 말풍선으로 세우고, 처리가 시작되거나 취소되면 이 목록에서 빠진다.
+   */
+  readonly queue: readonly AgentChatQueueEntry[];
+  /** 그 스냅샷이 도착한 시각. 대기 말의 자리다. 모르면 null. */
+  readonly queueAt: number | null;
 }
-export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null };
+export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueAt: null };
 const operationSpeaker = (id: string): ConversationSpeaker => ({ kind: "operation", operationId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
@@ -106,15 +113,51 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       draftId = null;
       turn = null;
       break;
+    case "queue":
+      // 예약 전량 교체. 저널 줄은 건드리지 않는다 — 대기 말은 이 스냅샷에서만 서고, 확정 말과 섞어 세지 않는다.
+      return { ...state, queue: event.entries, queueAt: at };
     default: return state;
   }
   // 수신/재생의 동일 좌표는 한 번만 세운다. 결과 갱신은 기존 자리를 유지한다.
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const unique = [...byId.values()];
-  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn };
+  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueAt: state.queueAt };
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);
+
+/**
+ * 큐 스냅샷의 사람 말을 대기 말풍선으로. 배열이 같을 때는 같은 객체를 돌려준다 — 다른 참여자의
+ * 델타가 도착할 때마다 대기 말을 다시 만들면 그 말풍선이 매번 다시 그려진다.
+ */
+const pendingPrompts = new WeakMap<readonly AgentChatQueueEntry[], readonly GroupTimelineEntry[]>();
+function queuedPrompts(operationId: string, journal: ConversationJournal): readonly GroupTimelineEntry[] {
+  const cached = pendingPrompts.get(journal.queue);
+  if (cached) return cached;
+  const base = journal.queueAt;
+  const built: GroupTimelineEntry[] = [];
+  journal.queue.forEach((entry, index) => {
+    if (!isPersonQueueEntry(entry)) return;
+    const human = entry.by?.kind === "plugin" ? entry.by.humanInput : undefined;
+    const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : undefined;
+    built.push({
+      kind: "message",
+      // 사람이 보드로 보낸 말은 확정 말과 같은 id 다. 처리가 시작되면 그 말이 이 자리를 그대로 잇고, 둘은 동시에 서지 않는다.
+      id: human ? `human:${human.id}` : `pending:${operationId}:${entry.id}`,
+      at: base === null ? null : base + index,
+      operationId,
+      speaker: { kind: "human", name: "Human" },
+      text: entry.text,
+      streaming: false,
+      pending: true,
+      ...(recipient ? { recipient } : {}),
+      ...(human?.copy ? { copied: true } : {}),
+      ...(human?.act ? { via: human.act } : {}),
+    });
+  });
+  pendingPrompts.set(journal.queue, built);
+  return built;
+}
 
 /** 원장 줄과 표시 발화자가 같으면 확정 줄 객체를 재사용한다. 수명·연결 상태가 아닌 약한 투영 캐시다. */
 const resolvedEntries = new WeakMap<GroupTimelineEntry, { readonly key: string; readonly entry: GroupTimelineEntry }>();
@@ -138,10 +181,12 @@ export function composeGroupTimeline(input: {
   const speakers = new Map(input.participants.flatMap(({ speaker }) => speaker.operationId ? [[speaker.operationId, speaker] as const] : []));
   const resolve = (speaker: ConversationSpeaker): ConversationSpeaker => speaker.kind === "human" || !speaker.operationId ? speaker : speakers.get(speaker.operationId) ?? speaker;
   const entries = new Map<string, GroupTimelineEntry>();
+  const waiting: GroupTimelineEntry[] = [];
   let truncated = input.board?.truncated === true;
   for (const [operationId, journal] of input.journals) {
     if (!speakers.has(operationId)) continue;
     truncated ||= journal.truncated;
+    waiting.push(...queuedPrompts(operationId, journal));
     for (const item of journal.entries) {
       if (item.kind === "message") {
         const previous = entries.get(item.id);
@@ -176,8 +221,21 @@ export function composeGroupTimeline(input: {
         at: previous.at === null ? next.at : next.at === null ? previous.at : Math.min(previous.at, next.at) });
     }
   }
+  // 대기 말은 확정 말 뒤에 얹는다. 같은 사람 발송 id 의 확정 말이 이미 있으면 그 말이 이긴다(중복으로 세우지 않는다).
+  // 사본보다 원본을 남긴다 — 구성원에게 보낸 말의 지휘관 알림이 원본 말풍선을 가리지 않게.
+  for (const item of waiting) {
+    if (item.kind !== "message") continue;
+    const previous = entries.get(item.id);
+    if (previous?.kind === "message" && !previous.pending) continue;
+    if (previous?.kind === "message" && previous.pending && !previous.copied && item.copied) continue;
+    const speaker = resolve(item.speaker);
+    const recipient = item.recipient ? resolve(item.recipient) : undefined;
+    entries.set(item.id, resolvedEntry(item, recipient ? [speaker, recipient] : [speaker], () => ({ ...item, speaker, ...(recipient ? { recipient } : {}) })));
+  }
   for (const item of input.board?.events ?? []) entries.set(item.id, item);
-  const ordered = [...entries.values()].sort((a, b) => (a.at ?? -Infinity) - (b.at ?? -Infinity) || a.id.localeCompare(b.id));
+  // 시각을 모르는 대기 말은 대화 맨 아래에 선다. 지난 말 사이로 올라가면 "이미 처리된 말"로 읽힌다.
+  const orderKey = (entry: GroupTimelineEntry): number => entry.kind === "message" && entry.pending && entry.at === null ? Number.MAX_SAFE_INTEGER : (entry.at ?? -Infinity);
+  const ordered = [...entries.values()].sort((a, b) => orderKey(a) - orderKey(b) || a.id.localeCompare(b.id));
   const decision = input.board?.decision ?? null;
   const last = ordered.findLast((entry) => entry.kind === "message" && oneLine(entry.text));
   const preview: ConversationPreview | null = decision

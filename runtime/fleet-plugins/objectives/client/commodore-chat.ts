@@ -136,6 +136,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = new Set(entries.flatMap((entry) => (entry.kind === "undelivered" ? entry.seqs : [])));
+  // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
+  const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
   const out: AgentConversationEntry[] = [];
   for (const entry of entries) {
     switch (entry.kind) {
@@ -148,7 +150,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const { text, references } = messageWords(entry);
         const attachments = entry.attachments?.map(({ id }) => ({ reference: id }));
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
-          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) });
+          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
+          ...(entry.seq > lastWakeSeq ? { pending: true as const } : {}) });
         break;
       }
       case "text":

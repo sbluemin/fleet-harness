@@ -251,6 +251,17 @@ export interface AgentChatQueueEntry {
   readonly by?: AgentChatOrigin;
 }
 
+/**
+ * 사람이 보낸 예약인가. 플러그인이 혼자 넣은 지시와 다른 Operation·사령관이 보낸 말은
+ * 대화에 사용자 말로 세우지 않는다 — 그 말은 처리가 시작될 때 출처 줄로 선다.
+ */
+export function isPersonQueueEntry(entry: AgentChatQueueEntry): boolean {
+  if (entry.text.trim().length === 0) return false;
+  const by = entry.by;
+  if (!by) return true;
+  return by.kind === "plugin" && !!by.humanInput && by.humanInput.author !== "commodore";
+}
+
 export interface AgentChatJournalEvent {
   readonly seq: number;
   /** 서버 원장에 선 시각. 옛 서버의 부재는 스토어가 수신 시각으로 보완한다. */
