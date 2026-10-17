@@ -105,7 +105,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; groupId?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableAutoMemory?: boolean; groupId?: string }[] = [];
   const resumed: string[] = [];
   const slept: string[] = [];
   const subagentSpawns: { operationId: string; policy: "blocked" | "default" }[] = [];
@@ -214,7 +214,7 @@ function harness(routingOrigin: () => string | null = () => null, options?: { re
             return { operationId: id };
           }
           if (input.launchKey) keyed.set(input.launchKey, id);
-          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, groupId: input.groupId });
+          launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
           // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
           activity.set(id, input.dormant ? "dormant" : "idle");
           const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), ...(input.launchKey ? { launchKey: { owner: "objectives", key: input.launchKey } } : {}), session: { harness: "claude-code", ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
@@ -494,6 +494,8 @@ describe("Objectives contract", () => {
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
     expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
+    // 구성원만 auto-memory를 끄고 뜬다 — 지휘관(첫 기동)은 사용자 설정을 그대로 쓴다.
+    expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([undefined, true, true]);
     const roster = store.find(objective.id)!;
     const blockedOperationId = blocked.id;
     activity.set(blockedOperationId, "dormant");

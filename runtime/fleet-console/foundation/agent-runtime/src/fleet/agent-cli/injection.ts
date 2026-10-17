@@ -69,6 +69,8 @@ export interface InjectAgentCliProfileOptions {
   readonly claudeCodeDisabledAgents?: readonly string[];
   /** 이 세션에서 뺄 도구 이름들. 서브에이전트 규칙과 합쳐 두 표면에 실린다(`session.ts`). */
   readonly claudeCodeDisabledTools?: readonly string[];
+  /** 이 세션에서 auto-memory를 끈다. argv와 SDK 두 표면에 같은 키로 실린다(`session.ts`). */
+  readonly disableAutoMemory?: boolean;
   /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
   readonly origin?: ClaudeSessionOrigin;
   /** Gateway가 노출 정책에 따라 미리 렌더링한 위임 정체성. 모델 의미를 여기서 다시 해석하지 않는다. */
@@ -172,6 +174,7 @@ export async function injectAgentCliProfile(
       ...(customSystemPromptBody ? { claudeCodeCustomSystemPrompt: customSystemPromptBody } : {}),
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       ...(options.claudeCodeDisabledTools ? { claudeCodeDisabledTools: options.claudeCodeDisabledTools } : {}),
+      ...(options.disableAutoMemory ? { disableAutoMemory: true } : {}),
       plugin: options.plugin,
       ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
@@ -194,6 +197,7 @@ export async function injectAgentCliProfile(
       ...(customSystemPromptFile ? { claudeCodeCustomSystemPromptFile: customSystemPromptFile } : {}),
       ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
       ...(session.claudeCodeDisabledTools ? { claudeCodeDisabledTools: session.claudeCodeDisabledTools } : {}),
+      ...(session.disableAutoMemory ? { disableAutoMemory: true } : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(

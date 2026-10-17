@@ -357,6 +357,7 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
     settings.skillOverrides = { ...options.skillOverrides };
   }
   if (options.ultracode === true) settings.ultracode = true;
+  if (options.autoMemoryEnabled === false) settings.autoMemoryEnabled = false;
   if (options.cwdHook) {
     const hook = { type: "command", command: options.cwdHook.command, args: [...options.cwdHook.args] };
     settings.hooks = {

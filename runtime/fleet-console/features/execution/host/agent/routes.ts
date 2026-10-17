@@ -597,7 +597,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         const launchOptions = readLaunchOptions(input as SessionCreateBody, CLAUDE_HARNESS_ID, reply);
         if (launchOptions === false) throw new ConsoleControlError(response?.value?.error ?? "invalid_launch_option");
         assertCurrent();
-        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
+        await createSession(cwd, input.theaterId!, CLAUDE_HARNESS_ID, reply, { ...launchOptions, ...(input.text ? { prompt: spawnPrompt(input.text) } : {}), ...(input.display ? { displayPrompt: input.display } : {}), ...(input.displayFormat ? { displayFormat: input.displayFormat } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}), ...(input.title ? { title: input.title } : {}), ...(input.disableSubagents ? { disableSubagents: true } : {}), ...(input.disableAutoMemory ? { disableAutoMemory: true } : {}), ...(input.parentOperationId ? { parentOperationId: input.parentOperationId, childSessionId: input.childSessionId } : {}), ...(input.dormant ? { dormant: true } : {}), ...((input.dormant ? input.viewMode === "chat" : input.viewMode !== "terminal") ? { chatBorn: true } : {}), ...(input.newOperationId && caller.kind === "plugin" ? { newOperationId: input.newOperationId } : {}), ...(input.launchKey && caller.kind === "plugin" ? { launchKey: { owner: caller.pluginId, key: input.launchKey } } : {}), assertCurrent, onSettled: settled });
         if (!response || response.status !== 200) throw new ConsoleControlError(response?.value?.error ?? "execution_unavailable");
         // 계보 — 누가 시작했는지를 payload 에 남긴다. 닫기·질문 답의 정책이 이 표식으로 "자기 자식"을 가른다.
         const launchedId = response.value.sessionId as string;
@@ -1101,7 +1101,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     theaterId: string,
     cliId: AgentCliId,
     reply: (status: number, value: unknown) => void,
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly parentOperationId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly displayPrompt?: string; readonly displayFormat?: "markdown" | "text"; readonly sessionName?: string; readonly title?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean; readonly parentOperationId?: string; readonly childSessionId?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly dormant?: true; readonly launchKey?: { readonly owner: string; readonly key: string }; readonly newOperationId?: string; readonly geometry?: OperationGeometry; readonly assertCurrent?: () => void; readonly onSettled?: (outcome: "completed" | "succeeded" | "failed" | "interrupted" | "unknown") => void } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     // dormant 는 프로세스를 띄우지 않는다 — CLI 준비는 첫 send 로 깨울 때 그 기동이 따진다.
@@ -1140,6 +1140,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
         ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
         ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+        // 태어날 때의 auto-memory 정책은 세션 스냅샷에 남아 재개·재기동·모델 변경이 그대로 따른다.
+        ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
       },
       // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
       // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
@@ -1192,6 +1194,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
         ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
         ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
+        ...(launchOptions.disableAutoMemory ? { disableAutoMemory: true } : {}),
       });
       // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
       // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
@@ -1365,6 +1368,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
           ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
           ...(blockSubagents ? { disableSubagents: true } : {}),
+          ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
         };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
@@ -1381,6 +1385,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ...(launchEffort ? { effort: launchEffort } : {}),
         ...(launchSession?.sessionName ? { sessionName: launchSession.sessionName } : {}),
         ...(blockSubagents ? { disableSubagents: true } : {}),
+        ...(launchSession?.disableAutoMemory ? { disableAutoMemory: true } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -2198,6 +2203,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
     const chatTheaterPrompt = deps.theaterSystemPrompts?.read(node.theaterId);
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node.payload) ? [ALL_SUBAGENTS] : [];
+    const chatDisableAutoMemory = readAgentSession(node.payload)?.disableAutoMemory === true;
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -2294,6 +2300,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           plugin: ctx.agentCliPlugin,
           ...(chatTheaterPrompt ? { claudeCodeSystemPrompt: chatTheaterPrompt.mode, claudeCodeCustomSystemPrompt: chatTheaterPrompt.body } : {}),
           claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
+          ...(chatDisableAutoMemory ? { disableAutoMemory: true } : {}),
           origin: sessionOrigin.kind === "resume"
             ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
             : { kind: "new", preferredSessionId: node.id },
@@ -2509,11 +2516,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return buildAgentCliLaunchKinds(metadata, AGENT_OPERATION_TYPE, selection);
   }
 
-  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean } | undefined) {
+  function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
     const cliId = operation ? CLAUDE_HARNESS_ID : undefined;
     const blockSubagents = operation ? subagentSpawnBlocked(operation.payload) : context?.disableSubagents === true;
+    const disableAutoMemory = operation ? readAgentSession(operation.payload)?.disableAutoMemory === true : context?.disableAutoMemory === true;
     const providerSession = readProviderSession(operation?.payload)?.id;
     // prompt는 spawn-only. Operation payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
@@ -2528,6 +2536,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ...(context?.prompt ? { prompt: context.prompt } : {}),
       ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
       ...(blockSubagents ? { disableSubagents: true } : {}),
+      ...(disableAutoMemory ? { disableAutoMemory: true } : {}),
       ...(providerSession ? { resumeSessionId: providerSession } : {}),
     });
   }

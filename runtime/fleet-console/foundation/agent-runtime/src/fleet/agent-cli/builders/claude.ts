@@ -8,7 +8,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
     "--plugin-url",
     context.pluginUrl,
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec),
+    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec, context.disableAutoMemory),
     ...buildSearchToolArgs(),
     ...buildPermissionArgs(),
   ];
@@ -55,6 +55,7 @@ function buildSettingsArgs(
   disabledAgents: AgentCliInjectionContext["claudeCodeDisabledAgents"],
   disabledTools: AgentCliInjectionContext["claudeCodeDisabledTools"],
   workspaceHook: AgentCliInjectionContext["workspaceHookExec"],
+  disableAutoMemory: AgentCliInjectionContext["disableAutoMemory"],
 ): string[] {
   const settings: Record<string, unknown> = {};
   if (skillOverrides !== undefined && Object.keys(skillOverrides).length > 0) {
@@ -62,6 +63,8 @@ function buildSettingsArgs(
   }
   const deny = buildClaudeDenyRules(disabledAgents, disabledTools);
   if (deny.length > 0) settings.permissions = { deny };
+  // SDK 표면의 flag settings와 같은 키다(`session.ts`). `false`만 싣는다.
+  if (disableAutoMemory) settings.autoMemoryEnabled = false;
   if (workspaceHook) {
     // plugin CwdChanged는 2.1.212에서 누락된다. flag settings는 PTY와 SDK 양쪽에서 발화한다.
     const hook = { type: "command", command: workspaceHook.command, args: [...workspaceHook.args] };

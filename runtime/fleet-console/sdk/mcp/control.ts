@@ -50,6 +50,8 @@ export interface ConsoleActionInput {
   readonly sessionName?: string;
   /** launch 전용 — 태어날 때 서브에이전트(Claude Code `Agent` 도구, fleet:execute 포함)를 모두 끈다. 이후 변경은 `setSubagentSpawn`이며 이미 뜬 프로세스는 다음 기동까지 그대로다. */
   readonly disableSubagents?: boolean;
+  /** launch 전용 — 태어날 때 auto-memory(Claude Code `autoMemoryEnabled`)를 끈다. 이 Operation의 재개·재기동에도 그대로 남고, 바꾸는 경로는 없다. */
+  readonly disableAutoMemory?: boolean;
   /** @deprecated launch 전용 — 받아들이되 무시한다. Console이 띄우는 Claude 세션은 사람에게 묻는 도구(`AskUserQuestion`)를 늘 뺀다. */
   readonly disableUserQuestions?: boolean;
   /** launch 전용 — Operation만 만들고 첫 send 때 새 세션으로 깨운다. */
