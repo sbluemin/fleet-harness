@@ -147,15 +147,20 @@ function queuedPrompts(operationId: string, journal: ConversationJournal): reado
   const cached = pendingPrompts.get(journal.queue);
   if (cached && cached.floor === floor) return cached.built;
   const built: GroupTimelineEntry[] = [];
+  // 큐 순서가 보낸 순서다. 바닥으로 끌어올린 말끼리도 그 순서를 지키도록, 앞 대기 말보다 늦은 자리에만 둔다.
+  let last = floor;
   for (const entry of journal.queue) {
     if (!isPersonQueueEntry(entry)) continue;
+    const seen = journal.queueSeen.get(entry.id) ?? null;
+    const at = seen === null ? null : last !== null && seen <= last ? last + 0.001 : seen;
+    if (at !== null) last = at;
     const human = entry.by?.kind === "plugin" ? entry.by.humanInput : undefined;
     const recipient = human?.targetOperationId ? operationSpeaker(human.targetOperationId) : undefined;
     built.push({
       kind: "message",
       // 사람이 보드로 보낸 말은 확정 말과 같은 id 다. 처리가 시작되면 그 말이 이 자리를 그대로 잇고, 둘은 동시에 서지 않는다.
       id: human ? `human:${human.id}` : `pending:${operationId}:${entry.id}`,
-      at: placeAfter(journal.queueSeen.get(entry.id) ?? null, floor),
+      at,
       operationId,
       speaker: { kind: "human", name: "Human" },
       // 보드 행위에 덧붙인 말은 인용으로 실려 온다 — 확정 말과 같은 문면이 되도록 같은 자리에서 걷는다.
@@ -170,7 +175,6 @@ function queuedPrompts(operationId: string, journal: ConversationJournal): reado
   pendingPrompts.set(journal.queue, { floor, built });
   return built;
 }
-const placeAfter = (at: number | null, floor: number | null): number | null => at === null || floor === null || at > floor ? at : floor + 0.5;
 
 /** 원장 줄과 표시 발화자가 같으면 확정 줄 객체를 재사용한다. 수명·연결 상태가 아닌 약한 투영 캐시다. */
 const resolvedEntries = new WeakMap<GroupTimelineEntry, { readonly key: string; readonly entry: GroupTimelineEntry }>();
