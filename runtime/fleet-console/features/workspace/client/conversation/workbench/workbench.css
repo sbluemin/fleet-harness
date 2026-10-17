@@ -1,0 +1,353 @@
+/* ── 도구 분할: 대화 칸 안의 도구 칸 ─────────────────────────────────────────────
+   작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)을 덮는 레이어 하나에 칸이 절대 배치된다. 빈 자리는 클릭을 아래 대화에 넘긴다.
+   칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e). */
+.conversation-workbench {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  pointer-events: none;
+  /* 칸 안 본문(오른쪽 사이드바에서 옮겨 온 페인)은 열 바탕을 읽는다 — 칸 면으로 다시 준다. */
+  --workbench-tile-face: var(--surface-panel);
+}
+
+.conversation-workbench > * { pointer-events: auto; }
+
+/* 좁은 창에서 도구 분할이 대화 위에 뜨는 시트가 됐을 때의 바탕 카드 — 칸들이 그 위에 선다. */
+.conversation-workbench-sheet {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--conversation-surface);
+  box-shadow: var(--shadow-floating);
+}
+
+.workbench-tile {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--workbench-tile-face);
+  transition: left var(--duration-base) var(--ease-spring), top var(--duration-base) var(--ease-spring), width var(--duration-base) var(--ease-spring), height var(--duration-base) var(--ease-spring);
+  --conversation-surface: var(--workbench-tile-face);
+  --float-underlay: var(--workbench-tile-face);
+  --glass-tint-expanded: transparent;
+  --glass-panel-face: transparent;
+  --conversation-surface-gutter: var(--space-3);
+}
+
+.workbench-tile.is-focused { border-color: var(--surface-rim-strong); }
+
+/* 펼친 칸은 대화와 분할 영역 전체를 덮는다 — 다른 칸은 닫지 않고 숨긴다(Shell 은 계속 돈다). */
+.workbench-tile.is-expanded { z-index: 3; }
+.workbench-tile.is-hidden { visibility: hidden; }
+.workbench-tile.is-dragging { opacity: 0.55; }
+
+.conversation-workbench.is-resizing .workbench-tile,
+.conversation-workbench.is-dragging .workbench-tile {
+  transition: none;
+  user-select: none;
+}
+
+/* ── 칸 머리 ── */
+.workbench-tile-head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 36px;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.workbench-tile-title {
+  flex: 1;
+  /* 좁은 칸에서도 이름은 남는다 — 도구별 부속(위치 배지 등)이 먼저 줄어든다. */
+  min-width: min(72px, 30%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.workbench-tile-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.workbench-tile-icon svg { width: 16px; height: 16px; }
+
+.workbench-tile-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+}
+
+/* 브라우저 칸은 머리가 곧 탭 줄이다 — 캡션이 남은 폭을 채운다. */
+.workbench-tile-title > .op-browser-cap { flex: 1; min-width: 0; }
+
+.workbench-tile-tools {
+  flex: 0 1 auto;
+  max-width: 55%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* 가운데 이동 손잡이 — 마우스를 올리거나 키보드 초점이 왔을 때만 보인다. */
+.workbench-tile-grip {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 36px;
+  height: 12px;
+  margin-left: -18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: grab;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+}
+
+.workbench-tile-grip svg { width: 18px; height: 10px; }
+.workbench-tile:hover .workbench-tile-grip,
+.workbench-tile-grip:focus-visible { opacity: 1; }
+.workbench-tile-grip:hover { background: var(--control-rest-hover); color: var(--text-primary); }
+.workbench-tile-grip:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.workbench-tile.is-expanded .workbench-tile-grip { display: none; }
+
+.workbench-tile-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.workbench-tile-button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.workbench-tile-button svg { width: 14px; height: 14px; }
+.workbench-tile-button:hover,
+.workbench-tile-button[aria-expanded="true"] { background: var(--control-rest-hover); color: var(--text-primary); }
+.workbench-tile-button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+.workbench-tile-menu-wrap { position: relative; display: inline-flex; }
+
+.workbench-tile-menu {
+  position: absolute;
+  top: 28px;
+  right: 0;
+  z-index: 20;
+  min-width: 188px;
+  display: grid;
+  padding: 5px;
+  box-sizing: border-box;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-capsule);
+  box-shadow: var(--shadow-floating);
+}
+
+.workbench-tile-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+}
+
+.workbench-tile-menu-item:hover:not(:disabled),
+.workbench-tile-menu-item:focus-visible { background: var(--control-rest-hover); outline: none; }
+.workbench-tile-menu-item:disabled { color: var(--text-tertiary); cursor: default; }
+.workbench-tile-menu-item kbd { font-family: var(--font-ui); font-size: var(--t-xs); color: var(--text-tertiary); }
+
+/* 닫기 전에 묻는 한 줄 — 머리 바로 아래에 선다(Shell 에서 명령이 돌고 있을 때). */
+.workbench-tile-confirm {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+
+.workbench-tile-confirm > span { flex: 1; min-width: 0; }
+
+.workbench-tile-confirm button {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.workbench-tile-confirm button.is-danger { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim)); color: var(--coral); }
+.workbench-tile-confirm button:hover { background: var(--control-rest-hover); }
+.workbench-tile-confirm button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+/* ── 칸 본문 ── */
+.workbench-tile-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workbench-tile-rail,
+.workbench-tile-surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.workbench-tile-rail > .rail-surface { flex: 1; min-width: 0; }
+.workbench-tile-surface > .expanded-surface-pane-main { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.workbench-tile-surface > .expanded-surface-pane-main > * { flex: 1; min-height: 0; }
+
+.workbench-tile-notice {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  padding: var(--space-4);
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  text-align: center;
+}
+
+/* ── 경계(비율 끌기) ── */
+.conversation-workbench-gutter {
+  position: absolute;
+  z-index: 2;
+  touch-action: none;
+}
+
+.conversation-workbench-gutter.is-vertical { cursor: col-resize; }
+.conversation-workbench-gutter.is-horizontal { cursor: row-resize; }
+
+.conversation-workbench-gutter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 2px;
+  background: var(--surface-rim-strong);
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+  pointer-events: none;
+}
+
+.conversation-workbench-gutter.is-vertical::after { width: 2px; height: 28px; margin: -14px 0 0 -1px; }
+.conversation-workbench-gutter.is-horizontal::after { width: 28px; height: 2px; margin: -1px 0 0 -14px; }
+.conversation-workbench-gutter:hover::after { opacity: 1; }
+.conversation-workbench-gutter:focus-visible { outline: none; }
+.conversation-workbench-gutter:focus-visible::after { opacity: 1; background: var(--brass); }
+
+/* ── 끌어 옮기기 ── */
+.conversation-workbench-drop {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  border: 1.5px solid var(--aurora);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--aurora) 18%, transparent);
+  pointer-events: none;
+  transition: left 90ms, top 90ms, width 90ms, height 90ms;
+}
+
+.conversation-workbench-ghost {
+  position: absolute;
+  z-index: 6;
+  padding: 6px 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-capsule);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 터미널(Shell)은 대화 본문의 터미널처럼 상자 없이 칸 바탕 위에 놓이고, 격자는 칸 경계에서 가로 여백만큼 물러나 시작한다. */
+.workbench-tile .terminal-shell {
+  padding-inline: var(--conversation-surface-gutter);
+  border: 0;
+  border-radius: 0;
+}
+
+.workbench-tile .terminal-canvas { border-radius: 0; }
+
+/* 경계·칸을 끄는 동안에는 대화 칸도 전이 없이 포인터를 바로 따라간다. */
+.console-body.is-conversation:has(.conversation-workbench.is-resizing) .conversation-stage { transition: none; }
+
+/* Desktop — 칸은 창 끌기 띠 아래에 서도 눌려야 한다(대화 머리 줄의 drag 사각형과 겹치는 자리). */
+html[data-desktop-shell="true"] .workbench-tile,
+html[data-desktop-shell="true"] .conversation-workbench-gutter {
+  -webkit-app-region: no-drag;
+}
+
+/* Windows 캡션 단추 — 오른쪽 사이드바가 닫혀 있으면 맨 오른쪽 위 칸의 머리가 그 폭을 비운다. */
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .workbench-tile[data-touch-top="true"] .workbench-tile-head {
+  padding-right: calc(var(--space-1) + var(--conversation-caption-width, 138px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workbench-tile,
+  .conversation-workbench-drop { transition: none; }
+}

@@ -11614,12 +11614,6 @@ body[data-codex-side="true"] .command-card {
   outline: none;
 }
 
-/* 드래그 중에는 슬롯 본문이 텍스트를 집어가지 않게 한다. */
-body[data-expanded-surface-resizing="true"] {
-  cursor: col-resize;
-  user-select: none;
-}
-
 .expanded-surface-missing {
   margin: auto;
   padding: var(--space-6);

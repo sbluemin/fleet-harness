@@ -6,6 +6,7 @@ import { GLOBAL_SETTINGS_API_CATALOG } from "../../../features/settings/host/set
 import { PLUGIN_SETTINGS_API_CATALOG } from "../../../features/settings/host/settings-domain.js";
 import { OPERATIONS_API_CATALOG } from "../../../features/execution/host/operations/operations-domain.js";
 import { AVATARS_API_CATALOG } from "../../../features/workspace/host/avatars.js";
+import { CONVERSATION_WORKBENCH_API_CATALOG } from "../../../features/workspace/host/conversation-workbench.js";
 import { SERVER_API_CATALOG } from "../bootstrap/server.js";
 import { SYSTEM_FONTS_API_CATALOG } from "../shell/system-fonts.js";
 
@@ -31,6 +32,7 @@ export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): 
     ...SYSTEM_FONTS_API_CATALOG,
     ...OPERATIONS_API_CATALOG,
     ...AVATARS_API_CATALOG,
+    ...CONVERSATION_WORKBENCH_API_CATALOG,
     ...extraEntries,
   ];
   const identities = new Set<string>();

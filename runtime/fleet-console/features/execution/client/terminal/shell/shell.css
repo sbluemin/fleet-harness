@@ -37,3 +37,45 @@
   block-size: 26px;
   box-sizing: border-box;
 }
+
+/* 좁아지면 Theater 이름이 먼저 물러나고 끝 폴더(워크트리 이름)는 남는다. */
+.global-shell-badge .theater-badge-label { flex: 0 1000 auto; min-width: 0; }
+.global-shell-badge .theater-badge-detail { flex: 0 1 auto; min-width: 0; }
+
+/* 칸 본문 — 위치 안내 한 줄 아래로 터미널 자리가 남은 높이를 채운다. */
+.global-shell-surface {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 대화의 작업 위치가 이 Shell 이 선 자리와 달라졌을 때의 한 줄. 이미 연 Shell 은 그대로 두고 옮길 길만 준다. */
+.global-shell-location-notice {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+
+.global-shell-location-notice > span { flex: 1; min-width: 0; }
+
+.global-shell-location-notice button {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.global-shell-location-notice button:hover:not(:disabled) { background: var(--control-rest-hover); }
+.global-shell-location-notice button:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }

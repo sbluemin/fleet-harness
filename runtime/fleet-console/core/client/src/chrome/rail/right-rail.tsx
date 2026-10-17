@@ -395,7 +395,7 @@ export function useRailPanelContext(
  * 레일 도구 아이콘 목록 — 콘솔 도구모음의 도구 칸에 한 줄로 선다(모드와 무관한 하나의 목록·순서·켜짐).
  * 아이콘의 문서 id(rail-tab-*)는 패널 영역의 이름표와 온보딩 앵커가 가리킨다.
  */
-export function RailToolIcons({ context, variant = "icons", scope = "all", coreFilter, toolFilter }: {
+export function RailToolIcons({ context, variant = "icons", scope = "all", coreFilter, toolFilter, toolActive }: {
   readonly context: RailToolContext;
   /** "text"는 대화 중심 화면의 패널 머리 — 아이콘 대신 이름 글자로 같은 목록·순서·켜짐을 세운다. */
   readonly variant?: "icons" | "text";
@@ -408,6 +408,11 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
   readonly coreFilter?: (entryId: string) => boolean;
   /** 플러그인 도구 가운데 세울 것만 고른다 — 대화 중심 화면의 Operation 대화가 도구 줄 대신 남길 도구(conversationTab)만 세울 때 쓴다. */
   readonly toolFilter?: (entry: RailEntryDescriptor) => boolean;
+  /**
+   * 플러그인 도구의 켜짐을 대신 말한다 — 대화 칸의 도구 캡슐은 도구가 오른쪽 사이드바가 아니라 대화별 도구 칸에 열리므로 그 칸의
+   * 열림을 읽는다. undefined 를 돌려주면 기본 판정(슬롯·확대 표면)이다.
+   */
+  readonly toolActive?: (entry: RailEntryDescriptor) => boolean | undefined;
 }) {
   const text = variant === "text";
   const t = useT();
@@ -477,7 +482,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
               context={context}
               language={language}
               // 확장 표면이나 자기 레일 패널이 열려 있으면 켜짐이다.
-              isActive={activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId))}
+              isActive={toolActive?.(entry) ?? (activePanelId === entry.id || (entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)))}
               text={text}
             />
           ))}
@@ -486,7 +491,7 @@ export function RailToolIcons({ context, variant = "icons", scope = "all", coreF
       : (
         <div key={run.key} className="right-rail-tabs" role="group" aria-label={t("rail.chrome.panelsAria")}>
           {run.bindings.map(({ entry }) => {
-            const isActive = activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId));
+            const isActive = toolActive?.(entry) ?? (activePanelId === entry.id || (entry.activate !== undefined && entry.surfaceId !== undefined && openSurfaceIds.has(entry.surfaceId)));
             // 대화 중심 화면 패널 머리에서는 하위 탭을 내는 도구(목표)가 한 낱말 대신 그 탭들로 선다.
             return text && entry.conversationTabs
               ? <RailConversationTabs key={entry.id} entry={entry} tabs={entry.conversationTabs} context={context} language={language} isActive={isActive} />

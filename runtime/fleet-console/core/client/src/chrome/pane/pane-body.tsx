@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { OpenLinkHandler } from "@fleet-console/sdk/link";
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "@fleet-console/sdk/pane";
+import type { ConversationToolScope, PaneDescriptor, PaneMount, PaneOpenRequest, PanesCapability } from "@fleet-console/sdk/pane";
 import type {
   ClientApiCapability,
   ClientExpandedSurfacesCapability,
@@ -50,6 +50,8 @@ export interface PaneContextInput {
   readonly legacySurfaces?: ClientExpandedSurfacesCapability;
   readonly legacyLaunchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
   readonly openLink?: OpenLinkHandler;
+  /** 이 페인이 놓인 대화 — 데스크톱 대화의 도구 칸에서만 실린다. */
+  readonly conversation?: ConversationToolScope;
 }
 
 export function usePaneContext({
@@ -75,6 +77,7 @@ export function usePaneContext({
   legacySurfaces,
   legacyLaunchOperation,
   openLink,
+  conversation,
 }: PaneContextInput): HostPaneContext {
   const opening = useHostCapabilities();
   // 계약은 "페인이 실제로 헐릴 때 abort된다"고 말한다. cleanup이 없으면 signal은 영원히
@@ -150,7 +153,8 @@ export function usePaneContext({
     legacySurfaces,
     legacyLaunchOperation,
     ...(openLink === undefined ? {} : { openLink }),
-  }), [opening, api, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
+    ...(conversation === undefined ? {} : { conversation }),
+  }), [opening, api, conversation, descriptor.id, descriptor.role, focused, instanceId, language, legacyLaunchOperation, legacySurfaces, lifecycle, mobileBar, mount, openLink, panes, params, preferences, requestExtraWidth, sideBarVisible, theaterId, theme, visible, width]);
 
   return ctx;
 }

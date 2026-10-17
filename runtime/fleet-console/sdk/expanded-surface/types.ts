@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { OpenLinkHandler } from "../link/types.js";
+import type { ConversationToolScope } from "../pane/types.js";
 import type {
   ClientApiCapability,
   ClientLifecycleCapability,
@@ -25,6 +26,10 @@ import type {
  * 페인은 세로로 분할되고 개수 상한이 없다. 폭은 사용자가 분할선으로 조절하며,
  * 호스트가 가중치로 보관한다 — 플러그인은 자기 폭을 지시하지 못하고, 실제로 놓인
  * 폭은 `paneWidth`로 통보만 받는다(컨테이너 쿼리로 스스로 열화하라는 뜻이다).
+ *
+ * 어디에 서는지는 호스트가 정한다. 데스크톱 대화 화면은 표면 하나를 지금 대화의 도구 칸(대화 옆 분할 영역 또는 대화
+ * 아래 줄)으로 세우고, 그 대화의 배치로 기억한다. 폰 배치는 도구 시트·목적지 화면으로 세운다. 어느 자리든 이 계약의
+ * 필드(render·title·tools·aside·onClose·minPaneWidth)와 컨텍스트는 같다.
  */
 export interface ExpandedSurfaceDescriptor {
   /**
@@ -64,6 +69,12 @@ export interface ExpandedSurfaceDescriptor {
    * 믿어, 축소 화면도 페인도 없는 막다른 골목이 된다. 여기서 다시 닫기를 부르지 말 것.
    */
   readonly onClose?: (ctx: ExpandedSurfaceCloseContext) => void;
+  /**
+   * 닫기 전에 사람에게 한 번 물어야 하면 그 말을 돌려준다(예: Shell 에서 명령이 돌고 있다). null 이면 묻지 않고 닫는다.
+   * 사람이 닫는 길(닫기 단추·도구 아이콘)에서만 묻고, 표면이 스스로 부르는 `close()`는 묻지 않는다. 판단의 근거를 서버에 물어야 하면
+   * Promise 를 돌려줘도 된다 — 호스트는 답을 기다린 뒤 묻거나 닫는다. 지금 상태를 읽기만 하고 부작용을 내지 않는다.
+   */
+  readonly confirmClose?: (ctx: ExpandedSurfaceCloseContext) => LocalizedText | null | Promise<LocalizedText | null>;
   /** 페인 안쪽 좌측 열(문서 목차 등). 폭은 호스트가 정한다. */
   readonly aside?: (ctx: ExpandedSurfaceContext) => ReactNode;
   /**
@@ -120,6 +131,8 @@ export interface ExpandedSurfaceContext {
    * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
    */
   readonly sideBarVisible?: boolean;
+  /** 이 표면이 놓인 대화와 그 작업 위치 — 데스크톱 대화의 도구 칸에서만 실린다(`ConversationToolScope`). */
+  readonly conversation?: ConversationToolScope;
   /** 이 페인을 닫는다. */
   readonly close: () => void;
   /** 이 페인으로 포커스를 옮긴다. */

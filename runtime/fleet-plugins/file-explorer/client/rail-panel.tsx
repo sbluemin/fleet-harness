@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import type { PaneContext, PaneDescriptor, PaneSearchResult } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor } from "@fleet-console/sdk/rail";
@@ -28,6 +28,7 @@ import { FileTree, isFilterFocusShortcut, type FileTreeHandle } from "./tree.js"
 import { loadedMtimeOf, stalePathsAfterRefresh } from "./viewer/stale.js";
 import {
   activateStoredDocument,
+  claimFileExplorerView,
   getFileExplorerSnapshot,
   hydrateStoredSession,
   markDocStale,
@@ -170,6 +171,10 @@ function FileExplorerTreePane(ctx: PaneContext) {
   const contextScope = theaterId ?? "";
   const { selectedPath, openDocs, docStates, revealTarget, navigationError } = useFileExplorerViewState(contextScope);
   const label = useSyncExternalStore(ctx.consoleState.subscribe, () => ctx.consoleState.getTheaters().find((theater) => theater.id === theaterId)?.label ?? "", () => "");
+  // 트리의 루트 = 이 대화의 작업 위치(호스트가 파생한다 — 사람이 고르지 않는다). 대화 밖이면 Theater 루트다.
+  const location = ctx.conversation?.location.theaterId === theaterId ? ctx.conversation.location : null;
+  const rootPath = location?.relative ?? "";
+  const rootLabel = location?.label ?? "";
   const shellAction = useShellAction(ctx.shell, theaterId, selectedPath);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
@@ -188,6 +193,13 @@ function FileExplorerTreePane(ctx: PaneContext) {
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+
+  // 이 칸이 놓인 대화가 이 Theater 의 보기 상태를 갖는다 — 같은 Theater 의 다른 대화(다른 워크트리)가 열어 둔 문서가 여기에 뜨지 않게.
+  // 칠하기 전에 세워, 아래 복원이 이 대화의 상태와 저장된 세션을 읽는다.
+  const conversationKey = ctx.conversation?.key ?? null;
+  useLayoutEffect(() => { claimFileExplorerView(theaterId, conversationKey); }, [conversationKey, theaterId]);
+  // 트리의 펼침 기억도 대화마다 따로다 — 다른 대화가 드러낸 폴더(다른 워크트리)가 이 대화의 트리에 펼쳐져 있지 않게.
+  const treeScope = conversationKey === null ? contextScope : `${contextScope}@${conversationKey}`;
 
   useEffect(() => {
     hydrateStoredSession(contextScope || null);
@@ -329,16 +341,17 @@ function FileExplorerTreePane(ctx: PaneContext) {
     <div ref={rootRef} className="fexp-root" onKeyDown={handleRootKeyDown}>
       <div className="fexp-tree-pane">
         <div className="fexp-theater-head">
-          {label && <TheaterBadge label={label} initials={theaterInitials(label)} />}
+          {label && <TheaterBadge label={label} initials={theaterInitials(label)} {...(rootPath ? { detail: rootLabel } : {})} />}
           {navigationError && <span className="fexp-navigation-error">{t(`fileExplorer.navigation.${navigationError.reason}`)}</span>}
           <ShellActionNotice action={shellAction} t={t} />
         </div>
         <FileTree
-          key={contextScope}
+          key={`${treeScope}|${rootPath}`}
           ref={fileTreeRef}
           files={files}
           theaterId={theaterId}
-          contextKey={contextScope}
+          contextKey={treeScope}
+          rootPath={rootPath}
           selectedPath={selectedPath}
           revealTarget={revealTarget}
           onSelect={handleSelect}

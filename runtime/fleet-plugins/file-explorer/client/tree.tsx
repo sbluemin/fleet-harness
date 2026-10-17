@@ -40,6 +40,8 @@ export interface PluginFilesClient {
 
 interface FileTreeProps {
   readonly contextKey: string;
+  /** 트리 맨 위에 설 폴더(Theater 상대). 대화의 작업 위치가 워크트리·하위 폴더면 그 자리다. 생략하면 Theater 루트. */
+  readonly rootPath?: string;
   readonly files: PluginFilesClient;
   readonly theaterId: string | null;
   readonly selectedPath: string | null;
@@ -870,12 +872,13 @@ function isPermanentFolderError(code: string): boolean {
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
+  { contextKey, rootPath = "", files, theaterId, selectedPath, revealTarget, onSelect, onSearchSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, onActionFailed, language, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [currentPath, setCurrentPath] = useState<string>("");
+  // 트리 맨 위 폴더 — 대화의 작업 위치(없으면 Theater 루트). 루트가 바뀌면 트리는 새로 선다(부르는 쪽 key).
+  const [currentPath, setCurrentPath] = useState<string>(rootPath);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
   const [childResults, setChildResults] = useState<Map<string, FolderListResult>>(new Map());
@@ -979,7 +982,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     if (!theaterId) return;
     setResult(null);
     setError(null);
-    setCurrentPath("");
+    setCurrentPath(rootPath);
     setExpandedDirs(new Set());
     setChildResults(new Map());
     inFlightFoldersRef.current.clear();
@@ -1080,7 +1083,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     let active = true;
     const requestContextKey = contextKey;
     const loadRevealPath = async () => {
-      const rootResult = await files.listFolder();
+      const rootResult = await files.listFolder(rootPath || undefined);
       const nextResults = new Map<string, FolderListResult>();
       const nextExpanded = new Set<string>();
       const parts = revealTarget.relativePath.split("/").filter(Boolean);
@@ -1099,7 +1102,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         setShowHidden(true);
         saveShowHidden(true);
       }
-      setCurrentPath("");
+      setCurrentPath(rootPath);
       setResult(rootResult);
       emitEntriesRefreshed(rootResult);
       setChildResults((current) => {

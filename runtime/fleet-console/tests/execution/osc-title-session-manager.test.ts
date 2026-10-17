@@ -149,6 +149,15 @@ describe("OSC title session wiring", () => {
     pty!.emitData("\x1b[?1049l");
     prompt();
     expect(line()).toMatchObject({ promptOpen: true, inputPending: false });
+
+    // 붙여넣기(bracketed paste) 안의 줄 끝은 셸이 실행하지 않고 줄 버퍼에 넣는다 — 프롬프트에 그대로 있고 입력만 남는다.
+    // 그 줄을 Enter 로 실행해야 프롬프트를 떠나고, 명령이 끝나 다음 표식이 오면 돌아온다.
+    socket.type("\x1b[200~sleep 40\r\x1b[201~");
+    expect(line()).toMatchObject({ promptOpen: true, inputPending: true });
+    socket.type("\r");
+    expect(line()).toMatchObject({ promptOpen: false });
+    prompt();
+    expect(line()).toMatchObject({ promptOpen: true, inputPending: false });
     await manager.stop();
   });
 });

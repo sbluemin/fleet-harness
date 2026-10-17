@@ -12,11 +12,11 @@ import { GLOBAL_SHELL_SESSION_ID, registerShellRoutes } from "../../features/exe
 import type { TerminalLaunchResolver, TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 
 /**
- * Shell은 콘솔 하나에 하나뿐인 전역 표면이다. 이 파일이 지키는 것은 두 가지다 —
- * 세션 키가 Operation id가 아니라 상수라는 것, 그리고 cwd가 첫 기동에 못 박혀
- * 사용자가 끝낼 때까지 Theater를 따라 움직이지 않는다는 것.
+ * Shell은 Operation이 아니라 대화마다 하나씩 붙는 Console 표면이다. 이 파일이 지키는 것은 세 가지다 —
+ * 세션 키가 Operation id가 아니라 대화 키(없으면 기본 상수)라는 것, 대화마다 PTY가 따로라 한 대화의 닫기가
+ * 다른 대화의 Shell을 끝내지 않는다는 것, 그리고 cwd가 첫 기동에 못 박혀 사용자가 끝낼 때까지 움직이지 않는다는 것.
  */
-describe("console-global Shell session", () => {
+describe("conversation Shell sessions", () => {
   it("keys the PTY on a console-wide constant rather than an Operation id", async () => {
     const { call, issued } = mount();
 
@@ -24,6 +24,24 @@ describe("console-global Shell session", () => {
 
     expect(issued[0]!.sessionId).toBe(GLOBAL_SHELL_SESSION_ID);
     expect(issued[0]!.operationType).toBe("shell");
+  });
+
+  it("keeps one PTY per conversation and ends only the closed conversation's Shell", async () => {
+    const paths: Record<string, string> = { "theater-a": process.cwd(), "theater-b": os.homedir() };
+    const { call, issued, del, terminated } = mount({ resolveTheaterPath: (id: string) => paths[id] ?? null });
+
+    await call({ shell: "operation:a", cwd: { theaterId: "theater-a" } });
+    await call({ shell: "operation:b", cwd: { theaterId: "theater-b" } });
+    // 다른 대화에 다녀와 같은 대화의 Shell을 다시 붙여도 같은 PTY·같은 발밑이다.
+    await call({ shell: "operation:a", cwd: { theaterId: "theater-b" } });
+
+    const [a, b, again] = issued;
+    expect(a!.sessionId).not.toBe(b!.sessionId);
+    expect(again!.sessionId).toBe(a!.sessionId);
+    expect([a!.cwd, b!.cwd, again!.cwd]).toEqual([realpathSync(process.cwd()), realpathSync(os.homedir()), realpathSync(process.cwd())]);
+
+    await del("operation:a");
+    expect(terminated).toEqual([a!.sessionId]);
   });
 
   it("Theater 힌트가 없으면 사용자 홈에서 전역 Shell을 연다", async () => {
@@ -87,7 +105,7 @@ describe("console-global Shell session", () => {
     process.env.SHELL = "/bin/zsh";
     try {
       const shell = { live: true, foreground: "vim" as string | null, line: { promptSeen: false, promptOpen: false, inputPending: false } };
-      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
+      const { openAt, restartAt, call, issued, exit, terminated, responses, writes, launch, read } = mount({ resolveTheaterPath: () => fixture.root, shell, consoleDataDir: fixture.dataDir });
       const spawned = await launch(fixture.root);
 
       await openAt({ theaterId: "theater-a", path: "src" });
@@ -104,6 +122,9 @@ describe("console-global Shell session", () => {
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 409, body: { error: "shell_busy" } });
       expect(writes).toHaveLength(0);
+      // 닫기 확인의 근거 — 어느 길로 들어갔든 줄이 실행되면 그 Shell 은 프롬프트에 있지 않다고 답한다.
+      await read();
+      expect(responses.at(-1)).toMatchObject({ status: 200, body: { open: true, atPrompt: false } });
 
       // 프롬프트에 사용자가 치다 만 글자가 있으면 그 뒤에 `cd …`가 붙어 실행된다.
       shell.line = { promptSeen: true, promptOpen: true, inputPending: true };
@@ -112,6 +133,8 @@ describe("console-global Shell session", () => {
       expect(writes).toHaveLength(0);
 
       shell.line = { promptSeen: true, promptOpen: true, inputPending: false };
+      await read();
+      expect(responses.at(-1)).toMatchObject({ status: 200, body: { open: true, atPrompt: true } });
       await openAt({ theaterId: "theater-a", path: "src" });
       expect(responses.at(-1)).toMatchObject({ status: 200, body: { ok: true, action: "cd" } });
       expect(writes).toEqual([`cd -- '${path.join(fixture.root, "src")}'\r`]);
@@ -205,12 +228,12 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
 
   registerShellRoutes(ctx, runtime);
 
-  const invoke = async (routeKey: string, method: string, body: Record<string, unknown>) => {
+  const invoke = async (routeKey: string, method: string, body: Record<string, unknown>, query = "") => {
     const handler = routes.get(routeKey);
     if (!handler) throw new Error(`${routeKey} was not registered`);
     requestBody = body;
     await handler({
-      req: { method, url: `/api/v1/${routeKey}`, headers: {} } as http.IncomingMessage,
+      req: { method, url: `/api/v1/${routeKey}${query}`, headers: {} } as http.IncomingMessage,
       res: {} as http.ServerResponse,
       pathname: `/api/v1/${routeKey}`,
     } as Parameters<RouteHandler>[0]);
@@ -229,7 +252,8 @@ function mount(options: { resolveTheaterPath?: (id: string) => string | null; sh
     openAt: (body: Record<string, unknown>) => invoke("shell/open-at", "POST", body),
     restartAt: (body: Record<string, unknown>) => invoke("shell/restart-at", "POST", body),
     call: (body: Record<string, unknown>) => invoke("shell/ticket", "POST", body),
-    del: () => invoke("shell/session", "DELETE", {}),
+    read: (shell?: string) => invoke("shell/session", "GET", {}, shell === undefined ? "" : `?shell=${encodeURIComponent(shell)}`),
+    del: (shell?: string) => invoke("shell/session", "DELETE", {}, shell === undefined ? "" : `?shell=${encodeURIComponent(shell)}`),
     exit: (sessionId: string) => { for (const listener of exitListeners) listener(sessionId); },
   };
 }

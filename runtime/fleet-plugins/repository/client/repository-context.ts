@@ -1,5 +1,6 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
+import type { ConversationToolScope } from "@fleet-console/sdk/pane";
 
 /**
  * 저장소 화면이 호스트에게서 실제로 받는 것.
@@ -11,6 +12,8 @@ export interface RepositoryContext {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
   readonly language?: ConsoleLocale;
+  /** 이 화면이 놓인 대화 — 데스크톱 대화의 도구 칸이면 그 대화의 작업 위치가 선택된 작업 트리가 된다. */
+  readonly conversation?: ConversationToolScope;
 }
 
 export const REPOSITORY_SURFACE_ID = "repository";

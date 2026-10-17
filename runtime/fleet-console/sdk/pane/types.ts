@@ -168,6 +168,31 @@ export interface PaneCloseContext {
 export type PaneMount = "rail" | "expanded";
 
 /**
+ * 도구가 놓인 대화 — 데스크톱 대화 화면의 도구 칸이 그 대화에서 파생해 싣는다. 사람은 다시 고르지 않는다.
+ *
+ * - `key`: 그 대화를 가리키는 불투명한 이름. 대화마다 따로 두는 상태(Shell 인스턴스, 열어 둔 문서)의 열쇠로만 쓴다 —
+ *   뜻을 해석하지 않는다.
+ * - `location`: 그 대화의 작업 위치. Theater 루트 기준 상대 경로(POSIX, 빈 문자열이 루트)다 — 절대 경로는 싣지 않는다.
+ *   사령관은 Theater 루트, 지휘관은 그 에이전트 세션의 작업 폴더(워크트리면 그 워크트리)다.
+ *
+ * 대화가 없는 자리(폰 배치·오른쪽 사이드바·대화 밖 화면)에는 싣지 않는다 — 없으면 Theater 루트에서 일한다.
+ */
+export interface ConversationToolScope {
+  readonly key: string;
+  readonly location: ConversationWorkLocation;
+}
+
+export interface ConversationWorkLocation {
+  readonly theaterId: string;
+  /** Theater 루트 기준 상대 경로. 빈 문자열이면 루트. */
+  readonly relative: string;
+  /** `worktree`는 git 워크트리의 루트, `directory`는 그 밖의 하위 폴더다. */
+  readonly kind: "root" | "worktree" | "directory";
+  /** 사람에게 보일 이름(폴더 이름·브랜치). */
+  readonly label: string;
+}
+
+/**
  * 페인 본문이 받는 것.
  *
  * 기하·포커스·주소는 호스트가 소유하므로 여기서는 **통보**만 받는다. 폭을 지시하거나 포커스를
@@ -233,6 +258,8 @@ export interface PaneContext {
    * 모르는 호스트는 싣지 않는다(생략 = 알 수 없음).
    */
   readonly sideBarVisible?: boolean;
+  /** 이 페인이 놓인 대화와 그 작업 위치 — 데스크톱 대화의 도구 칸에서만 실린다(`ConversationToolScope`). */
+  readonly conversation?: ConversationToolScope;
   /**
    * 모바일 목적지 화면에서만 실리는 상단 막대 창구. 이 필드가 없다는 것이 「호스트가 막대를 그려 주지 않는다」는 말이다
    * (데스크톱 레일·확대 표면·모바일 도구 시트). 페인은 존재 여부로만 분기한다 — DOM의 모드 속성을 읽지 않는다.

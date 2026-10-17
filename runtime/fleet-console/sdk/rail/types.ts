@@ -1,6 +1,6 @@
 import type { OpenFileRequest, OpenWikiEntryRequest, OpenResult } from "../navigation/index.js";
 import type { PluginInstallContext } from "../plugin/types.js";
-import type { PaneTarget } from "../pane/types.js";
+import type { ConversationToolScope, PaneTarget } from "../pane/types.js";
 import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
@@ -25,6 +25,8 @@ export interface RailPanelContext {
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
   readonly launchOperation?: (pluginId: string | null, kind: OperationLaunchKind) => void;
+  /** 이 도구가 놓인 대화와 그 작업 위치 — 데스크톱 대화의 도구 캡슐·칸에서만 실린다(`ConversationToolScope`). */
+  readonly conversation?: ConversationToolScope;
   /** rail 동작이 Operation 대신 확대 표면을 열 때 쓴다. */
   readonly surfaces?: ClientExpandedSurfacesCapability;
   /** 도킹할 수 있는 동작 엔트리가 자기 패널을 열고 닫을 때 쓰는 창구. */

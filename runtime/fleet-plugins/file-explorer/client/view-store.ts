@@ -79,6 +79,38 @@ const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
 };
 
 const theaterStateMap = new Map<string, TheaterViewState>();
+/**
+ * 한 Theater 의 보기 상태(열린 문서·선택·드러낼 자리)를 지금 쓰는 대화. 데스크톱 대화의 도구 칸에서는 같은 Theater 의 두 대화가
+ * 서로의 문서를 보지 않는다(다른 워크트리의 파일이 다른 대화에 떠서 고쳐지는 일이 없게) — 대화가 바뀌면 떠나는 대화의 상태를 접어
+ * 두고 도착하는 대화의 것을 편다. 대화가 없는 자리(폰·오른쪽 사이드바)는 소유자 없이 지금처럼 Theater 하나다.
+ */
+const viewOwners = new Map<string, string>();
+const parkedViews = new Map<string, TheaterViewState>();
+
+function storageKey(theaterId: string): string {
+  const owner = viewOwners.get(theaterId);
+  return owner === undefined ? SESSION_KEY_PREFIX + theaterId : `${SESSION_KEY_PREFIX}${theaterId}@${owner}`;
+}
+
+/**
+ * 이 Theater 의 보기 상태를 그 대화의 것으로 세운다. 같은 대화면 아무 일도 하지 않는다. 처음 소유하는 대화는 지금의 상태를 이어받고,
+ * 그 뒤 다른 대화로 넘어가면 떠나는 대화의 상태를 접어 두고 도착하는 대화의 것(없으면 빈 상태 — 저장된 세션은 hydrate 가 그 대화의
+ * 열쇠로 읽는다)을 편다. 바뀌었으면 true.
+ */
+export function claimFileExplorerView(theaterId: string | null, owner: string | null | undefined): boolean {
+  if (!theaterId || !owner) return false;
+  const current = viewOwners.get(theaterId);
+  if (current === owner) return false;
+  if (current !== undefined) parkedViews.set(`${theaterId}\n${current}`, getOrDefault(theaterId));
+  viewOwners.set(theaterId, owner);
+  if (current !== undefined) {
+    const restored = parkedViews.get(`${theaterId}\n${owner}`) ?? null;
+    // 문서 내용 캐시(docStates)는 경로별 읽기 결과라 대화와 무관하다 — 그대로 둔다.
+    theaterStateMap.set(theaterId, restored ?? { ...DEFAULT_THEATER_STATE, docStates: getOrDefault(theaterId).docStates });
+    emit();
+  }
+  return true;
+}
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
 /** 문서 범위 읽기의 늦은 응답이 더 최근 범위를 덮지 않게 하는 메모리 전용 세대. */
@@ -361,10 +393,10 @@ function persistDocSession(theaterId: string, session: DocSession): void {
       documentPaneOpen: getOrDefault(theaterId).documentPaneOpen,
     };
     if (payload.openDocs.length === 0) {
-      localStorage.removeItem(SESSION_KEY_PREFIX + theaterId);
+      localStorage.removeItem(storageKey(theaterId));
       return;
     }
-    localStorage.setItem(SESSION_KEY_PREFIX + theaterId, JSON.stringify(payload));
+    localStorage.setItem(storageKey(theaterId), JSON.stringify(payload));
   } catch {
     // localStorage 접근 실패 무시
   }
@@ -372,7 +404,7 @@ function persistDocSession(theaterId: string, session: DocSession): void {
 
 function readDocSession(theaterId: string): (DocSession & { readonly documentPaneOpen: boolean }) | null {
   try {
-    const raw = localStorage.getItem(SESSION_KEY_PREFIX + theaterId);
+    const raw = localStorage.getItem(storageKey(theaterId));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedDocSession>;
     if (!Array.isArray(parsed.openDocs)) return null;

@@ -3,23 +3,26 @@ import type { ExpandedSurfaceContext } from "@fleet-console/sdk/expanded-surface
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { getT } from "../../agent/i18n/index.js";
-import { useShellSession } from "./shell-session-store.js";
+import { DEFAULT_SHELL_KEY, useShellSession } from "./shell-session-store.js";
 
 /**
- * 전역 Shell의 현재 위치만 보여 준다. 보고 있는 대화와 위치가 달라도 경고하지 않는다.
+ * 그 대화 Shell 의 현재 위치만 보여 준다. 대화의 작업 위치와 달라진 것은 칸 본문 위 한 줄이 말한다.
  */
 export function ShellTheaterBadge({ ctx }: { readonly ctx: ExpandedSurfaceContext }) {
-  const session = useShellSession();
+  const session = useShellSession(ctx.conversation?.key ?? DEFAULT_SHELL_KEY);
   const theaters = useTheaters(ctx);
   const t = getT(ctx.language ?? "en");
   if (!session?.open || !session.cwd) return null;
   const theater = session.cwd.theaterId ? theaters.find((item) => item.id === session.cwd?.theaterId) : undefined;
   const label = theater?.label ?? t("terminal.shell.outsideTheaters");
+  // 좁으면 끝 폴더(워크트리 이름)가 먼저 보여야 한다 — 긴 상대 경로는 끝 폴더 이름만 싣고, 온 경로는 말풍선이 말한다.
+  const relative = session.cwdTracked ? session.cwd.relative ?? "" : "";
+  const segments = relative.split("/").filter(Boolean);
   const detail = !session.cwdTracked
     ? t("terminal.shell.untracked")
-    : session.cwd.relative ? session.cwd.relative : undefined;
+    : segments.length > 1 ? segments[segments.length - 1] : relative || undefined;
   return (
-    <span className="global-shell-badge" aria-label={t("terminal.shell.badgeAria")}>
+    <span className="global-shell-badge" aria-label={t("terminal.shell.badgeAria")} title={relative ? `${label} · ${relative}` : label}>
       <TheaterBadge label={label} initials={theater ? theaterInitials(theater.label) : "--"} {...(detail ? { detail } : {})} tone="normal" />
     </span>
   );

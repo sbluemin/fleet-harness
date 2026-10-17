@@ -1,19 +1,27 @@
 import type { ShellOpenAtRequest, ShellOpenAtResult } from "./index.js";
 import { ApiError } from "../operations/browser.js";
 
-export function requestShellOpenAt(request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
-  return postShellPlacement("/api/v1/shell/open-at", request);
+/**
+ * 어느 Shell 을 옮길지 — 호스트가 채운다(지금 대화의 Shell). 플러그인은 `ctx.shell` 능력을 쓰고 이 값을 직접 넘기지 않는다.
+ * 생략하면 Console 기본 Shell 이다.
+ */
+export interface ShellPlacementTarget {
+  readonly shell?: string;
 }
 
-export function requestShellRestartAt(request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
-  return postShellPlacement("/api/v1/shell/restart-at", request);
+export function requestShellOpenAt(request: ShellOpenAtRequest, target: ShellPlacementTarget = {}): Promise<ShellOpenAtResult> {
+  return postShellPlacement("/api/v1/shell/open-at", request, target);
 }
 
-async function postShellPlacement(url: string, request: ShellOpenAtRequest): Promise<ShellOpenAtResult> {
+export function requestShellRestartAt(request: ShellOpenAtRequest, target: ShellPlacementTarget = {}): Promise<ShellOpenAtResult> {
+  return postShellPlacement("/api/v1/shell/restart-at", request, target);
+}
+
+async function postShellPlacement(url: string, request: ShellOpenAtRequest, target: ShellPlacementTarget): Promise<ShellOpenAtResult> {
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
+    body: JSON.stringify(target.shell === undefined ? request : { ...request, shell: target.shell }),
   });
   if (response.ok) return { ok: true };
   const body = await response.json().catch(() => null) as { error?: string } | null;

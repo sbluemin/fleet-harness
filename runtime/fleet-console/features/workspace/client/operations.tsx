@@ -23,7 +23,6 @@ import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
 import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-store.js";
-import { ExpandedSurfaceLayer } from "../../../core/client/src/chrome/expanded-surface/layer.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
@@ -537,7 +536,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       <SideBarEdgeDock />
       {operationMenuLayer}
-      <ExpandedSurfaceLayer />
     </div>
   );
   const shell = viewMode.effective === "mobile" ? (

@@ -13,12 +13,25 @@ interface SideBarState {
   readonly collapsed: boolean;
   /** 접힌 카드를 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정이며 아레나 인셋에 불참한다. */
   readonly peeking: boolean;
+  /**
+   * 창이 좁아 펼친 사이드바가 아바타만 남은 좁은 열로 물러난 상태(시안 v2 규칙 h-3). 저장하지 않는 화면 상태다 —
+   * 창을 넓히면 사람이 정한 폭으로 돌아온다. 접힘은 그대로 사람의 것이다.
+   */
+  readonly compact: boolean;
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_COLLAPSED = "fleet-console.operations.side-collapsed";
 const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
 export const MIN_EXPANDED_PX = 280;
+/** 좁은 창에서 아바타만 남는 사이드바 폭. */
+export const COMPACT_SIDE_BAR_PX = 56;
+/** 이 폭 이하의 창에서 사이드바가 좁은 열로 물러난다 — 대화(360)와 도구 한 열(300)을 남기려는 무렵이다. */
+const COMPACT_VIEWPORT_MAX_PX = 800;
+
+function readCompact(): boolean {
+  return typeof window !== "undefined" && window.innerWidth <= COMPACT_VIEWPORT_MAX_PX;
+}
 const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
@@ -30,7 +43,16 @@ let sideBarState: SideBarState = {
   width: readInitialWidth(),
   collapsed: readInitialCollapsed(),
   peeking: false,
+  compact: readCompact(),
 };
+if (typeof window !== "undefined") {
+  window.addEventListener("resize", () => {
+    const compact = readCompact();
+    if (sideBarState.compact === compact) return;
+    sideBarState = { ...sideBarState, compact };
+    notifyListeners();
+  });
+}
 let collapsedTheaterIds = readInitialCollapsedTheaters();
 // STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
 // 합류시키지 않아 새 페이지 로드마다 GROUP 축(false)에서 시작한다.
@@ -113,9 +135,10 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
   notifyCollapsedTheaterListeners();
 }
 
-/** 카드가 실제로 차지하는 폭 — 접힘은 0, 펼침은 모드와 관계없이 사용자가 정한 폭. */
+/** 카드가 실제로 차지하는 폭 — 접힘은 0, 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
 export function sideBarOccupiedWidth(state: SideBarState): number {
   if (state.collapsed) return 0;
+  if (state.compact) return COMPACT_SIDE_BAR_PX;
   return state.width;
 }
 
