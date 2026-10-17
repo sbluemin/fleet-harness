@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { flushSync } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { MONGLE_BASES, type MongleActivity, type MongleRole } from "@fleet-console/sdk/avatars";
 import { MongleAvatar } from "@fleet-console/sdk/components/mongle-avatar";
 import { IDENTITY_TONES, isIdentityTone, type IdentityTone } from "@fleet-console/sdk/operations/identity-tones";
@@ -16,8 +18,9 @@ import "./new-session-playground.css";
  * - 부르는 상태(대기·결정·검토의 발밑 빛, 안 본 답·오류·휴면 배지)는 놀이에 쓰지 않는다 — 쉼(idle)과 작업 중 연기(running+activity)만 쓴다.
  * - 「얼음」: 열(column)로 올라오는 input 이벤트만 듣는다(컴포저 코드는 건드리지 않음). 글이 있는 동안 멈춰 입력창 쪽을 보고, 1.6초 손을 떼면 다시 논다.
  * - 정지 장면: OS 움직임 줄이기·「아바타 차분하게」에서는 스케줄러 없이 소품 포즈로 선다. 숨은 창에서는 스케줄러가 쉰다.
- * - 연속: 무대는 화면이 아니라 이 모듈이 쥐고, 클라이언트 세션 동안 남는다. 화면을 닫으면 타이머를 멈추고, 다시 열면
- *   닫혀 있던 시간만큼 퇴장·등장을 한 번에 따라잡는다. 처음 열 때만 빈 무대에서 시작한다.
+ * - 연속: 무대와 그 DOM 은 이 모듈이 쥐고, Console 이 켜져 있는 동안 남는다. 화면을 떠나면 그 순간의 배우·탈것·
+ *   애니메이션을 멈추고, 어떤 길로 돌아오든 그 순간부터 이어 재생한다. 닫혀 있던 시간만큼 장면을 앞당기지 않는다.
+ *   입퇴장과 새 얼굴은 화면을 보고 있는 동안에만 일어난다. 같은 창을 새로고침하면 빈 무대에서 다시 시작한다.
  * - 몸을 좌우로 뒤집지 않는다(사령관 별은 왼쪽 위 고정) — 걷는 방향은 눈동자가 말한다.
  * - 높이가 모자라면 기구를 덜고 산책로만 남기며, 그마저 모자라면 층을 접는다. 폭이 좁으면 인원과 기구 수를 줄인다.
  */
@@ -36,8 +39,8 @@ const STAGE_CAP = 6;
 const WAVE_PERIOD_MS = 70_000;
 /** 연출이 인원을 목표에 맞추는 간격. */
 const DIRECTOR_MS = 2_000;
-/** 이보다 짧게 닫혔으면 인원을 바꾸지 않는다 — 다시 그리기만으로는 장면이 점프하지 않는다. */
-const CATCH_UP_MIN_MS = 500;
+/** 다시 들어온 직후 이 시간 동안은 새 등장을 열지 않는다. 떠나기 전에 예약된 등장이 곧장 새 얼굴을 들이지 않게 한다. */
+const REENTRY_HOLD_MS = 3_000;
 /** 미끄럼틀 등장 — 꼭대기에서 나타나 내려온다. CSS pg-slide-in 과 짝이다. */
 const SLIDE_IN_MS = 2600;
 const PEEK_MS = 1500;
@@ -92,7 +95,7 @@ function randomRole(): MongleRole {
 }
 
 interface Seat { id: string | null; seated: boolean }
-interface Item { readonly kind: ItemKind; readonly cx: number; readonly seats: Seat[]; going: boolean }
+interface Item { readonly kind: ItemKind; cx: number; readonly seats: Seat[]; going: boolean }
 
 type ActorMode = "out" | "walk" | "rest" | "act" | "chat" | "ride";
 interface Ride { readonly item: number; readonly seat: number; readonly ox: number; readonly oy: number }
@@ -129,14 +132,19 @@ interface Layout {
 /**
  * 무대 스케줄러 — 배우·기구 모델을 쥐고 타이머로 다음 행동을 고른다. 위치는 배우 바깥 div 의 transform 전이(합성기)로 옮기고,
  * 기구의 반복 동작은 CSS 키프레임이 맡는다. 바뀔 때마다 `publish` 로 React 에 다시 그리라고 알린다.
- * 화면이 닫히면 `park` 가 타이머를 끊고, 다시 열릴 때 `resume` 이 모은 시간을 다음 `setup` 이 한 번에 반영한다.
+ * 화면을 떠나면 `park` 가 타이머와 CSS 애니메이션을 그 순간에 멈추고, `resume` 이 남은 시간부터 다시 돌린다.
  */
 class PlaygroundStage {
   actors: Actor[] = [];
   items: Item[] = [];
   layout: Layout | null = null;
   frozen = false;
+  /** 입력으로 멈춰 입력창을 보는 중. 그리기는 이 값으로 눈동자를 내린다. */
+  watching = false;
   private dynamic = true;
+  /** 한 번이라도 장면을 세웠다. 이후 같은 폭에서는 배우·기구를 다시 만들지 않는다. */
+  private booted = false;
+  private structureKey = "";
   private entryTimer: ReturnType<typeof setTimeout> | null = null;
   private entryRemaining: number | null = null;
   private entryDeadline = 0;
@@ -155,10 +163,10 @@ class PlaygroundStage {
   private companionRemaining: number | null = null;
   private companionDeadline = 0;
   private companionResume: (() => void) | null = null;
-  /** 화면을 닫아 타이머를 멈춰 둔 시각. null 이면 무대가 열려 있거나 아직 한 번도 닫히지 않았다. */
-  private parkedAt: number | null = null;
-  /** 다시 열린 뒤 다음 setup 이 한 번에 반영할 닫힌 시간. 타이머로 흘리지 않는다. */
-  private pendingClosedMs = 0;
+  /** 새 세션 화면 밖에 무대를 치워 둔 상태. 닫혀 있던 시간은 장면에 더하지 않는다. */
+  private held = false;
+  /** `pause` 해 둔 CSS 애니메이션·전이와, 멈추기 직전의 currentTime. */
+  private pausedAnimations: { animation: Animation; time: number }[] = [];
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
   private readonly kindOrder = shuffle(ITEM_KINDS);
 
@@ -168,10 +176,46 @@ class PlaygroundStage {
   private get standY(): number { return this.ground - SIZE; }
   private get maxX(): number { return (this.layout?.width ?? 0) - SIZE - 6; }
 
-  /** 크기가 바뀌거나 움직임 규칙이 바뀌면 장면을 새로 세운다. 이미 나온 배우는 다시 등장하지 않고 제자리 근처에 선다. */
+  /** 띠·기구 수·인원 상한·움직임 규칙. 배율은 빼서, 같은 폭으로 다시 열 때 장면을 다시 세우지 않는다. */
+  private structureOf(layout: Layout | null, dynamic: boolean): string {
+    if (!layout) return `none:${dynamic}`;
+    const cap = layout.width < 520 ? 3 : layout.width < 820 ? 4 : STAGE_CAP;
+    const itemCount = !layout.withItems ? 0 : layout.width >= 820 ? 4 : layout.width >= 470 ? 2 : layout.width >= 230 ? 1 : 0;
+    return `${layout.band}:${itemCount}:${cap}:${dynamic}`;
+  }
+
+  /** 기구 좌표만 새 폭에 맞춘다. 좌석과 타고 있는 배우는 그대로다. */
+  private placeItems(): void {
+    const layout = this.layout;
+    const count = this.items.length;
+    if (!layout || count === 0) return;
+    this.items.forEach((item, index) => {
+      item.cx = (layout.width * (index + 0.5)) / count;
+    });
+  }
+
+  /**
+   * 크기가 바뀌면 장면을 맞춘다. 이미 같은 구조로 서 있으면 배우·탈것·연출을 건드리지 않고 배율만 바꾼다.
+   * 폭 칸이 달라질 때만 기구를 다시 만들고, 그때도 얼굴과 자리는 남긴 채 탈것만 푼다.
+   */
   setup(layout: Layout | null, dynamic: boolean): void {
-    // StrictMode 의 effect 재부착(setup→cleanup→setup)은 같은 무대를 다시 쓴다 — 앞선 dispose 를 되살린다.
     this.disposed = false;
+    const key = this.structureOf(layout, dynamic);
+    if (this.booted && layout && key === this.structureKey) {
+      const previous = this.layout;
+      this.layout = layout;
+      this.dynamic = dynamic;
+      const scaleSame = previous !== null && previous.scale.toFixed(2) === layout.scale.toFixed(2) && Math.round(previous.width / 8) === Math.round(layout.width / 8);
+      if (!scaleSame) {
+        this.placeItems();
+        this.publish();
+      }
+      return;
+    }
+    if (this.booted && layout && this.dynamic === dynamic) {
+      this.retarget(layout, key);
+      return;
+    }
     this.clearTimers();
     this.layout = layout;
     this.dynamic = dynamic;
@@ -179,6 +223,8 @@ class PlaygroundStage {
     if (!layout) {
       this.actors = [];
       this.items = [];
+      this.booted = true;
+      this.structureKey = key;
       this.publish();
       return;
     }
@@ -191,35 +237,45 @@ class PlaygroundStage {
       seats: Array.from({ length: ITEM_SEATS[kind] }, () => ({ id: null, seated: false })),
       going: false,
     }));
-    // 이미 무대에 선 배우는 남기고(상한까지) 기구에서 내려 바닥에 세운다. 퇴장하던 배우도 그 자리에 선다.
     this.actors = this.actors.filter((actor) => actor.present).slice(0, this.cap);
     for (const actor of this.actors) {
       Object.assign(actor, { mode: "rest", x: clamp(actor.x, 6, this.maxX), y: this.standY, dur: 0, look: 0, walking: false, running: false, act: null, ride: null, flourish: null, exiting: false, remaining: null });
     }
+    this.booted = true;
+    this.structureKey = key;
     if (!dynamic) {
-      // 정지 장면은 시계가 없다. 닫혀 있던 시간을 인원 변화로 바꾸지 않는다.
-      this.pendingClosedMs = 0;
       while (this.actors.length < this.cap) this.actors.push(this.cast());
       this.stillScene();
       this.publish();
       return;
     }
-    let arrivals = 0;
-    if (this.pendingClosedMs >= CATCH_UP_MIN_MS) {
-      const elapsed = this.pendingClosedMs;
-      this.pendingClosedMs = 0;
-      arrivals = this.advanceClosed(elapsed);
-    } else {
-      this.pendingClosedMs = 0;
-    }
     for (const actor of this.actors) this.schedule(actor, rand(300, 1400), () => this.tick(actor));
-    // 따라잡기로 새로 올 얼굴은 이미 서 있지 않고, 다시 열린 직후 등장 연출로 들어온다.
-    for (let index = 0; index < arrivals; index += 1) {
-      if (this.presentCount() >= this.cap) break;
-      this.enter(this.cast(), Math.random() < 0.5, false);
-    }
     this.publish();
     this.direct();
+  }
+
+  /** 폭 칸이 바뀌었을 때의 최소 보정. 누구인지는 유지하고, 없어진 기구의 탈것만 푼다. */
+  private retarget(layout: Layout, key: string): void {
+    this.layout = layout;
+    this.cap = layout.width < 520 ? 3 : layout.width < 820 ? 4 : STAGE_CAP;
+    const itemCount = !layout.withItems ? 0 : layout.width >= 820 ? 4 : layout.width >= 470 ? 2 : layout.width >= 230 ? 1 : 0;
+    const kinds = this.kindOrder.slice(0, itemCount);
+    this.items = kinds.map((kind, index) => ({
+      kind,
+      cx: (layout.width * (index + 0.5)) / Math.max(1, itemCount),
+      seats: Array.from({ length: ITEM_SEATS[kind] }, () => ({ id: null, seated: false })),
+      going: false,
+    }));
+    for (const actor of this.actors) {
+      actor.ride = null;
+      actor.flourish = null;
+      if (actor.mode === "ride") actor.mode = "rest";
+      actor.x = clamp(actor.x, 6, this.maxX);
+      actor.y = this.standY;
+      actor.dur = 0;
+    }
+    this.structureKey = key;
+    this.publish();
   }
 
   /** 베이스 15종 × 정체성 톤 8색. 이번 세션에 안 나온 조합을 먼저 돌리고, 지금 무대에 있는 얼굴은 건너뛴다. */
@@ -547,7 +603,7 @@ class PlaygroundStage {
     actor.timer = setTimeout(() => {
       actor.timer = null;
       actor.task = null;
-      if (!this.disposed && !this.frozen) task();
+      if (!this.disposed && !this.frozen && !this.held) task();
     }, ms);
   }
   private cancel(actor: Actor): void {
@@ -791,35 +847,15 @@ class PlaygroundStage {
     this.rest(actor, rand(400, 1200));
   }
 
-  // ── 얼음·숨은 창 ──
-  /** 멈춘다 — 걷던 몽글이는 지금 자리에 서고, 남은 타이머는 남은 시간을 기억한다. 기구·연기는 CSS 가 그 자리에서 멈춘다. */
-  freeze(): void {
-    if (this.frozen) return;
-    this.frozen = true;
+  // ── 얼음·떠난 화면 ──
+  /** 타이머만 멈춘다. 배우의 자리·탈것·연출은 그대로 두고, 남은 시간만 기억한다. */
+  private pauseClock(): void {
     const now = performance.now();
     for (const actor of this.actors) {
-      if (actor.mode === "walk" && actor.present) {
-        this.cancel(actor);
-        // 기구로 가던 길이면 앉지 않은 예약을 푼다 — 녹은 뒤 새로 고르므로, 남기면 그 자리는 다시 쓰이지 않는다.
-        for (const item of this.items) {
-          item.seats.forEach((seat, index) => {
-            if (seat.id === actor.cast.id && !seat.seated) item.seats[index] = { id: null, seated: false };
-          });
-        }
-        const x = this.pinX(actor.cast.id);
-        if (x !== null) actor.x = x;
-        actor.dur = 0;
-        actor.walking = false;
-        actor.look = 0;
-        actor.mode = "rest";
-        actor.remaining = -1;
-        continue;
-      }
-      if (actor.timer) {
-        clearTimeout(actor.timer);
-        actor.timer = null;
-        actor.remaining = Math.max(0, actor.deadline - now);
-      }
+      if (!actor.timer) continue;
+      clearTimeout(actor.timer);
+      actor.timer = null;
+      actor.remaining = Math.max(0, actor.deadline - now);
     }
     if (this.entryTimer) {
       clearTimeout(this.entryTimer);
@@ -836,102 +872,114 @@ class PlaygroundStage {
       this.companionTimer = null;
       this.companionRemaining = Math.max(0, this.companionDeadline - now);
     }
+  }
+
+  /** 멈춰 둔 타이머를 남은 시간부터 다시 건다. `minLeadMs` 는 새 등장 예약에만 적용한다. */
+  private rearmClock(minLeadMs: number): void {
+    this.actors.forEach((actor, index) => {
+      if (!actor.present) return;
+      const task = actor.task;
+      if (actor.exiting && (actor.remaining === null || !task)) { this.walkOff(actor); return; }
+      if (actor.remaining === null || !task) {
+        if (actor.mode === "rest" || actor.mode === "walk") this.schedule(actor, 200 + index * 260, () => this.tick(actor));
+        return;
+      }
+      this.schedule(actor, actor.remaining, task);
+    });
+    const lead = (ms: number) => Math.max(minLeadMs, ms);
+    if (this.entryRemaining !== null && this.entryResume) {
+      const resume = this.entryResume;
+      this.armEntry(lead(this.entryRemaining), resume);
+      this.entryRemaining = null;
+    }
+    if (this.directorRemaining !== null && this.directorResume) {
+      const resume = this.directorResume;
+      this.armDirector(lead(this.directorRemaining), resume);
+      this.directorRemaining = null;
+    }
+    if (this.companionRemaining !== null && this.companionResume) {
+      const resume = this.companionResume;
+      this.armCompanion(lead(this.companionRemaining), resume);
+      this.companionRemaining = null;
+    }
+  }
+
+  /** 같은 DOM 에 붙은 CSS 애니메이션과 transform 전이를 멈춘다. currentTime 은 그 객체에 남는다. */
+  private pauseAnimations(): void {
+    const root = sceneHost;
+    if (!root || this.pausedAnimations.length > 0) return;
+    this.pausedAnimations = root.getAnimations({ subtree: true }).map((animation) => ({
+      animation,
+      time: Number(animation.currentTime ?? 0),
+    }));
+    for (const paused of this.pausedAnimations) paused.animation.pause();
+  }
+
+  private playAnimations(): void {
+    for (const paused of this.pausedAnimations) {
+      try {
+        paused.animation.currentTime = paused.time;
+        paused.animation.play();
+      } catch { /* 이미 끝난 전이는 다시 켜지 않는다. */ }
+    }
+    this.pausedAnimations = [];
+  }
+
+  /** 입력·숨은 창 — 그 자리에서 멈추고, 풀리면 같은 진행부터 이어 간다. 자리를 옮기거나 탈것에서 내리지 않는다. */
+  freeze(): void {
+    if (this.frozen || this.held) return;
+    this.frozen = true;
+    this.pauseClock();
+    this.pauseAnimations();
     this.publish();
   }
 
   thaw(): void {
     if (!this.frozen) return;
     this.frozen = false;
-    this.actors.forEach((actor, index) => {
-      if (!actor.present) return;
-      const task = actor.task;
-      if (actor.exiting && (actor.remaining === -1 || !task)) { this.walkOff(actor); return; }
-      if (actor.remaining === -1 || !task) {
-        if (actor.mode === "rest" || actor.mode === "walk") this.schedule(actor, 200 + index * 260, () => this.tick(actor));
-        return;
-      }
-      if (actor.remaining !== null) this.schedule(actor, actor.remaining, task);
-    });
-    if (this.entryRemaining !== null && this.entryResume) {
-      const resume = this.entryResume;
-      this.armEntry(this.entryRemaining, resume);
-      this.entryRemaining = null;
-    }
-    if (this.directorRemaining !== null && this.directorResume) {
-      const resume = this.directorResume;
-      this.armDirector(this.directorRemaining, resume);
-      this.directorRemaining = null;
-    }
-    if (this.companionRemaining !== null && this.companionResume) {
-      const resume = this.companionResume;
-      this.armCompanion(this.companionRemaining, resume);
-      this.companionRemaining = null;
-    }
+    this.playAnimations();
+    this.rearmClock(0);
     this.publish();
   }
 
   get isDynamic(): boolean { return this.dynamic; }
+  get isHeld(): boolean { return this.held; }
 
   dispose(): void {
     this.disposed = true;
     this.clearTimers();
   }
 
-  /** 화면이 닫히면 타이머와 등장 예약을 끊는다. 배우·덱·기구 순서는 모듈 위에 남긴다. */
-  park(): void {
-    if (this.parkedAt !== null) return;
-    this.parkedAt = performance.now();
-    this.frozen = false;
-    this.clearTimers();
-    for (const actor of this.actors) {
-      actor.walking = false;
-      actor.dur = 0;
-      actor.flourish = null;
-    }
-  }
-
-  /** 다시 열릴 때 닫혀 있던 시간을 모아 둔다. 타이머는 여기서 켜지 않는다. */
-  resume(): void {
-    if (this.parkedAt === null) return;
-    this.pendingClosedMs += Math.max(0, performance.now() - this.parkedAt);
-    this.parkedAt = null;
-  }
-
   /**
-   * 닫혀 있던 시간만큼 인원 물결을 한 번에 반영한다. 타이머는 켜지 않는다.
-   * 목표보다 많은 인원은 오래 머문 순으로 떠나고, 그에 더해 한 명 이상은 새 얼굴로 바뀐다.
-   * 9초마다 교체가 한 명씩 늘어난다. 남는 인원은 물결 목표를 지키며, 목표는 2명 아래로 내려가지 않는다.
-   * 새로 올 수는 돌려주고, 얼굴은 호출부가 등장 연출로 들인다.
+   * 새 세션 화면이 걷힐 때. 배우·탈것·연출·남은 예약은 모듈에 두고, 타이머와 CSS 만 그 순간에 멈춘다.
+   * 닫혀 있던 시간은 장면에 더하지 않는다.
    */
-  private advanceClosed(elapsedMs: number): number {
-    if (elapsedMs <= 0 || !this.layout) return 0;
-    const want = this.targetCount();
-    const present = this.actors.filter((actor) => actor.present && !actor.exiting).sort((a, b) => a.enteredAt - b.enteredAt);
-    const surplus = Math.max(0, present.length - want);
-    const replace = present.length > 0 ? 1 + Math.floor(elapsedMs / 9_000) : 0;
-    const leave = Math.min(present.length, surplus + replace);
-    const staying = present.slice(leave);
-    const kept = staying.length > want ? staying.slice(staying.length - want) : staying;
-    const add = Math.max(0, want - kept.length);
-    this.actors = kept;
-    const count = kept.length;
-    kept.forEach((actor, index) => {
-      actor.mode = "rest";
-      actor.ride = null;
-      actor.flourish = null;
-      actor.exiting = false;
-      actor.running = false;
-      actor.act = null;
-      actor.look = 0;
-      actor.walking = false;
-      actor.dur = 0;
-      actor.timer = null;
-      actor.task = null;
-      actor.remaining = null;
-      actor.y = this.standY;
-      actor.x = clamp(((index + 0.5) / Math.max(1, count)) * (this.layout?.width ?? 0) - SIZE / 2 + rand(-40, 40), 6, this.maxX);
-    });
-    return add;
+  park(): void {
+    if (this.held) return;
+    if (!this.frozen) this.pauseClock();
+    else {
+      // 입력으로 멈춰 있던 클래스(is-frozen)는 전이를 계속 붙잡는다. 걷히기 전에 풀고, 아래 pause 가 다시 잡는다.
+      this.frozen = false;
+      this.watching = false;
+      this.publish();
+    }
+    this.pauseAnimations();
+    this.watching = false;
+    this.held = true;
+  }
+
+  /** 같은 창에서 다시 들어올 때. 멈춰 둔 애니메이션을 이어서 재생하고, 새 등장은 잠깐 미룬다. */
+  resume(): void {
+    if (!this.held) return;
+    this.held = false;
+    this.playAnimations();
+    this.rearmClock(REENTRY_HOLD_MS);
+  }
+
+  setWatching(value: boolean): void {
+    if (this.watching === value) return;
+    this.watching = value;
+    this.publish();
   }
 }
 
@@ -948,15 +996,158 @@ function acquireSessionStage(): PlaygroundStage {
   return sessionStage;
 }
 
-/** 새 세션 화면의 놀이터 층. 출연진은 Theater 와 무관하게 베이스와 정체성 톤의 조합에서 뽑는다. */
+/** 새 세션 화면의 놀이터 층. 장면 DOM 은 이 모듈의 React 루트에 남아, 화면을 떠나도 애니메이션 객체가 없어지지 않는다. */
+let sceneHost: HTMLDivElement | null = null;
+let sceneRoot: ReturnType<typeof createRoot> | null = null;
+
+function sceneParking(): HTMLElement {
+  const existing = document.querySelector<HTMLElement>(".pg-scene-park");
+  if (existing) return existing;
+  const dock = document.createElement("div");
+  dock.className = "pg-scene-park";
+  document.body.appendChild(dock);
+  return dock;
+}
+
+function ensureSceneHost(): HTMLDivElement {
+  if (!sceneHost || !sceneRoot) {
+    const host = document.createElement("div");
+    host.className = "pg-scene-host";
+    const root = createRoot(host);
+    flushSync(() => { root.render(<PlaygroundScene />); });
+    sceneHost = host;
+    sceneRoot = root;
+  }
+  return sceneHost;
+}
+
+/** 열려 있는 새 세션 칸에 측정·입력·창 가시기를 붙인다. 장면을 지우지는 않는다. */
+function bindPlayground(layer: HTMLElement, stage: PlaygroundStage): () => void {
+  const body = layer.closest<HTMLElement>(".new-session-body");
+  const column = layer.closest<HTMLElement>(".new-session");
+  if (!body) return () => {};
+  const cards = body.querySelector<HTMLElement>(".new-session-cards");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const root = document.documentElement;
+  const still = () => reduced.matches || root.dataset.avatarMotion === "calm";
+
+  let typing = false;
+  let lastKey = "";
+  const measure = (force = false) => {
+    if (stage.isHeld) return;
+    const box = layer.getBoundingClientRect();
+    const cardBottom = cards ? cards.getBoundingClientRect().bottom - box.top : 0;
+    const room = box.height - cardBottom - 10;
+    let layout: Layout | null = null;
+    const fullScale = Math.min(1, room / BAND_FULL);
+    if (fullScale >= MIN_SCALE) layout = { width: box.width / fullScale, band: BAND_FULL, scale: fullScale, withItems: true };
+    else {
+      const walkScale = Math.min(1, room / BAND_WALK);
+      if (walkScale >= MIN_SCALE) layout = { width: box.width / walkScale, band: BAND_WALK, scale: walkScale, withItems: false };
+    }
+    const key = layout ? `${Math.round(layout.width / 8)}:${layout.band}:${layout.scale.toFixed(2)}:${still()}` : `none:${still()}`;
+    if (!force && key === lastKey) return;
+    lastKey = key;
+    stage.setup(layout, !still());
+    if (stage.isDynamic && (document.hidden || typing)) stage.freeze();
+  };
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  // 첫 무대는 크기가 자리 잡은 뒤에 세운다 — 다른 화면에서 넘어오면 열 폭이 전이하는 동안 기구 수가 달라 보이지 않게.
+  let settled = false;
+  let settleFrame = 0;
+  let settleKey = "";
+  let stableFrames = 0;
+  const settleStart = performance.now();
+  const settle = () => {
+    const box = layer.getBoundingClientRect();
+    const key = `${box.width}x${box.height}:${cards?.getBoundingClientRect().bottom ?? 0}`;
+    stableFrames = key === settleKey ? stableFrames + 1 : 0;
+    settleKey = key;
+    if (stableFrames >= 10 || performance.now() - settleStart > 1200) {
+      settled = true;
+      measure(true);
+      return;
+    }
+    settleFrame = requestAnimationFrame(settle);
+  };
+  const observer = new ResizeObserver(() => {
+    if (!settled || stage.isHeld) return;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => measure(), 180);
+  });
+  observer.observe(layer);
+  if (cards) observer.observe(cards);
+  settleFrame = requestAnimationFrame(settle);
+
+  const restage = () => { if (settled && !stage.isHeld) measure(true); };
+  reduced.addEventListener("change", restage);
+  const calmObserver = new MutationObserver(restage);
+  calmObserver.observe(root, { attributes: true, attributeFilter: ["data-avatar-motion"] });
+
+  let thawTimer: ReturnType<typeof setTimeout> | null = null;
+  const release = () => {
+    typing = false;
+    stage.setWatching(false);
+    if (!document.hidden && !stage.isHeld) stage.thaw();
+  };
+  const onInput = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLTextAreaElement) || !stage.isDynamic || stage.isHeld) return;
+    if (thawTimer) clearTimeout(thawTimer);
+    if (target.value.trim().length === 0) { release(); return; }
+    typing = true;
+    stage.setWatching(true);
+    stage.freeze();
+    thawTimer = setTimeout(release, FREEZE_IDLE_MS);
+  };
+  column?.addEventListener("input", onInput);
+  const onVisibility = () => {
+    if (!stage.isDynamic || stage.isHeld) return;
+    if (document.hidden) stage.freeze();
+    else if (!typing) stage.thaw();
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+
+  return () => {
+    cancelAnimationFrame(settleFrame);
+    observer.disconnect();
+    calmObserver.disconnect();
+    reduced.removeEventListener("change", restage);
+    column?.removeEventListener("input", onInput);
+    document.removeEventListener("visibilitychange", onVisibility);
+    if (resizeTimer) clearTimeout(resizeTimer);
+    if (thawTimer) clearTimeout(thawTimer);
+  };
+}
+
 export function NewSessionPlayground() {
-  const layerRef = useRef<HTMLDivElement | null>(null);
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  const stage = acquireSessionStage();
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    if (!slot) return;
+    const host = ensureSceneHost();
+    host.classList.remove("is-parked");
+    slot.appendChild(host);
+    const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
+    const cleanup = layer ? bindPlayground(layer, stage) : () => {};
+    stage.resume();
+    return () => {
+      cleanup();
+      stage.park();
+      host.classList.add("is-parked");
+      sceneParking().appendChild(host);
+    };
+  }, [stage]);
+  return <div ref={slotRef} className="new-session-playground-slot" aria-hidden="true" />;
+}
+
+/** 모듈에 한 번만 마운트되는 장면. 새 세션 칸이 사라져도 이 트리는 풀리지 않는다. */
+function PlaygroundScene() {
   const actorRefs = useRef(new Map<string, HTMLDivElement>());
   const [, setVersion] = useState(0);
-  const [watching, setWatching] = useState(false);
   const stage = acquireSessionStage();
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     sessionPublish = () => setVersion((value) => value + 1);
     sessionPinX = (id) => {
       const element = actorRefs.current.get(id);
@@ -965,120 +1156,12 @@ export function NewSessionPlayground() {
       if (!transform || transform === "none") return null;
       return new DOMMatrixReadOnly(transform).m41;
     };
-
-    const layer = layerRef.current;
-    const body = layer?.parentElement;
-    const column = layer?.closest<HTMLElement>(".new-session");
-    if (!layer || !body) {
-      sessionPublish = () => {};
-      sessionPinX = () => null;
-      return;
-    }
-    // 닫혀 있던 시간은 여기서만 모은다. 반영은 크기가 잡힌 setup 이 하고, 그 전까지 타이머는 멈춰 있다.
-    stage.resume();
-    const cards = body.querySelector<HTMLElement>(".new-session-cards");
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const root = document.documentElement;
-    const still = () => reduced.matches || root.dataset.avatarMotion === "calm";
-
-    let typing = false;
-    let lastKey = "";
-    const measure = (force = false) => {
-      const box = layer.getBoundingClientRect();
-      const cardBottom = cards ? cards.getBoundingClientRect().bottom - box.top : 0;
-      const room = box.height - cardBottom - 10;
-      let layout: Layout | null = null;
-      const fullScale = Math.min(1, room / BAND_FULL);
-      if (fullScale >= MIN_SCALE) layout = { width: box.width / fullScale, band: BAND_FULL, scale: fullScale, withItems: true };
-      else {
-        const walkScale = Math.min(1, room / BAND_WALK);
-        if (walkScale >= MIN_SCALE) layout = { width: box.width / walkScale, band: BAND_WALK, scale: walkScale, withItems: false };
-      }
-      const key = layout ? `${Math.round(layout.width / 8)}:${layout.band}:${layout.scale.toFixed(2)}:${still()}` : `none:${still()}`;
-      if (!force && key === lastKey) return;
-      lastKey = key;
-      stage.setup(layout, !still());
-      if (stage.isDynamic && (document.hidden || typing)) stage.freeze();
-    };
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-    // 첫 무대는 크기가 자리 잡은 뒤에 세운다 — 다른 화면(예: 오른쪽 패널이 있는 사령관 채팅)에서 넘어오면 열 폭이 전이하는 동안
-    // 첫 측정과 그 뒤 측정의 기구 수·좌표가 달라 배치가 한 번 바뀌어 보인다. 층·카드 크기가 10프레임 그대로이거나 1.2초가 지나면 세운다.
-    let settled = false;
-    let settleFrame = 0;
-    let settleKey = "";
-    let stableFrames = 0;
-    const settleStart = performance.now();
-    const settle = () => {
-      const box = layer.getBoundingClientRect();
-      const key = `${box.width}x${box.height}:${cards?.getBoundingClientRect().bottom ?? 0}`;
-      stableFrames = key === settleKey ? stableFrames + 1 : 0;
-      settleKey = key;
-      if (stableFrames >= 10 || performance.now() - settleStart > 1200) {
-        settled = true;
-        measure(true);
-        return;
-      }
-      settleFrame = requestAnimationFrame(settle);
-    };
-    const observer = new ResizeObserver(() => {
-      if (!settled) return;
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => measure(), 180);
-    });
-    observer.observe(layer);
-    if (cards) observer.observe(cards);
-    settleFrame = requestAnimationFrame(settle);
-
-    const restage = () => { if (settled) measure(true); };
-    reduced.addEventListener("change", restage);
-    const calmObserver = new MutationObserver(restage);
-    calmObserver.observe(root, { attributes: true, attributeFilter: ["data-avatar-motion"] });
-
-    // 「얼음」 — 열로 올라오는 input 만 듣는다. 컴포저(textarea)에 글이 있으면 멈추고 1.6초 손을 떼면 다시 논다.
-    let thawTimer: ReturnType<typeof setTimeout> | null = null;
-    const release = () => {
-      typing = false;
-      setWatching(false);
-      if (!document.hidden) stage.thaw();
-    };
-    const onInput = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLTextAreaElement) || !stage.isDynamic) return;
-      if (thawTimer) clearTimeout(thawTimer);
-      if (target.value.trim().length === 0) { release(); return; }
-      typing = true;
-      setWatching(true);
-      stage.freeze();
-      thawTimer = setTimeout(release, FREEZE_IDLE_MS);
-    };
-    column?.addEventListener("input", onInput);
-    const onVisibility = () => {
-      if (!stage.isDynamic) return;
-      if (document.hidden) stage.freeze();
-      else if (!typing) stage.thaw();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      cancelAnimationFrame(settleFrame);
-      observer.disconnect();
-      calmObserver.disconnect();
-      reduced.removeEventListener("change", restage);
-      column?.removeEventListener("input", onInput);
-      document.removeEventListener("visibilitychange", onVisibility);
-      if (resizeTimer) clearTimeout(resizeTimer);
-      if (thawTimer) clearTimeout(thawTimer);
-      sessionPublish = () => {};
-      sessionPinX = () => null;
-      // 무대는 지우지 않는다. 타이머만 멈추고, 다음 화면이 닫혀 있던 시간만큼 따라잡는다.
-      stage.park();
-    };
-  }, [stage]);
+  }, []);
 
   const layout = stage.layout;
-  const className = ["new-session-playground", stage.frozen ? "is-frozen" : null, watching ? "is-watching" : null, stage.isDynamic ? null : "is-still"].filter(Boolean).join(" ");
+  const className = ["new-session-playground", stage.frozen ? "is-frozen" : null, stage.watching ? "is-watching" : null, stage.isDynamic ? null : "is-still"].filter(Boolean).join(" ");
   return (
-    <div ref={layerRef} className={className} aria-hidden="true">
+    <div className={className} aria-hidden="true">
       {layout ? (
         <div className="pg-band" style={{ width: `${layout.width}px`, height: `${layout.band}px`, transform: `scale(${layout.scale})` }}>
           {stage.items.map((item, index) => <PlaygroundItem key={`${item.kind}:${index}`} item={item} ground={stage.ground} />)}
