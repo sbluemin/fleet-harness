@@ -278,7 +278,11 @@ cd <owned-theater> && node <worktree>/.claude/skills/console-e2e/scripts/isolate
 
 Before the paid turn, confirm the route at no cost with the same command and a model id the
 slot does not expose, such as `claude-gateway--nope--nope`: the turn's text must read
-`API Error: 400 Unknown AI gateway model: …`. `Invalid API key` means the request went to
+`API Error: 400 Unknown AI gateway model: …`. Run this probe with `FLEET_AI_GATEWAY_MODEL`
+unset — restart the owned `serve` without the pin if you set one above — because a pin
+replaces the requested model before the alias check (`requested = modelOverride ?? body.model`
+in `runtime/fleet-console/features/ai-gateway/runtime/src/router/router.ts`), so the probe
+would dispatch a real request to the pinned provider instead of returning 400. `Invalid API key` means the request went to
 Anthropic instead, because the settings file did not apply.
 
 - Complete the same folder-trust review first: `-p` does not show the interactive trust
