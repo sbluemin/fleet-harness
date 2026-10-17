@@ -2342,9 +2342,10 @@ describe("Objectives contract", () => {
     expect((await board({ action: "inbox" })).objectives).not.toContainEqual(expect.objectContaining({ id, reasons: expect.arrayContaining(["followup"]) }));
     expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] })).toBe("not_in_review");
     expect(await refusal(commodore, { action: "hand_to_person", objectiveId: id, target: "followup", reason: "Too early" })).toBe("not_in_review");
-    // 다른 action 의 필드로 부른 거절은 그 키와, 그 키를 받는 action 을 이름으로 말한다.
-    const misdirected = await commodore.execute({ action: "steer", objectiveId: id, text: "Re-read the board" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
-    expect(misdirected.structuredContent).toEqual({ error: "invalid_arguments", issues: [{ path: [], code: "unrecognized_keys", keys: ["text"], acceptedBy: { text: expect.arrayContaining(["message"]) } }] });
+    // 사령관의 첨언은 steer 다. message 는 사령관에게 광고되지 않고, 다른 action 에 붙인 context 는 steer 가 받는다고 말한다.
+    expect(await refusal(commodore, { action: "message", objectiveId: id, text: "Re-read the board" })).toBe("permission_required");
+    const misdirected = await commodore.execute({ action: "stop", objectiveId: id, context: "Re-read the board" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
+    expect(misdirected.structuredContent).toEqual({ error: "invalid_arguments", issues: [{ path: [], code: "unrecognized_keys", keys: ["context"], acceptedBy: { context: expect.arrayContaining(["steer"]) } }] });
     const retrospective = { wentWell: [{ point: "Output preserved", because: "Evidence tool" }], fellShort: [{ point: "Review delayed", ifOnly: "Earlier decision" }] };
     await command("hand_off", { retrospective }, id);
     // 인계로 검토와 함께 모인 후보 전체가 선다 — 판단은 이때 한 번에 한다.
@@ -2994,9 +2995,10 @@ describe("Objectives contract", () => {
       advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toHaveLength(2);
-      // ② 지시를 다시 보내면 보고 기대가 되살아난다 — 보드를 바꾸지 않는 메시지 하나로도 다음 틱에 깨움이 다시 온다.
-      await after.launch.message(objective.id, null, "Resume the mission.", { actor: { kind: "commodore", theaterId: "t1" } });
+      // ② 사령관의 스티어링은 멈춤을 거두고 보고 기대를 되살린다. 스티어링은 보드 시각을 옮기므로 침묵은 그때부터 다시 센다.
+      await after.launch.steer(objective.id, { actor: { kind: "commodore", theaterId: "t1" }, context: "Resume the mission." });
       expect(after.store.find(objective.id)?.stoppedAt).toBeNull();
+      advanceClock(reportQuietMs + 5_000);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(quietSends()).toHaveLength(3);
       after.launch.dispose();
