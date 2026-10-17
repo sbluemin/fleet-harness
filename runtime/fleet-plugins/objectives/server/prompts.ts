@@ -19,6 +19,14 @@ const actorsName = (actors: readonly ObjectiveActor[], language: PromptLanguage)
 const editActors = (objective: Objective, language: PromptLanguage) => actorsName(objective.edited?.actors ?? ["human"], language);
 const requestedBy = (by: ObjectiveActor, language: PromptLanguage) => by === "human" ? "" : language === "ko" ? ` ${actorName(by, language)}의 요청입니다.` : ` Requested by ${actorName(by, language)}.`;
 
+/**
+ * 구상·개시에서 지휘관이 보게 하는 관찰 가능한 행동. Desktop 실행 예산은 편성 전체에 한 번이고, 상시 허용이
+ * 인용된 경우에만 사령관이 답한 보드 결정이 승인이 된다. 절차의 나머지는 console-e2e Desktop setup 이 소유한다.
+ */
+const desktopBudgetNotice = (language: PromptLanguage): string => language === "ko"
+  ? "\n\n편성에 Electron Desktop 실측이 있으면, 첫 실행 전에 그 편성 전체의 실행 예산을 한 곳에 밝히고 결정 요청도 그 예산에 대해 한 번만 올리세요. 구성원·임무별 실행 횟수, 증거 lane, 소유 창 크기 조정 여부입니다. 사람이 E2E Desktop 실행과 그로 인한 OS 포커스를 사령관이 판단해도 된다고 기록한 상시 허용이 있으면, 그 원문을 질문에 인용하세요. 사령관이 운영하는 목표에서는 그 요청을 사령관이 답하게 두고, 사람에게 같은 질문을 올리지 마세요. 그 기록이 없거나 사람이 운영하는 목표이면, 질문은 사람의 명시적 승인을 구하는 것이고 사령관이 대신 답한 것은 승인이 아닙니다. 다시 요청하는 것은 예산의 횟수를 넘거나, preflight가 결정과 다른 lane을 요구하거나, 인용한 허용 밖의 행동(다른 앱·다른 세션·결정에 없는 크기 조정이나 포커스)일 때뿐입니다."
+  : "\n\nIf the lineup measures Electron Desktop, state one launch budget for the whole lineup before the first launch, and place one decision request for that budget: per member and mission, how many launches, the evidence lane, and whether the owned window is resized. When the person has recorded a standing allowance that the Commodore may decide E2E Desktop launch and the OS focus it causes, quote that record in the question. On an objective the Commodore operates, leave that request for the Commodore to answer, and do not also ask the person. Without that record, or on an objective the person operates, the question asks the person for their own explicit authorization, and a Commodore answer is not that authorization. Ask again only when a launch would exceed the budget, the preflight requires a different lane, or the action is outside the quoted allowance (another app, another session, or a resize or focus the decision did not name).";
+
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
 
 /** 사람이 덧붙인 말 — 비어 있으면 아무것도 붙지 않는다. */
@@ -50,7 +58,7 @@ export function planTurn(objective: Objective, language: PromptLanguage, by: Obj
     : ` This is extension ${round.n} — keep finished missions and existing criteria and plan only the added scope. Propose any old met criterion that needs rechecking in criteria with {recheck: criterion number or id, reason}; only an approved recheck clears its met evidence.`;
   const request = quoted(round?.context ?? objective.planRequest);
   const replanning = round && objective.planRequest?.trim() && objective.planRequest.trim() !== round.context ? quoted(objective.planRequest) : "";
-  return `${word}${requestedBy(by, language)}${extension}${notice}${request}${replanning}`;
+  return `${word}${requestedBy(by, language)}${extension}${notice}${request}${replanning}${desktopBudgetNotice(language)}`;
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {
@@ -133,7 +141,7 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
   const changed = !what ? "" : language === "ko"
     ? `\n\n마지막으로 읽은 뒤 ${editActors(objective, language)}이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-objectives\` 로 이 목표를 다시 읽으세요.`
     : `\n\n${editActors(objective, language)} changed this objective since you last read it (${what}). Read it again with \`fleet-objectives\` before you proceed.`;
-  return `${word}${requestedBy(by, language)}${changed}${quoted(context)}`;
+  return `${word}${requestedBy(by, language)}${changed}${quoted(context)}${desktopBudgetNotice(language)}`;
 }
 
 /**

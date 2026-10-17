@@ -18,7 +18,7 @@ For runtime ownership, record the lock PID/port and whether Desktop ownership me
 
 Without Screen Recording, this lane observes whether a native Browser view moved behind Console and what Console itself shows. Report it as **view-composition observation**, never as **OS-composited pixel** evidence. It cannot verify the compositor's actual output, occlusion by other apps, focus, pointer hit testing, or the look of native dialogs.
 
-1. Follow [Setup](setup.md) as written: preflight, then the user's own authorization of launch count and focus, then the isolated environment. Extend only the last line of its launch command as below. Never relaunch beyond the authorized count to attach the inspector.
+1. Follow [Setup](setup.md) as written: preflight, then the launch authorization [Preflight and ownership](setup.md#preflight-and-ownership) records, then the isolated environment. Extend only the last line of its launch command as below. Never relaunch beyond the authorized count to attach the inspector.
 
    ```bash
    pnpm desktop --remote-debugging-port=<cdp-port> --inspect=127.0.0.1:<inspector-port>
