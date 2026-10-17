@@ -5,7 +5,7 @@ import { canonicalModelId, isAgentEffort } from "@fleet-console/sdk/models";
 import type { FleetPluginModelsHost } from "@fleet-console/sdk/plugin";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "@fleet-console/sdk/settings";
 
-import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
+import { createdByCommodore, holdTargetOf, inboxReasons, livePersonHold, objectiveOperator, objectiveStatus, STALL_MS, stalledObjectives, stallEpisode, type BoardObserver, type InboxReason, type ObjectiveOperator, type ObjectiveStatus } from "../board-state.js";
 import type { Objective, ObjectiveEvent } from "../types.js";
 import type { CommodoreAttachmentReader } from "../console-tools.js";
 import { ObjectiveStoreError } from "../store.js";
@@ -65,6 +65,8 @@ export interface CommodoreSupervisorDeps {
   /** 이 Theater 에 묶인 보드 도구 — 없으면 사령관은 보드 없이 선다. */
   readonly boardTools: (theaterId: string, readAttachments: CommodoreAttachmentReader) => readonly PluginMcpTool[];
   readonly observe?: (operationId: string) => ConsoleOperationObservation | null;
+  /** 정체가 구성원이 일하는 동안의 지휘관 휴식이면 그 사실을 지휘관에게 보낸다 — 사령관을 깨우는 같은 순간에 한 번. */
+  readonly notifyCommanderRest?: (objectiveId: string) => Promise<boolean>;
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
   readonly execute?: CommandExecute;
@@ -224,6 +226,8 @@ interface Runner {
   /** 사령관이 이미 들은 대기 상태 — `code:objectiveId[:rev]`. 새 항목이 생길 때만 깨우고, 줄어드는 것은 조용히 잊는다. */
   seen: Set<string>;
   stalledReported: Set<string>;
+  /** 이미 깨우고 통지한 정체 에피소드 — 목표 id → `stallEpisode` 서명. 같은 에피소드의 되울림에는 깨우지 않는다. */
+  notifiedStall: Map<string, string>;
   emptyReported: boolean;
   /** 사령관이 아는 목표 상태와 운영 주체 — 사령관이 운영하는 목표의 상태가 바뀌거나 사람이 맡기면 깨운다. */
   statuses: Map<string, TrackedStatus>;
@@ -578,7 +582,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed || clears.has(theaterId)) return;
     let runner = runners.get(theaterId);
     if (runner && !runner.stopping) return;
-    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
+    runner = { theaterId, session: null, phase: "idle", pending: new Map(), messages: [], hosted: new Map(), turnMessages: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, patrol: null, retry: null, retryAttempt: 0, inflight: null, stopping: false, ending: false, stopTimer: null, patrolSet: false, patrolRequest: null, lastTurnAt: now(), lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: [], seen: waitingKeys(deps.objectives(theaterId), deps.observe), stalledReported: new Set(), notifiedStall: new Map(), emptyReported: false, statuses: statusMap(deps.objectives(theaterId)), selfWrites: new Map() };
     runners.set(theaterId, runner);
     setPhase(runner, "idle");
     scheduleStop(runner);
@@ -880,8 +884,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   if (deps.subscribeExperiments) cleanups.push(deps.subscribeExperiments(() => sync("autonomy")));
 
-  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남고 보드가 오래 그대로인데 지휘관·구성원이 모두 쉰다. 새로 정체된
-  // 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
+  // 정체 — 보드와 같은 판정(`stalledObjectives`): 임무가 남았는데 구성원이 일하는 동안 지휘관이 오래 쉬거나, 보드가 오래 그대로인데
+  // 모두 쉰다. 새로 정체된 목표만 한 번 깨우고, 움직이거나 보드에서 사라지면 표시를 거둔다.
   const stallTimer = setInterval(() => {
     if (disposed || !deps.observe) return;
     for (const runner of runners.values()) {
@@ -890,14 +894,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const stalled = new Set(stalledObjectives(objectives, deps.observe, now()));
       let changed = false;
       for (const id of [...runner.stalledReported]) if (!stalled.has(id)) { runner.stalledReported.delete(id); changed = true; }
+      // 끝난 에피소드의 통지 기록은 거둔다 — 보드가 앞으로 가거나 일하는 명단이 바뀌거나 관문을 못 넘으면 다음 정체는 새 에피소드다.
+      // 통지 때문에 생긴 지휘관 턴은 서명을 바꾸지 않으므로 기록이 남아 되울림을 막는다.
+      for (const [id, episode] of [...runner.notifiedStall]) {
+        const current = objectives.find((objective) => objective.id === id);
+        if (!current || stallEpisode(current, deps.observe) !== episode) runner.notifiedStall.delete(id);
+      }
       for (const id of stalled) {
         if (runner.stalledReported.has(id)) continue;
         runner.stalledReported.add(id); changed = true;
         // 정체 표시는 사람의 줄에도 서야 하므로 모두 적고, 깨우는 것은 사령관이 운영하는 목표만이다.
         if (operators.get(id) === "human") { hold(runner, id, "stalled"); continue; }
-        const title = objectives.find((objective) => objective.id === id)?.title ?? id;
+        const current = objectives.find((objective) => objective.id === id);
+        const episode = current ? stallEpisode(current, deps.observe) : null;
+        if (episode !== null && runner.notifiedStall.get(id) === episode) continue;
+        const title = current?.title ?? id;
         wake(runner, "stalled", { bump: true, detail: title });
         noteIds(runner, "stalled", id, title);
+        void deps.notifyCommanderRest?.(id).catch(() => false);
+        if (episode !== null) runner.notifiedStall.set(id, episode);
       }
       if (changed) publish(runner);
     }

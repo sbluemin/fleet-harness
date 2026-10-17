@@ -438,7 +438,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
   async function transcript(objective: Objective, args: { readonly memberId?: string | undefined; readonly cursor?: string | undefined; readonly limit?: number | undefined }, signal: AbortSignal | undefined) {
     const member = args.memberId ? objective.members.find((candidate) => candidate.id === args.memberId) : null;
     if (args.memberId && !member) throw new ObjectiveStoreError("unknown_member");
-    const waiting = inboxReasons(objective, { now: Date.now(), observe: (id) => ctx.host.consoleControl?.observe(id) }).some((reason) => TRANSCRIPT_REASONS.has(reason));
+    const waiting = inboxReasons(objective, { now: Date.now(), observe: (id) => launch.observeBoard(id) }).some((reason) => TRANSCRIPT_REASONS.has(reason));
     const state = sessions(objective);
     const working = [state.commander, ...state.members].some((session) => session.state === "running" || session.state === "background");
     if (working && !waiting) throw new ObjectiveStoreError("objective_working");
@@ -471,7 +471,7 @@ function createBoardTools(ctx: FleetPluginServerContext, store: ObjectiveStore, 
     if (args.action === "inbox") {
       const now = Date.now();
       return page(board.flatMap((objective) => {
-        const reasons = inboxReasons(objective, { now, observe: (id) => ctx.host.consoleControl?.observe(id) });
+        const reasons = inboxReasons(objective, { now, observe: (id) => launch.observeBoard(id) });
         // awaits — 이유마다 누가 답할 차례인가. 사람에게 넘긴 항목은 personHolds 에 사유와 함께 선다.
         const holds = objective.personHolds.filter((hold) => livePersonHold(objective, hold.target) === hold);
         return reasons.length ? [{ ...rowView(objective), reasons, awaits: inboxAwaits(objective, reasons), ...(holds.length ? { personHolds: holds } : {}), boardUpdatedAt: objective.boardUpdatedAt, sessions: sessions(objective),
