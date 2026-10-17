@@ -2059,9 +2059,8 @@ function ContinuityTally({
   const verb = running ? runningVerb(item.name ?? "", language) : pastVerb(item.name ?? "", language);
   return (
     <div className={`agent-chat-tally is-continuity is-${item.state ?? "done"}`} role="status" aria-atomic="true">
-      {running
-        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
-        : <span className="agent-chat-continuity-mark" aria-hidden="true">{failed ? "✕" : "✓"}</span>}
+      {/* 도는 동안은 빈 9px다. 완료 마크와 같은 폭이라 동사 좌표가 안 튄다. 진행은 물결·동사가 말한다. */}
+      <span className="agent-chat-continuity-mark" aria-hidden="true">{running ? null : failed ? "✕" : "✓"}</span>
       <span className={`agent-chat-tally-text${running ? " agent-chat-live-text" : ""}`}>
         <span className="agent-chat-tally-clause">
           <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name="run" /></span>
@@ -2172,10 +2171,11 @@ function Tally({
     </React.Fragment>
   ));
   // 라이브 줄은 자기가 살아 있다고 스스로 말해야 한다. 예전에는 최근 여덟 줄이 흘러가는 것
-  // 자체가 그 증거였는데, 그 증거가 읽는 자리의 절반을 먹었다 — 이제 링과 좌→우 물결, 그리고
-  // 지금 도는 도구의 이름 하나가 같은 말을 한 줄로 한다.
+  // 자체가 그 증거였는데, 그 증거가 읽는 자리의 절반을 먹었다 — 이제 좌→우 물결과
+  // 지금 도는 도구의 이름 하나가 같은 말을 한 줄로 한다. 앞 링은 정착 집계에 없는 칸이라 빼서
+  // 글자 축을 맞춘다.
   // 도는 스텝은 전부 이 줄의 꼬리가 된다 — 병렬 배치의 N개도 행이 아니라 절이다.
-  // 살아 있는 줄은 턴에 하나뿐이다. 링과 물결은 꼬리가 실제로 무엇인가를 말할 때만 산다 —
+  // 살아 있는 줄은 턴에 하나뿐이다. 물결은 꼬리가 실제로 무엇인가를 말할 때만 산다 —
   // 도는 도구든 생각이든. 글자가 흐르는 동안은 꼬리가 비고, 그때 생명은 글 끝의 캐럿이 진다.
   // 예전에는 도는 턴의 마지막 구간이라는 이유만으로 링이 돌아, 아무것도 안 도는 줄 아래에
   // 생각 상자가 링을 하나 더 달고 섰다(실측: 링 2개, 애니메이션 6개가 동시에).
@@ -2183,7 +2183,6 @@ function Tally({
   const body = [...folded, ...running];
   const line = (
     <>
-      {alive ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}
       <span className={alive ? "agent-chat-tally-text agent-chat-live-text" : "agent-chat-tally-text"}>
         {clauses}
         {alive ? (
@@ -2270,9 +2269,8 @@ function JobAnchor({
       aria-label={t("terminal.chat.workOpenAria")}
       onClick={() => onOpenJob(job.id)}
     >
-      {job.open
-        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
-        : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
+      {/* 도는 동안은 빈 9px다. 결말 마크와 같은 폭이라 제목 좌표가 안 튄다. 진행은 밑줄·결말 칩이 말한다. */}
+      <span className="agent-chat-job-mark" aria-hidden="true">{job.open ? null : job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>
       <span className="agent-chat-job-glyph" aria-hidden="true"><JobGlyph kind={job.kind} /></span>
       {/* 카드가 제목 자리에 쓰던 값 그대로다. subagent_type(`who`)만 남기면 위임 여러 건이
           "general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
