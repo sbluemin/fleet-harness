@@ -12,7 +12,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, OperationGeometry, OperationNode } from "../../../../core/client/src/integration/types.js";
 import { closeNewSession, selectNestedBody, setActiveOperation, themePolarity, toggleOperationSearch } from "../../../../core/client/src/integration/store.js";
-import { useNewSessionShortcutLabel, useQuickLaunchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useNewSessionShortcutLabel, useQuickLaunchShortcutLabel, useSideBarShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { conversationSurfaceInboxSectionId, DEPUTY_COMMAND_BAND_ENTRY_ID, usePluginRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
 import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/client/src/chrome/mobile/operation-body-pool.js";
@@ -34,9 +34,11 @@ import { resolveSessionBrowserTarget, SessionBrowserCaption, SessionBrowserPanel
 import { announceNativeViewResize, getNativeViewResize, useBrowserEngine } from "../../../browser/client/browser-panel-store.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "@fleet-console/sdk/components/caption-actions";
+import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import { subscribeConsoleChannel } from "../../../../core/client/src/integration/operations-sse.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { closeOperationBrowserSplit, closeSessionBrowserSplit, openOperationBrowserSplit, openSessionBrowserSplit, setConversationSplitWidth, useConversationSplitWidth, useOperationBrowserSplit, useSessionBrowserSplit } from "./conversation-split-store.js";
+import { setSideBarCollapsed } from "../sidebar/operations-side-bar-store.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
@@ -703,6 +705,16 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   // 경계를 끄는 동안 대화 칸과 브라우저 칸은 전이 없이 포인터를 바로 따라간다.
   const [splitResizing, setSplitResizing] = useState(false);
   const seat = splitKind === null ? null : resolveSplitSeat(viewportWidth, insets, preferredSplitWidth);
+  // 칸을 열어 달라는 요청은 있는데 자리가 없다 — 요청은 그대로 두고(자리가 생기면 칸이 저절로 선다) 이유와 대안을 대화 머리 밑에 말한다.
+  const noRoom = splitKind !== null && seat === null;
+  const stageRef = useRef<HTMLElement | null>(null);
+  // 안내 안에서 무언가를 눌렀거나 포커스가 안내 안에 있었으면, 안내가 걷힐 때 포커스를 지구본으로 돌린다 — 그대로 두면 사라진 단추와 함께 body 로 떨어진다.
+  const refocusGlobeRef = useRef(false);
+  useEffect(() => {
+    if (noRoom || !refocusGlobeRef.current) return;
+    refocusGlobeRef.current = false;
+    stageRef.current?.querySelector<HTMLElement>('[data-caption-action="browser"]')?.focus();
+  }, [noRoom]);
   const splitOperation = splitKind === "operation" && operationSplit !== null
     ? state.operations.find((candidate) => candidate.id === operationSplit.operationId)
       ?? state.nestedOperations.find((candidate) => candidate.id === operationSplit.operationId)
@@ -715,6 +727,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
   return (
     <>
     <section
+      ref={stageRef}
       className={`conversation-stage${splitResizing ? " is-split-resizing" : ""}`}
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 브라우저 칸이 서면 그 폭만큼 더 비킨다.
       style={{ left: insets.left, right: seat?.stageRight ?? insets.right }}
@@ -757,6 +770,9 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
           </div>
         </div>
       )}
+      {noRoom && splitKind !== null ? (
+        <SplitNoRoomNotice kind={splitKind} insets={insets} viewportWidth={viewportWidth} refocusGlobeRef={refocusGlobeRef} />
+      ) : null}
     </section>
     <ConversationSplit
       kind={seat === null ? null : splitKind}
@@ -1446,6 +1462,65 @@ function resolveSplitSeat(viewportWidth: number, insets: ArenaInsets, preferred:
   if (insets.right <= 0) return null;
   const over = fit(viewportWidth - insets.left);
   return over === null ? null : { ...over, right: 0, stageRight: over.width, overRail: true };
+}
+
+/**
+ * 칸 자리가 없을 때의 안내 — 대화 머리 줄 바로 밑 오른쪽 끝에 뜬다. 왜 안 열리는지(필요한 창 폭)와 지금 할 수 있는 일을 말한다.
+ * 사이드바를 접어 자리가 나면 「사이드바 접기」가 곧은 길이고(⌘B 와 같은 영속 접기), 접어도 모자라면 창을 넓히라고 말한다.
+ * 「취소」·Esc(포커스가 안내 안에 있을 때만)는 요청을 버린다. 자리가 생기면 칸이 저절로 서고 이 안내는 걷힌다.
+ */
+function SplitNoRoomNotice({ kind, insets, viewportWidth, refocusGlobeRef }: {
+  readonly kind: SplitKind;
+  readonly insets: ArenaInsets;
+  readonly viewportWidth: number;
+  readonly refocusGlobeRef: { current: boolean };
+}) {
+  const t = useT();
+  const shortcut = useSideBarShortcutLabel();
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  // ⌘B·창 넓힘처럼 안내 밖의 길로 걷혀도 포커스가 안내 안에 있었다면 지구본으로 돌린다 — DOM 에서 떨어지기 전에 본다.
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    return () => {
+      if (box !== null && box.contains(document.activeElement)) refocusGlobeRef.current = true;
+    };
+  }, [refocusGlobeRef]);
+  const need = Math.ceil(insets.left + CONVERSATION_MIN_WIDTH + SPLIT_MIN_WIDTH);
+  // 사이드바를 접으면(L=0) 레일 위로 덮는 자리까지 쓸 수 있다 — 그때 대화 열과 칸이 함께 들어가는 창이어야 접기가 뜻이 있다.
+  const collapseHelps = insets.left > 0 && viewportWidth >= CONVERSATION_MIN_WIDTH + SPLIT_MIN_WIDTH;
+  const cancel = () => {
+    refocusGlobeRef.current = true;
+    if (kind === "operation") closeOperationBrowserSplit();
+    else closeSessionBrowserSplit();
+  };
+  const cause = t("conversation.split.noRoom.cause", { need });
+  const actions = [
+    ...(collapseHelps ? [{
+      label: shortcut === "" ? t("conversation.split.noRoom.collapsePlain") : t("conversation.split.noRoom.collapse", { shortcut }),
+      primary: true,
+      onSelect: () => { refocusGlobeRef.current = true; setSideBarCollapsed(true); },
+    }] : []),
+    { label: t("conversation.split.noRoom.cancel"), onSelect: cancel },
+  ];
+  return (
+    <div
+      ref={boxRef}
+      className="conversation-split-no-room"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        cancel();
+      }}
+    >
+      <FailureNotice
+        tone="warn"
+        title={t("conversation.split.noRoom.title")}
+        cause={collapseHelps ? cause : `${cause} ${t("conversation.split.noRoom.widen")}`}
+        actions={actions}
+      />
+    </div>
+  );
 }
 
 function useViewportWidth(): number {
