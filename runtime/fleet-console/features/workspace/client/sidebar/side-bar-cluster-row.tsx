@@ -142,11 +142,13 @@ export function planSideBarRows(
       const root = layout.cluster.root;
       return { layout, row, anchor: (root !== undefined ? entryById.get(root) : undefined) ?? fold[0] ?? null, fold };
     });
-  const promoted = (item: SideBarRowItem) => item.row.decisionRequestedAt !== undefined || item.row.today === true;
+  // 맡은 이가 처리 중인 줄(`delegated`)은 「오늘」로도 올라가지 않고 그룹 제자리에 선다 — 전환 목록의 「오늘」도 결정 요청이 선 목표를 빼는 같은 규칙이다.
+  const todayRow = (item: SideBarRowItem) => item.row.decisionRequestedAt === undefined && item.row.delegated === undefined && item.row.today === true;
+  const promoted = (item: SideBarRowItem) => item.row.decisionRequestedAt !== undefined || todayRow(item);
   const decisions = items.filter((item) => item.row.decisionRequestedAt !== undefined)
     .sort((a, b) => a.row.decisionRequestedAt! - b.row.decisionRequestedAt!);
   // 사람의 결정이 함께 선 줄은 「내 결정」에만 선다 — 한 줄은 한 구역에.
-  const today = items.filter((item) => item.row.decisionRequestedAt === undefined && item.row.today === true)
+  const today = items.filter(todayRow)
     .sort((a, b) => a.row.order - b.row.order);
   const folded = new Set(items.flatMap((item) => item.fold.map((entry) => entry.operation.id)));
   const byAnchor = new Map(items.flatMap((item) => (item.anchor ? [[item.anchor.operation.id, item] as const] : [])));
