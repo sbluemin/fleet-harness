@@ -2,3 +2,5 @@
    chat.css 와 갈라 둔 이유는 그 파일을 크게 고치는 다른 작업과 부딪히지 않으려는 것이다. */
 .agent-chat-dispatch.is-pending .agent-chat-dispatch-bubble { opacity: 0.62; }
 .agent-chat-dispatch.is-pending .agent-chat-dispatch-meta { color: var(--text-tertiary); }
+/* 모바일은 확정 말의 메타 줄을 걷지만, 대기 표식은 처리 전임을 말하는 유일한 낱말이라 남긴다. */
+[data-mobile-surface] .agent-chat-dispatch.is-pending .agent-chat-dispatch-meta { display: flex; }
