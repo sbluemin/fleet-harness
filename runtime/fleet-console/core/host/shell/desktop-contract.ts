@@ -2,7 +2,7 @@ import { DEFAULT_FONTS, fontFamilyForAxis, type ConsoleFontSettings } from "@fle
 import type { DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type http from "node:http";
 
-import { DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopWindowCommandSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopScreenPermissionSnapshot, isDesktopWindowCommandSnapshot, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { ConsoleThemeId } from "../../../features/settings/host/settings-domain.js";
 
@@ -16,7 +16,7 @@ export const DESKTOP_WINDOW_COMMAND_API_CATALOG: readonly ApiCatalogEntry[] = [
   {
     method: "POST",
     path: DESKTOP_WINDOW_COMMAND_PATH,
-    summary: "Ask the shell that owns this window to enter or leave native fullscreen, or to request macOS Accessibility permission for screen sharing.",
+    summary: "Ask the shell that owns this window to enter or leave native fullscreen, request macOS Accessibility permission, or open Screen Recording settings.",
     category: "Desktop",
     gate: "origin-strict",
     transport: "http",
@@ -78,6 +78,75 @@ export function createDesktopWindowCommandRouter(deps: DesktopWindowCommandRoute
       return true;
     }
     deps.requestCommand(req, body.command);
+    deps.writeNoContent(res);
+    return true;
+  };
+}
+
+export const DESKTOP_SCREEN_PERMISSION_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: DESKTOP_SCREEN_PERMISSION_PATH,
+    summary: "Read the fixed screen-recording permission reason Desktop reported for this machine. Null means sharing is not blocked by that permission.",
+    category: "Desktop",
+    gate: "loopback",
+    transport: "http",
+  },
+  {
+    method: "PUT",
+    path: DESKTOP_SCREEN_PERMISSION_PATH,
+    summary: "Record the screen-recording permission reason from the Desktop main process. The renderer cannot set it.",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "http",
+  },
+];
+
+interface DesktopScreenPermissionRouteDeps {
+  readonly getReason: () => DesktopScreenPermissionReason | null;
+  readonly setReason: (reason: DesktopScreenPermissionReason | null) => void;
+  readonly isLoopback: (req: http.IncomingMessage) => boolean;
+  /** 미리보기가 읽는 쪽. 루프백의 콘솔 출처만 통과한다. */
+  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  /**
+   * Desktop 메인 프로세스의 보고. 렌더러는 User-Agent를 바꾸지 못하고 Sec-Fetch-Site를 지우지 못한다.
+   */
+  readonly isShellReport: (req: http.IncomingMessage) => boolean;
+  readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
+  readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
+  readonly writeNoContent: (res: http.ServerResponse) => void;
+}
+
+export function createDesktopScreenPermissionRouter(deps: DesktopScreenPermissionRouteDeps): (context: DesktopRouteContext) => Promise<boolean> {
+  return async ({ req, res, pathname }) => {
+    if (pathname !== DESKTOP_SCREEN_PERMISSION_PATH) return false;
+    if (!deps.isLoopback(req)) {
+      deps.writeJson(res, 404, { error: "not_found" });
+      return true;
+    }
+    if (req.method === "GET") {
+      if (!deps.isAuthorized(req)) {
+        deps.writeJson(res, 401, { error: "unauthorized" });
+        return true;
+      }
+      const body: DesktopScreenPermissionSnapshot = { reason: deps.getReason() };
+      deps.writeJson(res, 200, body);
+      return true;
+    }
+    if (req.method !== "PUT") {
+      deps.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (!deps.isShellReport(req)) {
+      deps.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const body = await deps.readJsonBody<unknown>(req);
+    if (!isDesktopScreenPermissionSnapshot(body)) {
+      deps.writeJson(res, 400, { error: "invalid_desktop_screen_permission" });
+      return true;
+    }
+    deps.setReason(body.reason);
     deps.writeNoContent(res);
     return true;
   };

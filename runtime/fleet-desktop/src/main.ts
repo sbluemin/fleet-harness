@@ -39,7 +39,7 @@ import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js
 import { createConsoleRelaunchController, createDisabledNativeUpdateActions, createNoopConsoleRelaunchController, type NativeUpdateActions } from "./update-controller.js";
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
-import { installComputerCapture, requestAccessibilityPermission } from "./computer-capture.js";
+import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createDesktopBrowserViews } from "./browser-views.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import type { DesktopShellWindow } from "./shell-window.js";
@@ -269,6 +269,12 @@ async function boot(): Promise<void> {
         // Computer Use는 로컬 기계만 조작한다 — 원격 콘솔을 보고 있는 창은 이 기계의 권한 안내를 띄우지 않는다.
         if (policy?.currentConsoleOrigin() === localConsoleOrigin && localConsoleOrigin !== null) requestAccessibilityPermission((message) => logger.info(message));
         else logger.info("computer capture accessibility request ignored: remote console");
+        return;
+      }
+      if (command === "open-screen-recording-settings") {
+        // 화면 기록 설정만 연다. OS 권한 안내를 띄우지 않고, 원격 콘솔을 보고 있는 창은 이 기계의 설정을 열지 않는다.
+        if (policy?.currentConsoleOrigin() === localConsoleOrigin && localConsoleOrigin !== null) openScreenRecordingSettings((message) => logger.info(message));
+        else logger.info("computer capture screen recording settings ignored: remote console");
         return;
       }
       consoleFullscreen?.perform(command);
