@@ -122,6 +122,7 @@ describe("quota service", () => {
     now += 300_000;
     const limited = (await service.getSummary()).providers.claude;
     expect(limited).toMatchObject({ status: "stale", fetchedAt: 100_000, windows: [{ usedPercent: 41 }, { usedPercent: 70 }] });
+    expect(limited).not.toHaveProperty("staleReason");
     await service.getSummary();
     expect(fetchClaude).toHaveBeenCalledTimes(2);
 
@@ -276,6 +277,7 @@ describe("quota service", () => {
       const emptied = (await service.getSummary()).providers["muse-code"];
       expect(emptied).toMatchObject({
         status: "stale",
+        staleReason: "no_window",
         plan: "Power",
         windows: [{ id: "weekly", usedPercent: 30 }],
       });
@@ -295,6 +297,7 @@ describe("quota service", () => {
       const afterStream = (await service.getSummary()).providers["muse-code"];
       expect(afterStream).toMatchObject({
         status: "stale",
+        staleReason: "no_window",
         plan: "Power",
         windows: [
           { id: "session", usedPercent: 4 },
@@ -305,6 +308,7 @@ describe("quota service", () => {
       const restarted = (await open().getSummary()).providers["muse-code"];
       expect(restarted).toMatchObject({
         status: "stale",
+        staleReason: "no_window",
         plan: "Power",
         windows: [
           { id: "session", usedPercent: 4 },

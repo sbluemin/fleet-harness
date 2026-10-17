@@ -258,9 +258,13 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     persist();
   }
 
-  function remember(id: ProviderId, value: ProviderSuccess, at: number): void {
+  /**
+   * `observed`를 넘길 때만 관측 시각을 옮긴다. 요금제나 지난 창을 정리하려고 같은 값을
+   * 다시 적는 경우에는 늦은 조회를 막는 시각을 과거로 되돌리지 않는다.
+   */
+  function remember(id: ProviderId, value: ProviderSuccess, observed?: number): void {
     lastGood.set(id, stripDerived(value));
-    observedAt.set(id, at);
+    if (observed !== undefined) observedAt.set(id, observed);
     persist();
   }
 
@@ -304,8 +308,13 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       ...(result.method ? { method: result.method } : {}),
     };
     if (!previous) return idle;
-    if (result.plan && result.plan !== previous.plan) remember(id, { ...previous, plan: result.plan }, previous.fetchedAt);
-    const kept = withoutLapsed({ ...lastGood.get(id)!, status: "stale", ...(plan ? { plan } : {}) }, at);
+    if (result.plan && result.plan !== previous.plan) remember(id, { ...previous, plan: result.plan });
+    const kept = withoutLapsed({
+      ...lastGood.get(id)!,
+      status: "stale",
+      staleReason: "no_window",
+      ...(plan ? { plan } : {}),
+    }, at);
     if (kept === null || (kept.windows?.length ?? 0) === 0) {
       forget(id);
       return idle;
@@ -314,8 +323,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const creditsChanged = (kept.credits?.available !== previous.credits?.available)
       || (kept.credits?.nextExpiresAt !== previous.credits?.nextExpiresAt);
     if (survived.length !== previous.windows.length || creditsChanged) {
-      const { status: _status, message: _message, ...rest } = kept;
-      remember(id, { ...rest, status: "ok", windows: survived, fetchedAt: previous.fetchedAt }, previous.fetchedAt);
+      const { status: _status, message: _message, staleReason: _reason, ...rest } = kept;
+      remember(id, { ...rest, status: "ok", windows: survived, fetchedAt: previous.fetchedAt });
     }
     return kept;
   }

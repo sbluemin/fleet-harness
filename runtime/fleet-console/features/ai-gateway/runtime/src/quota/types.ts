@@ -80,6 +80,11 @@ export interface ProviderDto {
   readonly credits?: ResetCredits;
   readonly fetchedAt?: number;
   readonly message?: string;
+  /**
+   * 왜 stale인가. 없으면 마지막 조회가 실패한 것이다. `no_window`는 공급자가 정상으로
+   * 답했지만 진행 중인 사용 창이 없어, 리셋 전의 마지막 창을 보여주는 경우다.
+   */
+  readonly staleReason?: "no_window";
 }
 
 export interface QuotaSummaryDto {
