@@ -8,7 +8,7 @@ import { createAvatarRouter, createAvatarStore } from "../../../features/workspa
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import https from "node:https";
+import http2 from "node:http2";
 import os from "node:os";
 import path from "node:path";
 import type { Duplex } from "node:stream";
@@ -546,7 +546,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 리스너는 바인드 시점에 확정된다. 요청은 소켓의 로컬 주소로 자기 리스너를 찾고, 그
   // 리스너의 audience·Host·Origin만 통과 기준으로 삼는다.
   let listeners: readonly ListenerIdentity[] = [];
-  let remoteServer: https.Server | null = null;
+  let remoteServer: http2.Http2SecureServer | null = null;
   let remoteFingerprint: string | null = null;
   let remoteReconcile: Promise<void> = Promise.resolve();
   let remoteLastError: string | null = null;
@@ -1330,7 +1330,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_THEME_EVENT, snapshot));
@@ -1348,7 +1347,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
       }));
       res.write(":connected\n\n");
       res.write(encodeSseData(DESKTOP_UPDATE_EVENT, snapshot));
@@ -1503,7 +1501,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
       }));
       operationSseSubscribers.add(subscriber);
       startSseKeepaliveLifecycle(res, () => {
@@ -2554,7 +2551,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     res.writeHead(200, withSecurityHeaders({
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
     }));
     res.write(":connected\n\n");
     res.write(encodeSseData(event, snapshot));
@@ -3033,7 +3029,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: effectiveAdvertised.port });
   }
 
-  async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
+  async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: http2.Http2SecureServer; readonly address: string; readonly port: number }> {
     if (configured.listenPort.mode === "custom") {
       try {
         return await startRemoteListener({ identity, bindHost: configured.listenAddress, port: configured.listenPort.value, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
@@ -3257,11 +3253,19 @@ async function startRemoteListener(input: {
   readonly upgradeRegistry: UpgradeRegistry;
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
   readonly isAdmitted: (req: http.IncomingMessage) => boolean;
-}): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
-  const srv = https.createServer({ cert: input.identity.certificatePem, key: input.identity.privateKeyPem }, input.handler);
-  srv.timeout = SERVER_TIMEOUT_MS;
-  srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
-  srv.headersTimeout = SERVER_TIMEOUT_MS + 1000;
+}): Promise<{ readonly server: http2.Http2SecureServer; readonly address: string; readonly port: number }> {
+  const srv = http2.createSecureServer({
+    cert: input.identity.certificatePem,
+    key: input.identity.privateKeyPem,
+    allowHTTP1: true,
+  }, (req, res) => {
+    // Node의 compatibility API를 기존 HTTP 라우트 경계에 연결한다. HTTP/1.1 폴백도 같은 콜백을 쓴다.
+    input.handler(req as unknown as http.IncomingMessage, res as unknown as http.ServerResponse);
+  });
+  srv.setTimeout(SERVER_TIMEOUT_MS);
+  // Node 22의 allowHTTP1 경로는 HTTP 서버의 타이머 필드를 읽지만 h2 타입에는 선언되어 있지 않다.
+  Object.assign(srv, { keepAliveTimeout: SERVER_TIMEOUT_MS, headersTimeout: SERVER_TIMEOUT_MS + 1000 });
+  trackRemoteConnections(srv);
   trackUpgradedSockets(srv);
   srv.on("upgrade", createUpgradeListener({ isHostAllowed: input.isHostAllowed, upgradeRegistry: input.upgradeRegistry, isAdmitted: input.isAdmitted }));
   await new Promise<void>((resolve, reject) => {
@@ -3297,13 +3301,30 @@ function createHttpServer(
  * 끊지 못하지만, 리스너의 연결 수에는 남아 `close()` 콜백을 막는다. 그 소켓을 닫을 실행 정리는
  * 리스너가 닫힌 뒤에야 돌므로, 리스너가 직접 세어 두었다가 닫을 때 거둔다. 닫힌 소켓은 바로 뺀다.
  */
-const upgradedSockets = new WeakMap<http.Server | https.Server, Set<Duplex>>();
+const upgradedSockets = new WeakMap<http.Server | http2.Http2SecureServer, Set<Duplex>>();
 
-function trackUpgradedSockets(srv: http.Server | https.Server): void {
+function trackUpgradedSockets(srv: http.Server | http2.Http2SecureServer): void {
   const sockets = new Set<Duplex>();
   upgradedSockets.set(srv, sockets);
   srv.on("upgrade", (_req: http.IncomingMessage, socket: Duplex) => {
     if (socket.destroyed) return;
+    sockets.add(socket);
+    socket.once("close", () => sockets.delete(socket));
+  });
+}
+
+/** h2의 close()는 세션을 닫지 않고 closeAllConnections도 없다. H1 폴백과 TLS 협상 중인 소켓도 함께 센다. */
+const remoteConnections = new WeakMap<http.Server | http2.Http2SecureServer, { readonly sessions: Set<http2.ServerHttp2Session>; readonly sockets: Set<Duplex> }>();
+
+function trackRemoteConnections(srv: http2.Http2SecureServer): void {
+  const sessions = new Set<http2.ServerHttp2Session>();
+  const sockets = new Set<Duplex>();
+  remoteConnections.set(srv, { sessions, sockets });
+  srv.on("session", (session) => {
+    sessions.add(session);
+    session.once("close", () => sessions.delete(session));
+  });
+  srv.on("connection", (socket: Duplex) => {
     sockets.add(socket);
     socket.once("close", () => sockets.delete(socket));
   });
@@ -3335,14 +3356,17 @@ async function maybeStartLoopbackServer(
  * 업그레이드된 WebSocket은 `closeAllConnections()`가 닿지 않으므로 따로 거둔다.
  * 이것을 빠뜨린 리스너 하나가 프로세스 전체의 종료를 막는다.
  */
-function closeHttpServer(srv: http.Server | https.Server | null): Promise<void> {
+function closeHttpServer(srv: http.Server | http2.Http2SecureServer | null): Promise<void> {
   return new Promise((resolve) => {
     if (!srv) {
       resolve();
       return;
     }
     srv.close(() => resolve());
-    srv.closeAllConnections?.();
+    if ("closeAllConnections" in srv) srv.closeAllConnections();
+    const remote = remoteConnections.get(srv);
+    for (const session of remote?.sessions ?? []) session.destroy();
+    for (const socket of remote?.sockets ?? []) socket.destroy();
     for (const socket of upgradedSockets.get(srv) ?? []) socket.destroy();
   });
 }
@@ -3476,10 +3500,19 @@ function runAsyncBooleanHandler(handler: Promise<boolean>, res: http.ServerRespo
  */
 function validateHost(req: http.IncomingMessage, expectedHostPort: string, secure?: boolean): boolean {
   if (req.url?.startsWith("http://") || req.url?.startsWith("https://")) return false;
-  const hostHeaderCount = req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === "host").length;
-  if (hostHeaderCount !== 1) return false;
-  const hostHeader = req.headers.host;
-  if (!hostHeader) return false;
+  const countHeader = (name: string) => req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === name).length;
+  const hostHeaderCount = countHeader("host");
+  const authority = req.httpVersionMajor === 2 ? req.headers[":authority"] : undefined;
+  const host = req.headers.host;
+  if (req.httpVersionMajor === 2) {
+    if (hostHeaderCount > 1 || countHeader(":authority") !== (authority === undefined ? 0 : 1)) return false;
+    if (authority !== undefined && (typeof authority !== "string" || !authority)) return false;
+    if (authority === undefined && hostHeaderCount !== 1) return false;
+    // 둘이 함께 온 경우 어느 라우트가 읽더라도 같은 목적지여야 한다. 한쪽만 맞는 요청은 거부한다.
+    if (host !== undefined && authority !== undefined && stripDefaultPort(host, secure) !== stripDefaultPort(authority, secure)) return false;
+  } else if (hostHeaderCount !== 1) return false;
+  const hostHeader = authority ?? host;
+  if (typeof hostHeader !== "string" || !hostHeader) return false;
   // 같은 권위의 두 표기를 하나로 본다. 기본 포트를 적은 형태와 생략한 형태는 URL 규격상 같은 곳이고,
   // 어느 쪽만 받으면 그 표기를 쓰는 클라이언트가 통째로 막힌다. 다른 포트는 그대로 구분한다.
   return stripDefaultPort(hostHeader, secure) === stripDefaultPort(expectedHostPort, secure);

@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import http2 from "node:http2";
+import type { Readable } from "node:stream";
 import tls from "node:tls";
 import os from "node:os";
 import path from "node:path";
@@ -97,6 +99,59 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "POST", "/mcp/private", "{}", session)).resolves.toMatchObject({ status: 404 });
   });
+
+  it("preserves remote admission and stream lifetime on a multiplexed HTTP/2 connection", async () => {
+    const fixture = await startFixture({ remote: true });
+    const authority = `${BIND_HOST}:${fixture.remotePort}`;
+    const client = http2.connect(`https://${authority}`, { rejectUnauthorized: false, servername: "" });
+    try {
+      // :authority만 보내도 소켓의 실제 리스너를 찾아야 한다. 로컬로 오인하면 이 요청이 통과한다.
+      expect((await h2Request(client, { ":path": "/api/v1/theaters" })).status).toBe(401);
+      const joined = await h2Request(client, { ":method": "POST", ":path": "/api/v1/join", "content-type": "application/json" }, JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+      expect(joined.status).toBe(204);
+      const cookie = cookiesOf(joined);
+      const admitted = { ":path": "/api/v1/theaters", cookie };
+      expect((await h2Request(client, admitted)).status).toBe(200);
+      expect((await h2Request(client, { ...admitted, ":authority": "wrong.invalid", host: authority })).status).toBe(403);
+      expect((await h2Request(client, { ...admitted, ":authority": authority, host: "wrong.invalid" })).status).toBe(403);
+      expect((await h2Request(client, { ...admitted, ":authority": authority, host: authority })).status).toBe(200);
+      expect(client.alpnProtocol).toBe("h2");
+      expect(client.remoteSettings.enableConnectProtocol).not.toBe(true);
+
+      const open = async (streamPath: string) => {
+        const stream = client.request({ ":path": streamPath, origin: `https://${authority}`, cookie });
+        const probe = readEventStream(stream);
+        const headers = await new Promise<http2.IncomingHttpHeaders>((resolve, reject) => {
+          stream.once("response", resolve);
+          stream.once("error", reject);
+          stream.end();
+        });
+        expect(headers[":status"]).toBe(200);
+        expect(headers.connection).toBeUndefined();
+        return probe;
+      };
+      const operations = await open("/api/v1/operations/events");
+      const theme = await open("/api/v1/desktop/theme/events");
+      await theme.waitFor("desktop:theme", () => true);
+      // 두 SSE가 끝나지 않은 동안에도 같은 세션에서 일반 응답을 받는다.
+      expect((await h2Request(client, admitted)).status).toBe(200);
+      const device = (await readRemoteStatus(fixture)).devices[0]!;
+      expect(await revoke(fixture, `access-sessions/${device.sessionHandle}`)).toBe(204);
+      await operations.waitForClose();
+      await theme.waitForClose();
+      expect((await h2Request(client, admitted)).status).toBe(401);
+
+      // 비어 있는 h2 세션과 H1 폴백의 SSE가 남아도 리스너 종료가 끝나야 한다.
+      const fallbackCookie = await joinAs(fixture, "full", "fallback");
+      const fallback = await openRemoteEvents(fixture, fallbackCookie);
+      const closed = new Promise<void>((resolve) => client.once("close", resolve));
+      await stopFixture(fixture);
+      await closed;
+      await fallback.waitForClose();
+    } finally {
+      client.destroy();
+    }
+  }, 10_000);
 
   it("refuses a loopback grant presented to the remote listener", async () => {
     const fixture = await startFixture({ remote: true });
@@ -336,7 +391,7 @@ interface EventProbe {
   close(): void;
 }
 
-function readEventStream(response: import("node:http").IncomingMessage): EventProbe {
+function readEventStream(response: Readable): EventProbe {
   const received: Array<{ readonly event: string; readonly data: unknown }> = [];
   const waiters: Array<() => void> = [];
   let buffer = "";
@@ -485,6 +540,19 @@ function readPresentedCertificateFingerprint(port: number): Promise<string> {
     });
     request.on("error", reject);
     request.end();
+  });
+}
+
+function h2Request(client: http2.ClientHttp2Session, headers: http2.OutgoingHttpHeaders, body?: string): Promise<{ status: number; headers: http2.IncomingHttpHeaders; body: string }> {
+  return new Promise((resolve, reject) => {
+    const request = client.request(headers);
+    let responseHeaders: http2.IncomingHttpHeaders = {};
+    const chunks: Buffer[] = [];
+    request.once("response", (received) => { responseHeaders = received; });
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.once("error", reject);
+    request.once("end", () => resolve({ status: Number(responseHeaders[":status"]), headers: responseHeaders, body: Buffer.concat(chunks).toString("utf8") }));
+    request.end(body);
   });
 }
 
