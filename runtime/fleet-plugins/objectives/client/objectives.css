@@ -1512,6 +1512,47 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
    입력 자리(진행 줄 아래)에 그룹 입력창과 같은 좌우 여백·아래 여백으로 선다. */
 .objectives-commodore-conversation { container-type: inline-size; }
 .objectives-commodore-conversation-log { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* 사령관 원장 — 그룹 대화의 원장 틀(.group-ledger)과 같은 머리 문법: 낱말과 「대화로 돌아가기」, 그 아래 읽기 전용 턴 기록. 머리 pill
+   오버레이 밑에서 시작한다. */
+.objectives-commodore-ledger { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; margin-top: var(--conversation-overlay-top, 0px); }
+.objectives-commodore-ledger-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 720px;
+  width: 100%;
+  margin: var(--space-3) auto 0;
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.objectives-commodore-ledger-banner { min-width: 0; }
+.objectives-commodore-ledger-back {
+  margin-left: auto;
+  flex: none;
+  padding: 1px var(--space-1);
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.objectives-commodore-ledger-back:hover { background: var(--control-wash-hover); color: var(--text-primary); }
+.objectives-commodore-ledger-back:active { background: var(--control-wash); }
+.objectives-commodore-ledger-back:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.objectives-commodore-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.objectives-commodore-ledger-body > * { flex: 1 1 auto; min-height: 0; }
+@media (prefers-reduced-motion: reduce) { .objectives-commodore-ledger-back { transition: none; } }
+@media (forced-colors: active) { .objectives-commodore-ledger-back:hover { outline: 1px solid Highlight; } }
 .objectives-commodore-conversation .objectives-commodore-foot { flex: none; border-top: 0; display: flex; flex-direction: column; align-items: stretch; padding: 0 clamp(16px, 4cqi, 48px) var(--space-4); }
 .objectives-commodore-conversation .objectives-commodore-failure { margin: 0 0 var(--space-2); }
 .objectives-commodore-conversation .objectives-commodore-composer,

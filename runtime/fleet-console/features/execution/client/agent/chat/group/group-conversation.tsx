@@ -12,7 +12,7 @@ import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { getGroupT } from "./group-chat-i18n.js";
-import { ledgerTarget, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
+import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
 import "./group-chat.css";
@@ -433,12 +433,13 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
 }) {
   const t = getGroupT(language);
+  const ledgerOf = React.useContext(LedgerTargetContext);
   const [open, setOpen] = React.useState(false);
   const detailId = React.useId();
   const latest = item.writing ?? item.notes[item.notes.length - 1];
   const live = item.writing !== null;
   const speaker = item.speaker.kind === "commodore" ? { ...item.speaker, name: t("group.commodore") } : item.speaker;
-  const ledger = onOpenLedger ? ledgerTarget(speaker, participants) : null;
+  const ledger = onOpenLedger ? ledgerOf(speaker, participants) : null;
   const preview = latest ? tailExcerpt(latest.text, 80) : "";
   const shown = item.writing ? [...item.notes, item.writing] : item.notes;
   const count = shown.length;
@@ -469,7 +470,7 @@ function TurnNotes({ item, participants, language, onOpenLedger }: {
           ))}
           {ledger ? (
             <div className="group-chat-line-actions">
-              <button type="button" className="group-chat-link" onClick={() => onOpenLedger!(ledger)}>{t("group.delegation.openLedger", { name: speaker.name })}</button>
+              <button type="button" className="group-chat-link" data-ledger-speaker={speaker.kind} onClick={() => onOpenLedger!(ledger)}>{t("group.delegation.openLedger", { name: speaker.name })}</button>
             </div>
           ) : null}
         </div>
@@ -654,6 +655,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly showMark?: boolean;
 }) {
   const t = getGroupT(language);
+  const ledgerOf = React.useContext(LedgerTargetContext);
   // 높이 상한은 구성원 말풍선만. 지휘관·보드 없는 루트·사령관 말은 접기를 켜도 상한 없이 선다.
   const clip = useBubbleClip(capped && entry.speaker.kind === "member");
   const [reportOpen, setReportOpen] = React.useState(false);
@@ -689,14 +691,14 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: t("group.commodore") } : entry.speaker;
   // 묶음 머리의 이름과 꼬리의 표식은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트
   // 영역이다. 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
-  const target = (continued && !tail) || !onOpenLedger ? null : ledgerTarget(speaker, participants);
+  const target = (continued && !tail) || !onOpenLedger ? null : ledgerOf(speaker, participants);
   const open = target ? () => onOpenLedger!(target) : undefined;
   const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
   // 표식은 묶음 꼬리(마지막으로 서는 말풍선) 옆에 선다 — 묶음 왼쪽 아래.
   const mark = !tail ? null : live ? <LiveSpeakerMark speaker={speaker} participants={participants} /> : <SpeakerMark speaker={speaker} />;
   // 보드 행위 줄(via)의 발화자는 사람·사령관뿐이라 원장 대상이 아니다 — 단추는 일반 머리 이름에만 선다.
   const name = open
-    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
+    ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} /></button>
     : <SpeakerName speaker={speaker} className="group-chat-agent-name" />;
   // 보고 꼬리표 — 은은한 보조 낱말. 말풍선과 문면이 다를 수 있으므로 누르면 보낸 보고 전문이 그 아래에 펼쳐진다.
   const reportTag = report ? (
@@ -708,7 +710,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id}>
       {showMark ? (
         <span className="group-chat-agent-mark">
-          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
+          {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" data-ledger-speaker={speaker.kind} tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
         </span>
       ) : null}
       <div className="group-chat-agent-box">
@@ -1021,14 +1023,15 @@ export function GroupWorkingLine({ working, participants, language, onOpenLedger
   readonly computerActor?: string | null;
 }) {
   const t = getGroupT(language);
+  const ledgerOf = React.useContext(LedgerTargetContext);
   if (working.length === 0) return <div className="group-chat-working is-empty" aria-hidden="true" />;
-  const targets = working.map((speaker) => (onOpenLedger ? ledgerTarget(speaker, participants) : null));
+  const targets = working.map((speaker) => (onOpenLedger ? ledgerOf(speaker, participants) : null));
   const openLabel = (speaker: ConversationSpeaker) => t("group.speaker.openLedger", { name: speaker.name });
   // 표식은 마우스·터치용 복제 히트 영역이다 — 탭 정지는 이름(낱말) 하나가 진다(말풍선 머리와 같은 관례).
   const marks = working.map((speaker, index) => {
     const target = targets[index];
     return target ? (
-      <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
+      <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" data-ledger-speaker={speaker.kind} tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
         <SpeakerMark speaker={speaker} size="lg" state="running" acting />
       </button>
     ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="lg" state="running" acting />;
@@ -1065,7 +1068,7 @@ function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
     const target = targets[0];
     const label = t("group.working.one", { name: speaker.name });
     return target
-      ? <button type="button" className="group-chat-working-text agent-chat-live-text group-chat-working-hit is-text" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{label}</button>
+      ? <button type="button" className="group-chat-working-text agent-chat-live-text group-chat-working-hit is-text" data-ledger-speaker={speaker.kind} title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{label}</button>
       : <span className="group-chat-working-text agent-chat-live-text">{label}</span>;
   }
   if (!targets.some(Boolean)) {
@@ -1081,7 +1084,7 @@ function WorkingText({ working, targets, t, openLabel, onOpenLedger }: {
           <React.Fragment key={speakerKey(speaker)}>
             {index > 0 ? <span className="group-chat-working-part is-sep">{" · "}</span> : null}
             {target
-              ? <button type="button" className="group-chat-working-part group-chat-working-hit is-text" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{speaker.name}</button>
+              ? <button type="button" className="group-chat-working-part group-chat-working-hit is-text" data-ledger-speaker={speaker.kind} title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>{speaker.name}</button>
               : <span className="group-chat-working-part">{speaker.name}</span>}
           </React.Fragment>
         );

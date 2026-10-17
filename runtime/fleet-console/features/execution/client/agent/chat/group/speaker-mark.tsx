@@ -39,6 +39,15 @@ export function ledgerTarget(speaker: ConversationSpeaker, participants: readonl
   return participants.some((participant) => participant.speaker.operationId === operationId) ? operationId : null;
 }
 
+/** 발화자가 여는 원장을 고르는 규칙 — 대화가 원장 문법을 갖고 있을 때 진행 줄·말풍선 머리·진행 칩이 같은 규칙으로 고른다. */
+export type LedgerTargetRule = (speaker: ConversationSpeaker, participants: readonly ConversationParticipant[]) => string | null;
+
+/**
+ * 지금 대화의 원장 규칙. 기본은 Operation 대화의 `ledgerTarget` 이고, 자기 원장을 가진 플러그인 대화(`ctx.chat.Conversation` 의
+ * `openLedger`)는 제 발화자를 대상으로 삼는 규칙을 준다 — 그룹 대화의 사령관 줄(원장이 없는 발화자)은 기본 규칙 그대로다.
+ */
+export const LedgerTargetContext = React.createContext<LedgerTargetRule>(ledgerTarget);
+
 /**
  * 사령관 표식이 쓸 Theater — 가운데 칸에 Operation 이 없는 플러그인 대화(사령관 기록)는 대화 subject 가 없으므로 그 대화가 직접 준다.
  * 없으면 지금 대화가 선 Operation 의 Theater 다.
