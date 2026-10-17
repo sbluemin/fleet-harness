@@ -186,7 +186,7 @@ export function NewSessionColumn({ state, target, tools }: {
         {tools}
       </div>
       <div className="new-session-body">
-        <NewSessionPlayground state={state} theaterId={theater?.id ?? null} />
+        <NewSessionPlayground />
         <div className="new-session-cards">
           <section className="new-session-section" aria-labelledby="new-session-where">
             <h2 className="new-session-heading" id="new-session-where">{t("conversation.newSession.where")}</h2>
