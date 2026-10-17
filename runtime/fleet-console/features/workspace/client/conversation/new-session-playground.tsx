@@ -174,7 +174,7 @@ class PlaygroundStage {
   /** 기구 순서는 마운트당 한 번만 정한다 — 다시 잴 때는 개수와 좌표만 새로 계산하고, 개수가 줄면 이 순서의 앞부분을 쓴다. */
   private readonly kindOrder = shuffle(ITEM_KINDS);
 
-  constructor(private readonly publish: () => void, private readonly pinX: (id: string) => number | null) {}
+  constructor(private readonly publish: (sync?: boolean) => void, private readonly pinX: (id: string) => number | null) {}
 
   get ground(): number { return (this.layout?.band ?? BAND_FULL) - FLOOR; }
   private get standY(): number { return this.ground - SIZE; }
@@ -972,7 +972,7 @@ class PlaygroundStage {
     this.watching = false;
     this.held = true;
     this.animEpoch += 1;
-    this.publish();
+    this.publish(true);
   }
 
   /** 같은 창에서 다시 들어올 때. 멈춰 둔 애니메이션을 이어서 재생하고, 새 등장은 잠깐 미룬다. */
@@ -980,7 +980,7 @@ class PlaygroundStage {
     if (!this.held) return;
     this.held = false;
     this.animEpoch += 1;
-    this.publish();
+    this.publish(true);
     this.rearmClock(REENTRY_HOLD_MS);
   }
 
@@ -1180,15 +1180,16 @@ export function NewSessionPlayground() {
     const slot = slotRef.current;
     if (!slot) return;
     const host = ensureSceneHost();
-    host.classList.remove("is-parked");
-    slot.appendChild(host);
     let cleanup = () => {};
     let frame = 0;
     const attach = () => {
       const layer = host.querySelector<HTMLElement>(":scope > .new-session-playground");
       if (!layer) { frame = requestAnimationFrame(attach); return; }
-      cleanup = bindPlayground(layer, stage);
+      // 슬롯에 붙이기 전에 시각을 되돌린다. 붙는 순간 관찰되는 currentTime 이 떠나기 직전과 같아야 한다.
       stage.resume();
+      host.classList.remove("is-parked");
+      slot.appendChild(host);
+      cleanup = bindPlayground(layer, stage);
     };
     frame = requestAnimationFrame(attach);
     return () => {
@@ -1211,10 +1212,17 @@ function PlaygroundScene() {
   useLayoutEffect(() => {
     if (stage.animEpoch === 0 || seenEpoch.current === stage.animEpoch) return;
     seenEpoch.current = stage.animEpoch;
-    stage.applyAnims(!stage.isHeld);
+    const play = !stage.isHeld;
+    stage.applyAnims(play);
+    // 정적 얼굴의 CSS 애니메이션은 이 효과 뒤에 생긴다. 한 프레임 뒤 같은 시각으로 다시 멈춘다.
+    if (!play) requestAnimationFrame(() => { if (stage.isHeld) stage.applyAnims(false); });
   });
   // 그리기 알림은 첫 렌더에서 바로 연결한다. effect 까지 미루면 첫 setup 의 publish 가 버려지고 밴드가 안 선다.
-  sessionPublish = () => setVersion((value) => value + 1);
+  sessionPublish = (sync?: boolean) => {
+    const run = () => setVersion((value) => value + 1);
+    if (sync) flushSync(run);
+    else run();
+  };
   sessionPinX = (id) => {
     const element = actorRefs.current.get(id);
     if (!element) return null;
