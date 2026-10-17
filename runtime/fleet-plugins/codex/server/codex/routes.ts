@@ -50,6 +50,7 @@ import type {
   DrydockWikiEntry,
   EntryBacklink,
   EntryFrontmatter,
+  EntryPendingProposal,
   EntryResponse,
   RawSourceItem,
   SearchEntry,
@@ -389,9 +390,26 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
 
   const backlinks = await collectEntryBacklinks(id, context.paths);
   let pendingPatchCount = 0;
+  const pendingProposals: EntryPendingProposal[] = [];
   for (const item of await listQueue(context.paths)) {
     if (item.meta.status !== "pending" || !SAFE_PATCH_ID.test(item.id)) continue;
-    try { if (!(await resolveSafeQueuePath(item.id, context.paths.queueDir))) continue; const { patch } = await showQueue(item.id, context.paths); if (derivePatchTargetId(patch.frontmatter.target) === id) pendingPatchCount++; } catch { /* 손상된 항목은 검사 화면이 보고한다. */ }
+    try {
+      if (!(await resolveSafeQueuePath(item.id, context.paths.queueDir))) continue;
+      const { patch, meta } = await showQueue(item.id, context.paths);
+      if (derivePatchTargetId(patch.frontmatter.target) !== id) continue;
+      pendingPatchCount++;
+      // 갱신 제안만 문서 안에 인라인으로 선다 — 지휘관이 이 문서를 고친 제안을 읽던 자리에서 검토·적용한다.
+      if (patch.frontmatter.op !== "update_wiki") continue;
+      const baseConflict = await readPatchBaseConflict(patch, meta, context.paths);
+      pendingProposals.push({
+        id: item.id,
+        summary: patch.frontmatter.summary,
+        proposer: patch.frontmatter.proposer,
+        created: patch.frontmatter.created,
+        proposedBody: parsePatchWikiEntry(patch).body,
+        ...(baseConflict ? { baseConflict } : {}),
+      });
+    } catch { /* 손상된 항목은 검사 화면이 보고한다. */ }
   }
 
   const responseBody: EntryResponse = {
@@ -414,6 +432,7 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     } satisfies EntryFrontmatter,
     body,
     pendingPatchCount,
+    ...(pendingProposals.length > 0 ? { pendingProposals } : {}),
     ...(raw !== undefined ? { raw } : {}),
     ...(backlinks.length > 0 ? { backlinks } : {}),
   };
