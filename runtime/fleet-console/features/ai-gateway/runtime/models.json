@@ -941,7 +941,7 @@
     "muse-code": {
       "name": "Muse Code",
       "defaultModel": "muse-spark-1.3-contributor",
-      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh(1.3 standard만 max 추가). minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU라는 서술에 따라 variantOf로 잇는다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
+      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh 및 1.3 standard의 max. contributor max는 지휘관이 직접 실측(2026-10-17T22:41:37Z~22:41:42Z): muse exec --model muse-spark-1.3-contributor --contributor-mode on --reasoning-effort max --max-model-steps 1 --workspace \"$T\" --json \"Reply with exactly: OK\"가 RC=0, run_terminal.text=OK, stream_succeeded, response_id=resp_6ad3f9a5f922a34ed9d44803으로 완료됐다. 단일 최소 프로브 1회로 max 요청 수락을 확인했으며 강도별 품질은 비교하지 않았다. minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU라는 서술에 따라 variantOf로 잇는다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
       "models": [
         {
           "modelId": "muse-spark-1.3",
@@ -973,7 +973,8 @@
               "low",
               "medium",
               "high",
-              "xhigh"
+              "xhigh",
+              "max"
             ]
           }
         }
