@@ -1433,6 +1433,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     requestCommand: (req, command) => {
       const owner = shellOwnerOf(req);
       if (owner === null) return;
+      // 권한 요청은 Computer Use가 조작하는 이 기계의 셸에만, 실제로 그 사유로 공유가 막혀 있을 때만 보낸다.
+      if (command === "request-accessibility-permission") {
+        const admitted = owner === "local" && computerUse.captureUnavailableReason() === "accessibility_permission_required";
+        logComputerCapture({ captureReason: "accessibility_request", admitted });
+        if (!admitted) return;
+      }
       publishDesktopWindowCommand(owner, command);
     },
     subscribe: (req, res) => {
@@ -2360,9 +2366,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function computerCaptureSnapshot() {
     const target = computerUse.status().enabled ? computerCaptureTarget : null;
     const unavailableOwner = computerUse.captureUnavailableOwner();
+    const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     return {
       target: target ? { id: target.id, operationId: target.operationId, actor: target.actor, title: target.title } : null,
       unavailableOperationId: unavailableOwner ? computerUseMcp.operationIdForOwner(unavailableOwner) : null,
+      // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
+      ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
 
@@ -2372,7 +2381,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (encoded === lastComputerCaptureSnapshot) return;
     lastComputerCaptureSnapshot = encoded;
     // 미리보기가 받는 상태 그대로. "unavailable"이 「관측한 창을 식별하지 못했습니다」 문구의 유일한 근거다.
-    logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableOperationId ? "unavailable" : "none", enabled: computerUse.status().enabled });
+    logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableOperationId ? "unavailable" : "none", enabled: computerUse.status().enabled, ...(snapshot.unavailableReason ? { unavailableReason: snapshot.unavailableReason } : {}) });
     const data = encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, snapshot);
     // Computer Use는 로컬 기계만 조작한다. 원격 Desktop의 셸 소유자에게 로컬 창을 넘기지 않는다.
     for (const subscriber of operationSseSubscribers) {

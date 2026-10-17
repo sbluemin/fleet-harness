@@ -2,7 +2,7 @@ import { computerUseToolDescriptions } from "./computer-use-descriptions.js";
 import crypto from "node:crypto";
 import { z } from "zod";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
-import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "@fleet-console/computer-use";
+import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseCaptureFailure, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "@fleet-console/computer-use";
 
 const STATE_OPTIONS = {
   maxDepth: z.number().int().min(1).max(50).optional(),
@@ -61,6 +61,8 @@ export class ComputerUseService {
   private owner: string | null = null;
   private captureApp: string | null = null;
   private captureUnavailable = false;
+  /** captureUnavailable일 때 사람이 고칠 수 있는 원인. 없으면 일반 식별 실패다. */
+  private captureFailure: ComputerUseCaptureFailure | null = null;
   private controller: AbortController | null = null;
   private busy = false;
   private state: ComputerUseStatus["state"] = "idle";
@@ -142,6 +144,8 @@ export class ComputerUseService {
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
   captureUnavailableOwner(): string | null { return this.captureUnavailable ? this.activeOwner() : null; }
+  /** 공유 불가의 비민감 사유 — 미리보기가 권한 안내로 갈라지는 근거. 공유 불가가 아니면 null. */
+  captureUnavailableReason(): ComputerUseCaptureFailure | null { return this.captureUnavailableOwner() === null ? null : this.captureFailure; }
 
   release(owner: string): void { if (this.owner === owner) this.stopDetached(); }
   /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
@@ -162,6 +166,7 @@ export class ComputerUseService {
     this.notifyOwnerChanged();
     this.captureApp = null;
     this.captureUnavailable = false;
+    this.captureFailure = null;
     try { this.deps.onCaptureTarget?.(null); }
     catch (error) { this.reportFailure("computer_use_capture_release_failed", error); }
     this.controller?.abort();
@@ -304,6 +309,7 @@ export class ComputerUseService {
         this.snapshots.clear();
         this.captureApp = null;
         this.captureUnavailable = false;
+        this.captureFailure = null;
         this.deps.onCaptureTarget?.(null);
         this.state = "running";
         this.stage = "open_app";
@@ -402,6 +408,7 @@ export class ComputerUseService {
       // restore a just-minimized window or activate an app. Never read implicitly.
       if (!this.deps.platform.hasActionObservation(actionResult)) {
         this.captureUnavailable = true;
+        this.captureFailure = null;
         this.deps.onCaptureTarget?.(null);
         this.captureDiagnostic("action_without_observation");
         return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "unavailable", snapshotId: null, hint: "Action returned without a usable native AX observation. No follow-up read was made. Do not repeat the action. If more observation is needed, request computer_state explicitly; reads may activate/restore the app." }).content, ...actionResult.content] };
@@ -436,6 +443,7 @@ export class ComputerUseService {
     if (this.captureApp !== app) {
       this.captureApp = app;
       this.captureUnavailable = false;
+      this.captureFailure = null;
       this.deps.onCaptureTarget?.(null);
     }
     this.snapshots.clear();
@@ -446,6 +454,7 @@ export class ComputerUseService {
     if (state.isError) { this.deps.onCaptureTarget?.(null); this.captureDiagnostic("observation_error"); return state; }
     if (fullTree && !this.deps.platform.hasFullObservation(state)) {
       this.captureUnavailable = true;
+      this.captureFailure = null;
       this.deps.onCaptureTarget?.(null);
       this.captureDiagnostic("full_tree_unavailable");
       return result({ error: "computer_use_full_tree_unavailable", snapshotId: null, observationReads: 1, hint: "The native response was not a standalone App/Window tree. No diff was presented as a full tree and no extra read was made. This backend may not support forcing full trees for this surface." }, true);
@@ -455,7 +464,10 @@ export class ComputerUseService {
 
   private publishObservation(broker: ComputerUseBackend, app: string, state: ComputerUseResult, includeSchemas: boolean, observationMode: ObservationMode, observationReads: number): ComputerUseResult {
     const captureTarget = this.deps.platform.captureTarget?.(state);
-    if (state.captureWindow !== undefined) this.captureUnavailable = state.captureWindow === null;
+    if (state.captureWindow !== undefined) {
+      this.captureUnavailable = state.captureWindow === null;
+      this.captureFailure = state.captureWindow === null ? state.captureFailure ?? null : null;
+    }
     // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
     // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
     if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
@@ -500,7 +512,7 @@ export class ComputerUseService {
       emit({ tool, phase: "end", elapsedMs: this.lastCall.elapsedMs, outcome: value.isError ? "error" : "returned", ...(error ? { error } : {}),
         ...contentMetrics(value.content),
       });
-      return { content, isError: value.isError === true, ...(value.dispatchBlocked ? { dispatchBlocked: true } : {}), ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}) };
+      return { content, isError: value.isError === true, ...(value.dispatchBlocked ? { dispatchBlocked: true } : {}), ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}), ...(value.captureFailure ? { captureFailure: value.captureFailure } : {}) };
     } catch (error) {
       this.lastCall = { tool, outcome: "unknown", elapsedMs: Date.now() - startedAt, error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" };
       emit({ tool, phase: "end", elapsedMs: Date.now() - startedAt, outcome: "unknown", error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" });
@@ -510,7 +522,7 @@ export class ComputerUseService {
 
   /** 화면공유 대상이 정해지거나 걷힌 사유. 미리보기의 「창을 식별하지 못했습니다」가 어느 갈래에서 왔는지 로그로 가른다. */
   private captureDiagnostic(captureReason: NonNullable<ComputerUseDiagnostic["captureReason"]>): void {
-    try { this.deps.diagnostic?.({ tool: this.activeTool ?? "unknown", scope: "capture", phase: "end", captureReason, captureUnavailable: this.captureUnavailable }); }
+    try { this.deps.diagnostic?.({ tool: this.activeTool ?? "unknown", scope: "capture", phase: "end", captureReason, captureUnavailable: this.captureUnavailable, ...(this.captureFailure ? { captureFailure: this.captureFailure } : {}) }); }
     catch { /* 진단 실패가 조작을 반복시키면 안 된다. */ }
   }
 
@@ -527,6 +539,8 @@ export interface ComputerUseDiagnostic {
   readonly captureReason?: "window_identified" | "window_unidentified" | "identity_not_reported" | "owner_missing" | "action_without_observation" | "full_tree_unavailable" | "observation_error";
   /** scope "capture" 전용 — 판정 직후의 공유 불가 표시(미리보기 문구의 근거). */
   readonly captureUnavailable?: boolean;
+  /** scope "capture" 전용 — 공유 불가의 사람이 고칠 수 있는 원인. */
+  readonly captureFailure?: ComputerUseCaptureFailure;
   readonly tool: string;
   readonly phase: "start" | "end";
   readonly elapsedMs?: number;

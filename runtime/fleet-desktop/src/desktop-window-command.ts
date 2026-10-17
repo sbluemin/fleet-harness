@@ -12,7 +12,7 @@ export interface DesktopWindowCommandSynchronizerDeps {
 }
 
 /**
- * 창이 보고 있는 Console에서 창 조작 명령(지금은 네이티브 전체화면 진입·이탈)을 듣는다. 이 명령을
+ * 창이 보고 있는 Console에서 창 조작 명령(네이티브 전체화면 진입·이탈, 화면공유용 손쉬운 사용 권한 요청)을 듣는다. 이 명령을
  * 모르는 옛 Console은 스냅샷 경로에 404로 답하므로 스트림을 열지 않는다.
  */
 export function createDesktopWindowCommandSynchronizer(deps: DesktopWindowCommandSynchronizerDeps): DesktopEventStream {

@@ -160,7 +160,9 @@ export class MacOSComputerUseBroker implements ComputerUseBackend {
       const side = (read: typeof beforeRead) => read ? { reason: read.reason, ...(read.identity ? { pid: read.identity.pid, windowId: read.identity.windowId } : read.detail ?? {}) } : { reason: "not_read" };
       process.stdout.write(`[fleet-computer-use] window identity ${JSON.stringify({ ts: new Date().toISOString(), tool, verdict, before: side(beforeRead), after: side(afterRead) })}\n`);
     }
-    return { content: value.content, isError: value.isError === true, ...(app ? { captureWindow } : {}) } as ComputerUseResult;
+    // Console(osascript)이 AX 신뢰를 받지 못하면 네이티브 읽기는 성공해도 창은 식별되지 않는다. 그 사실만 위로 올린다.
+    const accessibilityDenied = !captureWindow && (beforeRead?.reason === "accessibility_permission_required" || afterRead?.reason === "accessibility_permission_required");
+    return { content: value.content, isError: value.isError === true, ...(app ? { captureWindow } : {}), ...(accessibilityDenied ? { captureFailure: "accessibility_permission_required" as const } : {}) } as ComputerUseResult;
   }
 
   private request(method: string, params: unknown, timeoutMs = RPC_TIMEOUT_MS): Promise<unknown> {

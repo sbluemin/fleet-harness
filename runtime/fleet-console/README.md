@@ -141,7 +141,8 @@ payload measurements, not billed tokens; compare provider usage separately.
 Screen-share target decisions log reason codes only: `window identity` lines
 (macOS backend's before/after window read and `verdict`), `scope: "capture"`
 (service decision with `captureReason`), and `scope: "capture_host"` (target
-release and the `preview` state sent to Desktop). Desktop's `computer capture`
+release, the `preview` state sent to Desktop, and whether an Accessibility
+permission request was forwarded to the local Desktop). Desktop's `computer capture`
 lines add the screen-recording permission status. None of them carry window
 titles, paths or app names.
 

@@ -7,7 +7,11 @@ import "../../execution/client/agent/computer-screen-share.css";
 
 /** 화면의 주인(operationId — 공유 컨텍스트면 루트)과 지금 조작하는 참가자(actor). */
 type CaptureTarget = { id: string; operationId: string; actor: string | null; title: string };
-type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void };
+/** 공유 불가의 사람이 고칠 수 있는 원인(서버의 비민감 사유 코드). 없으면 일반 식별 실패다. */
+type CaptureFailure = "accessibility_permission_required";
+type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void; failure?: CaptureFailure };
+/** 창을 든 Desktop에게 손쉬운 사용 권한을 묻게 한다. 서버는 실제로 그 사유로 막혀 있을 때만 로컬 셸에 넘긴다. */
+const DESKTOP_WINDOW_COMMAND_PATH = "/api/v1/desktop/window/command";
 const CaptureContext = createContext<Capture | null>(null);
 /** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·시한). 인자·내용은 없다. */
 export interface OperationUseRequest {
@@ -150,7 +154,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     };
     const apply = (value: unknown) => {
       if (disposed || !value || typeof value !== "object") return;
-      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableOperationId?: string | null };
+      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableOperationId?: string | null; unavailableReason?: unknown };
       const target: CaptureTarget | null = raw.target ? { ...raw.target, actor: typeof raw.target.actor === "string" ? raw.target.actor : null } : null;
       const unavailableOperationId = raw.unavailableOperationId;
       desiredTarget = target;
@@ -158,7 +162,8 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         stop();
         currentId = null;
         attemptedId = null;
-        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, actor: null, title: "" }, stream: null, failed: true });
+        const failure: CaptureFailure | undefined = raw.unavailableReason === "accessibility_permission_required" ? raw.unavailableReason : undefined;
+        setCapture({ target: { id: `unavailable:${unavailableOperationId}`, operationId: unavailableOperationId, actor: null, title: "" }, stream: null, failed: true, ...(failure ? { failure } : {}) });
         return;
       }
       if (!target) setCapture(null);
@@ -221,6 +226,8 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
   const [size, setSize] = useState({ width: 256, height: 144 });
   const [dragging, setDragging] = useState(false);
   const [maximized, setMaximized] = useState(false);
+  /** 이 실패에 대해 권한 요청을 보냈는가. 다른 실패(새 대상·다른 사유)가 오면 버튼을 되살린다. */
+  const [accessibilityRequested, setAccessibilityRequested] = useState<string | null>(null);
   const preferredSize = useRef<{ width: number; height: number } | null>(null);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number; scaleX: number; scaleY: number; resizing: boolean; width: number; height: number } | null>(null);
   useEffect(() => {
@@ -315,6 +322,14 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
         const next = { width: Math.min(parent.clientWidth - (position?.x ?? 12), Math.max(96, size.width + direction[0]!)), height: Math.min(parent.clientHeight - (position?.y ?? 12), Math.max(72, size.height + direction[1]!)) };
         preferredSize.current = next; setSize(next);
       }}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="m5 13 8-8m-3 8 3-3" /></svg></button> : null}
-    </> : <><p role="status">{t("settings.computerUse.shareError")}</p>{own.retry ? <button type="button" className="computer-screen-share-retry" onClick={own.retry}>{t("settings.computerUse.shareRetry")}</button> : <p>{t("settings.computerUse.sharePermission")}</p>}</>}
+    </> : <><p role="status">{t("settings.computerUse.shareError")}</p>{own.retry ? <button type="button" className="computer-screen-share-retry" onClick={own.retry}>{t("settings.computerUse.shareRetry")}</button>
+      : own.failure === "accessibility_permission_required" ? <>
+        <p>{t("settings.computerUse.shareAccessibility")}</p>
+        {accessibilityRequested === own.target.id ? <p>{t("settings.computerUse.shareAccessibilityRequested")}</p>
+          : <button type="button" className="computer-screen-share-retry" onClick={() => {
+            setAccessibilityRequested(own.target.id);
+            void fetch(DESKTOP_WINDOW_COMMAND_PATH, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ command: "request-accessibility-permission" }), signal: AbortSignal.timeout(3000) }).catch(() => undefined);
+          }}>{t("settings.computerUse.shareAccessibilityRequest")}</button>}
+      </> : <p>{t("settings.computerUse.sharePermission")}</p>}</>}
   </aside>;
 }
