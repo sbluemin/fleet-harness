@@ -34,6 +34,9 @@
   border-bottom: 1px solid var(--surface-rim);
 }
 
+/* 이동 실패·Shell 안내가 없으면 머리 줄도 서지 않는다. */
+.fexp-theater-head:empty { display: none; }
+
 .fexp-viewer-access-actions {
   display: flex;
   flex-wrap: wrap;

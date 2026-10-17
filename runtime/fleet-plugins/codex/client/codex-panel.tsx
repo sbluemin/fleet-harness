@@ -30,7 +30,6 @@ import { fetchSearch } from "./codex/api.js";
 import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
 import { loadInitialData } from "./codex/state.js";
-import { CodexTheaterBadge } from "./codex-theater-badge.js";
 import { MobileWikiList } from "./mobile.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -218,10 +217,10 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   }, [hasReader]);
 
   if (!shouldMountCodex) {
-    return <div className="codex-panel-body"><div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div><CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} /></div>;
+    return <div className="codex-panel-body"><CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} /></div>;
   }
 
-  return <div className="codex-panel-body"><div className="codex-theater-context"><CodexTheaterBadge theaterId={theaterId} consoleState={ctx.consoleState} /></div><div ref={navRef} className="codex-rail-host" /></div>;
+  return <div className="codex-panel-body"><div ref={navRef} className="codex-rail-host" /></div>;
 }
 
 function CodexEmpty({
