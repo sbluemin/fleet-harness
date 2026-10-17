@@ -1515,7 +1515,7 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.commodore.log.older": "이전 기록 더 보기",
   "objectives.commodore.log.woke": "깨어남",
   "objectives.commodore.log.tools": "도구 호출 · {summary}",
-  "objectives.commodore.log.you": "사람",
+  "objectives.commodore.log.you": "나",
   "objectives.commodore.log.undelivered": "전달되지 않음",
   "objectives.commodore.log.undeliveredHint": "사령관이 읽기 전에 자율 운영이 꺼졌습니다. 다시 보내지 않았습니다.",
   "objectives.commodore.log.cancelled": "턴 취소됨",
