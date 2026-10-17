@@ -133,6 +133,8 @@ class PlaygroundStage {
 
   /** 크기가 바뀌거나 움직임 규칙이 바뀌면 장면을 새로 세운다. 이미 나온 배우는 다시 등장하지 않고 제자리 근처에 선다. */
   setup(layout: Layout | null, dynamic: boolean): void {
+    // StrictMode 의 effect 재부착(setup→cleanup→setup)은 같은 무대를 다시 쓴다 — 앞선 dispose 를 되살린다.
+    this.disposed = false;
     this.clearTimers();
     this.layout = layout;
     this.dynamic = dynamic;
@@ -417,7 +419,7 @@ class PlaygroundStage {
           return;
         }
         this.publish();
-        this.waitForPartner(actor, item);
+        this.waitForPartner(actor, item, seatIndex);
         return;
       }
       case "sand": {
@@ -455,9 +457,9 @@ class PlaygroundStage {
   }
 
   /** 시소에 혼자 앉으면 짝을 잠깐 기다린다. 짝이 오는 중이면 더 기다린다. */
-  private waitForPartner(actor: Actor, item: Item): void {
+  private waitForPartner(actor: Actor, item: Item, seatIndex: number): void {
     this.schedule(actor, rand(5000, 9000), () => {
-      if (item.seats[1]!.id !== null) { this.waitForPartner(actor, item); return; }
+      if (item.seats[seatIndex === 0 ? 1 : 0]!.id !== null) { this.waitForPartner(actor, item, seatIndex); return; }
       this.dismount(actor);
     });
   }
@@ -487,6 +489,12 @@ class PlaygroundStage {
     for (const actor of this.actors) {
       if (actor.mode === "walk" && actor.present) {
         this.cancel(actor);
+        // 기구로 가던 길이면 앉지 않은 예약을 푼다 — 녹은 뒤 새로 고르므로, 남기면 그 자리는 다시 쓰이지 않는다.
+        for (const item of this.items) {
+          item.seats.forEach((seat, index) => {
+            if (seat.id === actor.cast.id && !seat.seated) item.seats[index] = { id: null, seated: false };
+          });
+        }
         const x = this.pinX(actor.cast.id);
         if (x !== null) actor.x = x;
         actor.dur = 0;
