@@ -135,9 +135,37 @@ export interface AgentDecisionCardProps {
   readonly onAnswered: (decisionId: string) => void;
 }
 
+/**
+ * A participant's ledger — the read-only frame an Operation conversation opens for its commander: a band with the speaker's mark,
+ * "<name>'s ledger · read only" and a way back to the conversation, the turn record as the scrolling log with the Operation log's
+ * gutters and column (the reading-width preference applies), and the session's read-only model line at the foot. Entries use the
+ * transcript vocabulary. The plugin decides when the ledger stands in for its conversation.
+ */
+export interface AgentLedgerProps {
+  /** Whose ledger this is — its mark and name in the band. */
+  readonly speaker: ConversationSpeaker;
+  /** The Theater a `commodore` speaker belongs to — its mongle is that Theater's avatar. */
+  readonly theaterId?: string;
+  readonly language: "en" | "ko";
+  /** Close the ledger and return to the conversation. */
+  readonly onBack: () => void;
+  readonly entries: readonly AgentChatTranscriptEntry[];
+  /** Bring the turn that was running at this time into view and mark it briefly. A new `nonce` repeats the request. */
+  readonly reveal?: { readonly at: number; readonly nonce: number } | null;
+  /** Older entries exist above the first one — a text button at the top of the log reads them. */
+  readonly older?: { readonly label: string; readonly loading: boolean; readonly load: () => void } | null;
+  readonly references?: AgentChatReferenceHost;
+  /**
+   * The model and effort the session actually runs, as the runtime names them (for example `sonnet[1m]`, `medium`) — not a setting
+   * that applies later. A missing effort reads as the model default; `null` when the session is unknown, and no coordinate is shown.
+   */
+  readonly coordinates?: { readonly model: string | null; readonly effort: string | null } | null;
+}
+
 /** Host-provided chat renderer. Plugins receive it on the install context (`ctx.chat`). */
 export interface ClientAgentChatCapability {
   readonly Transcript: ComponentType<AgentChatTranscriptProps>;
   readonly Conversation: ComponentType<AgentConversationProps>;
   readonly DecisionCard: ComponentType<AgentDecisionCardProps>;
+  readonly Ledger: ComponentType<AgentLedgerProps>;
 }

@@ -13,7 +13,7 @@ import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, Com
 import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreTheaterLabel, commodoreTranscriptRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
@@ -244,22 +244,30 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 원장에 설 턴이 없으면
   // 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다). 읽은 창은 아무 줄에서나 시작하므로(쪽·보관 상한) 깨움 줄이 아니라
   // 턴을 이루는 줄과 지금의 실행 상태로 가린다 — 창이 턴 한가운데서 시작해도 도는 턴의 원장은 열린다.
-  const Transcript = commodoreTranscriptRenderer();
-  const ledgerOpen = useCommodoreLedger(theaterId) && Transcript !== null;
+  const Ledger = commodoreLedgerRenderer();
+  const ledgerOpen = useCommodoreLedger(theaterId) && Ledger !== null;
   const hasTurn = turning || entries.some((entry) => entry.kind === "wake" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "result" || entry.kind === "ask");
   // 도는 턴의 시작 — 그 깨움이 창 밖이면 창의 첫 줄에서 그 턴이 이어진다(`commodoreChatEntries` 가 거기서 턴을 연다).
   const runningAt = turning ? entries.findLast((entry) => entry.kind === "wake")?.at ?? entries[0]?.at : undefined;
   const [ledgerReveal, setLedgerReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
   const showInLedger = (at: number) => setLedgerReveal((previous) => ({ at, nonce: (previous?.nonce ?? 0) + 1 }));
-  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn && Transcript ? () => {
+  const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn && Ledger ? () => {
     if (runningAt !== undefined) showInLedger(runningAt); else setLedgerReveal(null);
     setCommodoreLedger(theaterId, true);
-  } : null), [hasTurn, Transcript, runningAt, theaterId]);
+  } : null), [hasTurn, Ledger, runningAt, theaterId]);
   // 원장이 열린 채 곁 칸·목표 대화가 턴을 가리키면 그 요청은 원장이 받는다 — 대화는 지금 그려지지 않는다. 앞쪽 읽기는 위의 같은 효과가 맡는다.
   useEffect(() => {
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
   const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, entries, live, view?.state.asks) : []), [ledgerOpen, t, entries, live, view?.state.asks]);
+  // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Operation 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
+  // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
+  const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);
+  const ledgerCoordinates = useMemo(() => {
+    const live = run?.session;
+    if (live) return { model: live.model, effort: live.effort ?? null };
+    return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
+  }, [run?.session, lastSession]);
 
   // 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 입력 대신 돌아가기가 서고, pill 의 부제가 그 사실을 말한다.
   const composer = (
@@ -283,21 +291,20 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
       ) : null}
       {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
       {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
-      {ledgerOpen && Transcript ? (
+      {ledgerOpen && Ledger ? (
+        // 그룹 대화가 지휘관 원장을 여는 그 틀·본문·바닥 줄(호스트 `ctx.chat.Ledger`)이다. 이 상자는 머리 pill 오버레이 밑자리만 진다.
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
-          <div className="objectives-commodore-ledger-head">
-            <span className="objectives-commodore-ledger-banner" role="status">{t("objectives.commodore.ledger.banner")}</span>
-            <button type="button" className="objectives-commodore-ledger-back" onClick={() => setCommodoreLedger(theaterId, false)}>{t("objectives.commodore.ledger.back")}</button>
-          </div>
-          <div className="objectives-commodore-ledger-body">
-            {/* 대화의 「이전 기록」과 같은 계약 — 같은 기록 창을 앞으로 넓힌다. */}
-            {hasMore ? (
-              <button type="button" className="objectives-commodore-text-button objectives-commodore-older objectives-commodore-ledger-older" disabled={loadingOlder} onClick={readOlder}>
-                {t("objectives.commodore.log.older")}
-              </button>
-            ) : null}
-            <Transcript entries={ledgerEntries} language={language} reveal={ledgerReveal} references={references} />
-          </div>
+          <Ledger
+            speaker={speaker}
+            theaterId={theaterId}
+            language={language}
+            onBack={() => setCommodoreLedger(theaterId, false)}
+            entries={ledgerEntries}
+            reveal={ledgerReveal}
+            older={hasMore ? { label: t("objectives.commodore.log.older"), loading: loadingOlder, load: readOlder } : null}
+            references={references}
+            coordinates={ledgerCoordinates}
+          />
         </div>
       ) : (
       <div className="objectives-commodore-conversation-log">

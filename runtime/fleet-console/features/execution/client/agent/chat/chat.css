@@ -4755,6 +4755,27 @@
   background: transparent;
 }
 
+/* 플러그인 기록의 구분선(세션 바뀜·실패) — 턴 사이를 가르는 낱말이라 코드 축이 아니라 UI 서체로 선다. Operation 채팅의
+   「이전 대화」 띠(.agent-chat .fc-history-band)와 같은 덮음이다. */
+.agent-chat-sys.agent-chat-transcript-note {
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+}
+
+/* 참여자의 원장(SDK `ctx.chat.Ledger`) — 그룹 원장 틀 안에 Operation 채팅 면을 그대로 세운다. 면은 절대 배치(.agent-chat)라
+   그 좌표계가 될 상자가 틀의 본문 자리를 채운다. */
+.agent-ledger-host {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 로그 맨 위의 「이전 기록」 — 대화 화면의 그 단추와 같은 낱말 링크다. 컬럼 가운데에 선다. */
+.agent-chat-log > .agent-ledger-older {
+  display: block;
+  width: auto;
+}
+
 .agent-chat-transcript-turn {
   display: flex;
   flex-direction: column;
