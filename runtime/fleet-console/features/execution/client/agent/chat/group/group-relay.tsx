@@ -149,6 +149,31 @@ const SLIDE_MS = 340;
 const reducedMotion = (): boolean =>
   typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+const FOCUSABLE = "a[href], area[href], button:not([disabled]), input:not([disabled]):not([type=\"hidden\"]), select:not([disabled]), textarea:not([disabled]), summary, [contenteditable=\"true\"], [tabindex]:not([tabindex=\"-1\"])";
+
+/** 화면 안에서 Tab 으로 닿는 것 — 원장 단추·마크다운 링크와 코드 복사·「채팅 닫기」. 보이지 않거나 inert 안에 든 것은 뺀다. */
+function tabStops(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((node) => node.tabIndex >= 0 && !node.closest("[inert]") && node.getClientRects().length > 0);
+}
+
+/**
+ * aria-modal 화면의 Tab 순환 — 형제 inert 는 대화 칸 안쪽만 덮으므로 셸 크롬(모바일 상단 막대·사이드바)으로 빠지지 않게 화면 안에서만
+ * 돈다. 끝에서 앞으로·처음(또는 루트 자신)에서 끝으로 잇는다. 셸 바깥에 inert 를 걸지 않는다 — 그쪽은 다른 기능의 몫이다.
+ */
+function trapTab(event: React.KeyboardEvent<HTMLElement>): void {
+  const root = event.currentTarget;
+  const stops = tabStops(root);
+  const active = document.activeElement;
+  if (stops.length === 0) { event.preventDefault(); root.focus({ preventScroll: true }); return; }
+  const first = stops[0]!;
+  const last = stops[stops.length - 1]!;
+  const outside = !(active instanceof HTMLElement) || !root.contains(active);
+  if (event.shiftKey ? outside || active === root || active === first : outside || active === last) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+}
+
 /** 대화 화면 — 연 전언이 없으면 아무것도 그리지 않는다. 다른 전언을 열면 새 화면으로 선다. */
 export function RelayConversation({ selected, origin, onDismiss, entries, participants, language, onOpenLedger, timeLabel }: RelayLayerPorts & {
   readonly entries: readonly AgentConversationEntry[];
@@ -276,6 +301,7 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
       aria-labelledby={titleId}
       tabIndex={-1}
       onKeyDown={(event) => {
+        if (event.key === "Tab") { trapTab(event); return; }
         if (event.key !== "Escape") return;
         event.preventDefault();
         event.stopPropagation();
