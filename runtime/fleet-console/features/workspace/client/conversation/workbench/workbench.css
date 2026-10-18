@@ -102,6 +102,8 @@
 
 /* 브라우저 칸은 머리가 곧 탭 줄이다 — 캡션이 남은 폭을 채운다. */
 .workbench-tile-title > .op-browser-cap { flex: 1; min-width: 0; }
+/* 캡션 메뉴는 본문 위로 내려온다 — 제목에서 자르면 메뉴의 z-index와 무관하게 클릭도 잘린다. 탭 줄은 자체적으로 자른다. */
+.workbench-tile-title:has(> .op-browser-cap) { overflow: visible; }
 
 .workbench-tile-tools {
   flex: 0 1 auto;
