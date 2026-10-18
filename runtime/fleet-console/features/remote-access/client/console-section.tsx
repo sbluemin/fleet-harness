@@ -169,7 +169,7 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
     <button type="button" className={`console-section-row${origin === at ? " is-current" : ""}`} aria-current={origin === at ? "location" : undefined}
       aria-disabled={blocked || origin === at} title={`${label} · ${detail}`} onClick={() => { if (!blocked) go(origin); }}>
       <ConsoleGlyph remote={remote} /><span className="console-section-name">{label}</span><span className="console-section-address">{detail}</span>
-      {status ? <span className={`console-section-status${status.tone ? ` is-${status.tone}` : ""}`}>{status.label}</span> : origin === at ? <span aria-hidden="true">✓</span> : null}
+      {status ? <span className={`console-section-status${status.tone ? ` is-${status.tone}` : ""}`}>{status.label}</span> : null}
     </button>
     {origin === at && away ? <button type="button" className="console-section-action" title={t("chrome.consoles.home")} aria-label={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}
   </div>;
@@ -183,7 +183,7 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
         event.preventDefault(); location.assign(consoleSectionSignalUrl(location.origin, { focus: event.shiftKey ? "before" : "after" }));
       }
     }}>
-    {isCompact ? <button ref={toggleRef} type="button" className="console-section-compact" aria-label={`${t("chrome.hosts.aria")}: ${currentName}`} title={`${t("chrome.hosts.aria")}: ${currentName}`} onClick={() => picker()}><ConsoleGlyph remote={away} /></button> : <>
+    {isCompact ? <button ref={toggleRef} type="button" className="console-section-compact" aria-current="location" aria-label={`${t("chrome.hosts.aria")}: ${currentName}`} title={`${t("chrome.hosts.aria")}: ${currentName}`} onClick={() => picker()}><ConsoleGlyph remote={away} /></button> : <>
       <header className="console-section-header">
         <button ref={toggleRef} type="button" className="console-section-toggle" aria-expanded={expanded && !fallbackAway} aria-controls={listId} onClick={(event) => toggle(event.currentTarget)}><span className={expanded ? "" : "is-folded"} aria-hidden="true">⌄</span>{t("chrome.hosts.heading")}</button>
         <button ref={addRef} type="button" className="console-section-action console-section-glyph" title={t("chrome.hosts.add")} aria-label={t("chrome.hosts.add")} onClick={add}><PlusGlyph /></button>
@@ -210,7 +210,7 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
           if (resident || inPicker || inlinePopup) location.assign(new URL("/console/settings?section=remote-access", location.origin).toString());
           else openSettingsSurface("connectivity");
         }}>{t("chrome.consoles.allowAccess")}</button> : null}
-      </div> : <div className="console-section-row-wrap"><button type="button" className="console-section-row is-current" aria-expanded={false} onClick={(event) => toggle(event.currentTarget)}><ConsoleGlyph remote={away} /><span className="console-section-name">{currentName}</span><span className="console-section-address">{away ? t("chrome.consoles.remote") : t("chrome.hosts.nearby")}</span></button>{away ? <button type="button" className="console-section-action" aria-label={t("chrome.consoles.home")} title={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}</div>}
+      </div> : <div className="console-section-row-wrap"><button type="button" className="console-section-row is-current" aria-current="location" aria-expanded={false} onClick={(event) => toggle(event.currentTarget)}><ConsoleGlyph remote={away} /><span className="console-section-name">{currentName}</span><span className="console-section-address">{away ? t("chrome.consoles.remote") : t("chrome.hosts.nearby")}</span></button>{away ? <button type="button" className="console-section-action" aria-label={t("chrome.consoles.home")} title={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}</div>}
     </>}
     {error ? <p role="alert" className="console-section-error">{error}</p> : null}
     {addOpen ? <AddHostDialog openerRef={addRef} onClose={() => setAddOpen(false)} /> : null}

@@ -21,6 +21,7 @@
 .console-section-row.is-current { background: var(--wash-selected); }
 .console-section-row[aria-disabled="true"]:not(.is-current) { color: var(--text-tertiary); }
 .console-section-row svg { color: var(--text-secondary); }
+.console-section-row.is-current > svg, .console-section-compact > svg { color: var(--brass-ink); }
 .console-section-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto; font-size: var(--t-md); }
 .console-section-address { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--text-tertiary); }
 .console-section-status { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); }
