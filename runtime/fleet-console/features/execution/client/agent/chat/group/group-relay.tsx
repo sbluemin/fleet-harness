@@ -179,6 +179,8 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = React.useState(reducedMotion);
   const closing = React.useRef(false);
+  // 사람이 닫았다(「채팅 닫기」·Esc) — 내려가는 순간 누른 줄로 포커스를 돌려준다. 원장으로 가며 닫힐 때는 돌려주지 않는다.
+  const returnFocus = React.useRef(false);
   const titleId = React.useId();
 
   const sender = senderOf(entry, language);
@@ -210,19 +212,19 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
     return () => {
       cancelAnimationFrame(frame);
       for (const child of marked) child.removeAttribute("inert");
+      // inert 를 걷은 바로 이 자리에서 돌려준다 — 화면이 아직 문서에 있어 포커스가 BODY 로 떨어지기 전이고, 닫기를 부른 길
+      // (React 사건·transitionend·타이머)이 무엇이든 언마운트 커밋과 순서가 엇갈리지 않는다. 줄이 다시 그려졌으면 같은 전언의 단추를 찾는다.
+      if (!returnFocus.current) return;
+      const back = origin.current;
+      const button = back?.isConnected ? back : Array.from(host.querySelectorAll<HTMLElement>("[data-entry-id]")).find((node) => node.dataset.entryId === entry.id)?.querySelector<HTMLElement>("button");
+      button?.focus({ preventScroll: true });
     };
-  }, []);
+  }, [entry.id, origin]);
 
   const finish = React.useCallback(() => {
-    const back = origin.current;
-    const host = rootRef.current?.parentElement ?? null;
+    returnFocus.current = true;
     onDismiss();
-    // 화면이 내려가고 inert 가 걷힌 뒤 누른 줄로 돌아간다. 그사이 줄이 다시 그려졌으면 같은 전언의 단추를 찾는다.
-    requestAnimationFrame(() => {
-      const button = back?.isConnected ? back : Array.from(host?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []).find((node) => node.dataset.entryId === entry.id)?.querySelector<HTMLElement>("button");
-      button?.focus({ preventScroll: true });
-    });
-  }, [entry.id, onDismiss, origin]);
+  }, [onDismiss]);
 
   const close = React.useCallback(() => {
     if (closing.current) return;
