@@ -242,6 +242,7 @@
 
 .mobile-settings-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   min-height: 0;
@@ -1176,7 +1177,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 }
 .mobile-console-card-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .mobile-console-card-copy strong { overflow: hidden; font-size: var(--t-lg); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
-.mobile-console-card-copy small { color: var(--m-text-muted); font-size: var(--t-sm); }
+.mobile-console-card-copy small { overflow: hidden; color: var(--m-text-muted); font-size: var(--t-sm); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-state-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; font-size: var(--t-sm); white-space: nowrap; background: var(--m-chip); border-radius: 14px; }
 .mobile-settings-detail .mobile-group.is-flush { padding: 0; }
 .mobile-radio { position: relative; flex: none; width: 20px; height: 20px; border: 2px solid var(--m-text-muted); border-radius: 50%; }
