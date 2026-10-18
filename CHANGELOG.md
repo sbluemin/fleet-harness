@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.242.0] - 2026-10-18
+
+### fleet-console
+
+#### Changed
+- The file viewer header is simpler: the file name no longer repeats across rows, and open-file tabs appear only when more than one file is open.
+- Remove model quality grades from AI Gateway settings and delegation routing; fallback routing follows provider preference without grouping models by grade.
+
+#### Fixed
+- Fleet Browser's viewport and session menus now respond when you click their items, so viewport presets and session actions work again.
+
+#### Removed
+- Cursor's Gateway lineup now offers only Grok 4.7 and Grok 4.7 Fast at 256K or 500K context, using the Auto allowance. Muse Spark, Muse Wonder, and Gemini models and the API allowance display have been removed from the Cursor integration.
+- Agents no longer append ASCII tags such as [MUST NOT ...] to the missions, criteria and decisions they write on an objective.
+
 ## [1.241.0] - 2026-10-17
 
 ### fleet-console

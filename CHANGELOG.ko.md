@@ -5,6 +5,21 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.242.0] - 2026-10-18
+
+### fleet-console
+
+#### Changed
+- 파일 뷰어 머리가 단순해졌습니다. 파일 이름이 여러 줄에 반복되지 않고, 열린 파일 탭은 파일이 둘 이상일 때만 나타납니다.
+- AI Gateway 설정과 위임 라우팅에서 모델 품질 등급을 없애고, 대체 라우팅이 모델 등급별 분류 없이 공급자 선호 순서를 따르도록 변경했습니다.
+
+#### Fixed
+- Fleet 브라우저의 뷰포트와 세션 메뉴 항목을 클릭하면 이제 동작합니다. 뷰포트 프리셋과 세션 작업이 다시 적용됩니다.
+
+#### Removed
+- Cursor의 Gateway 모델은 Auto 한도를 사용하는 Grok 4.7과 Grok 4.7 Fast의 256K·500K 컨텍스트만 제공합니다. Cursor 연동에서 Muse Spark, Muse Wonder, Gemini 모델과 API 한도 표시를 제거했습니다.
+- 에이전트가 목표에 쓰는 임무·기준·결정 끝에 [MUST NOT ...] 같은 ASCII 표시를 더 이상 붙이지 않습니다.
+
 ## [1.241.0] - 2026-10-17
 
 ### fleet-console
