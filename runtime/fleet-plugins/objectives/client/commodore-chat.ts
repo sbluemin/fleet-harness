@@ -1,4 +1,4 @@
-import type { AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
+import type { AgentChatTranscriptAttachment, AgentChatTranscriptEntry, AgentChatTranscriptEvent, AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { splitQuotedPrompt } from "@fleet-console/sdk/composer/quotes";
 import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationReference, type ConversationSpeaker } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -17,7 +17,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 도구는 이름과 한 줄 요약(입력 전체는 기록에 없다)이다. 사고는 채팅처럼 내용을 그리지 않는다. 세션 교대와 오류는 구분선이다.
  * 저장하지 않는 라이브 사건(글자 흐름·진행 중 도구 이름)은 마지막 확정 줄 뒤에 이어 붙는다 — 확정 줄이 오면 그 몫은 버려진다.
  */
-export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
+export function commodoreChatEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = undeliveredMessageSeqs(entries);
@@ -53,7 +53,7 @@ export function commodoreChatEntries(t: T, entries: readonly CommodoreTranscript
         break;
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
-        const attachments = [...(entry.attachments?.map(({ id }) => ({ reference: id })) ?? []), ...quotes.map((quote) => ({ quote }))];
+        const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
         if (turnAt !== null && delivered.has(entry.seq)) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
         else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, at: entry.at });
         else {
@@ -135,6 +135,13 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
   return references.length ? { text, references } : { text };
 }
 
+/** 미리보기는 기록 사본만 가리킨다 — 사본을 만들기 전의 옛 기록은 전달용 미리보기를 열지 않는다. */
+function messageImages(theaterId: string, entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>): readonly AgentChatTranscriptAttachment[] {
+  return entry.attachments?.map(({ id, preview }) => preview && entry.messageId
+    ? { preview: { id, url: `/api/v1/plugins/objectives/commodore/attachment?${new URLSearchParams({ theaterId, messageId: entry.messageId, attachmentId: id })}` } }
+    : { reference: id }) ?? [];
+}
+
 /** 다른 표면(Codex 문서)이 입력창에 붙여 보낸 인용은 문면 끝 줄로 실려 있다 — 말풍선 문면에서 떼어 인용 칩으로 세운다. */
 function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>) {
   const words = messageWords(entry);
@@ -168,7 +175,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       }
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
-        const attachments = [...(entry.attachments?.map(({ id }) => ({ reference: id })) ?? []), ...quotes.map((quote) => ({ quote }))];
+        const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, operationId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
           ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
           ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
@@ -309,8 +316,8 @@ export type CommodoreLogBlock =
   | { readonly kind: "note"; readonly text: string; readonly at?: number; readonly tone?: "warn" };
 
 /** 채팅 어휘를 턴과 구분선으로 가른다. 접힘은 그리는 쪽이 정하고, 여기서는 줄을 만들기 위한 사실만 뽑는다. */
-export function commodoreLogBlocks(t: T, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly CommodoreLogBlock[] {
-  const chat = commodoreChatEntries(t, entries, live, asks);
+export function commodoreLogBlocks(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly CommodoreLogBlock[] {
+  const chat = commodoreChatEntries(t, theaterId, entries, live, asks);
   const blocks: CommodoreLogBlock[] = [];
   const ordinal = new Map<number, number>();
   let bucket: AgentChatTranscriptEntry[] = [];

@@ -4,6 +4,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import { canonicalModelId } from "@fleet-console/sdk/models";
+import { createCommodoreImages } from "./images.js";
 
 import { ObjectiveStoreError } from "../store.js";
 import {
@@ -38,6 +39,7 @@ import {
  * ```
  * commodore/state.json         자율 운영·지시·정보·정보 출처·Theater 별 좌표
  * commodore/transcript.jsonl   사령관 기록(한 줄 한 항목, seq 단조 증가)
+ * commodore/images/<메시지>/<첨부>.<확장자>   기록을 따라 보존·정리하는 이미지 사본
  * ```
  *
  * 목표 저장소와 같은 원칙이다: Console 이 유일한 쓰는 쪽이라 잠금도 감시도 없고, 모든 변경은 `commit` 한 곳을 지나 tmp→rename
@@ -83,6 +85,7 @@ export interface CommodoreStore {
   addRunTotals(theaterId: string, delta: Partial<CommodoreRunTotals>): CommodoreState;
   /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 지시·인텔·설정은 보존한다. */
   transcriptClear(theaterId: string): CommodoreState;
+  readonly images: ReturnType<typeof createCommodoreImages>;
   transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(theaterId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
   /**
@@ -149,6 +152,11 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     if (!dir) throw new ObjectiveStoreError("theater_unavailable");
     return path.join(dir, "commodore");
   };
+  const images = createCommodoreImages((theaterId) => {
+    const dir = options.dirOf(theaterId);
+    if (!dir) throw new ObjectiveStoreError("theater_unavailable");
+    return dir;
+  });
   const stateFile = (theaterId: string) => path.join(dirFor(theaterId), STATE_FILE);
   const transcriptFile = (theaterId: string) => path.join(dirFor(theaterId), TRANSCRIPT_FILE);
 
@@ -196,7 +204,8 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
     lastSeq.set(theaterId, parsed.data.seq);
-    compactIfLarge(file);
+    const kept = compactIfLarge(file);
+    if (kept) images.prune(theaterId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
     broadcast({ op: "transcript", theaterId, entry: parsed.data });
     return parsed.data;
   };
@@ -299,8 +308,10 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const state = commit(theaterId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
       lastSeq.set(theaterId, clearedThrough);
       fs.rmSync(transcriptFile(theaterId), { force: true });
+      images.prune(theaterId);
       return state;
     },
+    images,
     transcriptAppend: (theaterId, input) => append(theaterId, input),
     transcriptRead(theaterId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
@@ -432,13 +443,14 @@ function readTranscriptFile(file: string): CommodoreTranscriptEntry[] {
   return entries;
 }
 
-function compactIfLarge(file: string): void {
+function compactIfLarge(file: string): readonly CommodoreTranscriptEntry[] | undefined {
   let size: number;
   try { size = fs.statSync(file).size; } catch { return; }
   if (size <= TRANSCRIPT_COMPACT_BYTES) return;
   const entries = readTranscriptFile(file);
   const kept = entries.slice(Math.floor(entries.length / 2));
   writeFileAtomic(file, kept.map((entry) => JSON.stringify(entry)).join("\n") + (kept.length ? "\n" : ""));
+  return kept;
 }
 
 /** tmp→rename. tmp 는 매번 새 이름으로 배타 생성해 이미 있는 자리(특히 밖을 가리키는 링크)를 따라가며 쓰지 않는다. */

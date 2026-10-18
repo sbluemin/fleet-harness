@@ -23,9 +23,12 @@ export function ChatDispatchAttachments({
   const [opened, setOpened] = React.useState<number | null>(null);
   // 404는 "없는 첨부"가 아니라 "거둬진 첨부"다 — 같은 자리에 lapsed와 같은 말을 세운다.
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
-  const live = attachments.filter((attachment): attachment is { readonly id: string } => (
-    "id" in attachment && !lapsed.includes(attachment.id)
-  ));
+  const live = attachments.flatMap((attachment) => {
+    const image = "id" in attachment ? { id: attachment.id, src: agentChatAttachmentPreviewUrl(attachment.id) }
+      : "preview" in attachment && attachment.preview.url.startsWith("/api/v1/plugins/") && !attachment.preview.url.includes("\\")
+        ? { id: attachment.preview.id, src: attachment.preview.url } : null;
+    return image && !lapsed.includes(image.id) ? [image] : [];
+  });
   const references = attachments.filter((attachment) => "reference" in attachment);
   // 인용은 바이트가 없는 글 첨부라 거둬질 일이 없다 — 입력창 칩과 같은 칩으로 선다.
   const quotes = attachments.flatMap((attachment) => ("quote" in attachment ? [attachment.quote] : []));
@@ -43,7 +46,7 @@ export function ChatDispatchAttachments({
           onClick={() => setOpened(index)}
         >
           <img
-            src={agentChatAttachmentPreviewUrl(attachment.id)}
+            src={attachment.src}
             alt={t("terminal.chat.attachmentAlt", { index: String(index + 1) })}
             onError={() => setLapsed((current) => (current.includes(attachment.id) ? current : [...current, attachment.id]))}
           />
@@ -63,7 +66,7 @@ export function ChatDispatchAttachments({
         <ComposerAttachmentViewer
           images={live.map((attachment, index) => ({
             key: attachment.id,
-            src: agentChatAttachmentPreviewUrl(attachment.id),
+            src: attachment.src,
             name: t("terminal.chat.attachmentAlt", { index: String(index + 1) }),
           }))}
           index={opened}

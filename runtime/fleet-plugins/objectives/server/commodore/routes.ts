@@ -1,6 +1,7 @@
 import type http from "node:http";
 import { randomUUID } from "node:crypto";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "./attachment-budget.js";
+import { validCommodoreImageId } from "./images.js";
 
 import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import { canonicalModelId } from "@fleet-console/sdk/models";
@@ -15,7 +16,7 @@ import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DIRECTIVE, MAX_INTEL_TEXT, MAX_SOURCES, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "./types.js";
 
 /**
- * 「사령관 기록」 서랍이 부르는 라우트 — 전부 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
+ * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
  * `objectives:commodore` 사건으로 갱신되므로 응답은 확인용이다.
  *
  * 실험 기능 「자율 운영」이 꺼져 있어도 지시·정보는 읽고 쓸 수 있다(데이터는 사람의 것이다). 꺼진 채로 자율 운영을 켜는
@@ -25,7 +26,7 @@ import { COMMODORE_EFFORTS, commodorePatrolSchema, commodoreSourceSchema, EMPTY_
 
 export interface CommodoreRoute {
   readonly name: string;
-  readonly method: "POST";
+  readonly method: "GET" | "POST";
   readonly summary: string;
   readonly handler: RouteHandler;
 }
@@ -103,7 +104,22 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
     return state;
   };
 
+  const imageQuery = z.object({ theaterId: ids, messageId: z.string().refine(validCommodoreImageId), attachmentId: z.string().refine(validCommodoreImageId) }).strict();
+  const image: RouteHandler = ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const parsed = imageQuery.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const { theaterId, messageId, attachmentId } = parsed.data;
+    const found = store.images.read(theaterId, messageId, attachmentId);
+    if (!found) { ctx.host.http.writeJson(res, 404, { error: "attachment_not_found" }); return true; }
+    res.writeHead(200, { "Content-Type": found.mime, "Content-Length": found.bytes.byteLength, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+    res.end(found.bytes);
+    return true;
+  };
+
   return [
+    { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/state", method: "POST", summary: "Read a Theater's Commodore state: autonomy, directive, intel, sources and model coordinates.", handler: json(theaterRef, ({ theaterId }) => view(theaterId, read(theaterId))) },
     { name: "commodore/autonomy", method: "POST", summary: "Turn a Theater's autonomous operation on or off (the Commodore glyph on the sidebar Theater header).", handler: json(theaterRef.extend({ autonomy: z.boolean() }).strict(), ({ theaterId, autonomy }) => {
       read(theaterId);
@@ -166,9 +182,21 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
         if (code?.startsWith("attachment_")) throw new ObjectiveStoreError(code);
         throw error;
       }
+      // 기록 사본 실패는 전달을 막지 않는다 — 그 메시지는 예전처럼 참조 자리로 남는다.
+      let preview = false;
+      if (attachmentIds.length) {
+        try {
+          const images = ctx.host.attachments!.read(theaterId, messageId);
+          if (images.length === attachmentIds.length && images.every((image, index) => image.id === attachmentIds[index])) preview = store.images.save(theaterId, messageId, images);
+        } catch { /* 전달용 원본의 수명은 감독자가 그대로 소유한다. */ }
+      }
       try {
-        return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}), ...(references.length ? { references } : {}) }) };
-      } catch (error) { if (attachmentIds.length) ctx.host.attachments!.rollbackClaim(theaterId, messageId); throw error; }
+        return { theaterId, entry: store.transcriptAppend(theaterId, { kind: "message", text, ...(attachmentIds.length ? { messageId, attachments: attachmentIds.map((id) => ({ id, ...(preview ? { preview: true as const } : {}) })), imageBytes } : {}), ...(objective ? { objective: { id: objective.id, title: objective.title } } : {}), ...(references.length ? { references } : {}) }) };
+      } catch (error) {
+        if (preview) { try { store.images.remove(theaterId, messageId); } catch { /* 다음 정리 때 다시 거둔다. */ } }
+        if (attachmentIds.length) ctx.host.attachments!.rollbackClaim(theaterId, messageId);
+        throw error;
+      }
     }) },
     // 사령관의 질문에 대한 사람의 답 — 자율 운영이 꺼져 있어도 받는다(답은 상태에 남고, 사령관은 다음에 돌 때 읽는다). 끝난 질문은 다시 답하지 못한다.
     { name: "commodore/ask/answer", method: "POST", summary: "Answer one of the Commodore's open questions to the person: every question at once. The answer is kept with the question, logged, and wakes a running Commodore, which reads it with its asks tool. An answered or withdrawn question cannot be answered again.", handler: json(theaterRef.extend({ askId: ids, answers: decisionAnswersSchema.shape.answers }).strict(), ({ theaterId, askId, answers }) => {

@@ -253,7 +253,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
   const Transcript = commodoreTranscriptRenderer();
   const asks = view?.state.asks;
-  const chat = useMemo(() => commodoreChatEntries(t, entries, live, asks), [t, entries, live, asks]);
+  const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks), [t, theaterId, entries, live, asks]);
   const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const [loadingOlder, setLoadingOlder] = useState(false);
