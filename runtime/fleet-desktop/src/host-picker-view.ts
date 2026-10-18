@@ -21,8 +21,6 @@ export interface HostPickerViewDeps {
   readonly attachBridge: (contents: WebContents) => void;
   readonly log?: (message: string) => void;
   readonly now?: () => number;
-  /** 집의 다른 표면이 추가·편집 결과를 다시 읽는다. 저장 목록 자체는 셸을 거치지 않는다. */
-  readonly onClose?: () => void;
 }
 
 export interface HostPickerView {
@@ -59,7 +57,6 @@ export function createHostPickerView(deps: HostPickerViewDeps): HostPickerView {
     try { open.view.webContents.close(); } catch { /* 이미 죽은 렌더러. */ }
     // 덮개가 걷히면 손은 원래 보던 콘솔로 돌아가야 한다.
     try { if (shell && !shell.isDestroyed()) shell.consoleContents.focus(); } catch { /* 창이 없으면 돌려줄 포커스도 없다. */ }
-    deps.onClose?.();
   }
 
   return {

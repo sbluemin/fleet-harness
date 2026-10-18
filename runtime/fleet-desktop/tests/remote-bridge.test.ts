@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { runInNewContext } from "node:vm";
-import { CONSOLE_SECTION_EVENT, CONSOLE_SECTION_CONTEXT_EVENT, CONSOLE_SECTION_REFRESH_EVENT, consoleSectionSignalUrl } from "@fleet-console/protocol/desktop/console-section";
-import { createConsoleSectionView } from "../src/console-section-view.js";
+import { CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, type ConsoleSectionCommand, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { createConsoleSectionController } from "../src/console-section-controller.js";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -202,58 +202,77 @@ const PICKER_DISMISS_URL = `${LOCAL}/console/?desktop-surface=host-picker-dismis
 
 /** 항해 하나가 두 뜻으로 읽히면 안 된다 — 목록을 펴는 신호와, 창째로 집에 가는 길. */
 describe("host picker surface", () => {
-  it("keeps the home section in a separate renderer and relays only its height to the remote document", async () => {
-    const activeEvents: Array<{ type: string; detail: unknown }> = [];
-    const homeEvents: Array<{ type: string; detail: unknown }> = [];
-    const contents = (url: string, events: typeof activeEvents) => Object.assign(new EventEmitter(), {
-      getURL: () => url,
-      getZoomFactor: () => 1,
-      setZoomFactor: vi.fn(),
-      isDestroyed: () => false,
-      focus: vi.fn(), close: vi.fn(),
-      loadURL: vi.fn(async () => undefined),
+  it("projects only minimized state to the remote document and resolves bounded commands against window-owned ids", async () => {
+    const events: Array<{ type: string; detail: ConsoleSectionState }> = [];
+    const active = Object.assign(new EventEmitter(), {
+      getURL: () => `${REMOTE}/console/`, isDestroyed: () => false,
       executeJavaScript: async (script: string) => runInNewContext(script, {
-        window: { dispatchEvent: (event: { type: string; detail: unknown }) => events.push(event) },
+        location: { origin: REMOTE, pathname: "/console/" },
+        window: { dispatchEvent: (event: typeof events[number]) => events.push(event) },
         CustomEvent: class { constructor(readonly type: string, readonly init: { detail: unknown }) {} get detail() { return this.init.detail; } },
       }),
     });
-    const active = contents(`${REMOTE}/console/`, activeEvents);
-    const home = contents(`${LOCAL}/console/?desktop-surface=console-section`, homeEvents);
-    const view = { webContents: home, setVisible: vi.fn(), setBounds: vi.fn() };
-    const harness = createHarness();
-    const section = createConsoleSectionView({
-      shell: () => ({ consoleContents: active, isDestroyed: () => false, getContentBounds: () => ({ width: 1200, height: 800 }), stack: { presentSection: vi.fn(), removeSection: vi.fn() } }) as never,
-      home: () => LOCAL, createView: () => view as never, confine: () => undefined,
-      attachBridge: (renderer) => harness.bridge.attachPicker(renderer, true), log: () => undefined,
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(new URL(url).origin).toBe(LOCAL);
+      expect(new Headers(init?.headers).get("Origin")).toBe(LOCAL);
+      if (url.endsWith("/api/v1/remote-hosts")) return Response.json({ hosts: [{ id: "private-record-id", origin: REMOTE, label: "Studio", fingerprint: FINGERPRINT, token: "grant-token", link: "fleet://join?code=secret", addedAt: 12345 }] });
+      if (url.endsWith("/api/v1/local-consoles")) return Response.json({ consoles: [{ origin: LOCAL, version: "1.2.3", distro: "/private/local-path" }] });
+      if (url.endsWith("/api/v1/status")) return Response.json({ name: "Home", version: "1.2.3" });
+      if (url.endsWith("/probes")) return Response.json({ reachable: true, trusted: true });
+      return Response.json({ ok: true });
     });
+    const open = vi.fn(async () => undefined);
+    const add = vi.fn();
+    const confirmForget = vi.fn(async () => false);
+    const report = vi.fn();
+    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open, add, confirmForget, report });
     section.attach(active as never);
+    const harness = createHarness();
     harness.bridge.attach(active as never);
+    const send = (value: ConsoleSectionCommand, origin = REMOTE) => {
+      const preventDefault = vi.fn();
+      active.emit("will-navigate", { preventDefault }, consoleSectionCommandUrl(origin, value), undefined, true);
+      expect(preventDefault).toHaveBeenCalled();
+    };
     try {
-      const signal = (renderer: typeof active, origin: string, value: unknown) => {
-        const preventDefault = vi.fn();
-        renderer.emit("will-navigate", { preventDefault }, consoleSectionSignalUrl(origin, value), undefined, true);
-        expect(preventDefault).toHaveBeenCalled();
-      };
-      signal(active, REMOTE, { geometry: { x: 0, y: 52, width: 280, available: 500, compact: false, visible: true, theme: "light", hosts: [{ label: "must not be relayed" }] } });
-      expect(home.loadURL).toHaveBeenCalledWith(`${LOCAL}/console/?desktop-surface=console-section`);
-      signal(home, LOCAL, { height: 180, hosts: [{ label: "private home list", fingerprint: FINGERPRINT }] });
-      await Promise.resolve();
-      expect(homeEvents.length).toBeGreaterThan(0);
-      for (const { type, detail } of homeEvents) expect({ type, detail }).toEqual({ type: CONSOLE_SECTION_CONTEXT_EVENT, detail: { at: REMOTE, compact: false, maxHeight: 500, theme: "light", frame: expect.any(Object) } });
-      expect(activeEvents.map(({ type, detail }) => ({ type, detail }))).toEqual([{ type: CONSOLE_SECTION_EVENT, detail: 180 }]);
-      // 추가 덮개를 걷어도 다시 읽기 신호는 집 문서에만 도착한다. 원격에는 목록이 실리지 않는다.
-      section.pickerClosed();
-      await Promise.resolve();
-      expect(homeEvents.at(-1)).toMatchObject({ type: CONSOLE_SECTION_REFRESH_EVENT, detail: null });
-      // 원격 문서는 집 크기 신호를 위조하거나 집 뷰를 항해시키지 못한다.
-      signal(active, LOCAL, { height: 999 });
-      expect(activeEvents).toHaveLength(1);
-      expect(harness.requests).toEqual([]);
+      send({ request: "state" });
+      await section.refresh();
+      expect(events.length).toBeGreaterThan(0);
+      for (const event of events) {
+        expect(event.type).toBe(CONSOLE_SECTION_EVENT);
+        expect(Object.keys(event.detail).sort()).toEqual(["entries", "expanded", "v"]);
+        for (const entry of event.detail.entries) expect(Object.keys(entry).sort()).toEqual(["active", "address", "home", "id", "kind", "label", "status", "version"]);
+        const frame = JSON.stringify(event.detail);
+        for (const secret of [LOCAL, REMOTE, FINGERPRINT, "private-record-id", "grant-token", "fleet://", "/private/local-path", "addedAt"]) expect(frame).not.toContain(secret);
+      }
+      const remote = events.at(-1)!.detail.entries.find((entry) => entry.active)!;
+      const home = events.at(-1)!.detail.entries.find((entry) => entry.home)!;
+      expect(remote).toMatchObject({ label: "Studio", address: "100.84.12.7:6768", kind: "remote", active: true });
+      const before = fetch.mock.calls.length;
+      send({ switch: "unknown-id" }); send({ rename: { id: "unknown-id", label: "Other" } }); send({ forget: "unknown-id" });
+      send({ switch: home.id }, LOCAL);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetch).toHaveBeenCalledTimes(before); expect(open).not.toHaveBeenCalled(); expect(confirmForget).not.toHaveBeenCalled();
       expect(harness.trace).toEqual([]);
-      // 표면 실패 시 같은 보안 경계를 쓰는 덮개로 복귀한다.
-      home.emit("render-process-gone");
-      await Promise.resolve();
-      expect(activeEvents.at(-1)?.detail).toBeNull();
+      send({ switch: home.id });
+      expect(open).toHaveBeenCalledWith(LOCAL);
+      send({ rename: { id: remote.id, label: "Renamed" } });
+      await vi.waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(true));
+      await section.refresh();
+      expect(fetch.mock.calls.find(([, init]) => init?.method === "PATCH")?.[1]).toMatchObject({ body: JSON.stringify({ label: "Renamed" }) });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      send({ forget: remote.id });
+      await vi.waitFor(() => expect(confirmForget).toHaveBeenCalledWith("Studio"));
+      expect(fetch.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      confirmForget.mockResolvedValue(true);
+      send({ forget: remote.id });
+      await vi.waitFor(() => expect(fetch.mock.calls.some(([url, init]) => url.endsWith("/private-record-id") && init?.method === "DELETE")).toBe(true));
+      await section.refresh();
+      send({ add: true });
+      expect(new URL(add.mock.calls[0]![0]).origin).toBe(LOCAL);
+      expect(new URL(add.mock.calls[0]![0]).searchParams.get("intent")).toBe("add");
+      expect(report).not.toHaveBeenCalled();
     } finally { section.close(); harness.bridge.dispose(); }
   });
 

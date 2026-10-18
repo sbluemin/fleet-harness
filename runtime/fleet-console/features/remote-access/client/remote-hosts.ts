@@ -33,7 +33,7 @@ let loaded = false;
 const listeners = new Set<Listener>();
 
 export function useRemoteHosts(): readonly RemoteHost[] {
-  return useSyncExternalStore(subscribe, getRemoteHosts, getRemoteHosts);
+  return useSyncExternalStore(subscribeRemoteHostsChanged, getRemoteHosts, getRemoteHosts);
 }
 
 function getRemoteHosts(): readonly RemoteHost[] {
@@ -140,7 +140,8 @@ function publish(next: readonly RemoteHost[]): void {
   for (const listener of listeners) listener();
 }
 
-function subscribe(listener: Listener): () => void {
+/** 다른 화면에서 목록을 편집했음을 알린다. 구독자에게 원본 레코드를 넘기지 않는다. */
+export function subscribeRemoteHostsChanged(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }

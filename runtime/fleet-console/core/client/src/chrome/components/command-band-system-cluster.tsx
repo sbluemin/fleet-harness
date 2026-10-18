@@ -8,7 +8,6 @@ import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../f
 import { isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
-import { type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
@@ -120,12 +119,6 @@ export function ConsoleHelpMenu({ menuItem = false, sideSubmenuGroup }: { readon
   );
 }
 
-/** 줄 오른쪽 한 자리에 서는 상태 낱말. 닿지 않거나 믿을 수 없는 호스트만 신호 잉크를 입는다. */
-interface HostStatus {
-  readonly label: string;
-  readonly tone?: "coral" | "warn";
-}
-
 /**
  * 집에 서 있는가 — 호스트 칩과 독 아바타가 함께 쓰는 단 하나의 판정이다.
  *
@@ -162,34 +155,6 @@ export function isLoopbackOrigin(origin: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** 같은 루프백 주소라도 어디에 사는지가 다르다 — WSL 안의 콘솔은 그 배포판 이름을 달고 선다. */
-export function nearbyDetail(entry: LocalConsole, home: boolean): string {
-  const parts = [new URL(entry.origin).host];
-  if (entry.distro) parts.push(entry.distro);
-  if (entry.version && !home) parts.push(`v${entry.version}`);
-  return parts.join(" · ");
-}
-
-/** 주소 줄에는 어디인지만 둔다. 닿지 않는 호스트에는 마지막으로 연 때를 곁들인다. */
-export function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
-  const address = `${host.hostname}:${host.port}`;
-  if (state === undefined || state.reachable || host.lastOpenedAt === null) return address;
-  return `${address} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
-}
-
-export function hostStatus(state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): HostStatus | undefined {
-  if (state === undefined) return undefined;
-  if (!state.reachable) return { label: t("chrome.hosts.unreachable"), tone: "coral" };
-  return state.trusted ? undefined : { label: t("chrome.hosts.untrusted"), tone: "warn" };
-}
-
-function formatSeen(epochMs: number): string {
-  const minutes = Math.round((Date.now() - epochMs) / 60_000);
-  if (minutes < 60) return `${Math.max(1, minutes)} min ago`;
-  const hours = Math.round(minutes / 60);
-  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의

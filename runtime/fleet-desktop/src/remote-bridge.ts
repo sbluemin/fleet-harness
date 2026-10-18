@@ -1,5 +1,5 @@
 import type { WebContents } from "electron";
-import { CONSOLE_SECTION_SIGNAL } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_SECTION_COMMAND } from "@fleet-console/protocol/desktop/console-section";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import type { DesktopNotice } from "./desktop-notices.js";
@@ -54,7 +54,7 @@ export interface RemoteBridge {
    * 집의 목록을 그리는 렌더러. 여기서 고른 콘솔은 메인 창이 받아 열고, 피커는 닫힌다 —
    * 성공이든 실패든 닫는다. 실패한 채 덮개만 남으면 사용자는 돌아갈 화면을 잃는다.
    */
-  attachPicker(contents: Pick<WebContents, "on" | "removeListener">, persistent?: boolean): void;
+  attachPicker(contents: Pick<WebContents, "on" | "removeListener">): void;
   /** 목록에 이미 있는 호스트를 연다. `url`은 루프백 대상의 특정 화면까지 정해져 온 경우에만 쓰인다. */
   open(origin: string, url?: string): Promise<void>;
   /** `fleet://join?code=…`를 로컬 Console에 넘기고, 받아들여지면 그 호스트를 연다. */
@@ -279,7 +279,6 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
     attach(contents) {
       const listener = (event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
         if (isMainFrame === false) return;
-        if (isSectionSignal(url)) { event.preventDefault(); return; }
         /**
          * 피커 판정이 consoleTarget보다 먼저다. 센티넬도 홈의 `/console/`이라 아래 판정에
          * 걸리는데, 그러면 목록을 펼치는 대신 창째로 집에 돌아가 버린다 — 지금의 2단 동선 그대로다.
@@ -312,16 +311,14 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       attached.push({ contents, listener: landed as never, event: "did-navigate" });
     },
 
-    attachPicker(contents, persistent = false) {
+    attachPicker(contents) {
       const listener = (event: { preventDefault: () => void }, url: string, _redirect?: unknown, isMainFrame?: boolean): void => {
         if (isMainFrame === false) return;
-        if (isSectionSignal(url)) { event.preventDefault(); return; }
-        // 상주 섹션은 좁은 열·추가 모달을 덮개에 맡긴다. 덮개 자신은 중첩해서 열리지 않는다.
+        // 피커 안에서 다시 피커를 부르는 일은 없다. 스스로를 다시 여는 대신 조용히 닫는다.
         const surface = pickerSurfaceOf(url, deps.localOrigin());
         if (surface !== null) {
           event.preventDefault();
-          if (persistent && surface === "open") void openPicker(url).catch(report);
-          else closePicker();
+          closePicker();
           return;
         }
         const target = consoleTarget(url, deps.localOrigin());
@@ -380,6 +377,8 @@ export function pickerSurfaceOf(url: string, localOrigin: string | null): "open"
 export function consoleTarget(url: string, localOrigin: string | null): string | null {
   try {
     const parsed = new URL(url);
+    // 최소 상태 명령은 별도 컨트롤러가 검증한다. 거부된 명령도 일반 전환으로 읽지 않는다.
+    if (parsed.searchParams.get(PICKER_SURFACE_PARAM) === CONSOLE_SECTION_COMMAND) return null;
     if (!parsed.pathname.startsWith(CONSOLE_PATH)) return null;
     if (isRemoteConsoleOrigin(parsed.origin)) return parsed.origin;
     // 루프백 콘솔은 셸이 띄운 것이든 이 기계에서 발견한 것이든 이 다리를 거친다. 열어 줄지는
@@ -404,10 +403,6 @@ async function readErrorCode(response: Response): Promise<string> {
   } catch {
     return "remote_host_unavailable";
   }
-}
-
-function isSectionSignal(url: string): boolean {
-  try { return new URL(url).searchParams.get(PICKER_SURFACE_PARAM) === CONSOLE_SECTION_SIGNAL; } catch { return false; }
 }
 
 function describe(code: string): string {
