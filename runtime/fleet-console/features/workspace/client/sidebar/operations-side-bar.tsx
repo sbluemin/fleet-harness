@@ -984,7 +984,7 @@ export function OperationsSideBar({
       </div>
       )}
 
-      <ConsoleSectionSlot compact={compact} visible={true} />
+      <ConsoleSectionSlot compact={compact} />
       <div className="side-bar-theater-label">Theater</div>
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>

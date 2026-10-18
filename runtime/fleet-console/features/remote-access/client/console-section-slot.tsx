@@ -6,7 +6,7 @@ import { ConsoleSection } from "./console-section.js";
 import "./console-section.css";
 
 /** 현재 문서는 자리만 알린다. 집 Console의 저장 목록은 이 문서를 거치지 않는다. */
-export function ConsoleSectionSlot({ compact, visible }: { readonly compact: boolean; readonly visible: boolean }) {
+export function ConsoleSectionSlot({ compact }: { readonly compact: boolean }) {
   const t = useT();
   const shell = useDesktopHomeOrigin();
   const capable = isDesktopShell() && shell.capabilities.includes(CONSOLE_SECTION_CAPABILITY);
@@ -49,7 +49,7 @@ export function ConsoleSectionSlot({ compact, visible }: { readonly compact: boo
         const rect = root.getBoundingClientRect();
         const geometry: ConsoleSectionGeometry = {
           x: Math.max(0, rect.x), y: Math.max(0, rect.y), width: rect.width,
-          available: Math.max(0, window.innerHeight - rect.y - 100), compact, visible: visible && !document.documentElement.hasAttribute("data-modal-open"),
+          available: Math.max(0, window.innerHeight - rect.y - 100), compact, visible: !document.documentElement.hasAttribute("data-modal-open"),
           theme: document.documentElement.dataset.theme ?? "dark",
         };
         const key = JSON.stringify(geometry);
@@ -60,7 +60,7 @@ export function ConsoleSectionSlot({ compact, visible }: { readonly compact: boo
     };
     const observer = new ResizeObserver(measure);
     observer.observe(root);
-    // 엿보기 이동과 테마 변경은 슬롯 크기를 바꾸지 않을 수도 있다.
+    // 배치·테마·모달 변경은 슬롯 크기를 바꾸지 않을 수도 있다.
     const mutations = new MutationObserver(measure);
     mutations.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-modal-open"] });
     if (root.parentElement) mutations.observe(root.parentElement, { attributes: true, attributeFilter: ["class", "style"] });
@@ -74,7 +74,7 @@ export function ConsoleSectionSlot({ compact, visible }: { readonly compact: boo
       // 사이드바가 사라지면 다른 화면 위에 네이티브 뷰가 남아서는 안 된다.
       location.assign(consoleSectionSignalUrl(location.origin, { hidden: true }));
     };
-  }, [capable, compact, visible]);
+  }, [capable, compact]);
   const focusSection = (edge: "first" | "last") => location.assign(consoleSectionSignalUrl(location.origin, { focus: edge }));
   const native = capable && height !== null;
   return <div ref={rootRef} className="side-bar-shared" data-native-section={native || undefined}>
