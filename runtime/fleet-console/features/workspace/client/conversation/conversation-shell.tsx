@@ -791,7 +791,7 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
     <section
       className="conversation-stage"
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
-      // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 사용량 캡슐이 가운데 칸 머리 줄을 얼마나 덮는지 셀 때 쓴다.
+      // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 머리 pill 줄이 그만큼 오른쪽으로 더 뻗어 맨 위 줄 전체에 걸칠 때 쓴다.
       style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
     >
@@ -870,7 +870,7 @@ function stableParamsKey(params: Readonly<Record<string, unknown>>): string {
 /**
  * 사용량(Quota 등 밴드 요약) — 작업 영역 맨 위 줄(.conversation-band)의 오른쪽 끝에 떠 있는 캡슐 하나다. 대상 Operation 이 아니라
  * 계정 전역의 신호라 pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Operation·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
- * 도구 분할이 서도 자리는 그대로다 — 분할은 맨 위 줄 아래만 쓴다. 캡슐이 가운데 칸 머리 줄에 걸치는 만큼만 pill 줄이 비운다.
+ * 도구 분할이 서도 자리는 그대로다 — 분할은 맨 위 줄 아래만 쓴다. pill 줄도 그 줄 전체 폭에 걸쳐 가운데에 서고, 캡슐 몫을 양쪽에 비운다.
  * 칸 폭이 줄면 단계를 낮춘다(전체 → 표식만 → 첫 칸 하나, conversation.css·quota.css 의 컨테이너 질의). 누르면 지금처럼 요약 팝업이 열린다.
  */
 function ConversationQuota() {
@@ -949,13 +949,14 @@ function applyConversationQuotaTier(stage: HTMLElement): void {
   const center = pillGroupNaturalWidth(stage);
   // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
   const right = Number.parseFloat(getComputedStyle(box).right) || 0;
-  // 캡슐은 맨 위 줄 오른쪽 끝에 서고, 가운데 칸은 도구 분할 폭만큼 그 앞에서 끝난다 — 칸 머리 줄에 걸치는 몫만 예약한다.
-  // 칸이 줄어드는 전이 중에도 같은 값이 나오도록 실제 상자 대신 기하가 심은 분할 폭을 읽는다.
-  const splitRight = Number.parseFloat(stage.style.getPropertyValue("--conversation-split-right")) || 0;
   // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
-  const space = (candidate: QuotaTier) => Math.max(0, Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP - splitRight));
+  const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
+  // pill 줄은 도구 분할 위까지 뻗어 맨 위 줄 전체 폭을 쓴다(conversation.css) — 반쪽은 칸이 아니라 그 줄 폭으로 센다.
+  // 칸이 줄어드는 전이 중에도 같은 값이 나오도록 움직이지 않는 맨 위 줄 상자를 읽는다.
+  const band = stage.previousElementSibling;
+  const rowWidth = (band instanceof HTMLElement ? band : stage).getBoundingClientRect().width;
   // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
-  const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
+  const half = (rowWidth - center) / 2 - QUOTA_ROUNDING_SLACK;
   const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
   box.dataset.tier = tier;
   stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
