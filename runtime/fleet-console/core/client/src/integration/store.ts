@@ -407,8 +407,32 @@ export function subscribeDesktopZoomFactor(listener: () => void): () => void {
 }
 
 function trackDesktopZoomFactor(): void {
+  let pendingMeasurement = false;
+  const retry = (): void => apply();
+  const retryWhenVisible = (): void => {
+    if (document.visibilityState === "visible") apply();
+  };
   const apply = (): void => {
-    const factor = window.outerWidth > 0 && window.innerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
+    const outerWidth = window.outerWidth;
+    const innerWidth = window.innerWidth;
+    // 비활성 창을 다시 읽으면 폭이 0일 수 있다. 이전 줌을 보존하고 유효한 폭을 얻을 때까지만 임시 신호로 재시도한다.
+    // resize를 상시 관측하면 아래에 기록한 전체화면 전환의 서로 다른 프레임을 줌으로 오인하므로 대기가 끝나면 반드시 걷는다.
+    if (outerWidth <= 0 || innerWidth <= 0) {
+      if (!pendingMeasurement) {
+        pendingMeasurement = true;
+        window.addEventListener("resize", retry);
+        window.addEventListener("focus", retry);
+        document.addEventListener("visibilitychange", retryWhenVisible);
+      }
+      return;
+    }
+    if (pendingMeasurement) {
+      pendingMeasurement = false;
+      window.removeEventListener("resize", retry);
+      window.removeEventListener("focus", retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    }
+    const factor = outerWidth / innerWidth;
     desktopZoomFactor = factor;
     const style = document.documentElement.style;
     style.setProperty("--desktop-zoom", `${factor}`);
