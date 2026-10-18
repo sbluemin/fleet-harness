@@ -1233,7 +1233,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
   const captionRenderer = useConversationCaptionRenderer();
-  // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 크로스페이드와 폭 전환은 pill-takeover 가 진다.
+  // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 내용 교체와 폭 전환은 pill-takeover 가 진다.
   const pillRef = useRef<HTMLDivElement | null>(null);
   const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(operation.id));
   const pillTaken = pillTakeover.phase === "in";

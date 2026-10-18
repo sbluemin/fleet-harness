@@ -5,8 +5,9 @@ import "./pill-takeover.css";
 
 /**
  * 머리 pill 의 잠깐 바뀐 내용(`publishConversationPillTakeover`)을 pill 안에서 갈아 끼우는 문법 — 데스크톱 맨 위 줄 pill 과 모바일
- * 상단 막대 pill 이 함께 쓴다. 바뀔 때 원래 내용과 바뀐 내용이 크로스페이드하고(데스크톱은 pill 폭도 함께 따라간다), 박자는 본문
- * 대화 화면의 밀기 전환(340ms)과 같다. 움직임 줄이기면 바로 바뀐다.
+ * 상단 막대 pill 이 함께 쓴다. 바뀔 때 원래 내용이 먼저 사라지고(0–120ms) 그 뒤에 바뀐 내용이 나타난다(120–320ms) — 두 내용이
+ * 겹쳐 보이는 순간은 없다(pill-takeover.css). 데스크톱은 pill 폭이 그 340ms 전체에 걸쳐 따라가고, 박자는 본문 대화 화면의 밀기
+ * 전환과 같다. 움직임 줄이기면 바로 바뀐다.
  *
  * pill 은 바뀐 동안 원래 내용을 단추째 inert 로 두고 바뀐 내용을 제목 단추 밖의 형제로 세운다 — 단추 안에 단추를 겹치지 않는다.
  */
@@ -19,7 +20,7 @@ const reducedMotion = (): boolean =>
 /** `in` — 바뀐 내용이 섰다. `out` — 원래 내용으로 돌아가는 중(바뀐 내용이 흐려지며 남는다). `idle` — 원래 내용뿐이다. */
 export type PillTakeoverPhase = "idle" | "in" | "out";
 
-/** 바뀐 내용과 그 단계 — 되돌아갈 때는 사라진 내용을 전환 길이만큼 붙들어 흐려지게 한다. */
+/** 바뀐 내용과 그 단계 — 되돌아갈 때는 사라진 내용을 전환 길이만큼 붙들어, 원래 내용이 나타나기 전에 먼저 사라지게 한다. */
 export function usePillTakeoverPhase(takeover: ConversationPillTakeover | null): { readonly shown: ConversationPillTakeover | null; readonly phase: PillTakeoverPhase } {
   const [previous, setPrevious] = useState(takeover);
   const [leaving, setLeaving] = useState<ConversationPillTakeover | null>(null);

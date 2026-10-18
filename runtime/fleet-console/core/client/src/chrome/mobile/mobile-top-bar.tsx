@@ -20,7 +20,7 @@ export function MobileTopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   // 열린 ⋮ 메뉴는 뒤로가 가장 먼저 닫는 겹침이다.
   useEffect(() => (menuOpen ? pushBackLayer(() => setMenuOpen(false)) : undefined), [menuOpen]);
-  // 본문이 잠깐 바꾼 pill 내용 — 그동안(되돌아가는 크로스페이드까지) pill 은 단추가 아니라 그 내용을 담는 틀이다(단추 안에 단추를 두지 않는다).
+  // 본문이 잠깐 바꾼 pill 내용 — 그동안(되돌아가는 전환까지) pill 은 단추가 아니라 그 내용을 담는 틀이다(단추 안에 단추를 두지 않는다).
   const takeover = usePillTakeoverPhase(bar.variant === "conversation" ? bar.pill?.takeover ?? null : null);
   if (bar.hidden) return null;
 

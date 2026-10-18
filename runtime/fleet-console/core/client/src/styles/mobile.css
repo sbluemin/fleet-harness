@@ -1409,14 +1409,17 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-pill-copy { display: grid; min-width: 0; line-height: 1.2; }
 .mobile-conv-pill-copy strong { overflow: hidden; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-conv-pill-copy small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-small); text-overflow: ellipsis; white-space: nowrap; }
-/* 본문이 잠깐 바꾼 pill(그룹 대화의 전언 대화 화면) — 같은 면·폭의 틀에서 원래 내용과 바뀐 내용이 크로스페이드한다(박자는 밀기 전환 340ms,
-   pill-takeover.css). 서 있는 쪽만 흐름에 남고 나가는 쪽은 같은 안쪽 여백 자리에서 흐려진다. 틀은 단추가 아니라 눌림 면이 없다. */
+/* 본문이 잠깐 바꾼 pill(그룹 대화의 전언 대화 화면) — 같은 면·폭의 틀에서 원래 내용과 바뀐 내용이 차례로 바뀐다(pill-takeover.css 와
+   같은 박자): 나가는 쪽이 0–120ms 에 사라지고 들어오는 쪽이 120–320ms 에 나타나며, 둘이 함께 보이는 순간은 없다. 서 있는 쪽만 흐름에
+   남고 나가는 쪽은 같은 안쪽 여백 자리에서 사라진다. 틀은 단추가 아니라 눌림 면이 없다. */
 .mobile-conv-pill.is-takeover:active { background: var(--m-surface); }
-.mobile-conv-pill-was { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; transition: opacity 340ms cubic-bezier(.22, .8, .24, 1); }
-.mobile-conv-pill.is-in > .mobile-conv-pill-was { position: absolute; inset: 3px 14px 3px 6px; opacity: 0; pointer-events: none; }
+/* 원래 내용 — 틀이 서는 순간 단추에서 옮겨 와 새로 서므로, 떠나기는 전환이 아니라 120ms 사라지기 애니메이션이다. 돌아올 때는 120ms 뒤부터 200ms. */
+.mobile-conv-pill-was { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; transition: opacity 200ms ease-out 120ms; }
+.mobile-conv-pill.is-in > .mobile-conv-pill-was { position: absolute; inset: 3px 14px 3px 6px; opacity: 0; pointer-events: none; animation: mobile-conv-pill-was-out 120ms ease-in; }
+@keyframes mobile-conv-pill-was-out { from { opacity: 1; } to { opacity: 0; } }
 .mobile-conv-pill > .conversation-pill-takeover { flex: 1; }
 .mobile-conv-pill > .conversation-pill-takeover.is-out { inset: 3px 14px 3px 6px; translate: none; }
-@media (prefers-reduced-motion: reduce) { .mobile-conv-pill-was { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .mobile-conv-pill-was, .mobile-conv-pill.is-in > .mobile-conv-pill-was { animation: none; transition: none; } }
 
 .mobile-info-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; overscroll-behavior: contain; background: var(--m-bg); }
 .mobile-info-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 8px 16px 14px; }
