@@ -9,6 +9,9 @@ import { pluginOriginIdentity } from "../origin-mark.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { LedgerTargetContext, SpeakerMark, speakerKey } from "./speaker-mark.js";
 import { publishConversationPillTakeover, useConversationPillHosted } from "../../../../../workspace/client/conversation/conversation-slots.js";
+import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
+import { pushBackLayer } from "../../../../../../core/client/src/chrome/mobile/mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 
 /**
  * 전언 — 참여자끼리 주고받은 말(위임)과 플러그인이 혼자 보낸 지시(목표 → 지휘관). 그룹 대화에서는 사람에게 한 말과 섞이지 않게
@@ -222,6 +225,31 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const pairId = React.useId();
   const hosted = useConversationPillHosted(pillOperationId);
 
+  // 폰 배치에서는 하드웨어·브라우저 뒤로와 상단 ‹ 가 Operation 을 떠나지 않고 이 화면부터 닫는다(좌표 시트와 같은 계약) — 열린 동안
+  // history 항목 하나와 뒤로 층 하나를 올린다. 데스크톱은 올리지 않는다(브라우저 뒤로도 지금 그대로다).
+  const phone = useViewMode().effective === "mobile";
+  const historyRef = React.useRef<number | null>(null);
+  const backLayerRef = React.useRef<(() => void) | null>(null);
+  const closeRef = React.useRef<() => void>(() => undefined);
+  /** 뒤로 길을 거둔다 — 뒤로 층은 바로 내리고, 아직 남은 history 항목 id 를 돌려준다(걷기는 부르는 쪽이 길에 맞게 한다). */
+  const takeBackPaths = React.useCallback((): number | null => {
+    backLayerRef.current?.();
+    backLayerRef.current = null;
+    const id = historyRef.current;
+    historyRef.current = null;
+    return id;
+  }, []);
+  React.useEffect(() => {
+    if (!phone) return;
+    // 뒤로(popstate)로 걷히면 항목은 이미 없다 — 닫기 애니메이션·포커스 복귀만 탄다.
+    historyRef.current = pushOverlayHistory(() => { historyRef.current = null; closeRef.current(); });
+    backLayerRef.current = pushBackLayer(() => closeRef.current());
+    return () => {
+      const left = takeBackPaths();
+      if (left !== null) releaseOverlayHistory(left);
+    };
+  }, [phone, takeBackPaths]);
+
   const sender = senderOf(entry, language);
   const recipients = recipientsOf(entry);
   const key = partyKey(entry, language);
@@ -271,6 +299,9 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   const close = React.useCallback(() => {
     if (closing.current) return;
     closing.current = true;
+    // UI(「채팅 닫기」·Esc·뒤로 층)로 닫으면 쌓아 둔 history 항목을 곧바로 걷는다 — 닫기 애니메이션 동안의 뒤로는 화면 너머로 간다.
+    const left = takeBackPaths();
+    if (left !== null) releaseOverlayHistory(left);
     const root = rootRef.current;
     // pill 칩에서 닫으면 포커스를 먼저 화면으로 거둔다 — 칩은 화면이 내려가는 커밋 뒤에야 걷히므로, 그대로 두면 React 가 커밋 뒤 그 칩으로
     // 포커스를 되돌려(누른 줄로 돌려준 포커스를 빼앗고) 칩이 걷힐 때 BODY 로 떨어진다.
@@ -288,10 +319,16 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
     const onEnd = (event: TransitionEvent) => { if (event.target === root && event.propertyName === "transform") end(); };
     root.addEventListener("transitionend", onEnd);
     const timer = window.setTimeout(end, SLIDE_MS + 80);
-  }, [finish, pairId]);
+  }, [finish, pairId, takeBackPaths]);
+  closeRef.current = close;
 
-  // 원장으로 가면 그 자리가 원장 틀로 바뀐다 — 화면을 먼저 내리고 연다.
-  const openLedger = (operationId: string) => { closing.current = true; onDismiss(); onOpenLedger?.(operationId); };
+  // 원장으로 가면 그 자리가 원장 틀로 바뀐다 — 화면을 먼저 내리고 연다. 폰 배치면 history 항목이 걷힌 다음에 옮긴다(걷기 전에 옮기면
+  // 새 상태가 걷히는 항목에 쓰여 사라진다).
+  const openLedger = (operationId: string) => {
+    if (closing.current) return;
+    closing.current = true;
+    runAfterOverlayRelease(takeBackPaths(), () => { onDismiss(); onOpenLedger?.(operationId); });
+  };
   const onKey = (event: React.KeyboardEvent<HTMLElement>) => {
     const root = rootRef.current;
     if (!root) return;

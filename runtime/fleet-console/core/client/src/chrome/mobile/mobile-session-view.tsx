@@ -12,6 +12,7 @@ import { ConversationAvatar, conversationStateWord, useMobileConversationOf } fr
 import { useConsoleState } from "../../hooks/use-store.js";
 import { closeMobileOperation } from "./mobile-operation-url.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { closeTopBackLayer } from "./mobile-back.js";
 import { pushMobileSheet, setMobileDestination, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 import { useConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
@@ -100,7 +101,8 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     variant: "conversation",
     title: bodyOwner.title,
     leading: "back",
-    onBack: closeMobileOperation,
+    // 본문이 pill 을 바꾼 동안(전언 대화 화면) ‹ 는 그 화면부터 닫는다 — 화면이 올린 뒤로 층이 없으면 지금처럼 대화 목록으로 간다.
+    onBack: pillTakeover ? () => { if (!closeTopBackLayer()) closeMobileOperation(); } : closeMobileOperation,
     pill: {
       key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.operation.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}\u0001${pillTakeover?.key ?? ""}`,
       label: t("mobile.conv.infoAria", { title: bodyOwner.title }),
