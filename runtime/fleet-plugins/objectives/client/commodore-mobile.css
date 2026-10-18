@@ -142,5 +142,5 @@
 /* 누름·키보드 포커스는 코어 누름 층(data-press, impl-spec S-52)이 그린다 — 여기서는 PR-2 표의 모양(--pr-inset·--pr-r)만 정한다. */
 .objectives-cm-field:focus-visible { border-color: var(--m-text-muted); }
 
-/* 사령관의 질문 — 카드는 호스트 결정 카드(그룹 대화와 같은 것)이고 여기는 기록 위 자리만 진다. 여럿이면 쌓이고, 화면의 절반을 넘으면 칸 안에서 스크롤한다. */
-.objectives-cm-asks { flex: none; display: flex; flex-direction: column; gap: 8px; max-height: 50%; padding: 0 14px 8px; overflow-y: auto; }
+/* 사령관의 질문 — 그룹 대화와 같은 본문 끝 자리다. 카드 안이 아니라 대화 전체가 함께 스크롤한다. */
+.objectives-cm-asks { flex: none; display: flex; flex-direction: column; gap: 8px; }

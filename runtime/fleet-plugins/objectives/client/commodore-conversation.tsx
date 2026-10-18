@@ -289,8 +289,6 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(theaterId).catch(fail); }}>{t("objectives.commodore.drawer.retryNow")}</button>
         </div>
       ) : null}
-      {/* 사령관의 질문 — 대화 위에 고정된다. 읽기 전용(지난 기록 보기)에서는 답하지 않는다. */}
-      {readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
       {ledgerOpen && Ledger ? (
         // 그룹 대화가 지휘관 원장을 여는 그 틀·본문·바닥 줄(호스트 `ctx.chat.Ledger`)이다. 이 상자는 머리 pill 오버레이 밑자리만 진다.
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
@@ -322,6 +320,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references}
+            cards={readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
             composer={composer}
           />
         ) : composer}

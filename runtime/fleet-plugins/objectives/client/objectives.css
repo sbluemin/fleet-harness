@@ -876,11 +876,8 @@ button.objectives-result-open:focus-visible { outline: 1px solid var(--brass); o
 
 /* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 상태가 아니라 분류라 신호색 없이 옅은 면 위 무채색 잉크. 「결정」 기록 줄에서 질문 앞에 선다. */
 .objectives-decision-header { display: inline-block; align-self: flex-start; max-width: 100%; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 18px; color: var(--text-secondary); overflow-wrap: anywhere; vertical-align: 1px; }
-/* 사령관의 질문 — 카드는 호스트 결정 카드(그룹 대화와 같은 것, 폭·들여쓰기도 그대로)이고 여기는 기록 위 자리만 진다. 여럿이면 쌓이고,
-   높이는 화면의 절반을 넘지 않게 칸 안에서 스크롤한다. */
-.objectives-asks { flex: none; display: flex; flex-direction: column; max-height: 45vh; padding: 4px 10px 0; overflow-y: auto; }
-.objectives-asks > .group-card { margin-block: 4px 8px; }
-.objectives-commodore-conversation > .objectives-asks > .group-card { margin-block: 8px 4px; }
+/* 사령관의 질문 — 호스트 결정 카드를 최신 글 뒤에 쌓는다. 폭·들여쓰기와 스크롤은 대화 본문이 진다. */
+.objectives-asks { flex: none; display: flex; flex-direction: column; gap: var(--space-3); }
 /* 「결정」 — 질문(옅게)·답(원문)·시각과 관련 임무·구성원. 임무 줄의 결정 표식이 가리키면 잠시 비춘다. */
 .objectives-decisions { display: flex; flex-direction: column; padding: 0 12px 0 36px; }
 .objectives-decision { display: flex; flex-direction: column; gap: 2px; padding: 6px 4px; margin-inline: -4px; border-radius: var(--radius-xs); transition: background var(--duration-fast); }
@@ -1434,10 +1431,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-conversation .objectives-commodore-composer-idle { width: 100%; max-width: none; box-sizing: border-box; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
-/* 사령관의 질문 — 대화 위에 고정된다. 머리 pill 오버레이 아래에서 시작하고, 대화 칸과 같은 가로 여백·최대 폭을 쓴다. */
-.objectives-commodore-conversation > .objectives-asks { margin-top: var(--conversation-overlay-top, 0px); padding: 0 clamp(16px, 4cqi, 48px); }
-.objectives-commodore-conversation > .objectives-commodore-retry + .objectives-asks { margin-top: 0; }
-.objectives-commodore-conversation:has(> .objectives-asks) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
 .objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
 
 /* 대화 중심 화면의 시작 전 목표 — 첫 메시지가 없는 대화다. 시작 화면은 칸 가운데에, 꺼 둔 입력 캡슐은 사령관 대화와 같은 자리에 선다. */
