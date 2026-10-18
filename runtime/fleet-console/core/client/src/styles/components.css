@@ -12374,13 +12374,19 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 
 /* 목록 전체가 격자 하나다 — 행이 subgrid 로 열을 나눠 써야 값·메타 열이 모든 행에서 같은 x 에 선다.
-   [머리 17px][이름][값 ≤40%][메타 ≤30%] — 메타 상한이 있어야 긴 인자 문법·모델 id 가 이름 열을 0폭으로 밀지 않는다. */
+   첫 트랙은 행의 시작 여백 12px까지 품어야 17px 머리가 다음 이름 열을 침범하지 않는다.
+   [여백 + 머리][이름][값 ≤40%][메타 ≤30%] — 메타 상한이 긴 인자·모델 id 로부터 이름 폭을 지킨다. */
 .fc-composer-deck-list {
   display: grid;
-  grid-template-columns: 17px minmax(0, 1fr) fit-content(40%) fit-content(30%);
+  grid-template-columns: calc(12px + 17px) minmax(0, 1fr) fit-content(40%) fit-content(30%);
   column-gap: 10px;
 }
 .fc-composer-deck-group { display: contents; }
+
+/* 같은 입력 캡슐 폭의 오른쪽 위 — 비어 있는 기여는 높이를 만들지 않는다. */
+.conversation-composer-top { flex: none; display: flex; justify-content: flex-end; padding: 0 clamp(16px, 4cqi, 48px); }
+.conversation-composer-top-content { display: inline-flex; align-items: center; gap: var(--space-2); }
+.conversation-composer-top-content:empty { display: none; }
 
 /* 묶음 머리 — 공통 팝업의 구역 머리다. 12px 보조색 문장형이고 오른쪽으로 구분선이 이어진다(대문자·자간 없음). */
 .fc-composer-deck-category {

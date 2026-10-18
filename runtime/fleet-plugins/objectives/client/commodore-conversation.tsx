@@ -269,14 +269,13 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
     return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
   }, [run?.session, lastSession]);
 
-  // 사령관의 지금 상태는 입력 아래 줄이 말한다. 읽기 전용이면 입력 대신 돌아가기가 서고, pill 의 부제가 그 사실을 말한다.
+  // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   const composer = (
     <footer className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("objectives.commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} onFail={fail} onClear={() => setFailure(null)} />}
-      <span className="objectives-commodore-conversation-status">{[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")}</span>
+        : <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : true} context={run?.context} placeholder={[...meta.map((part) => part.text), patrol].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (
@@ -322,6 +321,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
             references={references}
             cards={readOnly ? null : <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />}
             composer={composer}
+            composerTopEntries={!readOnly}
           />
         ) : composer}
       </div>

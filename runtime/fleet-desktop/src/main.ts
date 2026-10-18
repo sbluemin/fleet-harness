@@ -17,6 +17,7 @@ import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePubl
 import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
 import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
+import { measureBrandTarget } from "./brand-target.js";
 import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
@@ -154,6 +155,16 @@ async function boot(): Promise<void> {
     log: logger,
   });
   let window: DesktopShellWindow | null = null;
+  let startupEntry: WebContentsView | null = null;
+  const dismissStartupEntry = (): void => {
+    const view = startupEntry;
+    startupEntry = null;
+    pushRuntimeProgress = null;
+    if (!view) return;
+    try { window?.stack.removeVeil(view); } catch { /* 창이 먼저 닫혔다. */ }
+    try { view.webContents.close(); } catch { /* 이미 닫힌 렌더러. */ }
+    try { window?.consoleContents.focus(); } catch { /* 닫힌 창. */ }
+  };
   let policy: ReturnType<typeof applyWindowPolicy> | null = null;
   let localConsoleOrigin: string | null = null;
   // 창이 지금 보고 있는 콘솔. 셸 갱신 상태는 이 주소에 게시하고 명령도 이 주소에서 듣는다 —
@@ -564,19 +575,19 @@ async function boot(): Promise<void> {
   });
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
+  const createEntryView = (): WebContentsView => {
+    const view = new WebContentsView({
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+    });
+    // 시작·종료 판은 수동적이다. Console 위에 합성할 뿐 항해·팝업·브리지 통로는 없다.
+    view.setBackgroundColor("#00000000");
+    view.webContents.on("will-navigate", (event) => event.preventDefault());
+    view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    return view;
+  };
   const farewell = createQuitFarewell({
     shell: () => consoleShown && window && !window.isDestroyed() ? window : null,
-    createView: () => {
-      const view = new WebContentsView({
-        webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
-      });
-      // 인사는 떠나는 Console 위에 합성된다 — 판이 차오를 때까지 아래 화면이 비친다.
-      view.setBackgroundColor("#00000000");
-      // 진입 화면처럼 수동적인 판이다. 어디로도 항해하지 않고 창도 열지 않는다.
-      view.webContents.on("will-navigate", (event) => event.preventDefault());
-      view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      return view;
-    },
+    createView: createEntryView,
     entryPagePath: desktopResources.entryPagePath,
     snapshot: (phase) => farewellSnapshot(entryLanguage, !isPackaged, phase, entryPalette),
     pushEntry: pushEntrySnapshot,
@@ -615,6 +626,7 @@ async function boot(): Promise<void> {
           picker.close();
           consoleSection.close();
           // BaseWindow closed does not destroy child WebContentsView renderers — close explicitly.
+          dismissStartupEntry();
           try {
             if (!createdWindow.consoleContents.isDestroyed()) createdWindow.consoleContents.close();
           } catch { /* already torn down */ }
@@ -650,6 +662,7 @@ async function boot(): Promise<void> {
             if (outcome !== "accepted") logger.error(`shell home republish after arrival ended outcome=${outcome} origin=${origin}`);
           });
         });
+        createdWindow.consoleContents.on("before-input-event", (event) => { if (startupEntry) event.preventDefault(); });
         createdWindow.consoleContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
@@ -657,7 +670,8 @@ async function boot(): Promise<void> {
         });
         // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
         createdWindow.base.on("resize", () => {
-          createdWindow.stack.layoutConsole();
+          const bounds = createdWindow.stack.layoutConsole();
+          startupEntry?.setBounds(bounds);
           browserViews.refresh();
         });
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
@@ -668,7 +682,12 @@ async function boot(): Promise<void> {
         createdWindow.base.on("unmaximize", () => refreshNativeChrome());
         createdWindow.base.on("restore", () => refreshNativeChrome());
         refreshNativeUpdateActions?.();
-        await createdWindow.loadFile(desktopResources.entryPagePath);
+        startupEntry = createEntryView();
+        startupEntry.setBounds(createdWindow.stack.layoutConsole());
+        // attached/nonzero 뷰에서 먼저 적재해야 프레임이 멎지 않는다. 최상단 판이 아래 Console로의 입력을 막는다.
+        createdWindow.stack.presentVeil(startupEntry);
+        await startupEntry.webContents.loadFile(desktopResources.entryPagePath);
+        startupEntry.webContents.focus();
         return createdWindow;
       },
       dev: !isPackaged,
@@ -679,8 +698,17 @@ async function boot(): Promise<void> {
       // 진입 화면은 제 배율(대개 1)로 그려지고 Console 배율은 넘겨받은 뒤에야 적용된다(controls.onConsoleLoaded) —
       // 그래서 넘겨받을 배율은 지금 창이 아니라 저장된 줌에서 읽는다.
       zoom: () => window && !window.isDestroyed()
-        ? { page: window.consoleContents.getZoomFactor(), console: zoomFactorForLevel(zoomState.load()) }
+        ? { page: startupEntry?.webContents.getZoomFactor() ?? window.consoleContents.getZoomFactor(), console: zoomFactorForLevel(zoomState.load()) }
         : undefined,
+      entryContents: () => startupEntry?.webContents,
+      brandTarget: async () => {
+        if (!window || window.isDestroyed()) return undefined;
+        startupEntry?.webContents.focus();
+        const target = await measureBrandTarget(window.consoleContents);
+        logger.info(`entry brand target ${target ? JSON.stringify(target) : "unavailable; using fallback"}`);
+        return target;
+      },
+      dismissEntry: dismissStartupEntry,
       handoffOrigin: (origin) => {
         localConsoleOrigin = origin;
         policy?.activateConsoleOrigin(origin);

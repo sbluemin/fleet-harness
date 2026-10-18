@@ -549,6 +549,16 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-pop-row:focus-visible { background: var(--control-wash-hover); outline: none; }
 .group-composer-pop-name { flex: none; font-weight: var(--weight-medium); }
 
+/* 제안과 요약은 입력창 바로 위 한 줄을 공유한다. 안내를 먼저 줄이고, 칩 영역 12rem과 요약이 함께 들어가지 못하면
+   요약을 다음 줄 오른쪽에 둔다. 제안 칩 자체는 줄바꿈할 수 있어 좁은 폭에서도 요약과 겹치지 않는다. */
+.group-composer-top { display: flex; flex-wrap: wrap; align-items: flex-end; column-gap: var(--space-2); }
+.group-composer-top > .group-composer-suggest { flex: 1 1 12rem; min-width: 0; min-height: 36px; padding-bottom: 0; }
+.group-composer-top .group-composer-suggest-hint { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-composer-top-summary { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+/* 입력창 안쪽 폭에 이미 맞춰져 있다. 공용 요약의 바깥 여백을 여기서 한 번 더 더하지 않는다. */
+.group-composer-top .conversation-composer-top { padding: 0; min-width: 0; }
+.group-composer-top .conversation-composer-top-content { max-width: 100%; overflow-x: auto; }
+
 /* 제안 줄 — 입력창 바로 위 한 줄. 보드가 고른 지금 할 일이 칩으로 선다(받는 이 칩과 같은 알약 문법). 할 일이 없으면 서지 않는다. */
 .group-composer-suggest {
   display: flex;

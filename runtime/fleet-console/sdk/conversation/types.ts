@@ -144,6 +144,8 @@ export type GroupTimelineEntry = EntryCoordinate & (
 /** Objectives 등 플러그인이 기존 OperationCluster 포트로 보내는 보드 사실. */
 export interface OperationClusterConversation {
   readonly operationId: string;
+  /** 플러그인이 기록한 목표의 대화일 때만 true다. 일반 Operation의 빈 보드·명부·동작으로 추정하지 않는다. */
+  readonly recordedObjective?: boolean;
   readonly members: readonly ConversationMember[];
   /** 지휘관 줄의 보드 사실 — 보드가 지휘관 행에 보이는 것만 싣는다. */
   readonly commander?: ConversationMemberProfile;

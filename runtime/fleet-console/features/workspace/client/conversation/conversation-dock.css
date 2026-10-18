@@ -1,6 +1,7 @@
 /* 대화 화면의 호스트 문과 보관함. 위치·호버는 중립 잉크, 연결 점만 상태색을 쓴다. */
 .conversation-dock {
   position: relative;
+  container-type: inline-size;
   flex: none;
   display: flex;
   align-items: center;
@@ -9,6 +10,17 @@
   min-width: 0;
 }
 .conversation-dock-host { position: relative; flex: none; }
+/* 원래 Fleet 워드마크를 독 전체의 가운데에 둔다. 작은 열에서는 글리프를 아바타 위로 옮겨 겹치지 않는다. */
+.conversation-dock-brand { position: absolute; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; pointer-events: none; color: var(--text-primary); }
+.conversation-brand-glyph { flex: none; width: 16px; height: 16px; }
+.conversation-brand-wordmark { font-family: var(--font-content); font-size: calc(var(--font-content-size) * 13 / 14); font-weight: var(--weight-medium); line-height: 1; letter-spacing: 0.01em; }
+.conversation-brand-wordmark.is-local { color: var(--ink-brand-dev); }
+.conversation-brand-sep { margin: 0 0.34em; color: var(--quiet-decor-ink); font-family: var(--font-ui); font-weight: var(--weight-bold); }
+.conversation-brand-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font-family: var(--font-ui); font-size: 0.62em; font-weight: var(--weight-bold); line-height: 1; letter-spacing: 0.16em; }
+@container (max-width: 200px) { .conversation-brand-wordmark { display: none; } }
+.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock { flex-direction: column-reverse; gap: 12px; }
+.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock > span.conversation-dock-brand { display: inline-flex; position: static; transform: none; }
+.console-body.is-conversation .operations-side-bar.is-compact .conversation-brand-wordmark { display: none; }
 .conversation-dock-popover-anchor { position: absolute; top: 12px; left: 12px; width: 0; height: 0; pointer-events: none; }
 .conversation-dock-avatar {
   position: relative;

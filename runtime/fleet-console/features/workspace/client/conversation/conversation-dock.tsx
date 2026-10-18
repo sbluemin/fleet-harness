@@ -12,6 +12,7 @@ import { ViewModeToggle } from "../../../../core/client/src/chrome/components/vi
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveMenuItem } from "../archive/archive-entry.js";
+import { BrandMarkIcon, BrandWordmark } from "./conversation-brand.js";
 import "./conversation-dock.css";
 
 /**
@@ -96,6 +97,9 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
         </div>
       </div>
       <span className="conversation-dock-popover-anchor" ref={popoverAnchorRef} aria-hidden="true" />
+      <span className="conversation-dock-brand" aria-label={state.channel === "local" ? "Fleet·DEV" : "Fleet"}>
+        <BrandMarkIcon local={state.channel === "local"} /><BrandWordmark local={state.channel === "local"} />
+      </span>
       <SidebarFooterEntries popoverAnchorRef={popoverAnchorRef} />
     </div>
   );

@@ -118,6 +118,8 @@ export interface AgentConversationProps {
   readonly cards?: ReactNode;
   /** Below the working line — the plugin's own composer or a way back. */
   readonly composer?: ReactNode;
+  /** Opt this conversation into the host's plugin summaries above the composer. Omitted on read-only records. */
+  readonly composerTopEntries?: boolean;
   /** How the person's inline references (a message's `references`) open and look. */
   readonly references?: AgentChatReferenceHost;
 }

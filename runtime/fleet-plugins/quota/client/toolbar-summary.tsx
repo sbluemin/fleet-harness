@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
-import type { SidebarFooterEntryContext } from "@fleet-console/sdk/plugin";
+import type { ComposerTopEntryContext } from "@fleet-console/sdk/plugin";
 import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/ai-gateway";
@@ -14,7 +14,7 @@ import { meterSeverity, mostUrgentWindow, PROVIDER_NAME, QuotaPanel, windowLabel
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
-/** 사이드바 바닥의 사용량 요약. 공급자마다 글리프 옆에 창별 사용 %를 두 줄로 쌓는다.
+/** 컴포저 오른쪽 위의 사용량 요약. 공급자마다 글리프 옆에 창별 사용 %를 두 줄로 쌓는다.
  * 짧은 창·남은 창 중 가장 급한 창을 고르는 정책과 신호 채널은 상세 팝업과 같다. */
 
 /** Claude의 세션 창(5시간) — 기간을 싣지 않은 세션 창을 짧은 쪽에 세우는 기준. */
@@ -57,7 +57,7 @@ function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
-export function QuotaToolbarSummary({ popoverAnchorRef }: SidebarFooterEntryContext) {
+export function QuotaToolbarSummary({ popoverAnchorRef }: ComposerTopEntryContext) {
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
@@ -96,7 +96,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: SidebarFooterEntryCont
         onClick={() => setOpen((value) => !value)}
       >
         {glyphOnly ? <QuotaBarsGlyph /> : readings.map((reading) => (
-          <span key={reading.id} className="quota-toolbar-summary__cell" data-sidebar-footer-unit="" aria-hidden="true">
+          <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
             <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
               {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
             </span>
@@ -149,7 +149,7 @@ interface PopoverPlacement {
 }
 
 /**
- * 사이드바 사용량 줄의 왼쪽 끝에 맞춰 위로 연다. 폭과 높이를 뷰포트 안으로 제한하고,
+ * 컴포저 요약 줄의 왼쪽 끝에 맞춰 위로 연다. 폭과 높이를 뷰포트 안으로 제한하고,
  * 높이가 낮으면 팝업 안에서 스크롤한다.
  */
 export function placePopover(anchor: { readonly left: number; readonly width: number; readonly top: number; readonly bottom: number }, viewport: { readonly width: number; readonly height: number }): PopoverPlacement {
@@ -160,8 +160,8 @@ export function placePopover(anchor: { readonly left: number; readonly width: nu
 }
 
 /**
- * 사용 한도 팝업 — document.body로 포털한다. 사이드바 요약 칸은 폭 단계 때문에 가로를 잘라 내므로(overflow)
- * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 상자가 바뀌면 다시 잡는다.
+ * 사용 한도 팝업 — document.body로 포털해 컴포저의 덱·스크롤 경계에서 잘리지 않게 한다.
+ * 자리는 호스트가 준 요약 줄의 화면 좌표로 잡고, 창 크기나 닻 상자가 바뀌면 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
 function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, onClose }: {

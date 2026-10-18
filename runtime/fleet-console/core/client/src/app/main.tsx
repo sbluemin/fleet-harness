@@ -47,6 +47,7 @@ import { announceDesktopReady } from "../integration/desktop-ready.js";
 import { installConsoleUseGestures } from "../../../../features/console-use/client/gestures.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "../integration/plugin-registry.js";
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
+import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 
@@ -164,7 +165,9 @@ if (app && hostPicker) {
     <StrictMode>
       <BrowserRouter basename="/console">
         <PluginRegistryProvider value={registry}>
-          <GroupClusterProvider value={registry.operationClusters}><App /></GroupClusterProvider>
+          <ComposerTopEntriesProvider value={registry.composerTopEntries}>
+            <GroupClusterProvider value={registry.operationClusters}><App /></GroupClusterProvider>
+          </ComposerTopEntriesProvider>
         </PluginRegistryProvider>
       </BrowserRouter>
     </StrictMode>,

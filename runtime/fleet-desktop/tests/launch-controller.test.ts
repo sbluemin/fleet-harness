@@ -7,9 +7,27 @@ describe("launch controller", () => {
     const order: string[] = [];
     const contents = { executeJavaScript: vi.fn(async () => undefined), navigationHistory: { clear: vi.fn(() => order.push("history-cleared")) } };
     const window = { webContents: contents, show: vi.fn(() => order.push("show")), loadURL: vi.fn(async () => { order.push("handoff"); }) };
-    const controller = createLaunchController({ createWindow: vi.fn(async () => window), pushEntry: vi.fn(async () => { order.push("entry"); }), startOrAdopt: vi.fn(async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; }), handoffOrigin: vi.fn((origin) => { order.push(`origin=${origin}`); }), onConsoleLoaded: () => { order.push("console-loaded"); } });
+    const entry = { executeJavaScript: vi.fn(async () => undefined) };
+    const controller = createLaunchController({
+      createWindow: vi.fn(async () => window),
+      entryContents: () => entry,
+      pushEntry: vi.fn(async (target) => { expect(target).toBe(entry); order.push("entry"); }),
+      startOrAdopt: vi.fn(async () => { order.push("start"); return "http://127.0.0.1:4310/console/"; }),
+      handoffOrigin: vi.fn((origin) => { order.push(`origin=${origin}`); }),
+      // An old Console without an anchor must still settle, clear history, and release the entry cover.
+      brandTarget: async () => { order.push("target-unavailable"); return undefined; },
+      settleHandoff: async (target) => { expect(target).toBe(entry); order.push("settled"); },
+      onConsoleLoaded: () => { order.push("console-loaded"); },
+      dismissEntry: () => { order.push("entry-dismissed"); },
+    });
     await controller.start();
-    expect(order).toEqual(["entry", "show", "start", "origin=http://127.0.0.1:4310", "entry", "handoff", "history-cleared", "console-loaded"]);
+    expect(order).toEqual(["entry", "show", "start", "origin=http://127.0.0.1:4310", "handoff", "target-unavailable", "entry", "settled", "history-cleared", "console-loaded", "entry-dismissed"]);
+
+    // Failed navigation must also remove the cover without announcing a successful handoff.
+    order.length = 0;
+    window.loadURL.mockImplementationOnce(async () => { order.push("handoff"); throw new Error("console_load_failed"); });
+    await expect(controller.start()).rejects.toThrow("console_load_failed");
+    expect(order).toEqual(["entry", "show", "start", "origin=http://127.0.0.1:4310", "handoff", "entry-dismissed"]);
   });
 
   it("clears the bootstrap entry from back history only after the Console handoff succeeds", async () => {

@@ -3,12 +3,13 @@ import type { WebContentsView } from "electron";
 import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryZoom } from "./entry-page.js";
 import type { EntryLanguage } from "./launch-controller.js";
 import type { DesktopShellWindow } from "./shell-window.js";
+import { measureBrandTarget } from "./brand-target.js";
 
 /**
  * 종료 인사 — 진입 화면의 넘겨주기를 거꾸로 돌린다.
  *
  * 종료가 시작되면 Console 위에 진입 화면을 한 겹 더 얹는다. 덮개는 투명한 판에서 마크와 워드마크가
- * Console의 앰블럼 자리(상단 Band)에 앉은 모습으로 시작하고, 바탕이 차오르는 동안 둘이 가운데로 돌아와
+ * Console의 실측 앰블럼 자리(사이드바 바닥)에 앉은 모습으로 시작하고, 바탕이 차오르는 동안 둘이 가운데로 돌아와
  * "종료 중"을 말한다. 판이 차오른 뒤에 Console을 멈추고, 정지가 끝나면 창이 흐려지며 사라진다.
  *
  * 덮개는 Console을 대신하지 않는다. 아래의 Console은 끝까지 그 자리에 있으므로 정지에 실패하면
@@ -97,7 +98,8 @@ export function createQuitFarewell(deps: QuitFarewellDependencies): QuitFarewell
           contents.setZoomFactor(factor);
           zoom = { page: factor, console: factor };
         } catch { /* 배율은 부가 정보다 — 모르면 배율 1 좌표로 그린다. */ }
-        const snapshot = (phase: EntryFarewell): EntryPageSnapshot => ({ ...deps.snapshot(phase), ...(zoom ? { zoom } : {}) });
+        const brandTarget = await measureBrandTarget(shell.consoleContents, 120);
+        const snapshot = (phase: EntryFarewell): EntryPageSnapshot => ({ ...deps.snapshot(phase), ...(zoom ? { zoom } : {}), ...(brandTarget ? { brandTarget } : {}) });
         let reduced = false;
         try { reduced = await contents.executeJavaScript("matchMedia('(prefers-reduced-motion: reduce)').matches") === true; } catch { /* 모르면 전환이 도는 쪽 */ }
         await deps.pushEntry(contents, snapshot("veiled"));

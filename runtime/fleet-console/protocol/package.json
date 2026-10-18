@@ -14,6 +14,11 @@
       "import": "./desktop/index.ts",
       "default": "./desktop/index.ts"
     },
+    "./desktop/brand": {
+      "types": "./desktop/brand.ts",
+      "import": "./desktop/brand.ts",
+      "default": "./desktop/brand.ts"
+    },
     "./desktop/console-section": {
       "types": "./desktop/console-section.ts",
       "import": "./desktop/console-section.ts",

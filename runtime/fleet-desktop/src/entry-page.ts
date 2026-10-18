@@ -1,5 +1,6 @@
 import { readDesktopEntryFonts, type DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type { WebContents } from "electron";
+import { readDesktopBrandTarget, type DesktopBrandTarget } from "@fleet-console/protocol/desktop/brand";
 
 /**
  * 진입 화면은 한 줄 상태만 말한다. busy는 진행 중, done은 넘겨줄 준비, warning은 멈추지 않고
@@ -8,7 +9,7 @@ import type { WebContents } from "electron";
 export type EntryTone = "busy" | "done" | "warning" | "failed";
 
 /**
- * 종료 인사 — 넘겨주기의 역재생. veiled는 투명한 판 위에서 마크가 Console 상단 브랜드 자리에 앉은
+ * 종료 인사 — 넘겨주기의 역재생. veiled는 투명한 판 위에서 마크가 Console의 실측 브랜드 자리에 앉은
  * 모습(전환 없이 곧바로), shown은 바탕이 차오르며 마크와 워드마크가 가운데로 돌아온 모습이다.
  */
 export type EntryFarewell = "veiled" | "shown";
@@ -79,11 +80,13 @@ export interface EntryPageSnapshot {
   readonly progress?: number | "indeterminate";
   /** "Desktop 0.13.4 · Console 1.107.0" — 아는 버전만 담는다. */
   readonly versions: string;
-  /** true면 마크와 워드마크가 Console 상단 브랜드 자리로 줄어들고 나머지는 사라진다. */
+  /** true면 마크와 워드마크가 실측 닻(없으면 옛 상단 자리)으로 줄어들고 나머지는 사라진다. */
   readonly handoff?: boolean;
   readonly farewell?: EntryFarewell;
   readonly palette?: EntryPalette;
   readonly zoom?: EntryZoom;
+  /** 공개 Console 닻의 실측 CSS px. 진입 렌더러에서 console/page 배율로 바꾼다. */
+  readonly brandTarget?: DesktopBrandTarget;
 }
 
 export interface EntryPageWebContents {
@@ -124,6 +127,16 @@ const ENTRY_RENDERER = String.raw`(() => {
     root.style.setProperty("--entry-page-zoom", String(snapshot.zoom.page));
     root.style.setProperty("--handoff-scale", String(snapshot.zoom.console / snapshot.zoom.page));
   }
+  root.classList.toggle("has-brand-target", !!snapshot.brandTarget);
+  root.classList.toggle("has-mark-only-target", !!snapshot.brandTarget && !snapshot.brandTarget.wordmark);
+  if (snapshot.brandTarget) {
+    const factor = snapshot.zoom ? snapshot.zoom.console / snapshot.zoom.page : 1;
+    for (const [name, box] of [["mark", snapshot.brandTarget.mark], ["word", snapshot.brandTarget.wordmark]]) {
+      if (!box) continue;
+      for (const key of ["left", "top", "width", "height"]) root.style.setProperty("--target-" + name + "-" + key, box[key] * factor + "px");
+      if (name === "word") root.style.setProperty("--target-word-font-size", box.fontSize * factor + "px");
+    }
+  }
   tagline.textContent = snapshot.tagline;
   title.textContent = snapshot.title;
   detail.textContent = snapshot.detail || "";
@@ -153,10 +166,11 @@ export function createEntrySnapshotScript(snapshot: EntryPageSnapshot): string {
 }
 
 export function normalizeEntrySnapshot(snapshot: EntryPageSnapshot): EntryPageSnapshot {
-  const { palette, zoom, ...rest } = snapshot;
+  const { palette, zoom, brandTarget, ...rest } = snapshot;
   const accepted = palette === undefined ? null : readEntryPalette(palette);
   const scaled = zoom !== undefined && isZoomFactor(zoom.page) && isZoomFactor(zoom.console) ? { zoom: { page: zoom.page, console: zoom.console } } : {};
-  const normalized: EntryPageSnapshot = accepted ? { ...rest, palette: accepted, ...scaled } : { ...rest, ...scaled };
+  const target = readDesktopBrandTarget(brandTarget);
+  const normalized: EntryPageSnapshot = { ...rest, ...(accepted ? { palette: accepted } : {}), ...scaled, ...(target ? { brandTarget: target } : {}) };
   return typeof normalized.progress === "number" ? { ...normalized, progress: clampProgress(normalized.progress) } : normalized;
 }
 

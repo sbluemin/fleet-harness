@@ -130,6 +130,16 @@ export interface SidebarFooterEntryDescriptor {
   readonly render: (context: SidebarFooterEntryContext) => ReactNode;
 }
 
+/** 컴포저 오른쪽 위의 부속 항목. 호스트가 명시적으로 켠 대화 표면에만 서며 플러그인끼리 의존하지 않는다. */
+export interface ComposerTopEntryContext {
+  /** 상세 팝업을 여는 요약 줄. 버튼 포커스는 항목이 소유한다. */
+  readonly popoverAnchorRef: RefObject<HTMLElement | null>;
+}
+export interface ComposerTopEntryDescriptor {
+  readonly id: string;
+  readonly render: (context: ComposerTopEntryContext) => ReactNode;
+}
+
 export interface ClientExecutionProvider {
   readonly id: string | null;
   readonly operationKinds?: readonly OperationKindDescriptor[];
@@ -161,6 +171,8 @@ export interface ClientExecutionProvider {
   readonly commandBandEntries?: readonly CommandBandEntryDescriptor[];
   /** 사이드바 맨 아래 아바타 옆의 요약 칸. Command Band 와 독립적으로 등록한다. */
   readonly sidebarFooterEntries?: readonly SidebarFooterEntryDescriptor[];
+  /** 사령관·그룹 대화가 명시적으로 여는 컴포저 위쪽 요약 칸. */
+  readonly composerTopEntries?: readonly ComposerTopEntryDescriptor[];
   /**
    * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은
    * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.

@@ -828,6 +828,7 @@ interface CommodoreComposerProps {
   readonly active: boolean;
   readonly context?: CommodoreRunStatus["context"];
   readonly phone?: CommodoreComposerPhone;
+  readonly placeholder?: string;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }
@@ -845,7 +846,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`@fleet-console/sdk/composer`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, onClear }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, context, phone, placeholder, onFail, onClear }: CommodoreComposerProps) {
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
@@ -991,7 +992,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, onFail, o
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        placeholder={composerQuotePlaceholder(quotes.length, ct) ?? t("objectives.commodore.composer.placeholder")}
+        placeholder={placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("objectives.commodore.composer.placeholder")}
         ariaLabel={t("objectives.commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}

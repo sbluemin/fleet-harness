@@ -172,6 +172,10 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .is-handoff .wordmark { top: calc(19.5px * var(--handoff-scale)); left: calc(var(--brand-glyph-left) + 23px * var(--handoff-scale)); transform: translateX(0); font-size: calc(var(--font-content-size) * 13 / 14 * var(--handoff-scale)); letter-spacing: 0.01em; }
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
 .is-handoff .brand-mark-beacon { animation: none; }
+/* 현재 Console이 공개한 닻이 있으면 고정 폴백 대신 실제 사이드바 좌표로 끝낸다. */
+.has-brand-target.is-handoff .brand-mark { left: var(--target-mark-left); top: var(--target-mark-top); width: var(--target-mark-width); height: var(--target-mark-height); }
+.has-brand-target.is-handoff .wordmark { left: var(--target-word-left); top: var(--target-word-top); width: var(--target-word-width); height: var(--target-word-height); font-size: var(--target-word-font-size); }
+.has-mark-only-target.is-handoff .wordmark { opacity: 0; }
 
 /* 종료 인사: 넘겨주기의 역재생. 투명한 판(is-veiled)에서 마크가 맨 위 줄 세로 중심에 앉은 채 시작해,
    바탕이 차오르는 동안 가운데로 돌아와 "종료 중"을 말한다. 아래의 Console은 판이 차오를 때까지 비친다. */

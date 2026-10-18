@@ -89,7 +89,7 @@
 .objectives-cm .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--m-text-muted); }
 /* 지휘관 참조 덱(SDK `fc-composer-deck`) — 폰에서는 모바일 면 토큰으로 서고, 행은 엄지 높이(46px)·아바타 24px 다. */
 .objectives-commodore-ref-list.is-phone { max-height: 290px; border-color: var(--m-hairline-strong); border-radius: 16px; background: var(--m-surface); box-shadow: var(--m-shadow); }
-.objectives-commodore-ref-list.is-phone .fc-composer-deck-list { grid-template-columns: 24px minmax(0, 1fr) fit-content(40%) fit-content(40%); }
+.objectives-commodore-ref-list.is-phone .fc-composer-deck-list { grid-template-columns: calc(10px + 24px) minmax(0, 1fr) fit-content(40%) fit-content(40%); }
 .objectives-commodore-ref-list.is-phone .fc-composer-deck-category { color: var(--m-text-muted); }
 .objectives-commodore-ref-list.is-phone .fc-composer-deck-row { min-height: 46px; padding: 0 10px; border-radius: 10px; color: var(--m-text); font-size: var(--m-fs-list); }
 .objectives-commodore-ref-list.is-phone .fc-composer-deck-lead { width: 24px; height: 24px; }

@@ -71,6 +71,8 @@ export interface GroupComposerProps {
   readonly snapshot: GroupTimelineSnapshot;
   readonly actions: GroupConversationActions | null;
   readonly language: ConsoleLocale | undefined;
+  /** 기록된 목표의 요약 — 제안 칩과 같은 줄의 오른쪽 끝에 선다. */
+  readonly topEntries?: React.ReactNode;
   /** 한 명만 멈춘다 — 기존 실행 중 중지 경로. */
   readonly onStopOne: (speaker: ConversationSpeaker) => Promise<void>;
 }
@@ -135,7 +137,7 @@ function groupDraft(rootOperationId: string) {
   return draft;
 }
 
-export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne }: GroupComposerProps) {
+export function GroupComposer({ rootOperationId, snapshot, actions, language, topEntries, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
@@ -584,35 +586,40 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
         </ComposerMenu>
       ) : null}
       {panel !== null ? <div className="group-composer-panel">{panel}</div> : null}
-      {suggest ? (
-        <div className="group-composer-suggest">
-          {note ? (
-            <span className={`group-composer-suggest-note is-${note.tone}`}>
-              {note.tone === "lock" ? <LockGlyph /> : note.tone === "awaiting" ? <RequestGlyph /> : <span className="group-composer-suggest-dot" aria-hidden="true" />}
-              <span>{local(note.text)}</span>
-              {note.reveal ? <button type="button" className="group-composer-suggest-link" onClick={note.reveal.run}>{local(note.reveal.label)}</button> : null}
-              {note.tone === "awaiting" ? <button type="button" className="group-composer-suggest-link" onClick={toCards}>{t("group.board.toCards")}</button> : null}
-            </span>
+      {suggest || topEntries ? (
+        <div className="group-composer-top">
+          {suggest ? (
+            <div className="group-composer-suggest">
+              {note ? (
+                <span className={`group-composer-suggest-note is-${note.tone}`}>
+                  {note.tone === "lock" ? <LockGlyph /> : note.tone === "awaiting" ? <RequestGlyph /> : <span className="group-composer-suggest-dot" aria-hidden="true" />}
+                  <span>{local(note.text)}</span>
+                  {note.reveal ? <button type="button" className="group-composer-suggest-link" onClick={note.reveal.run}>{local(note.reveal.label)}</button> : null}
+                  {note.tone === "awaiting" ? <button type="button" className="group-composer-suggest-link" onClick={toCards}>{t("group.board.toCards")}</button> : null}
+                </span>
+              ) : null}
+              {chips.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={chipClass(action)}
+                  aria-pressed={action.context ? seated?.id === action.id : undefined}
+                  aria-disabled={busy || !!action.unavailable || undefined}
+                  title={action.unavailable ? local(action.unavailable) : seated?.id === action.id ? t("group.board.again", { label: local(action.label) }) : undefined}
+                  onClick={() => pressChip(action)}
+                  onKeyDown={ignoreRepeat}
+                  data-board-arm={action.id}
+                  onBlur={disarmOnLeave(action.id)}
+                >
+                  {BOARD_GLYPHS[action.glyph]}
+                  <span>{armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}</span>
+                  {action.detail && armed !== action.id ? <span className="group-composer-action-detail">{local(action.detail)}</span> : null}
+                </button>
+              ))}
+              {showHint ? <span className="group-composer-suggest-hint">{local(board!.hint!)}</span> : null}
+            </div>
           ) : null}
-          {chips.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className={chipClass(action)}
-              aria-pressed={action.context ? seated?.id === action.id : undefined}
-              aria-disabled={busy || !!action.unavailable || undefined}
-              title={action.unavailable ? local(action.unavailable) : seated?.id === action.id ? t("group.board.again", { label: local(action.label) }) : undefined}
-              onClick={() => pressChip(action)}
-              onKeyDown={ignoreRepeat}
-              data-board-arm={action.id}
-              onBlur={disarmOnLeave(action.id)}
-            >
-              {BOARD_GLYPHS[action.glyph]}
-              <span>{armed === action.id ? t("group.board.again", { label: local(action.label) }) : local(action.label)}</span>
-              {action.detail && armed !== action.id ? <span className="group-composer-action-detail">{local(action.detail)}</span> : null}
-            </button>
-          ))}
-          {showHint ? <span className="group-composer-suggest-hint">{local(board!.hint!)}</span> : null}
+          {topEntries ? <div className="group-composer-top-summary">{topEntries}</div> : null}
         </div>
       ) : null}
       <div
