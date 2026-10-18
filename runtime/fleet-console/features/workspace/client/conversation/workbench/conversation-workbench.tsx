@@ -496,8 +496,6 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
       { key: "below", label: t("conversation.workbench.toBelow"), enabled: can.below, run: () => { moveWorkbenchTileBelow(tile.id); } },
     ];
 
-  // 창 오른쪽 위 모서리에 닿은 칸 — Windows 캡션 단추 띠가 그 머리 위에 앉는다(workbench.css).
-  const touchesTop = rect.y <= 16 && rect.x + rect.w >= geometry.width - 16;
   return (
     <section
       ref={rootRef}
@@ -505,7 +503,6 @@ function TileFrame({ entry, rect, hidden, expanded, focused, dragging, menuOpen,
       style={rectStyle(rect)}
       data-tile-kind={tile.kind}
       data-tile-area={entry.area}
-      data-touch-top={touchesTop ? "true" : undefined}
       data-keep-operation-active
       aria-label={parts.title}
       aria-hidden={hidden ? true : undefined}

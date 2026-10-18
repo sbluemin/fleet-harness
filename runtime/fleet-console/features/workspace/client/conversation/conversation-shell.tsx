@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -782,14 +782,19 @@ export function ConversationStage({ state, insets, language, operationKinds, onC
 
   return (
     <>
+    {/* 맨 위 줄은 작업 영역 전체 폭이다 — 도구 분할은 그 아래만 쓴다(workbench.css). 사용량 캡슐은 이 줄의 오른쪽 끝(Windows 캡션
+        버튼 바로 왼쪽)에 서므로, 분할이 서도 가운데 칸을 따라 움직이지 않는다. 가운데 칸보다 DOM 이 앞서야 pill 줄의 drag 사각형이
+        이 줄 위에 얹힌다(conversation.css Desktop 셸). */}
+    <div className="conversation-band" style={{ left: insets.left, right: insets.right }}>
+      <ConversationQuota />
+    </div>
     <section
       className="conversation-stage"
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바·레일의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
-      // 대화 아래 줄 높이(아래)만큼 더 비킨다.
-      style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom }}
+      // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 사용량 캡슐이 가운데 칸 머리 줄을 얼마나 덮는지 셀 때 쓴다.
+      style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
     >
-      <ConversationQuota />
       {newSession ? (
         <NewSessionColumn state={state} target={newSession} tools={tools(null)} />
       ) : surfaceDescriptor && surface ? (
@@ -863,8 +868,9 @@ function stableParamsKey(params: Readonly<Record<string, unknown>>): string {
 }
 
 /**
- * 사용량(Quota 등 밴드 요약) — 가운데 칸 맨 위 줄의 오른쪽 끝에 떠 있는 캡슐 하나다. 대상 Operation 이 아니라 계정 전역의 신호라
- * pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Operation·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
+ * 사용량(Quota 등 밴드 요약) — 작업 영역 맨 위 줄(.conversation-band)의 오른쪽 끝에 떠 있는 캡슐 하나다. 대상 Operation 이 아니라
+ * 계정 전역의 신호라 pill(대상의 이름)·단추 묶음(대상의 동작)과 붙이지 않고, Operation·플러그인 대화·빈 칸 어디서나 같은 자리에 선다.
+ * 도구 분할이 서도 자리는 그대로다 — 분할은 맨 위 줄 아래만 쓴다. 캡슐이 가운데 칸 머리 줄에 걸치는 만큼만 pill 줄이 비운다.
  * 칸 폭이 줄면 단계를 낮춘다(전체 → 표식만 → 첫 칸 하나, conversation.css·quota.css 의 컨테이너 질의). 누르면 지금처럼 요약 팝업이 열린다.
  */
 function ConversationQuota() {
@@ -876,7 +882,7 @@ function ConversationQuota() {
   // → 첫 칸)의 실제 폭을 차례로 대어 들어가는 가장 큰 단계를 고른다. pill 줄은 고른 폭만큼 양쪽을 비워 pill 을 가운데에 둔다.
   useLayoutEffect(() => {
     const box = boxRef.current;
-    const stage = box?.closest<HTMLElement>(".conversation-stage") ?? null;
+    const stage = box === null ? null : stageOfQuota(box);
     if (!box || !stage) return;
     let frame = 0;
     const measure = () => { frame = 0; applyConversationQuotaTier(stage); };
@@ -896,6 +902,8 @@ function ConversationQuota() {
       })) schedule();
     });
     mutation?.observe(stage, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["data-natural-width"] });
+    // 캡슐은 가운데 칸 밖(맨 위 줄)에 선다 — 사용량 값이 바뀌어 폭이 바뀌는 것도 따로 본다.
+    mutation?.observe(box, { childList: true, subtree: true, characterData: true });
     return () => { resize?.disconnect(); mutation?.disconnect(); if (frame !== 0) cancelAnimationFrame(frame); };
   }, [usage.length]);
   if (usage.length === 0) return null;
@@ -931,7 +939,7 @@ function pillGroupNaturalWidth(stage: HTMLElement): number {
  * 단계 공식은 한 곳이다 — 칸 폭과 원래 폭만으로 정해지고, 도구가 걷혀 있는지와는 무관하다.
  */
 function applyConversationQuotaTier(stage: HTMLElement): void {
-  const box = stage.querySelector<HTMLElement>(":scope > .conversation-quota");
+  const box = quotaOfStage(stage);
   if (box === null) return;
   const widthAt = (tier: QuotaTier) => {
     box.dataset.tier = tier;
@@ -941,13 +949,27 @@ function applyConversationQuotaTier(stage: HTMLElement): void {
   const center = pillGroupNaturalWidth(stage);
   // 오른쪽 끝 여백(--space-3)과 Windows 캡션 버튼 몫은 캡슐의 right 가 이미 진다 — 그 값을 그대로 읽는다.
   const right = Number.parseFloat(getComputedStyle(box).right) || 0;
+  // 캡슐은 맨 위 줄 오른쪽 끝에 서고, 가운데 칸은 도구 분할 폭만큼 그 앞에서 끝난다 — 칸 머리 줄에 걸치는 몫만 예약한다.
+  // 칸이 줄어드는 전이 중에도 같은 값이 나오도록 실제 상자 대신 기하가 심은 분할 폭을 읽는다.
+  const splitRight = Number.parseFloat(stage.style.getPropertyValue("--conversation-split-right")) || 0;
   // 예약은 올림한 정수 폭이다 — 판정도 그 폭으로 해야 줄이 1~2px 모자라 이름이 말줄임되는 경계가 생기지 않는다.
-  const space = (candidate: QuotaTier) => Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP);
+  const space = (candidate: QuotaTier) => Math.max(0, Math.ceil(widths[candidate] + right + QUOTA_PILL_GAP - splitRight));
   // 가운데 묶음의 원래 폭은 정수 폭의 합이라 실제보다 1px 남짓 작을 수 있다 — 그만큼 여유를 둔다.
   const half = (stage.getBoundingClientRect().width - center) / 2 - QUOTA_ROUNDING_SLACK;
   const tier: QuotaTier = space("full") <= half ? "full" : space("marks") <= half ? "marks" : "single";
   box.dataset.tier = tier;
   stage.style.setProperty("--conversation-quota-space", `${space(tier)}px`);
+}
+
+/** 맨 위 줄의 사용량 캡슐과 그 바로 뒤 가운데 칸은 짝이다(ConversationStage 가 나란히 그린다). */
+function stageOfQuota(box: HTMLElement): HTMLElement | null {
+  const next = box.closest(".conversation-band")?.nextElementSibling ?? null;
+  return next instanceof HTMLElement && next.classList.contains("conversation-stage") ? next : null;
+}
+
+function quotaOfStage(stage: HTMLElement): HTMLElement | null {
+  const band = stage.previousElementSibling;
+  return band?.classList.contains("conversation-band") ? band.querySelector<HTMLElement>(":scope > .conversation-quota") : null;
 }
 
 /**
@@ -972,6 +994,17 @@ function pillRowNaturalWidth(row: HTMLElement): number {
  * 그때 글자는 pill 에 잘려 scrollWidth 차이가 0 이다 — 상자 밖으로 나간 만큼을 더한다. 상한(620)은 그대로다.
  */
 function pillNaturalWidth(pill: HTMLElement): number {
+  // 표식만 남긴 원형(data-compact)은 이름을 걷은 모양이다 — 풀고 센 뒤 그대로 되돌린다.
+  const compact = pill.hasAttribute("data-compact");
+  if (compact) pill.removeAttribute("data-compact");
+  try {
+    return pillOpenWidth(pill);
+  } finally {
+    if (compact) pill.dataset.compact = "true";
+  }
+}
+
+function pillOpenWidth(pill: HTMLElement): number {
   const style = getComputedStyle(pill);
   const contentRight = pill.getBoundingClientRect().right
     - (Number.parseFloat(style.borderRightWidth) || 0)
@@ -1095,6 +1128,7 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
       // 이름이 TITLE_FLOOR(이름이 그보다 짧으면 그 폭)까지. 도구가 남아 있는 동안 이름은 원래 폭에 묶어 둔다. pill 내용이 상자 밖으로
       // 흐르면(부제·이름이 하한에 닿은 뒤) 들어가지 않은 것으로 보고 도구를 더 걷는다(fits).
       const pill = row.querySelector<HTMLElement>(":scope > .conversation-pill");
+      pill?.removeAttribute("data-compact");
       const title = pill?.querySelector<HTMLElement>(".conversation-pill-title") ?? null;
       const textWidth = (element: HTMLElement) => {
         element.style.minWidth = "";
@@ -1129,6 +1163,10 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
         }
         // 도구를 다 걷어도 모자라면 이름을 하한까지 풀어 준다.
         if (title !== null && !fits(pill, title)) title.style.minWidth = `${Math.min(TITLE_FLOOR, titleNatural)}px`;
+        // 하한으로도 모자라면 이름을 걷고 표식(아바타)만 원형 칩 가운데에 남긴다 — 상자가 내용을 자르면 표식이 한쪽으로 쏠린다.
+        // 표식이 없는 pill 은 이름이 유일한 단서라 그대로 둔다.
+        if (pill !== null && title !== null && !fits(pill, title)
+          && pill.querySelector(":scope > .conversation-pill-mark, :scope > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };

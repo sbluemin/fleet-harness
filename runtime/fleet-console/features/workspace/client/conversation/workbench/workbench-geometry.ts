@@ -3,7 +3,7 @@ import type { WorkbenchLayout, WorkbenchStack, WorkbenchTile } from "../../../sh
 import type { WorkbenchDropTarget } from "./workbench-store.js";
 
 /**
- * 작업대 기하 — 대화 칸과 오른쪽 사이드바 사이(작업 영역) 안에서 대화·분할 영역·아래 줄·칸의 자리를 정한다. 순수 함수다.
+ * 작업대 기하 — 왼쪽·오른쪽 사이드바 사이, 맨 위 줄 아래(작업 영역) 안에서 대화·분할 영역·아래 줄·칸의 자리를 정한다. 순수 함수다.
  *
  * 좌표는 작업 영역의 왼쪽 위가 원점이다. 칸은 모두 한 층에 절대 배치되므로(작업대 레이어), 자리를 옮기거나 펼쳐도 칸의 DOM 은
  * 그대로다 — Shell·브라우저가 다시 서지 않는다.
