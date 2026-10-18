@@ -3,6 +3,8 @@ import { useSyncExternalStore, type ReactNode } from "react";
 import type { MobileConfirmSpec } from "@fleet-console/sdk/plugin";
 import type { MobileBarAction, MobileBarMenuItem } from "@fleet-console/sdk/pane";
 
+import type { ConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
+
 
 /**
  * 모바일 셸의 클라이언트 상태. 라우트(/operations·/settings)가 큰 자리를 정하고, 이 스토어는
@@ -225,8 +227,11 @@ export function closeMobileSheets(): void {
 export interface MobileBarState {
   /** `centered`는 가운데 제목, `conversation`은 ‹ · 아바타와 제목이 든 pill · ⋮ 이다. */
   readonly variant: "centered" | "conversation";
-  /** conversation 변형의 pill — 누르면 대화 정보 화면이 열린다. `key`가 바뀌면(아바타 얼굴·제목·상태 줄) 막대를 다시 그린다. */
-  readonly pill?: { readonly key: string; readonly label: string; readonly node: ReactNode; readonly onPress: () => void };
+  /**
+   * conversation 변형의 pill — 누르면 대화 정보 화면이 열린다. `key`가 바뀌면(아바타 얼굴·제목·상태 줄) 막대를 다시 그린다.
+   * `takeover`는 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 잠깐 바꾼 내용이다 — 그동안 pill은 단추가 아니라 그 내용을 담는 틀이다.
+   */
+  readonly pill?: { readonly key: string; readonly label: string; readonly node: ReactNode; readonly onPress: () => void; readonly takeover?: ConversationPillTakeover | null };
   readonly title: string;
   readonly subtitle?: string;
   /** 왼쪽 단추는 늘 ‹이다 — 홈(대화 목록)이 루트라 ≡가 열 메뉴는 없다. `onBack`이 없으면 history 뒤로이고, 마지막 가드에서 홈으로 간다. */

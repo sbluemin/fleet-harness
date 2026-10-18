@@ -319,10 +319,13 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
   transition: transform 340ms cubic-bezier(.22, .8, .24, 1), opacity 260ms ease;
 }
 .group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-16%); opacity: 0.3; }
+/* 층은 대화 중심 화면 맨 위 줄(.conversation-pill-row, z-index 3) 밑에 선다 — 그 줄의 제목 pill 이 보낸 이 ⇄ 받는 이로 바뀌어
+   보이고(pill-takeover), 메시지는 그 줄 아래에서 시작한다. 밀려난 형제(입력창 위로 뜨는 덱 z-index 5 포함)는 transform 이 쌓임
+   맥락을 만들어 이 층 밑에 갇힌다. */
 .group-relay {
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 2;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -345,11 +348,8 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
 }
 .group-relay-foot { transform: translateY(6px); }
 .group-relay.is-open :is(.group-relay-head, .group-relay-foot) { opacity: 1; transform: none; transition-delay: 140ms; }
-/* 대화 중심 화면에서는 이 층이 머리 pill 을 덮으므로 칩이 그 자리(맨 위 줄 가운데, 도구모음과 같은 높이)에 선다 — 빈 맨 위 줄 아래로
-   떠 내려가지 않는다(참고 이미지 2). 맨 위 줄이 없는 칸(--conversation-overlay-top 0)에서는 위를 18px 비운다. 44px 는 칩 높이다. */
-.group-relay-head {
-  padding: max(calc(18px - var(--conversation-overlay-top, 0px)), calc((var(--conversation-overlay-top, 0px) - 44px) / 2)) var(--space-4) var(--space-2);
-}
+/* 화면 안 칩은 바꿀 머리 pill 이 없는 대화(플러그인 대화)의 대체 수단이다 — 위쪽은 대화 중심 화면의 투명 맨 위 줄 몫까지 비운다. */
+.group-relay-head { padding: calc(18px + var(--conversation-overlay-top, 0px)) var(--space-4) var(--space-2); }
 /* 위 가운데 칩 — 보낸 이 ⇄ 받는 이(여럿이면 이어서). 얹힌 면과 머리카락 선 하나. */
 .group-relay-pair {
   display: inline-flex;
@@ -397,6 +397,27 @@ button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-
   overscroll-behavior: contain;
   padding: var(--space-5) clamp(var(--space-4), 6cqi, 56px) var(--space-4);
 }
+/* 머리 pill 이 보낸 이 ⇄ 받는 이를 맡으면 화면 안 칩이 없다 — 메시지는 맨 위 줄 아래에서 시작한다. */
+.group-relay.is-pill .group-relay-log { padding-top: calc(var(--space-5) + var(--conversation-overlay-top, 0px)); }
+/* 머리 pill 안의 보낸 이 ⇄ 받는 이 — pill 의 글자(굵기·크기)를 그대로 입고, 구성원 이름만 원장을 여는 단추다. 이름은 중립 잉크다. */
+.group-relay-pill { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.group-relay-pill .group-relay-swap { width: 16px; height: 16px; }
+.group-relay-pill-party {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+}
+.group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.group-relay-pill-party { cursor: pointer; }
+button.group-relay-pill-party:hover .group-relay-pill-party-name { text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
 .group-relay-message { display: flex; flex-direction: column; }
 .group-relay-time { align-self: center; margin: 18px 0 14px; font-size: var(--t-sm); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .group-relay-message:first-child .group-relay-time { margin-top: 0; }
@@ -1190,3 +1211,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 :root[data-view-mode="mobile"] .group-relay-foot { padding: 10px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 :root[data-view-mode="mobile"] .group-relay-close { height: 48px; padding: 0 24px; background-color: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-list); }
 :root[data-view-mode="mobile"] .group-relay-close:is(:hover, :active) { background-color: var(--m-selected); background-image: none; }
+:root[data-view-mode="mobile"] .group-relay-pill { gap: 8px; }
+:root[data-view-mode="mobile"] .group-relay-pill-party { gap: 7px; min-height: 36px; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); }
+:root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { width: 28px; height: 28px; }

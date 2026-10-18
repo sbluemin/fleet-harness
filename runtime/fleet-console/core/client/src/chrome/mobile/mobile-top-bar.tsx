@@ -5,6 +5,7 @@ import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMenu } from "./mobile-menu.js";
 import { getLiveMobileBar, useMobileBar, type MobileBarState } from "./mobile-store.js";
+import { PillTakeoverLayer, usePillTakeoverPhase } from "../../../../../features/workspace/client/conversation/pill-takeover.js";
 
 const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "back" };
 
@@ -19,6 +20,8 @@ export function MobileTopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   // 열린 ⋮ 메뉴는 뒤로가 가장 먼저 닫는 겹침이다.
   useEffect(() => (menuOpen ? pushBackLayer(() => setMenuOpen(false)) : undefined), [menuOpen]);
+  // 본문이 잠깐 바꾼 pill 내용 — 그동안(되돌아가는 크로스페이드까지) pill 은 단추가 아니라 그 내용을 담는 틀이다(단추 안에 단추를 두지 않는다).
+  const takeover = usePillTakeoverPhase(bar.variant === "conversation" ? bar.pill?.takeover ?? null : null);
   if (bar.hidden) return null;
 
   const back = () => {
@@ -27,7 +30,12 @@ export function MobileTopBar() {
     else window.history.back();
   };
   const actionsCount = (bar.actions?.length ?? 0) + (bar.menu ? 1 : 0);
-  const title = bar.variant === "conversation" && bar.pill ? (
+  const title = bar.variant === "conversation" && bar.pill ? takeover.shown ? (
+    <div className={`mobile-conv-pill is-takeover is-${takeover.phase}`}>
+      <span className="mobile-conv-pill-was" aria-hidden={takeover.phase === "in" || undefined} inert={takeover.phase === "in" || undefined}>{bar.pill.node}</span>
+      <PillTakeoverLayer {...takeover} />
+    </div>
+  ) : (
     <button type="button" className="mobile-conv-pill" aria-label={bar.pill.label} onClick={() => getLiveMobileBar()?.pill?.onPress()}>{bar.pill.node}</button>
   ) : (
     <h1 className="mobile-top-bar-title">

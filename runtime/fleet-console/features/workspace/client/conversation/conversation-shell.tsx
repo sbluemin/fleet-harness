@@ -38,6 +38,8 @@ import { OperationCaptionContributions } from "../operation-contributions.js";
 import { useClusterIndex, useOperationClusters } from "../operation-clusters.js";
 import { PluginOperationRenderer } from "../operation-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
+import { useConversationPillTakeover } from "./conversation-slots.js";
+import { PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
@@ -1231,6 +1233,11 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
   const captionRenderer = useConversationCaptionRenderer();
+  // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 제 내용으로 바꾼다 — 크로스페이드와 폭 전환은 pill-takeover 가 진다.
+  const pillRef = useRef<HTMLDivElement | null>(null);
+  const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(operation.id));
+  const pillTaken = pillTakeover.phase === "in";
+  usePillMorphWidth(pillRef, pillTaken ? pillTakeover.shown?.key ?? null : null);
   const clusterRoot = clusterIndex.rootOf.get(operation.id) ?? null;
   const nested = state.nestedOperations.filter((candidate) => candidate.parentOperationId === operation.id);
   const chosen = state.nestedBodySelection[operation.id];
@@ -1360,12 +1367,13 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <div className="conversation-pill">
+        <div className="conversation-pill" ref={pillRef} data-takeover={pillTaken || undefined}>
           <button
             type="button"
             className="conversation-pill-details"
             onClick={onToggleDetails}
             aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
+            inert={pillTaken || undefined}
           >
             <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{operation.title}</span>
@@ -1374,7 +1382,8 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
           </button>
-          {hasPillControls ? <span className="conversation-pill-controls">{captionView}{viewSwitch}</span> : null}
+          {hasPillControls ? <span className="conversation-pill-controls" inert={pillTaken || undefined}>{captionView}{viewSwitch}</span> : null}
+          <PillTakeoverLayer {...pillTakeover} />
         </div>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Operation 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />{shelf}</span>

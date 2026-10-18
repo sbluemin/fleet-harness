@@ -75,6 +75,8 @@ export interface GroupConversationProps {
   readonly overlay?: React.ReactNode;
   /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
   readonly computerActor?: string | null;
+  /** 전언 대화 화면이 머리 pill 을 바꿀 대화 주인 Operation — 주지 않으면(플러그인 대화) 화면 안에 보낸 이 ⇄ 받는 이 칩을 둔다. */
+  readonly pillOperationId?: string;
 }
 
 /** 사령관 기록을 그 행위의 자리로 여는 요청 — 임무 14의 `BoardActionRecordRequest` 와 같은 필드. */
@@ -89,7 +91,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -264,7 +266,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         {composerTopEntries && composer ? <ComposerTopEntries /> : null}
         {composer}
       </div>
-      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />
+      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillOperationId={pillOperationId} />
       {overlay}
     </div>
   );

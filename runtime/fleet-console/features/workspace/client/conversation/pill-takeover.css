@@ -1,0 +1,44 @@
+/* 머리 pill 의 잠깐 바뀐 내용(pill-takeover.tsx) — 원래 내용과 바뀐 내용이 같은 pill 안에서 크로스페이드한다. 박자는 본문 대화 화면의
+   밀기 전환(340ms cubic-bezier(.22,.8,.24,1))과 같다. 서 있는 쪽만 흐름에 남아 pill 폭을 정하고, 나가는 쪽은 흐름 밖에서 흐려진다.
+   색은 쓰지 않는다 — 면·테두리는 pill 의 것이고 안의 잉크는 바뀐 내용이 정한다. */
+.conversation-pill-takeover {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  animation: conversation-pill-takeover-in 340ms cubic-bezier(.22, .8, .24, 1);
+}
+.conversation-pill-takeover.is-out {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: none;
+  transition: opacity 340ms cubic-bezier(.22, .8, .24, 1);
+}
+@keyframes conversation-pill-takeover-in {
+  from { opacity: 0; }
+}
+
+/* 데스크톱 맨 위 줄 pill — 바뀐 동안 제목 단추·보기 캡슐은 inert 로 흐름 밖에서 흐려지고, 바뀐 내용이 pill 폭을 정한다(폭은 FLIP 이 옮긴다). */
+.conversation-pill:has(> .conversation-pill-takeover) { position: relative; }
+.conversation-pill[data-takeover="true"] { padding: 0 var(--space-3) 0 6px; }
+.conversation-pill > :is(.conversation-pill-details, .conversation-pill-controls) { transition: opacity 340ms cubic-bezier(.22, .8, .24, 1); }
+.conversation-pill[data-takeover="true"] > :is(.conversation-pill-details, .conversation-pill-controls) {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.conversation-pill[data-takeover="true"] > .conversation-pill-details { left: var(--space-3); }
+.conversation-pill[data-takeover="true"] > .conversation-pill-controls { right: 4px; }
+.conversation-pill > .conversation-pill-takeover.is-out { left: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-pill-takeover,
+  .conversation-pill-takeover.is-out,
+  .conversation-pill > :is(.conversation-pill-details, .conversation-pill-controls) { animation: none; transition: none; }
+}
