@@ -238,9 +238,6 @@
   scroll-padding-bottom: var(--space-4);
 }
 
-/* 빈 입력의 자리표시는 한 줄 말줄임 — 실제 입력은 기존 줄바꿈·자동 높이를 그대로 쓴다. */
-:root[data-view-mode="mobile"] .fc-composer-input:placeholder-shown { overflow-x: hidden; text-overflow: ellipsis; white-space: pre; }
-
 /* ===== Settings — 목록 화면과 상세 화면 ===== */
 
 .mobile-settings-page {

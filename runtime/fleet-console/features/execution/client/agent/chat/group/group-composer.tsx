@@ -30,6 +30,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
+import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getComposerDraft } from "../../../operation-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
@@ -135,6 +136,7 @@ function groupDraft(rootOperationId: string) {
 }
 
 export function GroupComposer({ rootOperationId, snapshot, actions, language, onStopOne }: GroupComposerProps) {
+  const phone = useViewMode().effective === "mobile";
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
@@ -486,7 +488,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, on
   const placeholder = !actions ? t("group.composer.unavailable")
     : seated?.context ? local(seated.context.placeholder)
       : board?.actionsOnly ? t("group.board.placeholder")
-        : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t("group.composer.placeholder"));
+        : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) }) : t(phone ? "group.composer.placeholderMobile" : "group.composer.placeholder"));
   const chips = board && !board.fixed ? board.suggestions : [];
   const note = board?.note ?? null;
   const showHint = !!board?.hint && (chips.length > 0 || !!board.fixed);
