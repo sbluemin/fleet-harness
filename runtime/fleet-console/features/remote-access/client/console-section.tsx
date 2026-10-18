@@ -191,13 +191,16 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
       {expanded && !fallbackAway ? <div id={listId} className="console-section-list">
         <p className="console-section-group">{t("chrome.hosts.nearby")}</p>
         {nearby.map((entry) => <div key={entry.origin}>{row(entry.origin, entry.origin === location.origin ? state.consoleName || t("chrome.hosts.managedConsole") : t("chrome.hosts.console"), nearbyDetail(entry, entry.origin === homeRow), entry.state === "ready" || entry.origin === at ? undefined : { label: t(entry.state === "stopping" ? "chrome.hosts.stopping" : "chrome.hosts.slow") }, entry.state === "stopping")}</div>)}
-        {desktop && canRead && hosts.length > 0 ? <p className="console-section-group">{t("chrome.hosts.saved")}</p> : null}
-        {desktop && canRead ? hosts.map((host) => <div key={host.id}>
+        {canRead && hosts.length > 0 ? <p className="console-section-group">{t("chrome.hosts.saved")}</p> : null}
+        {canRead ? hosts.map((host) => <div key={host.id}>
           {renaming === host.id ? <form className="console-section-rename" onSubmit={(event) => { event.preventDefault(); if (name.trim()) void mutate(() => renameRemoteHost(host.id, name.trim())); }}>
             <input autoFocus value={name} aria-label={t("settings.remote.hosts.rename")} maxLength={120} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setRenaming(null); } }} />
             <button type="submit" disabled={busy || !name.trim()}>{t("chrome.consoles.save")}</button><button type="button" onClick={() => setRenaming(null)}>{t("common.cancel")}</button>
           </form> : <div className="console-section-edit-row">
-            {row(host.origin, host.label, hostDetail(host, reach[host.id], t), hostStatus(reach[host.id], t), reach[host.id]?.reachable === false || reach[host.id]?.trusted === false, true)}
+            {/* 브라우저는 원격으로 건너가지 못한다. 행은 열 수 없는 상태로 두되 이름 바꾸기·빼기는 그대로 맡는다. */}
+            {desktop
+              ? row(host.origin, host.label, hostDetail(host, reach[host.id], t), hostStatus(reach[host.id], t), reach[host.id]?.reachable === false || reach[host.id]?.trusted === false, true)
+              : row(host.origin, host.label, hostDetail(host, undefined, t), { label: t("chrome.hosts.desktopOnly") }, true, true)}
             {editing ? <><button type="button" className="console-section-action" aria-label={`${host.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")} onClick={() => { setRenaming(host.id); setName(host.label); setConfirming(null); }}>✎</button>
               <button type="button" className="console-section-action" aria-label={`${host.label}: ${t("settings.remote.hosts.forget")}`} title={t("settings.remote.hosts.forget")} onClick={() => { setConfirming(host.id); setRenaming(null); }}>−</button></> : null}
           </div>}

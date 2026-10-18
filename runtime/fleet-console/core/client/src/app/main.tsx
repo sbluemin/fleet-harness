@@ -40,7 +40,7 @@ import { CONSOLE_SECTION_SURFACE } from "@fleet-console/protocol/desktop/console
 import "../../../../features/remote-access/client/console-section.css";
 import { fetchGlobalSettingsState } from "../../../../features/settings/client/global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
-import { connectOperationsSse, installOperationsSseWake } from "../integration/operations-sse.js";
+import { connectOperationsSse, installOperationsSseWake, refreshObserverStatus } from "../integration/operations-sse.js";
 import { installOperationArchive } from "../integration/operation-archive.js";
 import { installModelRosterSync } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { installModalOpenMarker } from "../integration/modal-open-marker.js";
@@ -132,6 +132,8 @@ try {
 
 if (app && consoleSection) {
   document.documentElement.dataset.consoleSection = "true";
+  // 상주 섹션은 App을 띄우지 않는다. 집 Console의 이름은 상태를 한 번 읽어 와야 접힌 줄과 펼친 줄이 같은 이름을 쓴다.
+  refreshObserverStatus();
   createRoot(app).render(<StrictMode><BrowserRouter basename="/console"><ConsoleSection resident /></BrowserRouter></StrictMode>);
 } else if (app && hostPicker) {
   document.documentElement.dataset.hostPicker = "true";
