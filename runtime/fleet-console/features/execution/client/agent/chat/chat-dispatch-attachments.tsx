@@ -25,7 +25,7 @@ export function ChatDispatchAttachments({
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
   const live = attachments.flatMap((attachment) => {
     const image = "id" in attachment ? { id: attachment.id, src: agentChatAttachmentPreviewUrl(attachment.id) }
-      : "preview" in attachment && attachment.preview.url.startsWith("/api/v1/plugins/") && !attachment.preview.url.includes("\\")
+      : "preview" in attachment && attachment.preview.url.startsWith("/plugins/") && !attachment.preview.url.includes("\\")
         ? { id: attachment.preview.id, src: attachment.preview.url } : null;
     return image && !lapsed.includes(image.id) ? [image] : [];
   });

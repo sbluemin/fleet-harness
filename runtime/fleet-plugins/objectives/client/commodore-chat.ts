@@ -138,7 +138,7 @@ function messageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "message"
 /** 미리보기는 기록 사본만 가리킨다 — 사본을 만들기 전의 옛 기록은 전달용 미리보기를 열지 않는다. */
 function messageImages(theaterId: string, entry: Extract<CommodoreTranscriptEntry, { kind: "message" }>): readonly AgentChatTranscriptAttachment[] {
   return entry.attachments?.map(({ id, preview }) => preview && entry.messageId
-    ? { preview: { id, url: `/api/v1/plugins/objectives/commodore/attachment?${new URLSearchParams({ theaterId, messageId: entry.messageId, attachmentId: id })}` } }
+    ? { preview: { id, url: `/plugins/objectives/commodore/attachment?${new URLSearchParams({ theaterId, messageId: entry.messageId, attachmentId: id })}` } }
     : { reference: id }) ?? [];
 }
 

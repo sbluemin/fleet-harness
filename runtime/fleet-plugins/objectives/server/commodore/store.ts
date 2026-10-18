@@ -157,6 +157,10 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     if (!dir) throw new ObjectiveStoreError("theater_unavailable");
     return dir;
   });
+  const pruneImages = (theaterId: string, kept?: ReadonlySet<string>) => {
+    try { images.prune(theaterId, kept); }
+    catch { console.warn("[objectives] commodore image cleanup failed; retained copies will be retried on the next cleanup"); }
+  };
   const stateFile = (theaterId: string) => path.join(dirFor(theaterId), STATE_FILE);
   const transcriptFile = (theaterId: string) => path.join(dirFor(theaterId), TRANSCRIPT_FILE);
 
@@ -205,7 +209,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     fs.appendFileSync(file, `${JSON.stringify(parsed.data)}\n`, { mode: 0o600 });
     lastSeq.set(theaterId, parsed.data.seq);
     const kept = compactIfLarge(file);
-    if (kept) images.prune(theaterId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
+    if (kept) pruneImages(theaterId, new Set(kept.flatMap((entry) => entry.kind === "message" && entry.messageId ? [entry.messageId] : [])));
     broadcast({ op: "transcript", theaterId, entry: parsed.data });
     return parsed.data;
   };
@@ -308,7 +312,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const state = commit(theaterId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
       lastSeq.set(theaterId, clearedThrough);
       fs.rmSync(transcriptFile(theaterId), { force: true });
-      images.prune(theaterId);
+      pruneImages(theaterId);
       return state;
     },
     images,
