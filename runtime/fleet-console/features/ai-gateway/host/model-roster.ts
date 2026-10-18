@@ -130,7 +130,6 @@ function toRosterRow(
     ...(contextWindow ? { contextWindow } : {}),
     // 모델 정보 — Claude도 다른 모델과 같다. 호스트 전용은 위임 후보에서만 빠지고 선택기에는 그대로 선다.
     ...(selection.delegationModels.includes(model) ? {} : { hostOnly: true as const }),
-    ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
   };
   if (target === "agent") {
     // Agent SDK 세션은 ultra를 받지 않고 게이트도 없다 — 모델이 내놓는 사다리가 곧 전체다.

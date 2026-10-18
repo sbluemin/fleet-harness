@@ -129,14 +129,19 @@ describe("delegation assignment", () => {
     return res;
   };
 
-  it("uses local fallback without invoking an AI when routing is off", async () => {
+  it("uses local fallback and provider priority without invoking an AI when routing is off", async () => {
     const choose = vi.fn(async () => { throw new Error("must not call AI"); });
     const decision = await decideGatewayRoutingAssignmentWithJev(
       { surface: "agent", prompt: "review this code" },
-      { ...exposure, delegationRoutingEnabled: false, delegationRoutingMode: "model" },
+      {
+        delegationRoutingEnabled: false, delegationRoutingMode: "model",
+        delegationModels: [...exposure.delegationModels, requireGatewayModel("xai--grok-4.7")],
+        providerPriority: ["xai", "codex"],
+      },
       { choose },
     );
-    expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
+    expect(decision.model).toBe("claude-gateway--xai--grok-4.7");
+    expect(decision.effort).toBe("medium");
     expect(decision.because).toContain("fallback");
     expect(choose).not.toHaveBeenCalled();
   });
@@ -297,11 +302,11 @@ describe("delegation assignment", () => {
     expect(decision.model).not.toBe(reserved);
     expect(decision.model).toBe("claude-gateway--codex--gpt-5.6-terra");
     // Claude도 같다 — 저장 설정에서 호스트 전용으로 둔 Claude는 위임 후보(gateway_models)에 서지 않고, 켜 둔 Claude는 다른
-    // 모델과 같은 정보(창·강도·등급)로 선다. 구 200k 좌표(`claude--sonnet`)로 남은 저장값도 가족의 단일 1M 항목으로 선다.
+    // 모델과 같은 정보(창·강도)로 선다. 구 200k 좌표(`claude--sonnet`)로 남은 저장값도 가족의 단일 1M 항목으로 선다.
     const claude = resolveAiGatewaySelection({ version: 1, models: [{ id: "claude--opus-1m", hostOnly: true }, { id: "claude--sonnet" }] });
     expect(claude.models.map((model) => model.id)).toEqual(["claude--opus-1m", "claude--sonnet-1m"]);
     expect(buildGatewayLoadout({ delegationRoutingEnabled: true, delegationModels: claude.delegationModels }).models).toEqual([
-      expect.objectContaining({ modelId: "sonnet[1m]", provider: "claude", contextWindow: 1_000_000, capabilityClass: expect.any(String) }),
+      expect.objectContaining({ modelId: "sonnet[1m]", provider: "claude", contextWindow: 1_000_000 }),
     ]);
   });
 

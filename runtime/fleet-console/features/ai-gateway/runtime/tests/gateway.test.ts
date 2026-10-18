@@ -152,7 +152,6 @@ describe("model catalog", () => {
     invalidTier.providers.xai.models[0] = {
       modelId: "grok-4.6",
       name: "Grok",
-      capabilityClass: "standard",
       providerModelId: "grok-4.6",
       serviceTier: "priority",
     };
@@ -162,7 +161,6 @@ describe("model catalog", () => {
     legacyAutoCompactThreshold.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
-      capabilityClass: "standard",
       contextWindow: 272_000,
       // 컴팩션 예산 분모는 폐기된 개념이다. 실제 창보다 작은 분모는 남은 용량을
       // 1M 좌표의 100% 위로 밀어내 Claude Code가 컴팩트할 수 없는 상태를 만든다.
@@ -174,7 +172,6 @@ describe("model catalog", () => {
     legacyEffortDefault.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
-      capabilityClass: "standard",
       // 모델별 기본 effort는 폐기된 개념이다 — 잔존 필드는 strict 스키마가 거부한다.
       effort: { supported: true, levels: ["low", "high"], default: "high" },
     };
@@ -184,7 +181,6 @@ describe("model catalog", () => {
     duplicateEffort.providers.codex.models[0] = {
       modelId: "codex-model",
       name: "Model",
-      capabilityClass: "standard",
       effort: { supported: true, levels: ["low", "low"] },
     };
     expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
@@ -193,7 +189,6 @@ describe("model catalog", () => {
     invalidOverride.providers.antigravity.models[0] = {
       modelId: "gemini-3.7-flash",
       name: "Model",
-      capabilityClass: "standard",
       effort: {
         supported: true,
         levels: ["low", "high"],
@@ -338,7 +333,7 @@ function baseRequest(): AnthropicMessagesRequest {
 function minimalRegistry() {
   const provider = (name: string, modelId: string) => {
     const models: Array<Record<string, unknown>> = [
-      { modelId, name: "Model", capabilityClass: "standard" },
+      { modelId, name: "Model" },
     ];
     return { name, defaultModel: modelId, source: "test fixture", models };
   };

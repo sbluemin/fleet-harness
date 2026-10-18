@@ -4,7 +4,7 @@ Translates an Agent CLI's wire onto provider backends. Downstream is the client 
 
 ## Task references
 
-When changing layer placement, model registration, request shaping, or provider adapters, read the relevant section of [architecture-reference.md](architecture-reference.md). It holds catalog classification rules and adapter-specific measurement rationale. Use `ai-gateway-loop-optimization` for real-traffic performance, retry, or tool-loop diagnosis.
+When changing layer placement, model registration, request shaping, or provider adapters, read the relevant section of [architecture-reference.md](architecture-reference.md). It holds catalog registration rules and adapter-specific measurement rationale. Use `ai-gateway-loop-optimization` for real-traffic performance, retry, or tool-loop diagnosis.
 
 ## Ownership and dependencies
 
@@ -16,7 +16,7 @@ When changing layer placement, model registration, request shaping, or provider 
 
 ## Catalog and credentials
 
-- `models.json` and `src/models.ts` are the central catalog sources. Keep current generations only. Claude entries are Claude Code aliases whose version, wire id, and effort ladder come from the installed CLI's `supportedModels()`; never pin a Claude version in `models.json`. `capabilityClass` is a vendor claim, not a measurement, and is the only quality signal routing reads: Fleet keeps no third-party benchmark scores, because per-model upkeep and cohort bias outweighed their value.
+- `models.json` and `src/models.ts` are the central catalog sources. Keep current generations only. Claude entries are Claude Code aliases whose version, wire id, and effort ladder come from the installed CLI's `supportedModels()`; never pin a Claude version in `models.json`. Fleet keeps no third-party benchmark scores, because per-model upkeep and cohort bias outweighed their value.
 - `src/settings/` and `src/auth/` are provider-neutral: neither imports providers nor discovers host data roots. Only `src/auth/` constructs credential stores; providers and quota collectors receive auth dependencies explicitly.
 - `src/oauth/` owns Fleet-initiated provider sign-in (device authorization, key mint, login sessions) and the `auth.json` entries it writes; it receives the auth store rather than constructing one, and `src/router/` and `src/upstream/` get its credential readers by injection instead of importing it. Upstream wire semantics stay in `src/upstream/<provider>/`.
 - The `auth.json` filename and stored provider IDs are signed-in-state compatibility contracts; do not rename or automatically delete existing entries when a provider is removed. Vendor CLI-owned subscription credential files are read-only.

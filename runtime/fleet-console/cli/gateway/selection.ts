@@ -100,7 +100,6 @@ export function effortLadderFor(id: string): readonly string[] {
 
 function describeCatalogModel(model: AiGatewayCatalogModel): string {
   const axes = [
-    model.capabilityClass ?? undefined,
     model.oneMillion ? "1M" : undefined,
     model.fast ? "fast" : undefined,
     model.effort ? `effort ${model.effort.levels.join("·")}` : undefined,

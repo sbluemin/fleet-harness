@@ -58,36 +58,11 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
 const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
 export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
-/**
- * The provider's own positioning of a model within its current lineup, read
- * from what the provider states — lineup defaults, tier tokens (`max`/`pro`
- * against `plus` against `flash`/`mini`-class names), and generation
- * supersession. It is a prior, not a measurement: the provider's statement
- * about its own lineup, never Fleet's judgment of quality.
- *
- * Ambiguity resolves downward. Overclassing puts a light model in seats that
- * needed judgment; underclassing merely costs one candidate. A `-fast` entry
- * therefore inherits its base class only where a link proves it is the same
- * upstream under different service terms, and an unlinked `-fast`/`flash` name
- * reads as the provider's light tier.
- *
- * Where the variant reaches its base's own wire id, `providerModelId` carries
- * the lineage. A provider that gives a variant its own wire id declares
- * {@link GatewayModelEntry.variantOf} separately.
- *
- * Routing aliases carry no class: what serves the request varies per call.
- */
-const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
-export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
-
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
-  capabilityClass: z.enum(GATEWAY_CAPABILITY_CLASSES).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
-  /** A serving sibling with its own wire id names the catalog base separately. */
-  variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
   quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
@@ -152,8 +127,6 @@ export interface GatewayModel {
   readonly quotaScope?: GatewayQuotaScope;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
-  /** Provider-stated lineup positioning; absent only on routing aliases. */
-  readonly capabilityClass?: GatewayCapabilityClass;
   readonly description?: string;
   /** Authoritative input context window reported by the provider/reference catalog. */
   readonly contextWindow?: number;
@@ -173,8 +146,7 @@ const CLAUDE_PROVIDER_NAME = "Claude";
 /**
  * Claude Code's model aliases. Each alias stands for its family's latest
  * version, which only the installed CLI knows; the version, wire id, and effort
- * ladder arrive through {@link applyClaudeNativeModels}. Class is the family's
- * lineup position and does not change between versions.
+ * ladder arrive through {@link applyClaudeNativeModels}.
  *
  * Every current family runs natively on a 1M window, so each family is exactly
  * one catalog entry: `claude--<alias>-1m`, launched as `<alias>[1m]`. The bare
@@ -182,14 +154,13 @@ const CLAUDE_PROVIDER_NAME = "Claude";
  * spellings of that same entry, never entries of their own.
  */
 const CLAUDE_NATIVE_FAMILIES = [
-  { alias: "fable", name: "Fable", capabilityClass: "flagship" },
-  { alias: "opus", name: "Opus", capabilityClass: "flagship" },
-  { alias: "sonnet", name: "Sonnet", capabilityClass: "standard" },
-  { alias: "haiku", name: "Haiku", capabilityClass: "light" },
+  { alias: "fable", name: "Fable" },
+  { alias: "opus", name: "Opus" },
+  { alias: "sonnet", name: "Sonnet" },
+  { alias: "haiku", name: "Haiku" },
 ] as const satisfies readonly {
   readonly alias: string;
   readonly name: string;
-  readonly capabilityClass: GatewayCapabilityClass;
 }[];
 const CLAUDE_DEFAULT_ALIAS = "sonnet";
 const CLAUDE_ONE_MILLION_CONTEXT_WINDOW = 1_000_000;
@@ -279,7 +250,6 @@ function buildGatewayModels(): readonly GatewayModel[] {
       displayName: `${CLAUDE_PROVIDER_NAME}-${resolution?.displayName ?? family.name}`,
       provider: "claude",
       ...(resolution ? { upstreamId: resolution.model } : {}),
-      capabilityClass: family.capabilityClass,
       contextWindow: CLAUDE_ONE_MILLION_CONTEXT_WINDOW,
       effort,
       aliases: Object.freeze([...claudeFamilyAliases(family.alias)]),
@@ -409,12 +379,6 @@ export interface GatewayModelConstraints {
    */
   readonly effortLadder: readonly GatewayReasoningEffort[];
   readonly effortSupported: boolean;
-  /**
-   * The provider's stated lineup positioning ({@link GatewayCapabilityClass}).
-   * The quality prior for seats whose product is judgment; allowance never
-   * implies it. Absent on routing aliases.
-   */
-  readonly capabilityClass?: GatewayCapabilityClass;
   readonly quotaScope?: GatewayQuotaScope;
 }
 
@@ -427,7 +391,6 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
-    ...(model.capabilityClass ? { capabilityClass: model.capabilityClass } : {}),
     ...(model.quotaScope ? { quotaScope: model.quotaScope } : {}),
   };
 }
@@ -586,7 +549,6 @@ function toGatewayModel(
     ...(entry.serviceTier ? { serviceTier: entry.serviceTier } : {}),
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
-    ...(entry.capabilityClass ? { capabilityClass: entry.capabilityClass } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     ...(entry.cursorMaxMode ? { cursorMaxMode: entry.cursorMaxMode } : {}),
@@ -617,48 +579,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Duplicate gateway model id: ${provider}/${model.modelId}`);
       }
       modelIds.add(model.modelId);
-      // A routing alias serves a different model per call, so any single class
-      // would lie; every real model must state one so judgment-seat policy has
-      // a prior to read. `default` is the only routing upstream observed.
-      const isRoutingAlias = model.providerModelId === "default";
-      if (isRoutingAlias && model.capabilityClass) {
-        throw new Error(`Gateway routing alias cannot carry a capability class: ${provider}/${model.modelId}`);
-      }
-      if (!isRoutingAlias && !model.capabilityClass) {
-        throw new Error(`Gateway model is missing a capability class: ${provider}/${model.modelId}`);
-      }
-      // A service-tier sibling is the same upstream under different terms; a
-      // class diverging from its base would let the serving tier edit the prior.
-      // The lineage link is `providerModelId` where the sibling reaches the
-      // base's wire id, or `variantOf` when the variant has its own wire id.
-      const catalogEntry = (modelId: string | undefined) => (
-        modelId === undefined ? undefined : definition.models.find((candidate) => candidate.modelId === modelId)
-      );
-      const providerLinkedBase = isRoutingAlias ? undefined : catalogEntry(model.providerModelId);
-      if (model.variantOf && providerLinkedBase && model.providerModelId !== model.variantOf) {
-        throw new Error(`Gateway service-tier sibling names two different bases: ${provider}/${model.modelId}`);
-      }
-      if (model.variantOf === model.modelId) {
-        throw new Error(`Gateway service-tier sibling names itself as its base: ${provider}/${model.modelId}`);
-      }
-      const baseModelId = isRoutingAlias ? undefined : model.variantOf ?? model.providerModelId;
-      if (baseModelId) {
-        const base = catalogEntry(baseModelId);
-        // `providerModelId` may name an upstream not listed here; an explicit
-        // `variantOf` must resolve. A listed base must not itself be a sibling.
-        if (model.variantOf && !base) {
-          throw new Error(`Gateway service-tier sibling names an unknown base: ${provider}/${model.modelId} -> ${model.variantOf}`);
-        }
-        const baseLink = base && base.modelId !== base.providerModelId
-          ? base.variantOf ?? base.providerModelId
-          : base?.variantOf;
-        if (base && catalogEntry(baseLink)) {
-          throw new Error(`Gateway service-tier sibling names another sibling as its base: ${provider}/${model.modelId}`);
-        }
-        if (base && base.capabilityClass !== model.capabilityClass) {
-          throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
-        }
-      }
       if (model.serviceTier && !model.providerModelId) {
         throw new Error(`Gateway service tier requires providerModelId: ${provider}/${model.modelId}`);
       }

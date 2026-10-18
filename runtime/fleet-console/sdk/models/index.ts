@@ -31,21 +31,18 @@ export type ModelRoster = readonly OperationLaunchVariantGroup[];
  * 로스터 행이 선택기 모양(`OperationLaunchVariantRow`) 위에 얹어 싣는 모델 정보. Claude도 다른 모델과 같은 정보를 싣는다.
  *
  * - `hostOnly`: Settings › AI Gateway에서 호스트 전용으로 둔 모델. 선택기와 실행에는 그대로 서고, 위임 배정 후보에서만 빠진다.
- * - `capabilityClass`: 공급자가 밝힌 라인업 위치(라우팅이 읽는 유일한 품질 신호). 라우팅 별칭처럼 없으면 생략한다.
  */
 export interface ModelRosterRowInfo {
   readonly hostOnly?: true;
-  readonly capabilityClass?: string;
 }
 
 export type ModelRosterRow = OperationLaunchVariantRow & ModelRosterRowInfo;
 
 /** 행의 모델 정보. 모르는 값은 버린다. */
 export function rosterRowInfo(row: OperationLaunchVariantRow): ModelRosterRowInfo {
-  const value = row as OperationLaunchVariantRow & { readonly hostOnly?: unknown; readonly capabilityClass?: unknown };
+  const value = row as OperationLaunchVariantRow & { readonly hostOnly?: unknown };
   return {
     ...(value.hostOnly === true ? { hostOnly: true as const } : {}),
-    ...(typeof value.capabilityClass === "string" && value.capabilityClass.length > 0 ? { capabilityClass: value.capabilityClass } : {}),
   };
 }
 

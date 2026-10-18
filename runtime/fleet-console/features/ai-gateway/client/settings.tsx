@@ -3,7 +3,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import { SegmentedThumb, Select } from "@fleet-console/sdk/react/browser";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSubScreenRow, SettingsToggle, defineSettingsSection, useMobileSettingsHost } from "@fleet-console/sdk/settings/browser";
 import { getT, useTerminalLocale, type TerminalMessageKey } from "../../execution/client/agent/i18n/index.js";
-import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCapabilityClass, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
+import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling, type DelegationRoutingMode } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { SyncedTextarea } from "@fleet-console/sdk/composer";
 import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerLabels } from "@fleet-console/sdk/components/model-coordinate-picker";
@@ -808,7 +808,6 @@ function describeAiGatewayRosterEntry(t: ReturnType<typeof getT>, entry: AiGatew
       ? t("terminal.settings.aiGatewayLevelsAll", { count: ladder.length })
       : t("terminal.settings.aiGatewayLevelsSome", { levels: exposed.join("·") });
   return [
-    aiGatewayClassLabel(model.capabilityClass),
     formatAiGatewayContextWindow(model.contextWindow),
     model.fast ? t("terminal.settings.aiGatewayFast") : null,
     model.description || null,
@@ -1211,8 +1210,6 @@ export interface AiGatewayModelVariant {
 export interface AiGatewayModelFamily {
   readonly key: string;
   readonly name: string;
-  /** 기준 변형의 등급. 팔레트는 이 등급으로 flagship → standard → light → 별칭 순으로 세운다. */
-  readonly capabilityClass: AiGatewayCapabilityClass | null;
   /** 작은 창부터, 같은 창 안에서는 기본이 Fast보다 앞. */
   readonly variants: readonly AiGatewayModelVariant[];
 }
@@ -1265,12 +1262,9 @@ export function groupAiGatewayModelFamilies(
         : formatAiGatewayContextWindow(variant.model.contextWindow) ?? variant.contextKey.toUpperCase();
       return { ...variant, label: variant.fast ? `${context} Fast` : context };
     });
-    return [{ key, name, capabilityClass: reference.model.capabilityClass, variants: labeled }];
-  }).sort((a, b) => AI_GATEWAY_CLASS_RANK[a.capabilityClass ?? "unclassed"] - AI_GATEWAY_CLASS_RANK[b.capabilityClass ?? "unclassed"]);
+    return [{ key, name, variants: labeled }];
+  });
 }
-
-/** 팔레트 묶음 순서. 등급 배지의 잉크 서열과 같고, 등급 없는 라우팅 별칭은 서열 밖이라 맨 뒤다. */
-const AI_GATEWAY_CLASS_RANK = { flagship: 0, standard: 1, light: 2, unclassed: 3 } as const;
 
 /** 팔레트 항목 오른쪽의 한 줄 — 컨텍스트 창 범위와 Fast 유무. 강도 범위는 켠 뒤 로스터에서만 다룬다. */
 function describeAiGatewayFamily(family: AiGatewayModelFamily, fastLabel: string): string {
@@ -1645,10 +1639,10 @@ function AiGatewayModelPalette({
                     onClick={() => pick(hit)}
                   >
                     <span className="ai-gateway-palette-hit-name" title={hit.family.name}>{hit.family.name}</span>
-                    <span className="ai-gateway-palette-hit-hint" title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[hit.family.capabilityClass ?? "unclassed"])}>
+                    <span className="ai-gateway-palette-hit-hint">
                       {allEnabled
                         ? t("terminal.settings.aiGatewayAllEnabled")
-                        : [aiGatewayClassLabel(hit.family.capabilityClass), describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))].filter(Boolean).join(" · ")}
+                        : describeAiGatewayFamily(hit.family, t("terminal.settings.aiGatewayFast"))}
                     </span>
                   </div>
                 );
@@ -1905,7 +1899,7 @@ export function AiGatewayModelRow({
       >
         <span className="ai-gateway-model-text">
           <span className="ai-gateway-model-name" title={model.name}>{model.name}</span>
-          <span className="ai-gateway-model-meta" title={t(AI_GATEWAY_CLASS_TOOLTIP_KEYS[model.capabilityClass ?? "unclassed"])}>
+          <span className="ai-gateway-model-meta">
             {describeAiGatewayRosterEntry(t, entry)}
           </span>
         </span>
@@ -2012,27 +2006,6 @@ function resolveExposedEfforts(
   if (!exposedEfforts || exposedEfforts.length === 0) return ladder;
   const narrowed = ladder.filter((level) => exposedEfforts.includes(level));
   return narrowed.length > 0 ? narrowed : ladder;
-}
-
-/**
- * 등급마다 한 줄 설명. 라벨은 카탈로그 리터럴을 그대로 쓰고 이 문장만 번역한다 — 등급 이름을
- * 옮기면 배지와 호스트가 읽는 이름이 갈라져 같은 모델을 두 어휘로 말하게 된다.
- */
-const AI_GATEWAY_CLASS_TOOLTIP_KEYS = {
-  flagship: "terminal.settings.aiGatewayClassFlagshipTooltip",
-  standard: "terminal.settings.aiGatewayClassStandardTooltip",
-  light: "terminal.settings.aiGatewayClassLightTooltip",
-  unclassed: "terminal.settings.aiGatewayClassUnclassedTooltip",
-} as const;
-
-/**
- * 등급은 보조 줄의 첫 낱말이다 — 카탈로그 리터럴(flagship·standard·light)의 첫 글자만 올려 문장형으로 쓴다.
- * 배지로 두면 이름보다 먼저 읽히는 대문자 상자가 되어 다른 설정 행과 결이 갈린다. 서열의 뜻은 행의 title이 말한다.
- */
-function aiGatewayClassLabel(capabilityClass: AiGatewayCapabilityClass | null): string {
-  // 카탈로그 검증이 라우팅 별칭에 등급을 금지하므로, 부재는 결측이 아니라 그 자체가 사실이다.
-  const grade = capabilityClass ?? "unclassed";
-  return grade.charAt(0).toUpperCase() + grade.slice(1);
 }
 
 /**
