@@ -10,8 +10,8 @@ import type { PrStatusService } from "./pr-status.js";
 import { completionResultsSchema, resultPatchSchema, RESULT_LIMITS } from "./results.js";
 import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_CRITERION_TEXT, MAX_DECISION_QUESTION_INPUT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, MAX_SHORT_INPUT, pinSchema, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
-import { createBoardViews, refuse, roleIn, storedText, text, withPin } from "./views.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_DECISION_HEADER_INPUT, MAX_DECISION_ANSWER_INPUT, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_OPTIONS, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "./types.js";
+import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
  * `fleet-objectives` — 목표를 수행하는 세션(지휘관·구성원)의 작업 도구. Console Use 토글과 무관하게 모든 Operation 에 실리므로
@@ -37,11 +37,7 @@ const rosterMember = z.object({
   effort: z.string().trim().min(1).max(32).optional(),
 }).strict();
 const MODEL_FACT = "A member may select a model and effort from models (gateway_models); the selection becomes that member's launch setting and appears on the board. Without a model, AI Gateway routing chooses it. Change an existing member with set_member_launch, including a newly added member the person added without a launch selection. The person's selections, including routing, and legacy members without ownership are protected. If refused, do not enlist a replacement to bypass protection; use request_decision to ask the person to change that member's model chip on the board.";
-const PIN_FACT = "Appended to the stored text as ` [pin]`: MUST NOT, MUST or MAY, then ASCII detail without brackets; at most 60 characters, and the text with its pin stays within the field limit (text_with_pin_too_long).";
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
-const pin = pinSchema.optional().describe(PIN_FACT);
-const [proposeAdd, proposeRevise, ...proposeRest] = criterionProposalSchema.options;
-const criterionProposalInput = z.union([proposeAdd.extend({ pin }), proposeRevise.extend({ pin }), proposeRest[0]!, proposeRest[1]!]);
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
 /** 이름 없는 지휘관 — 주소를 지어내지 않고, 이미 지원되는 회신 경로(받은 메시지의 from)만 사실로 알린다. */
@@ -174,9 +170,9 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   // 임무가 있으면 편성이다. 기준만이면 임무·명단을 받지 않는다. 둘 다 없거나 명단만이면 거절한다.
   const planArgs = z.object({
     objectiveId: ids,
-    missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
+    missions: z.array(z.object({ text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
     members: z.array(rosterMember).max(40).optional(),
-    criteria: z.array(criterionProposalInput).max(MAX_CRITERIA).optional(),
+    criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
   }).strict().check((ctx) => {
     const value = ctx.value;
     if (value.missions === undefined && value.criteria === undefined) ctx.issues.push({ code: "custom", input: value, message: "plan_requires_missions_or_criteria", path: ["missions"] });
@@ -184,7 +180,7 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
   });
 
   return [
-    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. A directive that reads as reversed in meaning or unreadable goes to the Commander before it is carried out. A pin states a directive's polarity in ASCII at the end of its text; a directive whose prose contradicts its pin is put to the Commander and not carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective and the resources they created for this objective.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", `Your role in the objective this session belongs to (commander or member) and the board as that role sees it. An objective is a lineup of missions, each waiting on its prerequisites, carried out by the Commander and a roster of member sessions. Only the Commander changes the board; members read it, can seal evidence from the objective's evidence directory, and report to the Commander by SendMessage to commander.session. Carrying an objective out — planning, mustering members, completing missions, marking criteria — belongs to its Commander through the fleet-objectives tools. The from address on the Commander's latest message is also a reply address while that session is live; commander.session can be null when it has no fixed name. Members do not ask the person: a decision a member needs goes to the Commander the same way. A directive that reads as reversed in meaning or unreadable goes to the Commander before it is carried out. planning: true means the person has asked for a lineup, not its execution. If the person edits the objective while you work, a short notice says so, quoting any words the person added; the board holds the change itself. ${DECISIONS_ON_BOARD} ${FOLLOWUP_ANYTIME} At hand-off the Commander asks members for a retrospective and the resources they created for this objective.`, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "operation") return refuse("not_participant");
       const assigned = store.findMember(caller.operationId);
       if (assigned) {
@@ -234,13 +230,12 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         const objective = find(before.id);
         if (args.criteria !== undefined && !objective.criteriaOpen) return refuse("criteria_not_planning");
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        const planMissions = args.missions?.map(({ pin: missionPin, ...mission }) => ({ ...mission, text: withPin(mission.text, missionPin, MAX_MISSION_TEXT) }));
-        const planCriteria = args.criteria?.map((proposal) => { if (!("text" in proposal)) return proposal; const { pin: criterionPin, ...rest } = proposal; return { ...rest, text: withPin(rest.text, criterionPin, MAX_CRITERION_TEXT) }; });
         // 완료·미분류·기록이 있는 임무를 같은 문구로 다시 만들면 보드에 두 벌이 선다.
         const same = (value: string) => value.trim().replace(/\s+/g, " ").toLowerCase();
-        const repeated = planMissions === undefined ? [] : objective.missions.filter((mission) => (mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || mission.records.length > 0 || (mission.memberBy !== undefined && mission.memberBy !== "commander")) && planMissions.some((planned) => same(planned.text) === same(mission.text)));
+        const missions = args.missions;
+        const repeated = missions === undefined ? [] : objective.missions.filter((mission) => (mission.done || mission.unplaced || (mission.by !== undefined && mission.by !== "commander") || mission.records.length > 0 || (mission.memberBy !== undefined && mission.memberBy !== "commander")) && missions.some((planned) => same(planned.text) === same(mission.text)));
         if (repeated.length > 0) return refuse("mission_kept", { kept: repeated.map((mission) => ({ missionId: mission.id, text: mission.text, ...(mission.unplaced ? { unplaced: true } : {}) })), hint: "These missions already stay on the board and are referenced by missionId." });
-        const planned = launch.planApplied(objective.id, { ...(planMissions !== undefined ? { missions: planMissions } : {}), ...(roster ? { members: roster } : {}), ...(planCriteria !== undefined ? { criteria: planCriteria } : {}) });
+        const planned = launch.planApplied(objective.id, { ...(missions !== undefined ? { missions } : {}), ...(roster ? { members: roster } : {}), ...(args.criteria !== undefined ? { criteria: args.criteria } : {}) });
         renumber(planned);
         const stored = store.find(objective.id) ?? planned;
         return text({ ok: true, missions: stored.missions.map((mission, index) => ({ n: index + 1, missionId: mission.id, text: storedText(mission.text) })),
@@ -250,11 +245,11 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
           } } : {}) });
       }),
     commanderTool("add_mission", "Add a mission with its prerequisites — each the n or missionId of a mission on the board, finished or not, with an optional why — and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once and stands in the lineup's first column, ahead of missions that wait on others. The returned n is its number until the Commander's next read. " + BOARD_REFERENCES,
-      z.object({ objectiveId: ids, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), pin, prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
+      z.object({ objectiveId: ids, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
         const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
         const known = numbered.get(objective.id);
-        const next = launch.missionAdded(objective.id, { text: withPin(args.text, args.pin, MAX_MISSION_TEXT), prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
+        const next = launch.missionAdded(objective.id, { text: args.text, prerequisites: prerequisites.ids, ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...(args.member ? { member: resolveMember(objective, args.member) } : {}) });
         const mission = added(objective.missions, next.missions);
         if (!mission) return text({ ok: true });
         if (!known) return text({ ok: true, missionId: mission.id, ...storedMission(objective.id, mission.id) });
@@ -272,10 +267,10 @@ export function createObjectiveMcpTools(ctx: FleetPluginServerContext, store: Ob
         return text({ ok: true, missionId: target.id });
       }),
     commanderTool("request_decision", `Place a decision request on the Objectives surfaces the person sees: questions the person answers there, not a notice that clears when read or when a session is opened. A request holds 1–${MAX_DECISION_QUESTIONS} questions. Each question has a header (a chip label of at most ${MAX_DECISION_HEADER_INPUT} characters), the question text, and either no options, when the person should write the answer, or 2–${MAX_DECISION_OPTIONS} distinct options: a concise label and an optional description of what the choice means or costs. Set multiSelect to let the person choose more than one option. The person can always write an answer of their own of up to ${MAX_DECISION_ANSWER_INPUT} characters, alongside a choice or instead of every option: the board adds an "Answer in my own words" row to every question that has options, so do not include an "Other" or "Write my own" option. The person sends every answer at once. An objective holds one current request; a new request replaces all of the previous one, except that asking again with exactly the same questions (order, header, text, option labels and descriptions, multiSelect, missionId, memberId) keeps the unanswered current request, its id and revision, and waits on it again (reused: true). missionId and memberId are optional context per question. expectedRevision is the board's decisionRequestRevision; a different value is refused as decision_request_changed. Once the answers reach the Commander, the request clears and each answer stays in decisions, which members read too, and stays through reruns. A request cleared by the person's board edits, by a referenced mission or member leaving the board, by withdrawal or by replacement becomes no decision. A request and its answers are not tool permission and do not mark criteria met. After placing the request the call waits up to ${DECISION_WAIT_MS / 60_000} minutes: answers given in that time return in the result (answered: true, answers) and are recorded as decisions; own: true on an answer means the person discarded every offered option and gave their own answer in text; a request cleared meanwhile returns cleared: true; otherwise the result says answered: false and answers given later arrive in this session as input. While the call waits, messages from members arrive only after it returns. ${BOARD_REFERENCES}`,
-      z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(decisionQuestionSchema.extend({ pin })).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
+      z.object({ objectiveId: ids, expectedRevision: z.number().int().min(0), questions: z.array(decisionQuestionSchema).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
       async ({ expectedRevision, questions }, objective, _caller, context) => {
         if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        const placed = store.decisionRequest(objective.id, { expectedRevision, questions: questions.map(({ pin: questionPin, ...question }, index) => ({ ...question, text: withPin(question.text, questionPin, MAX_DECISION_QUESTION_INPUT, `questions[${index}].text`) })) });
+        const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
         const kept = store.find(objective.id)?.decisionRequest;
         const head = { ok: true, requestId: placed.request.id, replacedRequestId: placed.replacedRequestId, ...(placed.reused ? { reused: true } : {}),
           ...(kept?.id === placed.request.id ? { stored: { questions: kept.questions.map((question) => ({ id: question.id, text: storedText(question.text), ...(question.options.length ? { options: question.options.map((option) => storedText(option.label)) } : {}) })) } } : {}) };
