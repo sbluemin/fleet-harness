@@ -1,5 +1,5 @@
 ---
-branch: fix-windows-titlebar-overlay
+branch: fix/windows-titlebar-overlay
 ---
 
 ### fleet-desktop
