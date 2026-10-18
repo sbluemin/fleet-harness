@@ -71,8 +71,17 @@
   padding-inline: 0;
 }
 
+.console-body.is-conversation .operations-side-bar.is-compact {
+  --compact-layout-zoom: 1;
+}
+
 .console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
-  padding-top: var(--space-3);
+  padding-top: 16px;
+  gap: calc(12px / var(--compact-layout-zoom));
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-section {
+  padding-block: 0;
 }
 
 .console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-header.is-card) {
@@ -88,6 +97,10 @@
 .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card {
   position: relative;
   justify-content: center;
+  min-height: 32px;
+  padding-block: 0;
+  margin-block: 0;
+  border-block-width: 0;
 }
 
 .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card:has(> .side-bar-theater-mark) > .side-bar-theater-activate {
@@ -1534,21 +1547,13 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact {
   box-sizing: border-box;
   width: var(--desktop-macos-compact-width, 72px);
-  padding-top: calc(var(--desktop-traffic-bottom, 33px) + 8px / var(--desktop-zoom, 1));
+  --compact-layout-zoom: var(--desktop-zoom, 1);
+  padding-top: calc(var(--desktop-traffic-bottom, 33px) + 16px / var(--compact-layout-zoom));
 }
 
-/* 원격 문은 계정 위로 옮겼으므로 맨 위에는 신호등 아래 8 DIP만 남긴 사령관 얼굴이 선다. */
+/* 원격 문은 계정 위에 두고, 첫 사령관 얼굴은 신호등 아래 16 DIP를 비워 선다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
   padding-top: 0;
-}
-html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-section {
-  padding-block: 0;
-}
-html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card {
-  min-height: 32px;
-  padding-block: 0;
-  margin-block: 0;
-  border-block-width: 0;
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
