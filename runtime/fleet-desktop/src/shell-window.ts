@@ -26,9 +26,6 @@ export interface DesktopViewStack {
   /** 호스트를 갈아타는 동안 붙잡아 둔 옛 화면 — 브라우저 뷰 위, 호스트 목록 덮개 아래. */
   presentHold(view: WebContentsView): void;
   removeHold(view: WebContentsView): void;
-  /** 집 Console이 그리는 사이드바 공용 영역 — 덮개 아래 상주한다. */
-  presentSection(view: WebContentsView): void;
-  removeSection(view: WebContentsView): void;
   /** 호스트 목록 덮개 — 종료 인사 아래 최상단. */
   presentPicker(view: WebContentsView): void;
   removePicker(view: WebContentsView): void;
@@ -67,7 +64,6 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
   let hold: WebContentsView | null = null;
   let holdRaised = false;
   let picker: WebContentsView | null = null;
-  let section: WebContentsView | null = null;
   let veil: WebContentsView | null = null;
 
   /** 이미 붙은 뷰는 remove 없이 addChildView(index) 로만 재정렬한다 — CDP 스냅샷마다 renderer churn 을 막는다. */
@@ -75,7 +71,6 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     const root = base.contentView;
     const ordered: WebContentsView[] = [...(hold && !holdRaised ? [hold] : []), ...parked, consoleView, ...presented];
     if (hold && holdRaised) ordered.push(hold);
-    if (section) ordered.push(section);
     if (picker) ordered.push(picker);
     if (veil) ordered.push(veil);
     for (let index = 0; index < ordered.length; index++) root.addChildView(ordered[index]!, index);
@@ -162,12 +157,6 @@ export function createDesktopViewStack(base: BaseWindow, consoleView: WebContent
     parkHold: parkHoldView,
     presentHold: presentHoldView,
     removeHold: removeHoldView,
-    presentSection: (view) => { section = view; relayout(); },
-    removeSection: (view) => {
-      if (section === view) section = null;
-      try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ }
-      relayout();
-    },
     presentPicker: presentPickerView,
     removePicker: removePickerView,
     presentVeil: presentVeilView,

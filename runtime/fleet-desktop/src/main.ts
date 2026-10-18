@@ -21,8 +21,8 @@ import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
-import { createConsoleSectionView } from "./console-section-view.js";
-import { CONSOLE_SECTION_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
+import { createConsoleSectionController } from "./console-section-controller.js";
+import { CONSOLE_DIRECTORY_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { releaseFetchBody } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
@@ -57,7 +57,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_SECTION_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -541,19 +541,26 @@ async function boot(): Promise<void> {
     },
     shell: () => window,
     confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
-    attachBridge: (contents) => bridge.attachPicker(contents),
-    onClose: () => consoleSection.pickerClosed(),
+    attachBridge: (contents) => { bridge.attachPicker(contents); consoleSection.observeHomeOverlay(contents); },
     log: (message) => logger.error(message),
   });
-  const consoleSection = createConsoleSectionView({
-    shell: () => window,
+  const consoleSection = createConsoleSectionController({
     home: () => localConsoleOrigin,
-    createView: () => new WebContentsView({
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
-    }),
-    confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
-    attachBridge: (contents) => bridge.attachPicker(contents, true),
-    log: (message) => logger.error(message),
+    fetch: (url, init) => fetch(url, init),
+    open: (origin) => bridge.open(origin),
+    add: (url) => picker.open(url).catch((error) => bridge.report(error)),
+    confirmForget: async (label) => {
+      if (!window || window.isDestroyed()) return false;
+      const korean = entryLanguage === "ko";
+      return (await dialog.showMessageBox(window.base, {
+        type: "warning",
+        title: korean ? "저장한 콘솔 빼기" : "Forget saved console",
+        message: korean ? `“${label}” 콘솔을 목록에서 뺄까요?` : `Forget “${label}” from this computer?`,
+        detail: korean ? "다시 연결하려면 새 액세스 링크가 필요합니다." : "A new access link will be needed to connect again.",
+        buttons: korean ? ["취소", "빼기"] : ["Cancel", "Forget"], defaultId: 0, cancelId: 0, noLink: true,
+      })).response === 1;
+    },
+    report: (error) => bridge.report(error),
   });
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
@@ -647,13 +654,11 @@ async function boot(): Promise<void> {
           controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
           browserViews.refresh();
-          consoleSection.refresh();
         });
         // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
         createdWindow.base.on("resize", () => {
           createdWindow.stack.layoutConsole();
           browserViews.refresh();
-          consoleSection.refresh();
         });
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
         createdWindow.consoleContents.on("did-finish-load", () => refreshNativeChrome());
