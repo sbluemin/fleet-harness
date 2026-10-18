@@ -3,7 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { ArchiveSectionDescriptor } from "@fleet-console/sdk/plugin";
 
 import { ArchiveGlyph } from "@fleet-console/sdk/components/archive-glyph";
-import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
+import { useT } from "../../../../core/client/src/i18n/index.js";
 import { openArchiveSheet, useOperationArchive } from "../../../../core/client/src/integration/operation-archive.js";
 import { usePluginRegistry } from "../../../../core/client/src/integration/plugin-registry.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
@@ -41,29 +41,13 @@ function useArchiveTotal(): { readonly total: number; readonly sections: readonl
   return { total: Object.values(totalsByTheater).reduce((sum, count) => sum + count, 0) + sections.reduce((sum, entry) => sum + entry.count, 0), sections };
 }
 
-/** 사이드바 맨 아래의 보관함 입구 — 보관한 목록 바로 아래라 「치운 것은 여기 있다」가 한눈에 읽힌다. */
-export function ArchiveEntry({ compact = false }: { readonly compact?: boolean } = {}) {
+/** 아바타 메뉴의 보관함 입구 — 공급자별 보관함을 포함한 전체 수를 배지 없이 오른쪽에 둔다. */
+export function ArchiveMenuItem({ onBeforeOpen }: { readonly onBeforeOpen: () => void }) {
   const t = useT();
-  const locale = useConsoleLocale();
-  const { total, sections } = useArchiveTotal();
-  // 「보관함 · 완료 1 · 정리된 목표 1」 — 빈 칸은 말하지 않는다.
-  const parts = sections.filter((entry) => entry.count > 0).map((entry) => `${entry.section.title(locale)} ${entry.count}`);
-  return (
-    <div className={`side-bar-archive${compact ? " is-compact" : ""}`}>
-      <button
-        type="button"
-        className="side-bar-archive-button"
-        onClick={openArchiveSheet}
-        aria-label={t("archive.entryAria", { count: total })}
-        aria-haspopup="dialog"
-      >
-        <span className="side-bar-archive-glyph" aria-hidden="true"><ArchiveGlyph /></span>
-        <span className="side-bar-archive-label">
-          {t("archive.title")}
-          {!compact ? parts.map((part) => <span key={part} className="side-bar-archive-part"> · {part}</span>) : null}
-        </span>
-        <span className="side-bar-archive-count">{total}</span>
-      </button>
-    </div>
-  );
+  const { total } = useArchiveTotal();
+  return <button type="button" role="menuitem" className="conversation-dock-archive" aria-label={t("archive.entryAria", { count: total })} aria-haspopup="dialog" onClick={() => { onBeforeOpen(); openArchiveSheet(); }}>
+    <ArchiveGlyph />
+    <span className="conversation-dock-label">{t("archive.title")}</span>
+    <span className="conversation-dock-count" aria-hidden="true">{total}</span>
+  </button>;
 }

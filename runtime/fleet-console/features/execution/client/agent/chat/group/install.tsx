@@ -144,8 +144,10 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   return <RootBody root={context.operation} language={context.language} links={links}>{context.defaultBody}</RootBody>;
 }
 
-/** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 보기 캡슐 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
+/** 대화 머리의 「턴 접기」 — 접힐 구성원 말이 있는 대화에만, 제목 pill 안에 선다(원장을 보는 동안에도 그 대화의 보기 설정이다). */
 function renderConversationCaption(context: ConversationCaptionContext): React.ReactNode | null {
+  // 구성원 원장도 CLI 를 보고 있으면 턴 접기가 할 일이 없다.
+  if (context.bodyOperation.payload.chatMode !== true) return null;
   if (!isGroupConversationOperation(context.operation, context.nestedOperations.length > 0)) return null;
   if (!conversationHasFoldableMembers(context.operation.id)) return null;
   return <GroupFoldToggle language={context.language} />;
@@ -167,7 +169,7 @@ function GroupFoldGlyph() {
 }
 
 /**
- * pill 옆 보기 캡슐의 칸. 호스트가 캡슐을 세우고, 이 칸은 그 안에 선다. 켬·겨눔·고대비는 머리 줄이 정한다.
+ * 제목 pill 안의 칸. 호스트가 pill 을 세우고, 이 칸은 그 안에 선다. 켬·겨눔·고대비는 머리 줄이 정한다.
  * 접근 이름은 「턴 접기」로 고정하고 상태는 aria-pressed가 전한다. 말풍선만 누르면 일어날 일을 말한다.
  * CaptionActionButton은 접근 이름과 말풍선을 한 문자열로 묶어, 이 둘을 가를 수 없다.
  */

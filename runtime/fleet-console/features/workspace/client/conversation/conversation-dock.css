@@ -1,5 +1,6 @@
 /* 대화 화면의 호스트 문과 보관함. 위치·호버는 중립 잉크, 연결 점만 상태색을 쓴다. */
 .conversation-dock {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
@@ -8,6 +9,7 @@
   min-width: 0;
 }
 .conversation-dock-host { position: relative; flex: none; }
+.conversation-dock-popover-anchor { position: absolute; top: 12px; left: 12px; width: 0; height: 0; pointer-events: none; }
 .conversation-dock-avatar {
   position: relative;
   display: grid;
@@ -35,43 +37,9 @@
 }
 .conversation-dock-status[data-connection="live"] { background: var(--positive); }
 .conversation-dock-status[data-connection="offline"] { background: var(--coral); }
-/* 보관함은 줄어든 캡슐이다 — 남는 폭은 캡슐이 갖되 오른쪽 상태별 보기 글리프가 먼저 자리를 잡는다. */
-.conversation-dock .side-bar-archive.is-compact { flex: 1 1 auto; min-width: 0; margin: 0; padding: 0; border: 0; }
-.conversation-dock .side-bar-archive-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conversation-dock-toggles { flex: none; display: flex; align-items: center; gap: 6px; }
-.conversation-dock-toggles > .side-bar-status-view-toggle {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.conversation-dock-toggles > .side-bar-status-view-toggle > svg { width: 16px; height: 16px; }
-.conversation-dock-toggles > .side-bar-status-view-toggle:hover { color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
-/* 켜짐은 위치·초점 채널(brass)의 잉크와 옅은 면으로 말한다 — 상태 신호색을 빌리지 않는다. */
-.conversation-dock-toggles > .side-bar-status-view-toggle[aria-pressed="true"] {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
-}
-.conversation-dock .side-bar-archive-button {
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  gap: 8px;
-  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-primary);
-}
-.conversation-dock .side-bar-archive-button:hover { background: color-mix(in oklch, var(--text-primary) 6%, transparent); }
-.conversation-dock .side-bar-archive-count { color: var(--text-secondary); background: transparent; border: 0; padding: 0; }
-.conversation-dock .side-bar-archive-glyph { color: var(--text-secondary); }
+/* 플러그인 본문은 내용 폭, 바깥 칸은 남은 폭이다. 호스트가 실제 폭에 맞춰 data-tier 를 낮춘다. */
+.sidebar-footer-entries { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.sidebar-footer-entries-content { display: inline-flex; align-items: center; gap: 4px; width: max-content; transform: translateX(var(--sidebar-footer-offset, 0px)); }
 .conversation-dock-menu {
   position: absolute;
   z-index: 90;
@@ -89,7 +57,7 @@
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
-.conversation-dock-menu > .conversation-dock-view,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive),
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button {
   display: flex;
   align-items: center;
@@ -106,10 +74,11 @@
   font-size: var(--t-base);
   cursor: pointer;
 }
-.conversation-dock-menu > .conversation-dock-view:hover,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive):hover,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button:hover { background: var(--wash-hover); }
-.conversation-dock-menu > .conversation-dock-view > svg,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive) > svg,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button > svg { width: 18px; height: 18px; flex: none; }
+.conversation-dock-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
 .conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
 .conversation-dock-divider { height: 1px; margin: 7px 4px; background: var(--popover-divider); }

@@ -13,14 +13,14 @@ import { archiveOperationFromUi, resumeDormantOnOpen, resumeOperationInPlace, ty
 import { forgetTheaterCompletely, registerTheaterFromPath } from "./theater.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
 import { operationAccentFromNode } from "./operation-accent.js";
-import { getTheaterGroupCollapse, pruneOperationAccents } from "./sidebar/group-collapse-store.js";
+import { getTheaterGroupCollapse, pruneOperationAccents, toggleTheaterStatusAxis } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
 import { useContextMenuKeyboard } from "./sidebar/context-menu-keyboard.js";
-import { sideBarOccupiedWidth, toggleSideBarStatusAxis, useSideBarState } from "./sidebar/operations-side-bar-store.js";
+import { sideBarOccupiedWidth, useSideBarState } from "./sidebar/operations-side-bar-store.js";
 import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
@@ -135,7 +135,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
     for (const theater of state.theaters) pruneOperationAccents(theater.id, new Set(state.operations.filter((operation) => operation.theaterId === theater.id).map((operation) => operation.id)));
   }, [state.operations, state.theaters, state.operationsHydrated]);
 
-  // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 상태별 보기다.
+  // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다. Alt+S 는 지금 보고 있는 Theater 의 상태별 보기다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (viewMode.effective === "mobile") return;
@@ -150,7 +150,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       if (matchesShortcutCommand(event, "operations.sort-by-status")) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        toggleSideBarStatusAxis();
+        toggleTheaterStatusAxis(getViewedTheaterId());
         return;
       }
       if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -481,7 +481,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       topStripVariant="compact"
       topStripTrailing={<ConversationSideBarActions />}
       topStripCenter={<ConversationSideBarDeputies />}
-      archiveInBottomAccessory
       bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}
     />
   );

@@ -42,6 +42,7 @@ import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitch
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
 import { AgentApiError, confirmAgentSessionLinks, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
+import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useConversationHasFoldableMembers, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { setFoldTurns, useFoldTurns } from "./chat/group/fold-turns.js";
@@ -428,6 +429,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Operatio
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const { terminalPending } = useViewSwitchState(context.operationId);
   const chatMode = context.operation.payload.chatMode === true;
+  const groupConversation = useHasGroupConversation(context.operation.parentOperationId ?? context.operationId);
   // 투어 앵커는 사용자가 이 마운트에서 직접 채팅 뷰로 넘어온 뒤에만 선다 — 본문의 판정과 같다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
@@ -504,7 +506,8 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Operatio
       </span>
     : null;
 
-  if (part === "view-switch") return viewSwitch;
+  // 그룹 대화는 자기 구성원 턴 접기를 머리 슬롯에 싣는다. 1:1 채팅만 이전 문답 자동 접기를 보탠다.
+  if (part === "view-switch") return <>{chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null}{viewSwitch}</>;
   if (part === "tools-lead") return browser;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
   if (!using.console && !using.computer && bubble === null) return null;

@@ -32,7 +32,6 @@ const DEFAULT_WIDTH = MIN_EXPANDED_PX;
 
 const sideBarListeners = new Set<() => void>();
 const collapsedTheaterListeners = new Set<() => void>();
-const statusAxisListeners = new Set<() => void>();
 const statusSectionCollapseListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
@@ -48,10 +47,7 @@ if (typeof window !== "undefined") {
   });
 }
 let collapsedTheaterIds = readInitialCollapsedTheaters();
-// STATUS 축은 의도적으로 세션 메모리에만 둔다. localStorage나 durable canvas state에
-// 합류시키지 않아 새 페이지 로드마다 GROUP 축(false)에서 시작한다.
-let statusAxis = false;
-// STATUS 섹션 접힘도 같은 비영속 축이다. 빈 섹션의 기본 접힘과 사용자가 명시한
+// STATUS 섹션 안쪽 접힘은 비영속 상태다. 빈 섹션의 기본 접힘과 사용자가 명시한
 // 접기/펼치기를 구분하려고 두 집합을 유지하며 localStorage에는 기록하지 않는다.
 let userCollapsedStatusSections = new Set<string>();
 let userExpandedStatusSections = new Set<string>();
@@ -70,10 +66,6 @@ export function useSideBarState(): SideBarState {
 
 export function useCollapsedTheaters(): readonly string[] {
   return useSyncExternalStore(subscribeCollapsedTheaters, getCollapsedTheatersSnapshot, getCollapsedTheatersSnapshot);
-}
-
-export function useSideBarStatusAxis(): boolean {
-  return useSyncExternalStore(subscribeStatusAxis, getSideBarStatusAxis, getSideBarStatusAxis);
 }
 
 export function useSideBarStatusSectionCollapsed(
@@ -117,25 +109,6 @@ export function sideBarOccupiedWidth(state: SideBarState): number {
   return state.width;
 }
 
-export function setSideBarStatusAxis(active: boolean): void {
-  if (statusAxis === active) return;
-  statusAxis = active;
-  for (const listener of statusAxisListeners) listener();
-}
-
-export function toggleSideBarStatusAxis(): void {
-  setSideBarStatusAxis(!statusAxis);
-}
-
-export function getSideBarStatusAxis(): boolean {
-  return statusAxis;
-}
-
-export function subscribeStatusAxis(listener: () => void): () => void {
-  statusAxisListeners.add(listener);
-  return () => statusAxisListeners.delete(listener);
-}
-
 export function getSideBarStatusSectionCollapsed(
   theaterId: string,
   status: SideBarStatus,
@@ -170,7 +143,7 @@ export function subscribeStatusSectionCollapse(listener: () => void): () => void
   return () => statusSectionCollapseListeners.delete(listener);
 }
 
-// 그룹별 「시작 전 N」 접기의 펼침 — STATUS 축과 같은 비영속 규칙. 새 페이지 로드마다 모두 접힌 채 시작하고,
+// 그룹별 「시작 전 N」 접기의 펼침 — 비영속 표시 상태다. 새 페이지 로드마다 모두 접힌 채 시작하고,
 // Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 Theater 와 그룹(미분류는 빈 문자열).
 const freshFoldListeners = new Set<() => void>();
 let expandedFreshFolds: ReadonlySet<string> = new Set();

@@ -3919,22 +3919,10 @@ button.status-glyph.is-actionable:focus-visible {
   color: var(--text-secondary);
 }
 
-.side-bar-status-view-toggle[aria-pressed="true"] {
+.side-bar-theater-row-btn.side-bar-status-view-toggle[aria-pressed="true"] {
   border-color: transparent;
-  background: var(--control-wash);
-  color: var(--text-primary);
-}
-
-.side-bar-status-view-toggle[aria-pressed="true"]::after {
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
-  width: 12px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  transform: translateX(-50%);
-  content: "";
+  background: color-mix(in oklch, var(--brass-quiet) 14%, transparent);
+  color: var(--brass-quiet-ink);
 }
 
 .side-bar-status-view-toggle:focus-visible,
@@ -4399,8 +4387,10 @@ button.status-glyph.is-actionable:focus-visible {
   flex: none;
 }
 
-.side-bar-theater-collapse-btn {
+.side-bar-theater-collapse-btn,
+.side-bar-theater-row-btn.side-bar-status-view-toggle {
   width: 22px;
+  height: 22px;
 }
 
 .side-bar-theater-chevron {
@@ -4480,7 +4470,8 @@ button.status-glyph.is-actionable:focus-visible {
   height: 13px;
 }
 
-.side-bar-theater-collapse-btn .side-bar-theater-chevron {
+.side-bar-theater-collapse-btn .side-bar-theater-chevron,
+.side-bar-theater-row-btn.side-bar-status-view-toggle svg {
   width: 16px;
   height: 16px;
 }
@@ -13744,41 +13735,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 
 /* ── 보관함 ─────────────────────────────────────────────────────────────
-   사이드바 맨 아래의 입구와, 그것이 여는 확대 시트. 보관은 되돌릴 수 있는 치움이라 입구·복원은 중립·brass 잉크를
+   아바타 메뉴가 여는 확대 시트. 보관은 되돌릴 수 있는 치움이라 입구·복원은 중립·brass 잉크를
    쓰고, coral은 되돌릴 수 없는 영구 삭제 확인에만 선다. */
-.side-bar-archive {
-  flex: none;
-  padding: var(--space-1) var(--space-2) var(--space-2);
-  border-top: 1px solid var(--surface-rim);
-}
-
-.side-bar-archive-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 28px;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.side-bar-archive-button:hover {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.side-bar-archive-button:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
-}
-
-.side-bar-archive-glyph,
 .archive-sheet-glyph {
   display: grid;
   place-items: center;
@@ -13788,26 +13746,12 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   color: var(--text-tertiary);
 }
 
-.side-bar-archive-glyph svg,
 .archive-sheet-glyph svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.side-bar-archive-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-bar-archive-part {
-  color: var(--text-tertiary);
-}
-
-.side-bar-archive-count,
 .archive-sheet-count {
   color: var(--text-tertiary);
   font-family: var(--font-ui);
@@ -14390,7 +14334,7 @@ kbd { font-variant-numeric: tabular-nums; }
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-  .new-session-send, .new-session-cancel,
+  .new-session-send,
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
 ) {
@@ -14402,8 +14346,7 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-  .new-session-send, .new-session-cancel
-):active:not(:disabled) {
+  .new-session-send):active:not(:disabled) {
   transform: scale(0.94);
   transition-duration: var(--motion-tap);
   transition-timing-function: var(--ease-soft);
@@ -14419,7 +14362,7 @@ kbd { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
     .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-    .new-session-send, .new-session-cancel,
+    .new-session-send,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip
   ):active:not(:disabled) {

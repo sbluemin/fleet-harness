@@ -53,20 +53,17 @@ export const READING_WIDTH_LABEL_KEY = {
 const WIDE_OVER_READING = 1.4;
 
 /**
- * 이전 대화 자동 접기 글리프 — 폭 글리프 왼쪽에 서는 켬/끔 문이다. 값은 콘솔 단위 설정이라
- * 누르는 즉시 열린 모든 채팅 패널이 따른다(끄면 펼치고, 켜면 접는다). 폭 글리프와 같은 30px
- * 과녁·같은 잉크 문법을 쓰고, 켜짐은 brass 잉크와 brass-glow 면으로 선다.
- *
- * 구성원 바닥 줄(MemberChatFooter)이 같은 문을 쓰므로 공유한다.
+ * 이전 대화 자동 접기 글리프 — 대화 머리 pill 과 pill 없는 구성원 바닥 줄이 같은 문을 쓴다.
+ * 값은 콘솔 단위 설정이라 누르는 즉시 열린 모든 채팅 패널이 따른다(끄면 펼치고, 켜면 접는다).
  */
-export function HistoryFoldButton({ language }: { readonly language: "en" | "ko" }) {
+export function HistoryFoldButton({ language, caption = false }: { readonly language: "en" | "ko"; readonly caption?: boolean }) {
   const t = getT(language);
   const autoFold = useChatHistoryAutoFold();
   const label = t(autoFold ? "terminal.chat.historyAutoFoldOn" : "terminal.chat.historyAutoFoldOff");
   return (
     <button
       type="button"
-      className="agent-chat-composer-fold"
+      className={caption ? "fleet-caption-action" : "agent-chat-composer-fold"}
       onClick={() => setChatHistoryAutoFold(!autoFold)}
       aria-pressed={autoFold}
       aria-label={label}
@@ -565,7 +562,7 @@ export function AgentChatComposer({
       <>
       {/* 표시줄 — 상자 밖 한 줄. 좌표(읽기 전용 표식)와 채팅 폭 글리프가 여기 선다; 오류 알림은
           좌표 자리를 잠시 빌린다. */}
-      {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 글리프 묶음(자동 접기·폭). 양 끝은 자기 크기만큼만 쓰고
+      {/* 표시줄은 세 칸이다: 좌표(또는 알림) · 선반 · 폭 글리프. 양 끝은 자기 크기만큼만 쓰고
           가운데가 남는 폭을 전부 가져간다 — 그래서 선반의 제목은 이 줄에서 가장 먼저 줄어드는
           글자이고, 좌표와 글리프의 과녁은 폭이 어떻든 움직이지 않는다. */}
       <div className="agent-chat-composer-meta">
@@ -573,10 +570,8 @@ export function AgentChatComposer({
           <span className="agent-chat-composer-error" role="alert">{notice}</span>
         ) : coordinate}
         {ledgeNode ?? <span className="agent-chat-composer-gap" aria-hidden="true" />}
-        {/* 오른쪽 칸은 글리프 묶음 하나다 — [자동 접기][폭]. 구성원 바닥 줄의 도구 묶음과 같은
-            방식이라 표시줄은 두 표면 모두 세 칸 그리드를 그대로 지킨다. */}
+        {/* 자동 접기는 머리 pill 이 맡고, 입력창에는 읽기·쓰기 폭만 남긴다. */}
         <span className="agent-chat-composer-glyphs">
-          <HistoryFoldButton language={language} />
           {/* 채팅 폭 글리프 — 읽는 폭과 쓰는 폭을 함께 지는 하나의 문이다. 캡션에 있던 같은 순환을
               이 자리로 내렸다: 폭이 바뀌는 판면 바로 옆이라 결과가 같은 시야에 들어오고, 캡션이
               물러나는 좁은 패널에서도 남는 쪽이 여기다. 이 폭에서 세 단이 전부 같은 폭이면

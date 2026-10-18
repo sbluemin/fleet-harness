@@ -7,7 +7,7 @@ import type { MongleState } from "../avatars/index.js";
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleOperationObservation, ConsoleSessionMessage, ConsoleTranscriptPage, ConsoleTurnEnd } from "../mcp/control.js";
 import type http from "node:http";
 import type { ConsoleUseMcpHost, PluginAdmiralMcpHost, PluginMcpTransport } from "../mcp/types.js";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import type { ClientAgentChatCapability } from "../components/agent-chat-transcript.js";
 
 import type { PaneDescriptor } from "../pane/types.js";
@@ -107,13 +107,24 @@ export interface MentionTargetDescriptor {
 
 /**
  * 호스트 크롬에 서는 작은 플러그인 항목(이름은 옛 Command Band 에서 이어진 SDK 계약이다). 대화 중심 화면에서 부관 항목은
- * 사이드바 맨 위 줄 가운데에, 그 밖의 항목(사용량 요약 등)은 가운데 칸 맨 위 줄 오른쪽 끝 캡슐에 선다. 호스트는 등록 순서대로
+ * 사이드바 맨 위 줄 가운데에, 그 밖의 옛 항목은 사이드바 바닥의 호환 칸에 선다(새 요약은 sidebarFooterEntries). 호스트는 등록 순서대로
  * 세울 뿐이고, 버튼 문법은 플러그인의 책임이다. 사이드바 자리는 가용 폭에 따라 40·32·28px 이며 그 크기를
  * `--command-band-entry-size` 로 알린다 — 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 어느 자리에도 맞는다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;
   readonly render: () => ReactNode;
+}
+
+/** 사이드바 바닥 아바타 오른쪽의 플러그인 요약. 호스트는 순서·가용 폭·full → marks → single 단계를 소유한다.
+ * 본문은 플러그인이 그리며, 단계는 부모의 data-tier 로 읽는다. null 을 그리면 자리를 차지하지 않는다. */
+export interface SidebarFooterEntryContext {
+  /** 아바타를 포함한 바닥 줄의 왼쪽 안쪽 끝. 팝업 기하는 이 명시적 닻을 쓰고 버튼 포커스는 플러그인이 소유한다. */
+  readonly popoverAnchorRef: RefObject<HTMLElement | null>;
+}
+export interface SidebarFooterEntryDescriptor {
+  readonly id: string;
+  readonly render: (context: SidebarFooterEntryContext) => ReactNode;
 }
 
 export interface ClientExecutionProvider {
@@ -145,6 +156,8 @@ export interface ClientExecutionProvider {
    * 항목은 아무것도 그리지 않으면(null) 자리를 차지하지 않는다.
    */
   readonly commandBandEntries?: readonly CommandBandEntryDescriptor[];
+  /** 사이드바 맨 아래 아바타 옆의 요약 칸. Command Band 와 독립적으로 등록한다. */
+  readonly sidebarFooterEntries?: readonly SidebarFooterEntryDescriptor[];
   /**
    * 캔버스를 덮는 확대 작업면. 슬롯 기하·포커스·주소는 호스트가 소유하고 플러그인은
    * 본문만 그린다. 여러 표면이 세로로 나뉘어 동시에 설 수 있다.

@@ -572,9 +572,6 @@ export function NewSessionColumn({ state, target, tools }: {
     <div className="conversation-column new-session" onKeyDown={onKeyDown}>
       <div className="conversation-pill-row">
         <span className="new-session-title">{t("conversation.newSession.title")}</span>
-        <button type="button" className="new-session-cancel" onClick={closeNewSession} aria-label={t("conversation.newSession.cancel")} title={t("conversation.newSession.cancel")}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
         {tools}
       </div>
       <div className="new-session-body">

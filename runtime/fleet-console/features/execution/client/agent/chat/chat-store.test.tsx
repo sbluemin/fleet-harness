@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement } from "react";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,7 @@ import { connectTerminalSettings } from "../../terminal/shared/terminal-preferen
 import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatStreamEvent, type AgentChatTurn } from "./chat-events.js";
 import { AgentChatView } from "./chat-view.js";
+import { HistoryFoldButton } from "./composer.js";
 import { DEFAULT_EXPERIMENT_SETTINGS } from "@fleet-console/sdk/settings";
 import type { GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { OperationClusterSource } from "@fleet-console/sdk/plugin";
@@ -282,7 +283,10 @@ describe("AgentChatView history auto-fold", () => {
     root = createRoot(container);
     const context = { operationId: "op-fold", language: "en", bodyLive: true, operation: { id: "op-fold", payload: {} }, runtimeState: null } as never;
     act(() => {
-      root!.render(createElement(AgentChatView, { context, tourAnchors: false }));
+      root!.render(createElement(Fragment, null,
+        createElement(AgentChatView, { context, tourAnchors: false }),
+        createElement(HistoryFoldButton, { language: "en", caption: true }),
+      ));
     });
     await act(async () => {
       await Promise.resolve();

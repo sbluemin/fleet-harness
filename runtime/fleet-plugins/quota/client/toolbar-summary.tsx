@@ -3,6 +3,7 @@ import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
+import type { SidebarFooterEntryContext } from "@fleet-console/sdk/plugin";
 import { useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/ai-gateway";
@@ -13,13 +14,8 @@ import { meterSeverity, mostUrgentWindow, PROVIDER_NAME, QuotaPanel, windowLabel
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
-/**
- * 도구모음 Bridge의 사용 한도 요약 — 고른 공급자마다 한 칸씩, 글리프 옆에 창별 사용 %를 두 줄로
- * 쌓는다(위: 짧은 창, 아래: 그보다 긴 창 중 가장 급한 것). 칸의 순서는 고정 순서다. 숫자는 팝업과
- * 같은 「사용 %」이고 심각도는 팝업과 같은 판정·같은 신호 채널(warn·coral)을 탄다. 칸은 글리프에 숫자를
- * 바짝 붙인 내용 폭이다(고정 폭이면 한 자릿수 칸이 벌어져 보인다). 누르면 바로 아래에 사용 한도 팝업이
- * 열린다. 고른 공급자가 없으면 막대 글리프 하나만 서서 같은 팝업을 연다.
- */
+/** 사이드바 바닥의 사용량 요약. 공급자마다 글리프와 두 줄 숫자(사용 %)를 두되 % 기호는 접근 이름에만 남긴다.
+ * 짧은 창·남은 창 중 가장 급한 창을 고르는 정책과 신호 채널은 상세 팝업과 같다. */
 
 /** Claude의 세션 창(5시간) — 기간을 싣지 않은 세션 창을 짧은 쪽에 세우는 기준. */
 const SESSION_FALLBACK_MS = 5 * 3_600_000;
@@ -61,7 +57,7 @@ function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
-export function QuotaToolbarSummary() {
+export function QuotaToolbarSummary({ popoverAnchorRef }: SidebarFooterEntryContext) {
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
@@ -96,6 +92,7 @@ export function QuotaToolbarSummary() {
         aria-label={label}
         // 열려 있는 동안은 말풍선을 띄우지 않는다 — 버튼 바로 아래의 팝업을 가린다.
         data-tip={open ? undefined : label}
+        title={open ? undefined : label}
         onClick={() => setOpen((value) => !value)}
       >
         {glyphOnly ? <QuotaBarsGlyph /> : readings.map((reading) => (
@@ -108,7 +105,7 @@ export function QuotaToolbarSummary() {
                 ? <span className="quota-toolbar-summary__pct">–</span>
                 : reading.lines.map((window, index) => (
                   <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
-                    {Math.round(window.usedPercent)}%
+                    {Math.round(window.usedPercent)}
                   </span>
                 ))}
             </span>
@@ -119,6 +116,7 @@ export function QuotaToolbarSummary() {
         <QuotaPopover
           id={popoverId}
           anchorRef={buttonRef}
+          placementAnchorRef={popoverAnchorRef}
           locale={locale}
           onClose={(restoreFocus) => {
             setOpen(false);
@@ -136,7 +134,7 @@ function QuotaSummaryHold() {
   return null;
 }
 
-const POPOVER_WIDTH = 372;
+const POPOVER_WIDTH = 340;
 const POPOVER_MAX_HEIGHT = 470;
 const POPOVER_GAP = 6;
 const VIEWPORT_MARGIN = 8;
@@ -151,29 +149,25 @@ interface PopoverPlacement {
 }
 
 /**
- * 버튼 바로 아래, 버튼 가운데에 맞춰 놓고 뷰포트 안으로 민다. 아래 공간이 모자라면 위로 연다.
- * 높이는 남은 공간까지만 — 넘치면 팝업 안의 카드 목록이 스크롤한다.
+ * 사이드바 사용량 줄의 왼쪽 끝에 맞춰 위로 연다. 폭과 높이를 뷰포트 안으로 제한하고,
+ * 높이가 낮으면 팝업 안에서 스크롤한다.
  */
 export function placePopover(anchor: { readonly left: number; readonly width: number; readonly top: number; readonly bottom: number }, viewport: { readonly width: number; readonly height: number }): PopoverPlacement {
-  const width = Math.min(POPOVER_WIDTH, viewport.width - VIEWPORT_MARGIN * 2);
-  const centered = anchor.left + anchor.width / 2 - width / 2;
-  const left = Math.max(VIEWPORT_MARGIN, Math.min(centered, viewport.width - width - VIEWPORT_MARGIN));
-  const below = viewport.height - anchor.bottom - POPOVER_GAP - VIEWPORT_MARGIN;
-  const above = anchor.top - POPOVER_GAP - VIEWPORT_MARGIN;
-  if (below < Math.min(POPOVER_MAX_HEIGHT, 320) && above > below) {
-    return { left, width, maxHeight: Math.min(POPOVER_MAX_HEIGHT, above), bottom: viewport.height - anchor.top + POPOVER_GAP };
-  }
-  return { left, width, maxHeight: Math.min(POPOVER_MAX_HEIGHT, Math.max(below, 160)), top: anchor.bottom + POPOVER_GAP };
+  const width = Math.max(0, Math.min(POPOVER_WIDTH, viewport.width - VIEWPORT_MARGIN * 2));
+  const left = Math.max(VIEWPORT_MARGIN, Math.min(anchor.left, viewport.width - width - VIEWPORT_MARGIN));
+  const edge = Math.max(VIEWPORT_MARGIN, Math.min(anchor.top - POPOVER_GAP, viewport.height - VIEWPORT_MARGIN));
+  return { left, width, maxHeight: Math.max(0, Math.min(POPOVER_MAX_HEIGHT, edge - VIEWPORT_MARGIN)), bottom: viewport.height - edge };
 }
 
 /**
- * 사용 한도 팝업 — document.body로 포털한다. 도구모음은 서랍을 접고 펼 때 가로를 잘라 내므로(overflow)
+ * 사용 한도 팝업 — document.body로 포털한다. 사이드바 요약 칸은 폭 단계 때문에 가로를 잘라 내므로(overflow)
  * 그 안에 두면 팝업이 잘린다. 자리는 버튼의 화면 좌표로 잡고, 창 크기나 버튼 상자가 바뀌면 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
-function QuotaPopover({ id, anchorRef, locale, onClose }: {
+function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, onClose }: {
   readonly id: string;
   readonly anchorRef: RefObject<HTMLButtonElement | null>;
+  readonly placementAnchorRef: RefObject<HTMLElement | null>;
   readonly locale: ConsoleLocale;
   readonly onClose: (restoreFocus: boolean) => void;
 }) {
@@ -181,7 +175,7 @@ function QuotaPopover({ id, anchorRef, locale, onClose }: {
   const popoverRef = useRef<HTMLDivElement | null>(null);
   // 첫 렌더부터 자리를 갖고 선다 — 숨은 채로 한 번 그리면 열자마자 주는 포커스가 그 상자에 앉지 못한다.
   const [placement, setPlacement] = useState<PopoverPlacement | null>(() => {
-    const anchor = anchorRef.current;
+    const anchor = placementAnchorRef.current ?? anchorRef.current;
     return anchor === null ? null : placePopover(anchor.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight });
   });
   const labelId = `${id}-title`;
@@ -189,7 +183,7 @@ function QuotaPopover({ id, anchorRef, locale, onClose }: {
   closeRef.current = onClose;
 
   useLayoutEffect(() => {
-    const anchor = anchorRef.current;
+    const anchor = placementAnchorRef.current ?? anchorRef.current;
     if (!anchor) return;
     // 버튼은 크기가 그대로인 채 자리만 옮겨 갈 수 있다. 창 크기·버튼 크기 신호로는 그 이동을 듣지 못하므로,
     // 열려 있는 동안만 프레임마다
@@ -207,7 +201,7 @@ function QuotaPopover({ id, anchorRef, locale, onClose }: {
     };
     track();
     return () => window.cancelAnimationFrame(frame);
-  }, [anchorRef]);
+  }, [anchorRef, placementAnchorRef]);
 
   const placed = placement !== null;
   useEffect(() => {

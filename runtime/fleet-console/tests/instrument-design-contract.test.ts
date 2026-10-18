@@ -1248,7 +1248,7 @@ describe("Instrument core design contract", () => {
   // 「한 패널만 크게」는 스냅 유지의 전체 칸이 진다 — 옛 최대화 상태를 들고 있는지 묻던 계약은
   // 퇴역했고, 대화 본문이 전체 칸을 쓴다.
 
-  it("pins the non-durable STATUS regroup signal and identity channel grammar", () => {
+  it("pins the Theater-scoped STATUS preference and identity channel grammar", () => {
     const app = source("app/app.tsx");
     const operations = source("../../../features/workspace/client/operations.tsx");
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
@@ -1262,23 +1262,22 @@ describe("Instrument core design contract", () => {
     // 조합은 등록부가 정한다(기본 Alt+S, Settings에서 재배정 가능) — 리터럴 키 판정이 되돌아오면 안 된다.
     expect(operations).toContain('matchesShortcutCommand(event, "operations.sort-by-status")');
     expect(operations).not.toContain('event.code === "KeyS"');
-    expect(operations).toContain("toggleSideBarStatusAxis();");
-    // 상태별 보기는 스위치 하나다 — 스트립에 토글로 한 번만 서고(Theater 행에 되돌리면 배치가
-    // 스코프를 속인다), 켜지면 Theater마다 상태 섹션이 선다. 기본 화면은 Theater 묶음만 말한다.
+    expect(operations).toContain("toggleTheaterStatusAxis(getViewedTheaterId());");
+    // 상태별 보기는 Theater 하나의 표시 선호다. 머리의 chevron 옆 스위치와 단축키가 같은 Theater 를 바꾼다.
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
     expect(sidebar).not.toContain("operations-side-bar-axis");
-    expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} />");
+    expect(sidebar).toContain("<SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />");
     expect(sidebar).toContain("groupTheaterStatusEntries(");
     expect(sidebar).toContain("<StatusRecoveryShelves");
     // 0건 섹션·선반은 서지 않는다 — 빈 칸이 축을 설명하던 자리는 퇴역했다.
     expect(sidebar).toContain("statusSections.filter((section) => section.entries.length > 0)");
     expect(sidebar).toContain("if (dormantSection.entries.length === 0) return null;");
-    expect(components).toMatch(/\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: var\(--control-wash\);/);
+    expect(components).toMatch(/\.side-bar-theater-row-btn\.side-bar-status-view-toggle\[aria-pressed="true"\] \{[^}]*background: color-mix\(in oklch, var\(--brass-quiet\) 14%, transparent\);/);
     expect(sidebar).toContain("trackOperationActivityTransitions({");
-    expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
+    expect(sidebar).toContain("const landedIds = consumeStatusLandings().filter(");
     expect(sidebar).not.toContain("recordStatusTransitions(movedIds);");
     expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
-    expect(sidebar).toContain("if (!statusAxis) {");
+    expect(sidebar).toContain("if (statusTheaterIds.size === 0) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
     // 미확인 도착은 상태 마크와 같은 사실이다(idle + idleArrival = 표시 활동 AWAITING). 칩은 그 사실을
     // 마크 하나로만 말한다 — 우측 점·행 틴트·헤더 카운트 배지는 같은 화면에서의 중복 발화였다.
@@ -1288,7 +1287,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).not.toContain("side-bar-status-header__unseen");
     // 그룹축·복구 선반이 raw idle을 그리면 도착한 Operation이 축마다 다른 상태를 말한다 — 그래서
     // 모든 사이드바 표면이 마크 축을 읽는다(아래 마크/섹션 계약이 그 배선을 고정한다).
-    expect(sideBarStore).toContain("let statusAxis = false;");
+    expect(sideBarStore).not.toContain("let statusAxis =");
+    expect(source("../../../features/workspace/client/sidebar/group-collapse-store.ts")).toContain("statusAxis: parsed.statusAxis === true,");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
     expect(idleArrival).toContain("let idleArrivalIds = new Set<string>();");
     expect(sideBarStore).toContain("let previousActivityById = new Map<string, SideBarStatus>();");
@@ -1324,8 +1324,8 @@ describe("Instrument core design contract", () => {
     // 응답한다. Theater의 chevron도 독립 버튼이라 같은 공통 링 선언을 소비한다.
     const theaterActivate = components.match(/\.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
     const theaterDraggingActivate = components.match(/\.side-bar-theater-header--dragging \.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
-    const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn \{[^}]*\}/)?.[0] ?? "";
-    const theaterCollapseChevron = components.match(/\.side-bar-theater-collapse-btn \.side-bar-theater-chevron \{[^}]*\}/)?.[0] ?? "";
+    const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn,\s*\.side-bar-theater-row-btn\.side-bar-status-view-toggle \{[^}]*\}/)?.[0] ?? "";
+    const theaterCollapseChevron = components.match(/\.side-bar-theater-collapse-btn \.side-bar-theater-chevron,\s*\.side-bar-theater-row-btn\.side-bar-status-view-toggle svg \{[^}]*\}/)?.[0] ?? "";
     const theaterRowFocus = components.match(/\.side-bar-theater-row-btn:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const sharedIconHover = components.match(/\.side-bar-theater-row-btn:hover,[\s\S]*?\.side-bar-group-header__toggle:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const statusToggleHover = components.match(/\.side-bar-status-header__toggle:hover \{[^}]*\}/)?.[0] ?? "";
@@ -1568,7 +1568,7 @@ describe("Instrument core design contract", () => {
     // 좌·우 사이드바 모두 접기가 없다 — 접기 컨트롤·엣지 독·픽·⌘B 단축키가 함께 퇴역했다.
     const railPanelSource = source("chrome/rail/right-rail.tsx");
     expect(railPanelSource).not.toContain("right-rail-collapse");
-    expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} />");
+    expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />");
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
     expect(sidebar).not.toContain("side-bar-theater-add-btn");

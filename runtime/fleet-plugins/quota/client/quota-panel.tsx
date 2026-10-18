@@ -366,7 +366,7 @@ function Meter({
   return (
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
-        <span className="quota-meter__label">{label}{chip ? <span className="quota-meter__window">{chip}</span> : null}</span>
+        <span className="quota-meter__label" title={chip ? `${label} · ${chip}` : label}>{label}</span>
         {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
       </div>
       <div
@@ -395,9 +395,9 @@ function Meter({
         ) : null}
       </div>
       <div className="quota-meter__foot">
-        <span className="quota-meter__percent">{usedText}</span>
+        <span className="quota-meter__percent" aria-label={usedText}>{Math.round(window.usedPercent)}%</span>
         {window.resetsAt !== undefined ? (
-          <span className="quota-meter__reset">{resetCaption(window.resetsAt, now, locale, t)}</span>
+          <span className="quota-meter__reset" title={resetCaption(window.resetsAt, now, locale, t)}>{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</span>
         ) : null}
       </div>
     </div>
@@ -522,17 +522,10 @@ function LoginCard({
     <section className="quota-connect-card" data-provider={provider}>
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${provider}`}>{providerGlyph(provider)}</span>
-        <h3>{t(expired ? "quota.login.title.again" : "quota.login.title", { provider: name })}</h3>
+        <h3>{name}</h3>
         {expired && login.phase === "idle" ? <button type="button" className="quota-disconnect" onClick={() => logout(provider)}>{t("quota.login.logout")}</button> : null}
+        {login.phase === "idle" ? <button type="button" className="quota-button quota-button--primary" title={expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])} onClick={() => { void startLogin(api, provider); }}>{t(expired ? "quota.login.action.again" : "quota.login.action")}</button> : null}
       </header>
-      {login.phase === "idle" ? (
-        <>
-          <p>{expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])}</p>
-          <button type="button" className="quota-button quota-button--primary" onClick={() => { void startLogin(api, provider); }}>
-            {t(expired ? "quota.login.action.again" : "quota.login.action")}
-          </button>
-        </>
-      ) : null}
       {login.phase === "starting" ? <p role="status">{t("quota.login.starting")}</p> : null}
       {login.phase === "pending" ? (
         <>
@@ -588,6 +581,10 @@ function ProviderCard({
   readonly logout: (provider: LoginProvider) => void;
 }) {
   const name = PROVIDER_NAME[id];
+  // 이 두 공급자의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
+  if ((id === "antigravity" || id === "claude") && (provider.status === "signed_out" || provider.status === "expired")) {
+    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY[id] : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: id === "claude" ? "claude" : "agy" })}</span>{id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}</header></section>;
+  }
   if (needsConsoleLogin(id, provider.status)) {
     return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
   }
@@ -596,11 +593,10 @@ function ProviderCard({
       <section className="quota-connect-card" data-provider={id}>
         <header className="quota-provider__header">
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          <h3>{t("quota.connect.title")}</h3>
+          <h3>{name}</h3>
+          {/* Claude 는 로그인 실행이 아니라 명시적 로컬 자격 읽기 동의다 — 기존 연결 동작과 설명을 유지한다. */}
+          <button type="button" className="quota-button quota-button--primary" title={`${t("quota.connect.body")}${provider.method === "keychain" ? ` ${t("quota.connect.keychain")}` : ""}`} onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
         </header>
-        <p>{t("quota.connect.body")}</p>
-        {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
       </section>
     );
   }
@@ -812,7 +808,7 @@ export function useQuotaData(api: ClientApiCapability) {
 
 /**
  * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(고정 순서), 바닥의
- * 「도구모음에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
+ * 「사이드바에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
  */
 export function QuotaPanel({ api, locale, labelId }: {
   readonly api: ClientApiCapability;
@@ -824,6 +820,8 @@ export function QuotaPanel({ api, locale, labelId }: {
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
+  const disconnected = (id: ProviderId) => ["not_connected", "signed_out", "expired"].includes(data?.providers[id]?.status ?? "error");
+  const renderProvider = (id: ProviderId) => <ProviderCard key={id} id={id} provider={data?.providers[id] ?? UNREPORTED_PROVIDER} now={now} locale={locale} t={t} api={api} connect={connect} logout={logout} />;
   return (
     <div className="quota-root">
       <header className="quota-head">
@@ -847,19 +845,8 @@ export function QuotaPanel({ api, locale, labelId }: {
             <p>{t("quota.loading.body")}</p>
           </div>
         ) : null}
-        {data ? PROVIDER_ORDER_DEFAULT.map((id) => (
-          <ProviderCard
-            key={id}
-            id={id}
-            provider={data.providers[id] ?? UNREPORTED_PROVIDER}
-            now={now}
-            locale={locale}
-            t={t}
-            api={api}
-            connect={connect}
-            logout={logout}
-          />
-        )) : null}
+        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => !disconnected(id)).map(renderProvider) : null}
+        {data && PROVIDER_ORDER_DEFAULT.some(disconnected) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter(disconnected).map(renderProvider)}</section> : null}
       </div>
       <footer className="quota-footer">
         <ToolbarProviderPicker t={t} />
@@ -869,7 +856,7 @@ export function QuotaPanel({ api, locale, labelId }: {
 }
 
 /**
- * 팝업 바닥의 「도구모음에 표시」 줄 — 공급자마다 글리프 하나로 도구모음 요약에 세울지를 고른다.
+ * 팝업 바닥의 「사이드바에 표시」 줄 — 공급자마다 글리프 하나로 도구모음 요약에 세울지를 고른다.
  * 순서는 고정 순서다. 모두 끄면 도구모음에는 막대 글리프 하나만 남아 이 팝업을 다시 연다.
  */
 function ToolbarProviderPicker({ t }: { readonly t: T }) {

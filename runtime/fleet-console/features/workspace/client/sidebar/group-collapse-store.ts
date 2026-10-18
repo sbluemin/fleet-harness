@@ -14,9 +14,10 @@ dropLegacyMinimizedState();
 export interface GroupCollapseSlice {
   readonly collapsedGroups: readonly string[];
   readonly operationAccent: Readonly<Record<string, string>>;
+  readonly statusAxis: boolean;
 }
 
-const EMPTY_SLICE: GroupCollapseSlice = { collapsedGroups: [], operationAccent: {} };
+const EMPTY_SLICE: GroupCollapseSlice = { collapsedGroups: [], operationAccent: {}, statusAxis: false };
 
 const listeners = new Set<() => void>();
 let revision = 0;
@@ -26,6 +27,14 @@ export function useStoredTheaterRevision(): number { return useSyncExternalStore
 
 /** Theater마다 분리된 표시 상태를 읽는다. */
 export function getTheaterGroupCollapse(theaterId: string): GroupCollapseSlice { return readSlice(theaterId); }
+
+/** 상태별 보기는 Theater 의 표시 선호다. 다른 접힘·액센트·알 수 없는 JSON 필드를 보존한다. */
+export function toggleTheaterStatusAxis(theaterId: string | null): void {
+  if (theaterId === null) return;
+  const stored = readSlice(theaterId);
+  writeSlice(theaterId, { ...stored, statusAxis: !stored.statusAxis });
+  emit();
+}
 
 export function toggleTheaterGroupCollapsed(theaterId: string, groupId: string): void {
   const stored = readSlice(theaterId);
@@ -56,6 +65,7 @@ function readSlice(theaterId: string): GroupCollapseSlice {
   return {
     collapsedGroups: normalizeStringArray(parsed.collapsedGroups),
     operationAccent: normalizeOperationAccent(parsed.operationAccent),
+    statusAxis: parsed.statusAxis === true,
   };
 }
 
@@ -79,6 +89,7 @@ function writeSlice(theaterId: string, next: GroupCollapseSlice): void {
       ...existing,
       collapsedGroups: next.collapsedGroups,
       operationAccent: next.operationAccent,
+      statusAxis: next.statusAxis,
     }));
   } catch {
     // 저장 실패는 접힘 복구성만 낮추므로 런타임 흐름을 막지 않는다.

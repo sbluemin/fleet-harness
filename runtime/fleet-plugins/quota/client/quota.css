@@ -1,5 +1,5 @@
 /* ── 사용 한도 팝업 ─────────────────────────────
-   도구모음 요약 바로 아래에 뜨는 부유 면(document.body로 포털). 자리·폭·최대 높이는 버튼 좌표로
+   사이드바 사용량 줄 위에 뜨는 부유 면(document.body로 포털). 자리·폭·최대 높이는 버튼 좌표로
    스크립트가 정하고, 여기서는 면의 문법만 정한다. 면은 공통 팝업 표면(theme.css --popover-*) 한 장이고,
    안쪽은 카드를 겹치지 않고 구분선과 제목으로만 나눈다. 넘치는 높이는 본문만 스크롤한다. */
 .quota-popover {
@@ -8,6 +8,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: auto;
   border: 1px solid var(--popover-rim);
   border-radius: var(--radius-lg);
   background: var(--popover-face);
@@ -29,7 +30,7 @@
   from { opacity: 0; transform: translateY(4px); }
 }
 
-/* 머리와 바닥은 상주하고 스크롤은 본문이 가진다. 갱신 시각·새로고침·범례·도구모음 표시는
+/* 머리와 바닥은 상주하고 스크롤은 본문이 가진다. 갱신 시각·새로고침·범례·사이드바 표시는
    어디까지 스크롤했든 늘 같은 자리에 있어야 하는 팝업 단위 컨트롤이기 때문이다. */
 .quota-root {
   display: flex;
@@ -326,27 +327,22 @@
 .quota-meter {
   --meter-accent: var(--ink-fog);
   --meter-weight: var(--gauge-weight-quiet);
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(34px, 56px) minmax(24px, 1fr) 32px 88px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
 }
 
-.quota-meter__top {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 5px;
-}
+.quota-meter__top, .quota-meter__foot { display: contents; }
+.quota-meter__label { grid-column: 1; grid-row: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quota-meter__percent { grid-column: 3; grid-row: 1; text-align: right; }
+.quota-meter__reset { grid-column: 4; grid-row: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quota-meter__forecast { grid-column: 1 / -1; grid-row: 2; }
 
 .quota-meter__label {
   color: var(--text-secondary);
   font-size: var(--t-md);
-}
-
-.quota-meter__window {
-  margin-left: 5px;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
 }
 
 .quota-meter__percent,
@@ -368,6 +364,8 @@
 }
 
 .quota-meter__bar {
+  grid-column: 2;
+  grid-row: 1;
   position: relative;
   height: 6px;
   overflow: hidden;
@@ -401,19 +399,10 @@
    past it is overspending — the comparison the bar exists to make. */
 .quota-meter__elapsed {
   position: absolute;
-  inset-block: 0;
-  width: 2px;
-  transform: translateX(-1px);
+  inset-block: -3px;
+  width: 1px;
+  transform: translateX(-0.5px);
   background: color-mix(in oklab, var(--text-primary) 62%, transparent);
-}
-
-.quota-meter__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
 }
 
 .quota-meter__risk {
@@ -703,11 +692,11 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 8px;
-  height: 26px;
-  padding: 0 5px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
+  gap: 4px;
+  height: 36px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--radius-xs);
   background: none;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -718,20 +707,14 @@
 }
 
 .quota-toolbar-summary:hover,
-.quota-toolbar-summary:focus-visible,
-.quota-toolbar-summary[aria-expanded="true"] {
-  color: var(--text-secondary);
-  background: var(--surface-glass);
-  outline: none;
-}
-
 .quota-toolbar-summary:focus-visible {
-  border-color: var(--brass);
+  color: var(--text-secondary);
+  background: var(--wash-hover);
 }
 
-.quota-toolbar-summary[aria-expanded="true"] {
-  border-color: var(--surface-rim-strong);
-}
+.quota-toolbar-summary:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
+
+.quota-toolbar-summary[aria-expanded="true"] { background: var(--control-wash); }
 
 /* 고른 공급자가 없을 때의 입구 — 도구 아이콘과 같은 정사각 자리에 막대 글리프 하나. */
 .quota-toolbar-summary--glyph {
@@ -801,15 +784,18 @@
   }
 }
 
-/* 대화 중심 화면 — 요약은 가운데 칸 맨 위 줄 오른쪽 끝의 캡슐에 선다(conversation.css .conversation-quota). 칸 폭이 줄면 단계를 낮춘다:
-   실제로 남는 자리에 맞춰 단계를 고른다(conversation-shell ConversationQuota 가 data-tier 를 단다): 두 줄 값 전체 → 표식만(값은
-   누르면 여는 요약 팝업이 말한다) → 첫 칸 하나. 한 줄을 지키고 캡슐 밖으로 넘치지 않는다.
-   밴드(토글 끔)의 요약은 그대로다. */
-.conversation-quota .quota-toolbar-summary {
-  max-width: 100%;
-  overflow: hidden;
-}
+/* 호스트가 실제 가용 폭으로 정하는 단계. 팝업은 portal 이라 줄이 잘려도 열림은 잘리지 않는다. */
+.sidebar-footer-entries[data-tier="marks"] .quota-toolbar-summary__lines,
+.sidebar-footer-entries[data-tier="single"] .quota-toolbar-summary__lines { display: none; }
+.sidebar-footer-entries[data-tier="single"] .quota-toolbar-summary__cell:not(:first-child) { display: none; }
 
-.conversation-quota[data-tier="marks"] .quota-toolbar-summary__lines,
-.conversation-quota[data-tier="single"] .quota-toolbar-summary__lines { display: none; }
-.conversation-quota[data-tier="single"] .quota-toolbar-summary__cell:not(:first-child) { display: none; }
+/* 연결되지 않은 공급자는 한 줄이다. 로그인 진행·실패는 기존 안내와 복구 컨트롤을 그대로 펼친다. */
+.quota-disconnected { border-top: 1px solid var(--popover-divider); padding-top: 10px; }
+/* 연결된 공급자가 없으면 머리 아래 선만 남긴다. 앞에 공급자 구역이 있을 때의 경계는 유지한다. */
+.quota-disconnected:first-child { border-top: 0; }
+.quota-disconnected > h3 { margin: 0 0 5px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); }
+.quota-disconnected > :is(.quota-connect-card, .quota-provider) { padding: 5px 0; }
+.quota-disconnected .quota-provider__header { min-height: 28px; }
+.quota-connect-hint { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; }
+.quota-disconnected .quota-button { margin: 0; padding: 3px 8px; min-height: 26px; font-size: var(--t-xs); }
+.quota-meter__label, .quota-meter__percent, .quota-meter__reset { font-size: var(--t-xs); }

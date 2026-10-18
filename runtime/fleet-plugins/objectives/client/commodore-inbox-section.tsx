@@ -714,7 +714,7 @@ function useReleasedKey() {
 }
 
 /**
- * `caption` — 대화 중심 화면 머리 pill 옆 대화 동작 묶음의 캡션 단추(호스트가 세우는 지구본과 같은 24px 평면 단추·말풍선 문법).
+ * `caption` — 대화 중심 화면 머리 pill 안의 30px 원형 단추. 확인 상태에서는 같은 단추 안에 문구가 펼쳐진다.
  * 기본은 시트 머리의 사각 단추다.
  */
 export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, onClear }: { readonly t: T; readonly theaterId: string; readonly variant?: "sheet" | "caption"; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
@@ -722,10 +722,10 @@ export function CommodoreClearButton({ t, theaterId, variant = "sheet", onFail, 
   const key = useReleasedKey();
   if (variant === "caption") {
     return <div className="objectives-commodore-clear-wrap is-caption">
-      {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
       <CaptionTipHost label={t("objectives.commodore.clear.title")}>
         <button type="button" className={`fleet-caption-action${clear.armed ? " is-armed" : ""}`} disabled={clear.busy} aria-label={t(clear.armed ? "objectives.commodore.clear.confirm" : "objectives.commodore.clear.title")} onPointerDown={(event) => { event.stopPropagation(); }} onClick={() => void clear.request()} onKeyDown={key.down} onKeyUp={key.up} onBlur={() => { key.up(); clear.disarm(); }}>
           <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m3 10 6-7 6 5-6 7H6zM9 15h6M6 7l6 5" /></svg>
+          {clear.armed ? <span className="objectives-commodore-clear-confirm" role="status">{t("objectives.commodore.clear.confirm")}</span> : null}
         </button>
       </CaptionTipHost>
     </div>;
