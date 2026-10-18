@@ -21,11 +21,12 @@ import { openMobileChoice, useMobileChoice } from "./mobile-choice-store.js";
 import { openMobileInput } from "./mobile-input-sheet.js";
 import { openMobileSubScreen } from "./mobile-subscreen-store.js";
 import { MobileSettingsHostContext } from "@fleet-console/sdk/settings/browser";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
 import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDestination, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
+import { getMobileDestination, useMobileBar, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
 import "../../styles/mobile.css";
 
 /**
@@ -110,6 +111,13 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
     return () => { window.removeEventListener("pageshow", resend); document.removeEventListener("visibilitychange", resend); };
   }, []);
 
+  // 상단 막대와 연결·상태 띠는 화면 위에 떠 있다 — 본문은 그 뒤로 흐르고, 화면의 스크롤 영역은 이 높이(`--m-chrome-top`)만큼 위를 비운다.
+  // 막대 상태도 구독해, 화면이 막대를 올리거나 숨기는 커밋에 이 틀도 서서 그 그림에서 바로 다시 잰다(다음 프레임으로 미루지 않는다).
+  useMobileBar();
+  const frameRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(headRef, frameRef, "--m-chrome-top");
+
   const openOperation = (operationId: string) => {
     setMobileDestination({ kind: "home" });
     if (path !== "/operations") navigate("/operations");
@@ -119,8 +127,8 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
   return (
     <MobileSettingsHostContext.Provider value={settingsHost}>
     <MobileAttentionProvider rows={rows}>
-      <div className="mobile-frame" lang={locale}>
-        <div className="mobile-frame-head">
+      <div ref={frameRef} className="mobile-frame" lang={locale}>
+        <div ref={headRef} className="mobile-frame-head">
           <MobileTopBar />
           {/* 연결·상태 띠는 상단 막대 바로 아래에 선다(S-34). */}
           {bands}

@@ -3,7 +3,7 @@
  * 값은 시안 mobile-redesign.html 의 사령관 화면(.band · .cmd-top .trow · .ttabs · .chat · .cw · .cmsg · .dock .comp · .card-pad)
  * 그대로다. 색은 모바일 토큰(--m-*)만 쓴다. 누름은 코어 누름 층(data-press r1·r2·r3, S-52)이 그린다.
  */
-.objectives-cm { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
+.objectives-cm { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 /* 단추 초기화는 :where 로 특정도를 0 에 둔다 — 화면 안에 서는 호스트 팝업(모델·선택)의 행 문법을 덮지 않게. */
 :where(.objectives-cm) button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; text-align: left; cursor: pointer; -webkit-touch-callout: none; touch-action: manipulation; }
 :where(.objectives-cm) button:disabled { cursor: default; }
@@ -37,7 +37,24 @@
 .objectives-cm-trow:disabled .objectives-cm-tog::after { background: var(--m-text-faint); }
 
 /* 글자 탭(S-02 .ttabs). */
-.objectives-cm-tabs { flex: none; display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
+/* 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다. */
+.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 20px; padding: 0 24px; }
+.objectives-cm-tabs::after { content: ""; position: absolute; top: 100%; right: 0; left: 0; height: 12px; background: var(--m-fade-down, none); pointer-events: none; }
+
+/*
+ * 칩 화면의 머리(자율 운영 행 + 글자 탭). 화면이 막대 뒤로 흐를 때(data-mobile-chrome="flow")는 막대와 한 덩어리로 탭 본문 위에 떠 있다 —
+ * 맨 위부터 막대 몫(--m-chrome-top)을 품고 바탕색으로 서다가 아래 끝만 투명으로 옅어진다(경계선 없음). 탭이 글자 줄이라 본문이 글자 밑으로
+ * 비쳐 흐르지는 않는다(데스크톱 세부 정보 머리와 같은 판단). 탭 본문의 스크롤 영역은 막대 몫에 머리의 제 높이(--objectives-cm-head, 막대 몫을
+ * 뺀 값)를 더한 만큼 위를 비운다 — 막대 변형이 바뀌는 커밋이 머리를 그린 커밋과 달라도 값이 흔들리지 않는다.
+ * 띠가 선 동안은 머리가 흐름 안에 서고 탭 아래 페이드가 경계를 대신한다.
+ */
+.objectives-cm-chrome { flex: none; }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-chrome { position: absolute; top: 0; right: 0; left: 0; z-index: 1; padding-top: var(--m-chrome-top, 0px); background: linear-gradient(to bottom, var(--m-bg) calc(100% - 12px), color-mix(in srgb, var(--m-bg) 0%, transparent)); }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-tabs::after { content: none; }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-content { padding-top: calc(var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-goals { padding-top: calc(8px + var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat,
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat.is-center { padding-top: calc(8px + var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
 .objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
 /* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
@@ -78,7 +95,11 @@
  * 썸네일)만 둔다. 지휘관 참조 목록은 입력 위 시트이고 행은 엄지 높이(46px)다. 고른 행은 면으로만 말한다(왼쪽 띠 없음). 결정 요청·검토
  * 대기는 「사람을 기다림」 신호 하나로 말한다.
  */
-.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; background: var(--m-bg); }
+.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; }
+/* 기록 탭의 독도 기록 위에 떠 있다 — 대화 화면의 독(호스트 대화 화면이 진다)과 같은 페이드이고, 기록이 독 높이(--m-dock-h, 기록 탭이 잰다)만큼
+   독 뒤로 늘어나 같은 몫을 아래 여백으로 되돌린다. */
+.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: var(--m-fade-up, var(--m-bg)); }
+.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat { margin-bottom: calc(-1 * var(--m-dock-h, 0px)); padding-bottom: calc(16px + var(--m-dock-h, 0px)); }
 .objectives-cm-dock .fc-composer-notice { padding-bottom: 0; }
 .objectives-cm-dock .objectives-commodore-composer { max-width: none; }
 .objectives-cm-dock .objectives-commodore-composer-idle { max-width: none; margin: 0; padding: 0 8px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { CaptionActionButton } from "@fleet-console/sdk/components/caption-actions";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 
 import {
@@ -93,6 +94,9 @@ function CodexReaderPane(ctx: PaneContext) {
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
+  // 모바일 화면에서 목차 줄은 문서 위에 떠 있다 — 막대 몫을 뺀 제 높이(`--codex-outline-h`, 목차가 없으면 0)를 스크롤 영역이 막대 몫에 더해 비운다.
+  const paneRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(outlineRef, paneRef, "--codex-outline-h", chromeRowHeight);
   const [outlineCollapsed, setOutlineCollapsed] = useState(readOutlineCollapsed);
   const [activeSection, setActiveSection] = useState("");
 
@@ -182,7 +186,8 @@ function CodexReaderPane(ctx: PaneContext) {
   }, [mobileBar, visible, barTitle, panes]);
 
   return (
-    <div className="codex-doc-pane">
+    // 모바일 목적지 화면이면 문서가 호스트 상단 막대 뒤로 흐른다(호스트 mobile.css의 data-mobile-chrome 계약).
+    <div ref={paneRef} className="codex-doc-pane" {...(mobileBar ? { "data-mobile-chrome": "flow" } : {})}>
       <section
         ref={outlineRef}
         className="codex-doc-outline"

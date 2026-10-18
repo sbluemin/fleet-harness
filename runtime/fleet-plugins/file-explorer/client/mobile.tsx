@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createPortal } from "react-dom";
 
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
@@ -134,7 +135,8 @@ export function MobileFileTree(ctx: PaneContext) {
     });
   };
 
-  return <div className="fexp-m fexp-m-tree" role="tree" aria-label={title}>{theaterId ? rows("", 0) : null}</div>;
+  // 트리는 호스트 상단 막대 뒤로 흐른다 — 막대 몫(--m-chrome-top)은 이 스크롤 영역이 위에 비운다(mobile.css).
+  return <div className="fexp-m fexp-m-tree" data-mobile-chrome="flow" role="tree" aria-label={title}>{theaterId ? rows("", 0) : null}</div>;
 }
 
 // ── 파일 상세 ──
@@ -195,10 +197,14 @@ export function MobileFileDocument(ctx: PaneContext) {
 
   const isCode = viewState.kind === "code";
   const isMarkdown = isCode && viewState.lang === "markdown";
+  // 문서는 호스트 상단 막대 뒤로 흐른다 — 글자 탭 줄(코드일 때만)은 막대와 한 덩어리로 떠 있고, 본문이 막대 몫에 탭 줄의 제 높이(`--fexp-m-head`)를 더해 비운다.
+  const docRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(tabsRef, docRef, "--fexp-m-head", chromeRowHeight);
   return (
-    <div className="fexp-m fexp-m-doc">
+    <div ref={docRef} className="fexp-m fexp-m-doc" data-mobile-chrome="flow">
       {isCode ? (
-        <div className="fexp-m-tabs" role="tablist">
+        <div ref={tabsRef} className="fexp-m-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={!source} className={source ? "" : "is-on"} onClick={() => setSource(false)}>{t("fileExplorer.viewer.previewMode")}</button>
           <button type="button" role="tab" aria-selected={source} className={source ? "is-on" : ""} onClick={() => setSource(true)}>{t("fileExplorer.viewer.sourceMode")}</button>
         </div>

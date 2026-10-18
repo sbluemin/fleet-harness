@@ -1982,7 +1982,8 @@
   inset: 0;
   height: auto;
   gap: 8px;
-  padding: 24px;
+  /* 화면은 떠 있는 상단 막대 뒤까지 닿는다 — 카드가 막대 아래 남은 자리의 가운데에 서도록 막대 몫(--m-chrome-top)을 위에 비운다. */
+  padding: calc(24px + var(--m-chrome-top, 0px)) 24px 24px;
   background: var(--m-bg);
   color: var(--m-text);
 }

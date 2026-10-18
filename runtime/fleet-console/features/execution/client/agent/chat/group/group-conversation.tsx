@@ -1,6 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
@@ -93,6 +94,11 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
+  // 폰 배치에서 진행 줄과 입력창은 대화 위에 떠 있는 독 하나다 — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다.
+  // 데스크톱의 독 감싸개는 상자가 없어(display: contents) 높이가 0이고, 자리도 예전 그대로다.
+  const chatRef = React.useRef<HTMLDivElement | null>(null);
+  const dockRef = React.useRef<HTMLDivElement | null>(null);
+  useChromeHeightProperty(dockRef, chatRef, "--m-dock-h");
   const nearBottomRef = React.useRef(true);
   const programmaticTop = React.useRef<number | null>(null);
   // 사람이 이 기록을 스크롤한 마지막 입력 시각 — 그 직후의 scroll 사건은 사람의 뜻으로 읽는다.
@@ -175,7 +181,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     .filter((name): name is string => typeof name === "string");
 
   return (
-    <div className="group-chat" onClick={onCodeCopyClick}>
+    <div ref={chatRef} className="group-chat" onClick={onCodeCopyClick}>
       <span className="agent-chat-sr-only" aria-live="polite" aria-atomic="true">{codeCopyAnnouncement}</span>
       <div
         ref={logRef}
@@ -251,9 +257,11 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
           {cards}
         </div>
       </div>
-      <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} />
-      {composerTopEntries && composer ? <ComposerTopEntries /> : null}
-      {composer}
+      <div ref={dockRef} className="group-chat-dock">
+        <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} />
+        {composerTopEntries && composer ? <ComposerTopEntries /> : null}
+        {composer}
+      </div>
       {overlay}
     </div>
   );
@@ -277,9 +285,13 @@ export function GroupLedgerFrame({ speaker, language, onBack, notice, children }
   readonly children: React.ReactNode;
 }) {
   const t = getGroupT(language);
+  // 폰 배치에서 머리 카드는 상단 막대 아래에 떠 있다 — 본문이 막대와 이 카드 뒤로 흐르고, 카드 높이(`--group-ledger-head`)만큼 위를 비운다.
+  const ledgerRef = React.useRef<HTMLDivElement | null>(null);
+  const headRef = React.useRef<HTMLDivElement | null>(null);
+  useChromeHeightProperty(headRef, ledgerRef, "--group-ledger-head");
   return (
-    <div className="group-ledger">
-      <div className="group-ledger-head">
+    <div ref={ledgerRef} className="group-ledger">
+      <div ref={headRef} className="group-ledger-head">
         <SpeakerMark speaker={speaker} size="sm" />
         <span className="group-ledger-banner" role="status">{t("group.ledger.banner", { name: speaker.name })}</span>
         {onBack ? <button type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}
