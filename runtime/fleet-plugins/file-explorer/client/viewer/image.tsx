@@ -12,6 +12,11 @@ interface ImageViewerProps {
   readonly name: string;
   readonly sizeBytes?: number;
   readonly t: Translate<FileExplorerMessageKey>;
+  /**
+   * 치수·크기·배율을 문서 창의 메타 바 한 줄로 올린다 — 뷰어 안에 두 번째 메타 줄을 세우지 않는다.
+   * 메타 바가 없는 표면(모바일)은 생략하고, 그때는 뷰어가 자기 메타 줄을 그린다.
+   */
+  readonly onMetaChange?: (parts: readonly string[]) => void;
 }
 
 export function cacheBustedImageSrc(src: string, mtimeMs: number | undefined): string {
@@ -46,7 +51,7 @@ export function imageScaleLabel(
   return `${pct}%`;
 }
 
-export function ImageViewer({ src, name, sizeBytes, t }: ImageViewerProps) {
+export function ImageViewer({ src, name, sizeBytes, t, onMetaChange }: ImageViewerProps) {
   const stageRef = useRef<HTMLDivElement>(null);
   const [fitMode, setFitMode] = useState<ImageFitMode>("fit");
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
@@ -76,6 +81,16 @@ export function ImageViewer({ src, name, sizeBytes, t }: ImageViewerProps) {
   const renderedSize = natural
     ? { width: Math.max(1, Math.round(natural.width * scale)), height: Math.max(1, Math.round(natural.height * scale)) }
     : null;
+  const metaParts = natural
+    ? [`${natural.width} × ${natural.height}`, ...(sizeBytes !== undefined ? [formatByteSize(sizeBytes)] : []), imageScaleLabel(fitMode, scale, t)]
+    : [];
+  const metaKey = metaParts.join("\u0000");
+
+  // 내용이 바뀔 때만 알린다 — 매 렌더의 새 배열로 상위를 다시 그리지 않는다.
+  // 그리기 전에 알려 다른 이미지로 바뀐 첫 프레임에 이전 이미지의 메타가 비치지 않게 한다.
+  useLayoutEffect(() => {
+    onMetaChange?.(metaKey ? metaKey.split("\u0000") : []);
+  }, [metaKey, onMetaChange]);
 
   return (
     <div className="fexp-img-wrap">
@@ -110,7 +125,7 @@ export function ImageViewer({ src, name, sizeBytes, t }: ImageViewerProps) {
           </button>
         </div>
       </div>
-      {natural && (
+      {!onMetaChange && natural && (
         <div className="fexp-viewer-meta fexp-img-meta">
           <span className="fexp-viewer-meta-part">{natural.width} × {natural.height}</span>
           {sizeBytes !== undefined && (
