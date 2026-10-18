@@ -1,6 +1,7 @@
+import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
-import { handOffWindowToConsole, republishShellHomeOnArrival, type ConsoleHandoffDeps, type ShellHomePublication } from "../src/console-handoff.js";
+import { handOffWindowToConsole, loadConsoleDocument, republishShellHomeOnArrival, type ConsoleHandoffDeps, type ShellHomePublication } from "../src/console-handoff.js";
 
 const TARGET = "http://127.0.0.1:2253";
 
@@ -87,6 +88,53 @@ describe("console handoff", () => {
       `load:${TARGET}/console/`,
       `theme:${TARGET}`,
     ]);
+  });
+});
+
+/**
+ * 옮기는 동안 떠나는 문서가 셸에게 보낸 신호는 셸이 막으므로 대상 적재는 계속된다. 그런데 Electron의 loadURL은
+ * 그 항해가 시작되기만 해도 ERR_ABORTED로 거절한다 — 그 거절을 실패로 읽으면 도착한 창을 두고 롤백하고 경고를 띄운다.
+ */
+describe("console document load", () => {
+  const SIGNAL = `http://127.0.0.1:2252/console/?desktop-surface=console-section-command&command=${encodeURIComponent('{"request":"state"}')}`;
+
+  /** Electron loadURL처럼: 적재 중 main frame에서 다른 항해가 시작되면 그 URL로 거절한다. */
+  function createContents() {
+    const contents = Object.assign(new EventEmitter(), {
+      at: "http://127.0.0.1:2252/console/",
+      getURL: () => contents.at,
+      loadURL: (url: string) => new Promise<void>((resolve, reject) => {
+        let started = false;
+        contents.on("did-start-navigation", (details: { url: string }) => {
+          if (started) reject(Object.assign(new Error(`ERR_ABORTED (-3) loading '${details.url}'`), { errno: -3, code: "ERR_ABORTED", url: details.url }));
+          started = true;
+        });
+        contents.once("did-finish-load", () => resolve());
+        contents.emit("did-start-navigation", { url, isMainFrame: true, isSameDocument: false });
+      }),
+    });
+    return contents;
+  }
+  const settled = (promise: Promise<void>) => promise.then(() => "arrived", (error: Error) => error.message);
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+  it("judges by the target's own outcome, not by an intercepted shell signal", async () => {
+    // 신호가 끼어들어도 대상이 도착하면 성공이다.
+    const arriving = createContents();
+    const arrived = settled(loadConsoleDocument(arriving, `${TARGET}/console/`));
+    arriving.emit("did-start-navigation", { url: SIGNAL, isMainFrame: true, isSameDocument: false });
+    await tick();
+    arriving.at = `${TARGET}/console/`;
+    arriving.emit("did-finish-load");
+    expect(await arrived).toBe("arrived");
+
+    // 신호 뒤에 대상 자신이 실패하면 그 실패가 그대로 결과다 — 진짜 실패의 롤백과 안내는 남는다.
+    const failing = createContents();
+    const failed = settled(loadConsoleDocument(failing, `${TARGET}/console/`));
+    failing.emit("did-start-navigation", { url: SIGNAL, isMainFrame: true, isSameDocument: false });
+    await tick();
+    failing.emit("did-fail-load", {}, -102, "ERR_CONNECTION_REFUSED", `${TARGET}/console/`, true);
+    expect(await failed).toBe(`ERR_CONNECTION_REFUSED (-102) loading '${TARGET}/console/'`);
   });
 });
 

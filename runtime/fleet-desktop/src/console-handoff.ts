@@ -1,3 +1,5 @@
+import { CONSOLE_SECTION_COMMAND } from "@fleet-console/protocol/desktop/console-section";
+
 /**
  * 창을 다른 콘솔로 넘길 때의 순서.
  *
@@ -59,6 +61,94 @@ export async function handOffWindowToConsole(deps: ConsoleHandoffDeps, url: stri
   deps.loaded?.(origin);
   // 창이 옮겨 갔으면 타이틀바 동기화도 그 콘솔을 따라가야 한다.
   await deps.synchronizeTheme(origin);
+}
+
+/**
+ * 셸에게 보내는 신호 — 화면이 이 쿼리로 main frame 항해를 걸면 셸이 will-navigate에서 막고 그 뜻만 받는다
+ * (console-section-controller, remote-bridge의 피커, window-policy의 서체 동의). 그래서 이 항해는 어디로도 가지 않는다.
+ * Console 내부를 import하지 않고 여기서 선언하는 것은 remote-bridge·window-policy와 같은 방식이다.
+ */
+const SHELL_SIGNAL_PARAM = "desktop-surface";
+const SHELL_SIGNAL_SURFACES: ReadonlySet<string> = new Set([CONSOLE_SECTION_COMMAND, "host-picker", "host-picker-dismiss", "local-fonts"]);
+
+function isShellSignal(url: unknown): boolean {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.startsWith("/console/") && SHELL_SIGNAL_SURFACES.has(parsed.searchParams.get(SHELL_SIGNAL_PARAM) ?? "");
+  } catch {
+    return false;
+  }
+}
+
+function originOf(url: string): string | null {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+/** Electron의 loadURL이 내는 오류와 같은 모양 — 로그와 안내가 진짜 실패를 지금과 똑같이 읽는다. */
+function loadError(errno: number, code: string, url: string): Error {
+  return Object.assign(new Error(`${code} (${errno}) loading '${url.slice(0, 2048)}'`), { errno, code, url });
+}
+
+type ContentsListener = (...args: unknown[]) => void;
+export interface ConsoleDocumentContents {
+  loadURL(url: string): Promise<void>;
+  getURL(): string;
+  on(event: string, listener: ContentsListener): unknown;
+  removeListener(event: string, listener: ContentsListener): unknown;
+}
+
+/**
+ * 창에 콘솔 문서를 싣는다.
+ *
+ * Electron의 loadURL은 적재 중에 main frame에서 다른 항해가 *시작*되기만 해도 그 URL로 ERR_ABORTED를 낸다.
+ * 콘솔을 옮기는 동안 떠나는 문서는 아직 살아 있어 셸에게 신호(포커스 때의 섹션 상태 요청 등)를 보낼 수 있는데,
+ * 셸이 그 항해를 막으므로 대상 적재는 그대로 계속되고 창은 도착한다. 그 거절을 적재 실패로 읽으면 도착한 창을
+ * 두고 정책·핀·배관을 되돌리고 실패를 안내한다. 그래서 셸 신호 때문인 거절만 삼키고, 판정은 대상 항해의 실제
+ * 결과에 맡긴다: 완료면 성공, 대상의 실패·다른 항해에 밀림·적재 중단이면 거절이다. 그 밖의 거절은 그대로 낸다.
+ */
+export function loadConsoleDocument(contents: ConsoleDocumentContents, url: string): Promise<void> {
+  const target = originOf(url);
+  return new Promise<void>((resolve, reject) => {
+    let signalled: Error | null = null;
+    let settled = false;
+    const listeners: Array<[string, ContentsListener]> = [];
+    const settle = (error?: Error): void => {
+      if (settled) return;
+      settled = true;
+      for (const [event, listener] of listeners) contents.removeListener(event, listener);
+      if (error) reject(error); else resolve();
+    };
+    const listen = (event: string, listener: ContentsListener): void => {
+      listeners.push([event, listener]);
+      contents.on(event, listener);
+    };
+    // 신호가 끼어든 뒤에만 판정한다 — 그 전에는 loadURL 자신의 판정이 그대로 결과다.
+    listen("did-finish-load", () => {
+      if (!signalled) return;
+      // 막힌 신호는 커밋되지 않는다. 그래도 창이 대상 콘솔에 서 있는지 확인한 뒤에만 성공이라 한다.
+      settle(target !== null && originOf(contents.getURL()) === target ? undefined : signalled);
+    });
+    listen("did-fail-load", ((_event: unknown, errno: number, code: string, failedUrl: string, isMainFrame: boolean) => {
+      if (signalled && isMainFrame && !isShellSignal(failedUrl)) settle(loadError(errno, code, failedUrl));
+    }) as ContentsListener);
+    listen("did-start-navigation", ((details: { url?: string; isMainFrame?: boolean; isSameDocument?: boolean }) => {
+      if (!signalled || !details.isMainFrame || details.isSameDocument || isShellSignal(details.url)) return;
+      // 셸 신호가 아닌 새 항해가 대상을 밀어냈다 — loadURL이 하던 판정 그대로다.
+      settle(loadError(-3, "ERR_ABORTED", details.url ?? url));
+    }) as ContentsListener);
+    const stopped = (): void => { if (signalled) settle(loadError(-2, "ERR_FAILED", url)); };
+    listen("did-stop-loading", stopped);
+    listen("destroyed", stopped);
+    contents.loadURL(url).then(() => settle(), (error: unknown) => {
+      const abort = error as { code?: unknown; url?: unknown } | null;
+      if (!settled && abort?.code === "ERR_ABORTED" && isShellSignal(abort.url)) {
+        signalled = error instanceof Error ? error : loadError(-3, "ERR_ABORTED", String(abort.url));
+        return;
+      }
+      settle(error instanceof Error ? error : new Error(String(error)));
+    });
+  });
 }
 
 /** 이 타이머 하나 때문에 앱이 종료를 미루지는 않는다. */
