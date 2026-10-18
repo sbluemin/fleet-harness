@@ -698,6 +698,15 @@ export function SegmentedThumb({
 }
 
 /**
+ * 막대 몫(`--m-chrome-top`)을 위 안쪽 여백으로 품는 떠 있는 줄(목차·탭 머리)의 제 높이 — 테두리 상자 높이에서 그 위 여백을 뺀다.
+ * 막대 높이가 바뀌는 커밋(막대 변형 전환)이 이 줄을 그린 컴포넌트의 커밋과 달라도 값이 흔들리지 않게, 스크롤 영역은 막대 몫과 이 값을 더해 쓴다.
+ * `useChromeHeightProperty`의 `measure`로 넘긴다.
+ */
+export function chromeRowHeight(node: HTMLElement): number {
+  return node.getBoundingClientRect().height - (Number.parseFloat(getComputedStyle(node).paddingTop) || 0);
+}
+
+/**
  * 떠 있는 모바일 크롬(상단 막대·화면 머리·입력 독)의 높이를 `target`의 CSS 사용자 속성으로 옮겨 적는다. 크롬 밑으로 흐르는 스크롤
  * 내용은 이 값만큼 크롬 뒤로 늘어나고 같은 값만큼 안쪽 여백을 두어, 스크롤 끝의 첫·마지막 줄이 크롬에 가리지 않는다. 큰 글자 배율이나
  * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`·
@@ -709,15 +718,6 @@ export function SegmentedThumb({
  * 프레임에 원천과 같은 깊이의 관찰 대상(예: 목차가 보는 문서 스크롤 영역)의 크기를 바꿔, 브라우저가 그 알림을 넘기지 못하고
  * `ResizeObserver loop completed with undelivered notifications` 오류를 낸다. 값이 그대로면 적지 않는다.
  */
-/**
- * 막대 몫(`--m-chrome-top`)을 위 안쪽 여백으로 품는 떠 있는 줄(목차·탭 머리)의 제 높이 — 테두리 상자 높이에서 그 위 여백을 뺀다.
- * 막대 높이가 바뀌는 커밋(막대 변형 전환)이 이 줄을 그린 컴포넌트의 커밋과 달라도 값이 흔들리지 않게, 스크롤 영역은 막대 몫과 이 값을 더해 쓴다.
- * `useChromeHeightProperty`의 `measure`로 넘긴다.
- */
-export function chromeRowHeight(node: HTMLElement): number {
-  return node.getBoundingClientRect().height - (Number.parseFloat(getComputedStyle(node).paddingTop) || 0);
-}
-
 export function useChromeHeightProperty(
   source: React.RefObject<HTMLElement | null>,
   target: React.RefObject<HTMLElement | null>,
