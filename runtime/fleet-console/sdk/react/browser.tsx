@@ -703,10 +703,21 @@ export function SegmentedThumb({
  * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`·
  * `display: none`)은 0이다. 원천이나 대상이 나중에 마운트·교체되면(조건부 머리) 다음 커밋에서 다시 붙고, 사라지면 속성을 지운다.
  *
- * 붙는 커밋에서는 그 자리에서 재서 적어 첫 그림부터 여백이 맞다. 그 뒤의 크기 변화는 관찰자 알림을 받은 다음 프레임에 적는다 — 알림 안에서
- * 적으면 바뀐 여백이 같은 프레임에 원천과 같은 깊이의 관찰 대상(예: 목차가 보는 문서 스크롤 영역)의 크기를 바꿔, 브라우저가 그 알림을
- * 넘기지 못하고 `ResizeObserver loop completed with undelivered notifications` 오류를 낸다. 값이 그대로면 적지 않는다.
+ * 이 훅을 쓰는 컴포넌트의 커밋마다 그 레이아웃 단계에서 다시 재서 적는다 — 붙는 순간(첫 그림)과 그 커밋이 바꾼 크롬(막대 숨김·조건부 머리·
+ * 탭 전환)은 같은 그림에서 여백이 맞는다. 크롬이 다른 컴포넌트의 상태로 바뀌면 그 상태를 이 컴포넌트도 구독해 같은 커밋에 서게 한다.
+ * React 밖의 크기 변화(글자 배율·입력창 성장·창 크기)는 관찰자 알림을 받은 다음 프레임에 적는다 — 알림 안에서 적으면 바뀐 여백이 같은
+ * 프레임에 원천과 같은 깊이의 관찰 대상(예: 목차가 보는 문서 스크롤 영역)의 크기를 바꿔, 브라우저가 그 알림을 넘기지 못하고
+ * `ResizeObserver loop completed with undelivered notifications` 오류를 낸다. 값이 그대로면 적지 않는다.
  */
+/**
+ * 막대 몫(`--m-chrome-top`)을 위 안쪽 여백으로 품는 떠 있는 줄(목차·탭 머리)의 제 높이 — 테두리 상자 높이에서 그 위 여백을 뺀다.
+ * 막대 높이가 바뀌는 커밋(막대 변형 전환)이 이 줄을 그린 컴포넌트의 커밋과 달라도 값이 흔들리지 않게, 스크롤 영역은 막대 몫과 이 값을 더해 쓴다.
+ * `useChromeHeightProperty`의 `measure`로 넘긴다.
+ */
+export function chromeRowHeight(node: HTMLElement): number {
+  return node.getBoundingClientRect().height - (Number.parseFloat(getComputedStyle(node).paddingTop) || 0);
+}
+
 export function useChromeHeightProperty(
   source: React.RefObject<HTMLElement | null>,
   target: React.RefObject<HTMLElement | null>,
@@ -715,17 +726,17 @@ export function useChromeHeightProperty(
 ): void {
   const measureRef = React.useRef(measure);
   measureRef.current = measure;
-  const bound = React.useRef<{ readonly node: HTMLElement; readonly host: HTMLElement; readonly release: () => void } | null>(null);
+  const bound = React.useRef<{ readonly node: HTMLElement; readonly host: HTMLElement; readonly sync: () => void; readonly release: () => void } | null>(null);
   const release = React.useCallback(() => {
     bound.current?.release();
     bound.current = null;
   }, []);
-  // 매 커밋 뒤 원천·대상의 정체만 견준다 — 같으면 관찰자를 그대로 둔다.
+  // 매 커밋 뒤 원천·대상의 정체를 견준다 — 같으면 관찰자를 그대로 두고 지금 높이만 다시 적는다.
   React.useLayoutEffect(() => {
     const node = source.current;
     const host = target.current;
     const current = bound.current;
-    if (current && current.node === node && current.host === host) return;
+    if (current && current.node === node && current.host === host) { current.sync(); return; }
     release();
     if (!node || !host) return;
     let written: string | null = null;
@@ -746,6 +757,10 @@ export function useChromeHeightProperty(
     bound.current = {
       node,
       host,
+      sync: () => {
+        if (frame !== null) cancelAnimationFrame(frame);
+        write();
+      },
       release: () => {
         observer?.disconnect();
         if (frame !== null) cancelAnimationFrame(frame);

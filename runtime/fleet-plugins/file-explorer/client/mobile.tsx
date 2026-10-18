@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createPortal } from "react-dom";
 
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
-import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
+import { chromeRowHeight, useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
@@ -197,10 +197,10 @@ export function MobileFileDocument(ctx: PaneContext) {
 
   const isCode = viewState.kind === "code";
   const isMarkdown = isCode && viewState.lang === "markdown";
-  // 문서는 호스트 상단 막대 뒤로 흐른다 — 글자 탭 줄(코드일 때만)은 막대와 한 덩어리로 떠 있고, 본문이 그 높이(`--fexp-m-head`)만큼 위를 비운다.
+  // 문서는 호스트 상단 막대 뒤로 흐른다 — 글자 탭 줄(코드일 때만)은 막대와 한 덩어리로 떠 있고, 본문이 막대 몫에 탭 줄의 제 높이(`--fexp-m-head`)를 더해 비운다.
   const docRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
-  useChromeHeightProperty(tabsRef, docRef, "--fexp-m-head");
+  useChromeHeightProperty(tabsRef, docRef, "--fexp-m-head", chromeRowHeight);
   return (
     <div ref={docRef} className="fexp-m fexp-m-doc" data-mobile-chrome="flow">
       {isCode ? (

@@ -5,7 +5,7 @@ import type { ConversationParticipant, ConversationSpeaker } from "@fleet-consol
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientMobileBarCapability, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
-import { useChromeHeightProperty, useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
+import { chromeRowHeight, useChromeHeightProperty, useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
 import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
@@ -192,12 +192,12 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
   ];
 
   // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비우고, 칩 화면은 자율 운영 행과
-  // 탭이 막대와 한 덩어리로 떠 있는 머리가 되어 탭 본문이 그 높이(--objectives-cm-head)만큼 위를 비운다. 재시도·오류 띠는 알림 띠라
+  // 탭이 막대와 한 덩어리로 떠 있는 머리가 되어 탭 본문이 막대 몫에 머리의 제 높이(--objectives-cm-head)를 더해 비운다. 재시도·오류 띠는 알림 띠라
   // 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
   const flow = !(on && (run?.phase === "retrying" || run?.phase === "error"));
   const rootRef = useRef<HTMLDivElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
-  useChromeHeightProperty(headRef, rootRef, "--objectives-cm-head");
+  useChromeHeightProperty(headRef, rootRef, "--objectives-cm-head", chromeRowHeight);
   return (
     <div ref={rootRef} className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
