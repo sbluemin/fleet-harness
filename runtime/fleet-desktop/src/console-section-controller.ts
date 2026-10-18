@@ -67,7 +67,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (next.size >= 100 || [...next.values()].some((target) => target.origin === targetOrigin)) return;
       const key = `${kind}:${recordId ?? targetOrigin}`;
       const id = ids.get(key) ?? randomUUID();
-      const entry: ConsoleSectionEntry = { id, kind, label: text(label, new URL(targetOrigin).host), address: new URL(targetOrigin).host, version: typeof version === "string" && version ? text(version, "", 64) || null : null, active: targetOrigin === current, home: targetOrigin === origin, status: state };
+      const entry: ConsoleSectionEntry = { id, kind, label: text(label, new URL(targetOrigin).host), address: new URL(targetOrigin).host, version: typeof version === "string" && version ? text(version, "", 64) || null : null, active: targetOrigin === current, home: targetOrigin === origin, status: kind === "remote" ? targets.get(id)?.entry.status ?? state : state };
       const candidate = { v: 1, expanded, entries: [...next.values()].map((target) => target.entry).concat(entry) };
       if (new TextEncoder().encode(JSON.stringify(candidate)).length > CONSOLE_SECTION_MAX_FRAME) return;
       next.set(id, { origin: targetOrigin, ...(recordId ? { recordId } : {}), entry });
@@ -85,9 +85,9 @@ export function createConsoleSectionController(deps: Dependencies) {
     targets = next;
     ids = nextIds;
     await publish();
-    if (!expanded) return;
+    // 닫힌 패널도 지금 서 있는 원격의 상태는 갱신한다. 다른 원격은 열었을 때만 확인한다.
     // 연결 확인도 집 API가 맡는다. 원본 DTO는 활성 문서에 보내지 않는다.
-    await Promise.all([...next].filter(([, target]) => target.recordId).map(async ([id, target]) => {
+    await Promise.all([...next].filter(([, target]) => target.recordId && (expanded || target.origin === current)).map(async ([id, target]) => {
       try {
         const reach = await json(`/api/v1/remote-hosts/${encodeURIComponent(target.recordId!)}/probes`, { method: "POST" });
         if (epoch !== generation || targets !== next) return;

@@ -1255,10 +1255,10 @@
 .console-shell.is-operations-view .side-bar-top-strip > * { pointer-events: auto; }
 .console-shell.is-operations-view .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
 
-.console-shell.is-operations-view .side-bar-shared {
+.console-shell.is-operations-view .side-bar-wide {
   margin-top: var(--conversation-top-row);
 }
-.console-shell.is-operations-view .operations-side-bar.is-compact .side-bar-shared {
+.console-shell.is-operations-view .operations-side-bar.is-compact .side-bar-wide {
   margin-top: 0;
 }
 .console-shell.is-operations-view .operations-side-bar-chips {

@@ -1344,8 +1344,15 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
+  gap: max(0px, var(--command-band-entry-gap, var(--space-1)));
 }
+
+.scuttlebutt-dock-glyph + .scuttlebutt-dock-glyph {
+  margin-left: min(0px, var(--command-band-entry-gap, var(--space-1)));
+}
+
+.scuttlebutt-dock-glyph:hover,
+.scuttlebutt-dock-glyph:focus-visible { z-index: 1; }
 
 .scuttlebutt-dock-glyph {
   position: relative;
