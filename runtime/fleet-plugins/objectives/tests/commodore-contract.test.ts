@@ -32,7 +32,7 @@ import type { CommodoreAttachmentReader } from "../server/console-tools.js";
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
-function harness(now?: () => number) {
+function harness(now?: () => number, maxRetainedImageBytes?: number) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-"));
   dirs.push(dir);
   const objectivesDir = path.join(dir, "workspaces", "project", "objectives");
@@ -50,7 +50,7 @@ function harness(now?: () => number) {
     },
   } as unknown as FleetPluginServerContext;
   let clock = 1_000;
-  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++) });
+  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++), ...(maxRetainedImageBytes !== undefined ? { maxRetainedImageBytes } : {}) });
   const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}, method?: string) => {
     routeBody = body;
     routeResult = { status: 0, value: null };
@@ -173,14 +173,14 @@ describe("commodore theater state", () => {
     expect(reopened.transcriptAppend("t1", { kind: "result", outcome: "ok", costUsd: 0.2 }).seq).toBe(6);
     expect((await h.route("commodore/retry", { theaterId: "t1" }))).toMatchObject({ status: 409, value: { error: "commodore_not_retrying" } });
   });
-  it("contains message previews and deletes copies no longer retained by the transcript", async () => {
-    const h = harness();
+  it("contains message previews and bounds copies by retained bytes and transcript history", async () => {
+    const png = Buffer.from("iVBORw0KGgo=", "base64");
+    const h = harness(undefined, png.byteLength * 2);
     const files = createLaunchAttachmentStore({ dataDir: h.objectivesDir });
     const attachments = files.forPlugin("objectives");
     Object.assign(h.ctx.host, { attachments });
     h.store.setAutonomy("t1", true);
     const hooks = { run: () => ({ phase: "idle" as const }) };
-    const png = Buffer.from("iVBORw0KGgo=", "base64");
     const send = async () => {
       const { id } = files.save(png);
       const result = await h.route("commodore/message", { theaterId: "t1", text: "Image", attachmentIds: [id] }, hooks);
@@ -216,12 +216,24 @@ describe("commodore theater state", () => {
       expect(fs.readdirSync(outside)).toEqual(["secret.png"]);
       fs.unlinkSync(images);
       fs.renameSync(`${images}-saved`, images);
+      // 크기 합산은 링크를 따라가지 않는다. 텍스트가 작아도 사본 두 장의 총량 상한은 즉시 적용한다.
+      fs.symlinkSync(path.join(outside, "secret.png"), path.join(path.dirname(file), "outside.png"));
+      const middle = await send();
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(200);
+      // mtime 을 뒤집어도 메시지 seq 가 가장 오래된 사본을 먼저 고른다. 방금 보낸 사본은 보존한다.
+      fs.utimesSync(path.dirname(file), new Date("2099-01-01"), new Date("2099-01-01"));
+      const newest = await send();
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(404);
+      expect((await h.route("commodore/attachment", middle.query)).status).toBe(200);
+      expect((await h.route("commodore/attachment", newest.query)).status).toBe(200);
+      expect(fs.readdirSync(images).sort()).toEqual([middle.entry.messageId, newest.entry.messageId].sort());
+      expect(fs.readFileSync(path.join(outside, "secret.png"))).toEqual(png);
       // 기록의 앞 절반이 떨어질 때 그 메시지 사본만 거둔다. 아직 남은 메시지의 사본은 보존한다.
       for (let index = 0; index < 240; index += 1) h.store.transcriptAppend("t1", { kind: "text", text: "x".repeat(MAX_TRANSCRIPT_TEXT) });
       const recent = await send();
       for (let index = 0; index < 50; index += 1) h.store.transcriptAppend("t1", { kind: "text", text: "x".repeat(MAX_TRANSCRIPT_TEXT) });
-      expect(fs.existsSync(path.dirname(file))).toBe(false);
-      expect((await h.route("commodore/attachment", old.query)).status).toBe(404);
+      expect(fs.existsSync(path.join(images, newest.entry.messageId))).toBe(false);
+      expect((await h.route("commodore/attachment", newest.query)).status).toBe(404);
       expect((await h.route("commodore/attachment", recent.query))).toMatchObject({ status: 200, value: { bytes: png } });
       h.store.transcriptClear("t1");
       expect((await h.route("commodore/attachment", recent.query)).status).toBe(404);

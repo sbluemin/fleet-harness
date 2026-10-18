@@ -52,6 +52,8 @@ export interface CommodoreStoreOptions {
   readonly theaterIds?: () => readonly string[];
   readonly emit: (event: CommodoreEvent) => void;
   readonly now?: () => number;
+  /** 기록 사본의 Theater 별 총량 — 생략하면 제품 기본 상한이다. */
+  readonly maxRetainedImageBytes?: number;
 }
 
 export interface CommodoreTranscriptPage {
@@ -156,6 +158,9 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     const dir = options.dirOf(theaterId);
     if (!dir) throw new ObjectiveStoreError("theater_unavailable");
     return dir;
+  }, {
+    maxBytes: options.maxRetainedImageBytes,
+    messageSeqs: (theaterId) => new Map(readTranscriptFile(path.join(dirFor(theaterId), TRANSCRIPT_FILE)).flatMap((entry) => entry.kind === "message" && entry.messageId ? [[entry.messageId, entry.seq] as const] : [])),
   });
   const pruneImages = (theaterId: string, kept?: ReadonlySet<string>) => {
     try { images.prune(theaterId, kept); }
