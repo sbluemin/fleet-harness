@@ -1193,7 +1193,9 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 :root[data-view-mode="mobile"] button.group-relay-row:is(:hover, :active) .group-relay-chip { background-color: var(--m-selected); background-image: none; }
 :root[data-view-mode="mobile"] .group-relay-chip .group-chat-mark { width: 24px; height: 24px; }
 :root[data-view-mode="mobile"] .group-relay-chip-name { font-size: var(--m-fs-secondary); color: var(--m-text); }
-:root[data-view-mode="mobile"] .group-relay { background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+/* 떠 있는 상단 막대(.mobile-frame-head, z-index 2)는 대화 화면 위에 남아야 제목 pill 이 쌍으로 바뀌는 모습이 보인다 — 층은 그 아래(1)에
+   서고, 같은 1 인 아래 독(.group-chat-dock)보다는 문서 순서가 뒤라 그 위를 덮는다. */
+:root[data-view-mode="mobile"] .group-relay { z-index: 1; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
 :root[data-view-mode="mobile"] .group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-22%); }
 /* 폰 배치의 상단 막대는 화면 위에 떠 있다(--m-chrome-top). 대화 화면은 그 뒤까지 차지만, 목록의 첫 줄과 대체 칩은 막대 몫만큼 내려 서서
    막대·제목 pill 에 가리지 않는다 — 그룹 대화 기록(.group-chat-log)과 같은 규칙이다. 대체 칩이 서면 막대 몫은 칩이 진다. */
