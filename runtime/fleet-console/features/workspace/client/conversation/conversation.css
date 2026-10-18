@@ -126,6 +126,10 @@
 }
 
 /* ── 가운데 대화 칸 ─────────────────────────────────────────────────────── */
+/* 도구 분할이 칸 오른쪽에서 비킨 폭(ConversationStage 가 심는다). 칸의 right 와 같은 곡선으로 함께 옮겨 가야 맨 위 줄에 걸친 pill 줄의
+   오른쪽 끝이 전이 중에도 작업 영역 오른쪽 끝에 머문다 — 등록해 두어야 값이 전이된다. pill 줄이 물려받는다. */
+@property --conversation-split-right { syntax: "<length>"; inherits: true; initial-value: 0px; }
+
 .conversation-stage {
   position: absolute;
   top: 0;
@@ -134,7 +138,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring);
+  transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring), --conversation-split-right var(--duration-base) var(--ease-spring);
 }
 
 .conversation-column {
@@ -146,11 +150,13 @@
 }
 
 /* 가운데 열의 맨 위 줄 — 레이아웃에서 자리를 차지하지 않는 투명 오버레이다. pill 과 단추만 그 위에 떠 있고, 대화는 창 맨 위(0px)부터
-   그 밑으로 흘러 올라간다(Grok Bot). 빈 자리는 클릭을 내용에 넘긴다 — Desktop 에서는 그 빈 자리가 창을 끄는 영역이다. */
+   그 밑으로 흘러 올라간다(Grok Bot). 빈 자리는 클릭을 내용에 넘긴다 — Desktop 에서는 그 빈 자리가 창을 끄는 영역이다.
+   도구 분할은 맨 위 줄 아래만 쓰므로(workbench.css) 이 줄은 칸이 비킨 분할 폭만큼 오른쪽으로 더 뻗어 작업 영역 맨 위 줄(.conversation-band)
+   전체를 덮는다 — pill·도구모음은 칸이 아니라 그 줄의 가운데에 선다. 분할이 열리고 닫혀도 자리가 그대로다. */
 .conversation-pill-row {
   position: absolute;
   top: 0;
-  right: 0;
+  right: calc(-1 * var(--conversation-split-right, 0px));
   left: 0;
   z-index: 3;
   display: flex;
@@ -159,9 +165,9 @@
   gap: var(--space-2);
   min-width: 0;
   height: var(--conversation-top-row);
-  /* 양쪽을 같게 비워 pill 이 가운데에 남는다 — 사용량 캡슐이 이 줄에 걸치는 몫이다. 그 몫은 캡슐의 오른쪽 여백·Windows 캡션 버튼
-     몫까지 이미 센 값이라(ConversationQuota) 캡션 몫을 다시 더하지 않는다. 캡슐이 없을 때만 이 칸이 직접 지는 캡션 몫이 남는다. */
-  padding: 0 max(var(--conversation-quota-space), var(--conversation-stage-caption));
+  /* 양쪽을 같게 비워 pill 이 가운데에 남는다 — 사용량 캡슐이 이 줄 오른쪽 끝에서 차지하는 몫이다. 그 몫은 캡슐의 오른쪽 여백·Windows
+     캡션 버튼 몫까지 이미 센 값이라(ConversationQuota) 캡션 몫을 다시 더하지 않는다. 캡슐이 없을 때만 캡션 몫이 남는다. */
+  padding: 0 max(var(--conversation-quota-space), var(--conversation-caption-reserve));
   box-sizing: border-box;
   pointer-events: none;
 }
@@ -1152,8 +1158,8 @@
 
 /* ── 맨 위 줄과 사용량 캡슐 ─────────────────────────────────────────────────────────
    맨 위 줄(.conversation-band)은 작업 영역(왼쪽·오른쪽 사이드바 사이) 전체 폭이다 — 도구 분할은 그 아래만 쓴다(workbench.css).
-   pill 은 가운데 칸에서 대상만 말한다 — 사용량(계정 전역)은 이 줄 오른쪽 끝에 따로 떠 있다. pill 줄은 캡슐이 가운데 칸 머리 줄에
-   걸치는 몫을 양쪽에 같게 비워 pill 이 가운데에 남고 둘이 겹치지 않는다. 실제로 남는 자리가 모자랄 때만 단계를 낮춘다:
+   pill 은 이 줄 가운데에서 대상만 말한다 — 사용량(계정 전역)은 이 줄 오른쪽 끝에 따로 떠 있다. pill 줄(이 줄 전체 폭)은 캡슐 몫을
+   양쪽에 같게 비워 pill 이 가운데에 남고 둘이 겹치지 않는다. 실제로 남는 자리가 모자랄 때만 단계를 낮춘다:
    전체(두 줄 값) → 표식만 → 첫 칸 하나(data-tier, quota.css). */
 .console-body.is-conversation {
   /* 이 줄 오른쪽 끝이 Windows 캡션 버튼에게 비워 주는 폭 — 아래 Desktop 셸 규칙이 심는다. */
@@ -1161,11 +1167,9 @@
 }
 
 .conversation-stage {
-  /* 사용량 캡슐이 이 칸 머리 줄에 걸치는 폭(캡슐 폭 + 오른쪽 여백·캡션 몫 + 틈 − 분할 폭) — ConversationQuota 가 재어 심는다
+  /* 사용량 캡슐이 맨 위 줄 오른쪽 끝에서 차지하는 폭(캡슐 폭 + 오른쪽 여백·캡션 몫 + 틈) — ConversationQuota 가 재어 심는다
      (그 전까지는 첫 칸 하나 몫). */
   --conversation-quota-space: 56px;
-  /* 이 칸이 창 오른쪽 끝에 닿을 때 직접 지는 캡션 몫(Desktop 셸 규칙). */
-  --conversation-stage-caption: 0px;
 }
 
 .conversation-band {
@@ -1447,8 +1451,8 @@ html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversat
    drag 가 캡슐의 no-drag 를 다시 덮어 클릭이 창 끌기로 먹힌다. pill 줄의 drag 상자를 캡슐 몫(--conversation-quota-space) 앞에서
    끝내고 그만큼 오른쪽 안쪽 여백을 줄여, 내용 상자(가운데 pill 자리)는 그대로 둔 채 두 사각형이 겹치지 않게 한다. */
 html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-pill-row {
-  right: var(--conversation-quota-space);
-  padding-right: max(0px, var(--conversation-stage-caption) - var(--conversation-quota-space));
+  right: calc(var(--conversation-quota-space) - var(--conversation-split-right, 0px));
+  padding-right: max(0px, var(--conversation-caption-reserve) - var(--conversation-quota-space));
 }
 
 html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-quota,
@@ -1480,12 +1484,6 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-
 
 html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) {
   --conversation-caption-reserve: var(--conversation-caption-width);
-}
-
-/* 가운데 칸이 창 오른쪽 끝에 닿는 때(도구 분할이 옆에 서지 않았을 때)만 그 칸이 띠 몫을 진다 — 분할이 옆에 서면 띠는 분할 위
-   맨 위 줄에 앉는다. */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)):not(:has(.conversation-workbench:is([data-mode="side"], [data-mode="stacked"]))) .conversation-stage {
-  --conversation-stage-caption: var(--conversation-caption-width);
 }
 
 /* 세부 정보가 열렸으면 캡션 띠는 스크롤하지 않는 패널 맨 위 줄에 앉는다. 닫히면 띠가 가운데 열 위에 서는데, 그 줄 밑으로 흘러
