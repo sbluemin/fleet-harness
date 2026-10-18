@@ -8,7 +8,7 @@ When an Objective has an implementer and a separate real-app verifier, use this 
 
 - **Preparation mission:** assign it to the verifier with **no implementation predecessor**. The verifier prepares one owned environment while implementation proceeds.
 - **Implementation mission:** require affected builds, typechecks, relevant tests, and a ready commit. Do **not** add the verifier's same real-app acceptance scenarios to the implementer's completion conditions. Keep any necessary implementation-time UI diagnosis narrow, rather than duplicating the acceptance matrix.
-- **Verification mission:** its predecessors are **only the missions producing the implementation commit to check** (the integration mission when applicable). The same verifier finishes its own preparation before executing that commit's scenarios; do not make preparation wait for implementation.
+- **Verification mission:** its predecessors are **only the preparation mission and the missions producing the implementation commit to check** (the integration mission when applicable), assigned to the same verifier. Board readiness follows declared predecessors only, not a shared assignee, so list preparation explicitly; do not make preparation wait for implementation.
 
 Prepare a verifier-owned [detached comparison checkout](../../git-worktree/references/baseline.md#create) at the selected baseline SHA, install dependencies, and prepare required baseline builds. Keep its source read-only. Do not share or build in the implementer's checkout: concurrent writes can contaminate the observed `dist/` ([record the reproduced build](#record-what-is-being-reproduced)).
 
