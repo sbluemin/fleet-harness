@@ -538,7 +538,7 @@ describe("Instrument core design contract", () => {
 
     expect(layout).not.toContain(".command-band-mode-seg");
     expect(layout).not.toContain(".command-band-mode-tool");
-    expect(components).toContain('.host-switcher-row:hover:not([aria-disabled="true"])');
+    expect(source("../../../features/remote-access/client/console-section.css")).toContain('.console-section-row:hover:not([aria-disabled="true"])');
     expect(components).toContain('.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"])');
     expect(explorer).toContain('.fexp-view-mode button:hover:not(:disabled):not([aria-pressed="true"])');
     expect(repository).toContain(".repository-toggle-btn:hover:not(.is-active)");
@@ -2415,14 +2415,14 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/remote-[^\n{]*\{[^}]*#[0-9a-f]{3,8}/i);
   });
 
-  it("keeps the access-link entry in the host box and out of Settings", () => {
-    const systemCluster = source("chrome/components/command-band-system-cluster.tsx");
+  it("keeps the access-link entry in the console section and out of Settings", () => {
+    const consoleSection = source("../../../features/remote-access/client/console-section.tsx");
     const settings = source("../../../features/remote-access/client/settings-section.tsx");
     const dialog = source("../../../features/remote-access/client/add-host-dialog.tsx");
 
     // 추가는 관리보다 위에 선다 — 목록을 고르러 온 사람이 먼저 만나는 것은 새 콘솔을 붙이는 일이다.
-    const addAt = systemCluster.indexOf('t("chrome.hosts.add")');
-    const manageAt = systemCluster.indexOf('t("chrome.hosts.manage")');
+    const addAt = consoleSection.indexOf('t("chrome.hosts.add")');
+    const manageAt = consoleSection.indexOf('t("chrome.hosts.manage")');
     expect(addAt).toBeGreaterThan(-1);
     expect(manageAt).toBeGreaterThan(addAt);
 

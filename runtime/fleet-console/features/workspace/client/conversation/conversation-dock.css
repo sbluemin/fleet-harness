@@ -89,9 +89,9 @@
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-heading { padding: 8px 12px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-sm); color: var(--text-secondary); }
-.conversation-dock-menu > :is(.host-switcher, .command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
+.conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
 .conversation-dock-menu > .conversation-dock-view,
-.conversation-dock-menu > :is(.host-switcher, .command-band-system-anchor, .conversation-dock-settings) > button {
+.conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button {
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -108,15 +108,15 @@
   cursor: pointer;
 }
 .conversation-dock-menu > .conversation-dock-view:hover,
-.conversation-dock-menu > :is(.host-switcher, .command-band-system-anchor, .conversation-dock-settings) > button:hover { background: var(--wash-hover); }
+.conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button:hover { background: var(--wash-hover); }
 .conversation-dock-menu > .conversation-dock-view > svg,
-.conversation-dock-menu > :is(.host-switcher, .command-band-system-anchor, .conversation-dock-settings) > button > svg { width: 18px; height: 18px; flex: none; }
+.conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button > svg { width: 18px; height: 18px; flex: none; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
 .conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
 .conversation-dock-divider { height: 1px; margin: 7px 4px; background: var(--popover-divider); }
 .conversation-dock :is(button, a):focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
-/* 호스트·도움말 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */
-.conversation-dock-menu > :is(.host-switcher, .command-band-system-anchor) > button[aria-expanded="true"] { background: var(--wash-hover); }
+/* 도움말 항목은 옆으로 펼치는 서브메뉴다. 판이 서 있는 동안 항목은 겨눔 워시를 입은 채 남아 어느 줄의 판인지 말한다. */
+.conversation-dock-menu > :is(.command-band-system-anchor) > button[aria-expanded="true"] { background: var(--wash-hover); }
 /* 업데이트 말풍선은 도움말 목록이 닫혀 있는 동안 그 항목에 붙는다. 독은 화면 아래라 아래로 열면 창 밖으로 나간다.
    도움말 목록 자체는 옆 서브메뉴라 여기 넣지 않는다. 환경 진단 팝오버는 독 메뉴에 없다 — 브랜드는 사이드바 위다. */
 .conversation-dock-menu .command-band-update-bubble {

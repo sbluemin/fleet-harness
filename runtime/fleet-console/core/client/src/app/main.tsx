@@ -35,6 +35,9 @@ import "../../../../features/settings/client/settings-pane.css";
 import { App } from "./app.js";
 import { readHostPickerSurface } from "../chrome/components/command-band-system-cluster.js";
 import { HostPickerScreen } from "../../../../features/remote-access/client/host-picker-surface.js";
+import { ConsoleSection } from "../../../../features/remote-access/client/console-section.js";
+import { CONSOLE_SECTION_SURFACE } from "@fleet-console/protocol/desktop/console-section";
+import "../../../../features/remote-access/client/console-section.css";
 import { fetchGlobalSettingsState } from "../../../../features/settings/client/global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { connectOperationsSse, installOperationsSseWake } from "../integration/operations-sse.js";
@@ -101,16 +104,18 @@ const app = document.querySelector("#app");
  * 판정은 주소만 본다. 설정 조회를 기다리지 않으므로 이 갈래는 레지스트리와 목록을 시작하지 않는다.
  */
 const hostPicker = app ? readHostPickerSurface(location.search) : null;
+const consoleSection = new URLSearchParams(location.search).get("desktop-surface") === CONSOLE_SECTION_SURFACE;
+const auxiliary = hostPicker !== null || consoleSection;
 const desktopShell = document.documentElement.getAttribute("data-desktop-shell") === "true";
 // 목록이 끝나지 않아도 셸 아닌 기능(SSE·플러그인 설치)은 결국 서야 한다. ready가 그 전에 차선을 연다.
-if (app && !hostPicker && desktopShell) {
+if (app && !auxiliary && desktopShell) {
   installBootFetchGate();
   armBootLane();
   window.setTimeout(openBootLane, 8_000);
 }
 
-const registryPromise = app && !hostPicker ? loadPluginRegistry() : null;
-if (app && !hostPicker) startBootSnapshots();
+const registryPromise = app && !auxiliary ? loadPluginRegistry() : null;
+if (app && !auxiliary) startBootSnapshots();
 
 let migration = Promise.resolve(false);
 try {
@@ -125,7 +130,10 @@ try {
   // 서버 미응답 시 기본 Theme 및 Manrope UI font를 유지한다.
 }
 
-if (app && hostPicker) {
+if (app && consoleSection) {
+  document.documentElement.dataset.consoleSection = "true";
+  createRoot(app).render(<StrictMode><BrowserRouter basename="/console"><ConsoleSection resident /></BrowserRouter></StrictMode>);
+} else if (app && hostPicker) {
   document.documentElement.dataset.hostPicker = "true";
   createRoot(app).render(
     <StrictMode>

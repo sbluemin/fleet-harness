@@ -1,24 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
 import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
-import { desktopPickerUrl, isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_DISMISS, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
+import { isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
 import { UpdateNoticeBubble, useUpdateNotice } from "./update-notice-bubble.js";
-import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type LocalConsoleState, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
+import { type LocalConsole, type RemoteHost, type RemoteHostReach } from "../../../../../features/remote-access/client/remote-hosts.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT, type CoreMessageKey } from "../../i18n/index.js";
-import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
 import { COMMISSIONING_SEEN_KEY, openWhatsNew, setState } from "../../integration/store.js";
-import { AddHostDialog } from "../../../../../features/remote-access/client/add-host-dialog.js";
 import { forgetReplayableOnboarding } from "../../../../../features/onboarding/client/onboarding-host.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY } from "../../../../../features/onboarding/client/seen-store.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
-import { ENABLED_MENU_ITEM_SELECTOR, useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
+import { useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 import { useSideSubmenu, type SideSubmenuGroup } from "./use-side-submenu.js";
 
 export { placeSubmenu, submenuContentHeight, useSideSubmenuGroup, type SideSubmenuGroup, type SubmenuPlacement } from "./use-side-submenu.js";
@@ -96,21 +93,6 @@ function parsePickerAnchor(value: string | null): HostPickerAnchor | null {
   return { left, top, right, bottom, viewportWidth, viewportHeight };
 }
 
-/** 칩의 자리를 신호에 실을 모양으로. 뷰포트 밖으로 삐져나온 부분은 잘라 낸다. */
-function pickerAnchorOf(trigger: HTMLElement | null): string | undefined {
-  if (trigger === null) return undefined;
-  const width = Math.round(window.innerWidth);
-  const height = Math.round(window.innerHeight);
-  const rect = trigger.getBoundingClientRect();
-  const clamp = (value: number, max: number) => Math.min(max, Math.max(0, Math.round(value)));
-  return [clamp(rect.left, width), clamp(rect.top, height), clamp(rect.right, width), clamp(rect.bottom, height), width, height].join(",");
-}
-
-/** 닫힌 메뉴가 한 프레임 칠해진 뒤에 실행한다. 첫 rAF는 칠하기 전, 둘째는 그 칠이 끝난 프레임이다. */
-function afterNextPaint(run: () => void): void {
-  window.requestAnimationFrame(() => { window.requestAnimationFrame(run); });
-}
-
 function isConsoleOriginShape(origin: string): boolean {
   try {
     const parsed = new URL(origin);
@@ -138,503 +120,10 @@ export function ConsoleHelpMenu({ menuItem = false, sideSubmenuGroup }: { readon
   );
 }
 
-/**
- * 호스트 스위처. 목록은 이 콘솔이 들고 있고, 고른 호스트의 `/console/`로 그냥 항해한다 —
- * 각 콘솔이 자기 UI를 서빙하므로 프록시가 없고, 그래서 목록 자체가 호스트마다 다를 수 있다.
- *
- * 그래서 "이 컴퓨터" 한 줄만은 콘솔이 아니라 셸에게서 온다. 원격 콘솔이 서빙한 화면은 자기가
- * 떠나온 곳을 알 수 없으므로, 그 줄이 없으면 돌아갈 길이 사라진다.
- *
- * 닿는지 여부는 열어 볼 때 확인한다. 목록에 든 것만으로 매번 남의 기계를 두드리면, 보지도
- * 않는 화면 때문에 조용한 네트워크 소음이 계속 흐른다.
- */
-export function HostSwitcher({ picker, menuItem = false, sideSubmenuGroup, onChosen }: { readonly picker?: HostPickerContext; readonly menuItem?: boolean; readonly sideSubmenuGroup?: SideSubmenuGroup; readonly onChosen?: () => void } = {}) {
-  const t = useT();
-  const state = useConsoleState();
-  const hosts = useRemoteHosts();
-  const shellHome = useDesktopHomeOrigin();
-  // 원격으로 건너가는 일은 셸의 인증서 배관을 거쳐야 한다. 브라우저 단독에서는 내주지 않는다.
-  const canOpenRemote = isDesktopShell();
-  const navigate = useNavigate();
-  /** 집이 펼친 목록으로 서빙된 화면. 칩은 없고, 판은 처음부터 열려 있다. */
-  const inPicker = picker !== undefined;
-  /**
-   * 집이 펼친 목록은 집이 서빙하므로, 셸의 답이 오기 전에도 이 화면의 주인이 곧 집이다 — 그 답을
-   * 기다리면 판이 처음 서는 순간 돌아갈 줄이 없다. 피커 밖에서는 이렇게 짐작하지 않는다: 셸이 있는데
-   * 집을 모르는 동안 손님 콘솔을 집으로 세우면 안 된다(아래 `standingAtHome`).
-   */
-  const homeOrigin = shellHome.origin ?? (inPicker ? location.origin : null);
-  const [open, setOpen] = useState(inPicker);
-  const [addOpen, setAddOpen] = useState(false);
-  const [local, setLocal] = useState<readonly LocalConsole[]>([]);
-  const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const menuItems = () => Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>(ENABLED_MENU_ITEM_SELECTOR) ?? []);
-  /**
-   * 메뉴 안의 한 항목으로 선 스위처는 옆으로 펼치는 서브메뉴다 — 겨누거나 누르면 항목 옆에 판이 서고,
-   * →·Enter로 들어가 ←·Esc로 나온다. 도구모음 칩은 그대로 아래로 매달리는 판이다.
-   */
-  const submenu = menuItem && !inPicker;
-  /** 지금 목록의 주인이 집인가 — 겨눔 타이머가 터지는 순간의 값을 읽는다(그 사이 집 주소가 도착할 수 있다). */
-  const pickerHomeRef = useRef<string | null>(null);
-  /** → 가 부르는 열기. 집의 덮개로 보내는 동선은 아래에서 채운다. */
-  const activateRef = useRef<() => void>(() => {});
-  /** 판 안에서 방향키로 옮기면 늦게 도착한 현재 행이 그 포커스를 덮지 않게 한다. */
-  const panelArrowRef = useRef<() => void>(() => {});
-  const side = useSideSubmenu({
-    enabled: submenu,
-    open,
-    setOpen,
-    rootRef,
-    triggerRef,
-    panelRef,
-    allowHoverOpen: () => pickerHomeRef.current === null,
-    suspended: addOpen,
-    activate: () => activateRef.current(),
-    onPanelArrow: () => panelArrowRef.current(),
-    // 늦은 현재 행까지 이 스위처의 포커스 effect가 맡는다. 훅이 먼저 첫 행에 포커스를 주면 그 대기가 끊긴다.
-    manageInitialFocus: false,
-    group: submenu ? sideSubmenuGroup : undefined,
-  });
-  const focusOnOpenRef = side.focusOnOpenRef;
-  /**
-   * 목록을 접는 일. 집이 펼친 판은 이 화면의 상태가 아니라 셸이 얹은 덮개라, 접겠다는 말도
-   * 셸에게 가야 한다 — 여기서 state만 내리면 빈 덮개가 콘솔을 가린 채 남는다.
-   */
-  const dismiss = () => {
-    if (inPicker) location.assign(desktopPickerUrl(location.origin, PICKER_SURFACE_DISMISS));
-    else setOpen(false);
-  };
-
-  /**
-   * 이 화면을 내주는 콘솔에게 목록을 물어도 되는가.
-   *
-   * 원격 콘솔에게는 묻지 않는다. 그 두 경로는 루프백 전용이라 어차피 401이지만, 답이 없다는
-   * 것과 묻지 않는다는 것은 다르다 — 남의 기계에 내 목록을 묻는 요청 자체가 남지 않아야 한다.
-   * 집이 펼친 목록(피커)은 집이 서빙하므로 이 판정이 참이고, 평소대로 묻는다.
-   */
-  const servedFromLoopback = isLoopbackOrigin(location.origin);
-  /**
-   * 저장·주변 목록의 첫 답이 왔는가. 그 전에 빈 목록을 보고 "목록에 없다"고 말하면 저장된 콘솔도 잠깐
-   * 미저장으로 읽힌다. 묻지 않는 콘솔은 기다릴 답이 없고, 실패한 물음도 답으로 친다 — 아니면 그 줄이
-   * 영영 서지 않는다.
-   */
-  const [listsSettled, setListsSettled] = useState(!servedFromLoopback);
-
-  useEffect(() => {
-    if (!servedFromLoopback) return;
-    const controller = new AbortController();
-    void Promise.allSettled([
-      refreshRemoteHosts(controller.signal),
-      fetchLocalConsoles(controller.signal).then(setLocal),
-    ]).then(() => { if (!controller.signal.aborted) setListsSettled(true); });
-    return () => controller.abort();
-  }, [servedFromLoopback]);
-
-  useEffect(() => {
-    if (!open || !servedFromLoopback) return;
-    const controller = new AbortController();
-    // 열 때마다 다시 본다 — 이 기계의 콘솔은 조용히 뜨고 진다.
-    void fetchLocalConsoles(controller.signal).then(setLocal).catch(() => undefined);
-    for (const host of hosts) {
-      void probeRemoteHost(host.id, controller.signal)
-        .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
-        .catch(() => undefined);
-    }
-    return () => controller.abort();
-  }, [open, hosts, servedFromLoopback]);
-
-  // 판을 닫는 길은 목록을 어디서 읽어 왔는지와 무관하다 — 묻지 않는 콘솔에서도 판은 닫혀야 한다.
-  // 열리면 현재 행(없으면 첫 행)으로 포커스를 옮기고, 같은 밴드의 Theater 메뉴와 같은 방향키
-  // 문법을 쓴다. 현재 행은 선택 대상은 아니어도 위치 기준이므로 focus 목록에는 남는다.
-  useEffect(() => {
-    // Add Host는 자기 모달·키 문법을 소유한다. 덮개 picker는 그 뒤에서도 open이므로 여기서
-    // 명시적으로 물러나지 않으면 입력의 Home/End와 모달의 Escape를 메뉴가 가로챈다.
-    if (!open || addOpen) return;
-    const panel = panelRef.current;
-    if (panel === null) return;
-    let initialFocusPending = focusOnOpenRef.current;
-    let fallbackFocus: HTMLButtonElement | null = null;
-    let focusedCurrent: HTMLButtonElement | null = null;
-    panelArrowRef.current = () => {
-      initialFocusPending = false;
-      fallbackFocus = null;
-      focusedCurrent = null;
-    };
-    const focusInitialItem = () => {
-      const items = menuItems();
-      const current = items.find((item) => item.getAttribute("aria-checked") === "true");
-      // 목록 응답이 늦으면 임시 current 행이 실제 저장 행으로 교체된다. 사용자가 아직 움직이지
-      // 않았다면 끊긴 기준점을 새 current로 이어 주되, 한 번 직접 이동한 포커스는 덮어쓰지 않는다.
-      if (current && (initialFocusPending || (focusedCurrent !== null && !focusedCurrent.isConnected))) {
-        initialFocusPending = false;
-        fallbackFocus = null;
-        focusedCurrent = current;
-        current.focus();
-        return;
-      }
-      if (!current && initialFocusPending && items[0] && !panel.contains(document.activeElement)) {
-        fallbackFocus = items[0];
-        fallbackFocus.focus();
-      }
-    };
-    const frame = window.requestAnimationFrame(focusInitialItem);
-    const observer = new MutationObserver(focusInitialItem);
-    observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "aria-disabled"] });
-    const onPointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (panel.contains(target)) {
-        initialFocusPending = false;
-        fallbackFocus = null;
-        focusedCurrent = null;
-        return;
-      }
-      // 서브메뉴의 바깥 누름은 useSideSubmenu가 접는다. 여기는 도구모음 판과 집의 덮개만.
-      if (submenu) return;
-      if (!triggerRef.current?.contains(target)) dismiss();
-    };
-    const onFocus = (event: FocusEvent) => {
-      const target = event.target as Node;
-      if (target === fallbackFocus || target === focusedCurrent) return;
-      initialFocusPending = false;
-      fallbackFocus = null;
-      focusedCurrent = null;
-    };
-    const onKey = (event: KeyboardEvent) => {
-      // 서브메뉴의 ←·Esc·방향키는 useSideSubmenu가 맡는다. 여기 남기면 한 키에 두 번 움직인다.
-      if (submenu) return;
-      const inPanel = panel.contains(document.activeElement) || panel.contains(event.target as Node);
-      // 메뉴 항목에서 부른 덮개는 ←로도 접힌다 — 들어온 방향으로 나간다.
-      if (event.key === "Escape" || (event.key === "ArrowLeft" && inPanel && picker?.side === true)) {
-        event.preventDefault();
-        event.stopPropagation();
-        dismiss();
-        triggerRef.current?.focus();
-        return;
-      }
-      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
-      if (!inPanel) return;
-      const items = menuItems();
-      if (items.length === 0) return;
-      event.preventDefault();
-      initialFocusPending = false;
-      fallbackFocus = null;
-      focusedCurrent = null;
-      const current = items.findIndex((item) => item === document.activeElement);
-      const next = event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? items.length - 1
-          : event.key === "ArrowDown"
-            ? (current + 1) % items.length
-            : current <= 0 ? items.length - 1 : current - 1;
-      items[next]?.focus();
-    };
-    document.addEventListener("pointerdown", onPointer, true);
-    document.addEventListener("focusin", onFocus);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      panelArrowRef.current = () => {};
-      window.cancelAnimationFrame(frame);
-      observer.disconnect();
-      document.removeEventListener("pointerdown", onPointer, true);
-      document.removeEventListener("focusin", onFocus);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [addOpen, open]);
-
-  /**
-   * 어느 콘솔에 서 있는가. 집이 펼친 목록에서는 이 화면(집)이 아니라 목록을 부른 콘솔이
-   * 그 답이다 — 아니면 사용자가 지금 보고 있는 콘솔에 현재 표시가 서지 않는다.
-   */
-  const currentOrigin = (inPicker ? picker.at : null) ?? location.origin;
-  const currentIsLoopback = isLoopbackOrigin(currentOrigin);
-  /**
-   * 집을 떠나 있는가. 셸이 말한 집과 지금 서 있는 콘솔이 다르면 그렇다.
-   *
-   * 주소 모양은 이 질문에 답하지 못한다. WSL 안의 콘솔은 `127.0.0.1`로 열리지만 그 콘솔이
-   * 도는 곳은 이 기계의 콘솔을 원리적으로 찾지 못하는 다른 기계다 — 루프백이라는 사실은
-   * 같은 기계라는 뜻이 아니다. 셸은 창을 옮길 때마다 집 주소를 게시하므로, 그 값과의 비교
-   * 하나가 원격·WSL·이웃 콘솔을 한 규칙으로 가른다.
-   */
-  const awayFromHome = homeOrigin !== null && currentOrigin !== homeOrigin;
-  /**
-   * "이 컴퓨터"에 실릴 수 있는 것은 이 창이 실제로 닿을 수 있는 콘솔뿐이다.
-   *
-   * 스캔은 루프백 리스너에서만 답하므로, 원격 콘솔을 보고 있으면 비어 있다. 그때 돌아갈 곳을
-   * 아는 것은 셸뿐이라 셸의 말을 그대로 쓴다. 반대로 스캔이 답했는데 셸이 말한 집이 거기 없으면
-   * 그 콘솔은 이미 죽은 것이므로 줄을 세우지 않는다.
-   *
-   * 단 이 화면을 서빙한 곳이 곧 집이라면 그 추정을 쓰지 않는다 — 화면 자체가 생존 증거이기
-   * 때문이다. 스캔은 정규 슬롯 두 곳만 보므로 데이터 루트를 재지정한 콘솔(격리 실행 등)은
-   * 설계상 자기 목록에도 잡히지 않는다. 그 추정을 그대로 두면 집이 살아 있는데도 집 줄이
-   * 사라지고, 원격에서 펼친 목록에는 돌아갈 길이 아예 남지 않는다.
-   *
-   * 이 추정이 서는 곳은 이 콘솔이 직접 그리는 판뿐이다. 셸이 창을 들고 있으면 목록은 집이
-   * 그리므로(아래 `pickerHome`), 이 스캔이 무엇을 못 봤는지는 그 동선을 가로막지 못한다.
-   */
-  const homeIsLive = homeOrigin !== null
-    && (homeOrigin === location.origin || local.length === 0 || local.some((entry) => entry.origin === homeOrigin));
-  const home = homeIsLive ? homeOrigin : null;
-  const placeholder = (origin: string): LocalConsole => ({ origin, version: "", owner: null, distro: null, state: "ready" });
-  const nearby: readonly { readonly entry: LocalConsole; readonly home: boolean }[] = [
-    ...(home !== null ? [{ entry: local.find((item) => item.origin === home) ?? placeholder(home), home: true }] : []),
-    // 지금 서 있는 루프백 콘솔은 스캔에 안 잡혀도(격리 실행 등) 목록에 있어야 한다 — 눈앞에 있으니까.
-    ...(currentIsLoopback && currentOrigin !== home && !local.some((entry) => entry.origin === currentOrigin)
-      ? [{ entry: placeholder(currentOrigin), home: false }]
-      : []),
-    ...local.filter((entry) => entry.origin !== home).map((entry) => ({ entry, home: false })),
-  ];
-  const savedCurrent = hosts.find((host) => host.origin === currentOrigin) ?? null;
-  const nearbyCurrent = nearby.some(({ entry }) => entry.origin === currentOrigin);
-  /**
-   * 지금 서 있는 콘솔의 이름은 한 번만 정한다 — 칩과 목록이 서로 다른 규칙으로 지으면
-   * 같은 콘솔이 두 이름으로 보인다. 사용자가 고쳐 부른 이름이 있으면 그것이 우선이다.
-   *
-   * 집이 펼친 목록에서는 이 화면의 이름도 주소도 빌려 오지 않는다. 거기서 도는 콘솔은 집이라,
-   * 그 이름을 손님 줄에 붙이면 집과 손님이 같은 이름으로 읽힌다. 사용자가 지어 준 이름이 없으면
-   * 비워 두고 각 줄이 자기 폴백을 쓰게 한다 — 주소는 이미 그 줄의 상세가 말한다.
-   */
-  const currentLabel = savedCurrent?.label || (inPicker ? "" : state.consoleName || currentHost(currentOrigin));
-  /**
-   * 집에 서 있을 때만 "여기"라고 말한다. 집을 떠나 있으면 어느 콘솔인지가 답이다 — 칩을
-   * 누르면 집의 목록이 펼쳐지므로, 칩까지 "여기"라고 하면 어디에 서 있었는지가 사라진다.
-   *
-   * 셸이 창을 들고 있는데 아직 집 주소를 못 받았다면 아무 말도 하지 않는다. 그 순간 "여기"라고
-   * 하면 손님 콘솔이 집 행세를 하게 되고, 사용자는 그 말을 믿고 누른다. 셸이 아예 없을 때만
-   * 스캔에 든 사실로 대신한다 — 그때는 답이 늦는 것이 아니라 답할 셸이 없는 것이다.
-   */
-  const standingAtHome = isStandingAtHome(canOpenRemote, shellHome, currentOrigin, nearbyCurrent);
-  const chipLabel = state.controlHolder !== null
-    ? t("chrome.control.shared")
-    : standingAtHome
-      ? t("chrome.hosts.local")
-      : currentLabel;
-
-  /**
-   * 집을 떠나 있을 때 칩을 누르면 이 콘솔의 목록을 펴는 대신 집에게 목록을 펴 달라고 한다.
-   * 셸이 그 항해를 가로채 집의 화면을 이 위에 얹으므로, 이 콘솔은 남의 기계 주소를 받지 않는다.
-   *
-   * 목적지는 `home`이 아니라 셸이 말한 값 그대로다. `home`은 이 콘솔의 스캔이 확인해 준 집이고,
-   * WSL처럼 스캔이 닿지 못하는 곳에서는 비어 있다 — 그 침묵이 돌아가는 길까지 지워서는 안 된다.
-   */
-  const pickerHome = !inPicker && canOpenRemote && awayFromHome ? homeOrigin : null;
-  pickerHomeRef.current = pickerHome;
-
-  /**
-   * 집 주소는 늦게 도착할 수 있고, 그 전에 누른 칩은 이 콘솔의 판을 편다. 주소가 도착해 이
-   * 콘솔이 목록의 주인이 아니게 되면 그 판은 남의 목록이다 — 걷고, 사용자가 누른 뜻대로 집에게
-   * 목록을 청한다. 걷기만 하면 그 누름은 아무 일도 일어나지 않은 채 사라진다.
-   *
-   * 이 자리에 닿는 길은 그 어긋남 하나뿐이다. 주소를 알고 있었다면 칩이 처음부터 여기로 보냈고,
-   * 집이 펼친 목록에서는 `pickerHome`이 서지 않는다.
-   */
-  useEffect(() => {
-    if (pickerHome === null || !open) return;
-    setOpen(false);
-    // 겨눔만으로 연 판은 걷기만 한다 — 덮개는 창 전체를 덮으므로 손이 청한 때에만 부른다.
-    if (!focusOnOpenRef.current) return;
-    location.assign(desktopPickerUrl(pickerHome, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
-  }, [pickerHome, open, currentOrigin, menuItem]);
-
-  // 집을 떠나 있으면 목록이 비어 보여도 칩은 남는다 — 그 칩이 돌아가는 유일한 문이다.
-  if (!inPicker && pickerHome === null && nearby.length === 0 && hosts.length === 0) return null;
-  const openSettings = () => {
-    // 관리는 집의 설정 표면에서 한다. 덮개는 목록만 들고 있으므로 창째로 집에 보낸다 —
-    // 옛 주소는 라우트 어댑터가 받아 같은 표면으로 번역한다.
-    if (inPicker) {
-      location.assign(new URL("/console/settings?section=remote-access", `${location.origin}/`).toString());
-      return;
-    }
-    setOpen(false);
-    // 설정 모달은 /operations에만 선다 — 표면을 부르기 전에 대화 화면으로 돌아간다.
-    navigate("/operations");
-    openSettingsSurface("connectivity");
-  };
-  const openAdd = () => {
-    // 덮개에서는 판을 접지 않는다 — 접으면 팝업이 닫힌 뒤 빈 덮개만 남는다.
-    if (!inPicker) setOpen(false);
-    setAddOpen(true);
-  };
-  /**
-   * 집에게 목록을 청한다. 메뉴 항목에서 불렀다면 집의 판도 그 항목 옆에 서브메뉴로 선다.
-   * 겨눔만으로는 청하지 않는다 — 덮개는 창 전체를 덮으므로, 지나가는 포인터가 부르면 메뉴가 통째로 가려진다.
-   */
-  const openHomePicker = (home: string) => {
-    // 덮개는 다른 뷰다. 이 문서의 독 메뉴를 접지 않으면, 고른 뒤 붙잡는 화면은 그 메뉴가 열린 채다.
-    onChosen?.();
-    location.assign(desktopPickerUrl(home, PICKER_SURFACE_OPEN, currentOrigin, pickerAnchorOf(triggerRef.current), menuItem));
-  };
-  const openByHand = () => {
-    // 서브메뉴는 누르면 열리기만 한다 — 겨눠서 이미 열린 판을 누름이 도로 접지 않고, 그 안으로 들어간다.
-    if (pickerHome !== null) { side.clearHoverTimers(); openHomePicker(pickerHome); return; }
-    if (submenu && open) {
-      const items = menuItems();
-      (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
-    }
-    if (side.openByHand()) return;
-    focusOnOpenRef.current = true;
-    setOpen((previous) => !previous);
-  };
-  activateRef.current = openByHand;
-  const go = (origin: string) => {
-    setOpen(false);
-    // 서브메뉴의 setOpen은 이 판만 접는다. 독 메뉴는 바깥 상태라 여기서 같이 접지 않으면 고정 장면에 남는다.
-    onChosen?.();
-    if (origin === currentOrigin) return;
-    const href = new URL("/console/", `${origin}/`).toString();
-    // 셸은 assign을 가로채 그 순간의 화면을 붙잡는다. setState는 이 함수가 돌아온 뒤에야 커밋되므로,
-    // 바로 항해하면 닫히기 전 프레임이 찍힌다. 첫 프레임은 그 커밋을 칠하기 전이고, 다음 프레임은 칠한 뒤다.
-    // 웹은 같은 두 프레임 뒤에 그대로 이동한다. 바깥 메뉴가 없는 덮개는 붙잡는 문서가 아니므로 기다리지 않는다.
-    if (onChosen) afterNextPaint(() => location.assign(href));
-    else location.assign(href);
-  };
-
-  return (
-    <div ref={rootRef} className={`host-switcher${inPicker ? " is-picker-surface" : ""}`}>
-      {inPicker ? null : (
-        // 원격 — 도구모음의 글리프 한 칸(도움말 왼쪽). 어느 콘솔에 서 있는지는 이름표가 아니라 겨눌 때의
-        // 말풍선(도구모음 말풍선의 data-tip)이 말한다. 집을 떠나 있으면 글리프 자체가 화면 속 전파로 바뀌어
-        // 모양만으로 원격임을 알린다. 제어를 나눠 준 때(warn)는 그보다 앞서며, 모서리 점은 그때만 선다.
-        <button
-          ref={triggerRef}
-          type="button"
-          role={menuItem ? "menuitem" : undefined}
-          className={`command-band-button host-switcher-chip${state.controlHolder !== null ? " is-shared" : standingAtHome ? "" : " is-away"}`}
-          aria-haspopup="menu"
-          aria-expanded={pickerHome === null && open}
-          data-open={pickerHome === null && open ? "true" : undefined}
-          aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
-          data-tip={chipLabel}
-          onClick={openByHand}
-          onPointerEnter={side.onTriggerPointerEnter}
-          onPointerLeave={side.onTriggerPointerLeave}
-          onKeyDown={side.onTriggerKeyDown}
-        >
-          {state.controlHolder === null && !standingAtHome ? <RemoteAwayGlyph /> : <RemoteGlyph />}
-          {state.controlHolder !== null ? <span className="host-switcher-dot is-shared" aria-hidden="true" /> : null}
-          {menuItem ? <><span className="conversation-dock-label">{t("chrome.hosts.aria")}</span><span className="conversation-dock-next" aria-hidden="true">›</span></> : null}
-        </button>
-      )}
-      {open ? (
-        <div
-          ref={panelRef}
-          className="host-switcher-panel"
-          role="menu"
-          aria-label={t("chrome.hosts.aria")}
-          onPointerEnter={side.onPanelPointerEnter}
-          onPointerLeave={side.onPanelPointerLeave}
-        >
-          {nearby.length > 0 ? (
-            <>
-              <p className="host-switcher-heading">{t("chrome.hosts.nearby")}</p>
-              {nearby.map(({ entry, home }) => {
-                // 집과 지금 서 있는 줄은 상태를 입지 않는다 — 이 화면 자체가 그 콘솔의 생존 증거다.
-                const plain = home || entry.origin === currentOrigin;
-                return (
-                  <HostRow
-                    key={entry.origin}
-                    name={nearbyName(home, entry.origin === currentOrigin, currentLabel, t)}
-                    detail={nearbyDetail(entry, home)}
-                    status={plain ? undefined : nearbyStatus(entry.state, t)}
-                    current={entry.origin === currentOrigin}
-                    disabled={!plain && entry.state === "stopping"}
-                    onOpen={() => go(entry.origin)}
-                  />
-                );
-              })}
-            </>
-          ) : null}
-          {hosts.length > 0 ? (
-            <>
-              {nearby.length > 0 ? <div className="host-switcher-divider" role="separator" /> : null}
-              <p className="host-switcher-heading">{t("chrome.hosts.saved")}</p>
-              {hosts.map((host) => (
-                <HostRow
-                  key={host.id}
-                  name={host.label}
-                  detail={hostDetail(host, canOpenRemote ? reach[host.id] : undefined, t)}
-                  status={canOpenRemote ? hostStatus(reach[host.id], t) : { label: t("chrome.hosts.desktopOnly") }}
-                  current={host.origin === currentOrigin}
-                  disabled={!canOpenRemote || reach[host.id]?.reachable === false}
-                  onOpen={() => go(host.origin)}
-                />
-              ))}
-            </>
-          ) : null}
-          {/* 목록 어디에도 없는 콘솔에 서 있다면 그 사실을 숨기지 않는다. */}
-          {listsSettled && !nearbyCurrent && savedCurrent === null ? (
-            <>
-              <div className="host-switcher-divider" role="separator" />
-              <HostRow name={currentLabel || t("chrome.hosts.console")} detail={currentHost(currentOrigin)} status={{ label: t("chrome.hosts.notSaved") }} current />
-            </>
-          ) : null}
-          <div className="host-switcher-divider" role="separator" />
-          {/* 콘솔을 더하는 일은 목록을 고르는 자리에서 시작된다 — 링크 한 줄 때문에 설정으로
-              건너가지 않도록 여기서 팝업을 연다. 관리(설정)는 그 아래에 남는다. */}
-          <button type="button" role="menuitem" className="host-switcher-link" onClick={openAdd}>
-            <PlusGlyph /><span>{t("chrome.hosts.add")}</span>
-          </button>
-          <button type="button" role="menuitem" className="host-switcher-link" onClick={openSettings}>
-            <SlidersGlyph /><span>{t("chrome.hosts.manage")}</span>
-          </button>
-        </div>
-      ) : null}
-      {addOpen ? <AddHostDialog openerRef={triggerRef} onClose={() => setAddOpen(false)} /> : null}
-    </div>
-  );
-}
-
 /** 줄 오른쪽 한 자리에 서는 상태 낱말. 닿지 않거나 믿을 수 없는 호스트만 신호 잉크를 입는다. */
 interface HostStatus {
   readonly label: string;
   readonly tone?: "coral" | "warn";
-}
-
-/**
- * 모든 호스트 줄은 같은 모양이다 — 이름 / 주소 두 줄, 오른쪽 한 자리에 상태 낱말과 현재 체크.
- * 집 콘솔도 따로 접거나 칠하지 않는다: 어디에 서 있는지는 체크가, 어떤 상태인지는 낱말이 말한다.
- *
- * 고를 수 없는 줄도 native `disabled`를 쓰지 않는다. 그러면 방향키 순회와 스크린 리더에서 줄째로 빠져 왜 고를 수 없는지
- * 말하는 상태 낱말까지 사라진다. 현재 줄과 같이 `aria-disabled`로 포커스는 받고, 실행만 하지 않는다.
- */
-function HostRow({
-  name,
-  detail,
-  status,
-  current,
-  disabled,
-  onOpen,
-}: {
-  readonly name: string;
-  readonly detail: string;
-  readonly status?: HostStatus;
-  readonly current: boolean;
-  readonly disabled?: boolean;
-  readonly onOpen?: () => void;
-}) {
-  const blocked = current || disabled === true || onOpen === undefined;
-  return (
-    <button
-      type="button"
-      role="menuitemradio"
-      aria-checked={current}
-      className={`host-switcher-row${current ? " is-current" : ""}`}
-      aria-disabled={blocked}
-      onClick={blocked ? undefined : onOpen}
-    >
-      <span className="host-switcher-name">{name}</span>
-      <small className="host-switcher-detail">{detail}</small>
-      {status || current ? (
-        <span className="host-switcher-trail">
-          {status ? <span className={status.tone ? `is-${status.tone}` : undefined}>{status.label}</span> : null}
-          {current ? <CheckGlyph /> : null}
-        </span>
-      ) : null}
-    </button>
-  );
 }
 
 /**
@@ -665,13 +154,8 @@ export function useStandingAway(): boolean {
     && !isStandingAtHome(isDesktopShell(), shellHome, currentOrigin, isLoopbackOrigin(currentOrigin));
 }
 
-/**
- * 이름은 "누가 이 콘솔을 들고 있는가"로 가른다. 락에 적힌 owner는 어느 앱이 락을 썼는지일 뿐이라,
- * 이 앱이 띄운 콘솔과 우연히 같은 기계에 떠 있는 콘솔이 둘 다 desktop으로 나온다 — 그것으로
- * 이름을 지으면 두 줄이 똑같이 읽힌다.
- */
 /** 루프백 콘솔만 이 창이 주소 그대로 열 수 있다 — 다른 기계의 127.0.0.1은 여기서 우리 기계다. */
-function isLoopbackOrigin(origin: string): boolean {
+export function isLoopbackOrigin(origin: string): boolean {
   try {
     const { protocol, hostname } = new URL(origin);
     return protocol === "http:" && (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "[::1]");
@@ -680,53 +164,22 @@ function isLoopbackOrigin(origin: string): boolean {
   }
 }
 
-/**
- * 지금 서 있는 콘솔의 주소. 집이 펼친 목록에서는 이 화면을 서빙한 곳(집)이 아니라 목록을
- * 부른 콘솔이 그 답이므로, `location.host`를 그대로 쓰면 손님 줄에 집 주소가 선다.
- */
-function currentHost(origin: string): string {
-  try {
-    return new URL(origin).host;
-  } catch {
-    return origin;
-  }
-}
-
 /** 같은 루프백 주소라도 어디에 사는지가 다르다 — WSL 안의 콘솔은 그 배포판 이름을 달고 선다. */
-function nearbyDetail(entry: LocalConsole, home: boolean): string {
+export function nearbyDetail(entry: LocalConsole, home: boolean): string {
   const parts = [new URL(entry.origin).host];
   if (entry.distro) parts.push(entry.distro);
   if (entry.version && !home) parts.push(`v${entry.version}`);
   return parts.join(" · ");
 }
 
-function nearbyName(home: boolean, current: boolean, currentName: string, t: ReturnType<typeof useT>): string {
-  if (home) return t("chrome.hosts.managedConsole");
-  // 지금 쓰고 있는 콘솔은 "발견"된 것이 아니다 — 자기 이름으로 부른다.
-  if (current && currentName) return currentName;
-  return t("chrome.hosts.console");
-}
-
-
-/**
- * 이 기계의 다른 콘솔이 지금 어떤지. 서버가 계약의 공개 관측으로 본 값을 낱말로 옮길 뿐이다.
- * 응답 지연은 경고 잉크로 알리기만 하고 고를 수 있게 둔다 — 700ms 안에 답하지 못한 정상 콘솔일 수 있다.
- * 종료 중은 고를 수 없게 하되(리스너가 닫혀 열리지 않는다) 사용자가 멈춘 정상 전이이므로 신호 잉크를 입히지 않는다.
- */
-function nearbyStatus(state: LocalConsoleState, t: ReturnType<typeof useT>): HostStatus {
-  if (state === "stopping") return { label: t("chrome.hosts.stopping") };
-  if (state === "unresponsive") return { label: t("chrome.hosts.slow"), tone: "warn" };
-  return { label: t("chrome.hosts.discovered") };
-}
-
 /** 주소 줄에는 어디인지만 둔다. 닿지 않는 호스트에는 마지막으로 연 때를 곁들인다. */
-function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
+export function hostDetail(host: RemoteHost, state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): string {
   const address = `${host.hostname}:${host.port}`;
   if (state === undefined || state.reachable || host.lastOpenedAt === null) return address;
   return `${address} · ${t("chrome.hosts.seen")} ${formatSeen(host.lastOpenedAt)}`;
 }
 
-function hostStatus(state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): HostStatus | undefined {
+export function hostStatus(state: RemoteHostReach | undefined, t: ReturnType<typeof useT>): HostStatus | undefined {
   if (state === undefined) return undefined;
   if (!state.reachable) return { label: t("chrome.hosts.unreachable"), tone: "coral" };
   return state.trusted ? undefined : { label: t("chrome.hosts.untrusted"), tone: "warn" };
@@ -737,30 +190,6 @@ function formatSeen(epochMs: number): string {
   if (minutes < 60) return `${Math.max(1, minutes)} min ago`;
   const hours = Math.round(minutes / 60);
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
-}
-
-// 원격 — 가운데 점에서 양옆으로 퍼지는 전파. 다른 기계의 콘솔로 건너가는 문이다.
-function RemoteGlyph() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none" /><path d="M5.4 5.4a3.7 3.7 0 0 0 0 5.2M10.6 5.4a3.7 3.7 0 0 1 0 5.2M3.3 3.3a6.6 6.6 0 0 0 0 9.4M12.7 3.3a6.6 6.6 0 0 1 0 9.4" /></svg>;
-}
-
-/** 집을 떠나 있을 때의 원격 글리프 — 같은 전파가 다른 기계의 화면 안에서 퍼진다. */
-function RemoteAwayGlyph() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="1.7" y="2.4" width="12.6" height="8.8" rx="1.6" /><path d="M5.6 13.7h4.8M5.8 4.9a2.8 2.8 0 0 0 0 3.8M10.2 4.9a2.8 2.8 0 0 1 0 3.8" /><circle cx="8" cy="6.8" r="1.3" fill="currentColor" stroke="none" /></svg>;
-}
-
-function CheckGlyph() {
-  return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-// 콘솔 추가 — 더하기. 도움말 메뉴 글리프와 같은 1.2px 선.
-function PlusGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg>;
-}
-
-// 호스트 관리 — 두 개의 조절 막대. 목록을 고르는 곳이 아니라 손보는 곳으로 간다.
-function SlidersGlyph() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /><circle cx="10" cy="5" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /><circle cx="6" cy="11" r="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
 
 // "화면 안내 다시 보기" — 화면에 닻을 건 투어 하나가 아니라 온보딩 전체를 초기화한다. 엔진이 마운트한 모든 기여의

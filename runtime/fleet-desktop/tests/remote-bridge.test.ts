@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { runInNewContext } from "node:vm";
+import { CONSOLE_SECTION_EVENT, CONSOLE_SECTION_CONTEXT_EVENT, consoleSectionSignalUrl } from "@fleet-console/protocol/desktop/console-section";
+import { createConsoleSectionView } from "../src/console-section-view.js";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -199,6 +202,56 @@ const PICKER_DISMISS_URL = `${LOCAL}/console/?desktop-surface=host-picker-dismis
 
 /** 항해 하나가 두 뜻으로 읽히면 안 된다 — 목록을 펴는 신호와, 창째로 집에 가는 길. */
 describe("host picker surface", () => {
+  it("keeps the home section in a separate renderer and relays only its height to the remote document", async () => {
+    const activeEvents: Array<{ type: string; detail: unknown }> = [];
+    const homeEvents: Array<{ type: string; detail: unknown }> = [];
+    const contents = (url: string, events: typeof activeEvents) => Object.assign(new EventEmitter(), {
+      getURL: () => url,
+      getZoomFactor: () => 1,
+      setZoomFactor: vi.fn(),
+      isDestroyed: () => false,
+      focus: vi.fn(), close: vi.fn(),
+      loadURL: vi.fn(async () => undefined),
+      executeJavaScript: async (script: string) => runInNewContext(script, {
+        window: { dispatchEvent: (event: { type: string; detail: unknown }) => events.push(event) },
+        CustomEvent: class { constructor(readonly type: string, readonly init: { detail: unknown }) {} get detail() { return this.init.detail; } },
+      }),
+    });
+    const active = contents(`${REMOTE}/console/`, activeEvents);
+    const home = contents(`${LOCAL}/console/?desktop-surface=console-section`, homeEvents);
+    const view = { webContents: home, setVisible: vi.fn(), setBounds: vi.fn() };
+    const harness = createHarness();
+    const section = createConsoleSectionView({
+      shell: () => ({ consoleContents: active, isDestroyed: () => false, getContentBounds: () => ({ width: 1200, height: 800 }), stack: { presentSection: vi.fn(), removeSection: vi.fn() } }) as never,
+      home: () => LOCAL, createView: () => view as never, confine: () => undefined,
+      attachBridge: (renderer) => harness.bridge.attachPicker(renderer, true), log: () => undefined,
+    });
+    section.attach(active as never);
+    harness.bridge.attach(active as never);
+    try {
+      const signal = (renderer: typeof active, origin: string, value: unknown) => {
+        const preventDefault = vi.fn();
+        renderer.emit("will-navigate", { preventDefault }, consoleSectionSignalUrl(origin, value), undefined, true);
+        expect(preventDefault).toHaveBeenCalled();
+      };
+      signal(active, REMOTE, { geometry: { x: 0, y: 52, width: 280, available: 500, compact: false, visible: true, theme: "light", hosts: [{ label: "must not be relayed" }] } });
+      expect(home.loadURL).toHaveBeenCalledWith(`${LOCAL}/console/?desktop-surface=console-section`);
+      signal(home, LOCAL, { height: 180, hosts: [{ label: "private home list", fingerprint: FINGERPRINT }] });
+      await Promise.resolve();
+      expect(homeEvents.length).toBeGreaterThan(0);
+      for (const { type, detail } of homeEvents) expect({ type, detail }).toEqual({ type: CONSOLE_SECTION_CONTEXT_EVENT, detail: { at: REMOTE, compact: false, maxHeight: 500, theme: "light" } });
+      expect(activeEvents.map(({ type, detail }) => ({ type, detail }))).toEqual([{ type: CONSOLE_SECTION_EVENT, detail: 180 }]);
+      // 원격 문서는 집 크기 신호를 위조하거나 집 뷰를 항해시키지 못한다.
+      signal(active, LOCAL, { height: 999 });
+      expect(activeEvents).toHaveLength(1);
+      expect(harness.requests).toEqual([]);
+      expect(harness.trace).toEqual([]);
+      // 표면 실패 시 같은 보안 경계를 쓰는 덮개로 복귀한다.
+      home.emit("render-process-gone");
+      await Promise.resolve();
+      expect(activeEvents.at(-1)?.detail).toBeNull();
+    } finally { section.close(); harness.bridge.dispose(); }
+  });
 
   /**
    * 이 판정이 consoleTarget보다 늦으면 목록이 열리는 대신 창이 집으로 넘어간다 — 고치려던

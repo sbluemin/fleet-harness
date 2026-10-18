@@ -4,7 +4,7 @@ import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js"
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
-import { ConsoleHelpMenu, HostSwitcher, useSideSubmenuGroup, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { ConsoleHelpMenu, useSideSubmenuGroup, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
 import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
@@ -47,7 +47,6 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
             다시 열면 자식 메뉴는 닫힌 상태로 시작한다. */}
         <div key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <div className="conversation-dock-heading">{name}</div>
-          <HostSwitcher menuItem sideSubmenuGroup={sideSubmenus} onChosen={() => setOpen(false)} />
           {/* Desktop은 보기 모드를 데스크톱으로 고정한다(#1189). 전환은 여기에도 두지 않는다. */}
           {!isDesktopShell() ? <ViewModeToggle className="conversation-dock-view" menuItem /> : null}
           <div className="conversation-dock-divider" role="separator" />

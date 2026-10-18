@@ -1,5 +1,6 @@
 import { getViewedTheaterId, useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
+import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
 export { theaterInitials } from "./theater-initials.js";
 import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../settings/client/execution-settings.js";
@@ -983,6 +984,8 @@ export function OperationsSideBar({
       </div>
       )}
 
+      <ConsoleSectionSlot compact={compact} visible={true} />
+      <div className="side-bar-theater-label">Theater</div>
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {

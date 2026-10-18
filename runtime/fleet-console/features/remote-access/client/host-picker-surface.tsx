@@ -1,8 +1,10 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { ConsoleSection } from "./console-section.js";
+import { desktopPickerUrl, PICKER_SURFACE_DISMISS } from "../../../core/client/src/integration/desktop-shell.js";
 
-import { HostSwitcher, placeSubmenu, submenuContentHeight, type HostPickerAnchor, type HostPickerContext } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
+import { placeSubmenu, submenuContentHeight, type HostPickerAnchor, type HostPickerContext } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
 
-/** 판과 칩 사이의 틈 — 도구모음 판(.host-switcher-panel)이 칩 아래·위에 두는 간격과 같다. */
+/** 기존 picker 앵커와 새 콘솔 섹션 판 사이의 간격. */
 const GAP_BELOW = 8;
 const GAP_ABOVE = 10;
 /** 창 가장자리에서 판이 지키는 여백. */
@@ -25,10 +27,16 @@ const EDGE = 12;
 export function HostPickerScreen({ surface }: { readonly surface: HostPickerContext }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { anchor, side } = surface;
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (!document.querySelector(".add-host-card")) rootRef.current?.querySelector<HTMLElement>("button")?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
-    const panel = root?.querySelector<HTMLElement>(".host-switcher-panel") ?? null;
+    const panel = root?.querySelector<HTMLElement>(".console-section") ?? null;
     if (anchor === null || root === null || panel === null) return;
     /**
      * 칩의 자리는 부른 콘솔의 CSS px로 오는데, 이 화면의 배율은 그 콘솔과 다를 수 있다(줌은 host마다
@@ -54,8 +62,15 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
   }, [anchor, side]);
 
   return (
-    <div ref={rootRef} className="host-picker-surface" data-anchored={anchor === null ? undefined : "true"} data-place={anchor !== null && side ? "side" : undefined}>
-      <HostSwitcher picker={surface} />
+    <div ref={rootRef} className="host-picker-surface" data-anchored={anchor === null ? undefined : "true"} data-place={side ? "side" : undefined}
+      onPointerDown={(event) => { if (event.target === event.currentTarget) location.assign(desktopPickerUrl(location.origin, PICKER_SURFACE_DISMISS)); }}
+      onKeyDown={(event) => {
+        if (event.key !== "Tab" || document.querySelector(".add-host-card")) return;
+        const entries = Array.from(rootRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)") ?? []).filter((el) => el.getClientRects().length > 0);
+        if (event.shiftKey && document.activeElement === entries[0]) { event.preventDefault(); entries.at(-1)?.focus(); }
+        else if (!event.shiftKey && document.activeElement === entries.at(-1)) { event.preventDefault(); entries[0]?.focus(); }
+      }}>
+      <ConsoleSection pickerAt={surface.at} initialAdd={new URLSearchParams(location.search).get("intent") === "add"} />
     </div>
   );
 }

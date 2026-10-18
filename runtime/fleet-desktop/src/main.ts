@@ -21,6 +21,8 @@ import { applyDesktopDockIcon, applyDesktopIdentity } from "./identity.js";
 import { createLaunchController, type RuntimeEntryState } from "./launch-controller.js";
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
+import { createConsoleSectionView } from "./console-section-view.js";
+import { CONSOLE_SECTION_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { releaseFetchBody } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
@@ -55,7 +57,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts"];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_SECTION_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -540,6 +542,17 @@ async function boot(): Promise<void> {
     shell: () => window,
     confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
     attachBridge: (contents) => bridge.attachPicker(contents),
+    onClose: () => consoleSection.pickerClosed(),
+    log: (message) => logger.error(message),
+  });
+  const consoleSection = createConsoleSectionView({
+    shell: () => window,
+    home: () => localConsoleOrigin,
+    createView: () => new WebContentsView({
+      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false },
+    }),
+    confine: (contents) => confinePickerNavigation(contents, localConsoleOrigin ?? "", (url) => consoleTarget(url, localConsoleOrigin) !== null),
+    attachBridge: (contents) => bridge.attachPicker(contents, true),
     log: (message) => logger.error(message),
   });
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
@@ -593,6 +606,7 @@ async function boot(): Promise<void> {
           overlayRefresher?.stop();
           overlayRefresher = null;
           picker.close();
+          consoleSection.close();
           // BaseWindow closed does not destroy child WebContentsView renderers — close explicitly.
           try {
             if (!createdWindow.consoleContents.isDestroyed()) createdWindow.consoleContents.close();
@@ -609,6 +623,7 @@ async function boot(): Promise<void> {
             && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,
         });
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
+        consoleSection.attach(createdWindow.consoleContents);
         bridge.attach(createdWindow.consoleContents);
         // 붙잡아 둔 옛 화면 아래의 렌더러가 죽었다 — 판만 남기지 않는다.
         createdWindow.consoleContents.on("render-process-gone", () => switchHold.release("render_gone"));
@@ -632,11 +647,13 @@ async function boot(): Promise<void> {
           controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
           browserViews.refresh();
+          consoleSection.refresh();
         });
         // 뷰의 자리는 패널이 CSS px 로 알린다 — 줌·창 크기가 바뀌면 같은 자리를 DIP 로 다시 놓는다.
         createdWindow.base.on("resize", () => {
           createdWindow.stack.layoutConsole();
           browserViews.refresh();
+          consoleSection.refresh();
         });
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
         createdWindow.consoleContents.on("did-finish-load", () => refreshNativeChrome());
