@@ -2,25 +2,22 @@ import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } fr
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useSideBarStatusViewShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
-import { toggleSideBarStatusAxis } from "./operations-side-bar-store.js";
+import { toggleTheaterStatusAxis } from "./group-collapse-store.js";
 
-// 상태별 보기 토글 — 목록을 Theater 묶음에서 대기·실행 중·유휴의 평면 목록으로 뒤집는 하나짜리
-// 세션 스위치다. 눌림(aria-pressed)은 레일 아이콘의 켜짐과 같은 문법(brass 잉크·어두운 면)으로
-// "지금 이 보기"를 말한다. 축은 의도적으로 세션 메모리에만 산다(operations-side-bar-store).
-export function SideBarStatusViewToggle({ active }: { readonly active: boolean }) {
+// 상태별 보기 — 바로 옆 chevron 과 같은 Theater 하나만 바꾼다. 표시 선호는 Theater JSON 에 남는다.
+export function SideBarStatusViewToggle({ active, theaterId, theaterName }: { readonly active: boolean; readonly theaterId: string; readonly theaterName: string }) {
   const t = useT();
-  const label = t("sidebar.view.byStatus", { shortcut: useSideBarStatusViewShortcutLabel() });
+  const label = t("sidebar.view.byStatus", { theater: theaterName });
   return (
     <button
       type="button"
-      className="side-bar-status-view-toggle"
+      className="side-bar-theater-row-btn side-bar-status-view-toggle"
       aria-pressed={active}
       aria-label={label}
       title={label}
-      onClick={() => toggleSideBarStatusAxis()}
+      onClick={() => toggleTheaterStatusAxis(theaterId)}
     >
       <StatusViewIcon />
     </button>

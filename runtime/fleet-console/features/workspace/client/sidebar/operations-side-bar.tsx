@@ -1,5 +1,4 @@
 import { getViewedTheaterId, useViewedTheaterId } from "../../../../core/client/src/integration/viewed-theater.js";
-import { ArchiveEntry } from "../archive/archive-entry.js";
 import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
 import { openTheaterSystemPrompt, subscribeTheaterSystemPromptChange } from "../../../settings/client/theater-system-prompt-sheet.js";
 export { theaterInitials } from "./theater-initials.js";
@@ -58,7 +57,6 @@ import {
   useCollapsedTheaters,
   useSideBarFreshFolds,
   useSideBarState,
-  useSideBarStatusAxis,
   useSideBarStatusSectionCollapsed,
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
@@ -71,7 +69,7 @@ interface OperationsSideBarProps {
   readonly topStripTrailing?: ReactNode;
   /**
    * "compact" 는 대화 중심 화면의 맨 위 줄이다 — 낱말·모드 스위치·상태별 보기·접기를 줄에 세우지 않는다. 줄에는 끼운 단추만
-   * 서고, 모드·상태별 보기는 셸이 하단 줄의 글리프로 둔다. 한 번 클릭이 곧바로 연다 — 대화
+   * 서고, 상태별 보기는 각 Theater 머리에서 고른다. 한 번 클릭이 곧바로 연다 — 대화
    * 중심 화면에는 「더블클릭으로 열기」 선호가 없다(누르면 그 대화로 간다).
    */
   readonly topStripVariant?: "compact";
@@ -79,7 +77,6 @@ interface OperationsSideBarProps {
   readonly topStripCenter?: ReactNode;
   /** 사이드바 맨 아래에 서는 셸의 기여(호스트 아바타·플러그인 요약 줄). */
   readonly bottomAccessory?: ReactNode;
-  readonly archiveInTheaterHeader?: boolean;
   readonly theaters: readonly TheaterInfo[];
   readonly operations: readonly OperationNode[];
   readonly groups: readonly OperationGroup[];
@@ -194,6 +191,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly active: boolean;
   readonly collapsed: boolean;
   readonly summary: TheaterSummary;
+  readonly statusAxis: boolean;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
   readonly dropTarget: boolean;
@@ -355,7 +353,6 @@ export function OperationsSideBar({
   topStripVariant,
   topStripCenter,
   bottomAccessory,
-  archiveInTheaterHeader = false,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
@@ -365,12 +362,13 @@ export function OperationsSideBar({
   // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
   const compact = sideBar.compact && topStripVariant === "compact";
   const width = compact ? COMPACT_SIDE_BAR_PX : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
-  const statusAxis = useSideBarStatusAxis();
   const freshFolds = useSideBarFreshFolds();
   const viewedTheaterId = useViewedTheaterId();
   const operationAccent = Object.assign({}, ...theaters.map((theater) => getTheaterGroupCollapse(theater.id).operationAccent)) as Readonly<Record<string, string>>;
   // 비활성 Theater 묶음은 렌더 중 저장값(접힘·액센트)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
   useStoredTheaterRevision();
+  const statusTheaterIds = new Set(theaters.filter((theater) => getTheaterGroupCollapse(theater.id).statusAxis).map((theater) => theater.id));
+  const statusAxisKey = [...statusTheaterIds].join("\0");
   const statusLandingTimeoutsRef = useRef<Set<number>>(new Set());
   const didMountStatusLandingRef = useRef(false);
   const [statusLandingIds, setStatusLandingIds] = useState<ReadonlySet<string>>(new Set());
@@ -512,14 +510,14 @@ export function OperationsSideBar({
 
 
   useEffect(() => {
-    if (!selectedFresh || statusAxis) return;
+    if (!selectedFresh || statusTheaterIds.has(selectedFresh.theaterId)) return;
     setSideBarFreshFoldExpanded(selectedFresh.theaterId, selectedFresh.groupId, true);
     if (selectedFresh.groupId && collapsedGroupSet.has(selectedFresh.groupId)) toggleTheaterGroupCollapsed(selectedFresh.theaterId, selectedFresh.groupId);
     const frame = window.requestAnimationFrame(() => {
       chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedFresh.id)}"]`)?.scrollIntoView({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedFresh?.id, statusAxis]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedFresh?.id, statusAxisKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 목표를 고른 입구(팔레트·빈 상태 바로가기·다른 Theater 줄)는 고르는 순간 사라져 포커스가 BODY 로 빠진다.
   // 그때만 사이드바에 보이는 그 목표 줄이 받는다.
@@ -542,7 +540,7 @@ export function OperationsSideBar({
       return false;
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
-    if (statusAxis) {
+    if (getTheaterGroupCollapse(operation.theaterId).statusAxis) {
       const status = resolveOperationDisplayActivity({
         activity: resolveOperationActivity(operation, operationRuntime),
         operationId: operation.id,
@@ -558,7 +556,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
+  }), [collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxisKey]);
 
 
   // App의 동기 store 구독이 렌더 배칭 전의 각 전이를 기록한다. 아래 백업 호출은 App 없는
@@ -570,17 +568,23 @@ export function OperationsSideBar({
           activeOperationId,
       activeOperationAcknowledged,
     });
-    const landedIds = consumeStatusLandings();
+    const sortedOperationIds = new Set(operations.filter((operation) => statusTheaterIds.has(operation.theaterId)).map((operation) => operation.id));
+    const landedIds = consumeStatusLandings().filter((id) => sortedOperationIds.has(id));
     if (!didMountStatusLandingRef.current) {
       didMountStatusLandingRef.current = true;
       return;
     }
-    if (!statusAxis) {
+    if (statusTheaterIds.size === 0) {
       for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
       statusLandingTimeoutsRef.current.clear();
       setStatusLandingIds((current) => current.size === 0 ? current : new Set());
       return;
     }
+    // 꺼진 Theater 의 지난 도착 표식은 다른 Theater 의 활성 정렬에 붙들려 남지 않는다.
+    setStatusLandingIds((current) => {
+      const next = new Set([...current].filter((id) => sortedOperationIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
     if (landedIds.length === 0) return;
     // 이동 배치별 독립 타이머: 기존 flash를 취소하지 않고 병합했다가 이 배치의 ID만 만료시킨다.
     setStatusLandingIds((current) => {
@@ -599,7 +603,7 @@ export function OperationsSideBar({
     statusLandingTimeoutsRef.current.add(timeoutId);
   // statusSignature is the stable primitive dependency for the operation/status map assembled above.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusAxis, statusSignature, activeOperationId, activeOperationAcknowledged]);
+  }, [statusAxisKey, statusSignature, activeOperationId, activeOperationAcknowledged]);
 
   useEffect(() => () => {
     for (const timeoutId of statusLandingTimeoutsRef.current) window.clearTimeout(timeoutId);
@@ -622,9 +626,8 @@ export function OperationsSideBar({
     : null;
 
   const keyboardMove = (operationId: string, direction: -1 | 1) => {
-    if (statusAxis) return;
     const operation = operations.find((candidate) => candidate.id === operationId);
-    if (!operation) return;
+    if (!operation || getTheaterGroupCollapse(operation.theaterId).statusAxis) return;
     const entries = visibleEntries.filter((entry) => entry.operation.theaterId === operation.theaterId);
     const index = entries.findIndex((entry) => entry.operation.id === operationId);
     if (index < 0) return;
@@ -662,8 +665,9 @@ export function OperationsSideBar({
   };
 
   useEffect(() => {
-    if (statusAxis && dragRef.current?.kind === "chip") updateDrag(null);
-  }, [statusAxis]);
+    const current = dragRef.current;
+    if (current?.kind === "chip" && getTheaterGroupCollapse(current.theaterId).statusAxis) updateDrag(null);
+  }, [statusAxisKey]);
 
   // drag 시작(pointerId가 생김)에만 window 리스너 3개를 등록하고, drag 종료 시 정확히 3개 해제한다.
   const dragPointerId = drag?.pointerId ?? null;
@@ -759,12 +763,11 @@ export function OperationsSideBar({
 
   // interactive: 누르면 끌기 대신 제 동작을 하는 자손. 칩은 안의 버튼(보관)이 그렇다.
   const beginPointerDrag = (event: ReactPointerEvent<HTMLLIElement>, operationId: string, interactive = "button") => {
-    if (statusAxis) return;
     if (event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest(interactive)) return;
     setActiveContextMenu(null);
     const sourceEntry = allEntries.find((e) => e.operation.id === operationId);
-    if (!sourceEntry) return;
+    if (!sourceEntry || getTheaterGroupCollapse(sourceEntry.operation.theaterId).statusAxis) return;
     const sourceGroupId = sourceEntry.operation.groupId ?? null;
     updateDrag({
       kind: "chip",
@@ -788,7 +791,7 @@ export function OperationsSideBar({
       return;
     }
     const moveRow = item.row.moveToGroup;
-    if (statusAxis || !moveRow || event.button !== 0) return;
+    if (getTheaterGroupCollapse(item.layout.cluster.theaterId).statusAxis || !moveRow || event.button !== 0) return;
     if (event.target instanceof Element && event.target.closest(".status-glyph.is-actionable")) return;
     setActiveContextMenu(null);
     updateDrag({
@@ -957,7 +960,6 @@ export function OperationsSideBar({
     <aside
       className={`operations-side-bar${compact ? " is-compact" : ""}`}
       ref={rootRef}
-      data-sidebar-axis={statusAxis ? "status" : "group"}
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
       onContextMenu={openNewSessionAtCursor}
@@ -975,8 +977,7 @@ export function OperationsSideBar({
       <div className="side-bar-top-strip">
         {theaters.length > 0 ? (
           <>
-            <span className="side-bar-top-strip-eyebrow">{t(statusAxis ? "sidebar.view.byStatusEyebrow" : "sidebar.view.theaters")}</span>
-            <SideBarStatusViewToggle active={statusAxis} />
+            <span className="side-bar-top-strip-eyebrow">{t("sidebar.view.theaters")}</span>
             <SideBarViewMenu />
           </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
@@ -985,11 +986,12 @@ export function OperationsSideBar({
       )}
 
       <ConsoleSectionSlot compact={compact} />
-      <div className="side-bar-theater-label side-bar-theater-heading"><span>Theater</span>{archiveInTheaterHeader ? <span className="side-bar-theater-actions"><ArchiveEntry glyphOnly /><SideBarStatusViewToggle active={statusAxis} /></span> : null}</div>
+      <div className="side-bar-theater-label">Theater</div>
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
           const isViewedTheater = theater.id === viewedTheaterId;
+          const statusAxis = statusTheaterIds.has(theater.id);
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
           const waitingCount = countAwaitingOperations(theaterOperations, operationRuntime);
           const showStatusLiveTick = !statusAxis && waitingCount > 0;
@@ -1025,12 +1027,14 @@ export function OperationsSideBar({
                 theaterDropAfter ? "side-bar-theater-section--drop-after" : "",
               ].filter(Boolean).join(" ")}
               data-theater-id={theater.id}
+              data-sidebar-axis={statusAxis ? "status" : "group"}
             >
               <TheaterSectionHeader
                 theater={theater}
                 active={isViewedTheater}
                 collapsed={theaterCollapsed}
                 summary={summary}
+                statusAxis={statusAxis}
                 {...aliasEditingFor(theater.id)}
                 clusterHead={theaterClusterHead(rowPlan, theaterCollapsed || statusAxis)}
                 showStatusLiveTick={showStatusLiveTick}
@@ -1213,7 +1217,6 @@ export function OperationsSideBar({
       </ol>
       </div>
 
-      {!archiveInTheaterHeader ? <ArchiveEntry /> : null}
       {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />
@@ -1449,6 +1452,7 @@ function TheaterSectionHeader({
   active,
   collapsed,
   summary,
+  statusAxis,
   editingAlias,
   showStatusLiveTick,
   dragging,
@@ -1622,6 +1626,7 @@ function TheaterSectionHeader({
         </button>
       )}
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: displayName })}>
+        <SideBarStatusViewToggle active={statusAxis} theaterId={theater.id} theaterName={displayName} />
         {/* Theater 동작은 머리의 우클릭·키·길게 누르기 메뉴에 있다(handleContextMenu). 「새 그룹…」은 「+」 메뉴 맨 아래에도 선다. */}
         <button
           type="button"

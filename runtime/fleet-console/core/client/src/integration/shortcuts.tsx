@@ -228,11 +228,6 @@ export function useNewSessionShortcutLabel(): string {
   return shortcutCommandLabel("console.new-session");
 }
 
-export function useSideBarStatusViewShortcutLabel(): string {
-  useShortcutOverrides();
-  return shortcutCommandLabel("operations.sort-by-status");
-}
-
 // ─── editing guard — when typing swallows an Operations shortcut ───────────────
 
 /**

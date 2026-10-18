@@ -57,7 +57,7 @@
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
-.conversation-dock-menu > .conversation-dock-view,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive),
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button {
   display: flex;
   align-items: center;
@@ -74,10 +74,11 @@
   font-size: var(--t-base);
   cursor: pointer;
 }
-.conversation-dock-menu > .conversation-dock-view:hover,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive):hover,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button:hover { background: var(--wash-hover); }
-.conversation-dock-menu > .conversation-dock-view > svg,
+.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive) > svg,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button > svg { width: 18px; height: 18px; flex: none; }
+.conversation-dock-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
 .conversation-dock-next { flex: none; font-size: var(--t-xl); color: var(--text-tertiary); }
 .conversation-dock-divider { height: 1px; margin: 7px 4px; background: var(--popover-divider); }

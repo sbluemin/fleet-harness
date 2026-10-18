@@ -55,7 +55,7 @@ import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcu
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
-import { toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { toggleTheaterStatusAxis } from "../../../../../features/workspace/client/sidebar/group-collapse-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
 import {
   closeOperationSearch,
@@ -386,7 +386,7 @@ export function OperationSearch({
       }
       case "toggle-status-axis": {
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        toggleSideBarStatusAxis();
+        toggleTheaterStatusAxis(getViewedTheaterId());
         break;
       }
       case "open-rail-panel": {

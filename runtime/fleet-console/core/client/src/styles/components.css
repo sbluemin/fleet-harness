@@ -3810,21 +3810,6 @@ button.status-glyph.is-actionable:focus-visible {
   }
 }
 
-/* Console 공용 섹션 아래의 Theater 영역. 목록 안에 포인터·초점이 있을 때만 머리의 평면 도구가 드러난다. */
-.operations-side-bar .side-bar-theater-heading { display: flex; align-items: center; justify-content: space-between; height: 28px; margin-top: 4px; padding: 0 8px 0 18px; box-sizing: border-box; }
-.side-bar-theater-actions { display: inline-flex; align-items: center; gap: 2px; }
-.side-bar-theater-actions > button { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 4px; border: 0; border-radius: 6px; color: var(--text-tertiary); background: transparent; cursor: pointer; opacity: 0; }
-.side-bar-theater-actions > button svg { width: 16px; height: 16px; }
-.side-bar-theater-heading:is(:hover, :focus-within) .side-bar-theater-actions > button,
-.operations-side-bar:has(> .side-bar-wide:is(:hover, :focus-within)) .side-bar-theater-actions > button,
-.side-bar-theater-actions > button[aria-pressed="true"] { opacity: 1; }
-.side-bar-theater-actions > button:hover { color: var(--text-primary); background: var(--wash-hover); }
-.side-bar-theater-actions > button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
-.side-bar-theater-actions > button[aria-pressed="true"] { color: var(--brass-quiet-ink); background: color-mix(in oklch, var(--brass-quiet) 14%, transparent); }
-.side-bar-theater-actions > button[aria-pressed="true"]::after { display: none; }
-.operations-side-bar.is-compact .side-bar-theater-heading { display: none; }
-@media (hover: none), (pointer: coarse) { .side-bar-theater-actions > button { opacity: 1; } }
-
 /* 사이드바에서 펼친 Theater 목록의 몸통. */
 .side-bar-wide {
   display: flex;
@@ -3934,22 +3919,10 @@ button.status-glyph.is-actionable:focus-visible {
   color: var(--text-secondary);
 }
 
-.side-bar-status-view-toggle[aria-pressed="true"] {
+.side-bar-theater-row-btn.side-bar-status-view-toggle[aria-pressed="true"] {
   border-color: transparent;
-  background: var(--control-wash);
-  color: var(--text-primary);
-}
-
-.side-bar-status-view-toggle[aria-pressed="true"]::after {
-  position: absolute;
-  bottom: 2px;
-  left: 50%;
-  width: 12px;
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  transform: translateX(-50%);
-  content: "";
+  background: color-mix(in oklch, var(--brass-quiet) 14%, transparent);
+  color: var(--brass-quiet-ink);
 }
 
 .side-bar-status-view-toggle:focus-visible,
@@ -4414,8 +4387,10 @@ button.status-glyph.is-actionable:focus-visible {
   flex: none;
 }
 
-.side-bar-theater-collapse-btn {
+.side-bar-theater-collapse-btn,
+.side-bar-theater-row-btn.side-bar-status-view-toggle {
   width: 22px;
+  height: 22px;
 }
 
 .side-bar-theater-chevron {
@@ -4495,7 +4470,8 @@ button.status-glyph.is-actionable:focus-visible {
   height: 13px;
 }
 
-.side-bar-theater-collapse-btn .side-bar-theater-chevron {
+.side-bar-theater-collapse-btn .side-bar-theater-chevron,
+.side-bar-theater-row-btn.side-bar-status-view-toggle svg {
   width: 16px;
   height: 16px;
 }
@@ -13759,41 +13735,8 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
 }
 
 /* ── 보관함 ─────────────────────────────────────────────────────────────
-   사이드바 맨 아래의 입구와, 그것이 여는 확대 시트. 보관은 되돌릴 수 있는 치움이라 입구·복원은 중립·brass 잉크를
+   아바타 메뉴가 여는 확대 시트. 보관은 되돌릴 수 있는 치움이라 입구·복원은 중립·brass 잉크를
    쓰고, coral은 되돌릴 수 없는 영구 삭제 확인에만 선다. */
-.side-bar-archive {
-  flex: none;
-  padding: var(--space-1) var(--space-2) var(--space-2);
-  border-top: 1px solid var(--surface-rim);
-}
-
-.side-bar-archive-button {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  min-height: 28px;
-  padding: 0 var(--space-2);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  text-align: left;
-  cursor: pointer;
-}
-
-.side-bar-archive-button:hover {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.side-bar-archive-button:focus-visible {
-  outline: 2px solid var(--control-focus-ring);
-  outline-offset: -2px;
-}
-
-.side-bar-archive-glyph,
 .archive-sheet-glyph {
   display: grid;
   place-items: center;
@@ -13803,26 +13746,12 @@ button.fc-mention-chip:focus-visible { outline: 2px solid var(--aurora); outline
   color: var(--text-tertiary);
 }
 
-.side-bar-archive-glyph svg,
 .archive-sheet-glyph svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.side-bar-archive-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.side-bar-archive-part {
-  color: var(--text-tertiary);
-}
-
-.side-bar-archive-count,
 .archive-sheet-count {
   color: var(--text-tertiary);
   font-family: var(--font-ui);

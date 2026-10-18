@@ -1334,14 +1334,18 @@
   white-space: nowrap;
 }
 .console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls {
+  opacity: 1;
+}
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls > button {
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
-.console-shell.is-operations-view .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls {
+.console-shell.is-operations-view .side-bar-theater-header.is-card:is(:hover, :focus-within, .is-active) .side-bar-theater-row-controls > button,
+.console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls > .side-bar-status-view-toggle[aria-pressed="true"] {
   opacity: 1;
 }
 @media (hover: none) {
-  .console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls { opacity: 1; }
+  .console-shell.is-operations-view .side-bar-theater-header.is-card .side-bar-theater-row-controls > button { opacity: 1; }
 }
 .side-bar-theater-alias-input {
   width: 100%;
