@@ -240,11 +240,14 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
       marked.push(child);
     }
     root.focus({ preventScroll: true });
-    // 연 메시지가 보이게 — 그 메시지(시각 줄부터)를 화면 위쪽에 둔다. 늦게 그려지는 마크다운을 한 프레임 뒤에 다시 맞춘다.
+    // 연 메시지가 보이게 — 그 메시지(시각 줄부터)를 목록의 위쪽 여백 선에 둔다. 여백은 폰 배치에서 떠 있는 상단 막대 몫(--m-chrome-top)을
+    // 품으므로 고정값이 아니라 계산된 여백을 뺀다 — 그래야 첫 줄이 막대 밑에 숨지 않는다. 늦게 그려지는 마크다운을 한 프레임 뒤에 다시 맞춘다.
     const place = () => {
       const log = logRef.current;
       const target = log?.querySelector<HTMLElement>("[data-relay-current]");
-      if (log && target) log.scrollTop = Math.max(0, target.offsetTop - 12);
+      if (!log || !target) return;
+      const inset = Number.parseFloat(getComputedStyle(log).paddingTop) || 0;
+      log.scrollTop = Math.max(0, target.offsetTop - inset);
     };
     place();
     const frame = requestAnimationFrame(() => { place(); setOpen(true); });
