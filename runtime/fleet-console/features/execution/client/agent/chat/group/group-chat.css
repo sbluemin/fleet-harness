@@ -996,6 +996,10 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 :root[data-view-mode="mobile"] .group-ledger { position: relative; --group-ledger-inset: calc(var(--m-chrome-top, 0px) + var(--space-3) + var(--group-ledger-head, 0px)); }
 :root[data-view-mode="mobile"] .group-ledger-head { position: absolute; top: calc(var(--m-chrome-top, 0px) + var(--space-3)); right: 16px; left: 16px; z-index: 2; width: auto; margin: 0 auto; border-color: var(--m-hairline-strong); background: var(--m-surface); color: var(--m-text-muted); }
 :root[data-view-mode="mobile"] .group-ledger-body { --m-chrome-top: var(--group-ledger-inset); }
+/* 공유 화면 안내 줄(공유 중일 때만)도 막대 아래, 머리 카드 바로 밑에 선다 — 막대 자리에 서면 그 안의 「대화에서 보기」가 눌리지 않는다. 본문은
+   이 줄 아래에서 시작한다(틀 위로 흐르는 채팅 면 대신 흐름 안의 본문이 그 몫을 받는다). */
+:root[data-view-mode="mobile"] .group-ledger > .group-ledger-share { position: relative; z-index: 2; margin-top: var(--group-ledger-inset); }
+:root[data-view-mode="mobile"] .group-ledger:has(> .group-ledger-share) > .group-ledger-body { position: relative; --m-chrome-top: 0px; }
 :root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) { background: linear-gradient(to top, var(--m-bg) 65%, color-mix(in srgb, var(--m-bg) 0%, transparent)); }
 :root[data-view-mode="mobile"] .group-chat-log::-webkit-scrollbar { display: none; }
 :root[data-view-mode="mobile"] .group-chat-agent { grid-template-columns: 28px minmax(0, 1fr); max-width: none; }

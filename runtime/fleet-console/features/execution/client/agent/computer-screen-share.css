@@ -4,7 +4,8 @@
   bottom: .75rem;
   z-index: 5;
   max-width: calc(100% - 1.5rem);
-  max-height: calc(100% - 1.5rem);
+  /* 폰 배치에서는 떠 있는 상단 막대의 몫(--m-chrome-top)만큼 덜 자란다 — 막대 밑으로 올라가지 않는다. 데스크톱은 그 몫이 0이다. */
+  max-height: calc(100% - 1.5rem - var(--m-chrome-top, 0px));
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--hairline);

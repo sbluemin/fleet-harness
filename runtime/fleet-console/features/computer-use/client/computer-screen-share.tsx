@@ -234,6 +234,14 @@ export function useComputerShareActive(operationId: string): boolean {
  * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
  * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
  */
+/**
+ * 폰 배치에서 본문 위에 떠 있는 상단 막대의 몫(px) — 셸이 `--m-chrome-top`으로 물려준다. 데스크톱에는 그 속성이 없어 0이다.
+ * 카드를 끌거나 키울 때 이 몫 위로는 올라가지 않는다(막대에 가리면 카드를 다시 잡을 수 없다).
+ */
+function chromeTopInset(element: Element): number {
+  return Number.parseFloat(getComputedStyle(element).getPropertyValue("--m-chrome-top")) || 0;
+}
+
 export function ComputerScreenShare({ operationId, actor, className }: { operationId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
@@ -259,12 +267,13 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
       const settings = own?.stream?.getVideoTracks()[0]?.getSettings();
       const ratio = (settings?.width || 16) / (settings?.height || 9);
       const preferred = preferredSize.current;
+      const inset = chromeTopInset(element);
       const width = Math.max(1, Math.min(preferred?.width ?? Math.min(256, 256 * ratio), parent.clientWidth - 24));
-      const height = Math.max(1, Math.min(preferred?.height ?? width / ratio, parent.clientHeight - 24));
+      const height = Math.max(1, Math.min(preferred?.height ?? width / ratio, parent.clientHeight - 24 - inset));
       setSize({ width, height });
       setPosition((previous) => previous ? {
         x: Math.max(0, Math.min(previous.x, parent.clientWidth - width)),
-        y: Math.max(0, Math.min(previous.y, parent.clientHeight - height)),
+        y: Math.max(inset, Math.min(previous.y, parent.clientHeight - height)),
       } : null);
     };
     resize();
@@ -283,7 +292,8 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
   // 칩은 영상 위에는 겹쳐도 되지만 문구(실패·권한 안내) 위에는 겹치면 안 된다 — 영상이 없을 때는 CSS 가 칩을 본문 위 한 줄로 내린다.
   const chip = actor && actorId ? actor(actorId) : null;
   return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${chip ? " has-actor" : ""}${own.stream ? " is-streaming" : ""}${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
-    style={maximized && own.stream ? { inset: 0, width: "100%", height: "100%", maxWidth: "100%", maxHeight: "100%" } : { width: own.stream ? size.width : 256, height: own.stream ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
+    // 최대화는 폰 배치의 떠 있는 상단 막대 아래에서 멈춘다(데스크톱은 막대 몫이 없어 틀 전체).
+    style={maximized && own.stream ? { inset: "var(--m-chrome-top, 0px) 0 0 0", width: "100%", height: "calc(100% - var(--m-chrome-top, 0px))", maxWidth: "100%", maxHeight: "calc(100% - var(--m-chrome-top, 0px))" } : { width: own.stream ? size.width : 256, height: own.stream ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
     onPointerDown={(event) => {
       const resizing = event.target instanceof Element && Boolean(event.target.closest(".computer-screen-share-resize"));
       if (event.button !== 0 || (maximized && own.stream) || (!resizing && event.target instanceof Element && event.target.closest("button"))) return;
@@ -318,7 +328,7 @@ export function ComputerScreenShare({ operationId, actor, className }: { operati
       }
       setPosition({
         x: Math.max(0, Math.min(start.left + (event.clientX - start.x) / start.scaleX, parent.clientWidth - element.offsetWidth)),
-        y: Math.max(0, Math.min(start.top + (event.clientY - start.y) / start.scaleY, parent.clientHeight - element.offsetHeight)),
+        y: Math.max(chromeTopInset(element), Math.min(start.top + (event.clientY - start.y) / start.scaleY, parent.clientHeight - element.offsetHeight)),
       });
     }}
     onPointerUp={(event) => {
