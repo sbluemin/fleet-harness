@@ -290,6 +290,11 @@ export interface MobileBarSpec {
   /** 깊이를 하나 거두는 동작. `depth`가 1 이상이면 반드시 싣는다 — 상세 상태를 닫는 일은 플러그인이 안다. */
   readonly onBack?: () => void;
   /**
+   * 제목 자리를 대화 pill로 세운다 — Operation 대화 머리와 같은 ‹ · [아바타 · 제목/보조 줄] 묶음이고, 가운데 제목 대신 왼쪽부터 선다.
+   * pill의 제목·보조 줄은 위 `title`·`subtitle`이다. 누르면 `onPress` — 보통 그 대화의 기록·설정 화면을 연다(깊이를 올리는 일은 플러그인이 한다).
+   */
+  readonly pill?: MobileBarPill;
+  /**
    * ⋮ 왼쪽에 서는 문맥 동작 아이콘 버튼(예: 검색). 호스트가 막대 문법(44dp 원형 눌림 면)으로 그리고,
    * 아이콘은 필수이며 `label`은 접근성 이름이다. 순서는 선언 순서다.
    */
@@ -302,6 +307,16 @@ export interface MobileBarSpec {
     readonly label?: string;
     readonly items: readonly MobileBarMenuItem[];
   };
+}
+
+export interface MobileBarPill {
+  /** pill 단추의 접근성 이름(이미 현지화된 문자열). */
+  readonly label: string;
+  /** pill 머리의 아바타(36px 자리). */
+  readonly avatar: ReactNode;
+  /** 아바타의 모습이 바뀌면 함께 바뀌는 값 — 호스트는 이것과 제목·보조 줄로 막대를 다시 그릴지 정한다(ReactNode는 비교하지 않는다). */
+  readonly avatarKey?: string;
+  readonly onPress: () => void;
 }
 
 export interface MobileBarAction {

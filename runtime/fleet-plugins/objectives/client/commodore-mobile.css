@@ -43,6 +43,12 @@
 /* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
 .objectives-cm .objectives-cm-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
 
+/*
+ * 대화(기본 화면) — 호스트 대화 화면(`ctx.chat.Conversation`, 그룹 대화와 같은 말풍선)이 남은 높이를 채운다. 머리는 호스트 막대의 대화 pill 이다.
+ * 입력 독은 그 화면의 입력 자리(composer)에 선다 — 자리·여백은 아래 독 규칙 그대로.
+ */
+.objectives-cm-conversation > .group-chat { flex: 1; min-height: 0; }
+
 /* 기록 탭 — 채팅 문법(S-26·S-27). */
 .objectives-cm-fill { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .objectives-cm-chat { display: flex; flex: 1; flex-direction: column; gap: 16px; min-height: 0; padding: 8px 24px 16px; overflow-y: auto; scrollbar-width: none; }

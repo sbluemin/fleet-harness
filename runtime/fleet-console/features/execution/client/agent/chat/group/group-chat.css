@@ -926,3 +926,35 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-card-stack > * + * { margin-left: -5px; }
 /* 원장 머리 아래 한 줄 — 공유 화면은 대화에 서 있다고 알리고 그리로 데려간다. */
 .group-ledger-share { flex: none; display: flex; align-items: center; gap: var(--space-2); max-width: 720px; width: 100%; margin: var(--space-2) auto 0; padding: 0 var(--space-3); box-sizing: border-box; font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-secondary); }
+
+/* ── 폰 배치의 말풍선(「모바일 대화 시안」 1번, 레퍼런스 첨부 2) ─────────────────────────────────────
+   폰 배치에서만 선다 — 데스크톱은 위 규칙 그대로다. 지휘관 그룹 대화·플러그인 대화(사령관)가 이 한 벌을 함께 입는다.
+   말풍선은 바탕보다 한 단 어두운 면(--m-chip)이고 테두리가 없다 — 흰 면이 종이 위에 뜨던 모양은 경계가 녹았다(대비비보다 밝기 방향이 시인성을 정한다).
+   본문은 고딕 16/24(라틴 읽기 세리프는 말풍선 없이 읽던 문법의 몫), 코드는 모노 그대로. 에이전트 말풍선은 열에서 표식 칸(28 + 8)과 오른쪽 여유 20을
+   뺀 폭까지 넓어진다. 사람 말은 오른쪽 반전 면(--m-inverse). 이름은 보조 글자, 표식은 묶음 마지막 말 옆이다. 색은 모바일 토큰만 쓴다. */
+:root[data-view-mode="mobile"] .group-chat-log { padding: 8px 16px; scrollbar-width: none; scrollbar-gutter: auto; }
+:root[data-view-mode="mobile"] .group-chat-log::-webkit-scrollbar { display: none; }
+:root[data-view-mode="mobile"] .group-chat-agent { grid-template-columns: 28px minmax(0, 1fr); max-width: none; }
+:root[data-view-mode="mobile"] .group-chat-agent.is-solo { grid-template-columns: minmax(0, 1fr); }
+:root[data-view-mode="mobile"] .group-chat-agent-box { align-items: flex-start; padding-right: 20px; }
+:root[data-view-mode="mobile"] .group-chat-agent-mark .group-chat-mark { width: 28px; height: 28px; }
+:root[data-view-mode="mobile"] .group-chat-agent-name,
+:root[data-view-mode="mobile"] .group-chat-agent-name .group-chat-name { color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); }
+:root[data-view-mode="mobile"] .group-chat-bubble { max-width: 100%; padding: 10px 15px; border-radius: 20px; font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 24px; }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-capped { padding: 0; }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-capped > .group-chat-bubble-body { padding: 10px 15px; }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-agent { border-color: transparent; background: var(--m-chip); color: var(--m-text); --group-chat-bubble-face: var(--m-chip); }
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human { max-width: calc(100% - 48px); border-color: transparent; background: var(--m-inverse); color: var(--m-on-inverse); }
+/* 말풍선 안 본문 — 읽기 서체 변수를 이 상자 안에서만 고딕으로 다시 잡는다(루트의 모바일 대입은 그대로). */
+:root[data-view-mode="mobile"] .group-chat-bubble :is(.markdown-body, .agent-chat-dispatch-md, .agent-chat-dispatch-text) {
+  --font-content: var(--m-sans);
+  --font-content-size: var(--m-fs-list);
+  --font-size-body: var(--m-fs-list);
+  font-family: var(--m-sans);
+  font-size: var(--m-fs-list);
+  line-height: 24px;
+}
+:root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
+/* 말풍선 안 코드는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
+:root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body pre,
+:root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body :not(pre) > code { background: var(--m-bg); }
