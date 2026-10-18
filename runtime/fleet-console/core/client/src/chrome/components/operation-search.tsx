@@ -776,7 +776,7 @@ export function OperationSearch({
                                 status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
                               />
                             </span>
-                            {/* "지금 어디"는 사이드바 칩과 같은 투영(실험 기능이 켜진 동안만 온다)이다. 팔레트는
+                            {/* "지금 어디"는 실험 기능이 켜진 동안만 오는 서버 투영이다. 팔레트는
                                 한 줄 행을 지키려고 이름 옆 같은 줄에 붙이고, 접근성 이름에는 숨은 문장으로 덧붙인다 — aria-label로
                                 덮으면 활동 마크(실행 중·대기 등)의 이름까지 지워지므로 자손 텍스트로 남긴다. */}
                             <span className={`operation-search-result-text${workspace ? " operation-search-result-text-inline" : ""}`}>

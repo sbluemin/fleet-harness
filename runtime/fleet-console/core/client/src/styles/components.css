@@ -8563,17 +8563,55 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   flex: 1 1 0;
 }
 
-/* ⌘K Operation 행의 "지금 어디" — 한 줄을 유지하려고 이름 옆에 같은 줄로 붙인다. 이름이 먼저 자리를
-   갖고 위치 줄은 남은 폭에서 잘린다. 사이드바와 같은 .operation-context 문법·잉크 위계를 쓰고,
-   활성 행에서도 잉크가 바뀌지 않는다. */
+/* ⌘K Operation 행의 "지금 어디" — 이름이 먼저 자리를 갖고 위치 줄은 남은 폭에서 한 줄로 잘린다.
+   긴 이름에도 위치를 남기되 좁은 화면에서는 하한도 비례해 줄인다. 상한은 이름을 과하게 밀지 않게 한다.
+   이 문법은 팔레트만 쓴다. 위치 사실은 중립 보조색으로만 말하고 활성 행에서도 잉크가 바뀌지 않는다. */
 .operation-search-result-text-inline .operation-context {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   flex: 1 1 0;
+  min-width: min(8rem, 30%);
+  max-width: min(24rem, 45%);
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.3;
   letter-spacing: 0;
+  white-space: nowrap;
   transform: translateY(-0.5px);
 }
 
+.operation-search-result-text-inline .operation-context > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.operation-search-result-text-inline .operation-context-branch,
 .operation-search-result-text-inline .operation-context-folder {
   flex: 0 1 auto;
+}
+
+.operation-search-result-text-inline .operation-context-branch::before {
+  content: "⎇ ";
+  opacity: 0.8;
+}
+
+.operation-search-result-text-inline .operation-context-sep {
+  flex: none;
+  opacity: 0.6;
+}
+
+.operation-search-result-text-inline .operation-context-folder.is-outside::before {
+  content: "↗ ";
+  opacity: 0.8;
+}
+
+.operation-search-result-text-inline .operation-context--deviates {
+  color: var(--text-secondary);
 }
 
 /* 위치 줄의 문장형(브랜치 …, 폴더 …)은 보조기기에만 — 활동 마크의 이름과 함께 option의 접근성 이름에 남는다. */
