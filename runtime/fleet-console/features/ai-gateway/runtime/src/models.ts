@@ -55,7 +55,7 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   }).strict(),
 ]);
 
-const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
+const GATEWAY_QUOTA_SCOPES = ["auto"] as const;
 export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
 const GatewayModelEntrySchema = z.object({
@@ -120,9 +120,9 @@ export interface GatewayModel {
   readonly cursorMaxMode?: true;
   /**
    * Sub-allowance this model is billed against, when its provider splits one
-   * subscription across pools. Cursor spends Auto-tier models from a separate
-   * budget than its API-tier pool, so the provider's combined usage figure
-   * cannot tell a caller whether this particular model still has room.
+   * subscription across pools. Cursor's exposed models spend the Auto allowance,
+   * so the provider's combined usage figure cannot tell a caller whether this
+   * particular model still has room.
    */
   readonly quotaScope?: GatewayQuotaScope;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */

@@ -43,8 +43,7 @@ export function cursorResampleNudgeItems(announcement: string): CanonicalInputIt
 
 /**
  * 재요청을 켜는 wire 모델. 관측과 회복 실측이 있는 grok-4.7 계열(effort·`-fast`·500k 변형)만 둔다.
- * muse-spark-1.3은 Cursor에서 thinkingDelta를 보내지 않아(6/6) "무추론" 판정이 늘 참이 되고, 재발도
- * 0/4였다. 넓히려면 그 모델의 재현과 회복을 먼저 잰다.
+ * 무추론만으로 재요청이 필요하다고 판정하지 않는다. 넓히려면 그 모델의 재현과 회복을 먼저 잰다.
  */
 const CURSOR_RESAMPLE_WIRE_MODEL = /^grok-4\.7(?:-|$)/;
 

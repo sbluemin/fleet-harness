@@ -637,7 +637,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "grok-4.7",
-      "source": "Restored 2026-10-06 with Grok 4.7 and Muse Spark 1.3; Muse Wonder 1.0, Gemini 3.8 Flash and Gemini 4 Argon added 2026-10-17. Wire ids from cursor-agent `models`: 2026.10.01-e373342 listed grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}; 2026.10.16-e3cb207 listed muse-wonder-1.0-{minimal,low,medium,high,xhigh,max}, gemini-3.8-flash-{low,medium,high} and gemini-4-argon-{low,medium,high}. The Muse minimal rung stays outside Fleet's effort ladder. Context windows from the Run checkpoint contextWindow (Ultra plan): on 2026-10-06 grok-4.7 256000 and 500000 with modelDetails.maxMode, muse-spark-1.3 300000 and 1000000 with maxMode, although Cursor labels every Muse Spark rung 1M; on 2026-10-17 muse-wonder-1.0 300000, gemini-3.8-flash 200000 and gemini-4-argon 200000, each 1000000 with maxMode. Pools from GetCurrentPeriodUsage planUsage deltas: on 2026-10-06 around 42-turn runs Grok 4.7 moved only autoPercentUsed and Muse Spark 1.3 only apiPercentUsed; on 2026-10-17 six turns across the three added models moved apiPercentUsed (0 to 0.1) with autoPercentUsed unchanged, and single turns 150 s apart each raised apiPercentUsed. autoBucketModels lists none of these models.",
+      "source": "Restored 2026-10-06 with Grok 4.7. Wire ids from cursor-agent `models`: 2026.10.01-e373342 listed grok-4.7-{low,medium,high,xhigh}[-fast]. Context windows from the Run checkpoint contextWindow (Ultra plan): on 2026-10-06 grok-4.7 256000 and 500000 with modelDetails.maxMode. Pool from GetCurrentPeriodUsage planUsage deltas: on 2026-10-06 around 42-turn runs Grok 4.7 moved only autoPercentUsed. autoBucketModels lists none of the Grok 4.7 models.",
       "models": [
         {
           "modelId": "grok-4.7",
@@ -702,138 +702,6 @@
               "xhigh"
             ],
             "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
-          },
-          "cursorMaxMode": true
-        },
-        {
-          "modelId": "muse-spark-1.3",
-          "name": "Muse-Spark-1.3",
-          "quotaScope": "api",
-          "contextWindow": 300000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
-          }
-        },
-        {
-          "modelId": "muse-spark-1.3-1m",
-          "name": "Muse-Spark-1.3-1M",
-          "quotaScope": "api",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
-          },
-          "cursorMaxMode": true
-        },
-        {
-          "modelId": "muse-wonder-1.0",
-          "name": "Muse-Wonder-1.0",
-          "quotaScope": "api",
-          "contextWindow": 300000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "muse-wonder-1.0-{effort}"
-          }
-        },
-        {
-          "modelId": "muse-wonder-1.0-1m",
-          "name": "Muse-Wonder-1.0-1M",
-          "quotaScope": "api",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "upstreamModelIdTemplate": "muse-wonder-1.0-{effort}"
-          },
-          "cursorMaxMode": true
-        },
-        {
-          "modelId": "gemini-3.8-flash",
-          "name": "Gemini-3.8-Flash",
-          "quotaScope": "api",
-          "contextWindow": 200000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "gemini-3.8-flash-{effort}"
-          }
-        },
-        {
-          "modelId": "gemini-3.8-flash-1m",
-          "name": "Gemini-3.8-Flash-1M",
-          "quotaScope": "api",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "gemini-3.8-flash-{effort}"
-          },
-          "cursorMaxMode": true
-        },
-        {
-          "modelId": "gemini-4-argon",
-          "name": "Gemini-4-Argon",
-          "quotaScope": "api",
-          "contextWindow": 200000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "gemini-4-argon-{effort}"
-          }
-        },
-        {
-          "modelId": "gemini-4-argon-1m",
-          "name": "Gemini-4-Argon-1M",
-          "quotaScope": "api",
-          "contextWindow": 1000000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "upstreamModelIdTemplate": "gemini-4-argon-{effort}"
           },
           "cursorMaxMode": true
         }

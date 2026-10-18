@@ -24,7 +24,7 @@ export const QUOTA_LAST_GOOD_PROVIDERS = [
 export type QuotaLastGoodProviderId = (typeof QUOTA_LAST_GOOD_PROVIDERS)[number];
 
 const WINDOW_IDS: readonly WindowId[] = ["session", "weekly", "model", "cycle"];
-const SCOPES: readonly QuotaScope[] = ["auto", "api"];
+const SCOPES: readonly QuotaScope[] = ["auto"];
 
 function finite(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -49,7 +49,12 @@ function sanitizeWindow(value: unknown): QuotaWindow | undefined {
   if (!WINDOW_IDS.includes(window.id as WindowId)) return undefined;
   const usedPercent = finite(window.usedPercent);
   if (usedPercent === undefined || usedPercent < 0 || usedPercent > 100) return undefined;
-  const scope = SCOPES.includes(window.scope as QuotaScope) ? window.scope as QuotaScope : undefined;
+  const rawScope = window.scope;
+  const scope = rawScope === undefined
+    ? undefined
+    : SCOPES.includes(rawScope as QuotaScope) ? rawScope as QuotaScope : undefined;
+  // 은퇴한 풀의 창은 scope를 비우면 공유 제한으로 둔갑해 배정을 그르치므로 버린다.
+  if (rawScope !== undefined && scope === undefined) return undefined;
   const label = shortLabel(window.label);
   const resetsAt = safeTime(window.resetsAt);
   let period: QuotaWindow["period"];
