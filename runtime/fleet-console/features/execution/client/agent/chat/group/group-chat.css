@@ -345,8 +345,11 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
 }
 .group-relay-foot { transform: translateY(6px); }
 .group-relay.is-open :is(.group-relay-head, .group-relay-foot) { opacity: 1; transform: none; transition-delay: 140ms; }
-/* 위쪽은 대화 중심 화면의 투명 맨 위 줄 몫까지 비운다 — 칩이 머리 pill 에 가리지 않는다. */
-.group-relay-head { padding: calc(18px + var(--conversation-overlay-top, 0px)) var(--space-4) var(--space-2); }
+/* 대화 중심 화면에서는 이 층이 머리 pill 을 덮으므로 칩이 그 자리(맨 위 줄 가운데, 도구모음과 같은 높이)에 선다 — 빈 맨 위 줄 아래로
+   떠 내려가지 않는다(참고 이미지 2). 맨 위 줄이 없는 칸(--conversation-overlay-top 0)에서는 위를 18px 비운다. 44px 는 칩 높이다. */
+.group-relay-head {
+  padding: max(calc(18px - var(--conversation-overlay-top, 0px)), calc((var(--conversation-overlay-top, 0px) - 44px) / 2)) var(--space-4) var(--space-2);
+}
 /* 위 가운데 칩 — 보낸 이 ⇄ 받는 이(여럿이면 이어서). 얹힌 면과 머리카락 선 하나. */
 .group-relay-pair {
   display: inline-flex;
