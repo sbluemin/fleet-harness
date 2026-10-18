@@ -1,6 +1,6 @@
 .remote-console-anchor { display: inline-flex; }
 .remote-console-anchor:empty { display: none; }
-.remote-console-compact-slot { flex: none; padding: 6px 10px; }
+.remote-console-compact-slot { display: flex; justify-content: center; flex: none; padding: 6px 10px; }
 .remote-console-button { position: relative; }
 .remote-console-button.is-compact { width: 36px; height: 36px; }
 .remote-console-button.is-away { color: var(--brass-ink); background: var(--quiet-choice-fill); border-color: color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); }

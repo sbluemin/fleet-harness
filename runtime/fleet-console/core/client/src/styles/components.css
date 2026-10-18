@@ -3775,7 +3775,7 @@ button.status-glyph.is-actionable:focus-visible {
   z-index: var(--z-rail, 10);
   display: flex;
   flex-direction: column;
-  width: var(--side-bar-width, 56px);
+  width: var(--side-bar-width, 72px);
   min-width: 0;
   overflow: hidden;
   background: none;

@@ -36,19 +36,24 @@
   border-right: 1px solid var(--hairline-column);
 }
 
-/* 좁은 창 — 펼친 사이드바가 아바타만 남은 56px 열로 물러난다(시안 v2 규칙 h-3). 이름·상태 글자, 맨 위 줄 단추, Theater 머리의
-   조작과 폭 손잡이를 걷고 아바타를 열 가운데에 둔다. 창을 넓히면 사람이 정한 폭으로 돌아온다. */
+/* 좁은 창 — 사이드바가 72px 사령관 열로 물러난다. 원격 칩·Theater 사령관·계정만 가운데에 남기고,
+   Operation·상태·그룹 목록과 조작을 걷는다. 창을 넓히면 사람이 정한 폭과 목록으로 돌아온다. */
 .console-body.is-conversation .operations-side-bar.is-compact :is(
   .side-bar-top-strip,
-  .side-bar-chip-text,
-  .side-bar-chip-close,
-  .side-bar-chip-group-mark,
+  .side-bar-chip,
+  .side-bar-cluster-row,
+  .side-bar-theater-groups,
+  .side-bar-theater-contributions,
+  .side-bar-status-section,
+  .side-bar-status-recovery-shelves,
+  .side-bar-group-section,
+  .side-bar-ungrouped-section,
+  .side-bar-attention,
+  .side-bar-starter,
   .side-bar-theater-text,
   .side-bar-theater-row-controls,
   .side-bar-theater-chevron,
   .side-bar-status-header,
-  .side-bar-cluster-row-main > *,
-  .side-bar-cluster-row-aside,
   .side-bar-group-header,
   .side-bar-ungrouped-label,
   .operations-side-bar-resize-handle
@@ -70,11 +75,11 @@
   padding-top: var(--space-3);
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-row, .side-bar-theater-header.is-card, .side-bar-theater-groups, li) {
+.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-header.is-card) {
   padding-inline: 0;
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-chip, .side-bar-theater-activate) {
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-activate {
   justify-content: center;
   padding-inline: 0;
 }
@@ -92,29 +97,6 @@
 }
 
 .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-mark {
-  position: relative;
-  z-index: 1;
-}
-
-/* Operation 행도 들여쓰기 없는 한 칸으로 모은다. 글자만 숨기고 본문 단추는 아바타 위에 남겨 열기·키보드 선택을 보존한다. */
-.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row {
-  position: relative;
-  grid-template-columns: 26px;
-  justify-content: center;
-  min-height: 40px;
-  box-sizing: border-box;
-}
-
-.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row-main {
-  position: absolute;
-  inset: 0;
-  display: block;
-  grid-area: auto;
-  width: 100%;
-}
-
-/* 검토 대기의 아바타는 본문 열기와 다른 동작이므로 투명 본문 단추보다 위에서 눌린다. */
-.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row-glyph.is-actionable {
   position: relative;
   z-index: 1;
 }
@@ -1530,7 +1512,7 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
 }
 
-/* 56px 열은 신호등 세 개보다 좁다. 폭 전이의 첫 프레임부터 원격 콘솔 슬롯을 포함한 모든 내용을 맨 위 줄 아래에 둔다. */
+/* 신호등이 열 안에 들어와도 같은 줄에 원격 칩을 함께 놓지는 않는다. 폭 전이 첫 프레임부터 내용은 맨 위 줄 아래에 둔다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact {
   padding-top: var(--conversation-top-row);
 }

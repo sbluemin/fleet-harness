@@ -11,7 +11,7 @@ import type { OperationNode } from "../../../../core/client/src/integration/type
 interface SideBarState {
   readonly width: number;
   /**
-   * 창이 좁아 사이드바가 아바타만 남은 좁은 열로 물러난 상태(시안 v2 규칙 h-3). 저장하지 않는 화면 상태다 —
+   * 창이 좁아 사이드바가 사령관 중심의 좁은 열로 물러난 상태. 저장하지 않는 화면 상태다 —
    * 창을 넓히면 사람이 정한 폭으로 돌아온다. 사이드바는 접히지 않는다 — 늘 그 자리에 선다.
    */
   readonly compact: boolean;
@@ -20,8 +20,9 @@ interface SideBarState {
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
 export const MIN_EXPANDED_PX = 280;
-/** 좁은 창에서 아바타만 남는 사이드바 폭. */
-export const COMPACT_SIDE_BAR_PX = 56;
+/** 좁은 창의 사령관 열. macOS Desktop은 최소 창 900 DIP와 viewport ≤800 조건상 줌 ≥1.2에서 진입한다.
+ * 72 CSS px × 1.2 = 86.4 DIP로, 줌을 타지 않는 신호등 오른쪽 끝(70 DIP) 뒤에 16 DIP 이상을 남긴다. */
+export const COMPACT_SIDE_BAR_PX = 72;
 /** 이 폭 이하의 창에서 사이드바가 좁은 열로 물러난다 — 대화(360)와 도구 한 열(300)을 남기려는 무렵이다. */
 const COMPACT_VIEWPORT_MAX_PX = 800;
 
