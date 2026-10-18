@@ -47,6 +47,10 @@
   .side-bar-theater-row-controls,
   .side-bar-theater-chevron,
   .side-bar-status-header,
+  .side-bar-cluster-row-main > *,
+  .side-bar-cluster-row-aside,
+  .side-bar-group-header,
+  .side-bar-ungrouped-label,
   .operations-side-bar-resize-handle
 ) {
   display: none;
@@ -66,13 +70,36 @@
   padding-top: var(--space-3);
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-row, li) {
+.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-row, .side-bar-theater-header.is-card, .side-bar-theater-groups, li) {
   padding-inline: 0;
 }
 
 .console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-chip, .side-bar-theater-activate) {
   justify-content: center;
   padding-inline: 0;
+}
+
+/* 목표 행도 들여쓰기 없는 한 칸으로 모은다. 글자만 숨기고 본문 단추는 아바타 위에 남겨 열기·키보드 선택을 보존한다. */
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row {
+  position: relative;
+  grid-template-columns: 26px;
+  justify-content: center;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row-main {
+  position: absolute;
+  inset: 0;
+  display: block;
+  grid-area: auto;
+  width: 100%;
+}
+
+/* 검토 대기의 아바타는 본문 열기와 다른 동작이므로 투명 본문 단추보다 위에서 눌린다. */
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-cluster-row-glyph.is-actionable {
+  position: relative;
+  z-index: 1;
 }
 
 .console-body.is-conversation .operations-side-bar::before {
@@ -1483,6 +1510,11 @@ html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversat
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바는 접히지 않으므로 신호등은 늘 사이드바 맨 위 줄에 앉는다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-operations-view .side-bar-top-strip {
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
+}
+
+/* 56px 열은 신호등 세 개보다 좁다. 폭 전이의 첫 프레임부터 원격 콘솔 슬롯을 포함한 모든 내용을 맨 위 줄 아래에 둔다. */
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact {
+  padding-top: var(--conversation-top-row);
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
