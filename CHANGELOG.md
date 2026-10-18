@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.244.0] - 2026-10-18
+
+### fleet-console
+
+#### Changed
+- In the Commodore conversation, each board action now names its objective next to the commander's avatar, and clicking the line opens that objective instead of unfolding an empty panel; only questions and your answers still expand.
+- Keep usage summaries beside the Commodore and objective group composers, restore the Fleet emblem in the sidebar, and show Commodore status inside an empty message box.
+- Messages that members of a group chat send each other now appear as a compact "From" line; tap it to read the whole exchange between those participants as a conversation, then close it to return to where you were.
+- On phones, the top bar and the message box now float over the screen, so conversations and lists scroll behind them under a soft fade instead of being cut off at a hard edge, in both dark and light.
+- Show only the Commodore of each theater, the remote console button, and your account in the narrow sidebar, and give the sidebar's round buttons and account chip a softer borderless look.
+
+#### Fixed
+- Separate command and mention names from their leading symbols in composer menus.
+- Keep the narrow sidebar clear of the macOS window buttons and line up its icons in one centered column.
+
+### fleet-desktop
+
+#### Changed
+- Let the startup emblem settle into the sidebar's Fleet mark and return from that position when quitting.
+
 ## [1.243.1] - 2026-10-18
 
 Release v1.243.1

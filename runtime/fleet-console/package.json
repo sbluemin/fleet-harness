@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-console",
-  "version": "1.243.1",
+  "version": "1.244.0",
   "description": "Fleet Console \u2014 sole owner of the fleet and fleet-console bins and the Console web surface.",
   "repository": {
     "type": "git",
