@@ -110,6 +110,8 @@ export interface MentionTargetDescriptor {
  * 사이드바 맨 위 줄 가운데에, 그 밖의 옛 항목은 사이드바 바닥의 호환 칸에 선다(새 요약은 sidebarFooterEntries). 호스트는 등록 순서대로
  * 세울 뿐이고, 버튼 문법은 플러그인의 책임이다. 사이드바 자리는 가용 폭에 따라 40·32·28px 이며 그 크기를
  * `--command-band-entry-size` 로 알린다 — 버튼 크기를 `var(--command-band-entry-size, 24px)` 로 받으면 어느 자리에도 맞는다.
+ * 여러 머리를 그리는 항목은 `--command-band-entry-gap`(기본 4px, 최저 -14px)을 이웃 머리 사이 간격으로 받는다.
+ * 음수는 겹침이므로 gap 대신 음수 margin으로 적용하고, hover·focus 머리는 앞으로 세운다. 크기·간격은 선택적 CSS 계약이다.
  */
 export interface CommandBandEntryDescriptor {
   readonly id: string;

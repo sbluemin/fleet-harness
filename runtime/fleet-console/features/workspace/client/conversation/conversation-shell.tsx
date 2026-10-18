@@ -179,6 +179,7 @@ export function ConversationSideBarActions() {
   const newSessionTitle = newSessionShortcut ? `${t("conversation.side.newSession")} (${newSessionShortcut})` : t("conversation.side.newSession");
   return (
     <span className="conversation-side-actions">
+      <span className="remote-console-anchor" data-remote-console-anchor />
       <button type="button" className="conversation-round" onClick={toggleOperationSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
@@ -224,12 +225,21 @@ export function ConversationSideBarDeputies() {
       const available = Math.max(0, zoneRight - zoneLeft);
       let size: number = DEPUTY_HEAD_SIZES[0];
       let clusterWidth = 0;
+      let gap = 4;
+      cluster.style.setProperty("--command-band-entry-gap", `${gap}px`);
       for (const candidate of DEPUTY_HEAD_SIZES) {
         size = candidate;
         cluster.style.setProperty("--command-band-entry-size", `${candidate}px`);
         clusterWidth = cluster.offsetWidth;
         if (clusterWidth <= available - DEPUTY_CLEARANCE * 2) break;
       }
+      // 28px 아래로 줄이지 않는다. 플러그인 내부 머리 간격도 SDK 변수로 좁혀 실제 폭을 다시 잰다.
+      while (clusterWidth > available - DEPUTY_CLEARANCE * 2 && gap > -14) {
+        gap--;
+        cluster.style.setProperty("--command-band-entry-gap", `${gap}px`);
+        clusterWidth = cluster.offsetWidth;
+      }
+      cluster.dataset.headGap = String(gap);
       let left = width / 2 - clusterWidth / 2;
       if (left < zoneLeft + DEPUTY_CLEARANCE || left + clusterWidth > zoneRight - DEPUTY_CLEARANCE) {
         left = zoneLeft + (available - clusterWidth) / 2;

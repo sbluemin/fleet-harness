@@ -9,7 +9,7 @@ const messagesEn = {
   "remoteAccess.step1Title": "Before you turn on remote access",
   "remoteAccess.step1Body": "Turning it on opens this console to other devices, so read each card before you use it.",
   "remoteAccess.step2Title": "Consoles you can jump to",
-  "remoteAccess.step2Body": "Paste an access link from another console and it lands in this list. Opening one from the Consoles section needs Fleet Desktop, because a browser cannot check a console's certificate.",
+  "remoteAccess.step2Body": "Paste an access link from another console and it lands in this list. Opening one from the console button beside Search needs Fleet Desktop, because a browser cannot check a console's certificate.",
   "remoteAccess.step3Title": "Choose the address this console answers on",
   "remoteAccess.step3Body": "Choose the local listen endpoint and the public hostname and port your router forwards to it. Turning it off closes the listener and ends every remote session immediately.",
   "remoteAccess.step4Title": "This console's fingerprint",
@@ -24,7 +24,7 @@ const messagesKo: Record<keyof typeof messagesEn, string> = {
   "remoteAccess.step1Title": "원격 접속을 켜기 전에",
   "remoteAccess.step1Body": "켜면 이 콘솔이 다른 기기에 열리므로 각 항목을 읽어 보고 사용하세요.",
   "remoteAccess.step2Title": "건너갈 수 있는 콘솔 목록입니다",
-  "remoteAccess.step2Body": "다른 콘솔의 액세스 링크를 붙여넣으면 이 목록에 들어옵니다. 콘솔 섹션에서 실제로 여는 데는 Fleet Desktop이 필요합니다 — 브라우저는 콘솔의 인증서를 대조할 수 없습니다.",
+  "remoteAccess.step2Body": "다른 콘솔의 액세스 링크를 붙여넣으면 이 목록에 들어옵니다. 찾기 옆 콘솔 단추에서 실제로 여는 데는 Fleet Desktop이 필요합니다 — 브라우저는 콘솔의 인증서를 대조할 수 없습니다.",
   "remoteAccess.step3Title": "이 콘솔이 응답할 주소를 고릅니다",
   "remoteAccess.step3Body": "로컬 수신 엔드포인트와 라우터가 그곳으로 전달할 공개 호스트 이름 및 포트를 고릅니다. 끄면 리스너가 닫히고 모든 원격 세션이 즉시 끝납니다.",
   "remoteAccess.step4Title": "이 콘솔의 지문입니다",
@@ -47,7 +47,7 @@ export const remoteAccessOnboarding: OnboardingContribution = {
   tours: [
     {
       id: "remote-access",
-      spotlight: { anchor: ".side-bar-shared", title: T("remoteAccess.spotlightTitle"), body: T("remoteAccess.spotlightBody") },
+      spotlight: { anchor: ".remote-console-button", title: T("remoteAccess.spotlightTitle"), body: T("remoteAccess.spotlightBody") },
       // 활성화 앵커는 섹션 머리다. 카드는 의미 속성으로 짚고, 링크 카드는 리스너가 켜져 있을 때만 렌더되므로 꺼져 있는 동안에는
       // 그 스텝만 조용히 빠진다.
       walkthrough: [
