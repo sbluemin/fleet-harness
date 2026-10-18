@@ -28,15 +28,12 @@
 .console-section-status.is-coral, .console-section-error, .console-section-confirm .is-danger { color: var(--coral-ink); }
 .console-section-status.is-warn { color: var(--warn-ink); }
 .console-section-edit-row { display: flex; align-items: center; min-width: 0; }
-.console-section-hint, .console-section-error { margin: 6px 10px 4px; font-size: var(--t-xs); line-height: 1.5; }
-.console-section-hint { color: var(--text-tertiary); }
+.console-section-error { margin: 6px 10px 4px; font-size: var(--t-xs); line-height: 1.5; }
 .console-section-rename { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px; }
 .console-section-rename input { width: 100%; min-width: 0; background: var(--surface-panel); color: var(--text-primary); border: 1px solid var(--brass); border-radius: 6px; font: inherit; padding: 4px 8px; }
 .console-section-rename button, .console-section-confirm button { border: 0; border-radius: 8px; background: var(--wash-hover); color: var(--text-secondary); padding: 4px 10px; font-size: var(--t-xs); }
 .console-section-confirm { padding: 4px 10px 8px; font-size: var(--t-xs); color: var(--text-secondary); }
-.console-section-confirm p { margin: 0 0 6px; }
 .console-section-confirm button + button { margin-left: 4px; }
-.console-section-settings { background: none; border: 0; color: var(--text-secondary); font-size: var(--t-xs) !important; line-height: 1.5; text-align: left; padding: 8px 10px 4px; text-decoration: underline; text-underline-offset: 3px; }
 .console-section.is-compact { display: grid; place-items: center; padding: 6px 0; }
 .console-section-compact { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; background: none; border: 0; border-radius: 10px; color: var(--text-secondary); }
 .console-section-compact:hover { background: var(--wash-hover); }

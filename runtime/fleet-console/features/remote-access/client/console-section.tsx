@@ -5,7 +5,6 @@ import { desktopPickerUrl, isDesktopShell, PICKER_SURFACE_DISMISS, useDesktopHom
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { hostDetail, hostStatus, isLoopbackOrigin, nearbyDetail } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
-import { openSettingsSurface } from "../../settings/client/settings-door.js";
 import { AddHostDialog } from "./add-host-dialog.js";
 import { fetchLocalConsoles, forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type LocalConsole, type RemoteHostReach } from "./remote-hosts.js";
 
@@ -192,8 +191,8 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
       {expanded && !fallbackAway ? <div id={listId} className="console-section-list">
         <p className="console-section-group">{t("chrome.hosts.nearby")}</p>
         {nearby.map((entry) => <div key={entry.origin}>{row(entry.origin, entry.origin === location.origin ? state.consoleName || t("chrome.hosts.managedConsole") : t("chrome.hosts.console"), nearbyDetail(entry, entry.origin === homeRow), entry.state === "ready" || entry.origin === at ? undefined : { label: t(entry.state === "stopping" ? "chrome.hosts.stopping" : "chrome.hosts.slow") }, entry.state === "stopping")}</div>)}
-        <p className="console-section-group">{t("chrome.hosts.saved")}</p>
-        {!desktop ? <p className="console-section-hint">{t("chrome.consoles.desktopHint")}</p> : canRead ? hosts.map((host) => <div key={host.id}>
+        {desktop && canRead && hosts.length > 0 ? <p className="console-section-group">{t("chrome.hosts.saved")}</p> : null}
+        {desktop && canRead ? hosts.map((host) => <div key={host.id}>
           {renaming === host.id ? <form className="console-section-rename" onSubmit={(event) => { event.preventDefault(); if (name.trim()) void mutate(() => renameRemoteHost(host.id, name.trim())); }}>
             <input autoFocus value={name} aria-label={t("settings.remote.hosts.rename")} maxLength={120} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setRenaming(null); } }} />
             <button type="submit" disabled={busy || !name.trim()}>{t("chrome.consoles.save")}</button><button type="button" onClick={() => setRenaming(null)}>{t("common.cancel")}</button>
@@ -202,14 +201,9 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
             {editing ? <><button type="button" className="console-section-action" aria-label={`${host.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")} onClick={() => { setRenaming(host.id); setName(host.label); setConfirming(null); }}>✎</button>
               <button type="button" className="console-section-action" aria-label={`${host.label}: ${t("settings.remote.hosts.forget")}`} title={t("settings.remote.hosts.forget")} onClick={() => { setConfirming(host.id); setRenaming(null); }}>−</button></> : null}
           </div>}
-          {confirming === host.id ? <div className="console-section-confirm"><p>{t("chrome.consoles.forgetWarning")}</p><button type="button" onClick={() => setConfirming(null)} disabled={busy}>{t("common.cancel")}</button><button type="button" className="is-danger" disabled={busy} onClick={() => void mutate(() => forgetRemoteHost(host.id))}>{t("settings.remote.hosts.forget")}</button></div> : null}
+          {confirming === host.id ? <div className="console-section-confirm"><button type="button" onClick={() => setConfirming(null)} disabled={busy}>{t("common.cancel")}</button><button type="button" className="is-danger" title={t("chrome.consoles.forgetWarning")} aria-description={t("chrome.consoles.forgetWarning")} disabled={busy} onClick={() => void mutate(() => forgetRemoteHost(host.id))}>{t("settings.remote.hosts.forget")}</button></div> : null}
         </div>) : null}
-        {desktop && canRead && hosts.length === 0 ? <p className="console-section-hint">{t("chrome.consoles.empty")}</p> : null}
         {away && !nearby.some((entry) => entry.origin === at) && !current ? row(at, currentName, new URL(at).host, { label: t("chrome.hosts.notSaved") }) : null}
-        {editing ? <button type="button" className="console-section-settings" onClick={() => {
-          if (resident || inPicker || inlinePopup) location.assign(new URL("/console/settings?section=remote-access", location.origin).toString());
-          else openSettingsSurface("connectivity");
-        }}>{t("chrome.consoles.allowAccess")}</button> : null}
       </div> : <div className="console-section-row-wrap"><button type="button" className="console-section-row is-current" aria-current="location" aria-expanded={false} onClick={(event) => toggle(event.currentTarget)}><ConsoleGlyph remote={away} /><span className="console-section-name">{currentName}</span><span className="console-section-address">{away ? t("chrome.consoles.remote") : t("chrome.hosts.nearby")}</span></button>{away ? <button type="button" className="console-section-action" aria-label={t("chrome.consoles.home")} title={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}</div>}
     </>}
     {error ? <p role="alert" className="console-section-error">{error}</p> : null}
