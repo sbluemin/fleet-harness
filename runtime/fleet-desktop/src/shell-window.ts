@@ -1,4 +1,5 @@
 import type { BaseWindow, Rectangle, TitleBarOverlayOptions, WebContents, WebContentsView } from "electron";
+import { loadConsoleDocument } from "./console-handoff.js";
 
 /**
  * Fleet Desktop 의 창 골격 — BaseWindow 와 Console WebContentsView 를 한 몸으로 다룬다.
@@ -182,7 +183,8 @@ export function createDesktopShellWindow(base: BaseWindow, consoleView: WebConte
     getContentBounds: () => base.getContentBounds(),
     getMediaSourceId: () => base.getMediaSourceId(),
     isFullScreen: () => base.isFullScreen(),
-    loadURL: (url) => consoleContents.loadURL(url),
+    // 떠나는 문서가 보낸 셸 신호가 적재를 거짓 실패로 만들지 않도록 대상 항해의 결과로 판정한다.
+    loadURL: (url) => loadConsoleDocument(consoleContents, url),
     loadFile: (path) => consoleContents.loadFile(path),
     setWindowButtonPosition: (position) => base.setWindowButtonPosition(position),
     setTitleBarOverlay: (options) => base.setTitleBarOverlay(options),
