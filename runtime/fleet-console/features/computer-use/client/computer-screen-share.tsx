@@ -231,10 +231,6 @@ export function useComputerShareActive(operationId: string): boolean {
 }
 
 /**
- * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
- * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
- */
-/**
  * 폰 배치에서 본문 위에 떠 있는 상단 막대의 몫(px) — 셸이 `--m-chrome-top`으로 물려준다. 데스크톱에는 그 속성이 없어 0이다.
  * 카드를 끌거나 키울 때 이 몫 위로는 올라가지 않는다(막대에 가리면 카드를 다시 잡을 수 없다).
  */
@@ -242,6 +238,10 @@ function chromeTopInset(element: Element): number {
   return Number.parseFloat(getComputedStyle(element).getPropertyValue("--m-chrome-top")) || 0;
 }
 
+/**
+ * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
+ * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
+ */
 export function ComputerScreenShare({ operationId, actor, className }: { operationId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
