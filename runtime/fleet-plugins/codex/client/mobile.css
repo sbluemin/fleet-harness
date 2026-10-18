@@ -32,3 +32,11 @@ html[data-mobile-scheme="light"] .codex-m-field { background: var(--m-surface); 
 .codex-m-sg::after { content: ""; position: absolute; left: 3.2px; top: 1.4px; width: 2.6px; height: 4.8px; border: solid var(--m-awaiting); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 
 /* 리더 열이 모바일 화면에 설 때 — Theater 표식은 막대 부제가 대신한다. */
+
+/*
+ * 리더 열이 모바일 화면에 설 때 — 문서가 호스트 상단 막대 뒤로 흐른다. 목차 줄(목차가 있을 때만)은 막대와 한 덩어리로 위에 떠 있는 줄이다:
+ * 맨 위부터 막대 몫(--m-chrome-top)을 품고 바탕색으로 서다가 아래 끝만 투명으로 옅어진다(경계선 없음). 글자 줄이라 본문이 그 글자 밑으로
+ * 비쳐 흐르지는 않는다. 스크롤 영역은 막대와 목차 줄 중 긴 쪽(--codex-outline-h는 리더가 잰다)만큼 위를 비운다.
+ */
+[data-host-surface="mobile-screen"] .codex-doc-pane[data-mobile-chrome="flow"] .codex-doc-outline { position: absolute; top: 0; right: 0; left: 0; z-index: 1; padding-top: var(--m-chrome-top, 0px); border-bottom: 0; background: linear-gradient(to bottom, var(--m-bg) calc(100% - 12px), color-mix(in srgb, var(--m-bg) 0%, transparent)); }
+[data-host-surface="mobile-screen"] .codex-doc-pane[data-mobile-chrome="flow"] .codex-doc-scroll { padding-top: calc(var(--space-5) + max(var(--m-chrome-top, 0px), var(--codex-outline-h, 0px))); scroll-padding-top: max(var(--m-chrome-top, 0px), var(--codex-outline-h, 0px)); }

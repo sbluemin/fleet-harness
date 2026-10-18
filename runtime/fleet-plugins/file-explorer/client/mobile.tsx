@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createPortal } from "react-dom";
 
 import type { MobileBarMenuItem, PaneContext } from "@fleet-console/sdk/pane";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 import { loadDocument, nameOfPath } from "./doc-loader.js";
@@ -196,10 +197,14 @@ export function MobileFileDocument(ctx: PaneContext) {
 
   const isCode = viewState.kind === "code";
   const isMarkdown = isCode && viewState.lang === "markdown";
+  // 문서는 호스트 상단 막대 뒤로 흐른다 — 글자 탭 줄(코드일 때만)은 막대와 한 덩어리로 떠 있고, 본문이 그 높이(`--fexp-m-head`)만큼 위를 비운다.
+  const docRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(tabsRef, docRef, "--fexp-m-head");
   return (
-    <div className="fexp-m fexp-m-doc">
+    <div ref={docRef} className="fexp-m fexp-m-doc" data-mobile-chrome="flow">
       {isCode ? (
-        <div className="fexp-m-tabs" role="tablist">
+        <div ref={tabsRef} className="fexp-m-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={!source} className={source ? "" : "is-on"} onClick={() => setSource(false)}>{t("fileExplorer.viewer.previewMode")}</button>
           <button type="button" role="tab" aria-selected={source} className={source ? "is-on" : ""} onClick={() => setSource(true)}>{t("fileExplorer.viewer.sourceMode")}</button>
         </div>

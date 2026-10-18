@@ -5,7 +5,7 @@ import type { ConversationParticipant, ConversationSpeaker } from "@fleet-consol
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { ClientMobileBarCapability, PaneContext } from "@fleet-console/sdk/pane";
 import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } from "@fleet-console/sdk/rail";
-import { useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
+import { useChromeHeightProperty, useMobileSettingsHost } from "@fleet-console/sdk/react/browser";
 import { SettingsCard, SettingsRow } from "@fleet-console/sdk/settings/browser";
 
 import type { CommodoreLiveEvent, CommodorePatrolMinutes, CommodoreTranscriptEntry } from "../server/commodore/types.js";
@@ -191,11 +191,15 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
     { id: "settings", label: t("objectives.commodore.tabs.settings") },
   ];
 
-  const flow = !panel && !(on && (run?.phase === "retrying" || run?.phase === "error"));
-  // 대화 화면은 호스트 상단 막대 뒤로 흐른다 — 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비운다. 띠가 서거나 칩 화면(탭)이면
-  // 호스트가 막대 아래에서 화면을 시작한다.
+  // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비우고, 칩 화면은 자율 운영 행과
+  // 탭이 막대와 한 덩어리로 떠 있는 머리가 되어 탭 본문이 그 높이(--objectives-cm-head)만큼 위를 비운다. 재시도·오류 띠는 알림 띠라
+  // 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
+  const flow = !(on && (run?.phase === "retrying" || run?.phase === "error"));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(headRef, rootRef, "--objectives-cm-head");
   return (
-    <div className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
+    <div ref={rootRef} className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (
@@ -208,11 +212,13 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
       ) : null}
       {panel ? (
         <>
-          <AutonomyRow t={t} theaterId={theaterId} view={view} online={online} onFail={fail} onClear={clear} />
-          <div className="objectives-cm-tabs" role="tablist" aria-label={t("objectives.commodore.tabs.aria")}>
-            {tabs.map((item) => (
-              <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
-            ))}
+          <div ref={headRef} className="objectives-cm-chrome">
+            <AutonomyRow t={t} theaterId={theaterId} view={view} online={online} onFail={fail} onClear={clear} />
+            <div className="objectives-cm-tabs" role="tablist" aria-label={t("objectives.commodore.tabs.aria")}>
+              {tabs.map((item) => (
+                <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
+              ))}
+            </div>
           </div>
           {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
@@ -401,6 +407,10 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // 입력 독은 기록 위에 떠 있다 — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다(스크롤 범위는 그대로).
+  const fillRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(dockRef, fillRef, "--m-dock-h");
   const pinned = useRef(true);
   const olderAnchor = useRef<number | null>(null);
   const on = view?.state.autonomy === true;
@@ -453,13 +463,13 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   }
 
   return (
-    <div className="objectives-cm-fill">
+    <div ref={fillRef} className="objectives-cm-fill">
       <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>
         {body}
         <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
-      <div className="objectives-cm-dock">
+      <div ref={dockRef} className="objectives-cm-dock">
         <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} onFail={onFail} onClear={onClear} />
       </div>
     </div>

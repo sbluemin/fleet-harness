@@ -483,7 +483,10 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => { tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [tab]);
   const rootClass = embedded ? "objectives-m is-embedded" : "objectives-m";
-  if (!objective || !actions) return <div ref={rootRef} className={rootClass} />;
+  // 단독 목표 화면은 호스트 상단 막대 뒤로 흐른다 — 탭 줄이 막대 몫(--m-chrome-top)을 품고 떠 있는 줄이 된다(mobile.css). 정보 화면에 심긴
+  // 상세는 그 화면의 스크롤이 막대 몫을 맡는다.
+  const flow = embedded ? {} : { "data-mobile-chrome": "flow" };
+  if (!objective || !actions) return <div ref={rootRef} className={rootClass} {...flow} />;
   const locale = language === "ko" ? "ko" : "en";
   const editable = !objective.done && !WORKING.has(activityOf(operations, objective.id));
   const patch = (value: Record<string, unknown>) => { void post(api, "/objective/patch", { objectiveId: objective.id, patch: value, language }).catch((error: unknown) => say(bandFailure(t, error, { message: false, talk: false }))); };
@@ -518,7 +521,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const embeddedActions = embedded ? personActions(actions) : [];
   const rowActions = embeddedActions.some((item) => !item.disabled) ? embeddedActions : [];
   return (
-    <div ref={rootRef} className={rootClass}>
+    <div ref={rootRef} className={rootClass} {...flow}>
       {tabBar}
       <div className="objectives-m-pad">
         {tab === "goal" ? schedule : null}

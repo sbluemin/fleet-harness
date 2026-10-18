@@ -700,7 +700,8 @@ export function SegmentedThumb({
 /**
  * 떠 있는 모바일 크롬(상단 막대·화면 머리·입력 독)의 높이를 `target`의 CSS 사용자 속성으로 옮겨 적는다. 크롬 밑으로 흐르는 스크롤
  * 내용은 이 값만큼 크롬 뒤로 늘어나고 같은 값만큼 안쪽 여백을 두어, 스크롤 끝의 첫·마지막 줄이 크롬에 가리지 않는다. 큰 글자 배율이나
- * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`)은 0이다.
+ * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`·
+ * `display: none`)은 0이다. 원천이나 대상이 나중에 마운트·교체되면(조건부 머리) 다음 커밋에서 다시 붙고, 사라지면 속성을 지운다.
  */
 export function useChromeHeightProperty(
   source: React.RefObject<HTMLElement | null>,
@@ -710,21 +711,30 @@ export function useChromeHeightProperty(
 ): void {
   const measureRef = React.useRef(measure);
   measureRef.current = measure;
+  const bound = React.useRef<{ readonly node: HTMLElement; readonly host: HTMLElement; readonly observer: ResizeObserver | null } | null>(null);
+  const release = React.useCallback(() => {
+    const current = bound.current;
+    if (!current) return;
+    current.observer?.disconnect();
+    current.host.style.removeProperty(property);
+    bound.current = null;
+  }, [property]);
+  // 매 커밋 뒤 원천·대상의 정체만 견준다 — 같으면 관찰자를 그대로 둔다.
   React.useLayoutEffect(() => {
     const node = source.current;
     const host = target.current;
+    const current = bound.current;
+    if (current && current.node === node && current.host === host) return;
+    release();
     if (!node || !host) return;
     const write = () => {
       const height = measureRef.current ? measureRef.current(node) : node.getBoundingClientRect().height;
       host.style.setProperty(property, `${Math.max(0, Math.ceil(height))}px`);
     };
     write();
-    if (typeof ResizeObserver === "undefined") return () => host.style.removeProperty(property);
-    const observer = new ResizeObserver(write);
-    observer.observe(node);
-    return () => {
-      observer.disconnect();
-      host.style.removeProperty(property);
-    };
-  }, [source, target, property]);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(write);
+    observer?.observe(node);
+    bound.current = { node, host, observer };
+  });
+  React.useLayoutEffect(() => release, [release]);
 }

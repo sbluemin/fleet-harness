@@ -5,7 +5,7 @@
 .fexp-m { height: 100%; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.4; -webkit-font-smoothing: antialiased; }
 .fexp-m::-webkit-scrollbar { display: none; }
 /* 트리는 호스트 상단 막대 뒤로 흐른다 — 막대 몫(--m-chrome-top)을 스크롤 영역 위에 비워 첫 줄이 막대에 가리지 않는다. */
-.fexp-m[data-mobile-chrome="flow"] { padding-top: var(--m-chrome-top, 0px); }
+.fexp-m-tree[data-mobile-chrome="flow"] { padding-top: var(--m-chrome-top, 0px); }
 .fexp-m button { font: inherit; color: inherit; background: none; border: 0; margin: 0; text-align: left; cursor: pointer; }
 /* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
 .fexp-m :focus-visible:not([data-press]) { outline: 2px solid var(--m-text); outline-offset: -2px; border-radius: 8px; }
@@ -23,9 +23,17 @@
 
 /* 파일 상세 — 글자 탭(미리보기 · 소스) + 본문 패딩 위 16 · 좌우 24. */
 .fexp-m-doc { display: flex; flex-direction: column; overflow: hidden; }
-/* 탭 줄은 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다 — 글자 탭이라 본문이 그 밑으로 흐르지는 않는다. */
+/* 탭 줄은 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다. */
 .fexp-m-tabs { position: relative; z-index: 1; display: flex; flex: none; gap: 20px; padding: 0 24px; }
 .fexp-m-tabs::after { content: ""; position: absolute; top: 100%; right: 0; left: 0; height: 12px; background: var(--m-fade-down, none); pointer-events: none; }
+/*
+ * 문서가 호스트 상단 막대 뒤로 흐를 때 — 탭 줄은 맨 위부터 막대 몫(--m-chrome-top)을 품고 바탕색으로 서다가 아래 끝만 투명으로 옅어지는 떠 있는 줄이다.
+ * 글자 탭이라 본문이 글자 밑으로 비쳐 흐르지는 않는다. 본문은 막대와 탭 줄 중 긴 쪽(--fexp-m-head는 문서 화면이 잰다)만큼 위를 비운다.
+ */
+.fexp-m-doc[data-mobile-chrome="flow"] { position: relative; }
+.fexp-m-doc[data-mobile-chrome="flow"] > .fexp-m-tabs { position: absolute; top: 0; right: 0; left: 0; padding-top: var(--m-chrome-top, 0px); background: linear-gradient(to bottom, var(--m-bg) calc(100% - 12px), color-mix(in srgb, var(--m-bg) 0%, transparent)); }
+.fexp-m-doc[data-mobile-chrome="flow"] > .fexp-m-tabs::after { content: none; }
+.fexp-m-doc[data-mobile-chrome="flow"] > .fexp-m-doc-body { padding-top: calc(16px + max(var(--m-chrome-top, 0px), var(--fexp-m-head, 0px))); }
 .fexp-m .fexp-m-tabs button { padding: 11px 0; border-bottom: 2px solid transparent; font-size: var(--m-fs-secondary); color: var(--m-text-muted); }
 .fexp-m .fexp-m-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
 /*
