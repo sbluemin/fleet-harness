@@ -291,6 +291,16 @@ export interface RailEntryConversationPane {
   /** 탭 본문으로 세울 페인 id(이 플러그인이 등록한 페인). */
   readonly paneId: string;
   /**
+   * 같은 페인의 여러 보기를 정보 옆 같은 탭 줄에 올린다. 생략하면 엔트리 이름의 탭 하나다.
+   * 고른 보기와 본문은 플러그인이 함께 소유하고, 호스트는 select 뒤 같은 페인을 그린다.
+   * operationId는 정보 화면의 대화 주인이다. 도구는 페인 본문에 둔다.
+   */
+  readonly tabs?: {
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly read: (operationId: string) => RailEntryConversationTabsState;
+    readonly select: (tabId: string, operationId: string) => void;
+  };
+  /**
    * 이 대화에 탭을 세울지. 생략하면 모든 대화에 선다. 호스트는 `useSyncExternalStore`로 읽으므로 `get`은 부작용 없이 같은 상태에 같은 값을
    * 돌려준다. `operationId`는 정보 화면의 대화 주인 Operation이다.
    */
@@ -346,7 +356,7 @@ export interface RailEntryConversationTab {
 /** 하위 탭 줄의 지금 모습. 호스트는 `useSyncExternalStore` 로 읽으므로 같은 상태에는 같은 객체를 돌려준다. */
 export interface RailEntryConversationTabsState {
   readonly tabs: readonly RailEntryConversationTab[];
-  /** 고른 탭 — 엔트리의 패널이 열려 있을 때만 켜짐으로 선다. */
+  /** 고른 보기의 탭 id. 켜짐 표시는 이 탭 줄을 보이는 호스트가 정한다. */
   readonly selected: string;
 }
 

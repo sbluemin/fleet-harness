@@ -12,7 +12,7 @@ import { COMMODORE_ENTRY_ID, OBJECTIVES_ENTRY_ID, commodoreDestinationShown, ins
 import { commodoreConversationSurface, connectCommodoreConversation, isCommodoreConversationActive, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { connectFreshConversation, freshConversationSurface, goToObjective } from "./fresh-conversation.js";
 import { getT } from "./i18n/index.js";
-import { objectiveConversationTabs } from "./head-tabs.js";
+import { objectiveConversationTabs, objectiveMobileConversationTabs } from "./head-tabs.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfOperation, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePanel } from "./objectives-panel.js";
 import { objectivesOnboarding } from "./onboarding.js";
@@ -87,7 +87,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   // 아이콘은 시안 아이콘 한 벌(impl-spec §A)이다 — 「확인 필요」 행의 출처 표식에 쓴다. 데스크톱 레일 아이콘은 그대로.
   mobile: {
     destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title"), chip: false },
-    conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, shown: { subscribe: subscribeObjective, get: (operationId) => objectiveOfOperation(operationId) !== null } },
+    conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, tabs: objectiveMobileConversationTabs, shown: { subscribe: subscribeObjective, get: (operationId) => objectiveOfOperation(operationId) !== null } },
     // 홈 「끝남 N」(접힘) — 끝난 목표. 시작 전 목표는 호스트가 묶음 줄(`row.glyph: "fresh"`)로 「시작 전 N」에 세운다.
     // 원천은 완료로 지휘관이 보관된 목표다 — 살아 있는 대화 행과 겹치지 않는다.
     finished: { subscribe: subscribeFinishedObjectives, items: finishedObjectiveItems },

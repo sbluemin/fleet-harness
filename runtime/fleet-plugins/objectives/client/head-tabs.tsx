@@ -1,6 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
-import type { RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "@fleet-console/sdk/rail";
+import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "@fleet-console/sdk/rail";
 
 import { unseenRecords, type Objective } from "../server/types.js";
 import { DatePicker } from "./date-picker.js";
@@ -54,11 +54,15 @@ function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTab
   // 대화가 곧 목표다 — 목표를 아직 읽지 못한 순간에도 세 탭은 그대로 서고, 점만 비어 있다.
   const { theaterId, objective } = headObjective(contextTheaterId);
   const selected = detailTabOf(readObjectiveView(theaterId).detailTab);
+  return readTabs(contextTheaterId ?? "", objective, selected);
+}
+
+function readTabs(slot: string | undefined, objective: Objective | null, selected: DetailTab): RailEntryConversationTabsState {
   const decision = !!objective?.decisionRequest && !objective.done;
   const unseen = !!objective?.missions.some((mission) => unseenRecords(mission) > 0);
   const key = `${selected}|${decision}|${unseen}`;
-  const slot = contextTheaterId ?? "";
-  const cached = tabsCache.get(slot);
+  const cacheSlot = slot ?? `mobile:${key}`;
+  const cached = tabsCache.get(cacheSlot);
   if (cached?.key === key) return cached.state;
   const tabs = DETAIL_TABS.map((id): RailEntryConversationTab => ({
     id,
@@ -68,9 +72,22 @@ function readHeadTabs(contextTheaterId: string | null): RailEntryConversationTab
     ...(id === "crew" ? { replacesMembers: true } : {}),
   }));
   const state = { tabs, selected };
-  tabsCache.set(slot, { key, state });
+  tabsCache.set(cacheSlot, { key, state });
   return state;
 }
+
+/** 폰에서는 현재 대화의 세 보기를 정보 옆에 올린다 — 선택과 본문은 같은 보기 상태를 읽는다. */
+export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationPane["tabs"]> = {
+  subscribe: subscribeHead,
+  read: (operationId) => {
+    const objective = objectiveOfOperation(operationId);
+    return readTabs(undefined, objective, detailTabOf(readObjectiveView(objective?.theaterId ?? null).detailTab));
+  },
+  select: (tabId, operationId) => {
+    const objective = objectiveOfOperation(operationId);
+    if (objective) patchObjectiveView(objective.theaterId, () => ({ detailTab: detailTabOf(tabId) }));
+  },
+};
 
 /**
  * 탭 줄 위 한 줄의 오늘·기한 — 글리프와 짧은 낱말이 섹션 줄 문법(작은 pill)으로 선다. 불리언이라 켜짐은 면 없이 잉크(brass-ink)로만
