@@ -1039,7 +1039,7 @@ function BoardActionTargetLine({ entry, target, language, time, action, onOpenRe
       <span className="group-chat-line-act">{action}</span>
       {name ? <>
         <span className="group-chat-line-sep" aria-hidden="true">·</span>
-        {mark}
+        {mark ? <span className="group-chat-line-target-mark" aria-hidden="true">{mark}</span> : null}
         <span className="group-chat-line-target" title={name}>{name}</span>
       </> : null}
       {status ? <>
@@ -1051,7 +1051,7 @@ function BoardActionTargetLine({ entry, target, language, time, action, onOpenRe
   );
   if (entry.text.trim()) {
     return (
-      <details className="group-chat-line group-chat-board" data-entry-id={entry.id}>
+      <details className="group-chat-line group-chat-board has-target" data-entry-id={entry.id}>
         <summary className="group-chat-line-summary">
           {summary}
           <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
@@ -1067,9 +1067,9 @@ function BoardActionTargetLine({ entry, target, language, time, action, onOpenRe
       </details>
     );
   }
-  if (!open) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}</div>;
+  if (!open) return <div className="group-chat-line group-chat-board has-target" data-entry-id={entry.id}>{summary}</div>;
   return (
-    <button type="button" className="group-chat-line group-chat-board is-target" data-entry-id={entry.id} onClick={open}>
+    <button type="button" className="group-chat-line group-chat-board has-target" data-entry-id={entry.id} onClick={open}>
       {summary}
       <span className="group-chat-line-go" aria-hidden="true">↗</span>
     </button>

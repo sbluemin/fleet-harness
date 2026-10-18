@@ -229,6 +229,16 @@ details[open] > .group-chat-line-summary .group-chat-line-chev { transform: rota
    여는 표시(↗)는 올리거나 초점이 갈 때만 선다. 올릴 수 없는 터치 기기에서는 늘 서고 누를 높이를 넓힌다. */
 .group-chat-line-act { flex: none; white-space: nowrap; }
 .group-chat-line-target { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+/* 좁은 폭에서도 줄은 넘치지 않는다 — 발화자·시각은 서고, 목표 이름과 결말(실패 사유는 길 수 있다)이 제 길이에 비례해 함께 말줄임으로 줄어
+   어느 한쪽이 먼저 사라지지 않는다. 행위 낱말은 그 둘이 다 줄어든 끝에서야 준다 — 몇 px 만 줄어도 끝 글자가 말줄임표로 바뀌므로 비율을
+   거의 0으로 둔다(둘이 최소에 닿으면 남은 몫은 이 낱말이 진다). 최소 폭은 두지 않는다 — 짧은 이름 뒤에 빈칸이 생긴다.
+   목표 줄만 — 그룹 대화 줄의 결말은 그대로다. */
+.group-chat-board.has-target :is(.group-chat-line-act, .group-chat-line-status) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-chat-board.has-target .group-chat-line-act { flex: 0 0.0001 auto; }
+.group-chat-board.has-target :is(.group-chat-line-target, .group-chat-line-status) { flex: 0 1 auto; }
+/* 이름 앞 지휘관 얼굴 — 줄 맨 앞 발화자 표식(sm)과 같은 16px. 표식은 다른 자리의 크기 규칙을 지닌 채 오므로 여기서 맞춘다. */
+.group-chat-line-target-mark { flex: none; display: inline-flex; }
+.group-chat-board .group-chat-line-target-mark > * { width: 16px; height: 16px; }
 button.group-chat-board {
   display: flex;
   align-items: center;
