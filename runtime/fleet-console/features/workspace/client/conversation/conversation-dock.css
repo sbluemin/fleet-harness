@@ -10,7 +10,7 @@
   min-width: 0;
 }
 .conversation-dock-host { position: relative; flex: none; }
-/* 원래 Fleet 워드마크를 독 전체의 가운데에 둔다. 작은 열에서는 글리프를 아바타 위로 옮겨 겹치지 않는다. */
+/* 원래 Fleet 워드마크를 독 전체의 가운데에 둔다. 좁은 사령관 열에는 사령관·원격·계정만 남기므로 브랜드는 걷는다. */
 .conversation-dock-brand { position: absolute; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; pointer-events: none; color: var(--text-primary); }
 .conversation-brand-glyph { flex: none; width: 16px; height: 16px; }
 .conversation-brand-wordmark { font-family: var(--font-content); font-size: calc(var(--font-content-size) * 13 / 14); font-weight: var(--weight-medium); line-height: 1; letter-spacing: 0.01em; }
@@ -18,9 +18,6 @@
 .conversation-brand-sep { margin: 0 0.34em; color: var(--quiet-decor-ink); font-family: var(--font-ui); font-weight: var(--weight-bold); }
 .conversation-brand-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font-family: var(--font-ui); font-size: 0.62em; font-weight: var(--weight-bold); line-height: 1; letter-spacing: 0.16em; }
 @container (max-width: 200px) { .conversation-brand-wordmark { display: none; } }
-.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock { flex-direction: column-reverse; gap: 12px; }
-.console-body.is-conversation .operations-side-bar.is-compact .conversation-dock > span.conversation-dock-brand { display: inline-flex; position: static; transform: none; }
-.console-body.is-conversation .operations-side-bar.is-compact .conversation-brand-wordmark { display: none; }
 .conversation-dock-popover-anchor { position: absolute; top: 12px; left: 12px; width: 0; height: 0; pointer-events: none; }
 .conversation-dock-avatar {
   position: relative;
@@ -28,15 +25,22 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border: 0;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--text-primary) 5%, var(--ink-deep));
-  color: var(--text-primary);
+  background: var(--surface-round-control);
+  color: var(--text-secondary);
   font: var(--weight-medium) var(--t-xl)/1 var(--font-ui);
   cursor: pointer;
 }
 .conversation-dock-avatar:hover,
-.conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--ink-deep)); }
+.conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control)); color: var(--text-primary); }
+.conversation-dock-avatar:focus-visible { outline: 2px solid var(--control-hover-rim); outline-offset: 2px; }
+
+/* ConsoleGlyph의 아래 잉크 끝은 viewBox y14 + 반쪽 선폭 0.6이다. 24px 문 안 20px SVG의
+   아래 여백은 2 + (16 - 14.6) × 20/16 = 3.75px이므로, 이를 빼 잉크부터 계정까지 12 DIP를 남긴다. */
+.console-body.is-conversation .operations-side-bar.is-compact .remote-console-compact-slot + .conversation-dock {
+  padding-top: max(0px, calc(12px / var(--compact-layout-zoom, 1) - 3.75px));
+}
 .conversation-dock-status {
   position: absolute;
   right: 0;

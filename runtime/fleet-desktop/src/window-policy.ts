@@ -1,3 +1,4 @@
+import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import type { BaseWindow, BaseWindowConstructorOptions, WebContents, WebContentsView } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
@@ -93,10 +94,8 @@ export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#121212", symbolColor
  * 축소하면 아래로 처진다. 세로는 줌이 바뀔 때마다 여기서 다시 계산해 신호등을 줄 한가운데로 옮긴다.
  *
  * x는 줌과 무관한 고정값이다 — 신호등 자체가 줌을 타지 않으니 창 모서리와의 거리도
- * 변할 이유가 없고, 클라이언트의 예약 폭이 이 x에서 출발한 76px을 그대로 비워 둔다.
+ * 변할 이유가 없다. OS 실측 범위는 x 16–76 DIP(지름 14, 간격 9)이며, 좁은 열은 오른쪽에도 같은 여백을 둔다.
  */
-const TRAFFIC_LIGHT_INSET_X = 16;
-const TRAFFIC_LIGHT_HEIGHT = 14;
 
 /**
  * 맨 위 줄의 높이(`band`)는 Console 이 테마 스냅샷의 `chrome.band` 로 알린다 — 지금 Console 은 늘 대화 중심 화면의
@@ -104,7 +103,7 @@ const TRAFFIC_LIGHT_HEIGHT = 14;
  */
 export function trafficLightPosition(zoomFactor: number, band: number = CONVERSATION_TOP_ROW): { x: number; y: number } {
   const factor = zoomFactor > 0 ? zoomFactor : 1;
-  return { x: TRAFFIC_LIGHT_INSET_X, y: Math.max(0, Math.round((band * factor - TRAFFIC_LIGHT_HEIGHT) / 2)) };
+  return { x: MACOS_TRAFFIC_LIGHTS.left, y: Math.max(0, Math.round((band * factor - MACOS_TRAFFIC_LIGHTS.height) / 2)) };
 }
 
 const SECURE_RENDERER_PREFERENCES = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } as const;

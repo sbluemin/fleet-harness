@@ -19,6 +19,11 @@
       "import": "./desktop/brand.ts",
       "default": "./desktop/brand.ts"
     },
+    "./desktop/chrome": {
+      "types": "./desktop/chrome.ts",
+      "import": "./desktop/chrome.ts",
+      "default": "./desktop/chrome.ts"
+    },
     "./desktop/console-section": {
       "types": "./desktop/console-section.ts",
       "import": "./desktop/console-section.ts",

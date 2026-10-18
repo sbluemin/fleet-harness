@@ -47,7 +47,6 @@ import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal
 import {
   consumeStatusLandings,
   freshFoldKey,
-  COMPACT_SIDE_BAR_PX,
   setSideBarFreshFoldExpanded,
   setTheaterCollapsed,
   getStatusTransitionTick,
@@ -361,7 +360,7 @@ export function OperationsSideBar({
   const sideBar = useSideBarState();
   // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
   const compact = sideBar.compact && topStripVariant === "compact";
-  const width = compact ? COMPACT_SIDE_BAR_PX : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
+  const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const freshFolds = useSideBarFreshFolds();
   const viewedTheaterId = useViewedTheaterId();
   const operationAccent = Object.assign({}, ...theaters.map((theater) => getTheaterGroupCollapse(theater.id).operationAccent)) as Readonly<Record<string, string>>;
@@ -985,7 +984,7 @@ export function OperationsSideBar({
       </div>
       )}
 
-      <ConsoleSectionSlot compact={compact} />
+      {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
@@ -1216,6 +1215,7 @@ export function OperationsSideBar({
       </ol>
       </div>
 
+      {compact ? <ConsoleSectionSlot compact /> : null}
       {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />

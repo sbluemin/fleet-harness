@@ -244,7 +244,10 @@ export function ConversationSideBarDeputies() {
       if (left < zoneLeft + DEPUTY_CLEARANCE || left + clusterWidth > zoneRight - DEPUTY_CLEARANCE) {
         left = zoneLeft + (available - clusterWidth) / 2;
       }
-      cluster.style.left = `${Math.round(left)}px`;
+      // 최소 머리·간격으로도 예약 구간에 들지 못하면 숨긴다. 폭 전이 중에도 신호등이나 오른쪽 단추 위로 밀어 넣지 않는다.
+      const fits = clusterWidth <= available - DEPUTY_CLEARANCE * 2;
+      cluster.style.left = `${Math.max(zoneLeft + DEPUTY_CLEARANCE, Math.min(Math.round(left), zoneRight - DEPUTY_CLEARANCE - clusterWidth))}px`;
+      cluster.style.visibility = fits ? "visible" : "hidden";
       cluster.dataset.headSize = String(size);
     };
     const schedule = () => {
@@ -253,7 +256,8 @@ export function ConversationSideBarDeputies() {
     };
     place();
     // 줄 폭(사이드바 끌기·줌)과 오른쪽 단추 묶음, 부관 출퇴근(머리 수)에 따라 다시 잰다. 자기 크기 변화는 보지 않는다 — 재는 일이 곧 그 변화다.
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    // ResizeObserver 안에서 바로 배치해 다음 페인트에 이전 폭의 좌표·표시 상태가 남지 않게 한다.
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     resize?.observe(strip);
     const trailing = strip.querySelector<HTMLElement>(".conversation-side-actions");
     if (trailing) resize?.observe(trailing);

@@ -36,17 +36,26 @@
   border-right: 1px solid var(--hairline-column);
 }
 
-/* 좁은 창 — 펼친 사이드바가 아바타만 남은 56px 열로 물러난다(시안 v2 규칙 h-3). 이름·상태 글자, 맨 위 줄 단추, Theater 머리의
-   조작과 폭 손잡이를 걷고 아바타를 열 가운데에 둔다. 창을 넓히면 사람이 정한 폭으로 돌아온다. */
+/* 좁은 창 — 사이드바가 사령관 열로 물러난다(macOS는 네이티브 컨트롤 폭, 그 밖은 72px). 원격 칩·Theater 사령관·계정만 가운데에 남기고,
+   Operation·상태·그룹 목록과 조작을 걷는다. 창을 넓히면 사람이 정한 폭과 목록으로 돌아온다. */
 .console-body.is-conversation .operations-side-bar.is-compact :is(
   .side-bar-top-strip,
-  .side-bar-chip-text,
-  .side-bar-chip-close,
-  .side-bar-chip-group-mark,
+  .side-bar-chip,
+  .side-bar-cluster-row,
+  .side-bar-theater-groups,
+  .side-bar-theater-contributions,
+  .side-bar-status-section,
+  .side-bar-status-recovery-shelves,
+  .side-bar-group-section,
+  .side-bar-ungrouped-section,
+  .side-bar-attention,
+  .side-bar-starter,
   .side-bar-theater-text,
   .side-bar-theater-row-controls,
   .side-bar-theater-chevron,
   .side-bar-status-header,
+  .side-bar-group-header,
+  .side-bar-ungrouped-label,
   .operations-side-bar-resize-handle
 ) {
   display: none;
@@ -62,17 +71,47 @@
   padding-inline: 0;
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
-  padding-top: var(--space-3);
+.console-body.is-conversation .operations-side-bar.is-compact {
+  --compact-layout-zoom: 1;
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-row, li) {
+.console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
+  padding-top: 16px;
+  gap: calc(12px / var(--compact-layout-zoom));
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-section {
+  padding-block: 0;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-theater-section, .side-bar-theater-header.is-card) {
   padding-inline: 0;
 }
 
-.console-body.is-conversation .operations-side-bar.is-compact :is(.side-bar-chip, .side-bar-theater-activate) {
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-activate {
   justify-content: center;
   padding-inline: 0;
+}
+
+/* 플러그인 표식은 활성화 단추의 형제다. 글자를 숨긴 단추가 빈 폭을 차지하지 않게 겹치되 키보드 활성화는 남긴다. */
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card {
+  position: relative;
+  justify-content: center;
+  min-height: 32px;
+  padding-block: 0;
+  margin-block: 0;
+  border-block-width: 0;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card:has(> .side-bar-theater-mark) > .side-bar-theater-activate {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+}
+
+.console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-mark {
+  position: relative;
+  z-index: 1;
 }
 
 .console-body.is-conversation .operations-side-bar::before {
@@ -618,6 +657,7 @@
    (--command-band-entry-size 40 → 32 → 28px, SDK 계약)는 ConversationSideBarDeputies 가 줄의 실제 가용 폭으로 정한다. 여기 값은 재기 전 첫 칠이다. */
 .conversation-side-deputies {
   --command-band-entry-size: 40px;
+  visibility: hidden;
   position: absolute;
   top: 0;
   bottom: 0;
@@ -1230,9 +1270,27 @@
 
 /* 브랜드(앰블럼 = 환경 진단, 워드마크 = 홈)는 밴드 왼쪽과 같은 한 벌이 사이드바 맨 위 줄 왼쪽에 선다. */
 
-.console-shell.is-operations-view .side-bar-top-strip .conversation-round {
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close) {
   width: 30px;
   height: 30px;
+  border: 0;
+  background: var(--surface-round-control);
+  color: var(--text-secondary);
+}
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close):is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control));
+  color: var(--text-primary);
+}
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close):focus-visible {
+  outline: 2px solid var(--control-hover-rim);
+  outline-offset: 2px;
+}
+.console-shell.is-operations-view .side-bar-top-strip .remote-console-button.is-away {
+  color: var(--brass-ink);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-round-control));
+}
+.console-shell.is-operations-view .side-bar-top-strip .remote-console-button.is-away:is(:hover, [aria-expanded="true"]) {
+  background: color-mix(in oklch, var(--brass) 20%, var(--surface-round-control));
 }
 .conversation-round:disabled {
   cursor: wait;
@@ -1483,6 +1541,19 @@ html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversat
    예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바는 접히지 않으므로 신호등은 늘 사이드바 맨 위 줄에 앉는다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-operations-view .side-bar-top-strip {
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
+}
+
+/* 신호등이 열 안에 들어와도 같은 줄에 원격 칩을 함께 놓지는 않는다. 폭 전이 첫 프레임부터 내용은 맨 위 줄 아래에 둔다. */
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact {
+  box-sizing: border-box;
+  width: var(--desktop-macos-compact-width, 72px);
+  --compact-layout-zoom: var(--desktop-zoom, 1);
+  padding-top: calc(var(--desktop-traffic-bottom, 33px) + 16px / var(--compact-layout-zoom));
+}
+
+/* 원격 문은 계정 위에 두고, 첫 사령관 얼굴은 신호등 아래 16 DIP를 비워 선다. */
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
+  padding-top: 0;
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면

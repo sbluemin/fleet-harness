@@ -1,3 +1,4 @@
+import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import { remapReleaseNoteKey, firstReleaseNoteKey, releaseNoteKeyExists } from "../../../../features/updates/client/release-state.js";
 import { rememberSeen } from "../../../../features/onboarding/client/seen-store.js";
 import { normalizeOperationOwner } from "@fleet-console/sdk/operations/browser";
@@ -396,10 +397,50 @@ export function applyDesktopShellMarker(): void {
  * 같은 자리에 선다. 세로 정렬은 이 축의 몫이 아니다 — 셸이 신호등을 밴드 중앙으로 옮기고
  * 캡션 스트립 높이를 줌만큼 키워 맡는다(window-policy.ts·title-bar-overlay-refresh.ts).
  */
+let desktopZoomFactor = 1;
+const desktopZoomListeners = new Set<() => void>();
+
+export function getDesktopZoomFactor(): number { return desktopZoomFactor; }
+export function subscribeDesktopZoomFactor(listener: () => void): () => void {
+  desktopZoomListeners.add(listener);
+  return () => { desktopZoomListeners.delete(listener); };
+}
+
 function trackDesktopZoomFactor(): void {
+  let pendingMeasurement = false;
+  const retry = (): void => apply();
+  const retryWhenVisible = (): void => {
+    if (document.visibilityState === "visible") apply();
+  };
   const apply = (): void => {
-    const factor = window.outerWidth > 0 && window.innerWidth > 0 ? window.outerWidth / window.innerWidth : 1;
-    document.documentElement.style.setProperty("--desktop-zoom", `${factor}`);
+    const outerWidth = window.outerWidth;
+    const innerWidth = window.innerWidth;
+    // 비활성 창을 다시 읽으면 폭이 0일 수 있다. 이전 줌을 보존하고 유효한 폭을 얻을 때까지만 임시 신호로 재시도한다.
+    // resize를 상시 관측하면 아래에 기록한 전체화면 전환의 서로 다른 프레임을 줌으로 오인하므로 대기가 끝나면 반드시 걷는다.
+    if (outerWidth <= 0 || innerWidth <= 0) {
+      if (!pendingMeasurement) {
+        pendingMeasurement = true;
+        window.addEventListener("resize", retry);
+        window.addEventListener("focus", retry);
+        document.addEventListener("visibilitychange", retryWhenVisible);
+      }
+      return;
+    }
+    if (pendingMeasurement) {
+      pendingMeasurement = false;
+      window.removeEventListener("resize", retry);
+      window.removeEventListener("focus", retry);
+      document.removeEventListener("visibilitychange", retryWhenVisible);
+    }
+    const factor = outerWidth / innerWidth;
+    desktopZoomFactor = factor;
+    const style = document.documentElement.style;
+    style.setProperty("--desktop-zoom", `${factor}`);
+    const lights = MACOS_TRAFFIC_LIGHTS;
+    style.setProperty("--desktop-macos-compact-width", `${(lights.left + lights.span + lights.right) / factor}px`);
+    // 셸의 52px 줄 가운데 배치와 같은 DIP 반올림을 적용한다.
+    style.setProperty("--desktop-traffic-bottom", `${(Math.round((52 * factor - lights.height) / 2) + lights.height) / factor}px`);
+    for (const listener of desktopZoomListeners) listener();
   };
   /**
    * 다시 재는 신호는 resize가 아니라 devicePixelRatio의 변화다. 줌이 바뀌면 둘 다 오지만,

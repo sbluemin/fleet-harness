@@ -5,13 +5,15 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival, resetDepartureForTests, resetIdleArrivalForTests } from "../../../execution/client/operation-marks.js";
 import { resolveOperationActivity } from "../../../execution/client/operation-activity.js";
-import { getState, subscribe } from "../../../../core/client/src/integration/store.js";
+import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
+import { getDesktopZoomFactor, subscribeDesktopZoomFactor, getState, subscribe } from "../../../../core/client/src/integration/store.js";
 import type { OperationNode } from "../../../../core/client/src/integration/types.js";
 
 interface SideBarState {
   readonly width: number;
+  readonly compactWidth: number;
   /**
-   * 창이 좁아 사이드바가 아바타만 남은 좁은 열로 물러난 상태(시안 v2 규칙 h-3). 저장하지 않는 화면 상태다 —
+   * 창이 좁아 사이드바가 사령관 중심의 좁은 열로 물러난 상태. 저장하지 않는 화면 상태다 —
    * 창을 넓히면 사람이 정한 폭으로 돌아온다. 사이드바는 접히지 않는다 — 늘 그 자리에 선다.
    */
   readonly compact: boolean;
@@ -20,8 +22,15 @@ interface SideBarState {
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
 const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
 export const MIN_EXPANDED_PX = 280;
-/** 좁은 창에서 아바타만 남는 사이드바 폭. */
-export const COMPACT_SIDE_BAR_PX = 56;
+/** 브라우저·비-macOS의 좁은 사령관 열 폭. macOS Desktop은 네이티브 신호등 양옆 여백을 맞춘다. */
+const COMPACT_SIDE_BAR_PX = 72;
+
+function readCompactWidth(): number {
+  const root = typeof document === "undefined" ? null : document.documentElement;
+  if (root?.dataset.desktopShell !== "true" || root.dataset.desktopPlatform !== "darwin") return COMPACT_SIDE_BAR_PX;
+  const lights = MACOS_TRAFFIC_LIGHTS;
+  return (lights.left + lights.span + lights.right) / getDesktopZoomFactor();
+}
 /** 이 폭 이하의 창에서 사이드바가 좁은 열로 물러난다 — 대화(360)와 도구 한 열(300)을 남기려는 무렵이다. */
 const COMPACT_VIEWPORT_MAX_PX = 800;
 
@@ -36,9 +45,16 @@ const statusSectionCollapseListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
+  compactWidth: readCompactWidth(),
   compact: readCompact(),
 };
 if (typeof window !== "undefined") {
+  subscribeDesktopZoomFactor(() => {
+    const compactWidth = readCompactWidth();
+    if (sideBarState.compactWidth === compactWidth) return;
+    sideBarState = { ...sideBarState, compactWidth };
+    notifyListeners();
+  });
   window.addEventListener("resize", () => {
     const compact = readCompact();
     if (sideBarState.compact === compact) return;
@@ -105,7 +121,7 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
 
 /** 카드가 실제로 차지하는 폭 — 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
 export function sideBarOccupiedWidth(state: SideBarState): number {
-  if (state.compact) return COMPACT_SIDE_BAR_PX;
+  if (state.compact) return state.compactWidth;
   return state.width;
 }
 

@@ -133,7 +133,7 @@ function CommodoreHeaderMark({ theater, language }: TheaterContributionContext) 
       aria-busy={busy || undefined}
       aria-disabled={busy || undefined}
       disabled={!view}
-      title={[status, asksWord, t(on ? "objectives.commodore.mark.onTitle" : "objectives.commodore.mark.offTitle")].filter(Boolean).join("\n")}
+      title={[theater.label, status, asksWord, t(on ? "objectives.commodore.mark.onTitle" : "objectives.commodore.mark.offTitle")].filter(Boolean).join("\n")}
       onClick={toggleAutonomy}
       onMouseEnter={peek(true)}
       onMouseLeave={peek(false)}

@@ -1,8 +1,13 @@
 .remote-console-anchor { display: inline-flex; }
 .remote-console-anchor:empty { display: none; }
-.remote-console-compact-slot { flex: none; padding: 6px 10px; }
+.remote-console-compact-slot { display: flex; justify-content: center; flex: none; padding: 0 10px; }
 .remote-console-button { position: relative; }
-.remote-console-button.is-compact { width: 36px; height: 36px; }
+.remote-console-button.is-compact { width: 24px; height: 24px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.remote-console-button.is-compact > svg { width: 20px; height: 20px; }
+.remote-console-button.is-compact:is(:hover, :focus-visible, [aria-expanded="true"]) { background: transparent; color: var(--text-primary); }
+.remote-console-button.is-compact:focus-visible { outline: 2px solid var(--control-hover-rim); outline-offset: 2px; }
+.remote-console-button.is-compact.is-away { color: var(--brass-ink); background: transparent; }
+.remote-console-button.is-compact.is-away:is(:hover, [aria-expanded="true"]) { color: color-mix(in oklch, var(--brass-ink) 80%, var(--text-primary)); }
 .remote-console-button.is-away { color: var(--brass-ink); background: var(--quiet-choice-fill); border-color: color-mix(in oklch, var(--brass) 32%, var(--surface-rim-strong)); }
 .remote-console-button[aria-expanded="true"] { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
 .remote-console-dot { position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px var(--canvas-side); }
