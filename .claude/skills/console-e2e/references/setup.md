@@ -2,6 +2,29 @@
 
 Build and boot the owned Console before connecting with the selected browser driver. Consult **Isolated Development Data** in `docs/fleet-development-reference.md`. If the run may start Claude (terminal or SDK/chat), complete [Claude state and trust preflight](claude-state.md) first, leaving only its folder-dialog Theater trust step for after boot; Fleet slot isolation alone does not isolate agent state.
 
+## Parallel preparation and commit handoff
+
+When an Objective has an implementer and a separate real-app verifier, use this split for both browser and Desktop work. Set it at lineup planning, not after implementation finishes; retain the existing decisions for current-state measurement, routing, Desktop launch, and PR delivery.
+
+- **Preparation mission:** assign it to the verifier with **no implementation predecessor**. The verifier prepares one owned environment while implementation proceeds.
+- **Implementation mission:** require affected builds, typechecks, relevant tests, and a ready commit. Do **not** add the verifier's same real-app acceptance scenarios to the implementer's completion conditions. Keep any necessary implementation-time UI diagnosis narrow, rather than duplicating the acceptance matrix.
+- **Verification mission:** its predecessors are **only the missions producing the implementation commit to check** (the integration mission when applicable). The same verifier finishes its own preparation before executing that commit's scenarios; do not make preparation wait for implementation.
+
+Prepare a verifier-owned [detached comparison checkout](../../git-worktree/references/baseline.md#create) at the selected baseline SHA, install dependencies, and prepare required baseline builds. Keep its source read-only. Do not share or build in the implementer's checkout: concurrent writes can contaminate the observed `dist/` ([record the reproduced build](#record-what-is-being-reproduced)).
+
+Before the implementation commit arrives, prepare the owned [run directory and environment](#isolate-the-console), throwaway Theater, required [Claude state and trust preflight](claude-state.md), seed/fixture and measurement scripts, pre-navigation diagnostics, and a criterion-to-observation table. Keep reusable scripts and notes in the Objective evidence directory. Baseline-derived selectors, seeds, dependencies, and builds need rechecking against the implementation; preparation is not evidence that the fix passes. For Desktop, complete [preflight and the lineup's launch decision](desktop/setup.md#preflight-and-ownership) during planning, without treating preparation as launch authority.
+
+The implementer's ready handoff identifies the full commit SHA, worktree/branch, affected criteria and packages, and the commands, exit codes, and log paths for its checks. The verifier then:
+
+1. Stops only its owned runtime before changing the checkout. Resolves the reported SHA, visits it as a comparison revision using non-force checkout, and records that visit and the HEAD reflog in evidence. Preserve the baseline's original ownership/creation record and cleanup gates; never edit source or create commits there.
+2. Checks source cleanliness and install/build outputs under the baseline contract, reinstalls when dependency inputs changed, and rebuilds affected dependencies and the selected host. Recheck fixtures against the new revision. Keep the same owned run directory; another session cannot inherit it.
+3. Binds evidence to the checked SHA, successful build command/exit, local and served asset names, and the owned host's launch/PID from that checkout. Check HEAD and source cleanliness before and after the run. Apply the existing [build, asset, reload, and restart checks](#isolate-the-console); a baseline build or an unchanged running host is not proof of the new commit.
+4. Runs the acceptance scenarios with fresh diagnostics and the existing [source-backed observations](verification.md#measure-from-the-source), including applicable screenshots and inverse paths. Report criterion, revision, actual result, raw source and time, cleanup, and unverified scope.
+
+After a fix or rebase, compare the new commit with the checked revision and rerun **only criteria affected by that delta**, including their relevant inverse and regression paths. Retain earlier evidence for unaffected criteria with its original SHA and the reason it still applies; do not relabel it as a new run. Shared dependencies or contracts can widen the affected scope.
+
+The Commander reviews the diff and criterion-to-evidence mapping, directly checking only changed behavior left uncovered or in conflict; do not restart the entire acceptance run ceremonially. Reuse valid evidence through PR workflow's [measured-verification route](../../pr-workflow/references/review-wait.md#measured-verification-route), without weakening its remaining delivery gates.
+
 ## Before a paid or long run
 
 During planning, before boot or agent launch, check only the prerequisites the run needs. This additional preflight applies to paid provider calls and runs that may exceed the runner's default background lifetime, not short no-provider screen checks.

@@ -24,6 +24,7 @@ Read references only when starting the corresponding activity.
 
 | Situation | Read and use |
 |---|---|
+| Objective lineup planning or execution with an implementer and a separate real-app verifier, in browser or Desktop | [Parallel preparation and commit handoff](references/setup.md#parallel-preparation-and-commit-handoff), before assigning mission dependencies or preparing the verifier's environment |
 | Any run that may start Claude CLI or an SDK child, including chat and fake Claude | [Claude state and trust preflight](references/claude-state.md), before booting the host or launching an Operation; its Theater-trust step for objective Commence and terminal prompts runs after boot, before the first prompt |
 | Browser build and boot | [Isolated Console setup](references/setup.md), including its onboarding seed and optional deputy/Wiki fixtures before the first navigation |
 | Browser connection, interaction, diagnostics, session cleanup | [agent-browser](references/agent-browser.md) — default driver |
