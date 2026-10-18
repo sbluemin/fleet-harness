@@ -5,7 +5,7 @@ import type { ExpandedSurfaceDescriptor } from "@fleet-console/sdk/expanded-surf
 import type { FloatingWidgetDescriptor } from "@fleet-console/sdk/floating";
 import type { NotificationKindDescriptor } from "@fleet-console/sdk/notifications";
 import type {
-  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, ConversationSurfaceDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
+  ArchiveSectionDescriptor, OperationCaptionContribution, TheaterContribution, OperationCluster, OperationClusterSource, CommandBandEntryDescriptor, SidebarFooterEntryDescriptor, OperationKindDescriptor, ClientExecutionProvider, ConversationSurfaceDescriptor, FleetClientPlugin, PersistentComponentDescriptor } from "@fleet-console/sdk/plugin";
 import type { PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
@@ -47,6 +47,7 @@ export interface PluginRegistry {
   readonly conversationSurfaces: readonly ResolvedConversationSurface[];
   readonly floatingWidgets: readonly FloatingWidgetDescriptor[];
   readonly commandBandEntries: readonly CommandBandEntryDescriptor[];
+  readonly sidebarFooterEntries: readonly SidebarFooterEntryDescriptor[];
   readonly expandedSurfaces: readonly ExpandedSurfaceDescriptor[];
   readonly operationCaptionContributions: readonly OperationCaptionContribution[];
   /** Theater 머리 표식·머리 아래 줄·동작(우클릭) 메뉴 항목 — id 는 `<pluginId>:<id>` 로 붙어 있다. */
@@ -227,6 +228,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     })))),
+    sidebarFooterEntries: providers.flatMap((plugin) => (plugin.sidebarFooterEntries ?? []).map((descriptor) => ({ ...descriptor, id: `${plugin.id}:${descriptor.id}` }))),
     expandedSurfaces,
     operationCaptionContributions: providers.flatMap((plugin) => (plugin.operationCaptionContributions ?? []).map((descriptor) => ({
       ...descriptor,

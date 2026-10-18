@@ -481,7 +481,7 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       topStripVariant="compact"
       topStripTrailing={<ConversationSideBarActions />}
       topStripCenter={<ConversationSideBarDeputies />}
-      archiveInBottomAccessory
+      archiveInTheaterHeader
       bottomAccessory={<ConversationSideBarBottom connection={state.connection} />}
     />
   );

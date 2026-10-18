@@ -77,9 +77,9 @@ interface OperationsSideBarProps {
   readonly topStripVariant?: "compact";
   /** compact 맨 위 줄 가운데에 떠 있는 셸의 기여(대화 중심 화면의 출근한 부관 머리). 자리는 기여가 스스로 잰다. */
   readonly topStripCenter?: ReactNode;
-  /** 보관함 아래에 서는 셸의 기여(대화 중심 화면의 호스트·사용량·설정 줄). */
+  /** 사이드바 맨 아래에 서는 셸의 기여(호스트 아바타·플러그인 요약 줄). */
   readonly bottomAccessory?: ReactNode;
-  readonly archiveInBottomAccessory?: boolean;
+  readonly archiveInTheaterHeader?: boolean;
   readonly theaters: readonly TheaterInfo[];
   readonly operations: readonly OperationNode[];
   readonly groups: readonly OperationGroup[];
@@ -355,7 +355,7 @@ export function OperationsSideBar({
   topStripVariant,
   topStripCenter,
   bottomAccessory,
-  archiveInBottomAccessory = false,
+  archiveInTheaterHeader = false,
 }: OperationsSideBarProps) {
   const t = useT();
   const searchShortcut = useSearchShortcutLabel();
@@ -985,7 +985,7 @@ export function OperationsSideBar({
       )}
 
       <ConsoleSectionSlot compact={compact} />
-      <div className="side-bar-theater-label">Theater</div>
+      <div className="side-bar-theater-label side-bar-theater-heading"><span>Theater</span>{archiveInTheaterHeader ? <span className="side-bar-theater-actions"><ArchiveEntry glyphOnly /><SideBarStatusViewToggle active={statusAxis} /></span> : null}</div>
       <div className="side-bar-wide">
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
@@ -1213,7 +1213,7 @@ export function OperationsSideBar({
       </ol>
       </div>
 
-      {!archiveInBottomAccessory ? <ArchiveEntry /> : null}
+      {!archiveInTheaterHeader ? <ArchiveEntry /> : null}
       {bottomAccessory}
 
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />

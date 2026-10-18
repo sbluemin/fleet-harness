@@ -3810,6 +3810,21 @@ button.status-glyph.is-actionable:focus-visible {
   }
 }
 
+/* Console 공용 섹션 아래의 Theater 영역. 목록 안에 포인터·초점이 있을 때만 머리의 평면 도구가 드러난다. */
+.operations-side-bar .side-bar-theater-heading { display: flex; align-items: center; justify-content: space-between; height: 28px; margin-top: 4px; padding: 0 8px 0 18px; box-sizing: border-box; }
+.side-bar-theater-actions { display: inline-flex; align-items: center; gap: 2px; }
+.side-bar-theater-actions > button { display: grid; place-items: center; flex: none; width: 24px; height: 24px; padding: 4px; border: 0; border-radius: 6px; color: var(--text-tertiary); background: transparent; cursor: pointer; opacity: 0; }
+.side-bar-theater-actions > button svg { width: 16px; height: 16px; }
+.side-bar-theater-heading:is(:hover, :focus-within) .side-bar-theater-actions > button,
+.operations-side-bar:has(> .side-bar-wide:is(:hover, :focus-within)) .side-bar-theater-actions > button,
+.side-bar-theater-actions > button[aria-pressed="true"] { opacity: 1; }
+.side-bar-theater-actions > button:hover { color: var(--text-primary); background: var(--wash-hover); }
+.side-bar-theater-actions > button:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.side-bar-theater-actions > button[aria-pressed="true"] { color: var(--brass-quiet-ink); background: color-mix(in oklch, var(--brass-quiet) 14%, transparent); }
+.side-bar-theater-actions > button[aria-pressed="true"]::after { display: none; }
+.operations-side-bar.is-compact .side-bar-theater-heading { display: none; }
+@media (hover: none), (pointer: coarse) { .side-bar-theater-actions > button { opacity: 1; } }
+
 /* 사이드바에서 펼친 Theater 목록의 몸통. */
 .side-bar-wide {
   display: flex;
@@ -14390,7 +14405,7 @@ kbd { font-variant-numeric: tabular-nums; }
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-  .new-session-send, .new-session-cancel,
+  .new-session-send,
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
   .new-session-row, .new-session-menu-item, .new-session-chip
 ) {
@@ -14402,8 +14417,7 @@ kbd { font-variant-numeric: tabular-nums; }
 }
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-  .new-session-send, .new-session-cancel
-):active:not(:disabled) {
+  .new-session-send):active:not(:disabled) {
   transform: scale(0.94);
   transition-duration: var(--motion-tap);
   transition-timing-function: var(--ease-soft);
@@ -14419,7 +14433,7 @@ kbd { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
     .conversation-round, .side-bar-theater-row-btn, .fc-composer-circle,
-    .new-session-send, .new-session-cancel,
+    .new-session-send,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
     .new-session-row, .new-session-menu-item, .new-session-chip
   ):active:not(:disabled) {

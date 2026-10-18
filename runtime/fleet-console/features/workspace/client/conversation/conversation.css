@@ -157,7 +157,7 @@
   min-width: 0;
   height: var(--conversation-top-row);
   /* 양쪽을 같게 비워 pill 이 가운데에 남는다 — 사용량 캡슐이 이 줄 오른쪽 끝에서 차지하는 몫이다. 그 몫은 캡슐의 오른쪽 여백·Windows
-     캡션 버튼 몫까지 이미 센 값이라(ConversationQuota) 캡션 몫을 다시 더하지 않는다. 캡슐이 없을 때만 캡션 몫이 남는다. */
+     캡션 버튼 몫까지 이미 센 도구모음 폭이라 캡션 몫을 다시 더하지 않는다. 도구가 없을 때만 캡션 몫이 남는다. */
   padding: 0 max(var(--conversation-quota-space), var(--conversation-caption-reserve));
   box-sizing: border-box;
   pointer-events: none;
@@ -286,19 +286,22 @@
 /* Console Use·Computer Use 와 시선 말풍선은 면 없는 선반에 선다 — 별도 동작 캡슐을 되살리지 않는다. */
 .conversation-caption-shelf { gap: 2px; }
 
-/* 공통 도구모음 — 대화 동작 묶음 오른쪽의 같은 캡슐이다(Theater 도구 │ Console 도구 ⋯). 글리프는 레일 도구(RailIcon) 그대로이고,
-   켜짐은 대상 탭과 같은 문법(테두리 링 + 위치 채널 brass 글리프)이다. 넘치는 도구는 오른쪽 끝부터 「⋯」 메뉴로 걷힌다
-   (ConversationToolbar 가 data-overflow 로 잰다). 묶음은 줄어들지 않는다 — 걷힘만이 폭을 줄인다. */
+/* 공통 도구모음 — 작업 영역 맨 위 줄 오른쪽의 평면 도구다(Theater │ Console ⋯). 면·캡슐 없이 구분선만 남기고,
+   켜짐은 기존 레일의 brass 링을 따른다. 실제 남는 자리가 모자라면 오른쪽 끝부터 「⋯」로 걷는다. */
 .conversation-pill-tools {
+  position: absolute;
+  top: calc((var(--conversation-top-row) - 30px) / 2);
+  right: calc(var(--space-3) + var(--conversation-caption-reserve));
+  z-index: 4;
+  pointer-events: auto;
   flex: none;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px 3px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--conversation-surface) 88%, transparent);
-  backdrop-filter: blur(14px);
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
 .conversation-pill-tools-items,
@@ -306,19 +309,19 @@
 
 .conversation-pill-tools [data-overflow="true"] { display: none; }
 
-.conversation-pill-tools .right-rail-ico {
+.conversation-pill-tools :is(.right-rail-ico, .fleet-caption-action) {
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   padding: 0;
   border-color: transparent;
   background: none;
   color: var(--text-secondary);
 }
 
-.conversation-pill-tools .right-rail-ico svg { width: 14px; height: 14px; }
+.conversation-pill-tools :is(.right-rail-ico, .fleet-caption-action) svg { width: 16px; height: 16px; }
 
-.conversation-pill-tools .right-rail-ico:hover:not(:disabled),
+.conversation-pill-tools .right-rail-ico:hover:not(:disabled):not(.is-active),
 .conversation-pill-tools .right-rail-ico:focus-visible {
   background: var(--control-rest-hover);
   color: var(--text-primary);
@@ -417,27 +420,27 @@
 
 /* 머리 줄 버튼(턴 접기·전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
    공용 .fleet-caption-action(브라우저 패널·리더·문서 칸)은 그대로 둔다. */
-.conversation-column > .conversation-pill-row .fleet-caption-action {
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action {
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
 }
 
-.conversation-column > .conversation-pill-row .fleet-caption-action:hover:not(:disabled),
-.conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible {
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action:hover:not(:disabled),
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action:focus-visible {
   border-color: transparent;
   background: var(--control-rest-hover);
   color: var(--text-primary);
   outline: none;
 }
 
-.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"] {
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action[aria-pressed="true"] {
   border-color: color-mix(in oklch, var(--brass) 55%, transparent);
   background: none;
   color: var(--brass-ink);
 }
 
-.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
-.conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"]:focus-visible {
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action[aria-pressed="true"]:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 55%, transparent);
   background: var(--control-rest-hover);
   color: var(--brass-ink);
@@ -445,9 +448,9 @@
 }
 
 /* 에이전트가 브라우저를 쓰는 표식은 켜짐보다 급하다 — 머리 줄에서도 그 채움을 유지한다. */
-.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent,
-.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent[aria-pressed="true"],
-.conversation-column > .conversation-pill-row .fleet-caption-action.is-agent:hover:not(:disabled) {
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action.is-agent,
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action.is-agent[aria-pressed="true"],
+:is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action.is-agent:hover:not(:disabled) {
   border-color: var(--agent-control-badge);
   background: var(--agent-control-badge);
   color: var(--agent-control-badge-ink);
@@ -474,8 +477,8 @@
 .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
 
 @media (forced-colors: active) {
-  .conversation-column > .conversation-pill-row .fleet-caption-action:hover:not(:disabled),
-  .conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible,
+  :is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action:hover:not(:disabled),
+  :is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action:focus-visible,
   .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:hover:not(:disabled),
   .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:focus-visible {
     outline: 1px solid Highlight;
@@ -483,7 +486,7 @@
     color: Highlight;
   }
 
-  .conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"],
+  :is(.conversation-column > .conversation-pill-row, .conversation-pill-tools) .fleet-caption-action[aria-pressed="true"],
   .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"],
   .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
   .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:focus-visible {
@@ -1183,19 +1186,15 @@
 
 .conversation-panel-tabs .right-rail-ico.is-text .right-rail-ico-dot.is-unseen { background: var(--brass); }
 
-/* ── 맨 위 줄과 사용량 캡슐 ─────────────────────────────────────────────────────────
-   맨 위 줄(.conversation-band)은 작업 영역(왼쪽·오른쪽 사이드바 사이) 전체 폭이다 — 도구 분할은 그 아래만 쓴다(workbench.css).
-   pill 은 이 줄 가운데에서 대상만 말한다 — 사용량(계정 전역)은 이 줄 오른쪽 끝에 따로 떠 있다. pill 줄(이 줄 전체 폭)은 캡슐 몫을
-   양쪽에 같게 비워 pill 이 가운데에 남고 둘이 겹치지 않는다. 실제로 남는 자리가 모자랄 때만 단계를 낮춘다:
-   전체(두 줄 값) → 표식만 → 첫 칸 하나(data-tier, quota.css). */
+/* 맨 위 줄 오른쪽 도구모음은 작업 영역 전체 폭에 선다. pill 은 그 실제 폭을 양쪽에 예약해 가운데에 남는다. */
 .console-body.is-conversation {
   /* 이 줄 오른쪽 끝이 Windows 캡션 버튼에게 비워 주는 폭 — 아래 Desktop 셸 규칙이 심는다. */
   --conversation-caption-reserve: 0px;
 }
 
 .conversation-stage {
-  /* 사용량 캡슐이 맨 위 줄 오른쪽 끝에서 차지하는 폭(캡슐 폭 + 오른쪽 여백·캡션 몫 + 틈) — ConversationQuota 가 재어 심는다
-     (그 전까지는 첫 칸 하나 몫). */
+  /* 이름은 이전 Quota 자리에서 이어진다. 지금은 도구모음 폭 + 오른쪽 여백·Windows 캡션 몫 + 틈이며,
+     ConversationToolbar 가 실제 폭으로 심는다. */
   --conversation-quota-space: 56px;
 }
 
@@ -1206,23 +1205,6 @@
   height: var(--conversation-top-row);
   pointer-events: none;
   transition: left var(--duration-base) ease, right var(--duration-base) var(--ease-spring);
-}
-
-.conversation-quota {
-  position: absolute;
-  top: calc((var(--conversation-top-row) - 30px) / 2);
-  right: calc(var(--space-3) + var(--conversation-caption-reserve));
-  z-index: 4;
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 var(--space-1);
-  box-sizing: border-box;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--conversation-surface) 88%, transparent);
-  backdrop-filter: blur(14px);
 }
 
 /* ── 사이드바 맨 위 줄: 보기·정렬·접기와 찾기·새로 만들기를 한 줄, 한 문법으로 ──────────── */
@@ -1480,15 +1462,14 @@ html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversat
   -webkit-app-region: drag;
 }
 
-/* 사용량 캡슐은 맨 위 줄에 서서 DOM 순서로 가운데 칸의 pill 줄보다 앞선다 — 아래 순서 규칙대로 그 위를 덮는 pill 줄의
-   drag 가 캡슐의 no-drag 를 다시 덮어 클릭이 창 끌기로 먹힌다. pill 줄의 drag 상자를 캡슐 몫(--conversation-quota-space) 앞에서
-   끝내고 그만큼 오른쪽 안쪽 여백을 줄여, 내용 상자(가운데 pill 자리)는 그대로 둔 채 두 사각형이 겹치지 않게 한다. */
+/* 도구모음은 맨 위 줄로 portal 된다. 뒤 DOM 인 pill 줄의 drag 사각형을 실제 도구 폭 앞에서 끝내,
+   도구의 no-drag 를 덮지 않게 한다(#1966·#1967). 내용 상자의 중심은 양쪽 예약으로 그대로다. */
 html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-pill-row {
   right: calc(var(--conversation-quota-space) - var(--conversation-split-right, 0px));
   padding-right: max(0px, var(--conversation-caption-reserve) - var(--conversation-quota-space));
 }
 
-html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-quota,
+html[data-desktop-shell="true"] .console-shell.is-operations-view .conversation-pill-tools,
 html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
 }
@@ -1501,7 +1482,7 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
-   작업 영역 맨 위 줄 — 사용량 캡슐이 그 바로 왼쪽에 선다)이 그 폭을 비운다. 도구 분할은 맨 위 줄 아래만 쓰므로 띠에 덮이지 않는다.
+   작업 영역 맨 위 줄 — 도구모음이 그 바로 왼쪽에 선다)이 그 폭을 비운다. 도구 분할은 맨 위 줄 아래만 쓰므로 띠에 덮이지 않는다.
    식은 layout.css 밴드 오른쪽 클러스터와 같다(env 실측과 46 DIP × 3 계약 중 큰 쪽). */
 html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation {
   --conversation-caption-width: max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1));

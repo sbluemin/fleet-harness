@@ -42,12 +42,16 @@ function useArchiveTotal(): { readonly total: number; readonly sections: readonl
 }
 
 /** 사이드바 맨 아래의 보관함 입구 — 보관한 목록 바로 아래라 「치운 것은 여기 있다」가 한눈에 읽힌다. */
-export function ArchiveEntry({ compact = false }: { readonly compact?: boolean } = {}) {
+export function ArchiveEntry({ compact = false, glyphOnly = false }: { readonly compact?: boolean; readonly glyphOnly?: boolean } = {}) {
   const t = useT();
   const locale = useConsoleLocale();
   const { total, sections } = useArchiveTotal();
   // 「보관함 · 완료 1 · 정리된 목표 1」 — 빈 칸은 말하지 않는다.
   const parts = sections.filter((entry) => entry.count > 0).map((entry) => `${entry.section.title(locale)} ${entry.count}`);
+  if (glyphOnly) {
+    const label = t("archive.entryGlyphAria", { count: total });
+    return <button type="button" className="side-bar-theater-action" onClick={openArchiveSheet} aria-label={label} title={label} aria-haspopup="dialog"><ArchiveGlyph /></button>;
+  }
   return (
     <div className={`side-bar-archive${compact ? " is-compact" : ""}`}>
       <button
