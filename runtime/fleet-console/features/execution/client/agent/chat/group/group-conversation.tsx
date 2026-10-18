@@ -7,7 +7,7 @@ import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
-import { ChatReferenceText } from "../chat-reference.js";
+import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
 import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
@@ -974,8 +974,10 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
   readonly label?: string | undefined;
 }) {
   const t = getGroupT(language);
+  const references = React.useContext(ChatReferenceContext);
   const time = timeOf(entry.at, language);
   const action = resolveLocalizedText(entry.action, language ?? "en");
+  if (entry.target) return <BoardActionTargetLine entry={entry} target={entry.target} language={language} time={time} action={action} onOpenRecord={onOpenRecord} label={label} mark={entry.target.id && references?.mark ? references.mark(entry.target.id) : null} />;
   const summary = (
     <>
       <SpeakerMark speaker={entry.speaker} size="sm" />
@@ -1005,6 +1007,72 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
         ) : null}
       </div>
     </details>
+  );
+}
+
+/**
+ * 여러 목표를 오가는 기록(사령관 대화)의 행위 줄 — 「사령관 · 행위 · (지휘관 얼굴) 목표 이름 · 결말 시각」. 얼굴은 대화의 참조 표식이
+ * 그린다(보드와 같은 지휘관 얼굴). 이유가 있으면(질문·답) 펼치고 그 안에 목표를 여는 낱말을 둔다. 이유가 없으면 접지 않는다 — 열 목표가
+ * 있으면 줄 전체가 그 목표를 여는 단추이고, 없으면(id 없는 추가·정리·병합, 보드에 없는 목표) 눌리는 척하지 않는 글자 줄이다.
+ */
+function BoardActionTargetLine({ entry, target, language, time, action, onOpenRecord, label, mark }: {
+  readonly entry: Extract<GroupTimelineEntry, { kind: "board-action" }>;
+  readonly target: NonNullable<Extract<GroupTimelineEntry, { kind: "board-action" }>["target"]>;
+  readonly language: ConsoleLocale | undefined;
+  readonly time: string | undefined;
+  readonly action: string;
+  readonly onOpenRecord: GroupConversationProps["onOpenCommodoreRecord"];
+  readonly label: string | undefined;
+  readonly mark: React.ReactNode;
+}) {
+  const t = getGroupT(language);
+  const locale = language ?? "en";
+  const name = target.label !== undefined ? resolveLocalizedText(target.label, locale) : "";
+  const status = entry.status ? resolveLocalizedText(entry.status.text, locale) : "";
+  const objectiveId = target.id;
+  const open = objectiveId && onOpenRecord ? () => onOpenRecord({ objectiveId, entryId: entry.id, at: entry.at }) : null;
+  const summary = (
+    <>
+      <SpeakerMark speaker={entry.speaker} size="sm" />
+      <span className="group-chat-line-who">{entry.speaker.name}</span>
+      <span className="group-chat-line-sep" aria-hidden="true">·</span>
+      <span className="group-chat-line-act">{action}</span>
+      {name ? <>
+        <span className="group-chat-line-sep" aria-hidden="true">·</span>
+        {mark ? <span className="group-chat-line-target-mark" aria-hidden="true">{mark}</span> : null}
+        <span className="group-chat-line-target" title={name}>{name}</span>
+      </> : null}
+      {status ? <>
+        <span className="group-chat-line-sep" aria-hidden="true">·</span>
+        <span className={`group-chat-line-status${entry.status?.failed ? " is-failed" : ""}`}>{status}</span>
+      </> : null}
+      {time ? <span className="group-chat-line-time">{time}</span> : null}
+    </>
+  );
+  if (entry.text.trim()) {
+    return (
+      <details className="group-chat-line group-chat-board has-target" data-entry-id={entry.id}>
+        <summary className="group-chat-line-summary">
+          {summary}
+          <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
+        </summary>
+        <div className="group-chat-line-detail">
+          <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
+          {open ? (
+            <div className="group-chat-line-actions">
+              <button type="button" className="group-chat-link" onClick={open}>{label ?? t("group.board.openRecord")}</button>
+            </div>
+          ) : null}
+        </div>
+      </details>
+    );
+  }
+  if (!open) return <div className="group-chat-line group-chat-board has-target" data-entry-id={entry.id}>{summary}</div>;
+  return (
+    <button type="button" className="group-chat-line group-chat-board has-target" data-entry-id={entry.id} onClick={open}>
+      {summary}
+      <span className="group-chat-line-go" aria-hidden="true">↗</span>
+    </button>
   );
 }
 

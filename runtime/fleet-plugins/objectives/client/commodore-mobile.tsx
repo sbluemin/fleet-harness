@@ -14,7 +14,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
-import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
+import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreComposer, focusAtEnd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
@@ -316,7 +316,8 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   const board = useObjectiveTheater(theaterId);
   const asks = view?.state.asks;
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, asks), [t, theaterId, entries, board.objectives, asks]);
+  const index = useCommodoreObjectiveIndex(theaterId);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, asks, index.finished), [t, theaterId, entries, board.objectives, asks, index.finished]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
     const base = commodoreConversationLiveEntries(t, entries, live, confirmed);
     if (!pending) return base;
@@ -390,7 +391,8 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
   const Transcript = commodoreTranscriptRenderer();
   const asks = view?.state.asks;
-  const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks), [t, theaterId, entries, live, asks]);
+  const index = useCommodoreObjectiveIndex(theaterId);
+  const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const openReference = useCallback((objectiveId: string) => openObjectiveOnPhone(objectiveId, theaterId), [theaterId]);
   const references = useCommodoreReferenceHost(t, theaterId, openReference);
   const [loadingOlder, setLoadingOlder] = useState(false);

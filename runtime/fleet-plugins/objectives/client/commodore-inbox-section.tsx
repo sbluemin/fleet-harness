@@ -34,7 +34,7 @@ import { commodoreLogBlocks, commodoreTurnCovering, errorWord, formatContextToke
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
-import { CommodoreReferenceInput, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
+import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-header.js";
@@ -465,7 +465,8 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   const Transcript = commodoreTranscriptRenderer();
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
-  const blocks = useMemo(() => commodoreLogBlocks(t, theaterId, entries, live, asks), [t, theaterId, entries, live, asks]);
+  const index = useCommodoreObjectiveIndex(theaterId);
+  const blocks = useMemo(() => commodoreLogBlocks(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
   const references = useCommodoreReferenceHost(t, theaterId);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {

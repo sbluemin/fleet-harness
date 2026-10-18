@@ -10,12 +10,12 @@ import type { ClientTheaterInboxCapability } from "@fleet-console/sdk/theater-in
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDirective, CommodoreIntel, CommodoreSettings } from "./commodore-inbox-section.js";
-import { useCommodoreReferenceHost } from "./commodore-reference-input.js";
+import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, commodoreTheaterLabel, loadCommodore, loadTranscript, noteCommodoreLanguage, readCommodore, retryCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
-import { readTheater, revealObjective, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
+import { readTheater, subscribeObjective, useObjectiveTheater } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -208,7 +208,8 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const run = view?.run;
   const { on, meta, patrol } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
-  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks), [t, theaterId, entries, board.objectives, view?.state.asks]);
+  const index = useCommodoreObjectiveIndex(theaterId);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, theaterId, entries, [], board.objectives, view?.state.asks, index.finished), [t, theaterId, entries, board.objectives, view?.state.asks, index.finished]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed), [t, entries, live, confirmed]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = on && run?.phase === "turn";
@@ -236,10 +237,11 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   const target = reveal ? commodoreConversationTarget(items, reveal.at) : null;
   const revealEntry = useMemo<AgentConversationProps["reveal"]>(() => (reveal && target ? { entryId: target, nonce: reveal.nonce } : null), [reveal, target]);
   const references = useCommodoreReferenceHost(t, theaterId);
+  // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("objectives.commodore.trail.open"),
-    open: (entry) => { if (entry.objectiveId) revealObjective({ objectiveId: entry.objectiveId }); },
-  }), [t]);
+    open: (entry) => { if (entry.objectiveId) openReferencedObjective(theaterId, entry.objectiveId); },
+  }), [t, theaterId]);
 
   // 원장 — 그룹 대화처럼 사령관 이름·진행 줄 표식과 낱말이 연다. 연 순간 도는 턴이 있으면 그 턴을 드러낸다. 원장에 설 턴이 없으면
   // 열 원장이 없으므로 입구를 주지 않는다(눌리는 척하지 않는다). 읽은 창은 아무 줄에서나 시작하므로(쪽·보관 상한) 깨움 줄이 아니라
@@ -259,7 +261,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   useEffect(() => {
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
-  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, theaterId, entries, live, view?.state.asks) : []), [ledgerOpen, t, theaterId, entries, live, view?.state.asks]);
+  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, theaterId, entries, live, view?.state.asks, index) : []), [ledgerOpen, t, theaterId, entries, live, view?.state.asks, index]);
   // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Operation 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
   // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
   const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);

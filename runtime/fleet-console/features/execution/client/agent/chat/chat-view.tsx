@@ -1,7 +1,7 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
-import { ChatReferenceText } from "./chat-reference.js";
+import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
 import { useCodeBlockCopy } from "./code-block-copy.js";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { HistoryBand, useHistoryReveal } from "@fleet-console/sdk/components/history-band";
@@ -2195,7 +2195,7 @@ function Tally({
                   : null}
                 <span className="agent-chat-tally-clause">
                   <span className="agent-chat-tally-glyph" aria-hidden="true"><AgentGlyph name={agentChatToolFamily(item.name)} /></span>
-                  <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
+                  <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.references?.length ? referenceLabelText(item.detail, item.references) : item.detail}` : ""}`}</span>
                 </span>
               </React.Fragment>
             ))}
@@ -2715,7 +2715,11 @@ function Step({
       >
         {verb}
       </span>
-      {item.detail ? <span className="agent-chat-step-object" title={item.detail}>{item.detail}</span> : null}
+      {item.detail ? (
+        item.references?.length
+          ? <span className="agent-chat-step-object has-ref" title={referenceLabelText(item.detail, item.references)}><ChatReferenceLinks text={item.detail} references={item.references} /></span>
+          : <span className="agent-chat-step-object" title={item.detail}>{item.detail}</span>
+      ) : null}
       {peerCount !== undefined ? <span className="agent-chat-step-object">· {t("terminal.chat.peerSessions", { count: peerCount })}</span> : null}
       {item.outside ? (
         <span className="agent-chat-step-outside" title={t("terminal.chat.outsideTheaterTitle")}>

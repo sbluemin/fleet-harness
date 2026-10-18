@@ -26,7 +26,7 @@ const noAnswer = async () => undefined;
 
 function streamEvent(event: Exclude<AgentChatTranscriptEvent, { kind: "note" }>): AgentChatStreamEvent {
   switch (event.kind) {
-    case "tool": return { kind: "tool", name: event.name, detail: event.detail, ...(event.id !== undefined ? { id: event.id } : {}) };
+    case "tool": return { kind: "tool", name: event.name, detail: event.detail, ...(event.id !== undefined ? { id: event.id } : {}), ...(event.references?.length ? { references: event.references } : {}) };
     default: return event;
   }
 }
