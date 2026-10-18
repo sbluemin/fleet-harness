@@ -5,6 +5,32 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.243.0] - 2026-10-18
+
+### fleet-console
+
+#### Added
+- View images sent to the Commodore as thumbnails and open them full-size, including after the turn finishes.
+- Switch, add, and manage consoles from a dedicated sidebar section in Fleet Desktop, with this computer's list available while you visit another console. In a browser, manage saved consoles in Remote Access settings.
+
+#### Changed
+- Usage limits now sit at the bottom of the sidebar and open their details upward, with a shorter list that shows each connected account's limits at a glance.
+- The split-panel tools moved to the right end of the top bar, and conversation actions such as collapsing earlier turns, clearing the Commodore conversation, and switching between CLI and chat now sit inside the conversation's title pill.
+- Status grouping is now set per Theater from a button beside each Theater's fold control and is remembered after reload; Option+S toggles the Theater you are viewing.
+- Open the archive from the account menu, and the new-session screen no longer shows a close button; press Esc to cancel.
+- On phones, chat bubbles are wider and easier to read, with a sans-serif body, a clearer bubble surface, and your own messages in a dark bubble on the right.
+- On phones, the Commodore opens as a chat with its messages in bubbles; tap the header to reach autonomous operation, the log, goals, directive, intel, and settings.
+- Navigate mobile objective details through one row of tabs, with clearly labeled schedule controls inside the objective view.
+- In Fleet Desktop, choose and manage consoles from the button beside Search instead of a separate sidebar section.
+
+#### Removed
+- The left sidebar can no longer be collapsed: its collapse button, edge reveal, the Cmd+B / Ctrl+B shortcut, and the command palette's sidebar toggle are gone, and a sidebar you had collapsed opens again.
+
+### fleet-desktop
+
+#### Fixed
+- On Windows, the conversation title, toolbar, and usage summary no longer crowd or overlap each other in a narrow window or while the right sidebar is closed, and split panels no longer slide under the window controls. Split panels now open below the top bar on every platform, with the usage summary staying at its right end.
+
 ## [1.242.0] - 2026-10-18
 
 ### fleet-console
