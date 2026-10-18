@@ -56,11 +56,20 @@ export function PillTakeoverLayer({ shown, phase }: { readonly shown: Conversati
 
 /**
  * pill 폭을 바뀐 내용에 맞춰 부드럽게 옮긴다(FLIP) — 바뀌기 전 폭에서 새 내용의 제 폭으로, 끝나면 폭 고정을 걷는다. 전환 중에 다시
- * 바뀌면 지금 폭에서 이어 간다. `key` 는 바뀐 내용이 선 동안의 정체이고 원래 내용이면 null 이다.
+ * 바뀌면 지금 폭에서 이어 간다. `key` 는 바뀐 내용이 선 동안의 정체이고 원래 내용이면 null 이다. `leaving` 은 바뀐 내용이 흐름 밖에서
+ * 사라지는 중(`out` 단계)이다.
+ *
+ * 폭을 옮기는 동안과 `out` 단계 내내 pill 에 `PILL_MORPHING_CLASS` 를 붙인다 — 두 내용의 폭이 같아(둘 다 pill 상한에 닿아) 폭 전환을
+ * 건너뛰어도, 사라지는 내용이 pill 의 마지막 자식으로 남아 머리 줄 측정이 넘침으로 읽는 동안은 보류가 걸린다. 둘이 모두 끝난 커밋에서
+ * 클래스가 걷히고 측정은 그때 한 번 돈다.
  */
-export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: string | null): void {
+export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: string | null, leaving = false): void {
   const width = useRef(0);
   const mounted = useRef(false);
+  const flipping = useRef(false);
+  const leavingRef = useRef(leaving);
+  leavingRef.current = leaving;
+  const sync = (element: HTMLElement) => element.classList.toggle(PILL_MORPHING_CLASS, flipping.current || leavingRef.current);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
@@ -73,14 +82,25 @@ export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: strin
   }, [ref]);
   useLayoutEffect(() => {
     const element = ref.current;
+    if (element) sync(element);
+  }, [leaving, ref]); // eslint-disable-line react-hooks/exhaustive-deps -- sync 는 ref 만 읽는다.
+  useLayoutEffect(() => {
+    const element = ref.current;
     if (!mounted.current) { mounted.current = true; return; }
     if (!element) return;
     const from = element.style.width ? element.getBoundingClientRect().width : width.current;
     element.style.transition = "none";
     element.style.width = "";
     const to = element.getBoundingClientRect().width;
-    if (reducedMotion() || Math.abs(to - from) < 0.5) { element.style.transition = ""; element.classList.remove(PILL_MORPHING_CLASS); width.current = to; return; }
-    element.classList.add(PILL_MORPHING_CLASS);
+    if (reducedMotion() || Math.abs(to - from) < 0.5) {
+      element.style.transition = "";
+      flipping.current = false;
+      sync(element);
+      width.current = to;
+      return;
+    }
+    flipping.current = true;
+    sync(element);
     element.style.width = `${from}px`;
     void element.offsetWidth;
     element.style.transition = `width ${PILL_MORPH_MS}ms ${PILL_MORPH_EASE}`;
@@ -88,9 +108,10 @@ export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: strin
     const timer = window.setTimeout(() => {
       element.style.width = "";
       element.style.transition = "";
-      element.classList.remove(PILL_MORPHING_CLASS);
+      flipping.current = false;
+      sync(element);
       width.current = element.getBoundingClientRect().width;
     }, PILL_MORPH_MS + 40);
     return () => window.clearTimeout(timer);
-  }, [key, ref]);
+  }, [key, ref]); // eslint-disable-line react-hooks/exhaustive-deps -- sync 는 ref 만 읽는다.
 }

@@ -1239,7 +1239,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   const pillRef = useRef<HTMLDivElement | null>(null);
   const pillTakeover = usePillTakeoverPhase(useConversationPillTakeover(operation.id));
   const pillTaken = pillTakeover.phase === "in";
-  usePillMorphWidth(pillRef, pillTaken ? pillTakeover.shown?.key ?? null : null);
+  usePillMorphWidth(pillRef, pillTaken ? pillTakeover.shown?.key ?? null : null, pillTakeover.phase === "out");
   const clusterRoot = clusterIndex.rootOf.get(operation.id) ?? null;
   const nested = state.nestedOperations.filter((candidate) => candidate.parentOperationId === operation.id);
   const chosen = state.nestedBodySelection[operation.id];
