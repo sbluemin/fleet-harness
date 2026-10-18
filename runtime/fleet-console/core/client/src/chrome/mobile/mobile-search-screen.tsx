@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import { useT } from "../../i18n/index.js";
 import { focusOperation } from "../../integration/store.js";
@@ -40,8 +41,14 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
   const archived = useMemo(() => kind === "conversation" ? [] : (archive.snapshot?.entries ?? [])
     .filter((entry) => !restored.has(entry.operation.id) && (needle === "" || entry.operation.title.toLowerCase().includes(needle))), [archive.snapshot, kind, needle, restored]);
 
+  // 입력칸과 종류 칩은 결과 위에 떠 있는 머리 하나다 — 결과가 그 높이(`--m-screen-head`)만큼 위를 비운다.
+  const screenRef = useRef<HTMLElement>(null);
+  const headRef = useRef<HTMLDivElement>(null);
+  useChromeHeightProperty(headRef, screenRef, "--m-screen-head");
+
   return (
-    <section className="mobile-search-screen is-conversations">
+    <section ref={screenRef} className="mobile-search-screen is-conversations">
+      <div ref={headRef} className="mobile-screen-head">
       <div className="mobile-conv-searchbar">
         <button type="button" data-press="r1" className="mobile-conv-round" onClick={onBack} aria-label={t("mobile.sheet.close")}><MobileIcon name="x" /></button>
         <label className="mobile-conv-searchfield">
@@ -53,6 +60,7 @@ function ConversationSearch({ state, onBack }: { readonly state: ConsoleState; r
         {KINDS.map((item) => (
           <button type="button" key={item} data-press="r1" className={`mobile-conv-chip${kind === item ? " is-on" : ""}`} aria-pressed={kind === item} onClick={() => setKind(item)}>{t(`mobile.search.kind.${item}`)}</button>
         ))}
+      </div>
       </div>
       <div className="mobile-conv-scroll">
         {found.map((conversation) => {

@@ -191,8 +191,11 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
     { id: "settings", label: t("objectives.commodore.tabs.settings") },
   ];
 
+  const flow = !panel && !(on && (run?.phase === "retrying" || run?.phase === "error"));
+  // 대화 화면은 호스트 상단 막대 뒤로 흐른다 — 호스트 대화 화면이 막대 몫(--m-chrome-top)을 기록 위에 비운다. 띠가 서거나 칩 화면(탭)이면
+  // 호스트가 막대 아래에서 화면을 시작한다.
   return (
-    <div className="objectives-cm">
+    <div className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
       {on && (run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (

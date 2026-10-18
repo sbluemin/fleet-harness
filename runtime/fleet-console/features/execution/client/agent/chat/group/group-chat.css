@@ -336,6 +336,9 @@ button.group-chat-board:is(:hover, :focus-visible) .group-chat-line-go { opacity
 .group-chat-link:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
 .group-chat-link.is-danger { color: var(--coral-ink); }
 
+/* 진행 줄과 입력창의 감싸개 — 데스크톱에서는 상자 없이 둘이 예전처럼 대화 칸의 흐름에 선다. 폰 배치의 떠 있는 독은 아래 「폰 배치」 구역이 세운다. */
+.group-chat-dock { display: contents; }
+
 /* 진행 줄 — 입력창 바로 위 왼쪽. 입력 캡슐과 같은 좌우 여백을 써서 칸 폭이 어떻든 왼쪽 끝이 캡슐 왼쪽에 맞는다.
    일하는 이가 없어도 32px 표식 줄의 높이를 지켜 입력창이 뛰지 않게 한다. */
 .group-chat-working {
@@ -981,7 +984,13 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
    말풍선은 바탕보다 한 단 어두운 면(--m-chip)이고 테두리가 없다 — 흰 면이 종이 위에 뜨던 모양은 경계가 녹았다(대비비보다 밝기 방향이 시인성을 정한다).
    본문은 고딕 16/24(라틴 읽기 세리프는 말풍선 없이 읽던 문법의 몫), 코드는 모노 그대로. 에이전트 말풍선은 열에서 표식 칸(28 + 8)과 오른쪽 여유 20을
    뺀 폭까지 넓어진다. 사람 말은 오른쪽 반전 면(--m-inverse). 이름은 보조 글자, 표식은 묶음 마지막 말 옆이다. 색은 모바일 토큰만 쓴다. */
-:root[data-view-mode="mobile"] .group-chat-log { padding: 8px 16px; scrollbar-width: none; scrollbar-gutter: auto; }
+/* 기록은 위로 상단 막대 뒤, 아래로 독 뒤까지 흐른다(셸의 --m-chrome-top, 이 대화가 잰 --m-dock-h). 독 몫만큼 상자를 아래로 늘리고 같은 몫을
+   안쪽 여백으로 되돌려, 스크롤 범위와 독 위에 보이는 줄은 그대로이고 끝의 첫·마지막 말이 막대·독에 가리지 않는다. */
+:root[data-view-mode="mobile"] .group-chat-log { margin-bottom: calc(-1 * var(--m-dock-h, 0px)); padding: calc(8px + var(--m-chrome-top, 0px)) 16px calc(8px + var(--m-dock-h, 0px)); scroll-padding-block: var(--m-chrome-top, 0px) var(--m-dock-h, 0px); scrollbar-width: none; scrollbar-gutter: auto; }
+/* 진행 줄과 입력창은 대화 위에 떠 있는 독이다 — 면 대신 아래(바탕색)에서 위(투명)로 옅어지는 페이드가 경계를 대신한다. 진행 줄이 말하는 동안에는
+   그 글자 뒤만 바탕색으로 받쳐 지나가는 말풍선 위에서도 읽힌다. */
+:root[data-view-mode="mobile"] .group-chat-dock { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; background: var(--m-fade-up, var(--m-bg)); }
+:root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) { background: linear-gradient(to top, var(--m-bg) 65%, color-mix(in srgb, var(--m-bg) 0%, transparent)); }
 :root[data-view-mode="mobile"] .group-chat-log::-webkit-scrollbar { display: none; }
 :root[data-view-mode="mobile"] .group-chat-agent { grid-template-columns: 28px minmax(0, 1fr); max-width: none; }
 :root[data-view-mode="mobile"] .group-chat-agent.is-solo { grid-template-columns: minmax(0, 1fr); }

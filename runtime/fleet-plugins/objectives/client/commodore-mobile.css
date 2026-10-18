@@ -37,7 +37,9 @@
 .objectives-cm-trow:disabled .objectives-cm-tog::after { background: var(--m-text-faint); }
 
 /* 글자 탭(S-02 .ttabs). */
-.objectives-cm-tabs { flex: none; display: flex; gap: 20px; padding: 0 24px; border-bottom: 1px solid var(--m-hairline); }
+/* 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다 — 글자 탭이라 본문이 그 밑으로 흐르지는 않는다. */
+.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 20px; padding: 0 24px; }
+.objectives-cm-tabs::after { content: ""; position: absolute; top: 100%; right: 0; left: 0; height: 12px; background: var(--m-fade-down, none); pointer-events: none; }
 .objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
 /* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
@@ -78,7 +80,9 @@
  * 썸네일)만 둔다. 지휘관 참조 목록은 입력 위 시트이고 행은 엄지 높이(46px)다. 고른 행은 면으로만 말한다(왼쪽 띠 없음). 결정 요청·검토
  * 대기는 「사람을 기다림」 신호 하나로 말한다.
  */
-.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; background: var(--m-bg); }
+.objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px 12px; }
+/* 기록 탭의 독은 대화 화면의 독이 아니다(그 페이드는 호스트 대화 화면이 진다) — 흐름 안의 바탕색 면 그대로다. */
+.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { background: var(--m-bg); }
 .objectives-cm-dock .fc-composer-notice { padding-bottom: 0; }
 .objectives-cm-dock .objectives-commodore-composer { max-width: none; }
 .objectives-cm-dock .objectives-commodore-composer-idle { max-width: none; margin: 0; padding: 0 8px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }

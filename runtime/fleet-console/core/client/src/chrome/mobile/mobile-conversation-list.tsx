@@ -1,5 +1,6 @@
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
 import { useT } from "../../i18n/index.js";
@@ -49,10 +50,14 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   const rest = inTheater.filter((conversation) => !attentionOperationIds.has(conversation.operation.id));
 
   const open = (conversation: MobileConversation) => { setMobileDestination({ kind: "home" }); focusOperation(conversation.operation.id); };
+  // 머리는 목록 위에 떠 있다 — 목록이 그 높이(`--m-screen-head`)만큼 위를 비운다.
+  const listRef = useRef<HTMLElement>(null);
+  const headRef = useRef<HTMLElement>(null);
+  useChromeHeightProperty(headRef, listRef, "--m-screen-head");
 
   return (
-    <section className="mobile-conv-list">
-      <header className="mobile-conv-head">
+    <section ref={listRef} className="mobile-conv-list">
+      <header ref={headRef} className="mobile-conv-head mobile-screen-head">
         {/* 프로필 아바타 — Console 정체. 프로필·설정 시트를 연다. */}
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.profileAria", { name: consoleName })} onClick={() => pushMobileSheet({ kind: "profile" })}>
           <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />

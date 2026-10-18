@@ -696,3 +696,35 @@ export function SegmentedThumb({
 
   return <span ref={thumbRef} className="segmented-thumb" aria-hidden="true" />;
 }
+
+/**
+ * 떠 있는 모바일 크롬(상단 막대·화면 머리·입력 독)의 높이를 `target`의 CSS 사용자 속성으로 옮겨 적는다. 크롬 밑으로 흐르는 스크롤
+ * 내용은 이 값만큼 크롬 뒤로 늘어나고 같은 값만큼 안쪽 여백을 두어, 스크롤 끝의 첫·마지막 줄이 크롬에 가리지 않는다. 큰 글자 배율이나
+ * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`)은 0이다.
+ */
+export function useChromeHeightProperty(
+  source: React.RefObject<HTMLElement | null>,
+  target: React.RefObject<HTMLElement | null>,
+  property: `--${string}`,
+  measure?: (source: HTMLElement) => number,
+): void {
+  const measureRef = React.useRef(measure);
+  measureRef.current = measure;
+  React.useLayoutEffect(() => {
+    const node = source.current;
+    const host = target.current;
+    if (!node || !host) return;
+    const write = () => {
+      const height = measureRef.current ? measureRef.current(node) : node.getBoundingClientRect().height;
+      host.style.setProperty(property, `${Math.max(0, Math.ceil(height))}px`);
+    };
+    write();
+    if (typeof ResizeObserver === "undefined") return () => host.style.removeProperty(property);
+    const observer = new ResizeObserver(write);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      host.style.removeProperty(property);
+    };
+  }, [source, target, property]);
+}

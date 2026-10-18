@@ -134,7 +134,8 @@ export function MobileFileTree(ctx: PaneContext) {
     });
   };
 
-  return <div className="fexp-m fexp-m-tree" role="tree" aria-label={title}>{theaterId ? rows("", 0) : null}</div>;
+  // 트리는 호스트 상단 막대 뒤로 흐른다 — 막대 몫(--m-chrome-top)은 이 스크롤 영역이 위에 비운다(mobile.css).
+  return <div className="fexp-m fexp-m-tree" data-mobile-chrome="flow" role="tree" aria-label={title}>{theaterId ? rows("", 0) : null}</div>;
 }
 
 // ── 파일 상세 ──

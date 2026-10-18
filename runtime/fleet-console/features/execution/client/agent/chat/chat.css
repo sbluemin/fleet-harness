@@ -4236,8 +4236,12 @@
   background: var(--m-bg);
 }
 
+/* 로그는 위로 상단 막대 뒤, 아래로 입력 독 뒤까지 흐른다(셸의 --m-chrome-top, chat-view가 잰 --m-dock-h). 독 몫만큼 상자를 아래로 늘리고
+   같은 몫을 안쪽 여백으로 되돌려, 스크롤 범위와 독 위에 보이는 줄은 그대로이고 끝의 첫·마지막 줄은 막대·독에 가리지 않는다. */
 [data-mobile-surface] .agent-chat-log {
-  padding: 8px 24px 16px;
+  margin-bottom: calc(-1 * var(--m-dock-h, 0px));
+  padding: calc(8px + var(--m-chrome-top, 0px)) 24px calc(16px + var(--m-dock-h, 0px));
+  scroll-padding-block: var(--m-chrome-top, 0px) var(--m-dock-h, 0px);
   scrollbar-width: none;
   scrollbar-gutter: auto;
 }
@@ -4437,10 +4441,13 @@
 
 [data-mobile-surface] .agent-chat-log.is-inviting .agent-chat-hero { margin-block: 0; }
 
-/* 입력 독(S-27) — 패딩 8/16/12, 둥근 입력창 하나. 아래 줄: [+] [모델·강도] · · · [멈춤] [보내기]. */
+/* 입력 독(S-27) — 패딩 8/16/12, 둥근 입력창 하나. 아래 줄: [+] [모델·강도] · · · [멈춤] [보내기].
+   독은 대화 위에 떠 있다 — 면 대신 아래(바탕색)에서 위(투명)로 옅어지는 페이드 하나가 경계를 대신하고, 입력창은 자기 면으로 읽힌다. */
 [data-mobile-surface] .agent-chat-composer {
+  position: relative;
+  z-index: 1;
   padding: 8px 16px 12px;
-  background: var(--m-bg);
+  background: var(--m-fade-up, var(--m-bg));
 }
 
 [data-mobile-surface] .agent-chat-composer-meta {

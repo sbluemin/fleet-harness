@@ -1,9 +1,17 @@
 /* The frame holds the top bar, the route content and the bottom sheets together, above the routes,
-   so a destination that leaves /operations still has a bar to come back with. */
+   so a destination that leaves /operations still has a bar to come back with.
+   The bar floats over the route content (see .mobile-frame-head): every screen fills the frame from its top
+   edge, and its scroll area keeps --m-chrome-top (the measured head height) free at the top. The fades are
+   the shared edge of every floating chrome row — the outer end is --m-bg, the colour the native shell paints
+   the system bars with, so the seam to the status bar stays invisible. A bottom dock carries its own notes
+   (hints, queued lines) under the input, so its fade stays solid through the lower part. */
 .mobile-frame {
+  --m-chrome-top: 0px;
+  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
+  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -205,6 +213,10 @@
   background: var(--canvas-sea-core);
 }
 
+/* Operation 본문은 떠 있는 상단 막대 뒤까지 닿는다. 모바일 판정([data-mobile-surface])을 단 본문은 자기 부품이 막대 몫(--m-chrome-top)을
+   비우고(대화 로그는 막대 뒤로 흐르고, 터미널 격자는 막대 아래에서 시작한다), 그렇지 않은 본문은 슬롯이 막대 아래에서 시작한다. */
+.mobile-session-body:not(:has([data-mobile-surface])) > .mobile-operation-body-slot { padding-top: var(--m-chrome-top); }
+
 .mobile-tool-sheet {
   display: flex;
   flex-direction: column;
@@ -248,6 +260,10 @@
   min-height: 0;
 }
 
+/* 목록은 상단 막대 뒤로 흐른다 — 페이지가 막대 몫을 비우고(저장 표시는 그 바로 아래 줄), 스크롤 영역이 같은 몫만큼 위로 올라가 안쪽 여백으로 되돌린다. */
+.mobile-settings-page:not(.is-embedded) { padding-top: var(--m-chrome-top); }
+.mobile-settings-page:not(.is-embedded) .mobile-settings-scroll { margin-top: calc(-1 * var(--m-chrome-top)); padding-top: var(--m-chrome-top); }
+
 .mobile-settings-scroll {
   min-height: 0;
   overflow-y: auto;
@@ -271,6 +287,8 @@
 }
 
 .mobile-settings-saving {
+  position: relative;
+  z-index: 1;
   flex: none;
   color: var(--aurora-ink);
   font-family: var(--font-ui);
@@ -567,7 +585,8 @@
 /* 상단 막대의 56은 고정 높이가 아니라 최소 높이다 — OS 글자 배율(Android font_scale·WebView textZoom)은 px
    높이를 키우지 않고 글자만 키우므로, 고정 높이면 제목·부제 두 줄이 막대 위아래로 넘친다. 기본 배율의 두 줄
    (약 45px)은 56 안에 가운데로 들어 모양이 그대로이고, 큰 배율에서만 막대가 글자를 품도록 자란다. 막대는
-   .mobile-frame의 auto 행이라 자란 만큼 본문이 아래로 물러난다. */
+   본문 위에 떠 있고(.mobile-frame-head), 자란 높이는 --m-chrome-top으로 화면의 스크롤 여백에 그대로 옮겨 간다.
+   면은 칠하지 않는다 — 머리 묶음의 페이드가 진다. 막대 빈 자리의 누름은 뒤의 본문으로 지나간다(단추·칩만 받는다). */
 .mobile-top-bar {
   position: relative;
   z-index: 2;
@@ -577,8 +596,10 @@
   min-height: 56px;
   padding: 0 8px;
   color: var(--m-text);
-  background: var(--m-bg);
+  pointer-events: none;
 }
+
+.mobile-top-bar > :not(.mobile-top-bar-title, .mobile-bar-spacer) { pointer-events: auto; }
 
 .mobile-bar-button {
   position: relative;
@@ -990,14 +1011,19 @@
 
 /* 화면 */
 .mobile-attention-screen,
-.mobile-plugin-list { height: 100%; overflow-y: auto; background: var(--m-bg); }
+.mobile-plugin-list { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; background: var(--m-bg); }
 .mobile-attention-empty,
 .mobile-plugin-list-empty { margin: 0; padding: 24px 18px; color: var(--m-text-muted); font-size: var(--t-md); }
 
 .mobile-empty-home { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; height: 100%; padding: 0 36px; color: var(--m-text-muted); text-align: center; background: var(--m-bg); }
 .mobile-empty-home p { margin: 0; font-size: var(--t-md); }
 
-.mobile-plugin-screen { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); }
+/* 플러그인 화면은 기본으로 막대 몫을 비우고 그 아래에서 시작한다(막대의 페이드가 첫 줄 위에 겹친다). 자기 스크롤 영역이 --m-chrome-top만큼
+   위를 비우는 플러그인은 보이는 페인의 본문 루트에 data-mobile-chrome="flow"를 달아 본문을 막대 뒤로 흘린다(숨은 페인의 표식은 세지 않는다). */
+.mobile-plugin-screen { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding-top: var(--m-chrome-top); overflow: hidden; background: var(--m-bg); }
+.mobile-plugin-screen:has(.rail-pane:not([hidden]) [data-mobile-chrome="flow"]) { padding-top: 0; }
+/* 이미 막대 아래에서 시작한 본문 안에서는 막대 몫이 0이다 — 그 안의 부품(터미널 격자 등)이 같은 몫을 두 번 비우지 않는다. */
+.mobile-plugin-screen:not(:has(.rail-pane:not([hidden]) [data-mobile-chrome="flow"])) > * { --m-chrome-top: 0px; }
 .mobile-plugin-screen > .rail-surface { flex: 1; min-width: 0; min-height: 0; width: 100%; }
 /* 상단 막대는 호스트가 그린다 — 상세 페인의 캡션 밴드는 같은 말을 두 번 하게 된다. */
 .mobile-plugin-screen .pane-caption { display: none; }
@@ -1009,9 +1035,13 @@
 @keyframes mobile-sheet-in { from { transform: translateY(100%); } }
 @keyframes mobile-sheet-out { to { transform: translateY(100%); } }
 
-/* 상단 막대와 연결·상태 띠가 한 덩어리로 위에 선다. */
-.mobile-frame-head { position: relative; z-index: 2; display: flex; flex-direction: column; min-width: 0; }
-.mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; }
+/* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다 — 띠나 경계선 없이, 바탕색에서 투명으로 옅어지는 페이드 하나가 그 자리를 말한다
+   (데스크톱 대화 화면의 투명 맨 위 줄과 같은 문법). 본문은 그 뒤로 흐르고, 화면의 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼 위를 비워
+   맨 위 항목이 막대에 가리지 않는다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 높이 0이다. */
+.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; pointer-events: none; background: var(--m-fade-down); }
+.mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
+/* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */
+.mobile-sheet, .mobile-choice-scrim { --m-chrome-top: 0px; }
 
 /* 연결·상태 띠(S-34) — 전체 폭, 최소 높이 32, 면 bg-deep, 글자 muted 13, 동작은 오른쪽 끝 글자 버튼. */
 .mobile-frame-head .console-link-banner,
@@ -1111,7 +1141,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-empty-home-name { color: var(--m-text); font-size: var(--t-lg); font-weight: var(--weight-bold); }
 .mobile-empty-home .mobile-pill { margin-top: 6px; }
 
-.mobile-first-run { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 14px; height: 100%; padding: 0 36px; overflow-y: auto; background: var(--m-bg); }
+.mobile-first-run { display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 14px; height: 100%; padding: var(--m-chrome-top) 36px 0; overflow-y: auto; background: var(--m-bg); }
 .mobile-first-run .mobile-wordmark { text-align: center; }
 .mobile-first-run-lead { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; text-align: center; }
 .mobile-first-run .mobile-group { padding: 8px 0 0; }
@@ -1146,7 +1176,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-avatar-dot[data-state="failed"] { background: var(--m-danger); }
 
 /* 보관함 · 검색 */
-.mobile-archive-screen, .mobile-search-screen { height: 100%; overflow-y: auto; background: var(--m-bg); }
+.mobile-archive-screen, .mobile-search-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; background: var(--m-bg); }
 .mobile-archive-screen .mobile-group-row .mobile-pill-secondary { flex: none; }
 .mobile-search-field { padding: 0 16px 8px; }
 .mobile-search-row { width: calc(100% - 24px); }
@@ -1298,7 +1328,14 @@ html[data-view-mode="mobile"] .app-toast-action {
 /* ── 홈: 대화 목록 · 검색 ───────────────────────────────────────────────
    머리(프로필 · Theater 알약 · 검색 · +), 지금 Theater의 정체, 확인 필요 묶음, 대화 행. 색은 상태에만(낱말), 정체성은 몽글 아바타와 모노그램에만 쓴다.
    기본 뒤로(`.mobile-shell-content`의 스크롤)는 쓰지 않고 목록 영역이 스스로 스크롤한다. */
-.mobile-conv-list, .mobile-search-screen.is-conversations { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; background: var(--m-bg); }
+.mobile-conv-list, .mobile-search-screen.is-conversations { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; padding-top: 0; overflow: hidden; background: var(--m-bg); }
+/* 홈·검색은 상단 막대 대신 자기 머리를 그린다 — 막대와 같은 문법으로 목록 위에 떠 있고(경계선·면 없이 페이드 하나), 목록이 그 뒤로 흐른다.
+   머리의 높이(--m-screen-head)는 화면이 재서 적는다. 머리 빈 자리의 누름은 뒤의 목록으로 지나간다. */
+.mobile-screen-head { position: absolute; top: var(--m-chrome-top); right: 0; left: 0; z-index: 1; pointer-events: none; background: var(--m-fade-down); }
+.mobile-screen-head > :not(.mobile-conv-gap) { pointer-events: auto; }
+/* 떠 있는 입력 캡슐은 비활성이어도 면이 불투명하다 — 뒤로 흐르는 본문이 비치지 않게 면은 그대로 두고 안의 내용만 흐리게 한다. */
+:root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled { opacity: 1; }
+:root[data-view-mode="mobile"] .fc-composer-capsule.is-disabled > * { opacity: var(--control-disabled-opacity); }
 .mobile-conv-head, .mobile-conv-searchbar { display: flex; flex: none; align-items: center; gap: 8px; min-height: 60px; padding: 8px 14px 6px; }
 .mobile-conv-gap { flex: 1; min-width: 0; }
 .mobile-conv-round { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0; color: var(--m-text-nav); background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; --pr-r: 50%; }
@@ -1307,7 +1344,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-theater strong { overflow: hidden; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-conv-theater svg { flex: none; color: var(--m-text-muted); }
 .mobile-conv-theater .mobile-monogram { border-radius: 10px; }
-.mobile-conv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; }
+.mobile-conv-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-top: calc(var(--m-chrome-top) + var(--m-screen-head, 60px)); padding-bottom: 24px; }
 
 .mobile-conv-hero { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 20px 10px; text-align: center; }
 .mobile-conv-hero .mobile-monogram { border-radius: 20px; }
@@ -1373,14 +1410,15 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-pill-copy strong { overflow: hidden; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-conv-pill-copy small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-small); text-overflow: ellipsis; white-space: nowrap; }
 
-.mobile-info-screen { height: 100%; overflow-y: auto; overscroll-behavior: contain; background: var(--m-bg); }
+.mobile-info-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; overscroll-behavior: contain; background: var(--m-bg); }
 .mobile-info-hero { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 8px 16px 14px; }
 .mobile-info-title { position: relative; display: grid; gap: 2px; width: 100%; padding: 14px 16px; color: var(--m-text); text-align: center; background: var(--m-surface); border: 0; border-radius: 18px; --pr-r: 18px; }
 .mobile-info-title strong { overflow: hidden; font-size: var(--m-fs-heading); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-info-title small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-meta); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-info-tabs-edge { position: relative; }
-.mobile-info-tabs-edge.is-overflowing::after { content: ""; position: absolute; inset: 0 0 1px auto; width: 24px; background: linear-gradient(to right, transparent, var(--m-bg)); pointer-events: none; }
-.mobile-info-tabs { position: relative; display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; border-bottom: 1px solid var(--m-hairline); scrollbar-width: none; }
+.mobile-info-tabs-edge.is-overflowing::after { content: ""; position: absolute; inset: 0 0 0 auto; width: 24px; background: linear-gradient(to right, transparent, var(--m-bg)); pointer-events: none; }
+/* 탭 줄 아래 헤어라인은 두지 않는다 — 고른 탭의 밑줄과 본문의 여백이 줄을 가른다. */
+.mobile-info-tabs { position: relative; display: flex; gap: 4px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
 .mobile-info-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 14px; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; background: transparent; border: 0; border-bottom: 2px solid transparent; }
 .mobile-info-tab-dot { position: absolute; top: 8px; right: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--m-awaiting); }
 .mobile-info-tab-dot.is-unseen { background: var(--m-idle); }

@@ -1,4 +1,5 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 import { UseRequestCards } from "../use-request-card.js";
 import { ChatDispatchAttachments } from "./chat-dispatch-attachments.js";
 import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./chat-reference.js";
@@ -247,6 +248,12 @@ export function AgentChatView({
     observer.observe(log);
     return () => observer.disconnect();
   }, []);
+  // 모바일 입력 독은 대화 위에 떠 있다 — 로그가 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다. 독은 그대로 흐름 안에
+  // 서므로(본문 상자 높이는 그대로) 따라가기·자리 지키기 계산과 부유물(Follow·허용 요청)의 자리는 바뀌지 않는다. 독 높이는 대화 면
+  // 바닥에서 본문 상자 바닥까지다 — 입력이 여러 줄로 자라거나 예약·안내 줄이 서면 본문이 줄어 다시 잰다.
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+  const noTarget = React.useRef<HTMLElement>(null);
+  useChromeHeightProperty(bodyRef, mobileSurface ? panelRef : noTarget, "--m-dock-h", (body) => (body.parentElement?.getBoundingClientRect().bottom ?? 0) - body.getBoundingClientRect().bottom);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
   // 쓴다. 스트림 성장에 거리를 고정하면 읽던 줄이 밑으로 끌려간다.
@@ -771,7 +778,7 @@ export function AgentChatView({
             in-flow로 서면서, pane에 앵커하던 부유물이 컴포저 위에 얹히지 않도록 부유물의
             containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
             언제나 그 위에 선다. */}
-        <div className="agent-chat-body">
+        <div ref={bodyRef} className="agent-chat-body">
         {/* data-chat-tour는 실행·브라우저 기능의 온보딩 투어가 짚는 앵커 계약이다 —
             사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
             콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}

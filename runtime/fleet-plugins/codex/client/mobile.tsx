@@ -103,7 +103,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
 
   if (searching) {
     return (
-      <div className="codex-m">
+      <div className="codex-m" data-mobile-chrome="flow">
         <div className="codex-m-search">
           <input className="codex-m-field" type="search" autoFocus value={query} placeholder={t("mobile.wiki.searchPlaceholder")} aria-label={searchLabel} onChange={(event) => setQuery(event.target.value)} />
         </div>
@@ -125,7 +125,7 @@ export function MobileWikiList({ ctx }: { readonly ctx: PaneContext }) {
   }
 
   return (
-    <div className="codex-m">
+    <div className="codex-m" data-mobile-chrome="flow">
       <div className="codex-m-pad">
         {load.kind === "loading" ? <p className="codex-m-note" role="status">{t("mobile.wiki.loading")}</p> : null}
         {load.kind === "failed" ? <button type="button" className="codex-m-note" onClick={refresh}>{t("mobile.wiki.failed")}</button> : null}

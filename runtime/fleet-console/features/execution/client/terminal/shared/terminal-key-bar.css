@@ -205,10 +205,12 @@
 .terminal-confirm-row.is-disabled { opacity: 0.55; }
 
 /* 모바일 본문의 터미널 면(S-30) — 테두리 없이 화면과 한 면이고, 격자는 10/14만큼 안으로 들어온다.
-   레일 Shell 카드의 테두리는 슬롯 크롬이 소유하던 것이라 이 화면에는 해당하지 않는다. */
+   레일 Shell 카드의 테두리는 슬롯 크롬이 소유하던 것이라 이 화면에는 해당하지 않는다.
+   면은 떠 있는 상단 막대 뒤까지 닿지만 격자는 막대 아래(--m-chrome-top)에서 시작한다 — 터미널은 행 격자라 막대 뒤로 흘리면 맨 위 행이
+   가린 채 그려진다. 같은 까닭으로 아래 키 독은 페이드 없이 흐름 안에 서고, 격자가 그 뒤로 내려가지 않는다(커서 줄이 늘 보인다). */
 [data-mobile-surface] .terminal-shell {
   border: 0;
   border-radius: 0;
 }
 
-[data-mobile-surface] .terminal-canvas { inset: 10px 14px; }
+[data-mobile-surface] .terminal-canvas { inset: calc(10px + var(--m-chrome-top, 0px)) 14px 10px; }
