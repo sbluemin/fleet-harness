@@ -1,3 +1,4 @@
+import { readReaderSession, writeReaderSession, type ReaderSession } from "./reader-session.js";
 import { mountNavigatorApp } from "./codex/main.js";
 import type { NavigatorController, NavigatorRequest } from "./codex/main.js";
 import { mountReadingInto } from "./codex/reading-controller.js";
@@ -17,13 +18,6 @@ export interface ReaderHistoryState {
   readonly canGoForward: boolean;
 }
 
-interface ReaderSession {
-  readonly entryId: string;
-  readonly scrollTop: number;
-  /** 새로고침 전에 확대(전체 읽기) 상태였는지 — 화면 모드까지 함께 복원한다. */
-  readonly expanded: boolean;
-}
-
 interface HistoryEntry {
   readonly entryId: string;
   /** 이 문서를 떠날 때의 읽던 자리. 돌아오면 여기서 이어 읽는다. */
@@ -37,7 +31,6 @@ export interface ReaderDocumentState {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const READER_SESSION_PREFIX = "fleet.codex.reader.session.";
 const SCROLL_SAVE_DELAY_MS = 500;
 
 // Navigator 싱글톤 — appendChild 재배치로 컨테이너를 교체, destroy+remount 없음
@@ -500,27 +493,6 @@ function persistCurrentReaderSession(scrollTop: number): void {
     scrollTop,
     expanded: readerExpandedForSession,
   });
-}
-
-function readReaderSession(theaterId: string): ReaderSession | null {
-  try {
-    const value = JSON.parse(localStorage.getItem(`${READER_SESSION_PREFIX}${theaterId}`) ?? "null") as unknown;
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    const record = value as Record<string, unknown>;
-    if (typeof record.entryId !== "string" || record.entryId.length === 0) return null;
-    if (typeof record.scrollTop !== "number" || !Number.isFinite(record.scrollTop) || record.scrollTop < 0) return null;
-    return { entryId: record.entryId, scrollTop: record.scrollTop, expanded: record.expanded === true };
-  } catch {
-    return null;
-  }
-}
-
-function writeReaderSession(theaterId: string, session: ReaderSession): void {
-  try {
-    localStorage.setItem(`${READER_SESSION_PREFIX}${theaterId}`, JSON.stringify(session));
-  } catch {
-    // Storage is optional.
-  }
 }
 
 function startScrollRestore(

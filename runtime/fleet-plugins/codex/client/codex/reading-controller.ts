@@ -832,6 +832,8 @@ export function mountReadingInto(
   }
 
   function showStaleNotice(kind: "updated" | "decided" | "deleted"): void {
+    // 한 번도 표시하지 못한 문서에는 보존된 사본이 없다. 실제 읽던 문서의 삭제만 안내한다.
+    if (kind === "deleted" && renderedEntryStamp === null) return;
     // 결정 사실은 단순 갱신보다 강한 소식이다 — 한 번 켜지면 갱신 문구로 내려가지 않는다.
     if ((staleKind === "decided" || staleKind === "deleted") && kind === "updated") return;
     staleKind = kind;

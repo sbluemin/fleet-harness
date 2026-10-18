@@ -1,6 +1,8 @@
 import { hostCapabilities } from "./host.js";
 import { useReaderState } from "./reader-store.js";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { clearReaderSession, validateReaderEntry } from "./reader-session.js";
+import { lastResolvedCodexWorkspace, subscribeCodexWorkspace } from "./workspace-store.js";
 
 import { prepareReaderSessionScroll, stepReaderHistoryTo } from "./codex-host.js";
 import { openCodexRailPanel } from "./host.js";
@@ -46,6 +48,8 @@ export function useCodexReaderUrlSync(): void {
     theaters,
   } = useReaderState();
 
+  const workspace = useSyncExternalStore(subscribeCodexWorkspace, lastResolvedCodexWorkspace);
+
   // 주소가 요구한 목표. 리더가 그 상태에 도달할 때까지 살아 있다.
   const targetRef = useRef<ReaderTarget | null>(readTarget(window.location.search));
   // 자기가 쓴 주소를 다시 읽어 되돌리는 왕복을 막는다.
@@ -81,7 +85,7 @@ export function useCodexReaderUrlSync(): void {
   // 목표 → 리더 (Theater가 준비된 뒤에만)
   useEffect(() => {
     const target = targetRef.current;
-    if (!target || !theaterId) return;
+    if (!target || (!theaterId && theaters.length === 0)) return;
     if (target.theaterId && target.theaterId !== theaterId) {
       // 링크가 다른 Theater의 문서를 가리키면 그 Theater로 옮겨서 연다.
       if (theaters.some((entry) => entry.id === target.theaterId)) {
@@ -95,20 +99,41 @@ export function useCodexReaderUrlSync(): void {
       if (reader !== null) closeCodexReader();
       return;
     }
+    if (!theaterId) return;
     // 주소로 직접 들어오면 Codex 패널이 아직 워크스페이스를 해석하지 않았다 —
     // 패널을 먼저 세워야 리더 fetch가 workspace id를 얻는다. 이 한 줄이 빠지면 링크는
     // 축소 화면에서 아무것도 못 보여주고, 확대 링크는 null workspace로 영영 기다린다.
     openCodexRailPanel();
     if (reader?.kind !== "entry" || reader.entryId !== target.entryId) {
-      // 브라우저 뒤로/앞으로가 리더 기록의 인접 걸음이면 그 걸음으로 옮긴다 — 그래야
-      // 그 항목이 들고 있던 읽던 자리와 ←/→ 방향이 함께 따라온다.
-      if (!stepReaderHistoryTo(target.entryId)) {
-        // 주소가 문서를 정한다 — 읽던 자리는 그 문서가 저장된 세션의 문서와 같을 때만 따라온다.
-        prepareReaderSessionScroll(theaterId, target.entryId);
-        openCodexReader({ kind: "entry", entryId: target.entryId });
+      if (workspace?.contextKey !== theaterId) return;
+      const controller = new AbortController();
+      const discardTarget = () => {
+        clearReaderSession(theaterId, target.entryId);
+        targetRef.current = null;
+        writtenRef.current = "||";
+        hostCapabilities().navigation.setSearchParams({ [ENTRY_PARAM]: null, [VIEW_PARAM]: null, [THEATER_PARAM]: null }, { replace: true });
+        closeCodexReader();
+      };
+      if (!workspace.hasWiki || !workspace.id) {
+        discardTarget();
+        return;
       }
-      if (target.expanded) expandCodexReader();
-      return;
+      void validateReaderEntry(theaterId, workspace.id, target.entryId, controller.signal).then((exists) => {
+        if (controller.signal.aborted || targetRef.current !== target) return;
+        if (!exists) {
+          discardTarget();
+          return;
+        }
+        // 검증 뒤에만 기록을 옮긴다. 이미 읽던 문서는 재검증 때문에 닫지 않는다.
+        if (!stepReaderHistoryTo(target.entryId)) {
+          prepareReaderSessionScroll(theaterId, target.entryId);
+          openCodexReader({ kind: "entry", entryId: target.entryId });
+        }
+        if (target.expanded) expandCodexReader();
+      }).catch(() => {
+        // 통신 실패는 삭제가 아니다. 주소·세션을 보존하고 미검증 문서는 열지 않는다.
+      });
+      return () => controller.abort();
     }
     if (target.expanded && !expanded) {
       expandCodexReader();
@@ -125,7 +150,7 @@ export function useCodexReaderUrlSync(): void {
     targetRef.current = null;
     // location.search를 함께 물어야 뒤로가기가 세운 새 목표가 이 effect를 깨운다 —
     // ref 갱신만으로는 리렌더도 재실행도 일어나지 않는다.
-  }, [theaterId, theaters, reader, expanded, location.search]);
+  }, [theaterId, theaters, reader, expanded, location.search, workspace]);
 
   // 리더 → 주소
   useEffect(() => {
