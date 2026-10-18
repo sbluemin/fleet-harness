@@ -259,7 +259,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   useEffect(() => {
     if (reveal && ledgerOpen) showInLedger(reveal.at);
   }, [reveal?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps -- 새 요청(nonce)에만 옮긴다.
-  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, entries, live, view?.state.asks) : []), [ledgerOpen, t, entries, live, view?.state.asks]);
+  const ledgerEntries = useMemo(() => (ledgerOpen ? commodoreChatEntries(t, theaterId, entries, live, view?.state.asks) : []), [ledgerOpen, t, theaterId, entries, live, view?.state.asks]);
   // 원장 바닥 줄의 좌표 — 그 세션이 실제로 도는 모델·강도다(Operation 원장이 세션 payload 의 좌표를 그리는 것과 같다). 열린 세션이면
   // 감독자가 푼 좌표, 아니면 기록의 마지막 세션 줄. 설정값으로 대신하지 않는다 — 설정은 다음 교대에서야 세션이 된다. 모르면 그리지 않는다.
   const lastSession = useMemo(() => entries.findLast((entry) => entry.kind === "session" && entry.model !== undefined), [entries]);

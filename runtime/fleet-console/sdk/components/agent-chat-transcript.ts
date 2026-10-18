@@ -21,7 +21,8 @@ export interface AgentChatTranscriptOrigin {
 
 /** Reference-only attachments never open the Operation preview route. */
 /** `quote` — 다른 표면이 입력창에 붙여 보낸 인용(`@fleet-console/sdk/composer/quotes`). */
-export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
+/** `preview` — plugin-owned image bytes at a same-origin plugin API URL; never a host filesystem path. */
+export type AgentChatTranscriptAttachment = { readonly id: string } | { readonly preview: { readonly id: string; readonly url: string } } | { readonly lapsed: true } | { readonly reference: string } | { readonly quote: ComposerQuote };
 
 /**
  * References the person placed inside their words. The text carries `CONVERSATION_REFERENCE_MARK` (`@fleet-console/sdk/conversation`)

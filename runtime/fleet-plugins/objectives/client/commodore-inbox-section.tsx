@@ -467,7 +467,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
   const Transcript = commodoreTranscriptRenderer();
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
-  const blocks = useMemo(() => commodoreLogBlocks(t, entries, live, asks), [t, entries, live, asks]);
+  const blocks = useMemo(() => commodoreLogBlocks(t, theaterId, entries, live, asks), [t, theaterId, entries, live, asks]);
   const references = useCommodoreReferenceHost(t, theaterId);
   const lastFinishedId = useMemo(() => {
     for (let index = blocks.length - 1; index >= 0; index -= 1) {

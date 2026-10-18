@@ -20,7 +20,7 @@ import { createCommodoreSession } from "../server/commodore/session.js";
 import { createCommodoreStore } from "../server/commodore/store.js";
 import { COALESCE_MS, createCommodoreSupervisor, DEFAULT_PATROL_MS, PLANNED_CHECK_MS, RETRY_DELAYS_MS, STALL_CHECK_MS } from "../server/commodore/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../server/board-state.js";
-import type { CommodoreEvent } from "../server/commodore/types.js";
+import { MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../server/commodore/types.js";
 import type { Objective, ObjectiveEvent } from "../server/types.js";
 import type { CommodoreAttachmentReader } from "../server/console-tools.js";
 
@@ -32,7 +32,7 @@ import type { CommodoreAttachmentReader } from "../server/console-tools.js";
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
-function harness(now?: () => number) {
+function harness(now?: () => number, maxRetainedImageBytes?: number) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-"));
   dirs.push(dir);
   const objectivesDir = path.join(dir, "workspaces", "project", "objectives");
@@ -50,11 +50,17 @@ function harness(now?: () => number) {
     },
   } as unknown as FleetPluginServerContext;
   let clock = 1_000;
-  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++) });
-  const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}) => {
+  const store = createCommodoreStore({ dirOf: (theaterId) => (theaterId === "t1" ? objectivesDir : null), emit: (event) => events.push(event), now: now ?? (() => clock++), ...(maxRetainedImageBytes !== undefined ? { maxRetainedImageBytes } : {}) });
+  const route = async (name: string, body: Record<string, unknown>, hooks: CommodoreRouteHooks = {}, method?: string) => {
     routeBody = body;
     routeResult = { status: 0, value: null };
-    await createCommodoreRoutes(ctx, store, hooks).find((entry) => entry.name === name)!.handler({ req: { method: "POST" } as never, res: {} as never, pathname: name });
+    const target = createCommodoreRoutes(ctx, store, hooks).find((entry) => entry.name === name)!;
+    const query = new URLSearchParams(Object.entries(body).map(([key, value]) => [key, String(value)]));
+    const res = {
+      writeHead: (status: number, headers: unknown) => { routeResult = { status, value: { headers } }; },
+      end: (bytes: Uint8Array) => { routeResult.value = { ...(routeResult.value as object), bytes }; },
+    };
+    await target.handler({ req: { method: method ?? target.method, url: `/${name}?${query}` } as never, res: res as never, pathname: name });
     return routeResult as { status: number; value: Record<string, unknown> & { state?: Record<string, unknown>; error?: string } };
   };
   return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = resolveExperimentSettings({ ...experiments, ...next }); }, setAuthorized: (next: boolean) => { authorized = next; } };
@@ -166,6 +172,73 @@ describe("commodore theater state", () => {
     const reopened = createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined });
     expect(reopened.transcriptAppend("t1", { kind: "result", outcome: "ok", costUsd: 0.2 }).seq).toBe(6);
     expect((await h.route("commodore/retry", { theaterId: "t1" }))).toMatchObject({ status: 409, value: { error: "commodore_not_retrying" } });
+  });
+  it("contains message previews and bounds copies by retained bytes and transcript history", async () => {
+    const png = Buffer.from("iVBORw0KGgo=", "base64");
+    const h = harness(undefined, png.byteLength * 2);
+    const files = createLaunchAttachmentStore({ dataDir: h.objectivesDir });
+    const attachments = files.forPlugin("objectives");
+    Object.assign(h.ctx.host, { attachments });
+    h.store.setAutonomy("t1", true);
+    const hooks = { run: () => ({ phase: "idle" as const }) };
+    const send = async () => {
+      const { id } = files.save(png);
+      const result = await h.route("commodore/message", { theaterId: "t1", text: "Image", attachmentIds: [id] }, hooks);
+      expect(result.status).toBe(200);
+      const entry = result.value.entry as { messageId: string; attachments: { id: string; preview?: true }[] };
+      return { entry, query: { theaterId: "t1", messageId: entry.messageId, attachmentId: id } };
+    };
+    try {
+      const old = await send();
+      h.setAuthorized(false);
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(401);
+      h.setAuthorized(true);
+      expect((await h.route("commodore/attachment", old.query, {}, "POST")).status).toBe(405);
+      expect((await h.route("commodore/attachment", { ...old.query, theaterId: "t2" })).status).toBe(404);
+      expect((await h.route("commodore/attachment", { ...old.query, attachmentId: "../state" })).status).toBe(400);
+      const images = path.join(h.objectivesDir, "commodore", "images");
+      const file = path.join(images, old.entry.messageId, `${old.query.attachmentId}.png`);
+      const outside = path.join(h.objectivesDir, "outside");
+      fs.mkdirSync(outside);
+      fs.writeFileSync(path.join(outside, "secret.png"), png);
+      fs.unlinkSync(file);
+      fs.symlinkSync(path.join(outside, "secret.png"), file);
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(404);
+      fs.unlinkSync(file);
+      fs.writeFileSync(file, png);
+      // 부모 링크도 거절한다. 사본 실패는 메시지를 잃게 하지 않고 참조 표시로 폴백한다.
+      fs.renameSync(images, `${images}-saved`);
+      fs.symlinkSync(outside, images);
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(404);
+      const fallback = await send();
+      expect(fallback.entry.attachments[0]).not.toHaveProperty("preview");
+      expect(attachments.read("t1", fallback.entry.messageId)[0]!.bytes).toEqual(png);
+      expect(fs.readdirSync(outside)).toEqual(["secret.png"]);
+      fs.unlinkSync(images);
+      fs.renameSync(`${images}-saved`, images);
+      // 크기 합산은 링크를 따라가지 않는다. 텍스트가 작아도 사본 두 장의 총량 상한은 즉시 적용한다.
+      fs.symlinkSync(path.join(outside, "secret.png"), path.join(path.dirname(file), "outside.png"));
+      const middle = await send();
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(200);
+      // mtime 을 뒤집어도 메시지 seq 가 가장 오래된 사본을 먼저 고른다. 방금 보낸 사본은 보존한다.
+      fs.utimesSync(path.dirname(file), new Date("2099-01-01"), new Date("2099-01-01"));
+      const newest = await send();
+      expect((await h.route("commodore/attachment", old.query)).status).toBe(404);
+      expect((await h.route("commodore/attachment", middle.query)).status).toBe(200);
+      expect((await h.route("commodore/attachment", newest.query)).status).toBe(200);
+      expect(fs.readdirSync(images).sort()).toEqual([middle.entry.messageId, newest.entry.messageId].sort());
+      expect(fs.readFileSync(path.join(outside, "secret.png"))).toEqual(png);
+      // 기록의 앞 절반이 떨어질 때 그 메시지 사본만 거둔다. 아직 남은 메시지의 사본은 보존한다.
+      for (let index = 0; index < 240; index += 1) h.store.transcriptAppend("t1", { kind: "text", text: "x".repeat(MAX_TRANSCRIPT_TEXT) });
+      const recent = await send();
+      for (let index = 0; index < 50; index += 1) h.store.transcriptAppend("t1", { kind: "text", text: "x".repeat(MAX_TRANSCRIPT_TEXT) });
+      expect(fs.existsSync(path.join(images, newest.entry.messageId))).toBe(false);
+      expect((await h.route("commodore/attachment", newest.query)).status).toBe(404);
+      expect((await h.route("commodore/attachment", recent.query))).toMatchObject({ status: 200, value: { bytes: png } });
+      h.store.transcriptClear("t1");
+      expect((await h.route("commodore/attachment", recent.query)).status).toBe(404);
+      expect(fs.existsSync(images)).toBe(false);
+    } finally { attachments.dispose(); files.cleanup(); }
   });
 });
 
@@ -354,12 +427,20 @@ describe("commodore supervisor", () => {
       expect(typeof delivered).not.toBe("string");
       expect(delivered).toEqual(expect.arrayContaining([{ type: "image", source: { type: "base64", media_type: "image/png", data: png.toString("base64") } }]));
       expect(attachments.read("t1", accepted.entry.messageId)).toEqual([]);
+      // 전달 원본은 거뒀어도 기록 사본은 재시작 뒤까지 남고, 브라우저는 경로 없이 같은 출처 라우트로 읽는다.
+      const previewQuery = { theaterId: "t1", messageId: accepted.entry.messageId, attachmentId: accepted.id };
+      expect(await h.route("commodore/attachment", previewQuery)).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png", "Cache-Control": "no-store" } } });
+      expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).images.read("t1", accepted.entry.messageId, accepted.id)?.bytes).toEqual(png);
+      expect(JSON.stringify(accepted.result.value)).not.toContain(h.objectivesDir);
+      expect(accepted.result.value.entry).toMatchObject({ attachments: [{ id: accepted.id, preview: true }] });
       expect(copies.at(-1)).toEqual(png);
       expect(rejected).toEqual(expect.arrayContaining(["attachment_not_available"]));
       expect(() => readTurnAttachments!([accepted.id])).toThrow("attachment_not_available");
       expect((delivered as Exclude<AgentInput, string>).filter((block) => block.type === "text").some((block) => block.text.includes(accepted.id))).toBe(true);
       // raw 12 MiB와 같아도 파일마다 붙는 padding으로 base64 16 MiB를 넘기 전에 교대한다.
       await supervisor.clear("t1");
+      expect((await h.route("commodore/attachment", previewQuery)).status).toBe(404);
+      expect(fs.existsSync(path.join(h.objectivesDir, "commodore", "images"))).toBe(false);
       const beforeBudget = created;
       const fourMiB = Buffer.alloc(4 * 1024 * 1024); png.copy(fourMiB);
       for (let index = 0; index < 3; index += 1) {
