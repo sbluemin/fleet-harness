@@ -304,8 +304,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           }}
         />
       )}
-      composerTopEntries={recordedObjective}
-      composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
+      composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />}
     />
   );
 }
@@ -320,8 +319,7 @@ function StandInComposer({ rootId, language }: { readonly rootId: string; readon
   const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.operationId === rootId && cluster.conversation.recordedObjective === true);
   return <>
     {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
-    {recordedObjective ? <ComposerTopEntries /> : null}
-    <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />
+    <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
   </>;
 }
 
