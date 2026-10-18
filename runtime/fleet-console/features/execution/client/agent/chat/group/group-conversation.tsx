@@ -3,10 +3,8 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
-import { AgentGlyph } from "../../agent-glyphs.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
-import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
@@ -14,6 +12,7 @@ import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "@fleet-console/sdk/conversation";
 import type { AgentConversationEntry } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { getGroupT } from "./group-chat-i18n.js";
+import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, speakerKey } from "./speaker-mark.js";
 import "@fleet-console/markdown/styles.css";
 import "../chat.css";
@@ -25,12 +24,13 @@ import "./group-chat.css";
  * 이 컴포넌트는 구독자일 뿐이다: 스냅숏은 실행 기능 전역 설치 수명의 집계(`useGroupTimeline`)가 주고, 여기서는 연결을
  * 열거나 닫지 않는다. 화면을 닫거나 다른 Operation 을 골라도 세션과 연결은 그대로다.
  *
- * 문법: 사람 말은 오른쪽 말풍선, 지휘관·구성원 말은 왼쪽 말풍선(표식·이름). 구성원끼리 주고받은 전언은 가운데 접힌 한
- * 줄로 두어 사람에게 한 말과 섞이지 않게 한다 — 펼치면 「보낸 메시지 → 수신자 / 본문 / 전달 결과」, 그 안의 「원장
- * 보기」는 이 자리에 그 참여자의 원장(기존 채팅 본문 전체)을 읽기 전용으로 세운다(`GroupLedgerFrame`). 원장은 걸러 낸
- * 요약이 아니다 — 고르는 일은 셸의 구성원 본문 선택이 지고, 이 컴포넌트는 그 문을 콜백으로 받는다.
- * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패 알림 등)는 발화자가 아니라 출처이므로 같은 가운데 접힌 줄로
- * 선다 — 「목표 → 지휘관 발췌」, 펼치면 전문. 사람·사령관이 보드 행위에 덧붙인 말은 그 쪽의 말풍선에 「개시하며」 같은 행위를 단다.
+ * 문법: 사람 말은 오른쪽 말풍선, 지휘관·구성원 말은 왼쪽 말풍선(표식·이름). 구성원끼리 주고받은 전언은 가운데 한 줄
+ * (「보낸 사람 [아바타 이름]」)로 두어 사람에게 한 말과 섞이지 않게 한다 — 누르면 대화 칸 전체를 덮는 대화 화면이 같은 참여자
+ * 묶음의 전언 전체를 말풍선으로 보이고, 그 위 칩의 구성원 이름은 이 자리에 그 참여자의 원장(기존 채팅 본문 전체)을 읽기 전용으로
+ * 세운다(`GroupLedgerFrame`, 문법은 `group-relay.tsx`). 원장은 걸러 낸 요약이 아니다 — 고르는 일은 셸의 구성원 본문 선택이 지고,
+ * 이 컴포넌트는 그 문을 콜백으로 받는다.
+ * 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시(구성원 실패 알림 등)는 발화자가 아니라 출처이므로 같은 가운데 줄로 선다 —
+ * 칩에 출처 글리프와 이름. 사람·사령관이 보드 행위에 덧붙인 말은 그 쪽의 말풍선에 「개시하며」 같은 행위를 단다.
  * 진행 줄은 일하는 참여자를 모두 쌓아 보인다.
  *
  * 쓰기(정지·사령관 기록 열기·원장 열기)는 콜백 자리만 둔다. 콜백이 없으면 그 단추도 서지 않는다 — 눌리는 척하지 않는다.
@@ -92,6 +92,7 @@ const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageU
 export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
+  const relay = useRelayConversation();
   const entries = snapshot.entries;
   const logRef = React.useRef<HTMLDivElement | null>(null);
   // 폰 배치에서 진행 줄과 입력창은 대화 위에 떠 있는 독 하나다 — 기록이 독 뒤까지 내려가고 독 높이(`--m-dock-h`)만큼 아래를 비운다.
@@ -250,6 +251,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
                   capped={fold}
                   report={item.report}
                   showMark={showMark}
+                  onOpenRelay={relay.open}
                 />
               </React.Fragment>
             );
@@ -262,6 +264,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         {composerTopEntries && composer ? <ComposerTopEntries /> : null}
         {composer}
       </div>
+      <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />
       {overlay}
     </div>
   );
@@ -571,12 +574,6 @@ function breakLabel(at: number, now: number, language: ConsoleLocale | undefined
 const plainLines = (text: string): string[] =>
   text.split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s?|#{1,6}\s+|[-*+]\s+|\d+[.)]\s+)/, "").replace(/\*\*|[*`]/g, "").trim()).filter((line) => line.length > 0);
 
-/** 본문 첫 줄 조각 — 접힌 줄에 선다. 마크다운 표식은 걷는다. */
-function excerpt(text: string, max = 120): string {
-  const first = plainLines(text)[0] ?? "";
-  return first.length > max ? `${first.slice(0, max)}…` : first;
-}
-
 /** 본문 마지막 줄의 끝 조각 — 진행 칩에 선다. 흐르는 말이면 지금 쓰는 줄이고, 길면 앞을 줄여 끝을 보인다. */
 function tailExcerpt(text: string, max: number): string {
   const lines = plainLines(text);
@@ -584,7 +581,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -600,19 +597,21 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly report?: DelegationEntry | undefined;
   /** 말풍선 옆 아바타. 상대가 하나뿐인 대화에서는 끄고, 그 칸은 말풍선이 쓴다. */
   readonly showMark?: boolean;
+  /** 전언 줄(위임·플러그인 지시)을 눌러 대화 화면을 연다. */
+  readonly onOpenRelay?: RelayOpener;
 }) {
   switch (entry.kind) {
     case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry.speaker) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} />;
-    case "delegation": return <DelegationLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
+    case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
     case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} label={boardActionLabel} />;
     case "decision-answer": return <DecisionAnswerLine entry={entry} asker={participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null} language={language} />;
-    case "plugin-notice": return <PluginNoticeLine entry={entry} language={language} onOpenLedger={onOpenLedger} />;
+    case "plugin-notice": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "note": return <NoteLine entry={entry} language={language} />;
   }
 }, (before, after) => {
-  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel) return false;
+  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay) return false;
   if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
@@ -793,141 +792,6 @@ function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTML
 }
 
 
-function DelegationLine({ entry, language, onOpenLedger }: {
-  readonly entry: Extract<GroupTimelineEntry, { kind: "delegation" }>;
-  readonly language: ConsoleLocale | undefined;
-  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
-}) {
-  const t = getGroupT(language);
-  // 성공한 전달의 도구 결과(JSON 영수증)는 본문을 되풀이할 뿐이라 세우지 않는다. 실패만 사유 한 줄을 남긴다.
-  const failure = deliveryFailure(entry);
-  const failed = failure !== null;
-  const reason = failure ?? "";
-  // 받는이 이름은 둘까지 쓰고 나머지는 「외 N명」으로 접는다 — 얼굴 묶음은 모두 선다. 셋째부터의 이름은 펼친 칸의 원장 링크가 말한다.
-  const named = entry.recipients.length > 2 ? entry.recipients.slice(0, 2) : entry.recipients;
-  const more = entry.recipients.length - named.length;
-  // 지휘관의 원장은 이 그룹 대화 자체가 그 자리이므로 원장 링크를 두지 않는다 — 구성원 본문 선택은 루트를 고를 수 없다.
-  const ledgers = dedupe([entry.sender, ...entry.recipients].filter((speaker) => speaker.kind === "member" && speaker.operationId));
-  const preview = excerpt(entry.text);
-  // 줄은 「보낸이 → 받는이 발췌」만 말한다. 도착 미확인은 낱말로 세우지 않고, 실패만 신호 잉크로 남긴다.
-  return (
-    <details className="group-chat-line group-chat-delegation" data-entry-id={entry.id}>
-      <summary className="group-chat-line-summary">
-        <span className="group-chat-delegation-party">
-          <SpeakerMark speaker={entry.sender} size="sm" />
-          <SpeakerName speaker={entry.sender} />
-        </span>
-        <span className="group-chat-line-arrow" aria-hidden="true">→</span>
-        <span className="group-chat-delegation-party">
-          <span className="group-chat-delegation-faces">
-            {entry.recipients.map((recipient) => <SpeakerMark key={speakerKey(recipient)} speaker={recipient} size="sm" />)}
-          </span>
-          {named.map((recipient, index) => (
-            <React.Fragment key={speakerKey(recipient)}>
-              {index > 0 ? <span className="group-chat-line-sep" aria-hidden="true">,</span> : null}
-              <SpeakerName speaker={recipient} />
-            </React.Fragment>
-          ))}
-          {more > 0 ? <span className="group-chat-delegation-more">{t("group.delegation.more", { count: more })}</span> : null}
-        </span>
-        {preview ? <span className="group-chat-line-excerpt">{preview}</span> : null}
-        {failed ? <span className="group-chat-line-status is-failed">{t("group.delegation.failed")}</span> : null}
-        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
-      </summary>
-      <div className="group-chat-line-detail">
-        <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
-        {reason ? <div className="group-chat-line-failure">{reason}</div> : null}
-        {onOpenLedger && ledgers.length > 0 ? (
-          <div className="group-chat-line-actions">
-            {ledgers.map((speaker) => (
-              <button key={speakerKey(speaker)} type="button" className="group-chat-link" onClick={() => onOpenLedger(speaker.operationId!)}>
-                {t("group.delegation.openLedger", { name: speaker.name })}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </details>
-  );
-}
-
-/**
- * 실패한 전달의 사람이 읽을 사유, 성공이면 null. `is_error` 없이 `{"success":false}` 영수증으로만 돌아오는 거절도 실패다
- * (호스트 `sessionMessageRefusal` 과 같은 판정). 사유는 JSON 영수증이면 그 `message`·`error` 낱말을, 아니면 도구 오류 꼬리표를
- * 벗긴 첫 줄을 쓴다.
- */
-function deliveryFailure(entry: Extract<GroupTimelineEntry, { kind: "delegation" }>): string | null {
-  let text = entry.result.trim();
-  let refused = false;
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (parsed && typeof parsed === "object") {
-      const fields = parsed as Record<string, unknown>;
-      refused = fields.success === false;
-      const said = [fields.message, fields.error].find((value): value is string => typeof value === "string" && value.trim().length > 0);
-      text = said ?? "";
-    }
-  } catch { /* 평문 오류 */ }
-  if (entry.ok !== false && !refused) return null;
-  const line = text.replace(/<\/?tool_use_error>/gu, "").trim().split("\n")[0]?.trim() ?? "";
-  return line.length > 200 ? `${line.slice(0, 199)}…` : line;
-}
-
-function dedupe(speakers: readonly ConversationSpeaker[]): readonly ConversationSpeaker[] {
-  const seen = new Set<string>();
-  return speakers.filter((speaker) => {
-    const key = speakerKey(speaker);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-/**
- * 플러그인이 혼자 보낸 지시 — 「목표 → 지휘관 발췌」 한 줄, 펼치면 전문. 출처는 단일 채팅의 출처 줄과 같은 이름·글리프이고,
- * 모르는 플러그인은 「플러그인」으로 부른다(플러그인 id 는 화면에 쓰지 않는다). 문면이 없는 지시는 지금처럼 세우지 않는다.
- */
-function PluginNoticeLine({ entry, language, onOpenLedger }: {
-  readonly entry: Extract<GroupTimelineEntry, { kind: "plugin-notice" }>;
-  readonly language: ConsoleLocale | undefined;
-  readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
-}) {
-  const t = getGroupT(language);
-  if (entry.text.trim().length === 0) return null;
-  const known = pluginOriginIdentity(entry.pluginId, language ?? "en");
-  const time = timeOf(entry.at, language);
-  const preview = excerpt(entry.text);
-  // 지휘관에게 간 알림이면 이 대화가 곧 그 원장이다 — 구성원에게 간 것만 원장 링크를 둔다(위임 줄과 같은 규칙).
-  const ledger = onOpenLedger && entry.recipient.kind === "member" && entry.recipient.operationId ? entry.recipient : null;
-  return (
-    <details className="group-chat-line group-chat-plugin-notice" data-entry-id={entry.id}>
-      <summary className="group-chat-line-summary">
-        <span className="group-chat-notice-source">
-          <span className="group-chat-notice-glyph" aria-hidden="true"><AgentGlyph name={known?.glyph ?? "other"} /></span>
-          {known?.name ?? t("group.notice.plugin")}
-        </span>
-        <span className="group-chat-line-arrow" aria-hidden="true">→</span>
-        <span className="group-chat-delegation-party">
-          <SpeakerMark speaker={entry.recipient} size="sm" />
-          <SpeakerName speaker={entry.recipient} />
-        </span>
-        {preview ? <span className="group-chat-line-excerpt">{preview}</span> : null}
-        {time ? <span className="group-chat-line-time">{time}</span> : null}
-        <span className="group-chat-line-chev" aria-hidden="true">⌄</span>
-      </summary>
-      <div className="group-chat-line-detail">
-        <StreamedMarkdown text={entry.text} streaming={false} className="group-chat-md markdown-body" language={language} />
-        {ledger ? (
-          <div className="group-chat-line-actions">
-            <button type="button" className="group-chat-link" onClick={() => onOpenLedger!(ledger.operationId!)}>
-              {t("group.delegation.openLedger", { name: ledger.name })}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </details>
-  );
-}
 
 function MembershipLine({ entry, language }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "member-joined" | "member-left" }>;

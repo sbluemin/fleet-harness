@@ -264,39 +264,174 @@ button.group-chat-board:is(:hover, :focus-visible) .group-chat-line-go { opacity
   button.group-chat-board { padding-block: var(--space-2); }
 }
 
-/* 위임 줄 — 「보낸이 → 받는이 발췌」 한 줄. 구분 점 대신 간격으로 묶음을 가르고, 받는이가 여럿이면 얼굴을 살짝 겹친다.
-   이름 잉크는 신원 톤(구성원)이거나 중립 잉크이고, 줄 안에서는 굵기를 줄 글자에 맞춘다. */
-:is(.group-chat-delegation, .group-chat-plugin-notice) > .group-chat-line-summary { gap: 6px; }
-.group-chat-delegation-party { flex: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.group-chat-delegation-faces { display: inline-flex; align-items: center; }
-.group-chat-delegation-faces > * + * { margin-left: -4px; }
-.group-chat-delegation-party .group-chat-line-sep { margin-left: -4px; }
-:is(.group-chat-delegation, .group-chat-plugin-notice) .group-chat-name { font-weight: inherit; }
-:is(.group-chat-delegation, .group-chat-plugin-notice) .group-chat-name:is(.is-commander, .is-commodore, .is-human) { color: var(--text-secondary); }
-.group-chat-delegation-more { color: var(--text-tertiary); }
-.group-chat-delegation .group-chat-line-excerpt,
-.group-chat-delegation .group-chat-line-status { margin-left: var(--space-1); }
-/* 펼침 표시는 올리거나 초점이 갈 때, 펼친 동안만 선다. 올릴 수 없는 터치 기기에서는 늘 선다. */
-.group-chat-delegation > .group-chat-line-summary .group-chat-line-chev { opacity: 0; transition: transform var(--duration-fast), opacity var(--duration-fast); }
-.group-chat-delegation > .group-chat-line-summary:is(:hover, :focus-visible) .group-chat-line-chev,
-.group-chat-delegation[open] > .group-chat-line-summary .group-chat-line-chev { opacity: 1; }
-@media (hover: none) {
-  .group-chat-delegation > .group-chat-line-summary .group-chat-line-chev { opacity: 1; }
+/* 전언 줄 — 위임·플러그인 지시. 가운데 단추 하나: 「보낸 사람」 보조 글자 + 보낸 이의 표식·이름만 담은 은은한 알약 칩.
+   발췌·받는 이·펼침은 없다(누르면 대화 화면이 연다). 칩 이름은 중립 잉크다 — 정체성 톤은 아바타 몸에만 선다. 실패만 신호 잉크로 남는다. */
+.group-chat-relay { display: flex; justify-content: center; }
+.group-relay-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  font: inherit;
 }
-
-/* 플러그인 알림 줄 — 「목표 → 지휘관 발췌」. 출처는 단일 채팅 출처 줄(.agent-chat-origin-source)과 같은 잉크·글리프다. */
-.group-chat-notice-source {
+button.group-relay-row { cursor: pointer; }
+button.group-relay-row:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.group-relay-from { flex: none; padding-left: 6px; font-size: var(--t-md); color: var(--text-tertiary); white-space: nowrap; }
+.group-relay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 12px 4px 4px;
+  border-radius: var(--radius-pill);
+  background-color: var(--control-wash);
+  transition: background-image var(--duration-fast) var(--ease-glide);
+}
+/* 올리면 칩 면이 한 단 짙어진다 — 같은 워시를 한 겹 더 얹는다. */
+button.group-relay-row:hover .group-relay-chip { background-image: linear-gradient(var(--control-wash-hover), var(--control-wash-hover)); }
+button.group-relay-row:active .group-relay-chip { background-image: linear-gradient(var(--control-wash), var(--control-wash)); }
+.group-relay-chip-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
+.group-relay-failed { flex: none; font-size: var(--t-md); color: var(--coral-ink); white-space: nowrap; }
+/* 플러그인 출처 글리프 — 아바타 자리에 서는 둥근 칩. 잉크는 단일 채팅 출처 줄(.agent-chat-origin-source)과 같다. */
+.group-relay-glyph {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  white-space: nowrap;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--control-wash);
   color: var(--text-console-use);
+}
+.group-relay-glyph.is-lg { width: 30px; height: 30px; }
+
+/* 대화 화면 — 대화 칸(.group-chat) 전체를 덮는 층. 오른쪽에서 밀려 들어오고 뒤의 기록·진행 줄·입력창은 조금 왼쪽으로 밀리며
+   흐려진다(시안 값 340ms cubic-bezier(.22,.8,.24,1)). 닫으면 거꾸로 돌아간다. 화면이 선 동안만 칸이 넘침을 자른다. */
+.group-chat:has(> .group-relay) { overflow: hidden; }
+.group-chat:has(> .group-relay) > :not(.group-relay) {
+  transition: transform 340ms cubic-bezier(.22, .8, .24, 1), opacity 260ms ease;
+}
+.group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-16%); opacity: 0.3; }
+.group-relay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--conversation-surface, var(--canvas-abyss));
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  transform: translateX(100%);
+  transition: transform 340ms cubic-bezier(.22, .8, .24, 1);
+}
+.group-relay.is-open { transform: none; }
+.group-relay:focus { outline: none; }
+.group-relay-head,
+.group-relay-foot {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 220ms ease, transform 260ms cubic-bezier(.22, .8, .24, 1);
+}
+.group-relay-foot { transform: translateY(6px); }
+.group-relay.is-open :is(.group-relay-head, .group-relay-foot) { opacity: 1; transform: none; transition-delay: 140ms; }
+/* 위쪽은 대화 중심 화면의 투명 맨 위 줄 몫까지 비운다 — 칩이 머리 pill 에 가리지 않는다. */
+.group-relay-head { padding: calc(18px + var(--conversation-overlay-top, 0px)) var(--space-4) var(--space-2); }
+/* 위 가운데 칩 — 보낸 이 ⇄ 받는 이(여럿이면 이어서). 얹힌 면과 머리카락 선 하나. */
+.group-relay-pair {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 16px 6px 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+}
+.group-relay-swap { flex: none; color: var(--text-tertiary); }
+.group-relay-pair-sep { color: var(--text-tertiary); }
+.group-relay-party {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-lg);
   font-weight: var(--weight-medium);
 }
-/* 글리프 크기는 채팅 글리프 알파벳(.agent-glyph 13px = 12px 줄 글자의 시각 무게)을 그대로 쓴다. */
-.group-chat-notice-glyph { display: inline-flex; }
-.group-chat-plugin-notice .group-chat-line-excerpt { margin-left: var(--space-1); }
+.group-relay-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.group-relay-party { cursor: pointer; }
+button.group-relay-party:hover .group-relay-party-name { text-decoration: underline; text-decoration-color: var(--brass); text-underline-offset: 3px; }
+button.group-relay-party:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
+.group-relay-party .group-chat-mark.is-lg,
+.group-relay-mark .group-chat-mark.is-lg { width: 30px; height: 30px; }
+
+/* 같은 참여자 묶음의 전언 — 메시지마다 가운데 시각, 이름, 말풍선 왼쪽 아래 아바타, 전문. */
+.group-relay-log {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5) clamp(var(--space-4), 6cqi, 56px) var(--space-4);
+}
+.group-relay-message { display: flex; flex-direction: column; }
+.group-relay-time { align-self: center; margin: 18px 0 14px; font-size: var(--t-sm); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.group-relay-message:first-child .group-relay-time { margin-top: 0; }
+.group-relay-name { margin-bottom: 4px; padding-left: 40px; font-size: var(--t-sm); color: var(--text-secondary); }
+.group-relay-row-body { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: end; gap: 10px; }
+.group-relay-mark { display: flex; }
+.group-relay-box { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.group-relay-bubble.group-chat-bubble { max-width: min(680px, 88%); padding: 12px 16px; }
+.group-relay-failure { padding-left: var(--space-1); font-size: var(--t-sm); color: var(--coral-ink); overflow-wrap: anywhere; }
+.group-relay-foot { padding: 10px var(--space-4) var(--space-5); }
+/* 맨 아래 가운데 「채팅 닫기」 — 은은한 회색 면의 알약(참고 이미지 4). */
+.group-relay-close {
+  height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background-color: var(--control-wash);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.group-relay-close:hover { background-image: linear-gradient(var(--control-wash-hover), var(--control-wash-hover)); }
+.group-relay-close:active { background-image: linear-gradient(var(--control-wash), var(--control-wash)); }
+.group-relay-close:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .group-relay,
+  .group-relay-head,
+  .group-relay-foot,
+  .group-relay-chip,
+  .group-chat:has(> .group-relay) > :not(.group-relay) { transition: none; }
+}
+@media (forced-colors: active) {
+  .group-relay-chip,
+  .group-relay-pair,
+  .group-relay-close { border: 1px solid CanvasText; }
+}
 
 /* 보드 행위에 덧붙인 말 — 받는 이 뒤에 행위 낱말이 선다(「→ 지휘관 · 개시하며」). */
 .group-chat-via { color: var(--text-secondary); white-space: nowrap; }
@@ -489,7 +624,6 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 
 @media (prefers-reduced-motion: reduce) {
   .group-chat-line-chev,
-  .group-chat-delegation > .group-chat-line-summary .group-chat-line-chev,
   .group-chat-line-summary { transition: none; }
 }
 
@@ -1026,3 +1160,30 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 /* 말풍선 안 코드는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body pre,
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body :not(pre) > code { background: var(--m-bg); }
+
+/* 폰 배치의 전언 줄·대화 화면(「모바일」 시안) — 칩은 얹힌 면(--m-surface), 손가락 높이 44px. 대화 화면은 바탕 면을 덮고 뒤의 기록은
+   조금 더 밀린다. 말풍선은 위 폰 말풍선 규칙을 그대로 입는다. 색은 모바일 토큰만 쓴다. */
+:root[data-view-mode="mobile"] .group-relay-row { min-height: 44px; padding: 0 2px; }
+:root[data-view-mode="mobile"] .group-relay-from { font-size: var(--m-fs-meta); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .group-relay-chip { padding: 4px 14px 4px 4px; background-color: var(--m-surface); }
+:root[data-view-mode="mobile"] button.group-relay-row:is(:hover, :active) .group-relay-chip { background-color: var(--m-selected); background-image: none; }
+:root[data-view-mode="mobile"] .group-relay-chip .group-chat-mark { width: 24px; height: 24px; }
+:root[data-view-mode="mobile"] .group-relay-chip-name { font-size: var(--m-fs-secondary); color: var(--m-text); }
+:root[data-view-mode="mobile"] .group-relay { background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+:root[data-view-mode="mobile"] .group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-22%); }
+:root[data-view-mode="mobile"] .group-relay-head { padding: 22px 16px 6px; }
+:root[data-view-mode="mobile"] .group-relay-pair { gap: 10px; padding: 5px 16px 5px 5px; border-color: var(--m-hairline); background: var(--m-surface); }
+:root[data-view-mode="mobile"] .group-relay-party { min-height: 36px; gap: 7px; font-size: var(--m-fs-secondary); color: var(--m-text); }
+:root[data-view-mode="mobile"] .group-relay-party .group-chat-mark.is-lg,
+:root[data-view-mode="mobile"] .group-relay-mark .group-chat-mark.is-lg { width: 28px; height: 28px; }
+:root[data-view-mode="mobile"] .group-relay-log { padding: 12px 16px; scrollbar-width: none; }
+:root[data-view-mode="mobile"] .group-relay-log::-webkit-scrollbar { display: none; }
+:root[data-view-mode="mobile"] .group-relay-time { margin: 18px 0 12px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .group-relay-message:first-child .group-relay-time { margin-top: 0; }
+:root[data-view-mode="mobile"] .group-relay-name { padding-left: 36px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .group-relay-row-body { grid-template-columns: 28px minmax(0, 1fr); gap: 8px; }
+:root[data-view-mode="mobile"] .group-relay-box { padding-right: 20px; }
+:root[data-view-mode="mobile"] .group-relay-bubble.group-chat-bubble { max-width: 100%; padding: 12px 16px; }
+:root[data-view-mode="mobile"] .group-relay-foot { padding: 10px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+:root[data-view-mode="mobile"] .group-relay-close { height: 48px; padding: 0 24px; background-color: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-list); }
+:root[data-view-mode="mobile"] .group-relay-close:is(:hover, :active) { background-color: var(--m-selected); background-image: none; }
