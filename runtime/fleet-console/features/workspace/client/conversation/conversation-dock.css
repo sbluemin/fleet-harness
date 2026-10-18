@@ -28,15 +28,21 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1px solid color-mix(in oklch, var(--text-primary) 15%, transparent);
+  border: 0;
   border-radius: 50%;
-  background: color-mix(in oklch, var(--text-primary) 5%, var(--ink-deep));
-  color: var(--text-primary);
+  background: var(--surface-round-control);
+  color: var(--text-secondary);
   font: var(--weight-medium) var(--t-xl)/1 var(--font-ui);
   cursor: pointer;
 }
 .conversation-dock-avatar:hover,
-.conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--ink-deep)); }
+.conversation-dock-avatar[aria-expanded="true"] { background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control)); color: var(--text-primary); }
+.conversation-dock-avatar:focus-visible { outline: 2px solid var(--control-hover-rim); outline-offset: 2px; }
+
+/* 24px 문 안의 20px 글리프 아래 2px와 계정 위 여백을 합쳐 8 DIP 간격을 만든다. */
+.console-body.is-conversation .operations-side-bar.is-compact .remote-console-compact-slot + .conversation-dock {
+  padding-top: max(0px, calc(8px / var(--desktop-zoom, 1) - 2px));
+}
 .conversation-dock-status {
   position: absolute;
   right: 0;

@@ -36,7 +36,7 @@
   border-right: 1px solid var(--hairline-column);
 }
 
-/* 좁은 창 — 사이드바가 72px 사령관 열로 물러난다. 원격 칩·Theater 사령관·계정만 가운데에 남기고,
+/* 좁은 창 — 사이드바가 사령관 열로 물러난다(macOS는 네이티브 컨트롤 폭, 그 밖은 72px). 원격 칩·Theater 사령관·계정만 가운데에 남기고,
    Operation·상태·그룹 목록과 조작을 걷는다. 창을 넓히면 사람이 정한 폭과 목록으로 돌아온다. */
 .console-body.is-conversation .operations-side-bar.is-compact :is(
   .side-bar-top-strip,
@@ -1257,9 +1257,27 @@
 
 /* 브랜드(앰블럼 = 환경 진단, 워드마크 = 홈)는 밴드 왼쪽과 같은 한 벌이 사이드바 맨 위 줄 왼쪽에 선다. */
 
-.console-shell.is-operations-view .side-bar-top-strip .conversation-round {
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close) {
   width: 30px;
   height: 30px;
+  border: 0;
+  background: var(--surface-round-control);
+  color: var(--text-secondary);
+}
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close):is(:hover, [aria-expanded="true"]):not(:disabled) {
+  background: color-mix(in oklch, var(--text-primary) 10%, var(--surface-round-control));
+  color: var(--text-primary);
+}
+.console-shell.is-operations-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close):focus-visible {
+  outline: 2px solid var(--control-hover-rim);
+  outline-offset: 2px;
+}
+.console-shell.is-operations-view .side-bar-top-strip .remote-console-button.is-away {
+  color: var(--brass-ink);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-round-control));
+}
+.console-shell.is-operations-view .side-bar-top-strip .remote-console-button.is-away:is(:hover, [aria-expanded="true"]) {
+  background: color-mix(in oklch, var(--brass) 20%, var(--surface-round-control));
 }
 .conversation-round:disabled {
   cursor: wait;
@@ -1514,7 +1532,23 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.i
 
 /* 신호등이 열 안에 들어와도 같은 줄에 원격 칩을 함께 놓지는 않는다. 폭 전이 첫 프레임부터 내용은 맨 위 줄 아래에 둔다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact {
-  padding-top: var(--conversation-top-row);
+  box-sizing: border-box;
+  width: var(--desktop-macos-compact-width, 72px);
+  padding-top: calc(var(--desktop-traffic-bottom, 33px) + 8px / var(--desktop-zoom, 1));
+}
+
+/* 원격 문은 계정 위로 옮겼으므로 맨 위에는 신호등 아래 8 DIP만 남긴 사령관 얼굴이 선다. */
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .operations-side-bar-chips {
+  padding-top: 0;
+}
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-section {
+  padding-block: 0;
+}
+html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation .operations-side-bar.is-compact .side-bar-theater-header.is-card {
+  min-height: 32px;
+  padding-block: 0;
+  margin-block: 0;
+  border-block-width: 0;
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
