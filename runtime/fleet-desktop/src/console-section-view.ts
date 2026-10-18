@@ -60,7 +60,7 @@ export function createConsoleSectionView(deps: ConsoleSectionViewDeps) {
     view.setBounds({ x, y, width: Math.max(1, Math.min(content.width - x, Math.round(g.width * zoom))), height: Math.max(1, Math.ceil(height * zoom)) });
     const at = currentOrigin();
     if (at) {
-      const context = { at, compact: g.compact, maxHeight, theme: g.theme };
+      const context = { at, compact: g.compact, maxHeight, theme: g.theme, frame: { x: x / zoom, y: y / zoom, width: content.width / zoom, height: content.height / zoom } };
       const key = JSON.stringify(context);
       if (lastContext !== key) {
         lastContext = key;

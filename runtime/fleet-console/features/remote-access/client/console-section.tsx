@@ -42,6 +42,7 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
   const rootRef = useRef<HTMLElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
+  const manageRef = useRef<HTMLButtonElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const listId = useId();
   const inPicker = pickerAt !== undefined;
@@ -107,15 +108,22 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
     return () => observer.disconnect();
   }, [resident]);
 
-  const picker = (intent?: "add" | "manage") => {
+  const picker = (intent?: "add" | "manage", trigger: HTMLElement | null = toggleRef.current) => {
     if (!desktop) { setBrowserPopup(true); return; }
     if (!home) return;
-    const url = new URL(desktopPickerUrl(home, undefined, at, undefined, isCompact));
+    // 상주 문서의 원점은 사이드바 안이다. 덮개는 창 전체이므로 셸이 준 기준으로 좌표를 옮긴다.
+    const frame = resident ? context.frame : undefined;
+    const width = Math.round(frame?.width ?? innerWidth);
+    const height = Math.round(frame?.height ?? innerHeight);
+    const rect = trigger?.getBoundingClientRect();
+    const clamp = (value: number, max: number) => Math.min(max, Math.max(0, Math.round(value)));
+    const anchor = rect ? [clamp(rect.left + (frame?.x ?? 0), width), clamp(rect.top + (frame?.y ?? 0), height), clamp(rect.right + (frame?.x ?? 0), width), clamp(rect.bottom + (frame?.y ?? 0), height), width, height].join(",") : undefined;
+    const url = new URL(desktopPickerUrl(home, undefined, at, anchor, isCompact));
     if (intent) url.searchParams.set("intent", intent);
     location.assign(url.toString());
   };
-  const toggle = () => {
-    if (fallbackAway || isCompact) { picker(); return; }
+  const toggle = (trigger: HTMLElement | null = toggleRef.current) => {
+    if (fallbackAway || isCompact) { picker(undefined, trigger); return; }
     const next = !expanded;
     setExpanded(next);
     if (!next) setEditing(false);
@@ -129,9 +137,9 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
     catch { setError(t("chrome.consoles.editFailed")); }
     finally { setBusy(false); }
   };
-  const add = () => { if (resident || fallbackAway) picker("add"); else setAddOpen(true); };
+  const add = () => { if (resident || fallbackAway) picker("add", addRef.current); else setAddOpen(true); };
   const manage = () => {
-    if (fallbackAway) { picker("manage"); return; }
+    if (fallbackAway) { picker("manage", manageRef.current); return; }
     setEditing((value) => !value); setExpanded(true); setRenaming(null); setConfirming(null);
   };
   useEffect(() => {
@@ -146,6 +154,9 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, [inPicker, addOpen, renaming]);
+
+  // 덮개에서 추가할 때는 목록을 다시 그리지 않는다. 취소·성공 모두 덮개를 걷어 집 뷰의 재조회를 실행한다.
+  if (inPicker && addOpen) return <AddHostDialog onClose={() => location.assign(desktopPickerUrl(location.origin, PICKER_SURFACE_DISMISS))} />;
 
   const current = hosts.find((host) => host.origin === at);
   const currentName = current?.label || (at === location.origin ? state.consoleName : "") || new URL(at).host;
@@ -174,9 +185,9 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
     }}>
     {isCompact ? <button ref={toggleRef} type="button" className="console-section-compact" aria-label={`${t("chrome.hosts.aria")}: ${currentName}`} title={`${t("chrome.hosts.aria")}: ${currentName}`} onClick={() => picker()}><ConsoleGlyph remote={away} /></button> : <>
       <header className="console-section-header">
-        <button ref={toggleRef} type="button" className="console-section-toggle" aria-expanded={expanded && !fallbackAway} aria-controls={listId} onClick={toggle}><span className={expanded ? "" : "is-folded"} aria-hidden="true">⌄</span>{t("chrome.hosts.heading")}</button>
+        <button ref={toggleRef} type="button" className="console-section-toggle" aria-expanded={expanded && !fallbackAway} aria-controls={listId} onClick={(event) => toggle(event.currentTarget)}><span className={expanded ? "" : "is-folded"} aria-hidden="true">⌄</span>{t("chrome.hosts.heading")}</button>
         <button ref={addRef} type="button" className="console-section-action console-section-glyph" title={t("chrome.hosts.add")} aria-label={t("chrome.hosts.add")} onClick={add}><PlusGlyph /></button>
-        <button type="button" className="console-section-action console-section-glyph" aria-pressed={editing} title={t("chrome.hosts.manage")} aria-label={t("chrome.hosts.manage")} onClick={manage}><SlidersGlyph /></button>
+        <button ref={manageRef} type="button" className="console-section-action console-section-glyph" aria-pressed={editing} title={t("chrome.hosts.manage")} aria-label={t("chrome.hosts.manage")} onClick={manage}><SlidersGlyph /></button>
       </header>
       {expanded && !fallbackAway ? <div id={listId} className="console-section-list">
         <p className="console-section-group">{t("chrome.hosts.nearby")}</p>
@@ -199,7 +210,7 @@ export function ConsoleSection({ compact = false, resident = false, pickerAt, in
           if (resident || inPicker || inlinePopup) location.assign(new URL("/console/settings?section=remote-access", location.origin).toString());
           else openSettingsSurface("connectivity");
         }}>{t("chrome.consoles.allowAccess")}</button> : null}
-      </div> : <div className="console-section-row-wrap"><button type="button" className="console-section-row is-current" aria-expanded={false} onClick={toggle}><ConsoleGlyph remote={away} /><span className="console-section-name">{currentName}</span><span className="console-section-address">{away ? t("chrome.consoles.remote") : t("chrome.hosts.nearby")}</span></button>{away ? <button type="button" className="console-section-action" aria-label={t("chrome.consoles.home")} title={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}</div>}
+      </div> : <div className="console-section-row-wrap"><button type="button" className="console-section-row is-current" aria-expanded={false} onClick={(event) => toggle(event.currentTarget)}><ConsoleGlyph remote={away} /><span className="console-section-name">{currentName}</span><span className="console-section-address">{away ? t("chrome.consoles.remote") : t("chrome.hosts.nearby")}</span></button>{away ? <button type="button" className="console-section-action" aria-label={t("chrome.consoles.home")} title={t("chrome.consoles.home")} onClick={() => go(homeRow)}><HomeGlyph /></button> : null}</div>}
     </>}
     {error ? <p role="alert" className="console-section-error">{error}</p> : null}
     {addOpen ? <AddHostDialog openerRef={addRef} onClose={() => setAddOpen(false)} /> : null}

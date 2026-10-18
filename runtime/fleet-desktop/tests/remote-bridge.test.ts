@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { runInNewContext } from "node:vm";
-import { CONSOLE_SECTION_EVENT, CONSOLE_SECTION_CONTEXT_EVENT, consoleSectionSignalUrl } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_SECTION_EVENT, CONSOLE_SECTION_CONTEXT_EVENT, CONSOLE_SECTION_REFRESH_EVENT, consoleSectionSignalUrl } from "@fleet-console/protocol/desktop/console-section";
 import { createConsoleSectionView } from "../src/console-section-view.js";
 
 import { describe, expect, it, vi } from "vitest";
@@ -239,8 +239,12 @@ describe("host picker surface", () => {
       signal(home, LOCAL, { height: 180, hosts: [{ label: "private home list", fingerprint: FINGERPRINT }] });
       await Promise.resolve();
       expect(homeEvents.length).toBeGreaterThan(0);
-      for (const { type, detail } of homeEvents) expect({ type, detail }).toEqual({ type: CONSOLE_SECTION_CONTEXT_EVENT, detail: { at: REMOTE, compact: false, maxHeight: 500, theme: "light" } });
+      for (const { type, detail } of homeEvents) expect({ type, detail }).toEqual({ type: CONSOLE_SECTION_CONTEXT_EVENT, detail: { at: REMOTE, compact: false, maxHeight: 500, theme: "light", frame: expect.any(Object) } });
       expect(activeEvents.map(({ type, detail }) => ({ type, detail }))).toEqual([{ type: CONSOLE_SECTION_EVENT, detail: 180 }]);
+      // 추가 덮개를 걷어도 다시 읽기 신호는 집 문서에만 도착한다. 원격에는 목록이 실리지 않는다.
+      section.pickerClosed();
+      await Promise.resolve();
+      expect(homeEvents.at(-1)).toMatchObject({ type: CONSOLE_SECTION_REFRESH_EVENT, detail: null });
       // 원격 문서는 집 크기 신호를 위조하거나 집 뷰를 항해시키지 못한다.
       signal(active, LOCAL, { height: 999 });
       expect(activeEvents).toHaveLength(1);

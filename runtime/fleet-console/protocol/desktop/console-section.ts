@@ -23,6 +23,8 @@ export interface ConsoleSectionContext {
   readonly compact: boolean;
   readonly maxHeight: number;
   readonly theme: string;
+  /** 상주 뷰의 CSS 좌표를 전체 Console 뷰포트 좌표로 옮기는 기준. 집 문서에만 전달한다. */
+  readonly frame?: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
 
 export function isConsoleSectionGeometry(value: unknown): value is ConsoleSectionGeometry {
