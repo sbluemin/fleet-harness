@@ -54,7 +54,8 @@ export function RemoteConsoleButton({ state, command, compact }: {
     place();
     const resize = new ResizeObserver(place);
     if (trigger.current?.closest(".operations-side-bar")) resize.observe(trigger.current.closest(".operations-side-bar")!);
-    const outside = (event: PointerEvent) => { if (!panel.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close(); };
+    // 문서 끝에서 Tab이 순환하면 focusout.relatedTarget은 null일 수 있다. 실제 도착한 포커스로 경계를 판정한다.
+    const outside = (event: PointerEvent | FocusEvent) => { if (!panel.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) close(); };
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.isComposing || event.defaultPrevented) return;
       event.preventDefault(); event.stopPropagation();
@@ -62,16 +63,16 @@ export function RemoteConsoleButton({ state, command, compact }: {
       else close(true);
     };
     document.addEventListener("pointerdown", outside);
+    document.addEventListener("focusin", outside, true);
     document.addEventListener("keydown", escape, true);
     window.addEventListener("resize", place);
-    return () => { resize.disconnect(); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape, true); window.removeEventListener("resize", place); };
+    return () => { resize.disconnect(); document.removeEventListener("pointerdown", outside); document.removeEventListener("focusin", outside, true); document.removeEventListener("keydown", escape, true); window.removeEventListener("resize", place); };
   }, [open, compact, editing]);
   const act = (value: ConsoleSectionCommand) => { close(); command(value); };
   return <>
     <button ref={trigger} type="button" className={`conversation-round remote-console-button${compact ? " is-compact" : ""}${current && !current.home ? " is-away" : ""}`} data-status={current?.status ?? undefined} aria-haspopup="dialog" aria-controls={id} aria-expanded={open} aria-label={label} title={label}
       onPointerEnter={(event) => { if (event.pointerType !== "mouse") return; clearTimeout(closing.current); if (!open) opening.current = setTimeout(() => show(false), 120); }}
       onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(); }}
-      onBlur={(event) => { const next = event.relatedTarget; if (next && !panel.current?.contains(next) && !event.currentTarget.contains(next)) close(); }}
       onClick={(event) => { if (open && pinned) close(); else show(true, event.detail === 0); }}
       onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); show(true, true); } }}>
       <ConsoleGlyph remote={current?.kind === "remote"} />
@@ -79,7 +80,6 @@ export function RemoteConsoleButton({ state, command, compact }: {
     </button>
     {open ? createPortal(<div ref={panel} id={id} role="dialog" aria-label={t("chrome.hosts.aria")} className={`remote-console-panel${compact ? " is-side" : ""}`} style={position}
       onPointerEnter={() => clearTimeout(closing.current)} onPointerLeave={(event) => { if (event.pointerType === "mouse") scheduleClose(); }}
-      onBlur={(event) => { const next = event.relatedTarget; if (next && !event.currentTarget.contains(next) && !trigger.current?.contains(next)) close(); }}
       onKeyDown={(event) => {
         if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
         const rows = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-console-nav]")];
