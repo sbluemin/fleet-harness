@@ -9,7 +9,7 @@ import { ViewModeToggle } from "../../../../core/client/src/chrome/components/vi
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveEntry } from "../archive/archive-entry.js";
-import { SideBarStatusViewToggle } from "../sidebar/side-bar-collapse-control.js";
+import { SideBarStatusViewToggle } from "../sidebar/side-bar-view-controls.js";
 import { getSideBarStatusAxis, subscribeStatusAxis } from "../sidebar/operations-side-bar-store.js";
 import "./conversation-dock.css";
 

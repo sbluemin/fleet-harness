@@ -10,18 +10,14 @@ import type { OperationNode } from "../../../../core/client/src/integration/type
 
 interface SideBarState {
   readonly width: number;
-  readonly collapsed: boolean;
-  /** 접힌 카드를 엣지 독 호버가 오버레이로 되부른 상태 — 세션 한정이며 아레나 인셋에 불참한다. */
-  readonly peeking: boolean;
   /**
-   * 창이 좁아 펼친 사이드바가 아바타만 남은 좁은 열로 물러난 상태(시안 v2 규칙 h-3). 저장하지 않는 화면 상태다 —
-   * 창을 넓히면 사람이 정한 폭으로 돌아온다. 접힘은 그대로 사람의 것이다.
+   * 창이 좁아 사이드바가 아바타만 남은 좁은 열로 물러난 상태(시안 v2 규칙 h-3). 저장하지 않는 화면 상태다 —
+   * 창을 넓히면 사람이 정한 폭으로 돌아온다. 사이드바는 접히지 않는다 — 늘 그 자리에 선다.
    */
   readonly compact: boolean;
 }
 
 const STORAGE_KEY_WIDTH = "fleet-console.operations.side-width";
-const STORAGE_KEY_COLLAPSED = "fleet-console.operations.side-collapsed";
 const STORAGE_KEY_THEATER_COLLAPSED = "fleet-console.operations.theater-collapsed";
 export const MIN_EXPANDED_PX = 280;
 /** 좁은 창에서 아바타만 남는 사이드바 폭. */
@@ -41,8 +37,6 @@ const statusSectionCollapseListeners = new Set<() => void>();
 
 let sideBarState: SideBarState = {
   width: readInitialWidth(),
-  collapsed: readInitialCollapsed(),
-  peeking: false,
   compact: readCompact(),
 };
 if (typeof window !== "undefined") {
@@ -104,24 +98,6 @@ export function setSideBarWidth(width: number): void {
   notifyListeners();
 }
 
-export function setSideBarCollapsed(collapsed: boolean, remember = true): void {
-  if (sideBarState.collapsed === collapsed) return;
-  // dock 상태 전환은 어느 방향이든 픽을 끝낸다 — 펼침(고정)은 픽의 승격이고, 새 접힘은 픽 없이 시작한다.
-  sideBarState = { ...sideBarState, collapsed, peeking: false };
-  try {
-    if (remember && typeof window !== "undefined") localStorage.setItem(STORAGE_KEY_COLLAPSED, collapsed ? "1" : "0");
-  } catch { /* ignore */ }
-  notifyListeners();
-}
-
-/** 엣지 독 호버가 접힌 사이드바를 오버레이로 되부른다 — 접혀 있지 않으면 픽이 설 자리가 없다. */
-export function setSideBarPeeking(peeking: boolean): void {
-  const next = peeking && sideBarState.collapsed;
-  if (sideBarState.peeking === next) return;
-  sideBarState = { ...sideBarState, peeking: next };
-  notifyListeners();
-}
-
 export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void {
   const current = new Set(collapsedTheaterIds);
   if (collapsed) current.add(theaterId);
@@ -135,9 +111,8 @@ export function setTheaterCollapsed(theaterId: string, collapsed: boolean): void
   notifyCollapsedTheaterListeners();
 }
 
-/** 카드가 실제로 차지하는 폭 — 접힘은 0, 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
+/** 카드가 실제로 차지하는 폭 — 좁은 창에서는 아바타 열, 그 밖에는 사용자가 정한 폭. */
 export function sideBarOccupiedWidth(state: SideBarState): number {
-  if (state.collapsed) return 0;
   if (state.compact) return COMPACT_SIDE_BAR_PX;
   return state.width;
 }
@@ -340,12 +315,6 @@ function readInitialWidth(): number {
     }
   } catch { /* ignore */ }
   return DEFAULT_WIDTH;
-}
-
-function readInitialCollapsed(): boolean {
-  try {
-    return typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY_COLLAPSED) === "1";
-  } catch { return false; }
 }
 
 function readInitialCollapsedTheaters(): readonly string[] {

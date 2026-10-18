@@ -55,7 +55,7 @@ import { chordKeyLabels, resolveShortcutChords, shortcutCommandLabel, useShortcu
 import { getViewModeSnapshot, useViewMode } from "../../integration/view-mode-store.js";
 import { openRailPanel } from "../rail/rail-store.js";
 import { openSettingsSurface } from "../../../../../features/settings/client/settings-door.js";
-import { getSideBarState, setSideBarCollapsed, toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { toggleSideBarStatusAxis } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { requestSideBarOperationAction, type SideBarOperationAction } from "../../../../../features/workspace/client/sidebar/interaction.js";
 import {
   closeOperationSearch,
@@ -354,7 +354,6 @@ export function OperationSearch({
       case "new-theater": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        if (getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarAddTheater();
         break;
       }
@@ -397,17 +396,6 @@ export function OperationSearch({
         else openRailPanel(action.panelId);
             break;
       }
-      case "toggle-sidebar": {
-        if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        // 도착지 포커스 계약 — 접히면 엣지 독, 펼치면 사이드바의 접기 컨트롤.
-        previousFocusRef.current = null;
-        const sideBarCollapsing = !getSideBarState().collapsed;
-        setSideBarCollapsed(sideBarCollapsing);
-        requestAnimationFrame(() => {
-          document.querySelector<HTMLElement>(sideBarCollapsing ? ".side-bar-edge-dock" : ".side-bar-collapse")?.focus();
-        });
-        break;
-      }
       case "switch-theme": {
         if (current) break;
         const previousTheme = state.activeTheme;
@@ -444,7 +432,6 @@ export function OperationSearch({
       case "set-operation-accent": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
-        if (getSideBarState().collapsed) setSideBarCollapsed(false);
         requestSideBarOperationAction(action.operationId, paletteActionToSideBarAction(action.kind));
         break;
       }

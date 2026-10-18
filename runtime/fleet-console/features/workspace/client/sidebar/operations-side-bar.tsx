@@ -6,7 +6,6 @@ import { fetchTheaterSystemPrompt, type TheaterSystemPrompt } from "../../../set
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { consoleUseWrapClassName, gestureCallerLabel, getAnyClusterListWrap, getClusterListWrap, getFirstClusterWrap, getTheaterWrap, subscribeConsoleUseGestures } from "../../../console-use/client/gestures.js";
 import { createPortal } from "react-dom";
-import { publishConsoleOverlay } from "../../../../core/client/src/overlay/overlay-registry.js";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
@@ -14,7 +13,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import { getT, useT, type CoreMessageKey } from "../../../../core/client/src/i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/client/operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../../../../core/client/src/integration/types.js";
-import { focusEdgeDockWhenPanelContainsActiveElement, useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { GroupContextMenu } from "./group-context-menu.js";
@@ -43,15 +42,13 @@ import { clusterChipPropsFor } from "./cluster-rows.js";
 import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader, SideBarUngroupedLabel } from "./operations-side-bar-group-header.js";
-import { SideBarCollapseControl, SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-collapse-control.js";
+import { SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-view-controls.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import {
   consumeStatusLandings,
   freshFoldKey,
   COMPACT_SIDE_BAR_PX,
-  setSideBarCollapsed,
   setSideBarFreshFoldExpanded,
-  setSideBarPeeking,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
@@ -364,13 +361,11 @@ export function OperationsSideBar({
   const rootRef = useRef<HTMLElement | null>(null);
   const chipsRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
-  const { collapsed } = sideBar;
   // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
-  const compact = sideBar.compact && !collapsed && topStripVariant === "compact";
+  const compact = sideBar.compact && topStripVariant === "compact";
   const width = compact ? COMPACT_SIDE_BAR_PX : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
   const statusAxis = useSideBarStatusAxis();
   const freshFolds = useSideBarFreshFolds();
-  const previousCollapsedRef = useRef(collapsed);
   const viewedTheaterId = useViewedTheaterId();
   const operationAccent = Object.assign({}, ...theaters.map((theater) => getTheaterGroupCollapse(theater.id).operationAccent)) as Readonly<Record<string, string>>;
   // 비활성 Theater 묶음은 렌더 중 저장값(접힘·액센트)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
@@ -393,40 +388,7 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
-  const peekOverlayOpenRef = useRef(false);
-  useLayoutEffect(() => {
-    if (collapsed && sideBar.peeking) {
-      peekOverlayOpenRef.current = true;
-      publishConsoleOverlay("sidebar-peek", true);
-      return;
-    }
-    if (!peekOverlayOpenRef.current) return;
-    const release = () => {
-      peekOverlayOpenRef.current = false;
-      publishConsoleOverlay("sidebar-peek", false);
-    };
-    const element = rootRef.current;
-    // 고정 전환은 픽 카드의 닫힘이 아니다. 이탈·언마운트도 등록을 남기지 않는다.
-    if (!collapsed || !element) { release(); return; }
-    // 실제 CSS 닫힘 전이의 완료를 기다린다. visibility의 지연도 포함하므로
-    // 열리던 도중 떠난 역전 전이와 reduced-motion도 별도 하드코딩 없이 따른다.
-    const transitions = (element.getAnimations?.() ?? []).filter((animation) => {
-      const property = (animation as CSSTransition).transitionProperty;
-      return property === "width" || property === "visibility";
-    });
-    if (transitions.length === 0) { release(); return; }
-    let cancelled = false;
-    void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
-      if (!cancelled) release();
-    });
-    // 닫히는 중 다시 픽하면 이전 완료 콜백이 뷰를 되살리지 못하게 취소한다.
-    return () => { cancelled = true; };
-  }, [collapsed, sideBar.peeking, width]);
-  useLayoutEffect(() => () => {
-    peekOverlayOpenRef.current = false;
-    publishConsoleOverlay("sidebar-peek", false);
-  }, []);
-  const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
+  const { resizing, onPointerDown: onResizePointerDown } = useSideBarResize();
   const collapsedGroups = theaters.flatMap((theater) => getTheaterGroupCollapse(theater.id).collapsedGroups);
   const collapsedTheaters = useCollapsedTheaters();
   const {
@@ -455,15 +417,6 @@ export function OperationsSideBar({
     if (!doubleClickOpen && selectedOperationId !== null) selectOperation(null);
   }, [doubleClickOpen, selectedOperationId]);
 
-  useLayoutEffect(() => {
-    if (!previousCollapsedRef.current && collapsed) focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock");
-    if (!previousCollapsedRef.current && collapsed && !document.querySelector(".side-bar-edge-dock")) {
-      focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".conversation-stage, .operations-center-stage");
-    }
-    // 대칭 — 엣지 독에 포커스를 둔 채 단축키로 펼치면 독이 사라지며 포커스가 BODY 로 빠진다. 접기 셰브런이 받는다.
-    if (previousCollapsedRef.current && !collapsed && document.activeElement === document.body) rootRef.current?.querySelector<HTMLElement>(".side-bar-collapse")?.focus();
-    previousCollapsedRef.current = collapsed;
-  }, [collapsed]);
 
   const activeOperations = operations;
   const activeOperationOrder = operationOrderFromNodes(activeOperations);
@@ -568,25 +521,21 @@ export function OperationsSideBar({
   }, [selectedFresh?.id, statusAxis]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 목표를 고른 입구(팔레트·빈 상태 바로가기·다른 Theater 줄)는 고르는 순간 사라져 포커스가 BODY 로 빠진다.
-  // 그때만 사이드바에 보이는 그 목표 줄이 받는다 — 접힘을 펼친 뒤 프레임에서. 숨은 사이드바면 표면의 ⌄ 가 받는다.
+  // 그때만 사이드바에 보이는 그 목표 줄이 받는다.
   const selectedRowId = clusterIndex.rows.find((layout) => layout.cluster.row?.selected)?.cluster.id ?? null;
   useEffect(() => {
-    if (!selectedRowId || collapsed) return;
+    if (!selectedRowId) return;
     const frame = window.requestAnimationFrame(() => {
       const active = document.activeElement;
       if (active !== null && active !== document.body && active.isConnected) return;
       chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedRowId)}"] .side-bar-cluster-row-main`)?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedRowId, collapsed]);
+  }, [selectedRowId]);
 
   useEffect(() => subscribeSideBarOperationAction((request) => {
     const operation = operations.find((candidate) => candidate.id === request.operationId);
     if (!operation) return false;
-    if (collapsed) {
-      setSideBarCollapsed(false);
-      return false;
-    }
     if (collapsedTheaters.includes(operation.theaterId)) {
       setTheaterCollapsed(operation.theaterId, false);
       return false;
@@ -608,7 +557,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
+  }), [collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
 
 
   // App의 동기 store 구독이 렌더 배칭 전의 각 전이를 기록한다. 아래 백업 호출은 App 없는
@@ -977,11 +926,10 @@ export function OperationsSideBar({
     else openTheaterSystemPrompt(theater, returnFocus);
   };
 
-  // "Theater 추가" 요청 소비(팔레트) — 접힘을 풀고 Theater 브라우저를 연다.
+  // "Theater 추가" 요청 소비(팔레트) — Theater 브라우저를 연다.
   useEffect(() => {
     if (!pendingSideBarAddTheater) return;
     consumeSideBarAddTheater();
-    if (collapsed) setSideBarCollapsed(false);
     openTheaterBrowser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSideBarAddTheater]);
@@ -1006,26 +954,16 @@ export function OperationsSideBar({
 
   return (
     <aside
-      className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}${sideBar.peeking ? " is-peeking" : ""}${compact ? " is-compact" : ""}`}
+      className={`operations-side-bar${compact ? " is-compact" : ""}`}
       ref={rootRef}
-      data-sidebar-state={collapsed ? "closed" : "expanded"}
       data-sidebar-axis={statusAxis ? "status" : "group"}
       data-resizing={resizing ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
-      inert={collapsed && !sideBar.peeking}
       onContextMenu={openNewSessionAtCursor}
-      onPointerLeave={(event) => {
-        // 픽은 포인터가 머무는 동안의 상태다 — 카드를 떠나면 끝난다. 엣지 독으로 되돌아가는
-        // 이동만 픽의 연속으로 본다(독 쪽 이탈은 독이 대칭으로 판정한다).
-        if (!collapsed || !sideBar.peeking) return;
-        const next = event.relatedTarget;
-        if (next instanceof Element && next.closest(".panel-edge-dock") !== null) return;
-        setSideBarPeeking(false);
-      }}
     >
-      {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
+      {theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
 
-      {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓰고, 펼친 줄의 우단은 접기 컨트롤이다. */}
+      {/* 상태별 보기는 목록 전체의 세션 스위치다. 대화 화면은 컴팩트 줄을 쓴다. */}
       {topStripVariant === "compact" ? (
         <div className="side-bar-top-strip is-compact">
           <span className="side-bar-top-strip-spacer" aria-hidden="true" />
@@ -1042,7 +980,6 @@ export function OperationsSideBar({
           </>
         ) : <span className="side-bar-top-strip-spacer" aria-hidden="true" />}
         {topStripTrailing}
-        <SideBarCollapseControl />
       </div>
       )}
 
@@ -1276,7 +1213,7 @@ export function OperationsSideBar({
       {!archiveInBottomAccessory ? <ArchiveEntry /> : null}
       {bottomAccessory}
 
-      <SideBarResizeHandle onPointerDown={onResizePointerDown} onDoubleClick={onResizeDoubleClick} />
+      <SideBarResizeHandle onPointerDown={onResizePointerDown} />
 
       {activeContextMenu?.kind === "chip" && contextMenuOperation ? (
         <GroupContextMenu

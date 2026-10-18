@@ -16,7 +16,6 @@ import { operationAccentFromNode } from "./operation-accent.js";
 import { getTheaterGroupCollapse, pruneOperationAccents } from "./sidebar/group-collapse-store.js";
 import { createHostCapabilities } from "../../../core/client/src/integration/plugin-capabilities.js";
 import { usePluginRegistry } from "../../../core/client/src/integration/plugin-registry.js";
-import { SideBarEdgeDock } from "../../../core/client/src/chrome/components/panel-edge-docks.js";
 import { RightRail, useRailPanelContext } from "../../../core/client/src/chrome/rail/right-rail.js";
 import { OperationsSideBar } from "./sidebar/operations-side-bar.js";
 import { useSideBarFollowedInset } from "./sidebar/side-bar-motion.js";
@@ -534,7 +533,6 @@ export function Operations({ state, onDeferredDeletion, onArchived, deletionToas
       />
       {toastRegion}
       <RightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
-      <SideBarEdgeDock />
       {operationMenuLayer}
     </div>
   );

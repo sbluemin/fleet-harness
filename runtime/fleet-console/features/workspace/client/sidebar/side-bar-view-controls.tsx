@@ -2,43 +2,10 @@ import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } fr
 import { createPortal } from "react-dom";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { useSideBarShortcutLabel, useSideBarStatusViewShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { useSideBarStatusViewShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../settings/client/global-settings-store.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
-import { setSideBarCollapsed, toggleSideBarStatusAxis, useSideBarState } from "./operations-side-bar-store.js";
-
-// 접기는 패널 자신의 동사다(Periscope 문법 — 밴드 토글 퇴역). 도킹 중에는 접기 셰브런이,
-// 엣지 독이 되부른 픽(오버레이) 중에는 같은 자리가 "열어 두기"(고정)로 바뀐다 — 픽에서
-// 접기는 무의미하고(이미 접혀 있다) 남는 결정은 고정뿐이라, 한 자리가 두 낱말을 나눠 쓴다.
-export function SideBarCollapseControl() {
-  const t = useT();
-  const { collapsed, peeking } = useSideBarState();
-  const shortcut = useSideBarShortcutLabel();
-  // 접힌 채 픽도 아니면 카드 자체가 없다 — 컨트롤의 문은 엣지 독이 진다.
-  if (collapsed && !peeking) return null;
-  const pinning = collapsed && peeking;
-  const label = t(pinning ? "sidebar.chrome.keepOpen" : "sidebar.chrome.collapse", { shortcut });
-  return (
-    <button
-      type="button"
-      className="side-bar-collapse"
-      aria-label={label}
-      title={label}
-      onClick={() => setSideBarCollapsed(!pinning)}
-    >
-      {pinning ? <KeepOpenIcon /> : <CollapseIcon />}
-    </button>
-  );
-}
-
-// 접기 방향(좌측 엣지)을 가리키는 단일 셰브런 — 엣지 독 트리거의 펼침 셰브런과 한 쌍이다.
-function CollapseIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.8 3.6 5.4 8l4.4 4.4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function KeepOpenIcon() {
-  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.2 2.5h5.6M6.4 2.5v3.1L4.6 7.7v1h6.8v-1L9.6 5.6V2.5M8 8.7v4.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
+import { toggleSideBarStatusAxis } from "./operations-side-bar-store.js";
 
 // 상태별 보기 토글 — 목록을 Theater 묶음에서 대기·실행 중·유휴의 평면 목록으로 뒤집는 하나짜리
 // 세션 스위치다. 눌림(aria-pressed)은 레일 아이콘의 켜짐과 같은 문법(brass 잉크·어두운 면)으로

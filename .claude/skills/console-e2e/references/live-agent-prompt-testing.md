@@ -177,11 +177,6 @@ Use current localized accessible labels. The sidebar's top + opens the new sessi
 opens that browser, the model chip lists Claude and every exposed gateway model, and the start-view chip
 switches between chat and terminal.
 
-The top + lives in the sidebar, so a collapsed sidebar removes it from the
-accessibility tree and the snapshot simply has no new-session ref — which reads as a
-missing feature, not a hidden one. `Escape` can collapse it as a side effect of dismissing
-something else; use the sidebar expand control (⌘B on macOS) before hunting for the ref.
-
 Verify the launch actually attached to the gateway rather than trusting the banner — the
 header still reads the Claude model name even when every request is being rerouted. Confirm
 the owned PID with `ps -p <claude-pid> -o comm=` (its full command line carries MCP bearer tokens) and prove routing from the first

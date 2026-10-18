@@ -1565,21 +1565,9 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--chrome-band-height: 36px;");
     expect(app).not.toContain("warRoomActive");
     expect(app).not.toContain("WarRoomBar");
-    // Periscope: 좌측 사이드바의 접기는 패널 자신의 컨트롤이, 접힌 뒤의 문은 엣지 독(brass 필라멘트 + 호버 픽 +
-    // 클릭 고정)이 진다. 오른쪽 사이드바는 퇴역했고, 그 쪽의 접기·엣지 독·⌘⌥B도 함께 퇴역했다.
-    const sidebarPanelSource = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
+    // 좌·우 사이드바 모두 접기가 없다 — 접기 컨트롤·엣지 독·픽·⌘B 단축키가 함께 퇴역했다.
     const railPanelSource = source("chrome/rail/right-rail.tsx");
-    const edgeDocks = source("chrome/components/panel-edge-docks.tsx");
-    expect(sidebarPanelSource).toContain("<SideBarCollapseControl />");
     expect(railPanelSource).not.toContain("right-rail-collapse");
-    expect(edgeDocks).not.toContain("RailEdgeDock");
-    // 접힘 순간 포커스는 접힌 뒤에도 남는 안정 좌표(그 패널의 엣지 독 트리거)로 넘어간다.
-    expect(sidebarPanelSource).toContain('focusEdgeDockWhenPanelContainsActiveElement(rootRef.current, ".side-bar-edge-dock")');
-    // 픽은 오버레이다 — dock 상태(collapsed)와 아레나 인셋 보고를 건드리지 않고 카드만 되부른다.
-    // 필라멘트·픽 테두리의 brass 믹스는 상태가 아니라 위치/호버 채널이다.
-    expect(components).toContain(".operations-side-bar.is-closed.is-peeking {");
-    expect(rail).not.toContain(".is-peeking");
-    expect(components).toContain(".panel-edge-dock-filament {");
     expect(source("../../../features/workspace/client/sidebar/operations-side-bar.tsx")).toContain("<SideBarStatusViewToggle active={statusAxis} />");
     const sidebar = source("../../../features/workspace/client/sidebar/operations-side-bar.tsx");
     expect(sidebar).not.toContain("side-bar-formation-group");
@@ -1599,7 +1587,6 @@ describe("Instrument core design contract", () => {
       expect(railStore).not.toContain(legacyRightRailCoupling);
     }
     expect(layout).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(components).toContain(".operations-side-bar.is-closed");
     // 부유 사이드바 카드는 크롬 틴트를 불투명 언더레이 위에 합성한다 — 유리 게이트가 닫히면
     // 반투명 채널 값이 그대로 남아 전면 캔버스 격자가 카드를 관통하는 결함을 막는다.
     // 투명도는 chrome 틴트의 알파가 진다 — 카드 루트를 내리면 목록 글자까지 사라진다.

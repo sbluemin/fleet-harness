@@ -17,8 +17,6 @@ export function resolvePanelShortcutOutcome(surfaces: {
 }
 
 export interface ConsoleGlobalShortcutDependencies {
-  readonly getSideBarCollapsed: () => boolean;
-  readonly setSideBarCollapsed: (collapsed: boolean) => void;
   readonly openOperationSearch: (seed?: string) => void;
   readonly closeOperationSearch: () => void;
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
@@ -96,11 +94,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.stopImmediatePropagation();
       dependencies.undoLastClose?.();
       return;
-    }
-    if (matches("console.toggle-sidebar")) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.setSideBarCollapsed(!dependencies.getSideBarCollapsed());
     }
   };
   windowFor.addEventListener("keydown", handleKeyDown, true);

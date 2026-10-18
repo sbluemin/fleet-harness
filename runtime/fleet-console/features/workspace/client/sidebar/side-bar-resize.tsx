@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
-import { setSideBarCollapsed, setSideBarWidth, useSideBarState } from "./operations-side-bar-store.js";
+import { setSideBarWidth, useSideBarState } from "./operations-side-bar-store.js";
 
-// 사이드바 폭과 접힘은 좌측 열 하나다 — 폭과 접힘을 바꾸는 조작 표면도 한 구현이다.
+// 사이드바 폭을 바꾸는 조작 표면 — 사이드바는 접히지 않으므로 폭만 바꾼다.
 export function useSideBarResize(): {
   readonly resizing: boolean;
   readonly onPointerDown: (event: ReactPointerEvent) => void;
-  readonly onDoubleClick: () => void;
 } {
   const sideBar = useSideBarState();
   const [resizing, setResizing] = useState(false);
@@ -43,25 +42,18 @@ export function useSideBarResize(): {
     document.addEventListener("pointercancel", onEnd);
   }, [sideBar.width]);
 
-  const onDoubleClick = useCallback(() => {
-    setSideBarCollapsed(!sideBar.collapsed);
-  }, [sideBar.collapsed]);
-
-  return { resizing, onPointerDown, onDoubleClick };
+  return { resizing, onPointerDown };
 }
 
 export function SideBarResizeHandle({
   onPointerDown,
-  onDoubleClick,
 }: {
   readonly onPointerDown: (event: ReactPointerEvent) => void;
-  readonly onDoubleClick: () => void;
 }) {
   return (
     <div
       className="operations-side-bar-resize-handle"
       onPointerDown={onPointerDown}
-      onDoubleClick={onDoubleClick}
       aria-hidden="true"
     />
   );

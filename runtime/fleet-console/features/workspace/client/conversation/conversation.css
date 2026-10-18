@@ -32,7 +32,7 @@
   box-shadow: none;
 }
 
-.console-body.is-conversation .operations-side-bar:not(.is-closed) {
+.console-body.is-conversation .operations-side-bar {
   border-right: 1px solid var(--hairline-column);
 }
 
@@ -79,11 +79,6 @@
   background: var(--conversation-side);
 }
 
-/* 접힌 사이드바를 가장자리 독으로 엿볼 때도 같은 열로 선다 — 떠오르는 표면이라 오른쪽 경계만 brass 위치 채널을 받는다. */
-.console-body.is-conversation .operations-side-bar.is-closed.is-peeking {
-  border-right: 1px solid color-mix(in oklab, var(--brass) 38%, var(--hairline));
-}
-
 .console-body.is-conversation .right-rail {
   top: 0;
   right: 0;
@@ -119,10 +114,6 @@
    목표 루트가 그 변수를 직접 선언하므로 루트에서 열 바탕으로 다시 준다 — 캔버스 레일과 확장 표면의 목표는 그대로다. */
 .console-body.is-conversation .right-rail-panel-slot .objectives-root {
   --objectives-detail-face: var(--conversation-surface);
-}
-
-.console-body.is-conversation .panel-edge-dock {
-  top: 0;
 }
 
 /* ── 가운데 대화 칸 ─────────────────────────────────────────────────────── */
@@ -599,9 +590,9 @@
 }
 .conversation-side-deputies:empty { display: none; }
 
-/* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 펼친 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
-   목록은 안쪽 스크롤 칸이 따로 자르고, 접힘 전이 동안은 접힌 상태(.is-closed)가 지금처럼 자른다. */
-.console-shell.is-operations-view .operations-side-bar.is-expanded { overflow: visible; }
+/* 아래 줄의 메뉴(환경 진단·호스트·도움말)는 위로 열린다. 사이드바는 그 메뉴가 카드 밖으로 나가도록 자르지 않는다 —
+   목록은 안쪽 스크롤 칸이 따로 자른다. */
+.console-shell.is-operations-view .operations-side-bar { overflow: visible; }
 
 /* ── 사이드바 행: 대화 목록 문법 ───────────────────────────────────────── */
 /* 지휘관 행은 40px 이다 — 사령관 카드(52px)보다 낮아야 Theater 가 위, Operation 이 아래로 읽힌다(이전엔 행 50px > 머리 38px 로 뒤집혀 있었다). */
@@ -1208,12 +1199,12 @@
 }
 
 /* 맨 위 줄은 Grok 처럼 (신호등 자리 다음) 브랜드와 단추 몇 개만 선다 — 브랜드·찾기·새로 만들기. 모드·상태별 보기는 하단 줄의
-   글리프이고 접기는 단축키다. 줄은 넘치지 않는다 — 단추는 줄어들지 않고 브랜드 워드마크와 빈 자리만 줄어든다. */
+   글리프다. 줄은 넘치지 않는다 — 단추는 줄어들지 않고 브랜드 워드마크와 빈 자리만 줄어든다. */
 .side-bar-top-strip.is-compact { gap: var(--space-2); overflow: hidden; }
 .side-bar-top-strip.is-compact > * { flex: none; }
 .side-bar-top-strip.is-compact > .side-bar-top-strip-spacer { flex: 1 1 0; min-width: 0; }
 
-.console-shell.is-operations-view .side-bar-top-strip :is(.side-bar-collapse, .side-bar-status-view-toggle, .side-bar-view-menu-button) {
+.console-shell.is-operations-view .side-bar-top-strip :is(.side-bar-status-view-toggle, .side-bar-view-menu-button) {
   width: 30px;
   height: 30px;
   border-radius: var(--radius-pill);
@@ -1462,13 +1453,9 @@ html[data-desktop-shell="true"] .console-shell.is-operations-view :is(.conversat
 
 /* macOS 신호등 — 셸이 52px 줄의 가운데(y 19, x 16)에 세운다(window-policy.ts trafficLightPosition, chrome.band).
    신호등 세 개가 차지한 76 DIP 를 비우고 그 오른쪽에서 단추가 시작한다. 신호등은 네이티브라 줌을 타지 않으므로
-   예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바가 접혀 있으면 가운데 열의 맨 위 줄이 비운다. */
+   예약분만 줌으로 나눈다(layout.css 의 밴드 예약과 같은 식). 사이드바는 접히지 않으므로 신호등은 늘 사이드바 맨 위 줄에 앉는다. */
 html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-shell.is-operations-view .side-bar-top-strip {
   padding-left: calc(76px / var(--desktop-zoom, 1) + var(--space-1));
-}
-
-html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is-conversation:has(.operations-side-bar.is-closed:not(.is-peeking)) .conversation-pill-row {
-  padding-left: max(var(--conversation-quota-space), calc(76px / var(--desktop-zoom, 1) + var(--space-3)));
 }
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
