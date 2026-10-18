@@ -44,7 +44,6 @@ describe("buildAgentCliLaunchKinds", () => {
             launch: { model: "sonnet[1m]" },
             quotaPool: "claude:shared",
             contextWindow: 1_000_000,
-            capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: ["low", "medium", "high", "xhigh", "max", "ultra"].map((effort) => expect.objectContaining({ id: effort, launch: { model: "sonnet[1m]", effort } })),
@@ -61,7 +60,6 @@ describe("buildAgentCliLaunchKinds", () => {
             launch: { model: "codex--gpt-6-sol-fast" },
             quotaPool: "codex:shared",
             contextWindow: expect.any(Number),
-            capabilityClass: expect.any(String),
             effortAxis: EFFORT_AXIS,
             gatedEfforts: APEX_EFFORTS,
             chips: [
@@ -85,7 +83,6 @@ describe("buildAgentCliLaunchKinds", () => {
             launch: { model: "muse-code--muse-spark-1.3-contributor" },
             quotaPool: "muse-code:shared",
             contextWindow: expect.any(Number),
-            capabilityClass: expect.any(String),
             effortAxis: MAX_LESS_AXIS,
             gatedEfforts: ["ultra"],
             chips: [

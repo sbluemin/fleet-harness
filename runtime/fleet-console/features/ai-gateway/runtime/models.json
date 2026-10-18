@@ -5,12 +5,11 @@
     "antigravity": {
       "name": "Antigravity",
       "defaultModel": "gemini-3.8-flash",
-      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. The backend gates Argon on client identity: the same fetch read with Fleet's previous antigravity/ide/2.5.5 User-Agent omits Argon and its turns 404, while agy 1.4.1's antigravity/cli/1.4.1 identity (which Fleet now sends) lists all three Argon rungs with a 1,048,576-token window, thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-argon-medium. providerModelId selects the medium rung following that upstream default; omitted request effort still follows the existing resolver default. The codename-suffixed Gemini 4 Argon resolves downward to standard under the naming grammar, consistently with the same vendor model on Cursor. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
+      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. The backend gates Argon on client identity: the same fetch read with Fleet's previous antigravity/ide/2.5.5 User-Agent omits Argon and its turns 404, while agy 1.4.1's antigravity/cli/1.4.1 identity (which Fleet now sends) lists all three Argon rungs with a 1,048,576-token window, thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-argon-medium. providerModelId selects the medium rung following that upstream default; omitted request effort still follows the existing resolver default. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
       "models": [
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "capabilityClass": "light",
           "providerModelId": "gemini-3.8-flash-high",
           "contextWindow": 1048576,
           "effort": {
@@ -30,7 +29,6 @@
         {
           "modelId": "gemini-4-argon",
           "name": "Gemini-4-Argon",
-          "capabilityClass": "standard",
           "providerModelId": "gemini-4-argon-medium",
           "contextWindow": 1048576,
           "effort": {
@@ -52,12 +50,11 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-6-astra",
-      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 524K (524288) and explicit 1M (1000000) variants on the same upstream bases; 2026-09-05 codex app-server model/list (codex-cli 0.153.4) added gpt-6-astra as the lineup's new flagship and the entry that now carries isDefault, reporting low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out of the catalog under the same launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 2x speed. A live app-server turn that day reported modelContextWindow 258400 for gpt-6-astra and the identical figure for gpt-5.6-sol, so Astra shares the 272000 base this catalog records for that lineup and takes the same explicit 524K/1M variants. The GPT-5.6 models stay listed because the same model/list still serves them with no upgrade pointer and no retirement date, unlike its deprecated gpt-5.4-mini entry; 2026-09-23 codex app-server model/list (codex-cli 0.156.0) added gpt-6-sol and gpt-6-luna after gpt-6-astra, with Sol reporting low/medium/high/xhigh/max/ultra and Luna low/medium/high/xhigh/max reasoning efforts (ultra again stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 1.5x speed; the same client models_cache.json recorded context_window 272000 and max_context_window 872000 for both, identical to gpt-6-astra and the GPT-5.6 lineup, so both take the same explicit 524K/1M variants. GPT-5.6 Sol and GPT-5.6 Luna were then retired from this catalog in favor of their GPT-6 successors, while GPT-5.6 Terra stays because GPT-6 has no Terra counterpart; 2026-09-30 client models_cache.json (codex-cli 0.159.2) added gpt-6.1-sol ahead of gpt-6-astra with low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], a priority \"Fast\" tier at 2x speed, and context_window 272000 with max_context_window 872000, identical to gpt-6-sol, so it takes the same explicit 524K/1M variants. GPT-6 Sol stays because the same list still serves it with no upgrade pointer and no retirement date",
+      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 524K (524288) and explicit 1M (1000000) variants on the same upstream bases; 2026-09-05 codex app-server model/list (codex-cli 0.153.4) added gpt-6-astra as the entry that now carries isDefault, reporting low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out of the catalog under the same launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 2x speed. A live app-server turn that day reported modelContextWindow 258400 for gpt-6-astra and the identical figure for gpt-5.6-sol, so Astra shares the 272000 base this catalog records for that lineup and takes the same explicit 524K/1M variants. The GPT-5.6 models stay listed because the same model/list still serves them with no upgrade pointer and no retirement date, unlike its deprecated gpt-5.4-mini entry; 2026-09-23 codex app-server model/list (codex-cli 0.156.0) added gpt-6-sol and gpt-6-luna after gpt-6-astra, with Sol reporting low/medium/high/xhigh/max/ultra and Luna low/medium/high/xhigh/max reasoning efforts (ultra again stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], and a priority \"Fast\" tier at 1.5x speed; the same client models_cache.json recorded context_window 272000 and max_context_window 872000 for both, identical to gpt-6-astra and the GPT-5.6 lineup, so both take the same explicit 524K/1M variants. GPT-5.6 Sol and GPT-5.6 Luna were then retired from this catalog in favor of their GPT-6 successors, while GPT-5.6 Terra stays because GPT-6 has no Terra counterpart; 2026-09-30 client models_cache.json (codex-cli 0.159.2) added gpt-6.1-sol ahead of gpt-6-astra with low/medium/high/xhigh/max/ultra reasoning efforts (ultra stays out under the launch-capability cap), additionalSpeedTiers [\"fast\"], a priority \"Fast\" tier at 2x speed, and context_window 272000 with max_context_window 872000, identical to gpt-6-sol, so it takes the same explicit 524K/1M variants. GPT-6 Sol stays because the same list still serves it with no upgrade pointer and no retirement date",
       "models": [
         {
           "modelId": "gpt-6-astra",
           "name": "GPT-6-Astra",
-          "capabilityClass": "flagship",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -76,7 +73,6 @@
         {
           "modelId": "gpt-6-astra-fast",
           "name": "GPT-6-Astra-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -97,7 +93,6 @@
         {
           "modelId": "gpt-6.1-sol",
           "name": "GPT-6.1-Sol",
-          "capabilityClass": "flagship",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -116,7 +111,6 @@
         {
           "modelId": "gpt-6.1-sol-fast",
           "name": "GPT-6.1-Sol-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6.1-sol",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -137,7 +131,6 @@
         {
           "modelId": "gpt-6-sol",
           "name": "GPT-6-Sol",
-          "capabilityClass": "flagship",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -156,7 +149,6 @@
         {
           "modelId": "gpt-6-sol-fast",
           "name": "GPT-6-Sol-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -177,7 +169,6 @@
         {
           "modelId": "gpt-6-luna",
           "name": "GPT-6-Luna",
-          "capabilityClass": "light",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -196,7 +187,6 @@
         {
           "modelId": "gpt-6-luna-fast",
           "name": "GPT-6-Luna-Fast",
-          "capabilityClass": "light",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -217,7 +207,6 @@
         {
           "modelId": "gpt-5.6-terra",
           "name": "GPT-5.6-Terra",
-          "capabilityClass": "standard",
           "contextWindow": 272000,
           "effort": {
             "supported": true,
@@ -236,7 +225,6 @@
         {
           "modelId": "gpt-5.6-terra-fast",
           "name": "GPT-5.6-Terra-Fast",
-          "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 272000,
@@ -257,7 +245,6 @@
         {
           "modelId": "gpt-6-astra-524k",
           "name": "GPT-6-Astra-524K",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-astra",
           "contextWindow": 524288,
           "effort": {
@@ -277,7 +264,6 @@
         {
           "modelId": "gpt-6-astra-524k-fast",
           "name": "GPT-6-Astra-524K-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -298,7 +284,6 @@
         {
           "modelId": "gpt-6.1-sol-524k",
           "name": "GPT-6.1-Sol-524K",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6.1-sol",
           "contextWindow": 524288,
           "effort": {
@@ -318,7 +303,6 @@
         {
           "modelId": "gpt-6.1-sol-524k-fast",
           "name": "GPT-6.1-Sol-524K-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6.1-sol",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -339,7 +323,6 @@
         {
           "modelId": "gpt-6-sol-524k",
           "name": "GPT-6-Sol-524K",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-sol",
           "contextWindow": 524288,
           "effort": {
@@ -359,7 +342,6 @@
         {
           "modelId": "gpt-6-sol-524k-fast",
           "name": "GPT-6-Sol-524K-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -380,7 +362,6 @@
         {
           "modelId": "gpt-6-luna-524k",
           "name": "GPT-6-Luna-524K",
-          "capabilityClass": "light",
           "providerModelId": "gpt-6-luna",
           "contextWindow": 524288,
           "effort": {
@@ -400,7 +381,6 @@
         {
           "modelId": "gpt-6-luna-524k-fast",
           "name": "GPT-6-Luna-524K-Fast",
-          "capabilityClass": "light",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -421,7 +401,6 @@
         {
           "modelId": "gpt-5.6-terra-524k",
           "name": "GPT-5.6-Terra-524K",
-          "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "contextWindow": 524288,
           "effort": {
@@ -441,7 +420,6 @@
         {
           "modelId": "gpt-5.6-terra-524k-fast",
           "name": "GPT-5.6-Terra-524K-Fast",
-          "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 524288,
@@ -462,7 +440,6 @@
         {
           "modelId": "gpt-6-astra-1m",
           "name": "GPT-6-Astra-1M",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-astra",
           "contextWindow": 1000000,
           "effort": {
@@ -482,7 +459,6 @@
         {
           "modelId": "gpt-6-astra-1m-fast",
           "name": "GPT-6-Astra-1M-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-astra",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -503,7 +479,6 @@
         {
           "modelId": "gpt-6.1-sol-1m",
           "name": "GPT-6.1-Sol-1M",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6.1-sol",
           "contextWindow": 1000000,
           "effort": {
@@ -523,7 +498,6 @@
         {
           "modelId": "gpt-6.1-sol-1m-fast",
           "name": "GPT-6.1-Sol-1M-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6.1-sol",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -544,7 +518,6 @@
         {
           "modelId": "gpt-6-sol-1m",
           "name": "GPT-6-Sol-1M",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-sol",
           "contextWindow": 1000000,
           "effort": {
@@ -564,7 +537,6 @@
         {
           "modelId": "gpt-6-sol-1m-fast",
           "name": "GPT-6-Sol-1M-Fast",
-          "capabilityClass": "flagship",
           "providerModelId": "gpt-6-sol",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -585,7 +557,6 @@
         {
           "modelId": "gpt-6-luna-1m",
           "name": "GPT-6-Luna-1M",
-          "capabilityClass": "light",
           "providerModelId": "gpt-6-luna",
           "contextWindow": 1000000,
           "effort": {
@@ -605,7 +576,6 @@
         {
           "modelId": "gpt-6-luna-1m-fast",
           "name": "GPT-6-Luna-1M-Fast",
-          "capabilityClass": "light",
           "providerModelId": "gpt-6-luna",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -626,7 +596,6 @@
         {
           "modelId": "gpt-5.6-terra-1m",
           "name": "GPT-5.6-Terra-1M",
-          "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "contextWindow": 1000000,
           "effort": {
@@ -646,7 +615,6 @@
         {
           "modelId": "gpt-5.6-terra-1m-fast",
           "name": "GPT-5.6-Terra-1M-Fast",
-          "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
           "contextWindow": 1000000,
@@ -669,12 +637,11 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "grok-4.7",
-      "source": "Restored 2026-10-06 with Grok 4.7 and Muse Spark 1.3; Muse Wonder 1.0, Gemini 3.8 Flash and Gemini 4 Argon added 2026-10-17. Wire ids from cursor-agent `models`: 2026.10.01-e373342 listed grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}; 2026.10.16-e3cb207 listed muse-wonder-1.0-{minimal,low,medium,high,xhigh,max}, gemini-3.8-flash-{low,medium,high} and gemini-4-argon-{low,medium,high}. The Muse minimal rung stays outside Fleet's effort ladder. Context windows from the Run checkpoint contextWindow (Ultra plan): on 2026-10-06 grok-4.7 256000 and 500000 with modelDetails.maxMode, muse-spark-1.3 300000 and 1000000 with maxMode, although Cursor labels every Muse Spark rung 1M; on 2026-10-17 muse-wonder-1.0 300000, gemini-3.8-flash 200000 and gemini-4-argon 200000, each 1000000 with maxMode. Pools from GetCurrentPeriodUsage planUsage deltas: on 2026-10-06 around 42-turn runs Grok 4.7 moved only autoPercentUsed and Muse Spark 1.3 only apiPercentUsed; on 2026-10-17 six turns across the three added models moved apiPercentUsed (0 to 0.1) with autoPercentUsed unchanged, and single turns 150 s apart each raised apiPercentUsed. autoBucketModels lists none of these models. Classes follow the naming grammar: Gemini 3.8 Flash is light as on Antigravity, the unsuffixed Muse Wonder 1.0 mainline is flagship, and the codename-suffixed Gemini 4 Argon resolves downward to standard.",
+      "source": "Restored 2026-10-06 with Grok 4.7 and Muse Spark 1.3; Muse Wonder 1.0, Gemini 3.8 Flash and Gemini 4 Argon added 2026-10-17. Wire ids from cursor-agent `models`: 2026.10.01-e373342 listed grok-4.7-{low,medium,high,xhigh}[-fast] and muse-spark-1.3-{minimal,low,medium,high,xhigh,max}; 2026.10.16-e3cb207 listed muse-wonder-1.0-{minimal,low,medium,high,xhigh,max}, gemini-3.8-flash-{low,medium,high} and gemini-4-argon-{low,medium,high}. The Muse minimal rung stays outside Fleet's effort ladder. Context windows from the Run checkpoint contextWindow (Ultra plan): on 2026-10-06 grok-4.7 256000 and 500000 with modelDetails.maxMode, muse-spark-1.3 300000 and 1000000 with maxMode, although Cursor labels every Muse Spark rung 1M; on 2026-10-17 muse-wonder-1.0 300000, gemini-3.8-flash 200000 and gemini-4-argon 200000, each 1000000 with maxMode. Pools from GetCurrentPeriodUsage planUsage deltas: on 2026-10-06 around 42-turn runs Grok 4.7 moved only autoPercentUsed and Muse Spark 1.3 only apiPercentUsed; on 2026-10-17 six turns across the three added models moved apiPercentUsed (0 to 0.1) with autoPercentUsed unchanged, and single turns 150 s apart each raised apiPercentUsed. autoBucketModels lists none of these models.",
       "models": [
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "capabilityClass": "flagship",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -691,7 +658,6 @@
         {
           "modelId": "grok-4.7-fast",
           "name": "Grok-4.7-Fast",
-          "capabilityClass": "flagship",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -703,13 +669,11 @@
               "xhigh"
             ],
             "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
-          },
-          "variantOf": "grok-4.7"
+          }
         },
         {
           "modelId": "grok-4.7-500k",
           "name": "Grok-4.7-500k",
-          "capabilityClass": "flagship",
           "quotaScope": "auto",
           "contextWindow": 500000,
           "effort": {
@@ -722,13 +686,11 @@
             ],
             "upstreamModelIdTemplate": "grok-4.7-{effort}"
           },
-          "variantOf": "grok-4.7",
           "cursorMaxMode": true
         },
         {
           "modelId": "grok-4.7-500k-fast",
           "name": "Grok-4.7-500k-Fast",
-          "capabilityClass": "flagship",
           "quotaScope": "auto",
           "contextWindow": 500000,
           "effort": {
@@ -741,13 +703,11 @@
             ],
             "upstreamModelIdTemplate": "grok-4.7-{effort}-fast"
           },
-          "variantOf": "grok-4.7",
           "cursorMaxMode": true
         },
         {
           "modelId": "muse-spark-1.3",
           "name": "Muse-Spark-1.3",
-          "capabilityClass": "flagship",
           "quotaScope": "api",
           "contextWindow": 300000,
           "effort": {
@@ -765,7 +725,6 @@
         {
           "modelId": "muse-spark-1.3-1m",
           "name": "Muse-Spark-1.3-1M",
-          "capabilityClass": "flagship",
           "quotaScope": "api",
           "contextWindow": 1000000,
           "effort": {
@@ -779,13 +738,11 @@
             ],
             "upstreamModelIdTemplate": "muse-spark-1.3-{effort}"
           },
-          "variantOf": "muse-spark-1.3",
           "cursorMaxMode": true
         },
         {
           "modelId": "muse-wonder-1.0",
           "name": "Muse-Wonder-1.0",
-          "capabilityClass": "flagship",
           "quotaScope": "api",
           "contextWindow": 300000,
           "effort": {
@@ -803,7 +760,6 @@
         {
           "modelId": "muse-wonder-1.0-1m",
           "name": "Muse-Wonder-1.0-1M",
-          "capabilityClass": "flagship",
           "quotaScope": "api",
           "contextWindow": 1000000,
           "effort": {
@@ -817,13 +773,11 @@
             ],
             "upstreamModelIdTemplate": "muse-wonder-1.0-{effort}"
           },
-          "variantOf": "muse-wonder-1.0",
           "cursorMaxMode": true
         },
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "capabilityClass": "light",
           "quotaScope": "api",
           "contextWindow": 200000,
           "effort": {
@@ -839,7 +793,6 @@
         {
           "modelId": "gemini-3.8-flash-1m",
           "name": "Gemini-3.8-Flash-1M",
-          "capabilityClass": "light",
           "quotaScope": "api",
           "contextWindow": 1000000,
           "effort": {
@@ -851,13 +804,11 @@
             ],
             "upstreamModelIdTemplate": "gemini-3.8-flash-{effort}"
           },
-          "variantOf": "gemini-3.8-flash",
           "cursorMaxMode": true
         },
         {
           "modelId": "gemini-4-argon",
           "name": "Gemini-4-Argon",
-          "capabilityClass": "standard",
           "quotaScope": "api",
           "contextWindow": 200000,
           "effort": {
@@ -873,7 +824,6 @@
         {
           "modelId": "gemini-4-argon-1m",
           "name": "Gemini-4-Argon-1M",
-          "capabilityClass": "standard",
           "quotaScope": "api",
           "contextWindow": 1000000,
           "effort": {
@@ -885,7 +835,6 @@
             ],
             "upstreamModelIdTemplate": "gemini-4-argon-{effort}"
           },
-          "variantOf": "gemini-4-argon",
           "cursorMaxMode": true
         }
       ]
@@ -898,7 +847,6 @@
         {
           "modelId": "grok-4.7",
           "name": "Grok-4.7",
-          "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -914,7 +862,6 @@
         {
           "modelId": "grok-4.7-fast",
           "name": "Grok-4.7-Fast",
-          "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 500000,
           "effort": {
@@ -926,13 +873,11 @@
               "xhigh"
             ]
           },
-          "providerModelId": "grok-4.7-build-fast",
-          "variantOf": "grok-4.7"
+          "providerModelId": "grok-4.7-build-fast"
         },
         {
           "modelId": "grok-composer-2.5-fast",
           "name": "Grok-Composer-2.5-Fast",
-          "capabilityClass": "standard",
           "wire": "responses",
           "contextWindow": 200000
         }
@@ -941,12 +886,11 @@
     "muse-code": {
       "name": "Muse Code",
       "defaultModel": "muse-spark-1.3-contributor",
-      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh 및 1.3 standard의 max. contributor max는 지휘관이 직접 실측(2026-10-17T22:41:37Z~22:41:42Z): muse exec --model muse-spark-1.3-contributor --contributor-mode on --reasoning-effort max --max-model-steps 1 --workspace \"$T\" --json \"Reply with exactly: OK\"가 RC=0, run_terminal.text=OK, stream_succeeded, response_id=resp_6ad3f9a5f922a34ed9d44803으로 완료됐다. 단일 최소 프로브 1회로 max 요청 수락을 확인했으며 강도별 품질은 비교하지 않았다. minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU라는 서술에 따라 variantOf로 잇는다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
+      "source": "Fleet 실측(2026-09-25): 제품 라우터로 muse-spark-1.3-contributor 도구 루프 2턴(tool_use→tool_result→end_turn)이 HTTP 200 SSE로 성공했다. muse-spark-1.3과 아래 나머지 사양은 소스 기반이다. 모델 ID: Muse Code CLI 로그인 키로 GET https://api.meta.ai/v1/models 1회 실측(2026-09-25) — muse-spark-1.1/1.2/1.2-contributor/1.3/1.3-contributor와 비채팅 sam-3.1·muse-image-1.0·muse-voice-transcribe-1.0, capability 필드 없음. 현세대 1.3만 등록한다. 사양: oh-my-pi catalog rules meta.kdl·muse-code.kdl(2026-09-25 열람) — context 1048576, 최대 출력 131072, text+image, effort minimal~xhigh 및 1.3 standard의 max. contributor max는 지휘관이 직접 실측(2026-10-17T22:41:37Z~22:41:42Z): muse exec --model muse-spark-1.3-contributor --contributor-mode on --reasoning-effort max --max-model-steps 1 --workspace \"$T\" --json \"Reply with exactly: OK\"가 RC=0, run_terminal.text=OK, stream_succeeded, response_id=resp_6ad3f9a5f922a34ed9d44803으로 완료됐다. 단일 최소 프로브 1회로 max 요청 수락을 확인했으며 강도별 품질은 비교하지 않았다. minimal은 Fleet 노출 사다리 밖이라 low부터 노출한다. contributor는 같은 모델의 학습 동의 할인 SKU다. 와이어: https://api.meta.ai/v1/responses, x-api-version 1.0.0, tool_choice auto·function 도구만 허용(참고 소스 oh-my-pi 기록 2026-09-05/09-10; 거부 사례는 직접 미검증). 기본 모델 contributor는 비용을 보수적으로 잡은 Fleet 설계 선택이다. 벤치마크는 결합하지 않는다.",
       "models": [
         {
           "modelId": "muse-spark-1.3",
           "name": "Muse-Spark-1.3",
-          "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {
@@ -963,8 +907,6 @@
         {
           "modelId": "muse-spark-1.3-contributor",
           "name": "Muse-Spark-1.3-Contributor",
-          "capabilityClass": "flagship",
-          "variantOf": "muse-spark-1.3",
           "wire": "responses",
           "contextWindow": 1048576,
           "effort": {

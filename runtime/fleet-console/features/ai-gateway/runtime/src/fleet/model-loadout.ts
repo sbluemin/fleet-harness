@@ -23,7 +23,6 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
         modelId: toClaudeGatewayModelId(model), provider: model.provider, quotaPool: pool, efforts,
         ...(rank < 0 ? {} : { preferenceRank: rank + 1 }),
         ...(contextWindow === null ? {} : { contextWindow }),
-        ...(constraints.capabilityClass === undefined ? {} : { capabilityClass: constraints.capabilityClass }),
       };
     });
   return { quotaPools, models,

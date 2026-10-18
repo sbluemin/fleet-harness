@@ -8,12 +8,11 @@
  * 마지막은 설정 변경이 재시작 전까지 먹지 않는다는 뜻이었다.
  *
  * 지금은 호스트가 이름을 대지 않는다. Agent 도구가 말할 수 있는 모델은 Claude 별칭뿐이고,
- * 그것을 **목적지가 아니라 등급 신호로** 읽는다. `haiku`는 "Haiku를 써라"가 아니라 "싼 것으로
- * 충분하다"는 판단이고, 그 판단은 유효하다. 어느 모델이 그 등급인지는 호스트가 알 수 없고
- * (쿼터도 카탈로그도 모른다) Fleet이 안다. 그래서 등급은 호스트가, 모델은 여기가 정한다.
+ * 그것을 **목적지가 아니라 추론 강도 신호로** 읽는다. `haiku`는 낮은 강도, `sonnet`은 중간 강도,
+ * `opus`와 `fable`은 높은 강도를 요청한다. 모델은 그 신호와 별개로 노출 목록과 쿼터를 따라 정한다.
  *
- * 후보는 목록이지 모델 하나가 아니다. 앞에서부터 지금 쓸 수 있는 첫 번째를 고르고, 한 등급이
- * 통째로 막히면 아래 등급으로 흘러내린다 — 위임을 죽이는 것보다 낫다.
+ * 모든 등급은 같은 후보를 공급자 우선순위와 카탈로그 순서로 읽는다. 등급은 모델의 크기를
+ * 분류하지 않고, 그 실행에 요청할 추론 강도만 정한다.
  */
 
 import { buildGatewayModelConstraints, type GatewayModelConstraints, type GatewayEffortExposure, type GatewayModel, type GatewayProvider, type GatewayReasoningEffort } from "../models.js";
@@ -63,38 +62,6 @@ export const EMPTY_GATEWAY_ROUTING_TABLE: GatewayRoutingTable = {
 };
 
 /**
- * capabilityClass가 등급 소속을 정한다. 공급자가 스스로 밝힌 라인업 위치라, Fleet이 모델
- * 이름에서 추측하는 것보다 정확하고 카탈로그가 늘어도 따라온다.
- *
- * 라우팅 별칭(Cursor `auto`)은 class를 싣지 않는다 — 호출마다 다른 것이 답하므로 어떤 값도
- * 거짓이 된다. 그런 모델은 중간 등급으로 둔다: 모르면서 최상위라고 주장하지 않는다.
- */
-function tierOf(model: GatewayModel): GatewayRoutingTier {
-  switch (model.capabilityClass) {
-    case "light": return "scan";
-    case "flagship": return "deep";
-    default: return "work";
-  }
-}
-
-/**
- * 자기 등급에 후보가 없을 때 어디서 빌려 오는가.
- *
- * `work`만 위로 먼저 간다. 그 등급은 호스트가 **아무 말도 하지 않은** 경우이고, 침묵을
- * "싼 것으로 충분하다"로 읽으면 요청한 적 없는 품질 저하를 기본값으로 만든다. 로스터에
- * standard 계열이 하나도 없는 구성은 드물지 않으므로(라이트와 플래그십만 노출하는 경우)
- * 이 방향이 실제로 대부분의 위임이 가는 길이다.
- *
- * `scan`은 호스트가 싸도 된다고 명시한 경우라 아래에서 위로, `deep`은 비싼 쪽이 막혔을 때
- * 내려간다 — 위임을 죽이는 것보다 한 단 낮은 모델로 도는 편이 낫다.
- */
-const FALLBACK: Readonly<Record<GatewayRoutingTier, readonly GatewayRoutingTier[]>> = {
-  scan: ["scan", "work", "deep"],
-  work: ["work", "deep", "scan"],
-  deep: ["deep", "work", "scan"],
-};
-
-/**
  * 이 세션의 라우팅 표를 짓는다.
  *
  * `exposed`는 반드시 **위임 모델**이어야 한다 — 사용자가 호스트 전용으로 표시한 모델은
@@ -114,25 +81,15 @@ export function buildGatewayRoutingTable(
 ): GatewayRoutingTable {
   if (exposed.length === 0) return EMPTY_GATEWAY_ROUTING_TABLE;
   const ordered = sortByProviderPriority(exposed, options?.providerPriority);
-  const members = new Map<GatewayRoutingTier, GatewayModel[]>(
-    GATEWAY_ROUTING_TIERS.map((tier) => [tier, []]),
-  );
-  for (const model of ordered) members.get(tierOf(model))?.push(model);
   const tiers = Object.fromEntries(GATEWAY_ROUTING_TIERS.map((tier) => {
-    // 자기 등급을 먼저, 그다음 대체 순서. 같은 모델이 두 번 들어가지 않게 걸러낸다.
-    //
-    // 강도는 **요청한 등급**이 정한다. 모델이 어느 등급에 속하는지와 그 실행에 얼마나
-    // 생각하게 할지는 다른 질문이다 — `work`가 빌려 온 flagship에 `deep`의 강도를 요청하면
-    // 요청한 적 없는 비용을 쓴다.
+    // 후보 순서는 모든 등급이 공유하고, 요청 강도만 등급에 맞춰 사다리에 매핑한다.
     const seen = new Set<string>();
     const list: GatewayRoutingCandidate[] = [];
-    for (const source of FALLBACK[tier]) {
-      for (const model of members.get(source) ?? []) {
-        const candidate = toCandidate(model, tier, options?.effortExposure);
-        if (seen.has(candidate.model)) continue;
-        seen.add(candidate.model);
-        list.push(candidate);
-      }
+    for (const model of ordered) {
+      const candidate = toCandidate(model, tier, options?.effortExposure);
+      if (seen.has(candidate.model)) continue;
+      seen.add(candidate.model);
+      list.push(candidate);
     }
     return [tier, Object.freeze(list)];
   })) as Record<GatewayRoutingTier, readonly GatewayRoutingCandidate[]>;
