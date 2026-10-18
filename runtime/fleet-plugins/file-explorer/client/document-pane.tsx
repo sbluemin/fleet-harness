@@ -84,6 +84,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const tabsRef = useRef<HTMLDivElement>(null);
   const tabsMoreRef = useRef<HTMLButtonElement>(null);
   const headRef = useRef<HTMLDivElement>(null);
+  const crumbRef = useRef<HTMLDivElement>(null);
   const [hiddenTabs, setHiddenTabs] = useState<readonly number[]>([]);
   const [tabsScrolled, setTabsScrolled] = useState(false);
   const [tabLine, setTabLine] = useState<{ readonly left: number; readonly width: number } | null>(null);
@@ -285,8 +286,8 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const openCrumbPop = useCallback((segment: BreadcrumbSegment, trigger: HTMLElement) => {
     const head = headRef.current;
     const anchorLeft = head ? trigger.getBoundingClientRect().left - head.getBoundingClientRect().left : 0;
-    // 폴더 조각은 그 폴더를 연다. 잎(파일)은 제 부모 — 자기 옆의 파일들 — 을 연다.
-    const dirPath = segment.isLeaf ? parentDirOf(segment.path) : segment.path;
+    // 머리에는 폴더 조각만 남는다. 루트 파일의 "/"는 Theater 루트를 연다.
+    const dirPath = segment.path;
     setCrumbPop((current) => (current?.segmentPath === segment.path ? null : { segmentPath: segment.path, dirPath, anchorLeft, trigger }));
   }, []);
 
@@ -318,7 +319,23 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const showCodePane = viewState.kind === "code" && (!isMarkdownDoc || showSource);
   const viewerMeta = viewState.kind === "code" ? buildViewerMetaParts(viewState, t) : [];
   const chipHints = useMemo(() => chipDirHints(openDocs), [openDocs]);
-  const crumbSegments = useMemo(() => activePath ? breadcrumbSegments(activePath) : [], [activePath]);
+  const crumbSegments = useMemo<readonly BreadcrumbSegment[]>(() => {
+    if (!activePath) return [];
+    const folders = breadcrumbSegments(activePath).filter((segment) => !segment.isLeaf);
+    return folders.length > 0 ? folders : [{ name: "/", path: "", isLeaf: false }];
+  }, [activePath]);
+
+  // 좁은 열에서도 한 글자로 찌그러뜨리지 않고 부모 폴더부터 보인다. 조상은 가로 스크롤과 Tab으로 찾는다.
+  useLayoutEffect(() => {
+    const crumb = crumbRef.current;
+    if (!crumb) return;
+    const showParent = () => { crumb.scrollLeft = crumb.scrollWidth; };
+    showParent();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(showParent);
+    observer.observe(crumb);
+    return () => observer.disconnect();
+  }, [activePath]);
 
   const measureTabs = useCallback(() => {
     const container = tabsRef.current;
@@ -385,117 +402,114 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
 
   return (
     <div className="fexp-viewer-pane" onKeyDown={handleKeyDown}>
-      <div className="fexp-tabs-wrap">
-        <div
-          ref={tabsRef}
-          className={`fexp-tabs${hiddenTabs.length > 0 ? " is-overflowing" : ""}${tabsScrolled ? " is-scrolled" : ""}${tabLine ? " is-settled" : ""}`}
-          role="list"
-          aria-label={t("fileExplorer.tabs.aria")}
-          onScroll={measureTabs}
-        >
-          {openDocs.map((doc) => {
-            const active = doc.relativePath === activePath;
-            const state = docStates.get(doc.relativePath);
-            const stale = isStaleViewState(state);
-            const deleted = (state?.kind === "code" || state?.kind === "image") && state.diskStatus === "deleted";
-            return (
-              <div
-                key={doc.relativePath}
-                role="listitem"
-                className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}${deleted ? " is-deleted" : ""}${doc.preview ? " is-preview" : ""}`}
-              >
-                <button
-                  type="button"
-                  className="fexp-tab-open"
-                  aria-current={active ? "true" : undefined}
-                  title={deleted ? t("fileExplorer.viewer.diskDeleted") : stale ? t("fileExplorer.tabs.staleTitle") : doc.preview ? t("fileExplorer.tabs.previewTitle", { name: doc.name }) : doc.relativePath}
-                  onClick={() => selectDocumentTab(doc)}
-                  onDoubleClick={() => pinStoredDocument(theaterId, doc.relativePath)}
-                  onAuxClick={(event) => {
-                    if (event.button !== 1) return;
-                    event.preventDefault();
-                    handleCloseDoc(doc.relativePath);
-                  }}
-                >
-                  <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
-                  {chipHints.has(doc.relativePath) && (
-                    <span className="fexp-chip-dir" aria-hidden="true">{chipHints.get(doc.relativePath)}</span>
-                  )}
-                  <span className="fexp-chip-name">{doc.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className="fexp-tab-close"
-                  aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
-                  onClick={() => handleCloseDoc(doc.relativePath)}
-                >
-                  <span className="fexp-tab-close-glyph" aria-hidden="true">✕</span>
-                </button>
-              </div>
-            );
-          })}
-          <span
-            className="fexp-tab-line"
-            aria-hidden="true"
-            style={tabLine ? { left: tabLine.left, width: tabLine.width } : { left: 0, width: 0 }}
-          />
-        </div>
-        {hiddenTabs.length > 0 && (
-          <button
-            ref={tabsMoreRef}
-            type="button"
-            className="fexp-tabs-more"
-            aria-haspopup="menu"
-            aria-expanded={tabsMenuOpen}
-            aria-label={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
-            title={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
-            onClick={() => setTabsMenuOpen((open) => !open)}
+      {openDocs.length > 1 && (
+        <div className="fexp-tabs-wrap">
+          <div
+            ref={tabsRef}
+            className={`fexp-tabs${hiddenTabs.length > 0 ? " is-overflowing" : ""}${tabsScrolled ? " is-scrolled" : ""}${tabLine ? " is-settled" : ""}`}
+            role="list"
+            aria-label={t("fileExplorer.tabs.aria")}
+            onScroll={measureTabs}
           >
-            <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>{hiddenTabs.length}</span>
-          </button>
-        )}
-        {tabsMenuOpen && (
-          <QuietMenu
-            className="fexp-tabs-menu"
-            ariaLabel={t("fileExplorer.tabs.menuAria")}
-            triggerRef={tabsMoreRef}
-            items={hiddenDocs.map((doc) => ({
-              key: doc.relativePath,
-              label: doc.name,
-              hint: parentDirOf(doc.relativePath) ? `${parentDirOf(doc.relativePath)}/` : undefined,
-              icon: <FileIcon name={doc.name} />,
-              current: doc.relativePath === activePath,
-              onSelect: () => {
-                selectDocumentTab(doc);
+            {openDocs.map((doc) => {
+              const active = doc.relativePath === activePath;
+              const state = docStates.get(doc.relativePath);
+              const stale = isStaleViewState(state);
+              const deleted = (state?.kind === "code" || state?.kind === "image") && state.diskStatus === "deleted";
+              return (
+                <div
+                  key={doc.relativePath}
+                  role="listitem"
+                  className={`fexp-tab${active ? " is-active" : ""}${stale ? " is-stale" : ""}${deleted ? " is-deleted" : ""}${doc.preview ? " is-preview" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="fexp-tab-open"
+                    aria-current={active ? "true" : undefined}
+                    title={deleted ? t("fileExplorer.viewer.diskDeleted") : stale ? t("fileExplorer.tabs.staleTitle") : doc.preview ? t("fileExplorer.tabs.previewTitle", { name: doc.name }) : doc.relativePath}
+                    onClick={() => selectDocumentTab(doc)}
+                    onDoubleClick={() => pinStoredDocument(theaterId, doc.relativePath)}
+                    onAuxClick={(event) => {
+                      if (event.button !== 1) return;
+                      event.preventDefault();
+                      handleCloseDoc(doc.relativePath);
+                    }}
+                  >
+                    <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
+                    {chipHints.has(doc.relativePath) && (
+                      <span className="fexp-chip-dir" aria-hidden="true">{chipHints.get(doc.relativePath)}</span>
+                    )}
+                    <span className="fexp-chip-name">{doc.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="fexp-tab-close"
+                    aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
+                    onClick={() => handleCloseDoc(doc.relativePath)}
+                  >
+                    <span className="fexp-tab-close-glyph" aria-hidden="true">✕</span>
+                  </button>
+                </div>
+              );
+            })}
+            <span
+              className="fexp-tab-line"
+              aria-hidden="true"
+              style={tabLine ? { left: tabLine.left, width: tabLine.width } : { left: 0, width: 0 }}
+            />
+          </div>
+          {hiddenTabs.length > 0 && (
+            <button
+              ref={tabsMoreRef}
+              type="button"
+              className="fexp-tabs-more"
+              aria-haspopup="menu"
+              aria-expanded={tabsMenuOpen}
+              aria-label={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
+              title={t("fileExplorer.tabs.more", { count: hiddenTabs.length })}
+              onClick={() => setTabsMenuOpen((open) => !open)}
+            >
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>{hiddenTabs.length}</span>
+            </button>
+          )}
+          {tabsMenuOpen && (
+            <QuietMenu
+              className="fexp-tabs-menu"
+              ariaLabel={t("fileExplorer.tabs.menuAria")}
+              triggerRef={tabsMoreRef}
+              items={hiddenDocs.map((doc) => ({
+                key: doc.relativePath,
+                label: doc.name,
+                hint: parentDirOf(doc.relativePath) ? `${parentDirOf(doc.relativePath)}/` : undefined,
+                icon: <FileIcon name={doc.name} />,
+                current: doc.relativePath === activePath,
+                onSelect: () => {
+                  selectDocumentTab(doc);
+                  setTabsMenuOpen(false);
+                },
+              }))}
+              onClose={(restoreFocus) => {
                 setTabsMenuOpen(false);
-              },
-            }))}
-            onClose={(restoreFocus) => {
-              setTabsMenuOpen(false);
-              if (restoreFocus) tabsMoreRef.current?.focus();
-            }}
-          />
-        )}
-      </div>
+                if (restoreFocus) tabsMoreRef.current?.focus();
+              }}
+            />
+          )}
+        </div>
+      )}
       <div ref={headRef} className="fexp-viewer-head">
-        {activeDoc && (
-          <span className="fexp-viewer-doc-icon" aria-hidden="true"><FileIcon name={activeDoc.name} /></span>
-        )}
-        <div className="fexp-viewer-crumb" role="group" aria-label={t("fileExplorer.viewer.pathAria")}>
+        <div ref={crumbRef} className="fexp-viewer-crumb" role="group" aria-label={t("fileExplorer.viewer.pathAria")}>
           {crumbSegments.map((segment, index) => (
             <span key={segment.path} className="fexp-crumb-part">
               {index > 0 && <span className="fexp-crumb-sep" aria-hidden="true">/</span>}
               <button
                 type="button"
-                className={`fexp-crumb-seg${segment.isLeaf ? " is-leaf" : ""}`}
+                className="fexp-crumb-seg"
                 aria-haspopup="menu"
                 aria-expanded={crumbPop?.segmentPath === segment.path}
-                title={segment.isLeaf
-                  ? t("fileExplorer.viewer.crumbFileOpen", { name: segment.name })
-                  : t("fileExplorer.viewer.crumbDirOpen", { path: segment.path })}
+                title={t("fileExplorer.viewer.crumbDirOpen", { path: segment.path || "/" })}
                 onClick={(event) => openCrumbPop(segment, event.currentTarget)}
               >
                 {segment.name}
@@ -528,11 +542,39 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
         )}
         {isMarkdownDoc && (
           <div className="fexp-view-mode" role="group" aria-label={t("fileExplorer.viewer.viewModeAria")}>
-            <button type="button" aria-pressed={!showSource} onClick={() => handleToggleSourceMode(false)}>
-              {t("fileExplorer.viewer.previewMode")}
+            <button type="button" aria-label={t("fileExplorer.viewer.previewMode")} title={t("fileExplorer.viewer.previewMode")} aria-pressed={!showSource} onClick={() => handleToggleSourceMode(false)}>
+              <svg className="fexp-view-mode-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.3" />
+              </svg>
+              <span className="fexp-tool-label">{t("fileExplorer.viewer.previewMode")}</span>
             </button>
-            <button type="button" aria-pressed={showSource} onClick={() => handleToggleSourceMode(true)}>
-              {t("fileExplorer.viewer.sourceMode")}
+            <button type="button" aria-label={t("fileExplorer.viewer.sourceMode")} title={t("fileExplorer.viewer.sourceMode")} aria-pressed={showSource} onClick={() => handleToggleSourceMode(true)}>
+              <svg className="fexp-view-mode-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="m6 4.5-3.5 3.5L6 11.5M10 4.5l3.5 3.5-3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="fexp-tool-label">{t("fileExplorer.viewer.sourceMode")}</span>
+            </button>
+          </div>
+        )}
+        {activePath && (
+          <div className="fexp-viewer-tools">
+            {activeDoc?.preview && (
+              <button type="button" className="fexp-viewer-tool fexp-keep-open" aria-label={t("fileExplorer.tabs.keepOpen")} title={`${t("fileExplorer.viewer.previewMode")} · ${t("fileExplorer.tabs.keepOpen")}`} onClick={() => pinStoredDocument(theaterId, activePath)}>
+                <span className="fexp-preview-ring" aria-hidden="true" />
+                <span className="fexp-tool-label">{t("fileExplorer.tabs.keepOpen")}</span>
+              </button>
+            )}
+            <button type="button" className="fexp-viewer-tool" aria-label={t("fileExplorer.shell.open")} title={t("fileExplorer.shell.open")} disabled={shellAction.pending} onClick={() => { pinStoredDocument(theaterId, activePath); shellAction.open(parentDirOf(activePath)); }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="2" y="3" width="12" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
+                <path d="m5 6.5 2 1.5-2 1.5M8.5 10H11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button type="button" className="fexp-viewer-tool" aria-label={t("fileExplorer.menu.openExternal")} title={t("fileExplorer.menu.openExternal")} disabled={externalOpening} onClick={handleOpenExternal}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M9 3h4v4M13 3 7.5 8.5M11 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
           </div>
         )}
@@ -576,20 +618,6 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
             <button type="button" aria-label={t("fileExplorer.tabs.dismissNotice")} onClick={() => dismissDiscardedTabs(contextScope, discardedTabs.id)}>✕</button>
           </div>
         )}
-        <div className="fexp-viewer-access">
-          <span>{t("fileExplorer.viewer.readOnly")}</span>
-          {activePath && (
-            <span className="fexp-viewer-access-actions">
-              {activeDoc?.preview && <button type="button" onClick={() => pinStoredDocument(theaterId, activePath)}>{t("fileExplorer.tabs.keepOpen")}</button>}
-              <button type="button" disabled={shellAction.pending} onClick={() => { pinStoredDocument(theaterId, activePath); shellAction.open(parentDirOf(activePath)); }}>
-                {t("fileExplorer.shell.open")}
-              </button>
-              <button type="button" disabled={externalOpening} onClick={handleOpenExternal}>
-                {t("fileExplorer.menu.openExternal")}
-              </button>
-            </span>
-          )}
-        </div>
         {(viewState.kind === "code" || viewState.kind === "image") && viewState.stale && (
           <div className="fexp-disk-banner" role="status">
             <span>{t(viewState.diskStatus === "deleted" ? "fileExplorer.viewer.diskDeleted" : "fileExplorer.viewer.diskChanged")}</span>
@@ -642,13 +670,18 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           <BinaryViewer name={viewState.name} t={t} />
         )}
       </div>
-      {viewerMeta.length > 0 && (
-        <div className="fexp-viewer-meta">
-          {viewerMeta.map((part, index) => (
-            <span key={index} className="fexp-viewer-meta-part">{part}</span>
-          ))}
-        </div>
-      )}
+      <div className="fexp-viewer-meta">
+        <span className="fexp-viewer-meta-part fexp-read-only">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="3.5" y="7" width="9" height="6.5" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+            <path d="M5.5 7V5.2a2.5 2.5 0 0 1 5 0V7" stroke="currentColor" strokeWidth="1.3" />
+          </svg>
+          {t("fileExplorer.viewer.readOnly")}
+        </span>
+        {viewerMeta.map((part, index) => (
+          <span key={index} className="fexp-viewer-meta-part">{part}</span>
+        ))}
+      </div>
     </div>
   );
 }
