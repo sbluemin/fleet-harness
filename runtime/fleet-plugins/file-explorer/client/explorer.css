@@ -37,12 +37,6 @@
 /* 이동 실패·Shell 안내가 없으면 머리 줄도 서지 않는다. */
 .fexp-theater-head:empty { display: none; }
 
-.fexp-viewer-access-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-}
-
 .fexp-shell-notice,
 .fexp-navigation-error {
   display: flex;
@@ -170,12 +164,10 @@
 }
 
 .fexp-viewer-pane {
-  display: grid;
-  /* 탭 띠 · 경로 줄 · 읽기 전용/동작 안내 · 본문 · 메타 바.
-     선택적 오류도 안내 행 안에 두어 본문이 항상 남은 높이를 차지한다. */
-  grid-template-rows: auto 32px auto minmax(0, 1fr) auto;
-  /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  /* 파일이 여럿일 때만 탭 띠가 선다. 도구·안내·메타를 빼고 남은 높이는 본문 몫이다. */
+  container: fexp-viewer / inline-size;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -203,21 +195,19 @@
   white-space: nowrap;
 }
 
-/* ── 뷰어 문서 표식 ── */
-.fexp-viewer-doc-icon {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-}
-
 .fexp-view-mode {
   flex-shrink: 0;
   display: flex;
   gap: var(--space-1);
 }
 
+.fexp-view-mode-icon { display: none; }
+
 .fexp-view-mode button {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 24px;
   padding: 1px 8px;
   background: none;
@@ -270,36 +260,59 @@
 }
 .fexp-view-mode button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
-.fexp-viewer-access {
+.fexp-viewer-tools {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  padding: 4px 12px;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  border-bottom: 1px solid var(--surface-rim);
+  gap: 2px;
 }
 
-.fexp-viewer-access button {
-  padding: 4px 0;
-  border: none;
+.fexp-viewer-tool {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
   background: none;
-  color: var(--text-secondary);
-  font: inherit;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
   cursor: pointer;
 }
 
-.fexp-viewer-access button:hover,
-.fexp-viewer-access button:focus-visible {
-  color: var(--brass-ink);
+.fexp-viewer-tool:hover:not(:disabled) {
+  background: var(--control-wash);
+  color: var(--text-primary);
 }
 
-.fexp-viewer-access button:disabled {
-  color: var(--text-tertiary);
+.fexp-viewer-tool:disabled {
+  opacity: var(--control-disabled-opacity);
   cursor: wait;
 }
+
+.fexp-keep-open {
+  width: auto;
+  padding: 0 8px;
+  border: 1px dashed var(--surface-rim);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.fexp-preview-ring {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 5px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+}
+
+.fexp-viewer-notices { flex: 0 0 auto; }
 
 .fexp-viewer-action-error {
   padding: 4px 12px;
@@ -309,6 +322,7 @@
 
 .fexp-viewer-meta {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
@@ -325,28 +339,31 @@
   margin: 0 4px;
 }
 
-/* 브레드크럼 — 조각마다 자기까지의 경로를 집을 수 있는, 읽기가 아니라 조작의 표면. */
+.fexp-read-only {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 브레드크럼 — 폴더 조각은 줄이지 않는다. 좁은 열에서도 가로로 움직여 모두 집을 수 있다. */
 .fexp-viewer-crumb {
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
-  overflow: hidden;
+  overflow-x: auto;
+  scrollbar-width: none;
   white-space: nowrap;
   font-family: var(--font-code);
   font-size: var(--font-code-size);
 }
 
+.fexp-viewer-crumb::-webkit-scrollbar { display: none; }
+
 .fexp-crumb-part {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  min-width: 0;
-}
-
-/* 마지막 조각(파일명)만 줄임표를 감수한다 — 앞 조각은 자연 폭을 지킨다. */
-.fexp-crumb-part:last-child {
-  flex: 0 1 auto;
-  overflow: hidden;
 }
 
 .fexp-crumb-sep {
@@ -356,12 +373,9 @@
   flex-shrink: 0;
 }
 
-.fexp-crumb-seg.is-leaf {
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
-}
-
 .fexp-viewer-body {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   position: relative;
 }
@@ -1638,6 +1652,7 @@
 /* ── 호흡하는 탭 ── */
 .fexp-tabs-wrap {
   position: relative;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
@@ -1645,7 +1660,7 @@
   /* 확대 표면에서는 호스트의 부유 닫기가 오른쪽 위에 앉는다 — 넘침 메뉴 버튼이 그 밑에 깔리지
      않게 그만큼 비운다. 레일에서는 변수가 없어 0이다. */
   padding-right: var(--expanded-surface-float-inset, 0px);
-  border-bottom: 1px solid var(--surface-rim);
+  box-shadow: inset 0 -1px 0 var(--surface-rim);
 }
 
 .fexp-tabs {
@@ -1916,10 +1931,12 @@
 .fexp-viewer-head {
   position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 8px;
   border-bottom: 1px solid var(--surface-rim);
   background: var(--surface-glass);
 }
@@ -1987,7 +2004,11 @@
 }
 
 .fexp-crumb-ok {
-  flex: 0 0 auto;
+  position: absolute;
+  left: 8px;
+  padding: 2px 3px;
+  background: var(--surface-panel);
+  pointer-events: none;
   color: var(--positive-ink);
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
@@ -1997,6 +2018,18 @@
 
 .fexp-crumb-ok.is-shown {
   opacity: 1;
+}
+
+/* 좁은 레일은 글자 대신 이름 있는 아이콘을 쓴다. 경로 몫을 남기고 줄은 늘리지 않는다. */
+@container fexp-viewer (max-width: 360px) {
+  .fexp-viewer-head { gap: 2px; padding: 0 4px; }
+  .fexp-view-mode,
+  .fexp-viewer-tools { gap: 1px; }
+  .fexp-view-mode button,
+  .fexp-viewer-tool { width: 22px; padding: 0; }
+  .fexp-tool-label { display: none; }
+  .fexp-view-mode-icon { display: block; }
+  .fexp-crumb-ok { left: 4px; }
 }
 
 .fexp-tab-notice,
@@ -2148,6 +2181,7 @@
 .fexp-tabs-more:focus-visible,
 .fexp-crumb-seg:focus-visible,
 .fexp-crumb-copy:focus-visible,
+.fexp-viewer-tool:focus-visible,
 .fexp-more-btn:focus-visible,
 .fexp-empty-action:focus-visible,
 .fexp-state-action:focus-visible,
