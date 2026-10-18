@@ -214,3 +214,6 @@
 }
 
 [data-mobile-surface] .terminal-canvas { inset: calc(10px + var(--m-chrome-top, 0px)) 14px 10px; }
+
+/* 터미널 안 찾기 줄도 격자와 같이 막대 아래에 선다 — 막대 자리에 서면 입력칸과 단추가 막대에 가려 눌리지 않는다. */
+[data-mobile-surface] .terminal-search-bar { inset-block-start: calc(var(--space-2) + var(--m-chrome-top, 0px)); }

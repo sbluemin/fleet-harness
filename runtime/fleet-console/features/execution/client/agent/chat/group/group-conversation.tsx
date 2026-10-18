@@ -285,9 +285,13 @@ export function GroupLedgerFrame({ speaker, language, onBack, notice, children }
   readonly children: React.ReactNode;
 }) {
   const t = getGroupT(language);
+  // 폰 배치에서 머리 카드는 상단 막대 아래에 떠 있다 — 본문이 막대와 이 카드 뒤로 흐르고, 카드 높이(`--group-ledger-head`)만큼 위를 비운다.
+  const ledgerRef = React.useRef<HTMLDivElement | null>(null);
+  const headRef = React.useRef<HTMLDivElement | null>(null);
+  useChromeHeightProperty(headRef, ledgerRef, "--group-ledger-head");
   return (
-    <div className="group-ledger">
-      <div className="group-ledger-head">
+    <div ref={ledgerRef} className="group-ledger">
+      <div ref={headRef} className="group-ledger-head">
         <SpeakerMark speaker={speaker} size="sm" />
         <span className="group-ledger-banner" role="status">{t("group.ledger.banner", { name: speaker.name })}</span>
         {onBack ? <button type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}

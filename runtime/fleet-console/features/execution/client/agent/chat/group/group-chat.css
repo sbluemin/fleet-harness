@@ -990,6 +990,12 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 /* 진행 줄과 입력창은 대화 위에 떠 있는 독이다 — 면 대신 아래(바탕색)에서 위(투명)로 옅어지는 페이드가 경계를 대신한다. 진행 줄이 말하는 동안에는
    그 글자 뒤만 바탕색으로 받쳐 지나가는 말풍선 위에서도 읽힌다. */
 :root[data-view-mode="mobile"] .group-chat-dock { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; background: var(--m-fade-up, var(--m-bg)); }
+/* 원장 틀 — 폰 배치에서 머리 카드(「…의 원장 · 읽기 전용」 · 「대화로 돌아가기」)는 상단 막대 바로 아래에 떠 있는 카드다. 원장 본문(그 Operation 의
+   채팅 면은 틀 전체를 채운다)은 막대와 카드 뒤로 흐르고, 본문 안의 막대 몫(--m-chrome-top)을 「막대 + 간격 + 카드 높이」로 바꿔 첫 줄이 카드에
+   가리지 않는다(카드 높이 --group-ledger-head 는 틀이 잰다). 카드는 자기 면으로 읽히고 본문 위에 서서 눌린다. */
+:root[data-view-mode="mobile"] .group-ledger { position: relative; --group-ledger-inset: calc(var(--m-chrome-top, 0px) + var(--space-3) + var(--group-ledger-head, 0px)); }
+:root[data-view-mode="mobile"] .group-ledger-head { position: absolute; top: calc(var(--m-chrome-top, 0px) + var(--space-3)); right: 16px; left: 16px; z-index: 2; width: auto; margin: 0 auto; border-color: var(--m-hairline-strong); background: var(--m-surface); color: var(--m-text-muted); }
+:root[data-view-mode="mobile"] .group-ledger-body { --m-chrome-top: var(--group-ledger-inset); }
 :root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) { background: linear-gradient(to top, var(--m-bg) 65%, color-mix(in srgb, var(--m-bg) 0%, transparent)); }
 :root[data-view-mode="mobile"] .group-chat-log::-webkit-scrollbar { display: none; }
 :root[data-view-mode="mobile"] .group-chat-agent { grid-template-columns: 28px minmax(0, 1fr); max-width: none; }
