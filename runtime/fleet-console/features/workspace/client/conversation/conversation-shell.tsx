@@ -39,7 +39,7 @@ import { useClusterIndex, useOperationClusters } from "../operation-clusters.js"
 import { PluginOperationRenderer } from "../operation-renderer.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationCaptionRenderer, useConversationOperationRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { useConversationPillTakeover } from "./conversation-slots.js";
-import { PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
+import { PILL_MORPHING_CLASS, PillTakeoverLayer, usePillMorphWidth, usePillTakeoverPhase } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, useConversationSurface, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
@@ -963,6 +963,8 @@ function ConversationToolbar({ context, lead = null, band }: { readonly context:
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
     const measure = () => {
       frame = 0;
+      // pill 폭을 옮기는 중(pill-takeover)에는 붙든 일시 폭 때문에 안이 넘쳐 보인다 — 재판정을 멈추고, 끝나면(클래스 변화) 한 번 잰다.
+      if (row.querySelector(`:scope > .conversation-pill.${PILL_MORPHING_CLASS}`) !== null) return;
       // 이전 사용량 자리를 도구모음이 차지한다. 현재 도구 폭만큼 양쪽을 예약해 pill 을 가운데에 둔다.
       const reserve = () => {
         const right = Number.parseFloat(getComputedStyle(tools).right) || 0;

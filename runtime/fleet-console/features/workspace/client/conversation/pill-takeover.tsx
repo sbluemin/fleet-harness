@@ -12,6 +12,11 @@ import "./pill-takeover.css";
  * pill 은 바뀐 동안 원래 내용을 단추째 inert 로 두고 바뀐 내용을 제목 단추 밖의 형제로 세운다 — 단추 안에 단추를 겹치지 않는다.
  */
 export const PILL_MORPH_MS = 340;
+/**
+ * 폭을 옮기는 동안 pill 에 붙는 클래스 — 붙든 폭은 일시적이라 안 내용이 넘쳐 보인다(되돌아갈 때 원래 제목은 이미 흐름에 있는데 폭은
+ * 아직 바뀐 내용의 좁은 폭이다). 머리 줄의 자리 측정(도구 「⋯」 접기)은 이 동안 재판정을 멈추고, 클래스가 걷히면 한 번 다시 잰다.
+ */
+export const PILL_MORPHING_CLASS = "is-morphing";
 const PILL_MORPH_EASE = "cubic-bezier(.22, .8, .24, 1)";
 
 const reducedMotion = (): boolean =>
@@ -74,7 +79,8 @@ export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: strin
     element.style.transition = "none";
     element.style.width = "";
     const to = element.getBoundingClientRect().width;
-    if (reducedMotion() || Math.abs(to - from) < 0.5) { element.style.transition = ""; width.current = to; return; }
+    if (reducedMotion() || Math.abs(to - from) < 0.5) { element.style.transition = ""; element.classList.remove(PILL_MORPHING_CLASS); width.current = to; return; }
+    element.classList.add(PILL_MORPHING_CLASS);
     element.style.width = `${from}px`;
     void element.offsetWidth;
     element.style.transition = `width ${PILL_MORPH_MS}ms ${PILL_MORPH_EASE}`;
@@ -82,6 +88,7 @@ export function usePillMorphWidth(ref: RefObject<HTMLElement | null>, key: strin
     const timer = window.setTimeout(() => {
       element.style.width = "";
       element.style.transition = "";
+      element.classList.remove(PILL_MORPHING_CLASS);
       width.current = element.getBoundingClientRect().width;
     }, PILL_MORPH_MS + 40);
     return () => window.clearTimeout(timer);
