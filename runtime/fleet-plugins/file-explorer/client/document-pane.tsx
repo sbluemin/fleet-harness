@@ -89,6 +89,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const [tabsScrolled, setTabsScrolled] = useState(false);
   const [tabLine, setTabLine] = useState<{ readonly left: number; readonly width: number } | null>(null);
   const [tabsMenuOpen, setTabsMenuOpen] = useState(false);
+  const [imageMeta, setImageMeta] = useState<readonly string[]>([]);
   const [sourceModePaths, setSourceModePaths] = useState<ReadonlySet<string>>(new Set());
   const [crumbPop, setCrumbPop] = useState<CrumbPopState | null>(null);
   const [copied, setCopied] = useState(false);
@@ -317,7 +318,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
   const isMarkdownDoc = viewState.kind === "code" && viewState.lang === "markdown";
   const showSource = activePath !== null && sourceModePaths.has(`${contextScope}:${activePath}`);
   const showCodePane = viewState.kind === "code" && (!isMarkdownDoc || showSource);
-  const viewerMeta = viewState.kind === "code" ? buildViewerMetaParts(viewState, t) : [];
+  const viewerMeta = viewState.kind === "code" ? buildViewerMetaParts(viewState, t) : viewState.kind === "image" ? imageMeta : [];
   const chipHints = useMemo(() => chipDirHints(openDocs), [openDocs]);
   const crumbSegments = useMemo<readonly BreadcrumbSegment[]>(() => {
     if (!activePath) return [];
@@ -397,6 +398,13 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
     event.stopPropagation();
     closeStoredDocument(contextScope, activePath);
   }, [activePath, contextScope]);
+
+  // 넘침이 풀리거나 탭 띠가 사라지면(문서 하나만 남음) 트리거도 없어지므로 메뉴 상태도 접는다.
+  // 남겨 두면 트리거 없는 빈 메뉴가 떠 있고, 다음 넘침 때 저절로 다시 열린다.
+  const tabsMenuAvailable = openDocs.length > 1 && hiddenTabs.length > 0;
+  useLayoutEffect(() => {
+    if (!tabsMenuAvailable) setTabsMenuOpen(false);
+  }, [tabsMenuAvailable]);
 
   const hiddenDocs = hiddenTabs.map((index) => openDocs[index]).filter((doc): doc is OpenDocument => doc !== undefined);
 
@@ -664,7 +672,7 @@ export function FileExplorerDocumentPane(ctx: PaneContext) {
           />
         )}
         {viewState.kind === "image" && (
-          <ImageViewer src={viewState.src} name={viewState.name} sizeBytes={viewState.sizeBytes} t={t} />
+          <ImageViewer src={viewState.src} name={viewState.name} sizeBytes={viewState.sizeBytes} t={t} onMetaChange={setImageMeta} />
         )}
         {viewState.kind === "binary" && (
           <BinaryViewer name={viewState.name} t={t} />
