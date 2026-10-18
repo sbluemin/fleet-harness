@@ -1,8 +1,10 @@
 import type { AgentLedgerProps } from "@fleet-console/sdk/components/agent-chat-transcript";
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import { useChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { getT } from "../i18n/index.js";
+import { useMobileSurface } from "../mobile-surface.js";
 import { ChatReferenceContext } from "./chat-reference.js";
 import { TranscriptLines, useTranscriptReveal } from "./chat-transcript.js";
 import { MemberWidthButton, SessionCoordinate } from "./chat-view.js";
@@ -28,6 +30,11 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
   const readingWidth = useChatReadingWidth();
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const footRef = React.useRef<HTMLDivElement | null>(null);
+  // 모바일 화면이면 바닥 줄도 원장 위에 떠 있는 독이다 — 로그가 그 뒤까지 내려가고 바닥 줄 높이(`--m-dock-h`)만큼 아래를 비운다(chat.css).
+  // 이 원장의 값으로 적어 두어, 바깥 대화 면이 적은 독 높이를 물려받지 않는다.
+  const sectionRef = React.useRef<HTMLElement | null>(null);
+  const noTarget = React.useRef<HTMLElement | null>(null);
+  useChromeHeightProperty(footRef, useMobileSurface() ? sectionRef : noTarget, "--m-dock-h");
   const follow = React.useRef(true);
   // 사령관·사람은 화면 언어의 이름으로 부른다 — 대화 화면(`useLocalizedSnapshot`)과 같은 이름이다.
   const groupT = getGroupT(language);
@@ -49,6 +56,7 @@ export function AgentLedger({ speaker, theaterId, language, onBack, entries, rev
       <GroupLedgerFrame speaker={shown} language={language} onBack={onBack}>
         <div className="agent-ledger-host">
           <section
+            ref={sectionRef}
             className="agent-chat agent-ledger"
             data-reading-width={readingWidth}
             style={{ "--agent-chat-font": "var(--font-code)" } as React.CSSProperties}

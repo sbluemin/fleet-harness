@@ -4441,6 +4441,15 @@
 
 [data-mobile-surface] .agent-chat-log.is-inviting .agent-chat-hero { margin-block: 0; }
 
+/* 구성원·참여자 원장의 바닥 줄도 입력 독과 같이 대화 위에 떠 있다 — 데스크톱 패널의 헤어라인 대신 아래(바탕색)에서 위(투명)로 옅어지는
+   페이드가 경계를 대신하고, 로그가 그 뒤로 흐른다(독 높이는 chat-view·원장이 잰 --m-dock-h). */
+[data-mobile-surface] .agent-chat-member-foot {
+  position: relative;
+  z-index: 1;
+  border-top: 0;
+  background: var(--m-fade-up, var(--m-bg));
+}
+
 /* 입력 독(S-27) — 패딩 8/16/12, 둥근 입력창 하나. 아래 줄: [+] [모델·강도] · · · [멈춤] [보내기].
    독은 대화 위에 떠 있다 — 면 대신 아래(바탕색)에서 위(투명)로 옅어지는 페이드 하나가 경계를 대신하고, 입력창은 자기 면으로 읽힌다. */
 [data-mobile-surface] .agent-chat-composer {
