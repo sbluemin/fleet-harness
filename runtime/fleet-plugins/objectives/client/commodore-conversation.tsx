@@ -330,7 +330,7 @@ function CommodoreConversationBody({ theaterId, readOnly, language, onBack }: { 
   );
 }
 
-/** 머리 pill 옆 단추 묶음의 기록 비우기 — 실패는 가운데 본문의 실패 줄이 말한다. */
+/** 머리 pill 안의 기록 비우기 — 사령관 원장은 구성원 턴 접기 없이 서며, 실패는 가운데 본문의 실패 줄이 말한다. */
 function CommodoreConversationActions({ theaterId, language }: { readonly theaterId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   return (

@@ -1371,29 +1371,24 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* ── 대화 중심 화면(Console 실험 기능)의 사령관 ─────────────────────────────
    시트와 같은 기록·입력·구역을 가운데 칸과 오른쪽 패널에 세운다. 시트의 머리·구역 목록은 호스트의 머리 pill 과 패널 탭이 대신한다. */
 .objectives-commodore-conversation { position: relative; height: 100%; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-/* 기록 비우기 — 머리 pill 바로 옆 대화 동작 묶음(호스트의 .conversation-pill-actions, descriptor actions)에 선다. 단추는 그 묶음의
-   지구본과 같은 24px 평면 캡션 단추(.fleet-caption-action)이고 이름은 캡션 말풍선이 말한다. 32px 원형 단추는 이 자리에 쓰지 않는다. */
-/* 확인 문구는 단추 아래 작은 말풍선이다 — 묶음의 폭을 늘리지 않아 좁은 칸에서도 pill 이 밀려 찌그러지지 않는다. 확인을 기다리는 동안은
-   이름 말풍선이 물러나 둘이 겹치지 않는다. */
+/* 기록 비우기는 머리 pill 안이다. 두 번째 누름의 문구가 같은 버튼을 늘리고, 이름 말풍선은 잠시 물러난다. */
 .objectives-commodore-clear-wrap.is-caption { position: relative; display: inline-flex; margin-left: 0; }
 .objectives-commodore-clear-wrap.is-caption .objectives-commodore-clear-confirm {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: -4px;
-  z-index: 5;
-  padding: 4px 10px;
-  border: 1px solid color-mix(in oklch, var(--coral) 35%, var(--surface-rim));
-  border-radius: var(--radius-pill);
-  background: var(--surface-panel-raised);
-  box-shadow: var(--shadow-soft);
+  color: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
-  pointer-events: none;
 }
 .objectives-commodore-clear-wrap.is-caption:has(.is-armed) .fleet-caption-tip { opacity: 0; transition-delay: 0s; }
-/* 한 번 눌러 확인을 기다리는 동안은 파괴 쪽(coral) 잉크다 — 캡션 단추의 hover(brass)보다 앞선다. */
-.objectives-commodore-clear-wrap.is-caption > .fleet-caption-slot > .fleet-caption-action.is-armed {
-  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
-  background: color-mix(in oklch, var(--coral) 10%, transparent);
+/* 파괴 확인은 위치 채널의 hover 보다 앞서는 coral 상태다. 호스트 pill 제어의 크기도 함께 덮는다. */
+.conversation-pill-controls .objectives-commodore-clear-wrap.is-caption > .fleet-caption-slot > .fleet-caption-action.is-armed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  padding: 0 10px;
+  background: var(--coral-glow);
   color: var(--coral-ink);
 }
 .objectives-commodore-conversation-status { display: block; min-width: 0; margin-top: 6px; overflow: hidden; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); text-overflow: ellipsis; white-space: nowrap; }

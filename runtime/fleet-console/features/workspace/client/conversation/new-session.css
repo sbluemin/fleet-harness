@@ -10,27 +10,6 @@
   font-weight: var(--weight-medium);
 }
 
-.new-session-cancel {
-  flex: none;
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-.new-session-cancel svg { width: 14px; height: 14px; }
-.new-session-cancel:hover,
-.new-session-cancel:focus-visible {
-  background: var(--control-rest-hover);
-  color: var(--text-primary);
-  outline: none;
-}
-
 .new-session-body {
   flex: 1 1 auto;
   min-height: 0;

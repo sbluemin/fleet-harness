@@ -1092,6 +1092,9 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
       }
       // pill 안 내용이 pill 상자 밖으로 흐르면 들어가지 않은 것이다(마지막 내용의 오른쪽 끝 ≤ 상자 안쪽 오른쪽 끝).
       if (pill !== null) {
+        // 제목 문이 안쪽 동작을 밀거나 그 아래로 흐르면 아직 들어가지 않은 것이다.
+        const details = pill.querySelector<HTMLElement>(".conversation-pill-details");
+        if (details !== null && details.scrollWidth > details.clientWidth + 1) return false;
         const inner = [...pill.children].filter((child): child is HTMLElement => child instanceof HTMLElement && child.getClientRects().length > 0);
         const last = inner[inner.length - 1];
         const pillRect = pill.getBoundingClientRect();
@@ -1167,7 +1170,7 @@ function ConversationToolbar({ context, lead = null }: { readonly context: RailT
         // 하한으로도 모자라면 이름을 걷고 표식(아바타)만 원형 칩 가운데에 남긴다 — 상자가 내용을 자르면 표식이 한쪽으로 쏠린다.
         // 표식이 없는 pill 은 이름이 유일한 단서라 그대로 둔다.
         if (pill !== null && title !== null && !fits(pill, title)
-          && pill.querySelector(":scope > .conversation-pill-mark, :scope > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
+          && pill.querySelector(".conversation-pill-details > .conversation-pill-mark, .conversation-pill-details > .conversation-pill-surface-mark") !== null) pill.dataset.compact = "true";
       }
       setHidden((current) => sameHiddenTools(current, next) ? current : next);
     };
@@ -1330,7 +1333,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   }, [descriptor.defaultTab, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
-  // 대화의 동작은 Operation 대화처럼 보기 캡슐에 선다 — 이 줄 안에 있어야 Desktop 의 창 끌기 자리에서 빠져 눌린다.
+  // 대화의 동작은 Operation 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
   // 지구본은 도구 캡슐 맨 앞이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
@@ -1341,18 +1344,16 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <button type="button" className="conversation-pill" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
-          {avatar
-            ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
-            : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
-          <span className="conversation-pill-title">{title}</span>
-          {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
-        </button>
-        {hasActions ? (
-          <span className="conversation-pill-actions">
-            <PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary>
-          </span>
-        ) : null}
+        <div className="conversation-pill">
+          <button type="button" className="conversation-pill-details" onClick={onToggleDetails} aria-label={t("conversation.pill.detailsAria", { title })}>
+            {avatar
+              ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
+              : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
+            <span className="conversation-pill-title">{title}</span>
+            {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
+          </button>
+          {hasActions ? <span className="conversation-pill-controls"><PluginErrorBoundary fallback={null}>{actions}</PluginErrorBoundary></span> : null}
+        </div>
         {tools(browser)}
       </div>
       <div className="conversation-body is-surface">
@@ -1496,7 +1497,7 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
       <PluginOperationRenderer {...captionRender} render={descriptor.captionActions} />
     </PluginErrorBoundary>
   );
-  const hasViewCapsule = captionView !== null || viewSwitch !== null;
+  const hasPillControls = captionView !== null || viewSwitch !== null;
   // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Operation 의 합집합, 지휘관 제외.
   // 묶음의 노드(임무 칸·살아 있는 구성원)는 명부가 아니다. 명부는 구조 없는 묶음(임무·떠 있는 구성원 없이 세션 없는 구성원만 있는
   // 목표)에도 서므로 rootOf 가 아니라 묶음 전체에서 찾는다 — 「구성원」 탭과 같은 길이다.
@@ -1508,24 +1509,24 @@ function ConversationColumn({ state, operation, language, operationKinds, onTogg
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <button
-          type="button"
-          className="conversation-pill"
-          onClick={onToggleDetails}
-          aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
-        >
-          <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
-          <span className="conversation-pill-title">{operation.title}</span>
-          {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
-          {memberCount > 0 ? (
-            <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
-          ) : null}
-        </button>
-        {/* Operation 메뉴(「...」)는 이 줄에 세우지 않는다 — 같은 메뉴가 사이드바 줄의 우클릭으로 열린다.
-            자식 사이에 공백 텍스트가 있으면 칸이 모두 null 일 때도 :empty 가 빈 캡슐을 못 걷는다. */}
-        {hasViewCapsule || shelf !== null ? (
-          <span className="conversation-pill-actions"><OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />{captionView}{viewSwitch}{shelf}</span>
-        ) : null}
+        <div className="conversation-pill">
+          <button
+            type="button"
+            className="conversation-pill-details"
+            onClick={onToggleDetails}
+            aria-label={t("conversation.pill.detailsAria", { title: operation.title })}
+          >
+            <OperationAvatar operation={operation} state={operationMongleState(operation.id, state, clusterIndex.clusters)} size={20} label={operation.title} decorative className="conversation-pill-mark" />
+            <span className="conversation-pill-title">{operation.title}</span>
+            {bodyOwner !== operation ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.operationId === bodyOwner.id)?.name ?? clusterRoot?.formation.byOperationId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
+            {memberCount > 0 ? (
+              <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
+            ) : null}
+          </button>
+          {hasPillControls ? <span className="conversation-pill-controls">{captionView}{viewSwitch}</span> : null}
+        </div>
+        {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Operation 메뉴는 사이드바 우클릭이 맡는다. */}
+        <span className="conversation-caption-shelf"><OperationCaptionContributions operation={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에

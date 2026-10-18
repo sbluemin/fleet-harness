@@ -183,7 +183,7 @@
 .conversation-pill {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 0;
   min-width: 0;
   max-width: min(620px, 100%);
   height: 38px;
@@ -193,16 +193,15 @@
   box-shadow: var(--shadow-soft);
   color: var(--text-primary);
   font-family: var(--font-ui);
-  cursor: pointer;
-  padding: 0 var(--space-4) 0 var(--space-3);
+  padding: 0 4px 0 var(--space-3);
   /* 내용 위에 떠 있으므로 자기 면으로 글자를 읽히게 한다. */
   backdrop-filter: blur(14px);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
 }
 
-.conversation-pill:hover,
-.conversation-pill:focus-visible {
+.conversation-pill:has(.conversation-pill-details:hover),
+.conversation-pill:has(.conversation-pill-details:focus-visible) {
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong));
   outline: none;
 }
@@ -243,37 +242,49 @@
   white-space: nowrap;
 }
 
-/* 대화 열의 pill 내용은 상자 밖으로 흐르지 않는다 — 이웃 단추(턴 접기 등)와 겹치지 않게. 줄이 모자라면 부제가 먼저 하한까지 말줄임으로
-   줄고, 그래도 모자라면 도구모음 측정이 도구를 「⋯」로 걷고, 그다음 이름이 하한까지 준다. 그 하한들로도 모자란 마지막 경우에만 상자가
-   내용을 자른다. */
-.conversation-column > .conversation-pill-row > .conversation-pill { overflow: hidden; }
-
-/* 이름의 하한으로도 줄이 모자라면 이름을 걷고 표식(아바타)만 원형 칩 가운데에 남긴다(도구모음 측정이 data-compact 를 단다). */
-.conversation-column > .conversation-pill-row > .conversation-pill[data-compact="true"] {
-  flex: none;
-  justify-content: center;
-  width: 38px;
+/* 제목과 동작은 같은 pill 의 형제 버튼이다. 제목만 줄고, 동작 과녁과 말풍선은 잘리지 않는다. */
+.conversation-pill-details {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 36px;
+  overflow: hidden;
   padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
+.conversation-pill-details:focus-visible { outline: 1px solid var(--brass); outline-offset: 2px; }
+.conversation-pill:not(:has(.conversation-pill-controls button)) { padding-right: var(--space-4); }
 
+/* 이름을 걷어도 pill 안의 동작은 남는다. 표식과 동작의 폭만큼만 쓰는 마지막 축약 단계다. */
+.conversation-column > .conversation-pill-row > .conversation-pill[data-compact="true"] { flex: none; }
+.conversation-pill[data-compact="true"] .conversation-pill-details { flex: none; }
 .conversation-pill[data-compact="true"] :is(.conversation-pill-title, .conversation-pill-sub) { display: none; }
 
-.conversation-pill-actions {
+.conversation-pill-controls,
+.conversation-caption-shelf {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 2px 3px;
-  /* 밑으로 흐르는 말풍선과 갈리게 가장자리를 옅은 테두리로 닫는다 — 말풍선이 겹치면 상자가 늘어난 것처럼 읽혔다. */
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--conversation-surface) 88%, transparent);
-  backdrop-filter: blur(14px);
+  gap: 0;
 }
-
-/* 보기 캡슐의 칸이 모두 비면(휴면 세션·구성원 없는 대화에서 전환도 없을 때) 빈 테두리만 남기지 않는다.
-   자식 사이의 공백 텍스트가 있으면 :empty 가 실패하므로, 그 캡슐의 자식은 붙여 쓴다. */
-.conversation-pill-actions:empty { display: none; }
+.conversation-pill-controls::before {
+  content: "";
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 2px 0 6px;
+  background: var(--surface-rim);
+}
+.conversation-pill-controls:not(:has(button)),
+.conversation-caption-shelf:empty { display: none; }
+/* Console Use·Computer Use 와 시선 말풍선은 면 없는 선반에 선다 — 별도 동작 캡슐을 되살리지 않는다. */
+.conversation-caption-shelf { gap: 2px; }
 
 /* 공통 도구모음 — 대화 동작 묶음 오른쪽의 같은 캡슐이다(Theater 도구 │ Console 도구 ⋯). 글리프는 레일 도구(RailIcon) 그대로이고,
    켜짐은 대상 탭과 같은 문법(테두리 링 + 위치 채널 brass 글리프)이다. 넘치는 도구는 오른쪽 끝부터 「⋯」 메뉴로 걷힌다
@@ -442,15 +453,40 @@
   color: var(--agent-control-badge-ink);
 }
 
+/* pill 안의 보기 제어는 위치 채널이다 — 턴을 읽는 방식의 눌림을 brass-quiet 로 표시한다. */
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+}
+.conversation-pill-controls .fleet-caption-action svg { width: 15px; height: 15px; }
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:hover:not(:disabled) { background: var(--control-rest-hover); }
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"],
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:focus-visible {
+  color: var(--brass-quiet-ink);
+  background: color-mix(in oklch, var(--brass-quiet) 14%, transparent);
+}
+.conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:focus-visible { outline: 1px solid var(--brass); outline-offset: 1px; }
+
 @media (forced-colors: active) {
   .conversation-column > .conversation-pill-row .fleet-caption-action:hover:not(:disabled),
-  .conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible {
+  .conversation-column > .conversation-pill-row .fleet-caption-action:focus-visible,
+  .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:hover:not(:disabled),
+  .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action:focus-visible {
     outline: 1px solid Highlight;
     background: transparent;
     color: Highlight;
   }
 
-  .conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"] {
+  .conversation-column > .conversation-pill-row .fleet-caption-action[aria-pressed="true"],
+  .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"],
+  .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:hover:not(:disabled),
+  .conversation-column > .conversation-pill-row .conversation-pill-controls .fleet-caption-action[aria-pressed="true"]:focus-visible {
     background: SelectedItem;
     color: SelectedItemText;
     border-color: SelectedItem;
