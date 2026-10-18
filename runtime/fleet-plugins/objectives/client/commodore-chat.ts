@@ -420,7 +420,8 @@ export interface CommodoreObjectiveIndex {
 
 /**
  * 줄이 가리키는 목표 — 이름은 지금 보드의 제목이다(기록의 제목 인자는 추가·이름 바꾸기에만 있다). 찾은 목표는 열 수 있고, 지워졌거나
- * 합쳐진 목표는 이름만 남는다. 끝난 목표까지 읽었는데 없으면 지워진 목표다 — 아직 못 읽었으면 지웠다고 말하지 않고 id 를 둔다.
+ * 합쳐진 목표는 이름만 남는다. 끝난 목표까지 읽었는데 없으면 보드에 없는 목표다 — 지워졌을 수도, 끝나기 전에 보관됐을 수도 있어(보관은
+ * 되돌릴 수 있다) 지웠다고 단정하지 않는다. 아직 못 읽었으면 id 를 둔다.
  * 목표 id 가 없는 줄(추가·정리·병합)은 기록의 제목만 글자로 선다.
  */
 function objectiveTarget(t: T, index: CommodoreObjectiveIndex, objectiveId: string | undefined, title: string | undefined): { readonly id?: string; readonly label?: string } {

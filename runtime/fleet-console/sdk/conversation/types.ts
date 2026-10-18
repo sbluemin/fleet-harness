@@ -136,7 +136,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
   /**
    * `target` — 여러 목표를 오가는 기록(사령관 대화)에서 이 줄이 가리키는 목표. 있으면 줄은 그 이름(`label`)과 지휘관 얼굴을 싣고,
    * 이유(`text`)가 없으면 접지 않는다 — 열 목표(`id`)가 있으면 줄 전체가 그 목표를 여는 단추이고, 없으면(id 없는 추가·정리·병합,
-   * 지워진 목표) 글자 줄이다. 없으면 한 목표 안의 줄(그룹 대화)이라 이유를 펼치는 지금의 줄이다.
+   * 보드에 없는 목표) 글자 줄이다. 없으면 한 목표 안의 줄(그룹 대화)이라 이유를 펼치는 지금의 줄이다.
    * `status` — 행위 낱말·이름 뒤에 따로 서는 결말(답을 기다림·실패 사유). `failed` 면 신호 잉크다.
    */
   | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true } }

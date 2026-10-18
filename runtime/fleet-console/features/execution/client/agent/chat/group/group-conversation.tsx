@@ -1013,7 +1013,7 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
 /**
  * 여러 목표를 오가는 기록(사령관 대화)의 행위 줄 — 「사령관 · 행위 · (지휘관 얼굴) 목표 이름 · 결말 시각」. 얼굴은 대화의 참조 표식이
  * 그린다(보드와 같은 지휘관 얼굴). 이유가 있으면(질문·답) 펼치고 그 안에 목표를 여는 낱말을 둔다. 이유가 없으면 접지 않는다 — 열 목표가
- * 있으면 줄 전체가 그 목표를 여는 단추이고, 없으면(id 없는 추가·정리·병합, 지워진 목표) 눌리는 척하지 않는 글자 줄이다.
+ * 있으면 줄 전체가 그 목표를 여는 단추이고, 없으면(id 없는 추가·정리·병합, 보드에 없는 목표) 눌리는 척하지 않는 글자 줄이다.
  */
 function BoardActionTargetLine({ entry, target, language, time, action, onOpenRecord, label, mark }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "board-action" }>;
