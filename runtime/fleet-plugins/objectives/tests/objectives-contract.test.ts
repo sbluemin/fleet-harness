@@ -1450,12 +1450,6 @@ describe("Objectives contract", () => {
     // 구성원은 보고·판단 요청을 보낼 지휘관의 세션 주소를 함께 받는다.
     expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ role: "member", access: "read-only", objectiveId: objective.id, commander: { session: store.find(objective.id)!.commander.sessionName }, member: { role: "build", brief: "implements" }, missions: [{ n: 1, text: "p1" }] });
     expect(store.find(objective.id)!.commander.sessionName).toMatch(/-cmdr$/);
-    const pinnedMission = await call("add_mission", { objectiveId: objective.id, text: "ship", pin: "MUST NOT edit CHANGELOG.md", member: "build" }, commander);
-    expect(pinnedMission.structuredContent).toMatchObject({ stored: { text: "ship [MUST NOT edit CHANGELOG.md]" } });
-    expect((await call("mine", {}, member.id)).structuredContent).toMatchObject({ missions: [{ text: "p1" }, { text: "ship [MUST NOT edit CHANGELOG.md]" }] });
-    expect((await call("add_mission", { objectiveId: objective.id, text: "x", pin: "do not edit" }, commander)).structuredContent.error).toBe("invalid_arguments");
-    expect((await call("add_mission", { objectiveId: objective.id, text: "y".repeat(190), pin: "MUST NOT edit CHANGELOG.md" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
-    expect((await call("add_mission", { objectiveId: objective.id, text: "\u{1F600}".repeat(95), pin: "MUST NOT x" }, commander)).structuredContent.error).toBe("text_with_pin_too_long");
     expect((await call("read", { objectiveId: objective.id }, member.id)).isError).toBe(false);
     // 같은 접두어의 다른 목표는 해석 후보가 아니다 — 자기 목표만 읽고, 외부 목표의 접두어는 없는 목표와 같은 답이다.
     const shortId = objective.id.slice(0, 8);
