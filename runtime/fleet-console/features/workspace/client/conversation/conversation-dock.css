@@ -7,7 +7,6 @@
   padding: 12px;
   min-width: 0;
 }
-.operations-side-bar.is-closed .conversation-dock { display: none; }
 .conversation-dock-host { position: relative; flex: none; }
 .conversation-dock-avatar {
   position: relative;

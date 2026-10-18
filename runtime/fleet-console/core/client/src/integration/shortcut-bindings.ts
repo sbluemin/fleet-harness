@@ -30,7 +30,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   // Ctrl+N 이 터미널의 다음 기록 키와 겹친다. ⌘J·Ctrl+Space 는 터미널을 보다가 떠오른 지시를 그 자리에서 쓰는 손버릇이고,
   // ⇧⌘O 는 기본 목록에 없던 빈 자리이며 브라우저가 페이지에 넘기는 조합이다.
   { id: "console.new-session", group: "console", descriptionKey: "shortcuts.console.newSession", defaults: ["Mod+KeyJ", "Ctrl+Space", "Mod+Shift+KeyO"] },
-  { id: "console.toggle-sidebar", group: "console", descriptionKey: "shortcuts.console.toggleSidebar", defaults: ["Mod+KeyB"] },
   { id: "console.toggle-global-shell", group: "console", descriptionKey: "shortcuts.console.toggleGlobalShell", defaults: ["Ctrl+Backquote"], railEntryId: "global-shell" },
   { id: "console.toggle-repository", group: "console", descriptionKey: "shortcuts.console.toggleRepository", defaults: ["Mod+Shift+KeyE"], railEntryId: "repository" },
   { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },

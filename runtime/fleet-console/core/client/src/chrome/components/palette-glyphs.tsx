@@ -27,7 +27,6 @@ const LINE_GLYPHS: Readonly<Record<Exclude<PaletteGlyphId, "theater-avatar" | "r
   "operation-group": <Glyph><path d="M2.5 8.2V3.5a1 1 0 0 1 1-1h4.7l5.3 5.3-5.7 5.7z" /><circle cx="5.5" cy="5.5" r=".9" fill="currentColor" stroke="none" /></Glyph>,
   "operation-accent": <Glyph><path d="M8 2.5s4 4.2 4 7a4 4 0 0 1-8 0c0-2.8 4-7 4-7z" /></Glyph>,
   "view-status-axis": <Glyph><rect x="2.5" y="2.5" width="11" height="3.2" rx="1" /><rect x="2.5" y="6.4" width="11" height="3.2" rx="1" /><rect x="2.5" y="10.3" width="11" height="3.2" rx="1" /></Glyph>,
-  "console-sidebar": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M5.5 2.5v11" /></Glyph>,
   "console-rail": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M10.5 2.5v11" /></Glyph>,
   "console-band": <Glyph><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M2.5 5.5h11" /></Glyph>,
   "console-theme": <Glyph><circle cx="8" cy="8" r="5.5" /><path d="M8 2.5v11A5.5 5.5 0 0 0 8 2.5z" fill="currentColor" stroke="none" /></Glyph>,

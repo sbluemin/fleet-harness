@@ -39,7 +39,7 @@ export type PaletteGlyphId =
   | "theater-avatar" | "theater-add" | "operation-new"
   | "operation-open" | "operation-resume" | "operation-archive" | "operation-rename" | "operation-group" | "operation-accent"
   | "view-status-axis"
-  | "rail-entry" | "console-sidebar" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
+  | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
 
 export type PaletteCommandAction =
   | { readonly kind: "undo-close" }
@@ -51,7 +51,6 @@ export type PaletteCommandAction =
   | { readonly kind: "open-archive" }
   | { readonly kind: "toggle-status-axis" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
-  | { readonly kind: "toggle-sidebar" }
   | { readonly kind: "switch-theme"; readonly theme: ThemeId }
   | { readonly kind: "open-settings" }
   | { readonly kind: "open-keyboard-shortcuts" }
@@ -185,7 +184,6 @@ export function buildPaletteCommands(
       ...(panel.icon === undefined ? {} : { railIcon: panel.icon }),
     });
   }
-  push({ commandId: "toggle-sidebar", label: t("palette.toggleSidebar"), aliasLabel: alias("palette.toggleSidebar"), action: { kind: "toggle-sidebar" }, group: "console", glyph: "console-sidebar", shortcut: "console.toggle-sidebar" });
   for (const theme of buildPaletteThemes(t)) {
     push({ commandId: `switch-theme:${theme.id}`, label: t("palette.switchTheme", { label: theme.label }), aliasLabel: alias("palette.switchTheme", { label: theme.label }), current: theme.id === current.activeTheme, action: { kind: "switch-theme", theme: theme.id }, group: "console", glyph: "console-theme" });
   }

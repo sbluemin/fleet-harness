@@ -48,7 +48,7 @@ import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/operations-sse.js";
 import { closeKeyboardShortcuts, closeOperationSearch, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity } from "../integration/store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
-import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
+import { subscribeOperationActivityTracking } from "../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
@@ -439,17 +439,6 @@ function ConnectedApp() {
 
   useEffect(() => {
     return installConsoleGlobalShortcuts({
-      getSideBarCollapsed: () => getSideBarState().collapsed,
-      setSideBarCollapsed: (collapsed) => {
-        const outcome = resolvePanelShortcut();
-        if (outcome === "suppress") return;
-        if (outcome === "reveal") {
-          navigate("/operations");
-          setSideBarCollapsed(false);
-          return;
-        }
-        setSideBarCollapsed(collapsed);
-      },
       openOperationSearch,
       closeOperationSearch,
       getOperationSearchMode: () => getState().operationSearchMode,

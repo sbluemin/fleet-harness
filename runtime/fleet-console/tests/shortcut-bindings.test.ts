@@ -8,18 +8,19 @@ function key(overrides: Partial<{ code: string; key: string; metaKey: boolean; c
 
 describe("shortcut bindings", () => {
   it("dispatches the user's rebinding instead of the default and keeps modifiers exact", () => {
-    setShortcutOverrides({ "console.toggle-sidebar": ["Mod+Shift+KeyB"] });
+    setShortcutOverrides({ "console.search-operations": ["Mod+Shift+KeyK"] });
+    const k = (overrides: Parameters<typeof key>[0]) => key({ code: "KeyK", key: "k", ...overrides });
     try {
-      const [chord] = resolveShortcutChords("console.toggle-sidebar");
-      expect(chord).toBe("Mod+Shift+KeyB");
-      expect(matchesChord(key({ metaKey: true, shiftKey: true }), chord!, true)).toBe(true);
-      // 기본값 ⌘B는 더 이상 이 명령이 아니다 — 수식키가 남거나 모자라면 발화하지 않는다.
-      expect(matchesChord(key({ metaKey: true }), chord!, true)).toBe(false);
-      expect(matchesChord(key({ metaKey: true, shiftKey: true, altKey: true }), chord!, true)).toBe(false);
+      const [chord] = resolveShortcutChords("console.search-operations");
+      expect(chord).toBe("Mod+Shift+KeyK");
+      expect(matchesChord(k({ metaKey: true, shiftKey: true }), chord!, true)).toBe(true);
+      // 기본값 ⌘K는 더 이상 이 명령이 아니다 — 수식키가 남거나 모자라면 발화하지 않는다.
+      expect(matchesChord(k({ metaKey: true }), chord!, true)).toBe(false);
+      expect(matchesChord(k({ metaKey: true, shiftKey: true, altKey: true }), chord!, true)).toBe(false);
     } finally {
       setShortcutOverrides({});
     }
-    expect(resolveShortcutChords("console.toggle-sidebar")).toEqual(["Mod+KeyB"]);
+    expect(resolveShortcutChords("console.search-operations")).toEqual(["Mod+KeyK"]);
   });
 
   it("does not let an AltGr character keystroke fire a Ctrl+Alt binding on non-Apple platforms", () => {

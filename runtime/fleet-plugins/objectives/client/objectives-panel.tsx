@@ -278,7 +278,7 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
 
   if (!theaterId) return <div className="objectives-container"><div className="objectives-root"><div className="objectives-pick-pane"><div className="objectives-pick"><p>{t("objectives.objectives.emptyTheater")}</p></div></div></div></div>;
 
-  // 사이드바가 보이면 트리는 거기 있다. 접혀 있거나 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
+  // 사이드바가 보이면 트리는 거기 있다. 사이드바가 없는 자리(모바일)에서만 ⌄ 가 선다.
   const switcher = ctx.sideBarVisible === true ? null : (
     <ObjectiveSwitcher
       t={t}
@@ -324,11 +324,10 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         </div>
         <div className="objectives-pick" data-objectives-tour="pick">
           <h5>{t("objectives.pick.title")}</h5>
-          {/* 트리가 사이드바에 없으면 「사이드바에서 고르라」는 말이 틀린다 — 접혔다고 밝히고(사이드바가 없는 자리에서는 생략) 목록을 여는 입구를 둔다. */}
-          <p>{switcher ? [
-            ctx.sideBarVisible === false ? t("objectives.pick.collapsed") : null,
-            t(requests.length || reviews.length ? "objectives.pick.openHintShortcuts" : "objectives.pick.openHint"),
-          ].filter(Boolean).join(" ") : t("objectives.pick.body")}</p>
+          {/* 트리가 사이드바에 없으면 「사이드바에서 고르라」는 말이 틀린다 — 목록을 여는 입구를 둔다. */}
+          <p>{switcher
+            ? t(requests.length || reviews.length ? "objectives.pick.openHintShortcuts" : "objectives.pick.openHint")
+            : t("objectives.pick.body")}</p>
           {requests.length || reviews.length || switcher ? (
             <div className="objectives-pick-shortcuts">
               {requests.map((objective) => <button key={objective.id} type="button" onClick={() => setSelected(objective.id)}>{t("objectives.pick.request", { title: objective.title })}</button>)}

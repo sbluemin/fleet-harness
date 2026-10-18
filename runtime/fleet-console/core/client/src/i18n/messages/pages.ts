@@ -399,7 +399,6 @@ export const pagesEn = {
   "palette.setAccent": "Set accent…",
   "palette.openPanel": "Open panel: {title}",
 
-  "palette.toggleSidebar": "Toggle sidebar",
   "operations.addTheaterFailed": "Couldn't add the Theater",
   "palette.switchTheme": "Switch theme: {label}",
   "palette.openSettings": "Open Settings",
@@ -412,7 +411,6 @@ export const pagesEn = {
   "shortcuts.console.searchOps": "Go to an Operation, file, or document",
   "shortcuts.console.commandPalette": "Open Command Palette",
   "shortcuts.console.newSession": "New session",
-  "shortcuts.console.toggleSidebar": "Toggle the left sidebar",
   "shortcuts.console.toggleGlobalShell": "Toggle Shell",
   "shortcuts.console.toggleRepository": "Toggle Repository",
   "shortcuts.console.toggleObjectives": "Toggle Objectives",
@@ -1035,7 +1033,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.setAccent": "액센트 설정…",
   "palette.openPanel": "패널 열기: {title}",
 
-  "palette.toggleSidebar": "사이드바 전환",
   "operations.addTheaterFailed": "Theater를 추가하지 못했습니다",
   "palette.switchTheme": "테마 전환: {label}",
   "palette.openSettings": "설정 열기",
@@ -1047,7 +1044,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "shortcuts.console.searchOps": "Operation·파일·문서로 이동",
   "shortcuts.console.commandPalette": "커맨드 팔레트 열기",
   "shortcuts.console.newSession": "새 세션",
-  "shortcuts.console.toggleSidebar": "왼쪽 사이드바 전환",
   "shortcuts.console.toggleGlobalShell": "Shell 열기/닫기",
   "shortcuts.console.toggleRepository": "Repository 열기/닫기",
   "shortcuts.console.toggleObjectives": "목표 열기/닫기",
