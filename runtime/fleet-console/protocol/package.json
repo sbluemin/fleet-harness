@@ -14,6 +14,11 @@
       "import": "./desktop/index.ts",
       "default": "./desktop/index.ts"
     },
+    "./desktop/console-section": {
+      "types": "./desktop/console-section.ts",
+      "import": "./desktop/console-section.ts",
+      "default": "./desktop/console-section.ts"
+    },
     "./lifecycle": {
       "types": "./lifecycle/index.ts",
       "import": "./lifecycle/index.ts",

@@ -886,56 +886,9 @@
   color: var(--brass-bright);
 }
 
-/* 호스트 스위처 — 원격 글리프. 모양·겨눔·열림은 작은 아이콘 칸(.command-band-button)과 같은 문법을 입고,
-   여기서는 상태 잉크와 공유 점만 더한다. */
-.host-switcher { position: relative; display: flex; }
-
-.host-switcher-chip.is-away { color: var(--aurora-ink); }
-.host-switcher-chip.is-shared { color: var(--warn-ink); }
-
-.host-switcher-dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--surface-rim-strong);
-  border-radius: 50%;
-}
-
-/* 글리프 위의 점 — 집을 떠나 있거나(aurora) 제어를 나눠 준 때(warn)만 모서리에 선다. 쉬는 로컬에서는
-   아무 색도 두지 않는다: 늘 켜진 점은 아무것도 말하지 않는다. */
-.host-switcher-chip > .host-switcher-dot {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 6px;
-  height: 6px;
-  border-width: 1px;
-}
-
-.host-switcher-dot.is-shared { border-color: var(--warn); background: var(--warn); box-shadow: 0 0 10px var(--warn-glow); }
-
-/* 판 외피는 옆 도움말 메뉴(.command-band-system-menu)와 같다 — 호스트·도움말 두 메뉴는 같은 물건으로 읽혀야 한다. */
-.host-switcher-panel {
-  position: absolute;
-  z-index: 40;
-  top: calc(100% + 8px);
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  width: max-content;
-  min-width: 16.5rem;
-  padding: 6px;
-  /* 공통 팝업 표면(theme.css --popover-*) — 불투명 면 한 장, 글자색 14% 테두리, 그림자 하나. */
-  border: 1px solid var(--popover-rim);
-  border-radius: var(--radius-lg);
-  background: var(--popover-face);
-  box-shadow: var(--popover-shadow);
-}
-
 /* 메뉴 항목에서 연 판은 그 항목 옆에 서는 서브메뉴다. 사이드바가 넘치는 것을 잘라 내므로 창에 고정해 세우고,
    자리(left·top·max-height)는 useSideSubmenu가 항목의 자리에서 잰다. 도움말 판도 같은 클래스다.
    외피는 위와 같은 공통 팝업 표면이다. */
-.host-switcher-panel.is-side-submenu,
 .command-band-system-menu.is-side-submenu {
   position: fixed;
   z-index: 91;
@@ -944,87 +897,6 @@
   bottom: auto;
   overflow-y: auto;
 }
-.host-switcher-panel.is-side-submenu { max-width: calc(100vw - 24px); }
-
-/* 구역 제목은 한국어로도 읽히는 문장체다 — 자간을 벌린 대문자는 "이 컴퓨터"를 낱자로 흩뜨린다. */
-.host-switcher-heading {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding: var(--space-2) 12px 6px;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-regular);
-}
-
-/* 호스트 줄은 하나의 모양뿐이다 — 이름 / 주소 두 줄, 오른쪽 한 자리에 상태 낱말과 현재 체크.
-   현재 줄은 공통 팝업의 선택 문법(중립 워시 + 본문색 체크)으로만 말하고, 왼쪽 띠나 줄머리 점은 두지 않는다. */
-.host-switcher-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "name trail" "detail trail";
-  align-items: center;
-  column-gap: 10px;
-  min-height: 52px;
-  padding: 6px 12px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  transition: background-color var(--duration-fast) var(--ease-glide);
-}
-
-/* 고를 수 없는 줄은 native disabled가 아니라 aria-disabled다(현재 줄과 같은 문법) — 포커스는 받되 hover 채움은 입지 않는다. */
-.host-switcher-row:hover:not([aria-disabled="true"]):not(.is-current) { background: var(--wash-hover); }
-.host-switcher-row:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
-
-.host-switcher-row.is-current {
-  background: var(--wash-selected);
-  cursor: default;
-}
-.host-switcher-row[aria-disabled="true"]:not(.is-current) { cursor: not-allowed; }
-/* 고를 수 없는 줄은 이름과 주소만 물러선다 — 왜 고를 수 없는지 말하는 상태 낱말은 그대로 읽혀야 한다. */
-.host-switcher-row[aria-disabled="true"]:not(.is-current) > :not(.host-switcher-trail) { opacity: var(--control-disabled-opacity); }
-
-.host-switcher-name {
-  grid-area: name;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--t-base);
-  font-weight: var(--weight-regular);
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.host-switcher-detail {
-  grid-area: detail;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
-.host-switcher-trail {
-  grid-area: trail;
-  display: inline-flex;
-  align-items: center;
-  justify-self: end;
-  gap: 6px;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-sm);
-  white-space: nowrap;
-}
-
-.host-switcher-trail svg { color: var(--text-primary); }
-.host-switcher-trail .is-coral { color: var(--coral-ink); }
-.host-switcher-trail .is-warn { color: var(--warn-ink); }
-
 /* ── 성숙도 표식 ───────────────────────────────────────────────────────
    "아직 바뀔 수 있다"는 상태이므로 warn 채널을 쓴다. brass는 위치·포커스 전용이라 여기 오지
    않는다. 같은 자리에 놓이는 보안 경고(.remote-danger)와는 다른 것을 말하므로 문법도 분리해
@@ -1044,28 +916,6 @@
   white-space: nowrap;
   vertical-align: middle;
 }
-
-.host-switcher-divider { height: 1px; margin: 5px 4px; background: var(--popover-divider); }
-
-/* 동작 줄은 도움말 메뉴 항목과 같은 글리프 + 본문 문법이다 — 메뉴 행은 한 가지 글자만 쓴다. */
-.host-switcher-link {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: var(--popover-row);
-  padding: 0 12px;
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-base);
-  font-weight: var(--weight-regular);
-  text-align: left;
-}
-
-.host-switcher-link svg { width: 16px; height: 16px; flex: none; color: var(--text-secondary); }
-.host-switcher-link:hover { background: var(--wash-hover); }
-.host-switcher-link:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: -2px; }
 
 /* ── 집이 펼친 호스트 목록 표면 ────────────────────────────────────────
    원격 콘솔을 보고 있을 때 목록은 집이 그려 이 위에 얹힌다. 판 자체는 위와 같은 문법을 쓰고,
@@ -1088,26 +938,6 @@
 
 /* 메뉴 항목 옆에 선 판은 서브메뉴다 — 아래에 깔린 부모 메뉴가 그대로 보여야 같은 메뉴의 한 단으로 읽힌다. */
 .host-picker-surface[data-place="side"] { background: transparent; }
-
-/* 칩이 없는 표면이라 판을 매달 기준점도 없다 — 흐름에 그대로 세운다. */
-.host-picker-surface .host-switcher.is-picker-surface { position: static; display: contents; }
-.host-picker-surface .host-switcher-panel {
-  position: static;
-  max-height: 100%;
-  overflow-y: auto;
-}
-
-/* 칩의 자리를 받았으면 판은 그 칩에 매달린다(host-picker-surface.tsx가 자리를 잰다). 자리를 받지
-   못한 호출만 위의 모서리 배치로 남는다. */
-.host-picker-surface[data-anchored="true"] .host-switcher-panel {
-  position: fixed;
-  top: var(--picker-top, auto);
-  right: auto;
-  bottom: var(--picker-bottom, auto);
-  left: var(--picker-left, auto);
-  max-width: calc(100vw - 2 * var(--space-3));
-  max-height: var(--picker-max-height, 100%);
-}
 
 /* ── 콘솔 추가 팝업 ───────────────────────────────────────────────────
    스위처와 설정의 "콘솔 추가..." 버튼이 함께 여는 한 장. 오버레이 지오메트리는
@@ -2508,7 +2338,7 @@
 .fleet-caption-action[aria-pressed="true"],
 .codex-reader-tool[aria-pressed="true"],
 .fc-select__option[aria-selected="true"],
-.host-switcher-row.is-current,
+.console-section-row.is-current,
 .remote-interface-preset.is-selected,
 .theme-card.is-active,
 .fc-settings-toggle__input:checked + .settings-switch{
