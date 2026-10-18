@@ -4913,3 +4913,14 @@
 }
 
 /* 문면 속 참조 토큰은 호스트 `.fc-mention-chip`이다(components.css). 여기에는 말풍선 자리를 두지 않는다. */
+
+/* 폰 1:1 대화도 그룹 대화의 폰 말풍선(group-chat.css 「폰 배치의 말풍선」)과 한 가족이다 — 답은 바탕보다 한 단 어두운 면, 사람 말은 반전 면,
+   답 말풍선은 열에서 표식 칸과 오른쪽 여유 20을 뺀 폭까지. 코드 블록은 위 규칙대로 바탕 면이다. */
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-dispatch-bubble { max-width: calc(100% - 48px); border-color: transparent; background: var(--m-inverse); color: var(--m-on-inverse); }
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-dispatch-bubble { border-color: transparent; }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-dispatch-bubble :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-row { max-width: none; padding-right: 20px; }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-name { color: var(--m-text-muted); font-weight: var(--weight-regular); }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { background: var(--m-chip); }
+:root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { border-color: transparent; }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body :not(pre) > code { background: var(--m-bg); }

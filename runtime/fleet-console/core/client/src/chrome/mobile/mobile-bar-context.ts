@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, createElement, Fragment, useContext, useEffect, useMemo, useRef } from "react";
 
 import type { ClientMobileBarCapability, MobileBarSpec } from "@fleet-console/sdk/pane";
 
@@ -38,7 +38,8 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
     const state: MobileBarState = spec === null
       ? { variant: "centered", title: fallbackTitleRef.current, leading: "back" }
       : {
-        variant: "centered",
+        variant: spec.pill ? "conversation" : "centered",
+        ...(spec.pill ? { pill: pluginPill(spec, spec.pill) } : {}),
         title: spec.title,
         ...(spec.subtitle ? { subtitle: spec.subtitle } : {}),
         leading: "back",
@@ -105,6 +106,23 @@ export function useMobilePluginBar(fallback: { readonly title: string }): Client
       publish(specRef.current);
     },
   }), []);
+}
+
+/**
+ * 플러그인이 선언한 pill을 Operation 대화 머리와 같은 모양(`.mobile-conv-pill-*`)으로 옮긴다. 누름은 막대가 늘 가장 최근 렌더의
+ * 클로저(`getLiveMobileBar().pill.onPress`)로 부르므로 여기서 감싸지 않는다.
+ */
+function pluginPill(spec: MobileBarSpec, pill: NonNullable<MobileBarSpec["pill"]>): NonNullable<MobileBarState["pill"]> {
+  return {
+    key: `${spec.title}\u0001${spec.subtitle ?? ""}\u0001${pill.avatarKey ?? ""}`,
+    label: pill.label,
+    onPress: pill.onPress,
+    node: createElement(Fragment, null,
+      createElement("span", { className: "mobile-conv-pill-av" }, pill.avatar),
+      createElement("span", { className: "mobile-conv-pill-copy" },
+        createElement("strong", null, spec.title),
+        spec.subtitle ? createElement("small", null, spec.subtitle) : null)),
+  };
 }
 
 /**
