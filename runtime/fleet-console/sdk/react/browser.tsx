@@ -702,6 +702,10 @@ export function SegmentedThumb({
  * 내용은 이 값만큼 크롬 뒤로 늘어나고 같은 값만큼 안쪽 여백을 두어, 스크롤 끝의 첫·마지막 줄이 크롬에 가리지 않는다. 큰 글자 배율이나
  * 여러 줄 입력으로 크롬이 자라면 따라 적는다. `measure`가 없으면 `source`의 테두리 상자 높이다. 상자가 없는 원천(`display: contents`·
  * `display: none`)은 0이다. 원천이나 대상이 나중에 마운트·교체되면(조건부 머리) 다음 커밋에서 다시 붙고, 사라지면 속성을 지운다.
+ *
+ * 붙는 커밋에서는 그 자리에서 재서 적어 첫 그림부터 여백이 맞다. 그 뒤의 크기 변화는 관찰자 알림을 받은 다음 프레임에 적는다 — 알림 안에서
+ * 적으면 바뀐 여백이 같은 프레임에 원천과 같은 깊이의 관찰 대상(예: 목차가 보는 문서 스크롤 영역)의 크기를 바꿔, 브라우저가 그 알림을
+ * 넘기지 못하고 `ResizeObserver loop completed with undelivered notifications` 오류를 낸다. 값이 그대로면 적지 않는다.
  */
 export function useChromeHeightProperty(
   source: React.RefObject<HTMLElement | null>,
@@ -711,14 +715,11 @@ export function useChromeHeightProperty(
 ): void {
   const measureRef = React.useRef(measure);
   measureRef.current = measure;
-  const bound = React.useRef<{ readonly node: HTMLElement; readonly host: HTMLElement; readonly observer: ResizeObserver | null } | null>(null);
+  const bound = React.useRef<{ readonly node: HTMLElement; readonly host: HTMLElement; readonly release: () => void } | null>(null);
   const release = React.useCallback(() => {
-    const current = bound.current;
-    if (!current) return;
-    current.observer?.disconnect();
-    current.host.style.removeProperty(property);
+    bound.current?.release();
     bound.current = null;
-  }, [property]);
+  }, []);
   // 매 커밋 뒤 원천·대상의 정체만 견준다 — 같으면 관찰자를 그대로 둔다.
   React.useLayoutEffect(() => {
     const node = source.current;
@@ -727,14 +728,30 @@ export function useChromeHeightProperty(
     if (current && current.node === node && current.host === host) return;
     release();
     if (!node || !host) return;
+    let written: string | null = null;
+    let frame: number | null = null;
     const write = () => {
+      frame = null;
       const height = measureRef.current ? measureRef.current(node) : node.getBoundingClientRect().height;
-      host.style.setProperty(property, `${Math.max(0, Math.ceil(height))}px`);
+      const value = `${Math.max(0, Math.ceil(height))}px`;
+      if (value === written) return;
+      written = value;
+      host.style.setProperty(property, value);
     };
     write();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(write);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      if (frame === null) frame = requestAnimationFrame(write);
+    });
     observer?.observe(node);
-    bound.current = { node, host, observer };
+    bound.current = {
+      node,
+      host,
+      release: () => {
+        observer?.disconnect();
+        if (frame !== null) cancelAnimationFrame(frame);
+        host.style.removeProperty(property);
+      },
+    };
   });
   React.useLayoutEffect(() => release, [release]);
 }

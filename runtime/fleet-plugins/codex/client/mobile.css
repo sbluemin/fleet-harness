@@ -38,5 +38,7 @@ html[data-mobile-scheme="light"] .codex-m-field { background: var(--m-surface); 
  * 맨 위부터 막대 몫(--m-chrome-top)을 품고 바탕색으로 서다가 아래 끝만 투명으로 옅어진다(경계선 없음). 글자 줄이라 본문이 그 글자 밑으로
  * 비쳐 흐르지는 않는다. 스크롤 영역은 막대와 목차 줄 중 긴 쪽(--codex-outline-h는 리더가 잰다)만큼 위를 비운다.
  */
+/* 막대·목차 줄의 페이드는 바탕색(--m-bg)으로 옅어진다 — 문서 면도 같은 바탕이어야 줄이 띠로 갈리지 않는다(데스크톱 상세 페인의 면은 쓰지 않는다). */
+[data-host-surface="mobile-screen"] .codex-doc-pane[data-mobile-chrome="flow"] { background: var(--m-bg); }
 [data-host-surface="mobile-screen"] .codex-doc-pane[data-mobile-chrome="flow"] .codex-doc-outline { position: absolute; top: 0; right: 0; left: 0; z-index: 1; padding-top: var(--m-chrome-top, 0px); border-bottom: 0; background: linear-gradient(to bottom, var(--m-bg) calc(100% - 12px), color-mix(in srgb, var(--m-bg) 0%, transparent)); }
 [data-host-surface="mobile-screen"] .codex-doc-pane[data-mobile-chrome="flow"] .codex-doc-scroll { padding-top: calc(var(--space-5) + max(var(--m-chrome-top, 0px), var(--codex-outline-h, 0px))); scroll-padding-top: max(var(--m-chrome-top, 0px), var(--codex-outline-h, 0px)); }
