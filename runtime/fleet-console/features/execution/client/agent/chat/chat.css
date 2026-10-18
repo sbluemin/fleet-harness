@@ -929,6 +929,29 @@
   color: var(--text-tertiary);
 }
 
+/* 도구 줄 속 참조(플러그인 기록의 목표 이름) — 표식 없는 밑줄 낱말. 글자는 줄의 것을 그대로 받고 brass 는 hover·초점에만 선다.
+   단추는 통째로 넘치므로 줄을 가로로 세워 줄어드는 것을 이름 안의 말줄임으로 둔다(앞 글자 조각은 줄지 않는다). */
+.agent-chat-step-object.has-ref { display: flex; align-items: baseline; }
+.agent-chat-step-ref {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-inline-start: 0.3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-decoration-color: var(--hairline-strong);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.agent-chat-step-ref:hover { color: var(--text-primary); text-decoration-color: var(--brass); }
+.agent-chat-step-ref:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; border-radius: var(--radius-xs); }
+
 /* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
 .agent-chat-step-outside {
   flex: none;

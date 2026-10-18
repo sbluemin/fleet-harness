@@ -52,8 +52,11 @@ export type AgentChatTranscriptEvent =
   | { readonly kind: "text-delta"; readonly text: string }
   /** Live-only: a tool call whose input is still streaming. A later `tool` with the same id fills it. */
   | { readonly kind: "tool-start"; readonly id: string; readonly name: string }
-  /** A tool call — name and one human line. Full inputs never belong here. */
-  | { readonly kind: "tool"; readonly name: string; readonly detail: string; readonly id?: string }
+  /**
+   * A tool call — name and one human line. Full inputs never belong here. `references` pairs with `CONVERSATION_REFERENCE_MARK`
+   * in `detail` as in a bubble; the line shows each as its plain label, a text button when the host's `references.open` is given.
+   */
+  | { readonly kind: "tool"; readonly name: string; readonly detail: string; readonly id?: string; readonly references?: readonly AgentChatTranscriptReference[] }
   | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly stopped?: boolean }
   /** A divider between turns — a session change, a failure notice. Closes any open turn. */

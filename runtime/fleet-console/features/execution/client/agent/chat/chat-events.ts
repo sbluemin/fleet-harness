@@ -182,6 +182,8 @@ export type AgentChatStreamEvent =
       readonly id?: string;
       readonly outside?: boolean;
       readonly change?: AgentChatChange;
+      /** 플러그인 기록만 싣는다 — `detail` 속 참조(SDK `ConversationReference`). 줄은 그 이름을 글자 단추로 세운다. */
+      readonly references?: readonly ConversationReference[];
     }
   | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string; readonly toolDetail?: AgentChatToolDetail; readonly recipientOperationId?: string }
   /** 모델이 멈춰 서서 사용자를 기다린다. 저널에 남으므로 재접속해도 같은 카드가 다시 선다. */
@@ -732,7 +734,7 @@ export interface AgentChatTurnItem {
   readonly format?: "markdown";
   /** type="inject"가 함께 나른 이미지의 미리보기 좌표. */
   readonly attachments?: readonly AgentChatAttachment[];
-  /** type="inject" 문면 속 참조 — 평문 본문의 그 자리에 토큰이 선다. */
+  /** type="inject" 문면 속 참조 — 평문 본문의 그 자리에 토큰이 선다. type="tool"이면 `detail` 속 참조(플러그인 기록)다. */
   readonly references?: readonly ConversationReference[];
   /** type="inject"를 보낸 저자 — 사람이 아니면 실린다. */
   readonly by?: AgentChatOrigin;
@@ -1280,6 +1282,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         ...(initial === "running" && now !== undefined && agentChatToolFamily(event.name) === "run" ? { startedAt: now } : {}),
         ...(event.outside === true ? { outside: true } : {}),
         ...(event.change ? { change: event.change } : {}),
+        ...(event.references?.length ? { references: event.references } : {}),
       };
       // tool-start가 이미 세운 스텝이면 새 줄을 만들지 않고 그 자리를 채운다.
       const woken = wakeLastTurn(state, now);

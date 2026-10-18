@@ -17,7 +17,7 @@ type T = Translate<ObjectiveMessageKey>;
  * 도구는 이름과 한 줄 요약(입력 전체는 기록에 없다)이다. 사고는 채팅처럼 내용을 그리지 않는다. 세션 교대와 오류는 구분선이다.
  * 저장하지 않는 라이브 사건(글자 흐름·진행 중 도구 이름)은 마지막 확정 줄 뒤에 이어 붙는다 — 확정 줄이 오면 그 몫은 버려진다.
  */
-export function commodoreChatEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly AgentChatTranscriptEntry[] {
+export function commodoreChatEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[], index?: CommodoreObjectiveIndex): readonly AgentChatTranscriptEntry[] {
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = undeliveredMessageSeqs(entries);
@@ -70,7 +70,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "tool": {
         resume(entry.at);
         const id = `c${entry.seq}`;
-        push({ kind: "tool", id, name: entry.name, detail: toolDetail(t, entry) }, entry.at);
+        push({ kind: "tool", id, name: entry.name, ...toolDetail(t, entry, index) }, entry.at);
         if (entry.ok !== undefined) push({ kind: "tool-result", id, ok: entry.ok, summary: entry.error ? errorWord(t, entry.error) : "" }, entry.at);
         break;
       }
@@ -156,7 +156,7 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
  * 말풍선이 원인이라 깨움 줄을 따로 세우지 않고, 그 밖의 깨움(자율 운영 켬·보드 바뀜·순찰 등)만 노트 줄로 남긴다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
-export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[]): readonly AgentConversationEntry[] {
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null): readonly AgentConversationEntry[] {
   const commodore: ConversationSpeaker = { kind: "commodore", name: t("objectives.commodore.name") };
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
@@ -165,6 +165,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
   const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   const requeuedWaiting = new Set(entries.flatMap((entry) => (entry.kind === "requeued" && entry.seq > lastWakeSeq ? entry.seqs : [])));
+  const index: CommodoreObjectiveIndex = { live: objectives, finished };
   const out: AgentConversationEntry[] = [];
   for (const entry of entries) {
     switch (entry.kind) {
@@ -186,9 +187,10 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       case "tool": {
         if (!entry.action) break;
-        const failed = entry.ok === false ? errorWord(t, entry.error ?? "failed") : null;
-        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: entry.objectiveId ?? "",
-          action: [actionWord(t, entry.action), entry.title, failed].filter(Boolean).join(" · "),
+        const target = objectiveTarget(t, index, entry.objectiveId, entry.title);
+        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: target.id ?? "",
+          action: actionWord(t, entry.action), target,
+          ...(entry.ok === false ? { status: { text: errorWord(t, entry.error ?? "failed"), failed: true as const } } : {}),
           text: actionReason(theaterId, objectives, entry) ?? "" });
         break;
       }
@@ -209,14 +211,15 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       // 물음과 답은 보드 행위 줄과 같은 가운데 줄이다 — 물음은 사령관, 답은 사람이 낸 줄. 펼치면 이유·질문(답)이 선다.
       case "ask": {
         const status = askStatusWord(t, entry.askId, asks);
-        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: entry.objective?.id ?? "",
-          action: [t("objectives.ask.logged"), entry.objective?.title, status].filter(Boolean).join(" · "),
-          text: [entry.reason, ...entry.questions.map((question, index) => questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0))].join("\n") });
+        const target = objectiveTarget(t, index, entry.objective?.id, entry.objective?.title);
+        out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: commodore, objectiveId: target.id ?? "",
+          action: t("objectives.ask.logged"), target, ...(status ? { status: { text: status } } : {}),
+          text: [entry.reason, ...entry.questions.map((question, index) => questionLine(t, question, entry.questions.length > 1 ? index + 1 : 0))].join("\n\n") });
         break;
       }
       case "ask-answered":
         out.push({ kind: "board-action", id: `c${entry.seq}`, at: entry.at, speaker: human, objectiveId: "",
-          action: t("objectives.ask.answered"), text: entry.answers.map((answer) => `${answer.question}\n→ ${answerWords(answer)}`).join("\n") });
+          action: t("objectives.ask.answered"), target: {}, text: entry.answers.map((answer) => `${answer.question}\n\n→ ${answerWords(answer)}`).join("\n\n") });
         break;
       case "thinking":
       case "undelivered":
@@ -316,8 +319,8 @@ export type CommodoreLogBlock =
   | { readonly kind: "note"; readonly text: string; readonly at?: number; readonly tone?: "warn" };
 
 /** 채팅 어휘를 턴과 구분선으로 가른다. 접힘은 그리는 쪽이 정하고, 여기서는 줄을 만들기 위한 사실만 뽑는다. */
-export function commodoreLogBlocks(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[]): readonly CommodoreLogBlock[] {
-  const chat = commodoreChatEntries(t, theaterId, entries, live, asks);
+export function commodoreLogBlocks(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], asks?: readonly CommodoreAsk[], index?: CommodoreObjectiveIndex): readonly CommodoreLogBlock[] {
+  const chat = commodoreChatEntries(t, theaterId, entries, live, asks, index);
   const blocks: CommodoreLogBlock[] = [];
   const ordinal = new Map<number, number>();
   let bucket: AgentChatTranscriptEntry[] = [];
@@ -393,10 +396,39 @@ function plainFirstLine(text: string): string {
     .trim();
 }
 
-/** 도구 줄의 한 줄 — 보드 행위면 「행위 · 목표 제목」, 아니면 기록이 남긴 요약. */
-function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>): string {
-  if (tool.action) return [actionWord(t, tool.action), tool.title].filter(Boolean).join(" · ");
-  return tool.summary ?? "";
+/**
+ * 도구 줄의 한 줄 — 보드 행위면 「행위 · 목표 이름」, 아니면 기록이 남긴 요약. 목표를 찾을 자리(`index`)가 있으면 이름은 보드에서 읽고,
+ * 열 목표면 참조로 실어 그 이름을 누르면 목표가 열린다(얼굴은 싣지 않는다 — 한 줄 단계다).
+ */
+function toolDetail(t: T, tool: Extract<CommodoreTranscriptEntry, { kind: "tool" }>, index: CommodoreObjectiveIndex | undefined): { readonly detail: string; readonly references?: readonly ConversationReference[] } {
+  if (!tool.action) return { detail: tool.summary ?? "" };
+  const action = actionWord(t, tool.action);
+  if (!index) return { detail: [action, tool.title].filter(Boolean).join(" · ") };
+  const target = objectiveTarget(t, index, tool.objectiveId, tool.title);
+  if (target.id && target.label) return { detail: `${action} · ${CONVERSATION_REFERENCE_MARK}`, references: [{ id: target.id, label: target.label }] };
+  return { detail: [action, target.label].filter(Boolean).join(" · ") };
+}
+
+/**
+ * 기록 줄이 가리키는 목표를 찾는 자리 — 보드의 목표(`live`)와 읽어 둔 끝난 목표(`finished`, 아직 못 읽었으면 null). 보드에서 빠진
+ * 완료 목표도 이름을 찾고 열 수 있게 둘을 함께 본다.
+ */
+export interface CommodoreObjectiveIndex {
+  readonly live: readonly Objective[];
+  readonly finished: readonly Objective[] | null;
+}
+
+/**
+ * 줄이 가리키는 목표 — 이름은 지금 보드의 제목이다(기록의 제목 인자는 추가·이름 바꾸기에만 있다). 찾은 목표는 열 수 있고, 지워졌거나
+ * 합쳐진 목표는 이름만 남는다. 끝난 목표까지 읽었는데 없으면 지워진 목표다 — 아직 못 읽었으면 지웠다고 말하지 않고 id 를 둔다.
+ * 목표 id 가 없는 줄(추가·정리·병합)은 기록의 제목만 글자로 선다.
+ */
+function objectiveTarget(t: T, index: CommodoreObjectiveIndex, objectiveId: string | undefined, title: string | undefined): { readonly id?: string; readonly label?: string } {
+  if (!objectiveId) return title ? { label: title } : {};
+  const objective = index.live.find((candidate) => candidate.id === objectiveId) ?? index.finished?.find((candidate) => candidate.id === objectiveId);
+  if (objective) return objective.removed ? { label: objective.title } : { id: objective.id, label: objective.title };
+  if (index.finished === null) return { id: objectiveId, ...(title ? { label: title } : {}) };
+  return { label: t("objectives.commodore.target.gone") };
 }
 
 /* ── 사령관의 질문 줄 ─────────────────────────────────────────────── */

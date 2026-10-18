@@ -7,6 +7,7 @@ import { CONVERSATION_REFERENCE_MARK } from "@fleet-console/sdk/conversation";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { Objective } from "../server/types.js";
+import type { CommodoreObjectiveIndex } from "./commodore-chat.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./fresh-conversation.js";
@@ -298,6 +299,17 @@ const NO_OBJECTIVES: readonly Objective[] = [];
 function useFinishedObjectives(theaterId: string): readonly Objective[] {
   const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : NO_OBJECTIVES);
   return useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
+}
+
+/**
+ * 사령관 기록 줄이 가리키는 목표를 찾는 자리 — 보드의 목표와 읽어 둔 끝난 목표. 끝난 목표를 아직 못 읽었으면 `finished` 는 null 이라
+ * 줄이 못 찾은 목표를 지워졌다고 말하지 않는다. 읽기는 같은 화면의 참조 호스트(`useCommodoreReferenceHost`)가 시작한다.
+ */
+export function useCommodoreObjectiveIndex(theaterId: string): CommodoreObjectiveIndex {
+  const board = useObjectiveTheater(theaterId);
+  const read = () => (finishedObjectivesLoaded(theaterId) ? finishedObjectives(theaterId) : null);
+  const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, read, read);
+  return useMemo(() => ({ live: board.objectives, finished }), [board.objectives, finished]);
 }
 
 /** 같은 Theater 의 목표 전부 — 보드의 목표에 보관된 완료 목표를 더한다(같은 id 는 보드 쪽). 기록·초안 토큰의 얼굴(`ReferenceMark`)이 읽는다. */
