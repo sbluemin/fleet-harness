@@ -25,7 +25,8 @@ import {
   resolveCodexWorkspace,
   type CodexWorkspaceState,
 } from "./workspace-store.js";
-import { closeCodexReader, expandCodexReader, openCodexReader, resetCodexReaderContext, useReaderState } from "./reader-store.js";
+import { closeCodexReader, expandCodexReader, getReaderState, openCodexReader, resetCodexReaderContext, useReaderState } from "./reader-store.js";
+import { readReaderSession, validateReaderEntry } from "./reader-session.js";
 import { fetchSearch } from "./codex/api.js";
 import { openCodexRailPanel, openCodexReaderByAddress } from "./host.js";
 import { installCodexLiveRevalidation, revalidateCodexNow } from "./codex/live.js";
@@ -182,23 +183,29 @@ function CodexRailPanel({ ctx }: { readonly ctx: PaneContext }) {
   // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾸고,
   // 저장된 reader session은 최초 1회만 정상 entry 요청 경로로 복원한다.
   useEffect(() => {
+    const controller = new AbortController();
     if (shouldMountCodex && workspaceId) {
       setNavigatorTheater(workspaceId);
       // 레일 탭을 떠났다 돌아온 경우 싱글턴은 재배치만 되고 다시 읽지 않는다 —
       // 자리를 비운 사이의 변화는 이벤트로도 오지 않았으므로 복귀는 곧 재검증이다.
       revalidateCodexNow();
-      if (!hasReader && theaterId) {
-        // 세션은 항상 읽는다 — 읽던 자리(scrollTop)를 아는 유일한 경로이기 때문이다.
-        // 어떤 문서를 열지는 주소가 지목했으면 주소가 이기고, 저장된 자리는 그 문서가
-        // 세션의 문서와 같을 때에만 쓰인다(mountReaderInto의 pendingSessionRestore).
-        const entryId = restoreCodexReaderSession(theaterId);
-        if (entryId && !hasCodexEntryInUrl()) {
-          openCodexReader({ kind: "entry", entryId });
-          // 확대는 리더 세션의 일부다 — 떠날 때의 화면으로 돌아온다.
-          if (consumeRestoredReaderExpanded()) expandCodexReader();
+      if (!hasReader && theaterId && !hasCodexEntryInUrl()) {
+        const session = readReaderSession(theaterId);
+        if (session) {
+          void validateReaderEntry(theaterId, workspaceId, session.entryId, controller.signal).then((exists) => {
+            if (!exists || controller.signal.aborted || latestContextKeyRef.current !== contextKey
+              || getReaderState().codexReader || hasCodexEntryInUrl()) return;
+            const entryId = restoreCodexReaderSession(theaterId);
+            if (entryId !== session.entryId) return;
+            openCodexReader({ kind: "entry", entryId });
+            if (consumeRestoredReaderExpanded()) expandCodexReader();
+          }).catch(() => {
+            // 통신 실패 때는 세션을 보존하고, 검증되지 않은 문서는 열지 않는다.
+          });
         }
       }
     }
+    return () => controller.abort();
   }, [shouldMountCodex, workspaceId, theaterId]);
 
   // 창으로 돌아왔을 때의 재검증 — SSE가 끊겼다 붙는 사이의 변화는 이벤트로 오지 않는다.

@@ -1,4 +1,6 @@
 import { fetchDrydock, fetchHealth, fetchSchemaCatalog, fetchSearch } from "./api.js";
+import { reconcileReaderSession } from "../reader-session.js";
+import { lastResolvedCodexWorkspace } from "../workspace-store.js";
 import type { CodexHealthResponse, ConflictListItem, SchemaCatalogResponse, SearchEntry } from "./api.js";
 import type { CodexKnowledgeScope } from "../../server/codex/contracts.js";
 
@@ -188,6 +190,11 @@ function commitSlot(slot: keyof typeof committedSeq, seq: number): boolean {
 
 function setState(next: Partial<AppState>): void {
   Object.assign(state, next);
+  // 성공적으로 반영된 index만 삭제의 근거다. 로딩·오류·Theater 전환의 이전 index는 쓰지 않는다.
+  const workspace = lastResolvedCodexWorkspace();
+  if (next.index && workspace?.id === state.currentWorkspaceId && workspace.contextKey) {
+    reconcileReaderSession(workspace.contextKey, next.index);
+  }
   for (const listener of listeners) listener(state);
 }
 
