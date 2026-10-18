@@ -250,8 +250,11 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((operationId: string) => openLedger(root.id, operationId), [root.id]);
+  const clusters = useGroupClusters();
+  // 보드 동작이 있는 일반 Operation도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
+  const recordedObjective = clusters.some((cluster) => cluster.conversation?.operationId === root.id && cluster.conversation.recordedObjective === true);
   // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
-  const openRecord = useOpenBoardActionRecord(useGroupClusters());
+  const openRecord = useOpenBoardActionRecord(clusters);
   // 답이 받아들여진 요청은 보드가 요청을 걷기 전에도 카드를 내린다. 답은 보드가 결정으로 남긴 대화 줄로 그 시각 자리에 선다.
   const [answered, setAnswered] = React.useState<readonly string[]>([]);
   React.useEffect(() => setAnswered([]), [root.id]);
@@ -301,7 +304,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           }}
         />
       )}
-      composerTopEntries={actions?.board !== undefined}
+      composerTopEntries={recordedObjective}
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );
@@ -314,9 +317,10 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
 function StandInComposer({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
+  const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.operationId === rootId && cluster.conversation.recordedObjective === true);
   return <>
     {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
-    {actions?.board !== undefined ? <ComposerTopEntries /> : null}
+    {recordedObjective ? <ComposerTopEntries /> : null}
     <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />
   </>;
 }
