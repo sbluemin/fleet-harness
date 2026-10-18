@@ -1,9 +1,11 @@
 /* ── 도구 분할: 대화 칸 안의 도구 칸 ─────────────────────────────────────────────
-   작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)을 덮는 레이어 하나에 칸이 절대 배치된다. 빈 자리는 클릭을 아래 대화에 넘긴다.
+   작업 영역(왼쪽 사이드바와 오른쪽 사이드바 사이)의 맨 위 줄 아래를 덮는 레이어 하나에 칸이 절대 배치된다. 빈 자리는 클릭을 아래
+   대화에 넘긴다. 맨 위 줄(pill·도구모음·사용량 캡슐, 그리고 Desktop 의 신호등·캡션 버튼)은 분할·펼친 칸·시트 어느 때든 칸이 덮지
+   않는다 — 두 플랫폼이 같은 모양이다(conversation.css .conversation-band).
    칸은 대화 바탕보다 한 단 밝은 면 · 1px 테두리 · 둥근 모서리이고, 머리 줄(36px)은 모든 도구가 같은 문법이다(시안 v2 규칙 e). */
 .conversation-workbench {
   position: absolute;
-  top: 0;
+  top: var(--conversation-top-row, 52px);
   bottom: 0;
   z-index: 1;
   pointer-events: none;
@@ -44,7 +46,7 @@
 
 .workbench-tile.is-focused { border-color: var(--surface-rim-strong); }
 
-/* 펼친 칸은 대화와 분할 영역 전체를 덮는다 — 다른 칸은 닫지 않고 숨긴다(Shell 은 계속 돈다). */
+/* 펼친 칸은 맨 위 줄 아래의 대화와 분할 영역 전체를 덮는다 — 다른 칸은 닫지 않고 숨긴다(Shell 은 계속 돈다). */
 .workbench-tile.is-expanded { z-index: 3; }
 .workbench-tile.is-hidden { visibility: hidden; }
 .workbench-tile.is-dragging { opacity: 0.55; }
@@ -342,11 +344,6 @@
 html[data-desktop-shell="true"] .workbench-tile,
 html[data-desktop-shell="true"] .conversation-workbench-gutter {
   -webkit-app-region: no-drag;
-}
-
-/* Windows 캡션 단추 — 오른쪽 사이드바가 닫혀 있으면 맨 오른쪽 위 칸의 머리가 그 폭을 비운다. */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) .workbench-tile[data-touch-top="true"] .workbench-tile-head {
-  padding-right: calc(var(--space-1) + var(--conversation-caption-width, 138px));
 }
 
 @media (prefers-reduced-motion: reduce) {
