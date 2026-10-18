@@ -1,4 +1,4 @@
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ClientNavigateCapability } from "@fleet-console/sdk/navigation";
 import type { OperationCluster } from "@fleet-console/sdk/plugin";
@@ -23,6 +23,9 @@ export {
  *    pill 바로 옆 보기 캡슐(전환과 한 묶음)에 선다. `null` 이면 그 칸은 서지 않는다.
  * 5. 대신하는 Operation 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Operation 을 대신하면
  *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
+ * 6. 머리 pill 의 잠깐 바뀐 내용 — `publishConversationPillTakeover`. 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 그 대화의 주인
+ *    Operation 머리 pill(데스크톱 맨 위 줄·모바일 상단 막대)을 제 내용으로 바꾼다. pill 을 그리는 쪽은 `useConversationPillTakeover` 로
+ *    읽으며 자기가 그 Operation 의 pill 을 세웠다고 알리고, 본문은 `useConversationPillHosted` 로 그 pill 이 있는지 보고 없으면 제 안에 대체 칩을 둔다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
  */
@@ -266,4 +269,50 @@ export function useConversationRowPreview(operationId: string): ConversationRowP
     () => NO_PREVIEW_SOURCE,
   );
   return useSyncExternalStore(source.subscribe, () => source.get(operationId), () => null);
+}
+
+// ── 머리 pill 의 잠깐 바뀐 내용 ────────────────────────────────────────────
+
+/**
+ * 머리 pill 을 잠깐 대신하는 내용 — 그룹 대화의 전언 대화 화면이 열린 동안 「보낸 이 ⇄ 받는 이」. pill 을 그리는 쪽은 이 내용을
+ * 제목 단추로 감싸지 않는다(안의 단추는 내용이 소유한다). `key` 가 바뀌면 내용이 바뀐 것이다 — 크로스페이드·폭 전환의 기준이다.
+ */
+export interface ConversationPillTakeover {
+  readonly key: string;
+  /** 바뀐 pill 무리의 접근성 이름. */
+  readonly label: string;
+  readonly content: ReactNode;
+}
+
+const pillTakeovers = new Map<string, ConversationPillTakeover>();
+const pillHosts = new Map<string, number>();
+const pillListeners = new Set<() => void>();
+const subscribePill = (listener: () => void) => { pillListeners.add(listener); return () => { pillListeners.delete(listener); }; };
+const emitPill = () => { for (const listener of pillListeners) listener(); };
+
+/** 그 Operation 의 머리 pill 을 바꾸거나(`takeover`) 되돌린다(`null`). 바꾼 쪽이 걷힐 때 null 로 되돌린다. */
+export function publishConversationPillTakeover(operationId: string, takeover: ConversationPillTakeover | null): void {
+  if ((pillTakeovers.get(operationId) ?? null) === takeover) return;
+  if (takeover) pillTakeovers.set(operationId, takeover); else pillTakeovers.delete(operationId);
+  emitPill();
+}
+
+/** 머리 pill 을 그리는 쪽 — 그 Operation 의 바뀐 내용을 읽고, 서 있는 동안 자기가 그 pill 을 세웠다고 알린다. */
+export function useConversationPillTakeover(operationId: string | null): ConversationPillTakeover | null {
+  useEffect(() => {
+    if (operationId === null) return;
+    pillHosts.set(operationId, (pillHosts.get(operationId) ?? 0) + 1);
+    emitPill();
+    return () => {
+      const count = (pillHosts.get(operationId) ?? 1) - 1;
+      if (count > 0) pillHosts.set(operationId, count); else pillHosts.delete(operationId);
+      emitPill();
+    };
+  }, [operationId]);
+  return useSyncExternalStore(subscribePill, () => (operationId === null ? null : pillTakeovers.get(operationId) ?? null), () => null);
+}
+
+/** 그 Operation 의 머리 pill 이 지금 서 있는가 — 없으면 바꿀 pill 이 없으므로 본문이 제 안에 대체 칩을 둔다. */
+export function useConversationPillHosted(operationId: string | null): boolean {
+  return useSyncExternalStore(subscribePill, () => operationId !== null && (pillHosts.get(operationId) ?? 0) > 0, () => false);
 }

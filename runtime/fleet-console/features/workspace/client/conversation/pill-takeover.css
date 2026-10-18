@@ -1,0 +1,50 @@
+/* 머리 pill 의 잠깐 바뀐 내용(pill-takeover.tsx) — 원래 내용과 바뀐 내용이 같은 pill 안에서 차례로 바뀐다. 두 내용이 함께 보이는
+   순간은 없다: 나가는 쪽이 0–120ms 에 사라지고, 들어오는 쪽은 그 뒤 120–320ms 에 나타난다. 그사이 pill 폭은 340ms 전체에 걸쳐
+   옮겨 간다(FLIP, 본문 대화 화면의 밀기 전환과 같은 박자). 닫을 때도 같은 차례로 거꾸로 간다. 서 있는 쪽만 흐름에 남아 pill 폭을
+   정하고, 나가는 쪽은 흐름 밖에서 사라진다. 색은 쓰지 않는다 — 면·테두리는 pill 의 것이고 안의 잉크는 바뀐 내용이 정한다. */
+.conversation-pill-takeover {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  /* 들어오기 — 나가는 쪽이 다 사라진 120ms 뒤부터 200ms. 기다리는 동안도 보이지 않는다(both). */
+  animation: conversation-pill-takeover-in 200ms ease-out 120ms both;
+}
+.conversation-pill-takeover.is-out {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: none;
+  /* 나가기 — 곧바로 120ms. */
+  transition: opacity 120ms ease-in;
+}
+@keyframes conversation-pill-takeover-in {
+  from { opacity: 0; }
+}
+
+/* 데스크톱 맨 위 줄 pill — 바뀐 동안 제목 단추·보기 캡슐은 inert 로 흐름 밖에서 흐려지고, 바뀐 내용이 pill 폭을 정한다(폭은 FLIP 이 옮긴다). */
+.conversation-pill:has(> .conversation-pill-takeover) { position: relative; }
+.conversation-pill[data-takeover="true"] { padding: 0 var(--space-3) 0 6px; }
+/* 전환은 도착하는 상태의 규칙이 정한다 — 원래 내용이 돌아올 때는 바뀐 내용이 사라진 120ms 뒤부터 200ms, 떠날 때는 곧바로 120ms. */
+.conversation-pill > :is(.conversation-pill-details, .conversation-pill-controls) { transition: opacity 200ms ease-out 120ms; }
+.conversation-pill[data-takeover="true"] > :is(.conversation-pill-details, .conversation-pill-controls) {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-in;
+}
+.conversation-pill[data-takeover="true"] > .conversation-pill-details { left: var(--space-3); }
+.conversation-pill[data-takeover="true"] > .conversation-pill-controls { right: 4px; }
+.conversation-pill > .conversation-pill-takeover.is-out { left: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-pill-takeover,
+  .conversation-pill-takeover.is-out,
+  .conversation-pill > :is(.conversation-pill-details, .conversation-pill-controls),
+  .conversation-pill[data-takeover="true"] > :is(.conversation-pill-details, .conversation-pill-controls) { animation: none; transition: none; }
+}

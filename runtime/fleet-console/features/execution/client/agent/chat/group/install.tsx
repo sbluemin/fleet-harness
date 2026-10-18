@@ -294,6 +294,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       cards={cards}
       fold={fold}
       computerActor={computerActor}
+      pillOperationId={root.id}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare
           operationId={root.id}

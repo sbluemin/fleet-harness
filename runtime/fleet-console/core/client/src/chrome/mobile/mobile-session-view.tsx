@@ -12,8 +12,10 @@ import { ConversationAvatar, conversationStateWord, useMobileConversationOf } fr
 import { useConsoleState } from "../../hooks/use-store.js";
 import { closeMobileOperation } from "./mobile-operation-url.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
+import { closeTopBackLayer } from "./mobile-back.js";
 import { pushMobileSheet, setMobileDestination, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
+import { useConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
 
 /**
  * An open operation is its body under the top bar the shell draws: ‹ back to the conversation list, a pill with the
@@ -92,16 +94,20 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   const harnessLabel = operationHarnessLabel(bodyOwner, t);
   const conversation = useMobileConversationOf(useConsoleState())(bodyOwner);
+  // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 바꾼다 — 그룹 대화는 화면 주인(지휘관)의 본문에 선다.
+  const pillTakeover = useConversationPillTakeover(covered ? null : operation.id);
   // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · ⋮. 이름 변경·보관은 화면 주인의 것이다.
   useClaimMobileBar(covered ? null : {
     variant: "conversation",
     title: bodyOwner.title,
     leading: "back",
-    onBack: closeMobileOperation,
+    // 본문이 pill 을 바꾼 동안(전언 대화 화면) ‹ 는 그 화면부터 닫는다 — 화면이 올린 뒤로 층이 없으면 지금처럼 대화 목록으로 간다.
+    onBack: pillTakeover ? () => { if (!closeTopBackLayer()) closeMobileOperation(); } : closeMobileOperation,
     pill: {
-      key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.operation.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}`,
+      key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.operation.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}\u0001${pillTakeover?.key ?? ""}`,
       label: t("mobile.conv.infoAria", { title: bodyOwner.title }),
       onPress: () => setMobileDestination({ kind: "info" }),
+      takeover: pillTakeover,
       node: (
         <>
           <span className="mobile-conv-pill-av"><ConversationAvatar conversation={conversation} size={36} /></span>
