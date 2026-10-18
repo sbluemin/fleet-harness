@@ -60,7 +60,7 @@ fleet console
 | **Codex** | ChatGPT 구독 | GPT-6.1 Sol, GPT-6 Astra · Sol · Luna, GPT-5.6 Terra. 각각 272K·524K·1M 컨텍스트, 그리고 각각의 Fast 쌍둥이 |
 | **Antigravity** | Google 구독 | Gemini 3.8 Flash · Gemini 4 Argon |
 | **xAI** | Grok 구독 | Grok 4.7 · Grok 4.7 Fast · Grok Composer 2.5 Fast |
-| **Cursor** | Cursor 구독 | Grok 4.7 · Grok 4.7 Fast. 각각 256K·500K 컨텍스트 · Muse Spark 1.3 · Muse Wonder 1.0. 각각 300K·1M 컨텍스트 · Gemini 3.8 Flash · Gemini 4 Argon. 각각 200K·1M 컨텍스트 |
+| **Cursor** | Cursor 구독 | Grok 4.7 · Grok 4.7 Fast. 각각 256K·500K 컨텍스트 |
 | **Muse Code** | Muse Code 구독 | Muse Spark 1.3 · Muse Spark 1.3 Contributor |
 
 모델마다 추론 강도 단계가 따로 있습니다. 모든 행에는 **ULTRACODE**도 있어서, Claude Code를 xhigh 강도에 상시 멀티 에이전트 오케스트레이션까지 켠 채로 띄웁니다. **AI Gateway routing**을 켜면 서브에이전트와 워크플로 단계마다 게이트웨이 모델이 배정되고, 사용 한도를 거의 다 쓴 공급자는 건너뜁니다. 오른쪽 위의 사용량 미터도 같은 기준으로 판단하므로, 실행이 멈추기 전에 한도가 빠르게 차는 것을 알아챌 수 있습니다.

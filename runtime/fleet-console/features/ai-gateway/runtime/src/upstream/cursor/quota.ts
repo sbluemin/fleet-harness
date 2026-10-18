@@ -40,13 +40,12 @@ export function parseCursorUsage(payload: unknown):
     }
   }
   const windows: QuotaWindow[] = [];
-  // Cursor bills one subscription through two pools. The scope-less window is
-  // their sum: a caller picking an API-tier model must read the `api` window,
-  // because the total can sit well below the pool that model actually draws from.
+  // Cursor's exposed models draw from Auto. The scope-less window still reports
+  // combined subscription usage, not Auto's allowance, so callers must select
+  // the `auto` window even when it is the only scoped window shown here.
   for (const [value, scope, label] of [
     [planUsage.totalPercentUsed, undefined, undefined],
     [planUsage.autoPercentUsed, "auto", "Auto"],
-    [planUsage.apiPercentUsed, "api", "API"],
   ] as const) {
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
     windows.push({
