@@ -14,7 +14,7 @@ import { meterSeverity, mostUrgentWindow, PROVIDER_NAME, QuotaPanel, windowLabel
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
-/** 사이드바 바닥의 사용량 요약. 공급자마다 글리프와 두 줄 숫자(사용 %)를 두되 % 기호는 접근 이름에만 남긴다.
+/** 사이드바 바닥의 사용량 요약. 공급자마다 글리프 옆에 창별 사용 %를 두 줄로 쌓는다.
  * 짧은 창·남은 창 중 가장 급한 창을 고르는 정책과 신호 채널은 상세 팝업과 같다. */
 
 /** Claude의 세션 창(5시간) — 기간을 싣지 않은 세션 창을 짧은 쪽에 세우는 기준. */
@@ -105,7 +105,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: SidebarFooterEntryCont
                 ? <span className="quota-toolbar-summary__pct">–</span>
                 : reading.lines.map((window, index) => (
                   <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
-                    {Math.round(window.usedPercent)}
+                    {Math.round(window.usedPercent)}%
                   </span>
                 ))}
             </span>
