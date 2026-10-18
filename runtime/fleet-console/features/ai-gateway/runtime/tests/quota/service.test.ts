@@ -326,4 +326,32 @@ describe("quota service", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("drops persisted windows whose scope is no longer supported instead of sharing them", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "quota-last-good-"));
+    const filePath = path.join(directory, "quota-last-good.json");
+    const now = 1_000_000;
+    const resetsAt = now + 86_400_000;
+    try {
+      fs.writeFileSync(filePath, JSON.stringify({
+        version: 1,
+        providers: {
+          cursor: {
+            status: "ok",
+            fetchedAt: now,
+            windows: [
+              { id: "cycle", scope: "api", label: "API", usedPercent: 90, resetsAt },
+              { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
+            ],
+          },
+        },
+      }));
+      // 은퇴한 풀의 창이 scope 없이 살아남으면 Auto 모델의 공유 제한으로 읽혀 배정을 그르친다.
+      expect(createQuotaLastGoodStore({ filePath }).read().cursor?.windows).toEqual([
+        { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
+      ]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
