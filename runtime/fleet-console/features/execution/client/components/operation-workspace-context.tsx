@@ -3,17 +3,14 @@ import { useT } from "../../../../core/client/src/i18n/index.js";
 
 /**
  * Operation의 "지금 어디" 줄 — 실험 기능(Operation 위치 표시)이 켜진 동안 서버가 세션 DTO에 실어
- * 보내는 투영을 사이드바 칩과 ⌘K 팔레트가 같은 문법으로 그린다. 브랜치는 늘, 폴더는 Theater 루트를
+ * 보내는 투영을 ⌘K 팔레트에서 그린다. 브랜치는 늘, 폴더는 Theater 루트를
  * 벗어났을 때만. 글자색 위계만 쓰고 상태·brass·정체성 채널은 건드리지 않는다. 폴더는 마지막 마디만
  * 보이고 전체는 툴팁이 든다. 장식(aria-hidden)이므로 접근성 이름은 {@link describeWorkspace}로 싣는다.
  */
 export function OperationWorkspaceContext({ workspace, className, titled = true }: {
   readonly workspace: OperationWorkspace;
   readonly className?: string;
-  /**
-   * 잘린 값의 전체를 네이티브 툴팁으로 여는지. 사이드바 칩은 겨누면 상세 카드가 같은 값을 온전히
-   * 들고 뜨므로 끈다 — 켜 두면 카드와 OS 툴팁이 함께 떠서 서로를 가린다. 팔레트는 카드가 없어 켠다.
-   */
+  /** 잘린 값의 네이티브 툴팁을 여는지. 팔레트에는 상세 카드가 없으므로 기본으로 켠다. */
   readonly titled?: boolean;
 }) {
   const t = useT();
