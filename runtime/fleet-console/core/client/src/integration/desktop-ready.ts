@@ -1,4 +1,5 @@
 import { DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BRAND_READY_ATTRIBUTE } from "@fleet-console/protocol/desktop/brand";
 
 import { openBootLane } from "./boot-schedule.js";
 import { getState, subscribe } from "./store.js";
@@ -28,6 +29,7 @@ export function announceDesktopReady(): void {
     unsubscribe = null;
     // 이 상태로 React가 커밋하고(구독 갱신은 다음 마이크로태스크에 동기 반영된다) 한 프레임이 칠해진 뒤에 알린다.
     requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.documentElement.setAttribute(DESKTOP_BRAND_READY_ATTRIBUTE, "");
       // 같은 턴에 먼저 내보내야 뒤따라 열리는 조회보다 연결을 먼저 집는다. priority는 그 줄을 앞당긴다.
       void fetch(DESKTOP_WINDOW_COMMAND_PATH, {
         method: "POST",

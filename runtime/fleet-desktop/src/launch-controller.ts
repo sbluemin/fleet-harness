@@ -1,4 +1,5 @@
 import { LIFECYCLE_WAIT_NOTICE_MS } from "@fleet-console/protocol/lifecycle";
+import type { DesktopBrandTarget } from "@fleet-console/protocol/desktop/brand";
 import { describeConsoleLifecycleWait, parseConsoleLifecycleWait, type ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wait";
 
 import type { EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryTone, EntryZoom } from "./entry-page.js";
@@ -25,6 +26,11 @@ export interface LaunchControllerDependencies {
   readonly synchronizeTheme?: (origin: string) => Promise<void>;
   readonly onConsoleLoaded?: () => void;
   readonly pushEntry: (contents: EntryPageWebContents, snapshot: EntryPageSnapshot) => Promise<void>;
+  /** 수동 진입 덮개가 있으면 Console을 그 아래 먼저 적재한다. */
+  readonly entryContents?: () => EntryPageWebContents | undefined;
+  /** 적재된 Console의 선택적 공개 닻. 구현은 반드시 상한을 둔다. */
+  readonly brandTarget?: () => Promise<DesktopBrandTarget | undefined>;
+  readonly dismissEntry?: () => void;
   readonly startOrAdopt: (report: { wait(wait: EntryWait): void }) => Promise<string>;
   readonly dev?: boolean;
   readonly lang?: EntryLanguage;
@@ -72,9 +78,11 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
         palette: dependencies.palette ?? (() => undefined),
         zoom: dependencies.zoom ?? (() => undefined),
       };
+      const entry = dependencies.entryContents?.() ?? window.webContents;
+      let brandTarget: DesktopBrandTarget | undefined;
       const push = async (state: RuntimeEntryState, detail?: string, progress?: number): Promise<void> => {
         if (window.isDestroyed?.()) return;
-        await dependencies.pushEntry(window.webContents, snapshotFor(context, state, detail, progress));
+        await dependencies.pushEntry(entry, { ...snapshotFor(context, state, detail, progress), ...(brandTarget ? { brandTarget } : {}) });
       };
       await push(context.dev ? "dev" : "checking");
       dependencies.onWindowReady?.(push);
@@ -97,13 +105,23 @@ export function createLaunchController(dependencies: LaunchControllerDependencie
       const origin = new URL(consoleUrl).origin;
       dependencies.handoffOrigin(origin);
       await dependencies.synchronizeTheme?.(origin);
-      await push("starting", "ready");
-      if (!window.isDestroyed?.()) await settleHandoff(window.webContents);
-      if (!window.isDestroyed?.()) {
-        await window.loadURL(consoleUrl);
-        if (!window.isDestroyed?.()) window.webContents.navigationHistory.clear();
+      try {
+        // 덮개는 입력과 포커스를 쥔 채 남고, Console은 원래 문서·배율·ready 경로로 먼저 그려진다.
+        if (entry !== window.webContents && !window.isDestroyed?.()) {
+          await window.loadURL(consoleUrl);
+          brandTarget = await dependencies.brandTarget?.().catch(() => undefined);
+        }
+        await push("starting", "ready");
+        if (!window.isDestroyed?.()) await settleHandoff(entry);
+        if (!window.isDestroyed?.()) {
+          if (entry === window.webContents) await window.loadURL(consoleUrl);
+          if (!window.isDestroyed?.()) window.webContents.navigationHistory.clear();
+        }
+        if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
+      } finally {
+        // 닻·렌더러·적재 실패 어느 쪽도 덮개만 남겨 창을 가리지 않는다.
+        dependencies.dismissEntry?.();
       }
-      if (!window.isDestroyed?.()) dependencies.onConsoleLoaded?.();
       return window;
     },
   };

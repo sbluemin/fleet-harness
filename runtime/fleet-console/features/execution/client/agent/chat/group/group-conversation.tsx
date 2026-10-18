@@ -3,6 +3,7 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 import { AgentGlyph } from "../../agent-glyphs.js";
+import { ComposerTopEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { pluginOriginIdentity } from "../origin-mark.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
@@ -53,6 +54,8 @@ export interface GroupConversationProps {
   readonly cards?: React.ReactNode;
   /** 진행 줄 아래의 입력창. */
   readonly composer?: React.ReactNode;
+  /** 쓰기 가능한 사령관·그룹 대화에서만 호스트 요약을 세운다. */
+  readonly composerTopEntries?: boolean;
   /** 사령관 행위 줄의 링크 낱말 — 주지 않으면 「사령관 기록에서 보기」. */
   readonly boardActionLabel?: string;
   /** 빈 대화의 문구 — 주지 않으면 그룹 대화의 문구. */
@@ -85,7 +88,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const entries = snapshot.entries;
@@ -249,6 +252,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         </div>
       </div>
       <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} />
+      {composerTopEntries && composer ? <ComposerTopEntries /> : null}
       {composer}
       {overlay}
     </div>

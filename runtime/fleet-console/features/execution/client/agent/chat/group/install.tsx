@@ -32,6 +32,7 @@ import { conversationHasFoldableMembers, isGroupConversationRoot, subscribeGroup
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
+import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { setFoldTurns, useFoldTurns } from "./fold-turns.js";
 import { getGroupT } from "./group-chat-i18n.js";
@@ -300,6 +301,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           }}
         />
       )}
+      composerTopEntries={actions?.board !== undefined}
       composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />}
     />
   );
@@ -314,6 +316,7 @@ function StandInComposer({ rootId, language }: { readonly rootId: string; readon
   const actions = useGroupConversationActions(rootId);
   return <>
     {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
+    {actions?.board !== undefined ? <ComposerTopEntries /> : null}
     <GroupComposer rootOperationId={rootId} snapshot={snapshot} actions={actions} language={language} onStopOne={stopOne} />
   </>;
 }
