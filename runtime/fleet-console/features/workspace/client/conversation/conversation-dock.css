@@ -39,7 +39,7 @@
 .conversation-dock-status[data-connection="offline"] { background: var(--coral); }
 /* 플러그인 본문은 내용 폭, 바깥 칸은 남은 폭이다. 호스트가 실제 폭에 맞춰 data-tier 를 낮춘다. */
 .sidebar-footer-entries { flex: 1 1 auto; min-width: 0; overflow: hidden; }
-.sidebar-footer-entries-content { display: inline-flex; align-items: center; gap: 4px; width: max-content; }
+.sidebar-footer-entries-content { display: inline-flex; align-items: center; gap: 4px; width: max-content; transform: translateX(var(--sidebar-footer-offset, 0px)); }
 .conversation-dock-menu {
   position: absolute;
   z-index: 90;

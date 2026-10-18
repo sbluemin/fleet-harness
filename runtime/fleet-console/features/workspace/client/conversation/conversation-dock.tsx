@@ -25,7 +25,8 @@ function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
   useLayoutEffect(() => {
     const root = ref.current;
     const content = root?.firstElementChild;
-    if (!root || !(content instanceof HTMLElement)) return;
+    const dock = root?.parentElement;
+    if (!root || !(content instanceof HTMLElement) || !dock) return;
     let frame = 0;
     const measure = () => {
       frame = 0;
@@ -33,10 +34,15 @@ function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
         root.dataset.tier = tier;
         if (content.getBoundingClientRect().width <= root.clientWidth) break;
       }
+      // 사이드바 전체의 가운데를 겨누되, 아바타와 겹치는 폭이면 기존 오른쪽 안전 칸 시작으로 물러난다.
+      const dockRect = dock.getBoundingClientRect();
+      const centeredLeft = dockRect.left + (dockRect.width - content.getBoundingClientRect().width) / 2;
+      const offset = Math.max(0, centeredLeft - root.getBoundingClientRect().left);
+      content.style.setProperty("--sidebar-footer-offset", `${offset}px`);
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
     const resize = new ResizeObserver(schedule);
-    resize.observe(root); resize.observe(content);
+    resize.observe(root); resize.observe(content); resize.observe(dock);
     const mutation = new MutationObserver(schedule);
     mutation.observe(content, { childList: true, subtree: true, characterData: true });
     document.fonts?.addEventListener("loadingdone", schedule);
