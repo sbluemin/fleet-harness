@@ -114,6 +114,8 @@ export interface AgentConversationProps {
   readonly openLedger?: ((speaker: ConversationSpeaker) => void) | null;
   /** A board-action line's link (`label`) and what it opens. Without it the line only unfolds its reason. */
   readonly openBoardAction?: { readonly label: string; readonly open: (entry: Extract<GroupTimelineEntry, { kind: "board-action" }>) => void } | null;
+  /** After the latest entries, inside the scrolling log and above the working line. Follows the bottom while the person is there. */
+  readonly cards?: ReactNode;
   /** Below the working line — the plugin's own composer or a way back. */
   readonly composer?: ReactNode;
   /** How the person's inline references (a message's `references`) open and look. */

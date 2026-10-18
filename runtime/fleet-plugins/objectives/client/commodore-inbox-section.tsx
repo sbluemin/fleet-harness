@@ -231,12 +231,10 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
           <CommodoreClearButton t={t} theaterId={theaterId} onFail={fail} onClear={() => setFailure(null)} />
         </div>
       ) : null}
-      {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 남는다. */}
-      {tab === "log" ? <CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} /> : null}
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>
-            <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
+            <CommodoreLog t={t} language={language} theaterId={theaterId} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} onEnded={fail} />} />
             {compact ? null : (
               <CommodoreTrailSeam
                 label={t("objectives.commodore.trail.resize")}
@@ -463,7 +461,7 @@ const FOLLOW_SLACK_PX = 48;
  * 사령관 기록 — Operation 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
  * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
-export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
+export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal, cards }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null; readonly cards?: React.ReactNode }) {
   const Transcript = commodoreTranscriptRenderer();
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
@@ -550,6 +548,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
           </div>
         );
       }) : null}
+      {cards}
     </div>
   );
 }

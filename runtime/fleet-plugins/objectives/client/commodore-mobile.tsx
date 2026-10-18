@@ -350,8 +350,6 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   );
   return (
     <div className="objectives-cm-fill objectives-cm-conversation">
-      {/* 사령관의 질문 — 대화 위에 고정된다. 답하면 내려가고 대화에 「사람이 답함」 줄이 남는다. */}
-      <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />
       {Conversation ? (
         <Conversation
           entries={items}
@@ -365,6 +363,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
           openBoardAction={openBoardAction}
           openLedger={openLedger}
           references={references}
+          cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />}
           composer={composer}
         />
       ) : composer}
@@ -450,9 +449,10 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
 
   return (
     <div className="objectives-cm-fill">
-      {/* 사령관의 질문 — 기록 위에 고정된다. 답하면 내려가고 기록에 「사람이 답함」이 남는다. */}
-      <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />
-      <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>{body}</div>
+      <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>
+        {body}
+        <CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />
+      </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div className="objectives-cm-dock">
         <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} onFail={onFail} onClear={onClear} />
