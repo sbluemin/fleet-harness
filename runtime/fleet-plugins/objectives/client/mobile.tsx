@@ -23,7 +23,7 @@ import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } f
 import { ObjectiveResults } from "./results.js";
 import { Retrospective } from "./retrospective.js";
 import { DatePicker } from "./date-picker.js";
-import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
+import { CalGlyph, DETAIL_TABS, detailTabOf, dueLabel, dueShort, SunGlyph, todayIso, type DetailTab } from "./objectives-panel.js";
 import { viewedTheaterId, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusOperation, hasDecisionRequest, loadFinishedObjectives, openObjectiveOnPhone, patchObjectiveView, post, returnPersonHold, readAllTheaters, readTheater, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useObjectiveView, useOperationSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
@@ -491,16 +491,9 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const todayLabel = t(objective.today ? "objectives.schedule.removeToday" : "objectives.schedule.addToday");
   const dueText = objective.dueDate ? t("objectives.tabs.dueTip", { date: dueLabel(objective.dueDate, locale) }) : t("objectives.schedule.setDue");
   const pickTab = (next: DetailTab) => patchObjectiveView(theaterId, () => ({ detailTab: next }));
-  // 머리 줄 — 데스크톱과 같은 오늘·기한 글리프 | 세 탭. 폰은 세로 칸이 귀하고 세 탭이면 한 줄에 넉넉해 데스크톱처럼 두 줄로 나누지 않는다.
-  // 높이와 낱말은 폰 정보 화면의 탭에 맞춘다. 결정 점은 결정 내역이 사는 목표 탭에 선다.
-  const tabBar = (
+  // 대화 정보 화면은 호스트의 한 줄 탭을 쓴다. Operation 없는 단독 목표 화면만 자기 탭을 가진다.
+  const tabBar = !embedded ? (
     <div className="objectives-m-tabbar">
-      <button type="button" className={`objectives-m-tglyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /></button>
-      <button type="button" className={`objectives-m-tglyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
-        <CalGlyph />
-      </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
-      <span className="objectives-m-tsep" aria-hidden="true" />
       <div ref={tabsRef} className="objectives-m-tabs" role="tablist" aria-label={t("objectives.tabs.aria")}>
         {DETAIL_TABS.map((key) => (
           <button key={key} type="button" role="tab" aria-selected={key === tab} onClick={() => pickTab(key)}>
@@ -508,6 +501,17 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           </button>
         ))}
       </div>
+    </div>
+  ) : null;
+  const schedule = (
+    <div className="objectives-m-schedule" role="group" aria-label={t("objectives.schedule.title")}>
+      <button type="button" className={objective.today ? "is-on" : undefined} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}>
+        <SunGlyph /><span>{t(objective.today ? "objectives.mobile.today" : "objectives.mobile.addToday")}</span>
+      </button>
+      <button type="button" className={`${objective.dueDate ? "is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
+        <CalGlyph /><span>{objective.dueDate ? t(overdue ? "objectives.mobile.overdueDate" : "objectives.mobile.dueDate", { date: dueShort(objective.dueDate, locale) }) : t("objectives.mobile.setDue")}</span>
+      </button>
+      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
     </div>
   );
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.
@@ -517,6 +521,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     <div ref={rootRef} className={rootClass}>
       {tabBar}
       <div className="objectives-m-pad">
+        {tab === "goal" ? schedule : null}
         {rowActions.length > 0 ? (
           <div className="objectives-m-acts" role="group" aria-label={t("objectives.mobile.menuLabel")}>
             {rowActions.map((item) => (

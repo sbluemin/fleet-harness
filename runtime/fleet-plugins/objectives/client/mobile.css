@@ -9,18 +9,16 @@
 /* 대화 정보 화면 「목표」 탭에 심긴 상세 — 스크롤은 정보 화면이 맡고 좌우 여백은 그 화면의 탭 칸이 준다. */
 .objectives-m.is-embedded { height: auto; overflow: visible; background: transparent; }
 .objectives-m.is-embedded .objectives-m-pad { padding: 0 0 8px; }
-/* 머리 줄 — 오늘·기한 글리프 | 세 탭. 탭은 폰 정보 화면의 탭(44 높이·보조 글자, 고르면 굵은 본문 잉크와 2px 밑줄)과 같은 문법이다.
-   글리프는 켜면 본문 잉크, 기한이 지나면 위험 색(날짜 글자는 폰에서 싣지 않는다). 넘치면 줄바꿈 없이 가로로 넘기고,
-   그 폭(360 미만)에서는 오른쪽 24px 이 흐려져 더 있다는 것을 말한다 — 그래프 팬의 가장자리 페이드와 같은 문법. */
+/* Operation 없는 단독 목표 화면의 탭. 대화 정보 화면에서는 호스트의 한 줄 탭이 같은 세 보기를 맡는다. */
 .objectives-m-tabbar { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid var(--m-hairline); background: var(--m-bg); overflow-x: auto; scrollbar-width: none; }
 .objectives-m-tabbar::-webkit-scrollbar { display: none; }
-.objectives-m.is-embedded .objectives-m-tabbar { position: static; margin-bottom: 12px; padding: 0; background: transparent; }
-.objectives-m .objectives-m-tglyph { flex: none; display: inline-flex; align-items: center; gap: 4px; min-width: 32px; height: 44px; padding: 0 4px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
-.objectives-m .objectives-m-tglyph svg { width: 18px; height: 18px; flex: none; }
-.objectives-m .objectives-m-tglyph.is-on { color: var(--m-text); }
-.objectives-m .objectives-m-tglyph.is-overdue { color: var(--m-danger); }
-.objectives-m .objectives-m-tglyph:disabled { opacity: .5; cursor: default; }
-.objectives-m-tsep { flex: none; width: 1px; height: 16px; margin: 0 4px 0 2px; background: var(--m-hairline-strong); }
+/* 일정은 목표 탭 맨 위 글자 줄 — 테두리·배경·세로 띠 없이 잉크와 굵기만 상태를 말한다. */
+.objectives-m-schedule { display: flex; flex-wrap: wrap; align-items: center; column-gap: 22px; padding: 0 4px; }
+.objectives-m .objectives-m-schedule button { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; color: var(--m-text-faint); font-size: var(--m-fs-meta); background: transparent; border: 0; }
+.objectives-m .objectives-m-schedule button svg { flex: none; width: 17px; height: 17px; }
+.objectives-m .objectives-m-schedule button.is-on { color: var(--m-text); font-weight: var(--weight-bold); }
+.objectives-m .objectives-m-schedule button.is-overdue { color: var(--m-danger); }
+.objectives-m .objectives-m-schedule button:disabled { opacity: .5; cursor: default; }
 .objectives-m-tabs { display: flex; flex: none; }
 .objectives-m .objectives-m-tabs button { position: relative; flex: none; min-height: 44px; padding: 0 8px; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); white-space: nowrap; }
 .objectives-m .objectives-m-tabs button[aria-selected="true"] { color: var(--m-text); font-weight: var(--weight-bold); border-bottom-color: var(--m-inverse); }

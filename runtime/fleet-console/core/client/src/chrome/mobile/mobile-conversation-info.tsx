@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
@@ -28,7 +28,7 @@ type InfoTab =
   /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationOperationTab`) — 데스크톱과 같은 원천이다. */
   | { readonly kind: "panel"; readonly id: string; readonly title: string; readonly render: (ctx: RailPanelContext) => React.ReactNode }
   /** 레일 엔트리가 `conversationTab`과 `mobile.conversationPane`으로 선언한 도구(목표) — 그 페인을 탭 본문에 그대로 세운다. */
-  | { readonly kind: "pane"; readonly id: string; readonly title: string; readonly paneId: string };
+  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
 
 /**
  * 대화 정보 화면 — Operation 화면 머리 pill이 연다. 큰 아바타 · 제목 카드 · 탭. 탭은 「정보」(모델·강도·하네스·Theater·이름 변경·보관과,
@@ -53,8 +53,23 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
   const bindings = useRailEntries();
   const destination = useMobileDestination();
   const tabId = destination.kind === "info" ? destination.tab ?? "info" : "info";
-  const setTabId = (id: string) => setMobileDestination(id === "info" ? { kind: "info" } : { kind: "info", tab: id });
+  const setTabId = useCallback((id: string) => setMobileDestination(id === "info" ? { kind: "info" } : { kind: "info", tab: id }), []);
   const paneShown = useConversationPaneShown(bindings, operation.id);
+  const paneTabsKey = useSyncExternalStore(
+    (listener) => {
+      const offs = bindings.flatMap((binding) => {
+        const source = binding.entry.mobile?.conversationPane?.tabs;
+        return source ? [source.subscribe(listener)] : [];
+      });
+      return () => { for (const off of offs) off(); };
+    },
+    () => JSON.stringify(bindings.map((binding) => {
+      const value = binding.entry.mobile?.conversationPane?.tabs?.read(operation.id);
+      return [binding.entry.id, value?.selected, value?.tabs.map((item) => [item.id, resolveLocalizedText(item.title, locale), item.replacesMembers, item.dot?.tone, item.dot && resolveLocalizedText(item.dot.label, locale)])];
+    })),
+  );
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const [tabFade, setTabFade] = useState(false);
 
   const tabs = useMemo<readonly InfoTab[]>(() => {
     const list: InfoTab[] = [{ kind: "info", id: "info", title: t("mobile.info.tabInfo") }];
@@ -67,11 +82,62 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
     for (const binding of bindings) {
       const pane = binding.entry.mobile?.conversationPane;
       if (binding.entry.conversationTab !== true || pane === undefined || binding.entry.visible?.() === false || !paneShown.has(binding.entry.id)) continue;
-      list.push({ kind: "pane", id: conversationTabId(binding.entry.id), title: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale), paneId: pane.paneId });
+      const routeId = conversationTabId(binding.entry.id);
+      const source = pane.tabs;
+      const views = source?.read(operation.id);
+      if (source && views && views.tabs.length > 0) {
+        if (views.tabs.some((view) => view.replacesMembers)) {
+          const memberIndex = list.findIndex((item) => item.id === CONVERSATION_MEMBERS_TAB_ID);
+          if (memberIndex >= 0) list.splice(memberIndex, 1);
+        }
+        for (const view of views.tabs) list.push({
+          kind: "pane", id: `${routeId}:${view.id}`, routeId, paneId: pane.paneId,
+          title: resolveLocalizedText(view.title, locale), selected: view.id === views.selected,
+          select: () => source.select(view.id, operation.id),
+          ...(view.dot ? { dot: { tone: view.dot.tone, label: resolveLocalizedText(view.dot.label, locale) } } : {}),
+        });
+      } else list.push({ kind: "pane", id: routeId, routeId, title: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale), paneId: pane.paneId, selected: true });
     }
     return list;
-  }, [bindings, conversation.memberCount, locale, operation.id, paneShown, registered, state.nestedOperations, t]);
-  const tab = tabs.find((item) => item.id === tabId) ?? tabs[0]!;
+  }, [bindings, conversation.memberCount, locale, operation.id, paneShown, paneTabsKey, registered, state.nestedOperations, t]);
+  const tab = tabs.find((item) => item.id === tabId)
+    ?? tabs.find((item) => item.kind === "pane" && item.routeId === tabId && item.selected)
+    ?? tabs[0]!;
+  // 주소로 들어온 보기는 플러그인에 적용한다. 반대로 본문 동작이 보기를 바꾸면 그 선택을 주소에 남긴다.
+  const paneNavigation = useRef<{ readonly route: string; selected: string } | null>(null);
+  useEffect(() => {
+    if (tab.kind !== "pane") { paneNavigation.current = null; return; }
+    const selected = tabs.find((item) => item.kind === "pane" && item.routeId === tab.routeId && item.selected);
+    if (!selected) return;
+    const navigationKey = `${operation.id}:${tabId}`;
+    if (paneNavigation.current?.route !== navigationKey) {
+      paneNavigation.current = { route: navigationKey, selected: selected.id };
+      if (tab.id === tabId && !tab.selected) tab.select?.();
+      return;
+    }
+    if (paneNavigation.current.selected !== selected.id) {
+      paneNavigation.current.selected = selected.id;
+      if (tabId !== selected.id) setTabId(selected.id);
+    }
+  }, [operation.id, setTabId, tab, tabId, tabs]);
+  useEffect(() => {
+    const strip = tabsRef.current;
+    const selected = strip?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!strip || !selected) return;
+    if (selected.offsetLeft < strip.scrollLeft) strip.scrollLeft = selected.offsetLeft;
+    else if (selected.offsetLeft + selected.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = selected.offsetLeft + selected.offsetWidth - strip.clientWidth;
+  }, [tab.id]);
+  useEffect(() => {
+    const strip = tabsRef.current;
+    if (!strip) return;
+    const update = () => setTabFade(strip.scrollWidth - strip.clientWidth - strip.scrollLeft > 1);
+    const observer = new ResizeObserver(update);
+    observer.observe(strip);
+    for (const child of strip.children) observer.observe(child);
+    strip.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => { observer.disconnect(); strip.removeEventListener("scroll", update); };
+  }, [tabs.length, paneTabsKey]);
 
   // 구성원 탭에서 구성원(또는 지휘관)을 고르면 그 본문이 대화 화면에 서므로 정보 화면을 닫고 돌아간다 — 선택이 바뀐 것을 본다.
   const selection = state.nestedBodySelection[operation.id] ?? null;
@@ -117,10 +183,15 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
         </button>
       </div>
       {tabs.length > 1 ? (
-        <div className="mobile-info-tabs" role="tablist" aria-label={t("mobile.info.tabsAria")}>
-          {tabs.map((item) => (
-            <button type="button" role="tab" key={item.id} aria-selected={item.id === tab.id} onClick={() => setTabId(item.id)}>{item.title}</button>
-          ))}
+        <div className={`mobile-info-tabs-edge${tabFade ? " is-overflowing" : ""}`}>
+          <div ref={tabsRef} className="mobile-info-tabs" role="tablist" aria-label={t("mobile.info.tabsAria")}>
+            {tabs.map((item) => (
+              <button type="button" role="tab" key={item.id} aria-selected={item.id === tab.id} onClick={() => {
+                if (item.kind === "pane") item.select?.();
+                setTabId(item.id);
+              }}>{item.title}{item.kind === "pane" && item.dot ? <span className={`mobile-info-tab-dot is-${item.dot.tone}`} role="img" aria-label={item.dot.label} /> : null}</button>
+            ))}
+          </div>
         </div>
       ) : null}
       <div className="mobile-info-body">
