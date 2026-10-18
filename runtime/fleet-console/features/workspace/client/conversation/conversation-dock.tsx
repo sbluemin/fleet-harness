@@ -31,9 +31,11 @@ function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
     let frame = 0;
     const measure = () => {
       frame = 0;
-      for (const tier of ["full", "marks", "single"] as const) {
-        root.dataset.tier = tier;
-        if (content.getBoundingClientRect().width <= root.clientWidth) break;
+      // 폭이 모자라면 플러그인이 표시한 칸을 오른쪽부터 하나씩 숨긴다. 첫 칸은 남겨 요약이 통째로 사라지지 않게 한다.
+      const units = Array.from(content.querySelectorAll<HTMLElement>("[data-sidebar-footer-unit]"));
+      for (const unit of units) delete unit.dataset.sidebarFooterDropped;
+      for (let index = units.length - 1; index > 0 && content.getBoundingClientRect().width > root.clientWidth; index -= 1) {
+        units[index]!.dataset.sidebarFooterDropped = "";
       }
       // 사이드바 전체의 가운데를 겨누되, 아바타와 겹치는 폭이면 기존 오른쪽 안전 칸 시작으로 물러난다.
       const dockRect = dock.getBoundingClientRect();
@@ -51,7 +53,7 @@ function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
     return () => { resize.disconnect(); mutation.disconnect(); document.fonts?.removeEventListener("loadingdone", schedule); if (frame) cancelAnimationFrame(frame); };
   }, [sidebarFooterEntries]);
   if (!sidebarFooterEntries.length) return null;
-  return <div className="sidebar-footer-entries" ref={ref} data-tier="full"><span className="sidebar-footer-entries-content">{sidebarFooterEntries.map((entry) => {
+  return <div className="sidebar-footer-entries" ref={ref}><span className="sidebar-footer-entries-content">{sidebarFooterEntries.map((entry) => {
     const Render = entry.render;
     return <PluginErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} /></PluginErrorBoundary>;
   })}</span></div>;

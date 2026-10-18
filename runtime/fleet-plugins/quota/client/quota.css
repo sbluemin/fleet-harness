@@ -784,11 +784,6 @@
   }
 }
 
-/* 호스트가 실제 가용 폭으로 정하는 단계. 팝업은 portal 이라 줄이 잘려도 열림은 잘리지 않는다. */
-.sidebar-footer-entries[data-tier="marks"] .quota-toolbar-summary__lines,
-.sidebar-footer-entries[data-tier="single"] .quota-toolbar-summary__lines { display: none; }
-.sidebar-footer-entries[data-tier="single"] .quota-toolbar-summary__cell:not(:first-child) { display: none; }
-
 /* 연결되지 않은 공급자는 한 줄이다. 로그인 진행·실패는 기존 안내와 복구 컨트롤을 그대로 펼친다. */
 .quota-disconnected { border-top: 1px solid var(--popover-divider); padding-top: 10px; }
 /* 연결된 공급자가 없으면 머리 아래 선만 남긴다. 앞에 공급자 구역이 있을 때의 경계는 유지한다. */

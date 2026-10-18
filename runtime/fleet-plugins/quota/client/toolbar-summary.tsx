@@ -96,7 +96,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: SidebarFooterEntryCont
         onClick={() => setOpen((value) => !value)}
       >
         {glyphOnly ? <QuotaBarsGlyph /> : readings.map((reading) => (
-          <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
+          <span key={reading.id} className="quota-toolbar-summary__cell" data-sidebar-footer-unit="" aria-hidden="true">
             <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
               {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
             </span>

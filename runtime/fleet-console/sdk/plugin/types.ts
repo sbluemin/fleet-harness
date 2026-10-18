@@ -118,8 +118,9 @@ export interface CommandBandEntryDescriptor {
   readonly render: () => ReactNode;
 }
 
-/** 사이드바 바닥 아바타 오른쪽의 플러그인 요약. 호스트는 순서·가용 폭·full → marks → single 단계를 소유한다.
- * 본문은 플러그인이 그리며, 단계는 부모의 data-tier 로 읽는다. null 을 그리면 자리를 차지하지 않는다. */
+/** 사이드바 바닥 아바타 오른쪽의 플러그인 요약. 호스트는 순서와 가용 폭을 소유한다. 본문은 플러그인이 그리며,
+ * `data-sidebar-footer-unit` 을 단 요소는 폭이 모자랄 때 호스트가 오른쪽부터 숨긴다(첫 칸은 남는다).
+ * null 을 그리면 자리를 차지하지 않는다. */
 export interface SidebarFooterEntryContext {
   /** 아바타를 포함한 바닥 줄의 왼쪽 안쪽 끝. 팝업 기하는 이 명시적 닻을 쓰고 버튼 포커스는 플러그인이 소유한다. */
   readonly popoverAnchorRef: RefObject<HTMLElement | null>;
