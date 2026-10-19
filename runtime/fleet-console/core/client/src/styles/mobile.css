@@ -1019,11 +1019,12 @@
 .mobile-empty-home p { margin: 0; font-size: var(--t-md); }
 
 /* 플러그인 화면은 기본으로 막대 몫을 비우고 그 아래에서 시작한다(막대의 페이드가 첫 줄 위에 겹친다). 자기 스크롤 영역이 --m-chrome-top만큼
-   위를 비우는 플러그인은 보이는 페인의 본문 루트에 data-mobile-chrome="flow"를 달아 본문을 막대 뒤로 흘린다(숨은 페인의 표식은 세지 않는다). */
+   위를 비우는 플러그인은 보이는 페인의 본문 루트에 data-mobile-chrome="flow"를 달아 본문을 막대 뒤로 흘린다(숨은 페인의 표식은 세지 않는다).
+   그 판정은 화면 루트가 data-chrome-flow로 옮겨 단다(mobile-plugin-screen.tsx) — :has()로 고르면 입력 한 글자마다 스타일을 넓게 다시 계산한다. */
 .mobile-plugin-screen { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; padding-top: var(--m-chrome-top); overflow: hidden; background: var(--m-bg); }
-.mobile-plugin-screen:has(.rail-pane:not([hidden]) [data-mobile-chrome="flow"]) { padding-top: 0; }
+.mobile-plugin-screen[data-chrome-flow] { padding-top: 0; }
 /* 이미 막대 아래에서 시작한 본문 안에서는 막대 몫이 0이다 — 그 안의 부품(터미널 격자 등)이 같은 몫을 두 번 비우지 않는다. */
-.mobile-plugin-screen:not(:has(.rail-pane:not([hidden]) [data-mobile-chrome="flow"])) > * { --m-chrome-top: 0px; }
+.mobile-plugin-screen:not([data-chrome-flow]) > * { --m-chrome-top: 0px; }
 .mobile-plugin-screen > .rail-surface { flex: 1; min-width: 0; min-height: 0; width: 100%; }
 /* 상단 막대는 호스트가 그린다 — 상세 페인의 캡션 밴드는 같은 말을 두 번 하게 된다. */
 .mobile-plugin-screen .pane-caption { display: none; }

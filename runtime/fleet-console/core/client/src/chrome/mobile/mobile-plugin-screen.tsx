@@ -75,12 +75,25 @@ export function MobilePluginScreen({ entryId, theme, language }: { readonly entr
     setMobileDestination(Object.keys(kept).length > 0 ? { kind: "plugin", entryId, params: kept } : { kind: "plugin", entryId });
   }, [activeRail, entryId, primaryId, primaryParams]);
 
+  // 보이는 페인의 본문이 막대 뒤로 흐르는가(data-mobile-chrome="flow") — 화면 루트의 속성으로 옮겨 CSS 가 읽는다. 루트에서
+  // `:has()` 로 고르면 문서 어디의 자식 변화(입력창 한 글자)에도 스타일을 넓게 다시 계산한다. 본문 교체·페인 숨김을 따라 다시 잰다.
+  const screenRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const screen = screenRef.current;
+    if (!screen) return;
+    const read = () => screen.toggleAttribute("data-chrome-flow", screen.querySelector('.rail-pane:not([hidden]) [data-mobile-chrome="flow"]') !== null);
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(screen, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "data-mobile-chrome"] });
+    return () => observer.disconnect();
+  });
+
   if (binding && binding.panes.length === 0 && binding.entry.surfaceId) {
     return <MobileSurfaceScreen surfaceId={binding.entry.surfaceId} title={title} theme={theme} language={language} />;
   }
   if (!binding || binding.panes.length === 0) return null;
   return (
-    <section className="mobile-plugin-screen" data-host-surface="mobile-screen" aria-label={title}>
+    <section ref={screenRef} className="mobile-plugin-screen" data-host-surface="mobile-screen" aria-label={title}>
       <PluginErrorBoundary>
         <MobileBarContext.Provider value={bar}>
           {activeRail === entryId ? (
