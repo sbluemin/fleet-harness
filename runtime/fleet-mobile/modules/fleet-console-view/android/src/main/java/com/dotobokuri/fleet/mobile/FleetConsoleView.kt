@@ -29,6 +29,8 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
@@ -60,7 +62,11 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     var readinessRequested: Boolean = false,
     // Set once WebView reports this view's renderer dead; the view then takes only removal and destroy().
     var rendererGone: Boolean = false,
+    var released: Boolean = false,
   )
+
+  /** Recovery a renderer death left for the app's return; [staged] null means the committed page. */
+  private class PendingRecovery(val staged: StagedLoad?, val reloadAllowed: Boolean)
 
   private val onFleetEvent by EventDispatcher()
   private val targetStore = TargetStore(context)
@@ -80,6 +86,10 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private val rendererRecovery = RendererRecovery()
   // The console whose committed page lost its renderer, until a page commits again.
   private var lostPageOrigin: String? = null
+  // A renderer that died while another activity covered the app waits here for resume().
+  private var pendingRecovery: PendingRecovery? = null
+  // Set when automatic reloads stopped; only the person's own retry starts the page again.
+  private var rendererReloadStopped = false
   private val appearanceStore = AppearanceStore(context)
   private val appVersion: String? = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (_: Exception) { null }
   // Read by JS on the module thread, written on main.
@@ -177,7 +187,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       emit("error", "pairing_target_invalid")
       return
     }
-    if (attemptInFlight) return
+    if (resumeRendererRecovery()) return
+    if (attemptInFlight || rendererReloadStopped) return
     if (activeView == null && activeTarget != null) retry()
   }
 
@@ -340,6 +351,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private fun beginAttempt(candidate: PersistedTarget, token: String?) {
     val id = attempt.incrementAndGet()
     attemptInFlight = true
+    pendingRecovery = null
+    rendererReloadStopped = false
     dismissLinkError()
     main.post {
       if (!isCurrent(id)) return@post
@@ -669,7 +682,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   /** Tell every live page again: the next load through its document-start script, the open page right now. */
   private fun refreshAppearance() {
     val background = AppearanceBridge.backgroundColor(appearance.dark(systemDark))
-    staging?.let { staged ->
+    staging?.takeIf { !it.released }?.let { staged ->
       staged.view.setBackgroundColor(background)
       installAppearanceScript(staged.view, staged.gateway, staged.target)
     }
@@ -762,7 +775,18 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     staged.rendererGone = true
     // A newer attempt already posted the release of this staging.
     if (!isCurrent(staged.attemptId)) return
-    if (!rendererRecovery.allowsAutomaticReload()) {
+    val allowed = rendererRecovery.allowsAutomaticReload()
+    if (!hostResumed()) {
+      releaseStagedView(staged)
+      pendingRecovery = PendingRecovery(staged, allowed)
+      return
+    }
+    restageOrFail(staged, allowed)
+  }
+
+  private fun restageOrFail(staged: StagedLoad, allowed: Boolean) {
+    if (!allowed) {
+      rendererReloadStopped = true
       failStaged(staged, RendererRecovery.CODE)
       return
     }
@@ -781,9 +805,42 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     lostPageOrigin = target.origin
     // An attempt already in flight replaces this page when it commits.
     if (attemptInFlight) return
-    if (rendererRecovery.allowsAutomaticReload()) beginAttempt(target, null)
-    else emit("error", RendererRecovery.CODE, target.label, target.origin)
+    val allowed = rendererRecovery.allowsAutomaticReload()
+    if (hostResumed()) reloadOrStop(target, allowed) else pendingRecovery = PendingRecovery(null, allowed)
   }
+
+  private fun reloadOrStop(target: PersistedTarget, allowed: Boolean) {
+    if (allowed) {
+      beginAttempt(target, null)
+    } else {
+      rendererReloadStopped = true
+      emit("error", RendererRecovery.CODE, target.label, target.origin)
+    }
+  }
+
+  /**
+   * The renderer usually dies while the system picker covers the app, when memory is short. Reloading
+   * then would meet the same pressure, and a shell event sent while the activity is paused reaches React
+   * Native as a commit that Fabric can fail to mount when the app returns, which ends the app. So the
+   * page waits for this call, which the shell makes when the app is active again.
+   */
+  private fun resumeRendererRecovery(): Boolean {
+    val pending = pendingRecovery ?: return false
+    pendingRecovery = null
+    val staged = pending.staged
+    if (staged != null) {
+      if (staging !== staged || !isCurrent(staged.attemptId)) return false
+      restageOrFail(staged, pending.reloadAllowed)
+      return true
+    }
+    if (attemptInFlight || activeView != null) return false
+    val target = activeTarget ?: return false
+    reloadOrStop(target, pending.reloadAllowed)
+    return true
+  }
+
+  private fun hostResumed(): Boolean =
+    (appContext.currentActivity as? LifecycleOwner)?.lifecycle?.currentState?.isAtLeast(Lifecycle.State.RESUMED) == true
 
   private fun failStaged(staged: StagedLoad, code: String) {
     if (staging !== staged || !isCurrent(staged.attemptId)) return
@@ -855,6 +912,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   private fun releaseStagedView(staged: StagedLoad) {
+    if (staged.released) return
+    staged.released = true
     if (staged.rendererGone) {
       discardDeadView(staged.view)
     } else {
