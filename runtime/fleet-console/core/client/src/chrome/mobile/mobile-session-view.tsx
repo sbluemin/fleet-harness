@@ -58,6 +58,13 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   }, []);
   const [measureTarget, setMeasureTarget] = useState<HTMLDivElement | null>(null);
   useEffect(() => measure(measureTarget), [measure, measureTarget]);
+  const memberBodyId = bodyOperation?.operation.id ?? null;
+  useEffect(() => {
+    if (memberBodyId === null || covered) return;
+    // 폰의 구성원 원장은 틀 없이 본문을 바꾼다 — 풀의 본문 이동과 전언 pill 정리가 끝난 뒤 본문 시작이 포커스를 받는다.
+    const frame = requestAnimationFrame(() => measureTarget?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [memberBodyId, covered, measureTarget]);
 
   // 세션 머리의 보관도 데스크톱과 같이 한 번에 끝난다 — 되돌리기는 같은 토스트가 맡는다.
   const archive = () => {
@@ -128,7 +135,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   return (
     <section className={`mobile-session-view${covered ? " is-covered" : ""}`} aria-hidden={covered || undefined}>
-      <div className="mobile-session-body" ref={setMeasureTarget}>
+      <div className="mobile-session-body" ref={setMeasureTarget} role="region" aria-label={title} tabIndex={-1}>
         <OperationBodySlot key={bodyOwner.id} operationId={bodyOwner.id} config={config} className="mobile-operation-body-slot" />
       </div>
     </section>
