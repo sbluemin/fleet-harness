@@ -1,5 +1,5 @@
 ---
-branch: fix-mobile-bundle-2dba3624
+branch: fix/mobile-bundle-2dba3624
 ---
 
 ### fleet-console
