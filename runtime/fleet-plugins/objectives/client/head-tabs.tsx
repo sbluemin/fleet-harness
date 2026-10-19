@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/sdk/i18n";
 import type { RailEntryConversationPane, RailEntryConversationTab, RailEntryConversationTabs, RailEntryConversationTabsState } from "@fleet-console/sdk/rail";
 
@@ -99,6 +99,7 @@ function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonl
   const readActivity = () => (objective ? operationSummaries().find((operation) => operation.id === objective.id)?.activity ?? null : null);
   const activity = useSyncExternalStore(subscribeObjective, readActivity, readActivity);
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const dueButton = useRef<HTMLButtonElement | null>(null);
   if (!objective) return null;
   const lang = language === "ko" ? "ko" : "en";
   const t = getT(lang);
@@ -114,10 +115,10 @@ function ObjectiveHeadTools({ theaterId: contextTheaterId, language }: { readonl
   return (
     <span className="objectives-head-tools" role="group" aria-label={t("objectives.schedule.title")}>
       <button type="button" className={`objectives-tab-glyph${objective.today ? " is-on" : ""}`} aria-pressed={objective.today} aria-label={todayLabel} title={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}><SunGlyph /><span aria-hidden="true">{t("objectives.tabs.today")}</span></button>
-      <button type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
+      <button ref={dueButton} type="button" className={`objectives-tab-glyph${objective.dueDate ? " is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} title={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
         <CalGlyph /><span aria-hidden="true">{t("objectives.schedule.due")}{objective.dueDate ? <span> · {dueShort(objective.dueDate, lang)}</span> : null}</span>
       </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
+      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={lang} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
     </span>
   );
 }

@@ -479,6 +479,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const theaterId = objective?.theaterId ?? null;
   const tab = detailTabOf(useObjectiveView(theaterId).detailTab);
   const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const dueButton = useRef<HTMLButtonElement | null>(null);
   // 좁은 폭에서 탭 바가 넘치면 고른 탭이 보이게 가로로만 당긴다.
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => { tabsRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [tab]);
@@ -511,10 +512,10 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       <button type="button" className={objective.today ? "is-on" : undefined} aria-pressed={objective.today} aria-label={todayLabel} disabled={!editable} onClick={() => patch({ today: !objective.today })}>
         <SunGlyph /><span>{t(objective.today ? "objectives.mobile.today" : "objectives.mobile.addToday")}</span>
       </button>
-      <button type="button" className={`${objective.dueDate ? "is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
+      <button ref={dueButton} type="button" className={`${objective.dueDate ? "is-on" : ""}${overdue ? " is-overdue" : ""}`} aria-label={dueText} disabled={!editable} aria-haspopup="dialog" aria-expanded={!!dateAnchor} onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); setDateAnchor((value) => (value ? null : rect)); }}>
         <CalGlyph /><span>{objective.dueDate ? t(overdue ? "objectives.mobile.overdueDate" : "objectives.mobile.dueDate", { date: dueShort(objective.dueDate, locale) }) : t("objectives.mobile.setDue")}</span>
       </button>
-      {dateAnchor ? <DatePicker anchor={dateAnchor} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
+      {dateAnchor ? <DatePicker anchor={dateAnchor} trigger={dueButton} value={objective.dueDate} language={locale} t={t} onPick={(next) => patch({ dueDate: next })} onClose={() => setDateAnchor(null)} /> : null}
     </div>
   );
   // 동작 줄도 같다 — 모두 흐리면 줄을 세우지 않아 첫 시선이 누를 수 없는 단추에 가지 않게 한다.

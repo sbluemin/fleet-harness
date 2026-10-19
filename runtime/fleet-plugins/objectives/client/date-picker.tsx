@@ -1,11 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 
-/** 기한 달력. withTime에서는 지역 날짜·시각을 함께 고르고 예약으로 확정한다. 날짜 전용 호출은 즉시 고르고, 이미 고른 날짜를 다시 고르면 기한을 지운다. */
+/** 기한 달력. withTime에서는 지역 날짜·시각을 함께 고르고 예약으로 확정한다. 날짜 전용 호출은 즉시 고르고, 이미 고른 날짜를 다시 고르면 기한을 지운다.
+ * trigger를 넘기면 그 단추 누름은 바깥 클릭으로 닫지 않는다 — 단추의 토글이 닫게 해, 다시 누르면 닫혔다 곧바로 다시 열리지 않는다. */
 const pad = (value: number) => String(value).padStart(2, "0");
 const iso = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 export const localDateTime = (date: Date) => `${iso(date)}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
@@ -16,8 +17,9 @@ const parse = (value: string | null): Date | null => {
 };
 const addDays = (date: Date, days: number) => { const next = new Date(date); next.setDate(next.getDate() + days); return next; };
 
-export function DatePicker({ anchor, value, language, t, onPick, onClose, withTime = false }: {
+export function DatePicker({ anchor, trigger, value, language, t, onPick, onClose, withTime = false }: {
   readonly anchor: DOMRect;
+  readonly trigger?: RefObject<Element | null>;
   readonly value: string | null;
   readonly language: "en" | "ko";
   readonly t: Translate<ObjectiveMessageKey>;
@@ -53,10 +55,14 @@ export function DatePicker({ anchor, value, language, t, onPick, onClose, withTi
     setPos({ left, top });
   }, [anchor, month, validTime, withTime]);
   useEffect(() => {
-    const onDown = (event: PointerEvent) => { if (cardRef.current && !cardRef.current.contains(event.target as Node)) onClose(); };
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (trigger?.current?.contains(target)) return;
+      if (cardRef.current && !cardRef.current.contains(target)) onClose();
+    };
     window.addEventListener("pointerdown", onDown, true);
     return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [onClose]);
+  }, [onClose, trigger]);
   useEffect(() => { cardRef.current?.focus(); }, []);
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
