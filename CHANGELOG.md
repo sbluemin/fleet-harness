@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.245.1] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- On the phone, the Commodore conversation and its record tab now show the same summary row above the message box as group conversations.
+
+#### Fixed
+- On the phone, going back from a member's record opened from a group conversation now returns to that conversation instead of the home list.
+- Old links to an objective's Members tab on the phone now open the Members view instead of the Info tab.
+
 ## [1.245.0] - 2026-10-19
 
 ### fleet-console

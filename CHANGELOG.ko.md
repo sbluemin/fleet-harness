@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.245.1] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- 폰의 사령관 대화와 기록 탭에도 그룹 대화처럼 입력창 위 요약 줄이 보입니다.
+
+#### Fixed
+- 폰에서 그룹 대화로 연 구성원 기록에서 뒤로 가면 홈 목록이 아니라 보던 그룹 대화로 돌아갑니다.
+- 폰에서 목표의 예전 「구성원」 탭 링크가 「정보」 탭이 아니라 구성원 보기로 열립니다.
+
 ## [1.245.0] - 2026-10-19
 
 ### fleet-console
