@@ -25,6 +25,8 @@ import type { GlobalSettingsState } from "../../integration/types.js";
 import { setViewModePreference, useViewMode, type ViewModePreference } from "../../integration/view-mode-store.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
+import { refreshConsole, resolveUpdateApplyCopyFor, useVersionRefresh, type VersionRefreshState } from "../components/console-update-action.js";
+import { openMobileUpdateSheet } from "./mobile-update-sheet.js";
 import { openMobileChoice, type HostChoiceOption } from "./mobile-choice-store.js";
 import { closeMobileSheets, pushMobileSheet } from "./mobile-store.js";
 import { clearMobileSubScreens, popMobileSubScreen, useMobileSubScreens } from "./mobile-subscreen-store.js";
@@ -65,6 +67,10 @@ interface MobileSettingsRow {
   readonly act?: (anchor: { readonly top: number; readonly bottom: number }) => void;
   /** 값이 플러그인 섹션에서 오는 행 — 그 섹션의 `mobile.summary`가 보조 줄을 그리고 `subscribe`로 갱신한다. */
   readonly summarySection?: PluginSettingsNavItem;
+  /** 행 오른쪽 끝의 짧은 말 — 동작 이름(「지금 확인」)이나 결과. `failed`면 경고 색이다. */
+  readonly trailing?: { readonly text: string; readonly failed?: true };
+  /** 아이콘 모서리의 새 버전 신호(데스크톱 도움말 점과 같은 뜻). */
+  readonly dot?: true;
   /** 읽기 전용 값(P-2의 정보 행) — 누를 수 없고 누름 면이 없다. */
   readonly info?: true;
   /** 켬/끔 행(P-2) — 설명이 제목 아래 여러 줄로 선다. */
@@ -120,7 +126,8 @@ export function MobileSettingsPage({ embedded = false }: {
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
-  const groups = buildMobileSettingsGroups({ state, savingFields: settings.savingFields, appearance, viewMode: viewMode.preference, version: consoleState.version, consoleLatest: !consoleState.updateAvailable, pluginSections, t, locale });
+  const versionRefresh = useVersionRefresh(refreshConsole);
+  const groups = buildMobileSettingsGroups({ state, savingFields: settings.savingFields, appearance, viewMode: viewMode.preference, version: consoleState.version, update: { available: consoleState.updateAvailable, latestVersion: consoleState.latestVersion, shellRequired: consoleState.shellUpdateRequired, refresh: versionRefresh }, pluginSections, t, locale });
   const rows = groups.flatMap((group) => group.rows);
   const requested = embedded ? null : new URLSearchParams(location.search).get("section");
   // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
@@ -250,14 +257,15 @@ function SettingsListRow({ row, locale, onOpen }: { readonly row: MobileSettings
   }
   const body = (
     <>
-      <span className="mobile-group-row-icon" aria-hidden="true">{row.icon}</span>
+      <span className="mobile-group-row-icon" aria-hidden="true">{row.icon}{row.dot ? <span className="mobile-update-dot" /> : null}</span>
       <span className="mobile-group-row-copy">{row.title}{row.summarySection ? <SectionSummary section={row.summarySection} locale={locale} /> : row.value === null ? null : <small>{row.value}</small>}</span>
+      {row.trailing ? <span className={`mobile-group-row-value${row.trailing.failed ? " is-failed" : ""}`} role="status">{row.trailing.text}</span> : null}
     </>
   );
   const two = row.value === null && !row.summarySection ? "" : " is-two";
   if (row.info) return <div className={`mobile-group-row${two} is-info`} id={`mobile-settings-${row.id}`}>{body}</div>;
   return (
-    <button type="button" className={`mobile-group-row${two}`} onClick={(event) => (row.act ? row.act(event.currentTarget.getBoundingClientRect()) : onOpen(row.id as MobileSectionId))}>
+    <button type="button" id={`mobile-settings-${row.id}`} className={`mobile-group-row${two}`} onClick={(event) => (row.act ? row.act(event.currentTarget.getBoundingClientRect()) : onOpen(row.id as MobileSectionId))}>
       {body}
     </button>
   );
@@ -294,13 +302,18 @@ function LocalDetail({ id: _id }: { readonly id: LocalSectionId }) {
  * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
  * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다. 행의 대응은 spec-decisions D37.
  */
-function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, version, consoleLatest, pluginSections, t, locale }: {
+function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, version, update, pluginSections, t, locale }: {
   readonly savingFields: ReadonlySet<string>;
   readonly state: GlobalSettingsState | null;
   readonly appearance: MobileAppearanceSnapshot;
   readonly viewMode: ViewModePreference;
   readonly version: string;
-  readonly consoleLatest: boolean;
+  readonly update: {
+    readonly available: boolean;
+    readonly latestVersion: string | null;
+    readonly shellRequired: boolean;
+    readonly refresh: { readonly state: VersionRefreshState; readonly refresh: () => Promise<void> };
+  };
   readonly pluginSections: readonly PluginSettingsNavItem[];
   readonly t: (key: CoreMessageKey) => string;
   readonly locale: ConsoleLocale;
@@ -376,10 +389,28 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
     { id: "experiments", title: t("settings.core.experiments.label"), value: describeExperiments(state, t), icon: <MobileIcon name="flask" /> },
   );
   const appVersion = appearance.appVersion;
+  const appSuffix = appVersion ? ` · ${t("mobile.settings.appVersion")} ${appVersion}` : "";
+  // 「Console 버전」 행: 새 버전이면 업데이트 시트를 여는 행, 아니면 지금 확인을 누를 수 있는 행이다.
+  const versionRow = (): MobileSettingsRow => {
+    const base = { id: "version" as const, title: t("mobile.settings.version"), icon: <MobileIcon name="info" /> };
+    const latest = update.latestVersion;
+    if (update.available && latest !== null) {
+      const value = `v${version} → v${latest}${appSuffix}`;
+      // 셸이 먼저 갱신되어야 하는 Console 갱신은 누를 것이 없다 — 데스크톱 버전 행과 같은 문구로 이유만 말한다.
+      if (update.shellRequired) return { ...base, value, trailing: { text: resolveUpdateApplyCopyFor("blocked", "shell_update_required", latest, t).label }, info: true };
+      return { ...base, value, dot: true, trailing: { text: `v${latest} ↑` }, act: () => openMobileUpdateSheet() };
+    }
+    const check = update.refresh.state;
+    const trailing: MobileSettingsRow["trailing"] = check === "busy" ? { text: t("chrome.system.version.checking") }
+      : check === "current" ? { text: t("chrome.system.version.upToDate") }
+      : check === "failed" ? { text: t("chrome.system.version.checkFailed"), failed: true }
+      : { text: t("mobile.settings.checkNow") };
+    return { ...base, value: `Console ${version} · ${t("mobile.settings.latest")}${appSuffix}`, trailing, act: () => { void update.refresh.refresh(); } };
+  };
   const about: MobileSettingsRow[] = [
     { id: "whatsnew", title: t("mobile.settings.whatsNew"), value: version, icon: <MobileIcon name="spark" />, act: () => openWhatsNew() },
     { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
-    { id: "version", title: t("mobile.settings.version"), value: `Console ${version}${consoleLatest ? ` · ${t("mobile.settings.latest")}` : ""}${appVersion ? ` · ${t("mobile.settings.appVersion")} ${appVersion}` : ""}`, icon: <MobileIcon name="info" />, info: true },
+    versionRow(),
   ];
   return [{ key: "display", rows: display, note: t("mobile.settings.color.note") }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }

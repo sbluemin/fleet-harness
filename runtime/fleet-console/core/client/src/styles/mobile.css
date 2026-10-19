@@ -1174,6 +1174,10 @@ html[data-view-mode="mobile"] .app-toast-action {
 
 .mobile-avatar-dot { position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px; background: var(--m-running); border: 2px solid var(--m-bg); border-radius: 50%; }
 .mobile-avatar-dot[data-state="failed"] { background: var(--m-danger); }
+/* 새 Console 버전 신호 — 데스크톱 도움말 점과 같은 뜻(positive). 연결 점(오른쪽 아래)과 겹치지 않게 오른쪽 위에 선다. */
+.mobile-update-dot { position: absolute; right: -1px; top: -1px; width: 12px; height: 12px; background: var(--positive); border: 2px solid var(--m-bg); border-radius: 50%; }
+.mobile-group-row-icon { position: relative; }
+.mobile-group-row-icon .mobile-update-dot { right: -3px; top: -3px; width: 10px; height: 10px; }
 
 /* 보관함 · 검색 */
 .mobile-archive-screen, .mobile-search-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; background: var(--m-bg); }
@@ -1287,6 +1291,14 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-settings-group .mobile-secnote { padding: 8px 4px 0; }
 .mobile-group-row.is-info { cursor: default; }
 .mobile-group-row.is-info:active { background: var(--m-surface); }
+.mobile-group-row-value.is-failed { color: var(--m-danger); }
+
+/* 업데이트 시트 본문 */
+.mobile-update-sheet { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 4px 4px 12px; }
+.mobile-update-sheet strong { font-size: var(--t-lg); font-weight: var(--weight-bold); }
+.mobile-update-sheet p { margin: 0; color: var(--m-text-muted); font-size: var(--t-md); line-height: 22px; }
+.mobile-update-sheet p.is-warn { color: var(--m-text); }
+.mobile-update-sheet-link { padding: 6px 0; color: var(--m-text-muted); font-size: var(--t-md); text-decoration: underline; background: none; border: 0; }
 
 /* 새 기능 시트 본문 · 업데이트 화면(S-50) */
 .mobile-whatsnew-version { margin: 8px 4px 6px; font-family: var(--m-reading); font-size: var(--t-xl); font-weight: var(--weight-medium); line-height: 32px; }
