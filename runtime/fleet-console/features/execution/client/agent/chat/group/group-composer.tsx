@@ -596,7 +596,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
               {note ? (
                 <span className={`group-composer-suggest-note is-${note.tone}`}>
                   {note.tone === "lock" ? <LockGlyph /> : note.tone === "awaiting" ? <RequestGlyph /> : <span className="group-composer-suggest-dot" aria-hidden="true" />}
-                  <span>{local(note.text)}</span>
+                  <span className="group-composer-suggest-note-text" title={local(note.text)}>{local(note.text)}</span>
                   {note.reveal ? <button type="button" className="group-composer-suggest-link" onClick={note.reveal.run}>{local(note.reveal.label)}</button> : null}
                   {note.tone === "awaiting" ? <button type="button" className="group-composer-suggest-link" onClick={toCards}>{t("group.board.toCards")}</button> : null}
                 </span>
