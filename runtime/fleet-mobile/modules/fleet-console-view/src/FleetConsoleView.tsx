@@ -12,6 +12,8 @@ export interface FleetConsoleEvent {
   readonly origin?: string;
   readonly active?: boolean;
   readonly retryAfterSeconds?: number;
+  /** On "connected": the page came back after its web content process died, so whatever it held is gone. */
+  readonly recovered?: boolean;
   /** Window chrome insets in dp (status bar, cutout, navigation), sent on "insets" events; the keyboard inset stays native. */
   readonly insetTop?: number;
   readonly insetRight?: number;

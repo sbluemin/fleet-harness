@@ -52,5 +52,13 @@ class FileChooserTest {
     cancelled.deliver(null)
     assertEquals(2, answers.size)
     assertNull(answers.last())
+
+    // A page whose renderer died is answered at once; the picker result that follows is dropped.
+    val orphaned = FileChooserAnswer(page, multiple = false) { answers.add(it) }
+    assertTrue(FileChooserRelay.begin(orphaned))
+    FileChooserRelay.cancelFor(page)
+    FileChooserRelay.complete(FileChooserRelay.REQUEST_CODE, Activity.RESULT_OK, Intent().setData(picked)) { true }
+    assertEquals(3, answers.size)
+    assertNull(answers.last())
   }
 }

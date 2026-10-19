@@ -39,6 +39,7 @@ export interface ShellStrings {
   readonly cameraAsk: string;
   readonly cameraOff: (ios: boolean) => string;
   readonly notFleetCode: string;
+  readonly pageRecovered: string;
   readonly describe: (code: string | undefined) => string;
 }
 
@@ -78,6 +79,7 @@ const KO: ShellStrings = {
   cameraAsk: "Fleet은 코드를 읽을 때만 카메라를 씁니다. 아무것도 녹화하거나 보내지 않습니다.",
   cameraOff: (ios) => `Fleet의 카메라 접근이 꺼져 있습니다. ${ios ? "설정" : "Android 설정"}에서 켜거나 링크를 붙여넣으세요.`,
   notFleetCode: "Fleet 접속 링크가 아닌 코드입니다.",
+  pageRecovered: "Console 화면이 멈춰서 다시 불러왔습니다. 첨부하던 이미지가 있으면 다시 추가하세요.",
   describe(code) {
     switch (code) {
       case "pairing_target_invalid": return "접속 링크가 올바르지 않습니다. 그 Console에서 새 접속 링크를 여세요.";
@@ -97,6 +99,7 @@ const KO: ShellStrings = {
       case "remote_link_redirect_refused": return "Console이 보안 연결을 다른 곳으로 돌리려 했습니다.";
       case "remote_link_transport_proof_unavailable": return "모든 페이지 전송의 인증서 핀을 확인하지 못해 연결하지 않았습니다.";
       case "remote_host_readiness_unsupported": return "이 기기의 웹 보기는 Fleet에 필요한 인증된 준비 채널을 지원하지 않습니다. 시스템 WebView를 업데이트한 뒤 다시 시도하세요.";
+      case "webview_renderer_gone": return "Console 화면이 잇따라 멈춰서 자동으로 다시 불러오지 않았습니다. 다시 시도하세요.";
       // Unknown codes include refused navigation and readiness failures, not only an unreachable host.
       default: return "Console에 연결할 수 있는지 확인한 뒤 다시 시도하세요.";
     }
@@ -139,6 +142,7 @@ const EN: ShellStrings = {
   cameraAsk: "Fleet needs the camera to read the code. Nothing is recorded or sent anywhere.",
   cameraOff: (ios) => `Camera access is turned off for Fleet. Turn it on in ${ios ? "Settings" : "Android settings"}, or paste the link instead.`,
   notFleetCode: "That code is not a Fleet access link.",
+  pageRecovered: "The Console page stopped, so Fleet reloaded it. Add any image you were attaching again.",
   describe(code) {
     switch (code) {
       case "pairing_target_invalid": return "That access link is not valid.";
@@ -157,6 +161,7 @@ const EN: ShellStrings = {
       case "remote_link_redirect_refused": return "The Console tried to redirect the secure connection.";
       case "remote_link_transport_proof_unavailable": return "Fleet could not prove certificate pins for every page transport, so it refused to connect.";
       case "remote_host_readiness_unsupported": return "This device's web view cannot provide the authenticated readiness channel Fleet requires.";
+      case "webview_renderer_gone": return "The Console page stopped again right after reloading, so Fleet did not reload it on its own.";
       default: return "Check that the Console is reachable, then try again.";
     }
   },

@@ -14,6 +14,7 @@ import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.SafeBrowsingResponse
 import android.webkit.SslErrorHandler
 import android.webkit.ValueCallback
@@ -57,6 +58,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val readinessNonce: String,
     var localCertificateObserved: Boolean = false,
     var readinessRequested: Boolean = false,
+    // Set once WebView reports this view's renderer dead; the view then takes only removal and destroy().
+    var rendererGone: Boolean = false,
   )
 
   private val onFleetEvent by EventDispatcher()
@@ -74,6 +77,9 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private var activeView: WebView? = null
   private var activeGateway: LoopbackGateway? = null
   private var staging: StagedLoad? = null
+  private val rendererRecovery = RendererRecovery()
+  // The console whose committed page lost its renderer, until a page commits again.
+  private var lostPageOrigin: String? = null
   private val appearanceStore = AppearanceStore(context)
   private val appVersion: String? = try { context.packageManager.getPackageInfo(context.packageName, 0).versionName } catch (_: Exception) { null }
   // Read by JS on the module thread, written on main.
@@ -614,6 +620,13 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         callback.backToSafety(true)
         failStaged(staged, "navigation_denied")
       }
+
+      // Unhandled, a dead renderer takes the whole app with it. The system photo picker lowers this
+      // app's priority, so under memory pressure the renderer is the first process reclaimed.
+      override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?): Boolean {
+        if (view != null) onRendererGone(view, staged)
+        return true
+      }
     }
   }
 
@@ -730,15 +743,53 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       previousView.destroySafely()
     }
     if (previousGateway !== staged.gateway) previousGateway?.close()
-    emit("connected", label = staged.target.label, origin = staged.target.origin)
+    val recovered = lostPageOrigin == staged.target.origin
+    lostPageOrigin = null
+    emit("connected", label = staged.target.label, origin = staged.target.origin, recovered = recovered)
+  }
+
+  private fun onRendererGone(view: WebView, staged: StagedLoad) {
+    if (detached) return
+    when {
+      staging === staged && view === staged.view -> restageAfterRendererGone(staged)
+      view === activeView -> reloadAfterRendererGone(view)
+      else -> discardDeadView(view)
+    }
+  }
+
+  /** The joined session loads again in a fresh view: a link's one-time token is already spent. */
+  private fun restageAfterRendererGone(staged: StagedLoad) {
+    staged.rendererGone = true
+    // A newer attempt already posted the release of this staging.
+    if (!isCurrent(staged.attemptId)) return
+    if (!rendererRecovery.allowsAutomaticReload()) {
+      failStaged(staged, RendererRecovery.CODE)
+      return
+    }
+    staging = null
+    releaseStagedView(staged)
+    stageWebView(staged.attemptId, staged.target, staged.gateway, staged.cookieSnapshot)
+  }
+
+  /** The committed page reloads through the retry path; a cold start holds the same state. */
+  private fun reloadAfterRendererGone(view: WebView) {
+    discardDeadView(view)
+    activeView = null
+    activeGateway?.close()
+    activeGateway = null
+    val target = activeTarget ?: return
+    lostPageOrigin = target.origin
+    // An attempt already in flight replaces this page when it commits.
+    if (attemptInFlight) return
+    if (rendererRecovery.allowsAutomaticReload()) beginAttempt(target, null)
+    else emit("error", RendererRecovery.CODE, target.label, target.origin)
   }
 
   private fun failStaged(staged: StagedLoad, code: String) {
     if (staging !== staged || !isCurrent(staged.attemptId)) return
     attemptInFlight = false
     staging = null
-    removeView(staged.view)
-    staged.view.destroySafely()
+    releaseStagedView(staged)
     staged.gateway.close()
     worker.execute {
       try { cookies.restoreAndAwait(staged.target.origin, staged.target.port, staged.cookieSnapshot) } catch (_: Exception) { }
@@ -775,8 +826,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       return
     }
     staging = null
-    removeView(doomed.view)
-    doomed.view.destroySafely()
+    releaseStagedView(doomed)
     doomed.gateway.close()
     worker.execute {
       try { cookies.restoreAndAwait(doomed.target.origin, doomed.target.port, doomed.cookieSnapshot) } catch (_: Exception) { }
@@ -802,6 +852,24 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       FileChooserRelay.cancel(answer)
       false
     }
+  }
+
+  private fun releaseStagedView(staged: StagedLoad) {
+    if (staged.rendererGone) {
+      discardDeadView(staged.view)
+    } else {
+      removeView(staged.view)
+      staged.view.destroySafely()
+    }
+  }
+
+  /** WebView allows a view whose renderer died only removal and destroy(). */
+  private fun discardDeadView(view: WebView) {
+    // The picker may still be open for the dead page: answer it now, once, and drop its late result.
+    FileChooserRelay.cancelFor(view)
+    startScripts.remove(view)
+    removeView(view)
+    view.destroy()
   }
 
   private fun WebView.destroySafely() {
@@ -873,13 +941,21 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     .take(80)
     .ifEmpty { "Android device" }
 
-  private fun emit(type: String, code: String? = null, label: String? = null, origin: String? = null, retryAfterSeconds: Int? = null) {
+  private fun emit(
+    type: String,
+    code: String? = null,
+    label: String? = null,
+    origin: String? = null,
+    retryAfterSeconds: Int? = null,
+    recovered: Boolean = false,
+  ) {
     main.post {
       val payload = mutableMapOf<String, Any>("type" to type, "active" to (activeView != null))
       if (code != null) payload["code"] = code
       if (label != null) payload["label"] = label
       if (origin != null) payload["origin"] = origin
       if (retryAfterSeconds != null) payload["retryAfterSeconds"] = retryAfterSeconds
+      if (recovered) payload["recovered"] = true
       onFleetEvent(payload)
     }
   }
