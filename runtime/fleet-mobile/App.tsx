@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   AppState,
   BackHandler,
   Platform,
@@ -36,6 +37,8 @@ type Chrome = { readonly top: "bg" | "bg-deep" | "scrim"; readonly bottom: "bg" 
 const PLAIN_CHROME: Chrome = { top: "bg", bottom: "bg" };
 const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface", "scrim": "bgUnderScrim" } as const;
 
+const RECOVERED_NOTICE_MS = 8000;
+
 const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
 
 export default function App(): React.JSX.Element {
@@ -64,6 +67,8 @@ export default function App(): React.JSX.Element {
   const [appearance, setAppearance] = useState<FleetAppearance>({ colorMode: "system", fontScale: "default" });
   const [chrome, setChrome] = useState<Chrome>(PLAIN_CHROME);
   const [consolesOpen, setConsolesOpen] = useState(false);
+  // Shown over a page that native reloaded after its web content process died.
+  const [pageRecovered, setPageRecovered] = useState(false);
   // An add sheet opened from the console sheet goes back to it when dismissed (impl-spec S-12).
   const [addFromConsoles, setAddFromConsoles] = useState(false);
   const systemScheme = useColorScheme();
@@ -116,6 +121,13 @@ export default function App(): React.JSX.Element {
 
 
   useEffect(() => {
+    if (!pageRecovered) return;
+    AccessibilityInfo.announceForAccessibility(strings.pageRecovered);
+    const timer = setTimeout(() => setPageRecovered(false), RECOVERED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [pageRecovered, strings]);
+
+  useEffect(() => {
     if (retryLeft === null || retryLeft <= 0) return;
     const timer = setTimeout(() => setRetryLeft(retryLeft - 1), 1000);
     return () => clearTimeout(timer);
@@ -152,6 +164,7 @@ export default function App(): React.JSX.Element {
     }
     // A new page state starts from the plain surfaces; the page reports again if a drawer stays open.
     setChrome(PLAIN_CHROME);
+    setPageRecovered(nativeEvent.type === "connected" && nativeEvent.recovered === true);
     const invalidLink = nativeEvent.type === "error" && nativeEvent.code === "pairing_target_invalid";
     setInvalidLinkError(invalidLink);
     // Any failed attempt beside a live console can step back to it — a rejected or throttled link
@@ -412,6 +425,16 @@ export default function App(): React.JSX.Element {
           <View pointerEvents="none" style={[styles.band, { top: 0, height: insets.top, backgroundColor: palette[CHROME_FILL[chrome.top]] }]} />
           <View pointerEvents="none" style={[styles.band, { bottom: 0, height: insets.bottom, backgroundColor: palette[CHROME_FILL[chrome.bottom]] }]} />
         </>
+      ) : null}
+      {pageShown && pageRecovered ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${strings.pageRecovered} ${strings.close}`}
+          onPress={() => setPageRecovered(false)}
+          style={[styles.notice, { top: insets.top + 8 }]}
+        >
+          <Text style={styles.noticeText}>{strings.pageRecovered}</Text>
+        </Pressable>
       ) : null}
       {connectionOverlayVisible ? (
         <View style={[styles.cover, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -831,6 +854,8 @@ function paint(p: Palette) {
     kebabShape: { borderRadius: 18 },
     fab: { position: "absolute", right: 16 },
     band: { position: "absolute", left: 0, right: 0 },
+    notice: { position: "absolute", left: 16, right: 16, backgroundColor: p.inverse, borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12 },
+    noticeText: { color: p.onInverse, fontSize: 14, lineHeight: 20 },
     sheetRow: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 60, padding: 8, borderRadius: 12 },
     sheetRowShape: { borderRadius: 12 },
     sheetRowLabel: { color: p.text, fontSize: 16, lineHeight: 22 },
