@@ -244,6 +244,8 @@ export { AgentConversation } from "./chat/agent-conversation.js";
 export { AgentDecisionCard } from "./chat/agent-decision-card.js";
 /** 참여자의 원장 — 코어가 플러그인 install 컨텍스트의 `chat.Ledger` 로 넘긴다. 그룹 대화가 지휘관 원장을 여는 그 틀·본문·바닥 줄이다. */
 export { AgentLedger } from "./chat/agent-ledger.js";
+/** 컴포저 위쪽 호스트 요약 줄 — 코어가 플러그인 install 컨텍스트의 `chat.ComposerTopEntries` 로 넘긴다. */
+export { ComposerTopEntries } from "./chat/composer-top-entries.js";
 
 export const operationKinds = [agentOperationKind] as const;
 

@@ -27,6 +27,7 @@ import { installMobileBackBridge } from "./mobile-back.js";
 import { closeMobileOperation, readMobileOperationId } from "./mobile-operation-url.js";
 import { installMobileHistory } from "./mobile-history.js";
 import { getMobileDestination, useMobileBar, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
+import { ledgerOperationId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import "../../styles/mobile.css";
 
 /**
@@ -80,7 +81,12 @@ export function MobileFrame({ state, bands, onDeferredDeletion, children }: { re
       if (path !== "/operations") navigate("/operations", { replace: true });
       return true;
     }
-    if (readMobileOperationId() !== null) { closeMobileOperation(); return true; }
+    const operationId = readMobileOperationId();
+    if (operationId !== null) {
+      if (ledgerOperationId(operationId) !== null) { openLedger(operationId, null); return true; }
+      closeMobileOperation();
+      return true;
+    }
     return false;
   };
   // 이전 항목이 없는 새 탭은 [가드][루트] 두 칸뿐이라 go(-2)가 범위를 벗어난다 — 나갈 곳이 없으면 닫기만 시도하고 페이지에 남는다.

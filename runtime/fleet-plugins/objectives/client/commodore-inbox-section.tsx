@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
@@ -829,6 +829,7 @@ interface CommodoreComposerProps {
   readonly active: boolean;
   readonly context?: CommodoreRunStatus["context"];
   readonly phone?: CommodoreComposerPhone;
+  readonly topEntries?: ReactNode;
   readonly placeholder?: string;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
@@ -847,7 +848,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`@fleet-console/sdk/composer`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, context, phone, placeholder, onFail, onClear }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, context, phone, topEntries, placeholder, onFail, onClear }: CommodoreComposerProps) {
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
@@ -969,6 +970,7 @@ function CommodoreComposerBody({ t, theaterId, active, context, phone, placehold
     <>
     {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
       : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
+    {topEntries}
     <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />

@@ -28,7 +28,7 @@ type InfoTab =
   /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationOperationTab`) — 데스크톱과 같은 원천이다. */
   | { readonly kind: "panel"; readonly id: string; readonly title: string; readonly render: (ctx: RailPanelContext) => React.ReactNode }
   /** 레일 엔트리가 `conversationTab`과 `mobile.conversationPane`으로 선언한 도구(목표) — 그 페인을 탭 본문에 그대로 세운다. */
-  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
+  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
 
 /**
  * 대화 정보 화면 — Operation 화면 머리 pill이 연다. 큰 아바타 · 제목 카드 · 탭. 탭은 「정보」(모델·강도·하네스·Theater·이름 변경·보관과,
@@ -93,6 +93,7 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
         for (const view of views.tabs) list.push({
           kind: "pane", id: `${routeId}:${view.id}`, routeId, paneId: pane.paneId,
           title: resolveLocalizedText(view.title, locale), selected: view.id === views.selected,
+          ...(view.replacesMembers ? { replacesMembers: true } : {}),
           select: () => source.select(view.id, operation.id),
           ...(view.dot ? { dot: { tone: view.dot.tone, label: resolveLocalizedText(view.dot.label, locale) } } : {}),
         });
@@ -101,12 +102,19 @@ export function MobileConversationInfo({ operation, bodyOwner, onArchive }: {
     return list;
   }, [bindings, conversation.memberCount, locale, operation.id, paneShown, paneTabsKey, registered, state.nestedOperations, t]);
   const tab = tabs.find((item) => item.id === tabId)
+    ?? (tabId === CONVERSATION_MEMBERS_TAB_ID ? tabs.find((item) => item.kind === "pane" && item.replacesMembers) : undefined)
     ?? tabs.find((item) => item.kind === "pane" && item.routeId === tabId && item.selected)
     ?? tabs[0]!;
   // 주소로 들어온 보기는 플러그인에 적용한다. 반대로 본문 동작이 보기를 바꾸면 그 선택을 주소에 남긴다.
+  // 호스트 구성원 탭을 대신하는 플러그인 보기가 설 때는 옛 구성원 주소(또는 목표 로드 전 선택)를 그 대체 보기로 옮긴다.
   const paneNavigation = useRef<{ readonly route: string; selected: string } | null>(null);
   useEffect(() => {
     if (tab.kind !== "pane") { paneNavigation.current = null; return; }
+    if (tabId === CONVERSATION_MEMBERS_TAB_ID && tab.replacesMembers) {
+      if (!tab.selected) tab.select?.();
+      setTabId(tab.id);
+      return;
+    }
     const selected = tabs.find((item) => item.kind === "pane" && item.routeId === tab.routeId && item.selected);
     if (!selected) return;
     const navigationKey = `${operation.id}:${tabId}`;

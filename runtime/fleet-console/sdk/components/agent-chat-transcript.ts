@@ -178,4 +178,5 @@ export interface ClientAgentChatCapability {
   readonly Conversation: ComponentType<AgentConversationProps>;
   readonly DecisionCard: ComponentType<AgentDecisionCardProps>;
   readonly Ledger: ComponentType<AgentLedgerProps>;
+  readonly ComposerTopEntries?: ComponentType;
 }

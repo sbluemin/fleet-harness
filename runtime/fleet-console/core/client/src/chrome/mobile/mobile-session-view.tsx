@@ -15,6 +15,7 @@ import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { closeTopBackLayer } from "./mobile-back.js";
 import { pushMobileSheet, setMobileDestination, setMobileOperationMenu, useMobileOperationMenu } from "./mobile-store.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
+import { ledgerOperationId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import { useConversationPillTakeover } from "../../../../../features/workspace/client/conversation/conversation-slots.js";
 
 /**
@@ -103,13 +104,17 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
   const conversation = useMobileConversationOf(useConsoleState())(bodyOwner);
   // 본문이 덮는 화면(그룹 대화의 전언 대화 화면)이 이 pill 을 잠깐 바꾼다 — 그룹 대화는 화면 주인(지휘관)의 본문에 선다.
   const pillTakeover = useConversationPillTakeover(covered ? null : operation.id);
+  const stepBack = () => {
+    if (ledgerOperationId(operation.id) !== null) openLedger(operation.id, null);
+    else closeMobileOperation();
+  };
   // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · ⋮. 이름 변경·보관은 화면 주인의 것이다.
   useClaimMobileBar(covered ? null : {
     variant: "conversation",
     title: bodyOwner.title,
     leading: "back",
-    // 본문이 pill 을 바꾼 동안(전언 대화 화면) ‹ 는 그 화면부터 닫는다 — 화면이 올린 뒤로 층이 없으면 지금처럼 대화 목록으로 간다.
-    onBack: pillTakeover ? () => { if (!closeTopBackLayer()) closeMobileOperation(); } : closeMobileOperation,
+    // 본문이 pill 을 바꾼 동안(전언 대화 화면) ‹ 는 그 화면부터 닫고, 원장(구성원·지휘관)을 보는 동안에는 그룹 대화로 돌아간다.
+    onBack: pillTakeover ? () => { if (!closeTopBackLayer()) stepBack(); } : stepBack,
     pill: {
       key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.operation.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}\u0001${pillTakeover?.key ?? ""}`,
       label: t("mobile.conv.infoAria", { title: bodyOwner.title }),

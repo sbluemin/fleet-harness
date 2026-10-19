@@ -19,6 +19,7 @@ import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-h
 import { CommodoreComposer, focusAtEnd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   addCommodoreIntel,
+  commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
   commodoreLanguage,
   commodoreTranscriptRenderer,
@@ -322,6 +323,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   readonly onOpenLog: () => void;
 }) {
   const Conversation = commodoreConversationRenderer();
+  const TopEntries = commodoreComposerTopEntriesRenderer();
   const board = useObjectiveTheater(theaterId);
   const asks = view?.state.asks;
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
@@ -355,7 +357,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
   const openLedger = useMemo<AgentConversationProps["openLedger"]>(() => (hasTurn ? () => onOpenLog() : null), [hasTurn, onOpenLog]);
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} onFail={onFail} onClear={onClear} />
+      <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
     </div>
   );
   return (
@@ -375,6 +377,7 @@ function CommodoreMobileChat({ t, language, theaterId, view, entries, live, hasM
           references={references}
           cards={<CommodoreAskCards theaterId={theaterId} t={t} language={language} phone onEnded={onFail} />}
           composer={composer}
+          composerTopEntries
         />
       ) : composer}
     </div>
@@ -399,6 +402,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
 }) {
   // 데스크톱 시트와 같은 채팅 턴 렌더러 — 오래된 것 위, 새 것 아래(입력창 바로 위가 최신).
   const Transcript = commodoreTranscriptRenderer();
+  const TopEntries = commodoreComposerTopEntriesRenderer();
   const asks = view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
   const chat = useMemo(() => commodoreChatEntries(t, theaterId, entries, live, asks, index), [t, theaterId, entries, live, asks, index]);
@@ -412,22 +416,51 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const dockRef = useRef<HTMLDivElement>(null);
   useChromeHeightProperty(dockRef, fillRef, "--m-dock-h");
   const pinned = useRef(true);
+  const programmaticTop = useRef<number | null>(null);
   const olderAnchor = useRef<number | null>(null);
   const on = view?.state.autonomy === true;
   const run = view?.run;
   const turn = on && run?.phase === "turn";
 
+  const scrollToBottom = useCallback((node: HTMLDivElement) => {
+    node.scrollTop = node.scrollHeight;
+    programmaticTop.current = node.scrollTop;
+  }, []);
+
   // 열면 맨 아래. 그 뒤로는 바닥에 붙어 있을 때만 새 줄을 따라간다. 이전 기록을 붙이면 보던 자리를 지킨다.
   useLayoutEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
-    if (olderAnchor.current !== null) { node.scrollTop = node.scrollHeight - olderAnchor.current; olderAnchor.current = null; return; }
-    if (pinned.current) node.scrollTop = node.scrollHeight;
-  }, [chat, pending, turn, loaded]);
+    if (olderAnchor.current !== null) {
+      node.scrollTop = node.scrollHeight - olderAnchor.current;
+      programmaticTop.current = node.scrollTop;
+      olderAnchor.current = null;
+      return;
+    }
+    if (pinned.current) scrollToBottom(node);
+  }, [chat, pending, turn, loaded, scrollToBottom]);
+
+  // 부모(CommodoreScreen)의 useLayoutEffect 가 --objectives-cm-head 를 적은 직후와, 독(--m-dock-h)·전사 자식이 자랄 때도 바닥 고정을 유지한다.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    if (pinned.current) scrollToBottom(node);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) scrollToBottom(node);
+    });
+    observer.observe(node);
+    if (dockRef.current) observer.observe(dockRef.current);
+    for (const child of Array.from(node.children)) observer.observe(child);
+    return () => observer.disconnect();
+  }, [chat, pending, turn, loaded, scrollToBottom]);
 
   const onScroll = () => {
     const node = scrollRef.current;
-    if (node) pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
+    if (!node || node.clientHeight === 0) return;
+    if (node.scrollTop === programmaticTop.current) return;
+    programmaticTop.current = null;
+    pinned.current = node.scrollHeight - node.scrollTop - node.clientHeight < 48;
   };
   const older = () => {
     const node = scrollRef.current;
@@ -470,7 +503,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
-        <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} onFail={onFail} onClear={onClear} />
+        <CommodoreComposer t={t} theaterId={theaterId} active={view ? view.active : false} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
       </div>
     </div>
   );
