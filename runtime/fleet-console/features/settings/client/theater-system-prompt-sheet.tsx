@@ -58,7 +58,7 @@ function MobilePromptSheetView({ sheet, onDismiss }: { readonly sheet: MobileShe
  * 입구를 받고, 데스크톱으로 바뀌면 같은 Theater 를 Theater Inbox 로 넘긴다.
  */
 export function TheaterSystemPromptSheet() {
-  const t = useT();
+  const t = useT(true);
   const mobile = useViewMode().effective === "mobile";
   const [request, setRequest] = useState<TheaterPromptOpenRequest | null>(null);
   const [openKey, setOpenKey] = useState(0);
@@ -109,8 +109,8 @@ export function TheaterSystemPromptSheet() {
   }, [mobileSheetOpen]);
 
   useFocusAfterReset(controller, { undo: () => undoRef.current, select: () => null });
-  const modeNames = useTheaterPromptModeNames();
-  const modeDescriptions = useTheaterPromptModeDescriptions();
+  const modeNames = useTheaterPromptModeNames(true);
+  const modeDescriptions = useTheaterPromptModeDescriptions(true);
   const emptyNotice = useTheaterPromptEmptyNotice(controller.draft);
 
   if (!request || !mobile) return null;

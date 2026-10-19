@@ -131,7 +131,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   const asks = openAsks(theaterId);
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.asks === asks && hit.locale === locale && hit.answering === answering) return hit.items;
-  const t = getT(locale);
+  const t = getT(locale, true);
   const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
   const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
     ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", theaterId) })),
@@ -178,7 +178,7 @@ export function subscribeFinishedObjectives(listener: () => void): () => void {
  */
 export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
   if (theaterId === null) return [];
-  const t = getT(locale);
+  const t = getT(locale, true);
   const live = new Set(readTheater(theaterId).objectives.map((objective) => objective.id));
   return finishedObjectives(theaterId)
     .filter((objective) => isListedObjective(objective) && !!objective.done && !live.has(objective.id))
@@ -377,7 +377,7 @@ export function MobileConversationObjective({ ctx }: { readonly ctx: PaneContext
  * 보관은 두 자리 모두 두지 않는다 — Operation 이 있는 목표의 보관은 대화 정보 화면 「정보」 탭의 Operation 보관이고, 기동 전 목표의 영구 삭제는 데스크톱만이다.
  */
 export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: PaneContext; readonly objectiveId: string }) {
-  const t = getT(ctx.language);
+  const t = getT(ctx.language, true);
   const language = ctx.language ?? "en";
   const objective = useObjective(objectiveId);
   const operations = operationIndex(useOperationSummaries());

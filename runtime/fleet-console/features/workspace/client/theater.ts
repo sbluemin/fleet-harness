@@ -33,7 +33,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 // Theater 등록의 단일 경로: 폴더 grant 발급 → host POST → 서버 순서로 재수화.
 // Operations 사이드바·새 세션 화면·모바일 Theater 페이지가 공유한다. 등록한 Theater 의 id 를 돌려준다(실패면 null —
 // 사유는 failAddTheater 가 이미 사이드바에 실었다).
-export async function registerTheaterFromPath(path: string): Promise<string | null> {
+export async function registerTheaterFromPath(path: string, mobile = false): Promise<string | null> {
   beginAddTheater();
   try {
     const folderGrantId = await issueTheaterFolderGrant(path);
@@ -45,7 +45,7 @@ export async function registerTheaterFromPath(path: string): Promise<string | nu
     void fetchTheaters(null).then(hydrateTheaters).catch(() => {});
     return result.id;
   } catch (error) {
-    const t = getT(resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto"));
+    const t = getT(resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto"), mobile);
     failAddTheater(describeTheaterRegistrationError(error, t));
     return null;
   }

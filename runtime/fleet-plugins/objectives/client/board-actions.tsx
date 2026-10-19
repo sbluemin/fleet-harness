@@ -215,7 +215,11 @@ const request = <R,>(path: string, body: Record<string, unknown>): Promise<R> =>
   if (!api) return Promise.reject(new Error("objectives_unavailable"));
   return post<R>(api, path, { ...body, language: language() });
 };
-const failed = (error: unknown, talk: boolean): GroupBoardRunResult => ({ outcome: "failed", notice: { tone: "warn", text: (locale) => bandFailure(getT(locale), error, { message: false, talk }) } });
+const failed = (error: unknown, talk: boolean): GroupBoardRunResult => ({ outcome: "failed", notice: {
+  tone: "warn",
+  text: (locale) => bandFailure(getT(locale), error, { message: false, talk }),
+  mobileText: (locale) => bandFailure(getT(locale, true), error, { message: false, talk }),
+} });
 /** 개시 응답의 failed — 띄우지 못한 구성원을 알린다(개시 자체는 이어졌다). */
 const started = (result: unknown): GroupBoardRunResult => {
   const missed = (result as { failed?: readonly { role: string }[] } | undefined)?.failed ?? [];
@@ -367,8 +371,8 @@ function BoardPanel({ objectiveId, ctx }: { readonly objectiveId: string; readon
   const sheet = useSheet(objectiveId);
   const followupOpen = useFollowupOpen(objectiveId);
   useSyncExternalStore(subscribeObjective, listedOperationSummaries, listedOperationSummaries);
+  const t = getT(ctx.language, ctx.layout === "mobile");
   if (!objective) return null;
-  const t = getT(ctx.language);
   if (sheet) return <RoutingPanel key={objectiveId} objective={objective} t={t} intent={sheet.intent} context={sheet.context} settle={ctx.settle} />;
   if (followupOpen && choicesOf(objective, liveOf(objective)).followupAvailable) return <FollowupPanel key={objectiveId} objective={objective} t={t} settle={ctx.settle} />;
   return null;

@@ -13,7 +13,7 @@ import { MobileSheet } from "./mobile-sheet.js";
  * 위로·절대 경로 이동·브레드크럼·루트 선택, 묶음 행으로 폴더 들어가기. 고르는 단위는 지금 보고 있는 폴더 — 「Theater 추가」가 그 폴더를 등록한다.
  */
 export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: () => void; readonly onConfirm: (path: string) => void }) {
-  const t = useT();
+  const t = useT(true);
   const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [failureCode, setFailureCode] = useState<string | null>(null);

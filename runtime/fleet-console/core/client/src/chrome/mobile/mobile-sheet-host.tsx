@@ -69,7 +69,7 @@ export function MobileSheetHost({ state, onDeferredDeletion }: { readonly state:
 
 /** 폴더를 Theater로 등록하고, 성공하면 「{이름}을(를) Theater로 추가했습니다」 토스트를 띄운다. 실패는 스토어의 theaterError가 화면에 말한다. */
 async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Promise<void> {
-  await registerTheaterFromPath(path);
+  await registerTheaterFromPath(path, true);
   const current = getState();
   if (current.theaterError !== null) return;
   const label = current.theaters.find((theater) => theater.id === getViewedTheaterId())?.label;

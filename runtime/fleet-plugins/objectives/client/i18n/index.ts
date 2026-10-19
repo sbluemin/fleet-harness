@@ -1911,6 +1911,15 @@ const translators: Record<ConsoleLocale, Translate<ObjectiveMessageKey>> = {
   ko: createTranslator(OBJECTIVE_MESSAGES, "ko"),
 };
 
-export function getT(locale: ConsoleLocale | undefined): Translate<ObjectiveMessageKey> {
-  return translators[locale ?? "en"];
+const mobileMessages = {
+  en: { ...objectivesEn, "objectives.band.reason.trustRequired": "Trust has not been confirmed for this folder. Open a terminal in the folder and run claude. If the trust dialog appears, choose “Yes, I trust this folder”, then retry" },
+  ko: { ...objectivesKo, "objectives.band.reason.trustRequired": "이 폴더의 신뢰를 확인하지 못했습니다. 해당 폴더에서 터미널을 열고 claude를 실행한 뒤, 신뢰 확인 화면이 나타나면 “Yes, I trust this folder”를 선택해 주세요. 완료한 뒤 다시 시도하세요" },
+};
+const mobileTranslators: Record<ConsoleLocale, Translate<ObjectiveMessageKey>> = {
+  en: createTranslator(mobileMessages, "en"),
+  ko: createTranslator(mobileMessages, "ko"),
+};
+
+export function getT(locale: ConsoleLocale | undefined, mobile = false): Translate<ObjectiveMessageKey> {
+  return (mobile ? mobileTranslators : translators)[locale ?? "en"];
 }

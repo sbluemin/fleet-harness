@@ -6,6 +6,7 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 import { useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";
 import { CORE_MESSAGES, type CoreMessageKey } from "./messages/index.js";
+import { MOBILE_MESSAGES } from "./mobile-messages.js";
 
 const translators: Record<ConsoleLocale, Translate<CoreMessageKey>> = {
   en: createTranslator(CORE_MESSAGES, "en"),
@@ -17,13 +18,22 @@ export function useConsoleLocale(): ConsoleLocale {
   return resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
 }
 
-export function useT(): Translate<CoreMessageKey> {
+const mobileMessages = {
+  en: { ...CORE_MESSAGES.en, ...MOBILE_MESSAGES.en },
+  ko: { ...CORE_MESSAGES.ko, ...MOBILE_MESSAGES.ko },
+};
+const mobileTranslators: Record<ConsoleLocale, Translate<CoreMessageKey>> = {
+  en: createTranslator(mobileMessages, "en"),
+  ko: createTranslator(mobileMessages, "ko"),
+};
+
+export function useT(mobile = false): Translate<CoreMessageKey> {
   const locale = useConsoleLocale();
-  return useMemo(() => getT(locale), [locale]);
+  return useMemo(() => getT(locale, mobile), [locale, mobile]);
 }
 
-export function getT(locale: ConsoleLocale): Translate<CoreMessageKey> {
-  return translators[locale];
+export function getT(locale: ConsoleLocale, mobile = false): Translate<CoreMessageKey> {
+  return (mobile ? mobileTranslators : translators)[locale];
 }
 
 export type { CoreMessageKey };
