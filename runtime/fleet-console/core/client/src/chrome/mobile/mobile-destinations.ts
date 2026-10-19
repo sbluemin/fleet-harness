@@ -163,7 +163,7 @@ function attentionVersion(bindings: readonly RailEntryBinding[], theaterId: stri
     const attention = binding.entry.attention;
     if (!attention) return "";
     const scopeTheater = binding.entry.scope === "fleet" ? null : theaterId;
-    const items = attention.items?.(scopeTheater, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}`).join("\u0002") ?? "";
+    const items = attention.items?.(scopeTheater, locale).map((item) => `${item.id}\u0001${item.title}\u0001${item.reason}\u0001${item.clusterId ?? ""}`).join("\u0002") ?? "";
     return `${binding.entry.id}:${attention.count(scopeTheater)}:${items}`;
   }).join("|");
 }

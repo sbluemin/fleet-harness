@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { MongleState } from "@fleet-console/sdk/avatars";
+import type { OperationClusterRowMark } from "@fleet-console/sdk/plugin";
 
 import { OperationAvatar, clusterFaceFacts, clusterWorkingMembers, mongleStateOfMark, type ClusterWorkingMember } from "../../../../../features/workspace/client/avatars.js";
 import { useClusterIndex, useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
@@ -9,6 +10,7 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState, OperationNode } from "../../integration/types.js";
 import { operationHarnessLabel } from "./mobile-operation-label.js";
+import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
  * 대화 목록의 한 행이 읽는 사실. 대화의 단위는 지휘관 묶음이다 — 최상위 Operation 하나가 행 하나이고, 묶음의 구성원은 행으로 서지 않고
@@ -24,6 +26,8 @@ export interface MobileConversation {
   readonly memberCount: number;
   /** 목표(묶음)의 뿌리인가 — 검색 결과의 종류 라벨이 읽는다. */
   readonly isCluster: boolean;
+  /** 대표 줄의 맡은 이 표식 — 구조 없는 목표도 `rowOf`에 선언된 표식을 읽는다. */
+  readonly rowMark?: OperationClusterRowMark;
 }
 
 /**
@@ -45,6 +49,7 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "operations" |
       minis: layout ? clusterWorkingMembers(layout.cluster, operation.id, { operations, nestedOperations, operationRuntime }) : [],
       memberCount: members.length,
       isCluster: layout !== undefined,
+      rowMark: index.rowOf.get(operation.id)?.cluster.row?.mark,
     };
   }, [clusters, idleArrivalIds, index, nestedOperations, operationRuntime, operations]);
 }
@@ -137,15 +142,17 @@ export function ConversationRow({ conversation, sub, trailing, onOpen }: {
 }) {
   const time = useConversationTime();
   return (
-    <button type="button" data-press="r1" className="mobile-conv-row" onClick={onOpen}>
-      <span className="mobile-conv-row-av"><ConversationAvatar conversation={conversation} /></span>
-      <span className="mobile-conv-row-copy">
-        <span className="mobile-conv-row-top">
-          <span className="mobile-conv-row-title">{conversation.operation.title}</span>
-          <span className="mobile-conv-row-aside">{trailing ?? time(conversation.operation.ts.updatedAt)}</span>
+    <MobileMarkedRow mark={conversation.rowMark}>
+      <button type="button" data-press="r1" className="mobile-conv-row" onClick={onOpen}>
+        <span className="mobile-conv-row-av"><ConversationAvatar conversation={conversation} /></span>
+        <span className="mobile-conv-row-copy">
+          <span className="mobile-conv-row-top">
+            <span className="mobile-conv-row-title">{conversation.operation.title}</span>
+            <span className="mobile-conv-row-aside">{trailing ?? time(conversation.operation.ts.updatedAt)}</span>
+          </span>
+          <span className="mobile-conv-row-sub">{sub}</span>
         </span>
-        <span className="mobile-conv-row-sub">{sub}</span>
-      </span>
-    </button>
+      </button>
+    </MobileMarkedRow>
   );
 }

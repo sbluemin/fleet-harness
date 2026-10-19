@@ -1364,7 +1364,24 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-section.is-fold button { z-index: 1; display: inline-flex; align-items: center; gap: 4px; min-height: 44px; margin: -12px 0; color: var(--m-text-muted); --pr-inset: 0 -8px; }
 .mobile-conv-attention { margin: 2px 12px 6px; overflow: hidden; background: var(--m-surface); border-radius: 18px; }
 .mobile-conv-attention .mobile-conv-row { min-height: 64px; padding: 8px 14px; }
-.mobile-conv-attention .mobile-conv-row + .mobile-conv-row { border-top: 1px solid var(--m-hairline); }
+.mobile-conv-attention > :not(:first-child) { border-top: 1px solid var(--m-hairline); }
+
+/* 맡김 표식은 열기 버튼의 형제다 — 꺼져도 44px 터치 자리를 남기며 제목의 폭만 줄인다. */
+.mobile-marked-row { display: flex; align-items: center; min-width: 0; }
+.mobile-marked-row > .mobile-conv-row, .mobile-marked-row > .mobile-group-row { flex: 1; min-width: 0; width: auto; padding-right: 0; }
+.mobile-group > .mobile-marked-row { background: var(--m-surface); border-radius: 4px; }
+.mobile-group > .mobile-marked-row:first-child { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+.mobile-group > .mobile-marked-row:last-child { border-bottom-right-radius: 22px; border-bottom-left-radius: 22px; }
+.mobile-marked-row > .mobile-group-row { border-radius: inherit; }
+.mobile-row-mark { position: relative; display: grid; place-items: center; flex: none; width: 44px; height: 44px; margin: 0 8px; padding: 0; color: var(--m-text-muted); background: transparent; border: 0; border-radius: 12px; --pr-r: 12px; }
+.mobile-row-mark:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.mobile-cluster-mark { box-sizing: border-box; width: 12px; height: 12px; background: var(--brass); border-radius: 3px; }
+.mobile-cluster-mark.is-hollow, .mobile-cluster-mark.is-off { background: transparent; border: 1.3px solid var(--m-text-muted); }
+.mobile-cluster-mark.has-glyph { display: grid; place-items: center; width: 20px; height: 20px; color: var(--brass-ink); background: transparent; border: 0; }
+.mobile-cluster-mark.has-glyph > svg { display: block; width: 100%; height: 100%; }
+.mobile-cluster-mark.is-hollow { color: var(--m-text-muted); opacity: 0.75; }
+.mobile-cluster-mark.is-off { color: var(--m-text-muted); opacity: 0.55; }
+.mobile-cluster-mark.is-emphasized { opacity: 1; box-shadow: 0 0 0 3px var(--brass-glow); }
 
 .mobile-conv-row { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; min-height: 72px; padding: 10px 18px; color: var(--m-text); text-align: left; background: transparent; border: 0; --pr-r: 14px; }
 .mobile-conv-row-av { display: grid; place-items: center; flex: none; width: 52px; height: 52px; }

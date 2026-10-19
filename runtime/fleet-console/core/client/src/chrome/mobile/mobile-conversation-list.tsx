@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import { useChromeHeightProperty } from "@fleet-console/sdk/react/browser";
 
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
+import { useClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
 import { useT } from "../../i18n/index.js";
 import { focusOperation, openMobileNewSession } from "../../integration/store.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
@@ -18,6 +19,7 @@ import { useRailEntries } from "../pane/pane-registry.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
 import { MobileHomeSections } from "./mobile-home-sections.js";
+import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { openMobilePluginDestination, pushMobileSheet, setMobileDestination } from "./mobile-store.js";
 
@@ -35,6 +37,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
   const bindings = useRailEntries();
   const attention = useMobileAttentionRows();
   const conversations = useMobileConversations(state);
+  const clusterIndex = useClusterIndex();
   // 대화 목록은 몽글 아바타를 보이는 표면이다 — 데스크톱 사이드바처럼 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   // 이 화면이 자기 머리를 그린다 — 호스트 상단 막대는 숨긴다.
@@ -92,13 +95,15 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
                   ) : null;
                 }
                 return (
-                  <button type="button" data-press="r1" className="mobile-conv-row" key={row.key} onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, getViewedTheaterId()); row.item.open(); }}>
-                    <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
-                    <span className="mobile-conv-row-copy">
-                      <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.item.title}</span></span>
-                      <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
-                    </span>
-                  </button>
+                  <MobileMarkedRow key={row.key} mark={row.item.clusterId ? clusterIndex.layouts.get(row.item.clusterId)?.cluster.row?.mark : undefined}>
+                    <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, getViewedTheaterId()); row.item.open(); }}>
+                      <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
+                      <span className="mobile-conv-row-copy">
+                        <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.item.title}</span></span>
+                        <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
+                      </span>
+                    </button>
+                  </MobileMarkedRow>
                 );
               })}
             </div>

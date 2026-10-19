@@ -137,6 +137,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
     ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", theaterId) })),
     ...pending.map((objective) => ({
       id: objective.id,
+      clusterId: objective.id,
       title: objective.title,
       reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.commodore.note.handed"),
       open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
