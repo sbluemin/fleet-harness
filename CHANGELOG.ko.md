@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.245.0] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- 모바일 대화 목록과 확인 필요 목록에서 목표를 사령관에게 바로 맡기거나 돌려받고, 현재 맡김 상태를 확인할 수 있습니다.
+
+#### Changed
+- 사령관과 목표 그룹 대화의 진행 표시와 사용량 요약을 입력창 위 한 줄에 모아, 작업이 시작되거나 끝나도 입력창이 움직이지 않게 했습니다.
+
 ## [1.244.0] - 2026-10-18
 
 ### fleet-console

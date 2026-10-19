@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.245.0] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- Delegate objectives to the Commodore or take them back directly from mobile conversation and attention lists, with a visible ownership indicator.
+
+#### Changed
+- Keep working indicators and usage summaries on one line above Commodore and objective group messages, without moving the message box when work starts or stops.
+
 ## [1.244.0] - 2026-10-18
 
 ### fleet-console
