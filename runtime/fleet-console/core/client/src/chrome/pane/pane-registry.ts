@@ -5,7 +5,7 @@ import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { PaneContext, PaneDescriptor } from "@fleet-console/sdk/pane";
 import type { RailEntryDescriptor, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import { usePluginRegistry } from "../../integration/plugin-registry.js";
+import { usePluginRegistry, type ResolvedRailEntry } from "../../integration/plugin-registry.js";
 import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
 import { useConversationOperationTabPanels } from "../rail/operation-tabs.js";
 import { settingsPanes, settingsRailEntry } from "../../../../../features/settings/client/settings-pane.js";
@@ -44,6 +44,8 @@ export interface HostPaneContext extends PaneContext {
 
 export interface RailEntryBinding {
   readonly entry: RailEntryDescriptor;
+  /** 등록 주체의 플러그인 id — 엔트리가 참조하는 지역 기여를 같은 이름공간에서 찾는다. */
+  readonly pluginId?: string;
   /** 이 엔트리가 세우는 페인들. 옛 패널에서 투영된 것도 포함한다. */
   readonly panes: readonly PaneDescriptor[];
   /** 옛 `railPanels`에서 투영된 엔트리인가. 폭 저장 키 등 호환 경로가 이 값을 본다. */
@@ -137,7 +139,7 @@ function resolveEntryTitle(panel: RailPanelDescriptor, language: string | undefi
  * 엔트리는 아무것도 세우지 못하므로, 조용히 빈 표면을 여는 대신 목록에서 뺀다.
  */
 function bindNative(
-  entries: readonly RailEntryDescriptor[],
+  entries: readonly ResolvedRailEntry[],
   panes: readonly PaneDescriptor[],
 ): readonly RailEntryBinding[] {
   const byId = new Map(panes.map((pane) => [pane.id, pane]));
@@ -150,7 +152,7 @@ function bindNative(
       console.warn(`[fleet-console] rail entry "${entry.id}" names no registered pane; skipping.`);
       continue;
     }
-    bound.push({ entry, panes: resolved, projected: false });
+    bound.push({ entry, pluginId: entry.pluginId, panes: resolved, projected: false });
   }
 
   return bound;

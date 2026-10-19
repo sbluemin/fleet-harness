@@ -397,7 +397,7 @@ export interface RailEntryAttention {
 export interface RailEntryAttentionItem {
   /** 같은 엔트리 안에서 안정적인 키 — 목록이 갱신돼도 행의 정체성이 된다. */
   readonly id: string;
-  /** 이 일이 속한 `OperationCluster.id` — 모바일 목록은 그 묶음의 `row.mark`를 같은 맡김 스위치로 세운다. */
+  /** 이 엔트리를 등록한 플러그인이 선언한 `OperationCluster.id`(접두사 없음) — 모바일 목록은 그 묶음의 `row.mark`를 같은 맡김 스위치로 세운다. */
   readonly clusterId?: string;
   /** 행의 제목(예: 목표 이름). */
   readonly title: string;

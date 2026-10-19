@@ -95,7 +95,7 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
                   ) : null;
                 }
                 return (
-                  <MobileMarkedRow key={row.key} mark={row.item.clusterId ? clusterIndex.layouts.get(row.item.clusterId)?.cluster.row?.mark : undefined}>
+                  <MobileMarkedRow key={row.key} mark={row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.row?.mark : undefined}>
                     <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => { if (attentionMovesFirst(bindings, row.entryId)) openMobilePluginDestination(row.entryId, getViewedTheaterId()); row.item.open(); }}>
                       <span className="mobile-conv-row-av"><span className="mobile-conv-round is-static">{entryIconOf(bindings, row.entryId)}</span></span>
                       <span className="mobile-conv-row-copy">

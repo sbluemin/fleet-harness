@@ -8,6 +8,7 @@ import { useAllOperationUseRequests, type OperationUseRequest } from "../../../.
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";
 import { resolveOperationActivity } from "../../../../../features/execution/client/operation-activity.js";
 import { useConsoleLocale } from "../../i18n/index.js";
+import { operationClusterId } from "../../integration/plugin-registry.js";
 import type { OperationNode, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 
@@ -108,7 +109,7 @@ function visible(binding: RailEntryBinding): boolean {
 
 export type MobileAttentionRow =
   | { readonly kind: "operation"; readonly key: string; readonly operation: OperationNode; readonly request?: OperationUseRequest }
-  | { readonly kind: "plugin"; readonly key: string; readonly entryId: string; readonly item: RailEntryAttentionItem };
+  | { readonly kind: "plugin"; readonly key: string; readonly entryId: string; readonly item: RailEntryAttentionItem; readonly clusterId?: string };
 
 /**
  * 「확인 필요」의 행: 지금 Theater에서 사람을 기다리는 Operation(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
@@ -149,7 +150,8 @@ export function useMobileAttention(state: ConsoleState): { readonly rows: readon
       const count = Math.max(0, Math.floor(attention.count(scopeTheater)));
       if (count > 0) pluginCounts.set(binding.entry.id, count);
       for (const item of attention.items?.(scopeTheater, locale) ?? []) {
-        rows.push({ kind: "plugin", key: `plugin:${binding.entry.id}:${item.id}`, entryId: binding.entry.id, item });
+        const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? operationClusterId(binding.pluginId, item.clusterId) : undefined;
+        rows.push({ kind: "plugin", key: `plugin:${binding.entry.id}:${item.id}`, entryId: binding.entry.id, item, clusterId });
       }
     }
     return { rows, pluginCounts };

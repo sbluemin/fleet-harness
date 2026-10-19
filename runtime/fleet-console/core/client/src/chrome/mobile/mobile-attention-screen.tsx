@@ -41,7 +41,7 @@ export function MobileAttentionScreen() {
         <>
           <div className="mobile-group">
             {rows.map((row) => (
-              <MobileMarkedRow key={row.key} mark={(row.kind === "operation" ? clusterIndex.rowOf.get(row.operation.id) : row.item.clusterId ? clusterIndex.layouts.get(row.item.clusterId) : undefined)?.cluster.row?.mark}>
+              <MobileMarkedRow key={row.key} mark={(row.kind === "operation" ? clusterIndex.rowOf.get(row.operation.id) : row.clusterId ? clusterIndex.layouts.get(row.clusterId) : undefined)?.cluster.row?.mark}>
                 {row.kind === "operation" ? (
                   <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/operations"); focusOperation(row.operation.id); }}>
                     <OperationStatusIcon operation={row.operation} status={resolveOperationMarkVisual({ activity: resolveOperationActivity(row.operation, state.operationRuntime), operationId: row.operation.id, idleArrivalIds })} size={28} decorative />
