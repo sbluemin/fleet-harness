@@ -6,7 +6,7 @@ import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { PROVIDER_ORDER_DEFAULT } from "../provider-order.js";
 import { getT } from "./i18n/index.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { EXPIRED_KEY, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, PROVIDER_NAME, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
+import { EXPIRED_KEY, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
 import type { LoginProvider, ProviderId } from "../provider-order.js";
 import "./mobile.css";
@@ -26,7 +26,7 @@ function UsageBody() {
 
 function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
-  const t = getT(locale);
+  const t = getT(locale, true);
   const { data, now, requestError, connect, logout } = useQuotaData(api);
   if (requestError && data === null) return <p className="quota-m-note">{t("quota.error.summary")}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
@@ -34,7 +34,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
     <div className="quota-m">
       {PROVIDER_ORDER_DEFAULT.map((id) => {
         const provider = data.providers[id] ?? UNREPORTED_PROVIDER;
-        const name = PROVIDER_NAME[id];
+        const name = providerName(id, true);
         const readable = provider.status === "ok" || provider.status === "stale";
         const login = needsConsoleLogin(id, provider.status);
         const windows = readable ? provider.windows ?? [] : [];
@@ -100,7 +100,7 @@ function LoginRows({
   readonly logout: (provider: LoginProvider) => void;
 }) {
   const login = useStoreSnapshot(subscribeLogins, getLoginStates)[provider];
-  const name = PROVIDER_NAME[provider];
+  const name = providerName(provider, true);
   switch (login.phase) {
     case "idle":
       return (
@@ -178,13 +178,13 @@ function statusLine(id: ProviderId, status: string, t: ReturnType<typeof getT>):
   if (status === "signed_out") return t(SIGNED_OUT_KEY[id]);
   if (status === "no_subscription") return t(NO_SUBSCRIPTION_KEY[id]);
   if (status === "expired") return t(EXPIRED_KEY[id]);
-  return t("quota.error", { provider: PROVIDER_NAME[id] });
+  return t("quota.error", { provider: providerName(id, true) });
 }
 
 function summary(locale: ConsoleLocale): string | null {
   const data = getQuotaSummarySnapshot().data;
   if (data === null) return null;
-  const t = getT(locale);
+  const t = getT(locale, true);
   for (const id of PROVIDER_ORDER_DEFAULT) {
     const provider = data.providers[id];
     if (provider === undefined || (provider.status !== "ok" && provider.status !== "stale")) continue;
@@ -204,7 +204,7 @@ function subscribe(listener: () => void): () => void {
 export const quotaSettingsSection: SettingsSectionDescriptor = {
   id: "usage",
   // 시안·명세의 행·상세 제목은 「사용량」이다(데스크톱 팝업의 「사용 한도」와 다른 자리).
-  title: (locale) => getT(locale)("mobile.usage.title"),
+  title: (locale) => getT(locale, true)("mobile.usage.title"),
   group: "work",
   render: () => <UsageBody />,
   // 폰의 「플러그인」 화면에도 한 행으로 선다(S-46 「사용량 / 구독 한도 요약」) — 누르면 설정 › 사용량.
@@ -212,7 +212,7 @@ export const quotaSettingsSection: SettingsSectionDescriptor = {
     only: true, group: "use", order: -1, summary, subscribe,
     pluginRow: {
       icon: <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></svg>,
-      subtitle: (locale) => getT(locale)("mobile.usage.subtitle"),
+      subtitle: (locale) => getT(locale, true)("mobile.usage.subtitle"),
     },
   },
 };

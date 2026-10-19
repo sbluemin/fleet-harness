@@ -132,6 +132,8 @@ export interface SidebarFooterEntryDescriptor {
 
 /** 컴포저 오른쪽 위의 부속 항목. 호스트가 명시적으로 켠 대화 표면에만 서며 플러그인끼리 의존하지 않는다. */
 export interface ComposerTopEntryContext {
+  /** 생략하면 데스크톱으로 다룬다. */
+  readonly layout?: "mobile" | "desktop";
   /** 상세 팝업을 여는 요약 줄. 버튼 포커스는 항목이 소유한다. */
   readonly popoverAnchorRef: RefObject<HTMLElement | null>;
 }

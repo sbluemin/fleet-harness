@@ -138,7 +138,7 @@ const COMPACT_VALUE_KEYS = new Set([
 ]);
 
 function AiGatewayCompactTimingCard() {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields.has("compactCeiling");
@@ -326,7 +326,7 @@ function AiGatewayCompactTimingCard() {
  * 쓰는 방식이고, 노출을 정하기 전에 배정을 묻는 순서는 읽는 사람에게 거꾸로다.
  */
 function AiGatewayRoutingCard() {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const settings = useSystemPromptSettingsStore();
   const auth = useModelAuthStore();
   const routingRoster = useModelRoster("agent");
@@ -520,7 +520,7 @@ function RoutingTestPanel() {
 type RoutingTestPreset = "Light" | "Medium" | "Heavy";
 
 function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode; readonly disabled: boolean }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const [prompt, setPrompt] = React.useState("");
   const [preset, setPreset] = React.useState<RoutingTestPreset | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -583,7 +583,7 @@ function RoutingTest({ mode, disabled }: { readonly mode: DelegationRoutingMode;
 }
 
 function AiGatewayDiagnosticsCard() {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const saving = settings.savingFields;
@@ -696,7 +696,7 @@ export function buildAiGatewayRoster(
 
 /** 폰의 「모델 목록 / {n}종 · {배정 방식}」 행 — 열지 않고도 지금 상태를 말한다. */
 function AiGatewayModelsEntry() {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const settings = useSystemPromptSettingsStore();
   const state = settings.state;
   const count = state?.aiGateway?.models?.length ?? 0;
@@ -817,7 +817,7 @@ function describeAiGatewayRosterEntry(t: ReturnType<typeof getT>, entry: AiGatew
 }
 
 function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?: boolean } = {}) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const auth = useModelAuthStore();
   const actions = useAiGatewayModelActions();
   const { settings, state, saving, providers, selection, priority } = actions;
@@ -1075,7 +1075,7 @@ function AiGatewayModelsCard({ mobileDetail = false }: { readonly mobileDetail?:
  * 호스트가 열려 있는 동안 다시 그리므로 스토어에서 매번 그 모델을 다시 찾는다.
  */
 function AiGatewayModelDetailScreen({ modelId }: { readonly modelId: string }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const actions = useAiGatewayModelActions();
   const entry = buildAiGatewayRoster(actions.providers, actions.selection, actions.priority).find((candidate) => candidate.model.id === modelId);
   if (!entry) {
@@ -1171,7 +1171,7 @@ function AiGatewaySearchGlyph() {
 function AiGatewayServiceGroup({ service }: {
   readonly service: ModelAuthProviderState;
 }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   return (
     <section
       className="settings-group-surface ai-gateway-provider-group ai-gateway-provider is-typesafe ai-gateway-service-group"
@@ -1471,7 +1471,7 @@ function AiGatewayModelPalette({
   onClose,
   error,
 }: AiGatewayModelPaletteProps) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const { size, resizing, startResize } = useAiGatewayPaletteResize(rootRef);
   const searchRef = React.useRef<HTMLInputElement | null>(null);
@@ -1752,7 +1752,7 @@ export function placeAiGatewayPriority(
  * of this provider's route, meaningless to a reader who has not enabled an xAI model.
  */
 function AiGatewayXaiEndpointRow({ saving }: { readonly saving: boolean }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const state = useSystemPromptSettingsStore().state;
   if (!state) return null;
   const endpoint = state.xaiEndpoint;
@@ -1794,7 +1794,7 @@ function AiGatewayPaletteServiceGroup({ service, busy, keyLineOpen, onToggleKeyL
   readonly onToggleKeyLine: () => void;
   readonly onKeyLineDone: () => void;
 }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   return (
     <>
       <div className="ai-gateway-palette-group ai-gateway-provider is-typesafe" role="presentation">
@@ -1845,7 +1845,7 @@ interface AiGatewayPaletteGroupHeadProps {
  * 순위와 xAI 엔드포인트는 켠 모델이 있어야 뜻이 있는 값이라 로스터의 묶음 머리글에 선다.
  */
 function AiGatewayPaletteGroupHead({ provider }: AiGatewayPaletteGroupHeadProps) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const id = provider.id as AiGatewayProviderId;
   return (
     <div className={`ai-gateway-palette-group ai-gateway-provider is-${provider.id}`} role="presentation">
@@ -1883,7 +1883,7 @@ export function AiGatewayModelRow({
   onSetEfforts,
   onToggleHostOnly,
 }: AiGatewayModelRowProps) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const detailId = React.useId();
   const { model, efforts, hostOnly } = entry;
   const ladder = model.effort?.levels ?? [];
@@ -1963,7 +1963,7 @@ function AiGatewayEffortLadder({
   readonly saving: boolean;
   readonly onSetEfforts: (efforts: readonly string[]) => void;
 }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const ladder = model.effort?.levels ?? [];
   return (
     <span
@@ -2018,7 +2018,7 @@ function AiGatewayKeyForm({ provider, busy, compact = false, onSignedIn }: {
   readonly compact?: boolean;
   readonly onSignedIn?: () => void;
 }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const [apiKey, setApiKey] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement | null>(null);
 
@@ -2067,7 +2067,7 @@ function SettingsHelp({ title, id, children }: {
   readonly id?: string;
   readonly children: React.ReactNode;
 }) {
-  const t = getT(useTerminalLocale());
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   return (
     <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title })} id={id}>
       {children}

@@ -224,7 +224,7 @@ export interface GroupBoardAction {
  */
 export interface GroupBoardRunResult {
   readonly outcome: "done" | "held" | "failed";
-  readonly notice?: { readonly text: LocalizedText; readonly tone: "info" | "warn" };
+  readonly notice?: { readonly text: LocalizedText; readonly mobileText?: LocalizedText; readonly tone: "info" | "warn" };
   /**
    * 패널이 끝낸 동작의 id(`settle` 전용) — 입력창은 그 동작을 제출할 때 덧붙일 말로 넘긴 초안만 걷고, 그 뒤에 새로 쓴 말은 남긴다.
    * 없으면 초안을 건드리지 않는다. 덧붙일 말을 받지 않는 동작(완료·압축 등)은 초안과 무관하다.
@@ -235,6 +235,8 @@ export interface GroupBoardRunResult {
 /** 플러그인 패널이 받는 문맥 — 패널이 이어받은 동작을 끝내면 `settle` 로 입력창에 알린다. */
 export interface GroupBoardPanelContext {
   readonly language: "en" | "ko";
+  /** 생략하면 데스크톱으로 다룬다. */
+  readonly layout?: "mobile" | "desktop";
   readonly settle: (result: GroupBoardRunResult) => void;
 }
 

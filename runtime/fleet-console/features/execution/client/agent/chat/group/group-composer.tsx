@@ -63,7 +63,7 @@ type Candidate =
   | { readonly kind: "all" }
   | { readonly kind: "commodore" };
 
-type Notice = { readonly tone: "info" | "warn"; readonly text: string };
+type Notice = { readonly tone: "info" | "warn"; readonly text: string; readonly mobileText?: string };
 
 /** 입력창에 붙은 이미지 — id 가 서기 전(업로드 중)에는 보내지 않는다. */
 export interface GroupComposerProps {
@@ -313,7 +313,7 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
       ...(done && current.textRevision === consumed.revision ? { text: "" } : {}),
       ...(done && current.mode === consumed.mode ? { mode: null } : {}),
       held: result.outcome === "held" ? consumed ?? current.held : consumed !== null && current.held?.mode === consumed.mode ? null : current.held,
-      notice: result.notice ? { tone: result.notice.tone, text: local(result.notice.text) } : null,
+      notice: result.notice ? { tone: result.notice.tone, text: local(result.notice.text), ...(result.notice.mobileText !== undefined ? { mobileText: local(result.notice.mobileText) } : {}) } : null,
     });
   };
 
@@ -498,12 +498,12 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
   const showHint = !!board?.hint && (chips.length > 0 || !!board.fixed);
   const suggest = note !== null || chips.length > 0 || showHint;
   const chipClass = (action: GroupBoardAction) => `group-composer-action${action.emphasis === "primary" ? " is-primary" : action.emphasis === "review" ? " is-review" : ""}${armed === action.id ? " is-armed" : ""}`;
-  const panel = board?.renderPanel ? board.renderPanel({ language: language === "ko" ? "ko" : "en", settle: settlePanel }) : null;
+  const panel = board?.renderPanel ? board.renderPanel({ language: language === "ko" ? "ko" : "en", layout: phone ? "mobile" : "desktop", settle: settlePanel }) : null;
   const more = board && !board.fixed ? board.more ?? [] : [];
 
   return (
     <div ref={wrapRef} className="group-composer-wrap">
-      {notice ? <ComposerNotice tone={notice.tone} text={notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} />
+      {notice ? <ComposerNotice tone={notice.tone} text={phone ? notice.mobileText ?? notice.text : notice.text} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => setNotice(null)} />
         : composerAttachmentNoticeText(attachmentSnap.notice, ct) ? <ComposerNotice tone="warn" text={composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
       {popOpen ? (
         // '@' 덱 — 네 컴포저가 같이 쓰는 SDK 덱이다. 묶음은 「이 목표」(구성원 → 모두)와 「바깥 · 목표 밖 운영자」(사령관).

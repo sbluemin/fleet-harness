@@ -10,7 +10,7 @@ import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/a
 import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
-import { meterSeverity, mostUrgentWindow, PROVIDER_NAME, QuotaPanel, windowLabel } from "./quota-panel.js";
+import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, windowLabel } from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
@@ -57,7 +57,8 @@ function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
-export function QuotaToolbarSummary({ popoverAnchorRef }: ComposerTopEntryContext) {
+export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEntryContext) {
+  const mobile = layout === "mobile";
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
@@ -66,7 +67,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: ComposerTopEntryContex
   // 저장값을 읽기 전에는 그리지 않는다 — 전부(기본)로 그렸다가 저장된 선택으로 줄어드는 깜빡임을 막는다.
   if (!loaded) return null;
   const locale = currentLocale();
-  const t = getT(locale);
+  const t = getT(locale, mobile);
   const glyphOnly = shown.length === 0;
   const readings = toolbarReadings(snapshot.data, shown);
   const label = glyphOnly
@@ -74,7 +75,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: ComposerTopEntryContex
     : snapshot.data === null
       ? t("quota.toolbar.empty")
       : readings.map((reading) => t("quota.toolbar.reading", {
-        provider: PROVIDER_NAME[reading.id],
+        provider: providerName(reading.id, mobile),
         windows: reading.lines.length === 0
           ? "–"
           : reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · "),
@@ -118,6 +119,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef }: ComposerTopEntryContex
           anchorRef={buttonRef}
           placementAnchorRef={popoverAnchorRef}
           locale={locale}
+          mobile={mobile}
           onClose={(restoreFocus) => {
             setOpen(false);
             if (restoreFocus) buttonRef.current?.focus();
@@ -164,11 +166,12 @@ export function placePopover(anchor: { readonly left: number; readonly width: nu
  * 자리는 호스트가 준 요약 줄의 화면 좌표로 잡고, 창 크기나 닻 상자가 바뀌면 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
-function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, onClose }: {
+function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, mobile, onClose }: {
   readonly id: string;
   readonly anchorRef: RefObject<HTMLButtonElement | null>;
   readonly placementAnchorRef: RefObject<HTMLElement | null>;
   readonly locale: ConsoleLocale;
+  readonly mobile: boolean;
   readonly onClose: (restoreFocus: boolean) => void;
 }) {
   const api = useStoreSnapshot(subscribeQuotaApi, getQuotaApi);
@@ -247,7 +250,7 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, onClose }: {
           ...(placement.top !== undefined ? { top: placement.top } : { bottom: placement.bottom }),
         }}
     >
-      <QuotaPanel api={api} locale={locale} labelId={labelId} />
+      <QuotaPanel api={api} locale={locale} labelId={labelId} mobile={mobile} />
     </div>,
     document.body,
   );

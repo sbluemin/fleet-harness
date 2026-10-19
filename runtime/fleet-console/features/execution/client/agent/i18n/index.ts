@@ -3,6 +3,7 @@ import type { DiagramHydratorLabels } from "@fleet-console/markdown/mermaid";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { MOBILE_MESSAGES } from "./mobile-messages.js";
 
 
 export const terminalEn = {
@@ -1386,8 +1387,17 @@ const translators: Record<ConsoleLocale, Translate<TerminalMessageKey>> = {
   ko: createTranslator(TERMINAL_MESSAGES, "ko"),
 };
 
-export function getT(locale: ConsoleLocale | undefined): Translate<TerminalMessageKey> {
-  return translators[locale ?? "en"];
+const mobileMessages = {
+  en: { ...terminalEn, ...MOBILE_MESSAGES.en },
+  ko: { ...terminalKo, ...MOBILE_MESSAGES.ko },
+};
+const mobileTranslators: Record<ConsoleLocale, Translate<TerminalMessageKey>> = {
+  en: createTranslator(mobileMessages, "en"),
+  ko: createTranslator(mobileMessages, "ko"),
+};
+
+export function getT(locale: ConsoleLocale | undefined, mobile = false): Translate<TerminalMessageKey> {
+  return (mobile ? mobileTranslators : translators)[locale ?? "en"];
 }
 
 /** core `resolveConsoleLanguage` 와 동일 규칙 — auto 는 navigator 언어를 따른다. */

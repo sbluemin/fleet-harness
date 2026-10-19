@@ -344,8 +344,8 @@ export function useTheaterPromptController(theater: PromptTheater | null, reopen
  * 모드마다 모델에 무엇이 실리는지 — 고르기 전에 결과가 읽히도록 데스크톱 칸과 폰 시트가 모드 줄마다 이 문장을 붙인다.
  * 본문이 비었을 때의 결과는 고른 줄 아래 따로 선다(`useTheaterPromptEmptyNotice`).
  */
-export function useTheaterPromptModeDescriptions(): Record<ClaudeCodeSystemPromptMode, string> {
-  const t = useT();
+export function useTheaterPromptModeDescriptions(mobile = false): Record<ClaudeCodeSystemPromptMode, string> {
+  const t = useT(mobile);
   return { on: t("sidebar.theater.prompt.captionOn"), append: t("sidebar.theater.prompt.captionAppend"), off: t("sidebar.theater.prompt.captionOff") };
 }
 
@@ -361,8 +361,8 @@ export function isNearPromptLimit(draft: TheaterSystemPrompt): boolean {
   return !isOverPromptLimit(draft) && draft.body.length >= CLAUDE_CODE_CUSTOM_SYSTEM_PROMPT_MAX_CHARS * 0.9;
 }
 
-export function useTheaterPromptModeNames(): Record<ClaudeCodeSystemPromptMode, string> {
-  const t = useT();
+export function useTheaterPromptModeNames(mobile = false): Record<ClaudeCodeSystemPromptMode, string> {
+  const t = useT(mobile);
   return { on: t("sidebar.theater.prompt.modeOn"), append: t("sidebar.theater.prompt.modeAppend"), off: t("sidebar.theater.prompt.modeOff") };
 }
 
@@ -376,7 +376,7 @@ export function isOverPromptLimit(draft: TheaterSystemPrompt): boolean {
  * 데스크톱 Theater Inbox 는 이 칸을 따로 세우고(`titled` 없음 — 칸 제목이 대신한다), 폰 시트는 프롬프트 아래에 붙인다.
  */
 export function TheaterSubagentsSection({ theaterId, mobile = false, titled = true }: { readonly theaterId: string; readonly mobile?: boolean; readonly titled?: boolean }) {
-  const t = useT();
+  const t = useT(mobile);
   const [replaced, setReplaced] = useState<boolean | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "saving" | "loadFailed" | "saveFailed">("loading");
   const revisionRef = useRef(0);

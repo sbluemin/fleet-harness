@@ -30,7 +30,7 @@ import { readNewSessionSelection, writeNewSessionModelEffort, writeNewSessionThe
  */
 export function MobileNewSession() {
   const state = useConsoleState();
-  const t = useT();
+  const t = useT(true);
   const ct = composerT(useConsoleLocale());
   const navigate = useNavigate();
   const registry = usePluginRegistry();
