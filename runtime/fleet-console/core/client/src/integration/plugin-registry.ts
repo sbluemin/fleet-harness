@@ -16,6 +16,13 @@ import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 /** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
 /** 레지스트리가 읽은 플러그인 대화 — 그 대화를 낸 플러그인 id 를 함께 쥔다. */
 export type ResolvedConversationSurface = ConversationSurfaceDescriptor & { readonly pluginId?: string | undefined };
+/** 레일 엔트리를 등록한 주체 — 엔트리 id와 플러그인 id는 서로 다른 이름이다. */
+export type ResolvedRailEntry = RailEntryDescriptor & { readonly pluginId?: string };
+
+/** 플러그인이 선언한 묶음 id를 호스트 색인의 정준 id로 바꾼다. */
+export function operationClusterId(pluginId: string, localClusterId: string): string {
+  return `${pluginId}:${localClusterId}`;
+}
 
 /** 대화가 대신하는 Theater Inbox 섹션의 정준 id — 대화를 낸 플러그인의 섹션 id 에 `<pluginId>:` 를 붙인다. */
 export function conversationSurfaceInboxSectionId(surface: ResolvedConversationSurface, localSectionId: string): string {
@@ -37,7 +44,7 @@ export interface PluginRegistry {
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
   readonly railPanels: readonly RailPanelDescriptor[];
-  readonly railEntries: readonly RailEntryDescriptor[];
+  readonly railEntries: readonly ResolvedRailEntry[];
   readonly panes: readonly PaneDescriptor[];
   readonly persistentComponents: readonly PersistentComponentDescriptor[];
   /**
@@ -187,7 +194,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
   // 새 계약. 엔트리와 페인은 같은 이름공간 규칙을 따른다 — 접두 없이 선착순이며, 옛 패널과
   // id가 겹치면 여기 등록된 쪽이 이긴다(투영은 pane-registry가 그때 버린다).
   const railEntryIds = new Set<string>();
-  const railEntries: RailEntryDescriptor[] = [];
+  const railEntries: ResolvedRailEntry[] = [];
   const paneIds = new Set<string>();
   const panes: PaneDescriptor[] = [];
   for (const plugin of providers) {
@@ -197,7 +204,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: r
         continue;
       }
       railEntryIds.add(entry.id);
-      railEntries.push(entry);
+      railEntries.push({ ...entry, pluginId: plugin.id ?? "core" });
     }
     for (const pane of plugin.panes ?? []) {
       if (paneIds.has(pane.id)) {
@@ -276,7 +283,7 @@ export function combineClusterSources(sources: readonly { readonly pluginId: str
       const current = sources.map(({ source }) => { try { return source.get(); } catch { return NO_CLUSTERS; } });
       if (current.length === seen.length && current.every((list, index) => list === seen[index])) return combined;
       seen = current;
-      combined = current.flatMap((list, index) => list.map((cluster) => ({ ...cluster, id: `${sources[index]!.pluginId}:${cluster.id}` })));
+      combined = current.flatMap((list, index) => list.map((cluster) => ({ ...cluster, id: operationClusterId(sources[index]!.pluginId, cluster.id) })));
       return combined;
     },
   };

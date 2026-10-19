@@ -12,6 +12,7 @@ import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { entryIconOf } from "./mobile-destinations.js";
 import { MobileIcon } from "./mobile-icons.js";
+import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
  * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「끝남 N」(기본 접힘). 둘 다 0개면 서지 않는다.
@@ -38,13 +39,14 @@ export function MobileHomeSections({ theaterId }: { readonly theaterId: string |
         <>
           <FoldHead label={t("mobile.list.fresh", { count: fresh.length })} open={freshOpen} onToggle={() => setFreshOpen(!freshOpen)} />
           {freshOpen ? fresh.map((cluster) => (
-            <HomeRow
-              key={cluster.id}
-              avatar={<KeyedAvatar avatarKey={operationAvatarKey(cluster.avatarOperationId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
-              title={cluster.title}
-              sub={<><span className="mobile-conv-state is-fresh">{t("mobile.search.state.fresh")}</span>{freshDetail(cluster, locale)}</>}
-              onOpen={() => cluster.open?.()}
-            />
+            <MobileMarkedRow key={cluster.id} mark={cluster.row?.mark}>
+              <HomeRow
+                avatar={<KeyedAvatar avatarKey={operationAvatarKey(cluster.avatarOperationId ?? cluster.id)} role="commander" state="fresh" size={52} label="" decorative />}
+                title={cluster.title}
+                sub={<><span className="mobile-conv-state is-fresh">{t("mobile.search.state.fresh")}</span>{freshDetail(cluster, locale)}</>}
+                onOpen={() => cluster.open?.()}
+              />
+            </MobileMarkedRow>
           )) : null}
         </>
       ) : null}
