@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.246.0] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- 폰에서도 Console을 업데이트할 수 있습니다. 프로필 아바타와 설정의 버전 행에 새 버전 표시가 뜨고, 업데이트 시트에서 시작합니다.
+
+### fleet-mobile
+
+#### Fixed
+- Android에서 휴대전화 메모리가 부족할 때 채팅에 이미지를 첨부해도 앱이 더 이상 종료되지 않습니다. Fleet이 Console 화면을 다시 불러오고 이미지를 다시 추가하라고 알려 줍니다.
+
 ## [1.245.1] - 2026-10-19
 
 ### fleet-console

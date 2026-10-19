@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.246.0] - 2026-10-19
+
+### fleet-console
+
+#### Added
+- Update Console from your phone: a dot on the profile avatar and the Settings version row signal a new version, and the update sheet starts it.
+
+### fleet-mobile
+
+#### Fixed
+- On Android, attaching an image to a chat no longer closes the app when the phone runs low on memory; Fleet reloads the Console page and tells you to add the image again.
+
 ## [1.245.1] - 2026-10-19
 
 ### fleet-console
