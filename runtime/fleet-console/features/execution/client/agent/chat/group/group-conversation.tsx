@@ -105,6 +105,13 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const dockRef = React.useRef<HTMLDivElement | null>(null);
   useChromeHeightProperty(dockRef, chatRef, "--m-dock-h");
   const nearBottomRef = React.useRef(true);
+  // 바닥을 따라가는 동안은 브라우저 scroll anchoring 을 끈다 — 보이던 줄(방금 보낸 말 등)이 재정렬로 목록 위쪽으로 옮겨 가면
+  // anchoring 이 그 줄을 따라 scrollTop 을 끌어올리고, 그 scroll 사건을 사람이 위로 올린 것으로 읽어 따라가기가 풀린다.
+  // 위로 올려 읽는 중에는 anchoring 이 읽던 자리를 지키므로 켜 둔다.
+  const setFollowing = React.useCallback((log: HTMLElement, following: boolean) => {
+    nearBottomRef.current = following;
+    log.style.overflowAnchor = following ? "none" : "";
+  }, []);
   const programmaticTop = React.useRef<number | null>(null);
   // 사람이 이 기록을 스크롤한 마지막 입력 시각 — 그 직후의 scroll 사건은 사람의 뜻으로 읽는다.
   const userScrollAt = React.useRef(-Infinity);
@@ -135,6 +142,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     const log = logRef.current;
     const column = log?.firstElementChild;
     if (!log || !column || typeof ResizeObserver === "undefined") return;
+    setFollowing(log, nearBottomRef.current);
     const observer = new ResizeObserver(() => {
       // 산 채로 숨긴 대화의 배치는 읽기 위치나 따라가기 의도를 바꾸지 않는다.
       if (log.closest("[inert]") || log.clientHeight === 0) return;
@@ -148,7 +156,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     observer.observe(column);
     observer.observe(log);
     return () => observer.disconnect();
-  }, []);
+  }, [setFollowing]);
 
   // 드러내기 — 그 줄이 아직 없으면(쪽을 읽는 중) 줄이 올 때 다시 찾는다. 찾은 요청만 끝낸다.
   const revealed = React.useRef<number | null>(null);
@@ -157,14 +165,14 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
     const target = Array.from(logRef.current?.querySelectorAll<HTMLElement>("[data-entry-id]") ?? []).find((node) => node.dataset.entryId === reveal.entryId);
     if (!target) return;
     revealed.current = reveal.nonce;
-    nearBottomRef.current = false;
+    if (logRef.current) setFollowing(logRef.current, false);
     target.scrollIntoView({ block: "center", behavior: "smooth" });
     target.classList.remove("is-revealed");
     void target.offsetWidth;
     target.classList.add("is-revealed");
     const timer = window.setTimeout(() => target.classList.remove("is-revealed"), 1_600);
     return () => window.clearTimeout(timer);
-  }, [reveal, growth]);
+  }, [reveal, growth, setFollowing]);
 
   // 화면에 서는 줄 — 턴 접기를 켜면 접힌 말은 칩 하나로, 말풍선에 옮긴 보고 줄은 빠진다. 끄면 원장 줄 그대로다.
   const items = React.useMemo(() => fold ? foldTimeline(entries, snapshot.participants, snapshot.rootOperationId) : entries.map((entry): TimelineItem => ({ kind: "entry", entry })), [entries, fold, snapshot.participants, snapshot.rootOperationId]);
@@ -214,7 +222,7 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
           const cached = placed.current?.height;
           const gesture = performance.now() - userScrollAt.current < USER_SCROLL_MS;
           const height = cached && nearBottomRef.current && !gesture ? Math.min(log.scrollHeight, cached) : log.scrollHeight;
-          nearBottomRef.current = height - log.scrollTop - log.clientHeight < 60;
+          setFollowing(log, height - log.scrollTop - log.clientHeight < 60);
         }}
       >
         <div className="group-chat-column">
