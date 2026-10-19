@@ -345,6 +345,11 @@ export function commodoreDecisionCardRenderer(): ComponentType<AgentDecisionCard
   return installed?.chat.DecisionCard ?? null;
 }
 
+/** 컴포저 위쪽 호스트 요약 줄(호스트 `ctx.chat.ComposerTopEntries`). 설치 전이거나 구버전 호스트면 null. */
+export function commodoreComposerTopEntriesRenderer(): ComponentType | null {
+  return installed?.chat.ComposerTopEntries ?? null;
+}
+
 const EMPTY_VIEW_SNAPSHOT: TheaterCommodore = EMPTY;
 
 export function readCommodore(theaterId: string): TheaterCommodore {

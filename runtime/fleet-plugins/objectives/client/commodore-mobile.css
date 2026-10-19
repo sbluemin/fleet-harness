@@ -101,6 +101,9 @@
 .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: var(--m-fade-up, var(--m-bg)); }
 .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat { margin-bottom: calc(-1 * var(--m-dock-h, 0px)); padding-bottom: calc(16px + var(--m-dock-h, 0px)); }
 .objectives-cm-dock .fc-composer-notice { padding-bottom: 0; }
+.objectives-cm-dock .conversation-composer-top { padding: 0; min-width: 0; }
+.objectives-cm-dock .conversation-composer-top:has(> .conversation-composer-top-content:empty) { display: none; }
+.objectives-cm-dock .conversation-composer-top-content { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .objectives-cm-dock .objectives-commodore-composer { max-width: none; }
 .objectives-cm-dock .objectives-commodore-composer-idle { max-width: none; margin: 0; padding: 0 8px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .objectives-cm-msg-images { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
