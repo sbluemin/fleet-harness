@@ -13,6 +13,7 @@ import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { ConversationRow, ConversationSummary, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
+import { useMobileUpdateReady } from "./mobile-update-sheet.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { TheaterAvatar } from "../../../../../features/workspace/client/theater-avatar.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -34,6 +35,7 @@ const MAX_ATTENTION_ROWS = 3;
 export function MobileConversationList({ state }: { readonly state: ConsoleState }) {
   const t = useT();
   const appearance = useMobileAppearance();
+  const updateReady = useMobileUpdateReady();
   const bindings = useRailEntries();
   const attention = useMobileAttentionRows();
   const conversations = useMobileConversations(state);
@@ -62,8 +64,9 @@ export function MobileConversationList({ state }: { readonly state: ConsoleState
     <section ref={listRef} className="mobile-conv-list">
       <header ref={headRef} className="mobile-conv-head mobile-screen-head">
         {/* 프로필 아바타 — Console 정체. 프로필·설정 시트를 연다. */}
-        <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.profileAria", { name: consoleName })} onClick={() => pushMobileSheet({ kind: "profile" })}>
+        <button type="button" data-press="r1" className="mobile-conv-round" aria-label={updateReady ? `${t("mobile.list.profileAria", { name: consoleName })} · ${t("chrome.system.helpUpdateReady")}` : t("mobile.list.profileAria", { name: consoleName })} onClick={() => pushMobileSheet({ kind: "profile" })}>
           <MobileMonogram label={consoleName} toneKey={consoleName} tone={appearance.console?.tone ?? null} letters={appearance.console?.monogram ?? consoleName.charAt(0).toUpperCase()} round size={36} />
+          {updateReady ? <span className="mobile-update-dot" aria-hidden="true" /> : null}
           {state.connection !== "live" ? <span className="mobile-avatar-dot" data-state={state.connection === "offline" ? "failed" : "reconnecting"} aria-hidden="true" /> : null}
         </button>
         <span className="mobile-conv-gap" />

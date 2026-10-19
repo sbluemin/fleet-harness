@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
-import { ApiError, checkConsoleUpdate } from "../../integration/api.js";
-import { requestConsoleUpdate, useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
+import { useUpdateProgress } from "../../../../../features/updates/client/update-progress-store.js";
+import { refreshConsole, useConsoleUpdateAction, useVersionRefresh } from "./console-update-action.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { isDesktopShell, PICKER_ANCHOR_PARAM, PICKER_AT_PARAM, PICKER_PLACE_PARAM, PICKER_PLACE_SIDE, PICKER_SURFACE_OPEN, PICKER_SURFACE_PARAM, useDesktopHomeOrigin, type DesktopShellHome } from "../../integration/desktop-shell.js";
 import { requestDesktopShellUpdate, useDesktopShellUpdate, type DesktopShellUpdate } from "../../integration/desktop-shell-update.js";
@@ -18,17 +18,6 @@ import { useMenuButtonKeyboard } from "./use-menu-button-keyboard.js";
 import { useSideSubmenu, type SideSubmenuGroup } from "./use-side-submenu.js";
 
 export { placeSubmenu, submenuContentHeight, useSideSubmenuGroup, type SideSubmenuGroup, type SubmenuPlacement } from "./use-side-submenu.js";
-
-type UpdateApplyState = "idle" | "armed" | "blocked" | "error";
-
-interface UpdateApplyCopy {
-  readonly label: string;
-  /** 행 안에서 라벨 뒤에 붙는 두 번째 줄. 버전 델타나 확인 문구가 여기 온다. */
-  readonly detail?: string;
-  readonly title: string;
-  readonly tone: "info" | "warn" | "live" | "blocked" | "error";
-  readonly disabled: boolean;
-}
 
 interface GithubStarsState {
   readonly count: number | null;
@@ -284,10 +273,7 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
   readonly onStarted: () => void;
 }) {
   const t = useT();
-  const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
-  const [errorCode, setErrorCode] = useState<string | null>(null);
-  // 훅은 조건부 반환 앞에서 부른다. 새로고침으로 latestVersion이 생겨도 훅 개수가 달라지지 않는다.
-  const preparing = useUpdateProgress().preparing !== null;
+  const { preparing, copy, apply } = useConsoleUpdateAction(latestVersion, t);
   const body = <><TerminalGlyph /><span className="command-band-version-row-name">Console</span><span className="command-band-version-row-version">v{version}</span></>;
   if (latestVersion !== null && foldedIntoShell) {
     return (
@@ -313,30 +299,12 @@ function ConsoleVersionRow({ version, latestVersion, foldedIntoShell, shellUpdat
       </div>
     );
   }
-  const copy = resolveUpdateApplyCopyFor(applyState, errorCode, latestVersion, t);
   const label = preparing ? t("chrome.system.update.requesting") : copy.label;
   const title = preparing ? t("chrome.system.update.requestingTitle") : copy.title;
 
   const handleApply = async () => {
-    if (copy.disabled || preparing) return;
-    const acknowledgeHostRestart = applyState === "armed";
-    setErrorCode(null);
-    try {
-      const result = await requestConsoleUpdate(latestVersion, acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
-      if (result === "busy") return;
-      // 수락이든 거절이든 행은 다시 누를 수 있게 돌아간다. 거절의 사유는 상단 배너가 host 문구 그대로 말하고,
-      // 메뉴는 닫아 그 배너를 가리지 않는다. 수락 뒤의 화면은 커튼이 소유한다.
-      setApplyState("idle");
-      onStarted();
-    } catch (error) {
-      const code = error instanceof ApiError ? error.message : "network_error";
-      setErrorCode(code);
-      if (code === "host_restart_confirmation_required") {
-        setApplyState("armed");
-        return;
-      }
-      setApplyState(isBlockedUpdateApplyError(code) ? "blocked" : "error");
-    }
+    // 수락이든 거절이든 메뉴는 닫아 상단 배너를 가리지 않는다. 409 동의 대기는 메뉴에 남아 두 번째 누름을 받는다.
+    if (await apply()) onStarted();
   };
 
   if (!preparing && copy.tone === "warn") {
@@ -444,43 +412,12 @@ async function refreshDesktop(): Promise<boolean> {
 }
 
 /**
- * 캐시를 기다리지 않고 지금 묻는다. 서버가 레지스트리를 다시 조회하고, 그 답을 스토어에 바로 쓴다 —
- * 달라졌다면 SSE로도 오지만, 같을 때는 이 응답만이 "확인했다"는 증거다.
- * 새 버전이 있으면 true: 행이 칩 행으로 바뀌므로 "최신" 표시는 필요 없다.
- */
-async function refreshConsole(): Promise<boolean> {
-  const status = await checkConsoleUpdate();
-  setState({ updateAvailable: status.updateAvailable, latestVersion: status.latestVersion, shellUpdateRequired: status.shellUpdateRequired });
-  return status.updateAvailable;
-}
-
-type VersionRefreshState = "idle" | "busy" | "current" | "failed";
-const VERSION_REFRESH_RESULT_MS = 3000;
-
-/**
  * 정적 버전 행의 오른쪽 끝 — hover·포커스에서만 보이는 ↻. 누르면 그 제품의 최신 버전을 지금 확인한다.
  * 결과는 같은 자리에 3초만 선다: 새 버전이면 행 자체가 칩 행으로 바뀌므로 여기서는 「최신」과 「확인 실패」만 말한다.
  */
 function VersionRefresh({ onRefresh }: { readonly onRefresh: () => Promise<boolean> }) {
   const t = useT();
-  const [state, setRefreshState] = useState<VersionRefreshState>("idle");
-
-  useEffect(() => {
-    if (state !== "current" && state !== "failed") return;
-    const timer = setTimeout(() => setRefreshState("idle"), VERSION_REFRESH_RESULT_MS);
-    return () => clearTimeout(timer);
-  }, [state]);
-
-  const handleRefresh = async () => {
-    if (state === "busy") return;
-    setRefreshState("busy");
-    try {
-      const newer = await onRefresh();
-      setRefreshState(newer ? "idle" : "current");
-    } catch {
-      setRefreshState("failed");
-    }
-  };
+  const { state, refresh: handleRefresh } = useVersionRefresh(onRefresh);
 
   if (state === "current" || state === "failed") {
     return <span className={`command-band-version-row-result command-band-version-row-result--${state}`} role="status">{t(state === "current" ? "chrome.system.version.upToDate" : "chrome.system.version.checkFailed")}</span>;
@@ -507,52 +444,6 @@ function GithubLinks() {
       </a>
     </div>
   );
-}
-
-export function resolveUpdateApplyCopyFor(
-  applyState: UpdateApplyState,
-  errorCode: string | null,
-  latestVersion: string | null,
-  t: Translate<CoreMessageKey>,
-): UpdateApplyCopy {
-  const latest = latestVersion
-    ? t("chrome.system.update.latestVersion", { version: latestVersion })
-    : t("chrome.system.update.available");
-  if (applyState === "armed") {
-    return {
-      label: t("chrome.system.update.confirmHostRestart"),
-      detail: t("chrome.system.update.confirmHostRestartConfirm"),
-      title: t("chrome.system.update.confirmHostRestartTitle"),
-      tone: "warn",
-      disabled: false,
-    };
-  }
-  if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
-  if (applyState === "error") return { label: t("common.retry"), title: resolveUpdateErrorTitle(errorCode, t), tone: "error", disabled: false };
-  // 대기 중 업데이트 안내는 정보다. 칩은 목표 버전만 말하고, 신호 채널은 확인 대기(warn)·진행(live)·실패(error)만 쓴다.
-  return { label: latestVersion ? `v${latestVersion} ↑` : t("chrome.system.update.available"), title: latest, tone: "info", disabled: false };
-}
-
-function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<CoreMessageKey>): UpdateApplyCopy {
-  if (errorCode === "local_channel") return { label: t("chrome.system.update.local"), title: t("chrome.system.update.localTitle"), tone: "blocked", disabled: true };
-  // 이 콘솔이 스스로 갈아 끼울 수 없는 레이아웃은 이제 셸에게 넘어간다. 이 문구는 그
-  // 위임을 모르는 옛 서버에 붙었을 때만 남는 마지막 안내다.
-  if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.managed"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "shell_update_required") return { label: t("chrome.system.update.shellRequired"), title: t("chrome.system.update.shellRequiredTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "update_already_in_progress") return { label: t("chrome.system.update.busy"), title: t("chrome.system.update.busyTitle"), tone: "blocked", disabled: true };
-  if (errorCode === "update_not_available") return { label: t("chrome.system.update.current"), title: t("chrome.system.update.currentTitle"), tone: "blocked", disabled: true };
-  return { label: t("chrome.system.update.blocked"), title: t("chrome.system.update.blockedTitle"), tone: "error", disabled: false };
-}
-
-// 내려받기·검증 실패는 콘솔을 내리기 전에 난다. 다시 누를 수 있는 실패이므로 이유만 제목에 적는다.
-function resolveUpdateErrorTitle(errorCode: string | null, t: Translate<CoreMessageKey>): string {
-  if (errorCode === "checksum_mismatch") return t("chrome.system.update.checksumTitle");
-  if (errorCode === "download_failed") return t("chrome.system.update.downloadFailedTitle");
-  return t("chrome.system.update.retryTitle");
-}
-
-function isBlockedUpdateApplyError(code: string): boolean {
-  return code === "local_channel" || code === "managed_runtime_update_requires_relaunch" || code === "shell_update_required" || code === "update_already_in_progress" || code === "update_not_available";
 }
 
 function useGithubStars(): GithubStarsState {
