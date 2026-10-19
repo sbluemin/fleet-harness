@@ -285,6 +285,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
+  const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
   return (
     <GroupConversation
       snapshot={snapshot}
@@ -305,7 +306,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           }}
         />
       )}
-      composer={<GroupComposer key={root.id} rootOperationId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />}
+      {...(recordedObjective ? { renderComposerWithWorking: composer } : { composer: composer() })}
     />
   );
 }
