@@ -298,13 +298,19 @@ export function GroupLedgerFrame({ speaker, language, onBack, notice, children }
   // 폰 배치에서 머리 카드는 상단 막대 아래에 떠 있다 — 본문이 막대와 이 카드 뒤로 흐르고, 카드 높이(`--group-ledger-head`)만큼 위를 비운다.
   const ledgerRef = React.useRef<HTMLDivElement | null>(null);
   const headRef = React.useRef<HTMLDivElement | null>(null);
+  const backRef = React.useRef<HTMLButtonElement | null>(null);
   useChromeHeightProperty(headRef, ledgerRef, "--group-ledger-head");
+  React.useLayoutEffect(() => {
+    // 전언 화면과 머리 pill 이 모두 걷힌 다음 받는다 — 어느 입구로 열어도 같은 원장 틀이 포커스를 맡는다.
+    const frame = requestAnimationFrame(() => (backRef.current ?? ledgerRef.current)?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [speaker.operationId]);
   return (
-    <div ref={ledgerRef} className="group-ledger">
+    <div ref={ledgerRef} className="group-ledger" tabIndex={-1}>
       <div ref={headRef} className="group-ledger-head">
         <SpeakerMark speaker={speaker} size="sm" />
         <span className="group-ledger-banner" role="status">{t("group.ledger.banner", { name: speaker.name })}</span>
-        {onBack ? <button type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}
+        {onBack ? <button ref={backRef} type="button" className="group-ledger-back" onClick={onBack}>{t("group.ledger.back")}</button> : null}
       </div>
       {notice}
       <div className="group-ledger-body">{children}</div>

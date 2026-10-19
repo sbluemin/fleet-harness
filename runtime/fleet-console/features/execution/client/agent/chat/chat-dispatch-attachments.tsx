@@ -21,6 +21,7 @@ export function ChatDispatchAttachments({
   const t = getT(language);
   const ct = composerT(language);
   const [opened, setOpened] = React.useState<number | null>(null);
+  const originRef = React.useRef<HTMLButtonElement | null>(null);
   // 404는 "없는 첨부"가 아니라 "거둬진 첨부"다 — 같은 자리에 lapsed와 같은 말을 세운다.
   const [lapsed, setLapsed] = React.useState<readonly string[]>([]);
   const live = attachments.flatMap((attachment) => {
@@ -43,7 +44,7 @@ export function ChatDispatchAttachments({
           className="agent-chat-dispatch-attachment"
           aria-label={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
           title={t("terminal.chat.attachmentOpen", { index: String(index + 1) })}
-          onClick={() => setOpened(index)}
+          onClick={(event) => { originRef.current = event.currentTarget; setOpened(index); }}
         >
           <img
             src={attachment.src}
@@ -70,6 +71,7 @@ export function ChatDispatchAttachments({
             name: t("terminal.chat.attachmentAlt", { index: String(index + 1) }),
           }))}
           index={opened}
+          returnFocusRef={originRef}
           onIndex={setOpened}
           onClose={() => setOpened(null)}
           closeLabel={ct("composer.attach.close")}

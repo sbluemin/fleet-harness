@@ -470,7 +470,7 @@ function answeredText(entry: AnsweredEntry): string {
 
 export function errorWord(t: T, code: string): string {
   const key = `objectives.commodore.errorCode.${code}`;
-  return key in objectivesEn ? t(key as ObjectiveMessageKey) : code;
+  return Object.hasOwn(objectivesEn, key) ? t(key as ObjectiveMessageKey) : t("objectives.commodore.errorCode.failed");
 }
 
 /** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */

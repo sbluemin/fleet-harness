@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "../i18n/types.js";
@@ -38,7 +38,7 @@ export interface ComposerAttachmentViewImage {
 
 /**
  * 첨부 한 장 이상을 크게 본다. 스크림 모달이고, ←/→ 로 넘기며 Esc 와 바깥 클릭이 닫는다.
- * 포커스는 열릴 때 닫기 단추로 갔다가 닫히면 연 자리로 돌아간다.
+ * 포커스는 열릴 때 닫기 단추로 가고 Tab/Shift+Tab 은 팝업 안에서 순환한다. 닫히면 연 자리로 돌아간다.
  */
 export function ComposerAttachmentViewer({
   images,
@@ -49,6 +49,7 @@ export function ComposerAttachmentViewer({
   previousLabel,
   nextLabel,
   onImageError,
+  returnFocusRef,
 }: {
   readonly images: readonly ComposerAttachmentViewImage[];
   readonly index: number;
@@ -58,16 +59,29 @@ export function ComposerAttachmentViewer({
   readonly previousLabel: string;
   readonly nextLabel: string;
   readonly onImageError?: (key: string) => void;
+  /** 포인터로 눌러도 포커스를 받지 않는 브라우저를 위해 연 썸네일을 직접 넘긴다. */
+  readonly returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   const image = images[index] ?? null;
+  const viewerRef = useRef<HTMLDivElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    const returnTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    closeRef.current?.focus();
-    return () => returnTo?.focus();
-  }, []);
+  useLayoutEffect(() => {
+    const returnTo = returnFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    closeRef.current?.focus({ preventScroll: true });
+    return () => { if (returnTo?.isConnected) returnTo.focus({ preventScroll: true }); };
+  }, [returnFocusRef]);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") {
+        const buttons = Array.from(viewerRef.current?.querySelectorAll<HTMLButtonElement>("button:not([disabled])") ?? []);
+        if (!buttons.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const active = buttons.findIndex((button) => button === document.activeElement);
+        const next = active < 0 ? (event.shiftKey ? buttons.length - 1 : 0) : (active + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length;
+        buttons[next]?.focus({ preventScroll: true });
+        return;
+      }
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
@@ -87,7 +101,7 @@ export function ComposerAttachmentViewer({
   }, [images.length, index, onClose, onIndex]);
   if (image === null || typeof document === "undefined") return null;
   return createPortal(
-    <div className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={onClose}>
+    <div ref={viewerRef} className="fc-composer-viewer" role="dialog" aria-modal="true" aria-label={image.name} onMouseDown={onClose}>
       <div className="fc-composer-viewer__frame" onMouseDown={(event) => event.stopPropagation()}>
         {images.length > 1 ? (
           <button type="button" className="fc-composer-viewer__nav is-prev" aria-label={previousLabel} onClick={() => onIndex((index - 1 + images.length) % images.length)}>‹</button>
@@ -107,6 +121,7 @@ export function ComposerAttachmentViewer({
 export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerAttachmentTrayProps) {
   const { items } = useComposerAttachmentSnapshot(store);
   const [index, setIndex] = useState<number | null>(null);
+  const originRef = useRef<HTMLButtonElement | null>(null);
   if (items.length === 0) return null;
   const openAt = index !== null && index >= 0 && index < items.length ? index : null;
   return (
@@ -119,7 +134,7 @@ export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerA
             disabled={item.uploading}
             aria-label={t("composer.attach.open", { name: item.name })}
             title={t("composer.attach.open", { name: item.name })}
-            onClick={() => setIndex(at)}
+            onClick={(event) => { originRef.current = event.currentTarget; setIndex(at); }}
           >
             <img src={item.previewUrl} alt="" />
           </button>
@@ -139,6 +154,7 @@ export function ComposerAttachmentTray({ store, t, disabled = false }: ComposerA
         <ComposerAttachmentViewer
           images={items.map((item) => ({ key: item.key, src: item.previewUrl, name: item.name }))}
           index={openAt}
+          returnFocusRef={originRef}
           onIndex={setIndex}
           onClose={() => setIndex(null)}
           closeLabel={t("composer.attach.close")}

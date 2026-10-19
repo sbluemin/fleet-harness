@@ -12,6 +12,8 @@
 .conversation-dock-host { position: relative; flex: none; }
 /* 원래 Fleet 워드마크를 독 전체의 가운데에 둔다. 좁은 사령관 열에는 사령관·원격·계정만 남기므로 브랜드는 걷는다. */
 .conversation-dock-brand { position: absolute; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; pointer-events: none; color: var(--text-primary); }
+/* 바닥 기여가 서면 장식 대신 요약에 가운데를 내준다. 팝오버 닻은 브랜드와 별개로 남는다. */
+.conversation-dock:has(> .sidebar-footer-entries) > .conversation-dock-brand { display: none; }
 .conversation-brand-glyph { flex: none; width: 16px; height: 16px; }
 .conversation-brand-wordmark { font-family: var(--font-content); font-size: calc(var(--font-content-size) * 13 / 14); font-weight: var(--weight-medium); line-height: 1; letter-spacing: 0.01em; }
 .conversation-brand-wordmark.is-local { color: var(--ink-brand-dev); }
