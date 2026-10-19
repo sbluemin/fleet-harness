@@ -73,6 +73,8 @@ export interface GroupComposerProps {
   readonly language: ConsoleLocale | undefined;
   /** 기록된 목표의 요약 — 제안 칩과 같은 줄의 오른쪽 끝에 선다. */
   readonly topEntries?: React.ReactNode;
+  /** 통합 줄에서만 받는 기존 진행 표시. 쉼이면 내용 없이 같은 요약 줄을 유지한다. */
+  readonly workingLine?: React.ReactNode;
   /** 한 명만 멈춘다 — 기존 실행 중 중지 경로. */
   readonly onStopOne: (speaker: ConversationSpeaker) => Promise<void>;
 }
@@ -137,7 +139,7 @@ function groupDraft(rootOperationId: string) {
   return draft;
 }
 
-export function GroupComposer({ rootOperationId, snapshot, actions, language, topEntries, onStopOne }: GroupComposerProps) {
+export function GroupComposer({ rootOperationId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const t = getGroupT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
@@ -586,14 +588,15 @@ export function GroupComposer({ rootOperationId, snapshot, actions, language, to
         </ComposerMenu>
       ) : null}
       {panel !== null ? <div className="group-composer-panel">{panel}</div> : null}
-      {suggest || topEntries ? (
-        <div className="group-composer-top">
+      {suggest || topEntries || workingLine ? (
+        <div className={`group-composer-top${workingLine ? " is-unified" : ""}`}>
+          {workingLine}
           {suggest ? (
             <div className="group-composer-suggest">
               {note ? (
                 <span className={`group-composer-suggest-note is-${note.tone}`}>
                   {note.tone === "lock" ? <LockGlyph /> : note.tone === "awaiting" ? <RequestGlyph /> : <span className="group-composer-suggest-dot" aria-hidden="true" />}
-                  <span>{local(note.text)}</span>
+                  <span className="group-composer-suggest-note-text" title={local(note.text)}>{local(note.text)}</span>
                   {note.reveal ? <button type="button" className="group-composer-suggest-link" onClick={note.reveal.run}>{local(note.reveal.label)}</button> : null}
                   {note.tone === "awaiting" ? <button type="button" className="group-composer-suggest-link" onClick={toCards}>{t("group.board.toCards")}</button> : null}
                 </span>

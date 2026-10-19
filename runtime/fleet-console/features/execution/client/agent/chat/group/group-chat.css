@@ -759,6 +759,24 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 .group-composer-top .conversation-composer-top { padding: 0; min-width: 0; }
 .group-composer-top .conversation-composer-top-content { max-width: 100%; overflow-x: auto; }
 
+/* Quota가 서는 대화만 진행 → 칩·안내 → 요약 한 줄이다. 안내, note 글자, 진행 이름, 마지막으로 요약 순서로 폭을 양보한다.
+   큰 shrink 비율로 다음 단계가 1px 줄기 전에 앞 단계가 접힌다. 칩과 몽글 스택은 줄이거나 스크롤하지 않는다. */
+.conversation-composer-top.is-unified,
+.group-composer-top.is-unified { min-height: 36px; flex-wrap: nowrap; align-items: center; gap: var(--space-2); }
+.group-composer-top.is-unified > .group-composer-suggest { display: contents; }
+.group-composer-top.is-unified .group-composer-action { flex: none; white-space: nowrap; }
+.group-composer-top.is-unified .group-composer-suggest-hint { flex: 1 1000000000 auto; }
+/* note의 최소 폭은 아이콘·링크·간격뿐이다. 글자 트랙만 0까지 접고, 링크는 max-content 열에 온전히 남긴다. */
+.group-composer-top.is-unified .group-composer-suggest-note { display: grid; grid-template-columns: max-content minmax(0, 1fr); grid-auto-flow: column; grid-auto-columns: max-content; flex: 0 1000000000 auto; min-width: min-content; white-space: nowrap; }
+.group-composer-top.is-unified .group-composer-suggest-note-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.group-composer-top.is-unified:has(.group-composer-suggest-note) .group-composer-suggest-hint { flex-shrink: 1000000000000; }
+.group-chat-working.is-inline { --group-working-marks: 32px; flex: 0 1000000 auto; min-width: calc(var(--group-working-marks) + 2 * var(--space-2)); padding-inline: 0; }
+.group-chat-working.is-inline .group-chat-working-tool { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.conversation-composer-top.is-unified > .conversation-composer-top-content { flex: 0 1 auto; min-width: 0; margin-left: auto; overflow-x: auto; }
+/* 마지막 수단인 요약 스크롤도 같은 36px 안에서만 움직인다. OS 스크롤바가 줄 높이를 늘리지 않는다. */
+.conversation-composer-top.is-unified > .conversation-composer-top-content,
+.group-composer-top.is-unified .conversation-composer-top-content { height: 36px; overflow-y: hidden; scrollbar-width: none; }
+
 /* 제안 줄 — 입력창 바로 위 한 줄. 보드가 고른 지금 할 일이 칩으로 선다(받는 이 칩과 같은 알약 문법). 할 일이 없으면 서지 않는다. */
 .group-composer-suggest {
   display: flex;

@@ -57,6 +57,8 @@ export interface GroupConversationProps {
   readonly composer?: React.ReactNode;
   /** 쓰기 가능한 사령관·그룹 대화에서만 호스트 요약을 세운다. */
   readonly composerTopEntries?: boolean;
+  /** 기록된 목표는 같은 진행 노드를 입력창의 제안·요약 줄 안에 세운다. 주지 않으면 기존 독 흐름이다. */
+  readonly renderComposerWithWorking?: (working: React.ReactNode) => React.ReactNode;
   /** 사령관 행위 줄의 링크 낱말 — 주지 않으면 「사령관 기록에서 보기」. */
   readonly boardActionLabel?: string;
   /** 빈 대화의 문구 — 주지 않으면 그룹 대화의 문구. */
@@ -91,7 +93,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, pillOperationId }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -182,6 +184,8 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
   const unavailableNames = snapshot.unavailableOperationIds
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
+  const inlineWorking = Boolean(renderComposerWithWorking || (composerTopEntries && composer));
+  const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} />;
 
   return (
     <div ref={chatRef} className="group-chat" onClick={onCodeCopyClick}>
@@ -262,9 +266,10 @@ export function GroupConversation({ snapshot, language, onOpenLedger, onOpenComm
         </div>
       </div>
       <div ref={dockRef} className="group-chat-dock">
-        <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} />
-        {composerTopEntries && composer ? <ComposerTopEntries /> : null}
-        {composer}
+        {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
+          {inlineWorking ? <ComposerTopEntries leading={workingLine} /> : workingLine}
+          {composer}
+        </>}
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} pillOperationId={pillOperationId} />
       {overlay}
@@ -962,32 +967,34 @@ const WORKING_NAME_SLOT = "\u0000";
  * 표식과 이름은 말풍선 머리와 같은 규칙(`ledgerTarget`)으로 그 참여자의 원장을 연다 — 지휘관이면 루트 id 라 여는 쪽이
  * 지휘관 원장으로 연다. 원장이 없는 참여자와 콜백이 없는 대화에서는 눌리는 척하지 않는다. 진행 줄은 아무도 멈추지 않는다
  * (정지는 입력창과 「구성원」 탭의 몫이다). 표식은 32px 로 서서 사이드바처럼 지금 하는 일(생각·읽기·편집…)을 연기한다.
- * 일하는 이가 없으면 줄은 높이만 지켜 입력창이 뛰지 않게 한다.
+ * 별도 줄에서는 일하는 이가 없어도 높이를 지킨다. 요약과 같은 줄(inline)에서는 빈 진행 DOM을 만들지 않고 요약이 높이를 지킨다.
  */
-export function GroupWorkingLine({ working, participants, language, onOpenLedger, computerActor = null }: {
+export function GroupWorkingLine({ working, participants, language, onOpenLedger, computerActor = null, inline = false }: {
   readonly working: readonly ConversationSpeaker[];
   readonly participants: readonly ConversationParticipant[];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger?: (operationId: string) => void;
   /** 컴퓨터를 지금 조작하는 참여자. 일하는 사람 중에 있으면 낱말 뒤에 도구 꼬리가 붙는다. */
   readonly computerActor?: string | null;
+  /** 같은 줄에서는 빈 높이를 예약하지 않고, 좁아져 이름이 접혀도 표식으로 원장을 열 수 있다. */
+  readonly inline?: boolean;
 }) {
   const t = getGroupT(language);
   const ledgerOf = React.useContext(LedgerTargetContext);
-  if (working.length === 0) return <div className="group-chat-working is-empty" aria-hidden="true" />;
+  if (working.length === 0) return inline ? null : <div className="group-chat-working is-empty" aria-hidden="true" />;
   const targets = working.map((speaker) => (onOpenLedger ? ledgerOf(speaker, participants) : null));
   const openLabel = (speaker: ConversationSpeaker) => t("group.speaker.openLedger", { name: speaker.name });
-  // 표식은 마우스·터치용 복제 히트 영역이다 — 탭 정지는 이름(낱말) 하나가 진다(말풍선 머리와 같은 관례).
+  // 별도 줄의 표식은 마우스·터치용 복제다. 통합 줄은 이름이 0폭까지 접힐 수 있어 표식에도 원장 이름과 탭 정지를 둔다.
   const marks = working.map((speaker, index) => {
     const target = targets[index];
     return target ? (
-      <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" data-ledger-speaker={speaker.kind} tabIndex={-1} aria-hidden="true" title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
+      <button key={speakerKey(speaker)} type="button" className="group-chat-working-hit is-mark" data-ledger-speaker={speaker.kind} tabIndex={inline ? 0 : -1} aria-hidden={inline ? undefined : true} aria-label={inline ? openLabel(speaker) : undefined} title={openLabel(speaker)} onClick={() => onOpenLedger!(target)}>
         <SpeakerMark speaker={speaker} size="lg" state="running" acting />
       </button>
     ) : <SpeakerMark key={speakerKey(speaker)} speaker={speaker} size="lg" state="running" acting />;
   });
   return (
-    <div className="group-chat-working" role="status">
+    <div className={`group-chat-working${inline ? " is-inline" : ""}`} role="status" style={inline ? { "--group-working-marks": `${32 + (working.length - 1) * 24}px` } as React.CSSProperties : undefined}>
       <span className="group-chat-working-stack">{marks}</span>
       <WorkingText working={working} targets={targets} t={t} openLabel={openLabel} onOpenLedger={onOpenLedger} />
       {toolTail(working, computerActor, t)}

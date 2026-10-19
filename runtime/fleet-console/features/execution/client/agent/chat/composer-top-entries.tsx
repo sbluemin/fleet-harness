@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef } from "react";
+import { createContext, useContext, useRef, type ReactNode } from "react";
 import type { ComposerTopEntryDescriptor } from "@fleet-console/sdk/plugin";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 
@@ -7,11 +7,13 @@ const ComposerTopEntriesContext = createContext<readonly ComposerTopEntryDescrip
 export const ComposerTopEntriesProvider = ComposerTopEntriesContext.Provider;
 
 /** 대화 표면이 명시적으로 요청한 요약 칸. 플러그인의 팝업은 이 줄을 닻으로 삼는다. */
-export function ComposerTopEntries() {
+export function ComposerTopEntries({ leading }: { readonly leading?: ReactNode }) {
   const entries = useContext(ComposerTopEntriesContext);
   const popoverAnchorRef = useRef<HTMLSpanElement>(null);
-  if (!entries.length) return null;
-  return <div className="conversation-composer-top"><span className="conversation-composer-top-content" ref={popoverAnchorRef}>
+  if (!entries.length && !leading) return null;
+  return <div className={`conversation-composer-top${leading ? " is-unified" : ""}`}>
+    {leading}
+    <span className="conversation-composer-top-content" ref={popoverAnchorRef}>
     {entries.map((entry) => {
       const Render = entry.render;
       return <PluginErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} /></PluginErrorBoundary>;
