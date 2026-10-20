@@ -174,7 +174,7 @@ export function subscribeFinishedObjectives(listener: () => void): () => void {
 
 /**
  * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 사람이 보관한 완료 목표, 최근에 끝난 것부터. 완료는 보관하지 않으므로
- * 보관하지 않은 완료 목표는 대화 행(지휘관 Operation)으로 홈에 남고, 복원돼 다시 살아 있는 목록에 선 목표도 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
+ * 보관하지 않은 완료 목표는 호스트가 묶음 줄(glyph done)로 같은 「끝남」에 모으므로 여기서는 보관한 것만 올린다(살아 있는 명단과 겹치지 않는다). 복원돼 다시 살아 있는 목록에 선 목표도 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
  */
 export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
   if (theaterId === null) return [];
