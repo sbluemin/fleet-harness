@@ -38,8 +38,14 @@
 
 /* 글자 탭(S-02 .ttabs). */
 /* 경계선 대신 아래 본문 위로 짧게 옅어지는 페이드로 갈린다. */
-.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 20px; padding: 0 24px; }
-.objectives-cm-tabs::after { content: ""; position: absolute; top: 100%; right: 0; left: 0; height: 12px; background: var(--m-fade-down, none); pointer-events: none; }
+.objectives-cm-tabs { position: relative; z-index: 1; flex: none; display: flex; gap: 18px; margin-top: -1px; padding: 1px 16px 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+.objectives-cm-tabs::-webkit-scrollbar { display: none; }
+/* black 은 색 잉크가 아니라 마스크의 불투명도다 — 넘친 쪽 끝만 옅어진다. */
+.objectives-cm-tabs.is-scroll { -webkit-mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); mask-image: linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent); }
+.objectives-cm-tabs.is-scroll.is-start { -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent); mask-image: linear-gradient(to right, black calc(100% - 24px), transparent); }
+.objectives-cm-tabs.is-scroll.is-end { -webkit-mask-image: linear-gradient(to right, transparent, black 24px); mask-image: linear-gradient(to right, transparent, black 24px); }
+/* 탭 줄은 가로 스크롤로 잘리므로 아래 페이드는 그 바깥 머리에 둔다. */
+.objectives-cm-chrome::after { content: ""; position: absolute; top: 100%; right: 0; left: 0; height: 12px; background: var(--m-fade-down, none); pointer-events: none; }
 
 /*
  * 칩 화면의 머리(자율 운영 행 + 글자 탭). 화면이 막대 뒤로 흐를 때(data-mobile-chrome="flow")는 막대와 한 덩어리로 탭 본문 위에 떠 있다 —
@@ -48,16 +54,16 @@
  * 뺀 값)를 더한 만큼 위를 비운다 — 막대 변형이 바뀌는 커밋이 머리를 그린 커밋과 달라도 값이 흔들리지 않는다.
  * 띠가 선 동안은 머리가 흐름 안에 서고 탭 아래 페이드가 경계를 대신한다.
  */
-.objectives-cm-chrome { flex: none; }
+.objectives-cm-chrome { position: relative; z-index: 1; flex: none; }
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-chrome { position: absolute; top: 0; right: 0; left: 0; z-index: 1; padding-top: var(--m-chrome-top, 0px); background: linear-gradient(to bottom, var(--m-bg) calc(100% - 12px), color-mix(in srgb, var(--m-bg) 0%, transparent)); }
-.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-tabs::after { content: none; }
+.objectives-cm[data-mobile-chrome="flow"] .objectives-cm-chrome::after { content: none; }
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-content { padding-top: calc(var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-goals { padding-top: calc(8px + var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat,
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat.is-center { padding-top: calc(8px + var(--m-chrome-top, 0px) + var(--objectives-cm-head, 0px)); }
-.objectives-cm .objectives-cm-tabs button { padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
+.objectives-cm .objectives-cm-tabs button { flex: none; padding: 10px 0; border-bottom: 2px solid transparent; color: var(--m-text-muted); font-size: var(--m-fs-secondary); --pr-inset: 4px -10px; --pr-r: 10px; }
 .objectives-cm .objectives-cm-tabs button.is-on { border-bottom-color: var(--m-text); color: var(--m-text); font-weight: var(--weight-bold); }
-/* 두 글자 탭은 폭이 26이라 손가락 칸을 투명 ::after 로 좌우 9·위 1 넓힌다(≥ 44×44). 밑줄은 글자 폭 그대로, 탭 사이 20 안이라 겹치지 않는다. */
+/* 두 글자 탭의 손가락 칸을 ::after 로 좌우 9·위 1 넓힌다. 줄의 위 여유 1px 와 음수 margin 이 시각 위치를 지키며 세로 44px 를 스크롤 안에 둔다. 좌우 칸은 간격 18 경계에서 맞닿는다. */
 .objectives-cm .objectives-cm-tabs button::after { position: absolute; inset: -1px -9px 0; content: ""; }
 
 /*
@@ -176,3 +182,38 @@
 
 /* 사령관의 질문 — 그룹 대화와 같은 본문 끝 자리다. 카드 안이 아니라 대화 전체가 함께 스크롤한다. */
 .objectives-cm-asks { flex: none; display: flex; flex-direction: column; gap: 8px; }
+
+/* 기억 탭 — 폰 갈래 트리와 읽기 전용 항목 화면. */
+/* 검색 — 손가락 높이 44, 둥근 면. 항목이 하나라도 있을 때만 선다. */
+.objectives-cm-memory-search { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 16px; border-radius: 22px; background: var(--m-surface); color: var(--m-text-muted); }
+.objectives-cm-memory-search:focus-within { box-shadow: inset 0 0 0 1px var(--m-text-muted); }
+.objectives-cm-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--m-text); font: inherit; font-size: var(--m-fs-list); }
+.objectives-cm-memory-search input::placeholder { color: var(--m-text-muted); }
+/* 갈래 머리 — glab 글자에 힌트(옅게, 한 줄 말줄임)·개수·접힘 꺾쇠. 행 전체가 접기 단추(높이 44). */
+.objectives-cm .objectives-cm-memory-bhead { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 6px 4px 0; color: var(--m-text-muted); font-size: var(--m-fs-secondary); }
+.objectives-cm-memory-bhead b { flex: none; font-weight: var(--weight-bold); }
+.objectives-cm-memory-bhead .is-light { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--m-text-faint); font-size: var(--m-fs-caption); white-space: nowrap; text-overflow: ellipsis; }
+.objectives-cm-memory-count { flex: none; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
+.objectives-cm-memory-chev { flex: none; color: var(--m-text-faint); transition: transform .15s; }
+.objectives-cm-memory-chev.is-open { transform: rotate(90deg); }
+.objectives-cm-memory-branch { display: flex; flex-direction: column; gap: 8px; }
+.objectives-cm-memory-topic { margin: 4px 0 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-weight: var(--weight-medium); overflow-wrap: anywhere; }
+/* 항목 줄 — gr 문법. 제목(두 줄까지)·설명 한 줄(폰엔 hover title 이 없어 설명을 줄에 싣는다), 오른쪽 끝에 경과 점·날짜. */
+.objectives-cm-memory-row .objectives-cm-gr-tx b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-weight: var(--weight-regular); }
+.objectives-cm-memory-row .objectives-cm-gr-tx small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.objectives-cm-memory-end { display: inline-flex; flex: none; align-items: center; gap: 6px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
+.objectives-cm-memory-dot { flex: none; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--m-running); }
+.objectives-cm-memory-foot { display: flex; flex-direction: column; gap: 4px; }
+.objectives-cm-memory-legend { display: inline-flex; align-items: center; gap: 6px; }
+/* 항목 읽기 — 경로 한 줄 · 제목 · 설명 · 날짜 줄, 그 아래 왜/적용 카드, 출처·연결 행 묶음. 뒤로 가기는 호스트 막대 ‹(깊이 2+). */
+.objectives-cm-memory-crumbs { display: flex; gap: 6px; min-width: 0; padding: 4px 4px 0; color: var(--m-text-faint); font-size: var(--m-fs-caption); white-space: nowrap; }
+.objectives-cm-memory-crumbs span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.objectives-cm-memory-head { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+.objectives-cm-memory-title { margin: 0; font-size: var(--m-fs-title); font-weight: var(--weight-bold); line-height: 1.4; overflow-wrap: anywhere; }
+.objectives-cm-memory-desc { margin: 0; color: var(--m-text-nav); font-size: var(--m-fs-list); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-cm-memory-stamps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-variant-numeric: tabular-nums; }
+.objectives-cm-memory-due { display: inline-flex; align-items: center; gap: 6px; color: var(--m-running); }
+.objectives-cm-gr.objectives-cm-memory-body { display: block; min-height: 0; margin: 0; padding: 14px 16px; font-size: var(--m-fs-list); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.objectives-cm-memory-glyph { flex: none; display: grid; place-items: center; width: 24px; color: var(--m-text-nav); }
+.objectives-cm-gr.objectives-cm-memory-jump { min-height: 56px; }
+.objectives-cm-memory-path { font-family: var(--m-mono); overflow-wrap: anywhere; }

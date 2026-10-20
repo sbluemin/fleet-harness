@@ -465,10 +465,26 @@ export function useCommodoreMobileTab(): CommodoreMobileTab {
   return useSyncExternalStore(subscribeCommodore, () => mobileTab, () => mobileTab);
 }
 
+let mobilePanelSequence = 0;
+let mobilePanelRequest: string | null = null;
+
+/** 데스크톱 전환 요청을 실은 페인만 한 번 받는다 — 다른 바로가기·딥링크에는 묵은 요청을 적용하지 않는다. */
+export function useCommodoreMobilePanelRequest(request: string | undefined, onOpen: () => void): void {
+  useEffect(() => {
+    if (!request || request !== mobilePanelRequest) return;
+    mobilePanelRequest = null;
+    onOpen();
+  }, [request, onOpen]);
+}
+
 /** 폰 사령관 화면을 고른 구역으로 연다 — 모바일 호스트는 목적지로 선언된 엔트리의 `rail.open`을 화면으로 연다. */
-export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string | null): void {
+export function openCommodoreMobile(tab: CommodoreMobileTab, theaterId: string | null, panel = false): void {
   setCommodoreMobileTab(tab);
-  installed?.rail.open(COMMODORE_ENTRY_ID, theaterId ? { theaterId } : undefined);
+  mobilePanelRequest = panel ? String(++mobilePanelSequence) : null;
+  installed?.rail.open(COMMODORE_ENTRY_ID, {
+    ...(theaterId ? { theaterId } : {}),
+    ...(mobilePanelRequest ? { commodorePanel: mobilePanelRequest } : {}),
+  });
 }
 
 /* ── 사람의 행위 ─────────────────────────────────────────────────────── */

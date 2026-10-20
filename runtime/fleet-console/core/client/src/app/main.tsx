@@ -50,6 +50,9 @@ import { bindGroupClusterSource, GroupClusterProvider } from "../../../../featur
 import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, operationsIncludingNested, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
+import { bindConversationSurfaceLayout } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
+import { getRailStoreSnapshot } from "../chrome/rail/rail-store.js";
+import { closeTheaterInbox, readTheaterInboxState } from "../../../../features/workspace/client/theater-inbox/store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -141,6 +144,16 @@ if (app && hostPicker) {
   );
 } else if (app && registryPromise) {
   const registry = await registryPromise;
+  bindConversationSurfaceLayout({
+    onLeaveDesktop: (surface) => {
+      const descriptor = registry.conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId);
+      if (!descriptor?.onLeaveDesktop) return;
+      const tabId = getRailStoreSnapshot().activePanelId;
+      // 같은 Theater 의 Inbox 문맥도 남아 있다 — 표면이 착지를 맡으면 Inbox 가 뒤늦게 기본 칸으로 덮지 않게 함께 걷는다.
+      if (readTheaterInboxState()?.theaterId === surface.params.theaterId) closeTheaterInbox();
+      descriptor.onLeaveDesktop({ params: surface.params, tabId });
+    },
+  });
   await migration;
   // 대화 중심 화면의 본문 렌더러·「구성원」 탭 등록은 훅 밖에서 목표 묶음을 읽는다 — Provider 와 같은 원천을 묶는다.
   bindGroupClusterSource(registry.operationClusters);

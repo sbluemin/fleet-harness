@@ -34,7 +34,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { createHostCapabilities } from "../integration/plugin-capabilities.js";
 import { bindConsoleNavigate, notifyConsoleLocationChanged } from "../integration/console-location.js";
 import type { PaletteSearchPanel } from "../integration/operation-search.js";
-import { useDesktopRailEntries } from "../chrome/pane/pane-registry.js";
+import { useDesktopRailEntries, useRailEntries } from "../chrome/pane/pane-registry.js";
 import { usePluginRegistry, useExpandedSurfaceDescriptors } from "../integration/plugin-registry.js";
 import { SettingsRouteAdapter } from "../../../../features/settings/client/settings-route-adapter.js";
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
@@ -236,8 +236,10 @@ function ConnectedApp() {
 
   // 플러그인 설치는 레일 목록을 부를 때마다 읽는다 — 대화 중심 화면의 탭(사령관·Theater 칸)이 서고 걷힐 때마다 레일 목록이
   // 바뀌는데, 그때마다 모든 플러그인을 다시 설치하면 플러그인이 쥔 상태(사령관 기록·상태)가 비워진다.
-  const railBindingsRef = useRef(railBindings);
-  railBindingsRef.current = railBindings;
+  // 능력은 화면에 보이는 목록이 아니라 모든 목적지를 연다 — 폰 전용 엔트리도 params 를 받아야 한다.
+  const capabilityRailBindings = useRailEntries();
+  const railBindingsRef = useRef(capabilityRailBindings);
+  railBindingsRef.current = capabilityRailBindings;
   useEffect(() => {
     let cancelled = false;
     const cleanups: Array<() => void> = [];

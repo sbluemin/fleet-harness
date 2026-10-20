@@ -15,6 +15,13 @@ export interface ConversationSurfaceSelection {
 
 let selection: ConversationSurfaceSelection | null = null;
 let nonce = 0;
+let layoutPort: { readonly onLeaveDesktop: (surface: ConversationSurfaceSelection) => void } | null = null;
+
+/** 레지스트리와 활성 패널을 아는 호스트 합성이 배치 전환을 잇는다. 표면 저장소는 플러그인 구현을 조회하지 않는다. */
+export function bindConversationSurfaceLayout(port: NonNullable<typeof layoutPort>): void {
+  layoutPort = port;
+}
+
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -61,6 +68,9 @@ let disposeLayoutWatch: (() => void) | null = null;
 function watchLayout(): void {
   if (disposeLayoutWatch) return;
   disposeLayoutWatch = subscribeViewMode(() => {
-    if (selection !== null && getViewModeSnapshot().effective !== "desktop") clear();
+    if (selection === null || getViewModeSnapshot().effective === "desktop") return;
+    try { layoutPort?.onLeaveDesktop(selection); }
+    catch { /* 플러그인 착지가 실패해도 데스크톱 표면은 걷는다. */ }
+    clear();
   });
 }
