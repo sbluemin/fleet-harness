@@ -80,7 +80,7 @@ const PATROL_MENU_WIDTH = 248;
 const PATROL_MENU_MARGIN = 12;
 /** 본문이 이보다 좁으면 기록 곁 칸(목표)을 기록 아래로 내린다 — 옛 시트의 좁은 모양과 같은 자리. */
 const COMPACT_BODY_WIDTH = 500;
-const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "directive", "intel", "memory", "settings"];
+const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "directive", "memory", "settings"];
 
 /* ── Theater Inbox 섹션 ──────────────────────────────────────────────── */
 
@@ -110,7 +110,7 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
 }
 
 /**
- * Theater Inbox 의 「사령관」 섹션 — 기록·지시·정보·기억·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
+ * Theater Inbox 의 「사령관」 섹션 — 기록·지시(정보 포함)·기억·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
  * 실험 기능 「자율 운영」이 꺼져 있으면 섹션은 제목과 안내 한 줄만 남고 본문을 마운트하지 않는다(읽기·쓰기 없음).
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
@@ -120,8 +120,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   pages: [
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
     { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log"), layout: "fill" },
-    { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive") },
-    { id: "intel", title: (language) => getT(language)("objectives.commodore.tabs.intel"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.intel") },
+    // 지시 칸은 옛 정보 칸을 흡수했다(지시 아래 정보·정보 출처) — 정보 칸을 부르는 요청도 이 칸이 받는다.
+    { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive"), formerIds: ["intel"] },
     { id: "memory", title: (language) => getT(language)("objectives.commodore.tabs.memory") },
     { id: "settings", title: (language) => getT(language)("objectives.commodore.tabs.settings"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.settings") },
   ],
@@ -195,7 +195,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const handledFocus = useRef(0);
   useEffect(() => {
     if (!visible || !focusRequest || handledFocus.current === focusRequest.nonce) return;
-    const selector = tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : tab === "intel" && focusRequest.kind === "editor-end" ? "#objectives-commodore-intel" : null;
+    const selector = tab === "directive" ? "#objectives-commodore-directive" : tab === "log" ? ".objectives-commodore-composer-input" : null;
     if (!selector) { handledFocus.current = focusRequest.nonce; return; }
     const field = rootRef.current?.querySelector<HTMLTextAreaElement>(selector);
     if (!field) return;
@@ -250,8 +250,12 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreTrail t={t} language={language} theaterId={theaterId} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
           </>
         ) : null}
-        {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} /> : null}
-        {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
+        {tab === "directive" && view ? (
+          <>
+            <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} />
+            <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} />
+          </>
+        ) : null}
         {tab === "memory" ? <CommodoreMemory t={t} theaterId={theaterId} /> : null}
         {/* 설정 칸의 메뉴(순찰·종료 시각·모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
@@ -1078,6 +1082,45 @@ export function focusAtEnd(element: HTMLTextAreaElement | null): void {
   element.setSelectionRange(element.value.length, element.value.length);
 }
 
+/**
+ * 「+ 정보 추가」 한 줄의 입력 — 데스크톱 지시 칸과 폰 지시 탭이 함께 쓴다. 초안은 시트를 닫아도 남는다. Enter 는 추가, Shift+Enter 는
+ * 줄바꿈이고 한글 조합 중의 Enter 는 넘긴다. 폰의 화면 키보드(굵은 포인터)에서는 Enter 가 줄바꿈이라 추가는 곁의 단추로 한다.
+ * 추가하는 동안 고쳐 쓴 글은 지우지 않는다.
+ */
+export function useCommodoreIntelAdd(theaterId: string, { phone = false, online = true, onFail, onClear }: { readonly phone?: boolean; readonly online?: boolean; readonly onFail: (error: unknown) => void; readonly onClear: () => void }) {
+  const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
+  useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
+  const [adding, setAdding] = useState(false);
+  const composing = useRef(false);
+  const add = () => {
+    const value = draft.trim();
+    if (!value || adding || !online) return;
+    onClear();
+    setAdding(true);
+    void addCommodoreIntel(theaterId, value).then(() => setDraft((current) => (current === draft ? "" : current))).catch(onFail).finally(() => setAdding(false));
+  };
+  return {
+    draft,
+    adding,
+    add,
+    field: {
+      value: draft,
+      maxLength: 4_000,
+      rows: 1,
+      readOnly: adding,
+      onChange: (event: { readonly target: { readonly value: string } }) => setDraft(event.target.value),
+      onCompositionStart: () => { composing.current = true; },
+      onCompositionEnd: () => { composing.current = false; },
+      onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
+        if (composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || (phone && touchFirst())) return;
+        event.preventDefault();
+        add();
+      },
+    },
+  };
+}
+
 export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
@@ -1087,88 +1130,80 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   readonly onClear: () => void;
 }) {
   const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
-  const [draft, setDraft] = useState(() => sheetDraft(theaterId).intel);
-  useEffect(() => { rememberSheetDraft(theaterId, { intel: draft }); }, [theaterId, draft]);
-  const [adding, setAdding] = useState(false);
+  const adder = useCommodoreIntelAdd(theaterId, { onFail, onClear });
+  const hintId = `objectives-commodore-intel-add-hint-${theaterId}`;
   const sourceLabel = (source: string) => source === "person" ? t("objectives.commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
-  const add = () => {
-    const value = draft.trim();
-    if (!value || adding) return;
-    onClear();
-    setAdding(true);
-    void addCommodoreIntel(theaterId, value).then(() => setDraft("")).catch(onFail).finally(() => setAdding(false));
-  };
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
+  // 지시 칸 안에서 지시 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」, 그 아래 정보 출처가 한 덩어리로 선다.
   return (
-    <>
-      <div className="objectives-commodore-section">
-        <label className="objectives-commodore-section-title" htmlFor="objectives-commodore-intel">{t("objectives.commodore.intel.label")}</label>
-        <textarea
-          id="objectives-commodore-intel"
-          className="objectives-commodore-input is-medium"
-          value={draft}
-          maxLength={4_000}
-          placeholder={t("objectives.commodore.intel.placeholder")}
-          onChange={(event) => setDraft(event.target.value)}
-        />
-        <div className="objectives-commodore-section-foot">
-          <span />
-          <button type="button" className="objectives-btn" disabled={adding || !draft.trim()} onClick={add}>{t("objectives.commodore.intel.add")}</button>
-        </div>
-        {intel.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.empty")}</p> : (
-          <ul ref={editing.listRef} className="objectives-commodore-intel-list">
-            {intel.map((item) => {
-              const edit = editing.edits[item.id];
-              // 출처와 「수정됨」은 한 덩어리로 줄을 넘긴다 — 사이 공백은 끊기지 않는 공백이다.
-              const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}>{"\u00a0·\u00a0"}{t("objectives.commodore.intel.edited")}</span> : null}</span>;
-              if (edit) {
-                const unchanged = edit.draft.trim() === item.text;
-                return (
-                  <li key={item.id} className="is-editing">
-                    <span className="objectives-commodore-intel-when">{day(item.at)}</span>
-                    <div className="objectives-commodore-intel-edit">
-                      <textarea
-                        ref={focusAtEnd}
-                        className="objectives-commodore-input objectives-commodore-intel-field"
-                        value={edit.draft}
-                        maxLength={4_000}
-                        readOnly={edit.saving}
-                        aria-label={t("objectives.commodore.intel.editField")}
-                        onChange={(event) => editing.change(item.id, event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                          if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!edit.saving) editing.cancel(item.id); return; }
-                          // Enter 는 저장, Shift+Enter 는 줄바꿈 — 사령관 메시지 입력과 같은 손버릇이다.
-                          if (event.key === "Enter" && !event.shiftKey && !event.altKey) { event.preventDefault(); editing.save(item.id); }
-                        }}
-                      />
-                      {edit.error ? <p className="objectives-commodore-intel-error" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
-                      <div className="objectives-commodore-intel-edit-foot">
-                        {meta}
-                        <span className="objectives-commodore-hint">{t("objectives.commodore.intel.editHint")}</span>
-                        <button type="button" className="objectives-commodore-text-button" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
-                        <button type="button" className="objectives-btn" disabled={edit.saving || !edit.draft.trim() || unchanged} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
-                      </div>
-                    </div>
-                  </li>
-                );
-              }
+    <div className="objectives-commodore-section">
+      <p className="objectives-commodore-section-title">{t("objectives.commodore.intel.label")}</p>
+      {intel.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.empty")}</p> : (
+        <ul ref={editing.listRef} className="objectives-commodore-intel-list">
+          {intel.map((item) => {
+            const edit = editing.edits[item.id];
+            // 출처와 「수정됨」은 한 덩어리로 줄을 넘긴다 — 사이 공백은 끊기지 않는 공백이다.
+            const meta = <span className="objectives-commodore-intel-source">{sourceLabel(item.source)}{item.editedAt !== undefined ? <span title={t("objectives.commodore.intel.editedAt", { time: `${day(item.editedAt)} ${clockTime(item.editedAt)}` })}>{"\u00a0·\u00a0"}{t("objectives.commodore.intel.edited")}</span> : null}</span>;
+            if (edit) {
+              const unchanged = edit.draft.trim() === item.text;
               return (
-                <li key={item.id}>
+                <li key={item.id} className="is-editing">
                   <span className="objectives-commodore-intel-when">{day(item.at)}</span>
-                  {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
-                  <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
-                  <span className="objectives-commodore-intel-actions">
-                    <button type="button" className="objectives-commodore-text-button" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
-                    <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
-                  </span>
+                  <div className="objectives-commodore-intel-edit">
+                    <textarea
+                      ref={focusAtEnd}
+                      className="objectives-commodore-input objectives-commodore-intel-field"
+                      value={edit.draft}
+                      maxLength={4_000}
+                      readOnly={edit.saving}
+                      aria-label={t("objectives.commodore.intel.editField")}
+                      onChange={(event) => editing.change(item.id, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!edit.saving) editing.cancel(item.id); return; }
+                        // Enter 는 저장, Shift+Enter 는 줄바꿈 — 사령관 메시지 입력과 같은 손버릇이다.
+                        if (event.key === "Enter" && !event.shiftKey && !event.altKey) { event.preventDefault(); editing.save(item.id); }
+                      }}
+                    />
+                    {edit.error ? <p className="objectives-commodore-intel-error" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
+                    <div className="objectives-commodore-intel-edit-foot">
+                      {meta}
+                      <span className="objectives-commodore-hint">{t("objectives.commodore.intel.editHint")}</span>
+                      <button type="button" className="objectives-commodore-text-button" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
+                      <button type="button" className="objectives-btn" disabled={edit.saving || !edit.draft.trim() || unchanged} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
+                    </div>
+                  </div>
                 </li>
               );
-            })}
-          </ul>
-        )}
+            }
+            return (
+              <li key={item.id}>
+                <span className="objectives-commodore-intel-when">{day(item.at)}</span>
+                {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
+                <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
+                <span className="objectives-commodore-intel-actions">
+                  <button type="button" className="objectives-commodore-text-button" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
+                  <button type="button" className="objectives-commodore-text-button" aria-label={t("objectives.commodore.intel.removeAria")} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {/* 「+ 임무 추가」와 같은 한 줄 — 테두리 없는 입력의 자리표가 이름을 대신하고, 글이 길면 줄이 내용만큼 자란다. */}
+      <div className="objectives-commodore-intel-add">
+        <span className="objectives-row-ic objectives-plus" aria-hidden="true">+</span>
+        <div className="objectives-commodore-intel-add-body">
+          <textarea
+            {...adder.field}
+            aria-label={t("objectives.commodore.intel.add")}
+            placeholder={t("objectives.commodore.intel.add")}
+            {...(adder.draft.trim() ? { "aria-describedby": hintId } : {})}
+          />
+          {adder.draft.trim() ? <p id={hintId} className="objectives-commodore-hint">{t("objectives.commodore.intel.addHint")}</p> : null}
+        </div>
       </div>
-      <div className="objectives-commodore-section">
+      <div className="objectives-commodore-intel-sources">
         <p className="objectives-commodore-section-title">{t("objectives.commodore.intel.sources")} <span className="objectives-commodore-later">· {t("objectives.commodore.intel.sourcesLater")}</span></p>
         {sources.length === 0 ? <p className="objectives-commodore-hint">{t("objectives.commodore.intel.sourcesEmpty")}</p> : (
           <ul className="objectives-commodore-sources">
@@ -1177,6 +1212,6 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
         )}
         <p className="objectives-commodore-hint">{t("objectives.commodore.intel.sourcesHint")}</p>
       </div>
-    </>
+    </div>
   );
 }

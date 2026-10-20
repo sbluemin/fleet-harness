@@ -95,6 +95,11 @@ export interface TheaterInboxPageDescriptor {
    * bottom, a table or graph) declares `"fill"` to receive the whole panel. Older hosts ignore it.
    */
   readonly layout?: ConversationPanelLayout;
+  /**
+   * Ids of pages this page has absorbed. A request for one of them opens this page instead, focus request included,
+   * so an entry that still names the old page lands here rather than on the fallback page. Older hosts ignore it.
+   */
+  readonly formerIds?: readonly string[];
 }
 
 export interface TheaterInboxSectionDescriptor {

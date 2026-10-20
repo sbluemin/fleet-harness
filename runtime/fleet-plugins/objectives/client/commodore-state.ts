@@ -23,7 +23,7 @@ import { post } from "./objectives-state.js";
 
 export const COMMODORE_CHANNEL = "objectives:commodore";
 
-export type CommodoreTab = "log" | "directive" | "intel" | "memory" | "settings";
+export type CommodoreTab = "log" | "directive" | "memory" | "settings";
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */
 export type CommodoreMobileTab = CommodoreTab | "goals";
 

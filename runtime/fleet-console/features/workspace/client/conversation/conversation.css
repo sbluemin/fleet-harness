@@ -893,7 +893,7 @@
 
 .conversation-panel-toolbar-spacer { flex: 1; }
 
-/* 이름 아래 한 줄 — 대상의 글자 탭 줄(구성원, 사령관의 행위 기록·지시·정보·설정). 이름처럼 가운데 정렬이다(Grok 세부 정보는
+/* 이름 아래 한 줄 — 대상의 글자 탭 줄(구성원, 사령관의 기록·지시·기억·설정). 이름처럼 가운데 정렬이다(Grok 세부 정보는
    표식·이름·세그먼트가 한 축에 선다). 대상 탭이 없으면 줄을 남기지 않는다. 넘치면 줄 끝 「⋯」에 모인다(ConversationPanelHeader 가
    잰다). 작전구역 도구 글리프는 이 패널이 아니라 가운데 대화 머리 줄의 공통 도구모음(.conversation-pill-tools)에 선다. */
 .conversation-panel-segments {

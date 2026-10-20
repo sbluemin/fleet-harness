@@ -288,7 +288,7 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 }
 
 /**
- * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
+ * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 기록·지시·기억·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
  * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
  */
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
@@ -404,7 +404,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {tabsEntry?.conversationTabs?.renderTools && tabsState !== null ? (
         <div className="conversation-panel-sections is-tools">{tabsEntry.conversationTabs.renderTools({ theaterId: tabsTheaterId, language: context.language })}</div>
       ) : null}
-      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)이 Grok 세그먼트처럼 한 줄에 선다.
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·지시·기억·설정)이 Grok 세그먼트처럼 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
@@ -1149,6 +1149,9 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);
   tabIdsRef.current = (descriptor.tabs ?? []).map((tab) => tab.id);
+  // 걷힌 옛 탭 id → 그 탭을 흡수한 탭 id(`formerIds`).
+  const successorsRef = useRef<ReadonlyMap<string, string>>(new Map());
+  successorsRef.current = new Map((descriptor.tabs ?? []).flatMap((tab) => (tab.formerIds ?? []).map((former) => [former, tab.id] as const)));
   useEffect(() => {
     const tabs = descriptor.tabs ?? [];
     const disposers = tabs.map((tab, order) => registerConversationOperationTab({
@@ -1177,8 +1180,14 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
   useEffect(() => {
-    if (descriptor.defaultTab === undefined) return;
     const active = getRailStoreSnapshot().activePanelId;
+    // 기억된 패널이 이 대화가 걷은 옛 탭이면 그 탭을 흡수한 탭을 연다.
+    const successor = active === null ? undefined : successorsRef.current.get(active);
+    if (successor !== undefined) {
+      openRailPanel(successor);
+      return;
+    }
+    if (descriptor.defaultTab === undefined) return;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
