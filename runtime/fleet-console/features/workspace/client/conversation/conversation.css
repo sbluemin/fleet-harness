@@ -588,14 +588,10 @@
 /* 대화 다크의 응답 본문은 Grok 처럼 거의 흰 글자다. 공용 .markdown-body 는 본문을 --text-secondary 로 칠하는데, 대화 다크의
    --text-secondary 는 레퍼런스 보조 글자 실측(#a7a7a7, L 72.8%)이라 응답 전체가 흐린 회색으로 보였다(문단·목록 항목은 공용
    `.markdown-body p, li` 가 다시 --text-secondary 를 준다). 가운데 칸의 응답(1:1·그룹·사령관
-   기록)만 --text-primary(L 97%)로 올린다. 인라인 코드는 Fleet 의 금색 글자를 지킨다. 라이트·토글 끔은 그대로다. */
+   기록)만 --text-primary(L 97%)로 올린다. 인라인 코드는 본문보다 물러난 회색이다(chat.css 의 대화 다크 인라인 코드 규칙). 라이트·토글 끔은 그대로다. */
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .conversation-body .markdown-body,
 :root[data-view-mode="desktop"]:not([data-theme="light"]) .conversation-body .markdown-body :is(p, li) {
   color: var(--text-primary);
-}
-
-:root[data-view-mode="desktop"]:not([data-theme="light"]) .conversation-body .markdown-body :not(pre) > code {
-  color: var(--brass-bright);
 }
 
 /* 사람의 말풍선은 그룹 대화와 같은 회색 면이다. */

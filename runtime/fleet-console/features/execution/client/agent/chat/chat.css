@@ -1466,7 +1466,7 @@
 
 /* 공유 .markdown-body(리딩 스케일 17px·78ch 중앙 정렬)를 챗 밀도로 오버라이드한다 —
    그룹 대화 말풍선(.group-chat)도 같은 규칙을 쓴다 — 같은 화면 문법이면 같은 표현이다. 말풍선은 면·반경·여백만 더한다.
-   마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다.
+   리스트 마커 같은 마크다운 문법은 그대로 상속하고, 인라인 코드·코드 블록·표만 아래에서 챗 문법으로 덮는다.
    measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 :is(.agent-chat, .group-chat) .markdown-body {
   --font-size-body: var(--font-content-size);
@@ -1503,6 +1503,14 @@
   border-color: transparent;
   color: var(--text-primary);
   padding: 1px 5px;
+}
+
+/* 대화 다크의 인라인 코드는 레퍼런스처럼 본문보다 물러난 회색 글자(--text-secondary #a7a7a7 ≈ 실측 #adadad)가
+   말풍선보다 아주 조금 밝은 면(--control-rest 의 60% ≈ 3% 흰 워시, 실측 #202020 on #1b1b1b) 위에 놓인다.
+   금색(brass)은 위치·포커스 채널이라 코드 글자가 빌리지 않는다. 라이트·토글 끔·폰은 위 규칙 그대로다. */
+:root[data-view-mode="desktop"]:not([data-theme="light"]) :is(.agent-chat, .group-chat) .markdown-body :not(pre) > code {
+  background: color-mix(in srgb, var(--control-rest) 60%, transparent);
+  color: var(--text-secondary);
 }
 
 /* 코드 블록 — 공용의 테두리·그림자·어두운 면을 걷고 중립 면 하나만 남긴다. */
@@ -1542,6 +1550,54 @@
 }
 
 :is(.agent-chat, .group-chat) .copy-code:hover { background: var(--control-rest-hover); }
+
+/* 표 — 공용 표(전폭·바깥 테두리·금색 대문자 머리칸·줄무늬·12/16 여백)를 걷고 작고 단정한 면 하나로 둔다.
+   폭은 내용에 맞추고(넘치면 공용 규칙대로 상자 안에서 가로로 흐른다), 면은 코드 블록과 같은 중립 면이다.
+   바깥 테두리 없이 칸 사이 세로 헤어라인과 그보다 옅은 가로 줄만 남는다(레퍼런스 실측: 세로 Δ8·가로 Δ3~5).
+   머리칸은 본문과 같은 크기·주 잉크에 굵기 한 단으로만 갈린다 — brass 는 위치 채널이라 머리칸이 빌리지 않는다.
+   글자는 본문보다 한 단 작고(13/14), 행은 글자의 약 2.5배(줄높이 1.5 + 위아래 0.5em), 좌우 여백은 1em 이다. */
+:is(.agent-chat, .group-chat) .markdown-body table {
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  background: var(--control-rest);
+  font-size: calc(var(--font-content-size) * 0.928571);
+  line-height: 1.5;
+}
+
+:is(.agent-chat, .group-chat) .markdown-body table :is(th, td) {
+  padding: 0.5em 1em;
+  border-bottom: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
+}
+
+:is(.agent-chat, .group-chat) .markdown-body table :is(th, td) + :is(th, td) {
+  border-left: 1px solid var(--hairline);
+}
+
+:is(.agent-chat, .group-chat) .markdown-body table th {
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:is(.agent-chat, .group-chat) .markdown-body table tr:nth-child(even) td { background: none; }
+
+/* 좁은 자리에서는 공용 표의 좁은 자리 계약(좌우 여백 한 단 축소로 keep-all이 늘린 최소 폭을 돌려받는다)을
+   그대로 지킨다 — 위의 1em 여백이 특정성으로 그 계약을 덮지 않게 같은 조건으로 되돌린다. */
+@container (max-width: 480px) {
+  :is(.agent-chat, .group-chat) .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+@media (max-width: 480px) {
+  :is(.agent-chat, .group-chat) .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+/* 폰의 표 글자는 모바일 사다리의 메타 단(14)이다 — 본문(16)의 13/14 배율은 공용 표 기준(14)보다 커진다. */
+:root[data-view-mode="mobile"] :is(.agent-chat, .group-chat) .markdown-body table { font-size: var(--m-fs-meta); }
 
 /* 이전 대화 띠 — 공용 .fc-history-band(등폭·자간·대문자)를 채팅의 보조 문법으로 덮는다.
    공용 기본 블록은 건드리지 않는다. */
@@ -4962,4 +5018,4 @@
 [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-name { color: var(--m-text-muted); font-weight: var(--weight-regular); }
 [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { background: var(--m-chip); }
 :root[data-mobile-scheme="light"] [data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box > :is(.agent-chat-answer, .agent-chat-stream) { border-color: transparent; }
-[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body :not(pre) > code { background: var(--m-bg); }
+[data-mobile-surface] .agent-chat.is-conversation .agent-chat-speaker-box .markdown-body :is(table, :not(pre) > code) { background: var(--m-bg); }
