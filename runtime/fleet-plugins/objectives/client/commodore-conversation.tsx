@@ -445,6 +445,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const target = readParams(params);
     if (!target || target.readOnly) return;
     const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
-    openCommodoreMobile(tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
+    // 「기록」 탭은 목표 흔적이다 — 폰에는 같은 흔적을 그리는 「목표」 탭이 따로 있다(기록은 가운데 대화).
+    openCommodoreMobile(tab === "goals" ? "goals" : tab ? TAB_INBOX_PAGES[tab] : "log", target.theaterId, tab !== undefined);
   },
 };
