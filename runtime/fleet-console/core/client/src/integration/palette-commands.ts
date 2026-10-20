@@ -24,6 +24,18 @@ export interface PaletteRailPanelInfo {
 }
 
 /**
+ * Theater Inbox 섹션(사령관 등)의 명령 행 재료. 팔레트 tsx 가 섹션 서술자에서 만들어 넘기므로 여기서는 SDK
+ * 섹션 타입을 몰라도 된다.
+ */
+export interface PaletteTheaterSectionInfo {
+  readonly theaterId: string;
+  readonly sectionId: string;
+  readonly pageId: string;
+  readonly titles: { readonly ko: string; readonly en: string };
+  readonly icon: ReactNode;
+}
+
+/**
  * 명령 홈의 구역. 순서가 곧 홈의 순서다 — 최근 실행은 별도 구역으로 앞에 서고,
  * 그다음이 지금 보고 있는 Operation, 그 Operation이 사는 Theater, 화면, 패널, Console 순이다.
  */
@@ -44,6 +56,7 @@ export type PaletteGlyphId =
 export type PaletteCommandAction =
   | { readonly kind: "undo-close" }
   | { readonly kind: "switch-theater"; readonly theaterId: string }
+  | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-operation" }
   | { readonly kind: "resume-operation"; readonly operationId: string }
@@ -84,6 +97,8 @@ export interface PaletteCommandEntry {
   readonly theaterAvatar?: { readonly id: string; readonly label: string };
   /** 「레일 엔트리」 글리프의 재료 — 등록된 아이콘. */
   readonly railIcon?: ReactNode | (() => ReactNode);
+  /** 빈 입력의 홈 구역에는 세우지 않고 질의 매칭에만 남는다(보고 있지 않은 Theater 의 섹션 행). */
+  readonly homeHidden?: boolean;
 }
 
 export interface PaletteCommandSection {
@@ -120,7 +135,11 @@ export function buildPaletteCommands(
   current: ConsoleState,
   railPanels: readonly PaletteRailPanelInfo[],
   t: T,
-  options?: { readonly canUndoLastClose?: boolean; readonly undoKind?: "archive" | "deletion" | null },
+  options?: {
+    readonly canUndoLastClose?: boolean;
+    readonly undoKind?: "archive" | "deletion" | null;
+    readonly theaterSections?: readonly PaletteTheaterSectionInfo[];
+  },
 ): readonly PaletteCommandEntry[] {
   const commands: PaletteCommandEntry[] = [];
   const language = resolveActiveLocale();
@@ -156,8 +175,45 @@ export function buildPaletteCommands(
     // 보관은 되돌릴 수 있고 보관함에서 다시 꺼낼 수 있다 — 파괴 명령이 아니므로 coral로 세우지 않는다.
     push({ commandId: `archive-operation:${activeOperation.id}`, label: t("palette.archiveOperation", { title: subject }), aliasLabel: alias("palette.archiveOperation", { title: subject }), action: { kind: "archive-operation", operationId: activeOperation.id }, group: "current-operation", glyph: "operation-archive", subject, undoable: true });
   }
+  // Theater Inbox 섹션 행(사령관 등) — 보고 있는 Theater 의 행이 theater 구역 맨 앞에 서고, 다른 Theater 의 행은
+  // 홈에서 빠진 채 질의에만 맞는다. 이름은 사이드바 머리처럼 별칭을 앞세우고, 원래 이름으로도 찾아진다.
+  const viewedTheaterId = getViewedTheaterId();
+  const theaterSections = [...(options?.theaterSections ?? [])]
+    .sort((left, right) => Number(right.theaterId === viewedTheaterId) - Number(left.theaterId === viewedTheaterId));
+  for (const section of theaterSections) {
+    const theater = current.theaters.find((candidate) => candidate.id === section.theaterId);
+    if (!theater) continue;
+    const name = theater.alias || theater.label;
+    const title = language === "ko" ? section.titles.ko : section.titles.en;
+    const otherTitle = language === "ko" ? section.titles.en : section.titles.ko;
+    push({
+      commandId: `open-theater-section:${section.sectionId}@${section.theaterId}`,
+      label: t("palette.openTheaterSection", { section: title, theater: name }),
+      aliasLabel: alias("palette.openTheaterSection", { section: otherTitle, theater: name }),
+      ...(theater.alias ? { extraAliases: [
+        t("palette.openTheaterSection", { section: title, theater: theater.label }),
+        alias("palette.openTheaterSection", { section: otherTitle, theater: theater.label }),
+      ] } : {}),
+      action: { kind: "open-theater-section", theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId },
+      group: "theater",
+      glyph: "rail-entry",
+      railIcon: section.icon,
+      ...(section.theaterId === viewedTheaterId ? {} : { homeHidden: true }),
+    });
+  }
   for (const theater of current.theaters) {
-    push({ commandId: `switch-theater:${theater.id}`, label: t("palette.switchTheater", { label: theater.label }), aliasLabel: alias("palette.switchTheater", { label: theater.label }), current: theater.id === getViewedTheaterId(), action: { kind: "switch-theater", theaterId: theater.id }, group: "theater", glyph: "theater-avatar", theaterAvatar: { id: theater.id, label: theater.label } });
+    const name = theater.alias || theater.label;
+    push({
+      commandId: `switch-theater:${theater.id}`,
+      label: t("palette.switchTheater", { label: name }),
+      aliasLabel: alias("palette.switchTheater", { label: name }),
+      ...(theater.alias ? { extraAliases: [t("palette.switchTheater", { label: theater.label }), alias("palette.switchTheater", { label: theater.label })] } : {}),
+      current: theater.id === viewedTheaterId,
+      action: { kind: "switch-theater", theaterId: theater.id },
+      group: "theater",
+      glyph: "theater-avatar",
+      theaterAvatar: { id: theater.id, label: name },
+    });
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
@@ -211,7 +267,7 @@ export function groupPaletteCommands(
     .filter((command): command is PaletteCommandEntry => command !== undefined);
   if (recent.length > 0) sections.push({ id: "recent", commands: recent });
   for (const group of PALETTE_COMMAND_GROUPS) {
-    const members = commands.filter((command) => command.group === group);
+    const members = commands.filter((command) => command.group === group && command.homeHidden !== true);
     if (members.length > 0) sections.push({ id: group, commands: members });
   }
   return sections;

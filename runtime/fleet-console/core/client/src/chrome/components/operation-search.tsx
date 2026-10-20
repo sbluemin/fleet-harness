@@ -13,13 +13,16 @@ import type { PaneSearchResult, PaneTarget } from "@fleet-console/sdk/pane";
 import { openExpandedSurface } from "../expanded-surface/store.js";
 import { useDesktopRailEntries } from "../pane/pane-registry.js";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import type { TheaterInboxSectionDescriptor } from "@fleet-console/sdk/theater-inbox";
 
 import { OperationNameMark } from "../../../../../features/execution/client/components/operation-name-mark.js";
 import { OperationWorkspaceContext, describeWorkspace, visibleWorkspace } from "../../../../../features/execution/client/components/operation-workspace-context.js";
 import { useAgentState } from "../../../../../features/execution/client/agent/store.js";
 import { setGlobalSettingsField } from "../../../../../features/settings/client/global-settings-store.js";
 import {
+  buildTheaterSectionSearchEntries,
   filterOperationSearchEntries,
+  filterTheaterSectionSearchEntries,
   groupOperationSearchEntries,
   orderOperationSearchEntries,
   PALETTE_MODES,
@@ -32,6 +35,7 @@ import {
   type PaletteMode,
   type PaletteSearchPanel,
   type RailSearchGroup,
+  type TheaterSectionSearchEntry,
 } from "../../integration/operation-search.js";
 import { noteCommandRun, readRecentCommandIds } from "../../integration/palette-recent.js";
 import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon, PaletteSectionGlyph } from "./palette-glyphs.js";
@@ -70,7 +74,7 @@ import {
   setActiveTheme,
   setOperationSearchMode,
 } from "../../integration/store.js";
-import { useT } from "../../i18n/index.js";
+import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
 
 interface OperationSearchProps {
@@ -78,6 +82,8 @@ interface OperationSearchProps {
   readonly railPanels: readonly PaletteSearchPanel[];
   // virtual:fleet-plugins 의존을 테스트 경계 밖으로 밀기 위해 registry 직접 import 대신 prop으로 받는다.
   readonly plugins: readonly ClientExecutionProvider[];
+  // 같은 이유로 Theater Inbox 섹션(사령관 등)도 prop으로 받는다 — 팔레트가 그 Theater 의 섹션 행을 범용으로 세운다.
+  readonly theaterSections: readonly TheaterInboxSectionDescriptor[];
   // 팔레트 보관도 대화 화면·사이드바와 같은 되돌리기 큐에 receipt를 넣어야 ⌘Z가 경로에 상관없이 동작한다.
   readonly onArchived?: (outcome: ArchiveOutcome) => void;
   readonly canUndoLastClose?: () => boolean;
@@ -94,12 +100,14 @@ export function OperationSearch({
   state,
   railPanels,
   plugins,
+  theaterSections,
   onArchived,
   canUndoLastClose,
   lastUndoKind,
   onUndoLastClose,
 }: OperationSearchProps) {
   const t = useT();
+  const language = useConsoleLocale();
   const desktopView = useViewMode().effective !== "mobile";
   const sessions = useAgentState().sessions;
   const railBindings = useDesktopRailEntries();
@@ -166,12 +174,47 @@ export function OperationSearch({
       : [],
     [entries, mode, getViewedTheaterId(), text],
   );
-  const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
+  // 섹션 상태(실험 기능이 뒤늦게 알려지거나 scope가 바뀌는 일)를 팔레트가 열려 있는 동안 다시 읽는다.
+  const [sectionVersion, setSectionVersion] = useState(0);
+  useEffect(() => {
+    if (!state.operationSearchOpen || !desktopView) return;
+    const bump = () => setSectionVersion((version) => version + 1);
+    const stops = theaterSections.map((section) => {
+      try { return section.subscribe(bump); } catch { return () => {}; }
+    });
+    return () => { for (const stop of stops) stop(); };
+  }, [theaterSections, state.operationSearchOpen, desktopView]);
+  // 섹션 행은 데스크톱 배치에서만 선다 — 폰은 사령관 목적지가 따로 있다.
+  const sectionEntries = useMemo(
+    () => state.operationSearchOpen && desktopView ? buildTheaterSectionSearchEntries(state.theaters, theaterSections, language) : [],
+    [state.operationSearchOpen, state.theaters, theaterSections, language, desktopView, sectionVersion], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const filteredSections = useMemo(
+    () => mode === "operations" ? filterTheaterSectionSearchEntries(sectionEntries, text, getViewedTheaterId()) : [],
+    [sectionEntries, mode, text, getViewedTheaterId()],
+  );
+  const groups = useMemo(
+    () => groupOperationSearchEntries(filteredEntries, getViewedTheaterId(), filteredSections),
+    [filteredEntries, filteredSections, getViewedTheaterId()],
+  );
+  // 검색 모드 주 목록의 렌더 순서 — 선택·키보드·스크롤이 모두 이 배열의 index를 쓴다.
+  const primaryRows = useMemo<readonly PrimaryRow[]>(
+    () => groups.flatMap((group) => [
+      ...group.sections.map((section): PrimaryRow => ({ kind: "section", section, key: sectionResultKey(section.key) })),
+      ...group.entries.map((entry): PrimaryRow => ({ kind: "operation", entry, key: operationResultKey(entry.operationId) })),
+    ]),
+    [groups],
+  );
+  const primaryIndexByKey = useMemo(() => new Map(primaryRows.map((row, index) => [row.key, index])), [primaryRows]);
   const undoAvailable = useMemo(() => canUndoLastClose?.() === true, [state.operationSearchOpen, canUndoLastClose]);
   const undoKind = useMemo(() => lastUndoKind?.() ?? null, [state.operationSearchOpen, lastUndoKind]);
   const commands = useMemo(
-    () => buildPaletteCommands(state, railPanels, t, { canUndoLastClose: undoAvailable, undoKind }),
-    [state, railPanels, t, undoAvailable, undoKind],
+    () => buildPaletteCommands(state, railPanels, t, {
+      canUndoLastClose: undoAvailable,
+      undoKind,
+      theaterSections: sectionEntries.map((section) => ({ theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId, titles: section.titles, icon: section.icon })),
+    }),
+    [state, railPanels, t, undoAvailable, undoKind, sectionEntries],
   );
   const recentCommandIds = useMemo(() => readRecentCommandIds(), [state.operationSearchOpen]);
   const commandSections = useMemo<readonly { readonly id: "recent" | PaletteCommandGroup | "matches"; readonly commands: readonly ScoredPaletteCommand[] }[]>(() => {
@@ -197,21 +240,23 @@ export function OperationSearch({
     [railSearchGroups],
   );
   const exactCount = railSearchEntries.filter((entry) => entry.result.exact === true).length;
-  const primaryCount = mode === "operations" ? filteredEntries.length : matchedCommands.length;
+  const primaryCount = mode === "operations" ? primaryRows.length : matchedCommands.length;
   const resultCount = primaryCount + railSearchEntries.length;
   const clampedSelectedIndex = clampIndex(selectedIndex, resultCount);
   const primaryIndex = clampedSelectedIndex - exactCount;
   const selectedRailIndex = clampedSelectedIndex < exactCount ? clampedSelectedIndex : clampedSelectedIndex - primaryCount;
   const selectedResultKey = (() => {
     if (primaryIndex >= 0 && primaryIndex < primaryCount) {
-      if (mode === "operations") return operationResultKey(filteredEntries[primaryIndex]!.operationId);
+      if (mode === "operations") return primaryRows[primaryIndex]!.key;
       return commandRows[primaryIndex]!.key;
     }
     const rail = railSearchEntries[selectedRailIndex];
     return rail ? railResultKey(rail.group.panelId, rail.result.id) : undefined;
   })();
   const activeOptionId = selectedResultKey === undefined ? undefined : resultOptionId(selectedResultKey);
-  const selectedOperation = mode === "operations" && primaryIndex >= 0 ? filteredEntries[primaryIndex] ?? null : null;
+  const selectedPrimaryRow = mode === "operations" && primaryIndex >= 0 ? primaryRows[primaryIndex] ?? null : null;
+  // 동작 띠(→)는 Operation 행에만 선다 — 섹션 행은 여는 일 하나뿐이다.
+  const selectedOperation = selectedPrimaryRow?.kind === "operation" ? selectedPrimaryRow.entry : null;
   // 탭·범례·힌트의 조합 표기는 등록부의 현재 값이다 — 재배정이 바뀌면 함께 바뀐다.
   useShortcutOverrides();
   const searchShortcut = shortcutCommandLabel("console.search-operations");
@@ -351,6 +396,14 @@ export function OperationSearch({
         navigate("/operations");
         break;
       }
+      case "open-theater-section": {
+        // 사이드바 Theater 머리와 같은 길 — 가운데 대화는 섹션의 openConversation이 갈아 끼우므로 대화 화면을 닫지 않는다.
+        // 다른 Theater면 이 요청이 Theater 전환도 겸한다(보고 있는 Theater가 Inbox를 따른다).
+        previousFocusRef.current = null;
+        openTheaterInbox({ theaterId: action.theaterId, sectionId: action.sectionId, pageId: action.pageId, returnFocus: null });
+        if (!location.pathname.startsWith("/operations")) navigate("/operations");
+        break;
+      }
       case "new-theater": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/operations")) navigate("/operations");
@@ -451,6 +504,10 @@ export function OperationSearch({
     closeOperationSearch();
   };
 
+  const selectTheaterSection = (section: TheaterSectionSearchEntry) => {
+    runAction({ kind: "open-theater-section", theaterId: section.theaterId, sectionId: section.sectionId, pageId: section.pageId }, false);
+  };
+
   const runCommand = (command: PaletteCommandEntry) => {
     noteCommandRun(command.commandId);
     runAction(command.action, command.current);
@@ -479,8 +536,13 @@ export function OperationSearch({
   const activateSelected = () => {
     if (primaryIndex >= 0 && primaryIndex < primaryCount) {
       if (mode === "operations") {
-        const selected = filteredEntries[primaryIndex];
-        if (!selected) return;
+        const row = primaryRows[primaryIndex];
+        if (!row) return;
+        if (row.kind === "section") {
+          selectTheaterSection(row.section);
+          return;
+        }
+        const selected = row.entry;
         if (actionsFor === selected.operationId) rowActions(selected)[actionIndex]?.run();
         else selectEntry(selected.operationId);
         return;
@@ -740,12 +802,42 @@ export function OperationSearch({
                 const activeGroup = !group.archived && group.theaterId === getViewedTheaterId();
                 return (
                   <section className="operation-search-section" key={`${group.archived ? "archive:" : "active:"}${group.theaterId ?? UNASSIGNED_GROUP_KEY}`} role="group" aria-labelledby={headingId}>
+                    {/* 사이드바 머리처럼 별칭을 앞세우고 원래 이름을 곁에 둔다. */}
                     <h2 id={headingId} className="operation-search-section-heading">
-                      {highlightText(group.theaterLabel, tokens)}
+                      {highlightText(group.theaterAlias ?? group.theaterLabel, tokens)}
+                      {group.theaterAlias ? <span className="operation-search-section-note">{highlightText(group.theaterLabel, tokens)}</span> : null}
                       {activeGroup ? <span className="operation-search-section-note">{t("chrome.operationSearch.current")}</span> : null}
                     </h2>
+                    {group.sections.map((section) => {
+                      const resultKey = sectionResultKey(section.key);
+                      const index = exactCount + (primaryIndexByKey.get(resultKey) ?? 0);
+                      const active = index === clampedSelectedIndex;
+                      return (
+                        <button
+                          id={resultOptionId(resultKey)}
+                          key={resultKey}
+                          ref={(node) => {
+                            if (node) resultRefs.current.set(resultKey, node);
+                            else resultRefs.current.delete(resultKey);
+                          }}
+                          type="button"
+                          className={`operation-search-result operation-search-panel-result ${active ? "is-active" : ""}`}
+                          role="option"
+                          aria-selected={active}
+                          onMouseEnter={() => { setNavigation("pointer"); setSelectedIndex(index); }}
+                          onClick={() => selectTheaterSection(section)}
+                        >
+                          <PaletteRailIcon icon={section.icon} />
+                          <span className="operation-search-result-text operation-search-result-text-inline">
+                            <strong>{highlightText(section.title, tokens)}</strong>
+                            {section.caption ? <small>{highlightText(section.caption, tokens)}</small> : null}
+                          </span>
+                          <span className="operation-search-panel-open">{t("chrome.operationSearch.open")}</span>
+                        </button>
+                      );
+                    })}
                     {group.entries.map((entry) => {
-                      const index = exactCount + filteredEntries.indexOf(entry);
+                      const index = exactCount + (primaryIndexByKey.get(operationResultKey(entry.operationId)) ?? 0);
                       const active = index === clampedSelectedIndex;
                       const resultKey = operationResultKey(entry.operationId);
                       const stripOpen = actionsFor === entry.operationId;
@@ -828,6 +920,10 @@ export function OperationSearch({
   );
 }
 
+type PrimaryRow =
+  | { readonly kind: "section"; readonly section: TheaterSectionSearchEntry; readonly key: string }
+  | { readonly kind: "operation"; readonly entry: OperationSearchEntry; readonly key: string };
+
 interface RowAction {
   readonly id: string;
   readonly label: string;
@@ -874,6 +970,10 @@ function resultOptionId(resultKey: string): string {
 
 function operationResultKey(operationId: string): string {
   return `operation:${operationId}`;
+}
+
+function sectionResultKey(sectionKey: string): string {
+  return `section:${sectionKey}`;
 }
 
 function commandResultKey(commandId: string): string {

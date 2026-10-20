@@ -587,6 +587,7 @@ function ConnectedApp() {
           state={state}
           railPanels={paletteRailPanels}
           plugins={registry.providers}
+          theaterSections={registry.theaterInboxSections}
           onArchived={enqueueArchive}
           canUndoLastClose={canUndoLastClose}
           lastUndoKind={lastUndoKind}
