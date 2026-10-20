@@ -112,14 +112,15 @@ export interface SideBarRowPlan {
 const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0 && item.row.delegated === undefined;
 
 /**
- * 「완료」 접기에 드는 줄 — 끝난 목표. 지휘관 Operation 이 남아 뿌리가 선 줄도 든다(「시작 전」과 달리). 다만 지금 활성인 줄과
- * 사람을 기다리는 Operation 을 품은 줄은 접힌 접기에 묻히면 하이라이트·부름이 보이지 않으므로 제자리에 선다(`delegated` 예외와 같은 이유).
- * 사람이 다른 대화로 옮기면 그 줄은 다음 렌더에서 접기로 든다. 구역으로 올라간 줄은 판정 전에 빠진다.
+ * 「완료」 접기에 드는 줄 — 끝난 목표. 지휘관 Operation 이 남아 뿌리가 선 줄도 든다(「시작 전」과 달리). 지금 활성인 줄도 접기에
+ * 머문다 — 활성 여부로 줄이 접기를 드나들면 다른 대화로 옮길 때마다 자리가 튄다. 접힌 접기 안의 활성 줄은 사이드바가 접기를 펼쳐
+ * 보인다. 사람을 기다리는 Operation 을 품은 줄만 접힌 접기에 묻히면 부름이 보이지 않으므로 제자리에 선다(`delegated` 예외와 같은 이유).
+ * 구역으로 올라간 줄은 판정 전에 빠진다.
  */
 function foldedDone(item: SideBarRowItem): boolean {
   if (item.row.glyph !== "done") return false;
   const entries = item.anchor ? [item.anchor, ...item.fold] : item.fold;
-  return !entries.some((entry) => entry.active || (entry.mark ?? entry.status) === "awaiting");
+  return !entries.some((entry) => (entry.mark ?? entry.status) === "awaiting");
 }
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.

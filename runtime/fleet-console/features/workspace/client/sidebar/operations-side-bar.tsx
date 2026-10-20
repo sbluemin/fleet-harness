@@ -437,9 +437,9 @@ export function OperationsSideBar({
   const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
   // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
   const theaterPlans = theaters.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupOperations(allEntries.filter((entry) => entry.operation.theaterId === theater.id), groups.filter((group) => group.theaterId === theater.id), []), clusterIndex, theater.id) }));
-  // 고른 목표가 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
-  // 고른 목표가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
-  const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
+  // 고른 목표나 활성 Operation 을 품은 줄이 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal·직접 활성화) 그 접기를
+  // 펼치고 줄이 보이게 스크롤한다. 그 줄이 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
+  const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected || item.anchor?.active || item.fold.some((entry) => entry.active)).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
   // 「완료」 접기에 든 뿌리 Operation — 칩 자리가 비었으므로 키보드 이동의 보이는 순서에서도 뺀다(안 보이는 엔트리를 건너느라 이동이 멈춰 보이지 않게).
   const doneFoldedAnchorIds = new Set(theaterPlans.flatMap(({ plan }) => [...plan.doneFolds.values()].flat().flatMap((item) => (item.anchor ? [item.anchor.operation.id] : []))));
   const { living: statusSections, dormant: dormantSection } = groupTheaterStatusEntries(allEntries, getStatusTransitionTick, t);
