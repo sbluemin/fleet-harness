@@ -370,7 +370,8 @@ function parseEntryFile(raw: string, branch: MemoryBranch, topic: string, slug: 
 
 function section(body: string, heading: string): string {
   const lines = body.split("\n");
-  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  // 절 제목은 줄 맨 앞의 `## ` 뿐이다 — 쓰기 검사(BODY_HEADING)와 같은 기준이라, 본문의 들여쓴 `## ` 줄은 본문으로 남는다.
+  const start = lines.findIndex((line) => line.trimEnd() === `## ${heading}`);
   if (start < 0) return "";
   const rest = lines.slice(start + 1);
   const end = rest.findIndex((line) => /^## /.test(line));
