@@ -1247,7 +1247,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   font: inherit; font-size: var(--t-sm); line-height: 1.5;
 }
 .objectives-commodore-input.is-tall { min-height: 140px; max-height: none; }
-.objectives-commodore-input.is-medium { min-height: 64px; }
 .objectives-commodore-input::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-input:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 
@@ -1280,10 +1279,19 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 @container objectives-commodore-intel (width < 400px) {
   .objectives-commodore-intel-edit-foot .objectives-commodore-hint { flex-basis: 100%; order: 1; text-align: left; }
 }
+/* 「+ 정보 추가」 — 「+ 임무 추가」와 같은 한 줄(+ 글리프, 테두리 없는 입력, 이름 대신 자리표). 정보는 여러 줄일 수 있어 입력이
+   내용만큼 자라고, 글이 있는 동안만 아래에 키 안내가 선다. */
+.objectives-commodore-intel-add { display: flex; align-items: flex-start; gap: 10px; padding-block: 10px; }
+.objectives-commodore-intel-add-body { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.objectives-commodore-intel-add textarea { box-sizing: border-box; width: 100%; max-height: 240px; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); line-height: 1.5; field-sizing: content; }
+.objectives-commodore-intel-add textarea::placeholder { color: var(--brass-ink); opacity: 0.9; }
+.objectives-commodore-intel-add:focus-within textarea::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-intel-add textarea[readonly] { opacity: 0.6; }
+.objectives-commodore-intel-sources { display: grid; gap: 8px; padding-top: 14px; }
 .objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
 .objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 
-/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
+/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 지시 칸의 정보와 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
    색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
 .objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
 .objectives-commodore-memory-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }

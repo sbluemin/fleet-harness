@@ -13,7 +13,7 @@ type T = Translate<ObjectiveMessageKey>;
 /**
  * 사령관의 fleet-memory — 오른쪽 패널(대화 중심 화면)과 Inbox 시트의 「기억」 칸. 사령관만 쓰고 사람은 읽기만 한다.
  *
- * 갈래(정보 칸과 같은 구분선 섹션) → 주제 → 항목 줄. 항목을 누르면 같은 칸이 그 항목의 읽기 화면이 되고, 연결된 기억으로 옮겨 다닌다.
+ * 갈래(지시 칸의 정보와 같은 구분선 섹션) → 주제 → 항목 줄. 항목을 누르면 같은 칸이 그 항목의 읽기 화면이 되고, 연결된 기억으로 옮겨 다닌다.
  * 마지막 검증 뒤 30일이 지난 항목은 상태 잉크(warn) 점 하나로만 말한다.
  */
 
@@ -33,7 +33,7 @@ const BRANCH_HINT: Record<MemoryBranch, ObjectiveMessageKey> = {
 };
 
 const pad = (value: number) => String(value).padStart(2, "0");
-/** 정보 칸과 같은 날짜 표기(MM-DD). */
+/** 지시 칸의 정보 목록과 같은 날짜 표기(MM-DD). */
 const day = (at: number) => { const date = new Date(at); return `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; };
 const dayTime = (at: number) => { const date = new Date(at); return `${day(at)} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
 

@@ -288,7 +288,7 @@ function PluginEntry({ render }: { readonly render: () => ReactNode }) {
 }
 
 /**
- * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
+ * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 기록·지시·기억·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
  * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
  */
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
@@ -404,7 +404,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {tabsEntry?.conversationTabs?.renderTools && tabsState !== null ? (
         <div className="conversation-panel-sections is-tools">{tabsEntry.conversationTabs.renderTools({ theaterId: tabsTheaterId, language: context.language })}</div>
       ) : null}
-      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 행위 기록·지시·정보·설정)이 Grok 세그먼트처럼 한 줄에 선다.
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·지시·기억·설정)이 Grok 세그먼트처럼 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>

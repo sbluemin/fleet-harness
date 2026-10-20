@@ -16,9 +16,8 @@ import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodo
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
-import { CommodoreComposer, focusAtEnd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
+import { CommodoreComposer, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
-  addCommodoreIntel,
   commodoreComposerTopEntriesRenderer,
   commodoreConversationRenderer,
   commodoreLanguage,
@@ -53,7 +52,7 @@ import "./commodore-mobile.css";
 
 /**
  * 모바일 바로가기 목적지 「사령관」(impl-spec S-53·S-54) — 데스크톱의 사이드바 줄 + 「사령관 기록」 시트를 폰 화면 한 장으로.
- * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 데스크톱 시트와 같은 스토어·같은 API다 — 자율 운영·메시지·지시·정보·
+ * 호스트가 페인 컨텍스트에 `mobileBar`를 실을 때만 선다. 데스크톱 시트와 같은 스토어·같은 API다 — 자율 운영·메시지·지시(정보 포함)·
  * 모델·순찰·지휘관 모델·재시도 모두 같은 경로를 탄다. 대상은 지금 Theater 의 사령관이다.
  */
 
@@ -188,7 +187,6 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
     { id: "log", label: t("objectives.commodore.tabs.log") },
     { id: "goals", label: t("objectives.commodore.trail.title") },
     { id: "directive", label: t("objectives.commodore.tabs.directive") },
-    { id: "intel", label: t("objectives.commodore.tabs.intel") },
     { id: "settings", label: t("objectives.commodore.tabs.settings") },
   ];
 
@@ -224,7 +222,6 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
           {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
-          {tab === "intel" && view ? <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
@@ -526,6 +523,9 @@ function CommodoreMobileDirective({ t, theaterId, view, online, failure, onFail,
   const [draft, setDraft] = useState(directive.text);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // 실패 한 줄은 그 일을 한 자리(지시 저장 단추 곁, 정보 목록 곁)에 선다 — 한 탭에 두 일이 있다.
+  const [failedAt, setFailedAt] = useState<"directive" | "intel">("directive");
+  const failIn = (part: "directive" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
   // 다른 곳에서 고친 지시는 입력이 깨끗할 때만 따라간다 — 쓰던 글을 덮지 않는다(데스크톱과 같다).
   const base = useRef(directive.text);
   useEffect(() => {
@@ -538,7 +538,7 @@ function CommodoreMobileDirective({ t, theaterId, view, online, failure, onFail,
     onClear();
     setSaving(true);
     setSaved(false);
-    void saveCommodoreDirective(theaterId, draft).then(() => setSaved(true)).catch(onFail).finally(() => setSaving(false));
+    void saveCommodoreDirective(theaterId, draft).then(() => setSaved(true)).catch(failIn("directive")).finally(() => setSaving(false));
   };
   return (
     <div className="objectives-cm-content">
@@ -546,92 +546,85 @@ function CommodoreMobileDirective({ t, theaterId, view, online, failure, onFail,
         <label className="objectives-cm-glab" htmlFor="objectives-cm-directive">{t("objectives.commodore.directive.label")}</label>
         <textarea id="objectives-cm-directive" className="objectives-cm-field is-tall" value={draft} maxLength={8_000} placeholder={t("objectives.commodore.directive.placeholder")} onChange={(event) => { setDraft(event.target.value); setSaved(false); }} />
         <p className="objectives-cm-secnote">{t("objectives.commodore.directive.hint")}</p>
-        {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
+        {failure && failedAt === "directive" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
         <div className="objectives-cm-crow">
           <span className="objectives-cm-secnote is-grow">{directive.rev > 0 ? t("objectives.commodore.directive.rev", { rev: directive.rev, time: clockTime(directive.updatedAt) }) : ""}</span>
           <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={saving || !dirty || !online} onClick={save}>{t("objectives.commodore.directive.save")}</button>
         </div>
         {saved && !dirty ? <p className="objectives-cm-secnote is-done" role="status">{t(view.active ? "objectives.commodore.directive.saved" : "objectives.commodore.directive.savedIdle")}</p> : null}
+        {/* 지시 아래 구분선 하나 밑에 정보와 정보 출처 — 데스크톱 지시 칸과 같은 구성이다. */}
+        <hr className="objectives-cm-divider" />
+        <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
       </div>
     </div>
   );
 }
 
-/* ── 정보 탭(CM-2d) ───────────────────────────────────────────────────── */
+/* ── 지시 탭의 정보(CM-2d) ─────────────────────────────────────────────── */
 
 function CommodoreMobileIntel({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   const { intel, sources } = view.state;
-  const [draft, setDraft] = useState("");
-  const [adding, setAdding] = useState(false);
+  const adder = useCommodoreIntelAdd(theaterId, { phone: true, online, onFail, onClear });
   const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
   const sourceLabel = (source: string) => source === "person" ? t("objectives.commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
-  const add = () => {
-    const value = draft.trim();
-    if (!value || adding || !online) return;
-    onClear();
-    setAdding(true);
-    void addCommodoreIntel(theaterId, value).then(() => setDraft("")).catch(onFail).finally(() => setAdding(false));
-  };
   return (
-    <div className="objectives-cm-content">
-      <div className="objectives-cm-pad">
-        <label className="objectives-cm-glab" htmlFor="objectives-cm-intel">{t("objectives.commodore.intel.label")}</label>
-        <textarea id="objectives-cm-intel" className="objectives-cm-field is-medium" value={draft} maxLength={4_000} placeholder={t("objectives.commodore.intel.placeholder")} onChange={(event) => setDraft(event.target.value)} />
-        {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
-        <div className="objectives-cm-crow">
-          <span className="is-grow" />
-          <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={adding || !draft.trim() || !online} onClick={add}>{t("objectives.commodore.intel.add")}</button>
+    <>
+      <p className="objectives-cm-glab">{t("objectives.commodore.intel.label")}</p>
+      {intel.length === 0 ? <p className="objectives-cm-secnote">{t("objectives.commodore.intel.empty")}</p> : null}
+      {failure ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
+      <div ref={editing.listRef} className="objectives-cm-grp">
+        {intel.map((item) => {
+          const edit = editing.edits[item.id];
+          // 출처와 「수정됨」 사이는 끊기지 않는 공백 — 표시가 줄 끝에서 홀로 떨어지지 않는다.
+          const meta = `${day(item.at)} · ${sourceLabel(item.source)}${item.editedAt !== undefined ? `\u00a0·\u00a0${t("objectives.commodore.intel.edited")}` : ""}`;
+          // 폰 자판의 Enter 는 줄바꿈이다 — 저장·취소는 단추로 한다.
+          if (edit) return (
+            <div key={item.id} className="objectives-cm-gr is-editing">
+              <textarea
+                ref={focusAtEnd}
+                className="objectives-cm-field objectives-cm-intel-field"
+                value={edit.draft}
+                maxLength={4_000}
+                readOnly={edit.saving}
+                aria-label={t("objectives.commodore.intel.editField")}
+                onChange={(event) => editing.change(item.id, event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Escape" && !edit.saving) { event.preventDefault(); event.stopPropagation(); editing.cancel(item.id); } }}
+              />
+              {edit.error ? <p className="objectives-cm-note" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
+              <div className="objectives-cm-crow">
+                <span className="objectives-cm-secnote is-grow objectives-cm-intel-meta">{meta}</span>
+                <button type="button" data-press="r3" className="objectives-cm-pill" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
+                <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={edit.saving || !online || !edit.draft.trim() || edit.draft.trim() === item.text} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
+              </div>
+            </div>
+          );
+          return (
+            <div key={item.id} className="objectives-cm-gr">
+              <span className="objectives-cm-gr-tx objectives-cm-intel-tx" onClick={() => { if (online && !window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}<small className="objectives-cm-intel-meta">{meta}</small></span>
+              {/* 단추 둘은 세로로 쌓아 본문 칸을 넓게 둔다. */}
+              <span className="objectives-cm-intel-actions">
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} disabled={!online} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
+                <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
+              </span>
+            </div>
+          );
+        })}
+        {/* 「+ 정보 추가」 — 목록 맨 아래 같은 묶음의 한 줄. 화면 키보드의 Enter 는 줄바꿈이라 글이 있으면 곁에 「추가」가 선다. */}
+        <div className="objectives-cm-gr objectives-cm-intel-add">
+          <span className="objectives-cm-intel-plus" aria-hidden="true">+</span>
+          <textarea {...adder.field} readOnly={adder.adding || !online} aria-label={t("objectives.commodore.intel.add")} placeholder={t("objectives.commodore.intel.add")} />
+          {adder.draft.trim() ? <button type="button" data-press="r1" className="objectives-cm-tbtn" disabled={adder.adding || !online} onClick={adder.add}>{t("objectives.commodore.intel.addShort")}</button> : null}
         </div>
-        {intel.length === 0 ? <p className="objectives-cm-secnote">{t("objectives.commodore.intel.empty")}</p> : (
-          <div ref={editing.listRef} className="objectives-cm-grp">
-            {intel.map((item) => {
-              const edit = editing.edits[item.id];
-              // 출처와 「수정됨」 사이는 끊기지 않는 공백 — 표시가 줄 끝에서 홀로 떨어지지 않는다.
-              const meta = `${day(item.at)} · ${sourceLabel(item.source)}${item.editedAt !== undefined ? `\u00a0·\u00a0${t("objectives.commodore.intel.edited")}` : ""}`;
-              // 폰 자판의 Enter 는 줄바꿈이다 — 저장·취소는 단추로 한다.
-              if (edit) return (
-                <div key={item.id} className="objectives-cm-gr is-editing">
-                  <textarea
-                    ref={focusAtEnd}
-                    className="objectives-cm-field objectives-cm-intel-field"
-                    value={edit.draft}
-                    maxLength={4_000}
-                    readOnly={edit.saving}
-                    aria-label={t("objectives.commodore.intel.editField")}
-                    onChange={(event) => editing.change(item.id, event.target.value)}
-                    onKeyDown={(event) => { if (event.key === "Escape" && !edit.saving) { event.preventDefault(); event.stopPropagation(); editing.cancel(item.id); } }}
-                  />
-                  {edit.error ? <p className="objectives-cm-note" role="alert">{t("objectives.commodore.failed", { code: errorWord(t, edit.error) })}</p> : null}
-                  <div className="objectives-cm-crow">
-                    <span className="objectives-cm-secnote is-grow objectives-cm-intel-meta">{meta}</span>
-                    <button type="button" data-press="r3" className="objectives-cm-pill" disabled={edit.saving} onClick={() => editing.cancel(item.id)}>{t("objectives.commodore.intel.cancel")}</button>
-                    <button type="button" data-press="r3" className="objectives-cm-pill is-inverse" disabled={edit.saving || !online || !edit.draft.trim() || edit.draft.trim() === item.text} onClick={() => editing.save(item.id)}>{t(edit.saving ? "objectives.commodore.intel.saving" : "objectives.commodore.intel.save")}</button>
-                  </div>
-                </div>
-              );
-              return (
-                <div key={item.id} className="objectives-cm-gr">
-                  <span className="objectives-cm-gr-tx objectives-cm-intel-tx" onClick={() => { if (online && !window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}<small className="objectives-cm-intel-meta">{meta}</small></span>
-                  {/* 단추 둘은 세로로 쌓아 본문 칸을 넓게 둔다. */}
-                  <span className="objectives-cm-intel-actions">
-                    <button type="button" data-press="r1" className="objectives-cm-tbtn" {...{ [INTEL_EDIT_ATTRIBUTE]: item.id }} aria-label={t("objectives.commodore.intel.editAria")} disabled={!online} onClick={() => editing.open(item.id)}>{t("objectives.commodore.intel.edit")}</button>
-                    <button type="button" data-press="r1" className="objectives-cm-tbtn" aria-label={t("objectives.commodore.intel.removeAria")} disabled={!online} onClick={() => { onClear(); void removeCommodoreIntel(theaterId, item.id).catch(onFail); }}>{t("objectives.commodore.intel.remove")}</button>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <p className="objectives-cm-glab">{t("objectives.commodore.intel.sources")} <span className="is-light">· {t("objectives.commodore.intel.sourcesLater")}</span></p>
-        {sources.length > 0 ? (
-          <div className="objectives-cm-grp">
-            {sources.map((source) => <div key={source.id} className="objectives-cm-gr"><span className="objectives-cm-gr-tx">{source.label}<small className="is-mono">{source.locator}</small></span></div>)}
-          </div>
-        ) : null}
-        <p className="objectives-cm-secnote">{sources.length === 0 ? `${t("objectives.commodore.intel.sourcesEmpty")} ` : ""}{t("objectives.commodore.intel.sourcesHint")}</p>
       </div>
-    </div>
+      <p className="objectives-cm-glab">{t("objectives.commodore.intel.sources")} <span className="is-light">· {t("objectives.commodore.intel.sourcesLater")}</span></p>
+      {sources.length > 0 ? (
+        <div className="objectives-cm-grp">
+          {sources.map((source) => <div key={source.id} className="objectives-cm-gr"><span className="objectives-cm-gr-tx">{source.label}<small className="is-mono">{source.locator}</small></span></div>)}
+        </div>
+      ) : null}
+      <p className="objectives-cm-secnote">{sources.length === 0 ? `${t("objectives.commodore.intel.sourcesEmpty")} ` : ""}{t("objectives.commodore.intel.sourcesHint")}</p>
+    </>
   );
 }
 

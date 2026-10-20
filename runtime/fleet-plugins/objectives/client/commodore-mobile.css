@@ -137,7 +137,6 @@
 .objectives-cm-field { box-sizing: border-box; width: 100%; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; outline: none; resize: none; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.45; user-select: text; }
 .objectives-cm-field::placeholder { color: var(--m-text-muted); }
 .objectives-cm-field.is-tall { height: 176px; }
-.objectives-cm-field.is-medium { height: 104px; }
 .objectives-cm-secnote { margin: 0; padding: 0 4px; color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .objectives-cm-secnote.is-dock { padding: 0 8px; }
 .objectives-cm-secnote.is-done { color: var(--m-idle); }
@@ -160,6 +159,15 @@
 .objectives-cm-gr.is-editing { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
 .objectives-cm-intel-field { min-height: 104px; max-height: 280px; field-sizing: content; }
 .objectives-cm-intel-field[readonly] { opacity: .6; }
+/* 지시 탭 — 지시 아래 구분선 하나 밑에 정보와 정보 출처가 선다(데스크톱 지시 칸과 같은 구성). */
+.objectives-cm-divider { margin: 0; border: 0; border-top: 1px solid var(--m-hairline); }
+/* 「+ 정보 추가」 — 정보 묶음 맨 아래 줄. 테두리 없는 입력의 자리표가 이름을 대신하고, 입력은 내용만큼 자란다. */
+.objectives-cm-gr.objectives-cm-intel-add { align-items: flex-start; min-height: 52px; padding-block: 14px; }
+.objectives-cm-intel-plus { flex: none; color: var(--m-text-nav); font-size: var(--m-fs-heading); line-height: 1; }
+.objectives-cm-intel-add textarea { flex: 1; min-width: 0; max-height: 280px; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-list); line-height: 1.45; field-sizing: content; user-select: text; }
+.objectives-cm-intel-add textarea::placeholder { color: var(--m-text-nav); }
+.objectives-cm-intel-add:focus-within textarea::placeholder { color: var(--m-text-muted); }
+.objectives-cm-intel-add textarea[readonly] { opacity: .6; }
 .objectives-cm .objectives-cm-tbtn { padding: 6px 10px; border-radius: 16px; color: var(--m-text-nav); font-size: var(--m-fs-meta); font-weight: var(--weight-medium); white-space: nowrap; --pr-r: 16px; }
 .objectives-cm-settings { gap: 14px; }
 
