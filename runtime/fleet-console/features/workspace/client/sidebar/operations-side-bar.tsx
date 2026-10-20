@@ -39,22 +39,22 @@ import { TheaterAvatar } from "../theater-avatar.js";
 import { useLongPress } from "../long-press.js";
 import { clampTheaterAlias } from "../theater.js";
 import { clusterChipPropsFor } from "./cluster-rows.js";
-import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarFreshFold, SideBarRowZone, theaterClusterHead, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { groupClusterHead, planSideBarRows, SideBarClusterRow, SideBarRowFold, SideBarRowZone, theaterClusterHead, type SideBarRowItem } from "./side-bar-cluster-row.js";
 import { useClusterIndex } from "../operation-clusters.js";
 import { OperationsSideBarGroupHeader, SideBarUngroupedLabel } from "./operations-side-bar-group-header.js";
 import { SideBarStatusViewToggle, SideBarViewMenu } from "./side-bar-view-controls.js";
 import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
 import {
   consumeStatusLandings,
-  freshFoldKey,
-  setSideBarFreshFoldExpanded,
+  rowFoldKey,
+  setSideBarRowFoldExpanded,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
   trackOperationActivityTransitions,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
-  useSideBarFreshFolds,
+  useSideBarRowFolds,
   useSideBarState,
   useSideBarStatusSectionCollapsed,
   type SideBarStatus,
@@ -361,7 +361,7 @@ export function OperationsSideBar({
   // 좁은 창(대화 화면)에서는 아바타만 남은 열로 물러난다 — 사람이 정한 폭은 그대로 기억된다.
   const compact = sideBar.compact && topStripVariant === "compact";
   const width = compact ? sideBar.compactWidth : widthCap === undefined ? sideBar.width : Math.min(sideBar.width, widthCap);
-  const freshFolds = useSideBarFreshFolds();
+  const rowFolds = useSideBarRowFolds();
   const viewedTheaterId = useViewedTheaterId();
   const operationAccent = Object.assign({}, ...theaters.map((theater) => getTheaterGroupCollapse(theater.id).operationAccent)) as Readonly<Record<string, string>>;
   // 비활성 Theater 묶음은 렌더 중 저장값(접힘·액센트)을 읽는다 — 그 값이 바뀔 때 다시 그린다.
@@ -437,9 +437,11 @@ export function OperationsSideBar({
   const groupedSections = groupOperations(allEntries, activeGroups, activeOperationOrder);
   // 그룹 축에서는 묶음 줄(목표)이 뿌리·구성원 칩을 접고 제자리에 선다. 결정 요청·오늘은 맨 위 구역으로 올라간다.
   const theaterPlans = theaters.map((theater) => ({ theaterId: theater.id, plan: planSideBarRows(groupOperations(allEntries.filter((entry) => entry.operation.theaterId === theater.id), groups.filter((group) => group.theaterId === theater.id), []), clusterIndex, theater.id) }));
-  // 고른 목표가 「시작 전」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
+  // 고른 목표가 「시작 전」·「완료」 접기 안에 있으면(팔레트·캡션·전환 목록·reveal) 그 접기를 펼치고 줄이 보이게 스크롤한다.
   // 고른 목표가 바뀔 때 한 번만 — 그 뒤 사람이 접기를 닫으면 그대로 둔다.
-  const selectedFresh = theaterPlans.flatMap(({ theaterId, plan }) => [...plan.folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ theaterId, groupId, id: item.layout.cluster.id }))))[0] ?? null;
+  const selectedFolded = theaterPlans.flatMap(({ theaterId, plan }) => ([["fresh", plan.folds], ["done", plan.doneFolds]] as const).flatMap(([kind, folds]) => [...folds].flatMap(([groupId, items]) => items.filter((item) => item.row.selected).map((item) => ({ kind, theaterId, groupId, id: item.layout.cluster.id })))))[0] ?? null;
+  // 「완료」 접기에 든 뿌리 Operation — 칩 자리가 비었으므로 키보드 이동의 보이는 순서에서도 뺀다(안 보이는 엔트리를 건너느라 이동이 멈춰 보이지 않게).
+  const doneFoldedAnchorIds = new Set(theaterPlans.flatMap(({ plan }) => [...plan.doneFolds.values()].flat().flatMap((item) => (item.anchor ? [item.anchor.operation.id] : []))));
   const { living: statusSections, dormant: dormantSection } = groupTheaterStatusEntries(allEntries, getStatusTransitionTick, t);
   const clusterPropsFor = (entry: SideBarEntry) => clusterChipPropsFor(entry, clusterIndex);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
@@ -451,7 +453,7 @@ export function OperationsSideBar({
   const hasCustomGroups = groupedSections.some((section) => section.group !== null);
   const orderedGroupIds = groupedSections.flatMap((section) => section.groupId ? [section.groupId] : []);
   const visibleEntries = groupedSections.flatMap((section) =>
-    collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries,
+    collapsedGroupSet.has(section.groupId ?? "") ? [] : section.entries.filter((entry) => !doneFoldedAnchorIds.has(entry.operation.id)),
   );
   // 재정렬 기준 순서는 인라인 필터와 무관한 활성 Theater 전체 목록이다 — 필터된 표시 목록으로
   // 순서를 커밋하면 숨은 Operation이 operationOrder에서 통째로 탈락해 필터 해제 후 정렬이
@@ -509,14 +511,14 @@ export function OperationsSideBar({
 
 
   useEffect(() => {
-    if (!selectedFresh || statusTheaterIds.has(selectedFresh.theaterId)) return;
-    setSideBarFreshFoldExpanded(selectedFresh.theaterId, selectedFresh.groupId, true);
-    if (selectedFresh.groupId && collapsedGroupSet.has(selectedFresh.groupId)) toggleTheaterGroupCollapsed(selectedFresh.theaterId, selectedFresh.groupId);
+    if (!selectedFolded || statusTheaterIds.has(selectedFolded.theaterId)) return;
+    setSideBarRowFoldExpanded(selectedFolded.kind, selectedFolded.theaterId, selectedFolded.groupId, true);
+    if (selectedFolded.groupId && collapsedGroupSet.has(selectedFolded.groupId)) toggleTheaterGroupCollapsed(selectedFolded.theaterId, selectedFolded.groupId);
     const frame = window.requestAnimationFrame(() => {
-      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedFresh.id)}"]`)?.scrollIntoView({ block: "nearest" });
+      chipsRef.current?.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(selectedFolded.id)}"]`)?.scrollIntoView({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedFresh?.id, statusAxisKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedFolded?.id, statusAxisKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 목표를 고른 입구(팔레트·빈 상태 바로가기·다른 Theater 줄)는 고르는 순간 사라져 포커스가 BODY 로 빠진다.
   // 그때만 사이드바에 보이는 그 목표 줄이 받는다.
@@ -1076,8 +1078,10 @@ export function OperationsSideBar({
                   ] : []),
                 ].concat(groupedSections.map((section) => {
           const sectionItems = rowPlan.sections.get(section.groupId) ?? [];
-          const foldItems = rowPlan.folds.get(section.groupId) ?? [];
-          const foldExpanded = freshFolds.has(freshFoldKey(theater.id, section.groupId));
+          const freshItems = rowPlan.folds.get(section.groupId) ?? [];
+          const doneItems = rowPlan.doneFolds.get(section.groupId) ?? [];
+          // 그룹 머리의 수·미분류 라벨·접힌 그룹의 표식 대신 두르기는 두 접기에 든 줄을 함께 친다.
+          const foldItems = [...freshItems, ...doneItems];
           const isCollapsed = section.groupId !== null && collapsedGroupSet.has(section.groupId);
           const grpColor = section.group ? resolveAccentColor(section.group.color) : null;
           const sectionStyle = grpColor ? ({ "--grp-color": grpColor } as CSSProperties) : undefined;
@@ -1167,8 +1171,11 @@ export function OperationsSideBar({
                       />
                     );
                   })}
-                  {foldItems.length > 0 ? (
-                    <SideBarFreshFold theaterId={theater.id} groupId={section.groupId} items={foldItems} expanded={foldExpanded} renderRow={(item) => renderRow(item, false)} />
+                  {freshItems.length > 0 ? (
+                    <SideBarRowFold kind="fresh" theaterId={theater.id} groupId={section.groupId} items={freshItems} expanded={rowFolds.has(rowFoldKey("fresh", theater.id, section.groupId))} renderRow={(item) => renderRow(item, false)} />
+                  ) : null}
+                  {doneItems.length > 0 ? (
+                    <SideBarRowFold kind="done" theaterId={theater.id} groupId={section.groupId} items={doneItems} expanded={rowFolds.has(rowFoldKey("done", theater.id, section.groupId))} renderRow={(item) => renderRow(item, false)} />
                   ) : null}
                 </ol>
               ) : null}
