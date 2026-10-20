@@ -295,7 +295,9 @@ export type CommodoreEvent =
   | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
   | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
   | { readonly op: "transcript"; readonly theaterId: string; readonly entry: CommodoreTranscriptEntry }
-  | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus };
+  | { readonly op: "run"; readonly theaterId: string; readonly run: CommodoreRunStatus }
+  /** fleet-memory 항목 하나가 바뀌었다 — 화면은 그 Theater 의 목록을 다시 읽는다. */
+  | { readonly op: "memory"; readonly theaterId: string; readonly change: "save" | "update" | "verify" | "delete"; readonly ref: string };
 
 export type CommodoreStateChange = "autonomy" | "directive" | "intel" | "intel-edited" | "intel-removed" | "sources" | "coordinates" | "commander" | "patrol" | "stopAt" | "language" | "run" | "clear" | "asks";
 

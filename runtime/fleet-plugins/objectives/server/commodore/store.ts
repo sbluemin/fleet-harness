@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import { canonicalModelId } from "@fleet-console/sdk/models";
 import { createCommodoreImages } from "./images.js";
+import { createCommodoreMemory, type CommodoreMemory } from "./memory.js";
 
 import { ObjectiveStoreError } from "../store.js";
 import {
@@ -40,6 +41,7 @@ import {
  * commodore/state.json         자율 운영·지시·정보·정보 출처·Theater 별 좌표
  * commodore/transcript.jsonl   사령관 기록(한 줄 한 항목, seq 단조 증가)
  * commodore/images/<메시지>/<첨부>.<확장자>   기록을 따라 보존·정리하는 이미지 사본
+ * commodore/memory/…           사령관만 쓰는 fleet-memory(`memory.ts`)
  * ```
  *
  * 목표 저장소와 같은 원칙이다: Console 이 유일한 쓰는 쪽이라 잠금도 감시도 없고, 모든 변경은 `commit` 한 곳을 지나 tmp→rename
@@ -88,6 +90,8 @@ export interface CommodoreStore {
   /** 감독자가 세션을 거둔 뒤 부른다. 기록 파일을 지우되 지시·인텔·설정은 보존한다. */
   transcriptClear(theaterId: string): CommodoreState;
   readonly images: ReturnType<typeof createCommodoreImages>;
+  /** fleet-memory — 쓰기는 사령관 도구만, 화면은 읽기만 한다. 바뀌면 `memory` 사건이 나간다. */
+  readonly memory: CommodoreMemory;
   transcriptAppend(theaterId: string, input: CommodoreTranscriptInput): CommodoreTranscriptEntry;
   transcriptRead(theaterId: string, options?: { readonly limit?: number; readonly before?: number }): CommodoreTranscriptPage;
   /**
@@ -219,6 +223,13 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
     return parsed.data;
   };
 
+  const memory = createCommodoreMemory({
+    dirFor,
+    now,
+    writeFile: writeFileAtomic,
+    onChange: (theaterId, change, ref) => broadcast({ op: "memory", theaterId, change, ref }),
+  });
+
   return {
     read(theaterId) {
       try { return load(theaterId); }
@@ -321,6 +332,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       return state;
     },
     images,
+    memory,
     transcriptAppend: (theaterId, input) => append(theaterId, input),
     transcriptRead(theaterId, pageOptions) {
       const limit = Math.max(1, Math.min(MAX_TRANSCRIPT_PAGE, pageOptions?.limit ?? DEFAULT_PAGE));
@@ -463,7 +475,7 @@ function compactIfLarge(file: string): readonly CommodoreTranscriptEntry[] | und
 }
 
 /** tmp→rename. tmp 는 매번 새 이름으로 배타 생성해 이미 있는 자리(특히 밖을 가리키는 링크)를 따라가며 쓰지 않는다. */
-function writeFileAtomic(file: string, data: string): void {
+export function writeFileAtomic(file: string, data: string): void {
   const tmp = `${file}.${process.pid}-${randomUUID()}.tmp`;
   try {
     const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL, 0o600);

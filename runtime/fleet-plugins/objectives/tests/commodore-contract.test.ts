@@ -242,6 +242,48 @@ describe("commodore theater state", () => {
   });
 });
 
+describe("commodore fleet-memory", () => {
+  it("keeps entries in a contained three-level tree, rebuilds the index on every write and refuses secrets", async () => {
+    let clock = 1_000;
+    const h = harness(() => clock);
+    const root = path.join(h.objectivesDir, "commodore", "memory");
+    const entry = { branch: "theater", topic: "실행 환경", slug: "isolated-console-env", title: "Isolated Console env", description: "Unset FLEET_* hijacks the live Console.", why: "The launcher honored inherited roots.", how: "Pass FLEET_DATA_DIR explicitly.", sources: [{ objectiveId: "o1", title: "Console e2e isolation" }] } as const;
+
+    const saved = h.store.memory.save("t1", entry);
+    expect(saved).toMatchObject({ ref: "theater/실행 환경/isolated-console-env", created: 1_000, updated: 1_000, verified: 1_000 });
+    const file = path.join(root, "theater", "실행 환경", "isolated-console-env.md");
+    expect(fs.readFileSync(file, "utf8")).toContain('title: "Isolated Console env"');
+    expect(fs.readFileSync(path.join(root, "MEMORY.md"), "utf8")).toContain("Unset FLEET_* hijacks the live Console.");
+    // 화면의 읽기 — 같은 항목 전체가 온다. 쓰기 라우트는 없다.
+    expect((await h.route("commodore/memory", { theaterId: "t1" })).value).toMatchObject({ entries: [{ ref: saved.ref, why: entry.why, how: entry.how, sources: entry.sources }] });
+    expect((await h.route("commodore/memory", { theaterId: "unknown" })).status).toBe(404);
+
+    // 같은 자리·규칙 밖 이름·비밀 값은 쓰기 전에 거절된다.
+    expect(() => h.store.memory.save("t1", entry)).toThrow("memory_exists");
+    expect(() => h.store.memory.save("t1", { ...entry, topic: "..", slug: "x" })).toThrow("invalid_ref");
+    expect(() => h.store.memory.save("t1", { ...entry, slug: "token", how: "Use ghp_0123456789abcdefghijABCDEFGHIJ to push." })).toThrow("memory_secret");
+    expect(() => h.store.memory.read("t1", "theater/../../state")).toThrow("invalid_ref");
+
+    // 밖을 가리키는 주제 링크는 읽지도 쓰지도 않는다.
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-memory-outside-"));
+    dirs.push(outside);
+    fs.writeFileSync(path.join(outside, "planted.md"), fs.readFileSync(file, "utf8"));
+    fs.mkdirSync(path.join(root, "lessons"));
+    fs.symlinkSync(outside, path.join(root, "lessons", "planted"), "dir");
+    expect(h.store.memory.list("t1").map((item) => item.ref)).toEqual([saved.ref]);
+    expect(() => h.store.memory.save("t1", { ...entry, branch: "lessons", topic: "planted", slug: "planted" })).toThrow("invalid_ref");
+    expect(fs.readdirSync(outside)).toEqual(["planted.md"]);
+
+    // 필드 없는 갱신은 다시 확인한 것 — 검증 시각만 오른다. 삭제는 빈 주제를 걷고 인덱스를 비운다.
+    clock = 5_000;
+    expect(h.store.memory.update("t1", saved.ref, {})).toMatchObject({ change: "verify", entry: { updated: 1_000, verified: 5_000 } });
+    h.store.memory.remove("t1", saved.ref);
+    expect(fs.existsSync(path.dirname(file))).toBe(false);
+    expect(fs.readFileSync(path.join(root, "MEMORY.md"), "utf8")).toBe("");
+    expect(h.events.flatMap((event) => (event.op === "memory" ? [event.change] : []))).toEqual(["save", "verify", "delete"]);
+  });
+});
+
 describe("commodore session", () => {
   function agentStub() {
     const created: AgentSessionOptions[] = [];

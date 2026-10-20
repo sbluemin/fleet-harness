@@ -91,7 +91,7 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
   };
   const fail = (res: http.ServerResponse, error: unknown) => {
     if (error instanceof ObjectiveStoreError) {
-      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" ? 404 : error.code === "invalid_request" || error.code.startsWith("attachment_") ? 400 : 409;
+      const status = error.code === "theater_unavailable" || error.code === "unknown_intel" || error.code === "unknown_ask" || error.code === "unknown_memory" ? 404 : error.code === "invalid_request" || error.code === "invalid_ref" || error.code.startsWith("attachment_") ? 400 : 409;
       ctx.host.http.writeJson(res, status, { error: error.code });
       return;
     }
@@ -215,6 +215,11 @@ export function createCommodoreRoutes(ctx: FleetPluginServerContext, store: Comm
       if (!hooks.clear) throw new ObjectiveStoreError("commodore_inactive");
       await hooks.clear(theaterId);
       return view(theaterId, read(theaterId));
+    }) },
+    // fleet-memory 는 사령관만 쓴다 — 사람 화면은 이 읽기 하나로 목록 전체를 받는다(항목 상한이 작아 쪽 나눔이 없다).
+    { name: "commodore/memory", method: "POST", summary: "Read the Commodore's fleet-memory for a Theater: every entry with its branch, topic, text, sources, links and timestamps. Read-only; only the Commodore writes it.", handler: json(theaterRef, ({ theaterId }) => {
+      read(theaterId);
+      return { theaterId, entries: store.memory.list(theaterId) };
     }) },
     { name: "commodore/transcript", method: "POST", summary: "Read a page of the Commodore log, newest last; pass the first entry's seq as before to read older entries.", handler: json(theaterRef.extend({ limit: z.number().int().min(1).max(MAX_TRANSCRIPT_PAGE).optional(), before: z.number().int().nonnegative().optional() }).strict(), ({ theaterId, limit, before }) => { read(theaterId); return { theaterId, ...store.transcriptRead(theaterId, { limit, before }) }; }) },
   ];
