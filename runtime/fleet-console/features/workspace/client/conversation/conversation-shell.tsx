@@ -18,7 +18,7 @@ import { OperationBodySlot, type OperationBodyConfig } from "../../../../core/cl
 export { ConversationSideBarBottom } from "./conversation-dock.js";
 import { openConversationTab, RailToolIcons, useConversationTabsState, type RailToolContext } from "../../../../core/client/src/chrome/rail/right-rail.js";
 import { ToolbarTipLayer } from "../../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { closeRailPanel, getRailStoreSnapshot, openRailPanel, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { closeRailPanel, dismissRailPanel, getRailStoreSnapshot, openRailPanel, subscribeRailPanelDismissed, subscribeRailStore, useRailActivePanelId } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { mountConversationOperationTabsHost, registerConversationOperationTab, useConversationOperationTabPanels, type ConversationTabSection } from "../../../../core/client/src/chrome/rail/operation-tabs.js";
 import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js";
 import { useTheaterInboxState } from "../theater-inbox/store.js";
@@ -74,6 +74,31 @@ function readLastPanel(): string | null {
   }
 }
 
+/**
+ * 기본 탭을 가진 플러그인 대화(사령관)에서 사람이 오른쪽 사이드바를 닫아 두었는가 — 브라우저에만 남기고, 대화 종류마다 하나다(모든
+ * 사령관이 함께 쓴다). 값이 없으면(한 번도 닫지 않았거나 다시 열었으면) 기존 기본대로 대화를 열 때 기본 탭을 연다.
+ */
+function railClosedKey(surfaceId: string): string {
+  return `fleet-console.conversation.${surfaceId}.railClosed`;
+}
+
+function readRailClosed(key: string): boolean {
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeRailClosed(key: string, closed: boolean): void {
+  try {
+    if (closed) window.localStorage.setItem(key, "1");
+    else window.localStorage.removeItem(key);
+  } catch {
+    // 기억하지 못하면 다음에 열 때 기본 탭이 선다.
+  }
+}
+
 function writeLastPanel(id: string): void {
   try {
     window.localStorage.setItem(LAST_PANEL_KEY, id);
@@ -117,7 +142,7 @@ function useToggleDetails(operationConversation: boolean): () => void {
   return useCallback(() => {
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null) {
-      closeRailPanel(active);
+      dismissRailPanel(active);
       return;
     }
     const lead = operationConversation ? firstConversationTab(bindings) : null;
@@ -377,7 +402,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       {/* 맨 위 줄 — Grok 세부 정보처럼 원형 단추(닫기)만 선다. Desktop 에서는 이 줄의 빈 자리가 창을 끄는 자리다. */}
       <div className="conversation-panel-toolbar">
         <span className="conversation-panel-toolbar-spacer" aria-hidden="true" />
-        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) closeRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
+        <button type="button" className="conversation-round conversation-panel-close" onClick={() => { const active = getRailStoreSnapshot().activePanelId; if (active !== null) dismissRailPanel(active); }} aria-label={t("conversation.panel.close")} title={t("conversation.panel.close")}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
         </button>
       </div>
@@ -1171,8 +1196,24 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) closeRailPanel(active);
   }, []);
+  // 사람이 이 대화에서 사이드바를 닫으면(닫기 단추·머리 pill·아이콘·바깥 누름) 닫힘을, 어떤 패널이든 열리면 열림을 브라우저에 남긴다.
+  // 대화가 걷히며 cleanup 이 닫는 것(위 effect)·다른 대상의 탭이 걷히며 닫히는 것은 사람의 닫힘이 아니라 남기지 않는다.
+  useEffect(() => {
+    if (descriptor.defaultTab === undefined) return;
+    const key = railClosedKey(descriptor.id);
+    let previous = getRailStoreSnapshot().activePanelId;
+    const offStore = subscribeRailStore(() => {
+      const active = getRailStoreSnapshot().activePanelId;
+      if (active === previous) return;
+      previous = active;
+      if (active !== null) writeRailClosed(key, false);
+    });
+    const offDismiss = subscribeRailPanelDismissed(() => writeRailClosed(key, true));
+    return () => { offStore(); offDismiss(); };
+  }, [descriptor.defaultTab, descriptor.id]);
   // 연 순간(같은 대화를 다시 연 때도) 패널이 닫혀 있거나 앞 Operation 대화의 탭(목표, 대화와 함께 걷힌 구성원)을 보이던 중이면 기본
-  // 탭을 연다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은 그대로 둔다.
+  // 탭을 연다 — 다만 패널이 닫혀 있고 사람이 이 대화에서 닫아 둔 것이면 열지 않는다. 이 대화의 탭과 그 밖의 패널(Theater 설정·도구·설정)은
+  // 그대로 둔다.
   const bindings = useDesktopRailEntries();
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
@@ -1183,9 +1224,9 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
-    } else if (active !== null) return;
+    } else if (active !== null || readRailClosed(railClosedKey(descriptor.id))) return;
     openRailPanel(descriptor.defaultTab);
-  }, [descriptor.defaultTab, selection.nonce]);
+  }, [descriptor.defaultTab, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Operation 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.

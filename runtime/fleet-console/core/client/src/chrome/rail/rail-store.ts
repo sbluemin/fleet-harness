@@ -29,6 +29,7 @@ const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
 const PREFS_REPOSITORY_SOURCE = "fleet-console.repository.source";
 const listeners = new Set<Listener>();
+const dismissListeners = new Set<Listener>();
 let store: RailStore = {
   activePanelId: readStoredActivePanelId(),
   panelExtraWidth: 0,
@@ -108,7 +109,7 @@ export function isRailPanelOpen(id: string): boolean {
 export function toggleRailPanel(id: string): void {
   if (toolHost?.owns(id)) { toolHost.toggle(id); return; }
   if (store.activePanelId === id) {
-    deactivateRailPanel();
+    dismissActiveRailPanel();
     return;
   }
   activateRailPanel(id);
@@ -118,6 +119,27 @@ export function toggleRailPanel(id: string): void {
 export function openRailPanel(id: string): void {
   if (toolHost?.owns(id)) { toolHost.open(id); return; }
   activateRailPanel(id);
+}
+
+/**
+ * 사람이 오른쪽 사이드바를 닫는다(닫기 단추·머리 pill·켜진 아이콘 다시 누름·바깥 누름) — 닫힘은 `closeRailPanel` 과 같고, 닫힌 뒤
+ * `subscribeRailPanelDismissed` 구독자에게 알린다. 대화 전환 cleanup·플러그인 capability 같은 호스트의 닫힘은 `closeRailPanel` 이라 알리지 않는다.
+ */
+export function dismissRailPanel(id: string): void {
+  if (toolHost?.owns(id)) { toolHost.close(id); return; }
+  if (store.activePanelId !== id) return;
+  dismissActiveRailPanel();
+}
+
+/** 사람이 오른쪽 사이드바를 닫을 때만 부른다(`dismissRailPanel`). 돌려준 함수로 푼다. */
+export function subscribeRailPanelDismissed(listener: Listener): () => void {
+  dismissListeners.add(listener);
+  return () => { dismissListeners.delete(listener); };
+}
+
+function dismissActiveRailPanel(): void {
+  deactivateRailPanel();
+  for (const listener of [...dismissListeners]) listener();
 }
 
 export function closeRailPanel(id: string): void {

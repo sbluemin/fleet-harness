@@ -19,7 +19,7 @@ import { getState, subscribe } from "../../integration/store.js";
 import { sideBarOccupiedWidth, useSideBarState } from "../../../../../features/workspace/client/sidebar/operations-side-bar-store.js";
 import type { ConnectionState } from "../../integration/types.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
-import { closeRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
+import { dismissRailPanel, openRailPanel, getRailStoreSnapshot, useExpandedMinWidth, reportDetailOverlayLeft, reportRailOccupiedPx, requestRailPanelExtraWidth, resetRailPanelWidth, toggleRailPanel, useRailActivePanelId, useRailPanelExtraWidth, useRailPanelSoloWidth, useRailPanelSoloMaxWidth } from "./rail-store.js";
 import {
   MIN_PANEL_WIDTH,
   PANE_WIDTH_CLASS_PX,
@@ -218,7 +218,7 @@ export const RightRail = memo(function RightRail({ theaterId, api, onLaunchOpera
     lastPanelRef.current = activePanelId;
     reportRailOccupiedPx(occupiedWidth, !isDragging);
   }, [activePanelId, wholeOverlay, occupiedWidth, isDragging]);
-  usePaneOverlay(wholeOverlay, rootRef, () => { if (activePanelId) closeRailPanel(activePanelId); });
+  usePaneOverlay(wholeOverlay, rootRef, () => { if (activePanelId) dismissRailPanel(activePanelId); });
 
 
   const handleResizeDragStart = useCallback((e: React.PointerEvent) => {
