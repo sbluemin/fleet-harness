@@ -14,6 +14,7 @@ import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue, DEFAULT_PATROL, PATROL_STEPS, patrolWord } from "./commodore-controls.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
+import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { CommodoreComposer, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
@@ -41,6 +42,7 @@ import {
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   useCommodoreMobileTab,
+  useCommodoreMobilePanelRequest,
   useCommodoreOnline,
   useCommodoreTheaterLabel,
   type CommodoreMobileTab,
@@ -120,7 +122,7 @@ export function MobileCommodore({ ctx }: { readonly ctx: PaneContext }) {
 
   if (known && !enabled) return <CommodoreDisabled t={t} />;
   if (!theaterId) return <div className="objectives-cm" />;
-  return <CommodoreScreen key={theaterId} t={t} theaterId={theaterId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={title} theaterLabel={theaterLabel} />;
+  return <CommodoreScreen key={theaterId} t={t} theaterId={theaterId} enabled={enabled} bar={visible ? mobileBar ?? null : null} title={title} theaterLabel={theaterLabel} panelRequest={visible ? ctx.params.commodorePanel : undefined} />;
 }
 
 /** 실험 기능이 꺼진 채 들어온 화면 — 보던 중 꺼지면 호스트가 홈으로 돌려보내므로, 옛 주소로 들어온 순간에만 잠깐 선다. */
@@ -149,27 +151,33 @@ function commodorePillStatus(t: T, view: CommodoreView | null): string {
 
 /**
  * 화면은 두 장이다. 기본은 그룹 대화와 같은 대화(사령관 기록이 말풍선, 머리는 대화 pill 하나)이고, pill 을 누르면 한 단 깊은 칩 화면
- * — 맨 위 자율 운영 행과 기록·목표·지시·정보·설정 탭 — 이 선다. ‹·시스템 뒤로는 대화로 돌아온다(막대 깊이 1).
+ * — 맨 위 자율 운영 행과 기록·목표·지시·기억·설정 탭 — 이 선다. 기억 항목은 한 단씩 쌓이고, ‹·시스템 뒤로는 한 단씩 돌아온다.
  */
-function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { readonly t: T; readonly theaterId: string; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined }) {
+function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel, panelRequest }: { readonly t: T; readonly theaterId: string; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly theaterLabel: string | undefined; readonly panelRequest: string | undefined }) {
   const { view, entries, live, hasMore, transcriptLoaded } = useCommodore(theaterId);
   const tab = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const board = useObjectiveTheater(theaterId);
   const [panel, setPanel] = useState(false);
+  const openPanel = useCallback(() => setPanel(true), []);
+  useCommodoreMobilePanelRequest(panelRequest, openPanel);
+  const [memoryTrail, setMemoryTrail] = useState<readonly string[]>([]);
+  const openMemory = useCallback((ref: string) => setMemoryTrail((trail) => [...trail, ref]), []);
+  const trimMemory = useCallback((length: number) => setMemoryTrail((trail) => trail.slice(0, length)), []);
+  useEffect(() => { if (!panel || tab !== "memory") setMemoryTrail([]); }, [panel, tab]);
   const [failure, setFailure] = useState<string | null>(null);
   const mongle = commodoreMongleState(view, board.objectives);
   const pillStatus = commodorePillStatus(t, view);
   useEffect(() => {
     if (!bar) return;
-    if (panel) bar.set({ title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), depth: 1, onBack: () => setPanel(false) });
+    if (panel) bar.set({ title, ...(theaterLabel ? { subtitle: theaterLabel } : {}), depth: 1 + (tab === "memory" ? memoryTrail.length : 0), onBack: () => { if (tab === "memory" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setPanel(false); } });
     else bar.set({
       title,
       ...(pillStatus ? { subtitle: pillStatus } : {}),
       depth: 0,
       pill: { label: t("objectives.commodore.mobile.openPanel"), avatar: <CommodoreAvatar theaterId={theaterId} state={mongle} size={36} label="" decorative />, avatarKey: mongle, onPress: () => setPanel(true) },
     });
-  }, [bar, panel, title, theaterLabel, pillStatus, mongle, theaterId, t]);
+  }, [bar, panel, tab, memoryTrail, title, theaterLabel, pillStatus, mongle, theaterId, t]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -187,6 +195,7 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
     { id: "log", label: t("objectives.commodore.tabs.log") },
     { id: "goals", label: t("objectives.commodore.trail.title") },
     { id: "directive", label: t("objectives.commodore.tabs.directive") },
+    { id: "memory", label: t("objectives.commodore.tabs.memory") },
     { id: "settings", label: t("objectives.commodore.tabs.settings") },
   ];
 
@@ -213,15 +222,12 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
         <>
           <div ref={headRef} className="objectives-cm-chrome">
             <AutonomyRow t={t} theaterId={theaterId} view={view} online={online} onFail={fail} onClear={clear} />
-            <div className="objectives-cm-tabs" role="tablist" aria-label={t("objectives.commodore.tabs.aria")}>
-              {tabs.map((item) => (
-                <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={tab === item.id} className={tab === item.id ? "is-on" : undefined} onClick={() => setCommodoreMobileTab(item.id)}>{item.label}</button>
-              ))}
-            </div>
+            <CommodoreMobileTabs t={t} tabs={tabs} selected={tab} onSelect={(next) => { if (next === "memory") setMemoryTrail([]); setCommodoreMobileTab(next); }} />
           </div>
           {tab === "log" ? <CommodoreMobileLog t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} view={view} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
           {tab === "goals" ? <div className="objectives-cm-fill objectives-cm-goals"><CommodoreTrail t={t} language={commodoreLanguage() ?? "en"} theaterId={theaterId} onOpenObjective={(objectiveId) => openObjectiveOnPhone(objectiveId, theaterId)} /></div> : null}
           {tab === "directive" && view ? <CommodoreMobileDirective t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
+          {tab === "memory" ? <CommodoreMobileMemory t={t} theaterId={theaterId} trail={memoryTrail} onOpen={openMemory} onTrim={trimMemory} /> : null}
           {tab === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={theaterId} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
@@ -243,6 +249,44 @@ function CommodoreScreen({ t, theaterId, enabled, bar, title, theaterLabel }: { 
       )}
     </div>
   );
+}
+
+/** 넘친 탭 줄만 가로로 민다 — scrollIntoView 는 바깥 세로 스크롤도 움직이므로 쓰지 않는다. */
+function CommodoreMobileTabs({ t, tabs, selected, onSelect }: {
+  readonly t: T;
+  readonly tabs: readonly { readonly id: CommodoreMobileTab; readonly label: string }[];
+  readonly selected: CommodoreMobileTab;
+  readonly onSelect: (tab: CommodoreMobileTab) => void;
+}) {
+  const rowRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const edges = () => {
+      row.classList.toggle("is-scroll", row.scrollWidth > row.clientWidth + 0.5);
+      row.classList.toggle("is-start", row.scrollLeft <= 0.5);
+      row.classList.toggle("is-end", row.scrollLeft >= row.scrollWidth - row.clientWidth - 0.5);
+    };
+    const fit = () => {
+      const active = row.querySelector<HTMLElement>(".is-on");
+      if (active) {
+        const left = active.offsetLeft - 16;
+        const right = active.offsetLeft + active.offsetWidth + 16 - row.clientWidth;
+        if (row.scrollLeft > left) row.scrollLeft = left;
+        else if (row.scrollLeft < right) row.scrollLeft = right;
+      }
+      edges();
+    };
+    fit();
+    row.addEventListener("scroll", edges, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(fit);
+    observer?.observe(row);
+    for (const child of Array.from(row.children)) observer?.observe(child);
+    return () => { row.removeEventListener("scroll", edges); observer?.disconnect(); };
+  }, [selected, t]);
+  return <div ref={rowRef} className="objectives-cm-tabs" role="tablist" aria-label={t("objectives.commodore.tabs.aria")}>
+    {tabs.map((item) => <button key={item.id} type="button" role="tab" data-press="r1" aria-selected={selected === item.id} className={selected === item.id ? "is-on" : undefined} onClick={() => onSelect(item.id)}>{item.label}</button>)}
+  </div>;
 }
 
 /* ── 자율 운영 행(CM-2a-3) ─────────────────────────────────────────────── */
