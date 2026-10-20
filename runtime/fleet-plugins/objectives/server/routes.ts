@@ -144,7 +144,7 @@ export function createObjectiveRoutes(ctx: FleetPluginServerContext, store: Obje
 
   return [
     { name: "state", method: "POST", summary: "Read the objectives and groups of a Theater.", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => { prStatus?.refresh(); return { objectives: store.list(theaterId), groups: groupsOf(theaterId), launch: launch.describe() }; }) },
-    // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 홈의 「끝남」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
+    // 완료는 보관하지 않는다 — 완료 목표 중 사람이 따로 보관해 /state 에서 빠진 것만 담는다. 폰 홈의 「완료 N」 섹션이 그 목표들을 읽기 전용으로 다시 연다.
     { name: "finished", method: "POST", summary: "Read the completed objectives of a Theater that a person archived (completion itself does not archive), most recent first (the phone home's Done section).", handler: json(z.object({ theaterId: ids, language }), ({ theaterId }) => ({ objectives: store.all().filter((item) => item.theaterId === theaterId && item.archived === true && !!item.done && !item.removed && item.recorded !== false).sort((a, b) => (b.done?.at ?? 0) - (a.done?.at ?? 0)) })) },
     // 따로 만든 Operation 도 목표다 — 화면이 처음 보는 에이전트 Operation 을 목표 모양으로 받아 간다.
     { name: "objective/get", method: "POST", summary: "Read one objective (any agent Operation of the Theater).", handler: json(objectiveRef, ({ objectiveId }) => { prStatus?.refresh(objectiveId); const found = store.find(objectiveId); if (!found) throw new ObjectiveStoreError("unknown_objective"); return objective(found); }) },

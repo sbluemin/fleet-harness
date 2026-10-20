@@ -227,7 +227,7 @@ export interface RailEntryMobile {
    */
   readonly conversationPane?: RailEntryConversationPane;
   /**
-   * 폰 홈 「대화」 아래 기본 접힌 「끝남 N」 섹션에 올릴 이 엔트리의 끝난 일(예: 끝난 목표). 생략하면 올리지 않는다.
+   * 폰 홈 「대화」 아래 기본 접힌 「완료 N」 섹션에 올릴 이 엔트리의 끝난 일(예: 끝난 목표). 생략하면 올리지 않는다.
    * 끝난 일은 대화 행·사이드바 줄로 서지 않으므로 묶음 줄(`OperationCluster.row`)이 아니라 여기서 말한다 — 데스크톱은 읽지 않는다.
    * 호스트는 묶음 줄이 「완료」(`row.glyph === "done"`)인 대화와 뿌리 없는 완료 줄도 같은 섹션에 모으므로, 이 선언은 줄로 서지 않는 끝난 일만 올린다.
    */
@@ -267,7 +267,7 @@ export interface RailEntryMobile {
   };
 }
 
-/** 폰 홈 「끝남」 섹션의 공급원 — `RailEntryMobile.finished`. */
+/** 폰 홈 「완료 N」 섹션의 공급원 — `RailEntryMobile.finished`. */
 export interface RailEntryMobileFinished {
   readonly subscribe: (listener: () => void) => () => void;
   /** 지금 Theater(엔트리 `scope`가 `fleet`이면 null)의 끝난 일, 보일 순서대로. 호스트는 값(id·제목·둘째 줄)으로 비교하므로 매번 새 배열을 돌려줘도 된다. */
