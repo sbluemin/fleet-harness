@@ -7,7 +7,7 @@ import type { OperationCluster } from "@fleet-console/sdk/plugin";
 import type { RailEntryFinishedItem } from "@fleet-console/sdk/rail";
 
 import { KeyedAvatar } from "../../../../../features/workspace/client/avatars.js";
-import { useOperationClusters, type ClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
+import { useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
 import { entryIconOf } from "./mobile-destinations.js";
@@ -66,7 +66,7 @@ export function MobileHomeSections({ theaterId, finishedConversations, onOpenCon
         <>
           <FoldHead kind="finished" label={t("mobile.list.finished", { count: finishedCount })} open={finishedOpen} onToggle={() => setFinishedOpen(!finishedOpen)} />
           {finishedOpen ? finishedConversations.map((conversation) => {
-            // 완료 지휘관의 얼굴은 활동만 읽어 「쉼/끝남」으로 보인다 — 이 접기 안에서는 묶음 줄의 「완료」로 덮는다.
+            // 완료 지휘관의 얼굴도 작업 중·사람 대기·안 본 답이면 그 활동이 앞선다 — 이 접기 안에서는 묶음 줄의 「완료」로 덮는다.
             const shown = { ...conversation, face: "done" as const };
             return <ConversationRow key={conversation.operation.id} conversation={shown} sub={<ConversationSummary conversation={shown} />} onOpen={() => onOpenConversation(conversation)} />;
           }) : null}
@@ -136,16 +136,6 @@ function rowDetail(cluster: OperationCluster, locale: ConsoleLocale): string {
     if (text) parts.push(text);
   }
   return parts.map((part) => ` · ${part}`).join("");
-}
-
-/**
- * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Operation이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
- * 남의 줄에 fold로 든 Operation은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
- */
-export function isFinishedConversation(index: ClusterIndex, operationId: string): boolean {
-  const layout = index.rowOf.get(operationId);
-  const row = layout?.cluster.row;
-  return layout?.cluster.root === operationId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
 }
 
 // 접기 상태는 보는 사람의 편의라 메모리에만 둔다 — 대화를 열었다 돌아와도 펼친 자리가 그대로이고, 새로 열면 기본값이다.

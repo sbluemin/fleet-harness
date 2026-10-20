@@ -4,7 +4,7 @@ import type { MongleState } from "@fleet-console/sdk/avatars";
 import type { OperationClusterRowMark } from "@fleet-console/sdk/plugin";
 
 import { OperationAvatar, clusterFaceFacts, clusterWorkingMembers, mongleStateOfMark, type ClusterWorkingMember } from "../../../../../features/workspace/client/avatars.js";
-import { useClusterIndex, useOperationClusters } from "../../../../../features/workspace/client/operation-clusters.js";
+import { useClusterIndex, useOperationClusters, type ClusterIndex } from "../../../../../features/workspace/client/operation-clusters.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../../../../../features/execution/client/operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/operation-marks.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -18,7 +18,7 @@ import { MobileMarkedRow } from "./mobile-row-mark.js";
  */
 export interface MobileConversation {
   readonly operation: OperationNode;
-  /** 지휘관의 얼굴 — 사이드바와 같은 기준(`mongleStateOf`)을 지난다. */
+  /** 지휘관의 얼굴 — 사이드바와 같은 기준(`mongleStateOf`)을 지난다. 묶음 줄이 「완료」면 쉬거나 휴면일 때 완료 얼굴이다. */
   readonly face: MongleState;
   /** 지금 일하는 구성원(최대 3). 묶음이 아니면 비어 있다. */
   readonly minis: readonly ClusterWorkingMember[];
@@ -45,13 +45,24 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "operations" |
     const members = layout ? layout.cluster.members.filter((member) => !member.pending && member.operationId !== operation.id) : [];
     return {
       operation,
-      face: mongleStateOfMark(mark, clusterFaceFacts(clusters, operation.id)),
+      // 완료 지휘관은 활동만 읽으면 「쉼/휴면」이다 — 묶음 줄의 「완료」를 임무 완료 사실로 넘겨 홈 「끝남」·검색·대화 머리가 같은 낱말을 쓴다.
+      face: mongleStateOfMark(mark, { ...clusterFaceFacts(clusters, operation.id), ...(isFinishedConversation(index, operation.id) ? { workDone: true } : {}) }),
       minis: layout ? clusterWorkingMembers(layout.cluster, operation.id, { operations, nestedOperations, operationRuntime }) : [],
       memberCount: members.length,
       isCluster: layout !== undefined,
       rowMark: index.rowOf.get(operation.id)?.cluster.row?.mark,
     };
   }, [clusters, idleArrivalIds, index, nestedOperations, operationRuntime, operations]);
+}
+
+/**
+ * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Operation이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
+ * 남의 줄에 fold로 든 Operation은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
+ */
+export function isFinishedConversation(index: ClusterIndex, operationId: string): boolean {
+  const layout = index.rowOf.get(operationId);
+  const row = layout?.cluster.row;
+  return layout?.cluster.root === operationId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
 }
 
 /** 모든 Theater의 최상위 Operation을 대화로 읽는다 — 호출부가 Theater로 거른다. */
