@@ -149,7 +149,7 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
 
 // ── 홈 「끝남」 ──
 
-/** 「끝남」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(완료로 보관돼 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
+/** 「끝남」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(사람이 보관해 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
 let finishedRoster = "";
 
 /** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
@@ -173,8 +173,8 @@ export function subscribeFinishedObjectives(listener: () => void): () => void {
 }
 
 /**
- * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 완료로 지휘관이 보관된 목표, 최근에 끝난 것부터. 복원돼 다시 살아 있는
- * 목록에 선 목표는 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
+ * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 사람이 보관한 완료 목표, 최근에 끝난 것부터. 완료는 보관하지 않으므로
+ * 보관하지 않은 완료 목표는 대화 행(지휘관 Operation)으로 홈에 남고, 복원돼 다시 살아 있는 목록에 선 목표도 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
  */
 export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
   if (theaterId === null) return [];
@@ -437,6 +437,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   // 시작 전 목표(Operation 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
   const settingsHost = useMobileSettingsHost();
   const tidy = !embedded && !!objective && !objective.hasOperation && !objective.done;
+  // 완료한 목표는 보관하지 않으므로 사람이 따로 보관할 길을 ⋮ 에 둔다 — 이름 변경은 서버가 완료 목표에 거절하므로 「보관」만. 이미 보관된(「끝남」에서 연) 목표는 뺀다.
+  const archivable = tidy || (!embedded && !!objective?.done && !objective.archived);
   const rename = useCallback(() => {
     const current = findObjective(latest.current.objectiveId);
     if (!current || !settingsHost?.openInput) return;
@@ -462,19 +464,19 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       })
       .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api, rail]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}` : "";
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}${archivable ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
     const items: MobileBarMenuItem[] = [
       ...personActions(latest.current.actions),
       ...(tidy && settingsHost?.openInput ? [{ id: "rename", label: t("objectives.mobile.rename"), icon: <PencilIcon />, run: rename }] : []),
-      ...(tidy ? [{ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive }] : []),
+      ...(archivable ? [{ id: "archive", label: t("objectives.objective.archive"), icon: <ArchiveIcon />, run: archive }] : []),
     ];
     // 누를 수 있는 항목이 하나도 없으면 ⋮ 를 세우지 않는다 — 흐린 「메시지」 하나만 여는 메뉴가 되지 않게.
     const usable = items.some((item) => !item.disabled);
     // 목표 화면의 뿌리다 — ‹ 는 홈으로 간다.
     mobileBar.set({ title, ...(stateWord ? { subtitle: stateWord } : {}), depth: 0, ...(usable ? { menu: { label: t("objectives.mobile.menuLabel"), caption: title, items } } : {}) });
-  }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, settingsHost, rename, archive]);
+  }, [mobileBar, visible, title, stateWord, menuKey, t, personActions, tidy, archivable, settingsHost, rename, archive]);
 
   // 탭 — 데스크톱 상세와 같은 세 낱말이고, 고른 탭도 같은 Theater 보기 상태에 남는다.
   const theaterId = objective?.theaterId ?? null;

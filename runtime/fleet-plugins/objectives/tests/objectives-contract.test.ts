@@ -309,7 +309,7 @@ const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000
 
 describe("Objectives contract", () => {
   // Core의 두 파일 복구 시험으로는 목표 파일의 done와 미완료 요청 사이 틈을 검증할 수 없다.
-  it("recovers a completion request from its record and retains that record until public purge", async () => {
+  it("keeps a completed objective active until a person archives it, and retains its record until public purge", async () => {
     const h = harness();
     h.add("completion-recovery", { payload: { session: { harness: "claude-code", sessionName: "existing-session" } } });
     h.store.adopt("completion-recovery", { note: "retain this record" });
@@ -323,20 +323,25 @@ describe("Objectives contract", () => {
     expect(renamed.status).toBe(200);
     expect(h.operations.get("completion-recovery")).toMatchObject({ title: "Edited after closing", groupId: "g-edit" });
     expect(h.launches).toEqual([]);
-    vi.spyOn(h.operationsHost, "archive").mockRejectedValueOnce(new Error("archive_stop_failed"));
-    await expect(h.launch.complete("completion-recovery")).rejects.toThrow("archive_stop_failed");
-    expect(h.savedObjective("completion-recovery").operationIntent?.action).toBe("archive");
+    // 완료는 보관하지 않는다 — 지휘관 Operation 은 제자리에 남고 살아 있는 목록에 done 으로 선다.
+    await h.launch.complete("completion-recovery");
+    expect(h.archivedOperations.has("completion-recovery")).toBe(false);
+    expect(h.store.list("t1")).toContainEqual(expect.objectContaining({ id: "completion-recovery", done: expect.any(Object), archived: false }));
+    expect(h.savedObjective("completion-recovery").operationIntent).toBeUndefined();
+    // 완료가 보관하던 옛 버전이 남긴 archive 의도는 로드되지만 적용 없이 승인만 된다.
+    const file = h.objectiveFile("completion-recovery");
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, "utf8")), operationIntent: { requestId: "legacy-archive", action: "archive" } }));
     const reloaded = createObjectiveStore({ dirOf: () => h.objectivesDir, theaterIds: () => ["t1"], operations: h.operationsHost, emit: () => {} });
     const launch = createLaunchService(h.ctx, reloaded);
     launchServices.push(launch);
     await launch.resumeOperationIntents();
-    expect(h.operations.has("completion-recovery")).toBe(false);
-    expect(reloaded.find("completion-recovery")).toMatchObject({ done: expect.any(Object), note: "retain this record", commander: { sessionName: "existing-session" } });
+    expect(h.archivedOperations.has("completion-recovery")).toBe(false);
+    expect(reloaded.find("completion-recovery")).toMatchObject({ done: expect.any(Object), archived: false, note: "retain this record", commander: { sessionName: "existing-session" } });
     expect(h.savedObjective("completion-recovery").operationIntent).toBeUndefined();
     const accesses = h.accessCalls.length;
     await expect(launch.rename("completion-recovery", "must stay read-only")).rejects.toThrow("objective_done");
     expect(h.accessCalls).toHaveLength(accesses);
-    expect(h.archivedOperations.has("completion-recovery")).toBe(true);
+    // 보관은 사람이 따로 한다.
     await launch.remove("completion-recovery");
     await launch.remove("completion-recovery");
     expect(h.archivedOperations.has("completion-recovery")).toBe(true);
@@ -387,9 +392,8 @@ describe("Objectives contract", () => {
     const disk = JSON.parse(fs.readFileSync(h.objectiveFile(source.id), "utf8"));
     expect(disk).toMatchObject({ archivedRemoval: removal });
     expect(disk.pending).toBeUndefined();
-    expect(restarted.store.find(completed.id)).toMatchObject({ archived: true, hasOperation: true, done: expect.any(Object), note: "completed without an Operation" });
-    await restarted.launch.restore(completed.id);
-    expect(restarted.store.find(completed.id)).toMatchObject({ archived: false, done: expect.any(Object) });
+    // 이관은 기동 전 완료 목표를 보관하지 않는다 — 사람이 따로 보관하기 전까지 그대로 남는다.
+    expect(restarted.store.find(completed.id)).toMatchObject({ archived: false, hasOperation: false, done: expect.any(Object), note: "completed without an Operation" });
     expect(h.launches).toHaveLength(0);
     expect(h.operations.get(collision.id)).toBe(unrelated);
     expect(fs.existsSync(h.objectiveFile(collision.id))).toBe(true);
@@ -836,27 +840,18 @@ describe("Objectives contract", () => {
     activity.set(research, "awaiting");
     expect(clusterMember(research)).toMatchObject({ progress: "done", awaitingInput: true });
     activity.set(research, "idle");
-    // 완료는 Core에 지휘관 ID 하나만 요청한다. active 목록에서 빠져도 기록·연결은 계속 보인다.
+    // 사령관의 완료도 보관하지 않는다 — 지휘관 Operation 은 제자리에 남고 active 목록에 done 으로 서며 기록·연결도 그대로 보인다.
     activity.set(objective.id, "awaiting");
     const commodore = { kind: "commodore", theaterId: "t1" } as const;
     expect((await launch.complete(objective.id, { actor: commodore })).done).toMatchObject({ by: commodore });
-    expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id]);
-    expect(operations.has(objective.id)).toBe(false);
-    expect(archivedOperations.has(objective.id)).toBe(true);
-    expect(store.list("t1").some((item) => item.id === objective.id)).toBe(false);
-    const restoredCompletion = await launch.restore(objective.id);
-    expect(restoredCompletion).toMatchObject({ archived: false, done: { by: commodore } });
-    expect(restoredCompletion.missions[0]!.records.map((record) => record.lines)).toEqual([["a done"], ["a redone", "fixed the gap"]]);
+    expect(archiveCalls.filter((id) => id === objective.id)).toEqual([]);
+    expect(operations.has(objective.id)).toBe(true);
+    const completed = store.list("t1").find((item) => item.id === objective.id);
+    expect(completed).toMatchObject({ archived: false, done: { by: commodore } });
+    expect(completed!.missions[0]!.records.map((record) => record.lines)).toEqual([["a done"], ["a redone", "fixed the gap"]]);
     expect((await launch.reopen(objective.id)).missions.map((mission) => mission.member)).toEqual([research, build, build]);
     expect(accessCalls.at(-1)).toBe(objective.id);
     expect(operations.has(objective.id)).toBe(true);
-    // 옛 완료 기록은 active에 그대로 남을 수 있다. 완료 해제는 성공하고, 재완료부터 새 경로를 탄다.
-    store.complete(objective.id);
-    expect(operations.has(objective.id)).toBe(true);
-    await launch.reopen(objective.id);
-    await launch.complete(objective.id);
-    expect(archiveCalls.filter((id) => id === objective.id)).toEqual([objective.id, objective.id]);
-    await launch.reopen(objective.id);
     // 계획은 완료·기록·사람이 담당을 정한 임무를 보존하고 나머지를 바꾼다; 새 임무는 편성 순으로 선다.
     const planned = store.plan(objective.id, { missions: [{ text: "x", prerequisites: [{ n: 2, why: "shares files" }] }, { text: "y", prerequisites: [{ missionId: a!.id, why: "builds on a" }] }] });
     expect(planned.missions.map((mission) => mission.text)).toEqual(["a", "b", "y", "x"]);
@@ -870,7 +865,7 @@ describe("Objectives contract", () => {
     // 재시작 뒤에도 파일에서 같은 상태를 읽는다 — 제목·그룹은 Operation 에서 온다.
     const reloaded = createObjectiveStore({ dirOf: () => path.join(workspace, "objectives"), operations: { get: (id) => operations.get(id) ?? null, list: () => [...operations.values()] }, emit: () => undefined });
     // 행위자를 받지 않은 개시(사람의 화면)는 사람의 개시로 남고, 다시 읽어도 그대로다.
-    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], commencedBy: "human", actionCounts: { complete: 3, reopen: 3, commence: 1 } });
+    expect(reloaded.find(objective.id)).toMatchObject({ title: "Release renamed", groupId: "g-ship", criteriaOpen: false, criteriaProposals: [], commencedBy: "human", actionCounts: { complete: 1, reopen: 1, commence: 1 } });
     expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "complete", by: commodore }));
     expect(reloaded.find(objective.id)!.actions).toContainEqual(expect.objectContaining({ kind: "reopen", by: "human" }));
     expect(reloaded.find(objective.id)!.missions[0]!.records.map((record) => [record.kind, record.lines])).toEqual([["done", ["a done"]], ["redone", ["a redone", "fixed the gap"]]]);
@@ -1243,10 +1238,12 @@ describe("Objectives contract", () => {
     // 시작 전 목표의 지휘관은 닫힘이 아니다.
     const detail = (await use({ action: "read", objectiveId: waiting.id }, consoleDetail)).structuredContent as { objective: { graph: { commander: { state: string } } } };
     expect(detail.objective.graph.commander.state).toBe("not_started");
-    // 완료한 목표는 기본 목록에서 빠지지만 all 에서는 비교 대상으로 남는다.
+    // 완료한 목표는 기본 목록에서 빠지지만 보관되지 않으므로 all 에서는 비교 대상으로 남는다. 보관은 사람이 따로 한다.
     await launch.complete(started.id);
     expect(byId(await rows()).has(started.id)).toBe(false);
-    expect(byId(await rows("all")).has(started.id)).toBe(false);
+    expect(byId(await rows("all")).has(started.id)).toBe(true);
+    expect(store.find(started.id)).toMatchObject({ archived: false, done: expect.any(Object) });
+    await launch.archive(started.id);
     expect(store.find(started.id)).toMatchObject({ archived: true, done: expect.any(Object) });
 
     const duplicate = await launch.create({ theaterId: "t1", title: "Duplicate", groupId: null, note: "dup brief", criteria: ["two", "three"] });
@@ -1291,10 +1288,12 @@ describe("Objectives contract", () => {
     expect(store.find(live.id)!.archived).toBe(true);
     expect((await use({ action: "restore", objectiveIds: [live.id] })).isError).toBe(false);
     expect(store.find(live.id)).toMatchObject({ archived: false, note: "keep me" });
-    // 기동 전 보관은 삭제지만 완료는 무기동 Operation을 만들어 보관한다.
+    // 기동 전 목표의 완료는 레코드만 바꾼다 — Operation 을 만들거나 보관하지 않는다. 사람이 「보관」하면 무기동 지휘관으로 보관되고 복원해도 완료가 남는다.
     const pendingCompletion = await launch.create({ theaterId: "t1", title: "Finish without launching", groupId: null });
     const launchedBefore = launches.length;
-    expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: true, hasOperation: true, done: expect.any(Object) });
+    expect((await route("objective/complete", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, hasOperation: false, done: expect.any(Object) });
+    expect(launches).toHaveLength(launchedBefore);
+    expect((await route("objective/archive", { objectiveId: pendingCompletion.id, restorable: true })).value).toMatchObject({ deleted: false, objective: { archived: true, hasOperation: true, done: expect.any(Object) } });
     expect(launches).toHaveLength(launchedBefore);
     expect((await route("objective/restore", { objectiveId: pendingCompletion.id })).value.objective).toMatchObject({ archived: false, done: expect.any(Object) });
     // 사람이 「보관」을 고른 기동 전 목표(restorable)는 지우지 않는다 — 무기동 지휘관 Operation 으로 보관되고, 복원하면 기록과 함께 돌아온다.

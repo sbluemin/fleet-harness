@@ -612,7 +612,10 @@ export interface StoredObjective {
   readonly stoppedAt?: number;
   /** 목표 완료 — 옛 레코드에서 by 생략은 사람의 완료다. */
   readonly done?: ObjectiveCompletion;
-  /** Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. */
+  /**
+   * Core 요청 접수 전 중단을 복구하는 내부 의도. UI 상태나 구성원별 세대가 아니다. 새로 쓰는 의도는 "ensure-active"뿐이다 —
+   * "archive"는 완료가 보관하던 옛 버전의 잔여로, 디스크 호환을 위해 받되 적용하지 않고 승인만 한다.
+   */
   readonly operationIntent?: { readonly requestId: string; readonly action: "archive" | "ensure-active"; readonly extensionContext?: string; readonly by?: ObjectiveActor };
   readonly extensions?: readonly ObjectiveExtension[];
   /** 확장 회차의 옛 기준 보존 정책 — 인계·완료로 끝나며, 일반 재구상은 다시 켜지 않는다. */

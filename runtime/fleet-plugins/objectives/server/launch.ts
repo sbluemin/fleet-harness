@@ -522,10 +522,10 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
   };
   const migrateRemoval = async (id: string): Promise<void> => {
     const current = objective(id);
-    if (!current.removed && !(current.done && store.pending(id))) return;
+    // 옛 정리(removed) 데이터만 이관한다. 완료는 보관하지 않으므로 기동 전 완료 목표도 사람이 따로 보관하기 전까지 그대로 둔다.
+    if (!current.removed) return;
     await archiveCommanderRecord(id);
-    if (current.removed) store.migratedRemoval(id);
-    else store.launched(id);
+    store.migratedRemoval(id);
     store.refresh(id);
   };
   /**
@@ -564,21 +564,23 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·소유 표식으로 재시도한다.
     await ctx.host.operations.archive(id).catch(asStoreError);
   };
-  const operationIntent = (id: string, action: "archive" | "ensure-active") => {
+  /** 기동·소집 중인 목표의 완료 상태 변경을 거절한다. */
+  const assertIdle = (id: string) => {
     if (pending.has(id) || pending.has(`${id}:muster`)) throw new ObjectiveStoreError("objective_busy");
-    if (store.pending(id) && action !== "archive") return undefined;
-    if (action === "archive" ? !ctx.host.operations.archive : !ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
-    return { requestId: randomUUID(), action };
+  };
+  /** 완료 해제·확장 전 지휘관 Operation 을 활성 위치로 되돌리는 요청. 완료는 보관하지 않으므로 의도를 남기지 않는다. */
+  const operationIntent = (id: string) => {
+    assertIdle(id);
+    if (store.pending(id)) return undefined;
+    if (!ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
+    return { requestId: randomUUID(), action: "ensure-active" as const };
   };
   const applyOperationIntent = async (id: string): Promise<void> => {
     const intent = store.operationIntent(id);
     if (!intent) return;
     try {
-      if (intent.action === "archive") {
-        if (!ctx.host.operations.archive) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
-        if (store.pending(id)) await migrateRemoval(id);
-        else await ctx.host.operations.archive(id);
-      } else {
+      // "archive"는 완료가 보관하던 옛 버전이 남긴 요청이다. 보관은 사람이 따로 하므로 적용하지 않고 승인만 한다.
+      if (intent.action !== "archive") {
         if (!ctx.host.operations.access) throw new ObjectiveStoreError("operation_lifecycle_unavailable");
         await ctx.host.operations.access(id, "ensure-active");
       }
@@ -1260,12 +1262,12 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     completeWithFollowups: (objectiveId, selection, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
+      if (!current.done) assertIdle(objectiveId);
+      // 완료는 지휘관 Operation 을 보관하지 않는다 — 보관은 사람이 따로 한다.
       store.completeWithFollowups(objectiveId, {
         ...selection,
         launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
-      }, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
-      await applyOperationIntent(objectiveId);
-      if (store.pending(objectiveId)) await migrateRemoval(objectiveId);
+      }, options?.actor);
       service.resumeFollowups(objectiveId);
       return objective(objectiveId);
     }),
@@ -1329,7 +1331,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
       removalMigrationTimer = null;
       let retry = false;
       for (const current of store.all()) {
-        if (!current.removed && !(current.done && store.pending(current.id))) continue;
+        if (!current.removed) continue;
         try { await orderedOperationRequest(current.id, () => migrateRemoval(current.id)); }
         catch (error) { retry = true; console.warn(`[objectives] archive migration failed for ${current.id}: ${error instanceof Error ? error.message : "unexpected_failure"}`); }
       }
@@ -1349,16 +1351,16 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
 
     complete: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
-      store.complete(objectiveId, current.done ? undefined : operationIntent(objectiveId, "archive"), options?.actor);
+      if (!current.done) assertIdle(objectiveId);
+      // 완료는 지휘관 Operation 을 보관하지 않는다 — 사람·사령관 완료 모두 제자리에 남고, 보관은 사람이 따로 한다.
+      store.complete(objectiveId, options?.actor);
       forgetOutcome(objectiveId);
-      await applyOperationIntent(objectiveId);
-      if (store.pending(objectiveId)) await migrateRemoval(objectiveId);
       return objective(objectiveId);
     }),
 
     reopen: (objectiveId, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
-      store.reopen(objectiveId, current.done ? operationIntent(objectiveId, "ensure-active") : undefined, options?.actor);
+      store.reopen(objectiveId, current.done ? operationIntent(objectiveId) : undefined, options?.actor);
       await applyOperationIntent(objectiveId);
       return objective(objectiveId);
     }),
@@ -1366,7 +1368,7 @@ export function createLaunchService(ctx: FleetPluginServerContext, store: Object
     extend: (objectiveId, context, options) => orderedOperationRequest(objectiveId, async () => {
       const current = objective(objectiveId);
       if (service.busy(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-      const intent = current.done ? operationIntent(objectiveId, "ensure-active") : undefined;
+      const intent = current.done ? operationIntent(objectiveId) : undefined;
       return claim(objectiveId, async () => {
         store.extend(objectiveId, context, intent, options?.actor);
         await applyOperationIntent(objectiveId);
