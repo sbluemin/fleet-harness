@@ -16,11 +16,11 @@ import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 
 /**
- * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「끝남 N」(기본 접힘). 둘 다 0개면 서지 않는다.
+ * 홈 「대화」 아래의 두 접기 — 「시작 전 N」(기본 펼침)과 「완료 N」(기본 접힘). 둘 다 0개면 서지 않는다.
  * 「시작 전」은 데스크톱 사이드바의 「시작 전 N」 접기와 같은 원천이다: 지금 Theater의 뿌리 없는 묶음 줄(`OperationCluster.row.glyph === "fresh"`) 가운데
  * 사람 차례의 결정 요청 줄(`decisionRequestedAt`, 「확인 필요」에 선다)을 뺀 것, 줄 순서(`row.order`)대로. 맡은 이가 처리 중인 줄(`delegated`)은
  * 폰에는 그 줄이 설 다른 자리가 없어 여기서 빼면 어디에도 보이지 않으므로 남긴다(이 접기는 기본으로 펼쳐 있다). 누르면 묶음의 `open()`이 그 일의 시작 화면을 연다.
- * 「끝남」은 세 출처를 이 순서로 모은다: 묶음 줄이 「완료」인 대화(`isFinishedConversation`, 갱신 시각순) · 뿌리 없는 완료 줄(`row.order`) ·
+ * 「완료 N」은 세 출처를 이 순서로 모은다: 묶음 줄이 「완료」인 대화(`isFinishedConversation`, 갱신 시각순) · 뿌리 없는 완료 줄(`row.order`) ·
  * 엔트리가 `mobile.finished`로 올린 끝난 일(선언 순서). 데스크톱 사이드바 「완료」 접기와 같은 원천(`row.glyph === "done"`)이다.
  * 호스트는 어느 플러그인의 것인지 읽지 않고 줄과 선언만 그린다.
  */
@@ -139,7 +139,7 @@ function rowDetail(cluster: OperationCluster, locale: ConsoleLocale): string {
 }
 
 /**
- * 대화 행이 「대화」 대신 「끝남」에 드는가 — 그 Operation이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
+ * 대화 행이 「대화」 대신 「완료 N」에 드는가 — 그 Operation이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
  * 남의 줄에 fold로 든 Operation은 거른다. 사람을 기다리는 대화는 판정 전에 「확인 필요」로 빠진다.
  */
 export function isFinishedConversation(index: ClusterIndex, operationId: string): boolean {

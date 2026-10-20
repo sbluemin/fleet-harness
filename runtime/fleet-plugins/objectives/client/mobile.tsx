@@ -93,7 +93,7 @@ const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 
 const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
 
 /**
- * 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 살아 있는 목록에 없으면 「끝남」(보관된 완료 목표)에서 찾는다.
+ * 모든 Theater 에서 목표 하나 — 「확인 필요」에서 다른 Theater 의 목표로 와도 찾는다. 살아 있는 목록에 없으면 「완료 N」(보관된 완료 목표)에서 찾는다.
  * 같은 상태면 같은 참조.
  */
 const findObjective = findAnyObjective;
@@ -147,12 +147,12 @@ export function decisionAttentionItems(theaterId: string | null, locale: Console
   return items;
 }
 
-// ── 홈 「끝남」 ──
+// ── 홈 「완료 N」 ──
 
-/** 「끝남」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(사람이 보관해 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
+/** 「완료 N」의 원천은 objectives-state 의 끝난 목표 저장소다 — 살아 있는 목록의 명단이 바뀔 때(사람이 보관해 빠졌거나 복원돼 돌아왔다)와 Theater 를 바꿀 때 다시 읽는다. */
 let finishedRoster = "";
 
-/** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「끝남」을 다시 읽는다. */
+/** 지금 Theater 의 살아 있는 명단이 바뀌었으면 「완료 N」을 다시 읽는다. */
 function followFinished(): void {
   const theaterId = viewedTheaterId();
   if (!theaterId) return;
@@ -164,7 +164,7 @@ function followFinished(): void {
   loadFinishedObjectives(theaterId);
 }
 
-/** 「끝남」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
+/** 「완료 N」 행의 갱신 신호 — 목표 상태가 바뀌면 명단을 살피고, 보관된 목표를 다시 읽으면 알린다. */
 export function subscribeFinishedObjectives(listener: () => void): () => void {
   const offFinished = subscribeFinishedObjectivesStore(listener);
   const off = subscribeObjective(() => { followFinished(); listener(); });
@@ -173,8 +173,8 @@ export function subscribeFinishedObjectives(listener: () => void): () => void {
 }
 
 /**
- * 폰 홈 「끝남 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 사람이 보관한 완료 목표, 최근에 끝난 것부터. 완료는 보관하지 않으므로
- * 보관하지 않은 완료 목표는 호스트가 묶음 줄(glyph done)로 같은 「끝남」에 모으므로 여기서는 보관한 것만 올린다(살아 있는 명단과 겹치지 않는다). 복원돼 다시 살아 있는 목록에 선 목표도 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
+ * 폰 홈 「완료 N」 섹션의 행(`RailEntryMobile.finished`) — 지금 Theater 에서 사람이 보관한 완료 목표, 최근에 끝난 것부터. 완료는 보관하지 않으므로
+ * 보관하지 않은 완료 목표는 호스트가 묶음 줄(glyph done)로 같은 「완료 N」에 모으므로 여기서는 보관한 것만 올린다(살아 있는 명단과 겹치지 않는다). 복원돼 다시 살아 있는 목록에 선 목표도 그 대화 행이 받으므로 뺀다. 누르면 복원 없이 목표 화면이 그 목표를 읽기 전용으로 보인다(`openObjectiveOnPhone`).
  */
 export function finishedObjectiveItems(theaterId: string | null, locale: ConsoleLocale): readonly RailEntryFinishedItem[] {
   if (theaterId === null) return [];
@@ -218,7 +218,7 @@ export function MobileObjectiveScreen({ ctx }: { readonly ctx: PaneContext }) {
   useEffect(() => {
     if (ctx.params.objectiveId === undefined && ctx.params.operationId) panes.replaceParams({ objectiveId: ctx.params.operationId });
   }, [ctx.params.objectiveId, ctx.params.operationId, panes]);
-  // 보관된 끝난 목표로 착지했다면(「끝남」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
+  // 보관된 끝난 목표로 착지했다면(「완료 N」 행·새로고침) 그 목록을 아직 읽지 않았을 수 있다.
   const known = useSyncExternalStore(subscribeObjectiveOrFinished, () => findObjective(objectiveId) !== null, () => findObjective(objectiveId) !== null);
   useEffect(() => { if (objectiveId && !known) ensureFinishedObjectives(ctx.theaterId); }, [objectiveId, known, ctx.theaterId]);
   // 시작 화면에서 개시해 지휘관 Operation 이 서면 그 대화로 넘긴다 — 보는 동안 새로 선 때만이다(이미 Operation 이 있는 목표로 착지했으면 그대로 둔다).
@@ -437,7 +437,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   // 시작 전 목표(Operation 없음)의 이름 변경·보관 — 폰에는 목록이 없으니 이 화면의 ⋮ 가 받는다. 보관은 복원할 수 있다(사이드바 줄의 「보관」과 같은 경로).
   const settingsHost = useMobileSettingsHost();
   const tidy = !embedded && !!objective && !objective.hasOperation && !objective.done;
-  // 완료한 목표는 보관하지 않으므로 사람이 따로 보관할 길을 ⋮ 에 둔다 — 이름 변경은 서버가 완료 목표에 거절하므로 「보관」만. 이미 보관된(「끝남」에서 연) 목표는 뺀다.
+  // 완료한 목표는 보관하지 않으므로 사람이 따로 보관할 길을 ⋮ 에 둔다 — 이름 변경은 서버가 완료 목표에 거절하므로 「보관」만. 이미 보관된(「완료 N」에서 연) 목표는 뺀다.
   const archivable = tidy || (!embedded && !!objective?.done && !objective.archived);
   const rename = useCallback(() => {
     const current = findObjective(latest.current.objectiveId);

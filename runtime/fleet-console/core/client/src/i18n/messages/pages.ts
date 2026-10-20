@@ -1225,7 +1225,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.list.attentionAll": "전체 보기",
   "mobile.list.section": "대화",
   "mobile.list.fresh": "시작 전 {count}",
-  "mobile.list.finished": "끝남 {count}",
+  "mobile.list.finished": "완료 {count}",
   "mobile.list.empty": "이 Theater에는 아직 대화가 없어요. 새 대화를 시작하면 여기에 모입니다.",
   "mobile.list.noMore": "이 Theater에는 대화가 더 없어요.",
   "mobile.list.noActive": "진행 중인 대화가 없어요.",

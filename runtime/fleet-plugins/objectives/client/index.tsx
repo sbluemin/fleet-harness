@@ -88,7 +88,7 @@ export const objectivesEntry: RailEntryDescriptor = {
   mobile: {
     destination: { order: 10, label: (locale) => getT(locale)("objectives.panel.title"), chip: false },
     conversationPane: { paneId: OBJECTIVE_MOBILE_DETAIL_PANE, tabs: objectiveMobileConversationTabs, shown: { subscribe: subscribeObjective, get: (operationId) => objectiveOfOperation(operationId) !== null } },
-    // 홈 「끝남 N」(접힘) — 끝난 목표. 시작 전 목표는 호스트가 묶음 줄(`row.glyph: "fresh"`)로 「시작 전 N」에 세운다.
+    // 홈 「완료 N」(접힘) — 끝난 목표. 시작 전 목표는 호스트가 묶음 줄(`row.glyph: "fresh"`)로 「시작 전 N」에 세운다.
     // 원천은 완료로 지휘관이 보관된 목표다 — 살아 있는 대화 행과 겹치지 않는다.
     finished: { subscribe: subscribeFinishedObjectives, items: finishedObjectiveItems },
     icon: () => <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></svg>,
