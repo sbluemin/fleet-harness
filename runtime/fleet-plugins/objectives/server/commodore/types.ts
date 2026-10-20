@@ -291,6 +291,9 @@ export type CommodoreLiveEvent =
   | { readonly kind: "tool-start"; readonly name: string };
 
 /** 브라우저·감독자 양쪽으로 나가는 사건 — `objectives:commodore` 채널. */
+/** fleet-memory 항목이 마지막 검증 뒤 이만큼 지나면 다시 확인할 때로 보인다 — 사령관 도구와 화면이 같은 값을 읽는다. */
+export const MEMORY_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export type CommodoreEvent =
   | { readonly op: "live"; readonly theaterId: string; readonly live: CommodoreLiveEvent }
   | { readonly op: "state"; readonly theaterId: string; readonly state: CommodoreState; readonly change: CommodoreStateChange; /** 추가·수정·삭제한 정보 항목. */ readonly intelId?: string; /** 삭제 후에는 도구로 읽을 수 없는 항목의 본문. */ readonly removedIntel?: Pick<CommodoreIntel, "id" | "text"> }
