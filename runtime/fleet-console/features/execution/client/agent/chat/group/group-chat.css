@@ -1201,8 +1201,9 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
   line-height: 24px;
 }
 :root[data-view-mode="mobile"] .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md *, .agent-chat-dispatch-text) { color: inherit; }
-/* 말풍선 안 코드는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
+/* 말풍선 안 코드·표는 바탕 면으로 한 단 내려 말풍선 면과 갈린다. */
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body pre,
+:root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body table,
 :root[data-view-mode="mobile"] .group-chat-bubble.is-agent .markdown-body :not(pre) > code { background: var(--m-bg); }
 
 /* 폰 배치의 전언 줄·대화 화면(「모바일」 시안) — 칩은 얹힌 면(--m-surface), 손가락 높이 44px. 대화 화면은 바탕 면을 덮고 뒤의 기록은
