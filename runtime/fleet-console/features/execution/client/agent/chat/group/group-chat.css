@@ -314,11 +314,11 @@ button.group-relay-row:active .group-relay-chip { background-image: linear-gradi
 
 /* 대화 화면 — 대화 칸(.group-chat) 전체를 덮는 층. 오른쪽에서 밀려 들어오고 뒤의 기록·진행 줄·입력창은 조금 왼쪽으로 밀리며
    흐려진다(시안 값 340ms cubic-bezier(.22,.8,.24,1)). 닫으면 거꾸로 돌아간다. 화면이 선 동안만 칸이 넘침을 자른다. */
-.group-chat:has(> .group-relay) { overflow: hidden; }
-.group-chat:has(> .group-relay) > :not(.group-relay) {
+.group-chat[data-relay] { overflow: hidden; }
+.group-chat[data-relay] > :not(.group-relay) {
   transition: transform 340ms cubic-bezier(.22, .8, .24, 1), opacity 260ms ease;
 }
-.group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-16%); opacity: 0.3; }
+.group-chat[data-relay="open"] > :not(.group-relay) { transform: translateX(-16%); opacity: 0.3; }
 /* 층은 대화 중심 화면 맨 위 줄(.conversation-pill-row, z-index 3) 밑에 선다 — 그 줄의 제목 pill 이 보낸 이 ⇄ 받는 이로 바뀌어
    보이고(pill-takeover), 메시지는 그 줄 아래에서 시작한다. 밀려난 형제(입력창 위로 뜨는 덱 z-index 5 포함)는 transform 이 쌓임
    맥락을 만들어 이 층 밑에 갇힌다. */
@@ -449,7 +449,7 @@ button.group-relay-pill-party:focus-visible { outline: 2px solid var(--control-f
   .group-relay-head,
   .group-relay-foot,
   .group-relay-chip,
-  .group-chat:has(> .group-relay) > :not(.group-relay) { transition: none; }
+  .group-chat[data-relay] > :not(.group-relay) { transition: none; }
 }
 @media (forced-colors: active) {
   .group-relay-chip,
@@ -1216,7 +1216,7 @@ button.group-members-main:focus-visible { outline: 2px solid var(--brass); outli
 /* 떠 있는 상단 막대(.mobile-frame-head, z-index 2)는 대화 화면 위에 남아야 제목 pill 이 쌍으로 바뀌는 모습이 보인다 — 층은 그 아래(1)에
    서고, 같은 1 인 아래 독(.group-chat-dock)보다는 문서 순서가 뒤라 그 위를 덮는다. */
 :root[data-view-mode="mobile"] .group-relay { z-index: 1; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
-:root[data-view-mode="mobile"] .group-chat:has(> .group-relay.is-open) > :not(.group-relay) { transform: translateX(-22%); }
+:root[data-view-mode="mobile"] .group-chat[data-relay="open"] > :not(.group-relay) { transform: translateX(-22%); }
 /* 폰 배치의 상단 막대는 화면 위에 떠 있다(--m-chrome-top). 대화 화면은 그 뒤까지 차지만, 목록의 첫 줄과 대체 칩은 막대 몫만큼 내려 서서
    막대·제목 pill 에 가리지 않는다 — 그룹 대화 기록(.group-chat-log)과 같은 규칙이다. 대체 칩이 서면 막대 몫은 칩이 진다. */
 :root[data-view-mode="mobile"] .group-relay-head { padding: calc(22px + var(--m-chrome-top, 0px)) 16px 6px; }

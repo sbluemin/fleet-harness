@@ -256,6 +256,15 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   // 같은 참여자 묶음의 전언 전체 — 원장 순서(시간순) 그대로. 새 전언이 오면 이 화면에도 붙는다.
   const thread = React.useMemo(() => entries.filter((candidate): candidate is RelayEntry => isRelay(candidate) && partyKey(candidate, language) === key), [entries, key, language]);
 
+  // 대화 칸(부모)에 화면의 상태를 단다 — 칸의 넘침 자르기와 형제를 밀어내는 CSS 가 이 속성을 읽는다. `:has(> .group-relay)` 로
+  // 고르면 문서 어디의 자식 변화(입력창 한 글자)에도 대화 전체의 스타일을 다시 계산해, 긴 대화에서 입력이 수백 ms 늦어진다.
+  React.useLayoutEffect(() => {
+    const host = rootRef.current?.parentElement;
+    if (!host) return;
+    host.setAttribute("data-relay", open ? "open" : "shown");
+    return () => host.removeAttribute("data-relay");
+  }, [open]);
+
   // 뒤의 기록·진행 줄·입력창은 화면이 선 동안 닿지 않는다 — 형제에게만 inert 를 걸고, 우리가 건 것만 닫을 때 걷는다.
   React.useLayoutEffect(() => {
     const root = rootRef.current;
