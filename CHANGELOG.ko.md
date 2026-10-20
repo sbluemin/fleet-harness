@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.248.0] - 2026-10-20
+
+### fleet-console
+
+#### Added
+- 빠른 검색과 명령 팔레트에서 Theater의 사령관을 바로 열 수 있고, Theater와 그 Operation을 원래 이름뿐 아니라 사령관 별칭으로도 찾을 수 있습니다.
+
+#### Changed
+- 사이드바에서 끝난 목표는 그룹마다 맨 아래 「완료」 접기로 모여, 진행 중인 일이 앞에 보입니다.
+
 ## [1.247.0] - 2026-10-20
 
 ### fleet-console

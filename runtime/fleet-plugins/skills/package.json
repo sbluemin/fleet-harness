@@ -1,6 +1,6 @@
 {
   "name": "@fleet-plugins/skills",
-  "version": "1.247.0",
+  "version": "1.248.0",
   "private": true,
   "type": "module",
   "scripts": {

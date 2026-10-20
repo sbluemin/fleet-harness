@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.248.0] - 2026-10-20
+
+### fleet-console
+
+#### Added
+- Open a Theater's Commodore straight from quick search and the command palette, and find Theaters and their Operations by the Commodore alias as well as the original name.
+
+#### Changed
+- Finished objectives in the sidebar now tuck into a collapsible "Done" row at the bottom of each group, so active work stays in view.
+
 ## [1.247.0] - 2026-10-20
 
 ### fleet-console
