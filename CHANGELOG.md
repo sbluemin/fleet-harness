@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.249.0] - 2026-10-20
+
+### fleet-console
+
+#### Added
+- Read the Commodore's memory on your phone, search its entries, and follow linked memories and source objectives.
+- The Commodore now keeps its own memory of what it learns running a Theater, and you can read it in the new Memory tab of the Commodore panel, grouped by people, Theater, lessons and crew, with entries due for a recheck marked.
+
+#### Changed
+- The Commodore's Intel tab is now part of the Directive tab, below the directive, and you add intel from a single "+ Add intel" line by pressing Enter instead of a separate box and button. The Actions tab is now called Log.
+- On the phone home, finished objectives now gather under the collapsed "Done" section instead of mixing with active conversations.
+- Tables in chat, group chat, and objective conversations are now compact, sized to their content, and quieter in their headers, and inline code in the dark conversation view reads as soft gray instead of gold.
+
+#### Fixed
+- Switching Theaters from the command palette now opens the same destination as the Theater's sidebar header.
+- Opening a finished objective's conversation in the sidebar no longer pulls its row out of the "Done" section; it stays there and the section opens to show it.
+
 ## [1.248.0] - 2026-10-20
 
 ### fleet-console
