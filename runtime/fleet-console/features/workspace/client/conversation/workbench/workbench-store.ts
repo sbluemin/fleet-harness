@@ -583,20 +583,26 @@ export function ownsWorkbenchEntry(entryId: string): boolean {
   return toolEntryIds.has(entryId);
 }
 
-export function isWorkbenchEntryOpen(entryId: string): boolean {
-  return workbenchTiles(getWorkbenchLayout()).some((tile) => tile.kind === "entry" && tile.entryId === entryId);
+/** 칸이 화면에 보이는가 — 펼친 칸이 없거나 그 칸 자신일 때다. */
+function isTileShown(layout: WorkbenchLayout, tile: WorkbenchTile): boolean {
+  return layout.expandedTileId === null || layout.expandedTileId === tile.id;
 }
 
-export function isWorkbenchSurfaceOpen(surfaceId: string): boolean {
-  return workbenchTiles(getWorkbenchLayout()).some((tile) => tile.kind === "surface" && tile.surfaceId === surfaceId);
-}
-
-/** 브라우저 칸이 화면에 보이는가. 칸이 있고, 펼친 칸이 없거나 그 칸 자신일 때다. */
-export function isWorkbenchBrowserShown(): boolean {
+function isWorkbenchShown(predicate: (tile: WorkbenchTile) => boolean): boolean {
   const layout = getWorkbenchLayout();
-  const browser = workbenchTiles(layout).find((tile) => tile.kind === "browser");
-  if (browser === undefined) return false;
-  return layout.expandedTileId === null || layout.expandedTileId === browser.id;
+  return workbenchTiles(layout).some((tile) => predicate(tile) && isTileShown(layout, tile));
+}
+
+export function isWorkbenchEntryShown(entryId: string): boolean {
+  return isWorkbenchShown((tile) => tile.kind === "entry" && tile.entryId === entryId);
+}
+
+export function isWorkbenchSurfaceShown(surfaceId: string): boolean {
+  return isWorkbenchShown((tile) => tile.kind === "surface" && tile.surfaceId === surfaceId);
+}
+
+export function isWorkbenchBrowserShown(): boolean {
+  return isWorkbenchShown((tile) => tile.kind === "browser");
 }
 
 export function useWorkbenchBrowserShown(): boolean {
@@ -611,8 +617,9 @@ export function closeWorkbenchEntry(entryId: string): void {
   closeWhere((tile) => tile.kind === "entry" && tile.entryId === entryId);
 }
 
+/** 보이는 칸은 닫고, 없거나 다른 칸에 가려 있으면 연다. 가려진 칸은 다시 열기 경로가 펼침을 접고 초점을 준다. */
 export function toggleWorkbenchEntry(entryId: string): void {
-  if (isWorkbenchEntryOpen(entryId)) closeWorkbenchEntry(entryId);
+  if (isWorkbenchEntryShown(entryId)) closeWorkbenchEntry(entryId);
   else openWorkbenchEntry(entryId);
 }
 

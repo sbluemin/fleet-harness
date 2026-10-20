@@ -520,7 +520,7 @@ export interface ClientRailCapability {
   open(panelId: string, params?: Readonly<Record<string, string>>): void;
   /** 지정한 패널이 현재 활성 상태일 때만 닫는다. 폰에서 그 엔트리의 목적지 화면이 보이고 있으면 화면을 닫고 홈(대화 목록)으로 돌아간다. */
   close(panelId: string): void;
-  /** 지정한 패널이 현재 레일 슬롯에 서 있는가. */
+  /** 지정한 패널이 현재 보이는 자리(레일 슬롯이나 대화 도구 칸)에 서 있는가. 다른 칸이 펼쳐 가린 도구 칸은 열린 것으로 치지 않는다. */
   isOpen(panelId: string): boolean;
 }
 
@@ -729,7 +729,7 @@ export interface ClientExpandedSurfacesCapability {
    * 넘기면 일치하는 인스턴스가 없어 조용히 아무 일도 일어나지 않는다.
    */
   closeSurface(surfaceId: string): void;
-  /** 이 표면이 지금 슬롯을 차지하고 있는지. */
+  /** 이 표면이 지금 보이는 슬롯을 차지하고 있는지. 대화 도구 칸에서 다른 칸이 펼쳐 가린 칸은 열린 것으로 치지 않는다(그때 `open`은 펼침을 접고 그 칸을 드러낸다). */
   isOpen(surfaceId: string): boolean;
 }
 

@@ -50,7 +50,7 @@ import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
 import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
 import { useConversationWorkLocation } from "./workbench/work-location.js";
 import { useAgentState } from "../../../execution/client/agent/store.js";
-import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryOpen, subscribeWorkbench, isWorkbenchSurfaceOpen, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
+import { closeWorkbenchBrowser, getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, openWorkbenchBrowser, toggleWorkbenchBrowser, useWorkbenchBrowserShown, useWorkbenchFocusedTileId, useWorkbenchLayout } from "./workbench/workbench-store.js";
 import "./conversation.css";
 
 /**
@@ -890,10 +890,10 @@ function isCommonTool(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab !== true;
 }
 
-/** 도구 캡슐의 켜짐 — 지금 대화의 도구 칸에 그 도구가 서 있는가. 저장소·Shell 처럼 표면을 여는 도구는 그 표면 칸을 본다. */
+/** 도구 캡슐의 켜짐 — 지금 대화의 도구 칸에 그 도구가 보이는가(다른 칸이 펼쳐 가리면 꺼짐). 저장소·Shell 처럼 표면을 여는 도구는 그 표면 칸을 본다. */
 function workbenchToolActive(entry: RailEntryDescriptor): boolean | undefined {
-  if (entry.activate !== undefined) return entry.surfaceId === undefined ? undefined : isWorkbenchSurfaceOpen(entry.surfaceId);
-  return isWorkbenchEntryOpen(entry.id);
+  if (entry.activate !== undefined) return entry.surfaceId === undefined ? undefined : isWorkbenchSurfaceShown(entry.surfaceId);
+  return isWorkbenchEntryShown(entry.id);
 }
 
 interface HiddenTool {
