@@ -381,9 +381,6 @@ function CommodoreConversationTab({ tab, theaterId, language }: { readonly tab: 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청(지시 링크 등)이 대화 중심 화면에서 이 탭을 연다. 기록은 가운데 칸이다. */
 const TAB_INBOX_PAGES: Record<ConversationTab, string> = { goals: "log", directive: "directive", memory: "memory", settings: "settings" };
 
-/** 지시 탭은 옛 정보 탭을 흡수했다 — 그 탭을 기억한 패널은 지시 탭으로 열린다. */
-const TAB_FORMER_IDS: Partial<Record<ConversationTab, readonly string[]>> = { directive: ["commodore-intel"] };
-
 const TAB_TITLES: Record<ConversationTab, ObjectiveMessageKey> = {
   goals: "objectives.commodore.tabs.log",
   directive: "objectives.commodore.tabs.directive",
@@ -435,7 +432,6 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
     id: TAB_IDS[tab],
     inboxPage: TAB_INBOX_PAGES[tab],
-    ...(TAB_FORMER_IDS[tab] ? { formerIds: TAB_FORMER_IDS[tab] } : {}),
     // 「기록」의 목표 흔적은 스스로 스크롤하며 바닥에 붙는다 — 칸 전체를 받는다. 나머지 탭은 호스트 읽기 열에 선다.
     ...(tab === "goals" ? { layout: "fill" as const } : {}),
     title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),

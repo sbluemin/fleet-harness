@@ -1149,9 +1149,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);
   tabIdsRef.current = (descriptor.tabs ?? []).map((tab) => tab.id);
-  // 걷힌 옛 탭 id → 그 탭을 흡수한 탭 id(`formerIds`).
-  const successorsRef = useRef<ReadonlyMap<string, string>>(new Map());
-  successorsRef.current = new Map((descriptor.tabs ?? []).flatMap((tab) => (tab.formerIds ?? []).map((former) => [former, tab.id] as const)));
   useEffect(() => {
     const tabs = descriptor.tabs ?? [];
     const disposers = tabs.map((tab, order) => registerConversationOperationTab({
@@ -1180,14 +1177,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const bindingsRef = useRef(bindings);
   bindingsRef.current = bindings;
   useEffect(() => {
-    const active = getRailStoreSnapshot().activePanelId;
-    // 기억된 패널이 이 대화가 걷은 옛 탭이면 그 탭을 흡수한 탭을 연다.
-    const successor = active === null ? undefined : successorsRef.current.get(active);
-    if (successor !== undefined) {
-      openRailPanel(successor);
-      return;
-    }
     if (descriptor.defaultTab === undefined) return;
+    const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);

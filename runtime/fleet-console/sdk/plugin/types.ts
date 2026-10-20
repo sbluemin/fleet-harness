@@ -359,11 +359,6 @@ export interface ConversationSurfaceTab {
    * 맡는다. 스크롤·폭을 스스로 가져야 하는 본문(바닥에 붙는 기록, 표·그래프)만 `"fill"` 로 칸 전체를 받는다. 구버전 호스트는 무시한다.
    */
   readonly layout?: ConversationPanelLayout;
-  /**
-   * 이 탭이 흡수한 옛 탭 id. 기억된 패널이 그 id 면 대화를 열 때 기본 탭 대신 이 탭을 연다(옛 탭이 사라져 패널이 비지 않게).
-   * 구버전 호스트는 무시한다.
-   */
-  readonly formerIds?: readonly string[];
 }
 
 /** 대화 중심 화면 오른쪽 패널의 본문 배치 — 기본 읽기 열(`read`) 또는 칸 전체(`fill`). */

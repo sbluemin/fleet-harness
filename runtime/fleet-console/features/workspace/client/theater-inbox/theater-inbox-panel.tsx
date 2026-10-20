@@ -125,15 +125,9 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
     if (request === null) return;
     const index = sections.findIndex((section) => section.id === open.address.sectionId);
     const section = index >= 0 ? sections[index] : undefined;
-    const pages = section?.descriptor.pages ?? [];
-    const page = pages.find((candidate) => candidate.id === open.address.pageId) ?? pages.find((candidate) => candidate.formerIds?.includes(open.address.pageId));
+    const page = section?.descriptor.pages.find((candidate) => candidate.id === open.address.pageId);
     if (!section || !page) {
       navigation.open({ theaterId: theater.id, ...fallback });
-      return;
-    }
-    // 흡수된 옛 칸을 부른 요청은 그 칸을 흡수한 칸의 주소로 다시 연다 — 포커스 요청도 그 칸이 받는다.
-    if (page.id !== open.address.pageId) {
-      navigation.open({ theaterId: theater.id, sectionId: section.id, pageId: page.id, focus: request.kind });
       return;
     }
     if (states[index]?.availability === "loading") return;

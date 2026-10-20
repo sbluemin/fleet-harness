@@ -121,7 +121,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
     { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log"), layout: "fill" },
     // 지시 칸은 옛 정보 칸을 흡수했다(지시 아래 정보·정보 출처) — 정보 칸을 부르는 요청도 이 칸이 받는다.
-    { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive"), formerIds: ["intel"] },
+    { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive") },
     { id: "memory", title: (language) => getT(language)("objectives.commodore.tabs.memory") },
     { id: "settings", title: (language) => getT(language)("objectives.commodore.tabs.settings"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.settings") },
   ],
