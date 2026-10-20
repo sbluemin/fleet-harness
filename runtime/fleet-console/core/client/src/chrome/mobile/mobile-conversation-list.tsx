@@ -11,7 +11,7 @@ import type { ConsoleState } from "../../integration/types.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { useMobileAttentionRows } from "./mobile-attention-context.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
-import { ConversationRow, ConversationSummary, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
+import { ConversationRow, ConversationSummary, isFinishedConversation, useMobileConversations, type MobileConversation } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
 import { MobileMonogram } from "./mobile-monogram.js";
@@ -19,7 +19,7 @@ import { TheaterAvatar } from "../../../../../features/workspace/client/theater-
 import { useRailEntries } from "../pane/pane-registry.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { MobileHomeFeatured } from "./mobile-home-featured.js";
-import { isFinishedConversation, MobileHomeSections } from "./mobile-home-sections.js";
+import { MobileHomeSections } from "./mobile-home-sections.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { MobileShortcutChips } from "./mobile-shortcut-chips.js";
 import { openMobilePluginDestination, pushMobileSheet, setMobileDestination } from "./mobile-store.js";
