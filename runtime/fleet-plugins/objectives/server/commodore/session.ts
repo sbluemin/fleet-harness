@@ -1,7 +1,7 @@
 import type { AgentEffort, AgentEvent, AgentInputBlock, AgentHost, AgentSession, AgentUsage } from "@fleet-console/sdk/agent";
 import type { PluginMcpTool } from "@fleet-console/sdk/mcp";
 
-import { commodoreSystemPrompt, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
+import { commodoreSystemPrompt, memoryNote, messageNote, replacementNote, wakeNote, type CommodoreLanguage } from "./prompt.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_TOOL_GROUP, createCommodoreTools, type CommandExecute } from "./tools.js";
 import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "./types.js";
@@ -187,6 +187,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     }
   };
 
+  /** 턴마다 싣는 기억 인덱스 — 대화가 접혀도(compaction) 사령관이 무엇을 기억하는지 다시 본다. 읽지 못하면 비운 채로 간다. */
+  const readMemoryIndex = (): string => {
+    try { return options.store.memory.index(options.theaterId); }
+    catch (error) { console.warn(`[objectives] commodore memory index unreadable: ${error instanceof Error ? error.message : String(error)}`); return ""; }
+  };
+
   const open = async () => {
     const tools = createCommodoreTools({ theaterId: options.theaterId, theaterRoot: options.theaterRoot, store: options.store, onNextWake: options.onNextWake, now, ...(options.objective ? { objective: options.objective } : {}), ...(options.execute ? { execute: options.execute } : {}) });
     const created = await options.agent.createSession({
@@ -236,6 +242,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
         wakeNote(new Date(now()), input.sentences ?? input.reasons),
+        memoryNote(readMemoryIndex()),
       ].join("\n\n");
       const hasImages = input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false;
       const prompt = hasImages ? [

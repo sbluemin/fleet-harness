@@ -1283,6 +1283,60 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-sources li { display: flex; gap: 8px; align-items: baseline; color: var(--text-secondary); font-size: var(--t-sm); }
 .objectives-commodore-source-locator { color: var(--text-tertiary); font-size: var(--t-2xs); overflow-wrap: anywhere; }
 
+/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
+   색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다. */
+.objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
+.objectives-commodore-memory-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.objectives-commodore-memory-meta { margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.objectives-commodore-memory-search {
+  display: flex; align-items: center; gap: 8px; box-sizing: border-box; height: 32px; padding: 0 10px;
+  border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-xs); background: var(--control-field); color: var(--text-tertiary);
+}
+.objectives-commodore-memory-search:focus-within { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
+.objectives-commodore-memory-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-sm); }
+.objectives-commodore-memory-search input::placeholder { color: var(--text-tertiary); }
+.objectives-commodore-memory-branch { gap: 6px; }
+.objectives-commodore-memory-branch-head {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.objectives-commodore-memory-branch-head:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.objectives-commodore-memory-branch-head .objectives-commodore-section-title { flex: none; }
+.objectives-commodore-memory-hint { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-commodore-memory-count { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-memory-chevron { flex: none; width: 10px; height: 10px; color: var(--text-tertiary); transition: transform var(--duration-fast) var(--ease-glide); }
+.objectives-commodore-memory-chevron.is-open { transform: rotate(90deg); }
+.objectives-commodore-memory-topic { display: grid; gap: 2px; min-width: 0; }
+.objectives-commodore-memory-topic-name { padding: 2px 0 1px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); overflow-wrap: anywhere; }
+.objectives-commodore-memory-entries { margin: 0; padding: 0 0 0 9px; border-left: 1px solid var(--surface-rim); list-style: none; display: grid; gap: 1px; min-width: 0; }
+.objectives-commodore-memory-entries.is-flat { padding-left: 0; border-left: 0; margin-left: -8px; }
+.objectives-commodore-memory-entry {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 5px 8px; border: 0; border-radius: var(--radius-xs);
+  background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.5; text-align: left; cursor: pointer;
+}
+.objectives-commodore-memory-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
+.objectives-commodore-memory-entry:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.objectives-commodore-memory-entry-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-memory-date { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-memory-glyph { flex: none; width: 10px; height: 10px; color: var(--text-tertiary); }
+.objectives-commodore-memory-stale { flex: none; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); }
+.objectives-commodore-memory-foot { gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.objectives-commodore-memory-legend, .objectives-commodore-memory-due { display: inline-flex; align-items: center; gap: 6px; }
+.objectives-commodore-memory-due { color: var(--warn-ink); }
+.objectives-commodore-memory-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
+.objectives-commodore-memory-back { display: inline-flex; align-items: center; gap: 3px; padding-left: 0; }
+.objectives-commodore-memory-back svg { width: 10px; height: 10px; }
+.objectives-commodore-memory-crumb-topic { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.objectives-commodore-memory-title { margin: 4px 0 0; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-commodore-memory-description { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.objectives-commodore-memory-stamps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.objectives-commodore-memory-body { margin: 0; color: var(--text-primary); font-size: var(--t-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.objectives-commodore-memory-path { margin: 0; color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); line-height: 1.5; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .objectives-commodore-memory-chevron { transition-duration: .01ms; }
+}
+
 .objectives-commodore-text-button {
   padding: 2px 4px; border: 0; border-radius: var(--radius-xs); background: transparent;
   color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap;

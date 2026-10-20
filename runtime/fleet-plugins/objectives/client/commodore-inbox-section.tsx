@@ -35,6 +35,7 @@ import { commanderCoordinates, commanderValue, CommodoreCoordinateField, commodo
 import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
+import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime } from "./commodore-header.js";
@@ -79,7 +80,7 @@ const PATROL_MENU_WIDTH = 248;
 const PATROL_MENU_MARGIN = 12;
 /** 본문이 이보다 좁으면 기록 곁 칸(목표)을 기록 아래로 내린다 — 옛 시트의 좁은 모양과 같은 자리. */
 const COMPACT_BODY_WIDTH = 500;
-const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "directive", "intel", "settings"];
+const COMMODORE_PAGES: readonly CommodoreTab[] = ["log", "directive", "intel", "memory", "settings"];
 
 /* ── Theater Inbox 섹션 ──────────────────────────────────────────────── */
 
@@ -109,7 +110,7 @@ function commodoreStatusLine(t: T, theaterId: string, language: "en" | "ko"): st
 }
 
 /**
- * Theater Inbox 의 「사령관」 섹션 — 기록·지시·정보·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
+ * Theater Inbox 의 「사령관」 섹션 — 기록·지시·정보·기억·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
  * 실험 기능 「자율 운영」이 꺼져 있으면 섹션은 제목과 안내 한 줄만 남고 본문을 마운트하지 않는다(읽기·쓰기 없음).
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
@@ -121,6 +122,7 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     { id: "log", title: (language) => getT(language)("objectives.commodore.tabs.log"), layout: "fill" },
     { id: "directive", title: (language) => getT(language)("objectives.commodore.tabs.directive"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.directive") },
     { id: "intel", title: (language) => getT(language)("objectives.commodore.tabs.intel"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.intel") },
+    { id: "memory", title: (language) => getT(language)("objectives.commodore.tabs.memory") },
     { id: "settings", title: (language) => getT(language)("objectives.commodore.tabs.settings"), applies: (language) => getT(language)("objectives.commodore.inbox.applies.settings") },
   ],
   operatorDirectivePageId: "directive",
@@ -134,7 +136,8 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   subscribe: subscribeCommodore,
   render: (context) => <CommodoreInboxSection context={context} />,
   // 폰 배치로 바뀌면 같은 구역의 폰 사령관 화면으로 넘긴다.
-  onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) ? pageId as CommodoreTab : "log", theater.id),
+  // 폰에는 기억 칸이 없다 — 기억에서 넘어가면 기록으로 선다.
+  onLeaveDesktop: ({ theater, pageId }) => openCommodoreMobile(COMMODORE_PAGES.includes(pageId as CommodoreTab) && pageId !== "memory" ? pageId as CommodoreTab : "log", theater.id),
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   openConversation: ({ theater, pageId }) => pageId === "log" && openCommodoreConversation(theater.id),
   // 사령관에게는 목표가 없다 — 이 섹션을 열 때 열려 있던 목표 패널을 남기지 않는다. 도구 줄은 가운데 대화 머리의 공통 도구모음이
@@ -249,6 +252,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         ) : null}
         {tab === "directive" && view ? <CommodoreDirective t={t} theaterId={theaterId} directive={view.state.directive} active={view.active} onOpenSystemPrompt={openSystemPrompt} onFail={fail} onClear={() => setFailure(null)} /> : null}
         {tab === "intel" && view ? <CommodoreIntel t={t} theaterId={theaterId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={() => setFailure(null)} /> : null}
+        {tab === "memory" ? <CommodoreMemory t={t} theaterId={theaterId} /> : null}
         {/* 설정 칸의 메뉴(순찰·종료 시각·모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={theaterId} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}

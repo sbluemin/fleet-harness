@@ -7,6 +7,7 @@ import type { ModelRoster, ModelRosterTarget } from "@fleet-console/sdk/models";
 import type { ClientApiCapability, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { useModelRoster } from "@fleet-console/sdk/plugin/browser";
 
+import type { MemoryEntry } from "../server/commodore/memory.js";
 import type { CommodoreStateView } from "../server/commodore/routes.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../server/commodore/types.js";
 import { followupsJudgeable, livePersonHold, reasonAwaits } from "../server/board-state.js";
@@ -22,7 +23,7 @@ import { post } from "./objectives-state.js";
 
 export const COMMODORE_CHANNEL = "objectives:commodore";
 
-export type CommodoreTab = "log" | "directive" | "intel" | "settings";
+export type CommodoreTab = "log" | "directive" | "intel" | "memory" | "settings";
 /** 폰 화면의 구역 — 데스크톱 시트는 기록 곁 칸에 두는 「목표」가 폰에서는 구역 하나다. */
 export type CommodoreMobileTab = CommodoreTab | "goals";
 
@@ -209,6 +210,11 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     notify();
   });
   const applyEvent = (event: CommodoreEvent) => {
+    if (event.op === "memory") {
+      // 기억 칸을 연 적 있는 Theater 만 다시 읽는다 — 사건은 무엇이 바뀌었는지만 말하고 목록은 서버가 준다.
+      if (memories.has(event.theaterId)) void loadCommodoreMemory(event.theaterId);
+      return;
+    }
     if (event.op === "state" && event.change === "clear") setTheater(event.theaterId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
     const current = theaters.get(event.theaterId);
     if (event.op === "transcript") {
@@ -261,6 +267,7 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
       if (current.view) void loadCommodore(theaterId, true);
       if (current.transcriptLoaded) void loadTranscript(theaterId, { reset: true });
     }
+    for (const theaterId of memories.keys()) void loadCommodoreMemory(theaterId);
   });
   const offExperiments = ctx.experiments.subscribe(() => {
     const next = readEnabled();
@@ -283,6 +290,7 @@ export function installCommodoreState(ctx: PluginInstallContext): () => void {
     if (installed === ctx) installed = null;
     theaters.clear();
     loading.clear();
+    memories.clear();
     notify();
   };
 }
@@ -358,6 +366,46 @@ export function readCommodore(theaterId: string): TheaterCommodore {
 
 export function useCommodore(theaterId: string): TheaterCommodore {
   return useSyncExternalStore(subscribeCommodore, () => readCommodore(theaterId), () => readCommodore(theaterId));
+}
+
+/**
+ * fleet-memory — 사령관만 쓰고 사람은 읽기만 하는 기억. 칸을 처음 열 때 읽고, 그 뒤로는 `memory` 사건과 재연결 때 다시 읽는다.
+ * 읽는 중 사건이 또 오면 늦게 시작한 읽기만 반영한다.
+ */
+export interface CommodoreMemoryView {
+  readonly entries: readonly MemoryEntry[];
+  readonly loaded: boolean;
+  readonly failed: boolean;
+}
+
+const EMPTY_MEMORY: CommodoreMemoryView = { entries: [], loaded: false, failed: false };
+const memories = new Map<string, CommodoreMemoryView>();
+const memoryRequests = new Map<string, number>();
+
+export function loadCommodoreMemory(theaterId: string): Promise<void> {
+  const client = api();
+  if (!client) return Promise.resolve();
+  if (!memories.has(theaterId)) memories.set(theaterId, EMPTY_MEMORY);
+  const ticket = (memoryRequests.get(theaterId) ?? 0) + 1;
+  memoryRequests.set(theaterId, ticket);
+  return post<{ readonly entries: readonly MemoryEntry[] }>(client, "/commodore/memory", withLanguage({ theaterId }))
+    .then((page) => ({ entries: page.entries, loaded: true, failed: false }))
+    .catch(() => ({ ...(memories.get(theaterId) ?? EMPTY_MEMORY), loaded: true, failed: true }))
+    .then((next) => {
+      if (memoryRequests.get(theaterId) !== ticket || !memories.has(theaterId)) return;
+      memories.set(theaterId, next);
+      notify();
+    });
+}
+
+export function readCommodoreMemory(theaterId: string): CommodoreMemoryView {
+  return memories.get(theaterId) ?? EMPTY_MEMORY;
+}
+
+/** 기억 칸이 서는 동안 — 처음 서면 읽기를 건다. */
+export function useCommodoreMemory(theaterId: string): CommodoreMemoryView {
+  useEffect(() => { if (!memories.get(theaterId)?.loaded) void loadCommodoreMemory(theaterId); }, [theaterId]);
+  return useSyncExternalStore(subscribeCommodore, () => readCommodoreMemory(theaterId), () => readCommodoreMemory(theaterId));
 }
 
 /** 실험 기능 「자율 운영」을 읽었는가와 켜져 있는가 — Theater Inbox 섹션이 리액트 밖에서 읽는다(부수효과 없음). */
