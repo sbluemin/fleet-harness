@@ -159,34 +159,36 @@ export function subscribeStatusSectionCollapse(listener: () => void): () => void
   return () => statusSectionCollapseListeners.delete(listener);
 }
 
-// 그룹별 「시작 전 N」 접기의 펼침 — 비영속 표시 상태다. 새 페이지 로드마다 모두 접힌 채 시작하고,
-// Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 Theater 와 그룹(미분류는 빈 문자열).
-const freshFoldListeners = new Set<() => void>();
-let expandedFreshFolds: ReadonlySet<string> = new Set();
+// 그룹별 「시작 전 N」·「완료 N」 접기의 펼침 — 비영속 표시 상태다. 새 페이지 로드마다 모두 접힌 채 시작하고,
+// Theater 를 옮겨 다녀도 이 탭 안에서는 그룹마다 남는다. 키는 접기 종류와 Theater 와 그룹(미분류는 빈 문자열)이라 두 종류의 펼침은 서로 독립이다.
+export type SideBarRowFoldKind = "fresh" | "done";
 
-export const freshFoldKey = (theaterId: string, groupId: string | null): string => `${theaterId}\0${groupId ?? ""}`;
+const rowFoldListeners = new Set<() => void>();
+let expandedRowFolds: ReadonlySet<string> = new Set();
 
-export function useSideBarFreshFolds(): ReadonlySet<string> {
-  return useSyncExternalStore(subscribeFreshFolds, getFreshFolds, getFreshFolds);
+export const rowFoldKey = (kind: SideBarRowFoldKind, theaterId: string, groupId: string | null): string => `${kind}\0${theaterId}\0${groupId ?? ""}`;
+
+export function useSideBarRowFolds(): ReadonlySet<string> {
+  return useSyncExternalStore(subscribeRowFolds, getRowFolds, getRowFolds);
 }
 
-function getFreshFolds(): ReadonlySet<string> {
-  return expandedFreshFolds;
+function getRowFolds(): ReadonlySet<string> {
+  return expandedRowFolds;
 }
 
-function subscribeFreshFolds(listener: () => void): () => void {
-  freshFoldListeners.add(listener);
-  return () => freshFoldListeners.delete(listener);
+function subscribeRowFolds(listener: () => void): () => void {
+  rowFoldListeners.add(listener);
+  return () => rowFoldListeners.delete(listener);
 }
 
-export function setSideBarFreshFoldExpanded(theaterId: string, groupId: string | null, expanded: boolean): void {
-  const key = freshFoldKey(theaterId, groupId);
-  if (expandedFreshFolds.has(key) === expanded) return;
-  const next = new Set(expandedFreshFolds);
+export function setSideBarRowFoldExpanded(kind: SideBarRowFoldKind, theaterId: string, groupId: string | null, expanded: boolean): void {
+  const key = rowFoldKey(kind, theaterId, groupId);
+  if (expandedRowFolds.has(key) === expanded) return;
+  const next = new Set(expandedRowFolds);
   if (expanded) next.add(key);
   else next.delete(key);
-  expandedFreshFolds = next;
-  for (const listener of freshFoldListeners) listener();
+  expandedRowFolds = next;
+  for (const listener of rowFoldListeners) listener();
 }
 
 export function recordStatusTransitions(ids: readonly string[]): void {

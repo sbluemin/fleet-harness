@@ -47,6 +47,9 @@ export function dropTargetFromPoint(
     for (const chipEl of chipEls) {
       const id = chipEl.dataset.sideBarChipId;
       if (!id || id === sourceId) continue;
+      // 펼친 「완료」 접기 안의 뿌리 선 줄은 섹션 순서에 서지 않는다 — 기준점으로 삼으면 보이지 않는 중간 index 로 떨어진다.
+      // 접기는 섹션 맨 아래라 그 위의 드롭은 아래 섹션 끝(entryIds.length)으로 간다.
+      if (chipEl.closest("[data-side-bar-row-fold]")) continue;
       const chipRect = chipEl.getBoundingClientRect();
       if (clientY <= chipRect.top + chipRect.height / 2) {
         return { groupId: section.groupId, index: Math.max(0, section.entryIds.indexOf(id)) };

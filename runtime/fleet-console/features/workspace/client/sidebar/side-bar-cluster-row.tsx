@@ -14,7 +14,7 @@ import { pointOnText } from "./operations-side-bar-hit-test.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ClusterIndex, ClusterLayout } from "../operation-clusters.js";
 import type { SideBarEntry } from "./operations-side-bar-chip.js";
-import { setSideBarFreshFoldExpanded } from "./operations-side-bar-store.js";
+import { setSideBarRowFoldExpanded, type SideBarRowFoldKind } from "./operations-side-bar-store.js";
 import { KeyedAvatar, OperationAvatar, clusterWorkingMembers, mongleStateOfMark } from "../avatars.js";
 import { operationAvatarKey, theaterAvatarKey, type MongleState } from "@fleet-console/sdk/avatars";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
@@ -30,13 +30,13 @@ import { useConversationRowPreview } from "../conversation/conversation-slots.js
 const NO_IDS: readonly string[] = [];
 
 /**
- * 「시작 전 N」 접기 안에 선 줄 — 접기 머리가 이미 「시작 전」이라 줄마다 같은 상태 문구를 다시 적지 않는다. 「오늘」 구역처럼 접기 밖에
- * 올라간 시작 전 줄은 그대로 상태 문구로 말한다.
+ * 「시작 전 N」·「완료 N」 접기 안에 선 줄 — 접기 머리가 이미 그 상태를 말하므로 줄 상태가 접기 종류와 같으면 같은 상태 문구를
+ * 줄마다 다시 적지 않는다. 「오늘」 구역처럼 접기 밖에 선 줄은 그대로 상태 문구로 말한다.
  */
-const FreshFoldContext = createContext(false);
+const RowFoldContext = createContext<SideBarRowFoldKind | null>(null);
 
 /**
- * 그룹 헤더가 묶음 머리로서 감싸일 자리 — 펼친 그룹은 칸에 선 목표 줄이 있을 때 목록 읽기에, 접은 그룹은 「시작 전」까지 포함한
+ * 그룹 헤더가 묶음 머리로서 감싸일 자리 — 펼친 그룹은 칸에 선 목표 줄이 있을 때 목록 읽기에, 접은 그룹은 「시작 전」·「완료」까지 포함한
  * 안의 줄 표식도 대신 두른다. 목표 줄이 없는 그룹은 묶음 머리가 아니다(undefined).
  */
 export function groupClusterHead(theaterId: string, sectionItems: readonly SideBarSectionItem[], foldItems: readonly SideBarRowItem[], collapsed: boolean): { readonly theaterId: string; readonly hiddenClusterIds: readonly string[] } | undefined {
@@ -55,7 +55,7 @@ export function theaterClusterHead(plan: SideBarRowPlan, rowsHidden: boolean): {
     const ungrouped = (plan.sections.get(null) ?? []).some((sectionItem) => sectionItem.kind === "row");
     return ungrouped ? { hiddenClusterIds: NO_IDS, anyList: false } : undefined;
   }
-  const items = [...plan.decisions, ...plan.today, ...[...plan.sections.values()].flatMap((list) => list.flatMap((sectionItem) => (sectionItem.kind === "row" ? [sectionItem.item] : []))), ...[...plan.folds.values()].flat()];
+  const items = [...plan.decisions, ...plan.today, ...[...plan.sections.values()].flatMap((list) => list.flatMap((sectionItem) => (sectionItem.kind === "row" ? [sectionItem.item] : []))), ...[...plan.folds.values()].flat(), ...[...plan.doneFolds.values()].flat()];
   return items.length > 0 ? { hiddenClusterIds: items.map((item) => item.layout.cluster.id), anyList: true } : undefined;
 }
 
@@ -101,6 +101,8 @@ export interface SideBarRowPlan {
   readonly today: readonly SideBarRowItem[];
   /** 그룹(또는 미분류) id → 그 그룹 맨 아래 「시작 전 N」 접기에 드는 줄, 보드 순서. 비었으면 키가 없다. */
   readonly folds: ReadonlyMap<string | null, readonly SideBarRowItem[]>;
+  /** 그룹(또는 미분류) id → 「시작 전 N」 다음 「완료 N」 접기에 드는 줄, 보드 순서. 비었으면 키가 없다. */
+  readonly doneFolds: ReadonlyMap<string | null, readonly SideBarRowItem[]>;
 }
 
 /**
@@ -108,6 +110,17 @@ export interface SideBarRowPlan {
  * 줄(`delegated`)은 접힌 접기에 묻히면 그 상태 문구가 보이지 않으므로 그룹 자리에 선다.
  */
 const foldedFresh = (item: SideBarRowItem) => item.row.glyph === "fresh" && !item.anchor && item.fold.length === 0 && item.row.delegated === undefined;
+
+/**
+ * 「완료」 접기에 드는 줄 — 끝난 목표. 지휘관 Operation 이 남아 뿌리가 선 줄도 든다(「시작 전」과 달리). 다만 지금 활성인 줄과
+ * 사람을 기다리는 Operation 을 품은 줄은 접힌 접기에 묻히면 하이라이트·부름이 보이지 않으므로 제자리에 선다(`delegated` 예외와 같은 이유).
+ * 사람이 다른 대화로 옮기면 그 줄은 다음 렌더에서 접기로 든다. 구역으로 올라간 줄은 판정 전에 빠진다.
+ */
+function foldedDone(item: SideBarRowItem): boolean {
+  if (item.row.glyph !== "done") return false;
+  const entries = item.anchor ? [item.anchor, ...item.fold] : item.fold;
+  return !entries.some((entry) => entry.active || (entry.mark ?? entry.status) === "awaiting");
+}
 
 // 칩 칸과 같은 셈법: 사람을 기다리는 것이 먼저, 끝난 것이 마지막.
 const MARK_URGENCY: Record<OperationMarkVisual, number> = { awaiting: 0, unseen: 1, running: 2, idle: 4, ended: 5 };
@@ -124,7 +137,8 @@ export function rowGlyphState(item: SideBarRowItem): OperationClusterRowGlyph | 
 
 /**
  * 그룹 섹션의 엔트리에 묶음 줄을 섞는다. 뿌리가 선 줄은 뿌리 칩 자리를 이어받고, 뿌리 없는 줄은 같은 그룹 안에서
- * 보드 순서가 가장 가까운 줄 곁에 선다. 뿌리 없는 시작 전 줄은 섹션이 아니라 그 그룹의 「시작 전」 접기로 간다.
+ * 보드 순서가 가장 가까운 줄 곁에 선다. 뿌리 없는 시작 전 줄은 섹션이 아니라 그 그룹의 「시작 전」 접기로 간다. 완료 줄은 뿌리가
+ * 서 있어도 칩 자리를 이어받지 않고 그 그룹(뿌리 칩이 속한 섹션)의 「완료」 접기로 간다.
  * 구역으로 올라간 줄은 그룹 자리에서도 접기에서도 빠진다. 맡은 이가 처리 중인 줄(`delegated`)은 구역으로 올라가지 않고 제자리에 선다.
  */
 export function planSideBarRows(
@@ -155,12 +169,17 @@ export function planSideBarRows(
 
   const result = new Map<string | null, SideBarSectionItem[]>();
   const folds = new Map<string | null, SideBarRowItem[]>();
+  const doneFolds = new Map<string | null, SideBarRowItem[]>();
+  const addTo = (map: Map<string | null, SideBarRowItem[]>, key: string | null, item: SideBarRowItem) => { map.set(key, [...(map.get(key) ?? []), item]); };
   for (const section of sections) {
     const list: SideBarSectionItem[] = [];
     for (const entry of section.entries) {
       const item = byAnchor.get(entry.operation.id);
       if (item) {
-        if (!promoted(item)) list.push({ kind: "row", item });
+        // 접기에 든 완료 줄은 뿌리 칩 자리를 비운다 — 그 칩은 다시 칩으로 서지 않는다.
+        if (promoted(item)) continue;
+        if (foldedDone(item)) addTo(doneFolds, section.groupId, item);
+        else list.push({ kind: "row", item });
         continue;
       }
       if (folded.has(entry.operation.id)) continue;
@@ -172,7 +191,11 @@ export function planSideBarRows(
     if (item.anchor || promoted(item)) continue;
     const key = item.row.groupId !== null && sectionIds.has(item.row.groupId) ? item.row.groupId : null;
     if (foldedFresh(item)) {
-      folds.set(key, [...(folds.get(key) ?? []), item]);
+      addTo(folds, key, item);
+      continue;
+    }
+    if (foldedDone(item)) {
+      addTo(doneFolds, key, item);
       continue;
     }
     const list = result.get(key) ?? [];
@@ -183,7 +206,8 @@ export function planSideBarRows(
     list.splice(at, 0, { kind: "row", item });
     result.set(key, list);
   }
-  return { sections: result, decisions, today, folds };
+  for (const list of doneFolds.values()) list.sort((a, b) => a.row.order - b.row.order);
+  return { sections: result, decisions, today, folds, doneFolds };
 }
 
 // 포매터 생성은 비싸다 — 줄이 다시 그려질 때마다 만들지 않고 언어별로 하나를 쓴다.
@@ -252,15 +276,15 @@ export function SideBarClusterRow({ item, groupDot = null, dragging = false, dra
   const selectMode = onSelect !== undefined && anchor !== null;
   // 대화 중심 화면 — 제목 아래 한 줄에 미리보기(원천이 없으면 상태 문구)를 둔다. 연결 지점은 칩과 같은 한 곳이다.
   const rowPreview = useConversationRowPreview(anchor?.operation.id ?? "");
-  const inFreshFold = useContext(FreshFoldContext);
-  // 「시작 전」 접기 안의 시작 전 줄은 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
+  const foldKind = useContext(RowFoldContext);
+  // 「시작 전」·「완료」 접기 안에서 줄 상태가 접기 종류와 같으면 상태 문구를 다시 적지 않는다 — 미리보기가 있을 때만 그 줄이 선다.
   // 사람의 차례가 된 까닭(`decisionNote`, 예: 「사령관이 넘김」)은 미리보기보다 앞선다 — 줄이 「내 결정」에 선 이유가 이 한 줄뿐이다.
   const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
   // 맡은 이가 처리 중인 동안(`delegated`)은 그 상태 문구가 미리보기 자리를 차지하고 명도 물결로 흐른다 — 미리보기가 가려지는 것은 알고 고른 비용이다.
   const handlingStatus = row.decisionRequestedAt === undefined && row.delegated ? resolveLocalizedText(row.delegated.status, locale) : "";
   const conversationLine = (decisionNote || handlingStatus || null)
       ?? rowPreview?.text
-      ?? (inFreshFold && state === "fresh" ? null : row.decisionRequestedAt !== undefined
+      ?? (foldKind !== null && state === foldKind ? null : row.decisionRequestedAt !== undefined
         ? t("conversation.row.decision")
         : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
@@ -580,9 +604,11 @@ export function SideBarRowZone({ theaterId, zone, count, children }: { readonly 
 }
 
 /**
- * 그룹 맨 아래 「시작 전 N」 접기 — 활성·비활성 Theater 가 같은 줄을 세운다. 펼침은 Theater·그룹별로 이 탭의 메모리에만 둔다.
+ * 그룹 맨 아래 「시작 전 N」·「완료 N」 접기 — 같은 부품의 두 종류다. 활성·비활성 Theater 가 같은 줄을 세운다. 펼침은 종류·Theater·그룹별로
+ * 이 탭의 메모리에만 두고, 두 종류는 서로 독립이다. 글리프는 시작 전이 빈 고리 셋, 완료가 줄의 완료 글리프와 같은 중성 채움 점 셋이다.
  */
-export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRow }: {
+export function SideBarRowFold({ kind, theaterId, groupId, items, expanded, renderRow }: {
+  readonly kind: SideBarRowFoldKind;
   readonly theaterId: string;
   readonly groupId: string | null;
   readonly items: readonly SideBarRowItem[];
@@ -590,28 +616,29 @@ export function SideBarFreshFold({ theaterId, groupId, items, expanded, renderRo
   readonly renderRow: (item: SideBarRowItem) => ReactNode;
 }) {
   const t = useT();
+  const title = kind === "fresh" ? t("sidebar.fold.fresh") : t("sidebar.fold.done");
   // 접혀 있으면 안의 목표 줄이 받은 표식을 머리가 대신 두른다. 목록 읽기는 펼침과 상관없이 머리가 감싸인다.
   const wrap = useClusterHeadWrap(theaterId, groupId, expanded ? NO_IDS : items.map((item) => item.layout.cluster.id));
   return (
-    <li className="side-bar-fresh-fold" data-fresh-fold={groupId ?? "__ungrouped__"}>
+    <li className={`side-bar-row-fold is-${kind}`} data-side-bar-row-fold={kind} data-row-fold-group={groupId ?? "__ungrouped__"}>
       <button
         type="button"
-        className={["side-bar-fresh-fold-toggle", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")}
+        className={["side-bar-row-fold-toggle", consoleUseWrapClassName(wrap)].filter(Boolean).join(" ")}
         title={wrap ? `${gestureCallerLabel(wrap.gesture.caller)}: ${wrap.gesture.summary}` : undefined}
         aria-expanded={expanded}
-        aria-label={t("sidebar.fold.freshAria", { n: items.length })}
+        aria-label={kind === "fresh" ? t("sidebar.fold.freshAria", { n: items.length }) : t("sidebar.fold.doneAria", { n: items.length })}
         // 상위 키 처리기가 버튼의 기본 활성화를 취소하지 않게 한다. 클릭은 브라우저가 만든다.
         onKeyDown={(event) => { if (event.code === "Space") event.stopPropagation(); }}
-        onClick={() => setSideBarFreshFoldExpanded(theaterId, groupId, !expanded)}
+        onClick={() => setSideBarRowFoldExpanded(kind, theaterId, groupId, !expanded)}
       >
-        <span className="side-bar-fresh-fold-rings" aria-hidden="true"><i /><i /><i /></span>
-        <span aria-hidden="true">{t("sidebar.fold.fresh")}</span>
-        <span className="side-bar-fresh-fold-count" aria-hidden="true">{items.length}</span>
-        <span className="side-bar-fresh-fold-chev" aria-hidden="true">›</span>
+        <span className="side-bar-row-fold-glyph" aria-hidden="true"><i /><i /><i /></span>
+        <span aria-hidden="true">{title}</span>
+        <span className="side-bar-row-fold-count" aria-hidden="true">{items.length}</span>
+        <span className="side-bar-row-fold-chev" aria-hidden="true">›</span>
       </button>
       {expanded ? (
-        <ol className="side-bar-fresh-fold-body" aria-label={t("sidebar.fold.fresh")}>
-          <FreshFoldContext.Provider value={true}>{items.map(renderRow)}</FreshFoldContext.Provider>
+        <ol className="side-bar-row-fold-body" aria-label={title}>
+          <RowFoldContext.Provider value={kind}>{items.map(renderRow)}</RowFoldContext.Provider>
         </ol>
       ) : null}
     </li>
