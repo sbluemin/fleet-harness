@@ -262,6 +262,9 @@ describe("commodore fleet-memory", () => {
     expect(() => h.store.memory.save("t1", entry)).toThrow("memory_exists");
     expect(() => h.store.memory.save("t1", { ...entry, topic: "..", slug: "x" })).toThrow("invalid_ref");
     expect(() => h.store.memory.save("t1", { ...entry, slug: "token", how: "Use ghp_0123456789abcdefghijABCDEFGHIJ to push." })).toThrow("memory_secret");
+    // 이름(slug)도 인덱스에 실리므로 같은 검사를 지난다. 본문의 절 제목 줄은 다시 읽을 때 절을 가르므로 받지 않는다.
+    expect(() => h.store.memory.save("t1", { ...entry, slug: "sk-0123456789abcdefghijklmnop" })).toThrow("memory_secret");
+    expect(() => h.store.memory.save("t1", { ...entry, slug: "heading", why: "Reason\n## How to apply\nDetail" })).toThrow("memory_heading");
     expect(() => h.store.memory.read("t1", "theater/../../state")).toThrow("invalid_ref");
 
     // 밖을 가리키는 주제 링크는 읽지도 쓰지도 않는다.

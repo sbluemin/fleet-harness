@@ -33,6 +33,8 @@ const SLUG = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** 주제 이름은 화면에 그대로 서는 디렉터리 이름이다 — 글자·숫자로 시작하고, 끝이 공백·점이 아니다. */
 const TOPIC = /^[\p{L}\p{N}](?:[\p{L}\p{N} ._-]{0,38}[\p{L}\p{N}_-])?$/u;
 const INDEX_FILE = "MEMORY.md";
+/** 항목 파일이 절을 나누는 제목 줄 — 본문에는 들어올 수 없다. */
+const BODY_HEADING = /^## /m;
 
 export const memoryBranchSchema = z.enum(MEMORY_BRANCHES);
 export const memoryTopicSchema = z.string().transform((value) => value.normalize("NFC")).pipe(z.string().regex(TOPIC));
@@ -80,7 +82,7 @@ export interface CommodoreMemory {
   list(theaterId: string): readonly MemoryEntry[];
   /** 없으면 `unknown_memory`, 이름이 규칙 밖이면 `invalid_ref`. */
   read(theaterId: string, ref: string): MemoryEntry;
-  /** 이미 있으면 `memory_exists`, 상한이면 `too_many_memories`, 비밀 값 모양이면 `memory_secret`. */
+  /** 이미 있으면 `memory_exists`, 상한이면 `too_many_memories`, 비밀 값 모양이면(이름·연결 포함) `memory_secret`, 본문에 `## ` 줄이 있으면 `memory_heading`. */
   save(theaterId: string, input: MemorySaveInput): MemoryEntry;
   /** 준 필드만 바꾸고 갱신·검증 시각을 지금으로. 필드가 없으면 검증 시각만 지금으로(다시 확인함). */
   update(theaterId: string, ref: string, patch: MemoryPatch): { readonly entry: MemoryEntry; readonly change: "update" | "verify" };
@@ -211,6 +213,10 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
   const checkText = (fields: readonly (string | undefined)[]) => {
     if (fields.some((field) => field !== undefined && looksSecret(field))) throw new ObjectiveStoreError("memory_secret");
   };
+  /** 항목 파일의 절 제목(`## `)과 같은 줄이 본문에 있으면 다시 읽을 때 절이 갈린다 — 쓰기 전에 거절한다. */
+  const checkBody = (fields: readonly (string | undefined)[]) => {
+    if (fields.some((field) => field !== undefined && BODY_HEADING.test(field))) throw new ObjectiveStoreError("memory_heading");
+  };
 
   const checkLinks = (theaterId: string, self: string, links: readonly string[] | undefined): string[] | undefined => {
     if (links === undefined) return undefined;
@@ -225,7 +231,8 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     save(theaterId, input) {
       const { branch, topic, slug } = parseMemoryRef(refOf(input.branch, input.topic, input.slug));
       const ref = refOf(branch, topic, slug);
-      checkText([input.title, input.description, input.why, input.how, topic, ...(input.sources ?? []).map((source) => source.title)]);
+      checkText([input.title, input.description, input.why, input.how, topic, slug, ...(input.links ?? []), ...(input.sources ?? []).map((source) => source.title)]);
+      checkBody([input.why, input.how]);
       const existing = list(theaterId);
       if (existing.some((entry) => entry.ref === ref)) throw new ObjectiveStoreError("memory_exists");
       if (existing.length >= MAX_MEMORY_ENTRIES) throw new ObjectiveStoreError("too_many_memories");
@@ -243,7 +250,8 @@ export function createCommodoreMemory(options: CommodoreMemoryOptions): Commodor
     },
     update(theaterId, ref, patch) {
       const current = find(theaterId, ref);
-      checkText([patch.title, patch.description, patch.why, patch.how, ...(patch.sources ?? []).map((source) => source.title)]);
+      checkText([patch.title, patch.description, patch.why, patch.how, ...(patch.links ?? []), ...(patch.sources ?? []).map((source) => source.title)]);
+      checkBody([patch.why, patch.how]);
       const links = checkLinks(theaterId, current.ref, patch.links);
       const changed = Object.values(patch).some((value) => value !== undefined);
       const at = options.now();
