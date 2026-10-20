@@ -1586,6 +1586,19 @@
 
 :is(.agent-chat, .group-chat) .markdown-body table tr:nth-child(even) td { background: none; }
 
+/* 좁은 자리에서는 공용 표의 좁은 자리 계약(좌우 여백 한 단 축소로 keep-all이 늘린 최소 폭을 돌려받는다)을
+   그대로 지킨다 — 위의 1em 여백이 특정성으로 그 계약을 덮지 않게 같은 조건으로 되돌린다. */
+@container (max-width: 480px) {
+  :is(.agent-chat, .group-chat) .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+@media (max-width: 480px) {
+  :is(.agent-chat, .group-chat) .markdown-body table :is(th, td) { padding-inline: var(--space-3); }
+}
+
+/* 폰의 표 글자는 모바일 사다리의 메타 단(14)이다 — 본문(16)의 13/14 배율은 공용 표 기준(14)보다 커진다. */
+:root[data-view-mode="mobile"] :is(.agent-chat, .group-chat) .markdown-body table { font-size: var(--m-fs-meta); }
+
 /* 이전 대화 띠 — 공용 .fc-history-band(등폭·자간·대문자)를 채팅의 보조 문법으로 덮는다.
    공용 기본 블록은 건드리지 않는다. */
 .agent-chat .fc-history-band {
