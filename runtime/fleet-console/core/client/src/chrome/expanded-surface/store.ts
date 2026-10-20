@@ -107,6 +107,7 @@ function announceClosed(instances: readonly ExpandedSurfaceInstance[]): void {
  */
 export interface ExpandedSurfaceHost {
   readonly state: () => ExpandedSurfaceState;
+  readonly isShown: (surfaceId: string) => boolean;
   readonly subscribe: (listener: Listener) => () => void;
   readonly open: (request: ExpandedSurfaceOpenRequest) => string;
   readonly close: (instanceId: string) => void;
@@ -172,6 +173,10 @@ export function subscribeExpandedSurfaces(listener: Listener): () => void {
 
 export function getExpandedSurfaceState(): ExpandedSurfaceState {
   return host ? host.state() : state;
+}
+
+export function isExpandedSurfaceShown(surfaceId: string): boolean {
+  return host ? host.isShown(surfaceId) : state.instances.some((instance) => instance.surfaceId === surfaceId);
 }
 
 function setState(next: ExpandedSurfaceState): void {

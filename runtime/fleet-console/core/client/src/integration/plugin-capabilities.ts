@@ -19,7 +19,7 @@ import type { ShellOpenAtResult } from "@fleet-console/sdk/navigation";
 import { loadModelRoster, readModelRoster, refreshModelRoster, rosterModelOptions, subscribeModelRoster } from "../../../../features/ai-gateway/client/model-roster-store.js";
 import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, subscribe as subscribeGlobalSettings } from "../../../../features/settings/client/global-settings-store.js";
 import { applySearchParams, navigateConsoleRoute, subscribeConsoleLocation } from "./console-location.js";
-import { closeExpandedSurface, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
+import { closeExpandedSurface, closeExpandedSurfacesOf, isExpandedSurfaceShown, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { resolveOperationRuntimeActivity } from "../../../../features/execution/client/operation-activity.js";
 import { AgentChatTranscript, AgentConversation, AgentDecisionCard, AgentLedger, ComposerTopEntries } from "../../../../features/execution/client/agent/index.js";
 import { ledgerOperationId, openLedger, subscribeLedger } from "../../../../features/execution/client/agent/chat/group/index.js";
@@ -296,7 +296,7 @@ export function createHostCapabilities(
       open: (request) => (revealMobileConversationTab(readBindings().find((binding) => binding.entry.surfaceId === request.surfaceId), null) ? "" : revealExpandedSurface(request)),
       close: (instanceId) => closeExpandedSurface(instanceId),
       closeSurface: (surfaceId) => closeExpandedSurfacesOf(surfaceId),
-      isOpen: (surfaceId) => getExpandedSurfaceState().instances.some((i) => i.surfaceId === surfaceId),
+      isOpen: (surfaceId) => isExpandedSurfaceShown(surfaceId),
     },
     rail: {
       open: (panelId, params) => {

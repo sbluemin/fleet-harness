@@ -19,7 +19,8 @@ import {
   focusWorkbenchTile,
   getWorkbenchKey,
   getWorkbenchSurfaceSnapshot,
-  isWorkbenchEntryOpen,
+  isWorkbenchEntryShown,
+  isWorkbenchSurfaceShown,
   loadWorkbenchLayouts,
   openWorkbenchEntry,
   openWorkbenchSurface,
@@ -43,6 +44,7 @@ import {
  */
 const SURFACE_HOST: ExpandedSurfaceHost = {
   state: getWorkbenchSurfaceSnapshot,
+  isShown: isWorkbenchSurfaceShown,
   subscribe: subscribeWorkbench,
   open: openWorkbenchSurface,
   // 표면이 스스로 부르는 닫기(`ctx.close()`·셸 종료)는 묻지 않는다. 사람이 닫는 길은 칸의 단추·도구 아이콘이다.
@@ -59,7 +61,7 @@ const TOOL_HOST: RailToolHost = {
   open: openWorkbenchEntry,
   toggle: toggleWorkbenchEntry,
   close: closeWorkbenchEntry,
-  isOpen: isWorkbenchEntryOpen,
+  isOpen: isWorkbenchEntryShown,
 };
 
 /**
